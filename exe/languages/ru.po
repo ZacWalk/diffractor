@@ -1,0 +1,3862 @@
+msgid "Fit"
+msgstr "Вписать"
+
+msgid "Zoom in"
+msgstr "Увеличить"
+
+msgid "Zoom out"
+msgstr "Уменьшить"
+
+msgid "Zoom"
+msgstr "Масштаб"
+
+msgid "Fit Width"
+msgstr "По ширине"
+
+msgid "Fill"
+msgstr "Заполнить"
+
+msgid "100% (1:1)"
+msgstr "100% (1:1)"
+
+msgid "Audio: {}"
+msgstr "Аудио: {}"
+
+msgid "Audio track {}"
+msgstr "Аудиодорожка {}"
+
+msgid "Audio tracks"
+msgstr "Аудиодорожки"
+
+msgid "Audio output"
+msgstr "Вывод звука"
+
+msgid "commentary"
+msgstr "комментарий"
+
+msgid "audio description"
+msgstr "аудиодескрипция"
+
+# Diffractor translation
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: 2026-06-28 14:49+0000\n"
+"Last-Translator: \n"
+"Language: ru\n"
+"Language-Team: \n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2;\n"
+"MIME-Version: 1.0\n"
+"X-Generator: Poedit 3.5\n"
+
+msgid "Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything."
+msgstr "Diffractor упорядочивает фотографии, видео и музыку прямо там, где они лежат. Вы выбираете папки, которые составляют вашу коллекцию; их индексация добавляет быстрый поиск, обнаружение дубликатов и редактирование метаданных, ничего не перемещая и не копируя."
+
+msgid "Diagnostics information was sent to Diffractor HQ."
+msgstr "Диагностическая информация отправлена в Diffractor HQ."
+
+msgid "Releases - Diffractor"
+msgstr "Релизы - Diffractor"
+
+msgid "Workflow Tags"
+msgstr "Теги рабочего процесса"
+
+msgid "Configure favorite tags."
+msgstr "Настроить любимые теги."
+
+msgid "Add folder"
+msgstr "Добавить папку"
+
+msgid "Capture metadata and the Windows file created time will be shifted to start at a new local date and time."
+msgstr "Дата съёмки в метаданных и время создания файла в Windows будут сдвинуты к новым локальным дате и времени начала."
+
+msgid "Time gaps between dated items are preserved. Items without a known date receive the new starting date."
+msgstr "Временные интервалы между элементами с датой сохраняются. Элементы без известной даты получают новую дату начала."
+
+msgid "This is useful if your camera date was set wrongly and you need to fix photo and video dates."
+msgstr "Это полезно, если дата вашей камеры установлена ​​неправильно и вам необходимо исправить даты фото и видео."
+
+msgid "After"
+msgstr "После"
+
+msgid "Album Artist"
+msgstr "Исполнитель альбома"
+
+msgid "Analyzing..."
+msgstr "Анализ..."
+
+msgid "archive"
+msgstr "архив"
+
+msgid "archives"
+msgstr "архивы"
+
+msgid "audio"
+msgstr "аудио"
+
+msgid "Audio"
+msgstr "Аудио"
+
+msgid "Before"
+msgstr "До"
+
+msgid "Brightness"
+msgstr "Яркость"
+
+msgid "Burn"
+msgstr "Записать"
+
+msgid "Analyze"
+msgstr "Анализировать"
+
+msgid "&Analyze"
+msgstr "&Анализ"
+
+msgid "&Cancel"
+msgstr "&Отмена"
+
+msgid "Change..."
+msgstr "Изменить..."
+
+msgid "&Close"
+msgstr "&Закрыть"
+
+msgid "&Convert"
+msgstr "&Конвертировать"
+
+msgid "&Delete"
+msgstr "&Удалить"
+
+msgid "&Don't Save"
+msgstr "&Не сохранять"
+
+msgid "&OK"
+msgstr "&ОК"
+
+msgid "&Rotate"
+msgstr "&Повернуть"
+
+msgid "&Save"
+msgstr "&Сохранить"
+
+msgid "As &JPEG"
+msgstr "Как &JPEG"
+
+msgid "&Send"
+msgstr "&Отправить"
+
+msgid "&Synchronize"
+msgstr "&Синхронизировать"
+
+msgid "&Tag"
+msgstr "&Тег"
+
+msgid "&Update"
+msgstr "&Обновить"
+
+msgid "Donate"
+msgstr "Пожертвовать"
+
+msgid "Diffractor can be used for free. If you find it useful, please help the project by donating."
+msgstr "Diffractor можно использовать бесплатно. Если вы найдете это полезным, пожалуйста, помогите проекту пожертвованием."
+
+msgid "Donate online."
+msgstr "Пожертвуйте онлайн."
+
+
+msgid "Changes"
+msgstr "Изменения"
+
+msgid "The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location."
+msgstr "Перекрестие в центре карты отмечает местоположение, которое будет записано. Перетащите карту, щёлкните пузырёк фотографии, чтобы переместить его под перекрестие, или найдите место по названию. Для масштабирования используйте колесо мыши. Ничего не записывается, пока вы не нажмёте Добавить местоположение."
+
+msgid "The collection contains {} {} ({})."
+msgstr "Коллекция содержит {} {} ({})."
+
+msgid "The collection contains:"
+msgstr "Коллекция содержит:"
+
+msgid "Items created {} {}"
+msgstr "Создано элементов {} {}"
+
+msgid "Items modified {} {}"
+msgstr "Элементы изменены {} {}"
+
+msgid "Opens created items.\nCtrl+click opens modified items."
+msgstr "Открывает созданные элементы.\nCtrl+щелчок открывает измененные элементы."
+
+msgid "{} items close to {} in the collection."
+msgstr "{} элементов в коллекции рядом с {}."
+
+msgid "{} items close to {}"
+msgstr "{} элементов рядом с {}"
+
+msgid "filter"
+msgstr "фильтр"
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Collection options"
+msgstr "Параметры коллекции"
+
+msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
+msgstr "Добавьте '-' перед записью, чтобы исключить её. Полный путь, например -c:\\photos\\secret, исключает одну папку. Имя, например -secret, или шаблон, например -proxy*, исключает подходящие папки в любом месте вашей коллекции."
+
+msgid "Other folders"
+msgstr "Другие папки"
+
+msgid "Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."
+msgstr "Папками могут быть диски, папки, сетевые ресурсы или метки устройств. Метки полезны для съемных или сетевых устройств, где буквы подключенных дисков могут меняться."
+
+msgid "Choose the folders that make up your collection. Your files stay where they are."
+msgstr "Выберите папки, которые составляют вашу коллекцию. Ваши файлы останутся на своих местах."
+
+msgid "Collection folders"
+msgstr "Папки коллекции"
+
+msgid "One folder per line."
+msgstr "По одной папке в строке."
+
+msgid "More information about collection management."
+msgstr "Дополнительная информация об управлении коллекциями."
+
+msgid "More information about metadata templates."
+msgstr "Дополнительная информация о шаблонах метаданных."
+
+msgid "Videos"
+msgstr "Видео"
+
+msgid "Your collection"
+msgstr "Ваша коллекция"
+
+msgid "Color"
+msgstr "Цвет"
+
+msgid "Adjust date and time"
+msgstr "Настроить дату и время"
+
+msgid "Advanced Search"
+msgstr "Расширенный поиск"
+
+msgid "Exit"
+msgstr "Выход"
+
+msgid "Back"
+msgstr "Назад"
+
+msgid "Forward"
+msgstr "Вперед"
+
+msgid "Next folder or search"
+msgstr "Следующая папка или поиск"
+
+msgid "Next item group"
+msgstr "Следующая группа элементов"
+
+msgid "Select next item"
+msgstr "Выбрать следующий элемент"
+
+msgid "Extend selection to next item"
+msgstr "Расширить выбор до следующего элемента"
+
+msgid "Parent"
+msgstr "Родительская папка"
+
+msgid "Previous folder or search"
+msgstr "Предыдущая папка или поиск"
+
+msgid "Previous item group"
+msgstr "Предыдущая группа элементов"
+
+msgid "Select previous item"
+msgstr "Выбрать предыдущий элемент"
+
+msgid "Extend selection to previous item"
+msgstr "Расширить выбор до предыдущего элемента"
+
+msgid "Burn to disk"
+msgstr "Записать на диск"
+
+msgid "Save current video frame"
+msgstr "Сохранить текущий видеокадр"
+
+msgid "Reset color changes"
+msgstr "Сбросить изменения цвета"
+
+msgid "Convert or Resize"
+msgstr "Конвертировать или изменить размер"
+
+msgid "Copy to folder"
+msgstr "Копировать в папку"
+
+msgid "Customise sidebar"
+msgstr "Настроить боковую панель"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Desktop background"
+msgstr "Фон рабочего стола"
+
+msgid "Display options"
+msgstr "Параметры отображения"
+
+msgid "Edit"
+msgstr "Редактировать"
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgid "Cut"
+msgstr "Вырезать"
+
+msgid "Edit metadata"
+msgstr "Редактировать метаданные"
+
+msgid "Paste"
+msgstr "Вставить"
+
+msgid "Eject"
+msgstr "Извлечь"
+
+msgid "Favorite"
+msgstr "Избранное"
+
+msgid "Open properties"
+msgstr "Открыть свойства"
+
+msgid "Search"
+msgstr "Поиск"
+
+msgid "Show items in subfolders"
+msgstr "Показать элементы в подпапках"
+
+msgid "Fullscreen"
+msgstr "Полный экран"
+
+msgid "Group by Album/Show"
+msgstr "Группировать по альбомам/шоу"
+
+msgid "Group by Camera"
+msgstr "Группировать по камере"
+
+msgid "Group by Date Created"
+msgstr "Группировать по дате создания"
+
+msgid "Group by Extension"
+msgstr "Группировать по расширению"
+
+msgid "Group by File type"
+msgstr "Группировать по типу файла"
+
+msgid "Group by Location"
+msgstr "Группировать по местоположению"
+
+msgid "Group by Date Modified"
+msgstr "Группировать по дате изменения"
+
+msgid "Group by Aspect ratio"
+msgstr "Группировать по соотношению сторон"
+
+msgid "Aspect ratio"
+msgstr "Соотношение сторон"
+
+msgid "No aspect ratio"
+msgstr "Нет соотношения сторон"
+
+msgid "Other landscape"
+msgstr "Другая альбомная ориентация"
+
+msgid "Other portrait"
+msgstr "Другая книжная ориентация"
+
+msgid "Group by Resolution"
+msgstr "Группировать по разрешению"
+
+msgid "Group by Collection presence"
+msgstr "Группировать по присутствию коллекции"
+
+msgid "Group by Rating/Label"
+msgstr "Группировать по рейтингу/метке"
+
+msgid "Show items in random order"
+msgstr "Показывать элементы в случайном порядке"
+
+msgid "Group by Size"
+msgstr "Группировать по размеру"
+
+msgid "Group by Folder"
+msgstr "Группировать по папкам"
+
+msgid "Highlight large items in yellow"
+msgstr "Выделять крупные элементы жёлтым"
+
+msgid "Import"
+msgstr "Импорт"
+
+msgid "Keyboard reference"
+msgstr "Справочник по клавиатуре"
+
+msgid "Approved"
+msgstr "Одобренный"
+
+msgid "No Label"
+msgstr "Без метки"
+
+msgid "Review"
+msgstr "Обзор"
+
+msgid "Second"
+msgstr "Второй"
+
+msgid "Select"
+msgstr "Выбрать"
+
+msgid "To Do"
+msgstr "Сделать"
+
+msgid "Language"
+msgstr "Язык"
+
+msgid "Add location"
+msgstr "Добавить местоположение"
+
+msgid "Maximize"
+msgstr "Развернуть"
+
+msgid "Group or Sort"
+msgstr "Группировать или сортировать"
+
+msgid "Minimize"
+msgstr "Свернуть"
+
+msgid "Move to folder"
+msgstr "Переместить в папку"
+
+msgid "Show sidebar"
+msgstr "Показать боковую панель"
+
+msgid "Navigate"
+msgstr "Навигация"
+
+msgid "New Folder"
+msgstr "Новая папка"
+
+msgid "New version available"
+msgstr "Доступна новая версия"
+
+msgid "Check for updates"
+msgstr "Проверить наличие обновлений"
+
+msgid "Install now"
+msgstr "Установить сейчас"
+
+msgid "Checking for updates..."
+msgstr "Проверка обновлений..."
+
+msgid "You are using the latest version ({})."
+msgstr "Вы используете последнюю версию ({})."
+
+msgid "Open"
+msgstr "Открыть"
+
+msgid "Open in google maps"
+msgstr "Открыть в Google Maps"
+
+msgid "Open with"
+msgstr "Открыть с помощью"
+
+msgid "General options"
+msgstr "Общие параметры"
+
+msgid "Pin or hold item"
+msgstr "Закрепить или удерживать элемент"
+
+msgid "Play/Pause"
+msgstr "Воспроизведение/Пауза"
+
+msgid "Print"
+msgstr "Распечатать"
+
+msgid "Rate"
+msgstr "Оценить"
+
+msgid "Remove rating"
+msgstr "Удалить рейтинг"
+
+msgid "Rate as 1 star"
+msgstr "Оценить как 1 звезда"
+
+msgid "Rate as 2 stars"
+msgstr "Оценить как 2 звезды"
+
+msgid "Rate as 3 stars"
+msgstr "Оценить как 3 звезды"
+
+msgid "Rate as 4 stars"
+msgstr "Оценить как 4 звезды"
+
+msgid "Rate as 5 stars"
+msgstr "Оценить как 5 звезд"
+
+msgid "Reject"
+msgstr "Отклонить"
+
+msgid "Refresh"
+msgstr "Обновить"
+
+msgid "Related items"
+msgstr "Связанные элементы"
+
+msgid "Rename"
+msgstr "Переименовать"
+
+msgid "Rename files"
+msgstr "Переименовать файлы"
+
+msgid "Toggle repeat play"
+msgstr "Переключить повторное воспроизведение"
+
+msgid "Restore"
+msgstr "Восстановить"
+
+msgid "Rotate anticlockwise"
+msgstr "Поворот против часовой стрелки"
+
+msgid "Rotate clockwise"
+msgstr "Повернуть по часовой стрелке"
+
+msgid "Confirm single-item rotations"
+msgstr "Подтверждать поворот одного элемента"
+
+msgid "Reset rotation"
+msgstr "Сбросить вращение"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Add location and open previous"
+msgstr "Добавить местоположение и открыть предыдущий"
+
+msgid "Add location and open next"
+msgstr "Добавить местоположение и открыть следующий"
+
+msgid "Save and open previous"
+msgstr "Сохранить и открыть предыдущее"
+
+msgid "Save the current item and open the previous item."
+msgstr "Сохраните текущий элемент и откройте предыдущий элемент."
+
+msgid "Save and open next"
+msgstr "Сохранить и открыть следующий"
+
+msgid "Save the current item and open the next item."
+msgstr "Сохраните текущий элемент и откройте следующий элемент."
+
+msgid "Save as"
+msgstr "Сохранить как"
+
+msgid "Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save."
+msgstr "Настройте кадрирование, поворот, перспективу и цвет фотографии. Ничего не записывается на диск, пока вы не сохраните."
+
+msgid "Scale up items"
+msgstr "Увеличивать элементы"
+
+msgid "Scan"
+msgstr "Сканировать"
+
+msgid "Select all"
+msgstr "Выбрать все"
+
+msgid "Invert selection"
+msgstr "Инвертировать выделение"
+
+msgid "Select none"
+msgstr "Снять выделение"
+
+msgid "Email"
+msgstr "Электронная почта"
+
+msgid "Show in file browser"
+msgstr "Показать в файловом браузере"
+
+msgid "Open containing folder"
+msgstr "Открыть содержащую папку"
+
+msgid "Sort by Date modified"
+msgstr "Сортировать по дате изменения"
+
+msgid "Sort by Date created"
+msgstr "Сортировать по дате создания"
+
+msgid "Show oldest items first"
+msgstr "Показывать сначала старые элементы"
+
+msgid "Show newest items first"
+msgstr "Показывать сначала новые элементы"
+
+msgid "Sort by Group order (Default)"
+msgstr "Сортировать по порядку группы (по умолчанию)"
+
+msgid "Sort by Name"
+msgstr "Сортировать по имени"
+
+msgid "Sort by Size"
+msgstr "Сортировать по размеру"
+
+msgid "Synchronize"
+msgstr "Синхронизировать"
+
+msgid "Toggle thumbnails or details"
+msgstr "Переключить миниатюры или детали"
+
+msgid "Toggle item grouping"
+msgstr "Переключить группировку элементов"
+
+msgid "Toggle thumbnail size"
+msgstr "Переключить размер миниатюр"
+
+msgid "Change thumbnail size"
+msgstr "Изменить размер миниатюр"
+
+msgid "Back to the top of the list"
+msgstr "Вернуться к началу списка"
+
+msgid "Tools"
+msgstr "Инструменты"
+
+msgid "About Diffractor"
+msgstr "О программе Diffractor"
+
+msgid "Show items"
+msgstr "Показать элементы"
+
+msgid "Large font"
+msgstr "Крупный шрифт"
+
+msgid "Menu"
+msgstr "Меню"
+
+msgid "Rate or Label"
+msgstr "Оценить или пометить"
+
+msgid "Select Items"
+msgstr "Выберите элементы"
+
+msgid "Sort"
+msgstr "Сортировать"
+
+msgid "Toggle volume"
+msgstr "Переключить громкость"
+
+msgid "Zoom mode"
+msgstr "Режим масштабирования"
+
+msgid "Compare"
+msgstr "Сравнить"
+
+msgid "Hold down left mouse button to compare items."
+msgstr "Удерживайте левую кнопку мыши, чтобы сравнить элементы."
+
+msgid "Contrast"
+msgstr "Контраст"
+
+msgid "Open link {}"
+msgstr "Открыть ссылку {}"
+
+msgid "Choose a link to open"
+msgstr "Выберите ссылку для открытия"
+
+msgid "Duplicate"
+msgstr "Дубликат"
+
+msgid "Copy to clipboard"
+msgstr "Скопировать в буфер обмена"
+
+msgid "to"
+msgstr "к"
+
+msgid "Creator"
+msgstr "Создатель"
+
+msgid "Credit"
+msgstr "Авторство"
+
+msgid "Notice"
+msgstr "Уведомление"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "Source"
+msgstr "Источник"
+
+msgid "Copyright"
+msgstr "Авторское право"
+
+msgid "URL"
+msgstr "URL-адрес"
+
+msgid "Count"
+msgstr "Количество"
+
+msgid "Favorite Searches"
+msgstr "Любимые поисковые запросы"
+
+msgid "Sidebar"
+msgstr "Боковая панель"
+
+msgid "Define what items are shown in the sidebar."
+msgstr "Определите, какие элементы отображаются на боковой панели."
+
+msgid "Add a list of your favorite tags here to save time when tagging."
+msgstr "Добавьте сюда список своих любимых тегов, чтобы сэкономить время при добавлении тегов."
+
+msgid "Favorite Tags"
+msgstr "Любимые теги"
+
+msgid "Show labels"
+msgstr "Показать метки"
+
+msgid "Show ratings"
+msgstr "Показать рейтинги"
+
+msgid "Show drives"
+msgstr "Показать диски"
+
+msgid "Show history chart"
+msgstr "Показать диаграмму истории"
+
+msgid "Earliest year the history navigator offers. Empty works it out from your photos."
+msgstr "Самый ранний год в навигаторе истории. Пустое значение определяется по вашим фотографиям."
+
+msgid "Shows the eight years ending here."
+msgstr "Показывает восемь лет, заканчивающихся здесь."
+
+msgid "Show favorite searches"
+msgstr "Показать избранные поисковые запросы"
+
+msgid "Show tags"
+msgstr "Показать теги"
+
+msgid "Show total items pie chart"
+msgstr "Показать круговую диаграмму общего количества элементов"
+
+msgid "Show world map"
+msgstr "Показать карту мира"
+
+msgid "Darks"
+msgstr "Тёмные тона"
+
+msgid "data"
+msgstr "данные"
+
+msgid "File created:"
+msgstr "Файл создан:"
+
+msgid "File modified:"
+msgstr "Файл изменен:"
+
+msgid "Metadata created:"
+msgstr "Метаданные созданы:"
+
+msgid "Dates"
+msgstr "Даты"
+
+msgid "family food friends landscape nature night portrait selfie todo travel urban viewed"
+msgstr "семья еда друзья пейзаж природа ночь портрет селфи дела путешествия городской просмотр"
+
+msgid "Defragment database."
+msgstr "Дефрагментация базы данных."
+
+msgid "Defragmenting..."
+msgstr "Дефрагментация..."
+
+msgid "Failed to Delete Selected File."
+msgstr "Не удалось удалить выбранный файл."
+
+msgid "Delete {}"
+msgstr "Удалить {}"
+
+msgid "Set the desktop background to the current image."
+msgstr "Установите фон рабочего стола на текущее изображение."
+
+msgid "Destination folder:"
+msgstr "Папка назначения:"
+
+msgid "Capacity"
+msgstr "Емкость"
+
+msgid "Free//disk"
+msgstr "Свободно"
+
+msgid "Label"
+msgstr "Метка"
+
+msgid "System"
+msgstr "Система"
+
+msgid "Used"
+msgstr "Занято"
+
+msgid "Documentation"
+msgstr "Документация"
+
+msgid "Duplicates"
+msgstr "Дубликаты"
+
+msgid "Matching or possible copy items in the collection."
+msgstr "Совпадающие элементы или возможные копии в коллекции."
+
+msgid "Editing"
+msgstr "Редактирование"
+
+msgid "Close without ejecting"
+msgstr "Закрыть, не извлекая"
+
+msgid "Failed to eject {}."
+msgstr "Не удалось извлечь {}."
+
+msgid "To avoid losing data, eject an external hard drive or USB drive before removing it."
+msgstr "Во избежание потери данных извлеките внешний жесткий диск или USB-накопитель перед его извлечением."
+
+msgid "Eject {}"
+msgstr "Извлечь {}"
+
+msgid "Connecting to MAPI..."
+msgstr "Подключение к MAPI..."
+
+msgid "Convert all photos to JPEG"
+msgstr "Конвертировать все фотографии в JPEG"
+
+msgid "Failed to send email using MAPI."
+msgstr "Не удалось отправить электронное письмо с помощью MAPI."
+
+msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
+msgstr "Ограничьте фотографии максимальным размером (в пикселях). Поддерживается только для файлов JPEG и PNG."
+
+msgid "Processing {}"
+msgstr "Обработка {}"
+
+msgid "Sending email using MAPI..."
+msgstr "Отправка электронной почты с помощью MAPI..."
+
+msgid "Create a draft in your desktop email client with the selected files attached. Originals are unchanged."
+msgstr "Создать черновик в почтовом клиенте с выбранными файлами во вложении. Оригиналы останутся без изменений."
+
+msgid "Zip files in the email"
+msgstr "Архивировать файлы в ZIP"
+
+msgid "Empty"
+msgstr "Пустой"
+
+msgid "Ending {}"
+msgstr "Окончание {}"
+
+msgid "Security options denied access to the source."
+msgstr "Параметры безопасности запретили доступ к источнику."
+
+msgid "Diffractor has a serious problem and cannot continue."
+msgstr "У Diffractor серьезная проблема, и он не может продолжать работу."
+
+msgid "Could not connect to scanner"
+msgstr "Не удалось подключиться к сканеру"
+
+msgid "The destination file '{}' cannot be opened or created."
+msgstr "Файл назначения «{}» невозможно открыть или создать."
+
+msgid "The destination folder '{}' cannot be opened or created."
+msgstr "Папку назначения «{}» невозможно открыть или создать."
+
+msgid "Diffractor cannot be started. The main window could not be created."
+msgstr "Невозможно запустить Diffractor. Не удалось создать главное окно."
+
+msgid "The destination is a writable CD-ROM, possibly unformatted."
+msgstr "Местом назначения является записываемый компакт-диск, возможно, неформатированный."
+
+msgid "The destination is a read-only CD-ROM, possibly unformatted."
+msgstr "Местом назначения является компакт-диск только для чтения, возможно, неформатированный."
+
+msgid "The destination is a read-only DVD, possibly unformatted."
+msgstr "Местом назначения является DVD-диск, доступный только для чтения, возможно, неформатированный."
+
+msgid "The source and destination have the same parent folder."
+msgstr "Источник и место назначения имеют одну и ту же родительскую папку."
+
+msgid "The destination is a subtree of the source."
+msgstr "Назначением является поддерево источника."
+
+msgid "Rename operation was specified but the destination path is a different directory. Use the move operation instead."
+msgstr "Была указана операция переименования, но путь назначения — это другой каталог. Вместо этого используйте операцию перемещения."
+
+msgid "Destination is a root directory and cannot be renamed."
+msgstr "Назначением является корневой каталог, и его нельзя переименовать."
+
+msgid "The destination path is an existing folder."
+msgstr "Путь назначения — это существующая папка."
+
+msgid "The file involved in the operation is too large for the destination media or file system."
+msgstr "Файл, участвующий в операции, слишком велик для целевого носителя или файловой системы."
+
+msgid "The name of the file exceeds MAX_PATH."
+msgstr "Имя файла превышает MAX_PATH."
+
+msgid "The destination path is an existing file."
+msgstr "Путь назначения — это существующий файл."
+
+msgid "Index database failed."
+msgstr "База данных индекса не удалась."
+
+msgid "The path in the source or destination or both was invalid."
+msgstr "Путь в источнике или месте назначения (или в обоих) недействителен."
+
+msgid "The file name you have chosen '{}' is invalid."
+msgstr "Выбранное вами имя файла «{}» неверно."
+
+msgid "File names cannot contain the following characters:"
+msgstr "Имена файлов не могут содержать следующие символы:"
+
+msgid "The operation involved multiple destination paths, which can fail in the case of a move operation."
+msgstr "В операции задействовано несколько путей назначения, что может привести к сбою в случае операции перемещения."
+
+msgid "Multiple file paths were specified in the source buffer, but only one destination file path."
+msgstr "В исходном буфере было указано несколько путей к файлам, но только один путь к целевому файлу."
+
+msgid "MAX_PATH was exceeded during the operation."
+msgstr "Во время операции было превышено значение MAX_PATH."
+
+msgid "OleInitialize Failed"
+msgstr "Ошибка OleInitialize"
+
+msgid "An unspecified error occurred on the destination."
+msgstr "В месте назначения произошла неизвестная ошибка."
+
+msgid "The operation was canceled."
+msgstr "Операция отменена."
+
+msgid "The analysis was canceled."
+msgstr "Анализ отменён."
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "The source or destination path exceeded or would exceed MAX_PATH."
+msgstr "Путь источника или назначения превысил или может превысить MAX_PATH."
+
+msgid "Failed to rename."
+msgstr "Не удалось переименовать."
+
+msgid "The source and destination files are the same file."
+msgstr "Исходный и целевой файлы — это один и тот же файл."
+
+msgid "Failed to save image."
+msgstr "Не удалось сохранить изображение."
+
+msgid "Scanner reported an error"
+msgstr "Сканер сообщил об ошибке"
+
+msgid "The source is a writable CD-ROM, possibly unformatted."
+msgstr "Источником является записываемый компакт-диск, возможно, неформатированный."
+
+msgid "The source is a read-only CD-ROM, possibly unformatted."
+msgstr "Источником является компакт-диск, доступный только для чтения, возможно, неформатированный."
+
+msgid "The source is a read-only DVD, possibly unformatted."
+msgstr "Источником является DVD, доступный только для чтения, возможно, неформатированный."
+
+msgid "The source is a root directory, which cannot be moved or renamed."
+msgstr "Источником является корневой каталог, который нельзя переместить или переименовать."
+
+msgid "Diffractor requires a processor with sse2."
+msgstr "Для Diffractor требуется процессор с поддержкой sse2."
+
+msgid "An unknown error occurred."
+msgstr "Произошла неизвестная ошибка."
+
+msgid "Diffractor requires Windows 7 or newer."
+msgstr "Для работы Diffractor требуется Windows 7 или более поздняя версия."
+
+msgid "Failed to register windows common control classes."
+msgstr "Не удалось зарегистрировать общие классы управления Windows."
+
+msgid "Failed to initialize Winsock"
+msgstr "Не удалось инициализировать Winsock"
+
+msgid "EXIF"
+msgstr "EXIF"
+
+msgid "Failed to create folder: {}"
+msgstr "Не удалось создать папку: {}"
+
+msgid "Add '{}' to favorites."
+msgstr "Добавьте '{}' в избранное."
+
+msgid "Failed to add. Maximum number of favorites reached."
+msgstr "Не удалось добавить. Достигнуто максимальное количество избранных."
+
+msgid "Remove '{}' from favorite folders or searches."
+msgstr "Удалите «{}» из избранных папок или результатов поиска."
+
+msgid "Favorite title"
+msgstr "Любимое название"
+
+msgid "Favorites are listed in the sidebar for quick access."
+msgstr "Избранное отображается на боковой панели для быстрого доступа."
+
+msgid "These items are in your collection."
+msgstr "Эти элементы находятся в вашей коллекции."
+
+msgid "These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them."
+msgstr "Эти элементы находятся вне вашей коллекции, поэтому поиск и обнаружение дубликатов их не охватывают. Добавьте эту папку в коллекцию, чтобы включить их."
+
+msgid "Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied."
+msgstr "Ваша коллекция — это выбранные вами папки вместе с их подпапками. Diffractor индексирует их, поэтому поиск, обнаружение дубликатов и итоги охватывают всё сразу. Добавление или удаление папки меняет только то, что известно Diffractor. Никакие файлы не перемещаются и не копируются."
+
+msgid "folder"
+msgstr "папка"
+
+msgid "folders"
+msgstr "папки"
+
+msgid "Folder"
+msgstr "Папка"
+
+msgid "videos"
+msgstr "видео"
+
+msgid "A capella"
+msgstr "А капелла"
+
+msgid "Abstract"
+msgstr "Абстрактный"
+
+msgid "Acid"
+msgstr "Эйсид"
+
+msgid "Acid Jazz"
+msgstr "Эйсид-джаз"
+
+msgid "Acid Punk"
+msgstr "Эйсид-панк"
+
+msgid "Acoustic"
+msgstr "Акустический"
+
+msgid "Action"
+msgstr "Действие"
+
+msgid "Action & Adventure"
+msgstr "Экшн и приключения"
+
+msgid "Aerial"
+msgstr "Воздушный"
+
+msgid "Alternative"
+msgstr "Альтернатива"
+
+msgid "AlternRock"
+msgstr "АльтернРок"
+
+msgid "Ambient"
+msgstr "Эмбиент"
+
+msgid "Analog"
+msgstr "Аналоговый"
+
+msgid "Animation"
+msgstr "Анимация"
+
+msgid "Anime"
+msgstr "Аниме"
+
+msgid "Architectural"
+msgstr "Архитектурный"
+
+msgid "Avantgarde"
+msgstr "Авангард"
+
+msgid "Aviation"
+msgstr "Авиация"
+
+msgid "Ballad"
+msgstr "Баллада"
+
+msgid "Bass"
+msgstr "Бас"
+
+msgid "Bebob"
+msgstr "Бибоп"
+
+msgid "Big Band"
+msgstr "Биг-бэнд"
+
+msgid "Bluegrass"
+msgstr "Блюграсс"
+
+msgid "Blues"
+msgstr "Блюз"
+
+msgid "Booty Bass"
+msgstr "Booty Bass"
+
+msgid "Brazilian"
+msgstr "Бразильский"
+
+msgid "Cabaret"
+msgstr "Кабаре"
+
+msgid "Candid"
+msgstr "Репортажный"
+
+msgid "Celtic"
+msgstr "Кельтская"
+
+msgid "Chamber Music"
+msgstr "Камерная музыка"
+
+msgid "Chanson"
+msgstr "Шансон"
+
+msgid "Children's"
+msgstr "Детский"
+
+msgid "Chorus"
+msgstr "Хор"
+
+msgid "Christian & Gospel"
+msgstr "Христианская и госпел"
+
+msgid "Christian Rap"
+msgstr "Христианский рэп"
+
+msgid "Classic"
+msgstr "Классический"
+
+msgid "Classic Rock"
+msgstr "Классический рок"
+
+msgid "Classical"
+msgstr "Классический"
+
+msgid "Close-up"
+msgstr "Крупный план"
+
+msgid "Cloudscape"
+msgstr "Облачный пейзаж"
+
+msgid "Club"
+msgstr "Клуб"
+
+msgid "Comedy"
+msgstr "Комедия"
+
+msgid "Conceptual"
+msgstr "Концептуальный"
+
+msgid "Concert"
+msgstr "Концерт"
+
+msgid "Concert Films"
+msgstr "Концертные фильмы"
+
+msgid "Conservation"
+msgstr "Сохранение"
+
+msgid "Country//genre"
+msgstr "Кантри"
+
+msgid "Cult"
+msgstr "Культ"
+
+msgid "Dance"
+msgstr "Танец"
+
+msgid "Dance Hall"
+msgstr "Танцевальный зал"
+
+msgid "Darkwave"
+msgstr "Дарквейв"
+
+msgid "Death Metal"
+msgstr "Дэт-метал"
+
+msgid "Disco"
+msgstr "Диско"
+
+msgid "Documentary"
+msgstr "Документальный фильм"
+
+msgid "Drama"
+msgstr "Драма"
+
+msgid "Dream"
+msgstr "Дрим"
+
+msgid "Drum Solo"
+msgstr "Барабанное соло"
+
+msgid "Duet"
+msgstr "Дуэт"
+
+msgid "Easy Listening"
+msgstr "Легкое прослушивание"
+
+msgid "Electronic"
+msgstr "Электронный"
+
+msgid "Ethnic"
+msgstr "Этнический"
+
+msgid "Eurodance"
+msgstr "Евродэнс"
+
+msgid "Euro-House"
+msgstr "Евро-хаус"
+
+msgid "Euro-Techno"
+msgstr "Евро-Техно"
+
+msgid "Family"
+msgstr "Семья"
+
+msgid "Fashion"
+msgstr "Мода"
+
+msgid "Fast Fusion"
+msgstr "Фаст-фьюжн"
+
+msgid "Film still"
+msgstr "Кадр из фильма"
+
+msgid "Fine-art"
+msgstr "Файн-арт"
+
+msgid "Fire"
+msgstr "Огонь"
+
+msgid "Fireworks"
+msgstr "Фейерверк"
+
+msgid "Fitness & Workout"
+msgstr "Фитнес и тренировки"
+
+msgid "Folk"
+msgstr "Народный"
+
+msgid "Folk-Rock"
+msgstr "Фолк-Рок"
+
+msgid "Folklore"
+msgstr "Фольклор"
+
+msgid "Food"
+msgstr "Еда"
+
+msgid "Foreign"
+msgstr "Иностранный"
+
+msgid "Forensic"
+msgstr "Криминалистика"
+
+msgid "Freestyle"
+msgstr "Фристайл"
+
+msgid "Funk"
+msgstr "Фанк"
+
+msgid "Fusion"
+msgstr "Фьюжн"
+
+msgid "Game//genre"
+msgstr "Игра"
+
+msgid "Gangsta"
+msgstr "Гангста"
+
+msgid "Geo-photography"
+msgstr "Геофотография"
+
+msgid "Glamour"
+msgstr "Гламур"
+
+msgid "Gospel"
+msgstr "Госпел"
+
+msgid "Gothic"
+msgstr "Готика"
+
+msgid "Gothic Rock"
+msgstr "Готик-рок"
+
+msgid "Grunge"
+msgstr "Гранж"
+
+msgid "Hard Rock"
+msgstr "Хард-рок"
+
+msgid "High-speed"
+msgstr "Высокоскоростной"
+
+msgid "High key"
+msgstr "Высокий ключ"
+
+msgid "Hip-Hop"
+msgstr "Хип-Хоп"
+
+msgid "Hip-Hop/Rap"
+msgstr "Хип-Хоп/Рэп"
+
+msgid "Holiday"
+msgstr "Праздничный день"
+
+msgid "Horror"
+msgstr "Ужасы"
+
+msgid "House"
+msgstr "Хаус"
+
+msgid "Humour"
+msgstr "Юмор"
+
+msgid "Independent"
+msgstr "Независимый"
+
+msgid "Industrial"
+msgstr "Промышленный"
+
+msgid "Instrumental"
+msgstr "Инструментальный"
+
+msgid "Instrumental Pop"
+msgstr "Инструментальный поп"
+
+msgid "Instrumental Rock"
+msgstr "Инструментальный рок"
+
+msgid "Jazz"
+msgstr "Джаз"
+
+msgid "Jazz + Funk"
+msgstr "Джаз + Фанк"
+
+msgid "Jungle"
+msgstr "Джангл"
+
+msgid "Kids"
+msgstr "Дети"
+
+msgid "Kids & Family"
+msgstr "Дети и семья"
+
+msgid "Kirlian"
+msgstr "Кирлиан"
+
+msgid "Landscape"
+msgstr "Пейзаж"
+
+msgid "Latin"
+msgstr "Латино"
+
+msgid "Lifestyle"
+msgstr "Образ жизни"
+
+msgid "Lo-fi"
+msgstr "Лоу-фай"
+
+msgid "Lomography"
+msgstr "Ломография"
+
+msgid "Long-exposure"
+msgstr "Длительная выдержка"
+
+msgid "Low key"
+msgstr "Низкий ключ"
+
+msgid "Macro"
+msgstr "Макро"
+
+msgid "Medical"
+msgstr "Медицинский"
+
+msgid "Meditative"
+msgstr "Медитативный"
+
+msgid "Metal"
+msgstr "Металл"
+
+msgid "Monochrome"
+msgstr "Монохромный"
+
+msgid "Music Documentaries"
+msgstr "Музыкальные документальные фильмы"
+
+msgid "Music Feature Films"
+msgstr "Музыкальные художественные фильмы"
+
+msgid "Musical"
+msgstr "Мюзикл"
+
+msgid "Musicals"
+msgstr "Мюзиклы"
+
+msgid "Narrative"
+msgstr "Повествование"
+
+msgid "National Folk"
+msgstr "Национальный фолк"
+
+msgid "Native American"
+msgstr "Коренной американец"
+
+msgid "New Age"
+msgstr "Нью Эйдж"
+
+msgid "New Wave"
+msgstr "Новая волна"
+
+msgid "Night"
+msgstr "Ночь"
+
+msgid "Noise"
+msgstr "Шум"
+
+msgid "Nonfiction"
+msgstr "Документальная литература"
+
+msgid "Oldies"
+msgstr "Старые хиты"
+
+msgid "Opera"
+msgstr "Опера"
+
+msgid "Other"
+msgstr "Другой"
+
+msgid "Panorama"
+msgstr "Панорама"
+
+msgid "Panoramic"
+msgstr "Панорамный"
+
+msgid "Film Noir"
+msgstr "Фильм-нуар"
+
+msgid "Photo op"
+msgstr "Фотосессия"
+
+msgid "Photobiography"
+msgstr "Фотобиография"
+
+msgid "Photojournalism"
+msgstr "Фотожурналистика"
+
+msgid "Photowalking"
+msgstr "Фотопрогулка"
+
+msgid "Podcast"
+msgstr "Подкаст"
+
+msgid "Polaroid"
+msgstr "Полароид"
+
+msgid "Polka"
+msgstr "Полька"
+
+msgid "Pop"
+msgstr "Поп"
+
+msgid "Pop-Folk"
+msgstr "Поп-фолк"
+
+msgid "Pop/Funk"
+msgstr "Поп/Фанк"
+
+msgid "Porn Groove"
+msgstr "Порно Грув"
+
+msgid "Portrait"
+msgstr "Портрет"
+
+msgid "Power Ballad"
+msgstr "Пауэр-баллада"
+
+msgid "Pranks"
+msgstr "Пранки"
+
+msgid "Primus"
+msgstr "Primus"
+
+msgid "Progressive Rock"
+msgstr "Прогрессивный рок"
+
+msgid "Psychadelic"
+msgstr "Психоделический"
+
+msgid "Psychedelic Rock"
+msgstr "Психоделический рок"
+
+msgid "Punk"
+msgstr "Панк"
+
+msgid "Punk Rock"
+msgstr "Панк-рок"
+
+msgid "R&B"
+msgstr "Р&Б"
+
+msgid "Rap"
+msgstr "Рэп"
+
+msgid "Rave"
+msgstr "Рейв"
+
+msgid "Reality TV"
+msgstr "Реалити-шоу"
+
+msgid "Reggae"
+msgstr "Регги"
+
+msgid "Retro"
+msgstr "Ретро"
+
+msgid "Revival"
+msgstr "Возрождение"
+
+msgid "Rhythmic Soul"
+msgstr "Ритмичный соул"
+
+msgid "Rock"
+msgstr "Рок"
+
+msgid "Rock & Roll"
+msgstr "Рок-н-ролл"
+
+msgid "Romance"
+msgstr "Романтика"
+
+msgid "Samba"
+msgstr "Самба"
+
+msgid "Satellite"
+msgstr "Спутник"
+
+msgid "Satire"
+msgstr "Сатира"
+
+msgid "Sci-Fi & Fantasy"
+msgstr "Научная фантастика и фэнтези"
+
+msgid "Short Films"
+msgstr "Короткометражные фильмы"
+
+msgid "Show tunes"
+msgstr "Мелодии из мюзиклов"
+
+msgid "Singer/Songwriter"
+msgstr "Певец/автор песен"
+
+msgid "Ska"
+msgstr "Ска"
+
+msgid "Slow Jam"
+msgstr "Медленный джем"
+
+msgid "Slow Rock"
+msgstr "Медленный рок"
+
+msgid "Social"
+msgstr "Социальные"
+
+msgid "Soft focus"
+msgstr "Мягкий фокус"
+
+msgid "Sonata"
+msgstr "Соната"
+
+msgid "Soul"
+msgstr "Соул"
+
+msgid "Sound Clip"
+msgstr "Звуковой клип"
+
+msgid "Soundtrack"
+msgstr "Саундтрек"
+
+msgid "Southern Rock"
+msgstr "Южный рок"
+
+msgid "Space"
+msgstr "Космос"
+
+msgid "Special Interest"
+msgstr "Особый интерес"
+
+msgid "Speech"
+msgstr "Речь"
+
+msgid "Sports"
+msgstr "Спорт"
+
+msgid "Star trail"
+msgstr "Звездный след"
+
+msgid "Still life"
+msgstr "Натюрморт"
+
+msgid "Stock"
+msgstr "Стоковая фотография"
+
+msgid "Street"
+msgstr "Улица"
+
+msgid "Subminiature"
+msgstr "Сверхминиатюрный"
+
+msgid "Swing"
+msgstr "Свинг"
+
+msgid "Symphonic Rock"
+msgstr "Симфонический рок"
+
+msgid "Symphony"
+msgstr "Симфония"
+
+msgid "Tango"
+msgstr "Танго"
+
+msgid "Techno"
+msgstr "Техно"
+
+msgid "Techno-Industrial"
+msgstr "Техно-индустриальный"
+
+msgid "Teens"
+msgstr "Тинейджеры"
+
+msgid "Thriller"
+msgstr "Триллер"
+
+msgid "Time-lapse"
+msgstr "Таймлапс"
+
+msgid "Top 40"
+msgstr "Топ 40"
+
+msgid "Trailer"
+msgstr "Трейлер"
+
+msgid "Trance"
+msgstr "Транс"
+
+msgid "Travel"
+msgstr "Путешествия"
+
+msgid "Tribal"
+msgstr "Племенной"
+
+msgid "Trip-Hop"
+msgstr "Трип-хоп"
+
+msgid "Ultraviolet"
+msgstr "Ультрафиолетовый"
+
+msgid "Underwater"
+msgstr "Подводный"
+
+msgid "Unknown"
+msgstr "Неизвестный"
+
+msgid "Urban"
+msgstr "Городской"
+
+msgid "Vernacular"
+msgstr "Народная фотография"
+
+msgid "Vintage"
+msgstr "Винтаж"
+
+msgid "Vocal"
+msgstr "Вокал"
+
+msgid "War"
+msgstr "Война"
+
+msgid "Western"
+msgstr "Вестерн"
+
+msgid "World"
+msgstr "Мир"
+
+msgid "Group and sort items"
+msgstr "Группировать и сортировать элементы"
+
+msgid "Items"
+msgstr "Элементы"
+
+msgid "No album or show"
+msgstr "Нет альбома или шоу"
+
+msgid "No camera"
+msgstr "Нет камеры"
+
+msgid "No extension"
+msgstr "Нет расширения"
+
+msgid "No location"
+msgstr "Нет местоположения"
+
+msgid "No resolution"
+msgstr "Нет разрешения"
+
+msgid "No rating"
+msgstr "Нет рейтинга"
+
+msgid "No value"
+msgstr "Нет значения"
+
+msgid "random"
+msgstr "случайный"
+
+msgid "{} to {}"
+msgstr "от {} до {}"
+
+msgid "Today"
+msgstr "Сегодня"
+
+msgid "Yesterday"
+msgstr "Вчера"
+
+msgid "{} has modifications"
+msgstr "{} имеет модификации"
+
+msgid "Separate each artist with a comma ',' or slash '/'"
+msgstr "Разделяйте исполнителей запятой «,» или косой чертой «/»."
+
+msgid "Help or more information"
+msgstr "Помощь или дополнительная информация"
+
+msgid "Send anonymous log information to Diffractor HQ."
+msgstr "Отправьте анонимную информацию журнала в штаб-квартиру Diffractor."
+
+msgid "Tags can be removed by prefixing with a minus: -remove"
+msgstr "Теги можно удалить, поставив перед ними минус: -remove."
+
+msgid "Separate each tag with a space: Australia holiday camping."
+msgstr "Отделяйте каждый тег пробелом: кемпинг в Австралии."
+
+msgid "Join 2 words together in one tag using quotes: \"national park\"."
+msgstr "Соедините 2 слова в один тег, используя кавычки: \"национальный парк\"."
+
+msgid "Hide verbose metadata"
+msgstr "Скрыть подробные метаданные"
+
+msgid "Destination root folder. Structured folders will be created under this folder."
+msgstr "Корневая папка назначения. В этой папке будут созданы структурированные папки."
+
+msgid "Source of import:"
+msgstr "Источник импорта:"
+
+msgid "Ignore previously imported items."
+msgstr "Игнорировать ранее импортированные элементы."
+
+msgid "Other folder"
+msgstr "Другая папка"
+
+msgid "Destination folder structure:"
+msgstr "Структура папки назначения:"
+
+msgid "Set file date created to metadata date created."
+msgstr "Установить дату создания файла на дату создания метаданных."
+
+msgid "Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."
+msgstr "Дефрагментация или очистка могут улучшить производительность. В индексе хранится копия метаданных из ваших медиафайлов. Его можно восстановить из исходных файлов."
+
+msgid "The index is reporting errors. Restarting Diffractor is recommended."
+msgstr "Индекс сообщает об ошибках. Рекомендуется перезапустить Diffractor."
+
+msgid "Maintenance"
+msgstr "Обслуживание"
+
+msgid "Currently the index database is {} in size and contains metadata from {} items."
+msgstr "В настоящее время база данных индекса имеет размер {} и содержит метаданные из {} элементов."
+
+msgid "Indexing"
+msgstr "Индексирование"
+
+msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
+msgstr "Diffractor читает вашу коллекцию, чтобы поиск, дубликаты и итоги оставались полными. Вы можете продолжать просмотр."
+
+msgid "invalid"
+msgstr "неверный"
+
+msgid "IPTC"
+msgstr "IPTC"
+
+msgid "'{}' is not a valid folder."
+msgstr "'{}' не является допустимой папкой."
+
+msgid "Show items rotated"
+msgstr "Показать элементы повернутыми"
+
+msgid "This item is shown oriented based on camera information. [{}]"
+msgstr "Этот элемент отображается с ориентацией на основе информации о камере. [{}]"
+
+msgid "Files are identical."
+msgstr "Файлы идентичны."
+
+msgid "Files are different."
+msgstr "Файлы разные."
+
+msgid "JPEG - Best compression for photos"
+msgstr "JPEG — лучшее сжатие фотографий."
+
+msgid "Keyboard"
+msgstr "Клавиатура"
+
+msgid "press"
+msgstr "нажимать"
+
+msgid "alt"
+msgstr "Alt"
+
+msgid "back"
+msgstr "назад"
+
+msgid "backspace"
+msgstr "Backspace"
+
+msgid "Basics"
+msgstr "Основы"
+
+msgid "browser-back"
+msgstr "возврат браузера"
+
+msgid "browser-favorites"
+msgstr "избранное браузера"
+
+msgid "browser-forward"
+msgstr "вперёд в браузере"
+
+msgid "browser-home"
+msgstr "главная страница браузера"
+
+msgid "browser-refresh"
+msgstr "обновление браузера"
+
+msgid "browser-search"
+msgstr "поиск в браузере"
+
+msgid "browser-stop"
+msgstr "остановка браузера"
+
+msgid "ctrl"
+msgstr "Ctrl"
+
+msgid "Extend the current item selection and allow comparing of items."
+msgstr "Расширьте текущий выбор элементов и разрешите сравнение элементов."
+
+msgid "del"
+msgstr "Del"
+
+msgid "down"
+msgstr "Вниз"
+
+msgid "enter"
+msgstr "Enter"
+
+msgid "Opens an image full screen."
+msgstr "Открывает изображение на весь экран."
+
+msgid "escape"
+msgstr "Esc"
+
+msgid "Gets you out of full screen, zoom or other modes."
+msgstr "Выводит вас из полноэкранного режима, масштабирования или других режимов."
+
+msgid "F1"
+msgstr "F1"
+
+msgid "F10"
+msgstr "F10"
+
+msgid "F11"
+msgstr "F11"
+
+msgid "F2"
+msgstr "F2"
+
+msgid "F3"
+msgstr "F3"
+
+msgid "F4"
+msgstr "F4"
+
+msgid "F5"
+msgstr "F5"
+
+msgid "F6"
+msgstr "F6"
+
+msgid "F7"
+msgstr "F7"
+
+msgid "F8"
+msgstr "F8"
+
+msgid "F9"
+msgstr "F9"
+
+msgid "File management"
+msgstr "Управление файлами"
+
+msgid "Help"
+msgstr "Помощь"
+
+msgid "insert"
+msgstr "Insert"
+
+msgid "left"
+msgstr "Влево"
+
+msgid "Move to the next or previous item."
+msgstr "Переход к следующему или предыдущему элементу."
+
+msgid "media-next-track"
+msgstr "медиа-следующий трек"
+
+msgid "media-play-pause"
+msgstr "медиа-воспроизведение-пауза"
+
+msgid "media-prev-track"
+msgstr "медиа-предыдущий-трек"
+
+msgid "media-stop"
+msgstr "медиа-стоп"
+
+msgid "Navigation"
+msgstr "Навигация"
+
+msgid "page-down"
+msgstr "страница вниз"
+
+msgid "["
+msgstr "["
+msgid "]"
+msgstr "]"
+
+msgid "+"
+msgstr "+"
+
+msgid "Options"
+msgstr "Параметры"
+
+msgid "OR"
+msgstr "ИЛИ"
+
+msgid "Media playback"
+msgstr "Воспроизведение мультимедиа"
+
+msgid "page-up"
+msgstr "страница вверх"
+
+msgid "right"
+msgstr "Вправо"
+
+msgid "Selection"
+msgstr "Выбор"
+
+msgid "shift"
+msgstr "Shift"
+
+msgid "space"
+msgstr "Пробел"
+
+msgid "tab"
+msgstr "Tab"
+
+msgid "up"
+msgstr "Вверх"
+
+msgid "volume-down"
+msgstr "уменьшение громкости"
+
+msgid "volume-mute"
+msgstr "отключение звука"
+
+msgid "volume-up"
+msgstr "увеличение громкости"
+
+msgid "km from"
+msgstr "км от"
+
+msgid "Learn more at Diffractor.com"
+msgstr "Узнайте больше на сайте Diffractor.com."
+
+msgid "Lights"
+msgstr "Светлые тона"
+
+msgid "Limit output to a maximum dimension (in pixels)."
+msgstr "Ограничьте вывод максимальным размером (в пикселях)."
+
+msgid "Lossless compression"
+msgstr "Сжатие без потерь"
+
+msgid "List of keyboard accelerators"
+msgstr "Список ускорителей клавиатуры"
+
+msgid "Loading..."
+msgstr "Загрузка..."
+
+msgid "No location selected."
+msgstr "Местоположение не выбрано."
+
+msgid "Overwrite GPS coordinates when setting a location."
+msgstr "Перезапишите координаты GPS при настройке местоположения."
+
+msgid "Location"
+msgstr "Местоположение"
+
+msgid "Maximize image"
+msgstr "Развернуть изображение"
+
+msgid "Media"
+msgstr "Медиа"
+
+msgid "Add '{}'"
+msgstr "Добавить '{}'"
+
+msgid "Move"
+msgstr "Переместить"
+
+msgid "Select All"
+msgstr "Выбрать все"
+
+msgid "Undo"
+msgstr "Отменить"
+
+msgid "Metadata"
+msgstr "Метаданные"
+
+msgid "Midtones"
+msgstr "Средние тона"
+
+msgid "April"
+msgstr "апрель"
+
+msgid "August"
+msgstr "август"
+
+msgid "December"
+msgstr "декабрь"
+
+msgid "February"
+msgstr "февраль"
+
+msgid "January"
+msgstr "январь"
+
+msgid "July"
+msgstr "июль"
+
+msgid "June"
+msgstr "июнь"
+
+msgid "March"
+msgstr "март"
+
+msgid "May"
+msgstr "май"
+
+msgid "November"
+msgstr "ноябрь"
+
+msgid "October"
+msgstr "октябрь"
+
+msgid "September"
+msgstr "сентябрь"
+
+msgid "apr"
+msgstr "апр"
+
+msgid "aug"
+msgstr "авг"
+
+msgid "dec"
+msgstr "дек"
+
+msgid "feb"
+msgstr "фев"
+
+msgid "jan"
+msgstr "янв"
+
+msgid "jul"
+msgstr "июл"
+
+msgid "jun"
+msgstr "июн"
+
+msgid "mar"
+msgstr "мар"
+
+msgid "may"
+msgstr "май"
+
+msgid "nov"
+msgstr "ноя"
+
+msgid "oct"
+msgstr "окт"
+
+msgid "sep"
+msgstr "сен"
+
+msgid "Move source items."
+msgstr "Переместить исходные элементы."
+
+msgid "History"
+msgstr "История"
+
+msgid "No items are selected"
+msgstr "Ни один элемент не выбран"
+
+msgid "None"
+msgstr "Нет"
+
+msgid "Cloud items are not supported."
+msgstr "Облачные элементы не поддерживаются."
+
+msgid "Folders are not supported."
+msgstr "Папки не поддерживаются."
+
+msgid "Items must be a photo or image."
+msgstr "Элементы должны быть фотографиями или изображениями."
+
+msgid "Readonly items are not supported."
+msgstr "Элементы, доступные только для чтения, не поддерживаются."
+
+msgid "Cannot update metadata of readonly items."
+msgstr "Невозможно обновить метаданные элементов, доступных только для чтения."
+
+msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
+msgstr "Diffractor может сохранять или обновлять только файлы изображений JPG, WEBP и PNG."
+
+msgid "Nothing found."
+msgstr "Ничего не найдено."
+
+msgid "Empty Folder"
+msgstr "Пустая папка"
+
+msgid "Search only covers folders in your collection."
+msgstr "Поиск охватывает только папки в вашей коллекции."
+
+msgid "of"
+msgstr "из"
+
+msgid "Open destination folder afterwards"
+msgstr "По завершении открыть папку назначения"
+
+msgid "Open in file browser"
+msgstr "Открыть в файловом браузере"
+
+msgid "Open Properties"
+msgstr "Открыть свойства"
+
+msgid "app"
+msgstr "приложение"
+
+msgid "Open with app or tool"
+msgstr "Открыть с помощью приложения или инструмента"
+
+msgid "Failed to open selected items."
+msgstr "Не удалось открыть выбранные элементы."
+
+msgid "Open with {}"
+msgstr "Открыть с помощью {}"
+
+msgid "tool"
+msgstr "инструмент"
+
+msgid "Delay before showing the next item (in seconds)"
+msgstr "Задержка перед показом следующего элемента (в секундах)"
+
+msgid "Advanced"
+msgstr "Дополнительно"
+
+msgid "Application options"
+msgstr "Параметры приложения"
+
+msgid "When overwriting a photo with irreversible changes make an original backup copy"
+msgstr "При перезаписи фотографии с необратимыми изменениями сделайте оригинальную резервную копию."
+
+msgid "Check for updates by connecting to the internet"
+msgstr "Проверьте наличие обновлений, подключившись к Интернету"
+
+msgid "Confirm when deleting items. Deleted items are moved to the recycle bin."
+msgstr "Подтвердите удаление элементов. Удаленные элементы перемещаются в корзину."
+
+msgid ""
+"Confirm when rotating one item. Rotating several items is always confirmed."
+msgstr ""
+"Подтвердите поворот одного элемента. Поворот нескольких элементов "
+"подтверждается всегда."
+
+msgid "JPEG save quality"
+msgstr "Качество сохранения JPEG"
+
+msgid "WEBP save quality"
+msgstr "Качество сохранения WEBP"
+
+msgid "When saving"
+msgstr "При сохранении"
+
+msgid "Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics."
+msgstr "Помогите сделать Diffractor лучше. В случае сбоя Diffractor отправьте анонимную диагностику в штаб-квартиру Diffractor. Никакие персональные данные не отправляются — только диагностика сбоев."
+
+msgid "Show application debugging information (for the programmers)."
+msgstr "Показать информацию об отладке приложения (для программистов)."
+
+msgid "Show hidden files"
+msgstr "Показать скрытые файлы"
+
+msgid "Show photos rotated based on recorded camera orientation"
+msgstr "Показывать фотографии, повернутые в зависимости от записанной ориентации камеры"
+
+msgid "Updates"
+msgstr "Обновления"
+
+msgid "Use hardware acceleration to draw the Diffractor user interface (requires restart)"
+msgstr "Используйте аппаратное ускорение для рисования пользовательского интерфейса Diffractor (требуется перезагрузка)"
+
+msgid "Use hardware acceleration to decode video (when available)"
+msgstr "Использовать аппаратное ускорение для декодирования видео (если доступно)"
+
+msgid "Show an inset shadow surrounding the image view panel."
+msgstr "Покажите вложенную тень вокруг панели просмотра изображения."
+
+msgid "Resume playing media from the last position played."
+msgstr "Возобновите воспроизведение мультимедиа с последней воспроизведенной позиции."
+
+msgid "Show tooltips with help on buttons and links."
+msgstr "Показывать всплывающие подсказки со справкой по кнопкам и ссылкам."
+
+msgid "bottom-left"
+msgstr "внизу слева"
+
+msgid "bottom-right"
+msgstr "внизу справа"
+
+msgid "left-bottom"
+msgstr "левый низ"
+
+msgid "left-top"
+msgstr "слева вверху"
+
+msgid "right-bottom"
+msgstr "правый нижний"
+
+msgid "right-top"
+msgstr "правый верх"
+
+msgid "top-left"
+msgstr "вверху слева"
+
+msgid "top-right"
+msgstr "вверху справа"
+
+msgid "other"
+msgstr "другой"
+
+msgid "others"
+msgstr "другие"
+
+msgid "pasted"
+msgstr "вставленный"
+
+msgid "photo"
+msgstr "фото"
+
+msgid "photos"
+msgstr "фотографии"
+
+msgid "icon"
+msgstr "значок"
+
+msgid "Pixels are identical but files are different."
+msgstr "Пиксели одинаковые, но файлы разные."
+
+msgid "small"
+msgstr "маленький"
+
+msgid "Pixels"
+msgstr "Пиксели"
+
+msgid "PNG - Best for non photos"
+msgstr "PNG — лучше всего подходит для изображений, не относящихся к фотографиям"
+
+msgid "Checking presence..."
+msgstr "Проверка наличия..."
+
+msgid "Possible newer copy in collection"
+msgstr "Возможная более новая копия в коллекции"
+
+msgid "This item is outside the collection. One or more possible newer copies exist in the collection."
+msgstr "Этот элемент находится вне коллекции. В коллекции есть одна или несколько возможных более новых копий."
+
+msgid "Outside collection; no possible copy identified"
+msgstr "Вне коллекции; возможные копии не найдены"
+
+msgid "This item is outside the collection. No possible copy was identified in the collection."
+msgstr "Этот элемент находится вне коллекции. В коллекции не найдено возможных копий."
+
+msgid "Possible older copy in collection"
+msgstr "Возможная более старая копия в коллекции"
+
+msgid "This item is outside the collection. One or more possible older copies exist in the collection."
+msgstr "Этот элемент находится вне коллекции. В коллекции есть одна или несколько возможных более старых копий."
+
+msgid "Possible copy in collection"
+msgstr "Возможная копия в коллекции"
+
+msgid "This item is outside the collection. One or more possible copies exist in the collection."
+msgstr "Этот элемент находится вне коллекции. В коллекции есть одна или несколько возможных копий."
+
+msgid "In collection"
+msgstr "В коллекции"
+
+msgid "This item is in the collection."
+msgstr "Этот элемент находится в коллекции."
+
+msgid "Presence"
+msgstr "Присутствие"
+
+msgid "Showing fully rendered RAW photo."
+msgstr "Показана полностью обработанная фотография в формате RAW."
+
+msgid "Rendering RAW photo..."
+msgstr "Рендеринг фотографии в формате RAW..."
+
+msgid "Show RAW preview if available (faster)"
+msgstr "Показать предварительный просмотр RAW, если доступен (быстрее)"
+
+msgid "Showing a RAW photo preview."
+msgstr "Показан предварительный просмотр фотографии в формате RAW."
+
+msgid "Processing..."
+msgstr "Обработка..."
+
+msgid "Processing files"
+msgstr "Обработка файлов"
+
+msgid "Focal length 35mm equivalent"
+msgstr "Фокусное расстояние в эквиваленте 35 мм"
+
+msgid "Album"
+msgstr "Альбом"
+
+msgid "Album artist"
+msgstr "Исполнитель альбома"
+
+msgid "Artist"
+msgstr "Исполнитель"
+
+msgid "Audio codec"
+msgstr "Аудиокодек"
+
+msgid "Bitrate"
+msgstr "Битрейт"
+
+msgid "Camera"
+msgstr "Камера"
+
+msgid "Camera manufacturer"
+msgstr "Производитель камеры"
+
+msgid "Channels"
+msgstr "Каналы"
+
+msgid "Comment"
+msgstr "Комментарий"
+
+msgid "Composer"
+msgstr "Композитор"
+
+msgid "Copyright creator"
+msgstr "Автор авторских прав"
+
+msgid "Copyright credit"
+msgstr "Указание авторства"
+
+msgid "Copyright notice"
+msgstr "Уведомление об авторских правах"
+
+msgid "Copyright source"
+msgstr "Источник авторских прав"
+
+msgid "Copyright URL"
+msgstr "URL-адрес авторского права"
+
+msgid "Country//property"
+msgstr "Страна"
+
+msgid "Created"
+msgstr "Создано"
+
+msgid "Created exif"
+msgstr "Создан exif"
+
+msgid "Description"
+msgstr "Описание"
+
+msgid "Digitized"
+msgstr "Оцифровано"
+
+msgid "Dimensions"
+msgstr "Размеры"
+
+msgid "Disk"
+msgstr "Диск"
+
+msgid "Document Id"
+msgstr "Идентификатор документа"
+
+msgid "Duration"
+msgstr "Продолжительность"
+
+msgid "Encoder"
+msgstr "Кодер"
+
+msgid "Encoding tool"
+msgstr "Инструмент кодирования"
+
+msgid "Episode"
+msgstr "Эпизод"
+
+msgid "Exposure"
+msgstr "Экспозиция"
+
+msgid "Filename"
+msgstr "Имя файла"
+
+msgid "FNumber"
+msgstr "Число F"
+
+msgid "Focal length"
+msgstr "Фокусное расстояние"
+
+msgid "Game//property"
+msgstr "Игра"
+
+msgid "Genre"
+msgstr "Жанр"
+
+msgid "Id"
+msgstr "Идентификатор"
+
+msgid "ISO"
+msgstr "ISO"
+
+msgid "Latitude"
+msgstr "Широта"
+
+msgid "Lens"
+msgstr "Объектив"
+
+msgid "Longitude"
+msgstr "Долгота"
+
+msgid "Media category"
+msgstr "Категория медиа"
+
+msgid "Megapixels"
+msgstr "Мегапиксели"
+
+msgid "Modified"
+msgstr "Изменено"
+
+msgid "Null"
+msgstr "Нулевой"
+
+msgid "Orientation"
+msgstr "Ориентация"
+
+msgid "Performer"
+msgstr "Артист"
+
+msgid "Pixel format"
+msgstr "Формат пикселей"
+
+msgid "Place"
+msgstr "Место"
+
+msgid "Publisher"
+msgstr "Издатель"
+
+msgid "Rating"
+msgstr "Рейтинг"
+
+msgid "Raw file"
+msgstr "Файл RAW"
+
+msgid "Sample rate"
+msgstr "Частота дискретизации"
+
+msgid "Sample type"
+msgstr "Тип сэмплов"
+
+msgid "Season"
+msgstr "Сезон"
+
+msgid "Show"
+msgstr "Шоу"
+
+msgid "Size"
+msgstr "Размер"
+
+msgid "State"
+msgstr "Регион"
+
+msgid "Streams"
+msgstr "Потоки"
+
+msgid "Synopsis"
+msgstr "Краткое содержание"
+
+msgid "Tag"
+msgstr "Тег"
+
+msgid "Title"
+msgstr "Заголовок"
+
+msgid "Track"
+msgstr "Трек"
+
+msgid "Video codec"
+msgstr "Видеокодек"
+
+msgid "Year"
+msgstr "Год"
+
+msgid "age"
+msgstr "возраст"
+
+msgid "and"
+msgstr "и"
+
+msgid "created"
+msgstr "созданный"
+
+msgid "duplicates"
+msgstr "дубликаты"
+
+msgid "dups"
+msgstr "дубли"
+
+msgid "duplicate"
+msgstr "дубликат"
+
+msgid "modified"
+msgstr "модифицированный"
+
+msgid "or"
+msgstr "или"
+
+msgid "original"
+msgstr "оригинал"
+
+msgid "related"
+msgstr "связанный"
+
+msgid "with"
+msgstr "с"
+
+msgid "without"
+msgstr "без"
+
+msgid "Rate selected items"
+msgstr "Оценить выбранные элементы"
+
+msgid "Number keys 0-5"
+msgstr "Цифровые клавиши 0-5"
+
+msgid "Click {} to remove rating"
+msgstr "Нажмите {}, чтобы удалить рейтинг"
+
+msgid "Raw"
+msgstr "RAW"
+
+msgid "Remove Metadata"
+msgstr "Удалить метаданные"
+
+msgid "New name:"
+msgstr "Новое имя:"
+
+msgid "When specifying a template:"
+msgstr "При указании шаблона:"
+
+msgid "Use '#' to specify position of the numeric sequence"
+msgstr "Используйте «#», чтобы указать позицию числовой последовательности"
+
+msgid "Use metadata templates '{property-name}' to include file properties in the name."
+msgstr "Используйте шаблоны метаданных «{property-name}», чтобы включить свойства файла в имя."
+
+msgid "For example:"
+msgstr "Например:"
+
+msgid "photo-###"
+msgstr "фото-###"
+
+msgid "{year}-{month}-###"
+msgstr "{year}-{month}-###"
+
+msgid "travel-{country}-###"
+msgstr "путешествие-{country}-###"
+
+msgid "Template:"
+msgstr "Шаблон:"
+
+msgid "Start at:"
+msgstr "Начните с:"
+
+msgid "Repeat play single media item"
+msgstr "Повторное воспроизведение одного медиафайла"
+
+msgid ""
+"Clean database and reindex.\n"
+"All data is regenerated."
+msgstr ""
+"Очистите базу данных и переиндексируйте.\n"
+"Все данные будут восстановлены."
+
+msgid "Cleaning..."
+msgstr "Очистка..."
+
+msgid "retro"
+msgstr "ретро"
+
+msgid "Saturation"
+msgstr "Насыщенность"
+
+msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
+msgstr "Diffractor не может обрезать, вращать или раскрашивать файлы {}. Вы можете сохранить файл в формате JPEG?"
+
+msgid "Save Changes"
+msgstr "Сохранить изменения"
+
+msgid "Save new photo"
+msgstr "Сохранить новую фотографию"
+
+msgid "Saving {}..."
+msgstr "Сохранение {}..."
+
+msgid "Failed to Scan."
+msgstr "Не удалось выполнить сканирование."
+
+msgid "All these terms"
+msgstr "Все эти термины"
+
+msgid "Christmas"
+msgstr "Рождество"
+
+msgid "Search in the collection"
+msgstr "Искать в коллекции"
+
+msgid "From"
+msgstr "От"
+
+msgid "Until"
+msgstr "До"
+
+msgid "Search in a folder"
+msgstr "Искать в папке"
+
+msgid "Last 7 days"
+msgstr "Последние 7 дней"
+
+msgid "Located within"
+msgstr "Расположен внутри"
+
+msgid "None of these terms"
+msgstr "Ни один из этих терминов"
+
+msgid "Search criteria or folder"
+msgstr "Критерии поиска или папка"
+
+msgid "Photos"
+msgstr "Фотографии"
+
+msgid "Select term"
+msgstr "Выберите термин"
+
+msgid "Search in subfolders"
+msgstr "Поиск в подпапках"
+
+msgid "Searching..."
+msgstr "Идет поиск..."
+
+msgid "Select Folder..."
+msgstr "Выбрать папку..."
+
+msgid "Select a location"
+msgstr "Выберите местоположение"
+
+msgid "Selected items are in the date range:"
+msgstr "Выбранные элементы находятся в диапазоне дат:"
+
+msgid "Selected items [{}]"
+msgstr "Выбранные элементы [{}]"
+
+msgid "Always show RAW photos (slower)"
+msgstr "Всегда показывать фотографии в формате RAW (медленнее)"
+
+msgid "Show this RAW photo"
+msgstr "Показать это фото в формате RAW"
+
+msgid "press R to view the items most closely related to this one"
+msgstr "нажмите R, чтобы показать элементы, наиболее связанные с этим"
+
+msgid "Show verbose metadata"
+msgstr "Показать подробные метаданные"
+
+msgid "Album-Show"
+msgstr "Альбом-Шоу"
+
+msgid "Group order (Default)"
+msgstr "Порядок группы (по умолчанию)"
+
+msgid "Extension"
+msgstr "Расширение"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "Name"
+msgstr "Имя"
+
+msgid "Resolution"
+msgstr "Разрешение"
+
+msgid "Rating-Label"
+msgstr "Рейтинг-метка"
+
+msgid "Staring"
+msgstr "В ролях"
+
+msgid "New Starting Date (local time):"
+msgstr "Новая дата начала (местное время):"
+
+msgid "Starting {}"
+msgstr "Начало {}"
+
+msgid "Preparing to convert files..."
+msgstr "Подготовка к преобразованию файлов..."
+
+msgid "Preparing to import files..."
+msgstr "Подготовка к импорту файлов..."
+
+msgid "Preparing files for email..."
+msgstr "Подготовка файлов для отправки по электронной почте..."
+
+msgid "Share"
+msgstr "Поделиться"
+
+msgid "Preparing files to share..."
+msgstr "Подготовка файлов к отправке..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows покажет приложения, которые могут принять файлы. Оригиналы останутся без изменений."
+
+msgid "Send the files as one zip file"
+msgstr "Отправить файлы одним ZIP-архивом"
+
+msgid "&Share"
+msgstr "&Поделиться"
+
+msgid "The files could not be shared."
+msgstr "Не удалось поделиться файлами."
+
+msgid "Preparing to synchronize files..."
+msgstr "Подготовка к синхронизации файлов..."
+
+msgid "Straighten"
+msgstr "Выпрямить"
+
+msgid "Auto color"
+msgstr "Автокоррекция цвета"
+
+msgid "Copy item path"
+msgstr "Копировать путь к элементу"
+
+msgid "Auto document"
+msgstr "Автокоррекция документа"
+
+msgid "Auto straighten"
+msgstr "Автовыравнивание"
+
+msgid "Original"
+msgstr "Оригинал"
+
+msgid "Preview"
+msgstr "Предпросмотр"
+
+msgid "Automatically improve exposure and color balance"
+msgstr "Автоматически улучшить экспозицию и цветовой баланс"
+
+msgid "Automatically straighten horizontal and vertical lines"
+msgstr "Автоматически выровнять горизонтальные и вертикальные линии"
+
+msgid "Show the final cropped image"
+msgstr "Показать итоговое обрезанное изображение"
+
+msgid "Horizontal perspective"
+msgstr "Горизонтальная перспектива"
+
+msgid "Vertical perspective"
+msgstr "Вертикальная перспектива"
+
+msgid "Temperature"
+msgstr "Температура"
+
+msgid "Tint"
+msgstr "Оттенок"
+
+msgid "Stream {}"
+msgstr "Поток {}"
+
+msgid "subtitle"
+msgstr "субтитры"
+
+msgid "Support"
+msgstr "Поддержка"
+
+msgid "Synchronize whole collection"
+msgstr "Синхронизировать всю коллекцию"
+
+msgid "copy local"
+msgstr "копировать локально"
+
+msgid "copy remote"
+msgstr "копировать удаленно"
+
+msgid "delete local"
+msgstr "удалить локально"
+
+msgid "delete remote"
+msgstr "удалить удаленно"
+
+msgid "Files changed after analysis. Analyze again to review the updated actions."
+msgstr "После анализа файлы изменились. Выполните анализ снова, чтобы проверить обновленные действия."
+
+msgid "Local files to delete: {}. Remote files to delete: {}."
+msgstr "Локальных файлов для удаления: {}. Удаленных файлов для удаления: {}."
+
+msgid "Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin."
+msgstr "При синхронизации файлы будут удалены безвозвратно. Их нельзя будет восстановить из Корзины."
+
+msgid "The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin."
+msgstr "Существующие файлы будут перезаписаны. Их текущее содержимое нельзя будет восстановить из Корзины."
+
+msgid "Delete local files that do not exist remotely"
+msgstr "Удалить локальные файлы, которые не существуют удаленно"
+
+msgid "Delete remote files that do not exist locally"
+msgstr "Удалить удаленные файлы, которые не существуют локально"
+
+msgid "c:\\photos with \\\\nas\\\\backup"
+msgstr "c:\\photos с \\\\nas\\\\backup"
+
+msgid "Local folders"
+msgstr "Локальные папки"
+
+msgid "Copy newer local files to remote folders"
+msgstr "Копирование новых локальных файлов в удаленные папки"
+
+msgid "Synchronize only one folder"
+msgstr "Синхронизировать только одну папку"
+
+msgid "Remote folder"
+msgstr "Удаленная папка"
+
+msgid "Copy newer remote files to local folders"
+msgstr "Копирование новых удаленных файлов в локальные папки"
+
+msgid "Tags to add or remove:"
+msgstr "Теги, которые можно добавить или удалить:"
+
+msgid "Add or remove Tags"
+msgstr "Добавить или удалить теги"
+
+msgid "Tag selected items"
+msgstr "Отметить выбранные элементы"
+
+msgid "Common Tags"
+msgstr "Общие теги"
+
+msgid "Removable Tags"
+msgstr "Удаляемые теги"
+
+msgid "Tags"
+msgstr "Теги"
+
+msgid "false"
+msgstr "ложь"
+
+msgid "true"
+msgstr "истина"
+
+msgid "Diffractor ERROR"
+msgstr "ОШИБКА Diffractor"
+
+msgid "folder:{}"
+msgstr "папка:{}"
+
+msgid "rate"
+msgstr "рейтинг"
+
+msgid "Updating..."
+msgstr "Обновление..."
+
+msgid "Reset color adjustments"
+msgstr "Сбросить настройки цвета"
+
+msgid "Color, straighten or crop photos."
+msgstr "Раскрашивайте, выпрямляйте или обрезайте фотографии."
+
+msgid "Toggle full screen for media-items or open non-media-items."
+msgstr "Переключить полноэкранный режим для медиа-элементов или открыть не-медиа-элементы."
+
+msgid "Change language"
+msgstr "Изменить язык"
+
+msgid "Contains common folders, searches and favorites"
+msgstr "Содержит общие папки, поиск и избранное."
+
+msgid "Open selected items with external app"
+msgstr "Открыть выбранные элементы с помощью внешнего приложения"
+
+msgid "Pinned items stay selected. Use this when you want to quickly compare an item to other items."
+msgstr "Закрепленные элементы остаются выделенными. Используйте это, если хотите быстро сравнить элемент с другими элементами."
+
+msgid "Reset straighten and rotate"
+msgstr "Сбросить выравнивание и поворот"
+
+msgid "Tag or un-tag selected items"
+msgstr "Отметьте или снимите теги с выбранных элементов"
+
+msgid "Toggle between thumbnails or details for selected item group"
+msgstr "Переключение между миниатюрами или деталями для выбранной группы элементов"
+
+msgid "Toggle between thumbnails or details view"
+msgstr "Переключение между миниатюрами и подробным представлением"
+
+msgid "Process selected items"
+msgstr "Обработать выбранные элементы"
+
+msgid "More options and controls"
+msgstr "Больше опций и элементов управления"
+
+msgid "{} ({}) total items in {} folders."
+msgstr "Всего {} ({}) элементов в {} папках."
+
+msgid "Truncated at 1MB"
+msgstr "Усечено до 1 МБ"
+
+msgid "Type to search"
+msgstr "Введите для поиска"
+
+msgid "Unselect {}"
+msgstr "Отменить выбор {}"
+
+msgid "Update"
+msgstr "Обновить"
+
+msgid "Version {} of Diffractor is available."
+msgstr "Доступна версия {} Diffractor."
+
+msgid "Update available"
+msgstr "Доступно обновление"
+
+msgid "You are currently using version {}."
+msgstr "В настоящее время вы используете версию {}."
+
+msgid "Update failed."
+msgstr "Обновление не удалось."
+
+msgid "Download and install now. Diffractor will need to be closed briefly during the install."
+msgstr "Загрузите и установите сейчас. Во время установки Diffractor необходимо будет ненадолго закрыть."
+
+msgid "Version {} of Diffractor is available. You are currently using version {}."
+msgstr "Доступна версия {} Diffractor. В настоящее время вы используете версию {}."
+
+msgid "More info"
+msgstr "Дополнительная информация"
+
+msgid "Learn more about this update at Diffractor.com"
+msgstr "Узнайте больше об этом обновлении на сайте Diffractor.com."
+
+msgid "Not now"
+msgstr "Не сейчас"
+
+msgid "Remind me again in a week"
+msgstr "Напомнить через неделю"
+
+msgid "Please wait while the update is downloaded..."
+msgstr "Пожалуйста, подождите, пока загрузится обновление..."
+
+msgid "Version"
+msgstr "Версия"
+
+msgid "Vibrance"
+msgstr "Сочность"
+
+msgid "video"
+msgstr "видео"
+
+msgid "WEBP - Best for the web"
+msgstr "WEBP — лучшее для Интернета"
+
+msgid "XMP"
+msgstr "XMP"
+
+msgid "ICC"
+msgstr "ICC"
+
+msgid "press ctrl+space"
+msgstr "нажмите Ctrl+Пробел"
+
+msgid "Scope"
+msgstr "Область"
+
+msgid "Value"
+msgstr "Значение"
+
+msgid "Volume 200%"
+msgstr "Громкость 200%"
+
+msgid "Volume 100%"
+msgstr "Громкость 100%"
+
+msgid "Volume 75%"
+msgstr "Громкость 75%"
+
+msgid "Volume 50%"
+msgstr "Громкость 50%"
+
+msgid "Volume 25%"
+msgstr "Громкость 25%"
+
+msgid "Mute"
+msgstr "Без звука"
+
+msgid "Autoplay selected media"
+msgstr "Автовоспроизведение выбранных медиафайлов"
+
+msgid "Resume playing media from last position"
+msgstr "Возобновить воспроизведение мультимедиа с последней позиции"
+
+msgid "Repeat play one item"
+msgstr "Повторное воспроизведение одного элемента"
+
+msgid "Repeat play all media items"
+msgstr "Повторное воспроизведение всех медиафайлов"
+
+msgid "Don't repeat"
+msgstr "Не повторять"
+
+msgid "Playback Options"
+msgstr "Параметры воспроизведения"
+
+msgid "Playback"
+msgstr "Воспроизведение"
+
+msgid "Filter items"
+msgstr "Фильтровать элементы"
+
+msgid "Photo filter"
+msgstr "Фотофильтр"
+
+msgid "Video filter"
+msgstr "Видеофильтр"
+
+msgid "Audio filter"
+msgstr "Аудиофильтр"
+
+msgid "Show {} filtered out items"
+msgstr "Показать отфильтрованные элементы: {}"
+
+msgid "The collection contains {} items created on {}."
+msgstr "Коллекция содержит {} элементов, созданных {}."
+
+msgid "Show all tags"
+msgstr "Показать все теги"
+
+msgid "Show only favorite tags"
+msgstr "Показать только избранные теги"
+
+msgid "Show only favorite tags in the sidebar"
+msgstr "Показывать только избранные теги на боковой панели"
+
+msgid "Destination"
+msgstr "Место назначения"
+
+msgid "Old name"
+msgstr "Старое имя"
+
+msgid "New name"
+msgstr "Новое имя"
+
+msgid "Local"
+msgstr "Локальный"
+
+msgid "Remote"
+msgstr "Удаленный"
+
+msgid "Status"
+msgstr "Статус"
+
+msgid "Message"
+msgstr "Сообщение"
+
+msgid "import"
+msgstr "импортировать"
+
+msgid "exists"
+msgstr "существует"
+
+msgid "previously imported"
+msgstr "ранее импортированный"
+
+msgid "ignore"
+msgstr "игнорировать"
+
+msgid "Click analyze to show items"
+msgstr "Нажмите «Анализ», чтобы просмотреть элементы"
+
+msgid "Rotate {first-name}."
+msgid_plural "Rotate {count} selected items. Originals will be overwritten."
+msgstr[0] "Повернуть {first-name}."
+msgstr[1] "Повернуть {count} выбранных элемента. Оригиналы будут перезаписаны."
+msgstr[2] "Повернуть {count} выбранных элементов. Оригиналы будут перезаписаны."
+
+msgid "1 folder"
+msgid_plural "{count} folders"
+msgstr[0] "1 папка"
+msgstr[1] "{count} папки"
+msgstr[2] "{count} папок"
+
+msgid "{count} item"
+msgid_plural "{count} items"
+msgstr[0] "{count} элемент"
+msgstr[1] "{count} элемента"
+msgstr[2] "{count} элементов"
+
+msgid "1 item here"
+msgid_plural "{count} items here"
+msgstr[0] "1 элемент здесь"
+msgstr[1] "{count} элемента здесь"
+msgstr[2] "{count} элементов здесь"
+
+msgid "Set rating to 1 star"
+msgid_plural "Set rating to {count} stars"
+msgstr[0] "Установить рейтинг 1 звезда"
+msgstr[1] "Установить рейтинг {count} звезды"
+msgstr[2] "Установить рейтинг {count} звезд"
+
+msgid "Cannot process {first-name}."
+msgid_plural "Cannot process {first-name} and {other} other items."
+msgstr[0] "Невозможно обработать {first-name}."
+msgstr[1] "Невозможно обработать {first-name} и еще {other} элемента."
+msgstr[2] "Невозможно обработать {first-name} и еще {other} элементов."
+
+msgid "{first-name} will be renamed."
+msgid_plural "{count} items will be renamed."
+msgstr[0] "{first-name} будет переименован."
+msgstr[1] "{count} элемента будут переименованы."
+msgstr[2] "{count} элементов будут переименованы."
+
+msgid "1 duplicate item"
+msgid_plural "{count} duplicate items"
+msgstr[0] "1 дубликат"
+msgstr[1] "{count} дубликата"
+msgstr[2] "{count} дубликатов"
+
+msgid "1 sidecar item"
+msgid_plural "{count} sidecar items"
+msgstr[0] "1 сопроводительный файл"
+msgstr[1] "{count} сопроводительных файла"
+msgstr[2] "{count} сопроводительных файлов"
+
+msgid "{count} of 1 item was processed."
+msgid_plural "{count} of {total} items were processed."
+msgstr[0] "Обработан {count} из 1 элемента."
+msgstr[1] "Обработано {count} из {total} элементов."
+msgstr[2] "Обработано {count} из {total} элементов."
+
+msgid "1 item was processed."
+msgid_plural "{count} items were processed."
+msgstr[0] "Обработан 1 элемент."
+msgstr[1] "Обработано {count} элемента."
+msgstr[2] "Обработано {count} элементов."
+
+msgid "{first-name} failed."
+msgid_plural "{count} items failed."
+msgstr[0] "Не удалось обработать {first-name}."
+msgstr[1] "Не удалось обработать {count} элемента."
+msgstr[2] "Не удалось обработать {count} элементов."
+
+msgid "{first-name} was ignored."
+msgid_plural "{count} items were ignored."
+msgstr[0] "{first-name} был проигнорирован."
+msgstr[1] "{count} элемента были проигнорированы."
+msgstr[2] "{count} элементов были проигнорированы."
+
+msgid "{first-name} was ignored because it exists already in the destination location."
+msgid_plural "{count} items were ignored because they exist already in the destination location."
+msgstr[0] "{first-name} был проигнорирован, поскольку он уже существует в месте назначения."
+msgstr[1] "{count} элемента были проигнорированы, поскольку они уже существуют в месте назначения."
+msgstr[2] "{count} элементов были проигнорированы, поскольку они уже существуют в месте назначения."
+
+msgid "{first-name} was ignored because it was previously imported."
+msgid_plural "{count} items were ignored because they were previously imported."
+msgstr[0] "{first-name} был проигнорирован, поскольку он был импортирован ранее."
+msgstr[1] "{count} элемента были проигнорированы, поскольку они были импортированы ранее."
+msgstr[2] "{count} элементов были проигнорированы, поскольку они были импортированы ранее."
+
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "Импортирован 1 элемент, но не удалось установить его дату создания."
+msgstr[1] "Импортировано {count} элемента, но не удалось установить их дату создания."
+msgstr[2] "Импортировано {count} элементов, но не удалось установить их дату создания."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} будет перемещен в корзину, если Windows сможет его туда переместить."
+msgstr[1] "{count} элементов ({size}) будут перемещены в корзину, если Windows сможет их туда переместить."
+msgstr[2] "{count} элементов ({size}) будут перемещены в корзину, если Windows сможет их туда переместить."
+
+msgid "{first-name} will be permanently deleted."
+msgid_plural "{count} items ({size}) will be permanently deleted."
+msgstr[0] "{first-name} будет удален безвозвратно."
+msgstr[1] "{count} элемента ({size}) будут удалены безвозвратно."
+msgstr[2] "{count} элементов ({size}) будут удалены безвозвратно."
+
+msgid "You are about to delete {count} item."
+msgid_plural "You are about to delete {count} items."
+msgstr[0] "Вы собираетесь удалить {count} элемент."
+msgstr[1] "Вы собираетесь удалить {count} элемента."
+msgstr[2] "Вы собираетесь удалить {count} элементов."
+
+msgid "These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin."
+msgstr "Эти элементы находятся в сетевой папке. Они будут удалены безвозвратно, и их нельзя будет восстановить из Корзины."
+
+msgid "{first-name} will be copied."
+msgid_plural "{count} items ({size}) will be copied."
+msgstr[0] "{first-name} будет скопировано."
+msgstr[1] "{count} элемента ({size}) будут скопированы."
+msgstr[2] "{count} элементов ({size}) будут скопированы."
+
+msgid "{first-name} will be moved."
+msgid_plural "{count} items ({size}) will be moved."
+msgstr[0] "{first-name} будет перемещено."
+msgstr[1] "{count} элемента ({size}) будут перемещены."
+msgstr[2] "{count} элементов ({size}) будут перемещены."
+
+msgid "{first-name} will be updated."
+msgid_plural "{count} items will be updated."
+msgstr[0] "{first-name} будет обновлено."
+msgstr[1] "{count} элемента будут обновлены."
+msgstr[2] "{count} элементов будут обновлены."
+
+msgid "Add or overwrite specific metadata in {first-name}."
+msgid_plural "Add or overwrite specific metadata in {count} items."
+msgstr[0] "Добавить или перезаписать определенные метаданные в {first-name}."
+msgstr[1] "Добавить или перезаписать определенные метаданные в {count} элементах."
+msgstr[2] "Добавить или перезаписать определенные метаданные в {count} элементах."
+
+msgid "{first-name} will be converted and copied to a folder."
+msgid_plural "{count} items will be converted and copied to a folder."
+msgstr[0] "{first-name} будет преобразован и скопирован в папку."
+msgstr[1] "{count} элемента будут преобразованы и скопированы в папку."
+msgstr[2] "{count} элементов будут преобразованы и скопированы в папку."
+
+msgid "{first-name} will have tags added or removed."
+msgid_plural "{count} items will have tags added or removed."
+msgstr[0] "К {first-name} будут добавлены или удалены теги."
+msgstr[1] "Для {count} элементов будут добавлены или удалены теги."
+msgstr[2] "Для {count} элементов будут добавлены или удалены теги."
+
+msgid "{first-name} will have the date adjusted."
+msgid_plural "{count} items will have the date adjusted."
+msgstr[0] "Для {first-name} будет изменена дата."
+msgstr[1] "Для {count} элементов будет изменена дата."
+msgstr[2] "Для {count} элементов будет изменена дата."
+
+msgid "A desktop email draft will be opened with {first-name} attached."
+msgid_plural "A desktop email draft will be opened with {count} selected items attached."
+msgstr[0] "В почтовом клиенте откроется черновик с вложением {first-name}."
+msgstr[1] "В почтовом клиенте откроется черновик с {count} выбранными элементами во вложении."
+msgstr[2] "В почтовом клиенте откроется черновик с {count} выбранными элементами во вложении."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "Элемент {first-name} будет передан выбранному вами приложению."
+msgstr[1] "{count} выбранных элемента будут переданы выбранному вами приложению."
+msgstr[2] "{count} выбранных элементов будут переданы выбранному вами приложению."
+
+msgid "{first-name} already exists. Do you want to replace it?"
+msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
+msgstr[0] "{first-name} уже существует. Вы хотите заменить его?"
+msgstr[1] "{first-name} и еще {other} элемента уже существуют. Заменить их?"
+msgstr[2] "{first-name} и еще {other} элементов уже существуют. Заменить их?"
+
+msgid "{first-name} will have existing GPS position metadata overwritten."
+msgid_plural "{first-name} and {other} other items will have existing GPS position metadata overwritten."
+msgstr[0] "Для {first-name} существующие метаданные местоположения GPS будут перезаписаны."
+msgstr[1] "Для {first-name} и еще {other} элементов существующие метаданные местоположения GPS будут перезаписаны."
+msgstr[2] "Для {first-name} и еще {other} элементов существующие метаданные местоположения GPS будут перезаписаны."
+
+msgid "Choose a valid new starting date and time."
+msgstr "Выберите допустимые новые дату и время начала."
+
+msgid "Windows could not stage the selected items for disc burning."
+msgstr "Windows не удалось подготовить выбранные элементы к записи на диск."
+
+msgid "The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc."
+msgstr "Выбранные элементы будут подготовлены в средстве записи дисков Windows. Windows проведёт вас через процесс записи диска."
+
+msgid "&Stage files"
+msgstr "Под&готовить файлы"
+
+msgid "Email draft was canceled."
+msgstr "Создание черновика письма отменено."
+
+msgid "Maximum dimension must be at least 1 pixel."
+msgstr "Максимальный размер должен быть не менее 1 пикселя."
+
+msgid "Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged."
+msgstr "Выберите хотя бы одно поле метаданных для обновления. Отмеченные пустые поля удаляют существующие значения; неотмеченные поля остаются без изменений."
+
+msgid "{first-name} was canceled."
+msgid_plural "{count} items were canceled."
+msgstr[0] "Операция для {first-name} отменена."
+msgstr[1] "Операция отменена для {count} элементов."
+msgstr[2] "Операция отменена для {count} элементов."
+
+msgid "{first-name} will be staged for disc burning."
+msgid_plural "{count} selected items ({size}) will be staged for disc burning."
+msgstr[0] "Элемент {first-name} будет подготовлен к записи на диск."
+msgstr[1] "{count} выбранных элемента ({size}) будут подготовлены к записи на диск."
+msgstr[2] "{count} выбранных элементов ({size}) будут подготовлены к записи на диск."
+
+msgid "Detect and straighten a photographed document"
+msgstr "Распознать и выровнять сфотографированный документ"
+
+msgid "Failed to Initialize Direct3d"
+msgstr "Не удалось инициализировать Direct3D"
+
+msgid "Navigator"
+msgstr "Навигатор"
+
+msgid "Flip comparison panes"
+msgstr "Поменять панели сравнения"
+
+msgid "Auto-hide"
+msgstr "Скрывать автоматически"
+
+msgid "Off"
+msgstr "Выключено"
+
+msgid "Slideshow"
+msgstr "Слайд-шоу"
+
+
+msgid "Altitude"
+msgstr "Высота"
+
+msgid "GPS speed"
+msgstr "Скорость GPS"
+
+msgid "In flight"
+msgstr "В полёте"
+
+msgid "{} m"
+msgstr "{} м"
+
+msgid "{} m underwater"
+msgstr "{} м под водой"
+
+msgid "Cancel was pressed after {}"
+msgstr "Отмена нажата через {}"
+
+msgid "Apply tags"
+msgstr "Применить теги"
+
+msgid "Item"
+msgstr "Элемент"
+
+msgid "Tags after run"
+msgstr "Теги после выполнения"
+
+msgid "Enter one or more tags to add or remove."
+msgstr "Введите один или несколько тегов для добавления или удаления."
+
+msgid "no change"
+msgstr "без изменений"
+
+msgid "Select items to tag"
+msgstr "Выберите элементы для тегирования"
+
+msgid "Cancel operation"
+msgstr "Отменить операцию"
+
+msgid "{} is still running. Cancel it and close?"
+msgstr "{} ещё выполняется. Отменить и закрыть?"
+
+msgid "Keep running"
+msgstr "Продолжить выполнение"
+
+msgid "Location unavailable"
+msgstr "Местоположение недоступно"
+
+msgid "{} could not be opened. It may be disconnected, renamed or removed."
+msgstr "Не удалось открыть {}. Возможно, оно отключено, переименовано или удалено."
+
+msgid "Try again"
+msgstr "Повторить"
+
+msgid "Go to the parent folder"
+msgstr "Перейти в родительскую папку"
+
+msgid "{} is still running. Close it before browsing somewhere else."
+msgstr "{} ещё выполняется. Закройте перед переходом в другое место."
+
+msgid "If the destination already exists:"
+msgstr "Если назначение уже существует:"
+
+msgid "Replace"
+msgstr "Заменить"
+
+msgid "Skip"
+msgstr "Пропустить"
+
+msgid "Auto-rename"
+msgstr "Переименовать автоматически"
+
+msgid "Block run"
+msgstr "Заблокировать выполнение"
+
+msgid "File exists"
+msgstr "Файл существует"
+
+msgid "Choose a destination folder."
+msgstr "Выберите папку назначения."
+
+msgid "Enter a maximum dimension in pixels."
+msgstr "Укажите максимальный размер в пикселях."
+
+msgid "Check one or more fields to change."
+msgstr "Отметьте одно или несколько полей для изменения."
+
+msgid "Select items before using this tool"
+msgstr "Сначала выберите элементы"
+
+msgid "Success"
+msgstr "Успешно"
+
+msgid "Failed"
+msgstr "Ошибка"
+
+msgid "Skipped"
+msgstr "Пропущено"
+
+msgid "Not run"
+msgstr "Не выполнено"
+
+msgid "These are the results of a finished run. Refresh to plan again with the current settings."
+msgstr "Это результаты завершённого запуска. Нажмите «Обновить», чтобы спланировать заново с текущими настройками."
+
+msgid "{} destinations already exist. Choose Replace, Skip or Auto-rename."
+msgstr "{} назначений уже существует. Выберите «Заменить», «Пропустить» или «Переименовать автоматически»."
+
+msgid "{} items will be skipped because the destination exists."
+msgstr "{} элементов будет пропущено, так как назначение уже существует."
+
+msgid "{} existing destinations will be replaced."
+msgstr "{} существующих назначений будет заменено."
+
+msgid "{} items will be given a new name to avoid a collision."
+msgstr "{} элементов получат новое имя во избежание конфликта."
+
+msgid "Distance: {}"
+msgstr "Расстояние: {}"
+
+msgid "Change how far from this place to search"
+msgstr "Изменить, как далеко от этого места искать"
+
+msgid "N,NE,E,SE,S,SW,W,NW"
+msgstr "С,СВ,В,ЮВ,Ю,ЮЗ,З,СЗ"
+
+msgid "{} {} of {}"
+msgstr "{} {} от {}"
+
+msgid "Near {}"
+msgstr "Рядом с {}"
+
+msgid "Remote area"
+msgstr "Удалённая местность"
+
+msgid "Nothing within {} of {}."
+msgstr "Ничего в радиусе {} от {}."
+
+msgid "Nothing found at {}."
+msgstr "Ничего не найдено в {}."
+
+msgid "Widen to {}"
+msgstr "Расширить до {}"
+
+msgid "Search all places named {}"
+msgstr "Искать все места с названием {}"
+
+msgid "Show items with no location"
+msgstr "Показать объекты без местоположения"
+
+msgid "Search within {} of {}"
+msgstr "Искать в радиусе {} от {}"
+
+msgid "High altitude"
+msgstr "Большая высота"
+
+msgid "Timeline"
+msgstr "Хронология"
+
+msgid "Places"
+msgstr "Места"
+
+msgid "{} items"
+msgstr "{} элементов"
+
+msgid "Grouped by {}"
+msgstr "Группировка по {}"
+
+msgid "Grouped by {} - {}"
+msgstr "Группировка по {} - {}"
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "From {} to {}"
+msgstr "С {} по {}"
+
+msgid "Plays or pauses video and audio. Stops a running slideshow."
+msgstr "Воспроизводит или приостанавливает видео и аудио. Останавливает запущенное слайд-шоу."
+
+msgid "Replaces Reject"
+msgstr "Заменяет «Отклонить»"
+
+msgid "Click to apply"
+msgstr "Нажмите, чтобы применить"
+
+msgid "Click to clear"
+msgstr "Нажмите, чтобы очистить"
+
+msgid "Replaces the current label: {}"
+msgstr "Заменяет текущую метку: {}"
+
+msgid "Replaces the star rating"
+msgstr "Заменяет рейтинг в звёздах"
+
+msgid "When the last item has played, start again from the first"
+msgstr "После воспроизведения последнего элемента начать снова с первого"
+
+msgid "Stop after the last item"
+msgstr "Остановиться после последнего элемента"
+
+msgid "Play or pause the displayed video or audio file."
+msgstr "Воспроизвести или приостановить отображаемый видео- или аудиофайл."
+
+msgid "Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end."
+msgstr "Воспроизводит видимые элементы. Фотографии показываются в течение задержки слайд-шоу; видео и аудио воспроизводятся до конца."
+
+msgid "Continue with the next item"
+msgstr "Продолжить со следующего элемента"
+
+msgid "When an item finishes, continue with the next photo, video or audio item"
+msgstr "Когда элемент заканчивается, продолжить со следующей фотографии, видео или аудиоэлемента"
+
+msgid "Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them."
+msgstr "Diffractor не может записывать рейтинг, метки и другие метаданные в файлы {} и не создаёт для них сопроводительный файл."
+
+msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
+msgstr "Чтобы указать несколько жанров, разделяйте их точкой с запятой. Например: Rock; Blues"
+
+msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
+msgstr "Выберите одно фото для редактирования. Видео, аудио, папки и форматы, которые Diffractor не может сохранить, не поддерживаются."
+
+msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
+msgstr "Выкл.: фото и видео меньше окна показываются в реальном размере. Вкл.: они увеличиваются до размера окна. Медиа больше окна всегда уменьшаются, чтобы поместиться."
+
+msgid "Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder."
+msgstr "Преобразует выбранные фотографии в другой формат и при необходимости ограничивает их размер. Оригиналы сохраняются, а новые файлы записываются в папку назначения."
+
+msgid "Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched."
+msgstr "Записывает одинаковые значения метаданных во все выбранные элементы. Изменяются только отмеченные поля; данные изображения и видео остаются нетронутыми."
+
+msgid "Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched."
+msgstr "Сдвигает даты выбранных элементов так, чтобы самый ранний начинался с новой даты и времени. Изменяются только метаданные; данные изображения и видео остаются нетронутыми."
+
+msgid "Add or remove tags across the selected items. Tags you do not mention are left in place."
+msgstr "Добавляет или удаляет теги у выбранных объектов. Не указанные теги остаются без изменений."
+
+msgid "Convert"
+msgstr "Конвертировать"
+
+msgid "Update metadata"
+msgstr "Обновить метаданные"
+
+msgid "No removable drive was found."
+msgstr "Съёмный диск не найден."
+
+msgid "Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run."
+msgstr "Копирует или перемещает файлы в структуру папок, построенную по метаданным, таким как дата, альбом или исполнитель. Если папка назначения находится в вашей коллекции, копии автоматически становятся её частью. Сначала выполните анализ, чтобы проверить каждое действие перед запуском."
+
+msgid "Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run."
+msgstr "Переименовывает выбранные файлы по шаблону, в котором можно сочетать текст, возрастающий номер и свойства метаданных. Перед запуском проверьте новые имена ниже."
+
+msgid "Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run."
+msgstr "Синхронизирует локальные папки с удалённой или резервной папкой. Сначала выполните анализ, чтобы просмотреть все копирования и удаления перед запуском."
+
+msgid "home"
+msgstr "Home"
+
+msgid "end"
+msgstr "End"
+
+msgid "-"
+msgstr "-"
+
+msgid "Grouping"
+msgstr "Группировка"
+
+msgid "Move to the first or last item. Pans a zoomed image to the left or right edge."
+msgstr "Переход к первому или последнему элементу. Перемещает увеличенное изображение к левому или правому краю."
+
+msgid "Move up or down a row of items. Pans a zoomed image."
+msgstr "Перемещение на строку элементов вверх или вниз. Перемещает увеличенное изображение."
+
+msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
+msgstr "Увеличивает или уменьшает отображаемое изображение. Нажмите 0, чтобы вписать его в окно."
+
+msgid "Add folders to your collection (Ctrl+F6)"
+msgstr "Добавить папки в коллекцию (Ctrl+F6)"
+
+msgid "Select at least one search criterion."
+msgstr "Выберите хотя бы один критерий поиска."
+
+msgid "Could not check for updates. Check your internet connection and try again."
+msgstr "Не удалось проверить наличие обновлений. Проверьте подключение к Интернету и повторите попытку."
+
+msgid "Diagnostics information could not be sent. Check your internet connection and try again."
+msgstr "Не удалось отправить диагностические сведения. Проверьте подключение к Интернету и повторите попытку."
+
+msgid "Too large to display"
+msgstr "Слишком большое для отображения"
+
+msgid "This image could not be displayed"
+msgstr "Не удалось отобразить это изображение"
+
+msgid "Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places."
+msgstr "Показать элементы коллекции, наиболее связанные с этим: возможные копии, затем тот же альбом, ту же серию, ближайшее время съёмки и ближайшие места съёмки."
+
+msgid "This item and possible copies"
+msgstr "Этот элемент и возможные копии"
+
+msgid "Same album"
+msgstr "Тот же альбом"
+
+msgid "Same series"
+msgstr "Та же серия"
+
+msgid "Taken at the same time"
+msgstr "Снято в то же время"
+
+msgid "Taken in the same place"
+msgstr "Снято в том же месте"
+
+msgid "Recovered from a startup problem"
+msgstr "Восстановлено после проблемы при запуске"
+
+msgid "Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options."
+msgstr "Diffractor неожиданно закрылся, не завершив запуск, поэтому в этом сеансе используется макет по умолчанию с отключённым аппаратным ускорением. Ваши файлы, коллекция и недавние элементы не изменились. Восстановить настройки можно в разделе «Параметры»."
+
+msgid "Original//date"
+msgstr "Оригинал"
+
+msgid "Group by Date Original"
+msgstr "Группировать по дате оригинала"
+
+msgid "Sort by Date original"
+msgstr "Сортировать по дате оригинала"
+
+msgid "Movie mixer"
+msgstr "Микшер фильма"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Соберите выбранные фотографии и видео в один ролик. Добавляйте, удаляйте и меняйте порядок клипов на полосе ниже и обрезайте выбранный клип. Предварительный просмотр показывает то, что будет отрисовано; ничего не записывается, пока вы не выполните отрисовку или не сохраните."
+
+msgid "Movie"
+msgstr "Фильм"
+
+msgid "Selected clip"
+msgstr "Выбранный клип"
+
+msgid "Crossfade between clips"
+msgstr "Перекрёстное затухание между клипами"
+
+msgid "Cut between clips"
+msgstr "Склейка между клипами"
+
+msgid "Transition (tenths of a second)"
+msgstr "Переход (десятые доли секунды)"
+
+msgid "Fade (tenths of a second)"
+msgstr "Появление/затемнение (десятые доли секунды)"
+
+msgid "Fade in from black"
+msgstr "Появление из чёрного"
+
+msgid "Fade out to black"
+msgstr "Затемнение в чёрное"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "Длительность фотографии (десятые доли секунды)"
+
+msgid "This photo (tenths of a second)"
+msgstr "Эта фотография (десятые доли секунды)"
+
+msgid "Use the movie default"
+msgstr "Использовать значение фильма по умолчанию"
+
+msgid "Add photos and videos to build a movie."
+msgstr "Добавьте фотографии и видео, чтобы собрать фильм."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "Результат {} x {}, {} кадр/с, длительность {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - клип {} из {}, начало {}."
+
+msgid "Movie project"
+msgstr "Проект фильма"
+
+msgid "Windows Movie Maker project"
+msgstr "Проект Windows Movie Maker"
+
+msgid "Photos and videos"
+msgstr "Фотографии и видео"
+
+msgid "Could not read the project {}."
+msgstr "Не удалось прочитать проект {}."
+
+msgid "Could not save the project {}."
+msgstr "Не удалось сохранить проект {}."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "Собирает выбранные фотографии и видео в один ролик."
+
+msgid "Add files"
+msgstr "Добавить файлы"
+
+msgid "Remove from movie"
+msgstr "Удалить из фильма"
+
+msgid "Send to the end"
+msgstr "Переместить в конец"
+
+msgid "Open project"
+msgstr "Открыть проект"
+
+msgid "Save project"
+msgstr "Сохранить проект"
+
+msgid "Import Movie Maker project"
+msgstr "Импортировать проект Movie Maker"
+
+msgid "Video"
+msgstr "Видео"
+
+msgid "Rendering the movie"
+msgstr "Отрисовка фильма"
+
+msgid "The movie could not be rendered. {}"
+msgstr "Не удалось отрисовать фильм. {}"
+
+msgid "The movie has no length."
+msgstr "У фильма нулевая длительность."
+
+msgid "The encoder would not accept this movie."
+msgstr "Кодер не принял этот фильм."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "Не хватило памяти для кадра фильма."
+
+msgid "A clip could not be decoded."
+msgstr "Не удалось декодировать один из клипов."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "Кодер остановился до завершения фильма."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "Это имя принадлежит клипу в этом фильме. Выберите другое имя."
+
+msgid "Rendered {}."
+msgstr "Отрисовано: {}."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "Отрисовка отменена. Ничего не записано."
+
+msgid "No missing clip was found in that folder."
+msgstr "В этой папке не найдено ни одного отсутствующего клипа."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "В этом фильме есть изменения, которых нет ни в одном файле проекта. Он сохраняется, пока Diffractor запущен, а при закрытии Diffractor он теряется."
+
+msgid "Close without saving"
+msgstr "Закрыть без сохранения"
+
+msgid "Render"
+msgstr "Отрисовать"
+
+msgid "Write the movie to a video file."
+msgstr "Записывает фильм в видеофайл."
+
+msgid "Relink missing files"
+msgstr "Переподключить отсутствующие файлы"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "Переназначает клипы, исходные файлы которых были перемещены, на выбранную вами папку."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "1 элемент импортированного проекта пропущен, так как Фильм не может его представить."
+msgstr[1] "{count} элемента импортированного проекта пропущены, так как Фильм не может их представить."
+msgstr[2] "{count} элементов импортированного проекта пропущено, так как Фильм не может их представить."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 клип не может найти свой исходный файл."
+msgstr[1] "{count} клипа не могут найти свои исходные файлы."
+msgstr[2] "{count} клипов не могут найти свои исходные файлы."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 клип переподключён."
+msgstr[1] "{count} клипа переподключены."
+msgstr[2] "{count} клипов переподключено."
+

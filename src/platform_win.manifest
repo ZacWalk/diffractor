@@ -3,7 +3,7 @@
   <assemblyIdentity
       type="win32"
       name="diffractor.exe"
-      version="1.26.2.1187"
+      version="1.27.3.1313"
       processorArchitecture="*"
     />
   <asmv3:application>
@@ -17,7 +17,6 @@
   <dependency>
     <dependentAssembly>
       <assemblyIdentity language="*" name="Microsoft.Windows.Common-Controls" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" type="win32" version="6.0.0.0"/>
-      <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1"/>
     </dependentAssembly>
   </dependency>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">

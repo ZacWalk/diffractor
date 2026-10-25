@@ -1,3 +1,42 @@
+msgid "Fit"
+msgstr "ウィンドウに合わせる"
+
+msgid "Zoom in"
+msgstr "拡大"
+
+msgid "Zoom out"
+msgstr "縮小"
+
+msgid "Zoom"
+msgstr "ズーム"
+
+msgid "Fit Width"
+msgstr "幅に合わせる"
+
+msgid "Fill"
+msgstr "画面いっぱい"
+
+msgid "100% (1:1)"
+msgstr "100% (1:1)"
+
+msgid "Audio: {}"
+msgstr "オーディオ: {}"
+
+msgid "Audio track {}"
+msgstr "オーディオトラック {}"
+
+msgid "Audio tracks"
+msgstr "オーディオトラック"
+
+msgid "Audio output"
+msgstr "オーディオ出力"
+
+msgid "commentary"
+msgstr "コメンタリー"
+
+msgid "audio description"
+msgstr "音声解説"
+
 # Diffractor translation
 msgid ""
 msgstr ""
@@ -13,17 +52,29 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 "X-Generator: Poedit 3.4.4"
 
-msgid "Diffractor provides simple tools to make you more productive when sorting, comparing and organizing photos or videos."
-msgstr "Diffractorは、写真やビデオの並べ替え、比較、整理をより効率的に行うためのシンプルなツールを提供します。"
+msgid "Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything."
+msgstr "Diffractor は写真、動画、音楽を今ある場所のまま整理します。コレクションを構成するフォルダーを選ぶだけで、インデックス作成により高速検索、重複検出、メタデータ編集が利用できます。ファイルの移動もコピーも行いません。"
+
+msgid "Diagnostics information was sent to Diffractor HQ."
+msgstr "診断情報がDiffractor HQに送信されました。"
+
+msgid "Releases - Diffractor"
+msgstr "リリース - Diffractor"
+
+msgid "Workflow Tags"
+msgstr "ワークフロータグ"
+
+msgid "Configure favorite tags."
+msgstr "お気に入りのタグを設定します。"
 
 msgid "Add folder"
 msgstr "フォルダーを追加"
 
-msgid "Items in this date range will be modified to start at a new date and time. The time gap between items will be preserved."
-msgstr "この期間内のアイテムは、新しい日時で開始するように変更されます。アイテム間の時間差は維持されます。"
+msgid "Capture metadata and the Windows file created time will be shifted to start at a new local date and time."
+msgstr "撮影日時のメタデータとWindowsのファイル作成日時を、新しいローカルの開始日時に合わせて移動します。"
 
-msgid "For example, if you have 2 photos taken one hour apart, after the update they will still be one hour apart."
-msgstr "例えば、1時間の間隔で撮影された2枚の写真がある場合、更新後もその1時間の間隔は維持されます。"
+msgid "Time gaps between dated items are preserved. Items without a known date receive the new starting date."
+msgstr "日時が設定されているアイテム間の時間差は維持されます。日時が不明なアイテムには新しい開始日時が設定されます。"
 
 msgid "This is useful if your camera date was set wrongly and you need to fix photo and video dates."
 msgstr "カメラの日付が間違って設定されてしまい、写真やビデオの日付を修正する必要がある場合に便利です。"
@@ -43,17 +94,11 @@ msgstr "アーカイブ"
 msgid "archives"
 msgstr "アーカイブ"
 
-msgid "Ask the Diffractor team a question."
-msgstr "Diffractorチームに質問する"
-
 msgid "audio"
 msgstr "オーディオ"
 
 msgid "Audio"
 msgstr "オーディオ"
-
-msgid "Diffractor has been authorized"
-msgstr "Diffractorは認証されました"
 
 msgid "Before"
 msgstr "適用前"
@@ -69,9 +114,6 @@ msgstr "分析"
 
 msgid "&Analyze"
 msgstr "分析(&A)"
-
-msgid "&Background"
-msgstr "背景(&B)"
 
 msgid "&Cancel"
 msgstr "キャンセル(&C)"
@@ -90,9 +132,6 @@ msgstr "削除(&D)"
 
 msgid "&Don't Save"
 msgstr "保存しない(&D)"
-
-msgid "&Import"
-msgstr "インポート(&I)"
 
 msgid "&OK"
 msgstr "OK(&O)"
@@ -125,31 +164,14 @@ msgid "Diffractor can be used for free. If you find it useful, please help the p
 msgstr "Diffractorは無料でお使いいただけます。もし便利だと感じられましたら、寄付によるプロジェクトへのご支援をお願いいたします。"
 
 msgid "Donate online."
-msgstr "オンラインで寄付する"
+msgstr "オンラインで寄付する。"
 
-msgid "Cancel was pressed after "
-msgstr "指定時間経過後、キャンセルされました"
-
-msgid "Cannot updated metadata of this file type."
-msgstr "このファイル形式のメタデータは更新できません。"
 
 msgid "Changes"
 msgstr "変更"
 
-msgid "Click for collection options"
-msgstr "クリックしてコレクションオプションを表示"
-
-msgid "Scroll map to select a location. Use mouse-wheel to zoom."
-msgstr ""
-
-msgid "Click to search for similar items in the collection."
-msgstr "クリックしてコレクション内の類似アイテムを検索"
-
-msgid "Click to search in the collection"
-msgstr "クリックしてコレクション内を検索"
-
-msgid "Click to open"
-msgstr "クリックして開く"
+msgid "The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location."
+msgstr "地図の中央にある十字線は、書き込まれる場所を示します。地図をドラッグする、写真のバブルをクリックして十字線の下に移動する、または名前で場所を検索してください。マウスホイールで拡大縮小できます。「場所を追加」を押すまで何も書き込まれません。"
 
 msgid "The collection contains {} {} ({})."
 msgstr "コレクションには {} {} ({}) が含まれています。"
@@ -163,13 +185,14 @@ msgstr "作成されたアイテム {} {}"
 msgid "Items modified {} {}"
 msgstr "変更されたアイテム {} {}"
 
-msgid ""
-"Click to open created items.\n"
-"Ctrl+click to open modified items."
-msgstr "クリックで作成されたアイテムを開きます。\nCtrl+クリックで変更されたアイテムを開きます。"
+msgid "Opens created items.\nCtrl+click opens modified items."
+msgstr "作成されたアイテムを開きます。\nCtrl+クリックで変更されたアイテムを開きます。"
 
-msgid "{} items from {} in the collection."
-msgstr "コレクションの {} にある {} 個のアイテム"
+msgid "{} items close to {} in the collection."
+msgstr "コレクション内の {} の近くにあるアイテム数: {}。"
+
+msgid "{} items close to {}"
+msgstr "{}個のアイテム（{}の近く）"
 
 msgid "filter"
 msgstr "フィルター"
@@ -180,56 +203,29 @@ msgstr "閉じる"
 msgid "Collection options"
 msgstr "コレクションオプション"
 
-msgid "Prefix the folder name with minus '-' to exclude it from the collection. You exclude folders by the full path -c:\\collection\\secret, with a folder name -secret, or with a wildcard -secret*."
-msgstr "フォルダー名の前にマイナス記号「-」を付けると、そのフォルダーをコレクションから除外できます。除外は、フルパス (-c:\\collection\\secret)、フォルダー名 (-secret)、またはワイルドカード (-secret*) で指定できます。"
+msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
+msgstr "除外するには先頭に '-' を付けます。-c:\\photos\\secret のような完全パスは 1 つのフォルダーを除外します。-secret のような名前や -proxy* のようなワイルドカードは、コレクション内のどこにあっても一致するフォルダーを除外します。"
 
-msgid "More Collection folders"
-msgstr "コレクションフォルダーを追加"
+msgid "Other folders"
+msgstr "その他のフォルダー"
 
 msgid "Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."
 msgstr "フォルダーには、ドライブ、フォルダー、ネットワーク共有、またはデバイスのラベルを指定できます。ラベルは、割り当てられたドライブ文字が変更される可能性のあるリムーバブルデバイスやネットワークデバイスに便利です。"
 
-msgid "Desktop"
-msgstr "デスクトップ"
-
-msgid "Documents"
-msgstr "ドキュメント"
-
-msgid "Downloads"
-msgstr "ダウンロード"
-
-msgid "Local DropBox Folder"
-msgstr "ローカルのDropboxフォルダー"
-
-msgid "Local GoogleDrive Folder"
-msgstr "ローカルのGoogleドライブフォルダー"
-
-msgid "You can choose what is indexed in collection options (press Ctrl+F6)."
-msgstr "コレクションオプション (Ctrl+F6) で、インデックスに含めるものを選択できます。"
-
-msgid "Define the folders that make your collection."
-msgstr "コレクションを構成するフォルダーを定義します。"
+msgid "Choose the folders that make up your collection. Your files stay where they are."
+msgstr "コレクションを構成するフォルダーを選択します。ファイルは今ある場所のままです。"
 
 msgid "Collection folders"
 msgstr "コレクションフォルダー"
 
-msgid "More folders. Separate each folder with a new line."
-msgstr "フォルダーを追加します。改行で区切ってください。"
+msgid "One folder per line."
+msgstr "1 行につき 1 つのフォルダー。"
 
 msgid "More information about collection management."
-msgstr "コレクション管理の詳細"
+msgstr "コレクション管理の詳細。"
 
 msgid "More information about metadata templates."
-msgstr "メタデータテンプレートの詳細"
-
-msgid "Music"
-msgstr "ミュージック"
-
-msgid "Local OneDrive Folder"
-msgstr "ローカルのOneDriveフォルダー"
-
-msgid "Pictures"
-msgstr "ピクチャ"
+msgstr "メタデータテンプレートの詳細。"
 
 msgid "Videos"
 msgstr "ビデオ"
@@ -245,9 +241,6 @@ msgstr "日時を調整"
 
 msgid "Advanced Search"
 msgstr "高度な検索"
-
-msgid "Update artist and album"
-msgstr "アーティストとアルバムを更新"
 
 msgid "Exit"
 msgstr "終了"
@@ -300,9 +293,6 @@ msgstr "変換またはリサイズ"
 msgid "Copy to folder"
 msgstr "フォルダーにコピー"
 
-msgid "Update copyright"
-msgstr "著作権情報を更新"
-
 msgid "Customise sidebar"
 msgstr "サイドバーをカスタマイズ"
 
@@ -314,9 +304,6 @@ msgstr "デスクトップの背景"
 
 msgid "Display options"
 msgstr "表示オプション"
-
-msgid "Download"
-msgstr "ダウンロード"
 
 msgid "Edit"
 msgstr "編集"
@@ -371,6 +358,21 @@ msgstr "場所でグループ化"
 
 msgid "Group by Date Modified"
 msgstr "更新日時でグループ化"
+
+msgid "Group by Aspect ratio"
+msgstr "アスペクト比でグループ化"
+
+msgid "Aspect ratio"
+msgstr "アスペクト比"
+
+msgid "No aspect ratio"
+msgstr "アスペクト比なし"
+
+msgid "Other landscape"
+msgstr "その他の横向き"
+
+msgid "Other portrait"
+msgstr "その他の縦向き"
 
 msgid "Group by Resolution"
 msgstr "解像度でグループ化"
@@ -447,6 +449,18 @@ msgstr "新しいフォルダー"
 msgid "New version available"
 msgstr "新しいバージョンが利用可能です"
 
+msgid "Check for updates"
+msgstr "更新を確認"
+
+msgid "Install now"
+msgstr "今すぐインストール"
+
+msgid "Checking for updates..."
+msgstr "更新を確認しています..."
+
+msgid "You are using the latest version ({})."
+msgstr "最新バージョン ({}) を使用しています。"
+
 msgid "Open"
 msgstr "開く"
 
@@ -495,8 +509,8 @@ msgstr "拒否"
 msgid "Refresh"
 msgstr "更新"
 
-msgid "Duplicate or related items in the collection"
-msgstr "コレクション内の重複または関連アイテム"
+msgid "Related items"
+msgstr "関連アイテム"
 
 msgid "Rename"
 msgstr "名前の変更"
@@ -508,10 +522,7 @@ msgid "Toggle repeat play"
 msgstr "リピート再生を切り替え"
 
 msgid "Restore"
-msgstr "元に戻す"
-
-msgid "Revert to original"
-msgstr "オリジナルに戻す"
+msgstr "元のサイズに戻す"
 
 msgid "Rotate anticlockwise"
 msgstr "反時計回りに回転"
@@ -519,11 +530,20 @@ msgstr "反時計回りに回転"
 msgid "Rotate clockwise"
 msgstr "時計回りに回転"
 
+msgid "Confirm single-item rotations"
+msgstr "単一アイテムの回転を確認する"
+
 msgid "Reset rotation"
 msgstr "回転をリセット"
 
-msgid "Save and close"
-msgstr "保存して閉じる"
+msgid "Save"
+msgstr "保存"
+
+msgid "Add location and open previous"
+msgstr "位置情報を追加して前の項目を開く"
+
+msgid "Add location and open next"
+msgstr "位置情報を追加して次の項目を開く"
 
 msgid "Save and open previous"
 msgstr "保存して前のファイルを開く"
@@ -540,8 +560,8 @@ msgstr "現在のアイテムを保存し、次のアイテムを開きます。
 msgid "Save as"
 msgstr "名前を付けて保存"
 
-msgid "Change save options"
-msgstr "保存オプションを変更"
+msgid "Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save."
+msgstr "写真のトリミング、回転、遠近、色を調整します。保存するまでディスクには何も書き込まれません。"
 
 msgid "Scale up items"
 msgstr "アイテムを拡大"
@@ -567,20 +587,20 @@ msgstr "ファイルブラウザーで表示"
 msgid "Open containing folder"
 msgstr "ファイルの場所を開く"
 
-msgid "Hide/Show thumbnails"
-msgstr "サムネイルの表示/非表示"
-
 msgid "Sort by Date modified"
 msgstr "更新日時で並べ替え"
 
-msgid "Sort dates ascending"
-msgstr "日付を昇順で並べ替え"
+msgid "Sort by Date created"
+msgstr "作成日で並べ替え"
 
-msgid "Sort dates descending"
-msgstr "日付を降順で並べ替え"
+msgid "Show oldest items first"
+msgstr "古いアイテムを先に表示"
 
-msgid "Sort by Default"
-msgstr "デフォルトの並べ順"
+msgid "Show newest items first"
+msgstr "新しいアイテムを先に表示"
+
+msgid "Sort by Group order (Default)"
+msgstr "グループ順（デフォルト）で並べ替え"
 
 msgid "Sort by Name"
 msgstr "名前で並べ替え"
@@ -599,6 +619,12 @@ msgstr "アイテムのグループ化を切り替え"
 
 msgid "Toggle thumbnail size"
 msgstr "サムネイルサイズの切り替え"
+
+msgid "Change thumbnail size"
+msgstr "サムネイルサイズを変更"
+
+msgid "Back to the top of the list"
+msgstr "リストの先頭に戻る"
 
 msgid "Tools"
 msgstr "ツール"
@@ -627,8 +653,8 @@ msgstr "並べ替え"
 msgid "Toggle volume"
 msgstr "音量の切り替え"
 
-msgid "Zoom 100%"
-msgstr "100%にズーム"
+msgid "Zoom mode"
+msgstr "ズームモード"
 
 msgid "Compare"
 msgstr "比較"
@@ -641,6 +667,12 @@ msgstr "コントラスト"
 
 msgid "Open link {}"
 msgstr "リンク {} を開く"
+
+msgid "Choose a link to open"
+msgstr "開くリンクを選択してください"
+
+msgid "Duplicate"
+msgstr "重複"
 
 msgid "Copy to clipboard"
 msgstr "クリップボードにコピー"
@@ -655,7 +687,10 @@ msgid "Credit"
 msgstr "クレジット"
 
 msgid "Notice"
-msgstr "注記"
+msgstr "権利表示"
+
+msgid "File"
+msgstr "ファイル"
 
 msgid "Source"
 msgstr "ソース"
@@ -684,9 +719,6 @@ msgstr "ここにお気に入りのタグのリストを追加すると、タグ
 msgid "Favorite Tags"
 msgstr "お気に入りのタグ"
 
-msgid "Display"
-msgstr "表示"
-
 msgid "Show labels"
 msgstr "ラベルを表示"
 
@@ -699,8 +731,11 @@ msgstr "ドライブを表示"
 msgid "Show history chart"
 msgstr "履歴チャートを表示"
 
-msgid "Show indexed folders"
-msgstr "インデックス付きフォルダーを表示"
+msgid "Earliest year the history navigator offers. Empty works it out from your photos."
+msgstr "履歴ナビゲーターが表示する最も古い年。空欄の場合は写真から判断されます。"
+
+msgid "Shows the eight years ending here."
+msgstr "ここで終わる8年間を表示します。"
 
 msgid "Show favorite searches"
 msgstr "お気に入りの検索を表示"
@@ -735,9 +770,6 @@ msgstr "日付"
 msgid "family food friends landscape nature night portrait selfie todo travel urban viewed"
 msgstr "家族 食べ物 友達 風景 自然 夜 ポートレート 自撮り ToDo 旅行 都市 閲覧済み"
 
-msgid "results"
-msgstr "件"
-
 msgid "Defragment database."
 msgstr "データベースをデフラグします。"
 
@@ -756,16 +788,10 @@ msgstr "デスクトップの背景を現在の画像に設定します。"
 msgid "Destination folder:"
 msgstr "コピー先フォルダー:"
 
-msgid "Destination name:"
-msgstr "コピー先の名前:"
-
-msgid "Detecting {} folders"
-msgstr "{} 個のフォルダーを検出中"
-
 msgid "Capacity"
 msgstr "容量"
 
-msgid "Free"
+msgid "Free//disk"
 msgstr "空き領域"
 
 msgid "Label"
@@ -783,7 +809,7 @@ msgstr "ドキュメント"
 msgid "Duplicates"
 msgstr "重複"
 
-msgid "Duplicate or similar items in the collection."
+msgid "Matching or possible copy items in the collection."
 msgstr "コレクション内の重複または類似アイテム"
 
 msgid "Editing"
@@ -819,8 +845,8 @@ msgstr "{} を処理中"
 msgid "Sending email using MAPI..."
 msgstr "MAPIを使用してメールを送信中..."
 
-msgid "Email sizes can be reduced using the following options. Smaller emails are faster to send."
-msgstr "以下のオプションでメールサイズを縮小できます。メールサイズが小さいほど速く送信できます。"
+msgid "Create a draft in your desktop email client with the selected files attached. Originals are unchanged."
+msgstr "選択したファイルを添付した下書きをデスクトップのメールクライアントで作成します。元のファイルは変更されません。"
 
 msgid "Zip files in the email"
 msgstr "メール内のファイルをZip圧縮する"
@@ -833,9 +859,6 @@ msgstr "{} を終了中"
 
 msgid "Security options denied access to the source."
 msgstr "セキュリティオプションによりソースへのアクセスが拒否されました。"
-
-msgid "Failed to Initialize ATL"
-msgstr "ATLの初期化に失敗しました"
 
 msgid "Diffractor has a serious problem and cannot continue."
 msgstr "Diffractorで重大な問題が発生したため、続行できません。"
@@ -888,9 +911,6 @@ msgstr "コピー先パスに既存のファイルが存在します。"
 msgid "Index database failed."
 msgstr "インデックスデータベースでエラーが発生しました。"
 
-msgid "Could be a problem with the internet connection? Try again later if that seems likely."
-msgstr "インターネット接続に問題がある可能性があります。その場合は、後でもう一度お試しください。"
-
 msgid "The path in the source or destination or both was invalid."
 msgstr "コピー元またはコピー先、あるいはその両方のパスが無効です。"
 
@@ -906,9 +926,6 @@ msgstr "この操作には複数のコピー先パスが含まれており、移
 msgid "Multiple file paths were specified in the source buffer, but only one destination file path."
 msgstr "コピー元バッファに複数のファイルパスが指定されましたが、コピー先ファイルパスは1つだけです。"
 
-msgid "Failed to send EMail using MAPI. Your Email client may not be configured in a compatible way with Diffractor."
-msgstr "MAPIを使用したメールの送信に失敗しました。お使いのメールクライアントがDiffractorと互換性のない設定になっている可能性があります。"
-
 msgid "MAX_PATH was exceeded during the operation."
 msgstr "操作中にMAX_PATHを超えました。"
 
@@ -918,8 +935,14 @@ msgstr "OleInitializeに失敗しました"
 msgid "An unspecified error occurred on the destination."
 msgstr "コピー先で不明なエラーが発生しました。"
 
-msgid "The operation was canceled by the user, or silently canceled if the appropriate flags were supplied to SHFileOperation."
-msgstr "操作はユーザーによってキャンセルされたか、SHFileOperationに適切なフラグが指定されていた場合は警告なしにキャンセルされました。"
+msgid "The operation was canceled."
+msgstr "操作がキャンセルされました。"
+
+msgid "The analysis was canceled."
+msgstr "分析がキャンセルされました。"
+
+msgid "Cancel"
+msgstr "キャンセル"
 
 msgid "The source or destination path exceeded or would exceed MAX_PATH."
 msgstr "コピー元またはコピー先のパスがMAX_PATHを超えているか、超える可能性があります。"
@@ -929,9 +952,6 @@ msgstr "名前の変更に失敗しました。"
 
 msgid "The source and destination files are the same file."
 msgstr "コピー元ファイルとコピー先ファイルが同じです。"
-
-msgid "Diffractor could not save the updated image file."
-msgstr "Diffractorは更新された画像ファイルを保存できませんでした。"
 
 msgid "Failed to save image."
 msgstr "画像の保存に失敗しました。"
@@ -969,9 +989,6 @@ msgstr "Winsockの初期化に失敗しました"
 msgid "EXIF"
 msgstr "EXIF"
 
-msgid "Failed to connect to the internet"
-msgstr "インターネットに接続できませんでした"
-
 msgid "Failed to create folder: {}"
 msgstr "フォルダーの作成に失敗しました: {}"
 
@@ -990,29 +1007,20 @@ msgstr "お気に入りのタイトル"
 msgid "Favorites are listed in the sidebar for quick access."
 msgstr "お気に入りはサイドバーに表示され、すばやくアクセスできます。"
 
-msgid "Shown items are from the collection."
-msgstr "表示されているアイテムはコレクションのものです。"
+msgid "These items are in your collection."
+msgstr "これらの項目はコレクション内にあります。"
 
-msgid "Shown items are NOT from the collection."
-msgstr "表示されているアイテムはコレクションのものではありません。"
+msgid "These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them."
+msgstr "これらの項目はコレクションの外にあるため、検索や重複検出の対象になりません。含めるにはこのフォルダーをコレクションに追加してください。"
 
-msgid "The collection is a set of indexed folders. Indexing allows fast searching and duplicate detection. Diffractor will also highlight when items are not in the collection."
-msgstr "コレクションは、インデックスが作成されたフォルダーのセットです。インデックスを作成すると、高速な検索と重複検出が可能になります。また、アイテムがコレクションにない場合は、Diffractorがそれを強調表示します。"
+msgid "Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied."
+msgstr "コレクションとは、選んだフォルダーとそのサブフォルダーのことです。Diffractor がそれらをインデックス化するため、検索、重複検出、合計がまとめて対象になります。フォルダーの追加や削除で変わるのは Diffractor が把握する範囲だけで、ファイルが移動されたりコピーされたりすることはありません。"
 
 msgid "folder"
 msgstr "フォルダー"
 
-msgid "music"
-msgstr "ミュージック"
-
 msgid "folders"
 msgstr "フォルダー"
-
-msgid "onedrive"
-msgstr "OneDrive"
-
-msgid "picture"
-msgstr "ピクチャ"
 
 msgid "Folder"
 msgstr "フォルダー"
@@ -1434,7 +1442,7 @@ msgstr "パノラマ"
 msgid "Panoramic"
 msgstr "パノラマ"
 
-msgid "Pellier Noir"
+msgid "Film Noir"
 msgstr "フィルム・ノワール"
 
 msgid "Photo op"
@@ -1683,9 +1691,6 @@ msgstr "ウエスタン"
 msgid "World"
 msgstr "ワールド"
 
-msgid "Click to group or sort"
-msgstr "クリックしてグループ化または並べ替え"
-
 msgid "Group and sort items"
 msgstr "アイテムをグループ化して並べ替える"
 
@@ -1752,44 +1757,20 @@ msgstr "詳細なメタデータを非表示"
 msgid "Destination root folder. Structured folders will be created under this folder."
 msgstr "コピー先ルートフォルダー。このフォルダーの下に構造化されたフォルダーが作成されます。"
 
-msgid "Detecting folders..."
-msgstr "フォルダーを検出中..."
-
 msgid "Source of import:"
 msgstr "インポート元:"
-
-msgid "Source files filter:"
-msgstr "ソースファイルフィルター:"
-
-msgid "Ignore"
-msgstr "無視"
 
 msgid "Ignore previously imported items."
 msgstr "以前にインポートしたアイテムを無視します。"
 
-msgid "Overwrite if source items are newer."
-msgstr "ソースアイテムが新しい場合は上書きします。"
-
-msgid "Copy (or move) files into a structured folder hierarchy. The folder structure can be based on file metadata templates such year/date or album/artist. This is useful if you want to organize files in a structured hierarchy."
-msgstr "ファイルを構造化されたフォルダー階層にコピー（または移動）します。フォルダー構造は、年/日付やアルバム/アーティストなどのファイルメタデータテンプレートに基づいています。これは、ファイルを構造化された階層で整理したい場合に便利です。"
-
 msgid "Other folder"
 msgstr "その他のフォルダー"
-
-msgid "Overwrite"
-msgstr "上書き"
 
 msgid "Destination folder structure:"
 msgstr "コピー先のフォルダー構造:"
 
-msgid "Rename if files have same name but different attributes."
-msgstr "ファイル名は同じで属性が異なる場合は名前を変更します。"
-
 msgid "Set file date created to metadata date created."
 msgstr "ファイルの作成日をメタデータの作成日に設定します。"
-
-msgid "Index later"
-msgstr "後でインデックスを作成"
 
 msgid "Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."
 msgstr "デフラグやクリーニングはパフォーマンスを向上させることがあります。インデックスにはメディアファイルのメタデータのコピーが保存されており、元のファイルから再構築できます。"
@@ -1806,14 +1787,8 @@ msgstr "現在、インデックスデータベースのサイズは {} で、{}
 msgid "Indexing"
 msgstr "インデックス作成"
 
-msgid "Diffractor indexes your photos and videos to enable searching and duplicate detection."
-msgstr "Diffractorは、写真やビデオのインデックスを作成して、検索と重複検出を可能にします。"
-
-msgid "Super-fast searching, viewing and comparing of photos or videos."
-msgstr "写真やビデオの超高速な検索、表示、比較。"
-
-msgid "Optimized for your graphics card and PC."
-msgstr "お使いのグラフィックカードとPCに最適化されています。"
+msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
+msgstr "検索、重複、合計を完全に保つため、Diffractor がコレクションを読み取っています。その間も閲覧を続けられます。"
 
 msgid "invalid"
 msgstr "無効"
@@ -1824,20 +1799,11 @@ msgstr "IPTC"
 msgid "'{}' is not a valid folder."
 msgstr "'{}' は有効なフォルダーではありません。"
 
-msgid "item"
-msgstr "アイテム"
-
-msgid "items"
-msgstr "アイテム"
-
 msgid "Show items rotated"
 msgstr "アイテムを回転して表示"
 
 msgid "This item is shown oriented based on camera information. [{}]"
 msgstr "このアイテムはカメラ情報に基づいて向きが調整されて表示されています。[{}]"
-
-msgid "Click to toggle if all items are shown rotated."
-msgstr "クリックして、すべてのアイテムを回転表示するか切り替えます。"
 
 msgid "Files are identical."
 msgstr "ファイルは同一です。"
@@ -1979,7 +1945,6 @@ msgstr "Page Down"
 
 msgid "["
 msgstr "["
-
 msgid "]"
 msgstr "]"
 
@@ -2009,9 +1974,6 @@ msgstr "Shift"
 
 msgid "space"
 msgstr "Space"
-
-msgid "Stops or starts a slideshow or playing a video/audio file."
-msgstr "スライドショーまたはビデオ/オーディオファイルの再生を停止または開始します。"
 
 msgid "tab"
 msgstr "Tab"
@@ -2046,17 +2008,8 @@ msgstr "可逆圧縮"
 msgid "List of keyboard accelerators"
 msgstr "キーボードアクセラレータの一覧"
 
-msgid "Listed"
-msgstr "リスト表示"
-
-msgid "Including sub folders:"
-msgstr "サブフォルダーを含む:"
-
 msgid "Loading..."
 msgstr "読み込み中..."
-
-msgid "Location could not be loaded from database or internet."
-msgstr "データベースまたはインターネットから場所を読み込めませんでした。"
 
 msgid "No location selected."
 msgstr "場所が選択されていません。"
@@ -2069,9 +2022,6 @@ msgstr "場所"
 
 msgid "Maximize image"
 msgstr "画像を最大化"
-
-msgid "OK - maybe later."
-msgstr "OK、後で試します。"
 
 msgid "Media"
 msgstr "メディア"
@@ -2169,26 +2119,11 @@ msgstr "9月"
 msgid "Move source items."
 msgstr "ソースアイテムを移動します。"
 
-msgid "Countries"
-msgstr "国"
-
-msgid "Drives"
-msgstr "ドライブ"
-
-msgid "Folders"
-msgstr "フォルダー"
-
 msgid "History"
 msgstr "履歴"
 
-msgid "After long periods of use, the index may need some maintenance."
-msgstr "長期間使用すると、インデックスのメンテナンスが必要になる場合があります。"
-
 msgid "No items are selected"
 msgstr "アイテムが選択されていません"
-
-msgid "No results"
-msgstr "結果がありません"
 
 msgid "None"
 msgstr "なし"
@@ -2205,7 +2140,7 @@ msgstr "アイテムは写真または画像である必要があります。"
 msgid "Readonly items are not supported."
 msgstr "読み取り専用アイテムはサポートされていません。"
 
-msgid "Cannot updated metadata of readonly items."
+msgid "Cannot update metadata of readonly items."
 msgstr "読み取り専用アイテムのメタデータは更新できません。"
 
 msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
@@ -2214,17 +2149,14 @@ msgstr "DiffractorはJPG、WEBP、PNG画像ファイルのみ保存または更�
 msgid "Nothing found."
 msgstr "何も見つかりませんでした。"
 
-msgid "Diffractor only searches in folders that are indexed. Use collection options to add more folders. (Ctrl+F6)"
-msgstr "Diffractorはインデックスが作成されたフォルダー内のみを検索します。コレクションオプション (Ctrl+F6) を使用してフォルダーを追加してください。"
+msgid "Empty Folder"
+msgstr "空のフォルダー"
+
+msgid "Search only covers folders in your collection."
+msgstr "検索の対象はコレクション内のフォルダーのみです。"
 
 msgid "of"
 msgstr "/"
-
-msgid "OK - all done."
-msgstr "OK、すべて完了しました。"
-
-msgid "OK - got it."
-msgstr "OK、了解しました。"
 
 msgid "Open destination folder afterwards"
 msgstr "完了後にコピー先フォルダーを開く"
@@ -2250,12 +2182,6 @@ msgstr "{} で開く"
 msgid "tool"
 msgstr "ツール"
 
-msgid "Optimize"
-msgstr "最適化"
-
-msgid "Overwrite GPS coordinates when setting a location. Otherwise only place, state and country names are updated."
-msgstr "場所を設定する際にGPS座標を上書きします。そうしない場合、場所、州、国の名前のみが更新されます。"
-
 msgid "Delay before showing the next item (in seconds)"
 msgstr "次のアイテムを表示するまでの遅延 (秒)"
 
@@ -2265,20 +2191,18 @@ msgstr "詳細設定"
 msgid "Application options"
 msgstr "アプリケーションオプション"
 
-msgid "Automatically install updates when possible"
-msgstr "可能な場合は更新を自動的にインストールする"
-
 msgid "When overwriting a photo with irreversible changes make an original backup copy"
 msgstr "元に戻せない変更を伴う写真を上書きする際に、元のバックアップコピーを作成する"
-
-msgid "Help test Diffractor. Automatically install test and preview versions."
-msgstr "Diffractorのテストにご協力ください。テスト版とプレビュー版を自動的にインストールします。"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "インターネットに接続して更新を確認する"
 
 msgid "Confirm when deleting items. Deleted items are moved to the recycle bin."
 msgstr "アイテムを削除する際に確認する。削除されたアイテムはごみ箱に移動されます。"
+
+msgid ""
+"Confirm when rotating one item. Rotating several items is always confirmed."
+msgstr "アイテムを 1 つ回転する際に確認する。複数のアイテムの回転は常に確認されます。"
 
 msgid "JPEG save quality"
 msgstr "JPEGの保存品質"
@@ -2310,14 +2234,8 @@ msgstr "ハードウェアアクセラレーションを使用してDiffractor�
 msgid "Use hardware acceleration to decode video (when available)"
 msgstr "ハードウェアアクセラレーションを使用してビデオをデコードします (利用可能な場合)"
 
-msgid "Use NV12 and P010 format textures (Automatically turned off if problems detected)"
-msgstr "NV12およびP010形式のテクスチャを使用します (問題が検出された場合は自動的にオフになります)"
-
 msgid "Show an inset shadow surrounding the image view panel."
 msgstr "画像表示パネルの周りに内側の影を表示します。"
-
-msgid "Update file date modified when editing."
-msgstr "編集中にファイルの更新日時を更新します。"
 
 msgid "Resume playing media from the last position played."
 msgstr "最後に再生した位置からメディアの再生を再開します。"
@@ -2344,10 +2262,10 @@ msgid "right-top"
 msgstr "右上"
 
 msgid "top-left"
-msgstr "上-左"
+msgstr "左上"
 
 msgid "top-right"
-msgstr "上-右"
+msgstr "右上"
 
 msgid "other"
 msgstr "その他"
@@ -2379,32 +2297,32 @@ msgstr "ピクセル"
 msgid "PNG - Best for non photos"
 msgstr "PNG - 写真以外に最適"
 
-msgid "Presence loading..."
-msgstr "プレゼンスを読み込み中..."
+msgid "Checking presence..."
+msgstr "存在を確認中..."
 
-msgid "Newer in collection"
-msgstr "コレクション内の新しいアイテム"
+msgid "Possible newer copy in collection"
+msgstr "コレクション内の新しい可能性のあるコピー"
 
-msgid "This item is outside the collection but similar NEWER item(s) exist in the collection."
-msgstr "このアイテムはコレクション外ですが、類似の新しいアイテムがコレクション内に存在します。"
+msgid "This item is outside the collection. One or more possible newer copies exist in the collection."
+msgstr "このアイテムはコレクション外です。新しい可能性のあるコピーがコレクション内に1つ以上存在します。"
 
-msgid "NOT in collection"
-msgstr "コレクションにありません"
+msgid "Outside collection; no possible copy identified"
+msgstr "コレクション外。コピーの可能性のあるアイテムは特定されませんでした"
 
-msgid "This item is NOT in the collection."
-msgstr "このアイテムはコレクションにありません。"
+msgid "This item is outside the collection. No possible copy was identified in the collection."
+msgstr "このアイテムはコレクション外です。コレクション内にコピーの可能性のあるアイテムは特定されませんでした。"
 
-msgid "Older in collection"
-msgstr "コレクション内の古いアイテム"
+msgid "Possible older copy in collection"
+msgstr "コレクション内の古い可能性のあるコピー"
 
-msgid "This item is outside the collection but similar OLDER item(s) exist in the collection."
-msgstr "このアイテムはコレクション外ですが、類似の古いアイテムがコレクション内に存在します。"
+msgid "This item is outside the collection. One or more possible older copies exist in the collection."
+msgstr "このアイテムはコレクション外です。古い可能性のあるコピーがコレクション内に1つ以上存在します。"
 
-msgid "Similar in collection"
-msgstr "コレクション内の類似アイテム"
+msgid "Possible copy in collection"
+msgstr "コレクション内の可能性のあるコピー"
 
-msgid "This item is outside the collection but similar item(s) exist in the collection."
-msgstr "このアイテムはコレクション外ですが、類似のアイテムがコレクション内に存在します。"
+msgid "This item is outside the collection. One or more possible copies exist in the collection."
+msgstr "このアイテムはコレクション外です。可能性のあるコピーがコレクション内に1つ以上存在します。"
 
 msgid "In collection"
 msgstr "コレクション内"
@@ -2413,7 +2331,7 @@ msgid "This item is in the collection."
 msgstr "このアイテムはコレクション内にあります。"
 
 msgid "Presence"
-msgstr "プレゼンス"
+msgstr "コレクション内の有無"
 
 msgid "Showing fully rendered RAW photo."
 msgstr "完全にレンダリングされたRAW写真を表示しています。"
@@ -2429,6 +2347,9 @@ msgstr "RAW写真のプレビューを表示しています。"
 
 msgid "Processing..."
 msgstr "処理中..."
+
+msgid "Processing files"
+msgstr "ファイルを処理しています"
 
 msgid "Focal length 35mm equivalent"
 msgstr "焦点距離 (35mm換算)"
@@ -2478,7 +2399,7 @@ msgstr "著作権ソース"
 msgid "Copyright URL"
 msgstr "著作権URL"
 
-msgid "Country//propertry"
+msgid "Country//property"
 msgstr "国"
 
 msgid "Created"
@@ -2494,7 +2415,7 @@ msgid "Digitized"
 msgstr "デジタル化日時"
 
 msgid "Dimensions"
-msgstr "解像度"
+msgstr "画像サイズ"
 
 msgid "Disk"
 msgstr "ディスク"
@@ -2526,7 +2447,7 @@ msgstr "F値"
 msgid "Focal length"
 msgstr "焦点距離"
 
-msgid "Game//propertry"
+msgid "Game//property"
 msgstr "ゲーム"
 
 msgid "Genre"
@@ -2596,7 +2517,7 @@ msgid "Size"
 msgstr "サイズ"
 
 msgid "State"
-msgstr "都道府県"
+msgstr "州/都道府県"
 
 msgid "Streams"
 msgstr "ストリーム"
@@ -2642,6 +2563,9 @@ msgstr "更新日時"
 
 msgid "or"
 msgstr "or"
+
+msgid "original"
+msgstr "元の日時"
 
 msgid "related"
 msgstr "関連"
@@ -2691,20 +2615,11 @@ msgstr "{year}-{month}-###"
 msgid "travel-{country}-###"
 msgstr "travel-{country}-###"
 
-msgid "Rename multiple files based on an incrementing sequence or file metadata template."
-msgstr "連番またはファイルメタデータテンプレートに基づいて、複数のファイルの名前を変更します。"
-
 msgid "Template:"
 msgstr "テンプレート:"
 
 msgid "Start at:"
 msgstr "開始番号:"
-
-msgid "When one media item plays to the end, start playing the next automatically"
-msgstr "1つのメディアアイテムの再生が終了したら、自動的に次の再生を開始します"
-
-msgid "Don't repeat or auto play"
-msgstr "リピート/自動再生しない"
 
 msgid "Repeat play single media item"
 msgstr "1つのメディアアイテムをリピート再生"
@@ -2716,9 +2631,6 @@ msgstr "データベースをクリーンアップして再インデックスし
 
 msgid "Cleaning..."
 msgstr "クリーンアップ中..."
-
-msgid "Maximum photo dimension (in pixels):"
-msgstr "写真の最大サイズ (ピクセル):"
 
 msgid "retro"
 msgstr "レトロ"
@@ -2744,9 +2656,6 @@ msgstr "スキャンに失敗しました。"
 msgid "All these terms"
 msgstr "すべてのキーワード"
 
-msgid "Any of these terms"
-msgstr "いずれかのキーワード"
-
 msgid "Christmas"
 msgstr "クリスマス"
 
@@ -2771,9 +2680,6 @@ msgstr "範囲内"
 msgid "None of these terms"
 msgstr "キーワードを含まない"
 
-msgid "Find files not in collection"
-msgstr "コレクションにないファイルを検索"
-
 msgid "Search criteria or folder"
 msgstr "検索条件またはフォルダー"
 
@@ -2785,9 +2691,6 @@ msgstr "用語を選択"
 
 msgid "Search in subfolders"
 msgstr "サブフォルダー内を検索"
-
-msgid "Top rated"
-msgstr "高評価"
 
 msgid "Searching..."
 msgstr "検索中..."
@@ -2810,8 +2713,8 @@ msgstr "常にRAW写真を表示する (低速)"
 msgid "Show this RAW photo"
 msgstr "このRAW写真を表示"
 
-msgid "press R to view duplicate or related items in the collection"
-msgstr "Rキーを押して、コレクション内の重複または関連アイテムを表示"
+msgid "press R to view the items most closely related to this one"
+msgstr "R キーを押すと、このアイテムに最も関連するアイテムを表示します"
 
 msgid "Show verbose metadata"
 msgstr "詳細なメタデータを表示"
@@ -2819,8 +2722,8 @@ msgstr "詳細なメタデータを表示"
 msgid "Album-Show"
 msgstr "アルバム/番組"
 
-msgid "Default"
-msgstr "デフォルト"
+msgid "Group order (Default)"
+msgstr "グループ順（デフォルト）"
 
 msgid "Extension"
 msgstr "拡張子"
@@ -2837,11 +2740,8 @@ msgstr "解像度"
 msgid "Rating-Label"
 msgstr "評価/ラベル"
 
-msgid "used"
-msgstr "使用済み"
-
 msgid "Staring"
-msgstr "開始"
+msgstr "出演"
 
 msgid "New Starting Date (local time):"
 msgstr "新しい開始日時 (ローカル時刻):"
@@ -2849,14 +2749,80 @@ msgstr "新しい開始日時 (ローカル時刻):"
 msgid "Starting {}"
 msgstr "開始 {}"
 
+msgid "Preparing to convert files..."
+msgstr "ファイル変換の準備中..."
+
+msgid "Preparing to import files..."
+msgstr "ファイルのインポートを準備中..."
+
+msgid "Preparing files for email..."
+msgstr "メール送信用にファイルを準備中..."
+
+msgid "Share"
+msgstr "共有"
+
+msgid "Preparing files to share..."
+msgstr "共有するファイルを準備中..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "ファイルを受け取れるアプリが Windows に表示されます。元のファイルは変更されません。"
+
+msgid "Send the files as one zip file"
+msgstr "ファイルを 1 つの ZIP ファイルにまとめて送信する"
+
+msgid "&Share"
+msgstr "共有(&S)"
+
+msgid "The files could not be shared."
+msgstr "ファイルを共有できませんでした。"
+
+msgid "Preparing to synchronize files..."
+msgstr "ファイル同期の準備中..."
+
 msgid "Straighten"
 msgstr "傾き補正"
 
+msgid "Auto color"
+msgstr "自動カラー補正"
+
+msgid "Copy item path"
+msgstr "項目のパスをコピー"
+
+msgid "Auto document"
+msgstr "文書の自動補正"
+
+msgid "Auto straighten"
+msgstr "自動傾き補正"
+
+msgid "Original"
+msgstr "オリジナル"
+
+msgid "Preview"
+msgstr "プレビュー"
+
+msgid "Automatically improve exposure and color balance"
+msgstr "露出とカラーバランスを自動的に改善します"
+
+msgid "Automatically straighten horizontal and vertical lines"
+msgstr "水平線と垂直線を自動的に補正します"
+
+msgid "Show the final cropped image"
+msgstr "最終的に切り抜かれた画像を表示します"
+
+msgid "Horizontal perspective"
+msgstr "水平方向の遠近補正"
+
+msgid "Vertical perspective"
+msgstr "垂直方向の遠近補正"
+
+msgid "Temperature"
+msgstr "色温度"
+
+msgid "Tint"
+msgstr "色合い"
+
 msgid "Stream {}"
 msgstr "ストリーム {}"
-
-msgid "Click to select stream '{}'"
-msgstr "クリックしてストリーム '{}' を選択"
 
 msgid "subtitle"
 msgstr "字幕"
@@ -2879,8 +2845,17 @@ msgstr "ローカルから削除"
 msgid "delete remote"
 msgstr "リモートから削除"
 
-msgid "Synchronize your collection with a remote location."
-msgstr "コレクションをリモートの場所と同期します。"
+msgid "Files changed after analysis. Analyze again to review the updated actions."
+msgstr "分析後にファイルが変更されました。更新された操作を確認するには、もう一度分析してください。"
+
+msgid "Local files to delete: {}. Remote files to delete: {}."
+msgstr "削除するローカルファイル: {}。削除するリモートファイル: {}。"
+
+msgid "Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin."
+msgstr "同期によってファイルが完全に削除されます。これらのファイルはごみ箱から復元できません。"
+
+msgid "The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin."
+msgstr "既存のファイルは上書きされます。現在の内容はごみ箱から復元できません。"
 
 msgid "Delete local files that do not exist remotely"
 msgstr "リモートに存在しないローカルファイルを削除する"
@@ -2888,14 +2863,11 @@ msgstr "リモートに存在しないローカルファイルを削除する"
 msgid "Delete remote files that do not exist locally"
 msgstr "ローカルに存在しないリモートファイルを削除する"
 
-msgid "Synchronize local files to a remote location. This is useful to synchronize your local file collection to a backup location."
-msgstr "ローカルファイルをリモートの場所に同期します。これは、ローカルファイルコレクションをバックアップ場所に同期するのに便利です。"
+msgid "c:\\photos with \\\\nas\\\\backup"
+msgstr "c:\\photos と \\\\nas\\\\backup"
 
-msgid "c:\\file-collection with \\\\nas\\\\backup-files"
-msgstr "c:\\file-collection を \\\\nas\\\\backup-files と同期"
-
-msgid "Source of synchronization (Local)"
-msgstr "同期元 (ローカル)"
+msgid "Local folders"
+msgstr "ローカル フォルダー"
 
 msgid "Copy newer local files to remote folders"
 msgstr "新しいローカルファイルをリモートフォルダーにコピーする"
@@ -2903,11 +2875,8 @@ msgstr "新しいローカルファイルをリモートフォルダーにコピ
 msgid "Synchronize only one folder"
 msgstr "1つのフォルダーのみ同期する"
 
-msgid "Destination of synchronization (Remote)"
-msgstr "同期先 (リモート)"
-
 msgid "Remote folder"
-msgstr "リモートフォルダー"
+msgstr "リモート フォルダー"
 
 msgid "Copy newer remote files to local folders"
 msgstr "新しいリモートファイルをローカルフォルダーにコピーする"
@@ -2954,12 +2923,6 @@ msgstr "色調整をリセット"
 msgid "Color, straighten or crop photos."
 msgstr "写真の色調整、傾き補正、トリミングを行います。"
 
-msgid "Add and edit metadata."
-msgstr "メタデータを追加・編集します。"
-
-msgid "Items can be flagged for later delete."
-msgstr "アイテムに後で削除するためのフラグを立てることができます。"
-
 msgid "Toggle full screen for media-items or open non-media-items."
 msgstr "メディアアイテムの全画面表示を切り替えるか、メディア以外のアイテムを開きます。"
 
@@ -2975,14 +2938,8 @@ msgstr "選択したアイテムを外部アプリで開く"
 msgid "Pinned items stay selected. Use this when you want to quickly compare an item to other items."
 msgstr "ピン留めされたアイテムは選択されたままになります。あるアイテムを他のアイテムとすばやく比較したい場合に使用します。"
 
-msgid "Play or pause video and audio files. Start a slide show if a photo is selected."
-msgstr "ビデオやオーディオファイルを再生/一時停止します。写真が選択されている場合はスライドショーを開始します。"
-
 msgid "Reset straighten and rotate"
 msgstr "傾き補正と回転をリセット"
-
-msgid "Scale up small photos and videos. Large media is automatically scaled down to fit on the screen."
-msgstr "小さい写真やビデオを拡大します。大きいメディアは自動的に画面に合わせて縮小されます。"
 
 msgid "Tag or un-tag selected items"
 msgstr "選択したアイテムにタグを付ける/解除する"
@@ -3000,7 +2957,7 @@ msgid "More options and controls"
 msgstr "その他のオプションとコントロール"
 
 msgid "{} ({}) total items in {} folders."
-msgstr "{} 個のフォルダーに合計 {} ({}) 個のアイテム"
+msgstr "合計 {} 個のアイテム ({})、フォルダー数: {}。"
 
 msgid "Truncated at 1MB"
 msgstr "1MBで切り捨てられました"
@@ -3068,14 +3025,14 @@ msgstr "ICC"
 msgid "press ctrl+space"
 msgstr "Ctrl+Spaceを押す"
 
-msgid "Hold down left mouse button to show photo 100% size."
-msgstr "マウスの左ボタンを長押しすると、表示されている写真が 100% 拡大されます。"
-
 msgid "Scope"
 msgstr "範囲"
 
 msgid "Value"
 msgstr "値"
+
+msgid "Volume 200%"
+msgstr "音量 200%"
 
 msgid "Volume 100%"
 msgstr "音量 100%"
@@ -3113,6 +3070,9 @@ msgstr "再生オプション"
 msgid "Playback"
 msgstr "再生"
 
+msgid "Filter items"
+msgstr "アイテムをフィルター"
+
 msgid "Photo filter"
 msgstr "写真フィルター"
 
@@ -3122,13 +3082,11 @@ msgstr "ビデオフィルター"
 msgid "Audio filter"
 msgstr "オーディオフィルター"
 
-msgid ""
-"All items filtered out.\n"
-"Click to clear filter."
-msgstr "すべてのアイテムがフィルターで除外されました。\nフィルターをクリアするにはクリックしてください。"
+msgid "Show {} filtered out items"
+msgstr "除外された {} 個のアイテムを表示"
 
 msgid "The collection contains {} items created on {}."
-msgstr "コレクションには {} に作成された {} 個のアイテムが含まれています。"
+msgstr "コレクション内のアイテム数: {}（作成日: {}）。"
 
 msgid "Show all tags"
 msgstr "すべてのタグを表示"
@@ -3138,9 +3096,6 @@ msgstr "お気に入りのタグのみ表示"
 
 msgid "Show only favorite tags in the sidebar"
 msgstr "サイドバーにお気に入りのタグのみ表示する"
-
-msgid "Collection"
-msgstr "コレクション"
 
 msgid "Destination"
 msgstr "コピー先"
@@ -3175,9 +3130,6 @@ msgstr "以前にインポート済み"
 msgid "ignore"
 msgstr "無視"
 
-msgid "test"
-msgstr "テスト"
-
 msgid "Click analyze to show items"
 msgstr "「分析」をクリックしてアイテムを表示"
 
@@ -3196,10 +3148,15 @@ msgid_plural "{count} items"
 msgstr[0] "{count}個のアイテム"
 msgstr[1] "{count}個のアイテム"
 
-msgid "Click to rate as 1 star"
-msgid_plural "Click to rate as {count} stars"
-msgstr[0] "クリックして星1つで評価"
-msgstr[1] "クリックして星{count}つで評価"
+msgid "1 item here"
+msgid_plural "{count} items here"
+msgstr[0] "ここに1個のアイテム"
+msgstr[1] "ここに{count}個のアイテム"
+
+msgid "Set rating to 1 star"
+msgid_plural "Set rating to {count} stars"
+msgstr[0] "評価を星1つに設定"
+msgstr[1] "評価を星{count}つに設定"
 
 msgid "Cannot process {first-name}."
 msgid_plural "Cannot process {first-name} and {other} other items."
@@ -3241,7 +3198,7 @@ msgid_plural "{count} items were ignored."
 msgstr[0] "{first-name} は無視されました。"
 msgstr[1] "{count} 個のアイテムは無視されました。"
 
-msgid "{first-name} was ignored because it exist already in the destination location."
+msgid "{first-name} was ignored because it exists already in the destination location."
 msgid_plural "{count} items were ignored because they exist already in the destination location."
 msgstr[0] "{first-name} はコピー先に既に存在するため無視されました。"
 msgstr[1] "{count} 個のアイテムはコピー先に既に存在するため無視されました。"
@@ -3251,10 +3208,29 @@ msgid_plural "{count} items were ignored because they were previously imported."
 msgstr[0] "{first-name} は以前にインポートされたため無視されました。"
 msgstr[1] "{count} 個のアイテムは以前にインポートされたため無視されました。"
 
-msgid "{first-name} will be moved to the recycle bin."
-msgid_plural "{count} items ({size}) will be moved to the recycle bin."
-msgstr[0] "{first-name} はごみ箱に移動されます。"
-msgstr[1] "{count} 個のアイテム ({size}) はごみ箱に移動されます。"
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "1 個のアイテムをインポートしましたが、作成日を設定できませんでした。"
+msgstr[1] "{count} 個のアイテムをインポートしましたが、作成日を設定できませんでした。"
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} は、Windows でリサイクルできる場合、ごみ箱に移動されます。"
+msgstr[1] "{count} 個の項目 ({size}) は、Windows でリサイクルできる場合、ごみ箱に移動されます。"
+
+msgid "{first-name} will be permanently deleted."
+msgid_plural "{count} items ({size}) will be permanently deleted."
+msgstr[0] "{first-name} は完全に削除されます。"
+msgstr[1] "{count} 個のアイテム ({size}) は完全に削除されます。"
+
+msgid "You are about to delete {count} item."
+msgid_plural "You are about to delete {count} items."
+msgstr[0] "{count} 個のアイテムを削除しようとしています。"
+msgstr[1] "{count} 個のアイテムを削除しようとしています。"
+
+msgid "These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin."
+msgstr "これらのアイテムはネットワークパス上にあります。完全に削除され、ごみ箱から復元することはできません。"
 
 msgid "{first-name} will be copied."
 msgid_plural "{count} items ({size}) will be copied."
@@ -3291,20 +3267,15 @@ msgid_plural "{count} items will have the date adjusted."
 msgstr[0] "{first-name} の日付が調整されます。"
 msgstr[1] "{count} 個のアイテムの日付が調整されます。"
 
-msgid "{first-name} will be shared."
-msgid_plural "{count} items will be shared."
-msgstr[0] "{first-name} が共有されます。"
-msgstr[1] "{count} 個のアイテムが共有されます。"
+msgid "A desktop email draft will be opened with {first-name} attached."
+msgid_plural "A desktop email draft will be opened with {count} selected items attached."
+msgstr[0] "{first-name} を添付した下書きがデスクトップのメールクライアントで開きます。"
+msgstr[1] "選択した {count} 個のアイテムを添付した下書きがデスクトップのメールクライアントで開きます。"
 
-msgid "{first-name} will be copied or moved."
-msgid_plural "{count} items ({size}) will be copied or moved."
-msgstr[0] "{first-name} はコピーまたは移動されます。"
-msgstr[1] "{count} 個のアイテム ({size}) はコピーまたは移動されます。"
-
-msgid "{first-name} will be sent using your desktop email client."
-msgid_plural "{count} items will be sent using your desktop email client."
-msgstr[0] "{first-name} はデスクトップのメールクライアントを使用して送信されます。"
-msgstr[1] "{count} 個のアイテムはデスクトップのメールクライアントを使用して送信されます。"
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name} を選んだアプリに渡します。"
+msgstr[1] "選択した {count} 個のアイテムを選んだアプリに渡します。"
 
 msgid "{first-name} already exists. Do you want to replace it?"
 msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
@@ -3315,4 +3286,537 @@ msgid "{first-name} will have existing GPS position metadata overwritten."
 msgid_plural "{first-name} and {other} other items will have existing GPS position metadata overwritten."
 msgstr[0] "{first-name} の既存のGPS位置メタデータは上書きされます。"
 msgstr[1] "{first-name} と他の {other} 個のアイテムの既存のGPS位置メタデータは上書きされます。"
+
+msgid "Choose a valid new starting date and time."
+msgstr "有効な新しい開始日時を選択してください。"
+
+msgid "Windows could not stage the selected items for disc burning."
+msgstr "選択したアイテムをディスク書き込み用に準備できませんでした。"
+
+msgid "The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc."
+msgstr "選択したアイテムはWindowsのディスク書き込み機能で準備されます。ディスクへの書き込みはWindowsの案内に従ってください。"
+
+msgid "&Stage files"
+msgstr "ファイルを書き込み用に準備(&S)"
+
+msgid "Email draft was canceled."
+msgstr "メールの下書き作成がキャンセルされました。"
+
+msgid "Maximum dimension must be at least 1 pixel."
+msgstr "最大寸法は1ピクセル以上にしてください。"
+
+msgid "Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged."
+msgstr "更新するメタデータフィールドを1つ以上選択してください。チェックした空のフィールドは既存の値を消去し、チェックしていないフィールドは変更しません。"
+
+msgid "{first-name} was canceled."
+msgid_plural "{count} items were canceled."
+msgstr[0] "{first-name} の処理がキャンセルされました。"
+msgstr[1] "{count} 個のアイテムの処理がキャンセルされました。"
+
+msgid "{first-name} will be staged for disc burning."
+msgid_plural "{count} selected items ({size}) will be staged for disc burning."
+msgstr[0] "{first-name} をディスク書き込み用に準備します。"
+msgstr[1] "選択した {count} 個のアイテム（{size}）をディスク書き込み用に準備します。"
+
+msgid "Detect and straighten a photographed document"
+msgstr "撮影した文書を検出して傾きを補正"
+
+msgid "Failed to Initialize Direct3d"
+msgstr "Direct3Dを初期化できませんでした"
+
+msgid "Navigator"
+msgstr "ナビゲーター"
+
+msgid "Flip comparison panes"
+msgstr "比較ペインを入れ替え"
+
+msgid "Auto-hide"
+msgstr "自動的に隠す"
+
+msgid "Off"
+msgstr "オフ"
+
+msgid "Slideshow"
+msgstr "スライドショー"
+
+
+msgid "Altitude"
+msgstr "高度"
+
+msgid "GPS speed"
+msgstr "GPS 速度"
+
+msgid "In flight"
+msgstr "飛行中"
+
+msgid "{} m"
+msgstr "{} m"
+
+msgid "{} m underwater"
+msgstr "水深 {} m"
+
+msgid "Cancel was pressed after {}"
+msgstr "{} 後にキャンセルが押されました"
+
+msgid "Apply tags"
+msgstr "タグを適用"
+
+msgid "Item"
+msgstr "項目"
+
+msgid "Tags after run"
+msgstr "実行後のタグ"
+
+msgid "Enter one or more tags to add or remove."
+msgstr "追加または削除するタグを 1 つ以上入力してください。"
+
+msgid "no change"
+msgstr "変更なし"
+
+msgid "Select items to tag"
+msgstr "タグを付ける項目を選択してください"
+
+msgid "Cancel operation"
+msgstr "操作をキャンセル"
+
+msgid "{} is still running. Cancel it and close?"
+msgstr "{} はまだ実行中です。キャンセルして閉じますか?"
+
+msgid "Keep running"
+msgstr "実行を続ける"
+
+msgid "Location unavailable"
+msgstr "場所を利用できません"
+
+msgid "{} could not be opened. It may be disconnected, renamed or removed."
+msgstr "{} を開けませんでした。切断、名前変更、または削除された可能性があります。"
+
+msgid "Try again"
+msgstr "再試行"
+
+msgid "Go to the parent folder"
+msgstr "親フォルダーへ移動"
+
+msgid "{} is still running. Close it before browsing somewhere else."
+msgstr "{} はまだ実行中です。他の場所を参照する前に閉じてください。"
+
+msgid "If the destination already exists:"
+msgstr "コピー先が既に存在する場合:"
+
+msgid "Replace"
+msgstr "置き換える"
+
+msgid "Skip"
+msgstr "スキップ"
+
+msgid "Auto-rename"
+msgstr "自動的に名前を変更"
+
+msgid "Block run"
+msgstr "実行をブロック"
+
+msgid "File exists"
+msgstr "ファイルが存在します"
+
+msgid "Choose a destination folder."
+msgstr "保存先フォルダーを選択してください。"
+
+msgid "Enter a maximum dimension in pixels."
+msgstr "最大サイズをピクセル単位で入力してください。"
+
+msgid "Check one or more fields to change."
+msgstr "変更するフィールドを 1 つ以上選択してください。"
+
+msgid "Select items before using this tool"
+msgstr "このツールを使う前に項目を選択してください"
+
+msgid "Success"
+msgstr "成功"
+
+msgid "Failed"
+msgstr "失敗"
+
+msgid "Skipped"
+msgstr "スキップ"
+
+msgid "Not run"
+msgstr "未実行"
+
+msgid "These are the results of a finished run. Refresh to plan again with the current settings."
+msgstr "これは完了した実行の結果です。現在の設定で再度計画するには更新してください。"
+
+msgid "{} destinations already exist. Choose Replace, Skip or Auto-rename."
+msgstr "{} 件のコピー先が既に存在します。置き換える、スキップ、自動的に名前を変更のいずれかを選んでください。"
+
+msgid "{} items will be skipped because the destination exists."
+msgstr "コピー先が存在するため {} 件の項目がスキップされます。"
+
+msgid "{} existing destinations will be replaced."
+msgstr "既存のコピー先 {} 件が置き換えられます。"
+
+msgid "{} items will be given a new name to avoid a collision."
+msgstr "衝突を避けるため {} 件の項目に新しい名前が付けられます。"
+
+msgid "Distance: {}"
+msgstr "距離: {}"
+
+msgid "Change how far from this place to search"
+msgstr "この場所からどれくらいの範囲を検索するかを変更します"
+
+msgid "N,NE,E,SE,S,SW,W,NW"
+msgstr "北,北東,東,南東,南,南西,西,北西"
+
+msgid "{} {} of {}"
+msgstr "{} {}（{}）"
+
+msgid "Near {}"
+msgstr "{}付近"
+
+msgid "Remote area"
+msgstr "人里離れた場所"
+
+msgid "Nothing within {} of {}."
+msgstr "{}以内に該当なし（{}）。"
+
+msgid "Nothing found at {}."
+msgstr "{}には該当なし。"
+
+msgid "Widen to {}"
+msgstr "{}に広げる"
+
+msgid "Search all places named {}"
+msgstr "{}という名前の場所をすべて検索"
+
+msgid "Show items with no location"
+msgstr "位置情報のない項目を表示"
+
+msgid "Search within {} of {}"
+msgstr "{}以内を検索（{}）"
+
+msgid "High altitude"
+msgstr "高高度"
+
+msgid "Timeline"
+msgstr "タイムライン"
+
+msgid "Places"
+msgstr "場所"
+
+msgid "{} items"
+msgstr "{} 項目"
+
+msgid "Grouped by {}"
+msgstr "{} でグループ化"
+
+msgid "Grouped by {} - {}"
+msgstr "{} - {} でグループ化"
+
+msgid "Clear"
+msgstr "クリア"
+
+msgid "From {} to {}"
+msgstr "{} から {} まで"
+
+msgid "Plays or pauses video and audio. Stops a running slideshow."
+msgstr "ビデオとオーディオを再生または一時停止します。実行中のスライドショーを停止します。"
+
+msgid "Replaces Reject"
+msgstr "拒否を置き換えます"
+
+msgid "Click to apply"
+msgstr "クリックして適用"
+
+msgid "Click to clear"
+msgstr "クリックしてクリア"
+
+msgid "Replaces the current label: {}"
+msgstr "現在のラベルを置き換えます: {}"
+
+msgid "Replaces the star rating"
+msgstr "星評価を置き換えます"
+
+msgid "When the last item has played, start again from the first"
+msgstr "最後の項目を再生したら、最初から再開します"
+
+msgid "Stop after the last item"
+msgstr "最後の項目で停止"
+
+msgid "Play or pause the displayed video or audio file."
+msgstr "表示中のビデオまたはオーディオ ファイルを再生または一時停止します。"
+
+msgid "Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end."
+msgstr "表示中の項目を順に再生します。写真はスライドショーの表示間隔だけ表示され、ビデオとオーディオは最後まで再生されます。"
+
+msgid "Continue with the next item"
+msgstr "次の項目に進む"
+
+msgid "When an item finishes, continue with the next photo, video or audio item"
+msgstr "項目が終了したら、次の写真、ビデオ、またはオーディオ項目に進みます"
+
+msgid "Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them."
+msgstr "Diffractor は {} ファイルに評価やラベルなどのメタデータを書き込めません。サイドカーアイテムも作成しません。"
+
+msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
+msgstr "複数のジャンルを指定するにはセミコロンで区切ります。例: Rock; Blues"
+
+msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
+msgstr "編集する写真を 1 枚選択してください。ビデオ、オーディオ、フォルダー、および Diffractor が保存できない形式には対応していません。"
+
+msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
+msgstr "オフ: ウィンドウより小さい写真やビデオは実際のサイズで表示されます。オン: ウィンドウに合わせて拡大されます。ウィンドウより大きいメディアは常に縮小して表示されます。"
+
+msgid "Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder."
+msgstr "選択した写真を別の形式に変換し、必要に応じてサイズを制限します。元のファイルは保持され、新しいファイルは保存先フォルダーに書き込まれます。"
+
+msgid "Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched."
+msgstr "選択したすべての項目に同じメタデータ値を書き込みます。チェックしたフィールドのみが変更され、画像と動画のデータはそのまま保持されます。"
+
+msgid "Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched."
+msgstr "選択した項目の日付をずらし、最も古い項目が新しい日時から始まるようにします。変更されるのはメタデータのみで、画像と動画のデータはそのまま保持されます。"
+
+msgid "Add or remove tags across the selected items. Tags you do not mention are left in place."
+msgstr "選択した項目にタグを追加または削除します。指定しなかったタグはそのまま残ります。"
+
+msgid "Convert"
+msgstr "変換"
+
+msgid "Update metadata"
+msgstr "メタデータを更新"
+
+msgid "No removable drive was found."
+msgstr "リムーバブル ドライブが見つかりませんでした。"
+
+msgid "Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run."
+msgstr "日付、アルバム、アーティストなどのメタデータから作成したフォルダー構造にファイルをコピーまたは移動します。移動先がコレクション内にある場合、コピーは自動的にコレクションに加わります。実行前にまず解析してすべての操作を確認してください。"
+
+msgid "Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run."
+msgstr "テキスト、連番、メタデータのプロパティを組み合わせられるテンプレートを使って、選択したファイルの名前を変更します。実行する前に下の新しい名前を確認してください。"
+
+msgid "Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run."
+msgstr "ローカル フォルダーをリモートまたはバックアップ フォルダーと同期します。実行する前に、まず分析してすべてのコピーと削除を確認してください。"
+
+msgid "home"
+msgstr "Home"
+
+msgid "end"
+msgstr "End"
+
+msgid "-"
+msgstr "-"
+
+msgid "Grouping"
+msgstr "グループ化"
+
+msgid "Move to the first or last item. Pans a zoomed image to the left or right edge."
+msgstr "最初または最後の項目に移動します。拡大表示中の画像を左端または右端まで移動します。"
+
+msgid "Move up or down a row of items. Pans a zoomed image."
+msgstr "項目を 1 行上または下へ移動します。拡大表示中の画像を移動します。"
+
+msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
+msgstr "表示中の画像を拡大または縮小します。0 キーでウィンドウに合わせます。"
+
+msgid "Add folders to your collection (Ctrl+F6)"
+msgstr "コレクションにフォルダーを追加 (Ctrl+F6)"
+
+msgid "Select at least one search criterion."
+msgstr "検索条件を 1 つ以上選択してください。"
+
+msgid "Could not check for updates. Check your internet connection and try again."
+msgstr "更新を確認できませんでした。インターネット接続を確認して、もう一度お試しください。"
+
+msgid "Diagnostics information could not be sent. Check your internet connection and try again."
+msgstr "診断情報を送信できませんでした。インターネット接続を確認して、もう一度お試しください。"
+
+msgid "Too large to display"
+msgstr "大きすぎて表示できません"
+
+msgid "This image could not be displayed"
+msgstr "この画像は表示できませんでした"
+
+msgid "Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places."
+msgstr "コレクション内でこのアイテムに最も関連するアイテムを表示します: 複製の可能性があるもの、次に同じアルバム、同じシリーズ、最も近い撮影日時、最も近い撮影場所。"
+
+msgid "This item and possible copies"
+msgstr "このアイテムと複製の可能性があるもの"
+
+msgid "Same album"
+msgstr "同じアルバム"
+
+msgid "Same series"
+msgstr "同じシリーズ"
+
+msgid "Taken at the same time"
+msgstr "同じ時間に撮影"
+
+msgid "Taken in the same place"
+msgstr "同じ場所で撮影"
+
+msgid "Recovered from a startup problem"
+msgstr "起動時の問題から復帰しました"
+
+msgid "Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options."
+msgstr "Diffractor は起動を完了する前に予期せず終了したため、今回はハードウェアアクセラレーションを無効にした既定のレイアウトで実行しています。ファイル、コレクション、最近使用した項目は変更されていません。設定はオプションから復元できます。"
+
+msgid "Original//date"
+msgstr "元の日時"
+
+msgid "Group by Date Original"
+msgstr "元の日時でグループ化"
+
+msgid "Sort by Date original"
+msgstr "元の日時で並べ替え"
+
+msgid "Movie mixer"
+msgstr "ムービー ミキサー"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "選択した写真と動画を 1 本の動画にまとめます。下のストリップでクリップを追加、削除、並べ替えでき、選択したクリップをトリミングできます。プレビューはレンダリング結果と同じです。レンダリングまたは保存するまで何も書き込まれません。"
+
+msgid "Movie"
+msgstr "ムービー"
+
+msgid "Selected clip"
+msgstr "選択したクリップ"
+
+msgid "Crossfade between clips"
+msgstr "クリップ間をクロスフェード"
+
+msgid "Cut between clips"
+msgstr "クリップ間をカット"
+
+msgid "Transition (tenths of a second)"
+msgstr "トランジション (10 分の 1 秒)"
+
+msgid "Fade (tenths of a second)"
+msgstr "フェード (10 分の 1 秒)"
+
+msgid "Fade in from black"
+msgstr "黒からフェードイン"
+
+msgid "Fade out to black"
+msgstr "黒へフェードアウト"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "写真の表示時間 (10 分の 1 秒)"
+
+msgid "This photo (tenths of a second)"
+msgstr "この写真 (10 分の 1 秒)"
+
+msgid "Use the movie default"
+msgstr "ムービーの既定値を使う"
+
+msgid "Add photos and videos to build a movie."
+msgstr "写真と動画を追加してムービーを作成します。"
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "出力は {} x {}、{} fps、長さ {} です。"
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - クリップ {}/{}、開始位置 {}。"
+
+msgid "Movie project"
+msgstr "ムービー プロジェクト"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows ムービー メーカー プロジェクト"
+
+msgid "Photos and videos"
+msgstr "写真と動画"
+
+msgid "Could not read the project {}."
+msgstr "プロジェクト {} を読み込めませんでした。"
+
+msgid "Could not save the project {}."
+msgstr "プロジェクト {} を保存できませんでした。"
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "選択した写真と動画を 1 本の動画にまとめます。"
+
+msgid "Add files"
+msgstr "ファイルを追加"
+
+msgid "Remove from movie"
+msgstr "ムービーから削除"
+
+msgid "Send to the end"
+msgstr "最後に移動"
+
+msgid "Open project"
+msgstr "プロジェクトを開く"
+
+msgid "Save project"
+msgstr "プロジェクトを保存"
+
+msgid "Import Movie Maker project"
+msgstr "ムービー メーカー プロジェクトをインポート"
+
+msgid "Video"
+msgstr "動画"
+
+msgid "Rendering the movie"
+msgstr "ムービーをレンダリングしています"
+
+msgid "The movie could not be rendered. {}"
+msgstr "ムービーをレンダリングできませんでした。{}"
+
+msgid "The movie has no length."
+msgstr "ムービーの長さがありません。"
+
+msgid "The encoder would not accept this movie."
+msgstr "エンコーダーがこのムービーを受け付けませんでした。"
+
+msgid "There was not enough memory for a movie frame."
+msgstr "ムービーのフレームに使うメモリが足りませんでした。"
+
+msgid "A clip could not be decoded."
+msgstr "クリップをデコードできませんでした。"
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "ムービーが完成する前にエンコーダーが停止しました。"
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "その名前はこのムービー内のクリップで使われています。別の名前を選んでください。"
+
+msgid "Rendered {}."
+msgstr "{} をレンダリングしました。"
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "レンダリングはキャンセルされました。何も書き込まれていません。"
+
+msgid "No missing clip was found in that folder."
+msgstr "そのフォルダーに見つからないクリップはありませんでした。"
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "このムービーにはプロジェクト ファイルにない変更があります。Diffractor の実行中は保持されますが、Diffractor を閉じると破棄されます。"
+
+msgid "Close without saving"
+msgstr "保存せずに閉じる"
+
+msgid "Render"
+msgstr "レンダリング"
+
+msgid "Write the movie to a video file."
+msgstr "ムービーを動画ファイルに書き出します。"
+
+msgid "Relink missing files"
+msgstr "見つからないファイルを再リンク"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "ソース ファイルが移動したクリップを、選んだフォルダーに向け直します。"
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "インポートしたプロジェクトの 1 個の要素は、ムービーで表現できないため除外されました。"
+msgstr[1] "インポートしたプロジェクトの {count} 個の要素は、ムービーで表現できないため除外されました。"
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 個のクリップがソース ファイルを見つけられません。"
+msgstr[1] "{count} 個のクリップがソース ファイルを見つけられません。"
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 個のクリップを再リンクしました。"
+msgstr[1] "{count} 個のクリップを再リンクしました。"
 

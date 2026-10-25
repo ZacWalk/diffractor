@@ -1,3 +1,4 @@
 location-countries.txt filter=lfs diff=lfs merge=lfs -text
 location-places.txt filter=lfs diff=lfs merge=lfs -text
 location-states.txt filter=lfs diff=lfs merge=lfs -text
+languages/*.po whitespace=cr-at-eol

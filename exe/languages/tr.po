@@ -1,0 +1,3822 @@
+msgid "Fit"
+msgstr "Sığdır"
+
+msgid "Zoom in"
+msgstr "Yakınlaştır"
+
+msgid "Zoom out"
+msgstr "Uzaklaştır"
+
+msgid "Zoom"
+msgstr "Yakınlaştırma"
+
+msgid "Fit Width"
+msgstr "Genişliğe sığdır"
+
+msgid "Fill"
+msgstr "Doldur"
+
+msgid "100% (1:1)"
+msgstr "%100 (1:1)"
+
+msgid "Audio: {}"
+msgstr "Ses: {}"
+
+msgid "Audio track {}"
+msgstr "Ses parçası {}"
+
+msgid "Audio tracks"
+msgstr "Ses parçaları"
+
+msgid "Audio output"
+msgstr "Ses çıkışı"
+
+msgid "commentary"
+msgstr "yorum"
+
+msgid "audio description"
+msgstr "sesli betimleme"
+
+# Diffractor translation
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: 2026-07-20\n"
+"Last-Translator: \n"
+"Language-Team: Turkish\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: GitHub Copilot\n"
+
+msgid "Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything."
+msgstr "Diffractor fotoğraflarınızı, videolarınızı ve müziğinizi bulundukları yerde düzenler. Koleksiyonunuzu oluşturan klasörleri siz seçersiniz; bunların dizine eklenmesi, hiçbir şeyi taşımadan veya kopyalamadan hızlı arama, yinelenen kopya algılama ve meta veri düzenleme sağlar."
+
+msgid "Diagnostics information was sent to Diffractor HQ."
+msgstr "Tanılama bilgileri Diffractor HQ'ya gönderildi."
+
+msgid "Releases - Diffractor"
+msgstr "Sürümler - Diffractor"
+
+msgid "Workflow Tags"
+msgstr "İş Akışı Etiketleri"
+
+msgid "Configure favorite tags."
+msgstr "Favori etiketleri yapılandır."
+
+msgid "Add folder"
+msgstr "Klasör ekle"
+
+msgid "Capture metadata and the Windows file created time will be shifted to start at a new local date and time."
+msgstr "Çekim meta verileri ve Windows dosya oluşturma zamanı, yeni bir yerel başlangıç tarihi ve saatine kaydırılacak."
+
+msgid "Time gaps between dated items are preserved. Items without a known date receive the new starting date."
+msgstr "Tarihli öğeler arasındaki zaman aralıkları korunur. Tarihi bilinmeyen öğelere yeni başlangıç tarihi atanır."
+
+msgid "This is useful if your camera date was set wrongly and you need to fix photo and video dates."
+msgstr "Bu, kamera tarihiniz yanlış ayarlanmışsa ve fotoğraf ve video tarihlerini düzeltmeniz gerekiyorsa kullanışlıdır."
+
+msgid "After"
+msgstr "Sonra"
+
+msgid "Album Artist"
+msgstr "Albüm Sanatçısı"
+
+msgid "Analyzing..."
+msgstr "Analiz ediliyor..."
+
+msgid "archive"
+msgstr "arşiv"
+
+msgid "archives"
+msgstr "arşivler"
+
+msgid "audio"
+msgstr "ses"
+
+msgid "Audio"
+msgstr "Ses"
+
+msgid "Before"
+msgstr "Önce"
+
+msgid "Brightness"
+msgstr "Parlaklık"
+
+msgid "Burn"
+msgstr "Diske yaz"
+
+msgid "Analyze"
+msgstr "Analiz et"
+
+msgid "&Analyze"
+msgstr "&Analiz et"
+
+msgid "&Cancel"
+msgstr "&İptal"
+
+msgid "Change..."
+msgstr "Değiştir..."
+
+msgid "&Close"
+msgstr "&Kapat"
+
+msgid "&Convert"
+msgstr "&Dönüştür"
+
+msgid "&Delete"
+msgstr "&Sil"
+
+msgid "&Don't Save"
+msgstr "&Kaydetme"
+
+msgid "&OK"
+msgstr "&OK"
+
+msgid "&Rotate"
+msgstr "&Döndür"
+
+msgid "&Save"
+msgstr "&Kaydet"
+
+msgid "As &JPEG"
+msgstr "&JPEG olarak"
+
+msgid "&Send"
+msgstr "&Gönder"
+
+msgid "&Synchronize"
+msgstr "&Senkronize et"
+
+msgid "&Tag"
+msgstr "&Etiket"
+
+msgid "&Update"
+msgstr "&Güncelle"
+
+msgid "Donate"
+msgstr "Bağış yap"
+
+msgid "Diffractor can be used for free. If you find it useful, please help the project by donating."
+msgstr "Diffractor ücretsiz olarak kullanılabilir. Yararlı buluyorsanız lütfen bağış yaparak projeye yardımcı olun."
+
+msgid "Donate online."
+msgstr "Çevrimiçi bağış yapın."
+
+
+msgid "Changes"
+msgstr "Değişiklikler"
+
+msgid "The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location."
+msgstr "Haritanın ortasındaki artı işareti, yazılacak konumu gösterir. Haritayı sürükleyin, bir fotoğraf balonuna tıklayarak artı işaretinin altına getirin veya bir yeri adına göre arayın. Yakınlaştırmak için fare tekerleğini kullanın. Konum ekle düğmesine basana kadar hiçbir şey yazılmaz."
+
+msgid "The collection contains {} {} ({})."
+msgstr "Koleksiyon {} {} ({}) içeriyor."
+
+msgid "The collection contains:"
+msgstr "Koleksiyon şunları içerir:"
+
+msgid "Items created {} {}"
+msgstr "Oluşturulan öğeler {} {}"
+
+msgid "Items modified {} {}"
+msgstr "Değiştirilen öğeler {} {}"
+
+msgid "Opens created items.\nCtrl+click opens modified items."
+msgstr "Oluşturulan öğeleri açar.\nCtrl+tıklama değiştirilen öğeleri açar."
+
+msgid "{} items close to {} in the collection."
+msgstr "Koleksiyonda {} yakınında {} öğe."
+
+msgid "{} items close to {}"
+msgstr "{} öğe: {} yakınında"
+
+msgid "filter"
+msgstr "filtre"
+
+msgid "Close"
+msgstr "Kapat"
+
+msgid "Collection options"
+msgstr "Koleksiyon seçenekleri"
+
+msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
+msgstr "Bir girdiyi hariç tutmak için başına '-' ekleyin. -c:\\photos\\secret gibi tam bir yol tek bir klasörü hariç tutar. -secret gibi bir ad veya -proxy* gibi bir joker karakter, koleksiyonunuzdaki eşleşen klasörleri nerede olurlarsa olsunlar hariç tutar."
+
+msgid "Other folders"
+msgstr "Diğer klasörler"
+
+msgid "Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."
+msgstr "Klasörler sürücüler, klasörler, ağ paylaşımları veya cihaz etiketleri olabilir. Etiketler, eşlenen sürücü harflerinin değişebileceği çıkarılabilir veya ağ aygıtları için kullanışlıdır."
+
+msgid "Choose the folders that make up your collection. Your files stay where they are."
+msgstr "Koleksiyonunuzu oluşturan klasörleri seçin. Dosyalarınız bulundukları yerde kalır."
+
+msgid "Collection folders"
+msgstr "Koleksiyon klasörleri"
+
+msgid "One folder per line."
+msgstr "Her satıra bir klasör."
+
+msgid "More information about collection management."
+msgstr "Koleksiyon yönetimi hakkında daha fazla bilgi."
+
+msgid "More information about metadata templates."
+msgstr "Meta veri şablonları hakkında daha fazla bilgi."
+
+msgid "Videos"
+msgstr "Videolar"
+
+msgid "Your collection"
+msgstr "Koleksiyonunuz"
+
+msgid "Color"
+msgstr "Renk"
+
+msgid "Adjust date and time"
+msgstr "Tarih ve saati ayarlayın"
+
+msgid "Advanced Search"
+msgstr "Gelişmiş Arama"
+
+msgid "Exit"
+msgstr "Çıkış"
+
+msgid "Back"
+msgstr "Geri"
+
+msgid "Forward"
+msgstr "İleri"
+
+msgid "Next folder or search"
+msgstr "Sonraki klasör veya arama"
+
+msgid "Next item group"
+msgstr "Sonraki öğe grubu"
+
+msgid "Select next item"
+msgstr "Sonraki öğeyi seç"
+
+msgid "Extend selection to next item"
+msgstr "Seçimi sonraki öğeye genişlet"
+
+msgid "Parent"
+msgstr "Üst klasör"
+
+msgid "Previous folder or search"
+msgstr "Önceki klasör veya arama"
+
+msgid "Previous item group"
+msgstr "Önceki öğe grubu"
+
+msgid "Select previous item"
+msgstr "Önceki öğeyi seç"
+
+msgid "Extend selection to previous item"
+msgstr "Seçimi önceki öğeye genişlet"
+
+msgid "Burn to disk"
+msgstr "Diske yaz"
+
+msgid "Save current video frame"
+msgstr "Geçerli video karesini kaydet"
+
+msgid "Reset color changes"
+msgstr "Renk değişikliklerini sıfırla"
+
+msgid "Convert or Resize"
+msgstr "Dönüştür veya Yeniden Boyutlandır"
+
+msgid "Copy to folder"
+msgstr "Klasöre kopyala"
+
+msgid "Customise sidebar"
+msgstr "Kenar çubuğunu özelleştirin"
+
+msgid "Delete"
+msgstr "Sil"
+
+msgid "Desktop background"
+msgstr "Masaüstü arka planı"
+
+msgid "Display options"
+msgstr "Görüntüleme seçenekleri"
+
+msgid "Edit"
+msgstr "Düzenle"
+
+msgid "Copy"
+msgstr "Kopyala"
+
+msgid "Cut"
+msgstr "Kes"
+
+msgid "Edit metadata"
+msgstr "Meta verileri düzenle"
+
+msgid "Paste"
+msgstr "Yapıştır"
+
+msgid "Eject"
+msgstr "Çıkar"
+
+msgid "Favorite"
+msgstr "Favori"
+
+msgid "Open properties"
+msgstr "Özellikleri aç"
+
+msgid "Search"
+msgstr "Ara"
+
+msgid "Show items in subfolders"
+msgstr "Alt klasörlerdeki öğeleri göster"
+
+msgid "Fullscreen"
+msgstr "Tam ekran"
+
+msgid "Group by Album/Show"
+msgstr "Albüme/Gösteriye göre grupla"
+
+msgid "Group by Camera"
+msgstr "Kameraya göre gruplandır"
+
+msgid "Group by Date Created"
+msgstr "Oluşturulma Tarihine Göre Gruplandır"
+
+msgid "Group by Extension"
+msgstr "Uzantıya göre gruplandır"
+
+msgid "Group by File type"
+msgstr "Dosya türüne göre gruplandır"
+
+msgid "Group by Location"
+msgstr "Konuma Göre Gruplandır"
+
+msgid "Group by Date Modified"
+msgstr "Değiştirilme Tarihine Göre Gruplandır"
+
+msgid "Group by Aspect ratio"
+msgstr "En-boy oranına göre gruplandır"
+
+msgid "Aspect ratio"
+msgstr "En-boy oranı"
+
+msgid "No aspect ratio"
+msgstr "En-boy oranı yok"
+
+msgid "Other landscape"
+msgstr "Diğer yatay"
+
+msgid "Other portrait"
+msgstr "Diğer dikey"
+
+msgid "Group by Resolution"
+msgstr "Çözünürlüğe Göre Gruplandır"
+
+msgid "Group by Collection presence"
+msgstr "Koleksiyon varlığına göre gruplandır"
+
+msgid "Group by Rating/Label"
+msgstr "Derecelendirmeye/Etikete Göre Gruplandır"
+
+msgid "Show items in random order"
+msgstr "Öğeleri rastgele sırayla göster"
+
+msgid "Group by Size"
+msgstr "Boyuta Göre Gruplandır"
+
+msgid "Group by Folder"
+msgstr "Klasöre Göre Grupla"
+
+msgid "Highlight large items in yellow"
+msgstr "Büyük öğeleri sarı renkle vurgulayın"
+
+msgid "Import"
+msgstr "İçe aktar"
+
+msgid "Keyboard reference"
+msgstr "Klavye referansı"
+
+msgid "Approved"
+msgstr "Onaylandı"
+
+msgid "No Label"
+msgstr "Etiket Yok"
+
+msgid "Review"
+msgstr "İncele"
+
+msgid "Second"
+msgstr "İkinci"
+
+msgid "Select"
+msgstr "Seç"
+
+msgid "To Do"
+msgstr "Yapılacaklar"
+
+msgid "Language"
+msgstr "Dil"
+
+msgid "Add location"
+msgstr "Konum ekle"
+
+msgid "Maximize"
+msgstr "Büyüt"
+
+msgid "Group or Sort"
+msgstr "Gruplandırın veya Sıralayın"
+
+msgid "Minimize"
+msgstr "Küçült"
+
+msgid "Move to folder"
+msgstr "Klasöre taşı"
+
+msgid "Show sidebar"
+msgstr "Kenar çubuğunu göster"
+
+msgid "Navigate"
+msgstr "Gezin"
+
+msgid "New Folder"
+msgstr "Yeni Klasör"
+
+msgid "New version available"
+msgstr "Yeni sürüm mevcut"
+
+msgid "Check for updates"
+msgstr "Güncellemeleri kontrol edin"
+
+msgid "Install now"
+msgstr "Şimdi yükle"
+
+msgid "Checking for updates..."
+msgstr "Güncellemeler kontrol ediliyor..."
+
+msgid "You are using the latest version ({})."
+msgstr "En son sürümü ({}) kullanıyorsunuz."
+
+msgid "Open"
+msgstr "Aç"
+
+msgid "Open in google maps"
+msgstr "Google haritalarda aç"
+
+msgid "Open with"
+msgstr "Şununla aç"
+
+msgid "General options"
+msgstr "Genel seçenekler"
+
+msgid "Pin or hold item"
+msgstr "Öğeyi sabitleyin veya tutun"
+
+msgid "Play/Pause"
+msgstr "Oynat/Duraklat"
+
+msgid "Print"
+msgstr "Yazdır"
+
+msgid "Rate"
+msgstr "Derecelendir"
+
+msgid "Remove rating"
+msgstr "Derecelendirmeyi kaldır"
+
+msgid "Rate as 1 star"
+msgstr "1 yıldız olarak değerlendir"
+
+msgid "Rate as 2 stars"
+msgstr "2 yıldız olarak değerlendir"
+
+msgid "Rate as 3 stars"
+msgstr "3 yıldız olarak değerlendir"
+
+msgid "Rate as 4 stars"
+msgstr "4 yıldız olarak değerlendir"
+
+msgid "Rate as 5 stars"
+msgstr "5 yıldız olarak değerlendir"
+
+msgid "Reject"
+msgstr "Reddet"
+
+msgid "Refresh"
+msgstr "Yenile"
+
+msgid "Related items"
+msgstr "İlgili öğeler"
+
+msgid "Rename"
+msgstr "Yeniden adlandır"
+
+msgid "Rename files"
+msgstr "Dosyaları yeniden adlandırın"
+
+msgid "Toggle repeat play"
+msgstr "Tekrar oynatmayı aç/kapat"
+
+msgid "Restore"
+msgstr "Geri yükle"
+
+msgid "Rotate anticlockwise"
+msgstr "Saat yönünün tersine döndür"
+
+msgid "Rotate clockwise"
+msgstr "Saat yönünde döndür"
+
+msgid "Confirm single-item rotations"
+msgstr "Tek öğe döndürmeyi onayla"
+
+msgid "Reset rotation"
+msgstr "Döndürmeyi sıfırla"
+
+msgid "Save"
+msgstr "Kaydet"
+
+msgid "Add location and open previous"
+msgstr "Konum ekle ve öncekini aç"
+
+msgid "Add location and open next"
+msgstr "Konum ekle ve sonrakini aç"
+
+msgid "Save and open previous"
+msgstr "Kaydet ve öncekini aç"
+
+msgid "Save the current item and open the previous item."
+msgstr "Geçerli öğeyi kaydedin ve önceki öğeyi açın."
+
+msgid "Save and open next"
+msgstr "Kaydet ve sonrakini aç"
+
+msgid "Save the current item and open the next item."
+msgstr "Geçerli öğeyi kaydedin ve sonraki öğeyi açın."
+
+msgid "Save as"
+msgstr "Farklı kaydet"
+
+msgid "Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save."
+msgstr "Bir fotoğrafın kırpmasını, döndürmesini, perspektifini ve rengini ayarlayın. Siz kaydedene kadar diske hiçbir şey yazılmaz."
+
+msgid "Scale up items"
+msgstr "Öğeleri ölçeklendir"
+
+msgid "Scan"
+msgstr "Tara"
+
+msgid "Select all"
+msgstr "Tümünü seç"
+
+msgid "Invert selection"
+msgstr "Seçimi tersine çevir"
+
+msgid "Select none"
+msgstr "Seçimi kaldır"
+
+msgid "Email"
+msgstr "E-posta"
+
+msgid "Show in file browser"
+msgstr "Dosya tarayıcısında göster"
+
+msgid "Open containing folder"
+msgstr "İçeren klasörü aç"
+
+msgid "Sort by Date modified"
+msgstr "Değiştirilme tarihine göre sırala"
+
+msgid "Sort by Date created"
+msgstr "Oluşturulma tarihine göre sırala"
+
+msgid "Show oldest items first"
+msgstr "Önce en eski öğeleri göster"
+
+msgid "Show newest items first"
+msgstr "Önce en yeni öğeleri göster"
+
+msgid "Sort by Group order (Default)"
+msgstr "Grup sırasına göre sırala (varsayılan)"
+
+msgid "Sort by Name"
+msgstr "Ada Göre Sırala"
+
+msgid "Sort by Size"
+msgstr "Boyuta Göre Sırala"
+
+msgid "Synchronize"
+msgstr "Senkronize et"
+
+msgid "Toggle thumbnails or details"
+msgstr "Küçük resimleri veya ayrıntıları değiştir"
+
+msgid "Toggle item grouping"
+msgstr "Öğe gruplamasını değiştir"
+
+msgid "Toggle thumbnail size"
+msgstr "Küçük resim boyutunu değiştir"
+
+msgid "Change thumbnail size"
+msgstr "Küçük resim boyutunu ayarla"
+
+msgid "Back to the top of the list"
+msgstr "Listenin başına dön"
+
+msgid "Tools"
+msgstr "Araçlar"
+
+msgid "About Diffractor"
+msgstr "Diffractor hakkında"
+
+msgid "Show items"
+msgstr "Öğeleri göster"
+
+msgid "Large font"
+msgstr "Büyük yazı tipi"
+
+msgid "Menu"
+msgstr "Menü"
+
+msgid "Rate or Label"
+msgstr "Derecelendir veya Etiketle"
+
+msgid "Select Items"
+msgstr "Öğeleri Seçin"
+
+msgid "Sort"
+msgstr "Sırala"
+
+msgid "Toggle volume"
+msgstr "Ses seviyesini değiştir"
+
+msgid "Zoom mode"
+msgstr "Yakınlaştırma modu"
+
+msgid "Compare"
+msgstr "Karşılaştır"
+
+msgid "Hold down left mouse button to compare items."
+msgstr "Öğeleri karşılaştırmak için farenin sol düğmesini basılı tutun."
+
+msgid "Contrast"
+msgstr "Kontrast"
+
+msgid "Open link {}"
+msgstr "{} bağlantısını aç"
+
+msgid "Choose a link to open"
+msgstr "Açılacak bir bağlantı seçin"
+
+msgid "Duplicate"
+msgstr "Kopya"
+
+msgid "Copy to clipboard"
+msgstr "Panoya kopyala"
+
+msgid "to"
+msgstr "için"
+
+msgid "Creator"
+msgstr "Yaratıcı"
+
+msgid "Credit"
+msgstr "Atıf"
+
+msgid "Notice"
+msgstr "Bildirim"
+
+msgid "File"
+msgstr "Dosya"
+
+msgid "Source"
+msgstr "Kaynak"
+
+msgid "Copyright"
+msgstr "Telif hakkı"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Count"
+msgstr "Sayım"
+
+msgid "Favorite Searches"
+msgstr "Favori Aramalar"
+
+msgid "Sidebar"
+msgstr "Kenar çubuğu"
+
+msgid "Define what items are shown in the sidebar."
+msgstr "Kenar çubuğunda hangi öğelerin gösterileceğini tanımlayın."
+
+msgid "Add a list of your favorite tags here to save time when tagging."
+msgstr "Etiketleme sırasında zaman kazanmak için favori etiketlerinizin bir listesini buraya ekleyin."
+
+msgid "Favorite Tags"
+msgstr "Favori Etiketler"
+
+msgid "Show labels"
+msgstr "Renk etiketlerini göster"
+
+msgid "Show ratings"
+msgstr "Derecelendirmeleri göster"
+
+msgid "Show drives"
+msgstr "Sürücüleri göster"
+
+msgid "Show history chart"
+msgstr "Geçmiş grafiğini göster"
+
+msgid "Earliest year the history navigator offers. Empty works it out from your photos."
+msgstr "Geçmiş gezgininin sunduğu en eski yıl. Boş bırakılırsa fotoğraflarınızdan hesaplanır."
+
+msgid "Shows the eight years ending here."
+msgstr "Burada biten sekiz yılı gösterir."
+
+msgid "Show favorite searches"
+msgstr "Favori aramaları göster"
+
+msgid "Show tags"
+msgstr "Etiketleri göster"
+
+msgid "Show total items pie chart"
+msgstr "Toplam öğe pasta grafiğini göster"
+
+msgid "Show world map"
+msgstr "Dünya haritasını göster"
+
+msgid "Darks"
+msgstr "Koyu tonlar"
+
+msgid "data"
+msgstr "veri"
+
+msgid "File created:"
+msgstr "Dosya oluşturuldu:"
+
+msgid "File modified:"
+msgstr "Dosya değiştirildi:"
+
+msgid "Metadata created:"
+msgstr "Meta veriler oluşturuldu:"
+
+msgid "Dates"
+msgstr "Tarihler"
+
+msgid "family food friends landscape nature night portrait selfie todo travel urban viewed"
+msgstr "aile yemek arkadaşlar manzara doğa gece portre selfie yapılacaklar seyahat kentsel izlendi"
+
+msgid "Defragment database."
+msgstr "Veritabanını birleştir."
+
+msgid "Defragmenting..."
+msgstr "Birleştiriliyor..."
+
+msgid "Failed to Delete Selected File."
+msgstr "Seçilen Dosya Silinemedi."
+
+msgid "Delete {}"
+msgstr "{}'ı sil"
+
+msgid "Set the desktop background to the current image."
+msgstr "Masaüstü arka planını geçerli görüntüye ayarlayın."
+
+msgid "Destination folder:"
+msgstr "Hedef klasör:"
+
+msgid "Capacity"
+msgstr "Kapasite"
+
+msgid "Free//disk"
+msgstr "Boş"
+
+msgid "Label"
+msgstr "Etiket"
+
+msgid "System"
+msgstr "Sistem"
+
+msgid "Used"
+msgstr "Kullanılmış"
+
+msgid "Documentation"
+msgstr "Dokümantasyon"
+
+msgid "Duplicates"
+msgstr "Kopyalar"
+
+msgid "Matching or possible copy items in the collection."
+msgstr "Koleksiyondaki eşleşen veya olası kopya öğeler."
+
+msgid "Editing"
+msgstr "Düzenleme"
+
+msgid "Close without ejecting"
+msgstr "Çıkarmadan kapat"
+
+msgid "Failed to eject {}."
+msgstr "{} çıkarılamadı."
+
+msgid "To avoid losing data, eject an external hard drive or USB drive before removing it."
+msgstr "Veri kaybını önlemek için harici sabit sürücüyü veya USB sürücüyü çıkarmadan önce çıkarın."
+
+msgid "Eject {}"
+msgstr "{}'ı çıkar"
+
+msgid "Connecting to MAPI..."
+msgstr "MAPI'ye bağlanılıyor..."
+
+msgid "Convert all photos to JPEG"
+msgstr "Tüm fotoğrafları JPEG biçimine dönüştür"
+
+msgid "Failed to send email using MAPI."
+msgstr "MAPI kullanılarak e-posta gönderilemedi."
+
+msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
+msgstr "Fotoğrafları maksimum boyutla (piksel cinsinden) sınırlayın. Yalnızca JPEG ve PNG dosyaları için desteklenir."
+
+msgid "Processing {}"
+msgstr "{} işleniyor"
+
+msgid "Sending email using MAPI..."
+msgstr "MAPI kullanılarak e-posta gönderiliyor..."
+
+msgid "Create a draft in your desktop email client with the selected files attached. Originals are unchanged."
+msgstr "Seçili dosyaların eklendiği bir taslağı masaüstü e-posta istemcinizde oluşturun. Orijinaller değiştirilmez."
+
+msgid "Zip files in the email"
+msgstr "E-postadaki dosyaları ziple"
+
+msgid "Empty"
+msgstr "Boş"
+
+msgid "Ending {}"
+msgstr "{} bitiyor"
+
+msgid "Security options denied access to the source."
+msgstr "Güvenlik seçenekleri kaynağa erişimi reddetti."
+
+msgid "Diffractor has a serious problem and cannot continue."
+msgstr "Diffractor'ın ciddi bir sorunu var ve devam edemiyor."
+
+msgid "Could not connect to scanner"
+msgstr "Tarayıcıya bağlanılamadı"
+
+msgid "The destination file '{}' cannot be opened or created."
+msgstr "'{}' hedef dosyası açılamıyor veya oluşturulamıyor."
+
+msgid "The destination folder '{}' cannot be opened or created."
+msgstr "'{}' hedef klasörü açılamıyor veya oluşturulamıyor."
+
+msgid "Diffractor cannot be started. The main window could not be created."
+msgstr "Diffractor başlatılamıyor. Ana pencere oluşturulamadı."
+
+msgid "The destination is a writable CD-ROM, possibly unformatted."
+msgstr "Hedef, muhtemelen biçimlendirilmemiş, yazılabilir bir CD-ROM'dir."
+
+msgid "The destination is a read-only CD-ROM, possibly unformatted."
+msgstr "Hedef salt okunur bir CD-ROM, muhtemelen biçimlendirilmemiş."
+
+msgid "The destination is a read-only DVD, possibly unformatted."
+msgstr "Hedef salt okunur bir DVD, muhtemelen biçimlendirilmemiş."
+
+msgid "The source and destination have the same parent folder."
+msgstr "Kaynak ve hedef aynı ana klasöre sahiptir."
+
+msgid "The destination is a subtree of the source."
+msgstr "Hedef, kaynağın bir alt ağacıdır."
+
+msgid "Rename operation was specified but the destination path is a different directory. Use the move operation instead."
+msgstr "Yeniden adlandırma işlemi belirtildi ancak hedef yol farklı bir dizin. Bunun yerine taşıma işlemini kullanın."
+
+msgid "Destination is a root directory and cannot be renamed."
+msgstr "Hedef bir kök dizindir ve yeniden adlandırılamaz."
+
+msgid "The destination path is an existing folder."
+msgstr "Hedef yol mevcut bir klasördür."
+
+msgid "The file involved in the operation is too large for the destination media or file system."
+msgstr "İşlemde yer alan dosya, hedef medya veya dosya sistemi için çok büyük."
+
+msgid "The name of the file exceeds MAX_PATH."
+msgstr "Dosyanın adı MAX_PATH değerini aşıyor."
+
+msgid "The destination path is an existing file."
+msgstr "Hedef yol mevcut bir dosyadır."
+
+msgid "Index database failed."
+msgstr "Dizin veritabanı başarısız oldu."
+
+msgid "The path in the source or destination or both was invalid."
+msgstr "Kaynak veya hedefteki veya her ikisindeki yol geçersizdi."
+
+msgid "The file name you have chosen '{}' is invalid."
+msgstr "Seçtiğiniz '{}' dosya adı geçersiz."
+
+msgid "File names cannot contain the following characters:"
+msgstr "Dosya adları aşağıdaki karakterleri içeremez:"
+
+msgid "The operation involved multiple destination paths, which can fail in the case of a move operation."
+msgstr "İşlem, taşıma işlemi durumunda başarısız olabilecek birden fazla hedef yolu içeriyordu."
+
+msgid "Multiple file paths were specified in the source buffer, but only one destination file path."
+msgstr "Kaynak arabelleğinde birden fazla dosya yolu belirtildi, ancak yalnızca bir hedef dosya yolu belirtildi."
+
+msgid "MAX_PATH was exceeded during the operation."
+msgstr "İşlem sırasında MAX_PATH aşıldı."
+
+msgid "OleInitialize Failed"
+msgstr "OleInitialize Başarısız"
+
+msgid "An unspecified error occurred on the destination."
+msgstr "Hedefte belirtilmeyen bir hata oluştu."
+
+msgid "The operation was canceled."
+msgstr "İşlem iptal edildi."
+
+msgid "The analysis was canceled."
+msgstr "Analiz iptal edildi."
+
+msgid "Cancel"
+msgstr "İptal"
+
+msgid "The source or destination path exceeded or would exceed MAX_PATH."
+msgstr "Kaynak veya hedef yol MAX_PATH'i aştı veya aşacak."
+
+msgid "Failed to rename."
+msgstr "Yeniden adlandırılamadı."
+
+msgid "The source and destination files are the same file."
+msgstr "Kaynak ve hedef dosyalar aynı dosyadır."
+
+msgid "Failed to save image."
+msgstr "Resim kaydedilemedi."
+
+msgid "Scanner reported an error"
+msgstr "Tarayıcı bir hata bildirdi"
+
+msgid "The source is a writable CD-ROM, possibly unformatted."
+msgstr "Kaynak, muhtemelen biçimlendirilmemiş, yazılabilir bir CD-ROM'dir."
+
+msgid "The source is a read-only CD-ROM, possibly unformatted."
+msgstr "Kaynak salt okunur bir CD-ROM, muhtemelen biçimlendirilmemiş."
+
+msgid "The source is a read-only DVD, possibly unformatted."
+msgstr "Kaynak salt okunur bir DVD, muhtemelen biçimlendirilmemiş."
+
+msgid "The source is a root directory, which cannot be moved or renamed."
+msgstr "Kaynak, taşınamayan veya yeniden adlandırılamayan bir kök dizindir."
+
+msgid "Diffractor requires a processor with sse2."
+msgstr "Diffractor sse2'ye sahip bir işlemci gerektirir."
+
+msgid "An unknown error occurred."
+msgstr "Bilinmeyen bir hata oluştu."
+
+msgid "Diffractor requires Windows 7 or newer."
+msgstr "Diffractor, Windows 7 veya daha yenisini gerektirir."
+
+msgid "Failed to register windows common control classes."
+msgstr "Windows ortak kontrol sınıfları kaydedilemedi."
+
+msgid "Failed to initialize Winsock"
+msgstr "Winsock başlatılamadı"
+
+msgid "EXIF"
+msgstr "EXIF"
+
+msgid "Failed to create folder: {}"
+msgstr "Klasör oluşturulamadı: {}"
+
+msgid "Add '{}' to favorites."
+msgstr "'{}' öğesini favorilere ekleyin."
+
+msgid "Failed to add. Maximum number of favorites reached."
+msgstr "Eklenemedi. Maksimum favori sayısına ulaşıldı."
+
+msgid "Remove '{}' from favorite folders or searches."
+msgstr "'{}' öğesini favori klasörlerden veya aramalardan kaldırın."
+
+msgid "Favorite title"
+msgstr "Favori başlık"
+
+msgid "Favorites are listed in the sidebar for quick access."
+msgstr "Hızlı erişim için favoriler kenar çubuğunda listelenir."
+
+msgid "These items are in your collection."
+msgstr "Bu öğeler koleksiyonunuzda."
+
+msgid "These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them."
+msgstr "Bu öğeler koleksiyonunuzun dışında olduğundan arama ve yinelenen kopya algılama bunları kapsamaz. Dahil etmek için bu klasörü koleksiyonunuza ekleyin."
+
+msgid "Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied."
+msgstr "Koleksiyonunuz, alt klasörleri dahil olmak üzere seçtiğiniz klasörlerdir. Diffractor bunları dizine ekler; böylece arama, yinelenen kopya algılama ve toplamlar hepsini birden kapsar. Klasör eklemek veya kaldırmak yalnızca Diffractor'ın bildiklerini değiştirir. Hiçbir dosya taşınmaz veya kopyalanmaz."
+
+msgid "folder"
+msgstr "klasör"
+
+msgid "folders"
+msgstr "klasörler"
+
+msgid "Folder"
+msgstr "Klasör"
+
+msgid "videos"
+msgstr "videolar"
+
+msgid "A capella"
+msgstr "A capella"
+
+msgid "Abstract"
+msgstr "Soyut"
+
+msgid "Acid"
+msgstr "Acid"
+
+msgid "Acid Jazz"
+msgstr "Acid Jazz"
+
+msgid "Acid Punk"
+msgstr "Acid Punk"
+
+msgid "Acoustic"
+msgstr "Akustik"
+
+msgid "Action"
+msgstr "Eylem"
+
+msgid "Action & Adventure"
+msgstr "Aksiyon ve Macera"
+
+msgid "Aerial"
+msgstr "Havadan"
+
+msgid "Alternative"
+msgstr "Alternatif"
+
+msgid "AlternRock"
+msgstr "Alternatif Rock"
+
+msgid "Ambient"
+msgstr "Ambient"
+
+msgid "Analog"
+msgstr "Analog"
+
+msgid "Animation"
+msgstr "Animasyon"
+
+msgid "Anime"
+msgstr "Anime"
+
+msgid "Architectural"
+msgstr "Mimari"
+
+msgid "Avantgarde"
+msgstr "Avangart"
+
+msgid "Aviation"
+msgstr "Havacılık"
+
+msgid "Ballad"
+msgstr "Balad"
+
+msgid "Bass"
+msgstr "Bas"
+
+msgid "Bebob"
+msgstr "Bebob"
+
+msgid "Big Band"
+msgstr "Big Band"
+
+msgid "Bluegrass"
+msgstr "Bluegrass"
+
+msgid "Blues"
+msgstr "Blues"
+
+msgid "Booty Bass"
+msgstr "Booty Bass"
+
+msgid "Brazilian"
+msgstr "Brezilya"
+
+msgid "Cabaret"
+msgstr "Kabare"
+
+msgid "Candid"
+msgstr "Doğal"
+
+msgid "Celtic"
+msgstr "Kelt"
+
+msgid "Chamber Music"
+msgstr "Oda Müziği"
+
+msgid "Chanson"
+msgstr "Chanson"
+
+msgid "Children's"
+msgstr "Çocuk"
+
+msgid "Chorus"
+msgstr "Koro"
+
+msgid "Christian & Gospel"
+msgstr "Hıristiyan ve Gospel"
+
+msgid "Christian Rap"
+msgstr "Hıristiyan Rap'i"
+
+msgid "Classic"
+msgstr "Klasik"
+
+msgid "Classic Rock"
+msgstr "Klasik Rock"
+
+msgid "Classical"
+msgstr "Klasik"
+
+msgid "Close-up"
+msgstr "Yakın çekim"
+
+msgid "Cloudscape"
+msgstr "Bulut Manzarası"
+
+msgid "Club"
+msgstr "Kulüp"
+
+msgid "Comedy"
+msgstr "Komedi"
+
+msgid "Conceptual"
+msgstr "Kavramsal"
+
+msgid "Concert"
+msgstr "Konser"
+
+msgid "Concert Films"
+msgstr "Konser Filmleri"
+
+msgid "Conservation"
+msgstr "Koruma"
+
+msgid "Country//genre"
+msgstr "Country"
+
+msgid "Cult"
+msgstr "Kült"
+
+msgid "Dance"
+msgstr "Dans"
+
+msgid "Dance Hall"
+msgstr "Dans Salonu"
+
+msgid "Darkwave"
+msgstr "Darkwave"
+
+msgid "Death Metal"
+msgstr "Death Metal"
+
+msgid "Disco"
+msgstr "Disko"
+
+msgid "Documentary"
+msgstr "Belgesel"
+
+msgid "Drama"
+msgstr "Dram"
+
+msgid "Dream"
+msgstr "Rüya"
+
+msgid "Drum Solo"
+msgstr "Davul Solo"
+
+msgid "Duet"
+msgstr "Düet"
+
+msgid "Easy Listening"
+msgstr "Kolay Dinleme"
+
+msgid "Electronic"
+msgstr "Elektronik"
+
+msgid "Ethnic"
+msgstr "Etnik"
+
+msgid "Eurodance"
+msgstr "Eurodance"
+
+msgid "Euro-House"
+msgstr "Euro-House"
+
+msgid "Euro-Techno"
+msgstr "Euro-Techno"
+
+msgid "Family"
+msgstr "Aile"
+
+msgid "Fashion"
+msgstr "Moda"
+
+msgid "Fast Fusion"
+msgstr "Fast Fusion"
+
+msgid "Film still"
+msgstr "Film karesi"
+
+msgid "Fine-art"
+msgstr "Güzel sanatlar"
+
+msgid "Fire"
+msgstr "Ateş"
+
+msgid "Fireworks"
+msgstr "Havai fişek"
+
+msgid "Fitness & Workout"
+msgstr "Fitness ve Egzersiz"
+
+msgid "Folk"
+msgstr "Halk"
+
+msgid "Folk-Rock"
+msgstr "Folk-Rock"
+
+msgid "Folklore"
+msgstr "Folklor"
+
+msgid "Food"
+msgstr "Gıda"
+
+msgid "Foreign"
+msgstr "Yabancı"
+
+msgid "Forensic"
+msgstr "Adli tıp"
+
+msgid "Freestyle"
+msgstr "Serbest Stil"
+
+msgid "Funk"
+msgstr "Funk"
+
+msgid "Fusion"
+msgstr "Fusion"
+
+msgid "Game//genre"
+msgstr "Oyun"
+
+msgid "Gangsta"
+msgstr "Gangsta"
+
+msgid "Geo-photography"
+msgstr "Jeo-fotoğraf"
+
+msgid "Glamour"
+msgstr "Glamour"
+
+msgid "Gospel"
+msgstr "Gospel"
+
+msgid "Gothic"
+msgstr "Gotik"
+
+msgid "Gothic Rock"
+msgstr "Gotik Rock"
+
+msgid "Grunge"
+msgstr "Grunge"
+
+msgid "Hard Rock"
+msgstr "Hard Rock"
+
+msgid "High-speed"
+msgstr "Yüksek hızlı"
+
+msgid "High key"
+msgstr "High key"
+
+msgid "Hip-Hop"
+msgstr "Hip-Hop"
+
+msgid "Hip-Hop/Rap"
+msgstr "Hip-Hop/Rap"
+
+msgid "Holiday"
+msgstr "Tatil"
+
+msgid "Horror"
+msgstr "Korku"
+
+msgid "House"
+msgstr "House"
+
+msgid "Humour"
+msgstr "Mizah"
+
+msgid "Independent"
+msgstr "Bağımsız"
+
+msgid "Industrial"
+msgstr "Endüstriyel"
+
+msgid "Instrumental"
+msgstr "Enstrümantal"
+
+msgid "Instrumental Pop"
+msgstr "Enstrümantal Pop"
+
+msgid "Instrumental Rock"
+msgstr "Enstrümantal Rock"
+
+msgid "Jazz"
+msgstr "Caz"
+
+msgid "Jazz + Funk"
+msgstr "Caz + Funk"
+
+msgid "Jungle"
+msgstr "Jungle"
+
+msgid "Kids"
+msgstr "Çocuklar"
+
+msgid "Kids & Family"
+msgstr "Çocuklar ve Aile"
+
+msgid "Kirlian"
+msgstr "Kirlian"
+
+msgid "Landscape"
+msgstr "Manzara"
+
+msgid "Latin"
+msgstr "Latin"
+
+msgid "Lifestyle"
+msgstr "Yaşam Tarzı"
+
+msgid "Lo-fi"
+msgstr "Lo fi"
+
+msgid "Lomography"
+msgstr "Lomografi"
+
+msgid "Long-exposure"
+msgstr "Uzun pozlama"
+
+msgid "Low key"
+msgstr "Low key"
+
+msgid "Macro"
+msgstr "Makro"
+
+msgid "Medical"
+msgstr "Tıbbi"
+
+msgid "Meditative"
+msgstr "Meditatif"
+
+msgid "Metal"
+msgstr "Metal"
+
+msgid "Monochrome"
+msgstr "Tek renkli"
+
+msgid "Music Documentaries"
+msgstr "Müzik Belgeselleri"
+
+msgid "Music Feature Films"
+msgstr "Müzikli Uzun Metraj Filmler"
+
+msgid "Musical"
+msgstr "Müzikal"
+
+msgid "Musicals"
+msgstr "Müzikaller"
+
+msgid "Narrative"
+msgstr "Anlatı"
+
+msgid "National Folk"
+msgstr "Ulusal Halk"
+
+msgid "Native American"
+msgstr "Kızılderili"
+
+msgid "New Age"
+msgstr "New Age"
+
+msgid "New Wave"
+msgstr "Yeni Dalga"
+
+msgid "Night"
+msgstr "Gece"
+
+msgid "Noise"
+msgstr "Gürültü"
+
+msgid "Nonfiction"
+msgstr "Kurgusal olmayan"
+
+msgid "Oldies"
+msgstr "Eskiler"
+
+msgid "Opera"
+msgstr "Opera"
+
+msgid "Other"
+msgstr "Diğer"
+
+msgid "Panorama"
+msgstr "Panorama"
+
+msgid "Panoramic"
+msgstr "Panoramik"
+
+msgid "Film Noir"
+msgstr "Film Noir"
+
+msgid "Photo op"
+msgstr "Fotoğraf çekimi"
+
+msgid "Photobiography"
+msgstr "Fotobiyografi"
+
+msgid "Photojournalism"
+msgstr "Foto muhabirliği"
+
+msgid "Photowalking"
+msgstr "Fotoğraf yürüyüşü"
+
+msgid "Podcast"
+msgstr "Podcast"
+
+msgid "Polaroid"
+msgstr "Polaroid"
+
+msgid "Polka"
+msgstr "Polka"
+
+msgid "Pop"
+msgstr "Pop"
+
+msgid "Pop-Folk"
+msgstr "Pop-Folk"
+
+msgid "Pop/Funk"
+msgstr "Pop/Funk"
+
+msgid "Porn Groove"
+msgstr "Porn Groove"
+
+msgid "Portrait"
+msgstr "Portre"
+
+msgid "Power Ballad"
+msgstr "Power Ballad"
+
+msgid "Pranks"
+msgstr "Şakalar"
+
+msgid "Primus"
+msgstr "Primus"
+
+msgid "Progressive Rock"
+msgstr "Progresif Rock"
+
+msgid "Psychadelic"
+msgstr "Psikedelik"
+
+msgid "Psychedelic Rock"
+msgstr "Psikedelik Rock"
+
+msgid "Punk"
+msgstr "Punk"
+
+msgid "Punk Rock"
+msgstr "Punk Rock"
+
+msgid "R&B"
+msgstr "R&B"
+
+msgid "Rap"
+msgstr "Rap"
+
+msgid "Rave"
+msgstr "Rave"
+
+msgid "Reality TV"
+msgstr "Realite TV"
+
+msgid "Reggae"
+msgstr "Reggae"
+
+msgid "Retro"
+msgstr "Retro"
+
+msgid "Revival"
+msgstr "Canlanma"
+
+msgid "Rhythmic Soul"
+msgstr "Ritmik Soul"
+
+msgid "Rock"
+msgstr "Rock"
+
+msgid "Rock & Roll"
+msgstr "Rock'n Roll"
+
+msgid "Romance"
+msgstr "Romantik"
+
+msgid "Samba"
+msgstr "Samba"
+
+msgid "Satellite"
+msgstr "Uydu"
+
+msgid "Satire"
+msgstr "Hiciv"
+
+msgid "Sci-Fi & Fantasy"
+msgstr "Bilim Kurgu ve Fantazi"
+
+msgid "Short Films"
+msgstr "Kısa Filmler"
+
+msgid "Show tunes"
+msgstr "Show tunes"
+
+msgid "Singer/Songwriter"
+msgstr "Şarkıcı/Söz Yazarı"
+
+msgid "Ska"
+msgstr "Ska"
+
+msgid "Slow Jam"
+msgstr "Slow Jam"
+
+msgid "Slow Rock"
+msgstr "Yavaş Rock"
+
+msgid "Social"
+msgstr "Sosyal"
+
+msgid "Soft focus"
+msgstr "Yumuşak odaklama"
+
+msgid "Sonata"
+msgstr "Sonat"
+
+msgid "Soul"
+msgstr "Soul"
+
+msgid "Sound Clip"
+msgstr "Ses Klibi"
+
+msgid "Soundtrack"
+msgstr "Film müziği"
+
+msgid "Southern Rock"
+msgstr "Southern Rock"
+
+msgid "Space"
+msgstr "Uzay"
+
+msgid "Special Interest"
+msgstr "Özel İlgi"
+
+msgid "Speech"
+msgstr "Konuşma"
+
+msgid "Sports"
+msgstr "Spor"
+
+msgid "Star trail"
+msgstr "Yıldız izi"
+
+msgid "Still life"
+msgstr "Natürmort"
+
+msgid "Stock"
+msgstr "Stok"
+
+msgid "Street"
+msgstr "Sokak"
+
+msgid "Subminiature"
+msgstr "Subminyatür"
+
+msgid "Swing"
+msgstr "Swing"
+
+msgid "Symphonic Rock"
+msgstr "Senfonik Rock"
+
+msgid "Symphony"
+msgstr "Senfoni"
+
+msgid "Tango"
+msgstr "Tango"
+
+msgid "Techno"
+msgstr "Tekno"
+
+msgid "Techno-Industrial"
+msgstr "Tekno-Endüstriyel"
+
+msgid "Teens"
+msgstr "Gençler"
+
+msgid "Thriller"
+msgstr "Gerilim"
+
+msgid "Time-lapse"
+msgstr "Hızlandırılmış"
+
+msgid "Top 40"
+msgstr "İlk 40"
+
+msgid "Trailer"
+msgstr "Fragman"
+
+msgid "Trance"
+msgstr "Trans"
+
+msgid "Travel"
+msgstr "Seyahat"
+
+msgid "Tribal"
+msgstr "Kabile"
+
+msgid "Trip-Hop"
+msgstr "Trip Hop"
+
+msgid "Ultraviolet"
+msgstr "Ultraviyole"
+
+msgid "Underwater"
+msgstr "Sualtı"
+
+msgid "Unknown"
+msgstr "Bilinmiyor"
+
+msgid "Urban"
+msgstr "Kentsel"
+
+msgid "Vernacular"
+msgstr "Yerel fotoğrafçılık"
+
+msgid "Vintage"
+msgstr "Vintage"
+
+msgid "Vocal"
+msgstr "Vokal"
+
+msgid "War"
+msgstr "Savaş"
+
+msgid "Western"
+msgstr "Western"
+
+msgid "World"
+msgstr "Dünya"
+
+msgid "Group and sort items"
+msgstr "Öğeleri gruplama ve sıralama"
+
+msgid "Items"
+msgstr "Öğeler"
+
+msgid "No album or show"
+msgstr "Albüm veya gösteri yok"
+
+msgid "No camera"
+msgstr "Kamera yok"
+
+msgid "No extension"
+msgstr "Uzantı yok"
+
+msgid "No location"
+msgstr "Konum yok"
+
+msgid "No resolution"
+msgstr "Çözünürlük yok"
+
+msgid "No rating"
+msgstr "Derecelendirme yok"
+
+msgid "No value"
+msgstr "Değer yok"
+
+msgid "random"
+msgstr "rastgele"
+
+msgid "{} to {}"
+msgstr "{} - {}"
+
+msgid "Today"
+msgstr "Bugün"
+
+msgid "Yesterday"
+msgstr "Dün"
+
+msgid "{} has modifications"
+msgstr "{}'da değişiklikler var"
+
+msgid "Separate each artist with a comma ',' or slash '/'"
+msgstr "Her sanatçıyı virgül ',' veya eğik çizgi '/' ile ayırın"
+
+msgid "Help or more information"
+msgstr "Yardım veya daha fazla bilgi"
+
+msgid "Send anonymous log information to Diffractor HQ."
+msgstr "Anonim günlük bilgilerini Diffractor HQ adresine gönderin."
+
+msgid "Tags can be removed by prefixing with a minus: -remove"
+msgstr "Etiketler bir eksi öneki eklenerek kaldırılabilir: -remove"
+
+msgid "Separate each tag with a space: Australia holiday camping."
+msgstr "Her etiketi bir boşlukla ayırın: Avustralya tatil kampı."
+
+msgid "Join 2 words together in one tag using quotes: \"national park\"."
+msgstr "2 kelimeyi tırnak işareti kullanarak tek bir etikette birleştirin: \"milli park\"."
+
+msgid "Hide verbose metadata"
+msgstr "Ayrıntılı meta verileri gizle"
+
+msgid "Destination root folder. Structured folders will be created under this folder."
+msgstr "Hedef kök klasörü. Bu klasörün altında yapılandırılmış klasörler oluşturulacaktır."
+
+msgid "Source of import:"
+msgstr "İçe aktarma kaynağı:"
+
+msgid "Ignore previously imported items."
+msgstr "Daha önce içe aktarılan öğeleri yoksay."
+
+msgid "Other folder"
+msgstr "Diğer klasör"
+
+msgid "Destination folder structure:"
+msgstr "Hedef klasör yapısı:"
+
+msgid "Set file date created to metadata date created."
+msgstr "Oluşturulan dosya tarihini, oluşturulan meta veri tarihine ayarlayın."
+
+msgid "Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."
+msgstr "Birleştirme veya temizleme performansı artırabilir. Dizin, medya dosyalarınızdaki meta verilerin bir kopyasını saklar. Orijinal dosyalardan yeniden oluşturulabilir."
+
+msgid "The index is reporting errors. Restarting Diffractor is recommended."
+msgstr "Dizin hatalar bildiriyor. Diffractor'ın yeniden başlatılması önerilir."
+
+msgid "Maintenance"
+msgstr "Bakım"
+
+msgid "Currently the index database is {} in size and contains metadata from {} items."
+msgstr "Şu anda dizin veritabanı {} boyutundadır ve {} öğeden meta veriler içermektedir."
+
+msgid "Indexing"
+msgstr "İndeksleme"
+
+msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
+msgstr "Arama, yinelenen kopyalar ve toplamlar eksiksiz kalsın diye Diffractor koleksiyonunuzu okuyor. Bu sırada göz atmaya devam edebilirsiniz."
+
+msgid "invalid"
+msgstr "geçersiz"
+
+msgid "IPTC"
+msgstr "IPTC"
+
+msgid "'{}' is not a valid folder."
+msgstr "'{}' geçerli bir klasör değil."
+
+msgid "Show items rotated"
+msgstr "Öğeleri döndürülmüş olarak göster"
+
+msgid "This item is shown oriented based on camera information. [{}]"
+msgstr "Bu öğe kamera bilgilerine göre yönlendirilmiş olarak gösterilir. [{}]"
+
+msgid "Files are identical."
+msgstr "Dosyalar aynıdır."
+
+msgid "Files are different."
+msgstr "Dosyalar farklı."
+
+msgid "JPEG - Best compression for photos"
+msgstr "JPEG - Fotoğraflar için en iyi sıkıştırma"
+
+msgid "Keyboard"
+msgstr "Klavye"
+
+msgid "press"
+msgstr "basın"
+
+msgid "alt"
+msgstr "Alt"
+
+msgid "back"
+msgstr "geri"
+
+msgid "backspace"
+msgstr "geri tuşu"
+
+msgid "Basics"
+msgstr "Temel bilgiler"
+
+msgid "browser-back"
+msgstr "tarayıcı geri"
+
+msgid "browser-favorites"
+msgstr "tarayıcı favorileri"
+
+msgid "browser-forward"
+msgstr "tarayıcı ileri"
+
+msgid "browser-home"
+msgstr "tarayıcı ana sayfası"
+
+msgid "browser-refresh"
+msgstr "tarayıcı yenileme"
+
+msgid "browser-search"
+msgstr "tarayıcı araması"
+
+msgid "browser-stop"
+msgstr "tarayıcı durdurma"
+
+msgid "ctrl"
+msgstr "Ctrl"
+
+msgid "Extend the current item selection and allow comparing of items."
+msgstr "Geçerli öğe seçimini genişletin ve öğelerin karşılaştırılmasına izin verin."
+
+msgid "del"
+msgstr "del"
+
+msgid "down"
+msgstr "aşağı"
+
+msgid "enter"
+msgstr "Enter"
+
+msgid "Opens an image full screen."
+msgstr "Bir görüntüyü tam ekran açar."
+
+msgid "escape"
+msgstr "Esc"
+
+msgid "Gets you out of full screen, zoom or other modes."
+msgstr "Sizi tam ekran, yakınlaştırma veya diğer modlardan çıkarır."
+
+msgid "F1"
+msgstr "F1"
+
+msgid "F10"
+msgstr "F10"
+
+msgid "F11"
+msgstr "F11"
+
+msgid "F2"
+msgstr "F2"
+
+msgid "F3"
+msgstr "F3"
+
+msgid "F4"
+msgstr "F4"
+
+msgid "F5"
+msgstr "F5"
+
+msgid "F6"
+msgstr "F6"
+
+msgid "F7"
+msgstr "F7"
+
+msgid "F8"
+msgstr "F8"
+
+msgid "F9"
+msgstr "F9"
+
+msgid "File management"
+msgstr "Dosya yönetimi"
+
+msgid "Help"
+msgstr "Yardım"
+
+msgid "insert"
+msgstr "Insert"
+
+msgid "left"
+msgstr "sol"
+
+msgid "Move to the next or previous item."
+msgstr "Sonraki veya önceki öğeye geçin."
+
+msgid "media-next-track"
+msgstr "medya-sonraki parça"
+
+msgid "media-play-pause"
+msgstr "medya oynatma-duraklatma"
+
+msgid "media-prev-track"
+msgstr "medya-önceki-parça"
+
+msgid "media-stop"
+msgstr "medya durdurma"
+
+msgid "Navigation"
+msgstr "Navigasyon"
+
+msgid "page-down"
+msgstr "sayfa aşağı"
+
+msgid "["
+msgstr "["
+msgid "]"
+msgstr "]"
+
+msgid "+"
+msgstr "+"
+
+msgid "Options"
+msgstr "Seçenekler"
+
+msgid "OR"
+msgstr "OR"
+
+msgid "Media playback"
+msgstr "Medya oynatma"
+
+msgid "page-up"
+msgstr "sayfa yukarı"
+
+msgid "right"
+msgstr "sağ"
+
+msgid "Selection"
+msgstr "Seçim"
+
+msgid "shift"
+msgstr "Shift"
+
+msgid "space"
+msgstr "boşluk"
+
+msgid "tab"
+msgstr "sekme"
+
+msgid "up"
+msgstr "yukarı"
+
+msgid "volume-down"
+msgstr "ses kısma"
+
+msgid "volume-mute"
+msgstr "ses kapatma"
+
+msgid "volume-up"
+msgstr "ses yükseltme"
+
+msgid "km from"
+msgstr "km'den"
+
+msgid "Learn more at Diffractor.com"
+msgstr "Diffractor.com adresinde daha fazla bilgi edinin"
+
+msgid "Lights"
+msgstr "Açık tonlar"
+
+msgid "Limit output to a maximum dimension (in pixels)."
+msgstr "Çıktıyı maksimum boyutla (piksel cinsinden) sınırlayın."
+
+msgid "Lossless compression"
+msgstr "Kayıpsız sıkıştırma"
+
+msgid "List of keyboard accelerators"
+msgstr "Klavye hızlandırıcıların listesi"
+
+msgid "Loading..."
+msgstr "Yükleniyor..."
+
+msgid "No location selected."
+msgstr "Konum seçilmedi."
+
+msgid "Overwrite GPS coordinates when setting a location."
+msgstr "Bir konumu ayarlarken GPS koordinatlarının üzerine yazın."
+
+msgid "Location"
+msgstr "Konum"
+
+msgid "Maximize image"
+msgstr "Resmi büyüt"
+
+msgid "Media"
+msgstr "Medya"
+
+msgid "Add '{}'"
+msgstr "'{}' ekle"
+
+msgid "Move"
+msgstr "Taşı"
+
+msgid "Select All"
+msgstr "Tümünü Seç"
+
+msgid "Undo"
+msgstr "Geri al"
+
+msgid "Metadata"
+msgstr "Meta veriler"
+
+msgid "Midtones"
+msgstr "Orta tonlar"
+
+msgid "April"
+msgstr "Nisan"
+
+msgid "August"
+msgstr "Ağustos"
+
+msgid "December"
+msgstr "Aralık"
+
+msgid "February"
+msgstr "Şubat"
+
+msgid "January"
+msgstr "Ocak"
+
+msgid "July"
+msgstr "Temmuz"
+
+msgid "June"
+msgstr "Haziran"
+
+msgid "March"
+msgstr "Mart"
+
+msgid "May"
+msgstr "Mayıs"
+
+msgid "November"
+msgstr "Kasım"
+
+msgid "October"
+msgstr "Ekim"
+
+msgid "September"
+msgstr "Eylül"
+
+msgid "apr"
+msgstr "Nis"
+
+msgid "aug"
+msgstr "Ağu"
+
+msgid "dec"
+msgstr "Ara"
+
+msgid "feb"
+msgstr "Şub"
+
+msgid "jan"
+msgstr "Oca"
+
+msgid "jul"
+msgstr "Tem"
+
+msgid "jun"
+msgstr "Haz"
+
+msgid "mar"
+msgstr "Mar"
+
+msgid "may"
+msgstr "May"
+
+msgid "nov"
+msgstr "Kas"
+
+msgid "oct"
+msgstr "Eki"
+
+msgid "sep"
+msgstr "Eyl"
+
+msgid "Move source items."
+msgstr "Kaynak öğeleri taşıyın."
+
+msgid "History"
+msgstr "Geçmiş"
+
+msgid "No items are selected"
+msgstr "Hiçbir öğe seçilmedi"
+
+msgid "None"
+msgstr "Yok"
+
+msgid "Cloud items are not supported."
+msgstr "Bulut öğeleri desteklenmez."
+
+msgid "Folders are not supported."
+msgstr "Klasörler desteklenmez."
+
+msgid "Items must be a photo or image."
+msgstr "Öğeler fotoğraf veya resim olmalıdır."
+
+msgid "Readonly items are not supported."
+msgstr "Salt okunur öğeler desteklenmez."
+
+msgid "Cannot update metadata of readonly items."
+msgstr "Salt okunur öğelerin meta verileri güncellenemiyor."
+
+msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
+msgstr "Diffractor yalnızca JPG, WEBP ve PNG görüntü dosyalarını kaydedebilir veya güncelleyebilir."
+
+msgid "Nothing found."
+msgstr "Hiçbir şey bulunamadı."
+
+msgid "Empty Folder"
+msgstr "Boş Klasör"
+
+msgid "Search only covers folders in your collection."
+msgstr "Arama yalnızca koleksiyonunuzdaki klasörleri kapsar."
+
+msgid "of"
+msgstr "arasında"
+
+msgid "Open destination folder afterwards"
+msgstr "Daha sonra hedef klasörü açın"
+
+msgid "Open in file browser"
+msgstr "Dosya tarayıcısında aç"
+
+msgid "Open Properties"
+msgstr "Özellikleri Aç"
+
+msgid "app"
+msgstr "uygulama"
+
+msgid "Open with app or tool"
+msgstr "Uygulama veya araçla aç"
+
+msgid "Failed to open selected items."
+msgstr "Seçilen öğeler açılamadı."
+
+msgid "Open with {}"
+msgstr "{} ile aç"
+
+msgid "tool"
+msgstr "araç"
+
+msgid "Delay before showing the next item (in seconds)"
+msgstr "Sonraki öğenin gösterilmesinden önceki gecikme (saniye cinsinden)"
+
+msgid "Advanced"
+msgstr "Gelişmiş"
+
+msgid "Application options"
+msgstr "Uygulama seçenekleri"
+
+msgid "When overwriting a photo with irreversible changes make an original backup copy"
+msgstr "Geri dönüşü olmayan değişiklikler içeren bir fotoğrafın üzerine yazarken orijinal bir yedek kopya oluşturun"
+
+msgid "Check for updates by connecting to the internet"
+msgstr "İnternete bağlanarak güncellemeleri kontrol edin"
+
+msgid "Confirm when deleting items. Deleted items are moved to the recycle bin."
+msgstr "Öğeleri silerken onaylayın. Silinen öğeler geri dönüşüm kutusuna taşınır."
+
+msgid ""
+"Confirm when rotating one item. Rotating several items is always confirmed."
+msgstr ""
+"Tek bir öğeyi döndürürken onaylayın. Birden fazla öğenin döndürülmesi her "
+"zaman onaylanır."
+
+msgid "JPEG save quality"
+msgstr "JPEG kayıt kalitesi"
+
+msgid "WEBP save quality"
+msgstr "WEBP kayıt kalitesi"
+
+msgid "When saving"
+msgstr "Kaydederken"
+
+msgid "Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics."
+msgstr "Diffractor'ın daha iyi olmasına yardımcı olun. Diffractor kilitlenirse anonim tanılamayı Diffractor HQ adresine gönderin. Hiçbir kişisel veri gönderilmez; yalnızca kilitlenme teşhisi sağlanır."
+
+msgid "Show application debugging information (for the programmers)."
+msgstr "Uygulama hata ayıklama bilgilerini göster (programcılar için)."
+
+msgid "Show hidden files"
+msgstr "Gizli dosyaları göster"
+
+msgid "Show photos rotated based on recorded camera orientation"
+msgstr "Kaydedilen kamera yönüne göre döndürülmüş fotoğrafları göster"
+
+msgid "Updates"
+msgstr "Güncellemeler"
+
+msgid "Use hardware acceleration to draw the Diffractor user interface (requires restart)"
+msgstr "Diffractor kullanıcı arayüzünü çizmek için donanım hızlandırmayı kullanın (yeniden başlatma gerektirir)"
+
+msgid "Use hardware acceleration to decode video (when available)"
+msgstr "Videonun kodunu çözmek için donanım hızlandırmayı kullanın (varsa)"
+
+msgid "Show an inset shadow surrounding the image view panel."
+msgstr "Resim görüntüleme panelini çevreleyen bir iç gölge gösterin."
+
+msgid "Resume playing media from the last position played."
+msgstr "Medyayı oynatılan son konumdan oynatmaya devam edin."
+
+msgid "Show tooltips with help on buttons and links."
+msgstr "Düğmeler ve bağlantılar hakkında yardım içeren araç ipuçlarını gösterin."
+
+msgid "bottom-left"
+msgstr "sol alt"
+
+msgid "bottom-right"
+msgstr "sağ alt"
+
+msgid "left-bottom"
+msgstr "sol alt"
+
+msgid "left-top"
+msgstr "sol üst"
+
+msgid "right-bottom"
+msgstr "sağ alt"
+
+msgid "right-top"
+msgstr "sağ üst"
+
+msgid "top-left"
+msgstr "sol üst"
+
+msgid "top-right"
+msgstr "sağ üst"
+
+msgid "other"
+msgstr "diğer"
+
+msgid "others"
+msgstr "diğerleri"
+
+msgid "pasted"
+msgstr "yapıştırıldı"
+
+msgid "photo"
+msgstr "fotoğraf"
+
+msgid "photos"
+msgstr "fotoğraflar"
+
+msgid "icon"
+msgstr "simge"
+
+msgid "Pixels are identical but files are different."
+msgstr "Pikseller aynıdır ancak dosyalar farklıdır."
+
+msgid "small"
+msgstr "küçük"
+
+msgid "Pixels"
+msgstr "Piksel"
+
+msgid "PNG - Best for non photos"
+msgstr "PNG - Fotoğraf olmayanlar için en iyisi"
+
+msgid "Checking presence..."
+msgstr "Varlık kontrol ediliyor..."
+
+msgid "Possible newer copy in collection"
+msgstr "Koleksiyonda olası daha yeni kopya"
+
+msgid "This item is outside the collection. One or more possible newer copies exist in the collection."
+msgstr "Bu öğe koleksiyonun dışındadır. Koleksiyonda bir veya daha fazla olası yeni kopya mevcut."
+
+msgid "Outside collection; no possible copy identified"
+msgstr "Koleksiyon dışında; olası kopya tanımlanmadı"
+
+msgid "This item is outside the collection. No possible copy was identified in the collection."
+msgstr "Bu öğe koleksiyonun dışındadır. Koleksiyonda olası bir kopya tanımlanmadı."
+
+msgid "Possible older copy in collection"
+msgstr "Koleksiyondaki olası eski kopya"
+
+msgid "This item is outside the collection. One or more possible older copies exist in the collection."
+msgstr "Bu öğe koleksiyonun dışındadır. Koleksiyonda bir veya daha fazla olası eski kopya mevcuttur."
+
+msgid "Possible copy in collection"
+msgstr "Koleksiyonda olası kopya"
+
+msgid "This item is outside the collection. One or more possible copies exist in the collection."
+msgstr "Bu öğe koleksiyonun dışındadır. Koleksiyonda bir veya daha fazla olası kopya mevcuttur."
+
+msgid "In collection"
+msgstr "Koleksiyonda"
+
+msgid "This item is in the collection."
+msgstr "Bu öğe koleksiyonda yer alıyor."
+
+msgid "Presence"
+msgstr "Koleksiyonda bulunma"
+
+msgid "Showing fully rendered RAW photo."
+msgstr "Tamamen işlenmiş RAW fotoğraf gösteriliyor."
+
+msgid "Rendering RAW photo..."
+msgstr "RAW fotoğraf oluşturuluyor..."
+
+msgid "Show RAW preview if available (faster)"
+msgstr "Varsa RAW önizlemesini göster (daha hızlı)"
+
+msgid "Showing a RAW photo preview."
+msgstr "RAW fotoğraf önizlemesi gösteriliyor."
+
+msgid "Processing..."
+msgstr "İşleniyor..."
+
+msgid "Processing files"
+msgstr "Dosyalar işleniyor"
+
+msgid "Focal length 35mm equivalent"
+msgstr "Odak uzaklığı 35 mm eşdeğeri"
+
+msgid "Album"
+msgstr "Albüm"
+
+msgid "Album artist"
+msgstr "Albüm sanatçısı"
+
+msgid "Artist"
+msgstr "Sanatçı"
+
+msgid "Audio codec"
+msgstr "Ses codec'i"
+
+msgid "Bitrate"
+msgstr "Bit hızı"
+
+msgid "Camera"
+msgstr "Kamera"
+
+msgid "Camera manufacturer"
+msgstr "Kamera üreticisi"
+
+msgid "Channels"
+msgstr "Kanallar"
+
+msgid "Comment"
+msgstr "Yorum"
+
+msgid "Composer"
+msgstr "Besteci"
+
+msgid "Copyright creator"
+msgstr "Telif hakkı yaratıcısı"
+
+msgid "Copyright credit"
+msgstr "Telif hakkı atfı"
+
+msgid "Copyright notice"
+msgstr "Telif hakkı bildirimi"
+
+msgid "Copyright source"
+msgstr "Telif hakkı kaynağı"
+
+msgid "Copyright URL"
+msgstr "Telif hakkı URL'si"
+
+msgid "Country//property"
+msgstr "Ülke"
+
+msgid "Created"
+msgstr "Oluşturuldu"
+
+msgid "Created exif"
+msgstr "Exif oluşturuldu"
+
+msgid "Description"
+msgstr "Açıklama"
+
+msgid "Digitized"
+msgstr "Dijitalleştirilmiş"
+
+msgid "Dimensions"
+msgstr "Boyutlar"
+
+msgid "Disk"
+msgstr "Disk"
+
+msgid "Document Id"
+msgstr "Belge Kimliği"
+
+msgid "Duration"
+msgstr "Süre"
+
+msgid "Encoder"
+msgstr "Kodlayıcı"
+
+msgid "Encoding tool"
+msgstr "Kodlama aracı"
+
+msgid "Episode"
+msgstr "Bölüm"
+
+msgid "Exposure"
+msgstr "Pozlama"
+
+msgid "Filename"
+msgstr "Dosya adı"
+
+msgid "FNumber"
+msgstr "F değeri"
+
+msgid "Focal length"
+msgstr "Odak uzaklığı"
+
+msgid "Game//property"
+msgstr "Oyun"
+
+msgid "Genre"
+msgstr "Tür"
+
+msgid "Id"
+msgstr "Kimlik"
+
+msgid "ISO"
+msgstr "ISO"
+
+msgid "Latitude"
+msgstr "Enlem"
+
+msgid "Lens"
+msgstr "Objektif"
+
+msgid "Longitude"
+msgstr "Boylam"
+
+msgid "Media category"
+msgstr "Medya kategorisi"
+
+msgid "Megapixels"
+msgstr "Megapiksel"
+
+msgid "Modified"
+msgstr "Değiştirildi"
+
+msgid "Null"
+msgstr "Boş"
+
+msgid "Orientation"
+msgstr "Yönlendirme"
+
+msgid "Performer"
+msgstr "İcracı"
+
+msgid "Pixel format"
+msgstr "Piksel formatı"
+
+msgid "Place"
+msgstr "Yer"
+
+msgid "Publisher"
+msgstr "Yayıncı"
+
+msgid "Rating"
+msgstr "Derecelendirme"
+
+msgid "Raw file"
+msgstr "RAW dosyası"
+
+msgid "Sample rate"
+msgstr "Örnekleme oranı"
+
+msgid "Sample type"
+msgstr "Örnek türü"
+
+msgid "Season"
+msgstr "Sezon"
+
+msgid "Show"
+msgstr "Program"
+
+msgid "Size"
+msgstr "Boyut"
+
+msgid "State"
+msgstr "Eyalet"
+
+msgid "Streams"
+msgstr "Akışlar"
+
+msgid "Synopsis"
+msgstr "Özet"
+
+msgid "Tag"
+msgstr "Etiket"
+
+msgid "Title"
+msgstr "Başlık"
+
+msgid "Track"
+msgstr "Parça"
+
+msgid "Video codec"
+msgstr "Video codec'i"
+
+msgid "Year"
+msgstr "Yıl"
+
+msgid "age"
+msgstr "yaş"
+
+msgid "and"
+msgstr "ve"
+
+msgid "created"
+msgstr "oluşturuldu"
+
+msgid "duplicates"
+msgstr "kopyalar"
+
+msgid "dups"
+msgstr "kopyalar"
+
+msgid "duplicate"
+msgstr "kopya"
+
+msgid "modified"
+msgstr "değiştirilmiş"
+
+msgid "or"
+msgstr "veya"
+
+msgid "original"
+msgstr "orijinal"
+
+msgid "related"
+msgstr "ilgili"
+
+msgid "with"
+msgstr "ile"
+
+msgid "without"
+msgstr "olmadan"
+
+msgid "Rate selected items"
+msgstr "Seçili öğeleri derecelendir"
+
+msgid "Number keys 0-5"
+msgstr "0-5 sayı tuşları"
+
+msgid "Click {} to remove rating"
+msgstr "Derecelendirmeyi kaldırmak için {}'ı tıklayın"
+
+msgid "Raw"
+msgstr "RAW"
+
+msgid "Remove Metadata"
+msgstr "Meta verileri kaldır"
+
+msgid "New name:"
+msgstr "Yeni ad:"
+
+msgid "When specifying a template:"
+msgstr "Bir şablon belirlerken:"
+
+msgid "Use '#' to specify position of the numeric sequence"
+msgstr "Sayısal dizinin konumunu belirtmek için '#' kullanın"
+
+msgid "Use metadata templates '{property-name}' to include file properties in the name."
+msgstr "Dosya özelliklerini ada eklemek için '{property-name}' meta veri şablonlarını kullanın."
+
+msgid "For example:"
+msgstr "Örneğin:"
+
+msgid "photo-###"
+msgstr "photo-###"
+
+msgid "{year}-{month}-###"
+msgstr "{year}-{month}-###"
+
+msgid "travel-{country}-###"
+msgstr "travel-{country}-###"
+
+msgid "Template:"
+msgstr "Şablon:"
+
+msgid "Start at:"
+msgstr "Başlangıç:"
+
+msgid "Repeat play single media item"
+msgstr "Tek bir medya öğesini tekrarla"
+
+msgid "Clean database and reindex.\nAll data is regenerated."
+msgstr "Veritabanını temizle ve yeniden dizinle.\nTüm veriler yeniden oluşturulur."
+
+msgid "Cleaning..."
+msgstr "Temizlik..."
+
+msgid "retro"
+msgstr "retro"
+
+msgid "Saturation"
+msgstr "Doygunluk"
+
+msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
+msgstr "Diffractor {} dosyalarını kırpamaz, döndüremez veya renklendiremez. Dosyayı JPEG olarak kaydedebilirsiniz?"
+
+msgid "Save Changes"
+msgstr "Değişiklikleri Kaydet"
+
+msgid "Save new photo"
+msgstr "Yeni fotoğrafı kaydet"
+
+msgid "Saving {}..."
+msgstr "{} kaydediliyor..."
+
+msgid "Failed to Scan."
+msgstr "Tarama Başarısız."
+
+msgid "All these terms"
+msgstr "Bütün bu terimler"
+
+msgid "Christmas"
+msgstr "Noel"
+
+msgid "Search in the collection"
+msgstr "Koleksiyonda ara"
+
+msgid "From"
+msgstr "Başlangıç"
+
+msgid "Until"
+msgstr "Bitiş"
+
+msgid "Search in a folder"
+msgstr "Bir klasörde ara"
+
+msgid "Last 7 days"
+msgstr "Son 7 gün"
+
+msgid "Located within"
+msgstr "İçinde yer alan"
+
+msgid "None of these terms"
+msgstr "Bu terimlerin hiçbiri"
+
+msgid "Search criteria or folder"
+msgstr "Arama ölçütleri veya klasör"
+
+msgid "Photos"
+msgstr "Fotoğraflar"
+
+msgid "Select term"
+msgstr "Terim seçin"
+
+msgid "Search in subfolders"
+msgstr "Alt klasörlerde ara"
+
+msgid "Searching..."
+msgstr "Aranıyor..."
+
+msgid "Select Folder..."
+msgstr "Klasör Seç..."
+
+msgid "Select a location"
+msgstr "Bir konum seçin"
+
+msgid "Selected items are in the date range:"
+msgstr "Seçilen öğeler şu tarih aralığındadır:"
+
+msgid "Selected items [{}]"
+msgstr "Seçilen öğeler [{}]"
+
+msgid "Always show RAW photos (slower)"
+msgstr "Her zaman RAW fotoğrafı göster (daha yavaş)"
+
+msgid "Show this RAW photo"
+msgstr "Bu RAW fotoğrafını göster"
+
+msgid "press R to view the items most closely related to this one"
+msgstr "bununla en yakından ilgili öğeleri görmek için R tuşuna basın"
+
+msgid "Show verbose metadata"
+msgstr "Ayrıntılı meta verileri göster"
+
+msgid "Album-Show"
+msgstr "Albüm-Program"
+
+msgid "Group order (Default)"
+msgstr "Grup sırası (varsayılan)"
+
+msgid "Extension"
+msgstr "Uzantı"
+
+msgid "Type"
+msgstr "Tür"
+
+msgid "Name"
+msgstr "İsim"
+
+msgid "Resolution"
+msgstr "Çözünürlük"
+
+msgid "Rating-Label"
+msgstr "Derecelendirme Etiketi"
+
+msgid "Staring"
+msgstr "Oyuncular"
+
+msgid "New Starting Date (local time):"
+msgstr "Yeni Başlangıç Tarihi (yerel saat):"
+
+msgid "Starting {}"
+msgstr "{} başlıyor"
+
+msgid "Preparing to convert files..."
+msgstr "Dosyaları dönüştürmeye hazırlanıyor..."
+
+msgid "Preparing to import files..."
+msgstr "Dosyaları içe aktarmaya hazırlanıyor..."
+
+msgid "Preparing files for email..."
+msgstr "Dosyalar e-posta için hazırlanıyor..."
+
+msgid "Share"
+msgstr "Paylaş"
+
+msgid "Preparing files to share..."
+msgstr "Dosyalar paylaşım için hazırlanıyor..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows, dosyaları alabilecek uygulamaları listeler. Orijinaller değiştirilmez."
+
+msgid "Send the files as one zip file"
+msgstr "Dosyaları tek bir ZIP dosyası olarak gönder"
+
+msgid "&Share"
+msgstr "&Paylaş"
+
+msgid "The files could not be shared."
+msgstr "Dosyalar paylaşılamadı."
+
+msgid "Preparing to synchronize files..."
+msgstr "Dosyaları eşitlemeye hazırlanıyor..."
+
+msgid "Straighten"
+msgstr "Düzelt"
+
+msgid "Auto color"
+msgstr "Otomatik renk"
+
+msgid "Copy item path"
+msgstr "Öğe yolunu kopyala"
+
+msgid "Auto document"
+msgstr "Otomatik belge düzeltme"
+
+msgid "Auto straighten"
+msgstr "Otomatik düzelt"
+
+msgid "Original"
+msgstr "Orijinal"
+
+msgid "Preview"
+msgstr "Ön izleme"
+
+msgid "Automatically improve exposure and color balance"
+msgstr "Pozlamayı ve renk dengesini otomatik olarak iyileştir"
+
+msgid "Automatically straighten horizontal and vertical lines"
+msgstr "Yatay ve dikey çizgileri otomatik olarak düzelt"
+
+msgid "Show the final cropped image"
+msgstr "Son kırpılmış görüntüyü göster"
+
+msgid "Horizontal perspective"
+msgstr "Yatay perspektif"
+
+msgid "Vertical perspective"
+msgstr "Dikey perspektif"
+
+msgid "Temperature"
+msgstr "Sıcaklık"
+
+msgid "Tint"
+msgstr "Renk tonu"
+
+msgid "Stream {}"
+msgstr "{} akışı"
+
+msgid "subtitle"
+msgstr "altyazı"
+
+msgid "Support"
+msgstr "Destek"
+
+msgid "Synchronize whole collection"
+msgstr "Tüm koleksiyonu senkronize et"
+
+msgid "copy local"
+msgstr "yerel kopyala"
+
+msgid "copy remote"
+msgstr "uzaktan kopyala"
+
+msgid "delete local"
+msgstr "yereli sil"
+
+msgid "delete remote"
+msgstr "uzaktakini sil"
+
+msgid "Files changed after analysis. Analyze again to review the updated actions."
+msgstr "Dosyalar analizden sonra değiştirildi. Güncellenen eylemleri gözden geçirmek için tekrar analiz edin."
+
+msgid "Local files to delete: {}. Remote files to delete: {}."
+msgstr "Silinecek yerel dosyalar: {}. Silinecek uzak dosyalar: {}."
+
+msgid "Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin."
+msgstr "Senkronizasyon dosyaları kalıcı olarak silecektir. Bu dosyalar Geri Dönüşüm Kutusu'ndan kurtarılamaz."
+
+msgid "The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin."
+msgstr "Var olan dosyaların üzerine yazılacak. Bu dosyaların geçerli içeriği Geri Dönüşüm Kutusu'ndan kurtarılamaz."
+
+msgid "Delete local files that do not exist remotely"
+msgstr "Uzaktan var olmayan yerel dosyaları silin"
+
+msgid "Delete remote files that do not exist locally"
+msgstr "Yerel olarak bulunmayan uzak dosyaları silin"
+
+msgid "c:\\photos with \\\\nas\\\\backup"
+msgstr "c:\\photos ile \\\\nas\\\\backup"
+
+msgid "Local folders"
+msgstr "Yerel klasörler"
+
+msgid "Copy newer local files to remote folders"
+msgstr "Daha yeni yerel dosyaları uzak klasörlere kopyalayın"
+
+msgid "Synchronize only one folder"
+msgstr "Yalnızca bir klasörü senkronize et"
+
+msgid "Remote folder"
+msgstr "Uzak klasör"
+
+msgid "Copy newer remote files to local folders"
+msgstr "Daha yeni uzak dosyaları yerel klasörlere kopyalayın"
+
+msgid "Tags to add or remove:"
+msgstr "Eklenecek veya kaldırılacak etiketler:"
+
+msgid "Add or remove Tags"
+msgstr "Etiketleri ekleyin veya kaldırın"
+
+msgid "Tag selected items"
+msgstr "Seçili öğeleri etiketle"
+
+msgid "Common Tags"
+msgstr "Ortak Etiketler"
+
+msgid "Removable Tags"
+msgstr "Çıkarılabilir Etiketler"
+
+msgid "Tags"
+msgstr "Etiketler"
+
+msgid "false"
+msgstr "yanlış"
+
+msgid "true"
+msgstr "doğru"
+
+msgid "Diffractor ERROR"
+msgstr "Diffractor HATASI"
+
+msgid "folder:{}"
+msgstr "klasör:{}"
+
+msgid "rate"
+msgstr "derecelendirme"
+
+msgid "Updating..."
+msgstr "Güncelleniyor..."
+
+msgid "Reset color adjustments"
+msgstr "Renk ayarlamalarını sıfırla"
+
+msgid "Color, straighten or crop photos."
+msgstr "Fotoğrafları renklendirin, düzeltin veya kırpın."
+
+msgid "Toggle full screen for media-items or open non-media-items."
+msgstr "Medya öğeleri için tam ekrana geçiş yapın veya medya dışı öğeleri açın."
+
+msgid "Change language"
+msgstr "Dili değiştir"
+
+msgid "Contains common folders, searches and favorites"
+msgstr "Ortak klasörleri, aramaları ve sık kullanılanları içerir"
+
+msgid "Open selected items with external app"
+msgstr "Seçili öğeleri harici uygulamayla aç"
+
+msgid "Pinned items stay selected. Use this when you want to quickly compare an item to other items."
+msgstr "Sabitlenen öğeler seçili kalır. Bir öğeyi diğer öğelerle hızlı bir şekilde karşılaştırmak istediğinizde bunu kullanın."
+
+msgid "Reset straighten and rotate"
+msgstr "Düzeltme ve döndürmeyi sıfırla"
+
+msgid "Tag or un-tag selected items"
+msgstr "Seçili öğeleri etiketleme veya etiketini kaldırma"
+
+msgid "Toggle between thumbnails or details for selected item group"
+msgstr "Seçilen öğe grubu için küçük resimler veya ayrıntılar arasında geçiş yapın"
+
+msgid "Toggle between thumbnails or details view"
+msgstr "Küçük resimler veya ayrıntılar görünümü arasında geçiş yapın"
+
+msgid "Process selected items"
+msgstr "Seçili öğeleri işle"
+
+msgid "More options and controls"
+msgstr "Daha fazla seçenek ve kontrol"
+
+msgid "{} ({}) total items in {} folders."
+msgstr "Toplam {} ({}) öğe, {} klasörde."
+
+msgid "Truncated at 1MB"
+msgstr "1 MB'ta kesildi"
+
+msgid "Type to search"
+msgstr "Aramak için yazın"
+
+msgid "Unselect {}"
+msgstr "{} seçimini kaldır"
+
+msgid "Update"
+msgstr "Güncelle"
+
+msgid "Version {} of Diffractor is available."
+msgstr "Diffractor'ın {} sürümü mevcut."
+
+msgid "Update available"
+msgstr "Güncelleme mevcut"
+
+msgid "You are currently using version {}."
+msgstr "Şu anda {} sürümünü kullanıyorsunuz."
+
+msgid "Update failed."
+msgstr "Güncelleme başarısız oldu."
+
+msgid "Download and install now. Diffractor will need to be closed briefly during the install."
+msgstr "Şimdi indirin ve yükleyin. Kurulum sırasında Diffractor'ın kısa süreliğine kapatılması gerekecek."
+
+msgid "Version {} of Diffractor is available. You are currently using version {}."
+msgstr "Diffractor'ın {} sürümü mevcut. Şu anda {} sürümünü kullanıyorsunuz."
+
+msgid "More info"
+msgstr "Daha fazla bilgi"
+
+msgid "Learn more about this update at Diffractor.com"
+msgstr "Bu güncelleme hakkında daha fazla bilgiyi Diffractor.com adresinde bulabilirsiniz."
+
+msgid "Not now"
+msgstr "Şimdi değil"
+
+msgid "Remind me again in a week"
+msgstr "Bir hafta sonra tekrar hatırlat"
+
+msgid "Please wait while the update is downloaded..."
+msgstr "Güncelleme indirilirken lütfen bekleyin..."
+
+msgid "Version"
+msgstr "Sürüm"
+
+msgid "Vibrance"
+msgstr "Canlılık"
+
+msgid "video"
+msgstr "video"
+
+msgid "WEBP - Best for the web"
+msgstr "WEBP - Web için en iyisi"
+
+msgid "XMP"
+msgstr "XMP"
+
+msgid "ICC"
+msgstr "ICC"
+
+msgid "press ctrl+space"
+msgstr "ctrl+boşluk tuşuna basın"
+
+msgid "Scope"
+msgstr "Kapsam"
+
+msgid "Value"
+msgstr "Değer"
+
+msgid "Volume 200%"
+msgstr "Ses %200"
+
+msgid "Volume 100%"
+msgstr "Ses %100"
+
+msgid "Volume 75%"
+msgstr "Ses %75"
+
+msgid "Volume 50%"
+msgstr "Ses %50"
+
+msgid "Volume 25%"
+msgstr "Ses %25"
+
+msgid "Mute"
+msgstr "Sessiz"
+
+msgid "Autoplay selected media"
+msgstr "Seçilen medyayı otomatik oynat"
+
+msgid "Resume playing media from last position"
+msgstr "Medyayı son konumdan oynatmaya devam et"
+
+msgid "Repeat play one item"
+msgstr "Bir öğeyi tekrar oynat"
+
+msgid "Repeat play all media items"
+msgstr "Tüm medya öğelerini tekrar oynat"
+
+msgid "Don't repeat"
+msgstr "Tekrarlama"
+
+msgid "Playback Options"
+msgstr "Oynatma Seçenekleri"
+
+msgid "Playback"
+msgstr "Oynatma"
+
+msgid "Filter items"
+msgstr "Öğeleri filtrele"
+
+msgid "Photo filter"
+msgstr "Fotoğraf filtresi"
+
+msgid "Video filter"
+msgstr "Video filtresi"
+
+msgid "Audio filter"
+msgstr "Ses filtresi"
+
+msgid "Show {} filtered out items"
+msgstr "Filtrelenmiş {} öğeyi göster"
+
+msgid "The collection contains {} items created on {}."
+msgstr "Koleksiyon, {} öğe içeriyor; bunlar {} tarihinde oluşturuldu."
+
+msgid "Show all tags"
+msgstr "Tüm etiketleri göster"
+
+msgid "Show only favorite tags"
+msgstr "Yalnızca favori etiketleri göster"
+
+msgid "Show only favorite tags in the sidebar"
+msgstr "Kenar çubuğunda yalnızca favori etiketleri göster"
+
+msgid "Destination"
+msgstr "Hedef"
+
+msgid "Old name"
+msgstr "Eski isim"
+
+msgid "New name"
+msgstr "Yeni isim"
+
+msgid "Local"
+msgstr "Yerel"
+
+msgid "Remote"
+msgstr "Uzak"
+
+msgid "Status"
+msgstr "Durum"
+
+msgid "Message"
+msgstr "Mesaj"
+
+msgid "import"
+msgstr "içe aktar"
+
+msgid "exists"
+msgstr "var"
+
+msgid "previously imported"
+msgstr "önceden içe aktarılmış"
+
+msgid "ignore"
+msgstr "yoksay"
+
+msgid "Click analyze to show items"
+msgstr "Öğeleri göstermek için analiz et'i tıklayın"
+
+msgid "Rotate {first-name}."
+msgid_plural "Rotate {count} selected items. Originals will be overwritten."
+msgstr[0] "{first-name} döndürün."
+msgstr[1] "Seçilen {count} öğeyi döndür. Orijinallerin üzerine yazılacaktır."
+
+msgid "1 folder"
+msgid_plural "{count} folders"
+msgstr[0] "1 klasör"
+msgstr[1] "{count} klasörler"
+
+msgid "{count} item"
+msgid_plural "{count} items"
+msgstr[0] "{count} öğe"
+msgstr[1] "{count} öğe"
+
+msgid "1 item here"
+msgid_plural "{count} items here"
+msgstr[0] "burada 1 öğe"
+msgstr[1] "burada {count} öğe"
+
+msgid "Set rating to 1 star"
+msgid_plural "Set rating to {count} stars"
+msgstr[0] "Derecelendirmeyi 1 yıldız yap"
+msgstr[1] "Derecelendirmeyi {count} yıldız yap"
+
+msgid "Cannot process {first-name}."
+msgid_plural "Cannot process {first-name} and {other} other items."
+msgstr[0] "{first-name} işlenemiyor."
+msgstr[1] "{first-name} ve {other} diğer öğeler işlenemiyor."
+
+msgid "{first-name} will be renamed."
+msgid_plural "{count} items will be renamed."
+msgstr[0] "{first-name} yeniden adlandırılacak."
+msgstr[1] "{count} öğe yeniden adlandırılacak."
+
+msgid "1 duplicate item"
+msgid_plural "{count} duplicate items"
+msgstr[0] "1 kopya öğe"
+msgstr[1] "{count} yinelenen öğe"
+
+msgid "1 sidecar item"
+msgid_plural "{count} sidecar items"
+msgstr[0] "1 yan dosya öğesi"
+msgstr[1] "{count} yan dosya öğesi"
+
+msgid "{count} of 1 item was processed."
+msgid_plural "{count} of {total} items were processed."
+msgstr[0] "{count} / 1 öğe işlendi."
+msgstr[1] "{count} / {total} öğe işlendi."
+
+msgid "1 item was processed."
+msgid_plural "{count} items were processed."
+msgstr[0] "1 öğe işlendi."
+msgstr[1] "{count} öğe işlendi."
+
+msgid "{first-name} failed."
+msgid_plural "{count} items failed."
+msgstr[0] "{first-name} başarısız oldu."
+msgstr[1] "{count} öğe başarısız oldu."
+
+msgid "{first-name} was ignored."
+msgid_plural "{count} items were ignored."
+msgstr[0] "{first-name} göz ardı edildi."
+msgstr[1] "{count} öğe yok sayıldı."
+
+msgid "{first-name} was ignored because it exists already in the destination location."
+msgid_plural "{count} items were ignored because they exist already in the destination location."
+msgstr[0] "{first-name} hedef konumda zaten mevcut olduğundan yok sayıldı."
+msgstr[1] "{count} öğe, hedef konumda zaten mevcut olduğundan yok sayıldı."
+
+msgid "{first-name} was ignored because it was previously imported."
+msgid_plural "{count} items were ignored because they were previously imported."
+msgstr[0] "{first-name} daha önce içe aktarıldığı için yok sayıldı."
+msgstr[1] "{count} öğe daha önce içe aktarıldıkları için yok sayıldı."
+
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "1 öğe içe aktarıldı ancak oluşturulma tarihi ayarlanamadı."
+msgstr[1] "{count} öğe içe aktarıldı ancak oluşturulma tarihleri ayarlanamadı."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "Windows geri dönüştürebilirse {first-name} Geri Dönüşüm Kutusu'na taşınacak."
+msgstr[1] "Windows geri dönüştürebilirse {count} öğe ({size}) Geri Dönüşüm Kutusu'na taşınacak."
+
+msgid "{first-name} will be permanently deleted."
+msgid_plural "{count} items ({size}) will be permanently deleted."
+msgstr[0] "{first-name} kalıcı olarak silinecek."
+msgstr[1] "{count} öğe ({size}) kalıcı olarak silinecek."
+
+msgid "You are about to delete {count} item."
+msgid_plural "You are about to delete {count} items."
+msgstr[0] "{count} öğeyi silmek üzeresiniz."
+msgstr[1] "{count} öğeyi silmek üzeresiniz."
+
+msgid "These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin."
+msgstr "Bu öğeler bir ağ yolundadır. Kalıcı olarak silinecekler ve geri dönüşüm kutusundan kurtarılamayacaklar."
+
+msgid "{first-name} will be copied."
+msgid_plural "{count} items ({size}) will be copied."
+msgstr[0] "{first-name} kopyalanacak."
+msgstr[1] "{count} öğe ({size}) kopyalanacak."
+
+msgid "{first-name} will be moved."
+msgid_plural "{count} items ({size}) will be moved."
+msgstr[0] "{first-name} taşınacak."
+msgstr[1] "{count} öğe ({size}) taşınacak."
+
+msgid "{first-name} will be updated."
+msgid_plural "{count} items will be updated."
+msgstr[0] "{first-name} güncellenecek."
+msgstr[1] "{count} öğe güncellenecek."
+
+msgid "Add or overwrite specific metadata in {first-name}."
+msgid_plural "Add or overwrite specific metadata in {count} items."
+msgstr[0] "{first-name}'ye belirli meta verileri ekleyin veya üzerine yazın."
+msgstr[1] "{count} öğelerindeki belirli meta verileri ekleyin veya bunların üzerine yazın."
+
+msgid "{first-name} will be converted and copied to a folder."
+msgid_plural "{count} items will be converted and copied to a folder."
+msgstr[0] "{first-name} dönüştürülecek ve bir klasöre kopyalanacak."
+msgstr[1] "{count} öğe dönüştürülecek ve bir klasöre kopyalanacak."
+
+msgid "{first-name} will have tags added or removed."
+msgid_plural "{count} items will have tags added or removed."
+msgstr[0] "{first-name} etiketleri eklenecek veya kaldırılacak."
+msgstr[1] "{count} öğelerin etiketleri eklenecek veya kaldırılacak."
+
+msgid "{first-name} will have the date adjusted."
+msgid_plural "{count} items will have the date adjusted."
+msgstr[0] "{first-name} tarihi ayarlayacak."
+msgstr[1] "{count} öğenin tarihi ayarlanacak."
+
+msgid "A desktop email draft will be opened with {first-name} attached."
+msgid_plural "A desktop email draft will be opened with {count} selected items attached."
+msgstr[0] "Masaüstü e-posta istemcisinde {first-name} ekli bir taslak açılacak."
+msgstr[1] "Masaüstü e-posta istemcisinde seçili {count} öğe ekli bir taslak açılacak."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name} seçtiğiniz uygulamaya gönderilecek."
+msgstr[1] "Seçili {count} öğe seçtiğiniz uygulamaya gönderilecek."
+
+msgid "{first-name} already exists. Do you want to replace it?"
+msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
+msgstr[0] "{first-name} zaten mevcut. Değiştirmek istiyor musunuz?"
+msgstr[1] "{first-name} ve {other} diğer öğeler zaten mevcut. Bunları değiştirmek istiyor musunuz?"
+
+msgid "{first-name} will have existing GPS position metadata overwritten."
+msgid_plural "{first-name} and {other} other items will have existing GPS position metadata overwritten."
+msgstr[0] "{first-name}, mevcut GPS konum meta verilerinin üzerine yazılacaktır."
+msgstr[1] "{first-name} ve {other} diğer öğelerin üzerine mevcut GPS konum meta verileri yazılacaktır."
+
+msgid "Choose a valid new starting date and time."
+msgstr "Geçerli bir yeni başlangıç tarihi ve saati seçin."
+
+msgid "Windows could not stage the selected items for disc burning."
+msgstr "Windows seçili öğeleri diske yazmak üzere hazırlayamadı."
+
+msgid "The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc."
+msgstr "Seçili öğeler Windows Disk Yazma aracında hazırlanacak. Windows diske yazma işlemi boyunca size yol gösterecek."
+
+msgid "&Stage files"
+msgstr "Dosyaları &hazırla"
+
+msgid "Email draft was canceled."
+msgstr "E-posta taslağı iptal edildi."
+
+msgid "Maximum dimension must be at least 1 pixel."
+msgstr "En büyük boyut en az 1 piksel olmalıdır."
+
+msgid "Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged."
+msgstr "Güncellenecek en az bir meta veri alanı seçin. İşaretli boş alanlar mevcut değerleri siler; işaretlenmemiş alanlar değişmeden kalır."
+
+msgid "{first-name} was canceled."
+msgid_plural "{count} items were canceled."
+msgstr[0] "{first-name} için işlem iptal edildi."
+msgstr[1] "{count} öğe için işlem iptal edildi."
+
+msgid "{first-name} will be staged for disc burning."
+msgid_plural "{count} selected items ({size}) will be staged for disc burning."
+msgstr[0] "{first-name} diske yazmak üzere hazırlanacak."
+msgstr[1] "Seçili {count} öğe ({size}) diske yazmak üzere hazırlanacak."
+
+msgid "Detect and straighten a photographed document"
+msgstr "Fotoğrafı çekilmiş bir belgeyi algıla ve düzelt"
+
+msgid "Failed to Initialize Direct3d"
+msgstr "Direct3D başlatılamadı"
+
+msgid "Navigator"
+msgstr "Gezgin"
+
+msgid "Flip comparison panes"
+msgstr "Karşılaştırma bölmelerini değiştir"
+
+msgid "Auto-hide"
+msgstr "Otomatik gizle"
+
+msgid "Off"
+msgstr "Kapalı"
+
+msgid "Slideshow"
+msgstr "Slayt gösterisi"
+
+
+msgid "Altitude"
+msgstr "Yükseklik"
+
+msgid "GPS speed"
+msgstr "GPS hızı"
+
+msgid "In flight"
+msgstr "Uçuşta"
+
+msgid "{} m"
+msgstr "{} m"
+
+msgid "{} m underwater"
+msgstr "{} m su altında"
+
+msgid "Cancel was pressed after {}"
+msgstr "{} sonra İptal'e basıldı"
+
+msgid "Apply tags"
+msgstr "Etiketleri uygula"
+
+msgid "Item"
+msgstr "Öğe"
+
+msgid "Tags after run"
+msgstr "Çalıştırma sonrası etiketler"
+
+msgid "Enter one or more tags to add or remove."
+msgstr "Eklenecek veya kaldırılacak bir ya da daha fazla etiket girin."
+
+msgid "no change"
+msgstr "değişiklik yok"
+
+msgid "Select items to tag"
+msgstr "Etiketlenecek öğeleri seçin"
+
+msgid "Cancel operation"
+msgstr "İşlemi iptal et"
+
+msgid "{} is still running. Cancel it and close?"
+msgstr "{} hâlâ çalışıyor. İptal edilip kapatılsın mı?"
+
+msgid "Keep running"
+msgstr "Çalışmaya devam et"
+
+msgid "Location unavailable"
+msgstr "Konum kullanılamıyor"
+
+msgid "{} could not be opened. It may be disconnected, renamed or removed."
+msgstr "{} açılamadı. Bağlantısı kesilmiş, yeniden adlandırılmış veya kaldırılmış olabilir."
+
+msgid "Try again"
+msgstr "Yeniden dene"
+
+msgid "Go to the parent folder"
+msgstr "Üst klasöre git"
+
+msgid "{} is still running. Close it before browsing somewhere else."
+msgstr "{} hâlâ çalışıyor. Başka bir yere göz atmadan önce kapatın."
+
+msgid "If the destination already exists:"
+msgstr "Hedef zaten varsa:"
+
+msgid "Replace"
+msgstr "Değiştir"
+
+msgid "Skip"
+msgstr "Atla"
+
+msgid "Auto-rename"
+msgstr "Otomatik yeniden adlandır"
+
+msgid "Block run"
+msgstr "Çalıştırmayı engelle"
+
+msgid "File exists"
+msgstr "Dosya var"
+
+msgid "Choose a destination folder."
+msgstr "Bir hedef klasör seçin."
+
+msgid "Enter a maximum dimension in pixels."
+msgstr "Piksel cinsinden en büyük boyutu girin."
+
+msgid "Check one or more fields to change."
+msgstr "Değiştirilecek bir veya daha fazla alan işaretleyin."
+
+msgid "Select items before using this tool"
+msgstr "Bu aracı kullanmadan önce öğe seçin"
+
+msgid "Success"
+msgstr "Başarılı"
+
+msgid "Failed"
+msgstr "Başarısız"
+
+msgid "Skipped"
+msgstr "Atlandı"
+
+msgid "Not run"
+msgstr "Çalıştırılmadı"
+
+msgid "These are the results of a finished run. Refresh to plan again with the current settings."
+msgstr "Bunlar tamamlanmış bir çalıştırmanın sonuçlarıdır. Geçerli ayarlarla yeniden planlamak için Yenile'ye tıklayın."
+
+msgid "{} destinations already exist. Choose Replace, Skip or Auto-rename."
+msgstr "{} hedef zaten var. Değiştir, Atla veya Otomatik yeniden adlandır seçeneklerinden birini seçin."
+
+msgid "{} items will be skipped because the destination exists."
+msgstr "Hedef zaten var olduğundan {} öğe atlanacak."
+
+msgid "{} existing destinations will be replaced."
+msgstr "Var olan {} hedef değiştirilecek."
+
+msgid "{} items will be given a new name to avoid a collision."
+msgstr "Çakışmayı önlemek için {} öğeye yeni ad verilecek."
+
+msgid "Distance: {}"
+msgstr "Mesafe: {}"
+
+msgid "Change how far from this place to search"
+msgstr "Bu yerden ne kadar uzakta arama yapılacağını değiştir"
+
+msgid "N,NE,E,SE,S,SW,W,NW"
+msgstr "K,KD,D,GD,G,GB,B,KB"
+
+msgid "{} {} of {}"
+msgstr "{} {} ({})"
+
+msgid "Near {}"
+msgstr "{} yakınında"
+
+msgid "Remote area"
+msgstr "Uzak bölge"
+
+msgid "Nothing within {} of {}."
+msgstr "{} yarıçapında hiçbir şey yok: {}."
+
+msgid "Nothing found at {}."
+msgstr "{} konumunda bir şey bulunamadı."
+
+msgid "Widen to {}"
+msgstr "{} olarak genişlet"
+
+msgid "Search all places named {}"
+msgstr "{} adlı tüm yerlerde ara"
+
+msgid "Show items with no location"
+msgstr "Konumu olmayan öğeleri göster"
+
+msgid "Search within {} of {}"
+msgstr "{} yarıçapında ara: {}"
+
+msgid "High altitude"
+msgstr "Yüksek irtifa"
+
+msgid "Timeline"
+msgstr "Zaman çizelgesi"
+
+msgid "Places"
+msgstr "Yerler"
+
+msgid "{} items"
+msgstr "{} öğe"
+
+msgid "Grouped by {}"
+msgstr "{} ölçütüne göre gruplandı"
+
+msgid "Grouped by {} - {}"
+msgstr "{} - {} ölçütüne göre gruplandı"
+
+msgid "Clear"
+msgstr "Temizle"
+
+msgid "From {} to {}"
+msgstr "{} - {}"
+
+msgid "Plays or pauses video and audio. Stops a running slideshow."
+msgstr "Videoyu ve sesi oynatır veya duraklatır. Çalışan bir slayt gösterisini durdurur."
+
+msgid "Replaces Reject"
+msgstr "Reddet'in yerini alır"
+
+msgid "Click to apply"
+msgstr "Uygulamak için tıklayın"
+
+msgid "Click to clear"
+msgstr "Temizlemek için tıklayın"
+
+msgid "Replaces the current label: {}"
+msgstr "Geçerli etiketin yerini alır: {}"
+
+msgid "Replaces the star rating"
+msgstr "Yıldız derecelendirmesinin yerini alır"
+
+msgid "When the last item has played, start again from the first"
+msgstr "Son öğe oynatıldığında baştan yeniden başla"
+
+msgid "Stop after the last item"
+msgstr "Son öğeden sonra dur"
+
+msgid "Play or pause the displayed video or audio file."
+msgstr "Görüntülenen video veya ses dosyasını oynat ya da duraklat."
+
+msgid "Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end."
+msgstr "Görünen öğeleri oynatır. Fotoğraflar slayt gösterisi gecikmesi süresince gösterilir; video ve ses sonuna kadar oynatılır."
+
+msgid "Continue with the next item"
+msgstr "Sonraki öğeyle devam et"
+
+msgid "When an item finishes, continue with the next photo, video or audio item"
+msgstr "Bir öğe bittiğinde sonraki fotoğraf, video veya ses öğesiyle devam et"
+
+msgid "Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them."
+msgstr "Diffractor, {} dosyalarına derecelendirme, etiket veya diğer meta verileri yazamaz ve bunlar için yan dosya oluşturmaz."
+
+msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
+msgstr "Birden fazla tür belirtmek için noktalı virgül kullanın. Örneğin: Rock; Blues"
+
+msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
+msgstr "Düzenlemek için bir fotoğraf seçin. Video, ses, klasörler ve Diffractor'ın kaydedemediği biçimler desteklenmez."
+
+msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
+msgstr "Kapalı: pencereden küçük fotoğraflar ve videolar gerçek boyutunda gösterilir. Açık: pencereye sığacak şekilde büyütülür. Pencereden büyük ortamlar her zaman sığacak şekilde küçültülür."
+
+msgid "Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder."
+msgstr "Seçili fotoğrafları başka bir biçime dönüştürür ve isteğe bağlı olarak boyutlarını sınırlar. Orijinaller korunur ve yeni dosyalar hedef klasöre yazılır."
+
+msgid "Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched."
+msgstr "Seçili her öğeye aynı meta veri değerlerini yazar. Yalnızca işaretlediğiniz alanlar değişir; görüntü ve video verileri olduğu gibi kalır."
+
+msgid "Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched."
+msgstr "Seçili öğelerin tarihlerini, en eski öğe yeni bir tarih ve saatte başlayacak şekilde kaydırır. Yalnızca meta veriler değişir; görüntü ve video verileri olduğu gibi kalır."
+
+msgid "Add or remove tags across the selected items. Tags you do not mention are left in place."
+msgstr "Seçili öğelere etiket ekler veya bunlardan etiket kaldırır. Belirtmediğiniz etiketler olduğu gibi kalır."
+
+msgid "Convert"
+msgstr "Dönüştür"
+
+msgid "Update metadata"
+msgstr "Meta verileri güncelle"
+
+msgid "No removable drive was found."
+msgstr "Çıkarılabilir sürücü bulunamadı."
+
+msgid "Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run."
+msgstr "Dosyaları tarih, albüm veya sanatçı gibi meta verilerden oluşturulan bir klasör yapısına kopyalar veya taşır. Hedef koleksiyonunuzdaysa kopyalar otomatik olarak koleksiyona katılır. Çalıştırmadan önce her eylemi gözden geçirmek için önce analiz edin."
+
+msgid "Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run."
+msgstr "Seçili dosyaları; metin, artan bir sayı ve meta veri özelliklerini birleştirebilen bir şablona göre yeniden adlandırır. Çalıştırmadan önce aşağıdaki yeni adları gözden geçirin."
+
+msgid "Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run."
+msgstr "Yerel klasörleri uzak veya yedek klasörle senkronize eder. Çalıştırmadan önce her kopyalama ve silme işlemini gözden geçirmek için önce analiz edin."
+
+msgid "home"
+msgstr "home"
+
+msgid "end"
+msgstr "end"
+
+msgid "-"
+msgstr "-"
+
+msgid "Grouping"
+msgstr "Gruplama"
+
+msgid "Move to the first or last item. Pans a zoomed image to the left or right edge."
+msgstr "İlk veya son öğeye gider. Yakınlaştırılmış bir görüntüyü sol veya sağ kenara kaydırır."
+
+msgid "Move up or down a row of items. Pans a zoomed image."
+msgstr "Öğelerde bir satır yukarı veya aşağı gider. Yakınlaştırılmış bir görüntüyü kaydırır."
+
+msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
+msgstr "Görüntülenen resmi yakınlaştırır veya uzaklaştırır. Pencereye sığdırmak için 0 tuşuna basın."
+
+msgid "Add folders to your collection (Ctrl+F6)"
+msgstr "Koleksiyonunuza klasör ekleyin (Ctrl+F6)"
+
+msgid "Select at least one search criterion."
+msgstr "En az bir arama ölçütü seçin."
+
+msgid "Could not check for updates. Check your internet connection and try again."
+msgstr "Güncellemeler denetlenemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."
+
+msgid "Diagnostics information could not be sent. Check your internet connection and try again."
+msgstr "Tanılama bilgileri gönderilemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."
+
+msgid "Too large to display"
+msgstr "Görüntülenemeyecek kadar büyük"
+
+msgid "This image could not be displayed"
+msgstr "Bu görüntü görüntülenemedi"
+
+msgid "Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places."
+msgstr "Koleksiyonda bu öğeyle en yakından ilgili öğeleri gösterir: olası kopyalar, ardından aynı albüm, aynı seri, en yakın çekim zamanları ve en yakın çekim yerleri."
+
+msgid "This item and possible copies"
+msgstr "Bu öğe ve olası kopyalar"
+
+msgid "Same album"
+msgstr "Aynı albüm"
+
+msgid "Same series"
+msgstr "Aynı seri"
+
+msgid "Taken at the same time"
+msgstr "Aynı zamanda çekildi"
+
+msgid "Taken in the same place"
+msgstr "Aynı yerde çekildi"
+
+msgid "Recovered from a startup problem"
+msgstr "Başlatma sorunundan kurtarıldı"
+
+msgid "Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options."
+msgstr "Diffractor başlatmayı tamamlamadan beklenmedik şekilde kapandı, bu nedenle bu çalıştırma donanım hızlandırma kapalıyken varsayılan düzeni kullanıyor. Dosyalarınız, koleksiyonunuz ve son öğeleriniz değişmedi. Ayarlarınızı Seçenekler'den geri yükleyebilirsiniz."
+
+msgid "Original//date"
+msgstr "Orijinal"
+
+msgid "Group by Date Original"
+msgstr "Orijinal Tarihe Göre Gruplandır"
+
+msgid "Sort by Date original"
+msgstr "Orijinal tarihe göre sırala"
+
+msgid "Movie mixer"
+msgstr "Film karıştırıcı"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Seçili fotoğrafları ve videoları tek bir videoda birleştirin. Aşağıdaki şeritte klip ekleyin, kaldırın ve sıralarını değiştirin, seçili klibi kırpın. Önizleme, işlenecek olanın aynısıdır; siz işleyene veya kaydedene kadar hiçbir şey yazılmaz."
+
+msgid "Movie"
+msgstr "Film"
+
+msgid "Selected clip"
+msgstr "Seçili klip"
+
+msgid "Crossfade between clips"
+msgstr "Klipler arasında çapraz geçiş"
+
+msgid "Cut between clips"
+msgstr "Klipler arasında kesme"
+
+msgid "Transition (tenths of a second)"
+msgstr "Geçiş (saniyenin onda biri)"
+
+msgid "Fade (tenths of a second)"
+msgstr "Açılma/kararma (saniyenin onda biri)"
+
+msgid "Fade in from black"
+msgstr "Siyahtan aç"
+
+msgid "Fade out to black"
+msgstr "Siyaha karart"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "Fotoğraf süresi (saniyenin onda biri)"
+
+msgid "This photo (tenths of a second)"
+msgstr "Bu fotoğraf (saniyenin onda biri)"
+
+msgid "Use the movie default"
+msgstr "Film varsayılanını kullan"
+
+msgid "Add photos and videos to build a movie."
+msgstr "Film oluşturmak için fotoğraf ve video ekleyin."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "Çıktı {} x {}, {} fps, süre {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - klip {}/{}, başlangıç {}."
+
+msgid "Movie project"
+msgstr "Film projesi"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows Movie Maker projesi"
+
+msgid "Photos and videos"
+msgstr "Fotoğraflar ve videolar"
+
+msgid "Could not read the project {}."
+msgstr "{} projesi okunamadı."
+
+msgid "Could not save the project {}."
+msgstr "{} projesi kaydedilemedi."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "Seçili fotoğrafları ve videoları tek bir videoda birleştirir."
+
+msgid "Add files"
+msgstr "Dosya ekle"
+
+msgid "Remove from movie"
+msgstr "Filmden kaldır"
+
+msgid "Send to the end"
+msgstr "Sona gönder"
+
+msgid "Open project"
+msgstr "Projeyi aç"
+
+msgid "Save project"
+msgstr "Projeyi kaydet"
+
+msgid "Import Movie Maker project"
+msgstr "Movie Maker projesini içe aktar"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Rendering the movie"
+msgstr "Film işleniyor"
+
+msgid "The movie could not be rendered. {}"
+msgstr "Film işlenemedi. {}"
+
+msgid "The movie has no length."
+msgstr "Filmin süresi yok."
+
+msgid "The encoder would not accept this movie."
+msgstr "Kodlayıcı bu filmi kabul etmedi."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "Bir film karesi için yeterli bellek yoktu."
+
+msgid "A clip could not be decoded."
+msgstr "Bir klibin kodu çözülemedi."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "Kodlayıcı, film tamamlanmadan durdu."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "Bu ad, bu filmdeki bir klibe ait. Başka bir ad seçin."
+
+msgid "Rendered {}."
+msgstr "{} işlendi."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "İşleme iptal edildi. Hiçbir şey yazılmadı."
+
+msgid "No missing clip was found in that folder."
+msgstr "Bu klasörde eksik klip bulunamadı."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "Bu filmde hiçbir proje dosyasında bulunmayan değişiklikler var. Diffractor çalıştığı sürece korunur, Diffractor kapatılınca atılır."
+
+msgid "Close without saving"
+msgstr "Kaydetmeden kapat"
+
+msgid "Render"
+msgstr "İşle"
+
+msgid "Write the movie to a video file."
+msgstr "Filmi bir video dosyasına yazar."
+
+msgid "Relink missing files"
+msgstr "Eksik dosyaları yeniden bağla"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "Kaynak dosyası taşınmış klipleri seçtiğiniz bir klasöre yönlendirir."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "İçe aktarılan projenin 1 ögesi, Film onu temsil edemediği için dışarıda bırakıldı."
+msgstr[1] "İçe aktarılan projenin {count} ögesi, Film onları temsil edemediği için dışarıda bırakıldı."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 klip kaynak dosyasını bulamıyor."
+msgstr[1] "{count} klip kaynak dosyalarını bulamıyor."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 klip yeniden bağlandı."
+msgstr[1] "{count} klip yeniden bağlandı."
+

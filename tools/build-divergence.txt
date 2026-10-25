@@ -1,0 +1,59 @@
+# What the MSBuild build did that CMake had to be told, recorded when df.sln was retired.
+#
+# This is a record, not a check: the solution and the .vcxproj files it names are gone, so nothing
+# can re-run the comparison that produced it. It is kept because it is the only remaining account
+# of why the CMake build looks the way it does, and because each entry is a thing that would
+# otherwise be "tidied up" by someone who could no longer see where it came from.
+#
+# See docs/linux.md, 'Retiring MSBuild'.
+
+== Transcribed into the build, and load-bearing
+
+highway, jxl        Optimization was Disabled in Release as well as Debug. Letting the Release
+                    policy optimise them makes zoltan-tasi.jxl decode to an empty image, which
+                    "Should scan jxl metadata" catches. Now in
+                    cmake/vendored/highway.local.cmake and jxl.local.cmake.
+
+libjpeg SIMD        The project selects simd/i386 for Win32 and simd/x86_64 for x64, with -DWIN32
+                    against -D__x86_64__ -DWIN64 -UWIN32, because the leading underscore that is
+                    wrong decoration on x64 is the right one on x86.
+
+FFmpeg nasm         Win32 pre-includes config-x86.asm and defines PREFIX; x64 pre-includes
+                    config-x64.asm and does not. Without PREFIX every SIMD entry point assembles
+                    cleanly and is then unresolved at link. Four x86-64-only sources are excluded
+                    on Win32. Now in cmake/vendored/ffmpeg_msvc.local.cmake.
+
+== Deliberately not carried
+
+STRICT              Win32 Release and WinStore only, and WIN32 itself was defined in every
+_WINSOCK_DEPRECATED configuration except those two. That is drift between configurations of one
+_NO_WARNINGS        product rather than a 32-bit requirement, so the CMake build states what the
+                    shipped x64 binary is built with, uniformly.
+
+/VERSION            2.5 in Debug and 123 in Release. Nothing reads the PE image version field.
+
+/DELAYLOAD:         Debug only; Release ships without it. A delay load that exists only in the
+Wininet.dll         configuration nobody ships is not a property of the product.
+
+== Compared, and found to be nothing
+
+/Gd /Gm- /Qpar      MSVC defaults that MSBuild spells out and CMake leaves alone.
+/WX- /openmp-
+
+/arch:SSE2          Passed on x64 by the project, where SSE2 is unconditional and the switch is
+                    inert; it is the 32-bit setting applied to every platform. The baseline itself
+                    is load-bearing: platform::has_avx2 dispatches at run time precisely because
+                    the build targets SSE2, so raising it would pass every test on every machine
+                    that runs tests and fault on the machines least able to report why.
+
+/JMC-               CMake states SupportJustMyCode false; MSBuild reaches the same place by
+                    omission, since /JMC is off unless asked for.
+
+WIN_ENV=1           CMake propagates these from diffractor::xmp to everything that includes the XMP
+XMP_StaticBuild=1   headers; MSBuild set them on the library only and let the headers guess for the
+                    application. Both link and pass. The CMake form is the more correct of the two,
+                    because a consumer that disagrees with a static library about declspec is a
+                    classic silent break.
+
+At the point this was recorded the two builds compiled the same 88 translation units and shared
+five defines: _WINDOWS, WIN32, NDEBUG, UNICODE and _UNICODE.

@@ -1,87 +1,115 @@
 # Diffractor
-[![CI](https://github.com/diffractor/diffractor/actions/workflows/msbuild.yml/badge.svg)](https://github.com/diffractor/diffractor/actions/workflows/msbuild.yml)
+[![CI](https://github.com/ZacWalk/diffractor/actions/workflows/windows.yml/badge.svg)](https://github.com/ZacWalk/diffractor/actions/workflows/windows.yml)
 
-Free, high-performance photo and video organizer for Windows. Optimized for speed and local file control—no cloud storage or subscriptions required.
+Free, high-performance photo and video organizer for Windows. Optimized for speed and local file controlâ€”no cloud storage or subscriptions required.
+
+![Diffractor screenshot](screenshot.webp)
 
 ## Features
 
 | Category | Capabilities |
 |----------|-------------|
 | **Viewing** | Unified photo/video/audio playback; native support for most formats including RAW |
+| **Zoom** | One scale-and-center model across mouse, keyboard, wheel, and touch; hold to inspect, an overview navigator, and linked side-by-side magnification |
 | **Search** | Instant metadata-based search (tags, location, camera data) via local indexing |
+| **Places** | Photos and videos are placed from GPS alone, searchable by place, city, state, country, or distance, with map and visit-derived grouping |
 | **Metadata** | Read/write XMP, IPTC, EXIF, ID3; add tags, ratings, location |
-| **Organization** | Side-by-side comparison, duplicate detection ("Presence" feature) |
+| **Organization** | Side-by-side comparison, and duplicate detection ("Presence") that recognizes a re-encoded, resized, or rotated copy as well as an identical one |
+| **Related items** | Finds possible copies, the same album, the same series, and the closest capture times and places, each as its own group |
+| **File operations** | Rename, Import, and Sync preview every file before they run, and state how each name collision will be resolved |
 | **Sync** | Bidirectional sync to NAS/network drives for backup and collaboration |
-| **Editing** | Resize, rotate, crop, color adjustment |
-
-## Quick Start
-
-1. Download from [diffractor.com](https://diffractor.com/) and install
-2. Point to your media folders—Diffractor indexes automatically
-3. Browse via sidebar (date, location, folder, file type)
-4. Apply ratings/tags via keyboard shortcuts or UI; use Compare view for burst sorting
-5. Sync to network drives; use metadata tools for maintenance
-
-**Why Diffractor?** Fast (handles large libraries without lag), private (local-only), lightweight, free.
-
-## Deployment Options
-
-| Distribution | Description |
-|--------------|-------------|
-| **Windows Desktop** | Traditional installer (`diffractor-setup.exe`) with auto-update support |
-| **Windows Store** | MSIX package for Microsoft Store distribution (updates handled by Store) |
-| **Portable** | ZIP archive for standalone use without installation |
-
-Both Desktop and Store builds share the same codebase. The `WINSTORE` preprocessor define controls Store-specific behavior (disables built-in auto-update since the Store handles updates).
+| **Editing** | Resize, rotate, crop, perspective, temperature and tint, color adjustment, and automatic color, straighten, and document correction |
+| **Languages** | English plus 13 translation catalogs |
 
 ## Building
 
 ```bash
-git clone --recursive https://github.com/diffractor/diffractor.git
+git clone https://github.com/ZacWalk/diffractor.git
 ```
 
-Open `df.sln` in Visual Studio 2022. Submodules: [FFmpeg](https://github.com/diffractor/FFmpeg), [XMP-SDK](https://github.com/diffractor/XMP-Toolkit-SDK).
+The build uses CMake and requires Visual Studio and Ninja. CMake fetches the dependencies at the
+versions `cmake/dd-dependencies.json` pins, Diffractor's [FFmpeg](https://github.com/ZacWalk/FFmpeg)
+fork among them.
 
-### Build Script
+Everything goes through the `dd` gateway, which finds Visual Studio, configures with Ninja and puts the binary in `exe/`:
 
-Use `dd.ps1` from a Developer PowerShell:
+```powershell
+.\dd.ps1 test                                            # build, lint, test, check translations
+python tools/dd.py build --config Release --arch x86     # the 32-bit desktop binary
+python tools/dd.py build --winstore                      # the Store binary
+```
 
-| Command | Description |
-|---------|-------------|
-| `.\dd.ps1` | Show usage information and current version |
-| `.\dd.ps1 desktop` | Build desktop versions (Win32 + x64), auto-increments build number |
-| `.\dd.ps1 store` | Build Windows Store MSIX package, auto-increments build number |
-| `.\dd.ps1 run` | Run the recently built diffractor64.exe |
-| `.\dd.ps1 bump-build` | Manually increment build number without building |
-| `.\dd.ps1 bump-ver` | Increment minor version (e.g., 1.26.2 ? 1.26.3) |
+Release packaging also requires NSIS, the Windows SDK, and a code-signing certificate; `dd.ps1`
+fetches the 7-Zip it packs with. Run `.\dd.ps1` for the complete command list.
 
-**Prerequisites for release builds:** NSIS, 7-Zip, Windows SDK, code signing certificate.
+Product behavior is documented in [docs/design.md](docs/design.md). Architecture is
+documented in [docs/implementation.md](docs/implementation.md), whose links lead to
+the specialized subject documents. Contributor routing and repository rules are in
+[AGENTS.md](AGENTS.md).
 
-See [implementation.md](implementation.md) for architecture details.
+## Rendering Movie projects from the command line
+
+Movie projects can be checked, imported and rendered without opening a window. Import turns each
+Windows Live Movie Maker `.wlmp` project into a native `.otio` one, finding its moved sources in your
+collection; render makes a movie from a native project. How moved sources are found again is described
+in [docs/movie.md](docs/movie.md#6-project-files), and the switches in
+[docs/movie.md](docs/movie.md#9-command-line).
+
+| Switch | Effect |
+|--------|--------|
+| `-movie-check:<project or folder>` | Reports what import would make of each `.wlmp`, or what render would find in each `.otio`. Writes nothing |
+| `-movie-import:<project or folder>` | Writes a native `.otio` project for each `.wlmp`, with sources found in the collection |
+| `-movie-render:<project or folder>` | Writes an `.mp4` for each `.otio` project whose sources are all usable |
+| `-movie-media:<folder>` | Also searches this folder and its subfolders, by name, for sources missing from their stored paths |
+| `-movie-out:<folder>` | Sets where imported projects or rendered movies go. By default each goes beside its project |
+| `-movie-overwrite` | Replaces a project or movie that already exists instead of skipping it |
+| `-movie-skip-missing` | Renders without the clips whose source cannot be used |
+
+```powershell
+.\exe\diffractor64.exe -movie-check:D:\Projects | Out-Host
+.\exe\diffractor64.exe -movie-import:D:\Projects | Out-Host
+.\exe\diffractor64.exe -movie-render:D:\Projects -movie-out:D:\Movies | Out-Host
+```
+
+Paths must be full paths. Quote the whole switch when a path contains a space, as in
+`"-movie-import:D:\My Projects\trip.wlmp"`. Piping into `Out-Host` makes PowerShell wait and show the
+report as it is written.
 
 ## Contributing
 
-Contributions welcome via [issues](https://github.com/diffractor/diffractor/issues).
+Contributions are coordinated through [GitHub issues](https://github.com/ZacWalk/diffractor/issues).
+Use [Poedit](https://poedit.net/) for catalogs under `exe/languages`, and run
+`.\dd.ps1 test` before submitting a change.
 
-**Translations:** Edit PO files with [poedit](https://poedit.net/). Files in [exe/languages](https://github.com/diffractor/diffractor/tree/master/exe/languages). Use German as template for new languages. Test by copying to `%LOCALAPPDATA%\Diffractor\languages`.
+## License
 
-**Tests:** Built-in runner accessible via toolbar checkmark button when launched from Visual Studio. Press Escape to exit test mode.
+Diffractor is free software.
 
-## Dependencies
+**Diffractor's own source** â€” everything in `src/`, `tools` and `cmake/` â€” is licensed under the
+**GNU Lesser General Public License, version 2.1 or later**.
 
-| Library | Version | Library | Version |
-|---------|---------|---------|---------|
-| [brotli](https://github.com/google/brotli) | 1.1.0 | [libjxl](https://github.com/libjxl/libjxl) | 0.10.3 |
-| [bzip2](https://sourceware.org/bzip2/) | 1.0.8 | [liblzma](https://github.com/tukaani-project/xz) | 5.4.6 |
-| [dav1d](https://code.videolan.org/videolan/dav1d) | 1.5.1 | [libmatroska](https://github.com/Matroska-Org/libmatroska) | 1.7.1 |
-| [dng-sdk](https://helpx.adobe.com/camera-raw/digital-negative.html) | 1.7.1 | [libopenmpt](https://lib.openmpt.org) | 0.8.3 |
-| [expat](https://libexpat.github.io/) | 2.7.1 | [libpng](http://www.libpng.org/pub/png/libpng.html) | 1.6.50 |
-| [ffmpeg](https://ffmpeg.org/) | main | [LibRaw](https://www.libraw.org) | 0.21.2 |
-| [highway](https://github.com/google/highway) | 1.3.0 | [libwebp](https://github.com/webmproject/libwebp) | 1.4.0 |
-| [hunspell](https://github.com/hunspell/hunspell) | 1.7.2 | [minizip-ng](https://github.com/zlib-ng/minizip-ng) | 4.0.5 |
-| [libarchive](https://github.com/libarchive/libarchive) | 3.8.1 | [parallel-hashmap](https://github.com/greg7mdp/parallel-hashmap) | 2.0.0 |
-| [libde265](https://github.com/strukturag/libde265) | 1.0.15 | [rapidjson](https://github.com/Tencent/rapidjson) | main |
-| [libebml](https://github.com/Matroska-Org/libebml) | 1.4.5 | [skcms](https://skia.googlesource.com/skcms) | main |
-| [libexif](https://github.com/libexif/libexif) | 0.6.25 | [sqlite](https://www.sqlite.org/) | 3.50.4 |
-| [libheif](https://github.com/strukturag/libheif) | 1.18.0 | [utf-cpp](https://github.com/nemtrif/utfcpp) | 4.0.6 |
-| [libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | 3.1.2 | [zlib-ng](https://github.com/zlib-ng/zlib-ng) | 2.2.5 |
+**Released binaries are licensed under the LGPL, version 3.0 or later.** They statically link
+[libheif](https://github.com/strukturag/libheif) and [libde265](https://github.com/strukturag/libde265),
+both of which are LGPL-3.0-or-later, and LGPL 2.1 cannot absorb LGPL 3 code. Because Diffractor's own
+code is offered as "2.1 or later", the combined work resolves to 3.0 or later. Anyone who removes
+those two dependencies may use the remaining Diffractor code under 2.1.
+
+The full texts are in [LICENSE](LICENSE) (LGPL-3.0) and [COPYING.GPLv3](COPYING.GPLv3), which LGPL-3.0
+incorporates by reference.
+
+The executable also statically links [libdesktop](https://github.com/ZacWalk/libdesktop)
+and [libfiles](https://github.com/ZacWalk/libfiles), both LGPL-2.1-or-later. Before
+distributing a binary, provide the corresponding source for its exact library revisions
+(including modifications), the notices and licence texts, and the application source
+and build scripts or relinkable object files needed to rebuild with modified libraries.
+For the combined LGPL-3.0-or-later binary, follow LGPLv3 section 4, including any
+required installation information. Recipients must be permitted to modify the libraries
+and reverse-engineer the combined work to debug those modifications.
+
+Verify the release materials by rebuilding with a modified library using the documented
+compiler, configuration and dependencies. This notice and a link to the latest source
+are not themselves a relinking package.
+
+Fetched dependencies and their terms are listed in
+[docs/third-party.md](docs/third-party.md#licensing). FFmpeg is deliberately configured with
+`CONFIG_GPL 0`, so no GPL-only component is included and it is used under the LGPL.

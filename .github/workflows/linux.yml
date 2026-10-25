@@ -1,0 +1,65 @@
+# Purpose: Guard the Linux build and the portable core. Stage one of the port is complete but was
+# unprotected: nothing on any commit built CMake or Linux, so the headless suite could rot silently
+# between one deliberate check and the next. See docs/linux.md.
+#
+# Ubuntu LTS deliberately, not a rolling distribution: this is the version-floor leg of the matrix
+# described in docs/linux.md, so the floor is enforced by the build rather than by intention.
+
+name: Linux
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ Debug, Release ]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: true
+
+    # The vendored build is the default (DIFFRACTOR_PREFER_SYSTEM is OFF), so these are the
+    # toolchain rather than the dependencies. FFmpeg is driven by its own configure and make.
+    - name: Install toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build pkg-config ccache nasm
+
+    # FFmpeg and the 25 vendored CMake modules are most of the build time and change rarely.
+    # CCACHE_DIR is set rather than assumed: ccache 4.x defaults to ~/.cache/ccache, not ~/.ccache,
+    # so caching the older path would silently cache nothing.
+    - name: Cache compiler output
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ runner.os }}-${{ matrix.config }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ runner.os }}-${{ matrix.config }}-
+
+    # bash ./dd rather than ./dd: the launcher is checked in from Windows and carries no
+    # executable bit. It prefers pwsh and falls back to tools/dd.py, which is what runs here.
+    - name: Build
+      run: bash ./dd build --config ${{ matrix.config }}
+
+    # The whole suite, not a subset: docs/linux.md records that Linux runs the six tests guarded
+    # by #ifndef _DEBUG in both configurations, because _DEBUG is an MSVC macro.
+    - name: Run tests
+      run: bash ./dd test
+
+    # The fork is configured twice and nothing else notices when the two answers drift. It only
+    # needs one configuration, since the comparison is against the checked-in Windows config.
+    - name: Compare FFmpeg configurations
+      if: matrix.config == 'Release'
+      run: python3 tools/compare_ffmpeg_config.py

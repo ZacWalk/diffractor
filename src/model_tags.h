@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "util.h"
+#include "libdesktop/util.h"
 
 
 using float_counts_type = df::hash_map<double, df::int_counter>;
@@ -19,7 +19,7 @@ using id_counts_type = df::hash_map<int, df::int_counter>;
 
 class tag_set
 {
-	std::vector<std::u8string> _tags;
+	std::vector<std::string> _tags;
 
 public:
 	tag_set() noexcept = default;
@@ -28,17 +28,17 @@ public:
 	tag_set(tag_set&&) noexcept = default;
 	tag_set& operator=(tag_set&&) noexcept = default;
 
-	tag_set(const std::u8string_view tags)
+	tag_set(const std::string_view tags)
 	{
 		append(str::split(tags, true));
 	}
 
-	tag_set(const std::vector<std::u8string_view>& tags)
+	tag_set(const std::vector<std::string_view>& tags)
 	{
 		append(tags);
 	}
 
-	tag_set(std::vector<std::u8string> tags) : _tags(std::move(tags))
+	tag_set(std::vector<std::string> tags) : _tags(std::move(tags))
 	{
 	}
 
@@ -52,7 +52,7 @@ public:
 		return !(lhs == rhs);
 	}
 
-	void append(const std::vector<std::u8string_view>& tags)
+	void append(const std::vector<std::string_view>& tags)
 	{
 		_tags.insert(_tags.end(), tags.begin(), tags.end());
 		std::ranges::sort(_tags, df::iless());
@@ -73,17 +73,17 @@ public:
 		_tags.clear();
 	}
 
-	std::u8string to_string(const std::u8string_view join = u8" "sv, const bool quote = true) const
+	std::string to_string(const std::string_view join = " ", const bool quote = true) const
 	{
 		return str::combine(_tags, join, quote);
 	}
 
-	const std::u8string& operator[](const int i) const
+	const std::string& operator[](const int i) const
 	{
 		return _tags[i];
 	}
 
-	void add_one(const std::u8string_view tag)
+	void add_one(const std::string_view tag)
 	{
 		_tags.emplace_back(tag);
 	};

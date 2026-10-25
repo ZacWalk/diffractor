@@ -1,5 +1,5 @@
 // This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -19,7 +19,7 @@ md5::md5()
 	initialise();
 }
 
-md5::md5(const std::u8string_view s)
+md5::md5(const std::string_view s)
 {
 	initialise(); // must be called be all constructors
 	update({s.data(), s.size()});
@@ -47,7 +47,7 @@ void md5::update(const df::cspan data)
 {
 	if (_finalized)
 	{
-		throw app_exception(u8"MD5::update: failed to update a finalized digest!"s);
+		throw app_exception("MD5::update: failed to update a finalized digest!"s);
 	}
 
 	const auto size = data.size;
@@ -55,11 +55,14 @@ void md5::update(const df::cspan data)
 	// Compute number of bytes mod 64
 	size_t buffer_index = count[0] >> 3 & 0x3F;
 
-	// Update number of bits
-	if ((count[0] += static_cast<uint32_t>(size) << 3) < static_cast<uint32_t>(size) << 3)
+	// Update number of bits (treat full 64-bit length to avoid truncation for inputs >= 4 GB)
+	const uint64_t bit_count_low = static_cast<uint64_t>(size) << 3;
+	const uint64_t bit_count_high = static_cast<uint64_t>(size) >> 29;
+
+	if ((count[0] += static_cast<uint32_t>(bit_count_low)) < static_cast<uint32_t>(bit_count_low))
 		count[1]++;
 
-	count[1] += static_cast<uint32_t>(size) >> 29;
+	count[1] += static_cast<uint32_t>(bit_count_high);
 
 	const size_t buffer_space = 64 - buffer_index; // how much space is left in buffer
 	size_t input_index = 0;
@@ -100,7 +103,7 @@ void md5::finalize()
 
 	if (_finalized)
 	{
-		throw app_exception(u8"MD5::finalize: Already finalized this digest!"s);
+		throw app_exception("MD5::finalize: Already finalized this digest!"s);
 	}
 
 	// save number of bits
@@ -118,22 +121,13 @@ void md5::finalize()
 	// Store state in digest
 	Encode(digest, state, 16);
 
-	// Zeroize sensitive information
-	memset(buffer, 0, sizeof(buffer));
+	// Zeroize sensitive information (volatile writes prevent compiler optimization)
+	platform::secure_zero(buffer, sizeof(buffer));
+	platform::secure_zero(state, sizeof(state));
+	platform::secure_zero(count, sizeof(count));
 
 	_finalized = true;
 }
-
-std::u8string md5::hex_digest() const
-{
-	if (!_finalized)
-	{
-		throw app_exception(u8"MD5 hex_digest Failed to get digest because un-finalized."s);
-	}
-
-	return str::to_hex(digest, 16, false);
-}
-
 
 // Constants for MD5Transform routine.
 // Although we could use C++ style constants, defines are actually better,
@@ -156,7 +150,7 @@ std::u8string md5::hex_digest() const
 #define S43 15
 #define S44 21
 
-// RotateLeftrotates x left n bits.
+// RotateLeft rotates x left n bits.
 static uint32_t RotateLeft(const uint32_t x, const uint32_t n)
 {
 	return x << n | x >> (32 - n);
@@ -165,12 +159,12 @@ static uint32_t RotateLeft(const uint32_t x, const uint32_t n)
 // F, G, H and I are basic MD5 functions.
 static uint32_t F(const uint32_t x, const uint32_t y, const uint32_t z)
 {
-	return x & y | ~x & z;
+	return (x & y) | (~x & z);
 }
 
 static uint32_t G(const uint32_t x, const uint32_t y, const uint32_t z)
 {
-	return x & z | y & ~z;
+	return (x & z) | (y & ~z);
 }
 
 static uint32_t H(const uint32_t x, const uint32_t y, const uint32_t z)
@@ -299,7 +293,7 @@ void md5::Transform(const uint8_t* block)
 	state[3] += d;
 
 	// Zeroize sensitive information.
-	memset(x, 0, sizeof(x));
+	platform::secure_zero(x, sizeof(x));
 }
 
 // Encodes input (uint32_t) into output (uint8_t). Assumes len is

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# This file is part of the Diffractor photo and video organizer
+# Copyright 2026  Zac Walker
+#
+# Purpose: Linux entry point to the dd gateway, so ./dd <command> works without invoking pwsh by
+# hand. dd.ps1 remains the gateway; this prefers it and falls back to the Python backend directly
+# when PowerShell is not installed.
+
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if command -v pwsh >/dev/null 2>&1; then
+    exec pwsh -NoProfile -File "$here/dd.ps1" "$@"
+fi
+
+exec python3 "$here/tools/dd.py" "$@"

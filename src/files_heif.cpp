@@ -1,325 +1,183 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: HEIF/HEIC image format support. Decodes High Efficiency Image Format files
-// using libheif, extracts metadata, and handles thumbnails.
+// Purpose: HEIF/HEIC and AVIF decoding through libfiles, HEVC steered to FFmpeg's decoder, which is
+// registered with libheif here: the primary image, and the thumbnail item that a scan wanting one cannot
+// read without a decoder.
 
 #include "pch.h"
 #include "files.h"
-#include "metadata_exif.h"
 
 #define LIBHEIF_STATIC_BUILD 1
-#define LIBDE265_STATIC_BUILD 1
 
 #include <libheif/heif.h>
+#include <libheif/heif_plugin.h>
 
+// libheif's FFmpeg decoder plugin, which cmake/DiffractorHeif.cmake builds from libfiles' libheif: its
+// header, plugins/decoder_ffmpeg.h, brings libheif's internal headers with it.
+const heif_decoder_plugin* get_decoder_plugin_ffmpeg();
 
-static ui::surface_ptr image_to_surface(const heif_image_handle* handle, const heif_image* img)
+// libheif's plugin priority picks libde265 for HEVC. FFmpeg's HEVC decoder, linked for video anyway,
+// decodes the same pixels faster: a 4000x2252 photograph in 40 tiles took 105 ms against 151 ms, and
+// 264 ms against 463 ms on one thread. It is also correct where libde265 is not: libde265's 32-bit
+// build is not bit-exact, and corrupts blocks of a photograph that both 64-bit decoders agree on.
+// libfiles' libheif has no FFmpeg of its own, so the plugin is registered here, once, before libheif
+// decodes anything through it - every decode here asks this first - and libheif keeps it until
+// heif_deinit, which nothing calls. Null if libheif refused it, which leaves libheif's own choice.
+const char* heif_hevc_decoder_id()
 {
-	const auto width = heif_image_get_primary_width(img);
-	const auto height = heif_image_get_primary_height(img);
-	const auto has_alpha = heif_image_handle_has_alpha_channel(handle);
-
-	int heif_stride = 0;
-	const auto* heif_image_data = heif_image_get_plane_readonly(img, heif_channel_interleaved, &heif_stride);
-
-	auto result = std::make_shared<ui::surface>();
-
-	if (result->alloc(width, height, has_alpha ? ui::texture_format::ARGB : ui::texture_format::RGB))
+	static const char* const id = []() -> const char*
 	{
-		const auto dest_stride = result->stride();
-		const auto copy_stride = std::min(static_cast<size_t>(heif_stride), dest_stride);
+		heif_register_decoder_plugin(get_decoder_plugin_ffmpeg());
 
-		for (auto y = 0; y < height; y++)
+		std::array<const heif_decoder_descriptor*, 16> descriptors = {};
+		const auto count = heif_get_decoder_descriptors(heif_compression_HEVC, descriptors.data(),
+		                                                static_cast<int>(descriptors.size()));
+
+		for (auto i = 0; i < count; ++i)
 		{
-			const auto dst = result->pixels_line(y);
-			const auto src = heif_image_data + static_cast<size_t>(heif_stride) * y;
-			std::memcpy(dst, src, copy_stride);
+			const auto* const name = heif_decoder_descriptor_get_id_name(descriptors[i]);
+			if (name && std::string_view(name) == "ffmpeg") return "ffmpeg";
 		}
 
-		result->swap_rb();
+		return nullptr;
+	}();
+
+	return id;
+}
+
+namespace
+{
+	// A surface as the memory libfiles decodes a HEIF into. The size the item declares is judged against
+	// the decode budget before libheif decodes anything; the surface takes the size decoded, which a
+	// malformed file can make another.
+	class heif_surface_sink final : public libfiles::image_sink
+	{
+		load_diagnostic* const _diagnostic;
+		const std::string_view _format;
+
+	public:
+		ui::surface_ptr surface;
+
+		heif_surface_sink(load_diagnostic* const diagnostic, const std::string_view format) :
+			_diagnostic(diagnostic), _format(format)
+		{
+		}
+
+		bool accept(const libfiles::frame_info& declared) override
+		{
+			return !reject_over_budget_source(_diagnostic, {
+				                                  static_cast<int>(declared.source_width),
+				                                  static_cast<int>(declared.source_height)
+			                                  }, _format);
+		}
+
+		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
+		{
+			auto s = std::make_shared<ui::surface>();
+			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
+			                              frame.format == libfiles::pixel_format::bgra8
+				                              ? ui::texture_format::ARGB
+				                              : ui::texture_format::RGB);
+			if (!pixels) return {};
+			surface = std::move(s);
+			return {pixels, surface->stride()};
+		}
+	};
+
+	// A HEIF's primary image or its thumbnail item, decoded by libfiles, HEVC named to FFmpeg's decoder.
+	libfiles::decode_result decode_with_libfiles(read_stream& s, libfiles::image_sink& sink, const bool thumbnail)
+	{
+		read_stream_source source(s);
+		libfiles::reader r(source);
+
+		libfiles::decode_options options;
+		if (const auto* const hevc = heif_hevc_decoder_id()) options.heif_hevc_decoder = hevc;
+		options.heif_thumbnail = thumbnail;
+		return libfiles::decode(r, sink, options);
 	}
 
-	return result;
-}
-
-
-struct heif_read_stream
-{
-	uint64_t pos = 0;
-	read_stream* stream = nullptr;
-};
-
-static int64_t get_position(void* userdata)
-{
-	const auto s = static_cast<heif_read_stream*>(userdata);
-	return s->pos;
-}
-
-static int read(void* data, const size_t size, void* userdata)
-{
-	const auto s = static_cast<heif_read_stream*>(userdata);
-	if (s->pos + size > s->stream->size()) return heif_error_Usage_error;
-	s->stream->read(s->pos, static_cast<uint8_t*>(data), size);
-	s->pos += size;
-	return heif_error_Ok;
-}
-
-static int seek(const int64_t position, void* userdata)
-{
-	const auto s = static_cast<heif_read_stream*>(userdata);
-	if (position > static_cast<int64_t>(s->stream->size())) return heif_error_Usage_error;
-	s->pos = position;
-	return heif_error_Ok;
-}
-
-static heif_reader_grow_status wait_for_file_size(const int64_t target_size, void* userdata)
-{
-	const auto s = static_cast<heif_read_stream*>(userdata);
-	if (target_size > static_cast<int64_t>(s->stream->size())) return heif_reader_grow_status_size_beyond_eof;
-	return heif_reader_grow_status_size_reached;
-}
-
-static metadata_parts extract_metadata(const heif_image_handle* handle)
-{
-	metadata_parts result = {};
-	const int metadata_block_count = heif_image_handle_get_number_of_metadata_blocks(handle, nullptr);
-
-	if (metadata_block_count > 0)
+	// alloc does not zero, so the row padding is cleared rather than uploaded uninitialised.
+	void clear_row_padding(ui::surface& s)
 	{
-		std::vector<heif_item_id> ids(metadata_block_count);
-		heif_image_handle_get_list_of_metadata_block_IDs(handle, nullptr, ids.data(), metadata_block_count);
+		const auto row_bytes = static_cast<size_t>(s.dimensions().cx) * 4u;
 
-		for (const auto& id : ids)
+		for (auto y = 0; y < s.dimensions().cy; ++y)
 		{
-			const auto metadata_type = heif_image_handle_get_metadata_type(handle, id);
-
-			if (str::icmp(metadata_type, "Exif"sv) == 0)
-			{
-				const auto metadataSize = heif_image_handle_get_metadata_size(handle, id);
-				df::blob raw_metatdata(metadataSize, 0);
-				const auto error = heif_image_handle_get_metadata(handle, id, raw_metatdata.data());
-
-				if (error.code == heif_error_Ok)
-				{
-					if (raw_metatdata.size() > 4 && raw_metatdata[0] == 0)
-					{
-						raw_metatdata.erase(raw_metatdata.begin(), raw_metatdata.begin() + 4);
-					}
-
-					if (is_exif_signature(raw_metatdata))
-					{
-						raw_metatdata.erase(raw_metatdata.begin(), raw_metatdata.begin() + exif_signature.size());
-					}
-
-					result.exif = std::move(raw_metatdata);
-				}
-			}
-			else if (str::icmp(metadata_type, "XMP"sv) == 0)
-			{
-				const size_t metadataSize = heif_image_handle_get_metadata_size(handle, id);
-				df::blob raw_metatdata(metadataSize, 0);
-
-				const auto error = heif_image_handle_get_metadata(handle, id, raw_metatdata.data());
-				if (error.code == heif_error_Ok)
-				{
-					result.xmp = std::move(raw_metatdata);
-				}
-			}
-			else if (str::icmp(metadata_type, "iptc"sv) == 0)
-			{
-				const size_t metadataSize = heif_image_handle_get_metadata_size(handle, id);
-				df::blob raw_metatdata(metadataSize, 0);
-
-				const auto error = heif_image_handle_get_metadata(handle, id, raw_metatdata.data());
-				if (error.code == heif_error_Ok)
-				{
-					result.iptc = std::move(raw_metatdata);
-				}
-			}
+			std::memset(s.pixels_line(y) + row_bytes, 0, s.stride() - row_bytes);
 		}
 	}
 
+	// The primary image's first thumbnail item, decoded. It is a coded image of its own, so only a
+	// decoder reads it, and decoding it is a full HEVC decode: a scan runs this only for a caller that
+	// wants a thumbnail. It declares its own extent, so the primary's budget check says nothing about
+	// it; refusing it costs the stand-in, not the scan.
+	void decode_heif_thumbnail(read_stream& s, file_scan_result& result)
+	{
+		heif_surface_sink sink(nullptr, "HEIF thumbnail");
+		const auto decoded = decode_with_libfiles(s, sink, true);
+		if (!decoded.success) return;
+
+		clear_row_padding(*sink.surface);
+		result.thumbnail_surface = std::move(sink.surface);
+		// The thumbnail is a separate item with its own property list, so it is upright only if it
+		// carries its own transform - the primary's does not reach it.
+		result.thumbnail_orientation_applied = decoded.frame.transformed;
+	}
+}
+
+file_scan_result scan_heif_libfiles(read_stream& s, const scan_intent intent, const bool want_thumbnail,
+                                    files* const decoder)
+{
+	still_scan_extras extras;
+	extras.container_thumbnail = decode_heif_thumbnail;
+
+	auto result = scan_still_libfiles(s, intent, want_thumbnail, decoder, extras);
+	// The format the signature named, whatever the scan made of the rest.
+	result.format = detected_format::HEIF;
 	return result;
 }
 
-static str::cached extract_pixel_format(const heif_image_handle* image_handle)
+ui::surface_ptr load_heif(read_stream& s, load_diagnostic* const diagnostic)
 {
-	str::cached result = {};
+	heif_surface_sink sink(diagnostic, "HEIF");
+	const auto decoded = decode_with_libfiles(s, sink, false);
+	if (!decoded.success) return {};
 
-	heif_colorspace out_colorspace;
-	heif_chroma out_chroma;
-	const auto colorspace_result = heif_image_handle_get_preferred_decoding_colorspace(
-		image_handle, &out_colorspace, &out_chroma);
-
-	if (colorspace_result.code == heif_error_Ok)
-	{
-		switch (out_chroma)
-		{
-		case heif_chroma_monochrome: result = u8"grayscale"_c;
-			break;
-		case heif_chroma_420: result = u8"yuv420"_c;
-			break;
-		case heif_chroma_422: result = u8"yuv422"_c;
-			break;
-		case heif_chroma_444: result = u8"yuv444"_c;
-			break;
-		case heif_chroma_undefined:
-			break;
-		case heif_chroma_interleaved_RGB:
-			result = u8"rgb"_c;
-			break;
-		case heif_chroma_interleaved_RGBA:
-			result = u8"rgba"_c;
-			break;
-		case heif_chroma_interleaved_RRGGBB_BE:
-			result = u8"rgb48"_c;
-			break;
-		case heif_chroma_interleaved_RRGGBBAA_BE:
-			result = u8"rgba64"_c;
-			break;
-		case heif_chroma_interleaved_RRGGBB_LE:
-			result = u8"rgb48"_c;
-			break;
-		case heif_chroma_interleaved_RRGGBBAA_LE:
-			result = u8"rgba64"_c;
-			break;
-		}
-	}
-
-	return result;
+	clear_row_padding(*sink.surface);
+	// libheif has already turned the pixels for the item's own 'irot'/'imir', and libfiles reports the
+	// EXIF orientation only where it has not, so the image is never turned twice. The scan path reports
+	// top_left for these files, and the display agrees with it.
+	sink.surface->orientation(static_cast<ui::orientation>(decoded.frame.orientation));
+	return sink.surface;
 }
 
-file_scan_result scan_heif(read_stream& s)
+const char* heif_primary_decoder_id(read_stream& s)
 {
-	file_scan_result result = {};
-
-	const df::releaser<heif_context> ctx(heif_context_alloc(),
-	                                     [](auto* c) { heif_context_free(c); });
-
-	heif_reader reader = {};
-	reader.get_position = get_position;
-	reader.read = read;
-	reader.seek = seek;
-	reader.wait_for_file_size = wait_for_file_size;
-
-	heif_read_stream stream = {};
-	stream.stream = &s;
-
-	const auto read_result = heif_context_read_from_reader(ctx.get(), &reader, &stream, nullptr);
-
-	if (read_result.code == heif_error_Ok)
+	// A sink that takes the decoder libfiles chose and refuses the image before it is decoded.
+	struct choice final : libfiles::image_sink
 	{
-		heif_image_handle* image_handle = nullptr;
-		const auto image_result = heif_context_get_primary_image_handle(ctx.get(), &image_handle);
-		const df::releaser<heif_image_handle> image_handle_releaser(image_handle, [](auto* c)
+		std::string decoder;
+
+		bool accept(const libfiles::frame_info& declared) override
 		{
-			heif_image_handle_release(c);
-		});
-
-		if (image_result.code == heif_error_Ok)
-		{
-			result.width = heif_image_handle_get_width(image_handle);
-			result.height = heif_image_handle_get_height(image_handle);
-			result.pixel_format = extract_pixel_format(image_handle);
-
-			heif_item_id thumbnail_id = 0;
-			const auto thumbnail_count = heif_image_handle_get_list_of_thumbnail_IDs(image_handle, &thumbnail_id, 1);
-
-			if (thumbnail_count > 0)
-			{
-				heif_image_handle* thumbnail_handle = nullptr;
-				const auto thumbnail_result = heif_image_handle_get_thumbnail(
-					image_handle, thumbnail_id, &thumbnail_handle);
-				const df::releaser<heif_image_handle> thumbnail_handle_releaser(
-					thumbnail_handle, [](auto* c) { heif_image_handle_release(c); });
-
-				if (thumbnail_result.code == heif_error_Ok)
-				{
-					heif_image* img = nullptr;
-					const auto decode_image_result = heif_decode_image(thumbnail_handle, &img, heif_colorspace_RGB,
-					                                                   heif_chroma_interleaved_RGBA, nullptr);
-					const df::releaser<heif_image> heif_image_releaser(img, [](auto* i) { heif_image_release(i); });
-
-					if (decode_image_result.code == heif_error_Ok)
-					{
-						result.thumbnail_surface = image_to_surface(thumbnail_handle, img);
-					}
-				}
-			}
-
-			result.metadata = std::move(extract_metadata(image_handle));
-			result.success = true;
-
-			if (result.thumbnail_surface)
-			{
-				prop::item_metadata md;
-				metadata_exif::parse(md, result.metadata.exif);
-				result.thumbnail_surface->orientation(md.orientation);
-			}
+			decoder = declared.heif_decoder;
+			return false;
 		}
-	}
 
-	return result;
-}
-
-ui::surface_ptr load_heif(read_stream& s)
-{
-	ui::surface_ptr result;
-
-	const std::shared_ptr<heif_context> ctx(heif_context_alloc(),
-	                                        [](heif_context* c) { heif_context_free(c); });
-
-	heif_reader reader = {};
-	reader.get_position = get_position;
-	reader.read = read;
-	reader.seek = seek;
-	reader.wait_for_file_size = wait_for_file_size;
-
-	heif_read_stream stream = {};
-	stream.stream = &s;
-
-	const auto read_result = heif_context_read_from_reader(ctx.get(), &reader, &stream, nullptr);
-
-	if (read_result.code == heif_error_Ok)
-	{
-		// get a handle to the primary image
-		heif_image_handle* image_handle = nullptr;
-		const auto image_handle_result = heif_context_get_primary_image_handle(ctx.get(), &image_handle);
-		const df::releaser<heif_image_handle> image_handle_releaser(image_handle, [](auto* c)
+		libfiles::pixel_buffer allocate(const libfiles::frame_info&) override
 		{
-			heif_image_handle_release(c);
-		});
-
-		if (image_handle_result.code == heif_error_Ok)
-		{
-			// decode the image and convert colorspace to RGB, saved as 24bit interleaved
-			heif_image* img = nullptr;
-			const auto decode_image_result = heif_decode_image(image_handle, &img, heif_colorspace_RGB,
-			                                                   heif_chroma_interleaved_RGBA, nullptr);
-
-			const df::releaser<heif_image> heif_image_releaser(img, [](auto* i) { heif_image_release(i); });
-
-			if (decode_image_result.code == heif_error_Ok)
-			{
-				result = image_to_surface(image_handle, img);
-			}
-
-			const auto metadata = extract_metadata(image_handle);
-
-			if (result)
-			{
-				prop::item_metadata md;
-				metadata_exif::parse(md, metadata.exif);
-				result->orientation(md.orientation);
-			}
+			return {};
 		}
-	}
+	};
 
-	return result;
+	choice sink;
+	decode_with_libfiles(s, sink, false);
+	// libfiles names only a registered decoder, and only FFmpeg's is named to it.
+	return sink.decoder.empty() ? nullptr : heif_hevc_decoder_id();
 }

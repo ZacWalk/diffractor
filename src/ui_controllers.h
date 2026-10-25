@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "ui.h"
+#include "libdesktop/ui.h"
 #include "ui_view.h"
 
 class clickable_controller final : public view_controller
@@ -30,6 +30,8 @@ public:
 		update_highlight();
 	}
 
+	// For an element the controller owns only part of, such as one tile of a grid. The bounds are
+	// the part, not the element clipped by what covers it -- clipping here drops the click.
 	clickable_controller(const view_host_ptr& host, view_element_ptr e, const pointi element_offset,
 	                     const recti bounds) : view_controller(host, bounds), _element(std::move(e)),
 	                                           _element_offset(element_offset), _can_click(_element->can_invoke())
@@ -66,7 +68,7 @@ public:
 
 		if (ic.invalidate_view)
 		{
-			_host->frame()->invalidate(_bounds);
+			_host->frame()->invalidate(_element->invalidate_bounds(_element_offset));
 		}
 	}
 
@@ -80,16 +82,15 @@ public:
 
 		if (ic.invalidate_view)
 		{
-			_host->frame()->invalidate(_bounds);
+			_host->frame()->invalidate(_element->invalidate_bounds(_element_offset));
 		}
 	}
 
 	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
 	{
-		const auto can_invoke = _tracking && _hover && _can_click;
-
 		_last_loc = loc;
 		_hover = _bounds.contains(loc);
+		const auto can_invoke = _tracking && _hover && _can_click;
 		_tracking = false;
 		interaction_context ic{loc, _element_offset, _tracking};
 		update_highlight();
@@ -97,7 +98,7 @@ public:
 
 		if (ic.invalidate_view)
 		{
-			_host->frame()->invalidate(_bounds);
+			_host->frame()->invalidate(_element->invalidate_bounds(_element_offset));
 		}
 
 		if (can_invoke)
@@ -119,6 +120,27 @@ public:
 		}
 	}
 
+	// Escape cancels a press the same way it cancels a drag. The button is still down, and the
+	// release that follows must not invoke an action the user has just backed out of - by then
+	// Escape may have changed the view the click was made in.
+	bool escape() override
+	{
+		if (!_tracking) return false;
+
+		_tracking = false;
+		_hover = false;
+		interaction_context ic{{-1, -1}, _element_offset, _tracking};
+		update_highlight();
+		_element->hover(ic);
+
+		if (ic.invalidate_view)
+		{
+			_host->frame()->invalidate(_element->invalidate_bounds(_element_offset));
+		}
+
+		return true;
+	}
+
 	ui::style::cursor cursor() const override
 	{
 		return _can_click ? ui::style::cursor::link : ui::style::cursor::normal;
@@ -134,13 +156,11 @@ public:
 		if (_element)
 		{
 			const auto hover = _element->is_style_bit_set(view_element_style::hover);
-			//const auto tracking = _element->is_style_bit_set(view_element_style::tracking);
 
 			if (hover != _hover) // || _tracking != tracking)
 			{
 				_element->set_style_bit(view_element_style::hover, _hover, _host, _element);
-				//_element->set_style_bit(view_element_style::tracking, _tracking);
-				_host->frame()->invalidate(_bounds);
+				_host->frame()->invalidate(_element->invalidate_bounds(_element_offset));
 			}
 		}
 	}
@@ -149,14 +169,12 @@ public:
 template <class T>
 static view_controller_ptr default_controller_from_location(T& this_element, const view_host_ptr& host,
                                                             const pointi loc, const pointi element_offset,
-                                                            const std::vector<recti>& excluded_bounds)
+                                                            hit_test_context& ctx)
 {
-	if ((this_element.can_invoke() || this_element.has_tooltip()) && this_element.bounds.contains(loc - element_offset))
+	if (this_element.is_visible() && (this_element.can_invoke() || this_element.has_tooltip()) &&
+		this_element.bounds.contains(loc - element_offset))
 	{
-		auto e = this_element.shared_from_this();
-		auto bounds = e->bounds;
-		for (const auto& ex : excluded_bounds) bounds.exclude(loc - element_offset, ex);
-		return std::make_shared<clickable_controller>(host, e, element_offset, bounds.offset(element_offset));
+		return std::make_shared<clickable_controller>(host, this_element.shared_from_this(), element_offset);
 	}
 
 	return nullptr;
@@ -196,7 +214,6 @@ public:
 		if (!_tracking)
 		{
 			_tracking = true;
-			_first_tic = platform::tick_count();
 			_last_loc = _start_loc = loc;
 			_device_start = _parent.device_selection();
 			_existing_selection = _parent.selection();
@@ -230,13 +247,12 @@ public:
 		}
 	}
 
-	void escape() override
+	bool escape() override
 	{
-		if (_tracking)
-		{
-			_tracking = false;
-			_parent.selection(_existing_selection);
-		}
+		if (!_tracking) return false;
+		_tracking = false;
+		_parent.selection(_existing_selection);
+		return true;
 	}
 };
 
@@ -245,7 +261,6 @@ class handle_move_controller final : public view_controller
 {
 public:
 	TParent& _parent;
-	rectd _handle_bounds;
 	rectd _device_start;
 	quadd _existing_selection;
 	bool _tracking;
@@ -257,9 +272,8 @@ public:
 
 	handle_move_controller(const view_host_ptr& host, TParent& parent, const rectd& start, const bool l, const bool t,
 	                       const bool r,
-	                       const bool b) : view_controller(host, _handle_bounds.round()), _parent(parent)
+	                       const bool b) : view_controller(host, start.round()), _parent(parent)
 	{
-		_handle_bounds = start;
 		_left = l;
 		_top = t;
 		_right = r;
@@ -286,7 +300,6 @@ public:
 	{
 		if (!_tracking)
 		{
-			_first_tic = platform::tick_count();
 			_last_loc = _start_loc = loc;
 			_device_start = _parent.device_selection();
 			_existing_selection = _parent.selection();
@@ -313,11 +326,6 @@ public:
 		if (_right) rr.right = std::max(rr.right - offset.x, rr.left + 1);
 		if (_bottom) rr.bottom = std::max(rr.bottom - offset.y, rr.top + 1);
 
-		/*if (_left) rr.left = rr.left - offset.cx;
-		if (_top) rr.top = rr.top - offset.cy;
-		if (_right) rr.right = rr.right - offset.cx;
-		if (_bottom) rr.bottom = rr.bottom - offset.cy;*/
-
 		// 0 2
 		// 3 2
 		int active_point = 0;
@@ -338,12 +346,11 @@ public:
 		}
 	}
 
-	void escape() override
+	bool escape() override
 	{
-		if (_tracking)
-		{
-			_tracking = false;
-			_parent.selection(_existing_selection);
-		}
+		if (!_tracking) return false;
+		_tracking = false;
+		_parent.selection(_existing_selection);
+		return true;
 	}
 };

@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -21,6 +21,19 @@ class index_state;
 class db_statement;
 
 using item_writes_t = platform::queue<item_db_write>;
+
+namespace database_test_seams
+{
+	bool schema_failure_allows_replacement(int sqlite_result);
+	int set_journal_mode(sqlite3* db, std::string_view requested);
+	int probe_journal_mode(sqlite3* db);
+	void fail_next_journal_probe(int sqlite_result);
+	size_t folder_thumbnail_visit_budget();
+	void visit_folder_thumbnail_candidates(
+		const df::folder_path& root,
+		const std::function<bool(const df::folder_path&)>& visit,
+		const std::function<std::vector<df::folder_path>(const df::folder_path&)>& enumerate);
+}
 
 struct item_import
 {
@@ -70,9 +83,35 @@ class database final : public df::no_copy
 	std::unique_ptr<db_statement> find_folder_thumbnail;
 	std::unique_ptr<db_statement> find_thumbnail;
 
+	// Day of the last web-service-cache age prune, so that full-table pass runs once a day
+	// rather than on every cache write.
+	mutable uint32_t _web_cache_pruned_day = 0;
+
+	// Day of the last PRAGMA optimize, so a session-long connection re-analyses as the index grows.
+	uint32_t _optimized_day = 0;
+
 	bool is_db_thread() const;
+	bool connect();
+	bool prepare_database(bool can_replace);
+	platform::file_op_result delete_database_files() const;
 
 public:
+	struct thumbnail_request
+	{
+		std::weak_ptr<df::item_element> lifetime;
+		df::file_path path;
+		df::folder_path folder;
+		uint64_t generation = 0;
+		bool is_folder = false;
+		bool has_thumbnail = false;
+
+		thumbnail_request(std::weak_ptr<df::item_element> lifetime, df::file_path path, df::folder_path folder,
+		                  const uint64_t generation, const bool is_folder, const bool has_thumbnail) noexcept;
+	};
+
+	using thumbnail_requests = std::vector<thumbnail_request>;
+	static thumbnail_request make_thumbnail_request(const df::item_element_ptr& item, uint64_t generation);
+
 	struct db_thumbnail
 	{
 		ui::const_image_ptr thumb;
@@ -95,8 +134,8 @@ public:
 
 	bool has_errors() const;
 
-	std::u8string web_service_cache(std::u8string_view key) const;
-	void web_service_cache(std::u8string_view key, std::u8string_view value) const;
+	std::string web_service_cache(std::string_view key) const;
+	void web_service_cache(std::string_view key, std::string_view value) const;
 
 	item_import_set load_item_imports() const;
 	void writes_item_imports(const item_import_set& items) const;
@@ -106,9 +145,14 @@ public:
 	void clean(const std::vector<df::file_path>& indexed_items) const;
 	db_thumbnail load_thumbnail(df::file_path id) const;
 	db_thumbnail load_folder_thumbnail(str::cached folder) const;
-	void load_thumbnails(const index_state& index, const df::item_set& items) const;
+	static thumbnail_requests make_thumbnail_requests(const df::item_set& items);
+	void load_thumbnails(const index_state& index, const thumbnail_requests& requests) const;
 	void open();
-	void open(df::folder_path folder, std::u8string_view file_name);
+	void open(df::folder_path folder, std::string_view file_name);
+	void upgrade_cached_metadata();
+	bool invalidate_cached_metadata() const;
+	bool request_date_pack_rescan() const;
+	bool request_audio_metadata_rescan() const;
 	void perform_writes();
 	void perform_writes(std::deque<item_db_write> writes) const;
 	void maintenance(bool is_reset);

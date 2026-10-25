@@ -1,12 +1,12 @@
 ;NSIS Modern User Interface
 
 !define PRODUCT_NAME "Diffractor"
-!define PRODUCT32_EXE "diffractor.exe"
+!define PRODUCT32_EXE "diffractor32.exe"
 !define PRODUCT64_EXE "diffractor64.exe"
 !define PRODUCT_PUBLISHER "Diffractor"
-!define BUILD_NUM "1206"
-!define PRODUCT_VERSION "126.2"
-!define FILE_VERSION "1.26.2.${BUILD_NUM}"
+!define BUILD_NUM "1313"
+!define PRODUCT_VERSION "127.3"
+!define FILE_VERSION "1.27.3.${BUILD_NUM}"
 !define PRODUCT_WEB_SITE "http://www.Diffractor.com/"
 !define PRODUCT_STARTMENU_REGVAL "NSIS:StartMenuDir"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
@@ -114,7 +114,7 @@ VIAddVersionKey CompanyName "${PRODUCT_PUBLISHER}"
 VIAddVersionKey CompanyWebsite "${PRODUCT_WEB_SITE}"
 VIAddVersionKey FileVersion "${FILE_VERSION}"
 VIAddVersionKey FileDescription ""
-VIAddVersionKey LegalCopyright "Copyright (C) 2025 Zac Walker"
+VIAddVersionKey LegalCopyright "Copyright (C) 2026 Zac Walker"
 
 
 
@@ -158,11 +158,49 @@ VIAddVersionKey LegalCopyright "Copyright (C) 2025 Zac Walker"
 ;Languages
 
 !insertmacro MUI_LANGUAGE "English" ; The first language is the default language
+!insertmacro MUI_LANGUAGE "Czech"
 !insertmacro MUI_LANGUAGE "German"
+!insertmacro MUI_LANGUAGE "Spanish"
+!insertmacro MUI_LANGUAGE "French"
 !insertmacro MUI_LANGUAGE "Italian"
 !insertmacro MUI_LANGUAGE "Japanese"
-!insertmacro MUI_LANGUAGE "Spanish"
-;!insertmacro MUI_LANGUAGE "Czech"
+!insertmacro MUI_LANGUAGE "Korean"
+!insertmacro MUI_LANGUAGE "Polish"
+!insertmacro MUI_LANGUAGE "PortugueseBR"
+!insertmacro MUI_LANGUAGE "Russian"
+!insertmacro MUI_LANGUAGE "Turkish"
+!insertmacro MUI_LANGUAGE "Ukrainian"
+!insertmacro MUI_LANGUAGE "SimpChinese"
+
+LangString WELCOME_TEXT ${LANG_ENGLISH} "Superfast searching, viewing and comparing of photos or videos.$\r$\n$\r$\nOptimized for your graphics card and PC."
+LangString WELCOME_TEXT ${LANG_CZECH} "Lehká správa fotografií a médií.$\r$\n$\r$\nOptimalizováno pro vaši grafickou kartu a PC."
+LangString WELCOME_TEXT ${LANG_GERMAN} "Superschnelle Suche, Betrachtung und Vergleich von Fotos oder Videos.$\r$\n$\r$\nOptimiert für Ihre Grafikkarte und Ihren PC."
+LangString WELCOME_TEXT ${LANG_SPANISH} "Búsqueda, visualización y comparación ultrarrápidas de fotos o vídeos.$\r$\n$\r$\nOptimizado para su tarjeta gráfica y su PC."
+LangString WELCOME_TEXT ${LANG_FRENCH} "Recherche, affichage et comparaison ultrarapides de photos ou de vidéos.$\r$\n$\r$\nOptimisé pour votre carte graphique et votre PC."
+LangString WELCOME_TEXT ${LANG_ITALIAN} "Ricerca, visualizzazione e confronto velocissimi di foto o video.$\r$\n$\r$\nOttimizzato per la scheda grafica e il PC."
+LangString WELCOME_TEXT ${LANG_JAPANESE} "写真やビデオを超高速で検索、表示、比較します。$\r$\n$\r$\nグラフィックス カードと PC に合わせて最適化されています。"
+LangString WELCOME_TEXT ${LANG_KOREAN} "사진과 비디오를 매우 빠르게 검색하고 보고 비교하세요.$\r$\n$\r$\n그래픽 카드와 PC에 최적화되어 있습니다."
+LangString WELCOME_TEXT ${LANG_POLISH} "Błyskawiczne wyszukiwanie, wyświetlanie i porównywanie zdjęć oraz filmów.$\r$\n$\r$\nZoptymalizowano pod kątem karty graficznej i komputera."
+LangString WELCOME_TEXT ${LANG_PORTUGUESEBR} "Pesquisa, visualização e comparação ultrarrápidas de fotos ou vídeos.$\r$\n$\r$\nOtimizado para sua placa de vídeo e seu PC."
+LangString WELCOME_TEXT ${LANG_RUSSIAN} "Сверхбыстрый поиск, просмотр и сравнение фотографий и видео.$\r$\n$\r$\nОптимизировано для вашей видеокарты и компьютера."
+LangString WELCOME_TEXT ${LANG_TURKISH} "Fotoğraf ve videolarda son derece hızlı arama, görüntüleme ve karşılaştırma.$\r$\n$\r$\nEkran kartınız ve bilgisayarınız için optimize edilmiştir."
+LangString WELCOME_TEXT ${LANG_UKRAINIAN} "Надшвидкий пошук, перегляд і порівняння фотографій та відео.$\r$\n$\r$\nОптимізовано для вашої відеокарти та комп’ютера."
+LangString WELCOME_TEXT ${LANG_SIMPCHINESE} "超快速搜索、查看和比较照片或视频。$\r$\n$\r$\n针对您的显卡和电脑进行了优化。"
+
+LangString APP_LANG ${LANG_ENGLISH} "en"
+LangString APP_LANG ${LANG_CZECH} "cs"
+LangString APP_LANG ${LANG_GERMAN} "de"
+LangString APP_LANG ${LANG_SPANISH} "es"
+LangString APP_LANG ${LANG_FRENCH} "fr"
+LangString APP_LANG ${LANG_ITALIAN} "it"
+LangString APP_LANG ${LANG_JAPANESE} "ja"
+LangString APP_LANG ${LANG_KOREAN} "ko"
+LangString APP_LANG ${LANG_POLISH} "pl"
+LangString APP_LANG ${LANG_PORTUGUESEBR} "pt"
+LangString APP_LANG ${LANG_RUSSIAN} "ru"
+LangString APP_LANG ${LANG_TURKISH} "tr"
+LangString APP_LANG ${LANG_UKRAINIAN} "uk"
+LangString APP_LANG ${LANG_SIMPCHINESE} "zh"
 
 ;--------------------------------
 ;Reserve Files
@@ -179,6 +217,19 @@ Function .onInit
     Quit
   ${EndIf}
 
+  ; Detect an existing installation so we can treat this run as an update.
+  ; On an update we must NOT recreate the desktop shortcut: if the user has
+  ; deleted it, recreating it on every update is unwanted (issue #173). The
+  ; uninstall key is written on every install, so its presence means Diffractor
+  ; is already installed.
+  Var /GLOBAL IS_UPDATE
+  StrCpy $IS_UPDATE "0"
+  Var /GLOBAL EXISTING_INSTALL
+  ReadRegStr $EXISTING_INSTALL SHCTX "${PRODUCT_UNINST_KEY}" "DisplayName"
+  ${If} $EXISTING_INSTALL != ""
+    StrCpy $IS_UPDATE "1"
+  ${EndIf}
+
   Var /GLOBAL DEF_LANG
   ReadRegStr $DEF_LANG HKCU "${PRODUCT_SETTINGS_KEY}" "lang"
 
@@ -188,8 +239,30 @@ Function .onInit
 	StrCpy $LANGUAGE 1029
   ${ElseIf} $DEF_LANG == "es"
 	StrCpy $LANGUAGE 1034
+	${ElseIf} $DEF_LANG == "fr"
+	StrCpy $LANGUAGE 1036
+	${ElseIf} $DEF_LANG == "it"
+	StrCpy $LANGUAGE 1040
   ${ElseIf} $DEF_LANG == "ja"
 	StrCpy $LANGUAGE 1041
+	${ElseIf} $DEF_LANG == "ko"
+	StrCpy $LANGUAGE 1042
+	${ElseIf} $DEF_LANG == "pl"
+	StrCpy $LANGUAGE 1045
+	${ElseIf} $DEF_LANG == "pt"
+	StrCpy $LANGUAGE 1046
+	${ElseIf} $DEF_LANG == "pt_BR"
+	StrCpy $LANGUAGE 1046
+	${ElseIf} $DEF_LANG == "ru"
+	StrCpy $LANGUAGE 1049
+	${ElseIf} $DEF_LANG == "tr"
+	StrCpy $LANGUAGE 1055
+	${ElseIf} $DEF_LANG == "uk"
+	StrCpy $LANGUAGE 1058
+	${ElseIf} $DEF_LANG == "zh"
+	StrCpy $LANGUAGE 2052
+	${ElseIf} $DEF_LANG == "zh_CN"
+	StrCpy $LANGUAGE 2052
   ${EndIf}
 
   !insertmacro MUI_LANGDLL_DISPLAY
@@ -217,17 +290,7 @@ Function StartDiffractor
 FunctionEnd
 
 Function MyWelcomeShowCallback
-	Var /global welcome_text
-   ${If} $LANGUAGE == 1031
-		StrCpy  $welcome_text "Superschnelle Suche, Betrachtung und Vergleich von Fotos oder Videos.$\r$\n$\r$\nOptimiert für Ihre Grafikkarte und Ihren PC."
-	${ElseIf} $LANGUAGE == 1029		
-		StrCpy  $welcome_text "Lehká správa fotografií a médií.$\r$\n$\r$\nOptimalizováno pro vaši grafickou kartu a PC."
-	${ElseIf} $LANGUAGE == 1041		
-		StrCpy  $welcome_text "写真やビデオを超高速で検索、表示、比較します。$\r$\n$\r$\nグラフィックス カードと PC に合わせて最適化されています。"
-	${Else}
-		StrCpy  $welcome_text "Superfast searching, viewing and comparing of photos or videos.$\r$\n$\r$\nOptimized for your graphics card and PC."
-	${EndIf} 
-	SendMessage $mui.WelcomePage.Text ${WM_SETTEXT} 0 "STR:$welcome_text"
+	SendMessage $mui.WelcomePage.Text ${WM_SETTEXT} 0 "STR:$(WELCOME_TEXT)"
 FunctionEnd
 
 ;--------------------------------
@@ -246,14 +309,14 @@ Section "Diffractor"
 	Push "DIFF_MAIN"
 	Call .CloseProgram
     
-	SetOverwrite ifnewer
+	; Everything installed here is application data, never user data, and each release
+	; expects its own copy of it. Overwriting only when newer let an update keep a stale
+	; file whose timestamp happened not to be older - a stale location-places.txt silently
+	; degrades place names to the legacy over-qualified form with nothing shown to the user.
+	SetOverwrite on
 	
 	SetOutPath $INSTDIR\languages  
-;	File "..\exe\languages\cs.po"
-	File "..\exe\languages\de.po"
-	File "..\exe\languages\it.po"
-	File "..\exe\languages\es.po"
-	File "..\exe\languages\ja.po"
+	File "..\exe\languages\*.po"
 
 	SetOutPath $INSTDIR\dictionaries  
 	File "..\exe\dictionaries\en_US.aff"
@@ -265,7 +328,11 @@ Section "Diffractor"
 	File "..\exe\location-states.txt"
 	File "..\exe\diffractor-tools.json"
 
-	SetOverwrite on
+	; The installed program is LGPL-3.0-or-later, whose text and the GPL-3.0 it incorporates must
+	; accompany every copy. dd.ps1 desktop stages both into exe\ before this script is compiled.
+	File "..\exe\LICENSE.txt"
+	File "..\exe\COPYING.GPLv3.txt"
+
 	File "..\exe\${PRODUCT32_EXE}"
 	File "..\exe\${PRODUCT64_EXE}"
 		
@@ -273,7 +340,12 @@ Section "Diffractor"
         ; Dont add desktop icon if in silent mode
     ${Else}
 		CreateShortCut "$STARTMENU\Programs\Diffractor.lnk" "$INSTDIR\$PRODUCT_EXE" "" "$INSTDIR\$PRODUCT_EXE" 0
-		CreateShortCut "$DESKTOP\Diffractor.lnk" "$INSTDIR\$PRODUCT_EXE" "" "$INSTDIR\$PRODUCT_EXE" 0
+		; Only create the desktop shortcut on a fresh install. On an update we must
+		; not recreate it, otherwise a shortcut the user has deliberately deleted
+		; keeps coming back after every update (issue #173).
+		${If} $IS_UPDATE == "0"
+			CreateShortCut "$DESKTOP\Diffractor.lnk" "$INSTDIR\$PRODUCT_EXE" "" "$INSTDIR\$PRODUCT_EXE" 0
+		${EndIf}
 	${EndIf}
   
 	; Write the uninstall keys for Windows
@@ -282,7 +354,8 @@ Section "Diffractor"
 	WriteRegStr SHCTX "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\$PRODUCT_EXE"	
 	WriteRegStr SHCTX "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
 	WriteRegStr SHCTX "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
-	WriteRegDWord SHCTX "${PRODUCT_UNINST_KEY}" "EstimatedSize" 20000
+	; KB, as reported by Add/Remove Programs. Both executables plus the location data.
+	WriteRegDWord SHCTX "${PRODUCT_UNINST_KEY}" "EstimatedSize" 108000
 	WriteRegDWORD SHCTX "${PRODUCT_UNINST_KEY}" "NoModify" 1
 	WriteRegDWORD SHCTX "${PRODUCT_UNINST_KEY}" "NoRepair" 1
 	WriteRegStr SHCTX "${PRODUCT_UNINST_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
@@ -290,8 +363,17 @@ Section "Diffractor"
 	
 	WriteRegStr SHCTX "${PRODUCT_SETTINGS_KEY}" "" $INSTDIR	
 
-	WriteRegStr SHCTX "Software\Classes\Folder\shell\diffractor" "" "Diffractor"
-  	WriteRegStr SHCTX "Software\Classes\Folder\shell\diffractor\command" "" '"$INSTDIR\$PRODUCT_EXE" "%1"'
+	; Remove the legacy context-menu entry from older versions. It was registered under
+	; the generic "Folder" class, which has no default verb; adding the first static verb
+	; there promoted "diffractor" to the default double-click action and hijacked normal
+	; folder navigation in Explorer (folders opened in Diffractor instead of opening).
+	DeleteRegKey SHCTX "Software\Classes\Folder\shell\diffractor"
+
+	; Register the folder context-menu entry under the "Directory" class (file-system
+	; folders). "Directory\shell" ships with its default verb set to "none", so this stays
+	; a right-click entry only and never becomes the default double-click action.
+	WriteRegStr SHCTX "Software\Classes\Directory\shell\diffractor" "" "Diffractor"
+  	WriteRegStr SHCTX "Software\Classes\Directory\shell\diffractor\command" "" '"$INSTDIR\$PRODUCT_EXE" "%1"'
   	WriteRegStr SHCTX "Software\Classes\File\shell\diffractor" "" "Diffractor"
   	WriteRegStr SHCTX "Software\Classes\File\shell\diffractor\command" "" '"$INSTDIR\$PRODUCT_EXE" "%1"'
 
@@ -325,17 +407,7 @@ Section "Diffractor"
 
 	!insertmacro UPDATEFILEASSOC
 
-	${If} $LANGUAGE == 1031
-		WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "lang" "de"
-	${ElseIf} $LANGUAGE == 1029
-		WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "lang" "cs"
-	${ElseIf} $LANGUAGE == 1034
-		WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "lang" "es"
-	${ElseIf} $LANGUAGE == 1041
-		WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "lang" "ja"
-	${Else}
-		WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "lang" "en"
-	${EndIf} 
+	WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "lang" "$(APP_LANG)"
 
 	WriteRegStr HKCU "${PRODUCT_SETTINGS_KEY}" "install_lang" $LANGUAGE
 
@@ -354,7 +426,13 @@ Section "Uninstall"
 
 	; remove registry keys
 	DeleteRegKey SHCTX "${PRODUCT_UNINST_KEY}"
-	DeleteRegKey SHCTX "${PRODUCT_SETTINGS_KEY}"
+	; PRODUCT_SETTINGS_KEY is NOT removed. SHCTX is HKCU here (RequestExecutionLevel user), and
+	; HKCU\Software\Diffractor is where the app actually keeps every setting on a desktop install -
+	; collection roots, favourite searches and tags, copyright fields, import and sync paths, panel
+	; layout. Deleting it is the registry half of the same data loss the file list below avoids.
+	DeleteRegKey SHCTX "Software\Classes\Directory\shell\diffractor"
+	; Also remove the legacy "Folder\shell" entry written by older versions, which
+	; hijacked the default folder double-click action (see install section for details).
 	DeleteRegKey SHCTX "Software\Classes\Folder\shell\diffractor"
 	DeleteRegKey SHCTX "Software\Classes\File\shell\diffractor"
 
@@ -371,6 +449,14 @@ Section "Uninstall"
 	DeleteRegValue HKCU "Software\Classes\.cr3\OpenWithProgids" "${PRODUCT_NAME}"
 	DeleteRegValue HKCU "Software\Classes\.webp\OpenWithProgids" "${PRODUCT_NAME}"
 
+	; The install also advertises Diffractor in Explorer's per-extension Open With list.
+	; Without this it survives uninstall and keeps offering an application that is gone.
+	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpe\OpenWithProgids" "${PRODUCT_NAME}"
+	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpeg\OpenWithProgids" "${PRODUCT_NAME}"
+	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpg\OpenWithProgids" "${PRODUCT_NAME}"
+	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.png\OpenWithProgids" "${PRODUCT_NAME}"
+	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.gif\OpenWithProgids" "${PRODUCT_NAME}"
+
 	DeleteRegKey HKCU "Software\Classes\${PRODUCT_NAME}"
 
 	;DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
@@ -378,12 +464,34 @@ Section "Uninstall"
 
 	!insertmacro UPDATEFILEASSOC
 	
+	; $INSTDIR is $LOCALAPPDATA\Diffractor, which is also where the app keeps the index database,
+	; the settings file, the map tile cache and any dictionary the user downloaded. A recursive
+	; delete of the whole folder therefore destroys the user's data along with the program, with no
+	; prompt and no way back. Only what the installer wrote is removed, plus the app's own logs, and
+	; the folders go only if they are empty afterwards.
 	Delete /REBOOTOK "$INSTDIR\${PRODUCT32_EXE}"
 	Delete /REBOOTOK "$INSTDIR\${PRODUCT64_EXE}"
+	Delete "$INSTDIR\location-countries.txt"
+	Delete "$INSTDIR\location-places.txt"
+	Delete "$INSTDIR\location-states.txt"
+	Delete "$INSTDIR\diffractor-tools.json"
+	Delete "$INSTDIR\LICENSE.txt"
+	Delete "$INSTDIR\COPYING.GPLv3.txt"
+	Delete "$INSTDIR\diffractor.log"
+	Delete "$INSTDIR\diffractor.previous.log"
+	Delete "$INSTDIR\languages\*.po"
+	RMDir "$INSTDIR\languages"
+	; Only the two shipped dictionary files: any other file here was downloaded by the user.
+	Delete "$INSTDIR\dictionaries\en_US.aff"
+	Delete "$INSTDIR\dictionaries\en_US.dic"
+	RMDir "$INSTDIR\dictionaries"
 	Delete $INSTDIR\uninstall.exe
 	Delete "$STARTMENU\Programs\Diffractor.lnk"
 	Delete "$DESKTOP\Diffractor.lnk"
 
-	RMDir /r /REBOOTOK "$INSTDIR"
+	; Expected to fail while the user's data is still here, which is the point. /REBOOTOK must not be
+	; used: this folder is not empty by design, and the flag would both schedule it for deletion on
+	; reboot and end every uninstall on the "restart required" page.
+	RMDir "$INSTDIR"
 
 SectionEnd  

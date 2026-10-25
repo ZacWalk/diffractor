@@ -1,0 +1,3861 @@
+msgid "Fit"
+msgstr "Dopasuj"
+
+msgid "Zoom in"
+msgstr "Powiększ"
+
+msgid "Zoom out"
+msgstr "Pomniejsz"
+
+msgid "Zoom"
+msgstr "Powiększenie"
+
+msgid "Fit Width"
+msgstr "Dopasuj do szerokości"
+
+msgid "Fill"
+msgstr "Wypełnij"
+
+msgid "100% (1:1)"
+msgstr "100% (1:1)"
+
+msgid "Audio: {}"
+msgstr "Audio: {}"
+
+msgid "Audio track {}"
+msgstr "Ścieżka audio {}"
+
+msgid "Audio tracks"
+msgstr "Ścieżki audio"
+
+msgid "Audio output"
+msgstr "Wyjście audio"
+
+msgid "commentary"
+msgstr "komentarz"
+
+msgid "audio description"
+msgstr "audiodeskrypcja"
+
+# Diffractor translation
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: 2026-07-20 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Polish\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+"X-Generator: GitHub Copilot\n"
+
+msgid "Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything."
+msgstr "Diffractor porządkuje zdjęcia, filmy i muzykę tam, gdzie już się znajdują. Wybierasz foldery, które tworzą Twoją kolekcję; ich indeksowanie dodaje szybkie wyszukiwanie, wykrywanie duplikatów i edycję metadanych, niczego nie przenosząc ani nie kopiując."
+
+msgid "Diagnostics information was sent to Diffractor HQ."
+msgstr "Informacje diagnostyczne zostały wysłane do Diffractor HQ."
+
+msgid "Releases - Diffractor"
+msgstr "Wydania - Diffractor"
+
+msgid "Workflow Tags"
+msgstr "Tagi przepływu pracy"
+
+msgid "Configure favorite tags."
+msgstr "Skonfiguruj ulubione tagi."
+
+msgid "Add folder"
+msgstr "Dodaj folder"
+
+msgid "Capture metadata and the Windows file created time will be shifted to start at a new local date and time."
+msgstr "Metadane daty wykonania i czas utworzenia pliku w systemie Windows zostaną przesunięte tak, aby zaczynały się od nowej lokalnej daty i godziny."
+
+msgid "Time gaps between dated items are preserved. Items without a known date receive the new starting date."
+msgstr "Odstępy czasu między elementami z datą zostaną zachowane. Elementy bez znanej daty otrzymają nową datę początkową."
+
+msgid "This is useful if your camera date was set wrongly and you need to fix photo and video dates."
+msgstr "Jest to przydatne, jeśli data w aparacie została ustawiona nieprawidłowo i trzeba poprawić daty zdjęć i filmów."
+
+msgid "After"
+msgstr "Po"
+
+msgid "Album Artist"
+msgstr "Artysta albumu"
+
+msgid "Analyzing..."
+msgstr "Analizowanie..."
+
+msgid "archive"
+msgstr "archiwum"
+
+msgid "archives"
+msgstr "archiwa"
+
+msgid "audio"
+msgstr "audio"
+
+msgid "Audio"
+msgstr "Audio"
+
+msgid "Before"
+msgstr "Przed"
+
+msgid "Brightness"
+msgstr "Jasność"
+
+msgid "Burn"
+msgstr "Nagraj na płytę"
+
+msgid "Analyze"
+msgstr "Analizuj"
+
+msgid "&Analyze"
+msgstr "&Analizuj"
+
+msgid "&Cancel"
+msgstr "&Anuluj"
+
+msgid "Change..."
+msgstr "Zmień..."
+
+msgid "&Close"
+msgstr "&Zamknij"
+
+msgid "&Convert"
+msgstr "&Konwertuj"
+
+msgid "&Delete"
+msgstr "&Usuń"
+
+msgid "&Don't Save"
+msgstr "&Nie zapisuj"
+
+msgid "&OK"
+msgstr "&OK"
+
+msgid "&Rotate"
+msgstr "&Obróć"
+
+msgid "&Save"
+msgstr "&Zapisz"
+
+msgid "As &JPEG"
+msgstr "Jako &JPEG"
+
+msgid "&Send"
+msgstr "&Wyślij"
+
+msgid "&Synchronize"
+msgstr "&Synchronizuj"
+
+msgid "&Tag"
+msgstr "&Oznacz"
+
+msgid "&Update"
+msgstr "&Aktualizuj"
+
+msgid "Donate"
+msgstr "Przekaż darowiznę"
+
+msgid "Diffractor can be used for free. If you find it useful, please help the project by donating."
+msgstr "Z programu Diffractor można korzystać bezpłatnie. Jeśli uznasz to za przydatne, pomóż projektowi, przekazując darowiznę."
+
+msgid "Donate online."
+msgstr "Przekaż darowiznę online."
+
+
+msgid "Changes"
+msgstr "Zmiany"
+
+msgid "The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location."
+msgstr "Celownik na środku mapy wskazuje lokalizację, która zostanie zapisana. Przeciągnij mapę, kliknij dymek zdjęcia, aby przesunąć go pod celownik, albo wyszukaj miejsce według nazwy. Powiększaj kółkiem myszy. Nic nie zostanie zapisane, dopóki nie naciśniesz Dodaj lokalizację."
+
+msgid "The collection contains {} {} ({})."
+msgstr "Kolekcja zawiera {} {} ({})."
+
+msgid "The collection contains:"
+msgstr "Kolekcja zawiera:"
+
+msgid "Items created {} {}"
+msgstr "Utworzone elementy {} {}"
+
+msgid "Items modified {} {}"
+msgstr "Elementy zmodyfikowane {} {}"
+
+msgid "Opens created items.\nCtrl+click opens modified items."
+msgstr "Otwiera utworzone elementy.\nCtrl+kliknięcie otwiera zmodyfikowane elementy."
+
+msgid "{} items close to {} in the collection."
+msgstr "{} elementów w kolekcji w pobliżu {}."
+
+msgid "{} items close to {}"
+msgstr "{} elementów w pobliżu {}"
+
+msgid "filter"
+msgstr "filtr"
+
+msgid "Close"
+msgstr "Zamknij"
+
+msgid "Collection options"
+msgstr "Opcje kolekcji"
+
+msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
+msgstr "Poprzedź wpis znakiem '-', aby go wykluczyć. Pełna ścieżka, np. -c:\\photos\\secret, wyklucza jeden folder. Nazwa, np. -secret, lub symbol wieloznaczny, np. -proxy*, wyklucza pasujące foldery w dowolnym miejscu Twojej kolekcji."
+
+msgid "Other folders"
+msgstr "Inne foldery"
+
+msgid "Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."
+msgstr "Folderami mogą być dyski, foldery, udziały sieciowe lub etykiety urządzeń. Etykiety są przydatne w przypadku urządzeń wymiennych lub sieciowych, gdzie zamapowane litery dysków mogą się zmieniać."
+
+msgid "Choose the folders that make up your collection. Your files stay where they are."
+msgstr "Wybierz foldery, które tworzą Twoją kolekcję. Twoje pliki pozostają tam, gdzie są."
+
+msgid "Collection folders"
+msgstr "Foldery kolekcji"
+
+msgid "One folder per line."
+msgstr "Jeden folder w wierszu."
+
+msgid "More information about collection management."
+msgstr "Więcej informacji na temat zarządzania zbiorami."
+
+msgid "More information about metadata templates."
+msgstr "Więcej informacji o szablonach metadanych."
+
+msgid "Videos"
+msgstr "Filmy"
+
+msgid "Your collection"
+msgstr "Twoja kolekcja"
+
+msgid "Color"
+msgstr "Kolor"
+
+msgid "Adjust date and time"
+msgstr "Dostosuj datę i godzinę"
+
+msgid "Advanced Search"
+msgstr "Wyszukiwanie zaawansowane"
+
+msgid "Exit"
+msgstr "Zakończ"
+
+msgid "Back"
+msgstr "Wstecz"
+
+msgid "Forward"
+msgstr "Do przodu"
+
+msgid "Next folder or search"
+msgstr "Następny folder lub wyszukiwanie"
+
+msgid "Next item group"
+msgstr "Następna grupa elementów"
+
+msgid "Select next item"
+msgstr "Wybierz następny element"
+
+msgid "Extend selection to next item"
+msgstr "Rozszerz zaznaczenie do następnego elementu"
+
+msgid "Parent"
+msgstr "Folder nadrzędny"
+
+msgid "Previous folder or search"
+msgstr "Poprzedni folder lub wyszukiwanie"
+
+msgid "Previous item group"
+msgstr "Poprzednia grupa elementów"
+
+msgid "Select previous item"
+msgstr "Wybierz poprzedni element"
+
+msgid "Extend selection to previous item"
+msgstr "Rozszerz zaznaczenie do poprzedniego elementu"
+
+msgid "Burn to disk"
+msgstr "Nagraj na dysk"
+
+msgid "Save current video frame"
+msgstr "Zapisz bieżącą klatkę wideo"
+
+msgid "Reset color changes"
+msgstr "Zresetuj zmiany kolorów"
+
+msgid "Convert or Resize"
+msgstr "Konwertuj lub zmień rozmiar"
+
+msgid "Copy to folder"
+msgstr "Skopiuj do folderu"
+
+msgid "Customise sidebar"
+msgstr "Dostosuj pasek boczny"
+
+msgid "Delete"
+msgstr "Usuń"
+
+msgid "Desktop background"
+msgstr "Tło pulpitu"
+
+msgid "Display options"
+msgstr "Opcje wyświetlania"
+
+msgid "Edit"
+msgstr "Edytuj"
+
+msgid "Copy"
+msgstr "Kopiuj"
+
+msgid "Cut"
+msgstr "Wytnij"
+
+msgid "Edit metadata"
+msgstr "Edytuj metadane"
+
+msgid "Paste"
+msgstr "Wklej"
+
+msgid "Eject"
+msgstr "Wysuń"
+
+msgid "Favorite"
+msgstr "Ulubiony"
+
+msgid "Open properties"
+msgstr "Otwórz właściwości"
+
+msgid "Search"
+msgstr "Szukaj"
+
+msgid "Show items in subfolders"
+msgstr "Pokaż elementy w podfolderach"
+
+msgid "Fullscreen"
+msgstr "Pełny ekran"
+
+msgid "Group by Album/Show"
+msgstr "Grupuj według albumu/programu"
+
+msgid "Group by Camera"
+msgstr "Grupuj według aparatu"
+
+msgid "Group by Date Created"
+msgstr "Grupuj według daty utworzenia"
+
+msgid "Group by Extension"
+msgstr "Grupuj według rozszerzenia"
+
+msgid "Group by File type"
+msgstr "Grupuj według typu pliku"
+
+msgid "Group by Location"
+msgstr "Grupuj według lokalizacji"
+
+msgid "Group by Date Modified"
+msgstr "Grupuj według daty modyfikacji"
+
+msgid "Group by Aspect ratio"
+msgstr "Grupuj według proporcji obrazu"
+
+msgid "Aspect ratio"
+msgstr "Proporcje obrazu"
+
+msgid "No aspect ratio"
+msgstr "Brak proporcji obrazu"
+
+msgid "Other landscape"
+msgstr "Inny format poziomy"
+
+msgid "Other portrait"
+msgstr "Inny format pionowy"
+
+msgid "Group by Resolution"
+msgstr "Grupuj według rozdzielczości"
+
+msgid "Group by Collection presence"
+msgstr "Grupuj według obecności kolekcji"
+
+msgid "Group by Rating/Label"
+msgstr "Grupuj według oceny/etykiety"
+
+msgid "Show items in random order"
+msgstr "Pokaż elementy w losowej kolejności"
+
+msgid "Group by Size"
+msgstr "Grupuj według rozmiaru"
+
+msgid "Group by Folder"
+msgstr "Grupuj według folderu"
+
+msgid "Highlight large items in yellow"
+msgstr "Zaznacz duże elementy na żółto"
+
+msgid "Import"
+msgstr "Importuj"
+
+msgid "Keyboard reference"
+msgstr "Skróty klawiaturowe"
+
+msgid "Approved"
+msgstr "Zatwierdzony"
+
+msgid "No Label"
+msgstr "Brak etykiety"
+
+msgid "Review"
+msgstr "Do przejrzenia"
+
+msgid "Second"
+msgstr "Drugi"
+
+msgid "Select"
+msgstr "Wybierz"
+
+msgid "To Do"
+msgstr "Do zrobienia"
+
+msgid "Language"
+msgstr "Język"
+
+msgid "Add location"
+msgstr "Dodaj lokalizację"
+
+msgid "Maximize"
+msgstr "Maksymalizuj"
+
+msgid "Group or Sort"
+msgstr "Grupuj lub sortuj"
+
+msgid "Minimize"
+msgstr "Minimalizuj"
+
+msgid "Move to folder"
+msgstr "Przenieś do folderu"
+
+msgid "Show sidebar"
+msgstr "Pokaż pasek boczny"
+
+msgid "Navigate"
+msgstr "Nawiguj"
+
+msgid "New Folder"
+msgstr "Nowy folder"
+
+msgid "New version available"
+msgstr "Dostępna nowa wersja"
+
+msgid "Check for updates"
+msgstr "Sprawdź aktualizacje"
+
+msgid "Install now"
+msgstr "Zainstaluj teraz"
+
+msgid "Checking for updates..."
+msgstr "Sprawdzam dostępność aktualizacji..."
+
+msgid "You are using the latest version ({})."
+msgstr "Używasz najnowszej wersji ({})."
+
+msgid "Open"
+msgstr "Otwórz"
+
+msgid "Open in google maps"
+msgstr "Otwórz na mapach Google"
+
+msgid "Open with"
+msgstr "Otwórz za pomocą"
+
+msgid "General options"
+msgstr "Opcje ogólne"
+
+msgid "Pin or hold item"
+msgstr "Przypnij lub przytrzymaj element"
+
+msgid "Play/Pause"
+msgstr "Odtwórz/Wstrzymaj"
+
+msgid "Print"
+msgstr "Drukuj"
+
+msgid "Rate"
+msgstr "Oceń"
+
+msgid "Remove rating"
+msgstr "Usuń ocenę"
+
+msgid "Rate as 1 star"
+msgstr "Oceń jako 1 gwiazdkę"
+
+msgid "Rate as 2 stars"
+msgstr "Oceń jako 2 gwiazdki"
+
+msgid "Rate as 3 stars"
+msgstr "Oceń jako 3 gwiazdki"
+
+msgid "Rate as 4 stars"
+msgstr "Oceń jako 4 gwiazdki"
+
+msgid "Rate as 5 stars"
+msgstr "Oceń na 5 gwiazdek"
+
+msgid "Reject"
+msgstr "Odrzuć"
+
+msgid "Refresh"
+msgstr "Odśwież"
+
+msgid "Related items"
+msgstr "Powiązane elementy"
+
+msgid "Rename"
+msgstr "Zmień nazwę"
+
+msgid "Rename files"
+msgstr "Zmień nazwy plików"
+
+msgid "Toggle repeat play"
+msgstr "Przełącz powtarzanie odtwarzania"
+
+msgid "Restore"
+msgstr "Przywróć"
+
+msgid "Rotate anticlockwise"
+msgstr "Obróć w kierunku przeciwnym do ruchu wskazówek zegara"
+
+msgid "Rotate clockwise"
+msgstr "Obróć zgodnie z ruchem wskazówek zegara"
+
+msgid "Confirm single-item rotations"
+msgstr "Potwierdzaj obracanie pojedynczego elementu"
+
+msgid "Reset rotation"
+msgstr "Zresetuj obrót"
+
+msgid "Save"
+msgstr "Zapisz"
+
+msgid "Add location and open previous"
+msgstr "Dodaj lokalizację i otwórz poprzedni"
+
+msgid "Add location and open next"
+msgstr "Dodaj lokalizację i otwórz następny"
+
+msgid "Save and open previous"
+msgstr "Zapisz i otwórz poprzednie"
+
+msgid "Save the current item and open the previous item."
+msgstr "Zapisz bieżący element i otwórz poprzedni."
+
+msgid "Save and open next"
+msgstr "Zapisz i otwórz następny"
+
+msgid "Save the current item and open the next item."
+msgstr "Zapisz bieżący element i otwórz następny element."
+
+msgid "Save as"
+msgstr "Zapisz jako"
+
+msgid "Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save."
+msgstr "Dostosuj kadrowanie, obrót, perspektywę i kolor zdjęcia. Nic nie zostanie zapisane na dysku, dopóki nie zapiszesz zmian."
+
+msgid "Scale up items"
+msgstr "Skaluj elementy"
+
+msgid "Scan"
+msgstr "Skanuj"
+
+msgid "Select all"
+msgstr "Zaznacz wszystko"
+
+msgid "Invert selection"
+msgstr "Odwróć wybór"
+
+msgid "Select none"
+msgstr "Odznacz wszystko"
+
+msgid "Email"
+msgstr "E-mail"
+
+msgid "Show in file browser"
+msgstr "Pokaż w przeglądarce plików"
+
+msgid "Open containing folder"
+msgstr "Otwórz folder zawierający"
+
+msgid "Sort by Date modified"
+msgstr "Sortuj według daty modyfikacji"
+
+msgid "Sort by Date created"
+msgstr "Sortuj według daty utworzenia"
+
+msgid "Show oldest items first"
+msgstr "Pokaż najpierw najstarsze elementy"
+
+msgid "Show newest items first"
+msgstr "Pokaż najpierw najnowsze elementy"
+
+msgid "Sort by Group order (Default)"
+msgstr "Sortuj według kolejności grupy (domyślnie)"
+
+msgid "Sort by Name"
+msgstr "Sortuj według nazwy"
+
+msgid "Sort by Size"
+msgstr "Sortuj według rozmiaru"
+
+msgid "Synchronize"
+msgstr "Synchronizuj"
+
+msgid "Toggle thumbnails or details"
+msgstr "Przełącz miniatury lub szczegóły"
+
+msgid "Toggle item grouping"
+msgstr "Przełącz grupowanie elementów"
+
+msgid "Toggle thumbnail size"
+msgstr "Przełącz rozmiar miniatury"
+
+msgid "Change thumbnail size"
+msgstr "Zmień rozmiar miniatur"
+
+msgid "Back to the top of the list"
+msgstr "Powrót na początek listy"
+
+msgid "Tools"
+msgstr "Narzędzia"
+
+msgid "About Diffractor"
+msgstr "Diffractor - informacje"
+
+msgid "Show items"
+msgstr "Pokaż elementy"
+
+msgid "Large font"
+msgstr "Duża czcionka"
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "Rate or Label"
+msgstr "Ocena lub etykieta"
+
+msgid "Select Items"
+msgstr "Wybierz Elementy"
+
+msgid "Sort"
+msgstr "Sortuj"
+
+msgid "Toggle volume"
+msgstr "Przełącz głośność"
+
+msgid "Zoom mode"
+msgstr "Tryb powiększenia"
+
+msgid "Compare"
+msgstr "Porównaj"
+
+msgid "Hold down left mouse button to compare items."
+msgstr "Przytrzymaj lewy przycisk myszy, aby porównać elementy."
+
+msgid "Contrast"
+msgstr "Kontrast"
+
+msgid "Open link {}"
+msgstr "Otwórz link {}"
+
+msgid "Choose a link to open"
+msgstr "Wybierz link do otwarcia"
+
+msgid "Duplicate"
+msgstr "Duplikat"
+
+msgid "Copy to clipboard"
+msgstr "Skopiuj do schowka"
+
+msgid "to"
+msgstr "do"
+
+msgid "Creator"
+msgstr "Twórca"
+
+msgid "Credit"
+msgstr "Autorstwo"
+
+msgid "Notice"
+msgstr "Informacja"
+
+msgid "File"
+msgstr "Plik"
+
+msgid "Source"
+msgstr "Źródło"
+
+msgid "Copyright"
+msgstr "Prawo autorskie"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Count"
+msgstr "Liczba"
+
+msgid "Favorite Searches"
+msgstr "Ulubione wyszukiwania"
+
+msgid "Sidebar"
+msgstr "Pasek boczny"
+
+msgid "Define what items are shown in the sidebar."
+msgstr "Określ, jakie elementy mają być wyświetlane na pasku bocznym."
+
+msgid "Add a list of your favorite tags here to save time when tagging."
+msgstr "Dodaj tutaj listę swoich ulubionych tagów, aby zaoszczędzić czas podczas tagowania."
+
+msgid "Favorite Tags"
+msgstr "Ulubione tagi"
+
+msgid "Show labels"
+msgstr "Pokaż etykiety"
+
+msgid "Show ratings"
+msgstr "Pokaż oceny"
+
+msgid "Show drives"
+msgstr "Pokaż dyski"
+
+msgid "Show history chart"
+msgstr "Pokaż wykres historii"
+
+msgid "Earliest year the history navigator offers. Empty works it out from your photos."
+msgstr "Najwcześniejszy rok oferowany przez nawigator historii. Puste pole jest wyznaczane na podstawie zdjęć."
+
+msgid "Shows the eight years ending here."
+msgstr "Pokazuje osiem lat kończących się tutaj."
+
+msgid "Show favorite searches"
+msgstr "Pokaż ulubione wyszukiwania"
+
+msgid "Show tags"
+msgstr "Pokaż tagi"
+
+msgid "Show total items pie chart"
+msgstr "Pokaż wykres kołowy łącznej liczby elementów"
+
+msgid "Show world map"
+msgstr "Pokaż mapę świata"
+
+msgid "Darks"
+msgstr "Cienie"
+
+msgid "data"
+msgstr "dane"
+
+msgid "File created:"
+msgstr "Utworzono plik:"
+
+msgid "File modified:"
+msgstr "Zmodyfikowano plik:"
+
+msgid "Metadata created:"
+msgstr "Utworzono metadane:"
+
+msgid "Dates"
+msgstr "Daty"
+
+msgid "family food friends landscape nature night portrait selfie todo travel urban viewed"
+msgstr "rodzina jedzenie przyjaciele krajobraz natura noc portret selfie todo podróżowanie miejskie oglądane"
+
+msgid "Defragment database."
+msgstr "Defragmentuj bazę danych."
+
+msgid "Defragmenting..."
+msgstr "Defragmentacja..."
+
+msgid "Failed to Delete Selected File."
+msgstr "Nie udało się usunąć wybranego pliku."
+
+msgid "Delete {}"
+msgstr "Usuń {}"
+
+msgid "Set the desktop background to the current image."
+msgstr "Ustaw tło pulpitu na bieżący obraz."
+
+msgid "Destination folder:"
+msgstr "Folder docelowy:"
+
+msgid "Capacity"
+msgstr "Pojemność"
+
+msgid "Free//disk"
+msgstr "Wolne"
+
+msgid "Label"
+msgstr "Etykieta"
+
+msgid "System"
+msgstr "System"
+
+msgid "Used"
+msgstr "Zajęte"
+
+msgid "Documentation"
+msgstr "Dokumentacja"
+
+msgid "Duplicates"
+msgstr "Duplikaty"
+
+msgid "Matching or possible copy items in the collection."
+msgstr "Pasujące lub możliwe kopie elementów w kolekcji."
+
+msgid "Editing"
+msgstr "Edycja"
+
+msgid "Close without ejecting"
+msgstr "Zamknij bez wysuwania"
+
+msgid "Failed to eject {}."
+msgstr "Nie udało się wysunąć {}."
+
+msgid "To avoid losing data, eject an external hard drive or USB drive before removing it."
+msgstr "Aby uniknąć utraty danych, wyjmij zewnętrzny dysk twardy lub dysk USB przed jego wyjęciem."
+
+msgid "Eject {}"
+msgstr "Wysuń {}"
+
+msgid "Connecting to MAPI..."
+msgstr "Łączę się z MAPI..."
+
+msgid "Convert all photos to JPEG"
+msgstr "Konwertuj wszystkie zdjęcia do formatu JPEG"
+
+msgid "Failed to send email using MAPI."
+msgstr "Nie udało się wysłać wiadomości e-mail przy użyciu MAPI."
+
+msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
+msgstr "Ogranicz zdjęcia do maksymalnego wymiaru (w pikselach). Obsługiwane tylko dla plików JPEG i PNG."
+
+msgid "Processing {}"
+msgstr "Przetwarzanie {}"
+
+msgid "Sending email using MAPI..."
+msgstr "Wysyłanie wiadomości e-mail przy użyciu MAPI..."
+
+msgid "Create a draft in your desktop email client with the selected files attached. Originals are unchanged."
+msgstr "Utwórz wersję roboczą w programie pocztowym z wybranymi plikami w załączniku. Oryginały pozostaną bez zmian."
+
+msgid "Zip files in the email"
+msgstr "Spakuj pliki w wiadomości e-mail"
+
+msgid "Empty"
+msgstr "Pusty"
+
+msgid "Ending {}"
+msgstr "Zakończenie {}"
+
+msgid "Security options denied access to the source."
+msgstr "Opcje zabezpieczeń odmówiły dostępu do źródła."
+
+msgid "Diffractor has a serious problem and cannot continue."
+msgstr "Diffractor ma poważny problem i nie może kontynuować pracy."
+
+msgid "Could not connect to scanner"
+msgstr "Nie można połączyć się ze skanerem"
+
+msgid "The destination file '{}' cannot be opened or created."
+msgstr "Nie można otworzyć ani utworzyć pliku docelowego „{}”."
+
+msgid "The destination folder '{}' cannot be opened or created."
+msgstr "Nie można otworzyć ani utworzyć folderu docelowego „{}”."
+
+msgid "Diffractor cannot be started. The main window could not be created."
+msgstr "Nie można uruchomić programu Diffractor. Nie można utworzyć okna głównego."
+
+msgid "The destination is a writable CD-ROM, possibly unformatted."
+msgstr "Miejscem docelowym jest zapisywalna płyta CD-ROM, prawdopodobnie niesformatowana."
+
+msgid "The destination is a read-only CD-ROM, possibly unformatted."
+msgstr "Miejscem docelowym jest płyta CD-ROM przeznaczona tylko do odczytu, prawdopodobnie niesformatowana."
+
+msgid "The destination is a read-only DVD, possibly unformatted."
+msgstr "Miejscem docelowym jest płyta DVD tylko do odczytu, prawdopodobnie niesformatowana."
+
+msgid "The source and destination have the same parent folder."
+msgstr "Źródło i miejsce docelowe mają ten sam folder nadrzędny."
+
+msgid "The destination is a subtree of the source."
+msgstr "Miejsce docelowe jest poddrzewem źródła."
+
+msgid "Rename operation was specified but the destination path is a different directory. Use the move operation instead."
+msgstr "Podano operację zmiany nazwy, ale ścieżka docelowa to inny katalog. Zamiast tego użyj operacji przenoszenia."
+
+msgid "Destination is a root directory and cannot be renamed."
+msgstr "Miejscem docelowym jest katalog główny i nie można zmienić jego nazwy."
+
+msgid "The destination path is an existing folder."
+msgstr "Ścieżką docelową jest istniejący folder."
+
+msgid "The file involved in the operation is too large for the destination media or file system."
+msgstr "Plik objęty operacją jest za duży dla docelowego nośnika lub systemu plików."
+
+msgid "The name of the file exceeds MAX_PATH."
+msgstr "Nazwa pliku przekracza MAX_PATH."
+
+msgid "The destination path is an existing file."
+msgstr "Ścieżką docelową jest istniejący plik."
+
+msgid "Index database failed."
+msgstr "Baza danych indeksu nie powiodła się."
+
+msgid "The path in the source or destination or both was invalid."
+msgstr "Ścieżka w źródle lub miejscu docelowym lub w obu przypadkach była nieprawidłowa."
+
+msgid "The file name you have chosen '{}' is invalid."
+msgstr "Wybrana nazwa pliku „{}” jest nieprawidłowa."
+
+msgid "File names cannot contain the following characters:"
+msgstr "Nazwy plików nie mogą zawierać następujących znaków:"
+
+msgid "The operation involved multiple destination paths, which can fail in the case of a move operation."
+msgstr "Operacja obejmowała wiele ścieżek docelowych, co może zakończyć się niepowodzeniem w przypadku operacji przenoszenia."
+
+msgid "Multiple file paths were specified in the source buffer, but only one destination file path."
+msgstr "W buforze źródłowym określono wiele ścieżek plików, ale tylko jedną ścieżkę pliku docelowego."
+
+msgid "MAX_PATH was exceeded during the operation."
+msgstr "Podczas operacji przekroczono MAX_PATH."
+
+msgid "OleInitialize Failed"
+msgstr "Niepowodzenie OleInitialize"
+
+msgid "An unspecified error occurred on the destination."
+msgstr "Wystąpił nieokreślony błąd w miejscu docelowym."
+
+msgid "The operation was canceled."
+msgstr "Operacja została anulowana."
+
+msgid "The analysis was canceled."
+msgstr "Analiza została anulowana."
+
+msgid "Cancel"
+msgstr "Anuluj"
+
+msgid "The source or destination path exceeded or would exceed MAX_PATH."
+msgstr "Ścieżka źródłowa lub docelowa przekroczyła lub mogłaby przekroczyć MAX_PATH."
+
+msgid "Failed to rename."
+msgstr "Nie udało się zmienić nazwy."
+
+msgid "The source and destination files are the same file."
+msgstr "Pliki źródłowe i docelowe są tym samym plikiem."
+
+msgid "Failed to save image."
+msgstr "Nie udało się zapisać obrazu."
+
+msgid "Scanner reported an error"
+msgstr "Skaner zgłosił błąd"
+
+msgid "The source is a writable CD-ROM, possibly unformatted."
+msgstr "Źródłem jest zapisywalna płyta CD-ROM, prawdopodobnie niesformatowana."
+
+msgid "The source is a read-only CD-ROM, possibly unformatted."
+msgstr "Źródłem jest płyta CD-ROM przeznaczona tylko do odczytu, prawdopodobnie niesformatowana."
+
+msgid "The source is a read-only DVD, possibly unformatted."
+msgstr "Źródłem jest płyta DVD tylko do odczytu, prawdopodobnie niesformatowana."
+
+msgid "The source is a root directory, which cannot be moved or renamed."
+msgstr "Źródłem jest katalog główny, którego nie można przenieść ani zmienić jego nazwy."
+
+msgid "Diffractor requires a processor with sse2."
+msgstr "Diffractor wymaga procesora z sse2."
+
+msgid "An unknown error occurred."
+msgstr "Wystąpił nieznany błąd."
+
+msgid "Diffractor requires Windows 7 or newer."
+msgstr "Diffractor wymaga systemu Windows 7 lub nowszego."
+
+msgid "Failed to register windows common control classes."
+msgstr "Nie udało się zarejestrować wspólnych klas kontrolnych systemu Windows."
+
+msgid "Failed to initialize Winsock"
+msgstr "Nie udało się zainicjować Winsock"
+
+msgid "EXIF"
+msgstr "EXIF"
+
+msgid "Failed to create folder: {}"
+msgstr "Nie udało się utworzyć folderu: {}"
+
+msgid "Add '{}' to favorites."
+msgstr "Dodaj „{}” do ulubionych."
+
+msgid "Failed to add. Maximum number of favorites reached."
+msgstr "Nie udało się dodać. Osiągnięto maksymalną liczbę ulubionych."
+
+msgid "Remove '{}' from favorite folders or searches."
+msgstr "Usuń „{}” z ulubionych folderów lub wyszukiwań."
+
+msgid "Favorite title"
+msgstr "Ulubiony tytuł"
+
+msgid "Favorites are listed in the sidebar for quick access."
+msgstr "Ulubione są wyświetlane na pasku bocznym, co umożliwia szybki dostęp."
+
+msgid "These items are in your collection."
+msgstr "Te elementy są w Twojej kolekcji."
+
+msgid "These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them."
+msgstr "Te elementy są poza Twoją kolekcją, więc wyszukiwanie i wykrywanie duplikatów ich nie obejmują. Dodaj ten folder do kolekcji, aby je uwzględnić."
+
+msgid "Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied."
+msgstr "Twoja kolekcja to foldery, które wybierzesz, wraz z ich podfolderami. Diffractor je indeksuje, dzięki czemu wyszukiwanie, wykrywanie duplikatów i podsumowania obejmują wszystko naraz. Dodanie lub usunięcie folderu zmienia tylko to, o czym Diffractor wie. Żadne pliki nie są przenoszone ani kopiowane."
+
+msgid "folder"
+msgstr "folder"
+
+msgid "folders"
+msgstr "foldery"
+
+msgid "Folder"
+msgstr "Folder"
+
+msgid "videos"
+msgstr "filmy"
+
+msgid "A capella"
+msgstr "A cappella"
+
+msgid "Abstract"
+msgstr "Abstrakcyjny"
+
+msgid "Acid"
+msgstr "Acid"
+
+msgid "Acid Jazz"
+msgstr "Acid Jazz"
+
+msgid "Acid Punk"
+msgstr "Acid Punk"
+
+msgid "Acoustic"
+msgstr "Akustyczny"
+
+msgid "Action"
+msgstr "Akcja"
+
+msgid "Action & Adventure"
+msgstr "Akcja i przygoda"
+
+msgid "Aerial"
+msgstr "Lotnicze"
+
+msgid "Alternative"
+msgstr "Alternatywny"
+
+msgid "AlternRock"
+msgstr "AlternRock"
+
+msgid "Ambient"
+msgstr "Ambient"
+
+msgid "Analog"
+msgstr "Analog"
+
+msgid "Animation"
+msgstr "Animacja"
+
+msgid "Anime"
+msgstr "Anime"
+
+msgid "Architectural"
+msgstr "Architektoniczny"
+
+msgid "Avantgarde"
+msgstr "Awangarda"
+
+msgid "Aviation"
+msgstr "Lotnictwo"
+
+msgid "Ballad"
+msgstr "Ballada"
+
+msgid "Bass"
+msgstr "Bas"
+
+msgid "Bebob"
+msgstr "Bebop"
+
+msgid "Big Band"
+msgstr "Big Band"
+
+msgid "Bluegrass"
+msgstr "Bluegrass"
+
+msgid "Blues"
+msgstr "Blues"
+
+msgid "Booty Bass"
+msgstr "Booty Bass"
+
+msgid "Brazilian"
+msgstr "brazylijski"
+
+msgid "Cabaret"
+msgstr "Kabaret"
+
+msgid "Candid"
+msgstr "Spontaniczne"
+
+msgid "Celtic"
+msgstr "Celtycki"
+
+msgid "Chamber Music"
+msgstr "Muzyka kameralna"
+
+msgid "Chanson"
+msgstr "Chanson"
+
+msgid "Children's"
+msgstr "Dziecięce"
+
+msgid "Chorus"
+msgstr "Chór"
+
+msgid "Christian & Gospel"
+msgstr "Chrześcijańska i gospel"
+
+msgid "Christian Rap"
+msgstr "Chrześcijański rap"
+
+msgid "Classic"
+msgstr "Klasyczny"
+
+msgid "Classic Rock"
+msgstr "Klasyczny rock"
+
+msgid "Classical"
+msgstr "Klasyczny"
+
+msgid "Close-up"
+msgstr "Zbliżenie"
+
+msgid "Cloudscape"
+msgstr "Chmurny krajobraz"
+
+msgid "Club"
+msgstr "Klub"
+
+msgid "Comedy"
+msgstr "Komedia"
+
+msgid "Conceptual"
+msgstr "Konceptualistyczny"
+
+msgid "Concert"
+msgstr "Koncert"
+
+msgid "Concert Films"
+msgstr "Filmy koncertowe"
+
+msgid "Conservation"
+msgstr "Ochrona"
+
+msgid "Country//genre"
+msgstr "Country"
+
+msgid "Cult"
+msgstr "Kult"
+
+msgid "Dance"
+msgstr "Taniec"
+
+msgid "Dance Hall"
+msgstr "Sala Tańca"
+
+msgid "Darkwave"
+msgstr "Darkwave"
+
+msgid "Death Metal"
+msgstr "Death Metal"
+
+msgid "Disco"
+msgstr "Disco"
+
+msgid "Documentary"
+msgstr "Dokumentalny"
+
+msgid "Drama"
+msgstr "Dramat"
+
+msgid "Dream"
+msgstr "Marzenie"
+
+msgid "Drum Solo"
+msgstr "Solo na perkusji"
+
+msgid "Duet"
+msgstr "Duet"
+
+msgid "Easy Listening"
+msgstr "Łatwe słuchanie"
+
+msgid "Electronic"
+msgstr "Elektroniczny"
+
+msgid "Ethnic"
+msgstr "Etniczny"
+
+msgid "Eurodance"
+msgstr "Eurodance"
+
+msgid "Euro-House"
+msgstr "Euro-House"
+
+msgid "Euro-Techno"
+msgstr "Euro-Techno"
+
+msgid "Family"
+msgstr "Rodzina"
+
+msgid "Fashion"
+msgstr "Moda"
+
+msgid "Fast Fusion"
+msgstr "Fast Fusion"
+
+msgid "Film still"
+msgstr "Kadr filmowy"
+
+msgid "Fine-art"
+msgstr "Sztuka piękna"
+
+msgid "Fire"
+msgstr "Ogień"
+
+msgid "Fireworks"
+msgstr "Fajerwerki"
+
+msgid "Fitness & Workout"
+msgstr "Fitness i trening"
+
+msgid "Folk"
+msgstr "Ludowy"
+
+msgid "Folk-Rock"
+msgstr "Folk-Rock"
+
+msgid "Folklore"
+msgstr "Folklor"
+
+msgid "Food"
+msgstr "Żywność"
+
+msgid "Foreign"
+msgstr "Zagraniczny"
+
+msgid "Forensic"
+msgstr "Kryminalistyczny"
+
+msgid "Freestyle"
+msgstr "Styl dowolny"
+
+msgid "Funk"
+msgstr "Funk"
+
+msgid "Fusion"
+msgstr "Fusion"
+
+msgid "Game//genre"
+msgstr "Gra"
+
+msgid "Gangsta"
+msgstr "Gangsta"
+
+msgid "Geo-photography"
+msgstr "Geofotografia"
+
+msgid "Glamour"
+msgstr "Glamour"
+
+msgid "Gospel"
+msgstr "Gospel"
+
+msgid "Gothic"
+msgstr "Gotyk"
+
+msgid "Gothic Rock"
+msgstr "Rock gotycki"
+
+msgid "Grunge"
+msgstr "Grunge"
+
+msgid "Hard Rock"
+msgstr "Hard Rock"
+
+msgid "High-speed"
+msgstr "Wysoka prędkość"
+
+msgid "High key"
+msgstr "Wysoki klucz"
+
+msgid "Hip-Hop"
+msgstr "Hip-hop"
+
+msgid "Hip-Hop/Rap"
+msgstr "Hip-hop/rap"
+
+msgid "Holiday"
+msgstr "Wakacje"
+
+msgid "Horror"
+msgstr "Horror"
+
+msgid "House"
+msgstr "House"
+
+msgid "Humour"
+msgstr "Humor"
+
+msgid "Independent"
+msgstr "Niezależny"
+
+msgid "Industrial"
+msgstr "Przemysłowy"
+
+msgid "Instrumental"
+msgstr "Instrumentalny"
+
+msgid "Instrumental Pop"
+msgstr "Instrumentalny pop"
+
+msgid "Instrumental Rock"
+msgstr "Rock instrumentalny"
+
+msgid "Jazz"
+msgstr "Jazz"
+
+msgid "Jazz + Funk"
+msgstr "Jazz + Funk"
+
+msgid "Jungle"
+msgstr "Dżungla"
+
+msgid "Kids"
+msgstr "Dzieci"
+
+msgid "Kids & Family"
+msgstr "Dzieci i rodzina"
+
+msgid "Kirlian"
+msgstr "Kirlian"
+
+msgid "Landscape"
+msgstr "Krajobraz"
+
+msgid "Latin"
+msgstr "Latin"
+
+msgid "Lifestyle"
+msgstr "Styl życia"
+
+msgid "Lo-fi"
+msgstr "Lo-fi"
+
+msgid "Lomography"
+msgstr "Lomografia"
+
+msgid "Long-exposure"
+msgstr "Długi czas ekspozycji"
+
+msgid "Low key"
+msgstr "Niski klucz"
+
+msgid "Macro"
+msgstr "Makro"
+
+msgid "Medical"
+msgstr "Medyczny"
+
+msgid "Meditative"
+msgstr "Medytacyjny"
+
+msgid "Metal"
+msgstr "Metal"
+
+msgid "Monochrome"
+msgstr "Monochromia"
+
+msgid "Music Documentaries"
+msgstr "Dokumenty muzyczne"
+
+msgid "Music Feature Films"
+msgstr "Muzyczne filmy fabularne"
+
+msgid "Musical"
+msgstr "Musical"
+
+msgid "Musicals"
+msgstr "Musicale"
+
+msgid "Narrative"
+msgstr "Narracja"
+
+msgid "National Folk"
+msgstr "Folk narodowy"
+
+msgid "Native American"
+msgstr "Rdzenni Amerykanie"
+
+msgid "New Age"
+msgstr "New Age"
+
+msgid "New Wave"
+msgstr "Nowa Fala"
+
+msgid "Night"
+msgstr "Noc"
+
+msgid "Noise"
+msgstr "Hałas"
+
+msgid "Nonfiction"
+msgstr "Literatura faktu"
+
+msgid "Oldies"
+msgstr "Stare przeboje"
+
+msgid "Opera"
+msgstr "Opera"
+
+msgid "Other"
+msgstr "Inny"
+
+msgid "Panorama"
+msgstr "Panorama"
+
+msgid "Panoramic"
+msgstr "Panoramiczny"
+
+msgid "Film Noir"
+msgstr "Film Noir"
+
+msgid "Photo op"
+msgstr "Sesja zdjęciowa"
+
+msgid "Photobiography"
+msgstr "Fotobiografia"
+
+msgid "Photojournalism"
+msgstr "Fotoreportaż"
+
+msgid "Photowalking"
+msgstr "Fotospacer"
+
+msgid "Podcast"
+msgstr "Podcast"
+
+msgid "Polaroid"
+msgstr "Polaroid"
+
+msgid "Polka"
+msgstr "Polka"
+
+msgid "Pop"
+msgstr "Muzyka pop"
+
+msgid "Pop-Folk"
+msgstr "Pop-Folk"
+
+msgid "Pop/Funk"
+msgstr "Pop/funk"
+
+msgid "Porn Groove"
+msgstr "Porn Groove"
+
+msgid "Portrait"
+msgstr "Portret"
+
+msgid "Power Ballad"
+msgstr "Power ballada"
+
+msgid "Pranks"
+msgstr "Żarty"
+
+msgid "Primus"
+msgstr "Primus"
+
+msgid "Progressive Rock"
+msgstr "Rock progresywny"
+
+msgid "Psychadelic"
+msgstr "Psychodeliczny"
+
+msgid "Psychedelic Rock"
+msgstr "Rock psychodeliczny"
+
+msgid "Punk"
+msgstr "Punk"
+
+msgid "Punk Rock"
+msgstr "Punk Rock"
+
+msgid "R&B"
+msgstr "R&B"
+
+msgid "Rap"
+msgstr "Rap"
+
+msgid "Rave"
+msgstr "Rave"
+
+msgid "Reality TV"
+msgstr "Reality TV"
+
+msgid "Reggae"
+msgstr "Reggae"
+
+msgid "Retro"
+msgstr "Retro"
+
+msgid "Revival"
+msgstr "Odrodzenie"
+
+msgid "Rhythmic Soul"
+msgstr "Rhythmic Soul"
+
+msgid "Rock"
+msgstr "Rock"
+
+msgid "Rock & Roll"
+msgstr "Rock & Roll"
+
+msgid "Romance"
+msgstr "Romans"
+
+msgid "Samba"
+msgstr "Samba"
+
+msgid "Satellite"
+msgstr "Satelita"
+
+msgid "Satire"
+msgstr "Satyra"
+
+msgid "Sci-Fi & Fantasy"
+msgstr "Science fiction i fantasy"
+
+msgid "Short Films"
+msgstr "Krótkie filmy"
+
+msgid "Show tunes"
+msgstr "Melodie z musicali"
+
+msgid "Singer/Songwriter"
+msgstr "Piosenkarz/autor tekstów"
+
+msgid "Ska"
+msgstr "Ska"
+
+msgid "Slow Jam"
+msgstr "Slow Jam"
+
+msgid "Slow Rock"
+msgstr "Powolny rock"
+
+msgid "Social"
+msgstr "Społeczny"
+
+msgid "Soft focus"
+msgstr "Nieostrość"
+
+msgid "Sonata"
+msgstr "Sonata"
+
+msgid "Soul"
+msgstr "Soul"
+
+msgid "Sound Clip"
+msgstr "Klip dźwiękowy"
+
+msgid "Soundtrack"
+msgstr "Ścieżka dźwiękowa"
+
+msgid "Southern Rock"
+msgstr "Southern Rock"
+
+msgid "Space"
+msgstr "Kosmos"
+
+msgid "Special Interest"
+msgstr "Specjalne zainteresowanie"
+
+msgid "Speech"
+msgstr "Przemówienie"
+
+msgid "Sports"
+msgstr "Sport"
+
+msgid "Star trail"
+msgstr "Ślady gwiazd"
+
+msgid "Still life"
+msgstr "Martwa natura"
+
+msgid "Stock"
+msgstr "Materiały stockowe"
+
+msgid "Street"
+msgstr "Ulica"
+
+msgid "Subminiature"
+msgstr "Subminiaturowe"
+
+msgid "Swing"
+msgstr "Swing"
+
+msgid "Symphonic Rock"
+msgstr "Rock symfoniczny"
+
+msgid "Symphony"
+msgstr "Symfonia"
+
+msgid "Tango"
+msgstr "Tango"
+
+msgid "Techno"
+msgstr "Techno"
+
+msgid "Techno-Industrial"
+msgstr "Techno-Industrial"
+
+msgid "Teens"
+msgstr "Nastolatki"
+
+msgid "Thriller"
+msgstr "Thriller"
+
+msgid "Time-lapse"
+msgstr "Poklatkowy"
+
+msgid "Top 40"
+msgstr "Top 40"
+
+msgid "Trailer"
+msgstr "Zwiastun"
+
+msgid "Trance"
+msgstr "Trans"
+
+msgid "Travel"
+msgstr "Podróż"
+
+msgid "Tribal"
+msgstr "Plemienny"
+
+msgid "Trip-Hop"
+msgstr "Trip-Hop"
+
+msgid "Ultraviolet"
+msgstr "Ultrafioletowy"
+
+msgid "Underwater"
+msgstr "Podwodny"
+
+msgid "Unknown"
+msgstr "Nieznany"
+
+msgid "Urban"
+msgstr "Miejski"
+
+msgid "Vernacular"
+msgstr "Fotografia wernakularna"
+
+msgid "Vintage"
+msgstr "Vintage"
+
+msgid "Vocal"
+msgstr "Wokal"
+
+msgid "War"
+msgstr "Wojna"
+
+msgid "Western"
+msgstr "Western"
+
+msgid "World"
+msgstr "Świat"
+
+msgid "Group and sort items"
+msgstr "Grupuj i sortuj elementy"
+
+msgid "Items"
+msgstr "Elementy"
+
+msgid "No album or show"
+msgstr "Żadnego albumu ani programu"
+
+msgid "No camera"
+msgstr "Brak aparatu"
+
+msgid "No extension"
+msgstr "Bez rozszerzenia"
+
+msgid "No location"
+msgstr "Brak lokalizacji"
+
+msgid "No resolution"
+msgstr "Brak rozdzielczości"
+
+msgid "No rating"
+msgstr "Brak oceny"
+
+msgid "No value"
+msgstr "Brak wartości"
+
+msgid "random"
+msgstr "losowy"
+
+msgid "{} to {}"
+msgstr "{} do {}"
+
+msgid "Today"
+msgstr "Dzisiaj"
+
+msgid "Yesterday"
+msgstr "Wczoraj"
+
+msgid "{} has modifications"
+msgstr "{} ma modyfikacje"
+
+msgid "Separate each artist with a comma ',' or slash '/'"
+msgstr "Oddziel każdego artystę przecinkiem „,” lub ukośnikiem „/”"
+
+msgid "Help or more information"
+msgstr "Pomoc lub więcej informacji"
+
+msgid "Send anonymous log information to Diffractor HQ."
+msgstr "Wyślij anonimowe informacje z dziennika do siedziby firmy Diffractor."
+
+msgid "Tags can be removed by prefixing with a minus: -remove"
+msgstr "Tagi można usunąć poprzedzając je znakiem minus: -remove"
+
+msgid "Separate each tag with a space: Australia holiday camping."
+msgstr "Oddziel każdy tag spacją: Kemping wakacyjny w Australii."
+
+msgid "Join 2 words together in one tag using quotes: \"national park\"."
+msgstr "Połącz 2 słowa w jednym tagu, używając cudzysłowu: \"park narodowy\"."
+
+msgid "Hide verbose metadata"
+msgstr "Ukryj szczegółowe metadane"
+
+msgid "Destination root folder. Structured folders will be created under this folder."
+msgstr "Docelowy folder główny. W tym folderze zostaną utworzone foldery strukturalne."
+
+msgid "Source of import:"
+msgstr "Źródło importu:"
+
+msgid "Ignore previously imported items."
+msgstr "Ignoruj wcześniej zaimportowane elementy."
+
+msgid "Other folder"
+msgstr "Inny folder"
+
+msgid "Destination folder structure:"
+msgstr "Struktura folderów docelowych:"
+
+msgid "Set file date created to metadata date created."
+msgstr "Ustaw datę utworzenia pliku na datę utworzenia metadanych."
+
+msgid "Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."
+msgstr "Defragmentacja lub czyszczenie może poprawić wydajność. Indeks przechowuje kopię metadanych z plików multimedialnych. Można go odbudować z oryginalnych plików."
+
+msgid "The index is reporting errors. Restarting Diffractor is recommended."
+msgstr "Indeks zgłasza błędy. Zalecane jest ponowne uruchomienie programu Diffractor."
+
+msgid "Maintenance"
+msgstr "Konserwacja"
+
+msgid "Currently the index database is {} in size and contains metadata from {} items."
+msgstr "Obecnie baza danych indeksu ma rozmiar {} i zawiera metadane z {} pozycji."
+
+msgid "Indexing"
+msgstr "Indeksowanie"
+
+msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
+msgstr "Diffractor odczytuje Twoją kolekcję, aby wyszukiwanie, duplikaty i podsumowania pozostały kompletne. W tym czasie możesz dalej przeglądać."
+
+msgid "invalid"
+msgstr "nieważny"
+
+msgid "IPTC"
+msgstr "IPTC"
+
+msgid "'{}' is not a valid folder."
+msgstr "„{}” nie jest prawidłowym folderem."
+
+msgid "Show items rotated"
+msgstr "Pokaż elementy obrócone"
+
+msgid "This item is shown oriented based on camera information. [{}]"
+msgstr "Ten element jest wyświetlany w orientacji opartej na informacjach o aparacie. [{}]"
+
+msgid "Files are identical."
+msgstr "Pliki są identyczne."
+
+msgid "Files are different."
+msgstr "Pliki są różne."
+
+msgid "JPEG - Best compression for photos"
+msgstr "JPEG - Najlepsza kompresja zdjęć"
+
+msgid "Keyboard"
+msgstr "Klawiatura"
+
+msgid "press"
+msgstr "naciśnij"
+
+msgid "alt"
+msgstr "alt"
+
+msgid "back"
+msgstr "wstecz"
+
+msgid "backspace"
+msgstr "Backspace"
+
+msgid "Basics"
+msgstr "Podstawy"
+
+msgid "browser-back"
+msgstr "powrót do przeglądarki"
+
+msgid "browser-favorites"
+msgstr "ulubione w przeglądarce"
+
+msgid "browser-forward"
+msgstr "przeglądarka do przodu"
+
+msgid "browser-home"
+msgstr "strona główna przeglądarki"
+
+msgid "browser-refresh"
+msgstr "odśwież przeglądarkę"
+
+msgid "browser-search"
+msgstr "wyszukiwanie w przeglądarce"
+
+msgid "browser-stop"
+msgstr "zatrzymanie przeglądarki"
+
+msgid "ctrl"
+msgstr "ctrl"
+
+msgid "Extend the current item selection and allow comparing of items."
+msgstr "Rozszerz bieżący wybór elementów i umożliwij porównywanie elementów."
+
+msgid "del"
+msgstr "del"
+
+msgid "down"
+msgstr "w dół"
+
+msgid "enter"
+msgstr "enter"
+
+msgid "Opens an image full screen."
+msgstr "Otwiera obraz na pełnym ekranie."
+
+msgid "escape"
+msgstr "escape"
+
+msgid "Gets you out of full screen, zoom or other modes."
+msgstr "Wychodzi z pełnego ekranu, powiększenia lub innych trybów."
+
+msgid "F1"
+msgstr "F1"
+
+msgid "F10"
+msgstr "F10"
+
+msgid "F11"
+msgstr "F11"
+
+msgid "F2"
+msgstr "F2"
+
+msgid "F3"
+msgstr "F3"
+
+msgid "F4"
+msgstr "F4"
+
+msgid "F5"
+msgstr "F5"
+
+msgid "F6"
+msgstr "F6"
+
+msgid "F7"
+msgstr "F7"
+
+msgid "F8"
+msgstr "F8"
+
+msgid "F9"
+msgstr "F9"
+
+msgid "File management"
+msgstr "Zarządzanie plikami"
+
+msgid "Help"
+msgstr "Pomoc"
+
+msgid "insert"
+msgstr "insert"
+
+msgid "left"
+msgstr "lewy"
+
+msgid "Move to the next or previous item."
+msgstr "Przejdź do następnego lub poprzedniego elementu."
+
+msgid "media-next-track"
+msgstr "media-następny utwór"
+
+msgid "media-play-pause"
+msgstr "odtwarzanie-pauza-media"
+
+msgid "media-prev-track"
+msgstr "poprzednia ścieżka multimediów"
+
+msgid "media-stop"
+msgstr "zatrzymanie mediów"
+
+msgid "Navigation"
+msgstr "Nawigacja"
+
+msgid "page-down"
+msgstr "strona w dół"
+
+msgid "["
+msgstr "["
+msgid "]"
+msgstr "]"
+
+msgid "+"
+msgstr "+"
+
+msgid "Options"
+msgstr "Opcje"
+
+msgid "OR"
+msgstr "Lub"
+
+msgid "Media playback"
+msgstr "Odtwarzanie multimediów"
+
+msgid "page-up"
+msgstr "strona w górę"
+
+msgid "right"
+msgstr "w prawo"
+
+msgid "Selection"
+msgstr "Wybór"
+
+msgid "shift"
+msgstr "shift"
+
+msgid "space"
+msgstr "spacja"
+
+msgid "tab"
+msgstr "tab"
+
+msgid "up"
+msgstr "w górę"
+
+msgid "volume-down"
+msgstr "zmniejszanie głośności"
+
+msgid "volume-mute"
+msgstr "wyciszenie głośności"
+
+msgid "volume-up"
+msgstr "zwiększenie głośności"
+
+msgid "km from"
+msgstr "km od"
+
+msgid "Learn more at Diffractor.com"
+msgstr "Dowiedz się więcej na Diffractor.com"
+
+msgid "Lights"
+msgstr "Światła"
+
+msgid "Limit output to a maximum dimension (in pixels)."
+msgstr "Ogranicz wyjście do maksymalnego wymiaru (w pikselach)."
+
+msgid "Lossless compression"
+msgstr "Kompresja bezstratna"
+
+msgid "List of keyboard accelerators"
+msgstr "Lista akceleratorów klawiaturowych"
+
+msgid "Loading..."
+msgstr "Ładowanie..."
+
+msgid "No location selected."
+msgstr "Nie wybrano lokalizacji."
+
+msgid "Overwrite GPS coordinates when setting a location."
+msgstr "Zastąp współrzędne GPS podczas ustawiania lokalizacji."
+
+msgid "Location"
+msgstr "Lokalizacja"
+
+msgid "Maximize image"
+msgstr "Maksymalizuj obraz"
+
+msgid "Media"
+msgstr "Multimedia"
+
+msgid "Add '{}'"
+msgstr "Dodaj '{}'"
+
+msgid "Move"
+msgstr "Przenieś"
+
+msgid "Select All"
+msgstr "Zaznacz wszystko"
+
+msgid "Undo"
+msgstr "Cofnij"
+
+msgid "Metadata"
+msgstr "Metadane"
+
+msgid "Midtones"
+msgstr "Półtony"
+
+msgid "April"
+msgstr "Kwiecień"
+
+msgid "August"
+msgstr "Sierpień"
+
+msgid "December"
+msgstr "Grudzień"
+
+msgid "February"
+msgstr "Luty"
+
+msgid "January"
+msgstr "Styczeń"
+
+msgid "July"
+msgstr "Lipiec"
+
+msgid "June"
+msgstr "Czerwiec"
+
+msgid "March"
+msgstr "Marzec"
+
+msgid "May"
+msgstr "Maj"
+
+msgid "November"
+msgstr "Listopad"
+
+msgid "October"
+msgstr "Październik"
+
+msgid "September"
+msgstr "Wrzesień"
+
+msgid "apr"
+msgstr "kwi"
+
+msgid "aug"
+msgstr "sie"
+
+msgid "dec"
+msgstr "gru"
+
+msgid "feb"
+msgstr "lut"
+
+msgid "jan"
+msgstr "sty"
+
+msgid "jul"
+msgstr "lip"
+
+msgid "jun"
+msgstr "cze"
+
+msgid "mar"
+msgstr "mar"
+
+msgid "may"
+msgstr "maj"
+
+msgid "nov"
+msgstr "lis"
+
+msgid "oct"
+msgstr "paź"
+
+msgid "sep"
+msgstr "wrz"
+
+msgid "Move source items."
+msgstr "Przenieś elementy źródłowe."
+
+msgid "History"
+msgstr "Historia"
+
+msgid "No items are selected"
+msgstr "Nie wybrano żadnych elementów"
+
+msgid "None"
+msgstr "Brak"
+
+msgid "Cloud items are not supported."
+msgstr "Elementy w chmurze nie są obsługiwane."
+
+msgid "Folders are not supported."
+msgstr "Foldery nie są obsługiwane."
+
+msgid "Items must be a photo or image."
+msgstr "Elementy muszą być zdjęciem lub obrazem."
+
+msgid "Readonly items are not supported."
+msgstr "Elementy tylko do odczytu nie są obsługiwane."
+
+msgid "Cannot update metadata of readonly items."
+msgstr "Nie można zaktualizować metadanych elementów tylko do odczytu."
+
+msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
+msgstr "Diffractor może zapisywać lub aktualizować tylko pliki obrazów JPG, WEBP i PNG."
+
+msgid "Nothing found."
+msgstr "Nic nie znaleziono."
+
+msgid "Empty Folder"
+msgstr "Pusty folder"
+
+msgid "Search only covers folders in your collection."
+msgstr "Wyszukiwanie obejmuje tylko foldery w Twojej kolekcji."
+
+msgid "of"
+msgstr "z"
+
+msgid "Open destination folder afterwards"
+msgstr "Otwórz później folder docelowy"
+
+msgid "Open in file browser"
+msgstr "Otwórz w przeglądarce plików"
+
+msgid "Open Properties"
+msgstr "Otwórz właściwości"
+
+msgid "app"
+msgstr "aplikacja"
+
+msgid "Open with app or tool"
+msgstr "Otwórz za pomocą aplikacji lub narzędzia"
+
+msgid "Failed to open selected items."
+msgstr "Nie udało się otworzyć wybranych elementów."
+
+msgid "Open with {}"
+msgstr "Otwórz za pomocą {}"
+
+msgid "tool"
+msgstr "narzędzie"
+
+msgid "Delay before showing the next item (in seconds)"
+msgstr "Opóźnienie przed wyświetleniem następnego elementu (w sekundach)"
+
+msgid "Advanced"
+msgstr "Zaawansowane"
+
+msgid "Application options"
+msgstr "Opcje aplikacji"
+
+msgid "When overwriting a photo with irreversible changes make an original backup copy"
+msgstr "W przypadku nadpisywania zdjęcia nieodwracalnymi zmianami należy wykonać oryginalną kopię zapasową"
+
+msgid "Check for updates by connecting to the internet"
+msgstr "Sprawdź dostępność aktualizacji, łącząc się z Internetem"
+
+msgid "Confirm when deleting items. Deleted items are moved to the recycle bin."
+msgstr "Potwierdź podczas usuwania elementów. Usunięte elementy są przenoszone do kosza."
+
+msgid ""
+"Confirm when rotating one item. Rotating several items is always confirmed."
+msgstr ""
+"Potwierdź podczas obracania jednego elementu. Obracanie wielu elementów "
+"jest zawsze potwierdzane."
+
+msgid "JPEG save quality"
+msgstr "Jakość zapisu JPEG"
+
+msgid "WEBP save quality"
+msgstr "Jakość zapisu WEBP"
+
+msgid "When saving"
+msgstr "Podczas zapisywania"
+
+msgid "Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics."
+msgstr "Pomóż ulepszyć Diffractor. Jeśli Diffractor ulegnie awarii, wyślij anonimową diagnostykę do centrali Diffractor. Żadne dane osobowe nie są wysyłane – jedynie diagnostyka awarii."
+
+msgid "Show application debugging information (for the programmers)."
+msgstr "Pokaż informacje o debugowaniu aplikacji (dla programistów)."
+
+msgid "Show hidden files"
+msgstr "Pokaż ukryte pliki"
+
+msgid "Show photos rotated based on recorded camera orientation"
+msgstr "Pokaż zdjęcia obrócone w oparciu o zarejestrowaną orientację aparatu"
+
+msgid "Updates"
+msgstr "Aktualizacje"
+
+msgid "Use hardware acceleration to draw the Diffractor user interface (requires restart)"
+msgstr "Użyj akceleracji sprzętowej, aby narysować interfejs użytkownika Diffractor (wymaga ponownego uruchomienia)"
+
+msgid "Use hardware acceleration to decode video (when available)"
+msgstr "Użyj akceleracji sprzętowej do dekodowania wideo (jeśli jest dostępna)"
+
+msgid "Show an inset shadow surrounding the image view panel."
+msgstr "Pokaż wewnętrzny cień otaczający panel widoku obrazu."
+
+msgid "Resume playing media from the last position played."
+msgstr "Wznów odtwarzanie multimediów od ostatnio odtwarzanej pozycji."
+
+msgid "Show tooltips with help on buttons and links."
+msgstr "Wyświetlaj podpowiedzi z pomocą dotyczącą przycisków i łączy."
+
+msgid "bottom-left"
+msgstr "lewy dolny róg"
+
+msgid "bottom-right"
+msgstr "prawy dolny róg"
+
+msgid "left-bottom"
+msgstr "lewy dolny"
+
+msgid "left-top"
+msgstr "lewy górny"
+
+msgid "right-bottom"
+msgstr "prawy dół"
+
+msgid "right-top"
+msgstr "prawy górny"
+
+msgid "top-left"
+msgstr "lewy górny róg"
+
+msgid "top-right"
+msgstr "prawy górny róg"
+
+msgid "other"
+msgstr "Inny"
+
+msgid "others"
+msgstr "inne"
+
+msgid "pasted"
+msgstr "wklejony"
+
+msgid "photo"
+msgstr "zdjęcie"
+
+msgid "photos"
+msgstr "zdjęcia"
+
+msgid "icon"
+msgstr "ikona"
+
+msgid "Pixels are identical but files are different."
+msgstr "Piksele są identyczne, ale pliki są różne."
+
+msgid "small"
+msgstr "mały"
+
+msgid "Pixels"
+msgstr "Piksele"
+
+msgid "PNG - Best for non photos"
+msgstr "PNG — najlepsze dla obrazów innych niż zdjęcia"
+
+msgid "Checking presence..."
+msgstr "Sprawdzanie obecności..."
+
+msgid "Possible newer copy in collection"
+msgstr "Możliwa nowsza kopia w kolekcji"
+
+msgid "This item is outside the collection. One or more possible newer copies exist in the collection."
+msgstr "Ten element znajduje się poza kolekcją. W kolekcji istnieje jedna lub więcej możliwych nowszych kopii."
+
+msgid "Outside collection; no possible copy identified"
+msgstr "Poza kolekcją; nie zidentyfikowano żadnej możliwej kopii"
+
+msgid "This item is outside the collection. No possible copy was identified in the collection."
+msgstr "Ten element znajduje się poza kolekcją. W kolekcji nie zidentyfikowano żadnej możliwej kopii."
+
+msgid "Possible older copy in collection"
+msgstr "Możliwa starsza kopia w kolekcji"
+
+msgid "This item is outside the collection. One or more possible older copies exist in the collection."
+msgstr "Ten element znajduje się poza kolekcją. W kolekcji istnieje jedna lub więcej możliwych starszych kopii."
+
+msgid "Possible copy in collection"
+msgstr "Możliwa kopia w kolekcji"
+
+msgid "This item is outside the collection. One or more possible copies exist in the collection."
+msgstr "Ten element znajduje się poza kolekcją. W kolekcji istnieje jedna lub więcej możliwych kopii."
+
+msgid "In collection"
+msgstr "W kolekcji"
+
+msgid "This item is in the collection."
+msgstr "Ten element znajduje się w kolekcji."
+
+msgid "Presence"
+msgstr "Obecność w kolekcji"
+
+msgid "Showing fully rendered RAW photo."
+msgstr "Wyświetlanie w pełni wyrenderowanego zdjęcia RAW."
+
+msgid "Rendering RAW photo..."
+msgstr "Renderowanie zdjęcia RAW..."
+
+msgid "Show RAW preview if available (faster)"
+msgstr "Pokaż podgląd RAW, jeśli jest dostępny (szybciej)"
+
+msgid "Showing a RAW photo preview."
+msgstr "Wyświetlanie podglądu zdjęcia RAW."
+
+msgid "Processing..."
+msgstr "Przetwarzanie..."
+
+msgid "Processing files"
+msgstr "Przetwarzanie plików"
+
+msgid "Focal length 35mm equivalent"
+msgstr "Ogniskowa odpowiednik 35 mm"
+
+msgid "Album"
+msgstr "Album"
+
+msgid "Album artist"
+msgstr "Artysta albumu"
+
+msgid "Artist"
+msgstr "Artysta"
+
+msgid "Audio codec"
+msgstr "Kodek audio"
+
+msgid "Bitrate"
+msgstr "Szybkość transmisji"
+
+msgid "Camera"
+msgstr "Aparat"
+
+msgid "Camera manufacturer"
+msgstr "Producent aparatu"
+
+msgid "Channels"
+msgstr "Kanały"
+
+msgid "Comment"
+msgstr "Komentarz"
+
+msgid "Composer"
+msgstr "Kompozytor"
+
+msgid "Copyright creator"
+msgstr "Twórca praw autorskich"
+
+msgid "Copyright credit"
+msgstr "Uznanie autorstwa"
+
+msgid "Copyright notice"
+msgstr "Informacja o prawach autorskich"
+
+msgid "Copyright source"
+msgstr "Źródło praw autorskich"
+
+msgid "Copyright URL"
+msgstr "URL praw autorskich"
+
+msgid "Country//property"
+msgstr "Kraj"
+
+msgid "Created"
+msgstr "Utworzono"
+
+msgid "Created exif"
+msgstr "Utworzono (EXIF)"
+
+msgid "Description"
+msgstr "Opis"
+
+msgid "Digitized"
+msgstr "Zdigitalizowane"
+
+msgid "Dimensions"
+msgstr "Wymiary"
+
+msgid "Disk"
+msgstr "Dysk"
+
+msgid "Document Id"
+msgstr "Identyfikator dokumentu"
+
+msgid "Duration"
+msgstr "Czas trwania"
+
+msgid "Encoder"
+msgstr "Koder"
+
+msgid "Encoding tool"
+msgstr "Narzędzie do kodowania"
+
+msgid "Episode"
+msgstr "Epizod"
+
+msgid "Exposure"
+msgstr "Ekspozycja"
+
+msgid "Filename"
+msgstr "Nazwa pliku"
+
+msgid "FNumber"
+msgstr "Liczba przysłony"
+
+msgid "Focal length"
+msgstr "Ogniskowa"
+
+msgid "Game//property"
+msgstr "Gra"
+
+msgid "Genre"
+msgstr "Gatunek"
+
+msgid "Id"
+msgstr "Id"
+
+msgid "ISO"
+msgstr "ISO"
+
+msgid "Latitude"
+msgstr "Szerokość geograficzna"
+
+msgid "Lens"
+msgstr "Obiektyw"
+
+msgid "Longitude"
+msgstr "Długość geograficzna"
+
+msgid "Media category"
+msgstr "Kategoria mediów"
+
+msgid "Megapixels"
+msgstr "Megapiksele"
+
+msgid "Modified"
+msgstr "Zmodyfikowany"
+
+msgid "Null"
+msgstr "Brak"
+
+msgid "Orientation"
+msgstr "Orientacja"
+
+msgid "Performer"
+msgstr "Wykonawca"
+
+msgid "Pixel format"
+msgstr "Format pikseli"
+
+msgid "Place"
+msgstr "Miejsce"
+
+msgid "Publisher"
+msgstr "Wydawca"
+
+msgid "Rating"
+msgstr "Ocena"
+
+msgid "Raw file"
+msgstr "Plik RAW"
+
+msgid "Sample rate"
+msgstr "Częstotliwość próbkowania"
+
+msgid "Sample type"
+msgstr "Typ próbki"
+
+msgid "Season"
+msgstr "Sezon"
+
+msgid "Show"
+msgstr "Program"
+
+msgid "Size"
+msgstr "Rozmiar"
+
+msgid "State"
+msgstr "Stan/województwo"
+
+msgid "Streams"
+msgstr "Strumienie"
+
+msgid "Synopsis"
+msgstr "Streszczenie"
+
+msgid "Tag"
+msgstr "Tag"
+
+msgid "Title"
+msgstr "Tytuł"
+
+msgid "Track"
+msgstr "Ścieżka"
+
+msgid "Video codec"
+msgstr "Kodek wideo"
+
+msgid "Year"
+msgstr "Rok"
+
+msgid "age"
+msgstr "wiek"
+
+msgid "and"
+msgstr "i"
+
+msgid "created"
+msgstr "stworzony"
+
+msgid "duplicates"
+msgstr "duplikaty"
+
+msgid "dups"
+msgstr "duplikaty"
+
+msgid "duplicate"
+msgstr "duplikat"
+
+msgid "modified"
+msgstr "zmodyfikowany"
+
+msgid "or"
+msgstr "lub"
+
+msgid "original"
+msgstr "oryginał"
+
+msgid "related"
+msgstr "powiązany"
+
+msgid "with"
+msgstr "z"
+
+msgid "without"
+msgstr "bez"
+
+msgid "Rate selected items"
+msgstr "Oceń wybrane elementy"
+
+msgid "Number keys 0-5"
+msgstr "Klawisze numeryczne 0-5"
+
+msgid "Click {} to remove rating"
+msgstr "Kliknij {}, aby usunąć ocenę"
+
+msgid "Raw"
+msgstr "RAW"
+
+msgid "Remove Metadata"
+msgstr "Usuń metadane"
+
+msgid "New name:"
+msgstr "Nowa nazwa:"
+
+msgid "When specifying a template:"
+msgstr "Podczas określania szablonu:"
+
+msgid "Use '#' to specify position of the numeric sequence"
+msgstr "Użyj „#”, aby określić pozycję sekwencji numerycznej"
+
+msgid "Use metadata templates '{property-name}' to include file properties in the name."
+msgstr "Użyj szablonów metadanych „{property-name}”, aby uwzględnić właściwości pliku w nazwie."
+
+msgid "For example:"
+msgstr "Na przykład:"
+
+msgid "photo-###"
+msgstr "zdjęcie-###"
+
+msgid "{year}-{month}-###"
+msgstr "{year}-{month}-###"
+
+msgid "travel-{country}-###"
+msgstr "podróż-{country}-###"
+
+msgid "Template:"
+msgstr "Szablon:"
+
+msgid "Start at:"
+msgstr "Zacznij od:"
+
+msgid "Repeat play single media item"
+msgstr "Powtórz odtwarzanie pojedynczego elementu multimedialnego"
+
+msgid ""
+"Clean database and reindex.\n"
+"All data is regenerated."
+msgstr ""
+"Wyczyść bazę danych i utwórz indeks ponownie.\n"
+"Wszystkie dane zostaną odtworzone."
+
+msgid "Cleaning..."
+msgstr "Czyszczenie..."
+
+msgid "retro"
+msgstr "retro"
+
+msgid "Saturation"
+msgstr "Nasycenie"
+
+msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
+msgstr "Diffractor nie może przycinać, obracać ani kolorować plików {}. Możesz zapisać plik jako JPEG?"
+
+msgid "Save Changes"
+msgstr "Zapisz zmiany"
+
+msgid "Save new photo"
+msgstr "Zapisz nowe zdjęcie"
+
+msgid "Saving {}..."
+msgstr "Zapisywanie {}..."
+
+msgid "Failed to Scan."
+msgstr "Skanowanie nie powiodło się."
+
+msgid "All these terms"
+msgstr "Wszystkie te terminy"
+
+msgid "Christmas"
+msgstr "Boże Narodzenie"
+
+msgid "Search in the collection"
+msgstr "Szukaj w kolekcji"
+
+msgid "From"
+msgstr "Od"
+
+msgid "Until"
+msgstr "Do"
+
+msgid "Search in a folder"
+msgstr "Szukaj w folderze"
+
+msgid "Last 7 days"
+msgstr "Ostatnie 7 dni"
+
+msgid "Located within"
+msgstr "Znajduje się wewnątrz"
+
+msgid "None of these terms"
+msgstr "Żadne z tych określeń"
+
+msgid "Search criteria or folder"
+msgstr "Kryteria wyszukiwania lub folder"
+
+msgid "Photos"
+msgstr "Zdjęcia"
+
+msgid "Select term"
+msgstr "Wybierz termin"
+
+msgid "Search in subfolders"
+msgstr "Szukaj w podfolderach"
+
+msgid "Searching..."
+msgstr "Wyszukiwanie..."
+
+msgid "Select Folder..."
+msgstr "Wybierz folder..."
+
+msgid "Select a location"
+msgstr "Wybierz lokalizację"
+
+msgid "Selected items are in the date range:"
+msgstr "Wybrane elementy znajdują się w zakresie dat:"
+
+msgid "Selected items [{}]"
+msgstr "Wybrane elementy [{}]"
+
+msgid "Always show RAW photos (slower)"
+msgstr "Zawsze pokazuj zdjęcia RAW (wolniej)"
+
+msgid "Show this RAW photo"
+msgstr "Pokaż to zdjęcie RAW"
+
+msgid "press R to view the items most closely related to this one"
+msgstr "naciśnij R, aby zobaczyć elementy najbardziej powiązane z tym"
+
+msgid "Show verbose metadata"
+msgstr "Pokaż szczegółowe metadane"
+
+msgid "Album-Show"
+msgstr "Album-Program"
+
+msgid "Group order (Default)"
+msgstr "Kolejność grupy (domyślnie)"
+
+msgid "Extension"
+msgstr "Rozszerzenie"
+
+msgid "Type"
+msgstr "Typ"
+
+msgid "Name"
+msgstr "Nazwa"
+
+msgid "Resolution"
+msgstr "Rozdzielczość"
+
+msgid "Rating-Label"
+msgstr "Etykieta oceny"
+
+msgid "Staring"
+msgstr "Obsada"
+
+msgid "New Starting Date (local time):"
+msgstr "Nowa data rozpoczęcia (czas lokalny):"
+
+msgid "Starting {}"
+msgstr "Rozpoczęcie {}"
+
+msgid "Preparing to convert files..."
+msgstr "Przygotowywanie konwersji plików..."
+
+msgid "Preparing to import files..."
+msgstr "Przygotowywanie importowania plików..."
+
+msgid "Preparing files for email..."
+msgstr "Przygotowywanie plików do wysłania e-mailem..."
+
+msgid "Share"
+msgstr "Udostępnij"
+
+msgid "Preparing files to share..."
+msgstr "Przygotowywanie plików do udostępnienia..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows wyświetli aplikacje, które mogą odebrać pliki. Oryginały pozostaną bez zmian."
+
+msgid "Send the files as one zip file"
+msgstr "Wyślij pliki jako jeden plik ZIP"
+
+msgid "&Share"
+msgstr "&Udostępnij"
+
+msgid "The files could not be shared."
+msgstr "Nie udało się udostępnić plików."
+
+msgid "Preparing to synchronize files..."
+msgstr "Przygotowywanie synchronizacji plików..."
+
+msgid "Straighten"
+msgstr "Wyprostuj"
+
+msgid "Auto color"
+msgstr "Automatyczne kolory"
+
+msgid "Copy item path"
+msgstr "Kopiuj ścieżkę elementu"
+
+msgid "Auto document"
+msgstr "Automatyczne prostowanie dokumentu"
+
+msgid "Auto straighten"
+msgstr "Automatyczne prostowanie"
+
+msgid "Original"
+msgstr "Oryginał"
+
+msgid "Preview"
+msgstr "Podgląd"
+
+msgid "Automatically improve exposure and color balance"
+msgstr "Automatycznie popraw ekspozycję i balans kolorów"
+
+msgid "Automatically straighten horizontal and vertical lines"
+msgstr "Automatycznie wyprostuj linie poziome i pionowe"
+
+msgid "Show the final cropped image"
+msgstr "Pokaż końcowy przycięty obraz"
+
+msgid "Horizontal perspective"
+msgstr "Perspektywa pozioma"
+
+msgid "Vertical perspective"
+msgstr "Perspektywa pionowa"
+
+msgid "Temperature"
+msgstr "Temperatura"
+
+msgid "Tint"
+msgstr "Odcień"
+
+msgid "Stream {}"
+msgstr "Strumień {}"
+
+msgid "subtitle"
+msgstr "napisy"
+
+msgid "Support"
+msgstr "Wsparcie"
+
+msgid "Synchronize whole collection"
+msgstr "Synchronizuj całą kolekcję"
+
+msgid "copy local"
+msgstr "skopiuj lokalnie"
+
+msgid "copy remote"
+msgstr "kopiuj zdalnie"
+
+msgid "delete local"
+msgstr "usuń lokalnie"
+
+msgid "delete remote"
+msgstr "usuń zdalnie"
+
+msgid "Files changed after analysis. Analyze again to review the updated actions."
+msgstr "Pliki zmienione po analizie. Przeanalizuj ponownie, aby przejrzeć zaktualizowane działania."
+
+msgid "Local files to delete: {}. Remote files to delete: {}."
+msgstr "Pliki lokalne do usunięcia: {}. Zdalne pliki do usunięcia: {}."
+
+msgid "Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin."
+msgstr "Synchronizacja trwale usunie pliki. Tych plików nie można odzyskać z Kosza."
+
+msgid "The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin."
+msgstr "Istniejące pliki zostaną nadpisane. Ich bieżącej zawartości nie można odzyskać z Kosza."
+
+msgid "Delete local files that do not exist remotely"
+msgstr "Usuń pliki lokalne, które nie istnieją zdalnie"
+
+msgid "Delete remote files that do not exist locally"
+msgstr "Usuń pliki zdalne, które nie istnieją lokalnie"
+
+msgid "c:\\photos with \\\\nas\\\\backup"
+msgstr "c:\\photos z \\\\nas\\\\backup"
+
+msgid "Local folders"
+msgstr "Foldery lokalne"
+
+msgid "Copy newer local files to remote folders"
+msgstr "Skopiuj nowsze pliki lokalne do folderów zdalnych"
+
+msgid "Synchronize only one folder"
+msgstr "Synchronizuj tylko jeden folder"
+
+msgid "Remote folder"
+msgstr "Folder zdalny"
+
+msgid "Copy newer remote files to local folders"
+msgstr "Skopiuj nowsze pliki zdalne do folderów lokalnych"
+
+msgid "Tags to add or remove:"
+msgstr "Tagi do dodania lub usunięcia:"
+
+msgid "Add or remove Tags"
+msgstr "Dodaj lub usuń Tagi"
+
+msgid "Tag selected items"
+msgstr "Oznacz wybrane elementy"
+
+msgid "Common Tags"
+msgstr "Wspólne tagi"
+
+msgid "Removable Tags"
+msgstr "Usuwalne tagi"
+
+msgid "Tags"
+msgstr "Tagi"
+
+msgid "false"
+msgstr "fałsz"
+
+msgid "true"
+msgstr "prawda"
+
+msgid "Diffractor ERROR"
+msgstr "BŁĄD Diffractor"
+
+msgid "folder:{}"
+msgstr "folder:{}"
+
+msgid "rate"
+msgstr "ocena"
+
+msgid "Updating..."
+msgstr "Aktualizowanie..."
+
+msgid "Reset color adjustments"
+msgstr "Zresetuj ustawienia kolorów"
+
+msgid "Color, straighten or crop photos."
+msgstr "Koloruj, prostuj i przycinaj zdjęcia."
+
+msgid "Toggle full screen for media-items or open non-media-items."
+msgstr "Przełącz pełny ekran dla elementów multimedialnych lub otwórz elementy niebędące multimediami."
+
+msgid "Change language"
+msgstr "Zmień język"
+
+msgid "Contains common folders, searches and favorites"
+msgstr "Zawiera popularne foldery, wyszukiwania i ulubione"
+
+msgid "Open selected items with external app"
+msgstr "Otwórz wybrane elementy za pomocą aplikacji zewnętrznej"
+
+msgid "Pinned items stay selected. Use this when you want to quickly compare an item to other items."
+msgstr "Przypięte elementy pozostają zaznaczone. Użyj tej opcji, jeśli chcesz szybko porównać element z innymi elementami."
+
+msgid "Reset straighten and rotate"
+msgstr "Zresetuj prostowanie i obrót"
+
+msgid "Tag or un-tag selected items"
+msgstr "Oznacz lub usuń oznaczenie wybranych elementów"
+
+msgid "Toggle between thumbnails or details for selected item group"
+msgstr "Przełączaj pomiędzy miniaturami lub szczegółami wybranej grupy elementów"
+
+msgid "Toggle between thumbnails or details view"
+msgstr "Przełączanie pomiędzy widokiem miniatur i szczegółów"
+
+msgid "Process selected items"
+msgstr "Przetwórz wybrane elementy"
+
+msgid "More options and controls"
+msgstr "Więcej opcji i kontroli"
+
+msgid "{} ({}) total items in {} folders."
+msgstr "{} ({}) elementów łącznie w {} folderach."
+
+msgid "Truncated at 1MB"
+msgstr "Obcięto do 1 MB"
+
+msgid "Type to search"
+msgstr "Wpisz, aby wyszukać"
+
+msgid "Unselect {}"
+msgstr "Odznacz {}"
+
+msgid "Update"
+msgstr "Aktualizuj"
+
+msgid "Version {} of Diffractor is available."
+msgstr "Dostępna jest wersja {} programu Diffractor."
+
+msgid "Update available"
+msgstr "Dostępna aktualizacja"
+
+msgid "You are currently using version {}."
+msgstr "Obecnie używasz wersji {}."
+
+msgid "Update failed."
+msgstr "Aktualizacja nie powiodła się."
+
+msgid "Download and install now. Diffractor will need to be closed briefly during the install."
+msgstr "Pobierz i zainstaluj teraz. Podczas instalacji program Diffractor będzie musiał zostać na krótko zamknięty."
+
+msgid "Version {} of Diffractor is available. You are currently using version {}."
+msgstr "Dostępna jest wersja {} programu Diffractor. Obecnie używasz wersji {}."
+
+msgid "More info"
+msgstr "Więcej informacji"
+
+msgid "Learn more about this update at Diffractor.com"
+msgstr "Dowiedz się więcej o tej aktualizacji na Diffractor.com"
+
+msgid "Not now"
+msgstr "Nie teraz"
+
+msgid "Remind me again in a week"
+msgstr "Przypomnij mi ponownie za tydzień"
+
+msgid "Please wait while the update is downloaded..."
+msgstr "Poczekaj na pobranie aktualizacji..."
+
+msgid "Version"
+msgstr "Wersja"
+
+msgid "Vibrance"
+msgstr "Intensywność kolorów"
+
+msgid "video"
+msgstr "film"
+
+msgid "WEBP - Best for the web"
+msgstr "WEBP — najlepsze dla sieci"
+
+msgid "XMP"
+msgstr "XMP"
+
+msgid "ICC"
+msgstr "ICC"
+
+msgid "press ctrl+space"
+msgstr "naciśnij ctrl+spacja"
+
+msgid "Scope"
+msgstr "Zakres"
+
+msgid "Value"
+msgstr "Wartość"
+
+msgid "Volume 200%"
+msgstr "Głośność 200%"
+
+msgid "Volume 100%"
+msgstr "Głośność 100%"
+
+msgid "Volume 75%"
+msgstr "Głośność 75%"
+
+msgid "Volume 50%"
+msgstr "Głośność 50%"
+
+msgid "Volume 25%"
+msgstr "Głośność 25%"
+
+msgid "Mute"
+msgstr "Wycisz"
+
+msgid "Autoplay selected media"
+msgstr "Automatyczne odtwarzanie wybranych multimediów"
+
+msgid "Resume playing media from last position"
+msgstr "Wznów odtwarzanie multimediów od ostatniej pozycji"
+
+msgid "Repeat play one item"
+msgstr "Powtórz odtwarzanie jednego elementu"
+
+msgid "Repeat play all media items"
+msgstr "Powtórz odtwarzanie wszystkich elementów multimedialnych"
+
+msgid "Don't repeat"
+msgstr "Nie powtarzaj"
+
+msgid "Playback Options"
+msgstr "Opcje odtwarzania"
+
+msgid "Playback"
+msgstr "Odtwarzanie"
+
+msgid "Filter items"
+msgstr "Filtruj elementy"
+
+msgid "Photo filter"
+msgstr "Filtr fotograficzny"
+
+msgid "Video filter"
+msgstr "Filtr wideo"
+
+msgid "Audio filter"
+msgstr "Filtr dźwięku"
+
+msgid "Show {} filtered out items"
+msgstr "Pokaż {} odfiltrowane elementy"
+
+msgid "The collection contains {} items created on {}."
+msgstr "Kolekcja zawiera {} elementy utworzone w dniu {}."
+
+msgid "Show all tags"
+msgstr "Pokaż wszystkie tagi"
+
+msgid "Show only favorite tags"
+msgstr "Pokaż tylko ulubione tagi"
+
+msgid "Show only favorite tags in the sidebar"
+msgstr "Pokaż tylko ulubione tagi na pasku bocznym"
+
+msgid "Destination"
+msgstr "Miejsce docelowe"
+
+msgid "Old name"
+msgstr "Stara nazwa"
+
+msgid "New name"
+msgstr "Nowa nazwa"
+
+msgid "Local"
+msgstr "Lokalny"
+
+msgid "Remote"
+msgstr "Zdalny"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Message"
+msgstr "Wiadomość"
+
+msgid "import"
+msgstr "import"
+
+msgid "exists"
+msgstr "istnieje"
+
+msgid "previously imported"
+msgstr "wcześniej importowane"
+
+msgid "ignore"
+msgstr "pomiń"
+
+msgid "Click analyze to show items"
+msgstr "Kliknij Analizuj, aby wyświetlić elementy"
+
+msgid "Rotate {first-name}."
+msgid_plural "Rotate {count} selected items. Originals will be overwritten."
+msgstr[0] "Obróć {first-name}."
+msgstr[1] "Obróć {count} wybrane elementy. Oryginały zostaną zastąpione."
+msgstr[2] "Obróć {count} wybranych elementów. Oryginały zostaną zastąpione."
+
+msgid "1 folder"
+msgid_plural "{count} folders"
+msgstr[0] "1 folder"
+msgstr[1] "{count} foldery"
+msgstr[2] "{count} folderów"
+
+msgid "{count} item"
+msgid_plural "{count} items"
+msgstr[0] "{count} element"
+msgstr[1] "{count} elementy"
+msgstr[2] "{count} elementów"
+
+msgid "1 item here"
+msgid_plural "{count} items here"
+msgstr[0] "1 element tutaj"
+msgstr[1] "{count} elementy tutaj"
+msgstr[2] "{count} elementów tutaj"
+
+msgid "Set rating to 1 star"
+msgid_plural "Set rating to {count} stars"
+msgstr[0] "Ustaw ocenę na 1 gwiazdkę"
+msgstr[1] "Ustaw ocenę na {count} gwiazdki"
+msgstr[2] "Ustaw ocenę na {count} gwiazdek"
+
+msgid "Cannot process {first-name}."
+msgid_plural "Cannot process {first-name} and {other} other items."
+msgstr[0] "Nie można przetworzyć {first-name}."
+msgstr[1] "Nie można przetworzyć {first-name} ani {other} innych elementów."
+msgstr[2] "Nie można przetworzyć {first-name} ani {other} innych elementów."
+
+msgid "{first-name} will be renamed."
+msgid_plural "{count} items will be renamed."
+msgstr[0] "Nazwa {first-name} zostanie zmieniona."
+msgstr[1] "Nazwy {count} elementów zostaną zmienione."
+msgstr[2] "Nazwy {count} elementów zostaną zmienione."
+
+msgid "1 duplicate item"
+msgid_plural "{count} duplicate items"
+msgstr[0] "1 zduplikowany element"
+msgstr[1] "{count} zduplikowane elementy"
+msgstr[2] "{count} zduplikowanych elementów"
+
+msgid "1 sidecar item"
+msgid_plural "{count} sidecar items"
+msgstr[0] "1 plik sidecar"
+msgstr[1] "{count} pliki sidecar"
+msgstr[2] "{count} plików sidecar"
+
+msgid "{count} of 1 item was processed."
+msgid_plural "{count} of {total} items were processed."
+msgstr[0] "Przetworzono {count} z 1 elementu."
+msgstr[1] "Przetworzono {count} z {total} elementów."
+msgstr[2] "Przetworzono {count} z {total} elementów."
+
+msgid "1 item was processed."
+msgid_plural "{count} items were processed."
+msgstr[0] "Przetworzono 1 element."
+msgstr[1] "Przetworzono {count} elementy."
+msgstr[2] "Przetworzono {count} elementów."
+
+msgid "{first-name} failed."
+msgid_plural "{count} items failed."
+msgstr[0] "Nie udało się przetworzyć {first-name}."
+msgstr[1] "Nie udało się przetworzyć {count} elementów."
+msgstr[2] "Nie udało się przetworzyć {count} elementów."
+
+msgid "{first-name} was ignored."
+msgid_plural "{count} items were ignored."
+msgstr[0] "Pominięto {first-name}."
+msgstr[1] "Pominięto {count} elementy."
+msgstr[2] "Pominięto {count} elementów."
+
+msgid "{first-name} was ignored because it exists already in the destination location."
+msgid_plural "{count} items were ignored because they exist already in the destination location."
+msgstr[0] "Pominięto {first-name}, ponieważ istnieje już w lokalizacji docelowej."
+msgstr[1] "Pominięto {count} elementy, ponieważ istnieją już w lokalizacji docelowej."
+msgstr[2] "Pominięto {count} elementów, ponieważ istnieją już w lokalizacji docelowej."
+
+msgid "{first-name} was ignored because it was previously imported."
+msgid_plural "{count} items were ignored because they were previously imported."
+msgstr[0] "Pominięto {first-name}, ponieważ został już wcześniej zaimportowany."
+msgstr[1] "Pominięto {count} elementy, ponieważ zostały już wcześniej zaimportowane."
+msgstr[2] "Pominięto {count} elementów, ponieważ zostały już wcześniej zaimportowane."
+
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "Zaimportowano 1 element, ale nie można było ustawić jego daty utworzenia."
+msgstr[1] "Zaimportowano {count} elementy, ale nie można było ustawić ich daty utworzenia."
+msgstr[2] "Zaimportowano {count} elementów, ale nie można było ustawić ich daty utworzenia."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} zostanie przeniesiony do Kosza, jeśli system Windows może przenieść go do Kosza."
+msgstr[1] "{count} elementów ({size}) zostanie przeniesionych do Kosza, jeśli system Windows może przenieść je do Kosza."
+msgstr[2] "{count} elementów ({size}) zostanie przeniesionych do Kosza, jeśli system Windows może przenieść je do Kosza."
+
+msgid "{first-name} will be permanently deleted."
+msgid_plural "{count} items ({size}) will be permanently deleted."
+msgstr[0] "Element {first-name} zostanie trwale usunięty."
+msgstr[1] "{count} elementy ({size}) zostaną trwale usunięte."
+msgstr[2] "{count} elementów ({size}) zostanie trwale usuniętych."
+
+msgid "You are about to delete {count} item."
+msgid_plural "You are about to delete {count} items."
+msgstr[0] "Zamierzasz usunąć {count} element."
+msgstr[1] "Zamierzasz usunąć {count} elementy."
+msgstr[2] "Zamierzasz usunąć {count} elementów."
+
+msgid "These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin."
+msgstr "Te elementy znajdują się na ścieżce sieciowej. Zostaną trwale usunięte i nie będzie można ich odzyskać z kosza."
+
+msgid "{first-name} will be copied."
+msgid_plural "{count} items ({size}) will be copied."
+msgstr[0] "Element {first-name} zostanie skopiowany."
+msgstr[1] "{count} elementy ({size}) zostaną skopiowane."
+msgstr[2] "{count} elementów ({size}) zostanie skopiowanych."
+
+msgid "{first-name} will be moved."
+msgid_plural "{count} items ({size}) will be moved."
+msgstr[0] "Element {first-name} zostanie przeniesiony."
+msgstr[1] "{count} elementy ({size}) zostaną przeniesione."
+msgstr[2] "{count} elementów ({size}) zostanie przeniesionych."
+
+msgid "{first-name} will be updated."
+msgid_plural "{count} items will be updated."
+msgstr[0] "Element {first-name} zostanie zaktualizowany."
+msgstr[1] "{count} elementy zostaną zaktualizowane."
+msgstr[2] "{count} elementów zostanie zaktualizowanych."
+
+msgid "Add or overwrite specific metadata in {first-name}."
+msgid_plural "Add or overwrite specific metadata in {count} items."
+msgstr[0] "Dodaj lub zastąp określone metadane w {first-name}."
+msgstr[1] "Dodaj lub zastąp określone metadane w {count} elementach."
+msgstr[2] "Dodaj lub zastąp określone metadane w {count} elementach."
+
+msgid "{first-name} will be converted and copied to a folder."
+msgid_plural "{count} items will be converted and copied to a folder."
+msgstr[0] "Element {first-name} zostanie przekonwertowany i skopiowany do folderu."
+msgstr[1] "{count} elementy zostaną przekonwertowane i skopiowane do folderu."
+msgstr[2] "{count} elementów zostanie przekonwertowanych i skopiowanych do folderu."
+
+msgid "{first-name} will have tags added or removed."
+msgid_plural "{count} items will have tags added or removed."
+msgstr[0] "W elemencie {first-name} zostaną dodane lub usunięte tagi."
+msgstr[1] "W {count} elementach zostaną dodane lub usunięte tagi."
+msgstr[2] "W {count} elementach zostaną dodane lub usunięte tagi."
+
+msgid "{first-name} will have the date adjusted."
+msgid_plural "{count} items will have the date adjusted."
+msgstr[0] "Data elementu {first-name} zostanie skorygowana."
+msgstr[1] "Data zostanie skorygowana w {count} elementach."
+msgstr[2] "Data zostanie skorygowana w {count} elementach."
+
+msgid "A desktop email draft will be opened with {first-name} attached."
+msgid_plural "A desktop email draft will be opened with {count} selected items attached."
+msgstr[0] "W programie pocztowym zostanie otwarta wersja robocza z załącznikiem {first-name}."
+msgstr[1] "W programie pocztowym zostanie otwarta wersja robocza z {count} wybranymi elementami w załączniku."
+msgstr[2] "W programie pocztowym zostanie otwarta wersja robocza z {count} wybranymi elementami w załączniku."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "Element {first-name} zostanie przekazany do aplikacji, którą wybierzesz."
+msgstr[1] "{count} wybrane elementy zostaną przekazane do aplikacji, którą wybierzesz."
+msgstr[2] "{count} wybranych elementów zostanie przekazanych do aplikacji, którą wybierzesz."
+
+msgid "{first-name} already exists. Do you want to replace it?"
+msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
+msgstr[0] "{first-name} już istnieje. Czy chcesz go zastąpić?"
+msgstr[1] "{first-name} i {other} inne elementy już istnieją. Czy chcesz je zastąpić?"
+msgstr[2] "{first-name} i {other} innych elementów już istnieje. Czy chcesz je zastąpić?"
+
+msgid "{first-name} will have existing GPS position metadata overwritten."
+msgid_plural "{first-name} and {other} other items will have existing GPS position metadata overwritten."
+msgstr[0] "Istniejące metadane pozycji GPS w {first-name} zostaną zastąpione."
+msgstr[1] "Istniejące metadane pozycji GPS w {first-name} i {other} innych elementach zostaną zastąpione."
+msgstr[2] "Istniejące metadane pozycji GPS w {first-name} i {other} innych elementach zostaną zastąpione."
+
+msgid "Choose a valid new starting date and time."
+msgstr "Wybierz prawidłową nową datę i godzinę początkową."
+
+msgid "Windows could not stage the selected items for disc burning."
+msgstr "System Windows nie mógł przygotować wybranych elementów do nagrania na dysku."
+
+msgid "The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc."
+msgstr "Wybrane elementy zostaną przygotowane w narzędziu nagrywania dysków systemu Windows. System Windows przeprowadzi Cię przez proces nagrywania dysku."
+
+msgid "&Stage files"
+msgstr "&Przygotuj pliki"
+
+msgid "Email draft was canceled."
+msgstr "Anulowano wersję roboczą wiadomości e-mail."
+
+msgid "Maximum dimension must be at least 1 pixel."
+msgstr "Maksymalny wymiar musi wynosić co najmniej 1 piksel."
+
+msgid "Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged."
+msgstr "Wybierz co najmniej jedno pole metadanych do zaktualizowania. Zaznaczone puste pola usuwają istniejące wartości; niezaznaczone pola pozostają bez zmian."
+
+msgid "{first-name} was canceled."
+msgid_plural "{count} items were canceled."
+msgstr[0] "Anulowano operację dla {first-name}."
+msgstr[1] "Anulowano operację dla {count} elementów."
+msgstr[2] "Anulowano operację dla {count} elementów."
+
+msgid "{first-name} will be staged for disc burning."
+msgid_plural "{count} selected items ({size}) will be staged for disc burning."
+msgstr[0] "Element {first-name} zostanie przygotowany do nagrania na dysku."
+msgstr[1] "Wybrane elementy ({count}, {size}) zostaną przygotowane do nagrania na dysku."
+msgstr[2] "Wybrane elementy ({count}, {size}) zostaną przygotowane do nagrania na dysku."
+
+msgid "Detect and straighten a photographed document"
+msgstr "Wykryj i wyprostuj sfotografowany dokument"
+
+msgid "Failed to Initialize Direct3d"
+msgstr "Nie udało się zainicjować Direct3D"
+
+msgid "Navigator"
+msgstr "Nawigator"
+
+msgid "Flip comparison panes"
+msgstr "Zamień panele porównania"
+
+msgid "Auto-hide"
+msgstr "Ukrywaj automatycznie"
+
+msgid "Off"
+msgstr "Wyłączone"
+
+msgid "Slideshow"
+msgstr "Pokaz slajdów"
+
+
+msgid "Altitude"
+msgstr "Wysokość"
+
+msgid "GPS speed"
+msgstr "Prędkość GPS"
+
+msgid "In flight"
+msgstr "W locie"
+
+msgid "{} m"
+msgstr "{} m"
+
+msgid "{} m underwater"
+msgstr "{} m pod wodą"
+
+msgid "Cancel was pressed after {}"
+msgstr "Anulowanie naciśnięto po {}"
+
+msgid "Apply tags"
+msgstr "Zastosuj tagi"
+
+msgid "Item"
+msgstr "Element"
+
+msgid "Tags after run"
+msgstr "Tagi po wykonaniu"
+
+msgid "Enter one or more tags to add or remove."
+msgstr "Wpisz jeden lub więcej tagów do dodania lub usunięcia."
+
+msgid "no change"
+msgstr "bez zmian"
+
+msgid "Select items to tag"
+msgstr "Wybierz elementy do otagowania"
+
+msgid "Cancel operation"
+msgstr "Anuluj operację"
+
+msgid "{} is still running. Cancel it and close?"
+msgstr "{} nadal działa. Anulować i zamknąć?"
+
+msgid "Keep running"
+msgstr "Kontynuuj działanie"
+
+msgid "Location unavailable"
+msgstr "Lokalizacja niedostępna"
+
+msgid "{} could not be opened. It may be disconnected, renamed or removed."
+msgstr "Nie można otworzyć {}. Element może być odłączony, przemianowany lub usunięty."
+
+msgid "Try again"
+msgstr "Spróbuj ponownie"
+
+msgid "Go to the parent folder"
+msgstr "Przejdź do folderu nadrzędnego"
+
+msgid "{} is still running. Close it before browsing somewhere else."
+msgstr "{} nadal działa. Zamknij, zanim przejdziesz w inne miejsce."
+
+msgid "If the destination already exists:"
+msgstr "Jeśli cel już istnieje:"
+
+msgid "Replace"
+msgstr "Zastąp"
+
+msgid "Skip"
+msgstr "Pomiń"
+
+msgid "Auto-rename"
+msgstr "Zmień nazwę automatycznie"
+
+msgid "Block run"
+msgstr "Zablokuj wykonanie"
+
+msgid "File exists"
+msgstr "Plik istnieje"
+
+msgid "Choose a destination folder."
+msgstr "Wybierz folder docelowy."
+
+msgid "Enter a maximum dimension in pixels."
+msgstr "Podaj maksymalny wymiar w pikselach."
+
+msgid "Check one or more fields to change."
+msgstr "Zaznacz co najmniej jedno pole do zmiany."
+
+msgid "Select items before using this tool"
+msgstr "Najpierw zaznacz elementy"
+
+msgid "Success"
+msgstr "Powodzenie"
+
+msgid "Failed"
+msgstr "Niepowodzenie"
+
+msgid "Skipped"
+msgstr "Pominięto"
+
+msgid "Not run"
+msgstr "Nie uruchomiono"
+
+msgid "These are the results of a finished run. Refresh to plan again with the current settings."
+msgstr "To są wyniki zakończonego uruchomienia. Odśwież, aby zaplanować ponownie przy bieżących ustawieniach."
+
+msgid "{} destinations already exist. Choose Replace, Skip or Auto-rename."
+msgstr "{} celów już istnieje. Wybierz Zastąp, Pomiń lub Zmień nazwę automatycznie."
+
+msgid "{} items will be skipped because the destination exists."
+msgstr "{} elementów zostanie pominiętych, ponieważ cel już istnieje."
+
+msgid "{} existing destinations will be replaced."
+msgstr "{} istniejących celów zostanie zastąpionych."
+
+msgid "{} items will be given a new name to avoid a collision."
+msgstr "{} elementów otrzyma nową nazwę, aby uniknąć kolizji."
+
+msgid "Distance: {}"
+msgstr "Odległość: {}"
+
+msgid "Change how far from this place to search"
+msgstr "Zmień, jak daleko od tego miejsca szukać"
+
+msgid "N,NE,E,SE,S,SW,W,NW"
+msgstr "Pn,PnW,W,PdW,Pd,PdZ,Z,PnZ"
+
+msgid "{} {} of {}"
+msgstr "{} {} od {}"
+
+msgid "Near {}"
+msgstr "W pobliżu {}"
+
+msgid "Remote area"
+msgstr "Odległy obszar"
+
+msgid "Nothing within {} of {}."
+msgstr "Nic w promieniu {} od {}."
+
+msgid "Nothing found at {}."
+msgstr "Nic nie znaleziono w {}."
+
+msgid "Widen to {}"
+msgstr "Rozszerz do {}"
+
+msgid "Search all places named {}"
+msgstr "Szukaj wszystkich miejsc o nazwie {}"
+
+msgid "Show items with no location"
+msgstr "Pokaż elementy bez lokalizacji"
+
+msgid "Search within {} of {}"
+msgstr "Szukaj w promieniu {} od {}"
+
+msgid "High altitude"
+msgstr "Duża wysokość"
+
+msgid "Timeline"
+msgstr "Oś czasu"
+
+msgid "Places"
+msgstr "Miejsca"
+
+msgid "{} items"
+msgstr "{} elementów"
+
+msgid "Grouped by {}"
+msgstr "Grupowanie według {}"
+
+msgid "Grouped by {} - {}"
+msgstr "Grupowanie według {} - {}"
+
+msgid "Clear"
+msgstr "Wyczyść"
+
+msgid "From {} to {}"
+msgstr "Od {} do {}"
+
+msgid "Plays or pauses video and audio. Stops a running slideshow."
+msgstr "Odtwarza lub wstrzymuje wideo i audio. Zatrzymuje trwający pokaz slajdów."
+
+msgid "Replaces Reject"
+msgstr "Zastępuje Odrzuć"
+
+msgid "Click to apply"
+msgstr "Kliknij, aby zastosować"
+
+msgid "Click to clear"
+msgstr "Kliknij, aby wyczyścić"
+
+msgid "Replaces the current label: {}"
+msgstr "Zastępuje bieżącą etykietę: {}"
+
+msgid "Replaces the star rating"
+msgstr "Zastępuje ocenę gwiazdkową"
+
+msgid "When the last item has played, start again from the first"
+msgstr "Po odtworzeniu ostatniego elementu zacznij ponownie od pierwszego"
+
+msgid "Stop after the last item"
+msgstr "Zatrzymaj po ostatnim elemencie"
+
+msgid "Play or pause the displayed video or audio file."
+msgstr "Odtwórz lub wstrzymaj wyświetlany plik wideo lub audio."
+
+msgid "Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end."
+msgstr "Odtwarza widoczne elementy. Zdjęcia są wyświetlane przez czas opóźnienia pokazu slajdów; wideo i audio są odtwarzane do końca."
+
+msgid "Continue with the next item"
+msgstr "Kontynuuj następnym elementem"
+
+msgid "When an item finishes, continue with the next photo, video or audio item"
+msgstr "Gdy element się zakończy, kontynuuj następnym zdjęciem, wideo lub elementem audio"
+
+msgid "Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them."
+msgstr "Diffractor nie może zapisywać ocen, etykiet ani innych metadanych w plikach {} i nie tworzy dla nich pliku sidecar."
+
+msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
+msgstr "Aby podać więcej niż jeden gatunek, użyj średnika. Na przykład: Rock; Blues"
+
+msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
+msgstr "Wybierz jedno zdjęcie do edycji. Wideo, audio, foldery oraz formaty, których Diffractor nie potrafi zapisać, nie są obsługiwane."
+
+msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
+msgstr "Wyłączone: zdjęcia i wideo mniejsze niż okno są wyświetlane w rzeczywistym rozmiarze. Włączone: są powiększane do rozmiaru okna. Media większe niż okno są zawsze pomniejszane, aby się zmieściły."
+
+msgid "Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder."
+msgstr "Konwertuje wybrane zdjęcia do innego formatu i opcjonalnie ogranicza ich rozmiar. Oryginały są zachowywane, a nowe pliki są zapisywane w folderze docelowym."
+
+msgid "Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched."
+msgstr "Zapisuje te same wartości metadanych w każdym zaznaczonym elemencie. Zmieniane są tylko zaznaczone pola; dane obrazu i wideo pozostają nienaruszone."
+
+msgid "Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched."
+msgstr "Przesuwa daty zaznaczonych elementów tak, aby najstarszy zaczynał się od nowej daty i godziny. Zmieniane są tylko metadane; dane obrazu i wideo pozostają nienaruszone."
+
+msgid "Add or remove tags across the selected items. Tags you do not mention are left in place."
+msgstr "Dodaje lub usuwa tagi w wybranych elementach. Tagi, których nie wskażesz, pozostają bez zmian."
+
+msgid "Convert"
+msgstr "Konwertuj"
+
+msgid "Update metadata"
+msgstr "Zaktualizuj metadane"
+
+msgid "No removable drive was found."
+msgstr "Nie znaleziono dysku wymiennego."
+
+msgid "Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run."
+msgstr "Kopiuje lub przenosi pliki do struktury folderów zbudowanej z metadanych, takich jak data, album czy wykonawca. Jeśli miejsce docelowe znajduje się w Twojej kolekcji, kopie automatycznie do niej dołączają. Najpierw przeanalizuj, aby sprawdzić każdą akcję przed uruchomieniem."
+
+msgid "Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run."
+msgstr "Zmienia nazwy wybranych plików według szablonu, który może łączyć tekst, rosnący numer i właściwości metadanych. Przed uruchomieniem sprawdź nowe nazwy poniżej."
+
+msgid "Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run."
+msgstr "Synchronizuje foldery lokalne ze zdalnym folderem lub folderem kopii zapasowej. Najpierw użyj Analizuj, aby przed uruchomieniem przejrzeć każde kopiowanie i usunięcie."
+
+msgid "home"
+msgstr "home"
+
+msgid "end"
+msgstr "end"
+
+msgid "-"
+msgstr "-"
+
+msgid "Grouping"
+msgstr "Grupowanie"
+
+msgid "Move to the first or last item. Pans a zoomed image to the left or right edge."
+msgstr "Przechodzi do pierwszego lub ostatniego elementu. Przesuwa powiększony obraz do lewej lub prawej krawędzi."
+
+msgid "Move up or down a row of items. Pans a zoomed image."
+msgstr "Przesuwa o wiersz elementów w górę lub w dół. Przesuwa powiększony obraz."
+
+msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
+msgstr "Powiększa lub pomniejsza wyświetlany obraz. Naciśnij 0, aby dopasować go do okna."
+
+msgid "Add folders to your collection (Ctrl+F6)"
+msgstr "Dodaj foldery do kolekcji (Ctrl+F6)"
+
+msgid "Select at least one search criterion."
+msgstr "Wybierz co najmniej jedno kryterium wyszukiwania."
+
+msgid "Could not check for updates. Check your internet connection and try again."
+msgstr "Nie można sprawdzić dostępności aktualizacji. Sprawdź połączenie internetowe i spróbuj ponownie."
+
+msgid "Diagnostics information could not be sent. Check your internet connection and try again."
+msgstr "Nie można wysłać informacji diagnostycznych. Sprawdź połączenie internetowe i spróbuj ponownie."
+
+msgid "Too large to display"
+msgstr "Za duży, aby wyświetlić"
+
+msgid "This image could not be displayed"
+msgstr "Nie można wyświetlić tego obrazu"
+
+msgid "Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places."
+msgstr "Pokaż elementy w kolekcji najbardziej powiązane z tym: możliwe kopie, następnie ten sam album, tę samą serię, najbliższe czasy wykonania i najbliższe miejsca wykonania."
+
+msgid "This item and possible copies"
+msgstr "Ten element i możliwe kopie"
+
+msgid "Same album"
+msgstr "Ten sam album"
+
+msgid "Same series"
+msgstr "Ta sama seria"
+
+msgid "Taken at the same time"
+msgstr "Wykonano w tym samym czasie"
+
+msgid "Taken in the same place"
+msgstr "Wykonano w tym samym miejscu"
+
+msgid "Recovered from a startup problem"
+msgstr "Przywrócono po problemie z uruchamianiem"
+
+msgid "Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options."
+msgstr "Diffractor został nieoczekiwanie zamknięty przed zakończeniem uruchamiania, dlatego to uruchomienie korzysta z domyślnego układu z wyłączoną akceleracją sprzętową. Twoje pliki, kolekcja i ostatnie elementy pozostają bez zmian. Ustawienia możesz przywrócić w Opcjach."
+
+msgid "Original//date"
+msgstr "Oryginał"
+
+msgid "Group by Date Original"
+msgstr "Grupuj według daty oryginału"
+
+msgid "Sort by Date original"
+msgstr "Sortuj według daty oryginału"
+
+msgid "Movie mixer"
+msgstr "Mikser filmu"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Połącz wybrane zdjęcia i filmy w jeden film. Dodawaj, usuwaj i zmieniaj kolejność klipów na pasku poniżej oraz przycinaj wybrany klip. Podgląd pokazuje to, co zostanie wyrenderowane; nic nie jest zapisywane, dopóki nie wyrenderujesz lub nie zapiszesz."
+
+msgid "Movie"
+msgstr "Film"
+
+msgid "Selected clip"
+msgstr "Wybrany klip"
+
+msgid "Crossfade between clips"
+msgstr "Przenikanie między klipami"
+
+msgid "Cut between clips"
+msgstr "Cięcie między klipami"
+
+msgid "Transition (tenths of a second)"
+msgstr "Przejście (dziesiąte części sekundy)"
+
+msgid "Fade (tenths of a second)"
+msgstr "Rozjaśnianie/ściemnianie (dziesiąte części sekundy)"
+
+msgid "Fade in from black"
+msgstr "Rozjaśnianie z czerni"
+
+msgid "Fade out to black"
+msgstr "Ściemnianie do czerni"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "Czas wyświetlania zdjęcia (dziesiąte części sekundy)"
+
+msgid "This photo (tenths of a second)"
+msgstr "To zdjęcie (dziesiąte części sekundy)"
+
+msgid "Use the movie default"
+msgstr "Użyj wartości domyślnej filmu"
+
+msgid "Add photos and videos to build a movie."
+msgstr "Dodaj zdjęcia i filmy, aby utworzyć film."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "Wyjście {} x {} przy {} kl./s, długość {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - klip {} z {}, początek {}."
+
+msgid "Movie project"
+msgstr "Projekt filmu"
+
+msgid "Windows Movie Maker project"
+msgstr "Projekt programu Windows Movie Maker"
+
+msgid "Photos and videos"
+msgstr "Zdjęcia i filmy"
+
+msgid "Could not read the project {}."
+msgstr "Nie można odczytać projektu {}."
+
+msgid "Could not save the project {}."
+msgstr "Nie można zapisać projektu {}."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "Łączy wybrane zdjęcia i filmy w jeden film."
+
+msgid "Add files"
+msgstr "Dodaj pliki"
+
+msgid "Remove from movie"
+msgstr "Usuń z filmu"
+
+msgid "Send to the end"
+msgstr "Przenieś na koniec"
+
+msgid "Open project"
+msgstr "Otwórz projekt"
+
+msgid "Save project"
+msgstr "Zapisz projekt"
+
+msgid "Import Movie Maker project"
+msgstr "Importuj projekt Movie Maker"
+
+msgid "Video"
+msgstr "Wideo"
+
+msgid "Rendering the movie"
+msgstr "Renderowanie filmu"
+
+msgid "The movie could not be rendered. {}"
+msgstr "Nie można wyrenderować filmu. {}"
+
+msgid "The movie has no length."
+msgstr "Film ma zerową długość."
+
+msgid "The encoder would not accept this movie."
+msgstr "Koder nie przyjął tego filmu."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "Zabrakło pamięci na klatkę filmu."
+
+msgid "A clip could not be decoded."
+msgstr "Nie można zdekodować jednego z klipów."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "Koder zatrzymał się przed ukończeniem filmu."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "Ta nazwa należy do klipu w tym filmie. Wybierz inną nazwę."
+
+msgid "Rendered {}."
+msgstr "Wyrenderowano {}."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "Renderowanie zostało anulowane. Nic nie zostało zapisane."
+
+msgid "No missing clip was found in that folder."
+msgstr "W tym folderze nie znaleziono żadnego brakującego klipu."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "Ten film ma zmiany, których nie ma w żadnym pliku projektu. Jest zachowywany, dopóki Diffractor działa, a zamknięcie Diffractora go odrzuca."
+
+msgid "Close without saving"
+msgstr "Zamknij bez zapisywania"
+
+msgid "Render"
+msgstr "Renderuj"
+
+msgid "Write the movie to a video file."
+msgstr "Zapisuje film do pliku wideo."
+
+msgid "Relink missing files"
+msgstr "Połącz ponownie brakujące pliki"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "Wskazuje klipom, których plik źródłowy został przeniesiony, wybrany przez Ciebie folder."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "1 element importowanego projektu został pominięty, ponieważ Film nie potrafi go przedstawić."
+msgstr[1] "{count} elementy importowanego projektu zostały pominięte, ponieważ Film nie potrafi ich przedstawić."
+msgstr[2] "{count} elementów importowanego projektu zostało pominiętych, ponieważ Film nie potrafi ich przedstawić."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 klip nie może znaleźć swojego pliku źródłowego."
+msgstr[1] "{count} klipy nie mogą znaleźć swoich plików źródłowych."
+msgstr[2] "{count} klipów nie może znaleźć swoich plików źródłowych."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 klip został połączony ponownie."
+msgstr[1] "{count} klipy zostały połączone ponownie."
+msgstr[2] "{count} klipów zostało połączonych ponownie."
+

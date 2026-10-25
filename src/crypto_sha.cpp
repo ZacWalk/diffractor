@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -33,14 +33,40 @@ sha1::sha1()
 
 void sha1::update(const df::cspan input)
 {
-	buffer.insert(buffer.end(), input.data, input.data + input.size);
+	const uint8_t* data = input.data;
+	size_t remaining = input.size;
 
-	while (buffer.size() >= BLOCK_BYTES)
+	// Fill existing buffer first
+	if (buffer.size() > 0)
+	{
+		const size_t fill = std::min(remaining, BLOCK_BYTES - buffer.size());
+		buffer.insert(buffer.end(), data, data + fill);
+		data += fill;
+		remaining -= fill;
+
+		if (buffer.size() == BLOCK_BYTES)
+		{
+			uint32_t block[BLOCK_INTS];
+			buffer_to_block(buffer.data(), block);
+			transform(block);
+			buffer.clear();
+		}
+	}
+
+	// Process full blocks directly from input
+	while (remaining >= BLOCK_BYTES)
 	{
 		uint32_t block[BLOCK_INTS];
-		buffer_to_block(buffer, block);
+		buffer_to_block(data, block);
 		transform(block);
-		buffer.erase(buffer.begin(), buffer.begin() + BLOCK_BYTES);
+		data += BLOCK_BYTES;
+		remaining -= BLOCK_BYTES;
+	}
+
+	// Buffer remaining bytes
+	if (remaining > 0)
+	{
+		buffer.insert(buffer.end(), data, data + remaining);
 	}
 }
 
@@ -59,7 +85,7 @@ void sha1::final(uint8_t* digest_result)
 	}
 
 	uint32_t block[BLOCK_INTS];
-	buffer_to_block(buffer, block);
+	buffer_to_block(buffer.data(), block);
 
 	if (orig_size > BLOCK_BYTES - 8)
 	{
@@ -204,15 +230,15 @@ void sha1::transform(uint32_t block[BLOCK_INTS])
 }
 
 
-void sha1::buffer_to_block(const std::vector<uint8_t>& buffer, uint32_t block[BLOCK_INTS])
+void sha1::buffer_to_block(const uint8_t* buf, uint32_t block[BLOCK_INTS])
 {
-	// Convert the std::u8string (byte buffer) to a uint32 array (MSB) 
+	// Convert the byte buffer to a uint32 array (MSB) 
 	for (uint32_t i = 0; i < BLOCK_INTS; i++)
 	{
-		block[i] = buffer[4 * i + 3] & 0xff
-			| (buffer[4 * i + 2] & 0xff) << 8
-			| (buffer[4 * i + 1] & 0xff) << 16
-			| (buffer[4 * i + 0] & 0xff) << 24;
+		block[i] = (buf[4 * i + 3] & 0xff)
+			| (buf[4 * i + 2] & 0xff) << 8
+			| (buf[4 * i + 1] & 0xff) << 16
+			| (buf[4 * i + 0] & 0xff) << 24;
 	}
 }
 
@@ -358,13 +384,15 @@ void sha256::update(const df::cspan cs)
 void sha256::final(uint8_t* digest)
 {
 	const auto block_nb = 1 + (SHA224_256_BLOCK_SIZE - 9 < m_len % SHA224_256_BLOCK_SIZE);
-	const auto len_b = (m_tot_len + m_len) << 3;
+	// The padded message length is a 64-bit bit-count; size_t is only 32 bits on a 32-bit build.
+	const uint64_t len_b = (static_cast<uint64_t>(m_tot_len) + m_len) << 3;
 	const auto pm_len = block_nb << 6;
 
 	memset(m_block + m_len, 0, pm_len - m_len);
 	m_block[m_len] = 0x80;
 
-	SHA2_UNPACK32(len_b, m_block + pm_len - 4);
+	SHA2_UNPACK32(static_cast<uint32_t>(len_b >> 32), m_block + pm_len - 8);
+	SHA2_UNPACK32(static_cast<uint32_t>(len_b), m_block + pm_len - 4);
 	transform(m_block, block_nb);
 
 	memset(digest, 0, DIGEST_SIZE);

@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -10,30 +10,21 @@
 // with highlight support for the search box dropdown suggestions.
 
 #pragma once
+#include "ui_controllers.h"
+#include "ui_dialog.h"
 
-
-static std::u8string_view strip_quotes(const std::u8string_view str)
-{
-	if (str.size() > 1 && str::is_quote(str[0]) && str[str.size() - 1] == str[0])
-	{
-		return str.substr(1, str.size() - 2);
-	}
-
-	return str;
-}
-
-
-inline bool find_auto_complete(const std::vector<std::u8string_view>& queries, const std::u8string_view text,
+inline bool find_auto_complete(const std::vector<std::string_view>& queries, const std::string_view text,
                                const bool is_path, ui::match_highlights& match)
 {
-	//const std::u8string_view value = text;
 	std::vector<str::part_t> found_subs;
 
+	// Every part has to be found: the result test below counts one hit per query part, so a part
+	// that matches must move on to the next part rather than ending the walk.
 	for (const auto& q : queries)
 	{
 		if (!q.empty())
 		{
-			if (q.size() == 1) // Single char8_t?
+			if (q.size() == 1) // Single char?
 			{
 				size_t match_pos = 0;
 
@@ -41,153 +32,51 @@ inline bool find_auto_complete(const std::vector<std::u8string_view>& queries, c
 				{
 					const auto last_slash = df::find_last_slash(text);
 
-					if (last_slash != std::u8string_view::npos && last_slash < text.size())
+					if (last_slash != std::string_view::npos && last_slash < text.size())
 					{
 						match_pos = last_slash + 1;
 						if (match_pos >= text.size()) match_pos = 0;
 					}
 				}
 
-				if (str::normalze_for_compare(text[match_pos]) == str::normalze_for_compare(q[0]))
+				auto text_pos = text.begin() + static_cast<std::ptrdiff_t>(std::min(match_pos, text.size()));
+				auto query_pos = q.begin();
+				if (match_pos < text.size() &&
+					str::normalize_for_compare(str::pop_utf8_char(text_pos, text.end())) ==
+					str::normalize_for_compare(str::pop_utf8_char(query_pos, q.end())))
 				{
-					found_subs.emplace_back(match_pos, 1);
-					break;
+					found_subs.emplace_back(match_pos, str::matched_text_byte_length(text, match_pos, q));
 				}
 			}
 			else
 			{
 				auto found = str::ifind(text, q);
 
-				if (found != std::u8string_view::npos)
+				if (found != std::string_view::npos)
 				{
-					found_subs.emplace_back(found, q.size());
-					break;
+					found_subs.emplace_back(found, str::matched_text_byte_length(text, found, q));
 				}
 			}
 		}
 	}
-
-	/*if (!found_subs.empty())
-	{
-		for (auto i = 1u; i < queries.size(); i++)
-		{
-			auto q = queries[i];
-
-			for (const auto& v : value_parts)
-			{
-				auto found = str::ifind(v, q);
-
-				if (found != std::u8string_view::npos)
-				{
-					found_subs.emplace_back( found, q.size() });
-					break;
-				}
-			}
-		}
-	}*/
 
 	const auto is_match = queries.size() == found_subs.size();
 
 	if (is_match)
 	{
+		// Both text renderers walk the string forwards and consume highlights in order, dropping any
+		// whose offset is already behind them. found_subs is built in query order, which is not text
+		// order the moment the user types the words in a different order from the one they appear in.
+		std::ranges::sort(found_subs, [](const str::part_t& l, const str::part_t& r)
+		{
+			return l.offset < r.offset;
+		});
+
 		match = std::move(found_subs);
 	}
 
 	return is_match;
 }
-
-//bool find_auto_complete_path(const std::vector<str::range> &queries, const str::range &value, ui::match_result& match)
-//{
-//	auto match_count = 0;
-//	auto value_parts = str::split(value);
-//
-//	for (auto && part : value_parts)
-//	{
-//		auto name = platform::PathFindFileName(part.begin);
-//		auto q = queries[0];
-//
-//		str::range v(name, part.end);
-//
-//		if (!q.empty() && !v.empty())
-//		{
-//			if (q.size() == 1) // Single char8_t?
-//			{
-//				if (str::normalze_for_compare(v[0]) == str::normalze_for_compare(q[0]))
-//				{
-//					match.text(value.str(), v.begin - value.begin, v.begin - value.begin + 1);
-//					match_count += 1;
-//					break;
-//				}
-//			}
-//			else
-//			{
-//				auto found = str::find_sub_string(v, q);
-//
-//				if (!found.empty())
-//				{
-//					match.text(value.str(), found.begin - value.begin, found.end - value.begin);
-//					match_count += 1;
-//					break;
-//				}
-//			}
-//		}
-//	}
-//
-//	for (auto i = 1; i < queries.size(); i++)
-//	{
-//		auto q = queries[i];
-//
-//		for (auto && v : value_parts)
-//		{
-//			auto found = str::find_sub_string(v, q);
-//
-//			if (!found.empty())
-//			{
-//				match_count += 1;
-//				break;
-//			}
-//		}
-//	}
-//
-//	return queries.size() == match_count;
-//
-//	//if (!q.empty() && !path.empty())
-//	//{
-//	//	auto name = platform::PathFindFileName(path.begin);
-//
-//	//	if (q.size() == 1) // Single char8_t?
-//	//	{
-//	//		if (str::normalze_for_compare(name[0]) == str::normalze_for_compare(q[0]))
-//	//		{
-//	//			match.text(path.str(), 0, 1);
-//	//			return true;
-//	//		}
-//	//	}
-//	//	else
-//	//	{
-//	//		auto found = str::find_sub_string(name, q);
-//
-//	//		if (!found.empty())
-//	//		{
-//	//			match.text(path.str(), found.begin - path.begin, found.end - path.begin);
-//	//			return true;
-//	//		}
-//
-//	//		if (df::is_path(q.begin))
-//	//		{
-//	//			found = str::find_sub_string(path, q);
-//
-//	//			if (!found.empty())
-//	//			{
-//	//				match.text(path.str(), found.begin - path.begin, found.end - path.begin);
-//	//				return true;
-//	//			}
-//	//		}
-//	//	}
-//	//}
-//
-//	//return false;
-//}
 
 static std::vector<ui::text_highlight_t> make_highlights(const ui::match_highlights& match,
                                                          const ui::color highlight_clr)
@@ -204,31 +93,70 @@ static std::vector<ui::text_highlight_t> make_highlights(const ui::match_highlig
 	return highlights;
 }
 
+static std::string auto_complete_lead(std::string lead)
+{
+	if (!lead.empty() && !str::is_white_space(lead.back())) lead.push_back(' ');
+	return lead;
+}
+
+static icon_index search_icon(const std::string_view text)
+{
+	if (df::is_path(str::trim(text))) return icon_index::folder;
+
+	const auto search = df::search_t::parse(text);
+	if (search.has_recursive_selector()) return icon_index::recursive;
+	if (search.has_selector()) return icon_index::folder;
+
+	for (const auto& term : search.terms())
+	{
+		if ((term.type == df::search_term_type::value || term.type == df::search_term_type::has_type) &&
+			term.key != prop::null)
+		{
+			return term.key->icon;
+		}
+		if (term.type == df::search_term_type::date) return icon_index::time;
+		if (term.type == df::search_term_type::location || term.type == df::search_term_type::area)
+			return icon_index::location;
+		if (term.type == df::search_term_type::media_type && term.fg_val) return term.fg_val->icon;
+	}
+
+	return icon_index::search;
+}
+
 class folder_match final : public ui::auto_complete_match, public std::enable_shared_from_this<folder_match>
 {
 public:
 	ui::complete_strategy_t& _parent;
 	df::folder_path folder;
 	ui::match_highlights match;
-	std::u8string lead;
+	std::string lead;
+	bool raw_edit_text = false;
 
 	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, ui::match_highlights m = {},
-	             const int w = 1) :
-		auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f), match(std::move(m))
+	             const int w = 1, const bool raw = false) :
+		auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f), match(std::move(m)),
+		raw_edit_text(raw)
 	{
 		weight = w;
 	}
 
-	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, std::u8string l, ui::match_highlights m = {},
-	             const int w = 1) : auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f),
-	                                match(std::move(m)), lead(std::move(l))
+	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, std::string l, ui::match_highlights m = {},
+	             const int w = 1, const bool raw = false) : auto_complete_match(view_element_style::can_invoke),
+	                                                        _parent(parent), folder(f),
+	                                                        match(std::move(m)), lead(std::move(l)),
+	                                                        raw_edit_text(raw)
 	{
 		weight = w;
 	}
 
-	std::u8string edit_text() const override
+	std::string edit_text() const override
 	{
-		return combine2(lead, folder.text());
+		if (raw_edit_text) return std::string(folder.text());
+
+		// Issue #139: a completed path containing spaces must read as one term, not two. The whole
+		// input is only auto-quoted when it is nothing but a path, which a completion after a lead
+		// term never is - so the same rule is applied here rather than a second one invented.
+		return str::combine2(auto_complete_lead(lead), df::quote_path_term(folder.text()));
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
@@ -246,14 +174,20 @@ public:
 		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
+		const auto icon_width = dc.measure_text("X", ui::style::font_face::dialog,
+		                                        ui::style::text_style::single_line, bounds.width()).cy;
+		auto icon_bounds = rr;
+		icon_bounds.right = icon_bounds.left + icon_width;
+		xdraw_icon(dc, icon_index::folder, icon_bounds, clr, {});
+		rr.left = icon_bounds.right + dc.padding2;
 
 		if (!str::is_empty(lead))
 		{
-			constexpr auto dots = u8" ... "sv;
-			const auto dots_extent = dc.measure_text(dots, ui::style::font_face::dialog,
+			const auto lead_text = auto_complete_lead(lead);
+			const auto lead_extent = dc.measure_text(lead_text, ui::style::font_face::dialog,
 			                                         ui::style::text_style::single_line, bounds.width());
-			dc.draw_text(dots, {}, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
-			rr.left += dots_extent.cx + dc.padding2;
+			dc.draw_text(lead_text, {}, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
+			rr.left += lead_extent.cx;
 		}
 
 
@@ -276,9 +210,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -286,21 +220,23 @@ class text_match final : public ui::auto_complete_match, public std::enable_shar
 {
 public:
 	ui::complete_strategy_t& _parent;
-	std::u8string lead;
-	std::u8string text;
+	std::string lead;
+	std::string text;
 	ui::match_highlights match;
+	icon_index icon;
 
-	text_match(ui::complete_strategy_t& parent, std::u8string t, std::u8string l, ui::match_highlights m = {},
-	           const int w = 1) : auto_complete_match(view_element_style::can_invoke), _parent(parent),
-	                              lead(std::move(l)),
-	                              text(std::move(t)), match(std::move(m))
+	text_match(ui::complete_strategy_t& parent, std::string t, std::string l, ui::match_highlights m = {},
+	           const int w = 1, const icon_index icon_in = icon_index::search) :
+		auto_complete_match(view_element_style::can_invoke), _parent(parent),
+		lead(std::move(l)),
+		text(std::move(t)), match(std::move(m)), icon(icon_in)
 	{
 		weight = w;
 	}
 
-	std::u8string edit_text() const override
+	std::string edit_text() const override
 	{
-		return str::combine2(lead, text);
+		return str::combine2(auto_complete_lead(lead), text);
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
@@ -318,14 +254,20 @@ public:
 		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
+		const auto icon_width = dc.measure_text("X", ui::style::font_face::dialog,
+		                                        ui::style::text_style::single_line, bounds.width()).cy;
+		auto icon_bounds = rr;
+		icon_bounds.right = icon_bounds.left + icon_width;
+		xdraw_icon(dc, icon, icon_bounds, clr, {});
+		rr.left = icon_bounds.right + dc.padding2;
 
 		if (!str::is_empty(lead))
 		{
-			constexpr auto dots = u8" ... "sv;
-			const auto dots_extent = dc.measure_text(dots, ui::style::font_face::dialog,
+			const auto lead_text = auto_complete_lead(lead);
+			const auto lead_extent = dc.measure_text(lead_text, ui::style::font_face::dialog,
 			                                         ui::style::text_style::single_line, bounds.width());
-			dc.draw_text(dots, {}, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
-			rr.left += dots_extent.cx + dc.padding2;
+			dc.draw_text(lead_text, {}, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
+			rr.left += lead_extent.cx;
 		}
 
 		const auto highlights = make_highlights(match, highlight_clr);
@@ -346,8 +288,8 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };

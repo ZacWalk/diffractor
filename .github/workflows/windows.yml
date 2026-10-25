@@ -1,0 +1,99 @@
+# Purpose: Guard the Windows build, which is CMake. This replaces the MSBuild workflow as part of
+# retiring df.sln; see docs/linux.md#retiring-msbuild. Nothing on any commit built CMake on Windows
+# before this, which was the last hole in the build gate.
+#
+# It drives the dd gateway rather than calling cmake directly, so CI exercises the same path a
+# developer does. tools/dd.py finds Visual Studio, captures the vcvars environment and builds with
+# Ninja, and it puts the binary in exe/ under the shipped name.
+
+name: Windows
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ Debug, Release ]
+        arch: [ x64, x86 ]
+        exclude:
+          # Win32 Debug is not built or shipped, and its suite has a pre-existing x86-only fault
+          # in should_scan_mov. Release Win32 is what the desktop package carries, so that is the
+          # one 32-bit configuration worth a gate.
+          - config: Debug
+            arch: x86
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: true
+
+    # The cheapest gate in the repository, and it catches boundary violations a passing test
+    # cannot see. Once, not per matrix leg.
+    - name: Lint
+      if: matrix.config == 'Release' && matrix.arch == 'x64'
+      run: pwsh -NoProfile -File tools/lint_repo.ps1
+
+    - name: Build
+      run: python tools/dd.py build --config ${{ matrix.config }} --arch ${{ matrix.arch }}
+
+    # The binary name carries the architecture and the configuration, because dd.ps1, the NSIS
+    # script and the MSIX staging all name it rather than asking the build.
+    - name: Name the binary
+      id: binary
+      run: |
+        $stem = if ('${{ matrix.arch }}' -eq 'x64') { 'diffractor64' } else { 'diffractor32' }
+        if ('${{ matrix.config }}' -eq 'Debug') { $stem = "$stem-d" }
+        "name=$stem" >> $env:GITHUB_OUTPUT
+
+    # diffractor is a GUI-subsystem app; PowerShell does not connect its stdout, so run it via
+    # cmd.exe, which does, and which waits and propagates the exit code when stdout is redirected.
+    - name: Run tests
+      working-directory: ${{ github.workspace }}\exe
+      run: |
+        cmd /c ".\${{ steps.binary.outputs.name }}.exe /test > test.log 2>&1"
+        $code = $LASTEXITCODE
+        Get-Content test.log
+        if ($code -ne 0) { exit $code }
+
+    - name: Validate translations (.po)
+      if: matrix.config == 'Release' && matrix.arch == 'x64'
+      working-directory: ${{ github.workspace }}\exe
+      run: |
+        cmd /c ".\${{ steps.binary.outputs.name }}.exe /validate-po > validate-po.log 2>&1"
+        $code = $LASTEXITCODE
+        Get-Content validate-po.log
+        if ($code -ne 0) { exit $code }
+
+  # The Store binary is Release plus the WINSTORE define, and it is what the package ships. It had
+  # never been built by CI, and it was broken at HEAD when this workflow was written: a wstring_view
+  # overload removed during the port left platform_win.cpp uncompilable behind that define, and
+  # nothing noticed until a Store build was attempted.
+  store:
+    runs-on: windows-2025-vs2026
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: true
+
+    - name: Build
+      run: python tools/dd.py build --winstore
+
+    - name: Run tests
+      working-directory: ${{ github.workspace }}\exe
+      run: |
+        cmd /c ".\diffractor.exe /test > test.log 2>&1"
+        $code = $LASTEXITCODE
+        Get-Content test.log
+        if ($code -ne 0) { exit $code }

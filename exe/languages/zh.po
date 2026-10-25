@@ -1,0 +1,3820 @@
+msgid "Fit"
+msgstr "适合窗口"
+
+msgid "Zoom in"
+msgstr "放大"
+
+msgid "Zoom out"
+msgstr "缩小"
+
+msgid "Zoom"
+msgstr "缩放"
+
+msgid "Fit Width"
+msgstr "适合宽度"
+
+msgid "Fill"
+msgstr "填充"
+
+msgid "100% (1:1)"
+msgstr "100% (1:1)"
+
+msgid "Audio: {}"
+msgstr "音频：{}"
+
+msgid "Audio track {}"
+msgstr "音轨 {}"
+
+msgid "Audio tracks"
+msgstr "音轨"
+
+msgid "Audio output"
+msgstr "音频输出"
+
+msgid "commentary"
+msgstr "解说"
+
+msgid "audio description"
+msgstr "音频描述"
+
+# Diffractor translation
+msgid ""
+msgstr ""
+"Project-Id-Version: Diffractor Simplified Chinese\n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: 2026-07-20\n"
+"Last-Translator: \n"
+"Language-Team: Simplified Chinese\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: GitHub Copilot\n"
+
+msgid "Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything."
+msgstr "Diffractor 就地整理您的照片、视频和音乐。您选择构成集合的文件夹；对其建立索引即可获得快速搜索、重复检测和元数据编辑，而不会移动或复制任何文件。"
+
+msgid "Diagnostics information was sent to Diffractor HQ."
+msgstr "诊断信息已发送至 Diffractor HQ。"
+
+msgid "Releases - Diffractor"
+msgstr "版本发布 - Diffractor"
+
+msgid "Workflow Tags"
+msgstr "工作流标签"
+
+msgid "Configure favorite tags."
+msgstr "配置最喜欢的标签。"
+
+msgid "Add folder"
+msgstr "添加文件夹"
+
+msgid "Capture metadata and the Windows file created time will be shifted to start at a new local date and time."
+msgstr "拍摄元数据和 Windows 文件创建时间将平移至新的本地起始日期和时间。"
+
+msgid "Time gaps between dated items are preserved. Items without a known date receive the new starting date."
+msgstr "保留有日期项目之间的时间间隔。日期未知的项目将使用新的起始日期。"
+
+msgid "This is useful if your camera date was set wrongly and you need to fix photo and video dates."
+msgstr "如果您的相机日期设置错误并且您需要修复照片和视频日期，这非常有用。"
+
+msgid "After"
+msgstr "调整后"
+
+msgid "Album Artist"
+msgstr "专辑艺术家"
+
+msgid "Analyzing..."
+msgstr "正在分析..."
+
+msgid "archive"
+msgstr "压缩文件"
+
+msgid "archives"
+msgstr "压缩文件"
+
+msgid "audio"
+msgstr "音频"
+
+msgid "Audio"
+msgstr "音频"
+
+msgid "Before"
+msgstr "调整前"
+
+msgid "Brightness"
+msgstr "亮度"
+
+msgid "Burn"
+msgstr "刻录"
+
+msgid "Analyze"
+msgstr "分析"
+
+msgid "&Analyze"
+msgstr "分析(&A)"
+
+msgid "&Cancel"
+msgstr "取消(&C)"
+
+msgid "Change..."
+msgstr "更改..."
+
+msgid "&Close"
+msgstr "关闭(&C)"
+
+msgid "&Convert"
+msgstr "转换(&C)"
+
+msgid "&Delete"
+msgstr "删除(&D)"
+
+msgid "&Don't Save"
+msgstr "不保存(&D)"
+
+msgid "&OK"
+msgstr "确定(&O)"
+
+msgid "&Rotate"
+msgstr "旋转(&R)"
+
+msgid "&Save"
+msgstr "保存(&S)"
+
+msgid "As &JPEG"
+msgstr "存为 JPEG(&J)"
+
+msgid "&Send"
+msgstr "发送(&S)"
+
+msgid "&Synchronize"
+msgstr "同步(&S)"
+
+msgid "&Tag"
+msgstr "标签(&T)"
+
+msgid "&Update"
+msgstr "更新(&U)"
+
+msgid "Donate"
+msgstr "捐赠"
+
+msgid "Diffractor can be used for free. If you find it useful, please help the project by donating."
+msgstr "Diffractor可以免费使用。如果您觉得有用，请通过捐赠来帮助该项目。"
+
+msgid "Donate online."
+msgstr "在线捐赠。"
+
+
+msgid "Changes"
+msgstr "更改"
+
+msgid "The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location."
+msgstr "地图中央的十字准线标记将要写入的位置。拖动地图、点击照片气泡将其移到十字准线下方，或按名称搜索地点。使用鼠标滚轮缩放。在按下添加位置之前不会写入任何内容。"
+
+msgid "The collection contains {} {} ({})."
+msgstr "该集合包含 {} {} ({})。"
+
+msgid "The collection contains:"
+msgstr "该集合包含："
+
+msgid "Items created {} {}"
+msgstr "创建的项目 {} {}"
+
+msgid "Items modified {} {}"
+msgstr "修改项目 {} {}"
+
+msgid "Opens created items.\nCtrl+click opens modified items."
+msgstr "打开创建的项目。\nCtrl+单击打开修改的项目。"
+
+msgid "{} items close to {} in the collection."
+msgstr "集合中有 {} 个项目靠近 {}。"
+
+msgid "{} items close to {}"
+msgstr "{} 个项目靠近 {}"
+
+msgid "filter"
+msgstr "筛选"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Collection options"
+msgstr "集合选项"
+
+msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
+msgstr "在条目前加 '-' 可将其排除。像 -c:\\photos\\secret 这样的完整路径会排除一个文件夹。像 -secret 这样的名称或像 -proxy* 这样的通配符，会排除集合中任何位置的匹配文件夹。"
+
+msgid "Other folders"
+msgstr "其他文件夹"
+
+msgid "Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."
+msgstr "文件夹可以是驱动器、文件夹、网络共享或设备标签。标签对于映射驱动器号可能更改的可移动设备或网络设备非常有用。"
+
+msgid "Choose the folders that make up your collection. Your files stay where they are."
+msgstr "选择构成您集合的文件夹。您的文件将保持原位。"
+
+msgid "Collection folders"
+msgstr "集合文件夹"
+
+msgid "One folder per line."
+msgstr "每行一个文件夹。"
+
+msgid "More information about collection management."
+msgstr "有关集合管理的更多信息。"
+
+msgid "More information about metadata templates."
+msgstr "有关元数据模板的更多信息。"
+
+msgid "Videos"
+msgstr "视频"
+
+msgid "Your collection"
+msgstr "您的集合"
+
+msgid "Color"
+msgstr "颜色"
+
+msgid "Adjust date and time"
+msgstr "调整日期和时间"
+
+msgid "Advanced Search"
+msgstr "高级搜索"
+
+msgid "Exit"
+msgstr "退出"
+
+msgid "Back"
+msgstr "后退"
+
+msgid "Forward"
+msgstr "前进"
+
+msgid "Next folder or search"
+msgstr "下一个文件夹或搜索"
+
+msgid "Next item group"
+msgstr "下一个项目组"
+
+msgid "Select next item"
+msgstr "选择下一个项目"
+
+msgid "Extend selection to next item"
+msgstr "将选择范围扩展到下一个项目"
+
+msgid "Parent"
+msgstr "上一级"
+
+msgid "Previous folder or search"
+msgstr "上一个文件夹或搜索"
+
+msgid "Previous item group"
+msgstr "上一个项目组"
+
+msgid "Select previous item"
+msgstr "选择上一项"
+
+msgid "Extend selection to previous item"
+msgstr "将选择范围扩展到上一个项目"
+
+msgid "Burn to disk"
+msgstr "刻录到磁盘"
+
+msgid "Save current video frame"
+msgstr "保存当前视频帧"
+
+msgid "Reset color changes"
+msgstr "重置颜色变化"
+
+msgid "Convert or Resize"
+msgstr "转换或调整大小"
+
+msgid "Copy to folder"
+msgstr "复制到文件夹"
+
+msgid "Customise sidebar"
+msgstr "自定义侧边栏"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Desktop background"
+msgstr "桌面背景"
+
+msgid "Display options"
+msgstr "显示选项"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Cut"
+msgstr "剪切"
+
+msgid "Edit metadata"
+msgstr "编辑元数据"
+
+msgid "Paste"
+msgstr "粘贴"
+
+msgid "Eject"
+msgstr "弹出"
+
+msgid "Favorite"
+msgstr "收藏"
+
+msgid "Open properties"
+msgstr "打开属性"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Show items in subfolders"
+msgstr "显示子文件夹中的项目"
+
+msgid "Fullscreen"
+msgstr "全屏"
+
+msgid "Group by Album/Show"
+msgstr "按专辑/节目分组"
+
+msgid "Group by Camera"
+msgstr "按相机分组"
+
+msgid "Group by Date Created"
+msgstr "按创建日期分组"
+
+msgid "Group by Extension"
+msgstr "按扩展名分组"
+
+msgid "Group by File type"
+msgstr "按文件类型分组"
+
+msgid "Group by Location"
+msgstr "按位置分组"
+
+msgid "Group by Date Modified"
+msgstr "按修改日期分组"
+
+msgid "Group by Aspect ratio"
+msgstr "按宽高比分组"
+
+msgid "Aspect ratio"
+msgstr "宽高比"
+
+msgid "No aspect ratio"
+msgstr "无宽高比"
+
+msgid "Other landscape"
+msgstr "其他横向"
+
+msgid "Other portrait"
+msgstr "其他纵向"
+
+msgid "Group by Resolution"
+msgstr "按分辨率分组"
+
+msgid "Group by Collection presence"
+msgstr "按集合存在分组"
+
+msgid "Group by Rating/Label"
+msgstr "按评级/标签分组"
+
+msgid "Show items in random order"
+msgstr "以随机顺序显示项目"
+
+msgid "Group by Size"
+msgstr "按尺寸分组"
+
+msgid "Group by Folder"
+msgstr "按文件夹分组"
+
+msgid "Highlight large items in yellow"
+msgstr "用黄色突出显示大的项目"
+
+msgid "Import"
+msgstr "导入"
+
+msgid "Keyboard reference"
+msgstr "键盘参考"
+
+msgid "Approved"
+msgstr "已批准"
+
+msgid "No Label"
+msgstr "无标签"
+
+msgid "Review"
+msgstr "审查"
+
+msgid "Second"
+msgstr "第二"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "To Do"
+msgstr "待办事项"
+
+msgid "Language"
+msgstr "语言"
+
+msgid "Add location"
+msgstr "添加位置"
+
+msgid "Maximize"
+msgstr "最大化"
+
+msgid "Group or Sort"
+msgstr "分组或排序"
+
+msgid "Minimize"
+msgstr "最小化"
+
+msgid "Move to folder"
+msgstr "移至文件夹"
+
+msgid "Show sidebar"
+msgstr "显示侧边栏"
+
+msgid "Navigate"
+msgstr "导航"
+
+msgid "New Folder"
+msgstr "新建文件夹"
+
+msgid "New version available"
+msgstr "新版本可用"
+
+msgid "Check for updates"
+msgstr "检查更新"
+
+msgid "Install now"
+msgstr "立即安装"
+
+msgid "Checking for updates..."
+msgstr "正在检查更新..."
+
+msgid "You are using the latest version ({})."
+msgstr "您正在使用最新版本（{}）。"
+
+msgid "Open"
+msgstr "打开"
+
+msgid "Open in google maps"
+msgstr "在谷歌地图中打开"
+
+msgid "Open with"
+msgstr "打开方式"
+
+msgid "General options"
+msgstr "一般选项"
+
+msgid "Pin or hold item"
+msgstr "固定或保留项目"
+
+msgid "Play/Pause"
+msgstr "播放/暂停"
+
+msgid "Print"
+msgstr "打印"
+
+msgid "Rate"
+msgstr "评分"
+
+msgid "Remove rating"
+msgstr "删除评级"
+
+msgid "Rate as 1 star"
+msgstr "评分为 1 星"
+
+msgid "Rate as 2 stars"
+msgstr "评分为 2 星"
+
+msgid "Rate as 3 stars"
+msgstr "评分为 3 星"
+
+msgid "Rate as 4 stars"
+msgstr "评分为 4 星"
+
+msgid "Rate as 5 stars"
+msgstr "评分为 5 星"
+
+msgid "Reject"
+msgstr "拒绝"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Related items"
+msgstr "相关项目"
+
+msgid "Rename"
+msgstr "重命名"
+
+msgid "Rename files"
+msgstr "重命名文件"
+
+msgid "Toggle repeat play"
+msgstr "切换重复播放"
+
+msgid "Restore"
+msgstr "还原"
+
+msgid "Rotate anticlockwise"
+msgstr "逆时针旋转"
+
+msgid "Rotate clockwise"
+msgstr "顺时针旋转"
+
+msgid "Confirm single-item rotations"
+msgstr "确认单个项目的旋转"
+
+msgid "Reset rotation"
+msgstr "重置旋转"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Add location and open previous"
+msgstr "添加位置并打开上一个项目"
+
+msgid "Add location and open next"
+msgstr "添加位置并打开下一个项目"
+
+msgid "Save and open previous"
+msgstr "保存并打开上一个"
+
+msgid "Save the current item and open the previous item."
+msgstr "保存当前项目并打开上一个项目。"
+
+msgid "Save and open next"
+msgstr "保存并打开下一个"
+
+msgid "Save the current item and open the next item."
+msgstr "保存当前项目并打开下一个项目。"
+
+msgid "Save as"
+msgstr "另存为"
+
+msgid "Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save."
+msgstr "调整照片的裁剪、旋转、透视和颜色。在您保存之前，不会写入磁盘。"
+
+msgid "Scale up items"
+msgstr "放大项目"
+
+msgid "Scan"
+msgstr "扫描"
+
+msgid "Select all"
+msgstr "选择全部"
+
+msgid "Invert selection"
+msgstr "反转选择"
+
+msgid "Select none"
+msgstr "取消选择"
+
+msgid "Email"
+msgstr "电子邮件"
+
+msgid "Show in file browser"
+msgstr "在文件浏览器中显示"
+
+msgid "Open containing folder"
+msgstr "打开包含文件夹"
+
+msgid "Sort by Date modified"
+msgstr "按修改日期排序"
+
+msgid "Sort by Date created"
+msgstr "按创建日期排序"
+
+msgid "Show oldest items first"
+msgstr "先显示最早的项目"
+
+msgid "Show newest items first"
+msgstr "先显示最新的项目"
+
+msgid "Sort by Group order (Default)"
+msgstr "按分组顺序排序（默认）"
+
+msgid "Sort by Name"
+msgstr "按名称排序"
+
+msgid "Sort by Size"
+msgstr "按尺寸排序"
+
+msgid "Synchronize"
+msgstr "同步"
+
+msgid "Toggle thumbnails or details"
+msgstr "切换缩略图或详细信息"
+
+msgid "Toggle item grouping"
+msgstr "切换项目分组"
+
+msgid "Toggle thumbnail size"
+msgstr "切换缩略图大小"
+
+msgid "Change thumbnail size"
+msgstr "更改缩略图大小"
+
+msgid "Back to the top of the list"
+msgstr "返回列表顶部"
+
+msgid "Tools"
+msgstr "工具"
+
+msgid "About Diffractor"
+msgstr "关于Diffractor"
+
+msgid "Show items"
+msgstr "显示项目"
+
+msgid "Large font"
+msgstr "大字体"
+
+msgid "Menu"
+msgstr "菜单"
+
+msgid "Rate or Label"
+msgstr "评级或标签"
+
+msgid "Select Items"
+msgstr "选择项目"
+
+msgid "Sort"
+msgstr "排序"
+
+msgid "Toggle volume"
+msgstr "切换音量"
+
+msgid "Zoom mode"
+msgstr "缩放模式"
+
+msgid "Compare"
+msgstr "比较"
+
+msgid "Hold down left mouse button to compare items."
+msgstr "按住鼠标左键可以比较项目。"
+
+msgid "Contrast"
+msgstr "对比"
+
+msgid "Open link {}"
+msgstr "打开链接 {}"
+
+msgid "Choose a link to open"
+msgstr "选择要打开的链接"
+
+msgid "Duplicate"
+msgstr "重复"
+
+msgid "Copy to clipboard"
+msgstr "复制到剪贴板"
+
+msgid "to"
+msgstr "到"
+
+msgid "Creator"
+msgstr "创作者"
+
+msgid "Credit"
+msgstr "署名"
+
+msgid "Notice"
+msgstr "声明"
+
+msgid "File"
+msgstr "文件"
+
+msgid "Source"
+msgstr "来源"
+
+msgid "Copyright"
+msgstr "版权"
+
+msgid "URL"
+msgstr "网址"
+
+msgid "Count"
+msgstr "数量"
+
+msgid "Favorite Searches"
+msgstr "最喜欢的搜索"
+
+msgid "Sidebar"
+msgstr "侧边栏"
+
+msgid "Define what items are shown in the sidebar."
+msgstr "定义侧边栏中显示的项目。"
+
+msgid "Add a list of your favorite tags here to save time when tagging."
+msgstr "在此处添加您最喜爱的标签列表，以节省标记时间。"
+
+msgid "Favorite Tags"
+msgstr "最喜欢的标签"
+
+msgid "Show labels"
+msgstr "显示颜色标签"
+
+msgid "Show ratings"
+msgstr "显示评分"
+
+msgid "Show drives"
+msgstr "显示驱动器"
+
+msgid "Show history chart"
+msgstr "显示历史图表"
+
+msgid "Earliest year the history navigator offers. Empty works it out from your photos."
+msgstr "历史导航器提供的最早年份。留空则根据您的照片自动确定。"
+
+msgid "Shows the eight years ending here."
+msgstr "显示到此结束的八年。"
+
+msgid "Show favorite searches"
+msgstr "显示最喜欢的搜索"
+
+msgid "Show tags"
+msgstr "显示标签"
+
+msgid "Show total items pie chart"
+msgstr "显示总项目饼图"
+
+msgid "Show world map"
+msgstr "显示世界地图"
+
+msgid "Darks"
+msgstr "暗部"
+
+msgid "data"
+msgstr "数据"
+
+msgid "File created:"
+msgstr "文件创建时间："
+
+msgid "File modified:"
+msgstr "文件修改时间："
+
+msgid "Metadata created:"
+msgstr "元数据创建时间："
+
+msgid "Dates"
+msgstr "日期"
+
+msgid "family food friends landscape nature night portrait selfie todo travel urban viewed"
+msgstr "家庭 美食 朋友 风景 自然 夜间 肖像 自拍 待办事项 旅行 城市 已查看"
+
+msgid "Defragment database."
+msgstr "对数据库进行碎片整理。"
+
+msgid "Defragmenting..."
+msgstr "正在整理碎片..."
+
+msgid "Failed to Delete Selected File."
+msgstr "无法删除所选文件。"
+
+msgid "Delete {}"
+msgstr "删除{}"
+
+msgid "Set the desktop background to the current image."
+msgstr "将桌面背景设置为当前图像。"
+
+msgid "Destination folder:"
+msgstr "目标文件夹："
+
+msgid "Capacity"
+msgstr "容量"
+
+msgid "Free//disk"
+msgstr "可用"
+
+msgid "Label"
+msgstr "标签"
+
+msgid "System"
+msgstr "系统"
+
+msgid "Used"
+msgstr "已用"
+
+msgid "Documentation"
+msgstr "文档"
+
+msgid "Duplicates"
+msgstr "重复项"
+
+msgid "Matching or possible copy items in the collection."
+msgstr "集合中匹配或可能的复制项目。"
+
+msgid "Editing"
+msgstr "编辑"
+
+msgid "Close without ejecting"
+msgstr "关闭而不弹出"
+
+msgid "Failed to eject {}."
+msgstr "弹出 {} 失败。"
+
+msgid "To avoid losing data, eject an external hard drive or USB drive before removing it."
+msgstr "为避免丢失数据，请先弹出外部硬盘驱动器或 USB 驱动器，然后再将其移除。"
+
+msgid "Eject {}"
+msgstr "弹出{}"
+
+msgid "Connecting to MAPI..."
+msgstr "正在连接到 MAPI..."
+
+msgid "Convert all photos to JPEG"
+msgstr "将所有照片转换为 JPEG"
+
+msgid "Failed to send email using MAPI."
+msgstr "无法使用 MAPI 发送电子邮件。"
+
+msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
+msgstr "将照片限制为最大尺寸（以像素为单位）。仅支持 JPEG 和 PNG 文件。"
+
+msgid "Processing {}"
+msgstr "正在处理 {}"
+
+msgid "Sending email using MAPI..."
+msgstr "使用 MAPI 发送电子邮件..."
+
+msgid "Create a draft in your desktop email client with the selected files attached. Originals are unchanged."
+msgstr "在桌面电子邮件客户端中创建草稿，并附上所选文件。原始文件不会更改。"
+
+msgid "Zip files in the email"
+msgstr "压缩电子邮件中的文件"
+
+msgid "Empty"
+msgstr "空"
+
+msgid "Ending {}"
+msgstr "正在结束 {}"
+
+msgid "Security options denied access to the source."
+msgstr "安全选项拒绝访问源。"
+
+msgid "Diffractor has a serious problem and cannot continue."
+msgstr "Diffractor 出现严重问题，无法继续。"
+
+msgid "Could not connect to scanner"
+msgstr "无法连接到扫描仪"
+
+msgid "The destination file '{}' cannot be opened or created."
+msgstr "无法打开或创建目标文件“{}”。"
+
+msgid "The destination folder '{}' cannot be opened or created."
+msgstr "无法打开或创建目标文件夹“{}”。"
+
+msgid "Diffractor cannot be started. The main window could not be created."
+msgstr "Diffractor无法启动。无法创建主窗口。"
+
+msgid "The destination is a writable CD-ROM, possibly unformatted."
+msgstr "目标是可写 CD-ROM，可能未格式化。"
+
+msgid "The destination is a read-only CD-ROM, possibly unformatted."
+msgstr "目标是只读 CD-ROM，可能未格式化。"
+
+msgid "The destination is a read-only DVD, possibly unformatted."
+msgstr "目标是只读 DVD，可能未格式化。"
+
+msgid "The source and destination have the same parent folder."
+msgstr "源和目标具有相同的父文件夹。"
+
+msgid "The destination is a subtree of the source."
+msgstr "目标是源的子树。"
+
+msgid "Rename operation was specified but the destination path is a different directory. Use the move operation instead."
+msgstr "已指定重命名操作，但目标路径是不同的目录。请改用移动操作。"
+
+msgid "Destination is a root directory and cannot be renamed."
+msgstr "目标是根目录，不能重命名。"
+
+msgid "The destination path is an existing folder."
+msgstr "目标路径是现有文件夹。"
+
+msgid "The file involved in the operation is too large for the destination media or file system."
+msgstr "操作中涉及的文件对于目标媒体或文件系统来说太大。"
+
+msgid "The name of the file exceeds MAX_PATH."
+msgstr "文件名超过 MAX_PATH。"
+
+msgid "The destination path is an existing file."
+msgstr "目标路径是现有文件。"
+
+msgid "Index database failed."
+msgstr "索引数据库失败。"
+
+msgid "The path in the source or destination or both was invalid."
+msgstr "源或目标或两者中的路径无效。"
+
+msgid "The file name you have chosen '{}' is invalid."
+msgstr "您选择的文件名“{}”无效。"
+
+msgid "File names cannot contain the following characters:"
+msgstr "文件名不能包含以下字符："
+
+msgid "The operation involved multiple destination paths, which can fail in the case of a move operation."
+msgstr "该操作涉及多个目标路径，在移动操作的情况下可能会失败。"
+
+msgid "Multiple file paths were specified in the source buffer, but only one destination file path."
+msgstr "在源缓冲区中指定了多个文件路径，但仅指定了一个目标文件路径。"
+
+msgid "MAX_PATH was exceeded during the operation."
+msgstr "操作期间超出了 MAX_PATH。"
+
+msgid "OleInitialize Failed"
+msgstr "OleInitialize 失败"
+
+msgid "An unspecified error occurred on the destination."
+msgstr "目标上发生未指定的错误。"
+
+msgid "The operation was canceled."
+msgstr "操作已取消。"
+
+msgid "The analysis was canceled."
+msgstr "分析已取消。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "The source or destination path exceeded or would exceed MAX_PATH."
+msgstr "源或目标路径超出或将超出 MAX_PATH。"
+
+msgid "Failed to rename."
+msgstr "重命名失败。"
+
+msgid "The source and destination files are the same file."
+msgstr "源文件和目标文件是同一个文件。"
+
+msgid "Failed to save image."
+msgstr "保存图像失败。"
+
+msgid "Scanner reported an error"
+msgstr "扫描仪报告错误"
+
+msgid "The source is a writable CD-ROM, possibly unformatted."
+msgstr "源是可写 CD-ROM，可能未格式化。"
+
+msgid "The source is a read-only CD-ROM, possibly unformatted."
+msgstr "源是只读 CD-ROM，可能未格式化。"
+
+msgid "The source is a read-only DVD, possibly unformatted."
+msgstr "源是只读 DVD，可能未格式化。"
+
+msgid "The source is a root directory, which cannot be moved or renamed."
+msgstr "源是根目录，无法移动或重命名。"
+
+msgid "Diffractor requires a processor with sse2."
+msgstr "Diffractor 需要具有 sse2 的处理器。"
+
+msgid "An unknown error occurred."
+msgstr "发生未知错误。"
+
+msgid "Diffractor requires Windows 7 or newer."
+msgstr "Diffractor 需要 Windows 7 或更高版本。"
+
+msgid "Failed to register windows common control classes."
+msgstr "无法注册 Windows 公共控件类。"
+
+msgid "Failed to initialize Winsock"
+msgstr "初始化 Winsock 失败"
+
+msgid "EXIF"
+msgstr "EXIF"
+
+msgid "Failed to create folder: {}"
+msgstr "创建文件夹失败：{}"
+
+msgid "Add '{}' to favorites."
+msgstr "将“{}”添加到收藏夹。"
+
+msgid "Failed to add. Maximum number of favorites reached."
+msgstr "添加失败。已达到收藏数量上限。"
+
+msgid "Remove '{}' from favorite folders or searches."
+msgstr "从收藏夹或搜索中删除“{}”。"
+
+msgid "Favorite title"
+msgstr "最喜欢的标题"
+
+msgid "Favorites are listed in the sidebar for quick access."
+msgstr "收藏夹列在侧边栏中，以便快速访问。"
+
+msgid "These items are in your collection."
+msgstr "这些项目在您的集合中。"
+
+msgid "These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them."
+msgstr "这些项目在您的集合之外，因此搜索和重复检测不会覆盖它们。将此文件夹添加到集合即可包含它们。"
+
+msgid "Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied."
+msgstr "您的集合就是您选择的文件夹及其子文件夹。Diffractor 会为它们建立索引，因此搜索、重复检测和统计可一次覆盖全部内容。添加或移除文件夹只会改变 Diffractor 所了解的范围，不会移动或复制任何文件。"
+
+msgid "folder"
+msgstr "文件夹"
+
+msgid "folders"
+msgstr "文件夹"
+
+msgid "Folder"
+msgstr "文件夹"
+
+msgid "videos"
+msgstr "视频"
+
+msgid "A capella"
+msgstr "阿卡贝拉"
+
+msgid "Abstract"
+msgstr "抽象"
+
+msgid "Acid"
+msgstr "Acid"
+
+msgid "Acid Jazz"
+msgstr "Acid Jazz"
+
+msgid "Acid Punk"
+msgstr "Acid Punk"
+
+msgid "Acoustic"
+msgstr "原声"
+
+msgid "Action"
+msgstr "动作"
+
+msgid "Action & Adventure"
+msgstr "动作与冒险"
+
+msgid "Aerial"
+msgstr "航拍"
+
+msgid "Alternative"
+msgstr "另类"
+
+msgid "AlternRock"
+msgstr "另类摇滚"
+
+msgid "Ambient"
+msgstr "氛围音乐"
+
+msgid "Analog"
+msgstr "模拟"
+
+msgid "Animation"
+msgstr "动画片"
+
+msgid "Anime"
+msgstr "日本动画片"
+
+msgid "Architectural"
+msgstr "建筑"
+
+msgid "Avantgarde"
+msgstr "前卫"
+
+msgid "Aviation"
+msgstr "航空"
+
+msgid "Ballad"
+msgstr "民谣"
+
+msgid "Bass"
+msgstr "低音"
+
+msgid "Bebob"
+msgstr "贝博布"
+
+msgid "Big Band"
+msgstr "大乐队"
+
+msgid "Bluegrass"
+msgstr "蓝草"
+
+msgid "Blues"
+msgstr "布鲁斯"
+
+msgid "Booty Bass"
+msgstr "Booty Bass"
+
+msgid "Brazilian"
+msgstr "巴西人"
+
+msgid "Cabaret"
+msgstr "歌舞表演"
+
+msgid "Candid"
+msgstr "抓拍"
+
+msgid "Celtic"
+msgstr "凯尔特"
+
+msgid "Chamber Music"
+msgstr "室内乐"
+
+msgid "Chanson"
+msgstr "香颂"
+
+msgid "Children's"
+msgstr "孩子们的"
+
+msgid "Chorus"
+msgstr "合唱"
+
+msgid "Christian & Gospel"
+msgstr "基督教与福音"
+
+msgid "Christian Rap"
+msgstr "基督教说唱"
+
+msgid "Classic"
+msgstr "经典"
+
+msgid "Classic Rock"
+msgstr "经典摇滚"
+
+msgid "Classical"
+msgstr "古典"
+
+msgid "Close-up"
+msgstr "特写"
+
+msgid "Cloudscape"
+msgstr "云景"
+
+msgid "Club"
+msgstr "俱乐部"
+
+msgid "Comedy"
+msgstr "喜剧"
+
+msgid "Conceptual"
+msgstr "概念"
+
+msgid "Concert"
+msgstr "音乐会"
+
+msgid "Concert Films"
+msgstr "演唱会影片"
+
+msgid "Conservation"
+msgstr "保护"
+
+msgid "Country//genre"
+msgstr "乡村音乐"
+
+msgid "Cult"
+msgstr "邪典"
+
+msgid "Dance"
+msgstr "舞蹈"
+
+msgid "Dance Hall"
+msgstr "舞厅"
+
+msgid "Darkwave"
+msgstr "暗波"
+
+msgid "Death Metal"
+msgstr "死亡金属"
+
+msgid "Disco"
+msgstr "迪斯科"
+
+msgid "Documentary"
+msgstr "纪录片"
+
+msgid "Drama"
+msgstr "戏剧"
+
+msgid "Dream"
+msgstr "梦"
+
+msgid "Drum Solo"
+msgstr "鼓独奏"
+
+msgid "Duet"
+msgstr "二重唱"
+
+msgid "Easy Listening"
+msgstr "轻松聆听"
+
+msgid "Electronic"
+msgstr "电子"
+
+msgid "Ethnic"
+msgstr "民族"
+
+msgid "Eurodance"
+msgstr "欧陆舞曲"
+
+msgid "Euro-House"
+msgstr "欧陆浩室"
+
+msgid "Euro-Techno"
+msgstr "欧陆电子舞曲"
+
+msgid "Family"
+msgstr "家庭"
+
+msgid "Fashion"
+msgstr "时尚"
+
+msgid "Fast Fusion"
+msgstr "快速融合"
+
+msgid "Film still"
+msgstr "电影剧照"
+
+msgid "Fine-art"
+msgstr "美术"
+
+msgid "Fire"
+msgstr "火"
+
+msgid "Fireworks"
+msgstr "烟花"
+
+msgid "Fitness & Workout"
+msgstr "健身与锻炼"
+
+msgid "Folk"
+msgstr "民间"
+
+msgid "Folk-Rock"
+msgstr "民谣摇滚"
+
+msgid "Folklore"
+msgstr "民俗学"
+
+msgid "Food"
+msgstr "食物"
+
+msgid "Foreign"
+msgstr "外国"
+
+msgid "Forensic"
+msgstr "法医"
+
+msgid "Freestyle"
+msgstr "自由式"
+
+msgid "Funk"
+msgstr "放克"
+
+msgid "Fusion"
+msgstr "融合"
+
+msgid "Game//genre"
+msgstr "游戏"
+
+msgid "Gangsta"
+msgstr "黑帮"
+
+msgid "Geo-photography"
+msgstr "地理摄影"
+
+msgid "Glamour"
+msgstr "魅力"
+
+msgid "Gospel"
+msgstr "福音"
+
+msgid "Gothic"
+msgstr "哥特"
+
+msgid "Gothic Rock"
+msgstr "哥特式摇滚"
+
+msgid "Grunge"
+msgstr "垃圾摇滚"
+
+msgid "Hard Rock"
+msgstr "硬摇滚"
+
+msgid "High-speed"
+msgstr "高速"
+
+msgid "High key"
+msgstr "高调"
+
+msgid "Hip-Hop"
+msgstr "嘻哈音乐"
+
+msgid "Hip-Hop/Rap"
+msgstr "嘻哈/说唱"
+
+msgid "Holiday"
+msgstr "假期"
+
+msgid "Horror"
+msgstr "恐怖"
+
+msgid "House"
+msgstr "浩室"
+
+msgid "Humour"
+msgstr "幽默"
+
+msgid "Independent"
+msgstr "独立"
+
+msgid "Industrial"
+msgstr "工业"
+
+msgid "Instrumental"
+msgstr "器乐"
+
+msgid "Instrumental Pop"
+msgstr "器乐流行音乐"
+
+msgid "Instrumental Rock"
+msgstr "器乐摇滚"
+
+msgid "Jazz"
+msgstr "爵士乐"
+
+msgid "Jazz + Funk"
+msgstr "爵士乐+放克"
+
+msgid "Jungle"
+msgstr "丛林"
+
+msgid "Kids"
+msgstr "孩子们"
+
+msgid "Kids & Family"
+msgstr "儿童与家庭"
+
+msgid "Kirlian"
+msgstr "克里安"
+
+msgid "Landscape"
+msgstr "风景"
+
+msgid "Latin"
+msgstr "拉丁"
+
+msgid "Lifestyle"
+msgstr "生活方式"
+
+msgid "Lo-fi"
+msgstr "低保真"
+
+msgid "Lomography"
+msgstr "洛莫摄影"
+
+msgid "Long-exposure"
+msgstr "长曝光"
+
+msgid "Low key"
+msgstr "低调"
+
+msgid "Macro"
+msgstr "微距"
+
+msgid "Medical"
+msgstr "医疗"
+
+msgid "Meditative"
+msgstr "冥想"
+
+msgid "Metal"
+msgstr "金属"
+
+msgid "Monochrome"
+msgstr "单色"
+
+msgid "Music Documentaries"
+msgstr "音乐纪录片"
+
+msgid "Music Feature Films"
+msgstr "音乐故事片"
+
+msgid "Musical"
+msgstr "音乐剧"
+
+msgid "Musicals"
+msgstr "音乐剧"
+
+msgid "Narrative"
+msgstr "叙述"
+
+msgid "National Folk"
+msgstr "民族民间"
+
+msgid "Native American"
+msgstr "美洲原住民"
+
+msgid "New Age"
+msgstr "新世纪音乐"
+
+msgid "New Wave"
+msgstr "新浪潮"
+
+msgid "Night"
+msgstr "夜晚"
+
+msgid "Noise"
+msgstr "噪音"
+
+msgid "Nonfiction"
+msgstr "非小说类"
+
+msgid "Oldies"
+msgstr "老歌"
+
+msgid "Opera"
+msgstr "歌剧"
+
+msgid "Other"
+msgstr "其他"
+
+msgid "Panorama"
+msgstr "全景"
+
+msgid "Panoramic"
+msgstr "全景"
+
+msgid "Film Noir"
+msgstr "黑色电影"
+
+msgid "Photo op"
+msgstr "拍照机会"
+
+msgid "Photobiography"
+msgstr "照片传记"
+
+msgid "Photojournalism"
+msgstr "新闻摄影"
+
+msgid "Photowalking"
+msgstr "摄影漫步"
+
+msgid "Podcast"
+msgstr "播客"
+
+msgid "Polaroid"
+msgstr "宝丽来"
+
+msgid "Polka"
+msgstr "波尔卡"
+
+msgid "Pop"
+msgstr "流行音乐"
+
+msgid "Pop-Folk"
+msgstr "流行民谣"
+
+msgid "Pop/Funk"
+msgstr "流行/放克"
+
+msgid "Porn Groove"
+msgstr "Porn Groove"
+
+msgid "Portrait"
+msgstr "肖像"
+
+msgid "Power Ballad"
+msgstr "力量民谣"
+
+msgid "Pranks"
+msgstr "恶作剧"
+
+msgid "Primus"
+msgstr "普里默斯"
+
+msgid "Progressive Rock"
+msgstr "前卫摇滚"
+
+msgid "Psychadelic"
+msgstr "迷幻"
+
+msgid "Psychedelic Rock"
+msgstr "迷幻摇滚"
+
+msgid "Punk"
+msgstr "朋克"
+
+msgid "Punk Rock"
+msgstr "朋克摇滚"
+
+msgid "R&B"
+msgstr "节奏蓝调"
+
+msgid "Rap"
+msgstr "说唱"
+
+msgid "Rave"
+msgstr "狂欢"
+
+msgid "Reality TV"
+msgstr "电视真人秀"
+
+msgid "Reggae"
+msgstr "雷鬼音乐"
+
+msgid "Retro"
+msgstr "复古"
+
+msgid "Revival"
+msgstr "复兴"
+
+msgid "Rhythmic Soul"
+msgstr "节奏灵魂乐"
+
+msgid "Rock"
+msgstr "摇滚"
+
+msgid "Rock & Roll"
+msgstr "摇滚乐"
+
+msgid "Romance"
+msgstr "浪漫"
+
+msgid "Samba"
+msgstr "桑巴舞"
+
+msgid "Satellite"
+msgstr "卫星"
+
+msgid "Satire"
+msgstr "讽刺"
+
+msgid "Sci-Fi & Fantasy"
+msgstr "科幻与奇幻"
+
+msgid "Short Films"
+msgstr "短片"
+
+msgid "Show tunes"
+msgstr "Show tunes"
+
+msgid "Singer/Songwriter"
+msgstr "歌手/词曲作者"
+
+msgid "Ska"
+msgstr "斯卡"
+
+msgid "Slow Jam"
+msgstr "Slow Jam"
+
+msgid "Slow Rock"
+msgstr "慢摇滚"
+
+msgid "Social"
+msgstr "社会"
+
+msgid "Soft focus"
+msgstr "柔焦"
+
+msgid "Sonata"
+msgstr "奏鸣曲"
+
+msgid "Soul"
+msgstr "灵魂乐"
+
+msgid "Sound Clip"
+msgstr "声音片段"
+
+msgid "Soundtrack"
+msgstr "原声带"
+
+msgid "Southern Rock"
+msgstr "南方摇滚"
+
+msgid "Space"
+msgstr "太空"
+
+msgid "Special Interest"
+msgstr "特别兴趣"
+
+msgid "Speech"
+msgstr "演讲"
+
+msgid "Sports"
+msgstr "体育"
+
+msgid "Star trail"
+msgstr "星轨"
+
+msgid "Still life"
+msgstr "静物"
+
+msgid "Stock"
+msgstr "素材"
+
+msgid "Street"
+msgstr "街道"
+
+msgid "Subminiature"
+msgstr "超小型"
+
+msgid "Swing"
+msgstr "摇摆乐"
+
+msgid "Symphonic Rock"
+msgstr "交响摇滚"
+
+msgid "Symphony"
+msgstr "交响乐"
+
+msgid "Tango"
+msgstr "探戈"
+
+msgid "Techno"
+msgstr "电子舞曲"
+
+msgid "Techno-Industrial"
+msgstr "科技工业"
+
+msgid "Teens"
+msgstr "青少年"
+
+msgid "Thriller"
+msgstr "惊悚片"
+
+msgid "Time-lapse"
+msgstr "延时摄影"
+
+msgid "Top 40"
+msgstr "前 40 名"
+
+msgid "Trailer"
+msgstr "预告片"
+
+msgid "Trance"
+msgstr "迷幻舞曲"
+
+msgid "Travel"
+msgstr "旅行"
+
+msgid "Tribal"
+msgstr "部落"
+
+msgid "Trip-Hop"
+msgstr "神游舞曲"
+
+msgid "Ultraviolet"
+msgstr "紫外线"
+
+msgid "Underwater"
+msgstr "水下"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Urban"
+msgstr "城市"
+
+msgid "Vernacular"
+msgstr "民间摄影"
+
+msgid "Vintage"
+msgstr "复古风格"
+
+msgid "Vocal"
+msgstr "声乐"
+
+msgid "War"
+msgstr "战争"
+
+msgid "Western"
+msgstr "西部片"
+
+msgid "World"
+msgstr "世界"
+
+msgid "Group and sort items"
+msgstr "对项目进行分组和排序"
+
+msgid "Items"
+msgstr "项目"
+
+msgid "No album or show"
+msgstr "没有专辑或节目"
+
+msgid "No camera"
+msgstr "没有相机"
+
+msgid "No extension"
+msgstr "无扩展名"
+
+msgid "No location"
+msgstr "没有位置"
+
+msgid "No resolution"
+msgstr "无分辨率"
+
+msgid "No rating"
+msgstr "无评级"
+
+msgid "No value"
+msgstr "无值"
+
+msgid "random"
+msgstr "随机"
+
+msgid "{} to {}"
+msgstr "{} 至 {}"
+
+msgid "Today"
+msgstr "今天"
+
+msgid "Yesterday"
+msgstr "昨天"
+
+msgid "{} has modifications"
+msgstr "{} 有修改"
+
+msgid "Separate each artist with a comma ',' or slash '/'"
+msgstr "用逗号“,”或斜线“/”分隔每个艺术家"
+
+msgid "Help or more information"
+msgstr "帮助或更多信息"
+
+msgid "Send anonymous log information to Diffractor HQ."
+msgstr "将匿名日志信息发送至Diffractor总部。"
+
+msgid "Tags can be removed by prefixing with a minus: -remove"
+msgstr "可以通过添加减号前缀来删除标签：-remove"
+
+msgid "Separate each tag with a space: Australia holiday camping."
+msgstr "用空格分隔每个标签：澳大利亚度假露营。"
+
+msgid "Join 2 words together in one tag using quotes: \"national park\"."
+msgstr "使用引号将 2 个单词连接到一个标签中：\"国家公园\"。"
+
+msgid "Hide verbose metadata"
+msgstr "隐藏详细元数据"
+
+msgid "Destination root folder. Structured folders will be created under this folder."
+msgstr "目标根文件夹。在此文件夹下将创建结构化文件夹。"
+
+msgid "Source of import:"
+msgstr "导入来源："
+
+msgid "Ignore previously imported items."
+msgstr "忽略以前导入的项目。"
+
+msgid "Other folder"
+msgstr "其他文件夹"
+
+msgid "Destination folder structure:"
+msgstr "目标文件夹结构："
+
+msgid "Set file date created to metadata date created."
+msgstr "将文件创建日期设置为元数据创建日期。"
+
+msgid "Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."
+msgstr "碎片整理或清理可以提高性能。该索引存储媒体文件中元数据的副本。它可以从原始文件重建。"
+
+msgid "The index is reporting errors. Restarting Diffractor is recommended."
+msgstr "该索引正在报告错误。建议重新启动Diffractor。"
+
+msgid "Maintenance"
+msgstr "维护"
+
+msgid "Currently the index database is {} in size and contains metadata from {} items."
+msgstr "当前索引数据库的大小为 {}，包含来自 {} 项目的元数据。"
+
+msgid "Indexing"
+msgstr "索引"
+
+msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
+msgstr "Diffractor 正在读取您的集合，以保持搜索、重复项和统计的完整。在此期间您可以继续浏览。"
+
+msgid "invalid"
+msgstr "无效的"
+
+msgid "IPTC"
+msgstr "IPTC"
+
+msgid "'{}' is not a valid folder."
+msgstr "“{}”不是有效的文件夹。"
+
+msgid "Show items rotated"
+msgstr "显示旋转的项目"
+
+msgid "This item is shown oriented based on camera information. [{}]"
+msgstr "该项目根据相机信息显示方向。 [{}]"
+
+msgid "Files are identical."
+msgstr "文件是相同的。"
+
+msgid "Files are different."
+msgstr "文件不同。"
+
+msgid "JPEG - Best compression for photos"
+msgstr "JPEG - 照片的最佳压缩"
+
+msgid "Keyboard"
+msgstr "键盘"
+
+msgid "press"
+msgstr "按"
+
+msgid "alt"
+msgstr "Alt"
+
+msgid "back"
+msgstr "后退"
+
+msgid "backspace"
+msgstr "退格键"
+
+msgid "Basics"
+msgstr "基础知识"
+
+msgid "browser-back"
+msgstr "浏览器后退"
+
+msgid "browser-favorites"
+msgstr "浏览器收藏夹"
+
+msgid "browser-forward"
+msgstr "浏览器前进"
+
+msgid "browser-home"
+msgstr "浏览器主页"
+
+msgid "browser-refresh"
+msgstr "浏览器刷新"
+
+msgid "browser-search"
+msgstr "浏览器搜索"
+
+msgid "browser-stop"
+msgstr "浏览器停止"
+
+msgid "ctrl"
+msgstr "控制键"
+
+msgid "Extend the current item selection and allow comparing of items."
+msgstr "扩展当前项目选择并允许比较项目。"
+
+msgid "del"
+msgstr "Del"
+
+msgid "down"
+msgstr "向下"
+
+msgid "enter"
+msgstr "回车"
+
+msgid "Opens an image full screen."
+msgstr "全屏打开图像。"
+
+msgid "escape"
+msgstr "Esc"
+
+msgid "Gets you out of full screen, zoom or other modes."
+msgstr "让您退出全屏、缩放或其他模式。"
+
+msgid "F1"
+msgstr "F1"
+
+msgid "F10"
+msgstr "F10"
+
+msgid "F11"
+msgstr "F11"
+
+msgid "F2"
+msgstr "F2"
+
+msgid "F3"
+msgstr "F3"
+
+msgid "F4"
+msgstr "F4"
+
+msgid "F5"
+msgstr "F5"
+
+msgid "F6"
+msgstr "F6"
+
+msgid "F7"
+msgstr "F7"
+
+msgid "F8"
+msgstr "F8"
+
+msgid "F9"
+msgstr "F9"
+
+msgid "File management"
+msgstr "文件管理"
+
+msgid "Help"
+msgstr "帮助"
+
+msgid "insert"
+msgstr "插入"
+
+msgid "left"
+msgstr "左"
+
+msgid "Move to the next or previous item."
+msgstr "移至下一个或上一个项目。"
+
+msgid "media-next-track"
+msgstr "媒体下一曲目"
+
+msgid "media-play-pause"
+msgstr "媒体播放暂停"
+
+msgid "media-prev-track"
+msgstr "媒体上一曲目"
+
+msgid "media-stop"
+msgstr "媒体停止"
+
+msgid "Navigation"
+msgstr "导航"
+
+msgid "page-down"
+msgstr "向下翻页"
+
+msgid "["
+msgstr "["
+msgid "]"
+msgstr "]"
+
+msgid "+"
+msgstr "+"
+
+msgid "Options"
+msgstr "选项"
+
+msgid "OR"
+msgstr "或者"
+
+msgid "Media playback"
+msgstr "媒体播放"
+
+msgid "page-up"
+msgstr "向上翻页"
+
+msgid "right"
+msgstr "右"
+
+msgid "Selection"
+msgstr "选择"
+
+msgid "shift"
+msgstr "Shift"
+
+msgid "space"
+msgstr "空格"
+
+msgid "tab"
+msgstr "Tab"
+
+msgid "up"
+msgstr "向上"
+
+msgid "volume-down"
+msgstr "音量减小"
+
+msgid "volume-mute"
+msgstr "音量静音"
+
+msgid "volume-up"
+msgstr "音量调高"
+
+msgid "km from"
+msgstr "公里距"
+
+msgid "Learn more at Diffractor.com"
+msgstr "了解更多信息，请访问 Diffractor.com"
+
+msgid "Lights"
+msgstr "亮部"
+
+msgid "Limit output to a maximum dimension (in pixels)."
+msgstr "将输出限制为最大尺寸（以像素为单位）。"
+
+msgid "Lossless compression"
+msgstr "无损压缩"
+
+msgid "List of keyboard accelerators"
+msgstr "键盘加速器列表"
+
+msgid "Loading..."
+msgstr "加载中..."
+
+msgid "No location selected."
+msgstr "未选择位置。"
+
+msgid "Overwrite GPS coordinates when setting a location."
+msgstr "设置位置时覆盖 GPS 坐标。"
+
+msgid "Location"
+msgstr "地点"
+
+msgid "Maximize image"
+msgstr "最大化图像"
+
+msgid "Media"
+msgstr "媒体"
+
+msgid "Add '{}'"
+msgstr "添加“{}”"
+
+msgid "Move"
+msgstr "移动"
+
+msgid "Select All"
+msgstr "选择全部"
+
+msgid "Undo"
+msgstr "撤消"
+
+msgid "Metadata"
+msgstr "元数据"
+
+msgid "Midtones"
+msgstr "中间色调"
+
+msgid "April"
+msgstr "四月"
+
+msgid "August"
+msgstr "八月"
+
+msgid "December"
+msgstr "十二月"
+
+msgid "February"
+msgstr "二月"
+
+msgid "January"
+msgstr "一月"
+
+msgid "July"
+msgstr "七月"
+
+msgid "June"
+msgstr "六月"
+
+msgid "March"
+msgstr "三月"
+
+msgid "May"
+msgstr "五月"
+
+msgid "November"
+msgstr "十一月"
+
+msgid "October"
+msgstr "十月"
+
+msgid "September"
+msgstr "九月"
+
+msgid "apr"
+msgstr "四月"
+
+msgid "aug"
+msgstr "八月"
+
+msgid "dec"
+msgstr "十二月"
+
+msgid "feb"
+msgstr "二月"
+
+msgid "jan"
+msgstr "一月"
+
+msgid "jul"
+msgstr "七月"
+
+msgid "jun"
+msgstr "六月"
+
+msgid "mar"
+msgstr "三月"
+
+msgid "may"
+msgstr "五月"
+
+msgid "nov"
+msgstr "十一月"
+
+msgid "oct"
+msgstr "十月"
+
+msgid "sep"
+msgstr "九月"
+
+msgid "Move source items."
+msgstr "移动源项目。"
+
+msgid "History"
+msgstr "历史"
+
+msgid "No items are selected"
+msgstr "没有选择任何项目"
+
+msgid "None"
+msgstr "无"
+
+msgid "Cloud items are not supported."
+msgstr "不支持云项目。"
+
+msgid "Folders are not supported."
+msgstr "不支持文件夹。"
+
+msgid "Items must be a photo or image."
+msgstr "项目必须是照片或图像。"
+
+msgid "Readonly items are not supported."
+msgstr "不支持只读项目。"
+
+msgid "Cannot update metadata of readonly items."
+msgstr "无法更新只读项目的元数据。"
+
+msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
+msgstr "Diffractor 只能保存或更新 JPG、WEBP 和 PNG 图像文件。"
+
+msgid "Nothing found."
+msgstr "什么也没找到。"
+
+msgid "Empty Folder"
+msgstr "空文件夹"
+
+msgid "Search only covers folders in your collection."
+msgstr "搜索仅覆盖集合中的文件夹。"
+
+msgid "of"
+msgstr "的"
+
+msgid "Open destination folder afterwards"
+msgstr "之后打开目标文件夹"
+
+msgid "Open in file browser"
+msgstr "在文件浏览器中打开"
+
+msgid "Open Properties"
+msgstr "打开属性"
+
+msgid "app"
+msgstr "应用程序"
+
+msgid "Open with app or tool"
+msgstr "使用应用程序或工具打开"
+
+msgid "Failed to open selected items."
+msgstr "无法打开所选项目。"
+
+msgid "Open with {}"
+msgstr "用{}打开"
+
+msgid "tool"
+msgstr "工具"
+
+msgid "Delay before showing the next item (in seconds)"
+msgstr "显示下一个项目之前的延迟（以秒为单位）"
+
+msgid "Advanced"
+msgstr "高级"
+
+msgid "Application options"
+msgstr "应用选项"
+
+msgid "When overwriting a photo with irreversible changes make an original backup copy"
+msgstr "当用不可逆转的更改覆盖照片时，请制作原始备份副本"
+
+msgid "Check for updates by connecting to the internet"
+msgstr "通过连接到互联网检查更新"
+
+msgid "Confirm when deleting items. Deleted items are moved to the recycle bin."
+msgstr "删除项目时确认。已删除的项目将移至回收站。"
+
+msgid ""
+"Confirm when rotating one item. Rotating several items is always confirmed."
+msgstr "旋转一个项目时确认。旋转多个项目时始终确认。"
+
+msgid "JPEG save quality"
+msgstr "JPEG 保存质量"
+
+msgid "WEBP save quality"
+msgstr "WEBP 保存质量"
+
+msgid "When saving"
+msgstr "保存时"
+
+msgid "Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics."
+msgstr "帮助 Diffractor 变得更好。如果 Diffractor 崩溃，请将匿名诊断发送到 Diffractor 总部。不会发送任何个人数据 - 仅发送崩溃诊断信息。"
+
+msgid "Show application debugging information (for the programmers)."
+msgstr "显示应用程序调试信息（供程序员使用）。"
+
+msgid "Show hidden files"
+msgstr "显示隐藏文件"
+
+msgid "Show photos rotated based on recorded camera orientation"
+msgstr "显示根据记录的相机方向旋转的照片"
+
+msgid "Updates"
+msgstr "更新"
+
+msgid "Use hardware acceleration to draw the Diffractor user interface (requires restart)"
+msgstr "使用硬件加速绘制Diffractor用户界面（需要重启）"
+
+msgid "Use hardware acceleration to decode video (when available)"
+msgstr "使用硬件加速解码视频（如果可用）"
+
+msgid "Show an inset shadow surrounding the image view panel."
+msgstr "在图像视图面板周围显示插入阴影。"
+
+msgid "Resume playing media from the last position played."
+msgstr "从上次播放的位置继续播放媒体。"
+
+msgid "Show tooltips with help on buttons and links."
+msgstr "显示工具提示以及按钮和链接的帮助。"
+
+msgid "bottom-left"
+msgstr "左下角"
+
+msgid "bottom-right"
+msgstr "右下角"
+
+msgid "left-bottom"
+msgstr "左下角"
+
+msgid "left-top"
+msgstr "左上"
+
+msgid "right-bottom"
+msgstr "右下"
+
+msgid "right-top"
+msgstr "右上"
+
+msgid "top-left"
+msgstr "左上角"
+
+msgid "top-right"
+msgstr "右上角"
+
+msgid "other"
+msgstr "其他"
+
+msgid "others"
+msgstr "其他"
+
+msgid "pasted"
+msgstr "粘贴的"
+
+msgid "photo"
+msgstr "照片"
+
+msgid "photos"
+msgstr "照片"
+
+msgid "icon"
+msgstr "图标"
+
+msgid "Pixels are identical but files are different."
+msgstr "像素相同但文件不同。"
+
+msgid "small"
+msgstr "小"
+
+msgid "Pixels"
+msgstr "像素"
+
+msgid "PNG - Best for non photos"
+msgstr "PNG - 最适合非照片"
+
+msgid "Checking presence..."
+msgstr "正在检查是否存在..."
+
+msgid "Possible newer copy in collection"
+msgstr "集合中可能有较新的副本"
+
+msgid "This item is outside the collection. One or more possible newer copies exist in the collection."
+msgstr "此项目不在集合中。集合中可能存在一个或多个较新的副本。"
+
+msgid "Outside collection; no possible copy identified"
+msgstr "集合之外；未发现可能的副本"
+
+msgid "This item is outside the collection. No possible copy was identified in the collection."
+msgstr "此项目在集合之外。在集合中未发现可能的副本。"
+
+msgid "Possible older copy in collection"
+msgstr "集合中可能有较旧的副本"
+
+msgid "This item is outside the collection. One or more possible older copies exist in the collection."
+msgstr "此项目不在集合中。集合中可能存在一个或多个较旧的副本。"
+
+msgid "Possible copy in collection"
+msgstr "集合中可能存在的副本"
+
+msgid "This item is outside the collection. One or more possible copies exist in the collection."
+msgstr "此项目不在集合中。集合中可能存在一个或多个副本。"
+
+msgid "In collection"
+msgstr "集合中"
+
+msgid "This item is in the collection."
+msgstr "此项目在集合中。"
+
+msgid "Presence"
+msgstr "是否在收藏中"
+
+msgid "Showing fully rendered RAW photo."
+msgstr "显示完全渲染的 RAW 照片。"
+
+msgid "Rendering RAW photo..."
+msgstr "渲染 RAW 照片..."
+
+msgid "Show RAW preview if available (faster)"
+msgstr "显示 RAW 预览（如果可用）（更快）"
+
+msgid "Showing a RAW photo preview."
+msgstr "显示 RAW 照片预览。"
+
+msgid "Processing..."
+msgstr "正在处理..."
+
+msgid "Processing files"
+msgstr "正在处理文件"
+
+msgid "Focal length 35mm equivalent"
+msgstr "35mm 等效焦距"
+
+msgid "Album"
+msgstr "专辑"
+
+msgid "Album artist"
+msgstr "专辑艺术家"
+
+msgid "Artist"
+msgstr "艺术家"
+
+msgid "Audio codec"
+msgstr "音频编解码器"
+
+msgid "Bitrate"
+msgstr "比特率"
+
+msgid "Camera"
+msgstr "相机"
+
+msgid "Camera manufacturer"
+msgstr "相机制造商"
+
+msgid "Channels"
+msgstr "声道"
+
+msgid "Comment"
+msgstr "评论"
+
+msgid "Composer"
+msgstr "作曲家"
+
+msgid "Copyright creator"
+msgstr "版权创造者"
+
+msgid "Copyright credit"
+msgstr "版权署名"
+
+msgid "Copyright notice"
+msgstr "版权声明"
+
+msgid "Copyright source"
+msgstr "版权来源"
+
+msgid "Copyright URL"
+msgstr "版权网址"
+
+msgid "Country//property"
+msgstr "国家/地区"
+
+msgid "Created"
+msgstr "已创建"
+
+msgid "Created exif"
+msgstr "EXIF 创建时间"
+
+msgid "Description"
+msgstr "说明"
+
+msgid "Digitized"
+msgstr "数字化"
+
+msgid "Dimensions"
+msgstr "尺寸"
+
+msgid "Disk"
+msgstr "磁盘"
+
+msgid "Document Id"
+msgstr "文档编号"
+
+msgid "Duration"
+msgstr "时长"
+
+msgid "Encoder"
+msgstr "编码器"
+
+msgid "Encoding tool"
+msgstr "编码工具"
+
+msgid "Episode"
+msgstr "剧集"
+
+msgid "Exposure"
+msgstr "曝光"
+
+msgid "Filename"
+msgstr "文件名"
+
+msgid "FNumber"
+msgstr "光圈值"
+
+msgid "Focal length"
+msgstr "焦距"
+
+msgid "Game//property"
+msgstr "游戏"
+
+msgid "Genre"
+msgstr "流派"
+
+msgid "Id"
+msgstr "ID"
+
+msgid "ISO"
+msgstr "ISO"
+
+msgid "Latitude"
+msgstr "纬度"
+
+msgid "Lens"
+msgstr "镜头"
+
+msgid "Longitude"
+msgstr "经度"
+
+msgid "Media category"
+msgstr "媒体类别"
+
+msgid "Megapixels"
+msgstr "百万像素"
+
+msgid "Modified"
+msgstr "已修改"
+
+msgid "Null"
+msgstr "空"
+
+msgid "Orientation"
+msgstr "方向"
+
+msgid "Performer"
+msgstr "表演者"
+
+msgid "Pixel format"
+msgstr "像素格式"
+
+msgid "Place"
+msgstr "地方"
+
+msgid "Publisher"
+msgstr "出版商"
+
+msgid "Rating"
+msgstr "评分"
+
+msgid "Raw file"
+msgstr "RAW 文件"
+
+msgid "Sample rate"
+msgstr "采样率"
+
+msgid "Sample type"
+msgstr "样本类型"
+
+msgid "Season"
+msgstr "季"
+
+msgid "Show"
+msgstr "节目"
+
+msgid "Size"
+msgstr "大小"
+
+msgid "State"
+msgstr "省/州"
+
+msgid "Streams"
+msgstr "流"
+
+msgid "Synopsis"
+msgstr "概要"
+
+msgid "Tag"
+msgstr "标签"
+
+msgid "Title"
+msgstr "标题"
+
+msgid "Track"
+msgstr "曲目"
+
+msgid "Video codec"
+msgstr "视频编解码器"
+
+msgid "Year"
+msgstr "年"
+
+msgid "age"
+msgstr "年龄"
+
+msgid "and"
+msgstr "和"
+
+msgid "created"
+msgstr "已创建"
+
+msgid "duplicates"
+msgstr "重复项"
+
+msgid "dups"
+msgstr "重复"
+
+msgid "duplicate"
+msgstr "重复"
+
+msgid "modified"
+msgstr "已修改"
+
+msgid "or"
+msgstr "或者"
+
+msgid "original"
+msgstr "原始日期"
+
+msgid "related"
+msgstr "相关"
+
+msgid "with"
+msgstr "和"
+
+msgid "without"
+msgstr "没有"
+
+msgid "Rate selected items"
+msgstr "对所选项目进行评分"
+
+msgid "Number keys 0-5"
+msgstr "数字键0-5"
+
+msgid "Click {} to remove rating"
+msgstr "点击 {} 删除评级"
+
+msgid "Raw"
+msgstr "RAW"
+
+msgid "Remove Metadata"
+msgstr "删除元数据"
+
+msgid "New name:"
+msgstr "新名称："
+
+msgid "When specifying a template:"
+msgstr "指定模板时："
+
+msgid "Use '#' to specify position of the numeric sequence"
+msgstr "使用“#”指定数字序列的位置"
+
+msgid "Use metadata templates '{property-name}' to include file properties in the name."
+msgstr "使用元数据模板“{property-name}”在名称中包含文件属性。"
+
+msgid "For example:"
+msgstr "例如："
+
+msgid "photo-###"
+msgstr "照片-###"
+
+msgid "{year}-{month}-###"
+msgstr "{year}-{month}-###"
+
+msgid "travel-{country}-###"
+msgstr "旅行-{country}-###"
+
+msgid "Template:"
+msgstr "模板："
+
+msgid "Start at:"
+msgstr "开始于："
+
+msgid "Repeat play single media item"
+msgstr "重复播放单个媒体项目"
+
+msgid "Clean database and reindex.\nAll data is regenerated."
+msgstr "清理数据库并重新索引。\n所有数据均重新生成。"
+
+msgid "Cleaning..."
+msgstr "正在清理..."
+
+msgid "retro"
+msgstr "复古"
+
+msgid "Saturation"
+msgstr "饱和度"
+
+msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
+msgstr "Diffractor 无法对 {} 文件进行裁剪、旋转或着色。您可以将文件另存为 JPEG 吗？"
+
+msgid "Save Changes"
+msgstr "保存更改"
+
+msgid "Save new photo"
+msgstr "保存新照片"
+
+msgid "Saving {}..."
+msgstr "正在保存 {}..."
+
+msgid "Failed to Scan."
+msgstr "扫描失败。"
+
+msgid "All these terms"
+msgstr "所有这些词语"
+
+msgid "Christmas"
+msgstr "圣诞节"
+
+msgid "Search in the collection"
+msgstr "在集合中搜索"
+
+msgid "From"
+msgstr "从"
+
+msgid "Until"
+msgstr "至"
+
+msgid "Search in a folder"
+msgstr "在文件夹中搜索"
+
+msgid "Last 7 days"
+msgstr "过去 7 天"
+
+msgid "Located within"
+msgstr "位于"
+
+msgid "None of these terms"
+msgstr "不含这些词语"
+
+msgid "Search criteria or folder"
+msgstr "搜索条件或文件夹"
+
+msgid "Photos"
+msgstr "照片"
+
+msgid "Select term"
+msgstr "选择词语"
+
+msgid "Search in subfolders"
+msgstr "在子文件夹中搜索"
+
+msgid "Searching..."
+msgstr "正在寻找..."
+
+msgid "Select Folder..."
+msgstr "选择文件夹..."
+
+msgid "Select a location"
+msgstr "选择地点"
+
+msgid "Selected items are in the date range:"
+msgstr "所选项目在日期范围内："
+
+msgid "Selected items [{}]"
+msgstr "所选项目 [{}]"
+
+msgid "Always show RAW photos (slower)"
+msgstr "始终显示 RAW 照片（较慢）"
+
+msgid "Show this RAW photo"
+msgstr "显示这张 RAW 照片"
+
+msgid "press R to view the items most closely related to this one"
+msgstr "按 R 查看与此项目最相关的项目"
+
+msgid "Show verbose metadata"
+msgstr "显示详细元数据"
+
+msgid "Album-Show"
+msgstr "专辑-节目"
+
+msgid "Group order (Default)"
+msgstr "分组顺序（默认）"
+
+msgid "Extension"
+msgstr "扩展名"
+
+msgid "Type"
+msgstr "类型"
+
+msgid "Name"
+msgstr "名称"
+
+msgid "Resolution"
+msgstr "分辨率"
+
+msgid "Rating-Label"
+msgstr "评级标签"
+
+msgid "Staring"
+msgstr "主演"
+
+msgid "New Starting Date (local time):"
+msgstr "新的开始日期（当地时间）："
+
+msgid "Starting {}"
+msgstr "起始 {}"
+
+msgid "Preparing to convert files..."
+msgstr "正在准备转换文件..."
+
+msgid "Preparing to import files..."
+msgstr "正在准备导入文件..."
+
+msgid "Preparing files for email..."
+msgstr "正在准备通过电子邮件发送文件..."
+
+msgid "Share"
+msgstr "共享"
+
+msgid "Preparing files to share..."
+msgstr "正在准备要共享的文件..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows 会列出可以接收这些文件的应用。原始文件不会更改。"
+
+msgid "Send the files as one zip file"
+msgstr "将文件打包为一个 ZIP 文件发送"
+
+msgid "&Share"
+msgstr "共享(&S)"
+
+msgid "The files could not be shared."
+msgstr "无法共享文件。"
+
+msgid "Preparing to synchronize files..."
+msgstr "正在准备同步文件..."
+
+msgid "Straighten"
+msgstr "拉直"
+
+msgid "Auto color"
+msgstr "自动调色"
+
+msgid "Copy item path"
+msgstr "复制项目路径"
+
+msgid "Auto document"
+msgstr "自动校正文档"
+
+msgid "Auto straighten"
+msgstr "自动拉直"
+
+msgid "Original"
+msgstr "原图"
+
+msgid "Preview"
+msgstr "预览"
+
+msgid "Automatically improve exposure and color balance"
+msgstr "自动改善曝光和色彩平衡"
+
+msgid "Automatically straighten horizontal and vertical lines"
+msgstr "自动拉直水平线和垂直线"
+
+msgid "Show the final cropped image"
+msgstr "显示最终裁剪后的图像"
+
+msgid "Horizontal perspective"
+msgstr "水平透视"
+
+msgid "Vertical perspective"
+msgstr "垂直透视"
+
+msgid "Temperature"
+msgstr "色温"
+
+msgid "Tint"
+msgstr "色调"
+
+msgid "Stream {}"
+msgstr "流 {}"
+
+msgid "subtitle"
+msgstr "字幕"
+
+msgid "Support"
+msgstr "支持"
+
+msgid "Synchronize whole collection"
+msgstr "同步整个集合"
+
+msgid "copy local"
+msgstr "复制本地"
+
+msgid "copy remote"
+msgstr "复制远程"
+
+msgid "delete local"
+msgstr "删除本地"
+
+msgid "delete remote"
+msgstr "删除远程"
+
+msgid "Files changed after analysis. Analyze again to review the updated actions."
+msgstr "分析后文件发生变化。再次分析以查看更新的操作。"
+
+msgid "Local files to delete: {}. Remote files to delete: {}."
+msgstr "要删除的本地文件：{}。要删除的远程文件：{}。"
+
+msgid "Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin."
+msgstr "同步将永久删除文件。这些文件无法从回收站恢复。"
+
+msgid "The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin."
+msgstr "现有文件将被覆盖。其当前内容无法从回收站恢复。"
+
+msgid "Delete local files that do not exist remotely"
+msgstr "删除远程不存在的本地文件"
+
+msgid "Delete remote files that do not exist locally"
+msgstr "删除本地不存在的远程文件"
+
+msgid "c:\\photos with \\\\nas\\\\backup"
+msgstr "c:\\photos 与 \\\\nas\\\\backup"
+
+msgid "Local folders"
+msgstr "本地文件夹"
+
+msgid "Copy newer local files to remote folders"
+msgstr "将较新的本地文件复制到远程文件夹"
+
+msgid "Synchronize only one folder"
+msgstr "仅同步一个文件夹"
+
+msgid "Remote folder"
+msgstr "远程文件夹"
+
+msgid "Copy newer remote files to local folders"
+msgstr "将较新的远程文件复制到本地文件夹"
+
+msgid "Tags to add or remove:"
+msgstr "要添加或删除的标签："
+
+msgid "Add or remove Tags"
+msgstr "添加或删除标签"
+
+msgid "Tag selected items"
+msgstr "标记所选项目"
+
+msgid "Common Tags"
+msgstr "常用标签"
+
+msgid "Removable Tags"
+msgstr "可移除标签"
+
+msgid "Tags"
+msgstr "标签"
+
+msgid "false"
+msgstr "假"
+
+msgid "true"
+msgstr "真"
+
+msgid "Diffractor ERROR"
+msgstr "Diffractor 错误"
+
+msgid "folder:{}"
+msgstr "文件夹：{}"
+
+msgid "rate"
+msgstr "评分"
+
+msgid "Updating..."
+msgstr "更新中..."
+
+msgid "Reset color adjustments"
+msgstr "重置颜色调整"
+
+msgid "Color, straighten or crop photos."
+msgstr "对照片进行着色、拉直或裁剪。"
+
+msgid "Toggle full screen for media-items or open non-media-items."
+msgstr "切换媒体项目的全屏或打开非媒体项目。"
+
+msgid "Change language"
+msgstr "更改语言"
+
+msgid "Contains common folders, searches and favorites"
+msgstr "包含常用文件夹、搜索和收藏夹"
+
+msgid "Open selected items with external app"
+msgstr "使用外部应用程序打开选定的项目"
+
+msgid "Pinned items stay selected. Use this when you want to quickly compare an item to other items."
+msgstr "固定的项目保持选中状态。当您想要快速将一个项目与其他项目进行比较时，请使用此功能。"
+
+msgid "Reset straighten and rotate"
+msgstr "重置拉直和旋转"
+
+msgid "Tag or un-tag selected items"
+msgstr "标记或取消标记所选项目"
+
+msgid "Toggle between thumbnails or details for selected item group"
+msgstr "在所选项目组的缩略图或详细信息之间切换"
+
+msgid "Toggle between thumbnails or details view"
+msgstr "在缩略图或详细信息视图之间切换"
+
+msgid "Process selected items"
+msgstr "处理选定的项目"
+
+msgid "More options and controls"
+msgstr "更多选项和控制"
+
+msgid "{} ({}) total items in {} folders."
+msgstr "共 {} ({}) 个项目，位于 {} 个文件夹中。"
+
+msgid "Truncated at 1MB"
+msgstr "截断为 1MB"
+
+msgid "Type to search"
+msgstr "输入搜索"
+
+msgid "Unselect {}"
+msgstr "取消选择{}"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Version {} of Diffractor is available."
+msgstr "Diffractor 版本 {} 可用。"
+
+msgid "Update available"
+msgstr "可用更新"
+
+msgid "You are currently using version {}."
+msgstr "您当前使用的是{}版本。"
+
+msgid "Update failed."
+msgstr "更新失败。"
+
+msgid "Download and install now. Diffractor will need to be closed briefly during the install."
+msgstr "立即下载并安装。安装过程中需要短暂关闭 Diffractor。"
+
+msgid "Version {} of Diffractor is available. You are currently using version {}."
+msgstr "Diffractor 版本 {} 可用。您当前使用的是{}版本。"
+
+msgid "More info"
+msgstr "更多信息"
+
+msgid "Learn more about this update at Diffractor.com"
+msgstr "请访问 Diffractor.com 了解有关此更新的更多信息"
+
+msgid "Not now"
+msgstr "暂不"
+
+msgid "Remind me again in a week"
+msgstr "一周后再次提醒我"
+
+msgid "Please wait while the update is downloaded..."
+msgstr "正在下载更新，请稍候..."
+
+msgid "Version"
+msgstr "版本"
+
+msgid "Vibrance"
+msgstr "自然饱和度"
+
+msgid "video"
+msgstr "视频"
+
+msgid "WEBP - Best for the web"
+msgstr "WEBP - 最适合网络"
+
+msgid "XMP"
+msgstr "XMP"
+
+msgid "ICC"
+msgstr "ICC"
+
+msgid "press ctrl+space"
+msgstr "按 ctrl+空格键"
+
+msgid "Scope"
+msgstr "范围"
+
+msgid "Value"
+msgstr "值"
+
+msgid "Volume 200%"
+msgstr "音量 200%"
+
+msgid "Volume 100%"
+msgstr "音量 100%"
+
+msgid "Volume 75%"
+msgstr "音量 75%"
+
+msgid "Volume 50%"
+msgstr "音量 50%"
+
+msgid "Volume 25%"
+msgstr "音量 25%"
+
+msgid "Mute"
+msgstr "静音"
+
+msgid "Autoplay selected media"
+msgstr "自动播放选定的媒体"
+
+msgid "Resume playing media from last position"
+msgstr "从上次位置继续播放媒体"
+
+msgid "Repeat play one item"
+msgstr "重复播放一项"
+
+msgid "Repeat play all media items"
+msgstr "重复播放所有媒体项目"
+
+msgid "Don't repeat"
+msgstr "不重复"
+
+msgid "Playback Options"
+msgstr "播放选项"
+
+msgid "Playback"
+msgstr "播放"
+
+msgid "Filter items"
+msgstr "筛选项目"
+
+msgid "Photo filter"
+msgstr "照片筛选器"
+
+msgid "Video filter"
+msgstr "视频筛选器"
+
+msgid "Audio filter"
+msgstr "音频筛选器"
+
+msgid "Show {} filtered out items"
+msgstr "显示 {} 个被过滤掉的项目"
+
+msgid "The collection contains {} items created on {}."
+msgstr "该集合包含 {} 个项目，创建于 {}。"
+
+msgid "Show all tags"
+msgstr "显示所有标签"
+
+msgid "Show only favorite tags"
+msgstr "只显示最喜欢的标签"
+
+msgid "Show only favorite tags in the sidebar"
+msgstr "在侧边栏中仅显示最喜欢的标签"
+
+msgid "Destination"
+msgstr "目标位置"
+
+msgid "Old name"
+msgstr "旧名称"
+
+msgid "New name"
+msgstr "新名称"
+
+msgid "Local"
+msgstr "本地"
+
+msgid "Remote"
+msgstr "远程"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Message"
+msgstr "消息"
+
+msgid "import"
+msgstr "导入"
+
+msgid "exists"
+msgstr "存在"
+
+msgid "previously imported"
+msgstr "以前已导入"
+
+msgid "ignore"
+msgstr "忽略"
+
+msgid "Click analyze to show items"
+msgstr "单击分析以显示项目"
+
+msgid "Rotate {first-name}."
+msgid_plural "Rotate {count} selected items. Originals will be overwritten."
+msgstr[0] "旋转 {first-name}。"
+msgstr[1] "旋转选中的 {count} 个项目。原始文件将被覆盖。"
+
+msgid "1 folder"
+msgid_plural "{count} folders"
+msgstr[0] "1 个文件夹"
+msgstr[1] "{count} 个文件夹"
+
+msgid "{count} item"
+msgid_plural "{count} items"
+msgstr[0] "{count} 个项目"
+msgstr[1] "{count} 个项目"
+
+msgid "1 item here"
+msgid_plural "{count} items here"
+msgstr[0] "这里有 1 个项目"
+msgstr[1] "这里有 {count} 个项目"
+
+msgid "Set rating to 1 star"
+msgid_plural "Set rating to {count} stars"
+msgstr[0] "将评分设为 1 星"
+msgstr[1] "将评分设为 {count} 星"
+
+msgid "Cannot process {first-name}."
+msgid_plural "Cannot process {first-name} and {other} other items."
+msgstr[0] "无法处理 {first-name}。"
+msgstr[1] "无法处理 {first-name} 和另外 {other} 个项目。"
+
+msgid "{first-name} will be renamed."
+msgid_plural "{count} items will be renamed."
+msgstr[0] "将重命名 {first-name}。"
+msgstr[1] "将重命名 {count} 个项目。"
+
+msgid "1 duplicate item"
+msgid_plural "{count} duplicate items"
+msgstr[0] "1 个重复项目"
+msgstr[1] "{count} 个重复项目"
+
+msgid "1 sidecar item"
+msgid_plural "{count} sidecar items"
+msgstr[0] "1 个附属文件"
+msgstr[1] "{count} 个附属文件"
+
+msgid "{count} of 1 item was processed."
+msgid_plural "{count} of {total} items were processed."
+msgstr[0] "已处理 1 个项目中的 {count} 个。"
+msgstr[1] "已处理 {total} 个项目中的 {count} 个。"
+
+msgid "1 item was processed."
+msgid_plural "{count} items were processed."
+msgstr[0] "已处理 1 个项目。"
+msgstr[1] "已处理 {count} 个项目。"
+
+msgid "{first-name} failed."
+msgid_plural "{count} items failed."
+msgstr[0] "{first-name} 处理失败。"
+msgstr[1] "{count} 个项目处理失败。"
+
+msgid "{first-name} was ignored."
+msgid_plural "{count} items were ignored."
+msgstr[0] "已忽略 {first-name}。"
+msgstr[1] "已忽略 {count} 个项目。"
+
+msgid "{first-name} was ignored because it exists already in the destination location."
+msgid_plural "{count} items were ignored because they exist already in the destination location."
+msgstr[0] "已忽略 {first-name}，因为目标位置中已存在该项目。"
+msgstr[1] "已忽略 {count} 个项目，因为目标位置中已存在这些项目。"
+
+msgid "{first-name} was ignored because it was previously imported."
+msgid_plural "{count} items were ignored because they were previously imported."
+msgstr[0] "已忽略 {first-name}，因为该项目以前已导入。"
+msgstr[1] "已忽略 {count} 个项目，因为这些项目以前已导入。"
+
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "已导入 1 个项目，但无法设置其创建日期。"
+msgstr[1] "已导入 {count} 个项目，但无法设置其创建日期。"
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "如果 Windows 可以回收，{first-name} 将移至回收站。"
+msgstr[1] "如果 Windows 可以回收，{count} 个项目（{size}）将移至回收站。"
+
+msgid "{first-name} will be permanently deleted."
+msgid_plural "{count} items ({size}) will be permanently deleted."
+msgstr[0] "{first-name} 将被永久删除。"
+msgstr[1] "{count} 个项目（{size}）将被永久删除。"
+
+msgid "You are about to delete {count} item."
+msgid_plural "You are about to delete {count} items."
+msgstr[0] "即将删除 {count} 个项目。"
+msgstr[1] "即将删除 {count} 个项目。"
+
+msgid "These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin."
+msgstr "这些项目位于网络路径上。它们将被永久删除，并且无法从回收站恢复。"
+
+msgid "{first-name} will be copied."
+msgid_plural "{count} items ({size}) will be copied."
+msgstr[0] "将复制 {first-name}。"
+msgstr[1] "将复制 {count} 个项目（{size}）。"
+
+msgid "{first-name} will be moved."
+msgid_plural "{count} items ({size}) will be moved."
+msgstr[0] "将移动 {first-name}。"
+msgstr[1] "将移动 {count} 个项目（{size}）。"
+
+msgid "{first-name} will be updated."
+msgid_plural "{count} items will be updated."
+msgstr[0] "将更新 {first-name}。"
+msgstr[1] "将更新 {count} 个项目。"
+
+msgid "Add or overwrite specific metadata in {first-name}."
+msgid_plural "Add or overwrite specific metadata in {count} items."
+msgstr[0] "在 {first-name} 中添加或覆盖指定的元数据。"
+msgstr[1] "在 {count} 个项目中添加或覆盖指定的元数据。"
+
+msgid "{first-name} will be converted and copied to a folder."
+msgid_plural "{count} items will be converted and copied to a folder."
+msgstr[0] "{first-name} 将被转换并复制到文件夹。"
+msgstr[1] "{count} 个项目将被转换并复制到文件夹。"
+
+msgid "{first-name} will have tags added or removed."
+msgid_plural "{count} items will have tags added or removed."
+msgstr[0] "将为 {first-name} 添加或移除标签。"
+msgstr[1] "将为 {count} 个项目添加或移除标签。"
+
+msgid "{first-name} will have the date adjusted."
+msgid_plural "{count} items will have the date adjusted."
+msgstr[0] "将调整 {first-name} 的日期。"
+msgstr[1] "将调整 {count} 个项目的日期。"
+
+msgid "A desktop email draft will be opened with {first-name} attached."
+msgid_plural "A desktop email draft will be opened with {count} selected items attached."
+msgstr[0] "将在桌面电子邮件客户端中打开草稿，并附上 {first-name}。"
+msgstr[1] "将在桌面电子邮件客户端中打开草稿，并附上选中的 {count} 个项目。"
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name} 将提供给你选择的应用。"
+msgstr[1] "选中的 {count} 个项目将提供给你选择的应用。"
+
+msgid "{first-name} already exists. Do you want to replace it?"
+msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
+msgstr[0] "{first-name} 已存在。是否替换？"
+msgstr[1] "{first-name} 和另外 {other} 个项目已存在。是否替换？"
+
+msgid "{first-name} will have existing GPS position metadata overwritten."
+msgid_plural "{first-name} and {other} other items will have existing GPS position metadata overwritten."
+msgstr[0] "{first-name} 的现有 GPS 位置元数据将被覆盖。"
+msgstr[1] "{first-name} 和另外 {other} 个项目的现有 GPS 位置元数据将被覆盖。"
+
+msgid "Choose a valid new starting date and time."
+msgstr "请选择有效的新起始日期和时间。"
+
+msgid "Windows could not stage the selected items for disc burning."
+msgstr "Windows 无法准备所选项目以刻录到光盘。"
+
+msgid "The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc."
+msgstr "所选项目将在 Windows 光盘刻录中准备就绪。Windows 将引导您完成光盘写入。"
+
+msgid "&Stage files"
+msgstr "准备刻录文件(&S)"
+
+msgid "Email draft was canceled."
+msgstr "已取消电子邮件草稿。"
+
+msgid "Maximum dimension must be at least 1 pixel."
+msgstr "最大尺寸必须至少为 1 像素。"
+
+msgid "Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged."
+msgstr "请至少选择一个要更新的元数据字段。选中的空字段会清除现有值；未选中的字段保持不变。"
+
+msgid "{first-name} was canceled."
+msgid_plural "{count} items were canceled."
+msgstr[0] "已取消对 {first-name} 的操作。"
+msgstr[1] "已取消对 {count} 个项目的操作。"
+
+msgid "{first-name} will be staged for disc burning."
+msgid_plural "{count} selected items ({size}) will be staged for disc burning."
+msgstr[0] "将准备刻录 {first-name}。"
+msgstr[1] "将准备刻录选中的 {count} 个项目（{size}）。"
+
+msgid "Detect and straighten a photographed document"
+msgstr "检测并校正拍摄的文档"
+
+msgid "Failed to Initialize Direct3d"
+msgstr "无法初始化 Direct3D"
+
+msgid "Navigator"
+msgstr "导航器"
+
+msgid "Flip comparison panes"
+msgstr "交换比较窗格"
+
+msgid "Auto-hide"
+msgstr "自动隐藏"
+
+msgid "Off"
+msgstr "关闭"
+
+msgid "Slideshow"
+msgstr "幻灯片放映"
+
+
+msgid "Altitude"
+msgstr "海拔"
+
+msgid "GPS speed"
+msgstr "GPS 速度"
+
+msgid "In flight"
+msgstr "飞行中"
+
+msgid "{} m"
+msgstr "{} 米"
+
+msgid "{} m underwater"
+msgstr "水下 {} 米"
+
+msgid "Cancel was pressed after {}"
+msgstr "在 {} 后按下了取消"
+
+msgid "Apply tags"
+msgstr "应用标签"
+
+msgid "Item"
+msgstr "项目"
+
+msgid "Tags after run"
+msgstr "运行后的标签"
+
+msgid "Enter one or more tags to add or remove."
+msgstr "输入一个或多个要添加或移除的标签。"
+
+msgid "no change"
+msgstr "无更改"
+
+msgid "Select items to tag"
+msgstr "选择要添加标签的项目"
+
+msgid "Cancel operation"
+msgstr "取消操作"
+
+msgid "{} is still running. Cancel it and close?"
+msgstr "{} 仍在运行。取消并关闭吗？"
+
+msgid "Keep running"
+msgstr "继续运行"
+
+msgid "Location unavailable"
+msgstr "位置不可用"
+
+msgid "{} could not be opened. It may be disconnected, renamed or removed."
+msgstr "无法打开 {}。它可能已断开连接、被重命名或被删除。"
+
+msgid "Try again"
+msgstr "重试"
+
+msgid "Go to the parent folder"
+msgstr "转到上级文件夹"
+
+msgid "{} is still running. Close it before browsing somewhere else."
+msgstr "{} 仍在运行。请先关闭，再浏览其他位置。"
+
+msgid "If the destination already exists:"
+msgstr "如果目标已存在："
+
+msgid "Replace"
+msgstr "替换"
+
+msgid "Skip"
+msgstr "跳过"
+
+msgid "Auto-rename"
+msgstr "自动重命名"
+
+msgid "Block run"
+msgstr "阻止运行"
+
+msgid "File exists"
+msgstr "文件已存在"
+
+msgid "Choose a destination folder."
+msgstr "请选择目标文件夹。"
+
+msgid "Enter a maximum dimension in pixels."
+msgstr "请输入以像素为单位的最大尺寸。"
+
+msgid "Check one or more fields to change."
+msgstr "请勾选一个或多个要更改的字段。"
+
+msgid "Select items before using this tool"
+msgstr "使用此工具前请先选择项目"
+
+msgid "Success"
+msgstr "成功"
+
+msgid "Failed"
+msgstr "失败"
+
+msgid "Skipped"
+msgstr "已跳过"
+
+msgid "Not run"
+msgstr "未运行"
+
+msgid "These are the results of a finished run. Refresh to plan again with the current settings."
+msgstr "这些是已完成运行的结果。刷新以使用当前设置重新计划。"
+
+msgid "{} destinations already exist. Choose Replace, Skip or Auto-rename."
+msgstr "已存在 {} 个目标。请选择“替换”、“跳过”或“自动重命名”。"
+
+msgid "{} items will be skipped because the destination exists."
+msgstr "由于目标已存在，将跳过 {} 个项目。"
+
+msgid "{} existing destinations will be replaced."
+msgstr "将替换 {} 个现有目标。"
+
+msgid "{} items will be given a new name to avoid a collision."
+msgstr "将为 {} 个项目指定新名称以避免冲突。"
+
+msgid "Distance: {}"
+msgstr "距离：{}"
+
+msgid "Change how far from this place to search"
+msgstr "更改从此地点搜索的范围"
+
+msgid "N,NE,E,SE,S,SW,W,NW"
+msgstr "北,东北,东,东南,南,西南,西,西北"
+
+msgid "{} {} of {}"
+msgstr "{} {}（{}）"
+
+msgid "Near {}"
+msgstr "{}附近"
+
+msgid "Remote area"
+msgstr "偏远地区"
+
+msgid "Nothing within {} of {}."
+msgstr "{}范围内没有内容（{}）。"
+
+msgid "Nothing found at {}."
+msgstr "{}没有找到内容。"
+
+msgid "Widen to {}"
+msgstr "扩大到{}"
+
+msgid "Search all places named {}"
+msgstr "搜索所有名为{}的地点"
+
+msgid "Show items with no location"
+msgstr "显示没有位置的项目"
+
+msgid "Search within {} of {}"
+msgstr "搜索{}范围内的内容（{}）"
+
+msgid "High altitude"
+msgstr "高海拔"
+
+msgid "Timeline"
+msgstr "时间线"
+
+msgid "Places"
+msgstr "地点"
+
+msgid "{} items"
+msgstr "{} 个项目"
+
+msgid "Grouped by {}"
+msgstr "按 {} 分组"
+
+msgid "Grouped by {} - {}"
+msgstr "按 {} - {} 分组"
+
+msgid "Clear"
+msgstr "清除"
+
+msgid "From {} to {}"
+msgstr "{} 至 {}"
+
+msgid "Plays or pauses video and audio. Stops a running slideshow."
+msgstr "播放或暂停视频和音频。停止正在进行的幻灯片放映。"
+
+msgid "Replaces Reject"
+msgstr "替换拒绝"
+
+msgid "Click to apply"
+msgstr "单击以应用"
+
+msgid "Click to clear"
+msgstr "单击以清除"
+
+msgid "Replaces the current label: {}"
+msgstr "替换当前标签：{}"
+
+msgid "Replaces the star rating"
+msgstr "替换星级等级"
+
+msgid "When the last item has played, start again from the first"
+msgstr "最后一个项目播放完毕后，从第一个重新开始"
+
+msgid "Stop after the last item"
+msgstr "最后一个项目后停止"
+
+msgid "Play or pause the displayed video or audio file."
+msgstr "播放或暂停显示的视频或音频文件。"
+
+msgid "Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end."
+msgstr "依次播放可见项目。照片按幻灯片放映延迟时间显示；视频和音频播放到结束。"
+
+msgid "Continue with the next item"
+msgstr "继续下一个项目"
+
+msgid "When an item finishes, continue with the next photo, video or audio item"
+msgstr "当一个项目结束时，继续下一个照片、视频或音频项目"
+
+msgid "Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them."
+msgstr "Diffractor 无法将等级、标签或其他元数据写入 {} 文件，也不会为其创建附属文件。"
+
+msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
+msgstr "使用分号可列出多个流派。例如：Rock; Blues"
+
+msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
+msgstr "请选择一张要编辑的照片。视频、音频、文件夹以及 Diffractor 无法保存的格式均不受支持。"
+
+msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
+msgstr "关闭：小于窗口的照片和视频按实际大小显示。开启：将其放大以适应窗口。大于窗口的媒体始终会缩小以适应窗口。"
+
+msgid "Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder."
+msgstr "将所选照片转换为其他格式，并可选择限制其尺寸。原始文件将保留，新文件将写入目标文件夹。"
+
+msgid "Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched."
+msgstr "将相同的元数据值写入每个选定项目。仅更改勾选的字段，图像和视频数据保持不变。"
+
+msgid "Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched."
+msgstr "移动选定项目的日期，使最早的项目从新的日期和时间开始。仅更改元数据，图像和视频数据保持不变。"
+
+msgid "Add or remove tags across the selected items. Tags you do not mention are left in place."
+msgstr "在所选项目中添加或删除标签。未指定的标签保持不变。"
+
+msgid "Convert"
+msgstr "转换"
+
+msgid "Update metadata"
+msgstr "更新元数据"
+
+msgid "No removable drive was found."
+msgstr "未找到可移动驱动器。"
+
+msgid "Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run."
+msgstr "将文件复制或移动到根据日期、专辑或艺术家等元数据构建的文件夹结构中。如果目标位置在您的集合中，副本会自动加入集合。请先分析，以便在运行前查看每一项操作。"
+
+msgid "Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run."
+msgstr "使用可组合文本、递增编号和元数据属性的模板重命名所选文件。运行前请查看下方的新名称。"
+
+msgid "Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run."
+msgstr "将本地文件夹与远程或备份文件夹同步。运行前请先分析以查看每项复制和删除操作。"
+
+msgid "home"
+msgstr "Home"
+
+msgid "end"
+msgstr "End"
+
+msgid "-"
+msgstr "-"
+
+msgid "Grouping"
+msgstr "分组"
+
+msgid "Move to the first or last item. Pans a zoomed image to the left or right edge."
+msgstr "移动到第一个或最后一个项目。将放大的图像平移到左边缘或右边缘。"
+
+msgid "Move up or down a row of items. Pans a zoomed image."
+msgstr "上移或下移一行项目。平移放大的图像。"
+
+msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
+msgstr "放大或缩小显示的图像。按 0 使其适应窗口。"
+
+msgid "Add folders to your collection (Ctrl+F6)"
+msgstr "将文件夹添加到集合 (Ctrl+F6)"
+
+msgid "Select at least one search criterion."
+msgstr "请至少选择一个搜索条件。"
+
+msgid "Could not check for updates. Check your internet connection and try again."
+msgstr "无法检查更新。请检查网络连接后重试。"
+
+msgid "Diagnostics information could not be sent. Check your internet connection and try again."
+msgstr "无法发送诊断信息。请检查网络连接后重试。"
+
+msgid "Too large to display"
+msgstr "太大，无法显示"
+
+msgid "This image could not be displayed"
+msgstr "无法显示此图像"
+
+msgid "Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places."
+msgstr "显示集合中与此项目最相关的项目：可能的副本，然后是同一专辑、同一系列、最接近的拍摄时间和最接近的拍摄地点。"
+
+msgid "This item and possible copies"
+msgstr "此项目及可能的副本"
+
+msgid "Same album"
+msgstr "同一专辑"
+
+msgid "Same series"
+msgstr "同一系列"
+
+msgid "Taken at the same time"
+msgstr "同一时间拍摄"
+
+msgid "Taken in the same place"
+msgstr "同一地点拍摄"
+
+msgid "Recovered from a startup problem"
+msgstr "已从启动问题中恢复"
+
+msgid "Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options."
+msgstr "Diffractor 在完成启动前意外关闭，因此本次运行使用默认布局并关闭了硬件加速。您的文件、集合和最近的项目均未更改。您可以在“选项”中恢复设置。"
+
+msgid "Original//date"
+msgstr "原始日期"
+
+msgid "Group by Date Original"
+msgstr "按原始日期分组"
+
+msgid "Sort by Date original"
+msgstr "按原始日期排序"
+
+msgid "Movie mixer"
+msgstr "影片混编"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "将选定的照片和视频合成为一个视频。在下方的胶片条中添加、移除和重新排列剪辑，并裁剪选定的剪辑。预览即为渲染结果；在渲染或保存之前不会写入任何内容。"
+
+msgid "Movie"
+msgstr "影片"
+
+msgid "Selected clip"
+msgstr "选定的剪辑"
+
+msgid "Crossfade between clips"
+msgstr "剪辑之间交叉淡化"
+
+msgid "Cut between clips"
+msgstr "剪辑之间硬切"
+
+msgid "Transition (tenths of a second)"
+msgstr "转场（十分之一秒）"
+
+msgid "Fade (tenths of a second)"
+msgstr "淡入淡出（十分之一秒）"
+
+msgid "Fade in from black"
+msgstr "从黑场淡入"
+
+msgid "Fade out to black"
+msgstr "淡出到黑场"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "照片时长（十分之一秒）"
+
+msgid "This photo (tenths of a second)"
+msgstr "此照片（十分之一秒）"
+
+msgid "Use the movie default"
+msgstr "使用影片默认值"
+
+msgid "Add photos and videos to build a movie."
+msgstr "添加照片和视频以创建影片。"
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "输出 {} x {}，{} fps，时长 {}。"
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - 第 {}/{} 个剪辑，开始于 {}。"
+
+msgid "Movie project"
+msgstr "影片项目"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows Movie Maker 项目"
+
+msgid "Photos and videos"
+msgstr "照片和视频"
+
+msgid "Could not read the project {}."
+msgstr "无法读取项目 {}。"
+
+msgid "Could not save the project {}."
+msgstr "无法保存项目 {}。"
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "将选定的照片和视频合成为一个视频。"
+
+msgid "Add files"
+msgstr "添加文件"
+
+msgid "Remove from movie"
+msgstr "从影片中移除"
+
+msgid "Send to the end"
+msgstr "移到末尾"
+
+msgid "Open project"
+msgstr "打开项目"
+
+msgid "Save project"
+msgstr "保存项目"
+
+msgid "Import Movie Maker project"
+msgstr "导入 Movie Maker 项目"
+
+msgid "Video"
+msgstr "视频"
+
+msgid "Rendering the movie"
+msgstr "正在渲染影片"
+
+msgid "The movie could not be rendered. {}"
+msgstr "无法渲染影片。{}"
+
+msgid "The movie has no length."
+msgstr "影片没有时长。"
+
+msgid "The encoder would not accept this movie."
+msgstr "编码器不接受此影片。"
+
+msgid "There was not enough memory for a movie frame."
+msgstr "内存不足，无法处理影片帧。"
+
+msgid "A clip could not be decoded."
+msgstr "无法解码某个剪辑。"
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "编码器在影片完成前停止。"
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "该名称属于此影片中的某个剪辑。请选择其他名称。"
+
+msgid "Rendered {}."
+msgstr "已渲染 {}。"
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "渲染已取消。未写入任何内容。"
+
+msgid "No missing clip was found in that folder."
+msgstr "在该文件夹中未找到任何缺失的剪辑。"
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "此影片有未保存到项目文件中的更改。Diffractor 运行期间会保留，关闭 Diffractor 将丢弃这些更改。"
+
+msgid "Close without saving"
+msgstr "不保存并关闭"
+
+msgid "Render"
+msgstr "渲染"
+
+msgid "Write the movie to a video file."
+msgstr "将影片写入视频文件。"
+
+msgid "Relink missing files"
+msgstr "重新链接缺失的文件"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "将源文件已移动的剪辑指向您选择的文件夹。"
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "导入项目中有 1 个元素因影片无法表示而被略过。"
+msgstr[1] "导入项目中有 {count} 个元素因影片无法表示而被略过。"
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "有 1 个剪辑找不到其源文件。"
+msgstr[1] "有 {count} 个剪辑找不到其源文件。"
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "已重新链接 1 个剪辑。"
+msgstr[1] "已重新链接 {count} 个剪辑。"
+

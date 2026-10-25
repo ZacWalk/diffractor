@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -10,14 +10,6 @@
 // captions, keywords, and copyright information from image files.
 
 #pragma once
-
-struct tag_iptc
-{
-	uint32_t id;
-	uint32_t string_id;
-};
-
-extern tag_iptc g_iptc_tags[];
 
 struct metadata_iptc
 {

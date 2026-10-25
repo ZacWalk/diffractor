@@ -2,9 +2,12 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  IgnorableNamespaces="uap rescap desktop">
+  xmlns:desktop3="http://schemas.microsoft.com/appx/manifest/desktop/windows10/3"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:rescap3="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities/3"
+  IgnorableNamespaces="uap uap3 desktop desktop3 rescap rescap3">
 
   <!--
   ===============================================================================================================
@@ -20,7 +23,7 @@
   <Identity
     Name="46714Diffractor.Diffractor"
     Publisher="CN=93EAD558-C663-408E-B7C1-B1A6FED88763"
-    Version="1.26.2.0"
+    Version="1.27.3.0"
     ProcessorArchitecture="x64" />
 
   <!--
@@ -54,15 +57,25 @@
   ===============================================================================================================
   RESOURCES
   - Language: Specifies the languages your app supports, taken from your NSIS script.
-    The manifest uses BCP-47 codes (e.g., "de" instead of 1031).
+    The manifest uses BCP-47 codes (e.g., "de" instead of 1031). Only codes the Store lists as
+    supported may appear here; an unsupported code risks a certification failure.
   ===============================================================================================================
   -->
   <Resources>
     <Resource Language="EN-US"/>
+    <Resource Language="CS"/>
     <Resource Language="DE"/>
+    <Resource Language="ES"/>
+    <Resource Language="FR"/>
     <Resource Language="IT"/>
     <Resource Language="JA"/>
-    <Resource Language="ES"/>
+    <Resource Language="KO"/>
+    <Resource Language="PL"/>
+    <Resource Language="PT"/>
+    <Resource Language="RU"/>
+    <Resource Language="TR"/>
+    <Resource Language="UK"/>
+    <Resource Language="zh-Hans"/>
   </Resources>
 
   <!--
@@ -89,7 +102,10 @@
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
-        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\SmallTile.png"
+          Square310x310Logo="Assets\LargeTile.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
 
@@ -106,25 +122,64 @@
             <uap:DisplayName>Diffractor Media</uap:DisplayName>
             <uap:Logo>Assets\DiffractorFile.png</uap:Logo>
             <uap:SupportedFileTypes>
-              <uap:FileType>.jpe</uap:FileType>
-              <uap:FileType>.jpeg</uap:FileType>
-              <uap:FileType>.jpg</uap:FileType>
-              <uap:FileType>.png</uap:FileType>
-              <uap:FileType>.gif</uap:FileType>
-              <uap:FileType>.mp4</uap:FileType>
-              <uap:FileType>.mov</uap:FileType>
+              <!-- Deliberately narrow. Launching from Explorer is a rare entry point, and every
+                   type declared here appears in the user's Default apps list, so this claims only
+                   common media types that no other application family owns. Ambiguous or
+                   developer-facing extensions (.ts, .ico, .raw, .cap, .psd, .mid, .swf) are
+                   excluded on purpose. -->
+              <uap:FileType>.arw</uap:FileType>
               <uap:FileType>.avi</uap:FileType>
-              <uap:FileType>.mp3</uap:FileType>
+              <uap:FileType>.bmp</uap:FileType>
               <uap:FileType>.cr2</uap:FileType>
               <uap:FileType>.cr3</uap:FileType>
+              <uap:FileType>.dng</uap:FileType>
+              <uap:FileType>.gif</uap:FileType>
+              <uap:FileType>.heic</uap:FileType>
+              <uap:FileType>.jpeg</uap:FileType>
+              <uap:FileType>.jpg</uap:FileType>
+              <uap:FileType>.m4a</uap:FileType>
+              <uap:FileType>.mkv</uap:FileType>
+              <uap:FileType>.mov</uap:FileType>
+              <uap:FileType>.mp3</uap:FileType>
+              <uap:FileType>.mp4</uap:FileType>
+              <uap:FileType>.nef</uap:FileType>
+              <uap:FileType>.png</uap:FileType>
+              <uap:FileType>.tif</uap:FileType>
+              <uap:FileType>.tiff</uap:FileType>
               <uap:FileType>.webp</uap:FileType>
             </uap:SupportedFileTypes>
+            <!-- Inherits the associations the desktop installer registered under its "Diffractor"
+                 ProgID, so moving to the Store build keeps the defaults the user already chose. -->
+            <rescap3:MigrationProgIds>
+              <rescap3:MigrationProgId>Diffractor</rescap3:MigrationProgId>
+            </rescap3:MigrationProgIds>
           </uap:FileTypeAssociation>
         </uap:Extension>
 
-        <!-- Enable full trust process capability for Win32 application -->
-        <desktop:Extension Category="windows.fullTrustProcess" Executable="diffractor.exe" />
-        
+        <!-- A "diffractor" command, so a terminal, a script or another app can open a folder or file
+             in the Store build the way the desktop build's command line does. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="diffractor.exe"
+                        EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="diffractor.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+
+        <!-- Offered by Windows AutoPlay when a camera card (a DCIM folder raises ShowPicturesOnArrival)
+             or a USB stick is inserted. Diffractor opens the volume with its subfolders - "**", as in
+             the address box - where Presence shows what is already in the collection. The action text
+             is not translated: it would need a string resource for every language in resources.pri. -->
+        <desktop3:Extension Category="windows.autoPlayHandler">
+          <desktop3:AutoPlayHandler>
+            <desktop3:InvokeAction ActionDisplayName="View photos and videos" ProviderDisplayName="Diffractor">
+              <desktop3:Content ContentEvent="ShowPicturesOnArrival" Verb="viewpictures" Parameters="&quot;%1**&quot;" />
+              <desktop3:Content ContentEvent="PlayVideoFilesOnArrival" Verb="viewvideos" Parameters="&quot;%1**&quot;" />
+              <desktop3:Content ContentEvent="MixedContentOnArrival" Verb="viewmixed" Parameters="&quot;%1**&quot;" />
+              <desktop3:Content ContentEvent="StorageOnArrival" Verb="viewstorage" Parameters="&quot;%1**&quot;" />
+            </desktop3:InvokeAction>
+          </desktop3:AutoPlayHandler>
+        </desktop3:Extension>
+
       </Extensions>
 
     </Application>

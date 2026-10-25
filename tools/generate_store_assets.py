@@ -135,7 +135,7 @@ class DiffractorLogoGenerator:
         img = img.resize((canvas_size, canvas_size), resample=Image.LANCZOS)
         return img
 
-    def create_wide_logo(self, width, height):
+    def create_wide_logo(self, width, height, content_ratio=0.9):
         """
         Creates the Wide310x150 asset. 
         Places the square logo in the center of a wide transparent canvas.
@@ -143,7 +143,7 @@ class DiffractorLogoGenerator:
         img = Image.new('RGBA', (width, height), self.bg_color)
         
         # Determine logo size (fit within height with padding)
-        logo_size = int(height * 0.9)
+        logo_size = int(height * content_ratio)
         logo = self.create_logo(logo_size)
         
         # Center the logo
@@ -152,6 +152,31 @@ class DiffractorLogoGenerator:
         
         img.paste(logo, (x_pos, y_pos), logo)
         return img
+
+    def create_tile_logo(self, canvas_size, content_ratio):
+        """
+        Creates a tile asset: the logo centered on a transparent canvas with a margin.
+        """
+        img = Image.new('RGBA', (canvas_size, canvas_size), self.bg_color)
+        logo_size = max(1, int(canvas_size * content_ratio))
+        logo = self.create_logo(logo_size)
+        offset = (canvas_size - logo_size) // 2
+        img.paste(logo, (offset, offset), logo)
+        return img
+
+    # Start tiles must not be filled edge to edge; Windows asks for at least a 16% margin per
+    # side. Taskbar/app-list/Store/file icons are the opposite - they are meant to be full bleed.
+    TILE_ASSETS = ("Square150x150Logo", "SmallTile", "LargeTile", "Wide310x150Logo")
+    TILE_CONTENT_RATIO = 0.68
+
+    def render_asset(self, filename, w, h, method):
+        is_tile = filename.startswith(self.TILE_ASSETS)
+        if method == "square":
+            if is_tile:
+                return self.create_tile_logo(w, self.TILE_CONTENT_RATIO)
+            return self.create_logo(w)
+        ratio = self.TILE_CONTENT_RATIO if is_tile else 0.9
+        return self.create_wide_logo(w, h, ratio)
 
     def generate_windows_assets(self, output_dir="DiffractorAssets"):
         if not os.path.exists(output_dir):
@@ -220,9 +245,10 @@ class DiffractorLogoGenerator:
             ("Square44x44Logo.targetsize-96_altform-lightunplated.png", 96, 96, "square"),
             ("Square44x44Logo.targetsize-256_altform-lightunplated.png", 256, 256, "square"),
 
-            # AppList icons (used for Taskbar, Start all apps list, search results)
-            # These are REQUIRED for transparent taskbar icons on Windows 10/11
-            # Default/plated versions
+            # AppList icons (Taskbar, Start pins, all-apps list, search results).
+            # Windows resolves these against the Square44x44Logo entries above, so strictly
+            # these are redundant - but the icon docs list them as required by literal name and
+            # shell icon resolution has bitten us before, so keep both spellings.
             ("AppList.targetsize-16.png", 16, 16, "square"),
             ("AppList.targetsize-20.png", 20, 20, "square"),
             ("AppList.targetsize-24.png", 24, 24, "square"),
@@ -237,7 +263,7 @@ class DiffractorLogoGenerator:
             ("AppList.targetsize-80.png", 80, 80, "square"),
             ("AppList.targetsize-96.png", 96, 96, "square"),
             ("AppList.targetsize-256.png", 256, 256, "square"),
-            # Dark theme unplated (required for transparent background on dark taskbar)
+            # Dark theme unplated (avoids the system icon backplate on the taskbar)
             ("AppList.targetsize-16_altform-unplated.png", 16, 16, "square"),
             ("AppList.targetsize-20_altform-unplated.png", 20, 20, "square"),
             ("AppList.targetsize-24_altform-unplated.png", 24, 24, "square"),
@@ -252,7 +278,7 @@ class DiffractorLogoGenerator:
             ("AppList.targetsize-80_altform-unplated.png", 80, 80, "square"),
             ("AppList.targetsize-96_altform-unplated.png", 96, 96, "square"),
             ("AppList.targetsize-256_altform-unplated.png", 256, 256, "square"),
-            # Light theme unplated (required for transparent background on light taskbar)
+            # Light theme unplated
             ("AppList.targetsize-16_altform-lightunplated.png", 16, 16, "square"),
             ("AppList.targetsize-20_altform-lightunplated.png", 20, 20, "square"),
             ("AppList.targetsize-24_altform-lightunplated.png", 24, 24, "square"),
@@ -267,7 +293,7 @@ class DiffractorLogoGenerator:
             ("AppList.targetsize-80_altform-lightunplated.png", 80, 80, "square"),
             ("AppList.targetsize-96_altform-lightunplated.png", 96, 96, "square"),
             ("AppList.targetsize-256_altform-lightunplated.png", 256, 256, "square"),
-            # AppList scale variants (optional, for Windows 10)
+            # Scale variants (Windows 10)
             ("AppList.scale-100.png", 44, 44, "square"),
             ("AppList.scale-125.png", 55, 55, "square"),
             ("AppList.scale-150.png", 66, 66, "square"),
@@ -320,13 +346,7 @@ class DiffractorLogoGenerator:
         print(f"Generating assets in '{output_dir}'...")
 
         for filename, w, h, method in assets:
-            if method == "square":
-                # For square icons, we generate the logo at size (w, h)
-                img = self.create_logo(w)
-            else:
-                # For wide/splash, we create the wide version
-                img = self.create_wide_logo(w, h)
-            
+            img = self.render_asset(filename, w, h, method)
             save_path = os.path.join(output_dir, filename)
             img.save(save_path, "PNG")
             print(f"Generated: {filename}")
@@ -338,21 +358,45 @@ class DiffractorLogoGenerator:
             ("Square44x44Logo.png", 44, 44, "square"),
             ("Square150x150Logo.png", 150, 150, "square"),
             ("Wide310x150Logo.png", 310, 150, "wide"),
+            ("SmallTile.png", 71, 71, "square"),
+            ("LargeTile.png", 310, 310, "square"),
             ("SplashScreen.png", 620, 300, "wide"),
             ("DiffractorFile.png", 44, 44, "square"),
         ]
         
         for filename, w, h, method in base_assets:
-            if method == "square":
-                img = self.create_logo(w)
-            else:
-                img = self.create_wide_logo(w, h)
-            
+            img = self.render_asset(filename, w, h, method)
             save_path = os.path.join(output_dir, filename)
             img.save(save_path, "PNG")
             print(f"Generated: {filename}")
 
         print("Done! All assets generated.")
+
+    # Windows picks the nearest frame and scales down, so 256 is included to avoid ever scaling up.
+    APP_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+    APP_LOGOS = (("logo.png", 60), ("logo30.png", 30), ("logo15.png", 15))
+
+    def generate_desktop_assets(self, res_dir):
+        if not os.path.exists(res_dir):
+            os.makedirs(res_dir)
+
+        # Each frame is drawn at its target size rather than resampled from one large bitmap,
+        # so the small frames keep the supersampled edges instead of a second round of scaling.
+        frames = [self.create_logo(size) for size in self.APP_ICON_SIZES]
+        ico_path = os.path.join(res_dir, "app.ico")
+        frames[-1].save(
+            ico_path,
+            format="ICO",
+            sizes=[(size, size) for size in self.APP_ICON_SIZES],
+            append_images=frames[:-1],
+        )
+        print(f"Generated: app.ico ({', '.join(str(s) for s in self.APP_ICON_SIZES)})")
+
+        for filename, size in self.APP_LOGOS:
+            self.create_logo(size).save(os.path.join(res_dir, filename), "PNG")
+            print(f"Generated: {filename}")
+
+        print("Done! Desktop artwork generated.")
 
 
 def main():
@@ -364,10 +408,18 @@ def main():
         default="DiffractorAssets",
         help="Output directory for generated assets (default: DiffractorAssets)"
     )
+    parser.add_argument(
+        "--res",
+        help="Instead of Store assets, write the desktop app.ico and logo PNGs to this "
+             "resource folder (e.g. src/Res)"
+    )
     args = parser.parse_args()
 
     generator = DiffractorLogoGenerator()
-    generator.generate_windows_assets(args.output)
+    if args.res:
+        generator.generate_desktop_assets(args.res)
+    else:
+        generator.generate_windows_assets(args.output)
 
 
 if __name__ == "__main__":

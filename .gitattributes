@@ -1,1 +1,7 @@
 exe/test/** filter=lfs diff=lfs merge=lfs -text
+# Kept byte for byte: a small encoded file need hold no NUL to be taken for text.
+exe/test-generated/** binary
+
+# Shell scripts must keep LF whatever core.autocrlf says, or they do not run on Linux.
+dd text eol=lf
+*.sh text eol=lf

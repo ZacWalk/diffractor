@@ -21,13 +21,17 @@
 *.suo
 *.user
 *.vloptions
-/intermediate
+intermediate/
+/tmp
 /dist
 /msix
 /.wix
 /exe/*.cso
 /exe/dictionaries/en_GB.aff
 /exe/dictionaries/en_GB.dic
+# Licence texts staged into exe/ by `dd.ps1 desktop` so the installer and diffractor.zip carry them.
+/exe/LICENSE.txt
+/exe/COPYING.GPLv3.txt
 /.vs
 /src/secrets.h
 /diffractor.zip
@@ -35,3 +39,13 @@
 /.vscode
 /DiffractorStoreCert.pfx
 *.msix
+exe/tiles/*.png
+/build
+
+# Captured test output and ad-hoc search scratch at the repository root.
+/test_*.txt
+/matches.txt
+/run_search.py
+/search_*.ps1
+*.msixupload
+*.appxsym

@@ -1,0 +1,3820 @@
+msgid "Fit"
+msgstr "맞춤"
+
+msgid "Zoom in"
+msgstr "확대"
+
+msgid "Zoom out"
+msgstr "축소"
+
+msgid "Zoom"
+msgstr "확대/축소"
+
+msgid "Fit Width"
+msgstr "너비 맞춤"
+
+msgid "Fill"
+msgstr "채우기"
+
+msgid "100% (1:1)"
+msgstr "100% (1:1)"
+
+msgid "Audio: {}"
+msgstr "오디오: {}"
+
+msgid "Audio track {}"
+msgstr "오디오 트랙 {}"
+
+msgid "Audio tracks"
+msgstr "오디오 트랙"
+
+msgid "Audio output"
+msgstr "오디오 출력"
+
+msgid "commentary"
+msgstr "해설"
+
+msgid "audio description"
+msgstr "화면 해설"
+
+# Diffractor translation
+msgid ""
+msgstr ""
+"Project-Id-Version: Diffractor Korean\n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: 2026-07-20\n"
+"Last-Translator: \n"
+"Language-Team: Korean\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: GitHub Copilot\n"
+
+msgid "Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything."
+msgstr "Diffractor는 사진, 동영상, 음악을 원래 있던 자리에서 그대로 정리합니다. 컬렉션을 구성할 폴더를 선택하면 색인을 통해 빠른 검색, 중복 감지, 메타데이터 편집을 사용할 수 있으며 파일을 옮기거나 복사하지 않습니다."
+
+msgid "Diagnostics information was sent to Diffractor HQ."
+msgstr "진단 정보가 Diffractor HQ로 전송되었습니다."
+
+msgid "Releases - Diffractor"
+msgstr "릴리스 - Diffractor"
+
+msgid "Workflow Tags"
+msgstr "워크플로 태그"
+
+msgid "Configure favorite tags."
+msgstr "즐겨찾는 태그를 구성합니다."
+
+msgid "Add folder"
+msgstr "폴더 추가"
+
+msgid "Capture metadata and the Windows file created time will be shifted to start at a new local date and time."
+msgstr "촬영 메타데이터와 Windows 파일 생성 시간을 새 현지 시작 날짜 및 시간에 맞게 이동합니다."
+
+msgid "Time gaps between dated items are preserved. Items without a known date receive the new starting date."
+msgstr "날짜가 있는 항목 사이의 시간 간격은 유지됩니다. 날짜를 알 수 없는 항목에는 새 시작 날짜가 적용됩니다."
+
+msgid "This is useful if your camera date was set wrongly and you need to fix photo and video dates."
+msgstr "이는 카메라 날짜가 잘못 설정되어 사진 및 비디오 날짜를 수정해야 하는 경우에 유용합니다."
+
+msgid "After"
+msgstr "이후"
+
+msgid "Album Artist"
+msgstr "앨범 아티스트"
+
+msgid "Analyzing..."
+msgstr "분석 중..."
+
+msgid "archive"
+msgstr "아카이브"
+
+msgid "archives"
+msgstr "아카이브"
+
+msgid "audio"
+msgstr "오디오"
+
+msgid "Audio"
+msgstr "오디오"
+
+msgid "Before"
+msgstr "이전"
+
+msgid "Brightness"
+msgstr "밝기"
+
+msgid "Burn"
+msgstr "디스크 굽기"
+
+msgid "Analyze"
+msgstr "분석"
+
+msgid "&Analyze"
+msgstr "분석(&A)"
+
+msgid "&Cancel"
+msgstr "취소(&C)"
+
+msgid "Change..."
+msgstr "변경..."
+
+msgid "&Close"
+msgstr "닫기(&C)"
+
+msgid "&Convert"
+msgstr "변환(&C)"
+
+msgid "&Delete"
+msgstr "삭제(&D)"
+
+msgid "&Don't Save"
+msgstr "저장하지 않음(&D)"
+
+msgid "&OK"
+msgstr "확인(&O)"
+
+msgid "&Rotate"
+msgstr "회전(&R)"
+
+msgid "&Save"
+msgstr "저장(&S)"
+
+msgid "As &JPEG"
+msgstr "JPEG로(&J)"
+
+msgid "&Send"
+msgstr "보내기(&S)"
+
+msgid "&Synchronize"
+msgstr "동기화(&S)"
+
+msgid "&Tag"
+msgstr "태그(&T)"
+
+msgid "&Update"
+msgstr "업데이트(&U)"
+
+msgid "Donate"
+msgstr "기부"
+
+msgid "Diffractor can be used for free. If you find it useful, please help the project by donating."
+msgstr "Diffractor는 무료로 사용할 수 있습니다. 도움이 되셨다면 기부를 통해 프로젝트를 도와주세요."
+
+msgid "Donate online."
+msgstr "온라인으로 기부하세요."
+
+
+msgid "Changes"
+msgstr "변경 사항"
+
+msgid "The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location."
+msgstr "지도 중앙의 십자선은 기록될 위치를 나타냅니다. 지도를 끌거나, 사진 풍선을 클릭해 십자선 아래로 옮기거나, 이름으로 장소를 검색하세요. 마우스 휠로 확대/축소할 수 있습니다. 위치 추가를 누르기 전에는 아무것도 기록되지 않습니다."
+
+msgid "The collection contains {} {} ({})."
+msgstr "컬렉션에는 {} {}({})가 포함되어 있습니다."
+
+msgid "The collection contains:"
+msgstr "컬렉션에는 다음이 포함됩니다:"
+
+msgid "Items created {} {}"
+msgstr "생성된 항목 {} {}"
+
+msgid "Items modified {} {}"
+msgstr "수정된 항목 {} {}"
+
+msgid "Opens created items.\nCtrl+click opens modified items."
+msgstr "생성된 항목을 엽니다.\nCtrl+클릭하면 수정된 항목을 엽니다."
+
+msgid "{} items close to {} in the collection."
+msgstr "컬렉션에서 {} 근처에 있는 항목 {}개."
+
+msgid "{} items close to {}"
+msgstr "{}개 항목, {} 근처"
+
+msgid "filter"
+msgstr "필터"
+
+msgid "Close"
+msgstr "닫기"
+
+msgid "Collection options"
+msgstr "컬렉션 옵션"
+
+msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
+msgstr "항목 앞에 '-'를 붙이면 제외됩니다. -c:\\photos\\secret 같은 전체 경로는 폴더 하나를 제외합니다. -secret 같은 이름이나 -proxy* 같은 와일드카드는 컬렉션 내 어디에 있든 일치하는 폴더를 제외합니다."
+
+msgid "Other folders"
+msgstr "기타 폴더"
+
+msgid "Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."
+msgstr "폴더는 드라이브, 폴더, 네트워크 공유 또는 장치 레이블일 수 있습니다. 레이블은 매핑된 드라이브 문자가 변경될 수 있는 이동식 장치 또는 네트워크 장치에 유용합니다."
+
+msgid "Choose the folders that make up your collection. Your files stay where they are."
+msgstr "컬렉션을 구성할 폴더를 선택하세요. 파일은 원래 자리에 그대로 있습니다."
+
+msgid "Collection folders"
+msgstr "컬렉션 폴더"
+
+msgid "One folder per line."
+msgstr "한 줄에 폴더 하나."
+
+msgid "More information about collection management."
+msgstr "컬렉션 관리에 대한 추가 정보."
+
+msgid "More information about metadata templates."
+msgstr "메타데이터 템플릿에 대한 추가 정보."
+
+msgid "Videos"
+msgstr "비디오"
+
+msgid "Your collection"
+msgstr "당신의 컬렉션"
+
+msgid "Color"
+msgstr "색상"
+
+msgid "Adjust date and time"
+msgstr "날짜 및 시간 조정"
+
+msgid "Advanced Search"
+msgstr "고급 검색"
+
+msgid "Exit"
+msgstr "종료"
+
+msgid "Back"
+msgstr "뒤로"
+
+msgid "Forward"
+msgstr "앞으로"
+
+msgid "Next folder or search"
+msgstr "다음 폴더 또는 검색"
+
+msgid "Next item group"
+msgstr "다음 항목 그룹"
+
+msgid "Select next item"
+msgstr "다음 항목 선택"
+
+msgid "Extend selection to next item"
+msgstr "선택 항목을 다음 항목으로 확장"
+
+msgid "Parent"
+msgstr "상위 폴더"
+
+msgid "Previous folder or search"
+msgstr "이전 폴더 또는 검색"
+
+msgid "Previous item group"
+msgstr "이전 항목 그룹"
+
+msgid "Select previous item"
+msgstr "이전 항목 선택"
+
+msgid "Extend selection to previous item"
+msgstr "이전 항목으로 선택 확장"
+
+msgid "Burn to disk"
+msgstr "디스크에 굽기"
+
+msgid "Save current video frame"
+msgstr "현재 비디오 프레임 저장"
+
+msgid "Reset color changes"
+msgstr "색상 변경 재설정"
+
+msgid "Convert or Resize"
+msgstr "변환 또는 크기 조정"
+
+msgid "Copy to folder"
+msgstr "폴더에 복사"
+
+msgid "Customise sidebar"
+msgstr "사이드바 맞춤설정"
+
+msgid "Delete"
+msgstr "삭제"
+
+msgid "Desktop background"
+msgstr "데스크탑 배경"
+
+msgid "Display options"
+msgstr "디스플레이 옵션"
+
+msgid "Edit"
+msgstr "편집"
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Cut"
+msgstr "잘라내기"
+
+msgid "Edit metadata"
+msgstr "메타데이터 편집"
+
+msgid "Paste"
+msgstr "붙여넣기"
+
+msgid "Eject"
+msgstr "꺼내기"
+
+msgid "Favorite"
+msgstr "즐겨찾기"
+
+msgid "Open properties"
+msgstr "속성 열기"
+
+msgid "Search"
+msgstr "검색"
+
+msgid "Show items in subfolders"
+msgstr "하위 폴더의 항목 표시"
+
+msgid "Fullscreen"
+msgstr "전체 화면"
+
+msgid "Group by Album/Show"
+msgstr "앨범/프로그램별로 그룹화"
+
+msgid "Group by Camera"
+msgstr "카메라별로 그룹화"
+
+msgid "Group by Date Created"
+msgstr "생성 날짜별로 그룹화"
+
+msgid "Group by Extension"
+msgstr "확장자별로 그룹화"
+
+msgid "Group by File type"
+msgstr "파일 유형별로 그룹화"
+
+msgid "Group by Location"
+msgstr "위치별로 그룹화"
+
+msgid "Group by Date Modified"
+msgstr "수정된 날짜별로 그룹화"
+
+msgid "Group by Aspect ratio"
+msgstr "화면 비율별로 그룹화"
+
+msgid "Aspect ratio"
+msgstr "화면 비율"
+
+msgid "No aspect ratio"
+msgstr "화면 비율 없음"
+
+msgid "Other landscape"
+msgstr "기타 가로 방향"
+
+msgid "Other portrait"
+msgstr "기타 세로 방향"
+
+msgid "Group by Resolution"
+msgstr "해상도별로 그룹화"
+
+msgid "Group by Collection presence"
+msgstr "컬렉션 존재별로 그룹화"
+
+msgid "Group by Rating/Label"
+msgstr "등급/레이블별로 그룹화"
+
+msgid "Show items in random order"
+msgstr "항목을 무작위 순서로 표시"
+
+msgid "Group by Size"
+msgstr "크기별 그룹화"
+
+msgid "Group by Folder"
+msgstr "폴더별로 그룹화"
+
+msgid "Highlight large items in yellow"
+msgstr "큰 항목을 노란색으로 강조 표시"
+
+msgid "Import"
+msgstr "가져오기"
+
+msgid "Keyboard reference"
+msgstr "키보드 참조"
+
+msgid "Approved"
+msgstr "승인됨"
+
+msgid "No Label"
+msgstr "라벨 없음"
+
+msgid "Review"
+msgstr "검토"
+
+msgid "Second"
+msgstr "두 번째"
+
+msgid "Select"
+msgstr "선택"
+
+msgid "To Do"
+msgstr "할 일"
+
+msgid "Language"
+msgstr "언어"
+
+msgid "Add location"
+msgstr "위치 추가"
+
+msgid "Maximize"
+msgstr "최대화"
+
+msgid "Group or Sort"
+msgstr "그룹화 또는 정렬"
+
+msgid "Minimize"
+msgstr "최소화"
+
+msgid "Move to folder"
+msgstr "폴더로 이동"
+
+msgid "Show sidebar"
+msgstr "사이드바 표시"
+
+msgid "Navigate"
+msgstr "탐색"
+
+msgid "New Folder"
+msgstr "새 폴더"
+
+msgid "New version available"
+msgstr "새 버전 사용 가능"
+
+msgid "Check for updates"
+msgstr "업데이트 확인"
+
+msgid "Install now"
+msgstr "지금 설치"
+
+msgid "Checking for updates..."
+msgstr "업데이트 확인 중..."
+
+msgid "You are using the latest version ({})."
+msgstr "최신 버전({})을 사용하고 있습니다."
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Open in google maps"
+msgstr "구글 지도에서 열기"
+
+msgid "Open with"
+msgstr "다음으로 열기"
+
+msgid "General options"
+msgstr "일반 옵션"
+
+msgid "Pin or hold item"
+msgstr "항목 고정 또는 고정"
+
+msgid "Play/Pause"
+msgstr "재생/일시 정지"
+
+msgid "Print"
+msgstr "인쇄"
+
+msgid "Rate"
+msgstr "평가"
+
+msgid "Remove rating"
+msgstr "평가 삭제"
+
+msgid "Rate as 1 star"
+msgstr "별 1개로 평가"
+
+msgid "Rate as 2 stars"
+msgstr "별 2개로 평가"
+
+msgid "Rate as 3 stars"
+msgstr "별 3개로 평가"
+
+msgid "Rate as 4 stars"
+msgstr "별 4개로 평가"
+
+msgid "Rate as 5 stars"
+msgstr "별 5개로 평가"
+
+msgid "Reject"
+msgstr "거부"
+
+msgid "Refresh"
+msgstr "새로고침"
+
+msgid "Related items"
+msgstr "관련 항목"
+
+msgid "Rename"
+msgstr "이름 바꾸기"
+
+msgid "Rename files"
+msgstr "파일 이름 바꾸기"
+
+msgid "Toggle repeat play"
+msgstr "반복 재생 전환"
+
+msgid "Restore"
+msgstr "복원"
+
+msgid "Rotate anticlockwise"
+msgstr "시계 반대 방향으로 회전"
+
+msgid "Rotate clockwise"
+msgstr "시계방향으로 회전"
+
+msgid "Confirm single-item rotations"
+msgstr "단일 항목 회전 확인"
+
+msgid "Reset rotation"
+msgstr "회전 재설정"
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Add location and open previous"
+msgstr "위치를 추가하고 이전 항목 열기"
+
+msgid "Add location and open next"
+msgstr "위치를 추가하고 다음 항목 열기"
+
+msgid "Save and open previous"
+msgstr "저장하고 이전 항목 열기"
+
+msgid "Save the current item and open the previous item."
+msgstr "현재 항목을 저장하고 이전 항목을 엽니다."
+
+msgid "Save and open next"
+msgstr "저장하고 다음 열기"
+
+msgid "Save the current item and open the next item."
+msgstr "현재 항목을 저장하고 다음 항목을 엽니다."
+
+msgid "Save as"
+msgstr "다른 이름으로 저장"
+
+msgid "Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save."
+msgstr "사진의 자르기, 회전, 원근, 색상을 조정합니다. 저장하기 전까지는 디스크에 아무것도 기록되지 않습니다."
+
+msgid "Scale up items"
+msgstr "항목 확대"
+
+msgid "Scan"
+msgstr "스캔"
+
+msgid "Select all"
+msgstr "모두 선택"
+
+msgid "Invert selection"
+msgstr "선택 반전"
+
+msgid "Select none"
+msgstr "선택 해제"
+
+msgid "Email"
+msgstr "이메일"
+
+msgid "Show in file browser"
+msgstr "파일 브라우저에 표시"
+
+msgid "Open containing folder"
+msgstr "포함된 폴더 열기"
+
+msgid "Sort by Date modified"
+msgstr "수정된 날짜를 기준으로 정렬"
+
+msgid "Sort by Date created"
+msgstr "생성 날짜를 기준으로 정렬"
+
+msgid "Show oldest items first"
+msgstr "오래된 항목을 먼저 표시"
+
+msgid "Show newest items first"
+msgstr "최신 항목을 먼저 표시"
+
+msgid "Sort by Group order (Default)"
+msgstr "그룹 순서로 정렬(기본값)"
+
+msgid "Sort by Name"
+msgstr "이름으로 정렬"
+
+msgid "Sort by Size"
+msgstr "크기별로 정렬"
+
+msgid "Synchronize"
+msgstr "동기화"
+
+msgid "Toggle thumbnails or details"
+msgstr "썸네일 또는 세부정보 전환"
+
+msgid "Toggle item grouping"
+msgstr "항목 그룹화 전환"
+
+msgid "Toggle thumbnail size"
+msgstr "축소판 크기 전환"
+
+msgid "Change thumbnail size"
+msgstr "축소판 크기 변경"
+
+msgid "Back to the top of the list"
+msgstr "목록 맨 위로 이동"
+
+msgid "Tools"
+msgstr "도구"
+
+msgid "About Diffractor"
+msgstr "Diffractor 소개"
+
+msgid "Show items"
+msgstr "항목 표시"
+
+msgid "Large font"
+msgstr "큰 글꼴"
+
+msgid "Menu"
+msgstr "메뉴"
+
+msgid "Rate or Label"
+msgstr "평가 또는 레이블"
+
+msgid "Select Items"
+msgstr "항목 선택"
+
+msgid "Sort"
+msgstr "정렬"
+
+msgid "Toggle volume"
+msgstr "볼륨 전환"
+
+msgid "Zoom mode"
+msgstr "확대 모드"
+
+msgid "Compare"
+msgstr "비교"
+
+msgid "Hold down left mouse button to compare items."
+msgstr "항목을 비교하려면 마우스 왼쪽 버튼을 누르고 있습니다."
+
+msgid "Contrast"
+msgstr "대비"
+
+msgid "Open link {}"
+msgstr "링크 열기 {}"
+
+msgid "Choose a link to open"
+msgstr "열 링크를 선택하세요"
+
+msgid "Duplicate"
+msgstr "중복"
+
+msgid "Copy to clipboard"
+msgstr "클립보드에 복사"
+
+msgid "to"
+msgstr "에"
+
+msgid "Creator"
+msgstr "작성자"
+
+msgid "Credit"
+msgstr "크레딧"
+
+msgid "Notice"
+msgstr "고지"
+
+msgid "File"
+msgstr "파일"
+
+msgid "Source"
+msgstr "소스"
+
+msgid "Copyright"
+msgstr "저작권"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Count"
+msgstr "개수"
+
+msgid "Favorite Searches"
+msgstr "즐겨찾는 검색어"
+
+msgid "Sidebar"
+msgstr "사이드바"
+
+msgid "Define what items are shown in the sidebar."
+msgstr "사이드바에 표시되는 항목을 정의합니다."
+
+msgid "Add a list of your favorite tags here to save time when tagging."
+msgstr "태그 지정 시 시간을 절약하려면 여기에 즐겨찾는 태그 목록을 추가하세요."
+
+msgid "Favorite Tags"
+msgstr "즐겨찾는 태그"
+
+msgid "Show labels"
+msgstr "라벨 표시"
+
+msgid "Show ratings"
+msgstr "평점 표시"
+
+msgid "Show drives"
+msgstr "드라이브 표시"
+
+msgid "Show history chart"
+msgstr "기록 차트 표시"
+
+msgid "Earliest year the history navigator offers. Empty works it out from your photos."
+msgstr "기록 탐색기가 제공하는 가장 이른 연도입니다. 비워 두면 사진에서 계산됩니다."
+
+msgid "Shows the eight years ending here."
+msgstr "여기서 끝나는 8년을 표시합니다."
+
+msgid "Show favorite searches"
+msgstr "즐겨찾는 검색어 표시"
+
+msgid "Show tags"
+msgstr "태그 표시"
+
+msgid "Show total items pie chart"
+msgstr "총 항목 원형 차트 표시"
+
+msgid "Show world map"
+msgstr "세계지도 표시"
+
+msgid "Darks"
+msgstr "어두운 톤"
+
+msgid "data"
+msgstr "데이터"
+
+msgid "File created:"
+msgstr "파일 생성일:"
+
+msgid "File modified:"
+msgstr "파일 수정일:"
+
+msgid "Metadata created:"
+msgstr "메타데이터 생성일:"
+
+msgid "Dates"
+msgstr "날짜"
+
+msgid "family food friends landscape nature night portrait selfie todo travel urban viewed"
+msgstr "가족 음식 친구 경치 자연 밤 초상화 셀카 할 일 여행 도시의 본"
+
+msgid "Defragment database."
+msgstr "데이터베이스 조각 모음."
+
+msgid "Defragmenting..."
+msgstr "조각 모음 중..."
+
+msgid "Failed to Delete Selected File."
+msgstr "선택한 파일을 삭제하지 못했습니다."
+
+msgid "Delete {}"
+msgstr "{} 삭제"
+
+msgid "Set the desktop background to the current image."
+msgstr "데스크탑 배경을 현재 이미지로 설정합니다."
+
+msgid "Destination folder:"
+msgstr "대상 폴더:"
+
+msgid "Capacity"
+msgstr "용량"
+
+msgid "Free//disk"
+msgstr "여유 공간"
+
+msgid "Label"
+msgstr "라벨"
+
+msgid "System"
+msgstr "시스템"
+
+msgid "Used"
+msgstr "사용됨"
+
+msgid "Documentation"
+msgstr "문서"
+
+msgid "Duplicates"
+msgstr "중복"
+
+msgid "Matching or possible copy items in the collection."
+msgstr "컬렉션의 일치하거나 가능한 복사 항목입니다."
+
+msgid "Editing"
+msgstr "편집"
+
+msgid "Close without ejecting"
+msgstr "꺼내지 않고 닫기"
+
+msgid "Failed to eject {}."
+msgstr "{}을 꺼내지 못했습니다."
+
+msgid "To avoid losing data, eject an external hard drive or USB drive before removing it."
+msgstr "데이터 손실을 방지하려면 외장 하드 드라이브나 USB 드라이브를 제거하기 전에 꺼내십시오."
+
+msgid "Eject {}"
+msgstr "{} 꺼내기"
+
+msgid "Connecting to MAPI..."
+msgstr "MAPI에 연결하는 중..."
+
+msgid "Convert all photos to JPEG"
+msgstr "모든 사진을 JPEG로 변환"
+
+msgid "Failed to send email using MAPI."
+msgstr "MAPI를 사용하여 이메일을 보내지 못했습니다."
+
+msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
+msgstr "사진을 최대 크기(픽셀 단위)로 제한합니다. JPEG 및 PNG 파일에만 지원됩니다."
+
+msgid "Processing {}"
+msgstr "{} 처리 중"
+
+msgid "Sending email using MAPI..."
+msgstr "MAPI를 사용하여 이메일을 보내는 중..."
+
+msgid "Create a draft in your desktop email client with the selected files attached. Originals are unchanged."
+msgstr "선택한 파일을 첨부한 임시 보관 메일을 데스크톱 이메일 클라이언트에서 만듭니다. 원본은 변경되지 않습니다."
+
+msgid "Zip files in the email"
+msgstr "이메일의 파일을 ZIP으로 압축"
+
+msgid "Empty"
+msgstr "비어 있음"
+
+msgid "Ending {}"
+msgstr "{} 종료"
+
+msgid "Security options denied access to the source."
+msgstr "보안 옵션이 소스에 대한 액세스를 거부했습니다."
+
+msgid "Diffractor has a serious problem and cannot continue."
+msgstr "Diffractor에 심각한 문제가 있어 계속할 수 없습니다."
+
+msgid "Could not connect to scanner"
+msgstr "스캐너에 연결할 수 없습니다"
+
+msgid "The destination file '{}' cannot be opened or created."
+msgstr "대상 파일 '{}'을(를) 열거나 생성할 수 없습니다."
+
+msgid "The destination folder '{}' cannot be opened or created."
+msgstr "대상 폴더 '{}'을(를) 열거나 생성할 수 없습니다."
+
+msgid "Diffractor cannot be started. The main window could not be created."
+msgstr "Diffractor를 시작할 수 없습니다. 메인창을 생성할 수 없습니다."
+
+msgid "The destination is a writable CD-ROM, possibly unformatted."
+msgstr "대상은 쓰기 가능한 CD-ROM이며 포맷되지 않았을 수 있습니다."
+
+msgid "The destination is a read-only CD-ROM, possibly unformatted."
+msgstr "대상은 읽기 전용 CD-ROM이며 포맷되지 않았을 수 있습니다."
+
+msgid "The destination is a read-only DVD, possibly unformatted."
+msgstr "대상은 읽기 전용 DVD이며 포맷되지 않았을 수 있습니다."
+
+msgid "The source and destination have the same parent folder."
+msgstr "원본과 대상의 상위 폴더가 동일합니다."
+
+msgid "The destination is a subtree of the source."
+msgstr "대상은 소스의 하위 트리입니다."
+
+msgid "Rename operation was specified but the destination path is a different directory. Use the move operation instead."
+msgstr "이름 바꾸기 작업이 지정되었지만 대상 경로가 다른 디렉터리입니다. 대신 이동 작업을 사용하세요."
+
+msgid "Destination is a root directory and cannot be renamed."
+msgstr "대상은 루트 디렉터리이므로 이름을 바꿀 수 없습니다."
+
+msgid "The destination path is an existing folder."
+msgstr "대상 경로가 기존 폴더입니다."
+
+msgid "The file involved in the operation is too large for the destination media or file system."
+msgstr "작업에 포함된 파일이 대상 미디어 또는 파일 시스템에 비해 너무 큽니다."
+
+msgid "The name of the file exceeds MAX_PATH."
+msgstr "파일 이름이 MAX_PATH를 초과합니다."
+
+msgid "The destination path is an existing file."
+msgstr "대상 경로가 기존 파일입니다."
+
+msgid "Index database failed."
+msgstr "인덱스 데이터베이스에 오류가 발생했습니다."
+
+msgid "The path in the source or destination or both was invalid."
+msgstr "원본이나 대상 또는 둘 다의 경로가 잘못되었습니다."
+
+msgid "The file name you have chosen '{}' is invalid."
+msgstr "선택한 '{}' 파일 이름이 잘못되었습니다."
+
+msgid "File names cannot contain the following characters:"
+msgstr "파일 이름에는 다음 문자가 포함될 수 없습니다:"
+
+msgid "The operation involved multiple destination paths, which can fail in the case of a move operation."
+msgstr "작업에 여러 대상 경로가 포함되어 있어 이동 작업 시 실패할 수 있습니다."
+
+msgid "Multiple file paths were specified in the source buffer, but only one destination file path."
+msgstr "소스 버퍼에 여러 파일 경로가 지정되었지만 대상 파일 경로는 하나만 지정되었습니다."
+
+msgid "MAX_PATH was exceeded during the operation."
+msgstr "작업 중에 MAX_PATH가 초과되었습니다."
+
+msgid "OleInitialize Failed"
+msgstr "OleInitialize 실패"
+
+msgid "An unspecified error occurred on the destination."
+msgstr "대상에서 지정되지 않은 오류가 발생했습니다."
+
+msgid "The operation was canceled."
+msgstr "작업이 취소되었습니다."
+
+msgid "The analysis was canceled."
+msgstr "분석이 취소되었습니다."
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "The source or destination path exceeded or would exceed MAX_PATH."
+msgstr "소스 또는 대상 경로가 MAX_PATH를 초과했거나 초과할 것입니다."
+
+msgid "Failed to rename."
+msgstr "이름을 바꾸지 못했습니다."
+
+msgid "The source and destination files are the same file."
+msgstr "소스 파일과 대상 파일이 동일한 파일입니다."
+
+msgid "Failed to save image."
+msgstr "이미지를 저장하지 못했습니다."
+
+msgid "Scanner reported an error"
+msgstr "스캐너에서 오류를 보고했습니다."
+
+msgid "The source is a writable CD-ROM, possibly unformatted."
+msgstr "소스는 쓰기 가능한 CD-ROM이며 포맷되지 않았을 수 있습니다."
+
+msgid "The source is a read-only CD-ROM, possibly unformatted."
+msgstr "소스는 읽기 전용 CD-ROM이며 포맷되지 않았을 수 있습니다."
+
+msgid "The source is a read-only DVD, possibly unformatted."
+msgstr "소스는 읽기 전용 DVD이며 포맷되지 않았을 수 있습니다."
+
+msgid "The source is a root directory, which cannot be moved or renamed."
+msgstr "소스는 이동하거나 이름을 바꿀 수 없는 루트 디렉터리입니다."
+
+msgid "Diffractor requires a processor with sse2."
+msgstr "Diffractor를 사용하려면 SSE2를 지원하는 프로세서가 필요합니다."
+
+msgid "An unknown error occurred."
+msgstr "알 수 없는 오류가 발생했습니다."
+
+msgid "Diffractor requires Windows 7 or newer."
+msgstr "Diffractor에는 Windows 7 이상이 필요합니다."
+
+msgid "Failed to register windows common control classes."
+msgstr "Windows 공통 컨트롤 클래스를 등록하지 못했습니다."
+
+msgid "Failed to initialize Winsock"
+msgstr "Winsock을 초기화하지 못했습니다."
+
+msgid "EXIF"
+msgstr "EXIF"
+
+msgid "Failed to create folder: {}"
+msgstr "폴더 생성 실패: {}"
+
+msgid "Add '{}' to favorites."
+msgstr "즐겨찾기에 '{}'를 추가하세요."
+
+msgid "Failed to add. Maximum number of favorites reached."
+msgstr "추가하지 못했습니다. 최대 즐겨찾기 수에 도달했습니다."
+
+msgid "Remove '{}' from favorite folders or searches."
+msgstr "즐겨찾는 폴더 또는 검색에서 '{}'을 제거합니다."
+
+msgid "Favorite title"
+msgstr "즐겨찾기 제목"
+
+msgid "Favorites are listed in the sidebar for quick access."
+msgstr "즐겨찾기는 빠른 액세스를 위해 사이드바에 나열됩니다."
+
+msgid "These items are in your collection."
+msgstr "이 항목들은 컬렉션에 있습니다."
+
+msgid "These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them."
+msgstr "이 항목은 컬렉션 밖에 있으므로 검색과 중복 감지의 대상이 아닙니다. 포함하려면 이 폴더를 컬렉션에 추가하세요."
+
+msgid "Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied."
+msgstr "컬렉션은 사용자가 선택한 폴더와 그 하위 폴더입니다. Diffractor가 이를 색인하므로 검색, 중복 감지, 합계가 한 번에 전체를 포함합니다. 폴더를 추가하거나 제거해도 Diffractor가 알고 있는 범위만 바뀔 뿐, 파일이 이동되거나 복사되지 않습니다."
+
+msgid "folder"
+msgstr "폴더"
+
+msgid "folders"
+msgstr "폴더"
+
+msgid "Folder"
+msgstr "폴더"
+
+msgid "videos"
+msgstr "비디오"
+
+msgid "A capella"
+msgstr "아카펠라"
+
+msgid "Abstract"
+msgstr "추상"
+
+msgid "Acid"
+msgstr "애시드"
+
+msgid "Acid Jazz"
+msgstr "애시드 재즈"
+
+msgid "Acid Punk"
+msgstr "애시드 펑크"
+
+msgid "Acoustic"
+msgstr "어쿠스틱"
+
+msgid "Action"
+msgstr "액션"
+
+msgid "Action & Adventure"
+msgstr "액션 & 어드벤처"
+
+msgid "Aerial"
+msgstr "공중"
+
+msgid "Alternative"
+msgstr "얼터너티브"
+
+msgid "AlternRock"
+msgstr "AlternRock"
+
+msgid "Ambient"
+msgstr "앰비언트"
+
+msgid "Analog"
+msgstr "아날로그"
+
+msgid "Animation"
+msgstr "애니메이션"
+
+msgid "Anime"
+msgstr "애니메이션"
+
+msgid "Architectural"
+msgstr "건축"
+
+msgid "Avantgarde"
+msgstr "아방가르드"
+
+msgid "Aviation"
+msgstr "항공"
+
+msgid "Ballad"
+msgstr "발라드"
+
+msgid "Bass"
+msgstr "베이스"
+
+msgid "Bebob"
+msgstr "비밥"
+
+msgid "Big Band"
+msgstr "빅밴드"
+
+msgid "Bluegrass"
+msgstr "블루그래스"
+
+msgid "Blues"
+msgstr "블루스"
+
+msgid "Booty Bass"
+msgstr "부티배스"
+
+msgid "Brazilian"
+msgstr "브라질 음악"
+
+msgid "Cabaret"
+msgstr "카바레"
+
+msgid "Candid"
+msgstr "스냅 사진"
+
+msgid "Celtic"
+msgstr "켈틱"
+
+msgid "Chamber Music"
+msgstr "실내악"
+
+msgid "Chanson"
+msgstr "샹송"
+
+msgid "Children's"
+msgstr "어린이"
+
+msgid "Chorus"
+msgstr "합창"
+
+msgid "Christian & Gospel"
+msgstr "기독교와 가스펠"
+
+msgid "Christian Rap"
+msgstr "크리스찬 랩"
+
+msgid "Classic"
+msgstr "클래식"
+
+msgid "Classic Rock"
+msgstr "클래식 록"
+
+msgid "Classical"
+msgstr "클래식"
+
+msgid "Close-up"
+msgstr "클로즈업"
+
+msgid "Cloudscape"
+msgstr "클라우드스케이프"
+
+msgid "Club"
+msgstr "클럽"
+
+msgid "Comedy"
+msgstr "코미디"
+
+msgid "Conceptual"
+msgstr "개념적"
+
+msgid "Concert"
+msgstr "콘서트"
+
+msgid "Concert Films"
+msgstr "콘서트 영화"
+
+msgid "Conservation"
+msgstr "보존"
+
+msgid "Country//genre"
+msgstr "컨트리"
+
+msgid "Cult"
+msgstr "컬트"
+
+msgid "Dance"
+msgstr "댄스"
+
+msgid "Dance Hall"
+msgstr "댄스홀"
+
+msgid "Darkwave"
+msgstr "다크웨이브"
+
+msgid "Death Metal"
+msgstr "데스메탈"
+
+msgid "Disco"
+msgstr "디스코"
+
+msgid "Documentary"
+msgstr "다큐멘터리"
+
+msgid "Drama"
+msgstr "드라마"
+
+msgid "Dream"
+msgstr "꿈"
+
+msgid "Drum Solo"
+msgstr "드럼 솔로"
+
+msgid "Duet"
+msgstr "듀엣"
+
+msgid "Easy Listening"
+msgstr "이지 리스닝"
+
+msgid "Electronic"
+msgstr "일렉트로닉"
+
+msgid "Ethnic"
+msgstr "민족"
+
+msgid "Eurodance"
+msgstr "유로댄스"
+
+msgid "Euro-House"
+msgstr "유로하우스"
+
+msgid "Euro-Techno"
+msgstr "유로테크노"
+
+msgid "Family"
+msgstr "가족"
+
+msgid "Fashion"
+msgstr "패션"
+
+msgid "Fast Fusion"
+msgstr "패스트 퓨전"
+
+msgid "Film still"
+msgstr "영화 스틸"
+
+msgid "Fine-art"
+msgstr "미술"
+
+msgid "Fire"
+msgstr "불"
+
+msgid "Fireworks"
+msgstr "불꽃놀이"
+
+msgid "Fitness & Workout"
+msgstr "피트니스 및 운동"
+
+msgid "Folk"
+msgstr "포크"
+
+msgid "Folk-Rock"
+msgstr "포크 록"
+
+msgid "Folklore"
+msgstr "민속"
+
+msgid "Food"
+msgstr "음식"
+
+msgid "Foreign"
+msgstr "외국"
+
+msgid "Forensic"
+msgstr "법의학"
+
+msgid "Freestyle"
+msgstr "프리스타일"
+
+msgid "Funk"
+msgstr "펑크"
+
+msgid "Fusion"
+msgstr "퓨전"
+
+msgid "Game//genre"
+msgstr "게임"
+
+msgid "Gangsta"
+msgstr "갱스터"
+
+msgid "Geo-photography"
+msgstr "지리사진"
+
+msgid "Glamour"
+msgstr "글래머"
+
+msgid "Gospel"
+msgstr "가스펠"
+
+msgid "Gothic"
+msgstr "고딕"
+
+msgid "Gothic Rock"
+msgstr "고딕 록"
+
+msgid "Grunge"
+msgstr "그런지"
+
+msgid "Hard Rock"
+msgstr "하드록"
+
+msgid "High-speed"
+msgstr "고속"
+
+msgid "High key"
+msgstr "하이 키"
+
+msgid "Hip-Hop"
+msgstr "힙합"
+
+msgid "Hip-Hop/Rap"
+msgstr "힙합/랩"
+
+msgid "Holiday"
+msgstr "휴일"
+
+msgid "Horror"
+msgstr "공포"
+
+msgid "House"
+msgstr "하우스"
+
+msgid "Humour"
+msgstr "유머"
+
+msgid "Independent"
+msgstr "독립"
+
+msgid "Industrial"
+msgstr "인더스트리얼"
+
+msgid "Instrumental"
+msgstr "기악"
+
+msgid "Instrumental Pop"
+msgstr "인스트루멘탈 팝"
+
+msgid "Instrumental Rock"
+msgstr "인스트루멘탈 록"
+
+msgid "Jazz"
+msgstr "재즈"
+
+msgid "Jazz + Funk"
+msgstr "재즈 + 펑크"
+
+msgid "Jungle"
+msgstr "정글"
+
+msgid "Kids"
+msgstr "어린이"
+
+msgid "Kids & Family"
+msgstr "어린이 및 가족"
+
+msgid "Kirlian"
+msgstr "키를리안"
+
+msgid "Landscape"
+msgstr "풍경"
+
+msgid "Latin"
+msgstr "라틴"
+
+msgid "Lifestyle"
+msgstr "라이프 스타일"
+
+msgid "Lo-fi"
+msgstr "로파이"
+
+msgid "Lomography"
+msgstr "로모그래피"
+
+msgid "Long-exposure"
+msgstr "장시간 노출"
+
+msgid "Low key"
+msgstr "로우 키"
+
+msgid "Macro"
+msgstr "매크로"
+
+msgid "Medical"
+msgstr "의료"
+
+msgid "Meditative"
+msgstr "명상적"
+
+msgid "Metal"
+msgstr "메탈"
+
+msgid "Monochrome"
+msgstr "흑백"
+
+msgid "Music Documentaries"
+msgstr "음악 다큐멘터리"
+
+msgid "Music Feature Films"
+msgstr "음악 장편 영화"
+
+msgid "Musical"
+msgstr "뮤지컬"
+
+msgid "Musicals"
+msgstr "뮤지컬"
+
+msgid "Narrative"
+msgstr "내러티브"
+
+msgid "National Folk"
+msgstr "내셔널 포크"
+
+msgid "Native American"
+msgstr "아메리카 원주민"
+
+msgid "New Age"
+msgstr "뉴에이지"
+
+msgid "New Wave"
+msgstr "뉴 웨이브"
+
+msgid "Night"
+msgstr "밤"
+
+msgid "Noise"
+msgstr "소음"
+
+msgid "Nonfiction"
+msgstr "논픽션"
+
+msgid "Oldies"
+msgstr "올디스"
+
+msgid "Opera"
+msgstr "오페라"
+
+msgid "Other"
+msgstr "기타"
+
+msgid "Panorama"
+msgstr "파노라마"
+
+msgid "Panoramic"
+msgstr "파노라마"
+
+msgid "Film Noir"
+msgstr "필름 누아르"
+
+msgid "Photo op"
+msgstr "포토 세션"
+
+msgid "Photobiography"
+msgstr "사진 전기"
+
+msgid "Photojournalism"
+msgstr "포토저널리즘"
+
+msgid "Photowalking"
+msgstr "포토워킹"
+
+msgid "Podcast"
+msgstr "팟캐스트"
+
+msgid "Polaroid"
+msgstr "폴라로이드"
+
+msgid "Polka"
+msgstr "폴카"
+
+msgid "Pop"
+msgstr "팝"
+
+msgid "Pop-Folk"
+msgstr "팝 포크"
+
+msgid "Pop/Funk"
+msgstr "팝/펑크"
+
+msgid "Porn Groove"
+msgstr "포르노 그루브"
+
+msgid "Portrait"
+msgstr "인물 사진"
+
+msgid "Power Ballad"
+msgstr "파워 발라드"
+
+msgid "Pranks"
+msgstr "장난"
+
+msgid "Primus"
+msgstr "프리머스"
+
+msgid "Progressive Rock"
+msgstr "프로그레시브 록"
+
+msgid "Psychadelic"
+msgstr "사이키델릭"
+
+msgid "Psychedelic Rock"
+msgstr "사이키델릭 록"
+
+msgid "Punk"
+msgstr "펑크"
+
+msgid "Punk Rock"
+msgstr "펑크 록"
+
+msgid "R&B"
+msgstr "R&B"
+
+msgid "Rap"
+msgstr "랩"
+
+msgid "Rave"
+msgstr "레이브"
+
+msgid "Reality TV"
+msgstr "리얼리티 TV"
+
+msgid "Reggae"
+msgstr "레게"
+
+msgid "Retro"
+msgstr "복고풍"
+
+msgid "Revival"
+msgstr "리바이벌"
+
+msgid "Rhythmic Soul"
+msgstr "리드믹 소울"
+
+msgid "Rock"
+msgstr "록"
+
+msgid "Rock & Roll"
+msgstr "락앤롤"
+
+msgid "Romance"
+msgstr "로맨스"
+
+msgid "Samba"
+msgstr "삼바"
+
+msgid "Satellite"
+msgstr "위성"
+
+msgid "Satire"
+msgstr "풍자"
+
+msgid "Sci-Fi & Fantasy"
+msgstr "SF 및 판타지"
+
+msgid "Short Films"
+msgstr "단편영화"
+
+msgid "Show tunes"
+msgstr "뮤지컬 넘버"
+
+msgid "Singer/Songwriter"
+msgstr "싱어송라이터"
+
+msgid "Ska"
+msgstr "스카"
+
+msgid "Slow Jam"
+msgstr "슬로우 잼"
+
+msgid "Slow Rock"
+msgstr "슬로우 록"
+
+msgid "Social"
+msgstr "소셜"
+
+msgid "Soft focus"
+msgstr "소프트 포커스"
+
+msgid "Sonata"
+msgstr "소나타"
+
+msgid "Soul"
+msgstr "소울"
+
+msgid "Sound Clip"
+msgstr "사운드클립"
+
+msgid "Soundtrack"
+msgstr "사운드트랙"
+
+msgid "Southern Rock"
+msgstr "서던록"
+
+msgid "Space"
+msgstr "공간"
+
+msgid "Special Interest"
+msgstr "특별 관심 분야"
+
+msgid "Speech"
+msgstr "연설"
+
+msgid "Sports"
+msgstr "스포츠"
+
+msgid "Star trail"
+msgstr "스타 트레일"
+
+msgid "Still life"
+msgstr "정물"
+
+msgid "Stock"
+msgstr "스톡 미디어"
+
+msgid "Street"
+msgstr "거리"
+
+msgid "Subminiature"
+msgstr "초소형"
+
+msgid "Swing"
+msgstr "스윙"
+
+msgid "Symphonic Rock"
+msgstr "심포닉 록"
+
+msgid "Symphony"
+msgstr "심포니"
+
+msgid "Tango"
+msgstr "탱고"
+
+msgid "Techno"
+msgstr "테크노"
+
+msgid "Techno-Industrial"
+msgstr "테크노 인더스트리얼"
+
+msgid "Teens"
+msgstr "십대"
+
+msgid "Thriller"
+msgstr "스릴러"
+
+msgid "Time-lapse"
+msgstr "시간 경과"
+
+msgid "Top 40"
+msgstr "상위 40위"
+
+msgid "Trailer"
+msgstr "예고편"
+
+msgid "Trance"
+msgstr "트랜스"
+
+msgid "Travel"
+msgstr "여행"
+
+msgid "Tribal"
+msgstr "트라이벌"
+
+msgid "Trip-Hop"
+msgstr "트립홉"
+
+msgid "Ultraviolet"
+msgstr "자외선"
+
+msgid "Underwater"
+msgstr "수중"
+
+msgid "Unknown"
+msgstr "알 수 없음"
+
+msgid "Urban"
+msgstr "도시"
+
+msgid "Vernacular"
+msgstr "버내큘러"
+
+msgid "Vintage"
+msgstr "빈티지"
+
+msgid "Vocal"
+msgstr "보컬"
+
+msgid "War"
+msgstr "전쟁"
+
+msgid "Western"
+msgstr "서부극"
+
+msgid "World"
+msgstr "세계"
+
+msgid "Group and sort items"
+msgstr "항목 그룹화 및 정렬"
+
+msgid "Items"
+msgstr "항목"
+
+msgid "No album or show"
+msgstr "앨범이나 프로그램 없음"
+
+msgid "No camera"
+msgstr "카메라 없음"
+
+msgid "No extension"
+msgstr "확장자 없음"
+
+msgid "No location"
+msgstr "위치 없음"
+
+msgid "No resolution"
+msgstr "해상도 없음"
+
+msgid "No rating"
+msgstr "평가 없음"
+
+msgid "No value"
+msgstr "값 없음"
+
+msgid "random"
+msgstr "무작위"
+
+msgid "{} to {}"
+msgstr "{}에서 {}로"
+
+msgid "Today"
+msgstr "오늘"
+
+msgid "Yesterday"
+msgstr "어제"
+
+msgid "{} has modifications"
+msgstr "{}에 수정 사항이 있습니다"
+
+msgid "Separate each artist with a comma ',' or slash '/'"
+msgstr "각 아티스트를 쉼표 ',' 또는 슬래시 '/'로 구분하세요."
+
+msgid "Help or more information"
+msgstr "도움말 또는 추가 정보"
+
+msgid "Send anonymous log information to Diffractor HQ."
+msgstr "익명의 로그 정보를 Diffractor HQ로 보냅니다."
+
+msgid "Tags can be removed by prefixing with a minus: -remove"
+msgstr "-remove 접두사를 붙여서 태그를 제거할 수 있습니다."
+
+msgid "Separate each tag with a space: Australia holiday camping."
+msgstr "각 태그를 공백으로 구분하세요: 호주 휴가 캠핑."
+
+msgid "Join 2 words together in one tag using quotes: \"national park\"."
+msgstr "따옴표를 사용하여 두 단어를 하나의 태그로 묶으세요: \"국립공원\"."
+
+msgid "Hide verbose metadata"
+msgstr "자세한 메타데이터 숨기기"
+
+msgid "Destination root folder. Structured folders will be created under this folder."
+msgstr "대상 루트 폴더. 이 폴더 아래에 구조화된 폴더가 생성됩니다."
+
+msgid "Source of import:"
+msgstr "가져오기 원본:"
+
+msgid "Ignore previously imported items."
+msgstr "이전에 가져온 항목을 무시합니다."
+
+msgid "Other folder"
+msgstr "기타 폴더"
+
+msgid "Destination folder structure:"
+msgstr "대상 폴더 구조:"
+
+msgid "Set file date created to metadata date created."
+msgstr "생성된 파일 날짜를 생성된 메타데이터 날짜로 설정합니다."
+
+msgid "Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."
+msgstr "조각 모음이나 정리를 수행하면 성능이 향상될 수 있습니다. 인덱스는 미디어 파일의 메타데이터 복사본을 저장합니다. 원본 파일에서 다시 빌드할 수 있습니다."
+
+msgid "The index is reporting errors. Restarting Diffractor is recommended."
+msgstr "인덱스에서 오류를 보고하고 있습니다. Diffractor를 다시 시작하는 것이 좋습니다."
+
+msgid "Maintenance"
+msgstr "유지보수"
+
+msgid "Currently the index database is {} in size and contains metadata from {} items."
+msgstr "현재 인덱스 데이터베이스의 크기는 {}이고 {} 항목의 메타데이터를 포함합니다."
+
+msgid "Indexing"
+msgstr "인덱싱"
+
+msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
+msgstr "검색, 중복, 합계를 완전하게 유지하기 위해 Diffractor가 컬렉션을 읽고 있습니다. 그동안에도 계속 탐색할 수 있습니다."
+
+msgid "invalid"
+msgstr "유효하지 않은"
+
+msgid "IPTC"
+msgstr "IPTC"
+
+msgid "'{}' is not a valid folder."
+msgstr "'{}'은(는) 유효한 폴더가 아닙니다."
+
+msgid "Show items rotated"
+msgstr "회전된 항목 표시"
+
+msgid "This item is shown oriented based on camera information. [{}]"
+msgstr "이 항목은 카메라 정보를 기준으로 방향이 표시됩니다. [{}]"
+
+msgid "Files are identical."
+msgstr "파일은 동일합니다."
+
+msgid "Files are different."
+msgstr "파일이 다릅니다."
+
+msgid "JPEG - Best compression for photos"
+msgstr "JPEG - 최고의 사진 압축"
+
+msgid "Keyboard"
+msgstr "키보드"
+
+msgid "press"
+msgstr "누르기"
+
+msgid "alt"
+msgstr "Alt"
+
+msgid "back"
+msgstr "뒤로"
+
+msgid "backspace"
+msgstr "백스페이스"
+
+msgid "Basics"
+msgstr "기본사항"
+
+msgid "browser-back"
+msgstr "브라우저 뒤로"
+
+msgid "browser-favorites"
+msgstr "브라우저 즐겨찾기"
+
+msgid "browser-forward"
+msgstr "브라우저 앞으로"
+
+msgid "browser-home"
+msgstr "브라우저 홈"
+
+msgid "browser-refresh"
+msgstr "브라우저 새로 고침"
+
+msgid "browser-search"
+msgstr "브라우저 검색"
+
+msgid "browser-stop"
+msgstr "브라우저 중지"
+
+msgid "ctrl"
+msgstr "컨트롤"
+
+msgid "Extend the current item selection and allow comparing of items."
+msgstr "현재 항목 선택을 확장하고 항목 비교를 허용합니다."
+
+msgid "del"
+msgstr "Del"
+
+msgid "down"
+msgstr "아래로"
+
+msgid "enter"
+msgstr "Enter"
+
+msgid "Opens an image full screen."
+msgstr "이미지를 전체 화면으로 엽니다."
+
+msgid "escape"
+msgstr "Esc"
+
+msgid "Gets you out of full screen, zoom or other modes."
+msgstr "전체 화면, 확대/축소 또는 기타 모드를 종료합니다."
+
+msgid "F1"
+msgstr "F1"
+
+msgid "F10"
+msgstr "F10"
+
+msgid "F11"
+msgstr "F11"
+
+msgid "F2"
+msgstr "F2"
+
+msgid "F3"
+msgstr "F3"
+
+msgid "F4"
+msgstr "F4"
+
+msgid "F5"
+msgstr "F5"
+
+msgid "F6"
+msgstr "F6"
+
+msgid "F7"
+msgstr "F7"
+
+msgid "F8"
+msgstr "F8"
+
+msgid "F9"
+msgstr "F9"
+
+msgid "File management"
+msgstr "파일 관리"
+
+msgid "Help"
+msgstr "도움말"
+
+msgid "insert"
+msgstr "Insert"
+
+msgid "left"
+msgstr "왼쪽"
+
+msgid "Move to the next or previous item."
+msgstr "다음 또는 이전 항목으로 이동합니다."
+
+msgid "media-next-track"
+msgstr "미디어-다음-트랙"
+
+msgid "media-play-pause"
+msgstr "미디어 재생 일시 정지"
+
+msgid "media-prev-track"
+msgstr "미디어 이전 트랙"
+
+msgid "media-stop"
+msgstr "미디어 정지"
+
+msgid "Navigation"
+msgstr "네비게이션"
+
+msgid "page-down"
+msgstr "페이지다운"
+
+msgid "["
+msgstr "["
+msgid "]"
+msgstr "]"
+
+msgid "+"
+msgstr "+"
+
+msgid "Options"
+msgstr "옵션"
+
+msgid "OR"
+msgstr "또는"
+
+msgid "Media playback"
+msgstr "미디어 재생"
+
+msgid "page-up"
+msgstr "페이지업"
+
+msgid "right"
+msgstr "오른쪽"
+
+msgid "Selection"
+msgstr "선택"
+
+msgid "shift"
+msgstr "Shift"
+
+msgid "space"
+msgstr "스페이스"
+
+msgid "tab"
+msgstr "탭"
+
+msgid "up"
+msgstr "위로"
+
+msgid "volume-down"
+msgstr "볼륨 낮추기"
+
+msgid "volume-mute"
+msgstr "볼륨 음소거"
+
+msgid "volume-up"
+msgstr "볼륨 업"
+
+msgid "km from"
+msgstr "킬로미터에서"
+
+msgid "Learn more at Diffractor.com"
+msgstr "Diffractor.com에서 자세히 알아보세요."
+
+msgid "Lights"
+msgstr "밝은 톤"
+
+msgid "Limit output to a maximum dimension (in pixels)."
+msgstr "출력을 최대 크기(픽셀 단위)로 제한합니다."
+
+msgid "Lossless compression"
+msgstr "무손실 압축"
+
+msgid "List of keyboard accelerators"
+msgstr "키보드 가속기 목록"
+
+msgid "Loading..."
+msgstr "로드 중..."
+
+msgid "No location selected."
+msgstr "선택한 위치가 없습니다."
+
+msgid "Overwrite GPS coordinates when setting a location."
+msgstr "위치 설정 시 GPS 좌표를 덮어씁니다."
+
+msgid "Location"
+msgstr "위치"
+
+msgid "Maximize image"
+msgstr "이미지 최대화"
+
+msgid "Media"
+msgstr "미디어"
+
+msgid "Add '{}'"
+msgstr "'{}' 추가"
+
+msgid "Move"
+msgstr "이동"
+
+msgid "Select All"
+msgstr "모두 선택"
+
+msgid "Undo"
+msgstr "실행 취소"
+
+msgid "Metadata"
+msgstr "메타데이터"
+
+msgid "Midtones"
+msgstr "중간톤"
+
+msgid "April"
+msgstr "4월"
+
+msgid "August"
+msgstr "8월"
+
+msgid "December"
+msgstr "12월"
+
+msgid "February"
+msgstr "2월"
+
+msgid "January"
+msgstr "1월"
+
+msgid "July"
+msgstr "7월"
+
+msgid "June"
+msgstr "6월"
+
+msgid "March"
+msgstr "3월"
+
+msgid "May"
+msgstr "5월"
+
+msgid "November"
+msgstr "11월"
+
+msgid "October"
+msgstr "10월"
+
+msgid "September"
+msgstr "9월"
+
+msgid "apr"
+msgstr "4월"
+
+msgid "aug"
+msgstr "8월"
+
+msgid "dec"
+msgstr "12월"
+
+msgid "feb"
+msgstr "2월"
+
+msgid "jan"
+msgstr "1월"
+
+msgid "jul"
+msgstr "7월"
+
+msgid "jun"
+msgstr "6월"
+
+msgid "mar"
+msgstr "3월"
+
+msgid "may"
+msgstr "5월"
+
+msgid "nov"
+msgstr "11월"
+
+msgid "oct"
+msgstr "10월"
+
+msgid "sep"
+msgstr "9월"
+
+msgid "Move source items."
+msgstr "소스 항목을 이동합니다."
+
+msgid "History"
+msgstr "기록"
+
+msgid "No items are selected"
+msgstr "선택한 항목이 없습니다."
+
+msgid "None"
+msgstr "없음"
+
+msgid "Cloud items are not supported."
+msgstr "클라우드 항목은 지원되지 않습니다."
+
+msgid "Folders are not supported."
+msgstr "폴더는 지원되지 않습니다."
+
+msgid "Items must be a photo or image."
+msgstr "항목은 사진이나 이미지여야 합니다."
+
+msgid "Readonly items are not supported."
+msgstr "읽기 전용 항목은 지원되지 않습니다."
+
+msgid "Cannot update metadata of readonly items."
+msgstr "읽기 전용 항목의 메타데이터를 업데이트할 수 없습니다."
+
+msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
+msgstr "Diffractor는 JPG, WEBP 및 PNG 이미지 파일만 저장하거나 업데이트할 수 있습니다."
+
+msgid "Nothing found."
+msgstr "아무것도 발견되지 않았습니다."
+
+msgid "Empty Folder"
+msgstr "빈 폴더"
+
+msgid "Search only covers folders in your collection."
+msgstr "검색은 컬렉션에 있는 폴더만 대상으로 합니다."
+
+msgid "of"
+msgstr "의"
+
+msgid "Open destination folder afterwards"
+msgstr "나중에 대상 폴더 열기"
+
+msgid "Open in file browser"
+msgstr "파일 브라우저에서 열기"
+
+msgid "Open Properties"
+msgstr "속성 열기"
+
+msgid "app"
+msgstr "앱"
+
+msgid "Open with app or tool"
+msgstr "앱이나 도구로 열기"
+
+msgid "Failed to open selected items."
+msgstr "선택한 항목을 열지 못했습니다."
+
+msgid "Open with {}"
+msgstr "{}로 열기"
+
+msgid "tool"
+msgstr "도구"
+
+msgid "Delay before showing the next item (in seconds)"
+msgstr "다음 항목을 표시하기 전 지연 시간(초)"
+
+msgid "Advanced"
+msgstr "고급"
+
+msgid "Application options"
+msgstr "응용 프로그램 옵션"
+
+msgid "When overwriting a photo with irreversible changes make an original backup copy"
+msgstr "되돌릴 수 없는 변경 사항으로 사진을 덮어쓰는 경우 원본 백업 복사본을 만드세요."
+
+msgid "Check for updates by connecting to the internet"
+msgstr "인터넷에 연결하여 업데이트 확인"
+
+msgid "Confirm when deleting items. Deleted items are moved to the recycle bin."
+msgstr "항목을 삭제할 때 확인하세요. 삭제된 항목은 휴지통으로 이동됩니다."
+
+msgid ""
+"Confirm when rotating one item. Rotating several items is always confirmed."
+msgstr "항목 하나를 회전할 때 확인하세요. 여러 항목의 회전은 항상 확인됩니다."
+
+msgid "JPEG save quality"
+msgstr "JPEG 저장 품질"
+
+msgid "WEBP save quality"
+msgstr "WEBP 저장 품질"
+
+msgid "When saving"
+msgstr "저장할 때"
+
+msgid "Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics."
+msgstr "Diffractor를 개선하는 데 도움을 주세요. Diffractor가 충돌하는 경우 익명 진단을 Diffractor HQ로 보냅니다. 개인 데이터는 전송되지 않으며 충돌 진단만 전송됩니다."
+
+msgid "Show application debugging information (for the programmers)."
+msgstr "애플리케이션 디버깅 정보를 표시합니다(프로그래머용)."
+
+msgid "Show hidden files"
+msgstr "숨겨진 파일 표시"
+
+msgid "Show photos rotated based on recorded camera orientation"
+msgstr "기록된 카메라 방향에 따라 회전된 사진 표시"
+
+msgid "Updates"
+msgstr "업데이트"
+
+msgid "Use hardware acceleration to draw the Diffractor user interface (requires restart)"
+msgstr "하드웨어 가속을 사용하여 Diffractor 사용자 인터페이스 그리기(다시 시작해야 함)"
+
+msgid "Use hardware acceleration to decode video (when available)"
+msgstr "하드웨어 가속을 사용하여 비디오 디코딩(가능한 경우)"
+
+msgid "Show an inset shadow surrounding the image view panel."
+msgstr "이미지 보기 패널 주위에 삽입 그림자를 표시합니다."
+
+msgid "Resume playing media from the last position played."
+msgstr "마지막으로 재생된 위치부터 미디어 재생을 재개합니다."
+
+msgid "Show tooltips with help on buttons and links."
+msgstr "버튼과 링크에 대한 도움말과 함께 도구 설명을 표시합니다."
+
+msgid "bottom-left"
+msgstr "왼쪽 하단"
+
+msgid "bottom-right"
+msgstr "오른쪽 하단"
+
+msgid "left-bottom"
+msgstr "왼쪽 아래"
+
+msgid "left-top"
+msgstr "왼쪽 상단"
+
+msgid "right-bottom"
+msgstr "오른쪽 아래"
+
+msgid "right-top"
+msgstr "오른쪽 상단"
+
+msgid "top-left"
+msgstr "왼쪽 상단"
+
+msgid "top-right"
+msgstr "오른쪽 상단"
+
+msgid "other"
+msgstr "기타"
+
+msgid "others"
+msgstr "기타"
+
+msgid "pasted"
+msgstr "붙여넣은"
+
+msgid "photo"
+msgstr "사진"
+
+msgid "photos"
+msgstr "사진"
+
+msgid "icon"
+msgstr "아이콘"
+
+msgid "Pixels are identical but files are different."
+msgstr "픽셀은 동일하지만 파일은 다릅니다."
+
+msgid "small"
+msgstr "작은"
+
+msgid "Pixels"
+msgstr "픽셀"
+
+msgid "PNG - Best for non photos"
+msgstr "PNG - 사진이 아닌 경우에 적합"
+
+msgid "Checking presence..."
+msgstr "존재 여부 확인 중..."
+
+msgid "Possible newer copy in collection"
+msgstr "컬렉션에 최신 사본이 있을 수 있음"
+
+msgid "This item is outside the collection. One or more possible newer copies exist in the collection."
+msgstr "이 항목은 컬렉션 외부에 있습니다. 컬렉션에 하나 이상의 가능한 최신 복사본이 있습니다."
+
+msgid "Outside collection; no possible copy identified"
+msgstr "컬렉션 외부; 가능한 복사본이 확인되지 않음"
+
+msgid "This item is outside the collection. No possible copy was identified in the collection."
+msgstr "이 항목은 컬렉션 외부에 있습니다. 컬렉션에서 가능한 복사본이 확인되지 않았습니다."
+
+msgid "Possible older copy in collection"
+msgstr "컬렉션에 오래된 사본이 있을 수 있음"
+
+msgid "This item is outside the collection. One or more possible older copies exist in the collection."
+msgstr "이 항목은 컬렉션 외부에 있습니다. 컬렉션에 하나 이상의 가능한 이전 복사본이 있습니다."
+
+msgid "Possible copy in collection"
+msgstr "컬렉션에 사본이 있을 수 있음"
+
+msgid "This item is outside the collection. One or more possible copies exist in the collection."
+msgstr "이 항목은 컬렉션 외부에 있습니다. 컬렉션에 가능한 복사본이 하나 이상 있습니다."
+
+msgid "In collection"
+msgstr "컬렉션에 있음"
+
+msgid "This item is in the collection."
+msgstr "이 항목은 컬렉션에 있습니다."
+
+msgid "Presence"
+msgstr "컬렉션 포함 여부"
+
+msgid "Showing fully rendered RAW photo."
+msgstr "완전히 렌더링된 RAW 사진을 표시합니다."
+
+msgid "Rendering RAW photo..."
+msgstr "RAW 사진 렌더링 중..."
+
+msgid "Show RAW preview if available (faster)"
+msgstr "가능한 경우 RAW 미리보기 표시(빠름)"
+
+msgid "Showing a RAW photo preview."
+msgstr "RAW 사진 미리보기를 표시합니다."
+
+msgid "Processing..."
+msgstr "처리 중..."
+
+msgid "Processing files"
+msgstr "파일 처리 중"
+
+msgid "Focal length 35mm equivalent"
+msgstr "초점 거리 35mm 상당"
+
+msgid "Album"
+msgstr "앨범"
+
+msgid "Album artist"
+msgstr "앨범 아티스트"
+
+msgid "Artist"
+msgstr "아티스트"
+
+msgid "Audio codec"
+msgstr "오디오 코덱"
+
+msgid "Bitrate"
+msgstr "비트레이트"
+
+msgid "Camera"
+msgstr "카메라"
+
+msgid "Camera manufacturer"
+msgstr "카메라 제조사"
+
+msgid "Channels"
+msgstr "채널"
+
+msgid "Comment"
+msgstr "코멘트"
+
+msgid "Composer"
+msgstr "작곡가"
+
+msgid "Copyright creator"
+msgstr "저작권 창작자"
+
+msgid "Copyright credit"
+msgstr "저작권 크레딧"
+
+msgid "Copyright notice"
+msgstr "저작권 고지"
+
+msgid "Copyright source"
+msgstr "저작권 출처"
+
+msgid "Copyright URL"
+msgstr "저작권 URL"
+
+msgid "Country//property"
+msgstr "국가"
+
+msgid "Created"
+msgstr "생성됨"
+
+msgid "Created exif"
+msgstr "EXIF 생성 시간"
+
+msgid "Description"
+msgstr "설명"
+
+msgid "Digitized"
+msgstr "디지털화됨"
+
+msgid "Dimensions"
+msgstr "이미지 크기"
+
+msgid "Disk"
+msgstr "디스크"
+
+msgid "Document Id"
+msgstr "문서 ID"
+
+msgid "Duration"
+msgstr "재생 시간"
+
+msgid "Encoder"
+msgstr "인코더"
+
+msgid "Encoding tool"
+msgstr "인코딩 도구"
+
+msgid "Episode"
+msgstr "에피소드"
+
+msgid "Exposure"
+msgstr "노출"
+
+msgid "Filename"
+msgstr "파일 이름"
+
+msgid "FNumber"
+msgstr "F번호"
+
+msgid "Focal length"
+msgstr "초점 거리"
+
+msgid "Game//property"
+msgstr "게임"
+
+msgid "Genre"
+msgstr "장르"
+
+msgid "Id"
+msgstr "ID"
+
+msgid "ISO"
+msgstr "ISO"
+
+msgid "Latitude"
+msgstr "위도"
+
+msgid "Lens"
+msgstr "렌즈"
+
+msgid "Longitude"
+msgstr "경도"
+
+msgid "Media category"
+msgstr "미디어 카테고리"
+
+msgid "Megapixels"
+msgstr "메가픽셀"
+
+msgid "Modified"
+msgstr "수정됨"
+
+msgid "Null"
+msgstr "널"
+
+msgid "Orientation"
+msgstr "방향"
+
+msgid "Performer"
+msgstr "출연자"
+
+msgid "Pixel format"
+msgstr "픽셀 형식"
+
+msgid "Place"
+msgstr "장소"
+
+msgid "Publisher"
+msgstr "출판사"
+
+msgid "Rating"
+msgstr "평점"
+
+msgid "Raw file"
+msgstr "RAW 파일"
+
+msgid "Sample rate"
+msgstr "샘플링 속도"
+
+msgid "Sample type"
+msgstr "샘플 유형"
+
+msgid "Season"
+msgstr "시즌"
+
+msgid "Show"
+msgstr "프로그램"
+
+msgid "Size"
+msgstr "크기"
+
+msgid "State"
+msgstr "주/도"
+
+msgid "Streams"
+msgstr "스트림"
+
+msgid "Synopsis"
+msgstr "시놉시스"
+
+msgid "Tag"
+msgstr "태그"
+
+msgid "Title"
+msgstr "제목"
+
+msgid "Track"
+msgstr "트랙"
+
+msgid "Video codec"
+msgstr "비디오 코덱"
+
+msgid "Year"
+msgstr "연도"
+
+msgid "age"
+msgstr "나이"
+
+msgid "and"
+msgstr "그리고"
+
+msgid "created"
+msgstr "생성됨"
+
+msgid "duplicates"
+msgstr "중복"
+
+msgid "dups"
+msgstr "중복"
+
+msgid "duplicate"
+msgstr "중복"
+
+msgid "modified"
+msgstr "수정됨"
+
+msgid "or"
+msgstr "또는"
+
+msgid "original"
+msgstr "원본"
+
+msgid "related"
+msgstr "관련"
+
+msgid "with"
+msgstr "와"
+
+msgid "without"
+msgstr "없이"
+
+msgid "Rate selected items"
+msgstr "선택한 항목 평가"
+
+msgid "Number keys 0-5"
+msgstr "숫자 키 0-5"
+
+msgid "Click {} to remove rating"
+msgstr "평가를 제거하려면 {}를 클릭하세요."
+
+msgid "Raw"
+msgstr "RAW"
+
+msgid "Remove Metadata"
+msgstr "메타데이터 제거"
+
+msgid "New name:"
+msgstr "새 이름:"
+
+msgid "When specifying a template:"
+msgstr "템플릿을 지정할 때:"
+
+msgid "Use '#' to specify position of the numeric sequence"
+msgstr "숫자 시퀀스의 위치를 지정하려면 '#'을 사용하세요."
+
+msgid "Use metadata templates '{property-name}' to include file properties in the name."
+msgstr "이름에 파일 속성을 포함하려면 메타데이터 템플릿 '{property-name}'를 사용하세요."
+
+msgid "For example:"
+msgstr "예를 들면:"
+
+msgid "photo-###"
+msgstr "사진-###"
+
+msgid "{year}-{month}-###"
+msgstr "{year}-{month}-###"
+
+msgid "travel-{country}-###"
+msgstr "travel-{country}-###"
+
+msgid "Template:"
+msgstr "템플릿:"
+
+msgid "Start at:"
+msgstr "시작 번호:"
+
+msgid "Repeat play single media item"
+msgstr "단일 미디어 항목 반복 재생"
+
+msgid "Clean database and reindex.\nAll data is regenerated."
+msgstr "데이터베이스를 정리하고 다시 색인을 생성합니다.\n모든 데이터가 재생성됩니다."
+
+msgid "Cleaning..."
+msgstr "정리 중..."
+
+msgid "retro"
+msgstr "복고풍"
+
+msgid "Saturation"
+msgstr "채도"
+
+msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
+msgstr "Diffractor는 {} 파일을 자르거나 회전하거나 색상을 지정할 수 없습니다. 파일을 JPEG로 저장할 수 있나요?"
+
+msgid "Save Changes"
+msgstr "변경 사항 저장"
+
+msgid "Save new photo"
+msgstr "새 사진 저장"
+
+msgid "Saving {}..."
+msgstr "{} 저장 중..."
+
+msgid "Failed to Scan."
+msgstr "스캔하지 못했습니다."
+
+msgid "All these terms"
+msgstr "이 모든 용어"
+
+msgid "Christmas"
+msgstr "크리스마스"
+
+msgid "Search in the collection"
+msgstr "컬렉션에서 검색"
+
+msgid "From"
+msgstr "시작"
+
+msgid "Until"
+msgstr "종료"
+
+msgid "Search in a folder"
+msgstr "폴더에서 검색"
+
+msgid "Last 7 days"
+msgstr "지난 7일"
+
+msgid "Located within"
+msgstr "내에 위치"
+
+msgid "None of these terms"
+msgstr "해당 용어 없음"
+
+msgid "Search criteria or folder"
+msgstr "검색 기준 또는 폴더"
+
+msgid "Photos"
+msgstr "사진"
+
+msgid "Select term"
+msgstr "용어 선택"
+
+msgid "Search in subfolders"
+msgstr "하위 폴더에서 검색"
+
+msgid "Searching..."
+msgstr "검색 중..."
+
+msgid "Select Folder..."
+msgstr "폴더 선택..."
+
+msgid "Select a location"
+msgstr "위치를 선택하세요"
+
+msgid "Selected items are in the date range:"
+msgstr "선택한 항목이 다음 기간에 속합니다:"
+
+msgid "Selected items [{}]"
+msgstr "선택된 항목 [{}]"
+
+msgid "Always show RAW photos (slower)"
+msgstr "항상 RAW 사진 표시(느림)"
+
+msgid "Show this RAW photo"
+msgstr "이 RAW 사진 표시"
+
+msgid "press R to view the items most closely related to this one"
+msgstr "R 키를 누르면 이 항목과 가장 관련이 깊은 항목을 표시합니다"
+
+msgid "Show verbose metadata"
+msgstr "자세한 메타데이터 표시"
+
+msgid "Album-Show"
+msgstr "앨범-프로그램"
+
+msgid "Group order (Default)"
+msgstr "그룹 순서(기본값)"
+
+msgid "Extension"
+msgstr "확장자"
+
+msgid "Type"
+msgstr "유형"
+
+msgid "Name"
+msgstr "이름"
+
+msgid "Resolution"
+msgstr "해상도"
+
+msgid "Rating-Label"
+msgstr "등급 라벨"
+
+msgid "Staring"
+msgstr "출연"
+
+msgid "New Starting Date (local time):"
+msgstr "새로운 시작일(현지 시간):"
+
+msgid "Starting {}"
+msgstr "{} 시작 중"
+
+msgid "Preparing to convert files..."
+msgstr "파일 변환 준비 중..."
+
+msgid "Preparing to import files..."
+msgstr "파일 가져오기 준비 중..."
+
+msgid "Preparing files for email..."
+msgstr "이메일 전송을 위해 파일 준비 중..."
+
+msgid "Share"
+msgstr "공유"
+
+msgid "Preparing files to share..."
+msgstr "공유할 파일 준비 중..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "파일을 받을 수 있는 앱이 Windows에 표시됩니다. 원본은 변경되지 않습니다."
+
+msgid "Send the files as one zip file"
+msgstr "파일을 하나의 ZIP 파일로 보내기"
+
+msgid "&Share"
+msgstr "공유(&S)"
+
+msgid "The files could not be shared."
+msgstr "파일을 공유하지 못했습니다."
+
+msgid "Preparing to synchronize files..."
+msgstr "파일 동기화 준비 중..."
+
+msgid "Straighten"
+msgstr "기울기 보정"
+
+msgid "Auto color"
+msgstr "자동 색상"
+
+msgid "Copy item path"
+msgstr "항목 경로 복사"
+
+msgid "Auto document"
+msgstr "문서 자동 보정"
+
+msgid "Auto straighten"
+msgstr "자동 기울기 보정"
+
+msgid "Original"
+msgstr "원본"
+
+msgid "Preview"
+msgstr "미리 보기"
+
+msgid "Automatically improve exposure and color balance"
+msgstr "노출과 색상 균형을 자동으로 개선"
+
+msgid "Automatically straighten horizontal and vertical lines"
+msgstr "수평선과 수직선을 자동으로 보정"
+
+msgid "Show the final cropped image"
+msgstr "최종 자른 이미지 표시"
+
+msgid "Horizontal perspective"
+msgstr "수평 원근"
+
+msgid "Vertical perspective"
+msgstr "수직 원근"
+
+msgid "Temperature"
+msgstr "색온도"
+
+msgid "Tint"
+msgstr "색조"
+
+msgid "Stream {}"
+msgstr "스트림 {}"
+
+msgid "subtitle"
+msgstr "자막"
+
+msgid "Support"
+msgstr "지원"
+
+msgid "Synchronize whole collection"
+msgstr "전체 컬렉션 동기화"
+
+msgid "copy local"
+msgstr "로컬 복사"
+
+msgid "copy remote"
+msgstr "원격 복사"
+
+msgid "delete local"
+msgstr "로컬 삭제"
+
+msgid "delete remote"
+msgstr "원격 삭제"
+
+msgid "Files changed after analysis. Analyze again to review the updated actions."
+msgstr "분석 후 파일이 변경되었습니다. 다시 분석하여 업데이트된 작업을 검토하세요."
+
+msgid "Local files to delete: {}. Remote files to delete: {}."
+msgstr "삭제할 로컬 파일: {}. 삭제할 원격 파일: {}."
+
+msgid "Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin."
+msgstr "동기화하면 파일이 영구적으로 삭제됩니다. 이러한 파일은 휴지통에서 복구할 수 없습니다."
+
+msgid "The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin."
+msgstr "기존 파일을 덮어씁니다. 현재 내용은 휴지통에서 복구할 수 없습니다."
+
+msgid "Delete local files that do not exist remotely"
+msgstr "원격에 존재하지 않는 로컬 파일 삭제"
+
+msgid "Delete remote files that do not exist locally"
+msgstr "로컬에 존재하지 않는 원격 파일 삭제"
+
+msgid "c:\\photos with \\\\nas\\\\backup"
+msgstr "c:\\photos 및 \\\\nas\\\\backup"
+
+msgid "Local folders"
+msgstr "로컬 폴더"
+
+msgid "Copy newer local files to remote folders"
+msgstr "최신 로컬 파일을 원격 폴더에 복사"
+
+msgid "Synchronize only one folder"
+msgstr "하나의 폴더만 동기화"
+
+msgid "Remote folder"
+msgstr "원격 폴더"
+
+msgid "Copy newer remote files to local folders"
+msgstr "최신 원격 파일을 로컬 폴더에 복사"
+
+msgid "Tags to add or remove:"
+msgstr "추가하거나 제거할 태그:"
+
+msgid "Add or remove Tags"
+msgstr "태그 추가 또는 제거"
+
+msgid "Tag selected items"
+msgstr "선택한 항목에 태그 지정"
+
+msgid "Common Tags"
+msgstr "공통 태그"
+
+msgid "Removable Tags"
+msgstr "제거 가능한 태그"
+
+msgid "Tags"
+msgstr "태그"
+
+msgid "false"
+msgstr "거짓"
+
+msgid "true"
+msgstr "참"
+
+msgid "Diffractor ERROR"
+msgstr "Diffractor 오류"
+
+msgid "folder:{}"
+msgstr "폴더:{}"
+
+msgid "rate"
+msgstr "평가"
+
+msgid "Updating..."
+msgstr "업데이트 중..."
+
+msgid "Reset color adjustments"
+msgstr "색상 조정 재설정"
+
+msgid "Color, straighten or crop photos."
+msgstr "사진에 색상을 지정하고, 교정하고, 자릅니다."
+
+msgid "Toggle full screen for media-items or open non-media-items."
+msgstr "미디어 항목에 대해 전체 화면을 전환하거나 미디어 항목이 아닌 항목을 엽니다."
+
+msgid "Change language"
+msgstr "언어 변경"
+
+msgid "Contains common folders, searches and favorites"
+msgstr "공통 폴더, 검색 및 즐겨찾기가 포함되어 있습니다."
+
+msgid "Open selected items with external app"
+msgstr "외부 앱으로 선택한 항목 열기"
+
+msgid "Pinned items stay selected. Use this when you want to quickly compare an item to other items."
+msgstr "고정된 항목은 선택된 상태로 유지됩니다. 특정 항목을 다른 항목과 빠르게 비교하고 싶을 때 사용하세요."
+
+msgid "Reset straighten and rotate"
+msgstr "기울기 보정 및 회전 재설정"
+
+msgid "Tag or un-tag selected items"
+msgstr "선택한 항목에 태그 지정 또는 태그 해제"
+
+msgid "Toggle between thumbnails or details for selected item group"
+msgstr "선택한 항목 그룹의 썸네일 또는 세부정보 간 전환"
+
+msgid "Toggle between thumbnails or details view"
+msgstr "썸네일 또는 세부정보 보기 간 전환"
+
+msgid "Process selected items"
+msgstr "선택한 항목 처리"
+
+msgid "More options and controls"
+msgstr "추가 옵션 및 컨트롤"
+
+msgid "{} ({}) total items in {} folders."
+msgstr "총 {}({})개 항목, {}개 폴더."
+
+msgid "Truncated at 1MB"
+msgstr "1MB에서 잘림"
+
+msgid "Type to search"
+msgstr "검색하려면 입력하세요."
+
+msgid "Unselect {}"
+msgstr "{} 선택 취소"
+
+msgid "Update"
+msgstr "업데이트"
+
+msgid "Version {} of Diffractor is available."
+msgstr "Diffractor 버전 {}을(를) 사용할 수 있습니다."
+
+msgid "Update available"
+msgstr "업데이트 가능"
+
+msgid "You are currently using version {}."
+msgstr "현재 {} 버전을 사용하고 있습니다."
+
+msgid "Update failed."
+msgstr "업데이트에 실패했습니다."
+
+msgid "Download and install now. Diffractor will need to be closed briefly during the install."
+msgstr "지금 다운로드하여 설치하세요. 설치 중에 Diffractor를 잠시 닫아야 합니다."
+
+msgid "Version {} of Diffractor is available. You are currently using version {}."
+msgstr "Diffractor 버전 {}을(를) 사용할 수 있습니다. 현재 {} 버전을 사용하고 있습니다."
+
+msgid "More info"
+msgstr "추가 정보"
+
+msgid "Learn more about this update at Diffractor.com"
+msgstr "Diffractor.com에서 이 업데이트에 대해 자세히 알아보세요."
+
+msgid "Not now"
+msgstr "지금은 아님"
+
+msgid "Remind me again in a week"
+msgstr "일주일 후에 다시 알림"
+
+msgid "Please wait while the update is downloaded..."
+msgstr "업데이트가 다운로드되는 동안 잠시 기다려 주십시오..."
+
+msgid "Version"
+msgstr "버전"
+
+msgid "Vibrance"
+msgstr "생동감"
+
+msgid "video"
+msgstr "비디오"
+
+msgid "WEBP - Best for the web"
+msgstr "WEBP - 웹에 가장 적합"
+
+msgid "XMP"
+msgstr "XMP"
+
+msgid "ICC"
+msgstr "ICC"
+
+msgid "press ctrl+space"
+msgstr "ctrl+space 누르기"
+
+msgid "Scope"
+msgstr "범위"
+
+msgid "Value"
+msgstr "값"
+
+msgid "Volume 200%"
+msgstr "볼륨 200%"
+
+msgid "Volume 100%"
+msgstr "볼륨 100%"
+
+msgid "Volume 75%"
+msgstr "볼륨 75%"
+
+msgid "Volume 50%"
+msgstr "볼륨 50%"
+
+msgid "Volume 25%"
+msgstr "볼륨 25%"
+
+msgid "Mute"
+msgstr "음소거"
+
+msgid "Autoplay selected media"
+msgstr "선택한 미디어 자동 재생"
+
+msgid "Resume playing media from last position"
+msgstr "마지막 위치에서 미디어 재생 재개"
+
+msgid "Repeat play one item"
+msgstr "한 항목 반복 재생"
+
+msgid "Repeat play all media items"
+msgstr "모든 미디어 항목 반복 재생"
+
+msgid "Don't repeat"
+msgstr "반복 안 함"
+
+msgid "Playback Options"
+msgstr "재생 옵션"
+
+msgid "Playback"
+msgstr "재생"
+
+msgid "Filter items"
+msgstr "항목 필터링"
+
+msgid "Photo filter"
+msgstr "사진 필터"
+
+msgid "Video filter"
+msgstr "비디오 필터"
+
+msgid "Audio filter"
+msgstr "오디오 필터"
+
+msgid "Show {} filtered out items"
+msgstr "필터링된 항목 {}개 표시"
+
+msgid "The collection contains {} items created on {}."
+msgstr "컬렉션에는 {}개 항목이 있으며 {}에 생성되었습니다."
+
+msgid "Show all tags"
+msgstr "모든 태그 표시"
+
+msgid "Show only favorite tags"
+msgstr "즐겨찾는 태그만 표시"
+
+msgid "Show only favorite tags in the sidebar"
+msgstr "사이드바에 즐겨찾는 태그만 표시"
+
+msgid "Destination"
+msgstr "대상"
+
+msgid "Old name"
+msgstr "이전 이름"
+
+msgid "New name"
+msgstr "새 이름"
+
+msgid "Local"
+msgstr "로컬"
+
+msgid "Remote"
+msgstr "원격"
+
+msgid "Status"
+msgstr "상태"
+
+msgid "Message"
+msgstr "메시지"
+
+msgid "import"
+msgstr "가져오기"
+
+msgid "exists"
+msgstr "이미 있음"
+
+msgid "previously imported"
+msgstr "이전에 가져옴"
+
+msgid "ignore"
+msgstr "무시"
+
+msgid "Click analyze to show items"
+msgstr "항목을 표시하려면 분석을 클릭하세요."
+
+msgid "Rotate {first-name}."
+msgid_plural "Rotate {count} selected items. Originals will be overwritten."
+msgstr[0] "{first-name}를 회전합니다."
+msgstr[1] "선택한 항목 {count}개를 회전합니다. 원본을 덮어씁니다."
+
+msgid "1 folder"
+msgid_plural "{count} folders"
+msgstr[0] "폴더 1개"
+msgstr[1] "{count}개 폴더"
+
+msgid "{count} item"
+msgid_plural "{count} items"
+msgstr[0] "{count}개 항목"
+msgstr[1] "{count}개 항목"
+
+msgid "1 item here"
+msgid_plural "{count} items here"
+msgstr[0] "여기에 1개 항목"
+msgstr[1] "여기에 {count}개 항목"
+
+msgid "Set rating to 1 star"
+msgid_plural "Set rating to {count} stars"
+msgstr[0] "평가를 별 1개로 설정"
+msgstr[1] "평가를 별 {count}개로 설정"
+
+msgid "Cannot process {first-name}."
+msgid_plural "Cannot process {first-name} and {other} other items."
+msgstr[0] "{first-name}를 처리할 수 없습니다."
+msgstr[1] "{first-name} 및 기타 항목 {other}개를 처리할 수 없습니다."
+
+msgid "{first-name} will be renamed."
+msgid_plural "{count} items will be renamed."
+msgstr[0] "{first-name}로 이름이 변경됩니다."
+msgstr[1] "항목 {count}개의 이름이 변경됩니다."
+
+msgid "1 duplicate item"
+msgid_plural "{count} duplicate items"
+msgstr[0] "중복 항목 1개"
+msgstr[1] "중복 항목 {count}개"
+
+msgid "1 sidecar item"
+msgid_plural "{count} sidecar items"
+msgstr[0] "사이드카 항목 1개"
+msgstr[1] "사이드카 항목 {count}개"
+
+msgid "{count} of 1 item was processed."
+msgid_plural "{count} of {total} items were processed."
+msgstr[0] "1개 항목의 {count}가 처리되었습니다."
+msgstr[1] "전체 {total}개 항목 중 {count}개가 처리되었습니다."
+
+msgid "1 item was processed."
+msgid_plural "{count} items were processed."
+msgstr[0] "1개 항목이 처리되었습니다."
+msgstr[1] "항목 {count}개가 처리되었습니다."
+
+msgid "{first-name} failed."
+msgid_plural "{count} items failed."
+msgstr[0] "{first-name}가 실패했습니다."
+msgstr[1] "항목 {count}개를 처리하지 못했습니다."
+
+msgid "{first-name} was ignored."
+msgid_plural "{count} items were ignored."
+msgstr[0] "{first-name}가 무시되었습니다."
+msgstr[1] "항목 {count}개가 무시되었습니다."
+
+msgid "{first-name} was ignored because it exists already in the destination location."
+msgid_plural "{count} items were ignored because they exist already in the destination location."
+msgstr[0] "{first-name}는 대상 위치에 이미 존재하므로 무시되었습니다."
+msgstr[1] "{count} 항목은 대상 위치에 이미 존재하므로 무시되었습니다."
+
+msgid "{first-name} was ignored because it was previously imported."
+msgid_plural "{count} items were ignored because they were previously imported."
+msgstr[0] "{first-name}는 이전에 가져왔기 때문에 무시되었습니다."
+msgstr[1] "{count} 항목은 이전에 가져왔기 때문에 무시되었습니다."
+
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "항목 1개를 가져왔지만 생성 날짜를 설정할 수 없습니다."
+msgstr[1] "항목 {count}개를 가져왔지만 생성 날짜를 설정할 수 없습니다."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "Windows에서 재활용할 수 있으면 {first-name}이(가) 휴지통으로 이동됩니다."
+msgstr[1] "Windows에서 재활용할 수 있으면 {count}개 항목({size})이(가) 휴지통으로 이동됩니다."
+
+msgid "{first-name} will be permanently deleted."
+msgid_plural "{count} items ({size}) will be permanently deleted."
+msgstr[0] "{first-name}가 영구적으로 삭제됩니다."
+msgstr[1] "{count} 항목({size})이 영구적으로 삭제됩니다."
+
+msgid "You are about to delete {count} item."
+msgid_plural "You are about to delete {count} items."
+msgstr[0] "{count} 항목을 삭제하려고 합니다."
+msgstr[1] "{count} 항목을 삭제하려고 합니다."
+
+msgid "These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin."
+msgstr "이러한 항목은 네트워크 경로에 있습니다. 영구적으로 삭제되며 휴지통에서 복구할 수 없습니다."
+
+msgid "{first-name} will be copied."
+msgid_plural "{count} items ({size}) will be copied."
+msgstr[0] "{first-name}가 복사됩니다."
+msgstr[1] "{count} 항목({size})이 복사됩니다."
+
+msgid "{first-name} will be moved."
+msgid_plural "{count} items ({size}) will be moved."
+msgstr[0] "{first-name}가 이동됩니다."
+msgstr[1] "{count} 항목({size})이 이동됩니다."
+
+msgid "{first-name} will be updated."
+msgid_plural "{count} items will be updated."
+msgstr[0] "{first-name}가 업데이트됩니다."
+msgstr[1] "{count} 항목이 업데이트됩니다."
+
+msgid "Add or overwrite specific metadata in {first-name}."
+msgid_plural "Add or overwrite specific metadata in {count} items."
+msgstr[0] "{first-name}에 특정 메타데이터를 추가하거나 덮어씁니다."
+msgstr[1] "{count} 항목에 특정 메타데이터를 추가하거나 덮어씁니다."
+
+msgid "{first-name} will be converted and copied to a folder."
+msgid_plural "{count} items will be converted and copied to a folder."
+msgstr[0] "{first-name}가 변환되어 폴더에 복사됩니다."
+msgstr[1] "{count} 항목이 변환되어 폴더에 복사됩니다."
+
+msgid "{first-name} will have tags added or removed."
+msgid_plural "{count} items will have tags added or removed."
+msgstr[0] "{first-name}에는 태그가 추가되거나 제거됩니다."
+msgstr[1] "{count} 항목에는 태그가 추가되거나 제거됩니다."
+
+msgid "{first-name} will have the date adjusted."
+msgid_plural "{count} items will have the date adjusted."
+msgstr[0] "{first-name}에서는 날짜가 조정됩니다."
+msgstr[1] "항목 {count}개의 날짜가 조정됩니다."
+
+msgid "A desktop email draft will be opened with {first-name} attached."
+msgid_plural "A desktop email draft will be opened with {count} selected items attached."
+msgstr[0] "{first-name}을(를) 첨부한 임시 보관 메일이 데스크톱 이메일 클라이언트에서 열립니다."
+msgstr[1] "선택한 항목 {count}개를 첨부한 임시 보관 메일이 데스크톱 이메일 클라이언트에서 열립니다."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name}을(를) 선택하는 앱으로 보냅니다."
+msgstr[1] "선택한 항목 {count}개를 선택하는 앱으로 보냅니다."
+
+msgid "{first-name} already exists. Do you want to replace it?"
+msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
+msgstr[0] "{first-name}가 이미 존재합니다. 교체하시겠습니까?"
+msgstr[1] "{first-name} 및 {other} 다른 항목이 이미 존재합니다. 교체하시겠습니까?"
+
+msgid "{first-name} will have existing GPS position metadata overwritten."
+msgid_plural "{first-name} and {other} other items will have existing GPS position metadata overwritten."
+msgstr[0] "{first-name}는 기존 GPS 위치 메타데이터를 덮어씁니다."
+msgstr[1] "{first-name} 및 {other} 기타 항목은 기존 GPS 위치 메타데이터를 덮어쓰게 됩니다."
+
+msgid "Choose a valid new starting date and time."
+msgstr "유효한 새 시작 날짜와 시간을 선택하세요."
+
+msgid "Windows could not stage the selected items for disc burning."
+msgstr "Windows에서 선택한 항목을 디스크 굽기용으로 준비하지 못했습니다."
+
+msgid "The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc."
+msgstr "선택한 항목이 Windows 디스크 굽기 기능에 준비됩니다. Windows의 안내에 따라 디스크를 기록하세요."
+
+msgid "&Stage files"
+msgstr "파일 굽기 준비(&S)"
+
+msgid "Email draft was canceled."
+msgstr "이메일 임시 보관 메일 작성이 취소되었습니다."
+
+msgid "Maximum dimension must be at least 1 pixel."
+msgstr "최대 크기는 1픽셀 이상이어야 합니다."
+
+msgid "Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged."
+msgstr "업데이트할 메타데이터 필드를 하나 이상 선택하세요. 선택한 빈 필드는 기존 값을 지우고, 선택하지 않은 필드는 변경하지 않습니다."
+
+msgid "{first-name} was canceled."
+msgid_plural "{count} items were canceled."
+msgstr[0] "{first-name}에 대한 작업이 취소되었습니다."
+msgstr[1] "항목 {count}개에 대한 작업이 취소되었습니다."
+
+msgid "{first-name} will be staged for disc burning."
+msgid_plural "{count} selected items ({size}) will be staged for disc burning."
+msgstr[0] "{first-name}을(를) 디스크 굽기용으로 준비합니다."
+msgstr[1] "선택한 항목 {count}개({size})를 디스크 굽기용으로 준비합니다."
+
+msgid "Detect and straighten a photographed document"
+msgstr "촬영한 문서를 감지하고 똑바르게 보정"
+
+msgid "Failed to Initialize Direct3d"
+msgstr "Direct3D를 초기화하지 못했습니다"
+
+msgid "Navigator"
+msgstr "내비게이터"
+
+msgid "Flip comparison panes"
+msgstr "비교 창 바꾸기"
+
+msgid "Auto-hide"
+msgstr "자동 숨기기"
+
+msgid "Off"
+msgstr "끄기"
+
+msgid "Slideshow"
+msgstr "슬라이드 쇼"
+
+
+msgid "Altitude"
+msgstr "고도"
+
+msgid "GPS speed"
+msgstr "GPS 속도"
+
+msgid "In flight"
+msgstr "비행 중"
+
+msgid "{} m"
+msgstr "{} m"
+
+msgid "{} m underwater"
+msgstr "수심 {} m"
+
+msgid "Cancel was pressed after {}"
+msgstr "{} 후에 취소를 눌렀습니다"
+
+msgid "Apply tags"
+msgstr "태그 적용"
+
+msgid "Item"
+msgstr "항목"
+
+msgid "Tags after run"
+msgstr "실행 후 태그"
+
+msgid "Enter one or more tags to add or remove."
+msgstr "추가하거나 제거할 태그를 하나 이상 입력하세요."
+
+msgid "no change"
+msgstr "변경 없음"
+
+msgid "Select items to tag"
+msgstr "태그를 지정할 항목을 선택하세요"
+
+msgid "Cancel operation"
+msgstr "작업 취소"
+
+msgid "{} is still running. Cancel it and close?"
+msgstr "{}이(가) 아직 실행 중입니다. 취소하고 닫을까요?"
+
+msgid "Keep running"
+msgstr "계속 실행"
+
+msgid "Location unavailable"
+msgstr "위치를 사용할 수 없음"
+
+msgid "{} could not be opened. It may be disconnected, renamed or removed."
+msgstr "{}을(를) 열 수 없습니다. 연결이 끊겼거나 이름이 바뀌었거나 삭제되었을 수 있습니다."
+
+msgid "Try again"
+msgstr "다시 시도"
+
+msgid "Go to the parent folder"
+msgstr "상위 폴더로 이동"
+
+msgid "{} is still running. Close it before browsing somewhere else."
+msgstr "{}이(가) 아직 실행 중입니다. 다른 곳을 탐색하기 전에 닫으세요."
+
+msgid "If the destination already exists:"
+msgstr "대상이 이미 있는 경우:"
+
+msgid "Replace"
+msgstr "바꾸기"
+
+msgid "Skip"
+msgstr "건너뛰기"
+
+msgid "Auto-rename"
+msgstr "자동 이름 변경"
+
+msgid "Block run"
+msgstr "실행 차단"
+
+msgid "File exists"
+msgstr "파일 있음"
+
+msgid "Choose a destination folder."
+msgstr "대상 폴더를 선택하십시오."
+
+msgid "Enter a maximum dimension in pixels."
+msgstr "최대 크기를 픽셀 단위로 입력하십시오."
+
+msgid "Check one or more fields to change."
+msgstr "변경할 필드를 하나 이상 선택하십시오."
+
+msgid "Select items before using this tool"
+msgstr "이 도구를 사용하기 전에 항목을 선택하십시오"
+
+msgid "Success"
+msgstr "성공"
+
+msgid "Failed"
+msgstr "실패"
+
+msgid "Skipped"
+msgstr "건너뜀"
+
+msgid "Not run"
+msgstr "실행 안 함"
+
+msgid "These are the results of a finished run. Refresh to plan again with the current settings."
+msgstr "완료된 실행의 결과입니다. 현재 설정으로 다시 계획하려면 새로 고치십시오."
+
+msgid "{} destinations already exist. Choose Replace, Skip or Auto-rename."
+msgstr "대상 {}개가 이미 있습니다. 바꾸기, 건너뛰기 또는 자동 이름 변경을 선택하세요."
+
+msgid "{} items will be skipped because the destination exists."
+msgstr "대상이 이미 있으므로 항목 {}개를 건너뜁니다."
+
+msgid "{} existing destinations will be replaced."
+msgstr "기존 대상 {}개가 대체됩니다."
+
+msgid "{} items will be given a new name to avoid a collision."
+msgstr "충돌을 피하기 위해 항목 {}개에 새 이름이 지정됩니다."
+
+msgid "Distance: {}"
+msgstr "거리: {}"
+
+msgid "Change how far from this place to search"
+msgstr "이 장소에서 얼마나 멀리까지 검색할지 변경합니다"
+
+msgid "N,NE,E,SE,S,SW,W,NW"
+msgstr "북,북동,동,남동,남,남서,서,북서"
+
+msgid "{} {} of {}"
+msgstr "{} {} ({})"
+
+msgid "Near {}"
+msgstr "{} 부근"
+
+msgid "Remote area"
+msgstr "외딴 지역"
+
+msgid "Nothing within {} of {}."
+msgstr "{} 이내에 결과 없음 ({})."
+
+msgid "Nothing found at {}."
+msgstr "{}에 결과 없음."
+
+msgid "Widen to {}"
+msgstr "{}(으)로 넓히기"
+
+msgid "Search all places named {}"
+msgstr "{}(이)라는 이름의 모든 장소 검색"
+
+msgid "Show items with no location"
+msgstr "위치 없는 항목 표시"
+
+msgid "Search within {} of {}"
+msgstr "{} 이내 검색 ({})"
+
+msgid "High altitude"
+msgstr "고고도"
+
+msgid "Timeline"
+msgstr "타임라인"
+
+msgid "Places"
+msgstr "장소"
+
+msgid "{} items"
+msgstr "{}개 항목"
+
+msgid "Grouped by {}"
+msgstr "{} 기준 그룹화"
+
+msgid "Grouped by {} - {}"
+msgstr "{} - {} 기준 그룹화"
+
+msgid "Clear"
+msgstr "지우기"
+
+msgid "From {} to {}"
+msgstr "{} ~ {}"
+
+msgid "Plays or pauses video and audio. Stops a running slideshow."
+msgstr "비디오와 오디오를 재생하거나 일시 정지합니다. 실행 중인 슬라이드 쇼를 중지합니다."
+
+msgid "Replaces Reject"
+msgstr "거부를 대체합니다"
+
+msgid "Click to apply"
+msgstr "클릭하여 적용"
+
+msgid "Click to clear"
+msgstr "클릭하여 지우기"
+
+msgid "Replaces the current label: {}"
+msgstr "현재 라벨을 대체합니다: {}"
+
+msgid "Replaces the star rating"
+msgstr "별 등급을 대체합니다"
+
+msgid "When the last item has played, start again from the first"
+msgstr "마지막 항목을 재생한 후 처음부터 다시 시작합니다"
+
+msgid "Stop after the last item"
+msgstr "마지막 항목 후 중지"
+
+msgid "Play or pause the displayed video or audio file."
+msgstr "표시된 비디오 또는 오디오 파일을 재생하거나 일시 정지합니다."
+
+msgid "Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end."
+msgstr "표시된 항목을 차례로 재생합니다. 사진은 슬라이드 쇼 지연 시간 동안 표시되고 비디오와 오디오는 끝까지 재생됩니다."
+
+msgid "Continue with the next item"
+msgstr "다음 항목으로 계속"
+
+msgid "When an item finishes, continue with the next photo, video or audio item"
+msgstr "항목이 끝나면 다음 사진, 비디오 또는 오디오 항목으로 계속합니다"
+
+msgid "Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them."
+msgstr "Diffractor는 {} 파일에 등급, 라벨 등의 메타데이터를 기록할 수 없으며 사이드카 항목도 만들지 않습니다."
+
+msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
+msgstr "장르를 두 개 이상 입력하려면 세미콜론으로 구분하세요. 예: Rock; Blues"
+
+msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
+msgstr "편집할 사진을 하나 선택하세요. 비디오, 오디오, 폴더 및 Diffractor가 저장할 수 없는 형식은 지원되지 않습니다."
+
+msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
+msgstr "끄기: 창보다 작은 사진과 비디오는 실제 크기로 표시됩니다. 켜기: 창에 맞게 확대됩니다. 창보다 큰 미디어는 항상 창에 맞게 축소됩니다."
+
+msgid "Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder."
+msgstr "선택한 사진을 다른 형식으로 변환하고 필요하면 크기를 제한합니다. 원본은 유지되고 새 파일은 대상 폴더에 기록됩니다."
+
+msgid "Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched."
+msgstr "선택한 모든 항목에 동일한 메타데이터 값을 씁니다. 선택한 필드만 변경되며 이미지와 동영상 데이터는 그대로 유지됩니다."
+
+msgid "Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched."
+msgstr "가장 오래된 항목이 새 날짜와 시간에 시작하도록 선택한 항목의 날짜를 이동합니다. 메타데이터만 변경되며 이미지와 동영상 데이터는 그대로 유지됩니다."
+
+msgid "Add or remove tags across the selected items. Tags you do not mention are left in place."
+msgstr "선택한 항목에 태그를 추가하거나 제거합니다. 지정하지 않은 태그는 그대로 유지됩니다."
+
+msgid "Convert"
+msgstr "변환"
+
+msgid "Update metadata"
+msgstr "메타데이터 업데이트"
+
+msgid "No removable drive was found."
+msgstr "이동식 드라이브를 찾을 수 없습니다."
+
+msgid "Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run."
+msgstr "날짜, 앨범, 아티스트 같은 메타데이터로 만든 폴더 구조로 파일을 복사하거나 이동합니다. 대상이 컬렉션에 있으면 복사본이 자동으로 컬렉션에 포함됩니다. 실행 전에 먼저 분석하여 모든 작업을 검토하세요."
+
+msgid "Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run."
+msgstr "텍스트, 증가하는 번호, 메타데이터 속성을 조합할 수 있는 템플릿으로 선택한 파일의 이름을 바꿉니다. 실행하기 전에 아래의 새 이름을 확인하세요."
+
+msgid "Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run."
+msgstr "로컬 폴더를 원격 또는 백업 폴더와 동기화합니다. 실행하기 전에 먼저 분석하여 모든 복사와 삭제를 검토하세요."
+
+msgid "home"
+msgstr "홈"
+
+msgid "end"
+msgstr "엔드"
+
+msgid "-"
+msgstr "-"
+
+msgid "Grouping"
+msgstr "그룹화"
+
+msgid "Move to the first or last item. Pans a zoomed image to the left or right edge."
+msgstr "첫 번째 또는 마지막 항목으로 이동합니다. 확대된 이미지를 왼쪽 또는 오른쪽 가장자리로 이동합니다."
+
+msgid "Move up or down a row of items. Pans a zoomed image."
+msgstr "항목을 한 줄 위 또는 아래로 이동합니다. 확대된 이미지를 이동합니다."
+
+msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
+msgstr "표시된 이미지를 확대하거나 축소합니다. 0을 누르면 창에 맞춥니다."
+
+msgid "Add folders to your collection (Ctrl+F6)"
+msgstr "컬렉션에 폴더 추가 (Ctrl+F6)"
+
+msgid "Select at least one search criterion."
+msgstr "검색 조건을 하나 이상 선택하세요."
+
+msgid "Could not check for updates. Check your internet connection and try again."
+msgstr "업데이트를 확인할 수 없습니다. 인터넷 연결을 확인하고 다시 시도하세요."
+
+msgid "Diagnostics information could not be sent. Check your internet connection and try again."
+msgstr "진단 정보를 보낼 수 없습니다. 인터넷 연결을 확인하고 다시 시도하세요."
+
+msgid "Too large to display"
+msgstr "너무 커서 표시할 수 없음"
+
+msgid "This image could not be displayed"
+msgstr "이 이미지를 표시할 수 없습니다"
+
+msgid "Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places."
+msgstr "컬렉션에서 이 항목과 가장 관련이 깊은 항목을 표시합니다: 사본일 수 있는 항목, 그다음 같은 앨범, 같은 시리즈, 가장 가까운 촬영 시각, 가장 가까운 촬영 장소."
+
+msgid "This item and possible copies"
+msgstr "이 항목 및 사본일 수 있는 항목"
+
+msgid "Same album"
+msgstr "같은 앨범"
+
+msgid "Same series"
+msgstr "같은 시리즈"
+
+msgid "Taken at the same time"
+msgstr "같은 시각에 촬영됨"
+
+msgid "Taken in the same place"
+msgstr "같은 장소에서 촬영됨"
+
+msgid "Recovered from a startup problem"
+msgstr "시작 문제에서 복구됨"
+
+msgid "Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options."
+msgstr "Diffractor가 시작을 완료하기 전에 예기치 않게 종료되어 이번 실행에서는 하드웨어 가속을 끈 기본 레이아웃을 사용합니다. 파일, 컬렉션, 최근 항목은 변경되지 않았습니다. 옵션에서 설정을 복원할 수 있습니다."
+
+msgid "Original//date"
+msgstr "원본"
+
+msgid "Group by Date Original"
+msgstr "원본 날짜별로 그룹화"
+
+msgid "Sort by Date original"
+msgstr "원본 날짜를 기준으로 정렬"
+
+msgid "Movie mixer"
+msgstr "동영상 믹서"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다. 아래 스트립에서 클립을 추가, 제거, 재정렬하고 선택한 클립을 자를 수 있습니다. 미리 보기는 렌더링 결과와 같으며, 렌더링하거나 저장하기 전까지는 아무것도 기록되지 않습니다."
+
+msgid "Movie"
+msgstr "동영상"
+
+msgid "Selected clip"
+msgstr "선택한 클립"
+
+msgid "Crossfade between clips"
+msgstr "클립 사이 크로스페이드"
+
+msgid "Cut between clips"
+msgstr "클립 사이 컷"
+
+msgid "Transition (tenths of a second)"
+msgstr "전환 (10분의 1초)"
+
+msgid "Fade (tenths of a second)"
+msgstr "페이드 (10분의 1초)"
+
+msgid "Fade in from black"
+msgstr "검은 화면에서 페이드 인"
+
+msgid "Fade out to black"
+msgstr "검은 화면으로 페이드 아웃"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "사진 표시 시간 (10분의 1초)"
+
+msgid "This photo (tenths of a second)"
+msgstr "이 사진 (10분의 1초)"
+
+msgid "Use the movie default"
+msgstr "동영상 기본값 사용"
+
+msgid "Add photos and videos to build a movie."
+msgstr "사진과 동영상을 추가하여 동영상을 만드세요."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "출력 {} x {}, {} fps, 길이 {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - {}/{}번째 클립, 시작 {}."
+
+msgid "Movie project"
+msgstr "동영상 프로젝트"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows Movie Maker 프로젝트"
+
+msgid "Photos and videos"
+msgstr "사진 및 동영상"
+
+msgid "Could not read the project {}."
+msgstr "프로젝트 {}을(를) 읽을 수 없습니다."
+
+msgid "Could not save the project {}."
+msgstr "프로젝트 {}을(를) 저장할 수 없습니다."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다."
+
+msgid "Add files"
+msgstr "파일 추가"
+
+msgid "Remove from movie"
+msgstr "동영상에서 제거"
+
+msgid "Send to the end"
+msgstr "맨 뒤로 보내기"
+
+msgid "Open project"
+msgstr "프로젝트 열기"
+
+msgid "Save project"
+msgstr "프로젝트 저장"
+
+msgid "Import Movie Maker project"
+msgstr "Movie Maker 프로젝트 가져오기"
+
+msgid "Video"
+msgstr "동영상"
+
+msgid "Rendering the movie"
+msgstr "동영상 렌더링 중"
+
+msgid "The movie could not be rendered. {}"
+msgstr "동영상을 렌더링할 수 없습니다. {}"
+
+msgid "The movie has no length."
+msgstr "동영상의 길이가 없습니다."
+
+msgid "The encoder would not accept this movie."
+msgstr "인코더가 이 동영상을 받아들이지 않았습니다."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "동영상 프레임에 사용할 메모리가 부족했습니다."
+
+msgid "A clip could not be decoded."
+msgstr "클립을 디코딩할 수 없습니다."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "동영상이 완성되기 전에 인코더가 중지되었습니다."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "이 이름은 이 동영상의 클립에서 사용 중입니다. 다른 이름을 선택하세요."
+
+msgid "Rendered {}."
+msgstr "{}을(를) 렌더링했습니다."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "렌더링이 취소되었습니다. 아무것도 기록되지 않았습니다."
+
+msgid "No missing clip was found in that folder."
+msgstr "해당 폴더에서 누락된 클립을 찾지 못했습니다."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "이 동영상에는 프로젝트 파일에 없는 변경 내용이 있습니다. Diffractor가 실행되는 동안에는 유지되며, Diffractor를 닫으면 사라집니다."
+
+msgid "Close without saving"
+msgstr "저장하지 않고 닫기"
+
+msgid "Render"
+msgstr "렌더링"
+
+msgid "Write the movie to a video file."
+msgstr "동영상을 비디오 파일로 기록합니다."
+
+msgid "Relink missing files"
+msgstr "누락된 파일 다시 연결"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "원본 파일이 이동한 클립을 선택한 폴더로 다시 지정합니다."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "가져온 프로젝트의 요소 1개는 동영상에서 표현할 수 없어 제외했습니다."
+msgstr[1] "가져온 프로젝트의 요소 {count}개는 동영상에서 표현할 수 없어 제외했습니다."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "클립 1개가 원본 파일을 찾지 못했습니다."
+msgstr[1] "클립 {count}개가 원본 파일을 찾지 못했습니다."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "클립 1개를 다시 연결했습니다."
+msgstr[1] "클립 {count}개를 다시 연결했습니다."
+

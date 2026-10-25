@@ -1,663 +1,240 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Image file scanning and metadata extraction. Detects image formats,
-// parses headers for dimensions and orientation, extracts embedded thumbnails.
+// Purpose: Still-image scanning. Every still format - JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and
+// AVIF, and JPEG XL - is read by libfiles, whose result is mapped onto file_scan_result here; a format
+// adds what libfiles leaves to its caller, decoding a HEIF thumbnail item or JPEG XL's Brotli. Embedded
+// thumbnails are read and decoded only for a caller that wants one.
 
 #include "pch.h"
 #include "metadata_exif.h"
 #include "files.h"
-#include "files_structs.h"
+#include "libfiles/scan.h"
 
-
-static constexpr auto GIF_Header_LEN = 6;
-static constexpr auto GIF_87_Header_DATA = "GIF87a";
-static constexpr auto GIF_89_Header_DATA = "GIF89a";
-
-static constexpr auto APP_ID_LEN = 11;
-static constexpr auto XMP_APP_ID_DATA = R"(XMP DataXMP)";
-static constexpr auto MAGIC_TRAILER_LEN = 258;
-
-enum gif_block_type
+// Reached only for an embedded thumbnail whose format load_image_file cannot wrap, which needs a
+// files instance to decode. Borrows the caller's rather than building a second libjpeg context.
+static ui::surface_ptr decode_thumbnail(files* const decoder, const df::cspan data)
 {
-	kXMP_block_ImageDesc = 0x2C,
-	kXMP_block_Extension = 0x21,
-	kXMP_block_Trailer = 0x3B,
-	kXMP_block_Header = 0x47
-};
-
-static const char* strnstr(const char* haystack, const char* needle, const size_t len)
-{
-	size_t needle_len;
-
-	if (0 == (needle_len = strnlen(needle, len)))
-		return haystack;
-
-	for (auto i = 0; i <= static_cast<int>(len) - static_cast<int>(needle_len); i++)
-	{
-		if (haystack[0] == needle[0] &&
-			0 == strncmp(haystack, needle, needle_len))
-			return haystack;
-
-		haystack++;
-	}
-	return nullptr;
+	if (decoder) return decoder->image_to_surface(data, {}, false, decode_intent::thumbnail);
+	files ff;
+	return ff.image_to_surface(data, {}, false, decode_intent::thumbnail);
 }
 
-static file_scan_result scan_gif(read_stream& s)
+namespace
 {
-	file_scan_result result;
-	constexpr auto header_len = 11;
-	uint8_t header[header_len];
-	s.read(0, header, header_len);
-
-	const auto isGif87a = memcmp(GIF_87_Header_DATA, header, GIF_Header_LEN) == 0;
-	const auto isGif89a = memcmp(GIF_89_Header_DATA, header, GIF_Header_LEN) == 0;
-
-	if (!isGif87a && !isGif89a)
+	detected_format to_detected_format(const libfiles::image_format format)
 	{
-		throw app_exception(u8"no gif header"s);
-	}
-
-	result.width = *std::bit_cast<const uint16_t*>(header + 6);
-	result.height = *std::bit_cast<const uint16_t*>(header + 8);
-
-	uint64_t offset = 0u;
-	offset += GIF_Header_LEN;
-
-	// 2 bytes for Screen Width
-	// 2 bytes for Screen Height
-	// 1 byte for Packed Fields
-	// 1 byte for Background Color Index
-	// 1 byte for Pixel Aspect Ratio
-	// Look for Global Color Table if exists
-	const uint8_t fields = header[offset + 4];
-	const int table_size = (1 << ((fields & 0x07) + 1)) * 3;
-
-	offset += table_size + 7;
-
-	const auto size = s.size();
-
-	// Parsing rest of the blocks
-	while (offset + 1 < size)
-	{
-		const auto block_type = s.peek8(offset);
-		offset += 1;
-
-		if (block_type == kXMP_block_ImageDesc)
+		switch (format)
 		{
-			constexpr auto image_desc_len = 9;
-			uint8_t image_desc[image_desc_len];
-			s.read(offset, image_desc, image_desc_len);
-
-			// ImageDesc is a special case, So read data just like its structure.
-
-			// Reading Dimesnions of image as 
-			// 2 bytes = Image Left Position
-			// + 2 bytes = Image Right Position
-			// + 2 bytes = Image Width
-			// + 2 bytes = Image Height
-			// = 8 bytes
-			offset += 8;
-
-			// Reading one byte for Packed Fields
-			const auto fields = image_desc[8];
-			offset += 1;
-
-			// Getting Local Table Size and skipping table size
-			if (fields & 0x80)
-			{
-				const auto table_size = (1 << ((fields & 0x07) + 1)) * 3;
-				offset += table_size;
-			}
-
-			// 1 byte LZW Minimum code size
-			offset += 1;
-
-			// 1 byte compressed sub-block size
-			auto sub_block_size = s.peek8(offset);
-			offset += 1;
-
-			while (sub_block_size != 0 && offset + sub_block_size <= size)
-			{
-				offset += sub_block_size;
-				sub_block_size = s.peek8(offset);
-				offset += 1;
-			}
-		}
-		else if (block_type == kXMP_block_Extension)
-		{
-			uint8_t read_buffer[256];
-			const auto sub_extension_lbl = s.peek8(offset);
-			auto sub_block_size = s.peek8(offset + 1);
-			auto skip_block = true;
-
-			offset += 2;
-
-			if (sub_extension_lbl == 0xFF &&
-				sub_block_size == APP_ID_LEN)
-			{
-				constexpr auto app_header_len = APP_ID_LEN;
-				uint8_t app_header[app_header_len];
-				s.read(offset, app_header, app_header_len);
-
-				if (memcmp(app_header, XMP_APP_ID_DATA, APP_ID_LEN) == 0)
-				{
-					offset += APP_ID_LEN;
-					const auto n = s.peek8(offset);
-
-					if (n == '<')
-					{
-						const auto start = offset;
-						auto n = s.peek8(offset);
-
-						while (n != 0xff)
-						{
-							offset += 1;
-							n = s.peek8(offset);
-						}
-
-						auto xmp_size = offset - start - 1;
-
-						const auto xmp_blob = s.read(start, xmp_size);
-						const auto* const xmp = std::bit_cast<const char*>(xmp_blob.data());
-						const auto* const end_marker = strnstr(xmp, "</x:xmpmeta>", xmp_size);
-
-						if (end_marker != nullptr)
-						{
-							xmp_size = end_marker + 12u - xmp;
-						}
-
-						const auto* const xmp_data = std::bit_cast<const uint8_t*>(xmp);
-						result.metadata.xmp.assign(xmp_data, xmp_data + xmp_size);
-					}
-					else
-					{
-						sub_block_size = n;
-						offset += 1;
-
-						while (sub_block_size != 0 && offset + sub_block_size <= size)
-						{
-							s.read(offset, read_buffer, sub_block_size);
-							result.metadata.xmp.assign(read_buffer, read_buffer + sub_block_size);
-							offset += sub_block_size;
-							sub_block_size = s.peek8(offset);
-							offset += 1;
-						}
-					}
-
-					df::assert_true(result.metadata.xmp.data()[result.metadata.xmp.size() - 1] == '>');
-					skip_block = false;
-				}
-			}
-
-			if (skip_block)
-			{
-				// Extension block other than Application Extension
-				while (sub_block_size != 0 && offset + sub_block_size <= size)
-				{
-					offset += sub_block_size;
-					sub_block_size = s.peek8(offset);
-					offset += 1;
-				}
-			}
-		}
-		else if (block_type == kXMP_block_Trailer)
-		{
-			break;
-		}
-		else
-		{
-			// Invaild GIF Block
-			break;
+		case libfiles::image_format::jpeg: return detected_format::JPEG;
+		case libfiles::image_format::png: return detected_format::PNG;
+		case libfiles::image_format::webp: return detected_format::WEBP;
+		case libfiles::image_format::gif: return detected_format::GIF;
+		case libfiles::image_format::psd: return detected_format::PSD;
+		case libfiles::image_format::bmp: return detected_format::BMP;
+		case libfiles::image_format::tiff: return detected_format::TIFF;
+		case libfiles::image_format::heif: return detected_format::HEIF;
+		case libfiles::image_format::jxl: return detected_format::JXL;
+		default: return detected_format::Unknown;
 		}
 	}
 
-	result.success = true;
+	df::blob to_blob(const std::vector<uint8_t>& bytes)
+	{
+		return {bytes.begin(), bytes.end()};
+	}
+}
+
+metadata_kv_list to_metadata_kv(std::vector<libfiles::structure_row>& rows)
+{
+	metadata_kv_list result;
+	result.reserve(rows.size());
+
+	for (auto& row : rows)
+	{
+		auto& kv = result.emplace_back(std::move(row.key), std::move(row.value));
+		kv.shape = std::move(row.shape);
+		kv.id = std::move(row.id);
+		kv.depth = row.depth;
+		kv.container = row.container;
+		kv.open_by_default = row.open_by_default;
+
+		if (auto* const text = std::get_if<std::string>(&row.detail))
+		{
+			kv.detail = metadata_text_detail{std::move(*text)};
+		}
+		else if (auto* const bytes = std::get_if<std::vector<uint8_t>>(&row.detail))
+		{
+			kv.detail = metadata_binary_detail{std::move(*bytes)};
+		}
+		else if (auto* const table = std::get_if<libfiles::structure_table>(&row.detail))
+		{
+			kv.detail = metadata_numeric_detail{std::move(table->values), table->columns};
+		}
+	}
+
 	return result;
 }
 
-
-uint16_t get_uint16(const uint16_t n, const uint16_t order)
+namespace
 {
-	return order == 0x4949 ? n : df::byteswap16(n);
-}
 
-uint16_t get_uint16(const uint8_t* p, const uint16_t order)
-{
-	const auto n = *std::bit_cast<const uint16_t*>(p);
-	return order == 0x4949 ? n : df::byteswap16(n);
-}
-
-uint32_t get_uint32(const uint32_t n, const uint16_t order)
-{
-	return order == 0x4949 ? n : df::byteswap32(n);
-}
-
-uint32_t get_uint32(const uint8_t* p, const uint16_t order)
-{
-	const auto n = *std::bit_cast<const uint32_t*>(p);
-	return order == 0x4949 ? n : df::byteswap32(n);
-}
-
-static void scan_webp(file_scan_result& result, read_stream& s)
-{
-	const auto blob = s.read_all();
-	const auto parts = scan_webp(blob, false);
-
-	result.width = parts.width;
-	result.height = parts.height;
-	result.pixel_format = parts.pixel_format;
-	result.metadata = parts.metadata;
-	result.success = true;
-}
-
-enum exif_tag
-{
-	EXIF_TAG_ORIENTATION = 0x0112,
-	EXIF_TAG_JPEG_INTERCHANGE_FORMAT = 0x0201,
-	EXIF_TAG_JPEG_INTERCHANGE_FORMAT_LENGTH = 0x0202,
-	EXIF_TAG_IMAGE_WIDTH = 0x0100,
-	EXIF_TAG_IMAGE_LENGTH = 0x0101,
-	TAG_XMP = 700,
-	EXIF_TAG_GPS_INFO_IFD_POINTER = 0x8825,
-	EXIF_TAG_GPS_LATITUDE_REF = 0x0001,
-	EXIF_TAG_GPS_LATITUDE = 0x0002,
-	EXIF_TAG_GPS_LONGITUDE_REF = 0x0003,
-	EXIF_TAG_GPS_LONGITUDE = 0x0004,
-};
-
-static void scan_exif(file_scan_result& result, const df::cspan data)
-{
-	if (data.size > 16)
+	// An embedded thumbnail: JPEG, PNG and WebP stay encoded, anything else recognisable is decoded.
+	void load_thumbnail(file_scan_result& result, const df::cspan data, files* const decoder)
 	{
-		df::assert_true(!is_exif_signature(data));
+		const auto detected = files::detect_format(data);
+		if (detected == detected_format::Unknown) return;
 
-		const auto order = *std::bit_cast<const uint16_t*>(data.data);
-		const auto magic = get_uint16(data.data + 2, order);
-		const auto limit = data.size - 12u;
+		if (is_image_format(detected)) result.thumbnail_image = load_image_file(data);
+		else result.thumbnail_surface = decode_thumbnail(decoder, data);
+	}
 
-		if (magic == 42u)
+	// The Exif thumbnail, when wanted, and the orientation every thumbnail takes: an Exif thumbnail is
+	// stored unrotated whatever the container did, and a decoded one needs it only where the decoder
+	// did not already apply that item's own transform.
+	void finish_with_exif(file_scan_result& result, const libfiles::byte_range thumbnail, const bool want_thumbnail,
+	                      files* const decoder)
+	{
+		if (want_thumbnail && !thumbnail.empty())
 		{
-			const auto offset_ifd0 = get_uint32(data.data + 4u, order);
-
-			if (offset_ifd0 < limit)
-			{
-				const auto entry_count = get_uint16(data.data + offset_ifd0, order);
-
-				for (auto i = 0u; i < entry_count; ++i)
-				{
-					const auto pos = offset_ifd0 + 2u + 12u * i;
-
-					if (pos < limit)
-					{
-						const auto tag = static_cast<exif_tag>(get_uint16(data.data + pos, order));
-
-						switch (tag)
-						{
-						case EXIF_TAG_ORIENTATION:
-							result.orientation = static_cast<ui::orientation>(get_uint16(data.data + pos + 8, order));
-							break;
-						}
-					}
-				}
-
-				const auto entry_ifd1 = offset_ifd0 + 2 + 12 * entry_count;
-
-				if (entry_ifd1 < limit)
-				{
-					auto offset_ifd1 = get_uint32(data.data + entry_ifd1, order);
-
-					if (offset_ifd1 && offset_ifd1 < limit)
-					{
-						const uint8_t* possible_thumbnail = nullptr;
-						size_t posible_thumbnail_len = 0u;
-						const auto ifd1_entry_count = get_uint16(data.data + offset_ifd1, order);
-
-						offset_ifd1 += 2u;
-
-						for (auto i = 0u; i < ifd1_entry_count; ++i)
-						{
-							const auto pos = offset_ifd1 + 12u * i;
-
-							if (pos < limit)
-							{
-								const auto tag = static_cast<exif_tag>(get_uint16(data.data + pos, order));
-								const auto format = static_cast<exif_format>(get_uint16(data.data + pos + 2, order));
-								const auto ifd1_components = get_uint32(data.data + pos + 4, order);
-
-								switch (tag)
-								{
-								case EXIF_TAG_JPEG_INTERCHANGE_FORMAT:
-									possible_thumbnail = data.data + get_uint32(data.data + pos + 8, order);
-									break;
-
-								case EXIF_TAG_JPEG_INTERCHANGE_FORMAT_LENGTH:
-									posible_thumbnail_len = get_uint32(data.data + pos + 8, order);
-									break;
-
-								case EXIF_TAG_ORIENTATION:
-									result.orientation = static_cast<ui::orientation>(get_uint16(
-										data.data + pos + 8, order));
-									break;
-								}
-							}
-						}
-
-						auto detected = detected_format::Unknown;
-
-						if (possible_thumbnail > data.data &&
-							possible_thumbnail + posible_thumbnail_len <= data.data + data.size &&
-							(detected = files::detect_format({possible_thumbnail, posible_thumbnail_len})) !=
-							detected_format::Unknown)
-						{
-							if (is_image_format(detected))
-							{
-								result.thumbnail_image = load_image_file({possible_thumbnail, posible_thumbnail_len});
-							}
-							else
-							{
-								files ff;
-								result.thumbnail_surface = ff.image_to_surface({
-									possible_thumbnail, posible_thumbnail_len
-								});
-							}
-						}
-					}
-				}
-			}
+			load_thumbnail(result, {
+				               result.metadata.exif.data() + thumbnail.offset, static_cast<size_t>(thumbnail.size)
+			               }, decoder);
 		}
-		else
+
+		if (result.thumbnail_image) result.thumbnail_image->orientation(result.orientation);
+
+		if (result.thumbnail_surface && !result.thumbnail_orientation_applied)
 		{
-			df::assert_true(false);
+			result.thumbnail_surface->orientation(result.orientation);
+		}
+
+		// The decoder already turned the pixels for a transform the container stored.
+		if (result.orientation_applied)
+		{
+			result.orientation = ui::orientation::top_left;
 		}
 	}
 }
 
-static double load_gps_val(read_stream& s, const uint32_t pos, const unsigned short order)
-{
-	const auto offset = get_uint32(s.peek32(pos + 8), order);
-	const auto degrees = metadata_exif::urational32_t(get_uint32(s.peek32(offset + 0), order),
-	                                                  get_uint32(s.peek32(offset + 4), order));
-	const auto minutes = metadata_exif::urational32_t(get_uint32(s.peek32(offset + 8), order),
-	                                                  get_uint32(s.peek32(offset + 12), order));
-	const auto seconds = metadata_exif::urational32_t(get_uint32(s.peek32(offset + 16), order),
-	                                                  get_uint32(s.peek32(offset + 20), order));
-	return gps_coordinate::dms_to_decimal(degrees.to_real(), minutes.to_real(), seconds.to_real());
-}
-
-static std::u8string load_text(read_stream& s, const uint32_t pos, const unsigned short order)
-{
-	const auto len = get_uint32(s.peek32(pos + 4), order);
-	const auto offset = len <= 4 ? pos + 8u : get_uint32(s.peek32(pos + 8), order);
-
-	std::u8string result;
-	result.resize(len, 0);
-	s.read(offset, std::bit_cast<uint8_t*>(result.data()), len);
-	return result;
-}
-
-static file_scan_result scan_tiff(read_stream& s)
+file_scan_result scan_still_libfiles(read_stream& s, const scan_intent intent, const bool want_thumbnail,
+                                     files* const decoder, const still_scan_extras& extras)
 {
 	file_scan_result result;
-	uint8_t header[8];
-	s.read(0, header, 8);
 
-	const auto order = *std::bit_cast<const uint16_t*>(static_cast<const uint8_t*>(header));
-	const auto magic = get_uint16(header + 2u, order);
-	const auto size = s.size();
-	const auto limit = size - 12u;
-
-	if (magic == 42u)
-	{
-		const auto offset_ifd0 = get_uint32(header + 4, order);
-
-		if (offset_ifd0 < limit)
-		{
-			const auto entry_count = get_uint16(s.peek16(offset_ifd0), order);
-
-			for (auto i = 0u; i < entry_count; ++i)
-			{
-				const auto pos = 12u * i;
-				uint8_t dir_data[12];
-				s.read(offset_ifd0 + 2u + pos, dir_data, 12u);
-
-				const auto tag = static_cast<exif_tag>(get_uint16(dir_data, order));
-				const auto components = get_uint32(dir_data + 4u, order);
-
-				switch (tag)
-				{
-				case EXIF_TAG_ORIENTATION:
-					result.orientation = static_cast<ui::orientation>(get_uint16(dir_data + 8u, order));
-					break;
-				case EXIF_TAG_IMAGE_WIDTH:
-					result.width = get_uint16(dir_data + 8u, order);
-					break;
-				case EXIF_TAG_IMAGE_LENGTH:
-					result.height = get_uint16(dir_data + 8u, order);
-					break;
-				case TAG_XMP:
-					{
-						const uint64_t xmp_offset = get_uint32(dir_data + 8u, order);
-
-						if (xmp_offset + components <= size) // overflow
-						{
-							result.metadata.xmp = s.read(xmp_offset, components);
-						}
-					}
-					break;
-				case EXIF_TAG_GPS_INFO_IFD_POINTER:
-					{
-						const auto offset_gps = get_uint32(dir_data + 8u, order);
-
-						if (offset_gps && offset_gps < limit)
-						{
-							exif_gps_coordinate_builder coordinate;
-							const auto gps_entry_count = get_uint16(s.peek16(offset_gps), order);
-
-							for (auto j = 0u; j < gps_entry_count; ++j)
-							{
-								const auto gps_entry_pos = offset_gps + 2 + 12 * j;
-
-								if (gps_entry_pos < limit)
-								{
-									const auto gps_tag = static_cast<exif_tag>(get_uint16(
-										s.peek16(gps_entry_pos), order));
-
-									switch (gps_tag)
-									{
-									case EXIF_TAG_GPS_LATITUDE:
-										{
-											coordinate.latitude(load_gps_val(s, gps_entry_pos, order));
-										}
-										break;
-									case EXIF_TAG_GPS_LATITUDE_REF:
-										{
-											const auto text = load_text(s, gps_entry_pos, order);
-
-											// 'N' or 'S'
-											if (first_char_is(text, 'S'))
-											{
-												coordinate.latitude_north_south(
-													exif_gps_coordinate_builder::NorthSouth::South);
-											}
-											else
-											{
-												coordinate.latitude_north_south(
-													exif_gps_coordinate_builder::NorthSouth::North);
-											}
-										}
-										break;
-									case EXIF_TAG_GPS_LONGITUDE:
-										{
-											coordinate.longitude(load_gps_val(s, gps_entry_pos, order));
-										}
-										break;
-									case EXIF_TAG_GPS_LONGITUDE_REF:
-										{
-											const auto text = load_text(s, gps_entry_pos, order);
-											// 'E' or 'W'
-											if (first_char_is(text, 'W'))
-											{
-												coordinate.longitude_east_west(
-													exif_gps_coordinate_builder::EastWest::West);
-											}
-											else
-											{
-												coordinate.longitude_east_west(
-													exif_gps_coordinate_builder::EastWest::East);
-											}
-										}
-										break;
-									}
-								}
-							}
-
-							result.gps = coordinate.build();
-						}
-					}
-					break;
-				}
-			}
-
-			const auto entry_ifd1 = offset_ifd0 + 2 + 12 * entry_count;
-
-			if (entry_ifd1 < limit)
-			{
-				const auto offset_ifd1 = get_uint32(s.peek32(entry_ifd1), order);
-
-				if (offset_ifd1 && offset_ifd1 < limit)
-				{
-					size_t possible_offset = 0;
-					size_t posible_thumbnail_len = 0;
-					const auto ifd1_entry_count = get_uint16(s.peek16(offset_ifd1), order);
-
-					for (auto i = 0u; i < ifd1_entry_count; ++i)
-					{
-						const auto pos = offset_ifd1 + 2 + 12 * i;
-
-						if (pos < limit)
-						{
-							const auto tag = static_cast<exif_tag>(get_uint16(s.peek16(pos), order));
-							// auto format = static_cast<metadata_exif::Format>(get_uint16(s.peek16(pos + 2), order));
-							// auto ifd1_components = get_uint32(s.peek32(pos + 4), order);
-
-							switch (tag)
-							{
-							case EXIF_TAG_JPEG_INTERCHANGE_FORMAT:
-								possible_offset = get_uint32(s.peek32(pos + 8), order);
-								break;
-
-							case EXIF_TAG_JPEG_INTERCHANGE_FORMAT_LENGTH:
-								posible_thumbnail_len = get_uint32(s.peek32(pos + 8), order);
-								break;
-
-							case EXIF_TAG_ORIENTATION:
-								result.orientation = static_cast<ui::orientation>(get_uint16(
-									s.peek16(pos + 8), order));
-								break;
-							}
-						}
-					}
-
-					if (possible_offset != 0 && posible_thumbnail_len != 0)
-					{
-						const auto thumb = s.read(possible_offset, posible_thumbnail_len);
-						auto detected = detected_format::Unknown;
-
-						if (thumb.size() > 16 &&
-							(detected = files::detect_format(thumb)) != detected_format::Unknown)
-						{
-							if (is_image_format(detected))
-							{
-								result.thumbnail_image = load_image_file(thumb);
-							}
-							else
-							{
-								files ff;
-								result.thumbnail_surface = ff.image_to_surface(thumb);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	result.success = true;
-	return result;
-}
-
-file_scan_result scan_photo(read_stream& s)
-{
-	file_scan_result result;
+	if (s.size() < sizeof(pack128)) return result;
 
 	try
 	{
-		const auto expected = files::detect_format(s.peek128(0));
+		read_stream_source source(s);
+		const auto resident = s.view();
+		std::optional<libfiles::reader> r;
 
-		if (expected == detected_format::BMP)
-		{
-			//const auto bmp_header = std::bit_cast<const BITMAPFILEHEADER*>(s.read(0, sizeof(BITMAPFILEHEADER)));
-			uint8_t header[sizeof(files_structs::BITMAPINFOHEADER)];
-			s.read(sizeof(files_structs::BITMAPFILEHEADER), header, sizeof(files_structs::BITMAPINFOHEADER));
-			const auto* const bmp_info = std::bit_cast<const files_structs::BITMAPINFOHEADER*>(
-				static_cast<uint8_t*>(header));
+		if (resident.empty()) r.emplace(source);
+		else r.emplace(std::span(resident.data, resident.size));
 
-			result.width = abs(bmp_info->biWidth);
-			result.height = abs(bmp_info->biHeight);
-			result.pixel_format = str::cache(str::format(u8"RGB{}"sv, bmp_info->biBitCount));
-			result.format = detected_format::BMP;
-			result.success = true;
-		}
-		else if (expected == detected_format::GIF)
+		libfiles::scan_limits limits;
+		limits.jpeg_photoshop_resources = files_test_hooks::jpeg_photoshop_resource_cap();
+		limits.brotli = extras.brotli;
+
+		auto scanned = libfiles::scan(*r, intent == scan_intent::inspect
+			                                  ? libfiles::scan_intent::inspect
+			                                  : libfiles::scan_intent::index, limits);
+
+		if (!scanned.error.empty())
 		{
-			result = scan_gif(s);
-			result.format = detected_format::GIF;
-			result.pixel_format = u8"pal8"_c;
+			// A fault discards the whole scan, as a throw from a scanner always has.
+			df::log(__FUNCTION__, scanned.error);
+			return result;
 		}
-		else if (expected == detected_format::JPEG) // && memcmp(p, sig_jpg, 3) == 0)
+
+		result.format = to_detected_format(scanned.format);
+
+		// BMP alone names its format only once its header has been read.
+		if (scanned.format == libfiles::image_format::bmp && !scanned.success) result.format = detected_format::Unknown;
+
+		result.width = scanned.width;
+		result.height = scanned.height;
+		if (!scanned.pixel_format.empty()) result.pixel_format = str::cache(scanned.pixel_format);
+		if (scanned.orientation) result.orientation = static_cast<ui::orientation>(*scanned.orientation);
+
+		result.metadata.xmp = to_blob(scanned.metadata.xmp);
+		result.metadata.exif = to_blob(scanned.metadata.exif);
+		result.metadata.iptc = to_blob(scanned.metadata.iptc);
+		result.metadata.icc = to_blob(scanned.metadata.icc);
+		result.metadata.photoshop_resources = to_blob(scanned.metadata.photoshop);
+		result.tiff_metadata = std::move(scanned.tiff_metadata);
+		result.structure_metadata = to_metadata_kv(scanned.structure);
+
+		// A TIFF file's own GPS position, read as an EXIF block's is.
+		if (scanned.gps)
 		{
-			result = scan_jpg(s);
-			result.format = detected_format::JPEG;
+			const gps_coordinate coordinate(scanned.gps->latitude, scanned.gps->longitude);
+			if (coordinate.is_valid()) result.gps = coordinate;
 		}
-		else if (expected == detected_format::PNG) // && memcmp(p, sig_png, 3) == 0)
+
+		result.success = scanned.success;
+		// A HEIF item's own rotation or mirror, which its decoder applies.
+		result.orientation_applied = scanned.container_transform;
+
+		// A thumbnail costs a read and a copy, so it is read only for a caller that wants one. The JFIF
+		// extension thumbnail stands only where the Exif one does not.
+		if (want_thumbnail)
 		{
-			result = scan_png(s);
-			result.format = detected_format::PNG;
-		}
-		else if (expected == detected_format::TIFF)
-		{
-			result = scan_tiff(s);
-			result.format = detected_format::TIFF;
-		}
-		else if (expected == detected_format::HEIF)
-		{
-			result = scan_heif(s);
-			result.format = detected_format::HEIF;
-		}
-		else if (expected == detected_format::WEBP)
-		{
-			scan_webp(result, s);
-			result.format = detected_format::WEBP;
-		}
-		else if (expected == detected_format::PSD)
-		{
-			result = scan_psd(s);
-			result.format = detected_format::PSD;
+			if (extras.container_thumbnail) extras.container_thumbnail(s, result);
+
+			if (!scanned.jfif_thumbnail.empty())
+			{
+				const auto bytes = r->read(scanned.jfif_thumbnail.offset, static_cast<size_t>(scanned.jfif_thumbnail.size));
+				result.thumbnail_image = load_image_file({bytes.data(), bytes.size()});
+			}
+
+			if (!scanned.tiff_thumbnail.empty())
+			{
+				const auto bytes = r->read(scanned.tiff_thumbnail.offset, static_cast<size_t>(scanned.tiff_thumbnail.size));
+				if (bytes.size() > 16) load_thumbnail(result, {bytes.data(), bytes.size()}, decoder);
+			}
 		}
 
 		if (!result.metadata.exif.empty())
 		{
-			scan_exif(result, result.metadata.exif);
+			finish_with_exif(result, scanned.exif_thumbnail, want_thumbnail, decoder);
+		}
+	}
+	catch (std::exception& e)
+	{
+		df::log(__FUNCTION__, e.what());
+	}
 
-			if (result.thumbnail_image) result.thumbnail_image->orientation(result.orientation);
-			if (result.thumbnail_surface) result.thumbnail_surface->orientation(result.orientation);
+	return result;
+}
+
+file_scan_result scan_photo_libfiles(read_stream& s, const scan_intent intent, const bool want_thumbnail,
+                                     files* const decoder)
+{
+	return scan_still_libfiles(s, intent, want_thumbnail, decoder, {});
+}
+
+file_scan_result scan_photo(read_stream& s, const scan_intent intent, const bool want_thumbnail,
+                            files* const decoder)
+{
+	file_scan_result result;
+
+	// Empty or too small to contain a recognisable image signature.
+	if (s.size() < sizeof(pack128)) return result;
+
+	try
+	{
+		const auto* const still = find_still_format(files::detect_format(s.peek128(0)));
+
+		if (still && still->scan)
+		{
+			result = still->scan(s, intent, want_thumbnail, decoder);
 		}
 	}
 	catch (std::exception& e)

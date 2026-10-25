@@ -1,5 +1,5 @@
-// This file is part of the Diffractor photo and video organizer
-// Copyright(C) 2025  Zac Walker
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
 // under the terms of the LGPL License either version 2.1 or later.
@@ -11,34 +11,53 @@
 
 #pragma once
 
-std::u8string language_name(std::u8string_view code);
+struct av_stream_info;
+
+std::string language_name(std::string_view code);
+std::string format_audio_stream_name(const av_stream_info& stream, int audio_track_number);
 
 
-using text_mapping = df::hash_map<std::u8string_view, std::reference_wrapper<text_t>>;
+using text_mapping = df::hash_map<std::string_view, std::reference_wrapper<text_t>>;
 
 struct plural_text
 {
-	plural_text(const std::u8string_view o, const std::u8string_view p) : one(o), plural(p)
+	plural_text(const std::string_view o, const std::string_view p) : one(o), plural(p)
 	{
 	}
 
 	text_t one;
 	text_t plural;
+
+	// Translated plural forms with index >= 2 (e.g. the Slavic "many" form), from msgstr[2..].
+	// English and binary-plural languages leave it null; one/plural cover forms 0 and 1. Published
+	// the way a text_t is - a pointer to storage app_text_t never frees - because a worker formatting
+	// a count can hold a form across a language switch, which reassigned a vector under it.
+	std::atomic<const std::vector<std::string>*> extra_forms{nullptr};
+
+	std::string_view extra_form(const size_t index) const
+	{
+		const auto* const forms = extra_forms.load(std::memory_order_acquire);
+		return forms != nullptr && index < forms->size() ? std::string_view((*forms)[index]) : std::string_view{};
+	}
 };
 
 struct po_entry
 {
-	std::u8string id;
-	std::u8string str;
-	std::u8string id_plural;
-	std::u8string str_plural;
+	std::string id;
+	std::string str;
+	std::string id_plural;
+	std::string str_plural;
+	// Extra translated plural forms from msgstr[2], msgstr[3], ... in order.
+	// Only Slavic languages declare these; str is msgstr[0], str_plural is msgstr[1].
+	std::vector<std::string> str_extra;
 
 	bool is_empty() const
 	{
 		return id.empty() &&
 			str_plural.empty() &&
 			str.empty() &&
-			id_plural.empty();
+			id_plural.empty() &&
+			str_extra.empty();
 	}
 
 	void clear()
@@ -47,24 +66,81 @@ struct po_entry
 		str_plural.clear();
 		str.clear();
 		id_plural.clear();
+		str_extra.clear();
 	}
 };
 
+constexpr size_t max_supported_plural_forms = 4;
+constexpr size_t max_supported_plural_index = max_supported_plural_forms - 1;
+
+struct po_parse_error
+{
+	size_t line = 0;
+	std::string message;
+};
+
+struct po_load_result
+{
+	std::vector<po_entry> entries;
+	std::vector<po_parse_error> errors;
+};
+
+po_load_result load_po_report(df::file_path lang_file);
 std::vector<po_entry> load_po(df::file_path lang_file);
 
-std::u8string format_plural_text(const plural_text& fmt, int64_t count, int64_t of_total = 0);
-std::u8string format_plural_text(const plural_text& fmt, std::u8string_view first_name, int64_t count,
-                                 df::file_size size, int64_t of_total = 0);
-std::u8string format_plural_text(const plural_text& fmt, const df::item_set& items);
-std::u8string format_plural_text(const plural_text& fmt, const std::vector<std::u8string>& result);
+std::string format_plural_text(const plural_text& fmt, int64_t count, int64_t of_total = 0);
+std::string format_plural_text(const plural_text& fmt, std::string_view first_name, int64_t count,
+                               df::file_size size, int64_t of_total = 0);
+std::string format_plural_text(const plural_text& fmt, const df::item_set& items);
+std::string format_plural_text(const plural_text& fmt, const std::vector<std::string>& result);
 
-std::u8string_view tt_prep(std::u8string_view);
+std::string_view tt_prep(std::string_view);
+
+// Which media a known genre name belongs to, so a picker can offer only the genres that
+// make sense for the current selection.
+enum class genre_kind : uint32_t
+{
+	none = 0,
+	audio = 1 << 0,
+	video = 1 << 1,
+	photo = 1 << 2,
+	any = audio | video | photo,
+};
+
+constexpr genre_kind operator|(const genre_kind a, const genre_kind b)
+{
+	return static_cast<genre_kind>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+constexpr genre_kind& operator|=(genre_kind& a, const genre_kind b)
+{
+	a = a | b;
+	return a;
+}
+
+constexpr bool operator&&(const genre_kind a, const genre_kind b)
+{
+	return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
+}
 
 struct app_text_t
 {
 	text_mapping _text_mapping;
 	std::vector<std::reference_wrapper<plural_text>> _all_plurals;
 	std::vector<std::reference_wrapper<text_t>> _all_texts;
+
+	// Every translation this session has loaded. A switch publishes new strings and leaves the
+	// previous ones in place, because a worker that read a translation pointer just before the
+	// switch still has to find valid storage behind it. A deque, so appending never moves what is
+	// already published. Bounded by the catalog size times the number of switches in one session.
+	std::deque<std::string> _translation_storage;
+
+	// The same for the extra plural forms of each plural text, which are published as a set.
+	std::deque<std::vector<std::string>> _plural_form_storage;
+
+	// Plural rule for the active language. Maps a count to a form index.
+	// Defaults to the binary one/plural rule used by English.
+	int (*_plural_rule)(int64_t) = nullptr;
 
 	app_text_t();
 
@@ -73,1218 +149,1368 @@ struct app_text_t
 	app_text_t& operator=(const app_text_t& other1) = delete;
 	app_text_t& operator=(app_text_t&& other1) noexcept = delete;
 
-	void load_lang(std::u8string_view lang_file, const std::vector<po_entry>& entries);
-	std::vector<po_entry> gen_po() const;
+	void load_lang(std::string_view lang_file, const std::vector<po_entry>& entries);
 
-	void clear() const;
+	// Selects the plural form index (0-based) for count in the active language.
+	// Non-Slavic languages use a binary one/plural rule (index 0 or 1); Slavic
+	// languages add "few"/"many" forms. See app_text.cpp for the rule table.
+	int plural_form(int64_t count) const;
+
+	void clear();
 	void calc_text_mapping();
 
-	std::u8string translate_text(const std::u8string& text, std::u8string_view scope = {}) const;
-	std::vector<std::u8string> add_translate_text(const std::vector<str::cached>& text,
-	                                              std::u8string_view scope = {}) const;
+	std::string translate_text(const std::string& text, std::string_view scope = {}) const;
+	std::vector<std::string> add_translate_text(const std::vector<str::cached>& text,
+	                                            std::string_view scope = {}) const;
+	// Translated, sorted names of the built-in genres that apply to kinds.
+	std::vector<std::string> known_genres(genre_kind kinds) const;
 
-	text_t nav_folders_title = u8"Folders"sv;
-	text_t nav_drives_title = u8"Drives"sv;
-	text_t nav_search_title = u8"Search"sv;
-	text_t nav_history_title = u8"History"sv;
-	text_t nav_tags_title = u8"Favorite Tags"sv;
-	text_t nav_countries_title = u8"Countries"sv;
-	text_t error_invalid_path_fmt = u8"The file name you have chosen '{}' is invalid."sv;
-	text_t error_invalid_path = u8"File names cannot contain the following characters:"sv;
-	text_t error_save_failed = u8"Diffractor could not save the updated image file."sv;
-	text_t error_create_file_failed_fmt = u8"The destination file '{}' cannot be opened or created."sv;
-	text_t error_rename_failed = u8"Failed to rename."sv;
-	text_t error_ole_failed = u8"OleInitialize Failed"sv;
-	text_t error_windows_common_controls_failed = u8"Failed to register windows common control classes."sv;
-	text_t error_create_folder_failed_fmt = u8"The destination folder '{}' cannot be opened or created."sv;
-	text_t error_mapi_failed =
-		u8"Failed to send EMail using MAPI. Your Email client may not be configured in a compatible way with Diffractor."sv;
-	text_t error_atl_failed = u8"Failed to Initialize ATL"sv;
-	text_t error_atl_direct3d = u8"Failed to Initialize Direct3d"sv;
-	text_t error_create_window_failed = u8"Diffractor cannot be started. The main window could not be created."sv;
-	text_t error_winsock_failed = u8"Failed to initialize Winsock"sv;
-	text_t error_sse2_needed = u8"Diffractor requires a processor with sse2."sv;
-	text_t error_unsupported_os = u8"Diffractor requires Windows 7 or newer."sv;
-	text_t error_index_database_failed = u8"Index database failed."sv;
-	text_t error_cannot_continue = u8"Diffractor has a serious problem and cannot continue."sv;
-	text_t command_menu_group_sort = u8"Group or Sort"sv;
-	text_t command_view_sort = u8"Sort"sv;
-	text_t command_view_menu = u8"Menu"sv;
-	text_t tooltip_view_menu = u8"More options and controls"sv;
-	text_t command_rotate_reset = u8"Reset rotation"sv;
-	text_t tooltip_rotate_reset = u8"Reset straighten and rotate"sv;
-	text_t command_color_reset = u8"Reset color changes"sv;
-	text_t tooltip_color_reset = u8"Reset color adjustments"sv;
-	text_t command_view_select = u8"Select Items"sv;
-	text_t command_view_rate_label = u8"Rate or Label"sv;
-	text_t command_navigate = u8"Navigate"sv;
-	text_t command_display_options = u8"Display options"sv;
-	text_t command_view_help = u8"About Diffractor"sv;
-	text_t command_browse_parent = u8"Parent"sv;
-	text_t command_browse_back = u8"Back"sv;
-	text_t command_browse_forward = u8"Forward"sv;
-	text_t command_new_folder = u8"New Folder"sv;
-	text_t command_rename = u8"Rename"sv;
-	text_t command_rename_files = u8"Rename files"sv;
-	text_t command_locate = u8"Add location"sv;
-	text_t command_print = u8"Print"sv;
-	text_t command_nav_bar = u8"Show sidebar"sv;
-	text_t tooltip_nav_bar = u8"Contains common folders, searches and favorites"sv;
-	text_t command_delete = u8"Delete"sv;
-	text_t command_revert = u8"Revert to original"sv;
-	text_t command_select_invert = u8"Invert selection"sv;
-	text_t command_copy = u8"Copy to folder"sv;
-	text_t command_move = u8"Move to folder"sv;
-	text_t command_file_properties = u8"Open properties"sv;
-	text_t command_share_email = u8"Email"sv;
-	text_t command_desktop_background = u8"Desktop background"sv;
-	text_t command_select_nothing = u8"Select none"sv;
-	text_t command_download = u8"Download"sv;
-	text_t command_options = u8"General options"sv;
-	text_t command_customise = u8"Customise sidebar"sv;
-	text_t command_collection_options = u8"Collection options"sv;
-	text_t command_view_items = u8"Show items"sv;
-	text_t command_flatten = u8"Show items in subfolders"sv;
-	text_t command_refresh = u8"Refresh"sv;
-	text_t command_fullscreen = u8"Fullscreen"sv;
-	text_t tooltip_fullscreen = u8"Toggle full screen for media-items or open non-media-items."sv;
-	text_t command_show_thumbnails = u8"Hide/Show thumbnails"sv;
-	text_t command_autoplay = u8"Autoplay selected media"sv;
-	text_t command_last_played_pos = u8"Resume playing media from last position"sv;
-	text_t command_repeat_toggle = u8"Toggle repeat play"sv;
-	text_t command_playback_menu = u8"Playback Options"sv;
-	text_t command_playback_toolbar = u8"Playback"sv;
-	text_t command_repeat_one = u8"Repeat play one item"sv;
-	text_t command_repeat_all = u8"Repeat play all media items"sv;
-	text_t command_repeat_none = u8"Don't repeat"sv;
-	text_t command_scale_up = u8"Scale up items"sv;
+	text_t nav_search_title = "Search";
+	text_t nav_history_title = "History";
+	text_t error_invalid_path_fmt = "The file name you have chosen '{}' is invalid.";
+	text_t error_invalid_path = "File names cannot contain the following characters:";
+	text_t error_create_file_failed_fmt = "The destination file '{}' cannot be opened or created.";
+	text_t error_rename_failed = "Failed to rename.";
+	text_t error_create_folder_failed_fmt = "The destination folder '{}' cannot be opened or created.";
+	text_t error_create_window_failed = "Diffractor cannot be started. The main window could not be created.";
+	text_t error_index_database_failed = "Index database failed.";
+	text_t command_menu_group_sort = "Group or Sort";
+	text_t command_view_sort = "Sort";
+	text_t command_view_menu = "Menu";
+	text_t tooltip_view_menu = "More options and controls";
+	text_t command_rotate_reset = "Reset rotation";
+	text_t tooltip_rotate_reset = "Reset straighten and rotate";
+	text_t command_color_reset = "Reset color changes";
+	text_t tooltip_color_reset = "Reset color adjustments";
+	text_t command_view_select = "Select Items";
+	text_t command_view_rate_label = "Rate or Label";
+	text_t command_navigate = "Navigate";
+	text_t command_display_options = "Display options";
+	text_t command_view_help = "About Diffractor";
+	text_t command_browse_parent = "Parent";
+	text_t command_browse_back = "Back";
+	text_t command_browse_forward = "Forward";
+	text_t command_new_folder = "New Folder";
+	text_t command_rename = "Rename";
+	text_t command_rename_files = "Rename files";
+	text_t command_locate = "Add location";
+	text_t command_print = "Print";
+	text_t command_nav_bar = "Show sidebar";
+	text_t tooltip_nav_bar = "Contains common folders, searches and favorites";
+	text_t command_delete = "Delete";
+	text_t command_select_invert = "Invert selection";
+	text_t command_copy = "Copy to folder";
+	text_t command_move = "Move to folder";
+	text_t command_file_properties = "Open properties";
+	text_t command_share_email = "Email";
+	text_t email_preparing = "Preparing files for email...";
+	text_t command_share = "Share";
+	text_t share_preparing = "Preparing files to share...";
+	text_t command_desktop_background = "Desktop background";
+	text_t command_select_nothing = "Select none";
+	text_t command_options = "General options";
+	text_t command_customise = "Customise sidebar";
+	text_t command_collection_options = "Collection options";
+	text_t command_view_items = "Show items";
+	text_t command_flatten = "Show items in subfolders";
+	text_t command_refresh = "Refresh";
+	text_t command_fullscreen = "Fullscreen";
+	text_t tooltip_fullscreen = "Toggle full screen for media-items or open non-media-items.";
+	text_t command_autoplay = "Autoplay selected media";
+	text_t command_auto_advance = "Continue with the next item";
+	text_t auto_advance_help = "When an item finishes, continue with the next photo, video or audio item";
+	text_t command_last_played_pos = "Resume playing media from last position";
+	text_t command_repeat_toggle = "Toggle repeat play";
+	text_t command_playback_menu = "Playback Options";
+	text_t command_playback_toolbar = "Playback";
+	text_t audio_track_current_fmt = "Audio: {}";
+	text_t audio_track_fmt = "Audio track {}";
+	text_t audio_tracks_title = "Audio tracks";
+	text_t audio_output_title = "Audio output";
+	text_t audio_role_commentary = "commentary";
+	text_t audio_role_description = "audio description";
+	text_t command_repeat_one = "Repeat play one item";
+	text_t command_repeat_all = "Repeat play all media items";
+	text_t command_repeat_none = "Don't repeat";
+	text_t command_scale_up = "Scale up items";
 	text_t tooltip_scale_up =
-		u8"Scale up small photos and videos. Large media is automatically scaled down to fit on the screen."sv;
-	text_t command_select_all = u8"Select all"sv;
-	text_t command_related = u8"Duplicate or related items in the collection"sv;
-	text_t command_pin = u8"Pin or hold item"sv;
+		"Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit.";
+	text_t command_select_all = "Select all";
+	text_t command_related = "Related items";
+	text_t tooltip_related =
+		"Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places.";
+	text_t related_group_duplicates = "This item and possible copies";
+	text_t related_group_album = "Same album";
+	text_t related_group_series = "Same series";
+	text_t related_group_time = "Taken at the same time";
+	text_t related_group_location = "Taken in the same place";
+	text_t command_pin = "Pin or hold item";
 	text_t tooltip_pin =
-		u8"Pinned items stay selected. Use this when you want to quickly compare an item to other items."sv;
-	text_t command_toggle_item_size = u8"Toggle thumbnail size"sv;
-	text_t command_convert_or_resize = u8"Convert or Resize"sv;
-	text_t command_album_artist = u8"Update artist and album"sv;
-	text_t command_edit_metadata = u8"Edit metadata"sv;
-	text_t command_copyright = u8"Update copyright"sv;
-	text_t command_burn = u8"Burn to disk"sv;
-	text_t command_keyboard = u8"Keyboard reference"sv;
-	text_t command_open_with = u8"Open with"sv;
-	text_t command_open = u8"Open"sv;
-	text_t tooltip_open = u8"Open selected items with external app"sv;
-	text_t command_language = u8"Language"sv;
-	text_t tooltip_tag_with = u8"Tag or un-tag selected items"sv;
-	text_t tooltip_language = u8"Change language"sv;
-	text_t command_tools = u8"Tools"sv;
-	text_t tooltip_tools = u8"Process selected items"sv;
-	text_t command_eject = u8"Eject"sv;
-	text_t command_minimize = u8"Minimize"sv;
-	text_t command_maximize = u8"Maximize"sv;
-	text_t command_restore = u8"Restore"sv;
-	text_t command_close = u8"Close"sv;
-	text_t command_import = u8"Import"sv;
-	text_t command_browse_previous_group = u8"Previous item group"sv;
-	text_t command_browse_next_group = u8"Next item group"sv;
-	text_t command_browse_previous_folder = u8"Previous folder or search"sv;
-	text_t command_browse_next_folder = u8"Next folder or search"sv;
-	text_t command_browse_previous_item = u8"Select previous item"sv;
-	text_t command_browse_previous_item_extend = u8"Extend selection to previous item"sv;
-	text_t command_browse_next_item = u8"Select next item"sv;
-	text_t command_browse_next_item_extend = u8"Extend selection to next item"sv;
-	text_t command_play = u8"Play/Pause"sv;
-	text_t tooltip_play = u8"Play or pause video and audio files. Start a slide show if a photo is selected."sv;
-	text_t command_zoom = u8"Zoom 100%"sv;
-	text_t command_toggle_volume = u8"Toggle volume"sv;
-	text_t command_volume100 = u8"Volume 100%"sv;
-	text_t command_volume75 = u8"Volume 75%"sv;
-	text_t command_volume50 = u8"Volume 50%"sv;
-	text_t command_volume25 = u8"Volume 25%"sv;
-	text_t command_volume0 = u8"Mute"sv;
-	text_t command_rotate_anticlockwise = u8"Rotate anticlockwise"sv;
-	text_t command_rotate_clockwise = u8"Rotate clockwise"sv;
-	text_t command_show_in_folder = u8"Open containing folder"sv;
-	text_t command_show_in_file_browser = u8"Show in file browser"sv;
-	text_t command_file_search = u8"Search"sv;
-	text_t command_toggle_details = u8"Toggle thumbnails or details"sv;
-	text_t tooltip_toggle_details_selected = u8"Toggle between thumbnails or details for selected item group"sv;
-	text_t tooltip_toggle_details_all = u8"Toggle between thumbnails or details view"sv;
-	text_t command_capture = u8"Save current video frame"sv;
-	text_t command_edit = u8"Edit"sv;
-	text_t tooltip_edit1 = u8"Color, straighten or crop photos."sv;
-	text_t tooltip_edit2 = u8"Add and edit metadata."sv;
-	text_t command_edit_copy = u8"Copy"sv;
-	text_t command_edit_cut = u8"Cut"sv;
-	text_t command_edit_paste = u8"Paste"sv;
-	text_t command_app_exit = u8"Exit"sv;
-	text_t command_rate_1 = u8"Rate as 1 star"sv;
-	text_t command_rate_2 = u8"Rate as 2 stars"sv;
-	text_t command_rate_3 = u8"Rate as 3 stars"sv;
-	text_t command_rate_4 = u8"Rate as 4 stars"sv;
-	text_t command_rate_5 = u8"Rate as 5 stars"sv;
-	text_t command_rate_0 = u8"Remove rating"sv;
-	text_t command_rate_rejected = u8"Reject"sv;
-	text_t command_label_approved = u8"Approved"sv;
-	text_t command_label_to_do = u8"To Do"sv;
-	text_t command_label_select = u8"Select"sv;
-	text_t command_label_review = u8"Review"sv;
-	text_t command_label_second = u8"Second"sv;
-	text_t command_label_none = u8"No Label"sv;
-	text_t command_group_shuffle = u8"Show items in random order"sv;
-	text_t command_toggle_group_by = u8"Toggle item grouping"sv;
-	text_t command_group_file_type = u8"Group by File type"sv;
-	text_t command_group_size = u8"Group by Size"sv;
-	text_t command_group_extension = u8"Group by Extension"sv;
-	text_t command_group_location = u8"Group by Location"sv;
-	text_t command_group_rating = u8"Group by Rating/Label"sv;
-	text_t command_group_created = u8"Group by Date Created"sv;
-	text_t command_group_modified = u8"Group by Date Modified"sv;
-	text_t command_group_resolution = u8"Group by Resolution"sv;
-	text_t command_group_camera = u8"Group by Camera"sv;
-	text_t command_group_album = u8"Group by Album/Show"sv;
-	text_t command_group_presence = u8"Group by Collection presence"sv;
-	text_t command_group_folder = u8"Group by Folder"sv;
-	text_t command_sort_dates_descending = u8"Sort dates descending"sv;
-	text_t command_sort_dates_ascending = u8"Sort dates ascending"sv;
-	text_t command_sort_name = u8"Sort by Name"sv;
-	text_t command_sort_size = u8"Sort by Size"sv;
-	text_t command_sort_def = u8"Sort by Default"sv;
-	text_t command_sort_date_modified = u8"Sort by Date modified"sv;
-	text_t command_highlight_large_items = u8"Highlight large items in yellow"sv;
-	text_t command_open_google_map = u8"Open in google maps"sv;
-	text_t tooltip_flag_for_delete = u8"Items can be flagged for later delete."sv;
-	text_t command_adjust_date = u8"Adjust date and time"sv;
-	text_t command_view_large_font = u8"Large font"sv;
-	text_t command_scan = u8"Scan"sv;
-	text_t command_save = u8"Save and close"sv;
-	text_t command_save_as = u8"Save as"sv;
-	text_t command_save_and_back = u8"Save and open previous"sv;
-	text_t command_save_and_next = u8"Save and open next"sv;
-	text_t command_save_options = u8"Change save options"sv;
-	text_t command_new_version = u8"New version available"sv;
-	text_t searching_text = u8"Searching..."sv;
-	text_t no_results = u8"No results"sv;
-	text_t folder_onedrive = u8"onedrive"sv;
-	text_t folder_picture = u8"picture"sv;
-	text_t folder_video = u8"videos"sv;
-	text_t folder_music = u8"music"sv;
-	text_t disk_label = u8"Label"sv;
-	text_t disk_capacity = u8"Capacity"sv;
-	text_t disk_free = u8"Free"sv;
-	text_t disk_used = u8"Used"sv;
-	text_t disk_system = u8"System"sv;
-	text_t duplicates = u8"Duplicates"sv;
-	text_t duplicates_tooltip = u8"Duplicate or similar items in the collection."sv;
-	text_t unknown = u8"Unknown"sv;
-	text_t sort_by_presence = u8"Presence"sv;
-	text_t sort_by_file_type = u8"Type"sv;
-	text_t sort_by_shuffle = u8"Show items in random order"sv;
-	text_t sort_by_name = u8"Name"sv;
-	text_t sort_by_size = u8"Size"sv;
-	text_t sort_by_def = u8"Default"sv;
-	text_t sort_by_extension = u8"Extension"sv;
-	text_t sort_by_location = u8"Location"sv;
-	text_t sort_by_album_show = u8"Album-Show"sv;
-	text_t sort_by_rating_label = u8"Rating-Label"sv;
-	text_t sort_by_resolution = u8"Resolution"sv;
-	text_t sort_by_Folder = u8"Folder"sv;
-	text_t no_items_are_selected = u8"No items are selected"sv;
-	text_t not_supported_cloud = u8"Cloud items are not supported."sv;
-	text_t not_supported_readonly = u8"Readonly items are not supported."sv;
-	text_t not_supported_readonly_metadata = u8"Cannot updated metadata of readonly items."sv;
-	text_t not_supported_photo = u8"Items must be a photo or image."sv;
-	text_t not_supported_save_format = u8"Diffractor can only save or update JPG, WEBP and PNG image files."sv;
-	text_t cannot_edit = u8"Cannot updated metadata of this file type."sv;
-	text_t not_supported_folder = u8"Folders are not supported."sv;
-	text_t rating_remove_fmt = u8"Click {} to remove rating"sv;
-	text_t rating_keys = u8"Number keys 0-5"sv;
-	text_t show_related = u8"press R to view duplicate or related items in the collection"sv;
-	text_t item_oriented = u8"Show items rotated"sv;
-	text_t show_verbose_metadata = u8"Show verbose metadata"sv;
-	text_t hide_verbose_metadata = u8"Hide verbose metadata"sv;
-	text_t item_oriented_tooltip_fmt = u8"This item is shown oriented based on camera information. [{}]"sv;
-	text_t item_show_oriented = u8"Click to toggle if all items are shown rotated."sv;
-	text_t num_of = u8"of"sv;
-	text_t before = u8"Before"sv;
-	text_t after = u8"After"sv;
-	text_t search_or_folder = u8"Search criteria or folder"sv;
-	text_t button_change = u8"Change..."sv;
-	text_t button_ok = u8"&OK"sv;
-	text_t button_cancel = u8"&Cancel"sv;
-	text_t button_close = u8"&Close"sv;
-	text_t version = u8"Version"sv;
-	text_t orientation_top_left = u8"top-left"sv;
-	text_t orientation_top_right = u8"top-right"sv;
-	text_t orientation_bottom_right = u8"bottom-right"sv;
-	text_t orientation_bottom_left = u8"bottom-left"sv;
-	text_t orientation_left_top = u8"left-top"sv;
-	text_t orientation_right_top = u8"right-top"sv;
-	text_t orientation_right_bottom = u8"right-bottom"sv;
-	text_t orientation_left_bottom = u8"left-bottom"sv;
+		"Pinned items stay selected. Use this when you want to quickly compare an item to other items.";
+	text_t command_toggle_item_size = "Toggle thumbnail size";
+	text_t tooltip_thumbnail_size = "Change thumbnail size";
+	text_t tooltip_scroll_to_top = "Back to the top of the list";
+	text_t command_convert_or_resize = "Convert or Resize";
+	text_t command_convert = "Convert";
+	text_t convert_preparing = "Preparing to convert files...";
+	text_t command_edit_metadata = "Edit metadata";
+	text_t command_update_metadata = "Update metadata";
+	text_t command_burn = "Burn to disk";
+	text_t command_keyboard = "Keyboard reference";
+	text_t command_open_with = "Open with";
+	text_t command_open = "Open";
+	text_t tooltip_open = "Open selected items with external app";
+	text_t command_language = "Language";
+	text_t tooltip_tag_with = "Tag or un-tag selected items";
+	text_t tooltip_language = "Change language";
+	text_t command_tools = "Tools";
+	text_t tooltip_tools = "Process selected items";
+	text_t command_eject = "Eject";
+	text_t command_minimize = "Minimize";
+	text_t command_maximize = "Maximize";
+	text_t command_restore = "Restore";
+	text_t command_close = "Close";
+	text_t command_cancel = "Cancel";
+	text_t command_import = "Import";
+	text_t import_preparing = "Preparing to import files...";
+	text_t command_browse_previous_group = "Previous item group";
+	text_t command_browse_next_group = "Next item group";
+	text_t command_browse_previous_folder = "Previous folder or search";
+	text_t command_browse_next_folder = "Next folder or search";
+	text_t command_browse_previous_item = "Select previous item";
+	text_t command_browse_previous_item_extend = "Extend selection to previous item";
+	text_t command_browse_next_item = "Select next item";
+	text_t command_browse_next_item_extend = "Extend selection to next item";
+	text_t command_play = "Play/Pause";
+	text_t tooltip_play = "Play or pause the displayed video or audio file.";
+	text_t command_slideshow = "Slideshow";
+	text_t tooltip_slideshow =
+		"Play through the visible items. Photos are shown for the slideshow delay; video and audio play to the end.";
+	text_t command_zoom = "Zoom mode";
+	text_t command_zoom_fit = "Fit";
+	text_t command_zoom_fit_width = "Fit Width";
+	text_t command_zoom_fill = "Fill";
+	text_t command_zoom_presets = "Zoom";
+	text_t command_zoom_in = "Zoom in";
+	text_t command_zoom_flip = "Flip comparison panes";
+	text_t command_zoom_out = "Zoom out";
+	text_t command_zoom_100 = "100% (1:1)";
+	text_t command_zoom_navigator = "Navigator";
+	text_t command_zoom_navigator_auto_hide = "Auto-hide";
+	text_t command_zoom_navigator_off = "Off";
+	text_t command_toggle_volume = "Toggle volume";
+	text_t command_volume200 = "Volume 200%";
+	text_t command_volume100 = "Volume 100%";
+	text_t command_volume75 = "Volume 75%";
+	text_t command_volume50 = "Volume 50%";
+	text_t command_volume25 = "Volume 25%";
+	text_t command_volume0 = "Mute";
+	text_t command_rotate_anticlockwise = "Rotate anticlockwise";
+	text_t command_rotate_clockwise = "Rotate clockwise";
+	text_t rotate_confirm_single = "Confirm single-item rotations";
+	text_t command_show_in_folder = "Open containing folder";
+	text_t command_show_in_file_browser = "Show in file browser";
+	text_t command_file_search = "Search";
+	text_t command_toggle_details = "Toggle thumbnails or details";
+	text_t tooltip_toggle_details_selected = "Toggle between thumbnails or details for selected item group";
+	text_t tooltip_toggle_details_all = "Toggle between thumbnails or details view";
+	text_t command_capture = "Save current video frame";
+	text_t command_edit = "Edit";
+	text_t tooltip_edit1 = "Color, straighten or crop photos.";
+	text_t command_edit_copy = "Copy";
+	text_t command_edit_copy_item_path = "Copy item path";
+	text_t command_edit_cut = "Cut";
+	text_t command_edit_paste = "Paste";
+	text_t command_app_exit = "Exit";
+	text_t command_rate_1 = "Rate as 1 star";
+	text_t command_rate_2 = "Rate as 2 stars";
+	text_t command_rate_3 = "Rate as 3 stars";
+	text_t command_rate_4 = "Rate as 4 stars";
+	text_t command_rate_5 = "Rate as 5 stars";
+	text_t command_rate_0 = "Remove rating";
+	text_t command_rate_rejected = "Reject";
+	text_t command_label_approved = "Approved";
+	text_t command_label_to_do = "To Do";
+	text_t command_label_select = "Select";
+	text_t command_label_review = "Review";
+	text_t command_label_second = "Second";
+	text_t command_label_none = "No Label";
+	text_t command_group_shuffle = "Show items in random order";
+	text_t command_toggle_group_by = "Toggle item grouping";
+	text_t command_group_file_type = "Group by File type";
+	text_t command_group_size = "Group by Size";
+	text_t command_group_extension = "Group by Extension";
+	text_t command_group_location = "Group by Location";
+	text_t command_group_rating = "Group by Rating/Label";
+	text_t command_group_created = "Group by Date Created";
+	text_t command_group_original = "Group by Date Original";
+	text_t command_group_modified = "Group by Date Modified";
+	text_t command_group_resolution = "Group by Resolution";
+	text_t command_group_camera = "Group by Camera";
+	text_t command_group_album = "Group by Album/Show";
+	text_t command_group_aspect_ratio = "Group by Aspect ratio";
+	text_t command_group_presence = "Group by Collection presence";
+	text_t command_group_folder = "Group by Folder";
+	text_t command_sort_dates_descending = "Show newest items first";
+	text_t command_sort_dates_ascending = "Show oldest items first";
+	text_t command_sort_name = "Sort by Name";
+	text_t command_sort_size = "Sort by Size";
+	text_t command_sort_def = "Sort by Group order (Default)";
+	text_t command_sort_date_created = "Sort by Date created";
+	text_t command_sort_date_original = "Sort by Date original";
+	text_t command_sort_date_modified = "Sort by Date modified";
+	text_t command_highlight_large_items = "Highlight large items in yellow";
+	text_t command_open_google_map = "Open in google maps";
+	text_t command_adjust_date = "Adjust date and time";
+	text_t command_view_large_font = "Large font";
+	text_t command_scan = "Scan";
+	text_t command_save = "Save";
+	text_t command_save_as = "Save as";
+	text_t command_save_and_back = "Save and open previous";
+	text_t command_save_and_next = "Save and open next";
+	text_t command_locate_and_back = "Add location and open previous";
+	text_t command_locate_and_next = "Add location and open next";
+	text_t command_auto_color = "Auto color";
+	text_t tooltip_auto_color = "Automatically improve exposure and color balance";
+	text_t command_auto_document = "Auto document";
+	text_t tooltip_auto_document = "Detect and straighten a photographed document";
+	text_t command_auto_straighten = "Auto straighten";
+	text_t tooltip_auto_straighten = "Automatically straighten horizontal and vertical lines";
+	text_t edit_original = "Original";
+	text_t command_edit_preview = "Preview";
+	text_t tooltip_edit_preview = "Show the final cropped image";
+	text_t command_new_version = "New version available";
+	text_t command_check_for_updates = "Check for updates";
+	text_t searching_text = "Searching...";
+	text_t disk_label = "Label";
+	text_t disk_capacity = "Capacity";
+	text_t disk_free = "Free//disk";
+	text_t disk_used = "Used";
+	text_t disk_system = "System";
+	text_t duplicates = "Duplicates";
+	text_t duplicates_tooltip = "Matching or possible copy items in the collection.";
+	text_t unknown = "Unknown";
+	text_t sort_by_presence = "Presence";
+	text_t sort_by_file_type = "Type";
+	text_t sort_by_shuffle = "Show items in random order";
+	text_t sort_by_name = "Name";
+	text_t sort_by_size = "Size";
+	text_t sort_by_def = "Group order (Default)";
+	text_t sort_by_extension = "Extension";
+	text_t sort_by_location = "Location";
+	text_t sort_by_album_show = "Album-Show";
+	text_t sort_by_rating_label = "Rating-Label";
+	text_t sort_by_resolution = "Resolution";
+	text_t sort_by_aspect_ratio = "Aspect ratio";
+	text_t sort_by_Folder = "Folder";
+	text_t no_items_are_selected = "No items are selected";
+	text_t not_supported_cloud = "Cloud items are not supported.";
+	text_t not_supported_readonly = "Readonly items are not supported.";
+	text_t not_supported_readonly_metadata = "Cannot update metadata of readonly items.";
+	text_t not_supported_photo = "Items must be a photo or image.";
+	text_t not_supported_photo_edit =
+		"Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported.";
+	text_t not_supported_save_format = "Diffractor can only save or update JPG, WEBP and PNG image files.";
+	text_t cannot_edit_fmt =
+		"Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them.";
+	text_t not_supported_folder = "Folders are not supported.";
+	text_t rating_remove_fmt = "Click {} to remove rating";
+	text_t rating_keys = "Number keys 0-5";
+	text_t rating_replaces_reject = "Replaces Reject";
+	text_t label_click_apply = "Click to apply";
+	text_t label_click_clear = "Click to clear";
+	text_t label_replaces_fmt = "Replaces the current label: {}";
+	text_t label_reject_replaces_rating = "Replaces the star rating";
+	text_t show_related = "press R to view the items most closely related to this one";
+	text_t item_oriented = "Show items rotated";
+	text_t show_verbose_metadata = "Show verbose metadata";
+	text_t hide_verbose_metadata = "Hide verbose metadata";
+	text_t item_oriented_tooltip_fmt = "This item is shown oriented based on camera information. [{}]";
+	text_t num_of = "of";
+	text_t before = "Before";
+	text_t after = "After";
+	text_t search_or_folder = "Search criteria or folder";
+	text_t button_change = "Change...";
+	text_t button_ok = "&OK";
+	text_t button_cancel = "&Cancel";
+	text_t button_close = "&Close";
+	text_t version = "Version";
+	text_t orientation_top_left = "top-left";
+	text_t orientation_top_right = "top-right";
+	text_t orientation_bottom_right = "bottom-right";
+	text_t orientation_bottom_left = "bottom-left";
+	text_t orientation_left_top = "left-top";
+	text_t orientation_right_top = "right-top";
+	text_t orientation_right_bottom = "right-bottom";
+	text_t orientation_left_bottom = "left-bottom";
 	text_t default_favorite_tags =
-		u8"family food friends landscape nature night portrait selfie todo travel urban viewed"sv;
-	text_t default_write_name = u8"results"sv;
-	text_t authorized = u8"Diffractor has been authorized"sv;
-	text_t click_to_search_similar = u8"Click to search for similar items in the collection."sv;
-	text_t title_rate = u8"rate"sv;
-	text_t title_folder = u8"folder:{}"sv;
-	text_t title_error = u8"Diffractor ERROR"sv;
-	text_t type_to_search = u8"Type to search"sv;
-	text_t prop_name_album = u8"Album"sv;
-	text_t prop_name_show = u8"Show"sv;
-	text_t prop_name_season = u8"Season"sv;
-	text_t prop_name_episode = u8"Episode"sv;
-	text_t prop_name_artist = u8"Artist"sv;
-	text_t prop_name_albumartist = u8"Album artist"sv;
-	text_t prop_name_audiocodec = u8"Audio codec"sv;
-	text_t prop_name_bitrate = u8"Bitrate"sv;
-	text_t prop_name_cameramanufacturer = u8"Camera manufacturer"sv;
-	text_t prop_name_camera = u8"Camera"sv;
-	text_t prop_name_channels = u8"Channels"sv;
-	text_t prop_name_samplerate = u8"Sample rate"sv;
-	text_t prop_name_sampletype = u8"Sample type"sv;
-	text_t prop_name_place = u8"Place"sv;
-	text_t prop_name_comment = u8"Comment"sv;
-	text_t prop_name_description = u8"Description"sv;
-	text_t prop_name_composer = u8"Composer"sv;
-	text_t prop_name_copyrightcredit = u8"Copyright credit"sv;
-	text_t prop_name_copyrightsource = u8"Copyright source"sv;
-	text_t prop_name_copyrightcreator = u8"Copyright creator"sv;
-	text_t prop_name_copyrightnotice = u8"Copyright notice"sv;
-	text_t prop_name_copyrighturl = u8"Copyright URL"sv;
-	text_t prop_name_country = u8"Country//propertry"sv;
-	text_t prop_name_createdexif = u8"Created exif"sv;
-	text_t prop_name_digitized = u8"Digitized"sv;
-	text_t prop_name_created = u8"Created"sv;
-	text_t prop_name_disk = u8"Disk"sv;
-	text_t prop_name_dimensions = u8"Dimensions"sv;
-	text_t prop_name_duration = u8"Duration"sv;
-	text_t prop_name_encoder = u8"Encoder"sv;
-	text_t prop_name_encodingtool = u8"Encoding tool"sv;
-	text_t prop_name_exposure = u8"Exposure"sv;
-	text_t prop_name_fnumber = u8"FNumber"sv;
-	text_t prop_name_focallength = u8"Focal length"sv;
-	text_t prop_name_35mmequivalent = u8"Focal length 35mm equivalent"sv;
-	text_t prop_name_pixelformat = u8"Pixel format"sv;
-	text_t prop_name_genre = u8"Genre"sv;
-	text_t prop_name_iso = u8"ISO"sv;
-	text_t prop_name_latitude = u8"Latitude"sv;
-	text_t prop_name_lens = u8"Lens"sv;
-	text_t prop_name_longitude = u8"Longitude"sv;
-	text_t prop_name_mediacategory = u8"Media category"sv;
-	text_t prop_name_megapixels = u8"Megapixels"sv;
-	text_t prop_name_modified = u8"Modified"sv;
-	text_t prop_name_null = u8"Null"sv;
-	text_t prop_name_orientation = u8"Orientation"sv;
-	text_t prop_name_publisher = u8"Publisher"sv;
-	text_t prop_name_performer = u8"Performer"sv;
-	text_t prop_name_rating = u8"Rating"sv;
-	text_t prop_name_size = u8"Size"sv;
-	text_t prop_name_state = u8"State"sv;
-	text_t prop_name_streams = u8"Streams"sv;
-	text_t prop_name_synopsis = u8"Synopsis"sv;
-	text_t prop_name_tag = u8"Tag"sv;
-	text_t prop_name_title = u8"Title"sv;
-	text_t prop_name_track = u8"Track"sv;
-	text_t prop_name_videocodec = u8"Video codec"sv;
-	text_t prop_name_year = u8"Year"sv;
-	text_t prop_name_id = u8"Id"sv;
-	text_t prop_name_filename = u8"Filename"sv;
-	text_t prop_name_rawfile = u8"Raw file"sv;
-	text_t prop_name_system = u8"System"sv;
-	text_t prop_name_game = u8"Game//propertry"sv;
-	text_t prop_name_label = u8"Label"sv;
-	text_t prop_name_doc_id = u8"Document Id"sv;
-	text_t menu_add_fmt = u8"Add '{}'"sv;
-	text_t menu_undo = u8"Undo"sv;
-	text_t menu_cut = u8"Cut"sv;
-	text_t menu_copy = u8"Copy"sv;
-	text_t menu_move = u8"Move"sv;
-	text_t menu_paste = u8"Paste"sv;
-	text_t menu_delete = u8"Delete"sv;
-	text_t menu_select_all = u8"Select All"sv;
-	text_t error_same_file = u8"The source and destination files are the same file."sv;
-	text_t error_many_src_1_dest =
-		u8"Multiple file paths were specified in the source buffer, but only one destination file path."sv;
-	text_t error_diff_dir =
-		u8"Rename operation was specified but the destination path is a different directory. Use the move operation instead."sv;
-	text_t error_src_root_dir = u8"The source is a root directory, which cannot be moved or renamed."sv;
-	text_t error_op_cancelled =
-		u8"The operation was canceled by the user, or silently canceled if the appropriate flags were supplied to SHFileOperation."sv;
-	text_t error_dest_subtree = u8"The destination is a subtree of the source."sv;
-	text_t error_access_denied_src = u8"Security options denied access to the source."sv;
-	text_t error_path_too_deep = u8"The source or destination path exceeded or would exceed MAX_PATH."sv;
-	text_t error_many_dest =
-		u8"The operation involved multiple destination paths, which can fail in the case of a move operation."sv;
-	text_t error_invalid_files = u8"The path in the source or destination or both was invalid."sv;
-	text_t error_dest_same_tree = u8"The source and destination have the same parent folder."sv;
-	text_t error_fld_dest_is_file = u8"The destination path is an existing file."sv;
-	text_t error_file_dest_is_fld = u8"The destination path is an existing folder."sv;
-	text_t error_filename_too_long = u8"The name of the file exceeds MAX_PATH."sv;
-	text_t error_dest_is_cd_rom = u8"The destination is a read-only CD-ROM, possibly unformatted."sv;
-	text_t error_dest_is_dvd = u8"The destination is a read-only DVD, possibly unformatted."sv;
-	text_t error_dest_is_cd_record = u8"The destination is a writable CD-ROM, possibly unformatted."sv;
-	text_t error_file_too_large =
-		u8"The file involved in the operation is too large for the destination media or file system."sv;
-	text_t error_src_is_cdrom = u8"The source is a read-only CD-ROM, possibly unformatted."sv;
-	text_t error_src_is_dvd = u8"The source is a read-only DVD, possibly unformatted."sv;
-	text_t error_src_is_cd_record = u8"The source is a writable CD-ROM, possibly unformatted."sv;
-	text_t error_max = u8"MAX_PATH was exceeded during the operation."sv;
-	text_t error_unknown = u8"An unknown error occurred."sv;
-	text_t error_on_dest = u8"An unspecified error occurred on the destination."sv;
-	text_t error_dst_root_dir = u8"Destination is a root directory and cannot be renamed."sv;
-	text_t select_folder = u8"Select Folder..."sv;
-	text_t jpeg_best = u8"JPEG - Best compression for photos"sv;
-	text_t png_best = u8"PNG - Best for non photos"sv;
-	text_t webp_best = u8"WEBP - Best for the web"sv;
-	text_t error_connect_scanner = u8"Could not connect to scanner"sv;
-	text_t error_scanner = u8"Scanner reported an error"sv;
-	text_t error_save_image = u8"Failed to save image."sv;
-	text_t indexing = u8"Indexing"sv;
-	text_t detecting_folders = u8"Detecting {} folders"sv;
+		"family food friends landscape nature night portrait selfie todo travel urban viewed";
+	text_t title_rate = "rate";
+	text_t title_folder = "folder:{}";
+	text_t type_to_search = "Type to search";
+	text_t prop_name_album = "Album";
+	text_t prop_name_show = "Show";
+	text_t prop_name_season = "Season";
+	text_t prop_name_episode = "Episode";
+	text_t prop_name_artist = "Artist";
+	text_t prop_name_albumartist = "Album artist";
+	text_t prop_name_audiocodec = "Audio codec";
+	text_t prop_name_bitrate = "Bitrate";
+	text_t prop_name_cameramanufacturer = "Camera manufacturer";
+	text_t prop_name_camera = "Camera";
+	text_t prop_name_channels = "Channels";
+	text_t prop_name_samplerate = "Sample rate";
+	text_t prop_name_sampletype = "Sample type";
+	text_t prop_name_place = "Place";
+	text_t prop_name_comment = "Comment";
+	text_t prop_name_description = "Description";
+	text_t prop_name_composer = "Composer";
+	text_t prop_name_copyrightcredit = "Copyright credit";
+	text_t prop_name_copyrightsource = "Copyright source";
+	text_t prop_name_copyrightcreator = "Copyright creator";
+	text_t prop_name_copyrightnotice = "Copyright notice";
+	text_t prop_name_copyrighturl = "Copyright URL";
+	text_t prop_name_country = "Country//property";
+	text_t prop_name_createdexif = "Created exif";
+	text_t prop_name_original = "Original//date";
+	text_t prop_name_digitized = "Digitized";
+	text_t prop_name_created = "Created";
+	text_t prop_name_disk = "Disk";
+	text_t prop_name_dimensions = "Dimensions";
+	text_t prop_name_duration = "Duration";
+	text_t prop_name_encoder = "Encoder";
+	text_t prop_name_encodingtool = "Encoding tool";
+	text_t prop_name_exposure = "Exposure";
+	text_t prop_name_fnumber = "FNumber";
+	text_t prop_name_focallength = "Focal length";
+	text_t prop_name_35mmequivalent = "Focal length 35mm equivalent";
+	text_t prop_name_pixelformat = "Pixel format";
+	text_t prop_name_genre = "Genre";
+	text_t prop_name_iso = "ISO";
+	text_t prop_name_altitude = "Altitude";
+	text_t prop_name_gps_speed = "GPS speed";
+	text_t height_in_flight = "In flight";
+	text_t height_altitude_fmt = "{} m";
+	text_t height_underwater_fmt = "{} m underwater";
+	text_t distance_label_fmt = "Distance: {}";
+	text_t tooltip_search_distance = "Change how far from this place to search";
+	// The eight compass abbreviations, north first and clockwise, comma separated. Translate the
+	// abbreviations, keep the order and the commas.
+	text_t compass_points = "N,NE,E,SE,S,SW,W,NW";
+	// Distance, compass point, then place: "410 km NW of Lisbon, Portugal".
+	text_t bearing_fmt = "{} {} of {}";
+	text_t location_near_fmt = "Near {}";
+	text_t location_remote = "Remote area";
+	text_t nothing_within_fmt = "Nothing within {} of {}.";
+	text_t nothing_at_place_fmt = "Nothing found at {}.";
+	text_t widen_to_fmt = "Widen to {}";
+	text_t search_all_named_fmt = "Search all places named {}";
+	text_t show_without_location = "Show items with no location";
+	text_t search_within_fmt = "Search within {} of {}";
+	text_t height_high_altitude = "High altitude";
+	text_t timeline_title = "Timeline";
+	text_t places_title = "Places";
+	// Start of the visit, then the end: "From 12 June 2019 to 21 June 2019".
+	text_t visit_range_fmt = "From {} to {}";
+	text_t visit_items_fmt = "{} items";
+	text_t grouped_by_fmt = "Grouped by {}";
+	// Grouping, then the sort order within each group: "Grouped by location - by date".
+	text_t grouped_and_sorted_fmt = "Grouped by {} - {}";
+	text_t clear_timeline_selection = "Clear";
+	text_t prop_name_latitude = "Latitude";
+	text_t prop_name_lens = "Lens";
+	text_t prop_name_longitude = "Longitude";
+	text_t prop_name_mediacategory = "Media category";
+	text_t prop_name_megapixels = "Megapixels";
+	text_t prop_name_modified = "Modified";
+	text_t prop_name_null = "Null";
+	text_t prop_name_orientation = "Orientation";
+	text_t prop_name_publisher = "Publisher";
+	text_t prop_name_performer = "Performer";
+	text_t prop_name_rating = "Rating";
+	text_t prop_name_size = "Size";
+	text_t prop_name_state = "State";
+	text_t prop_name_streams = "Streams";
+	text_t prop_name_synopsis = "Synopsis";
+	text_t prop_name_tag = "Tag";
+	text_t prop_name_title = "Title";
+	text_t prop_name_track = "Track";
+	text_t prop_name_videocodec = "Video codec";
+	text_t prop_name_year = "Year";
+	text_t prop_name_id = "Id";
+	text_t prop_name_filename = "Filename";
+	text_t prop_name_rawfile = "Raw file";
+	text_t prop_name_system = "System";
+	text_t prop_name_game = "Game//property";
+	text_t prop_name_label = "Label";
+	text_t prop_name_doc_id = "Document Id";
+	text_t menu_move = "Move";
+	text_t error_analysis_cancelled = "The analysis was canceled.";
+	text_t indexing = "Indexing";
 	text_t indexing_message =
-		u8"Diffractor indexes your photos and videos to enable searching and duplicate detection."sv;
-	text_t collection_options_help = u8"You can choose what is indexed in collection options (press Ctrl+F6)."sv;
-	text_t index_later = u8"Index later"sv;
-	text_t collection_options = u8"Collection options"sv;
-	text_t empty = u8"Empty"sv;
-	text_t loading = u8"Loading..."sv;
-	text_t nothing_found1 = u8"Nothing found."sv;
-	text_t nothing_found2 =
-		u8"Diffractor only searches in folders that are indexed. Use collection options to add more folders. (Ctrl+F6)"sv;
-	text_t button_save = u8"&Save"sv;
-	text_t button_dont_save = u8"&Don't Save"sv;
-	text_t save_changes = u8"Save Changes"sv;
-	text_t save_as_jpeg_fmt = u8"Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"sv;
-	text_t button_save_as_jpeg = u8"As &JPEG"sv;
-	text_t changes = u8"Changes"sv;
-	text_t has_changes = u8"{} has modifications"sv;
-	text_t saving_file_name = u8"Saving {}..."sv;
-	text_t options_backup_copy = u8"When overwriting a photo with irreversible changes make an original backup copy"sv;
-	text_t options_jpeg_quality = u8"JPEG save quality"sv;
-	text_t options_webp_quality = u8"WEBP save quality"sv;
-	text_t help_tag1 = u8"Separate each tag with a space: Australia holiday camping."sv;
-	text_t help_tag2 = u8"Join 2 words together in one tag using quotes: \"national park\"."sv;
-	text_t help_artist = u8"Separate each artist with a comma ',' or slash '/'"sv;
-	text_t straighten = u8"Straighten"sv;
-	text_t color = u8"Color"sv;
-	text_t vibrance = u8"Vibrance"sv;
-	text_t darks = u8"Darks"sv;
-	text_t midtones = u8"Midtones"sv;
-	text_t lights = u8"Lights"sv;
-	text_t contrast = u8"Contrast"sv;
-	text_t brightness = u8"Brightness"sv;
-	text_t saturation = u8"Saturation"sv;
-	text_t metadata = u8"Metadata"sv;
-	text_t staring = u8"Staring"sv;
-	text_t tags_title = u8"Tags"sv;
-	text_t album_artist = u8"Album Artist"sv;
-	text_t copyright_title = u8"Copyright"sv;
-	text_t month_january = u8"January"sv;
-	text_t month_february = u8"February"sv;
-	text_t month_march = u8"March"sv;
-	text_t month_april = u8"April"sv;
-	text_t month_may = u8"May"sv;
-	text_t month_june = u8"June"sv;
-	text_t month_july = u8"July"sv;
-	text_t month_august = u8"August"sv;
-	text_t month_september = u8"September"sv;
-	text_t month_october = u8"October"sv;
-	text_t month_november = u8"November"sv;
-	text_t month_december = u8"December"sv;
-	text_t month_short_jan = u8"jan"sv;
-	text_t month_short_feb = u8"feb"sv;
-	text_t month_short_mar = u8"mar"sv;
-	text_t month_short_apr = u8"apr"sv;
-	text_t month_short_may = u8"may"sv;
-	text_t month_short_jun = u8"jun"sv;
-	text_t month_short_jul = u8"jul"sv;
-	text_t month_short_aug = u8"aug"sv;
-	text_t month_short_sep = u8"sep"sv;
-	text_t month_short_oct = u8"oct"sv;
-	text_t month_short_nov = u8"nov"sv;
-	text_t month_short_dec = u8"dec"sv;
-	text_t text_true = u8"true"sv;
-	text_t text_false = u8"false"sv;
-	text_t compare = u8"Compare"sv;
-	text_t compare_tooltip = u8"Hold down left mouse button to compare items."sv;
-	text_t zoom_tooltip = u8"Hold down left mouse button to show photo 100% size."sv;
-	text_t zoom_kb = u8"press ctrl+space"sv;
-	text_t query_or = u8"or"sv;
-	text_t query_and = u8"and"sv;
-	text_t query_with = u8"with"sv;
-	text_t query_without = u8"without"sv;
-	text_t query_created = u8"created"sv;
-	text_t query_modified = u8"modified"sv;
-	text_t query_age = u8"age"sv;
-	text_t query_related = u8"related"sv;
-	text_t query_duplicates = u8"duplicates"sv;
-	text_t query_duplicates_alt1 = u8"dups"sv;
-	text_t query_duplicates_alt2 = u8"duplicate"sv;
-	text_t pixels_title = u8"Pixels"sv;
-	text_t pixels_icon = u8"icon"sv;
-	text_t pixels_small = u8"small"sv;
-	text_t resolution_none = u8"No resolution"sv;
-	text_t group_title_no_extension = u8"No extension"sv;
-	text_t group_title_no_location = u8"No location"sv;
-	text_t group_title_no_rating = u8"No rating"sv;
-	text_t group_title_no_resolution = u8"No resolution"sv;
-	text_t group_title_no_camera = u8"No camera"sv;
-	text_t group_title_no_album_or_show = u8"No album or show"sv;
-	text_t group_title_no_value = u8"No value"sv;
-	text_t group_title_shuffle = u8"random"sv;
-	text_t group_title_size_range_fmt = u8"{} to {}"sv;
-	text_t group_title_today = u8"Today"sv;
-	text_t group_title_yesterday = u8"Yesterday"sv;
-	text_t group_title_items = u8"Items"sv;
-	text_t cancel_was_pressed_after = u8"Cancel was pressed after "sv;
-	text_t rate_title = u8"Rate selected items"sv;
-	text_t open_in_browser_title = u8"Open in file browser"sv;
-	text_t new_folder_name = u8"New Folder"sv;
-	text_t new_folder_title = u8"New Folder"sv;
-	text_t burn_title = u8"Burn"sv;
-	text_t print_title = u8"Print"sv;
-	text_t remove_metadata_title = u8"Remove Metadata"sv;
-	text_t folder_noun = u8"folder"sv;
-	text_t folder_noun_plural = u8"folders"sv;
-	text_t item_noun = u8"item"sv;
-	text_t item_noun_plural = u8"items"sv;
-	text_t rename_help_template_1 = u8"When specifying a template:"sv;
-	text_t rename_help_template_2 = u8"Use '#' to specify position of the numeric sequence"sv;
-	text_t rename_help_template_3 =
-		u8"Use metadata templates '{property-name}' to include file properties in the name."sv;
-	text_t for_example = u8"For example:"sv;
-	text_t rename_help_template_example_2 = u8"photo-###"sv;
-	text_t rename_help_template_example_3 = u8"{year}-{month}-###"sv;
-	text_t rename_help_template_example_4 = u8"travel-{country}-###"sv;
+		"Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works.";
+	text_t empty = "Empty";
+	text_t loading = "Loading...";
+	text_t image_too_large = "Too large to display";
+	text_t image_display_failed = "This image could not be displayed";
+	text_t nothing_found1 = "Nothing found.";
+	text_t nothing_found2 = "Search only covers folders in your collection.";
+	text_t nothing_found_add_folders = "Add folders to your collection (Ctrl+F6)";
+	text_t empty_folder = "Empty Folder";
+	text_t button_save = "&Save";
+	text_t button_dont_save = "&Don't Save";
+	text_t save_changes = "Save Changes";
+	text_t save_as_jpeg_fmt = "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?";
+	text_t button_save_as_jpeg = "As &JPEG";
+	text_t changes = "Changes";
+	text_t has_changes = "{} has modifications";
+	text_t saving_file_name = "Saving {}...";
+	text_t options_backup_copy = "When overwriting a photo with irreversible changes make an original backup copy";
+	text_t options_jpeg_quality = "JPEG save quality";
+	text_t options_webp_quality = "WEBP save quality";
+	text_t help_tag1 = "Separate each tag with a space: Australia holiday camping.";
+	text_t help_tag2 = "Join 2 words together in one tag using quotes: \"national park\".";
+	text_t help_artist = "Separate each artist with a comma ',' or slash '/'";
+	text_t straighten = "Straighten";
+	text_t perspective_horizontal = "Horizontal perspective";
+	text_t perspective_vertical = "Vertical perspective";
+	text_t color = "Color";
+	text_t temperature = "Temperature";
+	text_t tint = "Tint";
+	text_t vibrance = "Vibrance";
+	text_t darks = "Darks";
+	text_t midtones = "Midtones";
+	text_t lights = "Lights";
+	text_t contrast = "Contrast";
+	text_t brightness = "Brightness";
+	text_t saturation = "Saturation";
+	text_t metadata = "Metadata";
+	text_t staring = "Staring";
+	text_t tags_title = "Tags";
+	text_t album_artist = "Album Artist";
+	text_t copyright_title = "Copyright";
+	// Month names and booleans: the foundation's words, which this text translates and installs.
+	str::words words;
+	// The platform layer's messages, which this text translates and installs.
+	platform::messages platform_text;
+	text_t compare = "Compare";
+	text_t compare_tooltip = "Hold down left mouse button to compare items.";
+	text_t zoom_kb = "press ctrl+space";
+	text_t query_or = "or";
+	text_t query_and = "and";
+	text_t query_with = "with";
+	text_t query_without = "without";
+	text_t query_created = "created";
+	text_t query_original = "original";
+	text_t query_modified = "modified";
+	text_t query_age = "age";
+	text_t query_related = "related";
+	text_t query_duplicates = "duplicates";
+	text_t query_duplicates_alt1 = "dups";
+	text_t query_duplicates_alt2 = "duplicate";
 
-	text_t rename_info = u8"Rename multiple files based on an incrementing sequence or file metadata template."sv;
-	text_t rename_template_label = u8"Template:"sv;
-	text_t rename_template_start_label = u8"Start at:"sv;
-	text_t rename_label = u8"New name:"sv;
-	text_t open_properties_title = u8"Open Properties"sv;
-	text_t pasted_file_name = u8"pasted"sv;
-	text_t resized_max_label = u8"Maximum photo dimension (in pixels):"sv;
-	text_t dest_folder_label = u8"Destination folder:"sv;
-	text_t open_dest = u8"Open destination folder afterwards"sv;
-	text_t failed_to_create_folder_fmt = u8"Failed to create folder: {}"sv;
-	text_t button_rotate = u8"&Rotate"sv;
-	text_t desktop_background_info = u8"Set the desktop background to the current image."sv;
-	text_t maximize_image = u8"Maximize image"sv;
-	text_t button_background = u8"&Background"sv;
-	text_t button_delete = u8"&Delete"sv;
-	text_t delete_error = u8"Failed to Delete Selected File."sv;
-	text_t button_update = u8"&Update"sv;
-	text_t copyright_notice = u8"Notice"sv;
-	text_t copyright_creator = u8"Creator"sv;
-	text_t copyright_source = u8"Source"sv;
-	text_t copyright_credit = u8"Credit"sv;
-	text_t copyright_url = u8"URL"sv;
-	text_t location_overwrite_gps = u8"Overwrite GPS coordinates when setting a location."sv;
-	text_t location_not_selected = u8"No location selected."sv;
-	text_t location_not_loaded = u8"Location could not be loaded from database or internet."sv;
-	text_t destination_folder = u8"Destination folder:"sv;
-	text_t lossless_compression = u8"Lossless compression"sv;
-	text_t limit_output_dimensions = u8"Limit output to a maximum dimension (in pixels)."sv;
-	text_t button_convert = u8"&Convert"sv;
-	text_t dest_name_label = u8"Destination name:"sv;
-	text_t tag_add_remove = u8"Add or remove Tags"sv;
-	text_t help_tag_add_remove = u8"Tags can be removed by prefixing with a minus: -remove"sv;
-	text_t tag_add_or_remove_label = u8"Tags to add or remove:"sv;
-	text_t tags_favorite_label = u8"Favorite Tags"sv;
-	text_t tags_common_label = u8"Common Tags"sv;
-	text_t tags_remove_label = u8"Removable Tags"sv;
-	text_t button_tag = u8"&Tag"sv;
+	text_t pixels_title = "Pixels";
+	text_t pixels_icon = "icon";
+	text_t pixels_small = "small";
+	text_t resolution_none = "No resolution";
+	text_t group_title_no_extension = "No extension";
+	text_t group_title_no_location = "No location";
+	text_t group_title_no_rating = "No rating";
+	text_t group_title_no_resolution = "No resolution";
+	text_t group_title_no_aspect_ratio = "No aspect ratio";
+	text_t aspect_ratio_other_landscape = "Other landscape";
+	text_t aspect_ratio_other_portrait = "Other portrait";
+	text_t group_title_no_camera = "No camera";
+	text_t group_title_no_album_or_show = "No album or show";
+	text_t group_title_no_value = "No value";
+	text_t group_title_shuffle = "random";
+	text_t group_title_size_range_fmt = "{} to {}";
+	text_t group_title_today = "Today";
+	text_t group_title_yesterday = "Yesterday";
+	text_t group_title_items = "Items";
+	text_t cancel_was_pressed_after = "Cancel was pressed after {}";
+	text_t rate_title = "Rate selected items";
+	text_t open_in_browser_title = "Open in file browser";
+	text_t new_folder_name = "New Folder";
+	text_t new_folder_title = "New Folder";
+	text_t burn_title = "Burn";
+	text_t burn_help =
+		"The selected items will be staged in Windows Disc Burning. Windows will guide you through writing the disc.";
+	text_t burn_stage = "&Stage files";
+	text_t burn_failed = "Windows could not stage the selected items for disc burning.";
+	text_t print_title = "Print";
+	// The Remove Metadata tool is withdrawn for rework; the string stays so its translations survive.
+	text_t remove_metadata_title = "Remove Metadata";
+	text_t folder_noun = "folder";
+	text_t folder_noun_plural = "folders";
+	text_t rename_help_template_1 = "When specifying a template:";
+	text_t rename_help_template_2 = "Use '#' to specify position of the numeric sequence";
+	text_t rename_help_template_3 =
+		"Use metadata templates '{property-name}' to include file properties in the name.";
+	text_t for_example = "For example:";
+	text_t rename_help_template_example_2 = "photo-###";
+	text_t rename_help_template_example_3 = "{year}-{month}-###";
+	text_t rename_help_template_example_4 = "travel-{country}-###";
+
+	text_t rename_info =
+		"Rename the selected files from a template that can combine text, an incrementing number, and metadata properties. Review the new names below before you run.";
+	text_t rename_template_label = "Template:";
+	text_t rename_template_start_label = "Start at:";
+	text_t rename_label = "New name:";
+	text_t open_properties_title = "Open Properties";
+	text_t pasted_file_name = "pasted";
+	text_t open_dest = "Open destination folder afterwards";
+	text_t failed_to_create_folder_fmt = "Failed to create folder: {}";
+	text_t button_rotate = "&Rotate";
+	text_t desktop_background_info = "Set the desktop background to the current image.";
+	text_t maximize_image = "Maximize image";
+	text_t button_delete = "&Delete";
+	text_t delete_error = "Failed to Delete Selected File.";
+	text_t button_update = "&Update";
+	text_t metadata_select_field =
+		"Select at least one metadata field to update. Checked empty fields clear existing values; unchecked fields are unchanged.";
+	text_t genre_separator_help = "Use a semicolon to list more than one genre. For example: Rock; Blues";
+	text_t copyright_notice = "Notice";
+	text_t copyright_creator = "Creator";
+	text_t copyright_source = "Source";
+	text_t copyright_credit = "Credit";
+	text_t copyright_url = "URL";
+	text_t location_overwrite_gps = "Overwrite GPS coordinates when setting a location.";
+	text_t location_not_selected = "No location selected.";
+	text_t destination_folder = "Destination folder:";
+	text_t lossless_compression = "Lossless compression";
+	text_t limit_output_dimensions = "Limit output to a maximum dimension (in pixels).";
+	text_t dimension_must_be_positive = "Maximum dimension must be at least 1 pixel.";
+	text_t button_convert = "&Convert";
+	text_t tag_add_remove = "Add or remove Tags";
+	text_t help_tag_add_remove = "Tags can be removed by prefixing with a minus: -remove";
+	text_t tag_add_or_remove_label = "Tags to add or remove:";
+	text_t tags_favorite_label = "Favorite Tags";
+	text_t tags_common_label = "Common Tags";
+	text_t tags_workflow_label = "Workflow Tags";
+	text_t tags_remove_label = "Removable Tags";
+	text_t configure_favorite_tags = "Configure favorite tags.";
+	text_t button_tag = "&Tag";
+	text_t command_apply_tags = "Apply tags";
+	text_t tags_column_item = "Item";
+	text_t tags_column_result = "Tags after run";
+	text_t tags_nothing_to_do = "Enter one or more tags to add or remove.";
+	text_t tags_unchanged = "no change";
 	text_t adjust_date_help1 =
-		u8"Items in this date range will be modified to start at a new date and time. The time gap between items will be preserved."sv;
+		"Capture metadata and the Windows file created time will be shifted to start at a new local date and time.";
 	text_t adjust_date_help2 =
-		u8"For example, if you have 2 photos taken one hour apart, after the update they will still be one hour apart."sv;
+		"Time gaps between dated items are preserved. Items without a known date receive the new starting date.";
 	text_t adjust_date_help3 =
-		u8"This is useful if your camera date was set wrongly and you need to fix photo and video dates."sv;
-	text_t selected_date_range_label = u8"Selected items are in the date range:"sv;
-	text_t starting_fmt = u8"Starting {}"sv;
-	text_t ending_fmt = u8"Ending {}"sv;
-	text_t starting_date_label = u8"New Starting Date (local time):"sv;
-	text_t command_rate = u8"Rate"sv;
-	text_t is_not_valid_folder_fmt = u8"'{}' is not a valid folder."sv;
-	text_t title_updating = u8"Updating..."sv;
-	text_t open_with_app_tool = u8"Open with app or tool"sv;
-	text_t open_with_tool = u8"tool"sv;
-	text_t open_with_app = u8"app"sv;
+		"This is useful if your camera date was set wrongly and you need to fix photo and video dates.";
+	text_t adjust_date_required = "Choose a valid new starting date and time.";
+	text_t convert_folder_required = "Choose a destination folder.";
+	text_t convert_dimension_required = "Enter a maximum dimension in pixels.";
+	text_t metadata_fields_required = "Check one or more fields to change.";
+	text_t selected_date_range_label = "Selected items are in the date range:";
+	text_t starting_fmt = "Starting {}";
+	text_t ending_fmt = "Ending {}";
+	text_t starting_date_label = "New Starting Date (local time):";
+	text_t command_rate = "Rate";
+	text_t is_not_valid_folder_fmt = "'{}' is not a valid folder.";
+	text_t title_updating = "Updating...";
+	text_t open_with_app_tool = "Open with app or tool";
+	text_t open_with_tool = "tool";
+	text_t open_with_app = "app";
 	text_t import_info =
-		u8"Copy (or move) files into a structured folder hierarchy. The folder structure can be based on file metadata templates such year/date or album/artist. This is useful if you want to organize files in a structured hierarchy."sv;
-	text_t import_dest_folder = u8"Destination root folder. Structured folders will be created under this folder."sv;
-	text_t import_ignore_previous = u8"Ignore previously imported items."sv;
-	text_t import_overwrite_if_newer = u8"Overwrite if source items are newer."sv;
-	text_t import_dest_folder_structure = u8"Destination folder structure:"sv;
-	text_t import_rename_different_attributes = u8"Rename if files have same name but different attributes."sv;
-	text_t move_items = u8"Move source items."sv;
-	text_t import_set_created_date = u8"Set file date created to metadata date created."sv;
-	text_t button_import = u8"&Import"sv;
-	text_t eject_help = u8"To avoid losing data, eject an external hard drive or USB drive before removing it."sv;
-	text_t eject_failed_fmt = u8"Failed to eject {}."sv;
-	text_t close = u8"Close"sv;
-	text_t eject_close_info = u8"Close without ejecting"sv;
-	text_t eject_title_fmt = u8"Eject {}"sv;
-	text_t space_used = u8"used"sv;
-	text_t scan_failed = u8"Failed to Scan."sv;
-	text_t update_title = u8"New version available"sv;
-	text_t update_help_fmt = u8"Version {} of Diffractor is available. You are currently using version {}."sv;
-	text_t update = u8"Update"sv;
-	text_t update_help = u8"Download and install now. Diffractor will need to be closed briefly during the install."sv;
-	text_t update_not_now = u8"Not now"sv;
-	text_t update_not_now_help = u8"Remind me again in a week"sv;
-	text_t update_more_info = u8"More info"sv;
-	text_t update_more_info_help = u8"Learn more about this update at Diffractor.com"sv;
-	text_t update_please_wait = u8"Please wait while the update is downloaded..."sv;
-	text_t update_failed = u8"Update failed."sv;
-	text_t donate = u8"Donate"sv;
+		"Copy or move files into a folder structure built from metadata such as date, album, or artist. If the destination is in your collection, the copies join it automatically. Analyze first to review every action before you run.";
+	text_t import_dest_folder = "Destination root folder. Structured folders will be created under this folder.";
+	text_t import_ignore_previous = "Ignore previously imported items.";
+	text_t import_replace_warning =
+		"The existing files will be overwritten. Their current contents cannot be recovered from the recycle bin.";
+	text_t import_dest_folder_structure = "Destination folder structure:";
+	text_t move_items = "Move source items.";
+	text_t import_set_created_date = "Set file date created to metadata date created.";
+	text_t eject_help = "To avoid losing data, eject an external hard drive or USB drive before removing it.";
+	text_t eject_failed_fmt = "Failed to eject {}.";
+	text_t eject_none_found = "No removable drive was found.";
+	text_t close = "Close";
+	text_t eject_close_info = "Close without ejecting";
+	text_t eject_title_fmt = "Eject {}";
+	text_t scan_failed = "Failed to Scan.";
+	text_t update_title = "Updates";
+	text_t update_help_fmt = "Version {} of Diffractor is available. You are currently using version {}.";
+	text_t update = "Update";
+	text_t update_install_now = "Install now";
+	text_t update_checking = "Checking for updates...";
+	text_t update_up_to_date_fmt = "You are using the latest version ({}).";
+	text_t update_check_failed = "Could not check for updates. Check your internet connection and try again.";
+	text_t update_help = "Download and install now. Diffractor will need to be closed briefly during the install.";
+	text_t update_not_now = "Not now";
+	text_t update_not_now_help = "Remind me again in a week";
+	text_t update_more_info = "More info";
+	text_t update_more_info_help = "Learn more about this update at Diffractor.com";
+	text_t update_please_wait = "Please wait while the update is downloaded...";
+	text_t update_failed = "Update failed.";
+	text_t donate = "Donate";
 	text_t donate_help =
-		u8"Diffractor can be used for free. If you find it useful, please help the project by donating."sv;
-	text_t donate_link = u8"Donate online."sv;
-	text_t maybe_later = u8"OK - maybe later."sv;
-	text_t error_internet =
-		u8"Could be a problem with the internet connection? Try again later if that seems likely."sv;
-	text_t failed_connect_internet = u8"Failed to connect to the internet"sv;
-	text_t documentation = u8"Documentation"sv;
-	text_t keyboard = u8"Keyboard"sv;
-	text_t support = u8"Support"sv;
-	text_t ok_got_it = u8"OK - got it."sv;
-	text_t ask_question = u8"Ask the Diffractor team a question."sv;
-	text_t list_of_accelerators = u8"List of keyboard accelerators"sv;
-	text_t learn_more_diffractor_com = u8"Learn more at Diffractor.com"sv;
-	text_t ok_all_done = u8"OK - all done."sv;
-	text_t optimize = u8"Optimize"sv;
-	text_t defragment_and_compact = u8"Defragment database."sv;
-	text_t reset_database = u8"Clean database and reindex.\nAll data is regenerated."sv;
-	text_t need_some_maintenance = u8"After long periods of use, the index may need some maintenance."sv;
-	text_t keyboard_basics_title = u8"Basics"sv;
-	text_t keyboard_navigation_title = u8"Navigation"sv;
-	text_t keyboard_playback_title = u8"Media playback"sv;
-	text_t keyboard_tools_title = u8"Tools"sv;
-	text_t keyboard_open_title = u8"Open"sv;
-	text_t keyboard_file_management_title = u8"File management"sv;
-	text_t keyboard_rate_label_title = u8"Rate or Label"sv;
-	text_t keyboard_selection_title = u8"Selection"sv;
-	text_t keyboard_help_title = u8"Help"sv;
-	text_t keyboard_options_title = u8"Options"sv;
-	text_t keyboard_ref_title = u8"Keyboard reference"sv;
-	text_t keyboard_enter = u8"enter"sv;
-	text_t keyboard_enter_desc = u8"Opens an image full screen."sv;
-	text_t keyboard_space = u8"space"sv;
-	text_t keyboard_space_desc = u8"Stops or starts a slideshow or playing a video/audio file."sv;
-	text_t keyboard_escape = u8"escape"sv;
-	text_t keyboard_escape_desc = u8"Gets you out of full screen, zoom or other modes."sv;
-	text_t keyboard_left = u8"left"sv;
-	text_t keyboard_right = u8"right"sv;
-	text_t keyboard_back = u8"back"sv;
-	text_t keyboard_browser_back = u8"browser-back"sv;
-	text_t keyboard_browser_favorites = u8"browser-favorites"sv;
-	text_t keyboard_browser_forward = u8"browser-forward"sv;
-	text_t keyboard_browser_home = u8"browser-home"sv;
-	text_t keyboard_browser_refresh = u8"browser-refresh"sv;
-	text_t keyboard_browser_search = u8"browser-search"sv;
-	text_t keyboard_browser_stop = u8"browser-stop"sv;
-	text_t keyboard_del = u8"del"sv;
-	text_t keyboard_down = u8"down"sv;
-	text_t keyboard_f1 = u8"F1"sv;
-	text_t keyboard_f10 = u8"F10"sv;
-	text_t keyboard_f11 = u8"F11"sv;
-	text_t keyboard_f2 = u8"F2"sv;
-	text_t keyboard_f3 = u8"F3"sv;
-	text_t keyboard_f4 = u8"F4"sv;
-	text_t keyboard_f5 = u8"F5"sv;
-	text_t keyboard_f6 = u8"F6"sv;
-	text_t keyboard_f7 = u8"F7"sv;
-	text_t keyboard_f8 = u8"F8"sv;
-	text_t keyboard_f9 = u8"F9"sv;
-	text_t keyboard_insert = u8"insert"sv;
-	text_t keyboard_media_next_track = u8"media-next-track"sv;
-	text_t keyboard_media_play_pause = u8"media-play-pause"sv;
-	text_t keyboard_media_prev_track = u8"media-prev-track"sv;
-	text_t keyboard_media_stop = u8"media-stop"sv;
-	text_t keyboard_next = u8"page-down"sv;
-	text_t keyboard_oem_4 = u8"["sv;
-	text_t keyboard_oem_6 = u8"]"sv;
-	text_t keyboard_oem_plus = u8"+"sv;
-	text_t keyboard_prior = u8"page-up"sv;
-	text_t keyboard_tab = u8"tab"sv;
-	text_t keyboard_up = u8"up"sv;
-	text_t keyboard_volume_down = u8"volume-down"sv;
-	text_t keyboard_volume_mute = u8"volume-mute"sv;
-	text_t keyboard_volume_up = u8"volume-up"sv;
-	text_t keyboard_left_right_desc = u8"Move to the next or previous item."sv;
-	text_t keyboard_ctrl_left_right_desc = u8"Extend the current item selection and allow comparing of items."sv;
+		"Diffractor can be used for free. If you find it useful, please help the project by donating.";
+	text_t donate_link = "Donate online.";
+	text_t documentation = "Documentation";
+	text_t releases = "Releases - Diffractor";
+	text_t keyboard = "Keyboard";
+	text_t support = "Support";
+	text_t list_of_accelerators = "List of keyboard accelerators";
+	text_t learn_more_diffractor_com = "Learn more at Diffractor.com";
+	text_t defragment_and_compact = "Defragment database.";
+	text_t reset_database = "Clean database and reindex.\nAll data is regenerated.";
+	text_t keyboard_basics_title = "Basics";
+	text_t keyboard_navigation_title = "Navigation";
+	text_t keyboard_playback_title = "Media playback";
+	text_t keyboard_tools_title = "Tools";
+	text_t keyboard_open_title = "Open";
+	text_t keyboard_file_management_title = "File management";
+	text_t keyboard_rate_label_title = "Rate or Label";
+	text_t keyboard_selection_title = "Selection";
+	text_t keyboard_help_title = "Help";
+	text_t keyboard_group_title = "Grouping";
+	text_t keyboard_edit_title = "Editing";
+	text_t options_title = "Options";
+	text_t keyboard_ref_title = "Keyboard reference";
+	text_t keyboard_enter = "enter";
+	text_t keyboard_enter_desc = "Opens an image full screen.";
+	text_t keyboard_space = "space";
+	text_t keyboard_space_desc = "Plays or pauses video and audio. Stops a running slideshow.";
+	text_t keyboard_escape = "escape";
+	text_t keyboard_escape_desc = "Gets you out of full screen, zoom or other modes.";
+	text_t keyboard_left = "left";
+	text_t keyboard_right = "right";
+	text_t keyboard_back = "back";
+	text_t keyboard_browser_back = "browser-back";
+	text_t keyboard_browser_favorites = "browser-favorites";
+	text_t keyboard_browser_forward = "browser-forward";
+	text_t keyboard_browser_home = "browser-home";
+	text_t keyboard_browser_refresh = "browser-refresh";
+	text_t keyboard_browser_search = "browser-search";
+	text_t keyboard_browser_stop = "browser-stop";
+	text_t keyboard_del = "del";
+	text_t keyboard_down = "down";
+	text_t keyboard_home = "home";
+	text_t keyboard_end = "end";
+	text_t keyboard_f1 = "F1";
+	text_t keyboard_f10 = "F10";
+	text_t keyboard_f11 = "F11";
+	text_t keyboard_f2 = "F2";
+	text_t keyboard_f3 = "F3";
+	text_t keyboard_f4 = "F4";
+	text_t keyboard_f5 = "F5";
+	text_t keyboard_f6 = "F6";
+	text_t keyboard_f7 = "F7";
+	text_t keyboard_f8 = "F8";
+	text_t keyboard_f9 = "F9";
+	text_t keyboard_insert = "insert";
+	text_t keyboard_media_next_track = "media-next-track";
+	text_t keyboard_media_play_pause = "media-play-pause";
+	text_t keyboard_media_prev_track = "media-prev-track";
+	text_t keyboard_media_stop = "media-stop";
+	text_t keyboard_next = "page-down";
+	text_t keyboard_oem_4 = "[";
+	text_t keyboard_oem_6 = "]";
+	text_t keyboard_oem_plus = "+";
+	text_t keyboard_oem_minus = "-";
+	text_t keyboard_prior = "page-up";
+	text_t keyboard_tab = "tab";
+	text_t keyboard_up = "up";
+	text_t keyboard_volume_down = "volume-down";
+	text_t keyboard_volume_mute = "volume-mute";
+	text_t keyboard_volume_up = "volume-up";
+	text_t keyboard_left_right_desc = "Move to the next or previous item.";
+	text_t keyboard_ctrl_left_right_desc = "Extend the current item selection and allow comparing of items.";
+	text_t keyboard_up_down_desc = "Move up or down a row of items. Pans a zoomed image.";
+	text_t keyboard_home_end_desc =
+		"Move to the first or last item. Pans a zoomed image to the left or right edge.";
+	text_t keyboard_zoom_keys_desc = "Zoom a displayed image in or out. Press 0 to fit it to the window.";
 	text_t about_info =
-		u8"Diffractor provides simple tools to make you more productive when sorting, comparing and organizing photos or videos."sv;
-	text_t defragmenting = u8"Defragmenting..."sv;
-	text_t resetting = u8"Cleaning..."sv;
-	text_t options_app_options = u8"Application options"sv;
-	text_t options_save_options = u8"When saving"sv;
-	text_t options_updates = u8"Updates"sv;
-	text_t options_advanced = u8"Advanced"sv;
-	text_t index_maintenance_title = u8"Maintenance"sv;
-	text_t options_show_rotated = u8"Show photos rotated based on recorded camera orientation"sv;
-	text_t options_show_hidden = u8"Show hidden files"sv;
-	text_t options_confirm_del = u8"Confirm when deleting items. Deleted items are moved to the recycle bin."sv;
-	text_t option_overwrite_gps =
-		u8"Overwrite GPS coordinates when setting a location. Otherwise only place, state and country names are updated."sv;
-	text_t option_slideshow_title = u8"Slideshow"sv;
-	text_t option_slideshow_delay = u8"Delay before showing the next item (in seconds)"sv;
-	text_t options_check_for_update = u8"Check for updates by connecting to the internet"sv;
-	text_t options_auto_update = u8"Automatically install updates when possible"sv;
-	text_t options_use_gpu = u8"Use hardware acceleration to draw the Diffractor user interface (requires restart)"sv;
-	text_t options_use_gpu_video = u8"Use hardware acceleration to decode video (when available)"sv;
-	text_t options_use_yuv_tex =
-		u8"Use NV12 and P010 format textures (Automatically turned off if problems detected)"sv;
+		"Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything.";
+	text_t defragmenting = "Defragmenting...";
+	text_t resetting = "Cleaning...";
+	text_t options_app_options = "Application options";
+	text_t options_save_options = "When saving";
+	text_t options_updates = "Updates";
+	text_t options_advanced = "Advanced";
+	text_t index_maintenance_title = "Maintenance";
+	text_t options_show_rotated = "Show photos rotated based on recorded camera orientation";
+	text_t options_show_hidden = "Show hidden files";
+	text_t options_confirm_del = "Confirm when deleting items. Deleted items are moved to the recycle bin.";
+	text_t options_confirm_rotate = "Confirm when rotating one item. Rotating several items is always confirmed.";
+	text_t option_slideshow_title = "Slideshow";
+	text_t option_slideshow_delay = "Delay before showing the next item (in seconds)";
+	text_t options_check_for_update = "Check for updates by connecting to the internet";
+	text_t options_use_gpu = "Use hardware acceleration to draw the Diffractor user interface (requires restart)";
+	text_t options_use_gpu_video = "Use hardware acceleration to decode video (when available)";
 	text_t options_send_crash_reports =
-		u8"Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics."sv;
-	text_t options_show_debug_info = u8"Show application debugging information (for the programmers)."sv;
-	text_t options_show_shadow = u8"Show an inset shadow surrounding the image view panel."sv;
-	text_t options_update_modified = u8"Update file date modified when editing."sv;
-	text_t options_last_played_pos = u8"Resume playing media from the last position played."sv;
-	text_t options_show_help_tooltips = u8"Show tooltips with help on buttons and links."sv;
+		"Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics.";
+	text_t options_show_debug_info = "Show application debugging information (for the programmers).";
+	text_t options_show_shadow = "Show an inset shadow surrounding the image view panel.";
+	text_t options_last_played_pos = "Resume playing media from the last position played.";
+	text_t options_show_help_tooltips = "Show tooltips with help on buttons and links.";
 	text_t index_maintenance_help =
-		u8"Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files."sv;
+		"Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files.";
 	text_t index_maintenance_reset_recommended =
-		u8"The index is reporting errors. Restarting Diffractor is recommended."sv;
-	text_t collection_options_more_folders = u8"More folders. Separate each folder with a new line."sv;
-	text_t collection_options_local_folders_title = u8"Collection folders"sv;
-	text_t collection_options_pictures = u8"Pictures"sv;
-	text_t collection_options_videos = u8"Videos"sv;
-	text_t collection_options_music = u8"Music"sv;
-	text_t collection_options_desktop = u8"Desktop"sv;
-	text_t collection_options_downloads = u8"Downloads"sv;
-	text_t collection_options_documents = u8"Documents"sv;
-	text_t collection_options_dropbox = u8"Local DropBox Folder"sv;
-	text_t collection_options_onedrive = u8"Local OneDrive Folder"sv;
-	text_t collection_options_google_drive = u8"Local GoogleDrive Folder"sv;
-	text_t collection_options_custom_folders_title = u8"More Collection folders"sv;
+		"The index is reporting errors. Restarting Diffractor is recommended.";
+	text_t collection_options_more_folders = "One folder per line.";
+	text_t collection_options_local_folders_title = "Collection folders";
+	text_t collection_options_custom_folders_title = "Other folders";
 	text_t collection_options_custom_folders_help =
-		u8"Prefix the folder name with minus '-' to exclude it from the collection. You exclude folders by the full path -c:\\collection\\secret, with a folder name -secret, or with a wildcard -secret*."sv;
+		"Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection.";
 
 	text_t collection_options_custom_locations_help =
-		u8"Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change."sv;
-	text_t customise_tags_title = u8"Favorite Tags"sv;
-	text_t customise_tags_help = u8"Add a list of your favorite tags here to save time when tagging."sv;
-	text_t customise_searches_title = u8"Favorite Searches"sv;
-	text_t customise_sidebar_title = u8"Sidebar"sv;
-	text_t customise_sidebar_desc = u8"Define what items are shown in the sidebar."sv;
-	text_t customize_show_total = u8"Show total items pie chart"sv;
-	text_t customize_show_history = u8"Show history chart"sv;
-	text_t customize_show_world_map = u8"Show world map"sv;
-	text_t customize_show_indexed_folders = u8"Show indexed folders"sv;
-	text_t customize_show_drives = u8"Show drives"sv;
-	text_t customize_show_searches = u8"Show favorite searches"sv;
-	text_t customize_show_tags = u8"Show tags"sv;
-	text_t customize_ratings = u8"Show ratings"sv;
-	text_t customize_labels = u8"Show labels"sv;
+		"Folders can be drives, folders, network shares or device labels. Labels are useful for removable or network devices where mapped drive letters can change.";
+	text_t customise_tags_title = "Favorite Tags";
+	text_t customise_tags_help = "Add a list of your favorite tags here to save time when tagging.";
+	text_t customise_searches_title = "Favorite Searches";
+	text_t customise_sidebar_title = "Sidebar";
+	text_t customise_sidebar_desc = "Define what items are shown in the sidebar.";
+	text_t customize_show_total = "Show total items pie chart";
+	text_t customize_show_history = "Show history chart";
+	text_t customize_history_start_year = "Earliest year the history navigator offers. Empty works it out from your photos.";
+	text_t customize_show_world_map = "Show world map";
+	text_t customize_show_drives = "Show drives";
+	text_t customize_show_searches = "Show favorite searches";
+	text_t customize_show_tags = "Show tags";
+	text_t customize_ratings = "Show ratings";
+	text_t customize_labels = "Show labels";
 	text_t email_small_help =
-		u8"Email sizes can be reduced using the following options. Smaller emails are faster to send."sv;
-	text_t email_zip = u8"Zip files in the email"sv;
-	text_t email_convert_to_jpeg = u8"Convert all photos to JPEG"sv;
+		"Create a draft in your desktop email client with the selected files attached. Originals are unchanged.";
+	text_t email_zip = "Zip files in the email";
+	text_t email_convert_to_jpeg = "Convert all photos to JPEG";
 	text_t email_limit_dimensions =
-		u8"Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."sv;
-	text_t button_send = u8"&Send"sv;
-	text_t email_processing_fmt = u8"Processing {}"sv;
-	text_t email_connecting_to_mapi = u8"Connecting to MAPI..."sv;
-	text_t email_sending = u8"Sending email using MAPI..."sv;
-	text_t email_failed = u8"Failed to send email using MAPI."sv;
-	text_t keyboard_or = u8"OR"sv;
-	text_t keyboard_alt = u8"alt"sv;
-	text_t keyboard_control = u8"ctrl"sv;
-	text_t keyboard_shift = u8"shift"sv;
-	text_t keyboard_backspace = u8"backspace"sv;
-	text_t open_with_fmt = u8"Open with {}"sv;
-	text_t open_with_title = u8"Open"sv;
-	text_t open_with_failed = u8"Failed to open selected items."sv;
-	text_t tag_selected = u8"Tag selected items"sv;
-	text_t group_sort_tooltip = u8"Group and sort items"sv;
-	text_t group_sort_click = u8"Click to group or sort"sv;
-	text_t listed = u8"Listed"sv;
-	text_t listed_sub_folders = u8"Including sub folders:"sv;
-	text_t repeat_help = u8"When one media item plays to the end, start playing the next automatically"sv;
-	text_t repeat_one_help = u8"Repeat play single media item"sv;
-	text_t repeat_off_help = u8"Don't repeat or auto play"sv;
-	text_t update_available = u8"Update available"sv;
-	text_t update_avail_version_fmt = u8"Version {} of Diffractor is available."sv;
-	text_t update_current_version_fmt = u8"You are currently using version {}."sv;
-	text_t keyboard_accelerator_press = u8"press"sv;
-	text_t invalid = u8"invalid"sv;
-	text_t dates_title = u8"Dates"sv;
-	text_t dates_metadata_created = u8"Metadata created:"sv;
-	text_t dates_file_created = u8"File created:"sv;
-	text_t dates_file_modified = u8"File modified:"sv;
-	text_t stream_name_fmt = u8"Stream {}"sv;
-	text_t stream_select_fmt = u8"Click to select stream '{}'"sv;
-	text_t copy_to_join = u8"to"sv;
-	text_t save_new_photo = u8"Save new photo"sv;
-	text_t open_title = u8"Open"sv;
-	text_t map_instructions = u8"Scroll map to select a location. Use mouse-wheel to zoom."sv;
-	text_t command_filter_photos = u8"Photo filter"sv;
-	text_t command_filter_videos = u8"Video filter"sv;
-	text_t command_filter_audio = u8"Audio filter"sv;
-	text_t click_to_search = u8"Click to search in the collection"sv;
-	text_t click_to_open = u8"Click to open"sv;
-	text_t collection_contains = u8"The collection contains {} {} ({})."sv;
-	text_t collection_contains2 = u8"The collection contains:"sv;
-	text_t items_created_fmt = u8"Items created {} {}"sv;
-	text_t items_modified_fmt = u8"Items modified {} {}"sv;
-	text_t click_to_open_created_modified = u8"Click to open created items.\nCtrl+click to open modified items."sv;
-	text_t click_items_from_fmt = u8"{} items from {} in the collection."sv;
-	text_t filter = u8"filter"sv;
+		"Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files.";
+	text_t button_send = "&Send";
+	text_t email_processing_fmt = "Processing {}";
+	text_t email_connecting_to_mapi = "Connecting to MAPI...";
+	text_t email_sending = "Sending email using MAPI...";
+	text_t email_canceled = "Email draft was canceled.";
+	text_t email_failed = "Failed to send email using MAPI.";
+	text_t share_small_help =
+		"Windows lists the apps that can receive the files. Originals are unchanged.";
+	text_t share_zip = "Send the files as one zip file";
+	text_t button_share = "&Share";
+	text_t share_failed = "The files could not be shared.";
+	text_t keyboard_or = "OR";
+	text_t keyboard_alt = "alt";
+	text_t keyboard_control = "ctrl";
+	text_t keyboard_shift = "shift";
+	text_t keyboard_backspace = "backspace";
+	text_t open_with_fmt = "Open with {}";
+	text_t open_with_title = "Open";
+	text_t open_with_failed = "Failed to open selected items.";
+	text_t tag_selected = "Tag selected items";
+	text_t group_sort_tooltip = "Group and sort items";
+	text_t repeat_help = "When the last item has played, start again from the first";
+	text_t repeat_one_help = "Repeat play single media item";
+	text_t repeat_off_help = "Stop after the last item";
+	text_t update_available = "Update available";
+	text_t update_avail_version_fmt = "Version {} of Diffractor is available.";
+	text_t update_current_version_fmt = "You are currently using version {}.";
+	text_t keyboard_accelerator_press = "press";
+	text_t invalid = "invalid";
+	text_t dates_title = "Dates";
+	text_t dates_metadata_created = "Metadata created:";
+	text_t dates_file_created = "File created:";
+	text_t dates_file_modified = "File modified:";
+	text_t stream_name_fmt = "Stream {}";
+	text_t copy_to_join = "to";
+	text_t save_new_photo = "Save new photo";
+	text_t open_title = "Open";
+	// Names the Add location command (`command_locate`) literally rather than by substitution.
+	// Renaming that command means editing this sentence too - see locations.md 5.6.
+	text_t map_instructions =
+		"The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location.";
+	text_t command_filter_items = "Filter items";
+	text_t command_filter_photos = "Photo filter";
+	text_t command_filter_videos = "Video filter";
+	text_t command_filter_audio = "Audio filter";
+	text_t collection_contains = "The collection contains {} {} ({}).";
+	text_t collection_contains2 = "The collection contains:";
+	text_t items_created_fmt = "Items created {} {}";
+	text_t items_modified_fmt = "Items modified {} {}";
+	text_t open_created_modified = "Opens created items.\nCtrl+click opens modified items.";
+	text_t history_navigator_action = "Shows the eight years ending here.";
+	text_t click_items_from_fmt = "{} items close to {} in the collection.";
+	text_t map_items_close_to_fmt = "{} items close to {}";
+	text_t filter = "filter";
 
-	text_t genre_a_capella = u8"A capella"sv;
-	text_t genre_abstract = u8"Abstract"sv;
-	text_t genre_acidjazz = u8"Acid Jazz"sv;
-	text_t genre_acidpunk = u8"Acid Punk"sv;
-	text_t genre_acid = u8"Acid"sv;
-	text_t genre_acoustic = u8"Acoustic"sv;
-	text_t genre_action_adventure = u8"Action & Adventure"sv;
-	text_t genre_action = u8"Action"sv;
-	text_t genre_aerial = u8"Aerial"sv;
-	text_t genre_alternative = u8"Alternative"sv;
-	text_t genre_alternrock = u8"AlternRock"sv;
-	text_t genre_ambient = u8"Ambient"sv;
-	text_t genre_analog = u8"Analog"sv;
-	text_t genre_animation = u8"Animation"sv;
-	text_t genre_anime = u8"Anime"sv;
-	text_t genre_architectural = u8"Architectural"sv;
-	text_t genre_avantgarde = u8"Avantgarde"sv;
-	text_t genre_aviation = u8"Aviation"sv;
-	text_t genre_ballad = u8"Ballad"sv;
-	text_t genre_bass = u8"Bass"sv;
-	text_t genre_bebob = u8"Bebob"sv;
-	text_t genre_bigband = u8"Big Band"sv;
-	text_t genre_bluegrass = u8"Bluegrass"sv;
-	text_t genre_blues = u8"Blues"sv;
-	text_t genre_booty_bass = u8"Booty Bass"sv;
-	text_t genre_brazilian = u8"Brazilian"sv;
-	text_t genre_cabaret = u8"Cabaret"sv;
-	text_t genre_candid = u8"Candid"sv;
-	text_t genre_celtic = u8"Celtic"sv;
-	text_t genre_chambermusic = u8"Chamber Music"sv;
-	text_t genre_chanson = u8"Chanson"sv;
-	text_t genre_childrens = u8"Children's"sv;
-	text_t genre_chorus = u8"Chorus"sv;
-	text_t genre_christian_gospel = u8"Christian & Gospel"sv;
-	text_t genre_christianran_reap = u8"Christian Rap"sv;
-	text_t genre_classic_rock = u8"Classic Rock"sv;
-	text_t genre_classic = u8"Classic"sv;
-	text_t genre_classical = u8"Classical"sv;
-	text_t genre_close_up = u8"Close-up"sv;
-	text_t genre_cloudscape = u8"Cloudscape"sv;
-	text_t genre_club = u8"Club"sv;
-	text_t genre_comedy = u8"Comedy"sv;
-	text_t genre_conceptual = u8"Conceptual"sv;
-	text_t genre_concert_films = u8"Concert Films"sv;
-	text_t genre_concert = u8"Concert"sv;
-	text_t genre_conservation = u8"Conservation"sv;
-	text_t genre_country = u8"Country//genre"sv;
-	text_t genre_cult = u8"Cult"sv;
-	text_t genre_dance_hall = u8"Dance Hall"sv;
-	text_t genre_dance = u8"Dance"sv;
-	text_t genre_darkwave = u8"Darkwave"sv;
-	text_t genre_death_metal = u8"Death Metal"sv;
-	text_t genre_disco = u8"Disco"sv;
-	text_t genre_documentary = u8"Documentary"sv;
-	text_t genre_drama = u8"Drama"sv;
-	text_t genre_dream = u8"Dream"sv;
-	text_t genre_drum_solo = u8"Drum Solo"sv;
-	text_t genre_duet = u8"Duet"sv;
-	text_t genre_easylistening = u8"Easy Listening"sv;
-	text_t genre_electronic = u8"Electronic"sv;
-	text_t genre_ethnic = u8"Ethnic"sv;
-	text_t genre_euro_dance = u8"Eurodance"sv;
-	text_t genre_euro_house = u8"Euro-House"sv;
-	text_t genre_euro_techno = u8"Euro-Techno"sv;
-	text_t genre_family = u8"Family"sv;
-	text_t genre_fashion = u8"Fashion"sv;
-	text_t genre_fast_fusion = u8"Fast Fusion"sv;
-	text_t genre_film_still = u8"Film still"sv;
-	text_t genre_fine_art = u8"Fine-art"sv;
-	text_t genre_fire = u8"Fire"sv;
-	text_t genre_fireworks = u8"Fireworks"sv;
-	text_t genre_fitness_workout = u8"Fitness & Workout"sv;
-	text_t genre_folk = u8"Folk"sv;
-	text_t genre_folklore = u8"Folklore"sv;
-	text_t genre_folk_rock = u8"Folk-Rock"sv;
-	text_t genre_food = u8"Food"sv;
-	text_t genre_foreign = u8"Foreign"sv;
-	text_t genre_forensic = u8"Forensic"sv;
-	text_t genre_freestyle = u8"Freestyle"sv;
-	text_t genre_funk = u8"Funk"sv;
-	text_t genre_fusion = u8"Fusion"sv;
-	text_t genre_game = u8"Game//genre"sv;
-	text_t genre_gangsta = u8"Gangsta"sv;
-	text_t genre_geophotography = u8"Geo-photography"sv;
-	text_t genre_glamour = u8"Glamour"sv;
-	text_t genre_gospel = u8"Gospel"sv;
-	text_t genre_gothic_rock = u8"Gothic Rock"sv;
-	text_t genre_gothic = u8"Gothic"sv;
-	text_t genre_grunge = u8"Grunge"sv;
-	text_t genre_hardrock = u8"Hard Rock"sv;
-	text_t genre_highke = u8"High key"sv;
-	text_t genre_high_speed = u8"High-speed"sv;
-	text_t genre_hip_hop = u8"Hip-Hop"sv;
-	text_t genre_hip_hop_rap = u8"Hip-Hop/Rap"sv;
-	text_t genre_holiday = u8"Holiday"sv;
-	text_t genre_horror = u8"Horror"sv;
-	text_t genre_house = u8"House"sv;
-	text_t genre_humour = u8"Humour"sv;
-	text_t genre_independent = u8"Independent"sv;
-	text_t genre_industrial = u8"Industrial"sv;
-	text_t genre_instrumental_pop = u8"Instrumental Pop"sv;
-	text_t genre_instrumental_rock = u8"Instrumental Rock"sv;
-	text_t genre_instrumental = u8"Instrumental"sv;
-	text_t genre_jazz = u8"Jazz"sv;
-	text_t genre_jazzfun = u8"Jazz + Funk"sv;
-	text_t genre_jungle = u8"Jungle"sv;
-	text_t genre_kids_family = u8"Kids & Family"sv;
-	text_t genre_kids = u8"Kids"sv;
-	text_t genre_kirlian = u8"Kirlian"sv;
-	text_t genre_landscape = u8"Landscape"sv;
-	text_t genre_latin = u8"Latin"sv;
-	text_t genre_lifestyle = u8"Lifestyle"sv;
-	text_t genre_lo_fi = u8"Lo-fi"sv;
-	text_t genre_lomography = u8"Lomography"sv;
-	text_t genre_long_exposure = u8"Long-exposure"sv;
-	text_t genre_low_key = u8"Low key"sv;
-	text_t genre_macro = u8"Macro"sv;
-	text_t genre_medical = u8"Medical"sv;
-	text_t genre_meditative = u8"Meditative"sv;
-	text_t genre_metal = u8"Metal"sv;
-	text_t genre_monochrome = u8"Monochrome"sv;
-	text_t genre_music_documentaries = u8"Music Documentaries"sv;
-	text_t genre_music_feature_films = u8"Music Feature Films"sv;
-	text_t genre_musical = u8"Musical"sv;
-	text_t genre_musicals = u8"Musicals"sv;
-	text_t genre_narrative = u8"Narrative"sv;
-	text_t genre_nationa_folk = u8"National Folk"sv;
-	text_t genre_native_american = u8"Native American"sv;
-	text_t genre_new_age = u8"New Age"sv;
-	text_t genre_new_wave = u8"New Wave"sv;
-	text_t genre_night = u8"Night"sv;
-	text_t genre_noise = u8"Noise"sv;
-	text_t genre_nonfiction = u8"Nonfiction"sv;
-	text_t genre_oldies = u8"Oldies"sv;
-	text_t genre_opera = u8"Opera"sv;
-	text_t genre_other = u8"Other"sv;
-	text_t genre_panorama = u8"Panorama"sv;
-	text_t genre_panoramic = u8"Panoramic"sv;
-	text_t genre_pellier_noir = u8"Pellier Noir"sv;
-	text_t genre_photo_op = u8"Photo op"sv;
-	text_t genre_photobiography = u8"Photobiography"sv;
-	text_t genre_photojournalism = u8"Photojournalism"sv;
-	text_t genre_photowalking = u8"Photowalking"sv;
-	text_t genre_podcast = u8"Podcast"sv;
-	text_t genre_polaroid = u8"Polaroid"sv;
-	text_t genre_polka = u8"Polka"sv;
-	text_t genre_pop = u8"Pop"sv;
-	text_t genre_pop_funk = u8"Pop/Funk"sv;
-	text_t genre_pop_folk = u8"Pop-Folk"sv;
-	text_t genre_porn_groove = u8"Porn Groove"sv;
-	text_t genre_portrait = u8"Portrait"sv;
-	text_t genre_power_ballad = u8"Power Ballad"sv;
-	text_t genre_pranks = u8"Pranks"sv;
-	text_t genre_primus = u8"Primus"sv;
-	text_t genre_progressive_rock = u8"Progressive Rock"sv;
-	text_t genre_psychadelic = u8"Psychadelic"sv;
-	text_t genre_psychedelic_rock = u8"Psychedelic Rock"sv;
-	text_t genre_punk_rock = u8"Punk Rock"sv;
-	text_t genre_punk = u8"Punk"sv;
-	text_t genre_randb = u8"R&B"sv;
-	text_t genre_rap = u8"Rap"sv;
-	text_t genre_rave = u8"Rave"sv;
-	text_t genre_reality_tv = u8"Reality TV"sv;
-	text_t genre_reggae = u8"Reggae"sv;
-	text_t genre_retro = u8"Retro"sv;
-	text_t genre_revival = u8"Revival"sv;
-	text_t genre_rhythmic_soul = u8"Rhythmic Soul"sv;
-	text_t genre_rock_and_roll = u8"Rock & Roll"sv;
-	text_t genre_rock = u8"Rock"sv;
-	text_t genre_romance = u8"Romance"sv;
-	text_t genre_samba = u8"Samba"sv;
-	text_t genre_satellite = u8"Satellite"sv;
-	text_t genre_satire = u8"Satire"sv;
-	text_t genre_scifi_and_fantasy = u8"Sci-Fi & Fantasy"sv;
-	text_t genre_short_films = u8"Short Films"sv;
-	text_t genre_show_tunes = u8"Show tunes"sv;
-	text_t genre_singer_songwriter = u8"Singer/Songwriter"sv;
-	text_t genre_ska = u8"Ska"sv;
-	text_t genre_slow_jam = u8"Slow Jam"sv;
-	text_t genre_slow_rock = u8"Slow Rock"sv;
-	text_t genre_social = u8"Social"sv;
-	text_t genre_soft_focus = u8"Soft focus"sv;
-	text_t genre_sonata = u8"Sonata"sv;
-	text_t genre_soul = u8"Soul"sv;
-	text_t genre_sound_clip = u8"Sound Clip"sv;
-	text_t genre_soundtrack = u8"Soundtrack"sv;
-	text_t genre_southern_rock = u8"Southern Rock"sv;
-	text_t genre_space = u8"Space"sv;
-	text_t genre_special_interest = u8"Special Interest"sv;
-	text_t genre_speech = u8"Speech"sv;
-	text_t genre_sports = u8"Sports"sv;
-	text_t genre_star_trail = u8"Star trail"sv;
-	text_t genre_still_life = u8"Still life"sv;
-	text_t genre_stock = u8"Stock"sv;
-	text_t genre_street = u8"Street"sv;
-	text_t genre_subminiature = u8"Subminiature"sv;
-	text_t genre_swing = u8"Swing"sv;
-	text_t genre_symphonic_rock = u8"Symphonic Rock"sv;
-	text_t genre_symphony = u8"Symphony"sv;
-	text_t genre_tango = u8"Tango"sv;
-	text_t genre_techno = u8"Techno"sv;
-	text_t genre_techno_industrial = u8"Techno-Industrial"sv;
-	text_t genre_teens = u8"Teens"sv;
-	text_t genre_thriller = u8"Thriller"sv;
-	text_t genre_time_lapse = u8"Time-lapse"sv;
-	text_t genre_top40 = u8"Top 40"sv;
-	text_t genre_trailer = u8"Trailer"sv;
-	text_t genre_trance = u8"Trance"sv;
-	text_t genre_travel = u8"Travel"sv;
-	text_t genre_tribal = u8"Tribal"sv;
-	text_t genre_trip_hop = u8"Trip-Hop"sv;
-	text_t genre_ultraviolet = u8"Ultraviolet"sv;
-	text_t genre_underwater = u8"Underwater"sv;
-	text_t genre_unknown = u8"Unknown"sv;
-	text_t genre_urban = u8"Urban"sv;
-	text_t genre_vernacular = u8"Vernacular"sv;
-	text_t genre_vintage = u8"Vintage"sv;
-	text_t genre_vocal = u8"Vocal"sv;
-	text_t genre_war = u8"War"sv;
-	text_t genre_western = u8"Western"sv;
-	text_t genre_world = u8"World"sv;
-	text_t search_last_7_days = u8"Last 7 days"sv;
-	text_t search_top_rated = u8"Top rated"sv;
-	text_t search_christmas = u8"Christmas"sv;
-	text_t install_welcome_text1 = u8"Super-fast searching, viewing and comparing of photos or videos."sv;
-	text_t install_welcome_text2 = u8"Optimized for your graphics card and PC."sv;
-	text_t total_title = u8"{} ({}) total items in {} folders."sv;
-	text_t index_size_fmt = u8"Currently the index database is {} in size and contains metadata from {} items."sv;
-	text_t count = u8"Count"sv;
-	text_t folder = u8"folder"sv;
-	text_t folders = u8"folders"sv;
-	text_t photo = u8"photo"sv;
-	text_t photos = u8"photos"sv;
-	text_t video = u8"video"sv;
-	text_t data = u8"data"sv;
-	text_t subtitle = u8"subtitle"sv;
-	text_t videos = u8"videos"sv;
-	text_t audio = u8"audio"sv;
-	text_t audio_title = u8"Audio"sv;
-	text_t archive = u8"archive"sv;
-	text_t archives = u8"archives"sv;
-	text_t retro = u8"retro"sv;
-	text_t retro_title = u8"Retro"sv;
-	text_t other = u8"other"sv;
-	text_t others = u8"others"sv;
-	text_t truncated_at_one_mb = u8"Truncated at 1MB"sv;
-	text_t help_more_info = u8"Help or more information"sv;
-	text_t help_send_info = u8"Send anonymous log information to Diffractor HQ."sv;
-	text_t click_collection_options = u8"Click for collection options"sv;
-	text_t collection_title = u8"Your collection"sv;
-	text_t location_title = u8"Location"sv;
-	text_t size_title = u8"Size"sv;
-	text_t customize_display_title = u8"Display"sv;
-	text_t presence_tile = u8"Presence"sv;
-	text_t presence_loading = u8"Presence loading..."sv;
-	text_t presence_not_in = u8"NOT in collection"sv;
-	text_t presence_this_in = u8"In collection"sv;
-	text_t presence_similar_in = u8"Similar in collection"sv;
-	text_t presence_newer_in = u8"Newer in collection"sv;
-	text_t presence_older_in = u8"Older in collection"sv;
-	text_t presence_not_in_long = u8"This item is NOT in the collection."sv;
-	text_t presence_this_in_long = u8"This item is in the collection."sv;
+	text_t genre_a_capella = "A capella";
+	text_t genre_abstract = "Abstract";
+	text_t genre_acidjazz = "Acid Jazz";
+	text_t genre_acidpunk = "Acid Punk";
+	text_t genre_acid = "Acid";
+	text_t genre_acoustic = "Acoustic";
+	text_t genre_action_adventure = "Action & Adventure";
+	text_t genre_action = "Action";
+	text_t genre_aerial = "Aerial";
+	text_t genre_alternative = "Alternative";
+	text_t genre_alternrock = "AlternRock";
+	text_t genre_ambient = "Ambient";
+	text_t genre_analog = "Analog";
+	text_t genre_animation = "Animation";
+	text_t genre_anime = "Anime";
+	text_t genre_architectural = "Architectural";
+	text_t genre_avantgarde = "Avantgarde";
+	text_t genre_aviation = "Aviation";
+	text_t genre_ballad = "Ballad";
+	text_t genre_bass = "Bass";
+	text_t genre_bebob = "Bebob";
+	text_t genre_bigband = "Big Band";
+	text_t genre_bluegrass = "Bluegrass";
+	text_t genre_blues = "Blues";
+	text_t genre_booty_bass = "Booty Bass";
+	text_t genre_brazilian = "Brazilian";
+	text_t genre_cabaret = "Cabaret";
+	text_t genre_candid = "Candid";
+	text_t genre_celtic = "Celtic";
+	text_t genre_chambermusic = "Chamber Music";
+	text_t genre_chanson = "Chanson";
+	text_t genre_childrens = "Children's";
+	text_t genre_chorus = "Chorus";
+	text_t genre_christian_gospel = "Christian & Gospel";
+	text_t genre_christian_rap = "Christian Rap";
+	text_t genre_classic_rock = "Classic Rock";
+	text_t genre_classic = "Classic";
+	text_t genre_classical = "Classical";
+	text_t genre_close_up = "Close-up";
+	text_t genre_cloudscape = "Cloudscape";
+	text_t genre_club = "Club";
+	text_t genre_comedy = "Comedy";
+	text_t genre_conceptual = "Conceptual";
+	text_t genre_concert_films = "Concert Films";
+	text_t genre_concert = "Concert";
+	text_t genre_conservation = "Conservation";
+	text_t genre_country = "Country//genre";
+	text_t genre_cult = "Cult";
+	text_t genre_dance_hall = "Dance Hall";
+	text_t genre_dance = "Dance";
+	text_t genre_darkwave = "Darkwave";
+	text_t genre_death_metal = "Death Metal";
+	text_t genre_disco = "Disco";
+	text_t genre_documentary = "Documentary";
+	text_t genre_drama = "Drama";
+	text_t genre_dream = "Dream";
+	text_t genre_drum_solo = "Drum Solo";
+	text_t genre_duet = "Duet";
+	text_t genre_easylistening = "Easy Listening";
+	text_t genre_electronic = "Electronic";
+	text_t genre_ethnic = "Ethnic";
+	text_t genre_euro_dance = "Eurodance";
+	text_t genre_euro_house = "Euro-House";
+	text_t genre_euro_techno = "Euro-Techno";
+	text_t genre_family = "Family";
+	text_t genre_fashion = "Fashion";
+	text_t genre_fast_fusion = "Fast Fusion";
+	text_t genre_film_still = "Film still";
+	text_t genre_fine_art = "Fine-art";
+	text_t genre_fire = "Fire";
+	text_t genre_fireworks = "Fireworks";
+	text_t genre_fitness_workout = "Fitness & Workout";
+	text_t genre_folk = "Folk";
+	text_t genre_folklore = "Folklore";
+	text_t genre_folk_rock = "Folk-Rock";
+	text_t genre_food = "Food";
+	text_t genre_foreign = "Foreign";
+	text_t genre_forensic = "Forensic";
+	text_t genre_freestyle = "Freestyle";
+	text_t genre_funk = "Funk";
+	text_t genre_fusion = "Fusion";
+	text_t genre_game = "Game//genre";
+	text_t genre_gangsta = "Gangsta";
+	text_t genre_geophotography = "Geo-photography";
+	text_t genre_glamour = "Glamour";
+	text_t genre_gospel = "Gospel";
+	text_t genre_gothic_rock = "Gothic Rock";
+	text_t genre_gothic = "Gothic";
+	text_t genre_grunge = "Grunge";
+	text_t genre_hardrock = "Hard Rock";
+	text_t genre_high_key = "High key";
+	text_t genre_high_speed = "High-speed";
+	text_t genre_hip_hop = "Hip-Hop";
+	text_t genre_hip_hop_rap = "Hip-Hop/Rap";
+	text_t genre_holiday = "Holiday";
+	text_t genre_horror = "Horror";
+	text_t genre_house = "House";
+	text_t genre_humour = "Humour";
+	text_t genre_independent = "Independent";
+	text_t genre_industrial = "Industrial";
+	text_t genre_instrumental_pop = "Instrumental Pop";
+	text_t genre_instrumental_rock = "Instrumental Rock";
+	text_t genre_instrumental = "Instrumental";
+	text_t genre_jazz = "Jazz";
+	text_t genre_jazzfun = "Jazz + Funk";
+	text_t genre_jungle = "Jungle";
+	text_t genre_kids_family = "Kids & Family";
+	text_t genre_kids = "Kids";
+	text_t genre_kirlian = "Kirlian";
+	text_t genre_landscape = "Landscape";
+	text_t genre_latin = "Latin";
+	text_t genre_lifestyle = "Lifestyle";
+	text_t genre_lo_fi = "Lo-fi";
+	text_t genre_lomography = "Lomography";
+	text_t genre_long_exposure = "Long-exposure";
+	text_t genre_low_key = "Low key";
+	text_t genre_macro = "Macro";
+	text_t genre_medical = "Medical";
+	text_t genre_meditative = "Meditative";
+	text_t genre_metal = "Metal";
+	text_t genre_monochrome = "Monochrome";
+	text_t genre_music_documentaries = "Music Documentaries";
+	text_t genre_music_feature_films = "Music Feature Films";
+	text_t genre_musical = "Musical";
+	text_t genre_musicals = "Musicals";
+	text_t genre_narrative = "Narrative";
+	text_t genre_national_folk = "National Folk";
+	text_t genre_native_american = "Native American";
+	text_t genre_new_age = "New Age";
+	text_t genre_new_wave = "New Wave";
+	text_t genre_night = "Night";
+	text_t genre_noise = "Noise";
+	text_t genre_nonfiction = "Nonfiction";
+	text_t genre_oldies = "Oldies";
+	text_t genre_opera = "Opera";
+	text_t genre_other = "Other";
+	text_t genre_panorama = "Panorama";
+	text_t genre_panoramic = "Panoramic";
+	text_t genre_film_noir = "Film Noir";
+	text_t genre_photo_op = "Photo op";
+	text_t genre_photobiography = "Photobiography";
+	text_t genre_photojournalism = "Photojournalism";
+	text_t genre_photowalking = "Photowalking";
+	text_t genre_podcast = "Podcast";
+	text_t genre_polaroid = "Polaroid";
+	text_t genre_polka = "Polka";
+	text_t genre_pop = "Pop";
+	text_t genre_pop_funk = "Pop/Funk";
+	text_t genre_pop_folk = "Pop-Folk";
+	text_t genre_porn_groove = "Porn Groove";
+	text_t genre_portrait = "Portrait";
+	text_t genre_power_ballad = "Power Ballad";
+	text_t genre_pranks = "Pranks";
+	text_t genre_primus = "Primus";
+	text_t genre_progressive_rock = "Progressive Rock";
+	text_t genre_psychadelic = "Psychadelic";
+	text_t genre_psychedelic_rock = "Psychedelic Rock";
+	text_t genre_punk_rock = "Punk Rock";
+	text_t genre_punk = "Punk";
+	text_t genre_randb = "R&B";
+	text_t genre_rap = "Rap";
+	text_t genre_rave = "Rave";
+	text_t genre_reality_tv = "Reality TV";
+	text_t genre_reggae = "Reggae";
+	text_t genre_retro = "Retro";
+	text_t genre_revival = "Revival";
+	text_t genre_rhythmic_soul = "Rhythmic Soul";
+	text_t genre_rock_and_roll = "Rock & Roll";
+	text_t genre_rock = "Rock";
+	text_t genre_romance = "Romance";
+	text_t genre_samba = "Samba";
+	text_t genre_satellite = "Satellite";
+	text_t genre_satire = "Satire";
+	text_t genre_scifi_and_fantasy = "Sci-Fi & Fantasy";
+	text_t genre_short_films = "Short Films";
+	text_t genre_show_tunes = "Show tunes";
+	text_t genre_singer_songwriter = "Singer/Songwriter";
+	text_t genre_ska = "Ska";
+	text_t genre_slow_jam = "Slow Jam";
+	text_t genre_slow_rock = "Slow Rock";
+	text_t genre_social = "Social";
+	text_t genre_soft_focus = "Soft focus";
+	text_t genre_sonata = "Sonata";
+	text_t genre_soul = "Soul";
+	text_t genre_sound_clip = "Sound Clip";
+	text_t genre_soundtrack = "Soundtrack";
+	text_t genre_southern_rock = "Southern Rock";
+	text_t genre_space = "Space";
+	text_t genre_special_interest = "Special Interest";
+	text_t genre_speech = "Speech";
+	text_t genre_sports = "Sports";
+	text_t genre_star_trail = "Star trail";
+	text_t genre_still_life = "Still life";
+	text_t genre_stock = "Stock";
+	text_t genre_street = "Street";
+	text_t genre_subminiature = "Subminiature";
+	text_t genre_swing = "Swing";
+	text_t genre_symphonic_rock = "Symphonic Rock";
+	text_t genre_symphony = "Symphony";
+	text_t genre_tango = "Tango";
+	text_t genre_techno = "Techno";
+	text_t genre_techno_industrial = "Techno-Industrial";
+	text_t genre_teens = "Teens";
+	text_t genre_thriller = "Thriller";
+	text_t genre_time_lapse = "Time-lapse";
+	text_t genre_top40 = "Top 40";
+	text_t genre_trailer = "Trailer";
+	text_t genre_trance = "Trance";
+	text_t genre_travel = "Travel";
+	text_t genre_tribal = "Tribal";
+	text_t genre_trip_hop = "Trip-Hop";
+	text_t genre_ultraviolet = "Ultraviolet";
+	text_t genre_underwater = "Underwater";
+	text_t genre_unknown = "Unknown";
+	text_t genre_urban = "Urban";
+	text_t genre_vernacular = "Vernacular";
+	text_t genre_vintage = "Vintage";
+	text_t genre_vocal = "Vocal";
+	text_t genre_war = "War";
+	text_t genre_western = "Western";
+	text_t genre_world = "World";
+	text_t search_last_7_days = "Last 7 days";
+	text_t search_christmas = "Christmas";
+	text_t total_title = "{} ({}) total items in {} folders.";
+	text_t index_size_fmt = "Currently the index database is {} in size and contains metadata from {} items.";
+	text_t count = "Count";
+	text_t folder = "folder";
+	text_t folders = "folders";
+	text_t photo = "photo";
+	text_t photos = "photos";
+	text_t video = "video";
+	text_t data = "data";
+	text_t subtitle = "subtitle";
+	text_t videos = "videos";
+	text_t audio = "audio";
+	text_t audio_title = "Audio";
+	text_t archive = "archive";
+	text_t archives = "archives";
+	text_t retro = "retro";
+	text_t retro_title = "Retro";
+	text_t other = "other";
+	text_t others = "others";
+	text_t truncated_at_one_mb = "Truncated at 1MB";
+	text_t help_more_info = "Help or more information";
+	text_t help_send_info = "Send anonymous log information to Diffractor HQ.";
+	text_t diagnostics_sent = "Diagnostics information was sent to Diffractor HQ.";
+	text_t diagnostics_send_failed =
+		"Diagnostics information could not be sent. Check your internet connection and try again.";
+	text_t collection_title = "Your collection";
+	text_t location_title = "Location";
+	text_t size_title = "Size";
+	text_t presence_tile = "Presence";
+	text_t presence_loading = "Checking presence...";
+	text_t presence_not_in = "Outside collection; no possible copy identified";
+	text_t presence_this_in = "In collection";
+	text_t presence_similar_in = "Possible copy in collection";
+	text_t presence_newer_in = "Possible newer copy in collection";
+	text_t presence_older_in = "Possible older copy in collection";
+	text_t presence_not_in_long =
+		"This item is outside the collection. No possible copy was identified in the collection.";
+	text_t presence_this_in_long = "This item is in the collection.";
 	text_t presence_similar_in_long =
-		u8"This item is outside the collection but similar item(s) exist in the collection."sv;
+		"This item is outside the collection. One or more possible copies exist in the collection.";
 	text_t presence_newer_in_long =
-		u8"This item is outside the collection but similar NEWER item(s) exist in the collection."sv;
+		"This item is outside the collection. One or more possible newer copies exist in the collection.";
 	text_t presence_older_in_long =
-		u8"This item is outside the collection but similar OLDER item(s) exist in the collection."sv;
-	text_t unselect_fmt = u8"Unselect {}"sv;
-	text_t delete_fmt = u8"Delete {}"sv;
-	text_t folder_title = u8"Folder"sv;
-	text_t command_save_and_back_tooltip = u8"Save the current item and open the previous item."sv;
-	text_t command_save_and_next_tooltip = u8"Save the current item and open the next item."sv;
-	text_t editing_title = u8"Editing"sv;
-	text_t add_folder = u8"Add folder"sv;
-	text_t items_identical = u8"Files are identical."sv;
-	text_t items_not_identical = u8"Files are different."sv;
-	text_t pixels_identical_files_not_identical = u8"Pixels are identical but files are different."sv;
-	text_t copy_to_clipboard = u8"Copy to clipboard"sv;
-	text_t open_link_fmt = u8"Open link {}"sv;
-	text_t xmp_metadata_title = u8"XMP"sv;
-	text_t icc_metadata_title = u8"ICC"sv;
-	text_t metadata_title = u8"Metadata"sv;
-	text_t media_metadata_title = u8"Media"sv;
-	text_t raw_metadata_title = u8"Raw"sv;
-	text_t exif_metadata_title = u8"EXIF"sv;
-	text_t iptc_metadata_title = u8"IPTC"sv;
-	text_t none = u8"None"sv;
-	text_t collection_options_info = u8"Define the folders that make your collection."sv;
-	text_t more_collection_options_information = u8"More information about collection management."sv;
-	text_t more_template_information = u8"More information about metadata templates."sv;
-	text_t show_raw_now = u8"Show this RAW photo"sv;
-	text_t show_raw = u8"Always show RAW photos (slower)"sv;
-	text_t preview_show_preview = u8"Show RAW preview if available (faster)"sv;
-	text_t preview_showing = u8"Showing a RAW photo preview."sv;
-	text_t preview_rendering = u8"Rendering RAW photo..."sv;
-	text_t preview_rendered = u8"Showing fully rendered RAW photo."sv;
+		"This item is outside the collection. One or more possible older copies exist in the collection.";
+	text_t unselect_fmt = "Unselect {}";
+	text_t delete_fmt = "Delete {}";
+	text_t folder_title = "Folder";
+	text_t command_save_and_back_tooltip = "Save the current item and open the previous item.";
+	text_t command_save_and_next_tooltip = "Save the current item and open the next item.";
+	text_t editing_title = "Editing";
+	text_t edit_info =
+		"Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save.";
+	text_t movie_title = "Movie mixer";
+	text_t movie_info =
+		"Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save.";
+	text_t movie_settings_title = "Movie";
+	text_t movie_clip_title = "Selected clip";
+	text_t movie_crossfade = "Crossfade between clips";
+	text_t movie_cut = "Cut between clips";
+	text_t movie_transition_length = "Transition (tenths of a second)";
+	// The same number sets the crossfade and the fades at the movie's ends, so it is labelled for
+	// whichever of the two the current settings actually use.
+	text_t movie_fade_length = "Fade (tenths of a second)";
+	text_t movie_fade_in = "Fade in from black";
+	text_t movie_fade_out = "Fade out to black";
+	text_t movie_photo_duration = "Photo duration (tenths of a second)";
+	text_t movie_clip_duration = "This photo (tenths of a second)";
+	text_t movie_use_default = "Use the movie default";
+	text_t movie_empty = "Add photos and videos to build a movie.";
+	text_t movie_output_fmt = "Output {} x {} at {} fps, {} long.";
+	text_t movie_clip_fmt = "{} - clip {} of {}, starting at {}.";
+	text_t movie_project_files = "Movie project";
+	text_t movie_maker_files = "Windows Movie Maker project";
+	text_t movie_media_files = "Photos and videos";
+	text_t movie_open_failed_fmt = "Could not read the project {}.";
+	text_t movie_save_failed_fmt = "Could not save the project {}.";
+	text_t movie_video_files = "Video";
+	text_t movie_rendering = "Rendering the movie";
+	text_t movie_render_failed_fmt = "The movie could not be rendered. {}";
+	text_t movie_error_no_length = "The movie has no length.";
+	text_t movie_error_no_encoder = "The encoder would not accept this movie.";
+	text_t movie_error_no_memory = "There was not enough memory for a movie frame.";
+	text_t movie_error_undecodable = "A clip could not be decoded.";
+	text_t movie_error_encoder_failed = "The encoder stopped before the movie was finished.";
+	text_t movie_error_output_is_source = "That name belongs to a clip in this movie. Choose another name.";
+	text_t movie_rendered_fmt = "Rendered {}.";
+	text_t movie_render_cancelled = "Rendering was canceled. Nothing was written.";
+	text_t movie_relink_none = "No missing clip was found in that folder.";
+	text_t movie_unsaved_prompt =
+		"This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it.";
+	text_t movie_discard = "Close without saving";
+	text_t command_movie = "Movie mixer";
+	text_t tooltip_movie = "Assemble the selected photos and videos into one video.";
+	text_t command_movie_render = "Render";
+	text_t tooltip_movie_render = "Write the movie to a video file.";
+	text_t command_movie_relink = "Relink missing files";
+	text_t tooltip_movie_relink = "Point clips whose source file has moved at a folder you choose.";
+	text_t command_movie_add = "Add files";
+	text_t command_movie_remove = "Remove from movie";
+	text_t command_movie_send_to_end = "Send to the end";
+	text_t command_movie_open = "Open project";
+	text_t command_movie_save = "Save project";
+	text_t command_movie_import = "Import Movie Maker project";
+	text_t convert_info =
+		"Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder.";
+	text_t edit_metadata_info =
+		"Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched.";
+	text_t adjust_date_info =
+		"Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched.";
+	text_t tag_info =
+		"Add or remove tags across the selected items. Tags you do not mention are left in place.";
+	text_t add_folder = "Add folder";
+	text_t items_identical = "Files are identical.";
+	text_t items_not_identical = "Files are different.";
+	text_t pixels_identical_files_not_identical = "Pixels are identical but files are different.";
+	text_t copy_to_clipboard = "Copy to clipboard";
+	text_t open_link_fmt = "Open link {}";
+	text_t open_link_choose = "Choose a link to open";
+	text_t duplicate_text = "Duplicate";
+	text_t xmp_metadata_title = "XMP";
+	text_t icc_metadata_title = "ICC";
+	text_t metadata_title = "Metadata";
+	text_t media_metadata_title = "Media";
+	text_t raw_metadata_title = "Raw";
+	text_t exif_metadata_title = "EXIF";
+	text_t iptc_metadata_title = "IPTC";
+	text_t none = "None";
+	text_t collection_options_info = "Choose the folders that make up your collection. Your files stay where they are.";
+	text_t more_collection_options_information = "More information about collection management.";
+	text_t more_template_information = "More information about metadata templates.";
+	text_t show_raw_now = "Show this RAW photo";
+	text_t show_raw = "Always show RAW photos (slower)";
+	text_t preview_show_preview = "Show RAW preview if available (faster)";
+	text_t preview_showing = "Showing a RAW photo preview.";
+	text_t preview_rendering = "Rendering RAW photo...";
+	text_t preview_rendered = "Showing fully rendered RAW photo.";
 
-	text_t command_favorite = u8"Favorite"sv;
-	text_t command_advanced_search = u8"Advanced Search"sv;
-	text_t favorite_add_fmt = u8"Add '{}' to favorites."sv;
-	text_t favorite_remove_fmt = u8"Remove '{}' from favorite folders or searches."sv;
-	text_t collection_in = u8"Shown items are from the collection."sv;
-	text_t collection_not_in = u8"Shown items are NOT from the collection."sv;
+	text_t command_favorite = "Favorite";
+	text_t command_advanced_search = "Advanced Search";
+	text_t favorite_add_fmt = "Add '{}' to favorites.";
+	text_t favorite_remove_fmt = "Remove '{}' from favorite folders or searches.";
+	text_t collection_in = "These items are in your collection.";
+	text_t collection_not_in =
+		"These items are outside your collection, so search and duplicate detection do not cover them. Add this folder to your collection to include them.";
 	text_t collection_info =
-		u8"The collection is a set of indexed folders. Indexing allows fast searching and duplicate detection. Diffractor will also highlight when items are not in the collection."sv;
-	text_t favorite_title = u8"Favorite title"sv;
-	text_t favorite_info = u8"Favorites are listed in the sidebar for quick access."sv;
-	text_t favorite_failed_to_add = u8"Failed to add. Maximum number of favorites reached."sv;
+		"Your collection is the folders you choose, including their subfolders. Diffractor indexes them so search, duplicate detection and totals cover everything at once. Adding or removing a folder changes only what Diffractor knows. No files are moved or copied.";
+	text_t favorite_title = "Favorite title";
+	text_t favorite_info = "Favorites are listed in the sidebar for quick access.";
+	text_t favorite_failed_to_add = "Failed to add. Maximum number of favorites reached.";
 
-	text_t search_collection = u8"Search in the collection"sv;
-	text_t search_folder = u8"Search in a folder"sv;
-	text_t search_sub_folders = u8"Search in subfolders"sv;
-	text_t search_not_in_collection = u8"Find files not in collection"sv;
-	text_t search_all_terms = u8"All these terms"sv;
-	text_t search_any_terms = u8"Any of these terms"sv;
-	text_t search_none_terms = u8"None of these terms"sv;
-	text_t search_photos = u8"Photos"sv;
-	text_t search_videos = u8"Videos"sv;
-	text_t search_audio = u8"Audio"sv;
-	text_t search_located_within = u8"Located within"sv;
-	text_t search_select_term = u8"Select term"sv;
-	text_t search_date_from = u8"From"sv;
-	text_t search_date_until = u8"Until"sv;
-	text_t km_from = u8"km from"sv;
+	text_t search_collection = "Search in the collection";
+	text_t search_folder = "Search in a folder";
+	text_t search_sub_folders = "Search in subfolders";
+	text_t search_all_terms = "All these terms";
+	text_t search_none_terms = "None of these terms";
+	text_t search_photos = "Photos";
+	text_t search_videos = "Videos";
+	text_t search_audio = "Audio";
+	text_t search_located_within = "Located within";
+	text_t search_select_term = "Select term";
+	text_t search_no_criteria = "Select at least one search criterion.";
+	text_t search_date_from = "From";
+	text_t search_date_until = "Until";
+	text_t km_from = "km from";
 
-	text_t command_sync = u8"Synchronize"sv;
-	text_t sync_details = u8"Synchronize your collection with a remote location."sv;
-	text_t sync_collection = u8"Synchronize whole collection"sv;
-	text_t sync_other_folder = u8"Synchronize only one folder"sv;
-	text_t sync_remote_folder = u8"Remote folder"sv;
-	text_t sync_local_remote = u8"Copy newer local files to remote folders"sv;
-	text_t sync_remote_local = u8"Copy newer remote files to local folders"sv;
-	text_t sync_delete_local = u8"Delete local files that do not exist remotely"sv;
-	text_t sync_delete_remote = u8"Delete remote files that do not exist locally"sv;
-	text_t sync_local = u8"Source of synchronization (Local)"sv;
+	text_t command_sync = "Synchronize";
+	text_t sync_collection = "Synchronize whole collection";
+	text_t sync_other_folder = "Synchronize only one folder";
+	text_t sync_local_remote = "Copy newer local files to remote folders";
+	text_t sync_remote_local = "Copy newer remote files to local folders";
+	text_t sync_delete_local = "Delete local files that do not exist remotely";
+	text_t sync_delete_remote = "Delete remote files that do not exist locally";
+	text_t sync_local = "Local folders";
 	text_t sync_info_1 =
-		u8"Synchronize local files to a remote location. This is useful to synchronize your local file collection to a backup location."sv;
-	text_t sync_info_2 = u8"c:\\file-collection with \\\\nas\\\\backup-files"sv;
-	text_t sync_remote = u8"Destination of synchronization (Remote)"sv;
-	text_t sync_copy_remote_action = u8"copy remote"sv;
-	text_t sync_copy_local_action = u8"copy local"sv;
-	text_t sync_delete_remote_action = u8"delete remote"sv;
-	text_t sync_delete_local_action = u8"delete local"sv;
-	text_t button_sync = u8"&Synchronize"sv;
+		"Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run.";
+	text_t sync_info_2 = "c:\\photos with \\\\nas\\\\backup";
+	text_t sync_remote = "Remote folder";
+	text_t sync_copy_remote_action = "copy remote";
+	text_t sync_copy_local_action = "copy local";
+	text_t sync_delete_remote_action = "delete remote";
+	text_t sync_delete_local_action = "delete local";
+	text_t sync_preparing = "Preparing to synchronize files...";
+	text_t sync_analysis_changed = "Files changed after analysis. Analyze again to review the updated actions.";
+	text_t sync_delete_warning =
+		"Synchronization will permanently delete files. These files cannot be recovered from the Recycle Bin.";
+	text_t sync_delete_count_fmt = "Local files to delete: {}. Remote files to delete: {}.";
+	text_t button_sync = "&Synchronize";
 
-	text_t import_from = u8"Source of import:"sv;
-	text_t import_src_filter = u8"Source files filter:"sv;
-	text_t import_other_folder = u8"Other folder"sv;
-	text_t import_detecting = u8"Detecting folders..."sv;
-	text_t button_analyze = u8"&Analyze"sv;
-	text_t analyze = u8"Analyze"sv;
-	text_t select_location = u8"Select a location"sv;
-	text_t import_overwrite = u8"Overwrite"sv;
-	text_t import_ignore = u8"Ignore"sv;
-	text_t selected_items_fmt = u8"Selected items [{}]"sv;
-	text_t analyzing = u8"Analyzing..."sv;
-	text_t processing = u8"Processing..."sv;
-	text_t scope = u8"Scope"sv;
-	text_t value = u8"Value"sv;
-	text_t all_items_filtered = u8"All items filtered out.\nClick to clear filter."sv;
-	text_t items_created_on_fmt = u8"The collection contains {} items created on {}."sv;
+	text_t import_from = "Source of import:";
+	text_t import_other_folder = "Other folder";
+	text_t button_analyze = "&Analyze";
+	text_t analyze = "Analyze";
+	text_t select_location = "Select a location";
+	text_t selected_items_fmt = "Selected items [{}]";
+	text_t analyzing = "Analyzing...";
+	text_t processing = "Processing...";
+	text_t processing_files = "Processing files";
+	text_t scope = "Scope";
+	text_t value = "Value";
+	text_t some_items_filtered_fmt = "Show {} filtered out items";
+	text_t items_created_on_fmt = "The collection contains {} items created on {}.";
 
-	text_t command_all_tags = u8"Show all tags"sv;
-	text_t command_favorite_tags = u8"Show only favorite tags"sv;
-	text_t option_favorite_tags = u8"Show only favorite tags in the sidebar"sv;
+	text_t command_all_tags = "Show all tags";
+	text_t command_favorite_tags = "Show only favorite tags";
+	text_t option_favorite_tags = "Show only favorite tags in the sidebar";
 
-	text_t collection_add = u8"Collection"sv;
-	text_t source = u8"Source"sv;
-	text_t destination = u8"Destination"sv;
-	text_t action = u8"Action"sv;
-	text_t old_name = u8"Old name"sv;
-	text_t new_name = u8"New name"sv;
-	text_t local = u8"Local"sv;
-	text_t remote = u8"Remote"sv;
-	text_t status = u8"Status"sv;
-	text_t message = u8"Message"sv;
-	text_t import = u8"import"sv;
-	text_t exists = u8"exists"sv;
-	text_t previously_imported = u8"previously imported"sv;
-	text_t ignore = u8"ignore"sv;
-	text_t test = u8"test"sv;
-	text_t view_empty_message = u8"Click analyze to show items"sv;
+	text_t file = "File";
+	text_t source = "Source";
+	text_t destination = "Destination";
+	text_t action = "Action";
+	text_t old_name = "Old name";
+	text_t new_name = "New name";
+	text_t local = "Local";
+	text_t remote = "Remote";
+	text_t status = "Status";
+	text_t message = "Message";
+	text_t import = "import";
+	text_t exists = "exists";
+	text_t previously_imported = "previously imported";
+	text_t ignore = "ignore";
+	text_t view_empty_message = "Click analyze to show items";
+	text_t no_items_selected_message = "Select items before using this tool";
+	text_t tags_view_empty_message = "Select items to tag";
+
+	text_t command_cancel_operation = "Cancel";
+	text_t cancel_operation_title = "Cancel operation";
+	text_t cancel_operation_fmt = "{} is still running. Cancel it and close?";
+	text_t button_cancel_operation = "Cancel operation";
+	text_t button_keep_running = "Keep running";
+
+	text_t scope_unavailable_title = "Location unavailable";
+	text_t scope_unavailable_fmt =
+		"{} could not be opened. It may be disconnected, renamed or removed.";
+	text_t scope_unavailable_retry = "Try again";
+	text_t scope_unavailable_parent = "Go to the parent folder";
+	text_t scope_busy_fmt = "{} is still running. Close it before browsing somewhere else.";
+
+	text_t safe_start_title = "Recovered from a startup problem";
+	text_t safe_start_message =
+		"Diffractor closed unexpectedly before it finished starting, so this run uses the default layout with hardware acceleration turned off. Your files, collection and recent items are unchanged. You can restore your settings from Options.";
+
+	text_t collision_policy_label = "If the destination already exists:";
+	text_t collision_replace = "Replace";
+	text_t collision_skip = "Skip";
+	text_t collision_rename = "Auto-rename";
+	text_t collision_block = "Block run";
+	// Row label stating the fact only. The policy control, not the row, asks what to do about it.
+	text_t collision_exists = "File exists";
+	text_t collision_blocked_fmt = "{} destinations already exist. Choose Replace, Skip or Auto-rename.";
+	text_t collision_skipped_fmt = "{} items will be skipped because the destination exists.";
+	text_t collision_replaced_fmt = "{} existing destinations will be replaced.";
+	text_t collision_renamed_fmt = "{} items will be given a new name to avoid a collision.";
+
+	// Row labels for a finished run. The plan words are future tense; these are what happened.
+	text_t result_success = "Success";
+	text_t result_failed = "Failed";
+	text_t result_skipped = "Skipped";
+	text_t result_not_run = "Not run";
+	text_t run_needs_refresh = "These are the results of a finished run. Refresh to plan again with the current settings.";
 
 	plural_text rotate_info_fmt = {
-		u8"Rotate {first-name}."sv, u8"Rotate {count} selected items. Originals will be overwritten."
+		"Rotate {first-name}.", "Rotate {count} selected items. Originals will be overwritten."
 	};
-	plural_text title_folder_count_fmt = {u8"1 folder"sv, u8"{count} folders"};
-	plural_text title_item_count_fmt = {u8"{count} item"sv, u8"{count} items"};
-	plural_text rating_set_fmt = {u8"Click to rate as 1 star"sv, u8"Click to rate as {count} stars"};
+	plural_text title_folder_count_fmt = {"1 folder", "{count} folders"};
+	plural_text title_item_count_fmt = {"{count} item", "{count} items"};
+	plural_text map_items_here_fmt = {"1 item here", "{count} items here"};
+	plural_text rating_set_fmt = {"Set rating to 1 star", "Set rating to {count} stars"};
 	plural_text cannot_process_fmt = {
-		u8"Cannot process {first-name}."sv, u8"Cannot process {first-name} and {other} other items."
+		"Cannot process {first-name}.", "Cannot process {first-name} and {other} other items."
 	};
 	plural_text rename_fmt = {
-		u8"{first-name} will be renamed."sv, u8"{count} items will be renamed."
+		"{first-name} will be renamed.", "{count} items will be renamed."
 	};
-	plural_text dup_count_fmt = {u8"1 duplicate item"sv, u8"{count} duplicate items"};
-	plural_text sidecar_count_fmt = {u8"1 sidecar item"sv, u8"{count} sidecar items"};
+	plural_text dup_count_fmt = {"1 duplicate item", "{count} duplicate items"};
+	plural_text sidecar_count_fmt = {"1 sidecar item", "{count} sidecar items"};
 	plural_text processed_x_of_x_fmt = {
-		u8"{count} of 1 item was processed."sv, u8"{count} of {total} items were processed."
+		"{count} of 1 item was processed.", "{count} of {total} items were processed."
 	};
-	plural_text processed_fmt = {u8"1 item was processed."sv, u8"{count} items were processed."};
-	plural_text failed_items_fmt = {u8"{first-name} failed."sv, u8"{count} items failed."};
-	plural_text ignored_fmt = {u8"{first-name} was ignored."sv, u8"{count} items were ignored."};
+	plural_text processed_fmt = {"1 item was processed.", "{count} items were processed."};
+	plural_text failed_items_fmt = {"{first-name} failed.", "{count} items failed."};
+	plural_text ignored_fmt = {"{first-name} was ignored.", "{count} items were ignored."};
+	plural_text canceled_items_fmt = {"{first-name} was canceled.", "{count} items were canceled."};
 	plural_text ignored_exist_already_fmt = {
-		u8"{first-name} was ignored because it exist already in the destination location."sv,
-		u8"{count} items were ignored because they exist already in the destination location."
+		"{first-name} was ignored because it exists already in the destination location.",
+		"{count} items were ignored because they exist already in the destination location."
 	};
 	plural_text ignored_previous_fmt = {
-		u8"{first-name} was ignored because it was previously imported."sv,
-		u8"{count} items were ignored because they were previously imported."
+		"{first-name} was ignored because it was previously imported.",
+		"{count} items were ignored because they were previously imported."
+	};
+	plural_text import_date_unset_fmt = {
+		"1 item was imported but its created date could not be set.",
+		"{count} items were imported but their created date could not be set."
 	};
 	plural_text delete_info_fmt = {
-		u8"{first-name} will be moved to the recycle bin."sv,
-		u8"{count} items ({size}) will be moved to the recycle bin."
+		"{first-name} will be moved to the recycle bin when Windows can recycle it.",
+		"{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
 	};
-	plural_text copy_fmt = {u8"{first-name} will be copied."sv, u8"{count} items ({size}) will be copied."};
-	plural_text move_fmt = {u8"{first-name} will be moved."sv, u8"{count} items ({size}) will be moved."};
-	plural_text be_updated_fmt = {u8"{first-name} will be updated."sv, u8"{count} items will be updated."};
+	plural_text delete_info_permanent_fmt = {
+		"{first-name} will be permanently deleted.",
+		"{count} items ({size}) will be permanently deleted."
+	};
+	plural_text delete_many_warning_fmt = {
+		"You are about to delete {count} item.",
+		"You are about to delete {count} items."
+	};
+	text_t delete_no_recycle_warning =
+		"These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin.";
+	plural_text copy_fmt = {"{first-name} will be copied.", "{count} items ({size}) will be copied."};
+	plural_text move_fmt = {"{first-name} will be moved.", "{count} items ({size}) will be moved."};
+	plural_text be_updated_fmt = {"{first-name} will be updated.", "{count} items will be updated."};
 	plural_text edit_metadata_fmt = {
-		u8"Add or overwrite specific metadata in {first-name}."sv,
-		u8"Add or overwrite specific metadata in {count} items."
+		"Add or overwrite specific metadata in {first-name}.",
+		"Add or overwrite specific metadata in {count} items."
+	};
+	plural_text burn_info_fmt = {
+		"{first-name} will be staged for disc burning.",
+		"{count} selected items ({size}) will be staged for disc burning."
 	};
 	plural_text convert_info_fmt = {
-		u8"{first-name} will be converted and copied to a folder."sv,
-		u8"{count} items will be converted and copied to a folder."
+		"{first-name} will be converted and copied to a folder.",
+		"{count} items will be converted and copied to a folder."
 	};
 	plural_text tag_info_fmt = {
-		u8"{first-name} will have tags added or removed."sv, u8"{count} items will have tags added or removed."
+		"{first-name} will have tags added or removed.", "{count} items will have tags added or removed."
 	};
 	plural_text adjust_date_info_fmt = {
-		u8"{first-name} will have the date adjusted."sv, u8"{count} items will have the date adjusted."
-	};
-	plural_text shared_fmt = {u8"{first-name} will be shared."sv, u8"{count} items will be shared."};
-	plural_text import_copy_fmt = {
-		u8"{first-name} will be copied or moved."sv, u8"{count} items ({size}) will be copied or moved."
+		"{first-name} will have the date adjusted.", "{count} items will have the date adjusted."
 	};
 	plural_text email_info_fmt = {
-		u8"{first-name} will be sent using your desktop email client."sv,
-		u8"{count} items will be sent using your desktop email client."
+		"A desktop email draft will be opened with {first-name} attached.",
+		"A desktop email draft will be opened with {count} selected items attached."
+	};
+	plural_text share_info_fmt = {
+		"{first-name} will be offered to the app you choose.",
+		"{count} selected items will be offered to the app you choose."
 	};
 	plural_text would_overwrite_fmt = {
-		u8"{first-name} already exists. Do you want to replace it?"sv,
-		u8"{first-name} and {other} other items already exist. Do you want to replace them?"
+		"{first-name} already exists. Do you want to replace it?",
+		"{first-name} and {other} other items already exist. Do you want to replace them?"
 	};
 	plural_text gps_overwrite_count_fmt = {
-		u8"{first-name} will have existing GPS position metadata overwritten."sv,
-		u8"{first-name} and {other} other items will have existing GPS position metadata overwritten."
+		"{first-name} will have existing GPS position metadata overwritten.",
+		"{first-name} and {other} other items will have existing GPS position metadata overwritten."
 	};
+	plural_text movie_ignored_fmt = {
+		"1 element of the imported project was left out because Movie cannot represent it.",
+		"{count} elements of the imported project were left out because Movie cannot represent them."
+	};
+	plural_text movie_missing_fmt = {
+		"1 clip cannot find its source file.", "{count} clips cannot find their source files."
+	};
+	plural_text movie_relink_fmt = {"1 clip was relinked.", "{count} clips were relinked."};
 };
 
 extern app_text_t tt;

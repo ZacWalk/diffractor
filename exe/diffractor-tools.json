@@ -9,16 +9,297 @@
       {
         "exe": "paintdotnet",
         "invoke": "{exe-path} {item-path}",
-        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp",
-	  "group": "",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,dds",
+        "group": "photo",
         "text": "Paint.Net"
+      },
+      {
+        "exe": "gimp-3.0",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,xcf,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "GIMP"
+      },
+      {
+        "exe": "gimp-2.10",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,xcf,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "GIMP 2.10"
+      },
+      {
+        "exe": "krita",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,kra,heic,heif",
+        "group": "photo",
+        "text": "Krita"
+      },
+      {
+        "exe": "i_view64",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "IrfanView"
+      },
+      {
+        "exe": "XnViewMP",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "XnView MP"
+      },
+      {
+        "exe": "nomacs",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "nomacs"
+      },
+      {
+        "exe": "ImageGlass",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,heic,heif,avif,svg,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "ImageGlass"
+      },
+      {
+        "exe": "FSViewer",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "FastStone Image Viewer"
+      },
+      {
+        "exe": "Photoshop",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "Adobe Photoshop"
+      },
+      {
+        "exe": "Lightroom",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "tiff,tif,png,jpg,jpeg,jpe,psd,heic,heif,raw,cr2,cr3,nef,arw,dng,rw2,orf,raf",
+        "group": "photo",
+        "text": "Adobe Lightroom"
+      },
+      {
+        "exe": "Photo",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,psd,heic,heif,raw,cr2,cr3,nef,arw,dng",
+        "group": "photo",
+        "text": "Affinity Photo"
+      },
+      {
+        "exe": "rawtherapee",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "tiff,tif,png,jpg,jpeg,jpe,raw,cr2,cr3,nef,arw,dng,rw2,orf,raf,pef,srw,3fr",
+        "group": "photo",
+        "text": "RawTherapee"
+      },
+      {
+        "exe": "darktable",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "tiff,tif,png,jpg,jpeg,jpe,raw,cr2,cr3,nef,arw,dng,rw2,orf,raf,pef,srw,3fr",
+        "group": "photo",
+        "text": "darktable"
+      },
+      {
+        "exe": "digikam",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "gif,tiff,tif,png,jpg,jpeg,jpe,webp,bmp,heic,heif,raw,cr2,cr3,nef,arw,dng,rw2,orf,raf",
+        "group": "photo",
+        "text": "digiKam"
+      },
+      {
+        "exe": "CaptureOne",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "tiff,tif,png,jpg,jpeg,jpe,psd,heic,heif,raw,cr2,cr3,nef,arw,dng,rw2,orf,raf",
+        "group": "photo",
+        "text": "Capture One"
+      },
+      {
+        "exe": "DxO.PhotoLab",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "tiff,tif,png,jpg,jpeg,jpe,raw,cr2,cr3,nef,arw,dng,rw2,orf,raf",
+        "group": "photo",
+        "text": "DxO PhotoLab"
+      },
+      {
+        "exe": "inkscape",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "svg,svgz,png,pdf,eps,ai",
+        "group": "photo",
+        "text": "Inkscape"
+      },
+      {
+        "exe": "Nuke17.1",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 17.1"
+      },
+      {
+        "exe": "Nuke17.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 17.0"
+      },
+      {
+        "exe": "Nuke16.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 16.0"
+      },
+      {
+        "exe": "Nuke15.2",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 15.2"
+      },
+      {
+        "exe": "Nuke15.1",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 15.1"
+      },
+      {
+        "exe": "Nuke15.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 15.0"
+      },
+      {
+        "exe": "Nuke14.1",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 14.1"
+      },
+      {
+        "exe": "Nuke14.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 14.0"
       },
       {
         "exe": "vlc",
         "invoke": "{exe-path} {item-path}",
-        "extensions": "",
-	  "group": "video",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg,mp3,flac,wav,m4a,aac,ogg,wma,opus",
+        "group": "video",
         "text": "VLC media player"
+      },
+      {
+        "exe": "mpc-hc64",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg,mp3,flac,wav,m4a,aac,ogg",
+        "group": "video",
+        "text": "MPC-HC"
+      },
+      {
+        "exe": "PotPlayerMini64",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg,mp3,flac,wav,m4a,aac,ogg",
+        "group": "video",
+        "text": "PotPlayer"
+      },
+      {
+        "exe": "mpv",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg,mp3,flac,wav,m4a,aac,ogg",
+        "group": "video",
+        "text": "mpv"
+      },
+      {
+        "exe": "shotcut",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg",
+        "group": "video",
+        "text": "Shotcut"
+      },
+      {
+        "exe": "kdenlive",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg",
+        "group": "video",
+        "text": "Kdenlive"
+      },
+      {
+        "exe": "openshot-qt",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg",
+        "group": "video",
+        "text": "OpenShot"
+      },
+      {
+        "exe": "Resolve",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,webm,m4v,mpg,mpeg,dng,cr2,cr3,nef,arw",
+        "group": "video",
+        "text": "DaVinci Resolve"
+      },
+      {
+        "exe": "HandBrake",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg",
+        "group": "video",
+        "text": "HandBrake"
+      },
+      {
+        "exe": "Audacity",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp3,flac,wav,m4a,aac,ogg,wma,aiff,opus",
+        "group": "audio",
+        "text": "Audacity"
+      },
+      {
+        "exe": "ocenaudio",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp3,flac,wav,m4a,aac,ogg,wma,aiff,opus",
+        "group": "audio",
+        "text": "ocenaudio"
+      },
+      {
+        "exe": "reaper",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp3,flac,wav,m4a,aac,ogg,wma,aiff,opus",
+        "group": "audio",
+        "text": "REAPER"
+      },
+      {
+        "exe": "Mp3tag",
+        "invoke": "{exe-path} {item-path}",
+        "extensions": "mp3,flac,m4a,aac,ogg,wma,opus,ape,wav",
+        "group": "audio",
+        "text": "Mp3tag"
+      }
+    ],
+    "maps": [
+      {
+        "text": "Google Maps",
+        "url": "https://www.google.com/maps/place/{latitude},{longitude}"
+      },
+      {
+        "text": "Google Earth",
+        "url": "https://earth.google.com/web/search/{latitude},{longitude}"
+      },
+      {
+        "text": "Bing Maps",
+        "url": "https://www.bing.com/maps?cp={latitude}~{longitude}&lvl=17&style=h"
+      },
+      {
+        "text": "OpenStreetMap",
+        "url": "https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}#map=17/{latitude}/{longitude}"
+      },
+      {
+        "text": "Apple Maps",
+        "url": "https://maps.apple.com/?ll={latitude},{longitude}&q=Photo%20Location"
       }
     ]
   }
