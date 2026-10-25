@@ -3,7 +3,8 @@
 This runs two phases:
 
   * **Phase 1 - app_text registration** (formerly ``check_app_text.py``): every
-    ``text_t`` / ``plural_text`` member declared in ``src/app_text.h`` must be
+    ``text_t`` / ``plural_text`` member declared in ``src/app_text.h``, including
+    its ``platform_text`` messages and ``words`` from libdesktop, must be
     registered exactly once, in the correct vector, in ``src/app_text.cpp``. A
     broken registration is always fatal.
   * **Phase 2 - translation (.po) consistency**: read all of
@@ -634,7 +635,7 @@ def _app_text_registrations(source: str, vector_name: str) -> list:
         line = raw_line.split("//", 1)[0].strip().rstrip(",")
         if not line:
             continue
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", line):
+        if not re.fullmatch(r"(?:(?:platform_text|words)\.)?[A-Za-z_][A-Za-z0-9_]*", line):
             raise ValueError(f"Unexpected entry in {vector_name}: {raw_line.strip()}")
         names.append(line)
     return names
@@ -645,15 +646,46 @@ def _first_duplicates(names: list) -> set:
     return {name for name in names if name in seen or seen.add(name)}
 
 
-def check_app_text_registration() -> list:
+def _platform_text_header() -> Path:
+    sibling = REPO_ROOT.parent / "libdesktop" / "include" / "libdesktop" / "platform.h"
+    if sibling.is_file():
+        return sibling
+    fetched = sorted(REPO_ROOT.glob("tmp/*/_deps/libdesktop-src/include/libdesktop/platform.h"))
+    signatures = {
+        (path.read_bytes(), path.with_name("util_strings.h").read_bytes())
+        for path in fetched
+    }
+    if fetched and len(signatures) == 1:
+        return fetched[0]
+    raise ValueError(
+        "Cannot identify libdesktop's platform.h. Configure the build first or "
+        "pass --platform-text-header with the header used by this build."
+    )
+
+
+def check_app_text_registration(platform_header: Path | None = None) -> list:
     """Return a list of human-readable error lines; empty means everything is OK."""
-    declared = _app_text_declarations(APP_TEXT_HEADER.read_text(encoding="utf-8"))
+    header = APP_TEXT_HEADER.read_text(encoding="utf-8")
+    declared = _app_text_declarations(header)
     implementation = APP_TEXT_IMPL.read_text(encoding="utf-8")
 
     try:
+        for declaration, member, filename in (
+            ("platform::messages", "platform_text", "platform.h"),
+            ("str::words", "words", "util_strings.h"),
+        ):
+            if re.search(rf"^\s*{re.escape(declaration)}\s+{member}\s*;", header, re.MULTILINE):
+                shared = platform_header if platform_header is not None else _platform_text_header()
+                if filename != "platform.h":
+                    shared = shared.with_name(filename)
+                messages = _app_text_declarations(shared.read_text(encoding="utf-8"))
+                if not messages["text_t"]:
+                    raise ValueError(f"No platform messages found in {shared}")
+                for kind, names in messages.items():
+                    declared[kind].update(f"{member}.{name}" for name in names)
         text_entries = _app_text_registrations(implementation, "_all_texts")
         plural_entries = _app_text_registrations(implementation, "_all_plurals")
-    except ValueError as error:
+    except (OSError, ValueError) as error:
         return [f"ERROR: {error}"]
 
     registered_texts = set(text_entries)
@@ -683,6 +715,11 @@ def main(argv=None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
+        "--platform-text-header", type=Path,
+        help="libdesktop/include/libdesktop/platform.h used by the build; otherwise "
+             "use the sibling checkout or an unambiguous fetched copy",
+    )
+    parser.add_argument(
         "--lang-dir", type=Path, default=DEFAULT_LANG_DIR,
         help="folder containing the .po files (default: exe/languages)",
     )
@@ -703,7 +740,7 @@ def main(argv=None) -> int:
 
     # Phase 1: app_text registration integrity (always fatal on error).
     print("== Phase 1: app_text registration ==")
-    app_text_errors = check_app_text_registration()
+    app_text_errors = check_app_text_registration(args.platform_text_header)
     for line in app_text_errors:
         print(f"  {line}", file=sys.stderr)
     if not app_text_errors:

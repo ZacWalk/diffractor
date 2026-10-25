@@ -79,10 +79,10 @@ strings or input templates.
 | --- | --- | --- | --- |
 | NASM | 3.02 | Fetched while configuring on Windows when none is on the path | [NASM Windows archives](https://www.nasm.us/pub/nasm/releasebuilds/3.02/), pinned in [dd-dependencies.json](../cmake/dd-dependencies.json) - libfiles' pin; its `LICENSE` is in the archive |
 | 7-Zip Extra | 26.03 | Fetched by `dd.ps1` into `tmp/tools/7zip/` | [7-Zip release](https://github.com/ip7z/7zip/releases/tag/26.03): `7zr.exe` unpacks `7z2603-extra.7z`, both pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); its `License.txt` is in the archive |
-| SymStore | 6.3.9600.16384 | `tools/symstore.exe`, `tools/symsrv.dll` | The Windows SDK's Debugging Tools for Windows, which `dd.ps1` will take once they are installed here |
+| SymStore | Installed Windows SDK | `Windows Kits\10\Debuggers\x64\symstore.exe` | Machine-installed SDK, or a per-user SDK administrative image as described in [crash.md](crash.md#3-symbols); packaging checks it before changing release state |
 
 `dd.ps1` packs with the release's x86 `7za.exe` and its two DLLs, as `tools/` once carried. SignTool
-comes from the installed Windows SDK. These are build and packaging tools, not additional media
+and SymStore come from the installed Windows SDK. These are build and packaging tools, not additional media
 decoders. Installed Visual Studio,
 CMake, Ninja, Windows SDK and NSIS prerequisites are described in [README](../README.md#building).
 

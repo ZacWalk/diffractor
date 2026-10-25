@@ -168,6 +168,7 @@ file_scan_result scan_still_libfiles(read_stream& s, const scan_intent intent, c
 		result.metadata.iptc = to_blob(scanned.metadata.iptc);
 		result.metadata.icc = to_blob(scanned.metadata.icc);
 		result.metadata.photoshop_resources = to_blob(scanned.metadata.photoshop);
+		result.tiff_metadata = std::move(scanned.tiff_metadata);
 		result.structure_metadata = to_metadata_kv(scanned.structure);
 
 		// A TIFF file's own GPS position, read as an EXIF block's is.

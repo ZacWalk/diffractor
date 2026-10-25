@@ -11,6 +11,10 @@
 
 #pragma once
 
+namespace libfiles
+{
+	struct exif_metadata;
+}
 
 namespace prop
 {
@@ -131,6 +135,7 @@ namespace metadata_exif
 	// Fills an item from an EXIF block - a TIFF stream - as libfiles reads it. Every caller passes a
 	// fresh item, and EXIF comes first: IPTC and XMP override it.
 	void parse(prop::item_metadata& pd, df::cspan cs);
+	void parse(prop::item_metadata& pd, const libfiles::exif_metadata& metadata);
 
 	// The orientation an EXIF block gives, or upright when it gives none: libfiles' one rule, which
 	// parse, the scan and the JPEG decoder keep too.

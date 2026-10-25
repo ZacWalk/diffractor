@@ -901,13 +901,22 @@ prop::panorama_geometry metadata_xmp::panorama(const df::file_path path)
 
 		if (ft->has_trait(file_traits::embedded_xmp))
 		{
-			if (const auto packet = read_file_packet(path); packet && !packet->packet.empty())
+			libfiles::xmp::meta xmp;
+			if (const auto packet = read_file_packet(path))
 			{
-				libfiles::xmp::meta xmp;
-				xmp.parse(packet->packet);
-				read_panorama_geometry(xmp, result);
-				if (result.is_valid()) return result;
+				if (!packet->packet.empty()) xmp.parse(packet->packet);
 			}
+			else
+			{
+				// HEIF and JPEG XL are read-only here. The scan also supplies Brotli for compressed
+				// JPEG XL boxes, just as read_embedded_source does when converting either format.
+				files ff;
+				const auto scanned = ff.scan_file(path, false, ft);
+				if (!scanned.success) record_xmp_error(__FUNCTION__, "the panorama metadata could not be read");
+				if (!scanned.metadata.xmp.empty()) xmp.parse(packet_text(scanned.metadata.xmp));
+			}
+			read_panorama_geometry(xmp, result);
+			if (result.is_valid()) return result;
 		}
 
 		// A stitcher that wrote a sidecar rather than an embedded packet still declared the sphere. The

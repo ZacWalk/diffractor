@@ -3338,7 +3338,11 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 {
 	auto result = std::make_shared<prop::item_metadata>();
 
-	if (!metadata.exif.empty())
+	if (tiff_metadata)
+	{
+		metadata_exif::parse(*result, *tiff_metadata);
+	}
+	else if (!metadata.exif.empty())
 	{
 		metadata_exif::parse(*result, metadata.exif);
 	}

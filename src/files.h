@@ -19,6 +19,7 @@
 
 #include "libfiles/commodore.h"
 #include "libfiles/decode.h"
+#include "libfiles/exif.h"
 #include "libfiles/stream.h"
 
 enum class group_key_type : uint32_t
@@ -417,6 +418,7 @@ public:
 	ui::const_image_ptr full_image;
 
 	metadata_parts metadata;
+	std::optional<libfiles::exif_metadata> tiff_metadata;
 
 	metadata_kv_list ffmpeg_metadata;
 	metadata_kv_list libraw_metadata;

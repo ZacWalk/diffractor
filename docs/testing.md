@@ -16,6 +16,17 @@ Tests are compiled into the application and run from the command line. There is 
 
 Release registers exactly six more tests than Debug: five decoder fuzz sweeps and the closest-location lookup are `#ifndef _DEBUG`. Debug `N` and Release `N + 6` is correct; any other gap means something was skipped.
 
+The gateway also runs [test_release_tools.ps1](../tools/test_release_tools.ps1):
+SDK-only SymStore discovery, missing prerequisites, argument forwarding and
+nonzero exit handling. It uses temporary fixtures and never writes to a real
+symbol store.
+
+Translation registration checks include `app_text`'s composed libdesktop
+messages. [test_check_translations.py](../tools/test_check_translations.py)
+proves that omitted, duplicated, unknown and wrongly typed shared messages
+still fail. For an explicitly overridden libdesktop source, pass its
+`include/libdesktop/platform.h` to `check_translations.py --platform-text-header`.
+
 ## Taxonomy
 
 One file per subject, matching the `src/` prefixes in [implementation](implementation.md#source-organization). A test lives with the code it constrains, never with the reason it was written.

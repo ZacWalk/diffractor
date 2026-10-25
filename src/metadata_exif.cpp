@@ -108,8 +108,11 @@ void metadata_exif::parse(prop::item_metadata& pd, const df::cspan cs)
 {
 	if (cs.empty()) return;
 
-	const auto m = libfiles::read_exif({cs.data, cs.size});
+	parse(pd, libfiles::read_exif({cs.data, cs.size}));
+}
 
+void metadata_exif::parse(prop::item_metadata& pd, const libfiles::exif_metadata& m)
+{
 	if (m.orientation) pd.orientation = static_cast<ui::orientation>(*m.orientation);
 
 	assign_text(pd.camera_manufacturer, m.camera_make);

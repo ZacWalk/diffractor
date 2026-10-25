@@ -9,13 +9,16 @@
 include_guard(GLOBAL)
 include(FetchContent)
 
-set(DIFFRACTOR_LIBFILES_REVISION a069f5743f66c05d3a49dbebcd1a09b8063950f6)
+set(DIFFRACTOR_LIBFILES_REVISION a0655f623693a663ffad0a59ff11acc16da389cd)
 
 if (NOT DEFINED FETCHCONTENT_SOURCE_DIR_LIBFILES AND EXISTS "${CMAKE_SOURCE_DIR}/../libfiles/CMakeLists.txt")
     set(FETCHCONTENT_SOURCE_DIR_LIBFILES "${CMAKE_SOURCE_DIR}/../libfiles" CACHE PATH
             "A libfiles checkout to build instead of the pinned commit")
 endif ()
 
+# GIF and TIFF pixel decoding remains FFmpeg's here; native document storage is ImageWalker's.
+set(LIBFILES_GIF OFF)
+set(LIBFILES_TIFF OFF)
 FetchContent_Declare(libfiles
         GIT_REPOSITORY https://github.com/ZacWalk/libfiles.git
         GIT_TAG ${DIFFRACTOR_LIBFILES_REVISION})

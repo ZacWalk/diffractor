@@ -97,7 +97,19 @@ those two dependencies may use the remaining Diffractor code under 2.1.
 The full texts are in [LICENSE](LICENSE) (LGPL-3.0) and [COPYING.GPLv3](COPYING.GPLv3), which LGPL-3.0
 incorporates by reference.
 
-Vendored libraries and their terms are listed in
+The executable also statically links [libdesktop](https://github.com/ZacWalk/libdesktop)
+and [libfiles](https://github.com/ZacWalk/libfiles), both LGPL-2.1-or-later. Before
+distributing a binary, provide the corresponding source for its exact library revisions
+(including modifications), the notices and licence texts, and the application source
+and build scripts or relinkable object files needed to rebuild with modified libraries.
+For the combined LGPL-3.0-or-later binary, follow LGPLv3 section 4, including any
+required installation information. Recipients must be permitted to modify the libraries
+and reverse-engineer the combined work to debug those modifications.
+
+Verify the release materials by rebuilding with a modified library using the documented
+compiler, configuration and dependencies. This notice and a link to the latest source
+are not themselves a relinking package.
+
+Fetched dependencies and their terms are listed in
 [docs/third-party.md](docs/third-party.md#licensing). FFmpeg is deliberately configured with
 `CONFIG_GPL 0`, so no GPL-only component is included and it is used under the LGPL.
-

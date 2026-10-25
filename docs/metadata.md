@@ -148,6 +148,11 @@ Matroska metadata is read-only.
 - A fixed number of date candidates is retained; excess sources remain marked present but may not
   participate in resolution.
 
+TIFF camera, lens, exposure and date fields are read from the file's own
+directories by the same EXIF parser used for embedded blocks. Its dates enter
+the normal EXIF date-resolution rules; IPTC and XMP retain their existing
+precedence. The scan does not copy TIFF pixel data into a metadata block.
+
 ## Panorama
 
 An image is a panorama only when GPano metadata declares it. `ProjectionType` maps to
@@ -157,6 +162,10 @@ unspecified panorama when projection type is absent. Aspect ratio alone never de
 Full panorama dimensions and crop offsets are read when the item is displayed. The crop must agree
 with decoded dimensions and remain inside the declared full panorama; otherwise projection geometry
 is discarded. These values feed [zoom.md](zoom.md#panorama) and are not written as derived metadata.
+
+Embedded geometry is read from HEIF/AVIF and JPEG XL too, including compressed
+JPEG XL XMP boxes. A valid embedded declaration wins; otherwise a sidecar is
+read on its own, never combined with an incomplete embedded declaration.
 
 `@panorama` and `@pano` search the stored projection classification and canonicalize to one term.
 

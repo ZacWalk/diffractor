@@ -58,8 +58,15 @@ swallowed fault minutes before the crash is a suspect, not a footnote.
 
 ## 3. Symbols
 
-`dd.ps1` publishes symbols with `Add-ToSymbolStore`, which runs
-`tools\symstore add /r /f <file> /s c:\code\symbols /t Diffractor /compress`. Two
+`dd.ps1` publishes symbols with `Add-ToSymbolStore`, using `symstore.exe` from
+the Windows SDK's `Windows Kits\10\Debuggers\x64` directory. Install the
+SDK's **Debugging Tools for Windows** component on a release machine; desktop
+and Store packaging fail before changing the version when it is absent.
+Without administrator rights, an SDK administrative image may be deployed
+under `%LOCALAPPDATA%\Microsoft\WindowsSDK\Debuggers\<SDK version>`.
+The image retains its `Windows Kits\10\Debuggers\x64` layout; the newest
+numeric version is used when there is no machine-installed copy.
+It runs `symstore add /r /f <file> /s c:\code\symbols /t Diffractor /compress`. Two
 consequences:
 
 - The store is `c:\code\symbols`, indexed by `<name>\<key>\<name>.ex_` / `.pd_`.
@@ -168,4 +175,4 @@ that says this configuration took that path. Two out of three is a hypothesis.
 | The graphics crash guard and hardware-acceleration fallback | libdesktop's [platform_win_settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
 | The degraded start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
 | Diagnostic log and session counters | libdesktop's [util_log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util_log.h) and [util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util.h); [app_perf.h](../src/app_perf.h) |
-| Symbol store tooling | `tools/symstore.exe`, `tools/symsrv.dll` |
+| SDK symbol-store discovery and publishing | `Get-SymStore` and `Add-ToSymbolStore` in [dd.ps1](../dd.ps1) |

@@ -473,17 +473,38 @@ function Get-SevenZip {
     return (Join-Path $unpacked "7za.exe")
 }
 
+function Get-SymStore {
+    $symstore = Join-Path (Split-Path -Parent $SdkRoot) "Debuggers\x64\symstore.exe"
+    if (Test-Path -LiteralPath $symstore -PathType Leaf) { return $symstore }
+
+    if ($env:LOCALAPPDATA) {
+        $images = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsSDK\Debuggers"
+        if (Test-Path -LiteralPath $images -PathType Container) {
+            $versions = Get-ChildItem -LiteralPath $images -Directory |
+                Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+                Sort-Object { [version]$_.Name } -Descending
+            foreach ($version in $versions) {
+                $tool = Join-Path $version.FullName "Windows Kits\10\Debuggers\x64\symstore.exe"
+                if (Test-Path -LiteralPath $tool -PathType Leaf) { return $tool }
+            }
+        }
+    }
+    throw "SymStore not found at $symstore or in a per-user SDK image. Install the Windows SDK's Debugging Tools for Windows before packaging a release."
+}
+
 function Add-ToSymbolStore {
     param(
         [string]$File
     )
     
-    $symstore = Join-Path $ToolsDir "symstore"
+    $symstore = Get-SymStore
+    if (-not (Test-Path -LiteralPath $File -PathType Leaf)) {
+        throw "Symbol input not found: $File"
+    }
     & $symstore add /r /f $File /s "c:\code\symbols" /t Diffractor /compress
     
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error: Failed to add $File to symbol store" -ForegroundColor Red
-        exit $LASTEXITCODE
+        throw "Failed to add $File to symbol store (SymStore exit code $LASTEXITCODE)."
     }
 }
 
@@ -523,6 +544,8 @@ function Copy-LicenceTexts {
 }
 
 function Build-Desktop {
+    $null = Get-SymStore
+
     # Auto-increment build number before building
     Invoke-BumpBuild
     
@@ -700,6 +723,8 @@ function Build-Store {
     param(
         [switch]$NoBump
     )
+
+    $null = Get-SymStore
 
     # Auto-increment build number before building
     if ($NoBump) { Write-Host "Skipping the build-number bump (-NoBump)." -ForegroundColor Yellow }
@@ -991,6 +1016,9 @@ function Invoke-Tests {
     & pwsh -NoProfile -File (Join-Path $ToolsDir "lint_repo.ps1") | Out-Host
     $lintResult = $LASTEXITCODE
 
+    & pwsh -NoProfile -File (Join-Path $ToolsDir "test_release_tools.ps1") | Out-Host
+    $toolsResult = $LASTEXITCODE
+
     # Release builds gate on the exe they are about to ship; plain `dd test` builds one.
     $testExe = if ($Exe) { $Exe } else { Build-App }
 
@@ -1024,11 +1052,14 @@ function Invoke-Tests {
     Write-Host ""
     $python = Get-PythonExe
     $checkScript = Join-Path $ToolsDir "check_translations.py"
+    & $python -m unittest discover -s $ToolsDir -p "test_check_translations.py" | Out-Host
+    $translationChecksResult = $LASTEXITCODE
     & $python $checkScript | Out-Host
     $transResult = $LASTEXITCODE
 
     Write-Host ""
-    if ($lintResult -eq 0 -and $testResult -eq 0 -and $poResult -eq 0 -and $transResult -eq 0) {
+    if ($lintResult -eq 0 -and $toolsResult -eq 0 -and $testResult -eq 0 -and $poResult -eq 0 -and
+        $translationChecksResult -eq 0 -and $transResult -eq 0) {
         Write-Host "============================================================================" -ForegroundColor Green
         Write-Host "Lint is clean, all tests passed and .po files are valid!" -ForegroundColor Green
         Write-Host "============================================================================" -ForegroundColor Green
@@ -1039,6 +1070,9 @@ function Invoke-Tests {
         if ($lintResult -ne 0) {
             Write-Host "Repository lint FAILED (exit code $lintResult)." -ForegroundColor Red
         }
+        if ($toolsResult -ne 0) {
+            Write-Host "Release tool checks FAILED (exit code $toolsResult)." -ForegroundColor Red
+        }
         if ($testResult -ne 0) {
             Write-Host "Unit tests FAILED (exit code $testResult)." -ForegroundColor Red
         }
@@ -1047,6 +1081,9 @@ function Invoke-Tests {
         }
         if ($transResult -ne 0) {
             Write-Host "Translation content validation FAILED (exit code $transResult)." -ForegroundColor Red
+        }
+        if ($translationChecksResult -ne 0) {
+            Write-Host "Translation checker tests FAILED (exit code $translationChecksResult)." -ForegroundColor Red
         }
         Write-Host "============================================================================" -ForegroundColor Red
         Write-Host ""

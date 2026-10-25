@@ -7,7 +7,7 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Metadata tests (metadata_exif, metadata_iptc, metadata_xmp, metadata_icc) -- scanning
-// properties from JPEG, MP3, MP4, MOV, MKV, AVI, RAW, HEIF, AVIF, WebP, JXL and MOD files, tag
+// properties from JPEG, TIFF, MP3, MP4, MOV, MKV, AVI, RAW, HEIF, AVIF, WebP, JXL and MOD files, tag
 // editing and removal, sidecar merging, metadata presentation blocks and filename token replacement.
 
 #include "pch.h"
@@ -20,8 +20,16 @@
 #include "test_runner.h"
 #include "av_format.h"
 #include "av_player.h"
+#include "libfiles/reader.h"
+#include "libfiles/xmp.h"
 
 #include <zlib.h>
+#include <jxl/encode.h>
+#include <jxl/color_encoding.h>
+
+#define LIBHEIF_STATIC_BUILD 1
+#include <libheif/heif.h>
+#include <libheif/heif_items.h>
 
 static void should_replace_tokens()
 {
@@ -359,6 +367,184 @@ static void should_read_the_declared_panorama_projection()
 	constexpr prop::item_metadata plain;
 	assert_equal(false, (plain.calc_search_presence().types & search_presence_mask::panorama) != 0,
 	             "and an ordinary file does not");
+}
+
+static void should_scan_tiff_camera_metadata()
+{
+	libfiles::exif_fields fields;
+	fields.camera_make = "Canon";
+	fields.camera_model = "EOS R5";
+	fields.lens = "RF 50mm F1.8";
+	fields.f_number = 2.8;
+	fields.exposure_time = 1.0 / 250;
+	fields.iso_speed = 400;
+	fields.original = "2024:05:06 07:08:00";
+	fields.digitized = "2024:05:06 07:08:01";
+	fields.modified = "2024:05:06 07:08:09";
+	fields.orientation = 6;
+	auto bytes = libfiles::make_exif(fields);
+	libfiles::reader reader(bytes);
+	const auto ifd0 = reader.le32(4);
+	const auto count = reader.le16(ifd0);
+	auto dimensions = 0;
+	for (auto i = 0u; i < count; ++i)
+	{
+		const auto at = ifd0 + 2u + i * 12u;
+		const auto tag = reader.le16(at);
+		if (tag != 0x011a && tag != 0x011b) continue;
+		// Replace the writer's resolution entries with a TIFF image's dimensions.
+		const uint8_t entry[] = {static_cast<uint8_t>(tag == 0x011a ? 0x00 : 0x01), 0x01,
+			0x03, 0, 1, 0, 0, 0, static_cast<uint8_t>(tag == 0x011a ? 64 : 32), 0, 0, 0};
+		std::copy(std::begin(entry), std::end(entry), bytes.begin() + at);
+		++dimensions;
+	}
+	assert_equal(2, dimensions, "the TIFF fixture declares width and height");
+
+	mem_read_stream stream({bytes.data(), bytes.size()});
+	auto scanned = scan_photo(stream, scan_intent::index, false);
+	assert_equal(true, scanned.success, "TIFF metadata is scanned without decoding pixels");
+	assert_equal(true, scanned.metadata.exif.empty(), "the image is not copied into an EXIF block");
+	const auto md = scanned.to_props();
+	assert_equal("Canon"sv, md->camera_manufacturer.sv(), "TIFF camera make");
+	assert_equal("EOS R5"sv, md->camera_model.sv(), "TIFF camera model");
+	assert_equal("RF 50mm F1.8"sv, md->lens.sv(), "TIFF lens");
+	assert_equal(400, static_cast<int>(md->iso_speed), "TIFF ISO");
+	assert_equal(true, std::abs(md->f_number - 2.8f) < 0.0001f, "TIFF aperture");
+	assert_equal(true, std::abs(md->exposure_time - 1.0f / 250) < 0.000001f, "TIFF exposure");
+	assert_equal(df::date_t(2024, 5, 6, 7, 8, 0), md->dates.original(), "TIFF capture date");
+	assert_equal(df::date_t(2024, 5, 6, 7, 8, 1), md->dates.created(), "TIFF digitized date");
+	assert_equal(df::date_t(2024, 5, 6, 7, 8, 9), md->dates.modified(), "TIFF modified date");
+	assert_equal(ui::orientation::right_top, md->orientation, "TIFF orientation");
+
+	libfiles::xmp::meta xmp;
+	xmp.set_property(libfiles::xmp::ns::tiff, "Model", "XMP camera");
+	const auto packet = xmp.serialize();
+	scanned.metadata.xmp.assign(packet.begin(), packet.end());
+	assert_equal("XMP camera"sv, scanned.to_props()->camera_model.sv(), "XMP still overrides native TIFF fields");
+}
+
+static std::string panorama_packet(const prop::panorama_geometry& geometry)
+{
+	return std::format(
+		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+		"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+		"<rdf:Description rdf:about=\"\" xmlns:GPano=\"http://ns.google.com/photos/1.0/panorama/\" "
+		"GPano:ProjectionType=\"equirectangular\" GPano:FullPanoWidthPixels=\"{}\" "
+		"GPano:FullPanoHeightPixels=\"{}\" GPano:CroppedAreaLeftPixels=\"{}\" "
+		"GPano:CroppedAreaTopPixels=\"{}\" GPano:CroppedAreaImageWidthPixels=\"{}\" "
+		"GPano:CroppedAreaImageHeightPixels=\"{}\"/></rdf:RDF></x:xmpmeta>",
+		geometry.full_width, geometry.full_height, geometry.cropped_left, geometry.cropped_top,
+		geometry.cropped_width, geometry.cropped_height);
+}
+
+static df::file_path write_panorama_fixture(const bool heif, const std::string_view packet, const bool compress)
+{
+	const auto path = _temps.next_path(heif ? ".heif" : ".jxl");
+	if (heif)
+	{
+		const std::unique_ptr<heif_context, decltype(&heif_context_free)> context(heif_context_alloc(), heif_context_free);
+		assert_equal(true, context != nullptr, "HEIF context created");
+		heif_image* raw_image = nullptr;
+		assert_equal(heif_error_Ok, heif_image_create(4, 2, heif_colorspace_RGB, heif_chroma_interleaved_RGB,
+		                                            &raw_image).code, "HEIF image created");
+		const std::unique_ptr<heif_image, decltype(&heif_image_release)> image(raw_image, heif_image_release);
+		assert_equal(heif_error_Ok, heif_image_add_plane(image.get(), heif_channel_interleaved, 4, 2, 8).code,
+		             "HEIF plane allocated");
+		int stride = 0;
+		auto* const plane = heif_image_get_plane(image.get(), heif_channel_interleaved, &stride);
+		assert_equal(true, plane != nullptr && stride >= 12, "HEIF plane is large enough");
+		std::memset(plane, 64, static_cast<size_t>(stride) * 2);
+		heif_encoder* raw_encoder = nullptr;
+		assert_equal(heif_error_Ok, heif_context_get_encoder_for_format(context.get(), heif_compression_uncompressed,
+		                                                               &raw_encoder).code, "HEIF encoder available");
+		const std::unique_ptr<heif_encoder, decltype(&heif_encoder_release)> encoder(raw_encoder, heif_encoder_release);
+		heif_image_handle* raw_handle = nullptr;
+		assert_equal(heif_error_Ok, heif_context_encode_image(context.get(), image.get(), encoder.get(), nullptr,
+		                                                    &raw_handle).code, "HEIF fixture encoded");
+		const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)> handle(
+			raw_handle, heif_image_handle_release);
+		assert_equal(heif_error_Ok, heif_context_add_XMP_metadata(context.get(), handle.get(), packet.data(),
+		                                                        static_cast<int>(packet.size())).code, "GPano embedded in HEIF");
+		assert_equal(heif_error_Ok, heif_context_write_to_file(context.get(), path.str().c_str()).code,
+		             "HEIF fixture written");
+	}
+	else
+	{
+		const std::unique_ptr<JxlEncoder, decltype(&JxlEncoderDestroy)> encoder(JxlEncoderCreate(nullptr), JxlEncoderDestroy);
+		assert_equal(true, encoder != nullptr, "JPEG XL encoder created");
+		JxlBasicInfo info{};
+		JxlEncoderInitBasicInfo(&info);
+		info.xsize = 4;
+		info.ysize = 2;
+		info.bits_per_sample = 8;
+		info.uses_original_profile = JXL_TRUE;
+		info.num_color_channels = 3;
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderSetBasicInfo(encoder.get(), &info), "JPEG XL geometry accepted");
+		JxlColorEncoding color{};
+		JxlColorEncodingSetToSRGB(&color, JXL_FALSE);
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderSetColorEncoding(encoder.get(), &color), "JPEG XL colour accepted");
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderUseContainer(encoder.get(), JXL_TRUE), "JPEG XL container enabled");
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderUseBoxes(encoder.get()), "JPEG XL metadata enabled");
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderAddBox(encoder.get(), "xml ",
+			reinterpret_cast<const uint8_t*>(packet.data()), packet.size(), compress ? JXL_TRUE : JXL_FALSE),
+			"GPano embedded in JPEG XL");
+		auto* const settings = JxlEncoderFrameSettingsCreate(encoder.get(), nullptr);
+		assert_equal(true, settings != nullptr, "JPEG XL frame settings created");
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderSetFrameLossless(settings, JXL_TRUE), "lossless JPEG XL fixture");
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderFrameSettingsSetOption(settings, JXL_ENC_FRAME_SETTING_EFFORT, 1),
+		             "fast fixture encoding");
+		const JxlPixelFormat format{3, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
+		const std::array<uint8_t, 24> pixels{};
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderAddImageFrame(settings, &format, pixels.data(), pixels.size()),
+		             "JPEG XL pixels accepted");
+		JxlEncoderCloseInput(encoder.get());
+		std::array<uint8_t, 16384> encoded{};
+		auto* next = encoded.data();
+		auto available = encoded.size();
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderProcessOutput(encoder.get(), &next, &available), "JPEG XL fixture encoded");
+		const auto size = encoded.size() - available;
+		const std::string_view contents(reinterpret_cast<const char*>(encoded.data()), size);
+		assert_equal(compress, contents.find("brob") != std::string_view::npos, "the fixture exercises compressed boxes");
+		std::ofstream file(platform::to_stream_path(path), std::ios::binary);
+		file.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(size));
+		file.close();
+		assert_equal(true, file.good(), "JPEG XL fixture written");
+	}
+	return path;
+}
+
+static void should_read_embedded_panorama_geometry()
+{
+	const prop::panorama_geometry embedded{8, 4, 2, 1, 4, 2};
+	const prop::panorama_geometry sidecar{12, 6, 0, 0, 4, 2};
+	for (const auto heif : {true, false})
+	{
+		for (const auto compress : {false, true})
+		{
+			if (heif && compress) continue;
+			const auto path = write_panorama_fixture(heif, panorama_packet(embedded), compress);
+			assert_equal(true, metadata_xmp::panorama(path) == embedded, "embedded HEIF/JPEG XL GPano geometry");
+			const auto sidecar_path = path.extension(".xmp");
+			std::ofstream file(platform::to_stream_path(sidecar_path), std::ios::binary);
+			const auto packet = panorama_packet(sidecar);
+			file.write(packet.data(), static_cast<std::streamsize>(packet.size()));
+			file.close();
+			assert_equal(true, file.good(), "sidecar fixture written");
+			assert_equal(true, metadata_xmp::panorama(path) == embedded, "valid embedded geometry keeps precedence");
+
+			auto incomplete = embedded;
+			incomplete.full_height = 0;
+			const auto fallback_path = write_panorama_fixture(heif, panorama_packet(incomplete), compress);
+			assert_equal(false, metadata_xmp::panorama(fallback_path).is_valid(), "incomplete geometry is not projected");
+			const auto fallback_sidecar = fallback_path.extension(".xmp");
+			std::ofstream fallback(platform::to_stream_path(fallback_sidecar), std::ios::binary);
+			fallback.write(packet.data(), static_cast<std::streamsize>(packet.size()));
+			fallback.close();
+			assert_equal(true, fallback.good(), "fallback sidecar written");
+			assert_equal(true, metadata_xmp::panorama(fallback_path) == sidecar,
+			             "the sidecar replaces the incomplete embedded declaration as a whole");
+		}
+	}
 }
 
 static void should_merge_xmp_sidecar()
@@ -3151,7 +3337,6 @@ static void should_combine_and_deduplicate_tag_sets()
 // semicolons, to sweep more files than the fixtures.
 
 #include "libfiles/write.h"
-#include "libfiles/xmp.h"
 
 namespace xmp_corpus
 {
@@ -3604,6 +3789,7 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	// Scan Metadata
 	//
 	tests.add("Should scan jpg metadata"s, should_scan_jpeg);
+	tests.add("Should scan TIFF camera metadata"s, should_scan_tiff_camera_metadata);
 	tests.add("Should scan avi metadata"s, should_scan_avi);
 	tests.add("Should scan mov metadata"s, should_scan_mov);
 	tests.add("Should scan mkv metadata"s, [] { should_scan_matroska("tagged.mkv", "rawvideo"); });
@@ -3635,6 +3821,7 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should report empty Xmp packet as parsed"s, should_report_empty_xmp_packet_as_parsed);
 	tests.add("Should clear tags from an empty Xmp subject"s, should_clear_tags_from_an_empty_xmp_subject);
 	tests.add("Should read the declared panorama projection"s, should_read_the_declared_panorama_projection);
+	tests.add("Should read embedded panorama geometry"s, should_read_embedded_panorama_geometry);
 	tests.add("Should present exif metadata by ifd"s, should_present_exif_block_by_ifd);
 	tests.add("Should write a complete orientation exif"s, should_write_a_complete_orientation_exif);
 	tests.add("Should present maker note section"s, should_present_maker_note_section);
