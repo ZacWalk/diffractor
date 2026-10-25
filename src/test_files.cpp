@@ -3807,9 +3807,23 @@ namespace scan_parity
 		}
 	}
 
+	// A folder's files and then its folders', each in the order NTFS lists ASCII names - letters folded to
+	// upper case, then by byte - whatever order the file system returns them in. A record digests outcomes
+	// in this order; the records were taken on Windows, and an ext4 checkout lists a folder in its own.
 	void add_folder(const df::folder_path folder, std::vector<df::file_path>& files)
 	{
-		const auto contents = platform::iterate_file_items(folder, false);
+		auto contents = platform::iterate_file_items(folder, false);
+		const auto ntfs_before = [](const std::string_view a, const std::string_view b)
+		{
+			const auto upper = [](const char c)
+			{
+				const auto u = static_cast<unsigned char>(c);
+				return u >= 'a' && u <= 'z' ? u - ('a' - 'A') : u;
+			};
+			return std::ranges::lexicographical_compare(a, b, {}, upper, upper);
+		};
+		std::ranges::sort(contents.files, ntfs_before, [](const auto& f) { return f.name.sv(); });
+		std::ranges::sort(contents.folders, ntfs_before, [](const auto& f) { return f.name.sv(); });
 		for (const auto& f : contents.files) files.push_back(f.folder.combine_file(f.name));
 		for (const auto& sub : contents.folders) add_folder(folder.combine(sub.name), files);
 	}
