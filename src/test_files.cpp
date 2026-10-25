@@ -6371,10 +6371,33 @@ namespace heif_sweep
 			bytes[at] = original;
 		}
 	}
+
+	// dav1d decodes a damaged stream differently with different kernels: its C kernels give this sweep
+	// d9b43129 where its SSE4.1 and AVX2 kernels give the record's da7bc3f5, and Windows x64 runners on CI
+	// whose processors pick kernels this record was never taken with - AVX-512's, by every sign - gave
+	// c632c82b. So the sweep decodes AV1 with the SSE4.1 kernels every x86 processor has, which the x86
+	// and Linux builds pick anyway. dav1d exports the mask for its own tools, outside its public header.
+	extern "C" void dav1d_set_cpu_flags_mask(unsigned mask);
+
+	struct sse41_av1_kernels
+	{
+#if defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__)
+		sse41_av1_kernels()
+		{
+			constexpr unsigned sse2 = 1u << 0, ssse3 = 1u << 1, sse41 = 1u << 2;
+			dav1d_set_cpu_flags_mask(sse2 | ssse3 | sse41);
+		}
+
+		~sse41_av1_kernels() { dav1d_set_cpu_flags_mask(~0u); }
+		sse41_av1_kernels(const sse41_av1_kernels&) = delete;
+		sse41_av1_kernels& operator=(const sse41_av1_kernels&) = delete;
+#endif
+	};
 }
 
 static void should_decode_heifs_as_load_heif_did()
 {
+	[[maybe_unused]] const heif_sweep::sse41_av1_kernels kernels;
 	auto corpus = heif_sweep::corpus();
 	const auto real_files = corpus.size();
 
