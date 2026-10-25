@@ -17,10 +17,15 @@ headers, and keeping those tests there is what lets every other test file stay f
 
 ## Adding to the abstraction
 
-When portable code needs a system capability, add it to [platform.h](../../src/platform.h) as an
-intention, not as a thin wrapper over one API. The Linux side must be able to implement it
-honestly. A function named for a Win32 call has already leaked the boundary even though it
-compiles.
+When portable code needs a system capability, add it to libdesktop's
+[platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) - a change made in libdesktop, under its own
+AGENTS.md - as an intention, not as a thin wrapper over one API. The Linux side must be able to
+implement it honestly. A function named for a Win32 call has already leaked the boundary even
+though it compiles. A service only the window layer can implement is declared in
+libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h) instead, and implemented by libdesktop-render's
+`platform_win_*` backends and its `platform_linux_ui.cpp` - a change made in libdesktop too. What
+stays here is the application's own: its side of FFmpeg's hardware decoding
+(`platform_win_av.cpp`), its resource script and its Linux entry point (`platform_linux_app.cpp`).
 
 Every new entry point needs a Linux counterpart or an explicit stub, and
 [linux.md](../../docs/linux.md) records which. The `platform_linux_*_stubs.cpp` files are

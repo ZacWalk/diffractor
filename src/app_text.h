@@ -171,16 +171,9 @@ struct app_text_t
 	text_t error_invalid_path = "File names cannot contain the following characters:";
 	text_t error_create_file_failed_fmt = "The destination file '{}' cannot be opened or created.";
 	text_t error_rename_failed = "Failed to rename.";
-	text_t error_ole_failed = "OleInitialize Failed";
-	text_t error_windows_common_controls_failed = "Failed to register windows common control classes.";
 	text_t error_create_folder_failed_fmt = "The destination folder '{}' cannot be opened or created.";
-	text_t error_atl_direct3d = "Failed to Initialize Direct3d";
 	text_t error_create_window_failed = "Diffractor cannot be started. The main window could not be created.";
-	text_t error_winsock_failed = "Failed to initialize Winsock";
-	text_t error_sse2_needed = "Diffractor requires a processor with sse2.";
-	text_t error_unsupported_os = "Diffractor requires Windows 7 or newer.";
 	text_t error_index_database_failed = "Index database failed.";
-	text_t error_cannot_continue = "Diffractor has a serious problem and cannot continue.";
 	text_t command_menu_group_sort = "Group or Sort";
 	text_t command_view_sort = "Sort";
 	text_t command_view_menu = "Menu";
@@ -454,7 +447,6 @@ struct app_text_t
 		"family food friends landscape nature night portrait selfie todo travel urban viewed";
 	text_t title_rate = "rate";
 	text_t title_folder = "folder:{}";
-	text_t title_error = "Diffractor ERROR";
 	text_t type_to_search = "Type to search";
 	text_t prop_name_album = "Album";
 	text_t prop_name_show = "Show";
@@ -552,51 +544,8 @@ struct app_text_t
 	text_t prop_name_game = "Game//property";
 	text_t prop_name_label = "Label";
 	text_t prop_name_doc_id = "Document Id";
-	text_t menu_add_fmt = "Add '{}'";
-	text_t menu_undo = "Undo";
-	text_t menu_cut = "Cut";
-	text_t menu_copy = "Copy";
 	text_t menu_move = "Move";
-	text_t menu_paste = "Paste";
-	text_t menu_delete = "Delete";
-	text_t menu_select_all = "Select All";
-	text_t error_same_file = "The source and destination files are the same file.";
-	text_t error_many_src_1_dest =
-		"Multiple file paths were specified in the source buffer, but only one destination file path.";
-	text_t error_diff_dir =
-		"Rename operation was specified but the destination path is a different directory. Use the move operation instead.";
-	text_t error_src_root_dir = "The source is a root directory, which cannot be moved or renamed.";
-	text_t error_op_cancelled = "The operation was canceled.";
 	text_t error_analysis_cancelled = "The analysis was canceled.";
-	text_t error_dest_subtree = "The destination is a subtree of the source.";
-	text_t error_access_denied_src = "Security options denied access to the source.";
-	text_t error_path_too_deep = "The source or destination path exceeded or would exceed MAX_PATH.";
-	text_t error_many_dest =
-		"The operation involved multiple destination paths, which can fail in the case of a move operation.";
-	text_t error_invalid_files = "The path in the source or destination or both was invalid.";
-	text_t error_dest_same_tree = "The source and destination have the same parent folder.";
-	text_t error_fld_dest_is_file = "The destination path is an existing file.";
-	text_t error_file_dest_is_fld = "The destination path is an existing folder.";
-	text_t error_filename_too_long = "The name of the file exceeds MAX_PATH.";
-	text_t error_dest_is_cd_rom = "The destination is a read-only CD-ROM, possibly unformatted.";
-	text_t error_dest_is_dvd = "The destination is a read-only DVD, possibly unformatted.";
-	text_t error_dest_is_cd_record = "The destination is a writable CD-ROM, possibly unformatted.";
-	text_t error_file_too_large =
-		"The file involved in the operation is too large for the destination media or file system.";
-	text_t error_src_is_cdrom = "The source is a read-only CD-ROM, possibly unformatted.";
-	text_t error_src_is_dvd = "The source is a read-only DVD, possibly unformatted.";
-	text_t error_src_is_cd_record = "The source is a writable CD-ROM, possibly unformatted.";
-	text_t error_max = "MAX_PATH was exceeded during the operation.";
-	text_t error_unknown = "An unknown error occurred.";
-	text_t error_on_dest = "An unspecified error occurred on the destination.";
-	text_t error_dst_root_dir = "Destination is a root directory and cannot be renamed.";
-	text_t select_folder = "Select Folder...";
-	text_t jpeg_best = "JPEG - Best compression for photos";
-	text_t png_best = "PNG - Best for non photos";
-	text_t webp_best = "WEBP - Best for the web";
-	text_t error_connect_scanner = "Could not connect to scanner";
-	text_t error_scanner = "Scanner reported an error";
-	text_t error_save_image = "Failed to save image.";
 	text_t indexing = "Indexing";
 	text_t indexing_message =
 		"Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works.";
@@ -640,32 +589,10 @@ struct app_text_t
 	text_t tags_title = "Tags";
 	text_t album_artist = "Album Artist";
 	text_t copyright_title = "Copyright";
-	text_t month_january = "January";
-	text_t month_february = "February";
-	text_t month_march = "March";
-	text_t month_april = "April";
-	text_t month_may = "May";
-	text_t month_june = "June";
-	text_t month_july = "July";
-	text_t month_august = "August";
-	text_t month_september = "September";
-	text_t month_october = "October";
-	text_t month_november = "November";
-	text_t month_december = "December";
-	text_t month_short_jan = "jan";
-	text_t month_short_feb = "feb";
-	text_t month_short_mar = "mar";
-	text_t month_short_apr = "apr";
-	text_t month_short_may = "may";
-	text_t month_short_jun = "jun";
-	text_t month_short_jul = "jul";
-	text_t month_short_aug = "aug";
-	text_t month_short_sep = "sep";
-	text_t month_short_oct = "oct";
-	text_t month_short_nov = "nov";
-	text_t month_short_dec = "dec";
-	text_t text_true = "true";
-	text_t text_false = "false";
+	// Month names and booleans: the foundation's words, which this text translates and installs.
+	str::words words;
+	// The platform layer's messages, which this text translates and installs.
+	platform::messages platform_text;
 	text_t compare = "Compare";
 	text_t compare_tooltip = "Hold down left mouse button to compare items.";
 	text_t zoom_kb = "press ctrl+space";

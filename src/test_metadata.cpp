@@ -735,20 +735,6 @@ static void should_scan_raw()
 	assert_metadata(expected, *actual, "Screws.CR2");
 }
 
-// SRC-022 - a zero-valued axis is a valid RAW coordinate when the other axis carries a fix.
-static void should_keep_raw_gps_on_a_zero_axis()
-{
-	assert_equal(true, is_raw_gps_fix_present(true, 0.0, 37.0667), "equator with longitude");
-	assert_equal(true, is_raw_gps_fix_present(true, 51.4778, 0.0), "latitude on Greenwich meridian");
-	assert_equal(true, is_raw_gps_fix_present(true, 0.0, -37.0667), "western hemisphere on equator");
-	assert_equal(true, is_raw_gps_fix_present(true, -51.4778, 0.0), "southern hemisphere on meridian");
-
-	assert_equal(false, is_raw_gps_fix_present(false, 0.0, 37.0667), "absent parsed fix");
-	assert_equal(false, is_raw_gps_fix_present(true, 0.0, 0.0), "exact no-fix pair");
-	assert_equal(false, is_raw_gps_fix_present(true, 91.0, 10.0), "invalid latitude");
-	assert_equal(false, is_raw_gps_fix_present(true, 10.0, 180.0), "invalid longitude");
-}
-
 static void should_scan_mod()
 {
 	constexpr auto file_name = "giana.mod";
@@ -777,18 +763,6 @@ static void should_scan_heic()
 	assert_equal(4000, props->width, "width", file_name);
 	assert_equal(2252, props->height, "height", file_name);
 	assert_equal("yuv420", props->pixel_format, "pixel_format", file_name);
-}
-
-// SRC-018 - libheif writes XMP as item type "mime" with content type "application/rdf+xml".
-// A non-XMP MIME item must not be mistaken for an XMP packet, while the older spelling remains
-// accepted for files previous builds deliberately supported.
-static void should_scan_heif_xmp_mime_metadata()
-{
-	assert_equal(true, is_heif_xmp_metadata_type("mime", "application/rdf+xml"), "standard XMP MIME item");
-	assert_equal(true, is_heif_xmp_metadata_type("XMP", ""), "legacy XMP item spelling");
-	assert_equal(false, is_heif_xmp_metadata_type("mime", "text/plain"), "unrelated MIME item");
-	assert_equal(false, is_heif_xmp_metadata_type("iptc", "application/rdf+xml"), "IPTC item type is not XMP");
-	assert_equal(false, is_heif_xmp_metadata_type("Exif", "application/rdf+xml"), "content type alone is not enough");
 }
 
 static void should_not_double_apply_heif_rotation()
@@ -1174,8 +1148,8 @@ static void should_present_exif_block_by_ifd()
 	assert_equal(true, exif_ifd->open_by_default, "exif ifd open by default", file_name);
 }
 
-// The maker note is a vendor directory carried inside Exif. libexif decodes the makes it knows, so it
-// is listed as its own section instead of staying the binary blob the Exif entry reports.
+// The maker note is a vendor directory carried inside Exif. The listing decodes the makes libexif
+// decoded, so it is listed as its own section instead of staying the binary blob the Exif entry reports.
 static void should_present_maker_note_section()
 {
 	constexpr auto file_name = "Test.jpg";
@@ -1283,9 +1257,9 @@ static void should_present_derived_exif_section()
 	             file_name);
 }
 
-// A lossless rotate rewrites the EXIF block to correct its orientation and dimensions. libexif's
-// loading defaults drop every tag it has no name for - maker notes above all - so a rotate used to
-// take the camera's own record of the shot with it, silently and with no way back.
+// A lossless rotate corrects the EXIF block's orientation and dimensions. When it rewrote the block
+// through libexif, whose loading defaults drop every tag it has no name for - maker notes above all -
+// a rotate used to take the camera's own record of the shot with it, silently and with no way back.
 static void should_keep_unknown_exif_tags_through_a_rotate()
 {
 	std::vector<uint8_t> buf;
@@ -1322,7 +1296,7 @@ static void should_keep_unknown_exif_tags_through_a_rotate()
 
 	put16(2);
 	put_entry(0x0112, fmt_short, 1, 6); // Orientation, rotated
-	put_entry(private_tag, fmt_short, 1, 0x1234); // a tag libexif has no name for
+	put_entry(private_tag, fmt_short, 1, 0x1234); // a tag the listing has no name for
 	put32(0);
 
 	const auto contains_private_tag = [](const df::blob& block)
@@ -1336,7 +1310,7 @@ static void should_keep_unknown_exif_tags_through_a_rotate()
 	};
 
 	const df::blob before(buf.begin(), buf.end());
-	assert_equal(true, contains_private_tag(before), "the fixture carries a tag libexif does not name");
+	assert_equal(true, contains_private_tag(before), "the fixture carries a tag the listing does not name");
 
 	const auto after = metadata_exif::fix_dims(df::span{buf.data(), buf.size()}, 640, 480);
 	assert_equal(false, after.empty(), "the rotate rewrote the block");
@@ -1429,11 +1403,11 @@ static void should_derive_focal_length_facts()
 	assert_equal("1.92 m", hyperfocal->value, "hyperfocal distance");
 }
 
-// The block inspector reports what the file holds: an entry libexif has no name for is numbered
+// The block inspector reports what the file holds: an entry the listing has no name for is numbered
 // rather than dropped, and a mandatory entry the file omits is not invented to fill the gap.
 static void should_present_exif_tags_as_stored()
 {
-	// DNG UniqueCameraModel: outside libexif's tag table, so it has no name in any directory.
+	// DNG UniqueCameraModel: outside the listing's tag table, libexif's, so it has no name anywhere.
 	constexpr uint16_t unnamed_tag = 0xc614;
 	constexpr uint16_t fmt_ascii = 2;
 	const std::string_view value = "Diffractor";
@@ -1492,7 +1466,8 @@ static void should_present_exif_tags_as_stored()
 
 	assert_equal(1, entries, "entries in IFD0");
 
-	// ColorSpace is mandatory in the Exif directory, and libexif would otherwise invent it.
+	// ColorSpace is mandatory in the Exif directory, and a reader that fixes blocks to the specification
+	// would invent it.
 	for (const auto& r : kv)
 	{
 		assert_equal(false, r.key == "ColorSpace", "no fabricated mandatory tag");
@@ -2111,6 +2086,10 @@ static void should_parse_exif_tags()
 		std::vector<uint8_t> data;
 	};
 
+	constexpr uint16_t FMT_STRING = 2;
+	constexpr uint16_t FMT_URATIONAL = 5;
+	constexpr uint16_t FMT_SRATIONAL = 10;
+
 	const auto ascii = [](const std::string_view s) { return std::vector<uint8_t>(s.begin(), s.end()); };
 	const auto rational_bytes = [](const int32_t n, const int32_t d)
 	{
@@ -2219,6 +2198,69 @@ static void should_parse_exif_tags()
 	assert_equal(prop::format_f_num(4.0f), prop::format_f_num(md.f_number), "MaxApertureValue -> f_number");
 	assert_equal(prop::format_exposure(1.0f / 64.0f), prop::format_exposure(md.exposure_time),
 	             "ShutterSpeedValue -> exposure_time");
+}
+
+// Windows writes its XP tags as BYTE arrays of UTF-16LE text ending in a NUL. Diffractor's own parser
+// read them as "?", which became the title and tags of a file with no XMP to override them.
+static void should_read_windows_xp_tags_as_written()
+{
+	const auto utf16 = [](const std::u16string_view text)
+	{
+		std::vector<uint8_t> v;
+		for (const auto c : text)
+		{
+			v.push_back(static_cast<uint8_t>(c));
+			v.push_back(static_cast<uint8_t>(c >> 8));
+		}
+		v.push_back(0);
+		v.push_back(0);
+		return v;
+	};
+
+	const std::vector<std::pair<uint16_t, std::vector<uint8_t>>> entries = {
+		{0x9c9b, utf16(u"Winter")}, // XPTitle
+		{0x9c9e, utf16(u"alpha;beta")}, // XPKeywords
+		{0x9c9f, utf16(u"A subj\u00e9ct")}, // XPSubject
+	};
+
+	std::vector<uint8_t> buf;
+	const auto put16 = [&buf](const uint16_t v)
+	{
+		buf.push_back(static_cast<uint8_t>(v));
+		buf.push_back(static_cast<uint8_t>(v >> 8));
+	};
+	const auto put32 = [&put16](const uint32_t v)
+	{
+		put16(static_cast<uint16_t>(v));
+		put16(static_cast<uint16_t>(v >> 16));
+	};
+
+	constexpr uint16_t fmt_byte = 1;
+	auto value_at = static_cast<uint32_t>(8 + 2 + entries.size() * 12 + 4);
+
+	put16(0x4949); // little-endian TIFF header
+	put16(0x002a);
+	put32(8);
+	put16(static_cast<uint16_t>(entries.size()));
+
+	for (const auto& [tag, value] : entries)
+	{
+		put16(tag);
+		put16(fmt_byte);
+		put32(static_cast<uint32_t>(value.size()));
+		put32(value_at);
+		value_at += static_cast<uint32_t>(value.size());
+	}
+
+	put32(0);
+	for (const auto& entry : entries) buf.insert(buf.end(), entry.second.begin(), entry.second.end());
+
+	prop::item_metadata md;
+	metadata_exif::parse(md, df::cspan{buf.data(), buf.size()});
+
+	assert_equal("Winter", md.title, "XPTitle -> title");
+	assert_equal("alpha;beta", md.tags, "XPKeywords -> tags");
+	assert_equal("A subj\xc3\xa9" "ct", md.description, "XPSubject -> description");
 }
 
 // locations.md 2.8: GPS altitude and speed live in a sub-IFD reached through tag 0x8825, and
@@ -3100,8 +3142,407 @@ static void should_combine_and_deduplicate_tag_sets()
 	assert_equal(true, tags.is_empty(), "a cleared set is empty");
 }
 
+// ------------------------------------------------------------------------------------------------
+// XMP over the fixtures. Until 2026-10-22 these tests held libfiles to the XMP Toolkit it replaced:
+// every packet the fixtures hold parsed to the same tree in both, whole and cut short, and serialized
+// byte for byte alike. With the toolkit gone they hold libfiles to itself over the same packets: each
+// one, whole or cut short, parses or is refused with libfiles' own error, and what libfiles writes
+// reads back as the tree it was written from. Set DIFFRACTOR_XMP_CORPUS to more folders, separated by
+// semicolons, to sweep more files than the fixtures.
+
+#include "libfiles/write.h"
+#include "libfiles/xmp.h"
+
+namespace xmp_corpus
+{
+	// The option bits a tree reports; libfiles' internal bits are not part of it.
+	constexpr libfiles::xmp::option_bits reported_options = 0x80001FF2;
+
+	// A prefix made unique is numbered by how many clashing URIs the process has met, which differs
+	// between a first reading and a reread.
+	std::string without_prefix_numbers(std::string text)
+	{
+		static const std::regex numbered(R"(_\d+_([:=]))");
+		return std::regex_replace(text, numbered, "_N_$1");
+	}
+
+	std::string dump(const libfiles::xmp::meta& meta)
+	{
+		auto out = std::format("about={}\n", meta.about());
+
+		for (const auto& p : meta.properties())
+		{
+			out += std::format("{}|{}|{}|{:x}\n", p.schema, p.path, p.value, p.options & reported_options);
+		}
+
+		return without_prefix_numbers(std::move(out));
+	}
+
+	struct outcome
+	{
+		bool refused = false;
+		std::string unexpected;
+		std::string dump;
+	};
+
+	// A packet parses, or libfiles refuses it with its own error; anything else escaping is a fault.
+	outcome parse(const std::string_view packet)
+	{
+		outcome result;
+
+		try
+		{
+			libfiles::xmp::meta meta;
+			meta.parse(packet);
+			result.dump = dump(meta);
+		}
+		catch (const libfiles::xmp::error&)
+		{
+			result.refused = true;
+		}
+		catch (const std::exception& e)
+		{
+			result.unexpected = e.what();
+		}
+		catch (...)
+		{
+			result.unexpected = "an exception that is not a std::exception";
+		}
+
+		return result;
+	}
+
+	// The compact form writes simple properties as attributes, ahead of the elements, so a reread lists
+	// the same properties in another order; what it must keep then is each property.
+	std::string by_property(const std::string& dump)
+	{
+		auto lines = str::split(dump, false, [](const char c) { return c == '\n'; });
+		std::ranges::sort(lines);
+
+		std::string out;
+
+		for (const auto line : lines)
+		{
+			out += line;
+			out += '\n';
+		}
+
+		return out;
+	}
+
+	std::string first_difference(const std::string& expected, const std::string& actual)
+	{
+		const auto e = str::split(expected, false, [](const char c) { return c == '\n'; });
+		const auto a = str::split(actual, false, [](const char c) { return c == '\n'; });
+
+		for (size_t i = 0; i < std::max(e.size(), a.size()); ++i)
+		{
+			const auto el = i < e.size() ? std::string(e[i]) : "<end>"s;
+			const auto al = i < a.size() ? std::string(a[i]) : "<end>"s;
+			if (el != al) return std::format("written '{}', reread '{}'", el, al);
+		}
+
+		return {};
+	}
+
+	void add_folder(const df::folder_path folder, std::vector<df::file_path>& files)
+	{
+		const auto contents = platform::iterate_file_items(folder, false);
+
+		for (const auto& f : contents.files)
+		{
+			files.push_back(f.folder.combine_file(f.name));
+		}
+
+		for (const auto& sub : contents.folders)
+		{
+			add_folder(folder.combine(sub.name), files);
+		}
+	}
+
+	std::string environment_variable(const char* const name)
+	{
+#ifdef _MSC_VER
+		char* value = nullptr;
+		size_t size = 0;
+		if (_dupenv_s(&value, &size, name) != 0 || !value) return {};
+		std::string result(value);
+		free(value);
+		return result;
+#else
+		const auto* const value = std::getenv(name);
+		return value ? value : "";
+#endif
+	}
+
+	std::vector<df::file_path> corpus_files()
+	{
+		std::vector<df::file_path> files;
+		add_folder(test_files_folder, files);
+		add_folder(test_formats_folder, files);
+
+		const auto extra = environment_variable("DIFFRACTOR_XMP_CORPUS");
+
+		for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+		{
+			add_folder(df::folder_path(part), files);
+		}
+
+		return files;
+	}
+
+	struct labelled_packet
+	{
+		std::string label;
+		std::string packet;
+	};
+
+	// Each packet libfiles' readers find where its writers put it, each one Diffractor's scanners find,
+	// and every sidecar.
+	std::vector<labelled_packet> corpus_packets()
+	{
+		std::vector<labelled_packet> packets;
+
+		for (const auto& path : corpus_files())
+		{
+			const auto name = path.str();
+
+			if (str::icmp(path.extension(), ".xmp"sv) == 0)
+			{
+				const auto bytes = df::blob_from_file(path);
+				packets.push_back({name + " (sidecar)", std::string(bytes.begin(), bytes.end())});
+				continue;
+			}
+
+			try
+			{
+				if (const auto f = open_file(path, platform::file_open_mode::read))
+				{
+					platform_file_stream stream(f);
+					libfiles::reader r(stream);
+					auto read = libfiles::read_packet(r);
+					if (!read.packet.empty()) packets.push_back({name + " (read)", std::move(read.packet)});
+				}
+			}
+			catch (...)
+			{
+			}
+
+			files ff;
+			const auto scanned = ff.scan_file(path, false, files::file_type_from_name(path));
+			auto xmp = std::string(scanned.metadata.xmp.begin(), scanned.metadata.xmp.end());
+			if (xmp.starts_with(xmp_signature)) xmp.erase(0, xmp_signature.size());
+			if (!xmp.empty()) packets.push_back({name + " (scanned)", std::move(xmp)});
+		}
+
+		return packets;
+	}
+
+	// Packets that exercise what the fixtures may not: the repairs, aliases and malformed RDF.
+	std::vector<labelled_packet> synthetic_packets()
+	{
+		const auto wrap = [](const std::string_view body)
+		{
+			return std::format("<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+			                   "<rdf:Description rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/' "
+			                   "xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmlns:exif='http://ns.adobe.com/exif/1.0/' "
+			                   "xmlns:tiff='http://ns.adobe.com/tiff/1.0/' xmlns:photoshop='http://ns.adobe.com/photoshop/1.0/' "
+			                   "xmlns:xmpDM='http://ns.adobe.com/xmp/1.0/DynamicMedia/' "
+			                   "xmlns:xmpRights='http://ns.adobe.com/xap/1.0/rights/'>{}</rdf:Description></rdf:RDF></x:xmpmeta>",
+			                   body);
+		};
+
+		const std::string_view bodies[] = {
+			"<dc:title>Simple title</dc:title><dc:subject>one</dc:subject><dc:creator>Ann</dc:creator><dc:rights/>",
+			"<tiff:Artist>Ann</tiff:Artist><tiff:ImageDescription>Quay</tiff:ImageDescription><tiff:Copyright>C</tiff:Copyright>",
+			"<exif:DateTimeDigitized>2020-01-02T03:04:05</exif:DateTimeDigitized><xmp:CreateDate>2021-01-01</xmp:CreateDate>",
+			"<photoshop:Caption xml:lang='fr'>Quai</photoshop:Caption>",
+			"<photoshop:Keywords><rdf:Bag><rdf:li>a</rdf:li></rdf:Bag></photoshop:Keywords><xmp:Title>T</xmp:Title>",
+			"<dc:title><rdf:Alt><rdf:li xml:lang='de'>Kai</rdf:li><rdf:li xml:lang='x-default'>Quay</rdf:li></rdf:Alt></dc:title>",
+			"<dc:description><rdf:Bag><rdf:li>no lang</rdf:li><rdf:li/><rdf:li xml:lang='EN-us'>yes</rdf:li></rdf:Bag></dc:description>",
+			"<exif:UserComment>note</exif:UserComment><exif:GPSTimeStamp>T12:30:00Z</exif:GPSTimeStamp>"
+			"<exif:DateTimeOriginal>2019-03-04T10:00:00.5+02:00</exif:DateTimeOriginal>",
+			"<xmpDM:copyright>(c) Ann</xmpDM:copyright><dc:rights><rdf:Alt><rdf:li xml:lang='fr'>Droits</rdf:li></rdf:Alt></dc:rights>",
+			"<dc:format rdf:parseType='Resource'><rdf:value xml:lang='en'>image/png</rdf:value><xmp:Label>q</xmp:Label></dc:format>",
+			"<exif:Flash><rdf:Description exif:Fired='True'><exif:Mode>2</exif:Mode></rdf:Description></exif:Flash>",
+			"<exif:Flash exif:Fired='True' exif:Mode='1' xml:lang='en'/><xmp:BaseURL rdf:resource='http://example.com/'/>",
+			"<xmp:Label>caf\xE9\x01x &#x1F;y \x80 &#x0041; &#65;</xmp:Label>",
+			"<xmp:Label>a &amp; b<![CDATA[ <c> ]]>\r\nd</xmp:Label><xmp:Rating>2</xmp:Rating><xmp:Rating>3</xmp:Rating>",
+			"<dc:subject><rdf:Seq><rdf:li>b</rdf:li><rdf:_2>c</rdf:_2></rdf:Seq></dc:subject><dc:bad><rdf:li>x</rdf:li></dc:bad>",
+			"<xmp:Thing rdf:parseType='Literal'>x</xmp:Thing><xmp:Other rdf:parseType='Collection'/><xmp:Rating>1</xmp:Rating>",
+			"<xmp:Typed><xmp:SomeType xmp:a='1'/></xmp:Typed><xmp:Empty></xmp:Empty><xmp:Spaces>   </xmp:Spaces>",
+			"<rdf:li>misplaced</rdf:li><xmp:Rating>4</xmp:Rating><about>x</about>",
+		};
+
+		std::vector<labelled_packet> packets;
+		auto index = 0;
+
+		for (const auto body : bodies)
+		{
+			packets.push_back({std::format("synthetic {}", ++index), wrap(body)});
+		}
+
+		packets.push_back({"synthetic uuid about", "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		                   "<rdf:Description rdf:about='uuid:1234' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/>"
+		                   "<rdf:Description rdf:about='other' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Label='L'/></rdf:RDF>"});
+		packets.push_back({"synthetic two roots", "<doc><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		                   "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>"
+		                   "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		                   "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='2'/></rdf:RDF></x:xmpmeta></doc>"});
+		packets.push_back({"synthetic prefix clash", "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		                   "<rdf:Description xmlns:dc='http://example.com/parity/' dc:thing='x'/></rdf:RDF>"});
+		packets.push_back({"synthetic default namespace", "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		                   "<rdf:Description xmlns='http://example.com/parity-default/'><thing>x</thing></rdf:Description></rdf:RDF>"});
+		packets.push_back({"synthetic doctype", "<?xml version='1.0'?><!DOCTYPE x [<!ELEMENT x ANY>]>"
+		                   "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		                   "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>"});
+		packets.push_back({"synthetic not xml", "plain text"});
+		packets.push_back({"synthetic empty", ""});
+
+		return packets;
+	}
+}
+
+static void should_parse_every_xmp_packet_whole_and_cut_short()
+{
+	auto packets = xmp_corpus::corpus_packets();
+	const auto from_files = packets.size();
+
+	for (auto& p : xmp_corpus::synthetic_packets()) packets.push_back(std::move(p));
+
+	auto parsed = 0;
+	auto refused = 0;
+	std::vector<std::string> failures;
+
+	for (const auto& p : packets)
+	{
+		// Whole, then cut short at many points: a malformed packet keeps what precedes its first fault.
+		constexpr auto cuts = 48;
+
+		for (auto i = cuts; i > 0; --i)
+		{
+			const auto at = p.packet.size() * i / cuts;
+			const auto result = xmp_corpus::parse(std::string_view(p.packet).substr(0, at));
+
+			if (!result.unexpected.empty())
+			{
+				failures.push_back(std::format("{} cut at {}: {}", p.label, at, result.unexpected));
+			}
+			else if (result.refused)
+			{
+				++refused;
+			}
+			else
+			{
+				++parsed;
+			}
+		}
+	}
+
+	df::log(__FUNCTION__, std::format("{} packets from {} files: {} parsed, {} refused, {} failures",
+	                                  packets.size(), from_files, parsed, refused, failures.size()));
+
+	std::string report;
+	for (size_t i = 0; i < std::min<size_t>(failures.size(), 12); ++i) report += "\n  " + failures[i];
+
+	assert_equal(true, from_files > 20, "the fixtures hold packets to parse");
+	assert_equal(0, static_cast<int>(failures.size()), std::format("libfiles parses or refuses every packet{}", report));
+}
+
+// Each serialization libfiles writes reads back as the tree it was written from - in the same order,
+// unless the form is compact - and an exact-length packet is exactly as long as asked. The fixtures'
+// packets only: the synthetic ones exercise repairs, such as aliases and xmpDM:copyright, that a first
+// reading leaves half done, as the toolkit's did, so what is written from them reads back repaired
+// further.
+static void should_read_back_every_xmp_packet_libfiles_writes()
+{
+	const auto packets = xmp_corpus::corpus_packets();
+
+	struct form
+	{
+		const char* name;
+		libfiles::xmp::serialize_options options;
+		bool keeps_order;
+	};
+
+	constexpr uint32_t exact_length = 1 << 16;
+
+	const form forms[] = {
+		{"sidecar", {.omit_packet_wrapper = true}, true},
+		{"packet", {}, true},
+		{"compact", {.use_compact_format = true}, false},
+		{"exact", {.use_compact_format = true, .exact_packet_length = true, .padding = exact_length}, false},
+	};
+
+	std::vector<std::string> differences;
+	auto compared = 0;
+
+	for (const auto& p : packets)
+	{
+		libfiles::xmp::meta meta;
+
+		try
+		{
+			meta.parse(p.packet);
+		}
+		catch (...)
+		{
+			continue;
+		}
+
+		const auto written = xmp_corpus::dump(meta);
+
+		for (const auto& f : forms)
+		{
+			std::string text;
+
+			try
+			{
+				text = meta.serialize(f.options);
+			}
+			catch (const libfiles::xmp::error& e)
+			{
+				// A packet larger than the exact length cannot be written at it.
+				if (!f.options.exact_packet_length)
+				{
+					differences.push_back(std::format("{} ({}): not written: {}", p.label, f.name, e.what()));
+				}
+
+				continue;
+			}
+
+			++compared;
+			const auto reread = xmp_corpus::parse(text);
+
+			if (reread.refused || !reread.unexpected.empty())
+			{
+				differences.push_back(std::format("{} ({}): libfiles refused what it wrote", p.label, f.name));
+			}
+			else if (f.keeps_order ? reread.dump != written
+			                       : xmp_corpus::by_property(reread.dump) != xmp_corpus::by_property(written))
+			{
+				const auto expected = f.keeps_order ? written : xmp_corpus::by_property(written);
+				const auto actual = f.keeps_order ? reread.dump : xmp_corpus::by_property(reread.dump);
+				differences.push_back(std::format("{} ({}): {}", p.label, f.name, xmp_corpus::first_difference(expected, actual)));
+			}
+			else if (f.options.exact_packet_length && text.size() != exact_length)
+			{
+				differences.push_back(std::format("{} ({}): {} bytes, asked for {}", p.label, f.name, text.size(), exact_length));
+			}
+		}
+	}
+
+	std::string report;
+	for (size_t i = 0; i < std::min<size_t>(differences.size(), 12); ++i) report += "\n  " + differences[i];
+
+	assert_equal(true, compared > 80, "packets were written and reread");
+	assert_equal(0, static_cast<int>(differences.size()), std::format("libfiles reads back what it writes{}", report));
+}
+
 void register_metadata_tests(view_state& state, test_registry& tests)
 {
+	tests.add("Should parse every xmp packet whole and cut short"s, should_parse_every_xmp_packet_whole_and_cut_short);
+	tests.add("Should read back every xmp packet libfiles writes"s, should_read_back_every_xmp_packet_libfiles_writes);
 	tests.add("Should collect descriptive fields"s, should_collect_descriptive_fields);
 	tests.add("Should scan info from title"s, should_scan_info_from_title);
 	tests.add("Should combine and deduplicate tag sets"s, should_combine_and_deduplicate_tag_sets);
@@ -3109,6 +3550,7 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should replace item metadata without resetting playback position"s,
 	          should_replace_item_metadata_without_resetting_playback_position);
 	tests.add("Should parse exif tags"s, should_parse_exif_tags);
+	tests.add("Should read Windows XP tags as written"s, should_read_windows_xp_tags_as_written);
 	tests.add("Should parse exif gps height"s, should_parse_exif_gps_height);
 	tests.add("Should keep gps on the equator and meridian"s, should_keep_gps_on_the_equator_and_meridian);
 	tests.add("Should parse an extended length iptc dataset"s, should_parse_an_extended_length_iptc_dataset);
@@ -3177,13 +3619,11 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	          should_apply_property_level_windows_metadata_precedence);
 	tests.add("Should scan raw metadata"s, should_scan_raw);
 	// SRC-022 - RAW GPS preserves valid coordinates on a zero-valued axis.
-	tests.add("Should keep raw gps on a zero axis"s, should_keep_raw_gps_on_a_zero_axis);
 	tests.add("Should scan mod metadata"s, should_scan_mod);
 	tests.add("Should scan webp metadata"s, should_scan_webp);
 	tests.add("Should scan jxl metadata"s, should_scan_jxl);
 	tests.add("Should scan heif metadata"s, should_scan_heic);
 	// SRC-018 - HEIF XMP is normally a MIME metadata item.
-	tests.add("Should scan heif Xmp MIME metadata"s, should_scan_heif_xmp_mime_metadata);
 	tests.add("Should not double apply heif rotation"s, should_not_double_apply_heif_rotation);
 	tests.add("Should scan avif metadata"s, should_scan_avif);
 	// SRC-019 - PNG metadata may be stored after IDAT.

@@ -23,7 +23,6 @@ struct AVBufferRef;
 struct AVFrame;
 struct AVPacket;
 struct AVHWFramesContext;
-struct ID3D11Texture2D;
 
 class file_scan_result;
 class audio_buffer;
@@ -193,20 +192,9 @@ std::vector<av_codec_doc> av_supported_codecs();
 // decoded here. Returns an invalid date when no usable pack is present.
 df::date_t dv_extract_rec_datetime(const uint8_t* frame, size_t frame_size);
 
-struct av_frame_d3d
-{
-	int width = 0;
-	int height = 0;
-	AVHWFramesContext* ctx = nullptr;
-	ID3D11Texture2D* tex = nullptr;
-	uintptr_t tex_index = 0;
-	ui::orientation orientation = ui::orientation::top_left;
-	ui::color_space color_space = ui::color_space::rec601_limited;
-	// Set when the surface holds an HDR signal, which the renderer maps to SDR after its YUV matrix.
-	ui::tone_map_lut_ptr tone_map;
-};
-
-av_frame_d3d av_get_d3d_info(const av_frame_ptr& frame_in);
+// Fills in the lock a hardware decode device takes around its pictures, for the renderer to hold while
+// it copies one: the platform's, since the device is. Leaves it empty where the device has none.
+void av_platform_decode_lock(const AVHWFramesContext* frames, ui::video_picture& picture);
 
 // The hardware decoder whose surfaces the renderer can present, answered by the platform layer.
 // A hwaccel is installed only for this exact pair, so a decoder can never hand back a surface
@@ -231,6 +219,9 @@ bool av_packet_is_eof(const av_packet_ptr& p);
 // The picture the decode thread converted for upload, or null while the frame still holds the
 // decoder's own buffers - a hardware surface the renderer shares directly.
 ui::const_surface_ptr av_frame_surface(const av_frame_ptr& f);
+// The frame as the renderers take it. av_frame is complete only in av_format.cpp, so a caller that
+// holds one converts it here.
+ui::video_frame_ptr av_video_frame(const av_frame_ptr& f);
 
 // Asked by a renderer that cannot share the decoder's hardware surfaces, so from then on the decode
 // thread downloads and converts them rather than the thread that presents them.
@@ -317,7 +308,7 @@ public:
 	void set_gain(const double gain) { _gain = gain; }
 };
 
-class av_scaler final : df::no_copy
+class av_scaler final : public ui::surface_scaler, df::no_copy
 {
 	SwsContext* _scaler = nullptr;
 	// The 16-bit R'G'B' an HDR picture passes through on its way to the tone-mapping cube, kept between
@@ -345,8 +336,9 @@ public:
 	~av_scaler() override;
 
 	bool scale_surface(const ui::const_surface_ptr& surface_in, ui::surface_ptr& surface_out, sizei dimensions_out,
-	                   bool high_quality = true);
-	bool convert_yuv_surface(const ui::surface& surface_in, const ui::surface_ptr& surface_out);
+	                   bool high_quality = true) override;
+	bool convert_yuv_surface(const ui::surface& surface_in, const ui::surface_ptr& surface_out) override;
+	bool scale_surface(const ui::video_frame& frame, const ui::surface_ptr& surface_out) override;
 	bool scale_surface(const av_frame_ptr& frame, const ui::surface_ptr& surface_out);
 	// container_sar carries the demuxer's stream aspect ratio, which is the only place an MP4 pasp
 	// box surfaces - FFmpeg never copies it onto the codec parameters or the decoded frame.

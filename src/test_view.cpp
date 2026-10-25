@@ -3225,7 +3225,7 @@ public:
 	{
 	}
 
-	ui::texture_update_result update(const av_frame_ptr&) override { return ui::texture_update_result::failed; }
+	ui::texture_update_result update(const ui::video_frame_ptr&) override { return ui::texture_update_result::failed; }
 
 	ui::texture_update_result update(const ui::const_surface_ptr& surface) override
 	{

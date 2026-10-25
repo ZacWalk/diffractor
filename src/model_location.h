@@ -11,7 +11,7 @@
 // geocoding, and distance calculations.
 
 #pragma once
-#include "util.h"
+#include "libdesktop/util.h"
 
 
 class gps_coordinate

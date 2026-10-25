@@ -56,7 +56,7 @@ static std::string format_total_text(const df::count_and_size total, const bool 
 		if (!total.size.is_empty())
 		{
 			result += "\n";
-			result += prop::format_size(total.size);
+			result += df::format_size(total.size);
 		}
 	}
 
@@ -395,8 +395,8 @@ public:
 				             draw_clr.a));
 		}
 
-		const auto total_text = std::format("{}|{}", prop::format_size(_drive.used),
-		                                    prop::format_size(_drive.capacity));
+		const auto total_text = std::format("{}|{}", df::format_size(_drive.used),
+		                                    df::format_size(_drive.capacity));
 
 		if (!str::is_empty(total_text))
 		{
@@ -964,7 +964,7 @@ public:
 			const auto total = file_types.total_items();
 			const auto num = platform::format_number(str::to_string(total.count));
 			const auto num_folder = platform::format_number(str::to_string(_state.item_index.stats.index_folder_count));
-			const auto size = prop::format_size(total.size);
+			const auto size = df::format_size(total.size);
 			const auto text = str_format(tt.total_title.sv(), num, size, num_folder);
 
 			hover.elements->add(std::make_shared<text_element>(tt.collection_title, ui::style::font_face::title,
@@ -992,7 +992,7 @@ public:
 				folder_text->foreground_color(ui::emphasize(ui::style::color::view_text));
 				const auto count_text = std::make_shared<text_element>(str::format_count(f.count),
 				                                                       ui::style::text_style::single_line_far);
-				const auto size_text = std::make_shared<text_element>(prop::format_size(f.size),
+				const auto size_text = std::make_shared<text_element>(df::format_size(f.size),
 				                                                      ui::style::text_style::single_line_far);
 				table->add(folder_text, count_text, size_text);
 			}
@@ -1014,7 +1014,7 @@ public:
 					const auto ft = e.group;
 					const auto icon = ft->icon;
 					const auto num = platform::format_number(str::to_string(e.count));
-					const auto size = prop::format_size(e.size);
+					const auto size = df::format_size(e.size);
 
 					hover.elements->add(make_icon_element(icon, flex_item::no_break));
 					hover.elements->add(std::make_shared<text_element>(ft->display_name(e.count > 1),
@@ -2733,7 +2733,7 @@ public:
 
 				if (logo_surface->alloc(logo_size, logo_size, ui::texture_format::ARGB))
 				{
-					logo_surface->fill_logo();
+					fill_app_logo(*logo_surface);
 					_logo_tex = t;
 					_logo_tex->update(logo_surface);
 					_logo_size = logo_size;
@@ -2893,7 +2893,7 @@ public:
 		_history_chart = std::make_shared<sidebar_history_element>(s);
 
 		files ff;
-		const auto surface = ff.image_to_surface(load_resource(platform::resource_item::map_png));
+		const auto surface = ff.image_to_surface(load_app_resource(app_resource::map_png));
 		_map = std::make_shared<sidebar_map_element>(s, surface);
 
 		// The three lit visuals are one group, so they carry one margin between them. Left on the

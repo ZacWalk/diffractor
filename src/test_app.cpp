@@ -1641,7 +1641,7 @@ static void should_reject_missing_sync_folder()
 	assert_equal(false, result.valid, "missing local folder invalidates sync analysis");
 	assert_equal(true, result.empty(), "invalid sync analysis has no actions");
 	assert_equal(true, result.reason != sync_invalid_reason::none, "records why the analysis is invalid");
-	assert_equal(false, sync_invalid_message(result) == tt.error_cannot_continue.sv(),
+	assert_equal(false, sync_invalid_message(result) == tt.platform_text.error_cannot_continue.sv(),
 	             "a missing folder is not reported as an internal fault");
 }
 
@@ -1655,7 +1655,7 @@ static void should_reject_overlapping_sync_folders()
 	const auto result = sync_analysis(roots, local.combine("remote"), true, false, false, false, test_token);
 	assert_equal(false, result.valid, "nested remote folder invalidates sync analysis");
 	assert_equal(true, result.reason == sync_invalid_reason::overlapping_paths, "reports overlapping folders");
-	assert_equal(false, sync_invalid_message(result) == tt.error_cannot_continue.sv(),
+	assert_equal(false, sync_invalid_message(result) == tt.platform_text.error_cannot_continue.sv(),
 	             "overlapping folders are not reported as an internal fault");
 
 	const auto accented_local = _temps.folder().combine("sync-overlap-é");
@@ -1689,7 +1689,7 @@ static void should_reject_ambiguous_sync_roots()
 	assert_equal(false, result.valid, "duplicate relative paths across roots invalidate sync analysis");
 	assert_equal(true, result.empty(), "ambiguous sync analysis has no actions");
 	assert_equal(true, result.reason == sync_invalid_reason::ambiguous_local_root, "reports ambiguous roots");
-	assert_equal(false, sync_invalid_message(result) == tt.error_cannot_continue.sv(),
+	assert_equal(false, sync_invalid_message(result) == tt.platform_text.error_cannot_continue.sv(),
 	             "ambiguous roots are not reported as an internal fault");
 }
 
@@ -2315,6 +2315,31 @@ static void should_start_safe_only_after_repeated_failures()
 	assert_equal("c:\\keep-me"s, s.write_folder, "user paths survive");
 	assert_equal("keep"s, s.favorite_tags, "favorite tags survive");
 	assert_equal("de"s, s.language, "language survives");
+}
+
+// The renderer no longer reads or writes the settings: it reads the YUV latch the app hands it, and
+// tells the app when a driver fault clears it. The hook is not called here - it writes the store.
+static void should_hand_the_renderer_its_yuv_latch()
+{
+	const auto saved = setting.use_yuv;
+	const auto saved_allowed = ui::yuv_textures_allowed;
+	const auto saved_hook = ui::on_yuv_fault;
+	const df::scope_exit restore([saved, saved_allowed, saved_hook]
+	{
+		setting.use_yuv = saved;
+		ui::yuv_textures_allowed = saved_allowed;
+		ui::on_yuv_fault = saved_hook;
+	});
+
+	ui::on_yuv_fault = nullptr;
+	setting.use_yuv = false;
+	connect_yuv_latch();
+	assert_equal(false, ui::yuv_textures_allowed, "a driver that faulted in an earlier run keeps YUV off");
+	assert_equal(true, ui::on_yuv_fault != nullptr, "and a fault this run reaches the setting");
+
+	setting.use_yuv = true;
+	connect_yuv_latch();
+	assert_equal(true, ui::yuv_textures_allowed, "a driver that never faulted may sample YUV");
 }
 
 // Selecting several files in Explorer starts one process each, and they all reach the shared count
@@ -5219,9 +5244,83 @@ static void should_refuse_a_movie_output_claimed_during_render()
 		             "only an unavailable platform writer can prevent the publication race from running");
 }
 
+// The platform's chrome - a menu's check mark, check boxes, radio buttons and the caption buttons -
+// draws the app's own glyphs for them, which only the app's icon table names.
+static void should_draw_the_chrome_with_the_app_glyphs()
+{
+	assert_equal(true, ui::chrome_icons.check == icon_index::check, "a menu's check mark");
+	assert_equal(true, ui::chrome_icons.checkbox_off == icon_index::checkbox_off, "a clear check box");
+	assert_equal(true, ui::chrome_icons.checkbox_on == icon_index::checkbox_on, "a checked one");
+	assert_equal(true, ui::chrome_icons.radio_off == icon_index::radio_off, "a clear radio button");
+	assert_equal(true, ui::chrome_icons.radio_on == icon_index::radio_on, "a chosen one");
+	assert_equal(true, ui::chrome_icons.close == icon_index::close, "the caption's close button");
+	assert_equal(true, ui::chrome_icons.maximize == icon_index::maximize, "its maximize button");
+	assert_equal(true, ui::chrome_icons.minimize == icon_index::minimize, "its minimize button");
+	assert_equal(true, ui::chrome_icons.restore == icon_index::restore, "and its restore button");
+}
+
+// The app's assets are linked into the executable, the same bytes on every platform: the index's schema
+// and the world map the sidebar draws.
+static void should_embed_the_app_assets()
+{
+	const auto sql = load_app_resource(app_resource::sql);
+	const std::string_view schema(reinterpret_cast<const char*>(sql.data()), sql.size());
+	assert_equal(true, schema.find("CREATE TABLE") != std::string_view::npos, "the index's schema");
+
+	const auto map = load_app_resource(app_resource::map_png);
+	constexpr std::array<uint8_t, 8> png_signature = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+	assert_equal(true, map.size() > png_signature.size() &&
+	             std::equal(png_signature.begin(), png_signature.end(), map.data()), "and the world map");
+}
+
+// Guards the drawn mark against silent drift. The same artwork is drawn independently by
+// tools/generate_store_assets.py for app.ico and the Store assets.
+static void should_draw_the_logo()
+{
+	for (const auto size : {16, 32, 44, 150, 256})
+	{
+		const auto s = std::make_shared<ui::surface>();
+		assert_equal(true, s->alloc(size, size, ui::texture_format::ARGB), "logo surface allocated");
+		fill_app_logo(*s);
+
+		const auto last = size - 1;
+		assert_equal(0u, s->get_pixel(0, 0), "logo corner is transparent");
+		assert_equal(0u, s->get_pixel(last, last), "logo opposite corner is transparent");
+
+		// The four squares sit on the vertical and horizontal axes through the centre.
+		const auto mid = size / 2;
+		const auto near_edge = std::max(1, size / 8);
+		const auto top = s->get_pixel(mid, near_edge);
+		const auto bottom = s->get_pixel(mid, last - near_edge);
+		const auto left = s->get_pixel(near_edge, mid);
+		const auto right = s->get_pixel(last - near_edge, mid);
+
+		// Surface pixels are stored blue first, so ui::get_r reads the blue channel here.
+		const auto red_of = [](const ui::color32 c) { return ui::get_b(c); };
+		const auto green_of = [](const ui::color32 c) { return ui::get_g(c); };
+		const auto blue_of = [](const ui::color32 c) { return ui::get_r(c); };
+
+		assert_equal(true, green_of(top) > red_of(top) && green_of(top) > blue_of(top), "logo top is green");
+		assert_equal(true, red_of(bottom) > green_of(bottom) && red_of(bottom) > blue_of(bottom),
+		             "logo bottom is red");
+		assert_equal(true, red_of(left) > 0x80 && green_of(left) > 0x60 && blue_of(left) < 0x40,
+		             "logo left is yellow");
+		assert_equal(true, blue_of(right) > red_of(right) && blue_of(right) > green_of(right),
+		             "logo right is blue");
+
+		for (const auto c : {top, bottom, left, right})
+		{
+			assert_equal(255u, ui::get_a(c), "logo square centres are opaque");
+		}
+	}
+}
+
 void register_app_tests(view_state& state, test_registry& tests)
 {
 	tests.add("Should bind every advertised command"s, should_bind_every_advertised_command);
+	tests.add("Should draw the chrome with the app's glyphs"s, should_draw_the_chrome_with_the_app_glyphs);
+	tests.add("Should embed the app's assets"s, should_embed_the_app_assets);
+	tests.add("Should draw the logo"s, should_draw_the_logo);
 	tests.add("Should offer only native Movie project dialogs"s, should_offer_only_native_movie_project_dialogs);
 	// Release review: an existing batch output needs neither a readable project nor usable sources.
 	tests.add("Should skip existing Movie batch outputs"s, should_skip_existing_movie_batch_outputs);
@@ -5365,6 +5464,7 @@ void register_app_tests(view_state& state, test_registry& tests)
 
 	tests.add("Should start safe only after repeated failures"s, should_start_safe_only_after_repeated_failures);
 	tests.add("Should not count concurrent starts"s, should_not_count_concurrent_starts);
+	tests.add("Should hand the renderer its YUV latch"s, should_hand_the_renderer_its_yuv_latch);
 	tests.add("Should restore history selection"s, should_restore_history_selection);
 	tests.add("Should commit history navigation only after open is accepted"s,
 	          should_commit_history_navigation_only_after_open_is_accepted);

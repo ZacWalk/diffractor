@@ -61,7 +61,7 @@ struct csv_entry
 
 	uint32_t hash() const
 	{
-		return crypto::fnv1a_i(_s);
+		return str::fnv1a_i(_s);
 	}
 
 	std::string_view to_range() const

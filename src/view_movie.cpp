@@ -1969,7 +1969,7 @@ bool movie_view_controls::update_for_document()
 		const auto bytes = static_cast<uint64_t>((output.video_bitrate + output.audio_bitrate) / 8.0 *
 			timing.duration);
 		output_text += "\n~ ";
-		output_text += prop::format_size(df::file_size(bytes));
+		output_text += df::format_size(df::file_size(bytes));
 	}
 
 	show_text(_output_text, _shown_output_text, output_text);
@@ -3006,13 +3006,13 @@ void movie_view::start_preview_audio()
 
 	if (!_preview_device)
 	{
-		_preview_device = create_av_audio_device({}, preview_audio_ring_seconds);
+		_preview_device = platform::create_audio_output({}, preview_audio_ring_seconds);
 
 		// No endpoint is not a failure the user has to be told about: the preview is silent, which
 		// is what it was before it could speak at all.
 		if (!_preview_device) return;
 
-		const auto format = _preview_device->format();
+		const auto format = av_audio_info(_preview_device->format());
 
 		// write_device_samples speaks float, 16-bit and 32-bit; an endpoint mixing in anything else
 		// is left silent rather than fed noise.
@@ -3080,7 +3080,7 @@ void movie_view::pump_preview_audio()
 	}
 
 	const auto& project = _movie_state.project;
-	const auto format = _preview_device->format();
+	const auto format = av_audio_info(_preview_device->format());
 	const auto channels = format.channel_count();
 	const auto sample_bytes = format.bytes_per_sample();
 
@@ -3177,7 +3177,7 @@ void movie_view::pump_preview_audio()
 	// decoded samples, and this mixer has none, so it stops at full.
 	_preview_device->volume(std::clamp(setting.media_volume, 0, 1000) / 1000.0);
 
-	if (!_preview_audio_buffer.is_empty()) _preview_device->write(_preview_audio_buffer);
+	if (!_preview_audio_buffer.is_empty()) _preview_audio_buffer.write_to(*_preview_device);
 
 	// Started once the lead is queued, so the device begins on a cushion rather than on a sliver it
 	// would run through before the next tick.
@@ -4279,7 +4279,7 @@ void movie_view::relink_missing()
 			self->_state.invalidate_view(view_invalid::command_state);
 			if (failed)
 			{
-				make_dlg(self->_host->owner())->show_message(icon_index::error, tt.movie_title, tt.error_unknown);
+				make_dlg(self->_host->owner())->show_message(icon_index::error, tt.movie_title, tt.platform_text.error_unknown);
 				return;
 			}
 
@@ -4884,7 +4884,7 @@ void movie_view::render_finished(const size_t generation, const bool ok, const b
 		case movie_render_error::none: break;
 		}
 
-		return message.empty() ? tt.error_unknown.sv() : std::string_view(message);
+		return message.empty() ? tt.platform_text.error_unknown.sv() : std::string_view(message);
 	}();
 
 	_status = cancelled

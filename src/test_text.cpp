@@ -18,21 +18,21 @@
 static void should_parse_translated_short_month()
 {
 	// Shipped catalogs carry short months that are not 3 bytes - ru/uk/ja/ko/zh for all 12, fr for 8.
-	const auto* const saved_oct = tt.month_short_oct.published();
-	const auto* const saved_jan = tt.month_short_jan.published();
+	const auto* const saved_oct = tt.words.month_short_oct.published();
+	const auto* const saved_jan = tt.words.month_short_jan.published();
 
 	// Storage that outlives the reads below, which is the contract text_t::publish states.
 	const std::string oct_ru = "\xd0\xbe\xd0\xba\xd1\x82"; // ru, 6 bytes
 	const std::string jan_fr = "janv"; // fr, 4 bytes
 
-	tt.month_short_oct.publish(&oct_ru);
-	tt.month_short_jan.publish(&jan_fr);
+	tt.words.month_short_oct.publish(&oct_ru);
+	tt.words.month_short_jan.publish(&jan_fr);
 
 	const auto oct = str::month("\xd0\xbe\xd0\xba\xd1\x82");
 	const auto jan = str::month("JANV");
 
-	tt.month_short_oct.publish(saved_oct);
-	tt.month_short_jan.publish(saved_jan);
+	tt.words.month_short_oct.publish(saved_oct);
+	tt.words.month_short_jan.publish(saved_jan);
 
 	assert_equal(10, oct, "6 byte translated short month");
 	assert_equal(1, jan, "4 byte translated short month, case insensitive");
@@ -70,6 +70,20 @@ static void should_load_po()
 
 	assert_equal("Datenbank bereinigen und neu indexieren.\nAlle Daten werden regeneriert.", t.reset_database,
 	             "reset_database");
+}
+
+static void should_word_platform_messages_for_the_application()
+{
+	// The platform layer's defaults name no application; Diffractor's wording is set over them, and
+	// it is the msgid the catalogs translate.
+	const app_text_t t;
+	assert_equal("Diffractor requires a processor with sse2.", t.platform_text.error_sse2_needed, "sse2");
+	assert_equal("Diffractor requires Windows 7 or newer.", t.platform_text.error_unsupported_os, "os");
+	assert_equal("Diffractor has a serious problem and cannot continue.", t.platform_text.error_cannot_continue,
+	             "cannot continue");
+	assert_equal("Diffractor ERROR", t.platform_text.title_error, "title");
+	assert_equal(true, platform::messages{}.title_error.sv().find("Diffractor") == std::string_view::npos,
+	             "default names no application");
 }
 
 static void should_select_slavic_plural_forms()
@@ -449,6 +463,7 @@ void register_text_tests(view_state& state, test_registry& tests)
 	// Catalogs
 	//
 	tests.add("Should load po"s, should_load_po);
+	tests.add("Should word platform messages for the application"s, should_word_platform_messages_for_the_application);
 	tests.add("Should select Slavic plural forms"s, should_select_slavic_plural_forms);
 	// APP-010 - returning to English must clear every registered instance, not only the lookup map.
 	tests.add("Should clear duplicate text instances"s, should_clear_duplicate_text_instances);

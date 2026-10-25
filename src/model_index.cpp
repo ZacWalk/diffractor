@@ -1542,6 +1542,71 @@ std::vector<folder_scan_item> index_state::scan_items(const df::index_roots& roo
 	return results;
 }
 
+// What the shell's property store says about a file, in the item's terms, with its cached thumbnail
+// decoded.
+static platform::get_cached_file_properties_response read_cached_file_properties(
+	const df::file_path path, prop::item_metadata& properties_out, ui::const_image_ptr& thumbnail_out)
+{
+	platform::shell_properties shell;
+	const auto result = platform::read_shell_properties(path, shell);
+	if (result != platform::get_cached_file_properties_response::ok) return result;
+
+	if (shell.album_artist) properties_out.album_artist = str::cache(*shell.album_artist);
+	if (shell.artist) properties_out.artist = str::cache(*shell.artist);
+	if (shell.title) properties_out.title = str::cache(*shell.title);
+	if (shell.genre) properties_out.genre = str::cache(*shell.genre);
+	if (shell.album) properties_out.album = str::cache(*shell.album);
+	if (shell.comment) properties_out.comment = str::cache(*shell.comment);
+	if (shell.year) properties_out.year = static_cast<uint16_t>(*shell.year);
+	if (shell.track) properties_out.track.x = static_cast<int16_t>(*shell.track);
+	if (shell.width) properties_out.width = static_cast<uint16_t>(std::min<uint32_t>(*shell.width, 0xffff));
+	if (shell.height) properties_out.height = static_cast<uint16_t>(std::min<uint32_t>(*shell.height, 0xffff));
+	if (shell.orientation) properties_out.orientation = static_cast<ui::orientation>(*shell.orientation);
+	if (shell.date_taken) properties_out.dates.add_utc(prop::date_source::shell_date_taken, df::date_t(*shell.date_taken));
+
+	// Joined into Diffractor's space-separated (quoted) tag form.
+	if (!shell.keywords.empty() && is_empty(properties_out.tags))
+	{
+		properties_out.tags = str::cache(str::combine(shell.keywords));
+	}
+
+	if (shell.latitude && shell.longitude) properties_out.coordinate = gps_coordinate(*shell.latitude, *shell.longitude);
+	if (!shell.thumbnail.empty()) thumbnail_out = load_image_file(shell.thumbnail);
+	return result;
+}
+
+// The shell's thumbnail, made into an item thumbnail. Pixels that make no thumbnail are a fail.
+static platform::get_cached_file_properties_response read_shell_thumbnail(
+	const df::file_path path, const sizei requested_extent, const bool allow_network, ui::const_image_ptr& thumbnail_out)
+{
+	platform::bgra_pixels pixels;
+	const auto response = platform::get_shell_thumbnail(path, requested_extent, allow_network, pixels);
+	if (response != platform::get_cached_file_properties_response::ok) return response;
+
+	const auto surface = std::make_shared<ui::surface>();
+
+	if (!surface->alloc(static_cast<int>(pixels.width), static_cast<int>(pixels.height), ui::texture_format::ARGB,
+	                    ui::orientation::top_left))
+	{
+		return platform::get_cached_file_properties_response::fail;
+	}
+
+	const auto row_bytes = static_cast<size_t>(pixels.width) * 4u;
+
+	for (uint32_t y = 0; y < pixels.height; ++y)
+	{
+		memcpy(surface->pixels() + static_cast<size_t>(y) * static_cast<size_t>(surface->stride()),
+		       pixels.pixels.data() + static_cast<size_t>(y) * row_bytes, row_bytes);
+	}
+
+	files ff;
+	auto image = ff.surface_to_thumbnail(surface);
+	if (!is_valid(image)) return platform::get_cached_file_properties_response::fail;
+
+	thumbnail_out = std::move(image);
+	return platform::get_cached_file_properties_response::ok;
+}
+
 void index_state::scan_offline_item(const df::index_folder_item_ptr& folder,
                                     const df::file_path file_path,
                                     const bool thumbnail_needed,
@@ -1562,7 +1627,7 @@ void index_state::scan_offline_item(const df::index_folder_item_ptr& folder,
 
 	auto metadata = std::make_shared<prop::item_metadata>();
 	ui::const_image_ptr shell_thumbnail;
-	const auto resp = platform::get_cached_file_properties(file_path, *metadata, shell_thumbnail);
+	const auto resp = read_cached_file_properties(file_path, *metadata, shell_thumbnail);
 
 	item_db_write write;
 	write.path = file_path;
@@ -3568,7 +3633,7 @@ void index_state::queue_scan_offline_thumbnails(const df::item_set& items, const
 			}
 
 			ui::const_image_ptr shell_thumb;
-			const auto response = platform::get_shell_thumbnail(
+			const auto response = read_shell_thumbnail(
 				request.path, setting.thumbnail_max_dimension, true, shell_thumb);
 			result completed{request, response, {}};
 

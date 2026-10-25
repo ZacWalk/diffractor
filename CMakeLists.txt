@@ -60,13 +60,37 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(DiffractorCompilerPolicy)
 include(DiffractorDependency)
 
-# Vendored libjpeg-turbo and dav1d assemble their SIMD with nasm. enable_language() only takes
-# effect at directory scope, and the vendored modules are included from inside a function, so it
-# happens here. Windows carries its own copy in tools/, which is what the .vcxproj files used.
+# FFmpeg's Windows build assembles its x86 SIMD with nasm, and libfiles' libjpeg-turbo and dav1d
+# take the assembler enabled here. enable_language() only takes effect at directory scope, and the
+# recipes are included from inside a function, so it happens here. Windows seldom has nasm on the
+# path, so there the release cmake/dd-dependencies.json pins - libfiles' pin - is fetched.
+#
+# A build tree configured while tools/ carried a copy cached its path, and find_program does not
+# look again for a cached result, even a missing one; nor does enable_language() look again for a
+# compiler it recorded in the tree, so a recorded one that has gone is forgotten as well.
+if (NASM_EXECUTABLE AND NOT EXISTS "${NASM_EXECUTABLE}")
+    unset(NASM_EXECUTABLE CACHE)
+endif ()
+
+set(_nasm_recorded "${CMAKE_BINARY_DIR}/CMakeFiles/${CMAKE_VERSION}/CMakeASM_NASMCompiler.cmake")
+
+if (EXISTS "${_nasm_recorded}")
+    file(STRINGS "${_nasm_recorded}" _nasm_recorded_compiler REGEX "^set\\(CMAKE_ASM_NASM_COMPILER \"")
+
+    if (_nasm_recorded_compiler MATCHES "\"([^\"]+)\"" AND NOT EXISTS "${CMAKE_MATCH_1}")
+        file(REMOVE "${_nasm_recorded}")
+    endif ()
+endif ()
+
 find_program(NASM_EXECUTABLE
         NAMES nasm
-        HINTS "${CMAKE_SOURCE_DIR}/tools"
         DOC "The nasm assembler")
+
+if (NOT NASM_EXECUTABLE AND CMAKE_HOST_WIN32 AND DIFFRACTOR_TARGET_ARCH MATCHES "^(x64|x86)$")
+    include(DiffractorFetch)
+    diffractor_fetch(nasm)
+    set(NASM_EXECUTABLE "${nasm_SOURCE_DIR}/nasm.exe" CACHE FILEPATH "The nasm assembler" FORCE)
+endif ()
 
 if (NASM_EXECUTABLE AND DIFFRACTOR_TARGET_ARCH MATCHES "^(x64|x86)$")
     set(CMAKE_ASM_NASM_COMPILER "${NASM_EXECUTABLE}")
@@ -99,81 +123,75 @@ endif ()
 # package is reported rather than fatal.
 # ---------------------------------------------------------------------------------------------
 
+# Shared with ImageWalker and fetched rather than vendored: see cmake/DiffractorLibfiles.cmake. First,
+# because it brings the zlib and libjpeg-turbo the libraries below link, and the DNG SDK's XMP backend
+# links libfiles itself, and a dependency can only be stated on a target that already exists.
+include(DiffractorLibfiles)
+
+# zlib-ng, libpng, libwebp, libjpeg-turbo, libheif with libde265 and dav1d, libjxl with Highway, Brotli
+# and skcms, and LibRaw with Adobe's DNG SDK, come with libfiles, which fetches each release archive at its pinned SHA-256 -
+# skcms, which has none, at its pinned commit - and builds it with the recipe this tree's vendored
+# copy used (todo.md D8). Named like the vendored libraries, so the link list and the codecs
+# reach them the same way. The system packages are no substitute: the vendored zlib was zlib-ng, not
+# zlib, and libfiles and the tests use the 12- and 16-bit APIs libjpeg-turbo added in 3.0, where
+# Ubuntu 24.04 ships 2.1.5. dav1d is declared here, before the forks, because FFmpeg's configure registers
+# its libdav1d decoder only when it can already see the library.
+add_library(diffractor::zlib ALIAS libfiles-zlib)
+add_library(diffractor::png ALIAS libfiles-png)
+add_library(diffractor::webp ALIAS libfiles-webp)
+add_library(diffractor::jpeg ALIAS libfiles-jpeg)
+add_library(diffractor::de265 ALIAS libfiles-de265)
+add_library(diffractor::dav1d ALIAS libfiles-dav1d)
+add_library(diffractor::jxl ALIAS libfiles-jxl)
+add_library(diffractor::highway ALIAS libfiles-highway)
+add_library(diffractor::brotli ALIAS libfiles-brotli)
+add_library(diffractor::skcms ALIAS libfiles-skcms)
+add_library(diffractor::raw ALIAS libfiles-raw)
+add_library(diffractor::dng ALIAS libfiles-dng)
+
+# Libraries fetched at their pinned releases (cmake/dd-dependencies.json) whose sources other recipes
+# name, so fetched before any recipe runs.
+include(DiffractorFetch)
+diffractor_fetch(lzma)
+diffractor_fetch(openmpt)
+
 # Every module below was imported from a .vcxproj, so each began life carrying only that project's
 # Windows configuration. All of them now build under GCC too; what that took per library lives in
 # cmake/vendored/<name>.local.cmake.
-diffractor_dependency(zlib PKG_CONFIG zlib VENDORED_MODULE vendored/zlib VENDORED_DIR third-party/ZLib OPTIONAL)
-diffractor_dependency(png PKG_CONFIG libpng16 VENDORED_MODULE vendored/png VENDORED_DIR third-party/libpng OPTIONAL)
-
-# The system libjpeg-turbo is too old to be a substitute: files_jpeg.cpp uses the 12- and 16-bit
-# APIs added in 3.0, and Ubuntu 24.04 ships 2.1.5. Declared before the call so the option below
-# defaults to the vendored build; -DDIFFRACTOR_SYSTEM_JPEG=ON still forces the system copy.
-option(DIFFRACTOR_SYSTEM_JPEG "Use the system jpeg rather than the vendored copy" OFF)
-diffractor_dependency(jpeg PKG_CONFIG libjpeg VENDORED_MODULE vendored/LibJpeg OPTIONAL)
-
-diffractor_dependency(sqlite PKG_CONFIG sqlite3 VENDORED_MODULE vendored/sqlite VENDORED_DIR third-party/sqlite OPTIONAL)
-diffractor_dependency(expat PKG_CONFIG expat VENDORED_MODULE vendored/expat VENDORED_DIR third-party/expat OPTIONAL)
-# webp splits the muxer and demuxer into their own pkg-config modules; files_webp.cpp uses all three.
-diffractor_dependency(webp PKG_CONFIG libwebp libwebpmux libwebpdemux VENDORED_MODULE vendored/webp VENDORED_DIR third-party/webp OPTIONAL)
-diffractor_dependency(archive PKG_CONFIG libarchive VENDORED_MODULE vendored/archive VENDORED_DIR third-party/libarchive OPTIONAL)
-diffractor_dependency(exif PKG_CONFIG libexif VENDORED_MODULE vendored/exif VENDORED_DIR third-party/libexif OPTIONAL)
+diffractor_dependency(sqlite PKG_CONFIG sqlite3 VENDORED_MODULE vendored/sqlite OPTIONAL)
+diffractor_dependency(archive PKG_CONFIG libarchive VENDORED_MODULE vendored/archive OPTIONAL)
 
 # Compression and support libraries. Nothing in src/ includes these directly: they are here because
 # the codecs above and below link them.
-diffractor_dependency(bzip2 VENDORED_MODULE vendored/bzip2 VENDORED_DIR third-party/bzip2 OPTIONAL)
-diffractor_dependency(lzma VENDORED_MODULE vendored/lzma VENDORED_DIR third-party/liblzma OPTIONAL)
-diffractor_dependency(brotli VENDORED_MODULE vendored/brotli VENDORED_DIR third-party/brotli OPTIONAL)
-diffractor_dependency(highway VENDORED_MODULE vendored/highway VENDORED_DIR third-party/highway OPTIONAL)
+diffractor_dependency(bzip2 VENDORED_MODULE vendored/bzip2 OPTIONAL)
+diffractor_dependency(lzma VENDORED_MODULE vendored/lzma OPTIONAL)
 
 # Tracked music. Declared before the forks because FFmpeg's configure enables its libopenmpt
 # demuxer only when it can already see the library, and a dependency can only be stated on a target
 # that already exists.
-diffractor_dependency(openmpt VENDORED_MODULE vendored/openmpt VENDORED_DIR third-party/libopenmpt OPTIONAL)
+diffractor_dependency(openmpt VENDORED_MODULE vendored/openmpt OPTIONAL)
 
-# AV1. Declared before the forks for the same reason: FFmpeg's configure registers its libdav1d
-# decoder only when it can already see the library.
-diffractor_dependency(dav1d VENDORED_MODULE vendored/dav1d VENDORED_DIR third-party/dav1d OPTIONAL)
+# The fork. Never resolvable from the system: docs/third-party.md records the patches a distribution
+# copy would silently discard. Not OPTIONAL: media is not a feature Diffractor is valid without, so a
+# configuration that cannot build it fails here rather than producing an application that reports
+# every media file as absent.
+diffractor_dependency(ffmpeg FORK VENDORED_MODULE vendored/FFmpeg)
 
-# Forks. Never resolvable from the system: docs/third-party.md records the patches a distribution
-# copy would silently discard. Declared before the codecs because dng compiles against the XMP
-# toolkit, and a dependency can only be stated on a target that already exists.
-#
-# Neither is OPTIONAL: metadata and media are not features Diffractor is valid without, so a
-# configuration that cannot build them fails here rather than producing an application that
-# reports every media file and every XMP property as absent.
-diffractor_dependency(xmp FORK VENDORED_MODULE vendored/Xmp VENDORED_DIR third-party/xmp)
-diffractor_dependency(ffmpeg FORK VENDORED_MODULE vendored/FFmpeg VENDORED_DIR third-party/FFmpeg)
-
-diffractor_dependency(skcms VENDORED_MODULE vendored/skcms VENDORED_DIR third-party/skcms OPTIONAL)
-diffractor_dependency(de265 VENDORED_MODULE vendored/de265 VENDORED_DIR third-party/libde265 OPTIONAL)
-diffractor_dependency(dng VENDORED_MODULE vendored/dng VENDORED_DIR third-party/dng OPTIONAL)
-diffractor_dependency(ebml VENDORED_MODULE vendored/ebml VENDORED_DIR third-party/libebml OPTIONAL)
-diffractor_dependency(matroska VENDORED_MODULE vendored/matroska VENDORED_DIR third-party/libmatroska OPTIONAL)
+# The foundation, OS services and desktop UI Diffractor is written in, fetched from libdesktop: see
+# cmake/DiffractorLibdesktop.cmake.
+include(DiffractorLibdesktop)
 
 # Codecs and utilities that gate a translation unit of their own.
-diffractor_dependency(heif VENDORED_MODULE vendored/heif VENDORED_DIR third-party/libheif OPTIONAL)
-diffractor_dependency(jxl VENDORED_MODULE vendored/jxl VENDORED_DIR third-party/libjx OPTIONAL)
-diffractor_dependency(raw VENDORED_MODULE vendored/raw VENDORED_DIR third-party/LibRaw OPTIONAL)
-diffractor_dependency(hunspell VENDORED_MODULE vendored/hunspell VENDORED_DIR third-party/hunspell OPTIONAL)
-diffractor_dependency(minizip VENDORED_MODULE vendored/minizip VENDORED_DIR third-party/minizip OPTIONAL)
+
+# libheif decodes HEVC through FFmpeg, its FFmpeg decoder plugin built here from libfiles' libheif -
+# libfiles does not take on FFmpeg - with the headers the vendored libheif compiled it with, and
+# registered with libheif before the first decode (files_heif.cpp). diffractor::heif is libfiles'
+# libheif, and diffractor::heif_ffmpeg that plugin.
+include(DiffractorHeif)
+diffractor_dependency(hunspell VENDORED_MODULE vendored/hunspell OPTIONAL)
+diffractor_dependency(minizip VENDORED_MODULE vendored/minizip OPTIONAL)
 
 diffractor_report_dependencies()
-
-# files_core.cpp includes libarchive by the shape of the vendored tree
-# ("libarchive/libarchive/archive.h"). Where the vendored copy is what was resolved, putting
-# third-party/ on the include path makes that path resolve directly, which is what Windows does.
-#
-# The system package installs a bare <archive.h> instead and knows nothing of that shape, so it
-# needs forwarding headers. Those must not be used for the vendored build: <archive.h> is then
-# whatever the machine happens to have installed, or nothing at all -- a fully vendored CI image
-# has no libarchive-dev, and the forwarding header fails to resolve rather than falling back.
-if (TARGET diffractor_archive AND NOT WIN32)
-    set(DIFFRACTOR_COMPAT_INCLUDE "${CMAKE_SOURCE_DIR}/third-party")
-elseif (TARGET diffractor::archive AND NOT WIN32)
-    set(DIFFRACTOR_COMPAT_INCLUDE "${CMAKE_BINARY_DIR}/compat")
-    file(WRITE "${DIFFRACTOR_COMPAT_INCLUDE}/libarchive/libarchive/archive.h" "#include <archive.h>\n")
-    file(WRITE "${DIFFRACTOR_COMPAT_INCLUDE}/libarchive/libarchive/archive_entry.h" "#include <archive_entry.h>\n")
-endif ()
 
 # ---------------------------------------------------------------------------------------------
 # Sources
@@ -182,16 +200,15 @@ endif ()
 # Translation units proved to compile under GCC. Add to this list as each one is ported; the
 # roadmap for what is still missing is in docs/linux.md.
 set(DIFFRACTOR_PORTABLE_SOURCES
-        src/util.cpp
-        src/util_base64.cpp
-        src/util_geometry.cpp
-        src/util_strings.cpp
+        src/util_text.cpp
         src/crypto.cpp
         src/crypto_md5.cpp
         src/crypto_sha.cpp
         src/app_text.cpp
         src/app_settings.cpp
         src/app_util.cpp
+        src/app_perf.cpp
+        src/app_resources.cpp
         src/model_property.cpp
         src/model_tags.cpp
         src/model_visits.cpp
@@ -206,6 +223,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/files_jpeg.cpp
         src/files_png.cpp
         src/files_webp.cpp
+        src/media_edit.cpp
         src/metadata_exif.cpp
         src/model.cpp
         src/model_db.cpp
@@ -216,14 +234,10 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/model_movie.cpp
         src/model_search.cpp
         src/model_tile_cache.cpp
-        src/render_color.cpp
         src/render_charts.cpp
         src/render_globe.cpp
-        src/render_image.cpp
         src/render_panorama.cpp
-        src/render_software.cpp
-        src/render_surface.cpp
-        src/ui.cpp
+        src/ui_elements.cpp
         src/ui_controls.cpp
         src/ui_flex.cpp
         src/app_commands.cpp
@@ -246,8 +260,8 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/view_tags.cpp
 )
 
-# Unconditional: the FFmpeg and XMP forks are required dependencies, so configuration has already
-# failed above if either is absent.
+# Unconditional: FFmpeg and libfiles are required dependencies, so configuration has already failed
+# above if either is absent.
 list(APPEND DIFFRACTOR_PORTABLE_SOURCES
         src/av_format.cpp
         src/metadata_xmp.cpp
@@ -302,63 +316,51 @@ set(DIFFRACTOR_TEST_SOURCES
         src/test_view.cpp
 )
 
+# The application's own assets - the index's schema and the world map - are generated into a
+# translation unit rather than read from disk, so the executable stays self-contained and a resource
+# cannot go missing beside it. Each is a configure dependency: file(READ) is not tracked, and editing
+# one would otherwise leave the build running the old copy.
+function(diffractor_embed_resource SYMBOL SOURCE OUT_TEXT)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SOURCE}")
+    file(READ "${SOURCE}" _hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _bytes "${_hex}")
+    string(LENGTH "${_hex}" _hex_length)
+    math(EXPR _length "${_hex_length} / 2")
+
+    # A literal semicolon has to arrive by value; escaping one inside a quoted argument leaves
+    # the backslash in the written file.
+    string(ASCII 59 _t)
+
+    set(${OUT_TEXT}
+            "extern const unsigned char ${SYMBOL}[]${_t}\nextern const unsigned long ${SYMBOL}_size${_t}\nconst unsigned char ${SYMBOL}[] = {${_bytes}}${_t}\nconst unsigned long ${SYMBOL}_size = ${_length}${_t}\n"
+            PARENT_SCOPE)
+endfunction()
+
+diffractor_embed_resource(diffractor_resource_sql
+        "${CMAKE_SOURCE_DIR}/src/Res/create_tables.sql" _sql_text)
+diffractor_embed_resource(diffractor_resource_map_png
+        "${CMAKE_SOURCE_DIR}/src/Res/map-hires.png" _map_png_text)
+
+set(_generated_resources "${CMAKE_BINARY_DIR}/generated/platform_resources.cpp")
+# Written through configure_file so an unchanged resource does not restamp the file and force a
+# rebuild on every configure.
+file(WRITE "${_generated_resources}.in"
+        "// Generated from src/Res by CMake. Do not edit.\n\n${_sql_text}\n${_map_png_text}")
+configure_file("${_generated_resources}.in" "${_generated_resources}" COPYONLY)
+# A table of bytes needs none of the application's headers.
+set_source_files_properties("${_generated_resources}" PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
 if (WIN32)
     list(APPEND DIFFRACTOR_TEST_SOURCES src/test_platform_win.cpp)
 
     set(DIFFRACTOR_PLATFORM_SOURCES
-            src/platform_win.cpp
-            src/platform_win_d3d11.cpp
-            src/platform_win_encode.cpp
-            src/platform_win_files.cpp
-            src/platform_win_font.cpp
-            src/platform_win_settings.cpp
-            src/platform_win_software.cpp
-            src/platform_win_sound.cpp
-            src/platform_win_ui.cpp
-            src/platform_win_controls.cpp
-            src/platform_win_process.cpp
-            src/platform_win_share.cpp
-            src/platform_win_web.cpp
-            src/platform_win_wic.cpp
+            src/platform_win_av.cpp
             src/platform_win_res.rc
+            "${_generated_resources}"
     )
 else ()
-    # platform_win_res.rc carries these on Windows. Elsewhere they are generated into a translation
-    # unit rather than read from disk, so the executable stays self-contained and a resource cannot
-    # go missing beside it.
-    function(diffractor_embed_resource SYMBOL SOURCE OUT_TEXT)
-        file(READ "${SOURCE}" _hex HEX)
-        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _bytes "${_hex}")
-        string(LENGTH "${_hex}" _hex_length)
-        math(EXPR _length "${_hex_length} / 2")
-
-        # A literal semicolon has to arrive by value; escaping one inside a quoted argument leaves
-        # the backslash in the written file.
-        string(ASCII 59 _t)
-
-        set(${OUT_TEXT}
-                "extern const unsigned char ${SYMBOL}[]${_t}\nextern const unsigned long ${SYMBOL}_size${_t}\nconst unsigned char ${SYMBOL}[] = {${_bytes}}${_t}\nconst unsigned long ${SYMBOL}_size = ${_length}${_t}\n"
-                PARENT_SCOPE)
-    endfunction()
-
-    diffractor_embed_resource(diffractor_resource_sql
-            "${CMAKE_SOURCE_DIR}/src/Res/create_tables.sql" _sql_text)
-    diffractor_embed_resource(diffractor_resource_map_png
-            "${CMAKE_SOURCE_DIR}/src/Res/map-hires.png" _map_png_text)
-
-    set(_generated_resources "${CMAKE_BINARY_DIR}/generated/platform_resources.cpp")
-    # Written through configure_file so an unchanged resource does not restamp the file and force a
-    # rebuild on every configure.
-    file(WRITE "${_generated_resources}.in"
-            "// Generated from src/Res by CMake. Do not edit.\n\n${_sql_text}\n${_map_png_text}")
-    configure_file("${_generated_resources}.in" "${_generated_resources}" COPYONLY)
-
     set(DIFFRACTOR_PLATFORM_SOURCES
-            src/platform_linux.cpp
-            src/platform_linux_desktop.cpp
-            src/platform_linux_files.cpp
-            src/platform_linux_settings.cpp
-            src/platform_linux_ui.cpp
+            src/platform_linux_app.cpp
             "${_generated_resources}"
     )
 endif ()
@@ -371,112 +373,24 @@ add_executable(diffractor
 
 target_include_directories(diffractor PRIVATE
         src
-        third-party/rapidjson/include
-        ${DIFFRACTOR_COMPAT_INCLUDE}
 )
 
-# Include/ is an MSVC shim supplying POSIX headers Windows lacks. It belongs on the include path
-# there and nowhere else: on Linux its unistd.h shadows the real one and pulls in io.h.
-#
-# The rest are the vendored roots app.vcxproj listed. Several headers are reached by their position
-# in the tree rather than through a library target, libarchive/libarchive/archive.h among them.
+# The resource script carries the app's icons, icon font, manifest and version, and includes
+# libdesktop-render's own script, whose shaders that module compiles.
 if (WIN32)
-    target_include_directories(diffractor PRIVATE
-            Include
-            third-party
-            third-party/webp/src
-            third-party/LibJpeg/src
-            third-party/libheif/api
-            third-party/hunspell
-            third-party/libpng
-            third-party/sqlite
-            third-party/dng
-            third-party/libexif
-            third-party/bzip2
-            third-party/zlib
-            third-party/xmp/public/include
-            third-party/LibRaw
-            third-party/FFmpeg
-    )
-endif ()
-
-# The resource script embeds the Direct3D shaders as binary resources, so they have to be compiled
-# before it is. app.vcxproj expressed this as FxCompile items writing .cso into $(IntDir), which the
-# resource compiler then had on its include path.
-if (WIN32)
-    # The SDK installs one fxc per version, and none of them is on the path.
-    file(GLOB _fxc_candidates
-            "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*/x64/fxc.exe"
-            "$ENV{ProgramFiles}/Windows Kits/10/bin/*/x64/fxc.exe")
-
-    set(_fxc_dirs "")
-    foreach (_candidate IN LISTS _fxc_candidates)
-        get_filename_component(_dir "${_candidate}" DIRECTORY)
-        list(APPEND _fxc_dirs "${_dir}")
-    endforeach ()
-
-    list(SORT _fxc_dirs)
-    list(REVERSE _fxc_dirs)
-
-    find_program(FXC_EXECUTABLE NAMES fxc HINTS ${_fxc_dirs} DOC "The Direct3D shader compiler")
-
-    if (NOT FXC_EXECUTABLE)
-        message(FATAL_ERROR "fxc was not found; the shaders the resource script embeds cannot be built")
-    endif ()
-
-    set(_shader_dir "${CMAKE_BINARY_DIR}/shaders")
-    file(MAKE_DIRECTORY "${_shader_dir}")
-
-    # ShaderModel 4.0 throughout; vs.hlsl is the only vertex shader.
-    set(_pixel_shaders circle_ps font_ps pano_ps rgb_bicubic_ps rgb_ps solid_ps yuv_bicubic_ps yuv_ps
-            yuv_hdr_bicubic_ps yuv_hdr_ps)
-    set(_vertex_shaders vs)
-    set(_shader_outputs "")
-
-    # fxc reports no includes to the generator, so each shader depends on every shared header:
-    # otherwise editing one leaves the shaders built from it stale, and the binary embeds the old code.
-    file(GLOB _shader_includes CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/shaders/*.hlsli")
-
-    foreach (_shader IN LISTS _pixel_shaders _vertex_shaders)
-        if (_shader IN_LIST _vertex_shaders)
-            set(_profile vs_4_0)
-        else ()
-            set(_profile ps_4_0)
-        endif ()
-
-        set(_out "${_shader_dir}/${_shader}.cso")
-
-        add_custom_command(
-                OUTPUT "${_out}"
-                COMMAND "${FXC_EXECUTABLE}" /nologo /T ${_profile} /E main
-                /Fo "${_out}" "${CMAKE_SOURCE_DIR}/src/shaders/${_shader}.hlsl"
-                MAIN_DEPENDENCY "${CMAKE_SOURCE_DIR}/src/shaders/${_shader}.hlsl"
-                DEPENDS ${_shader_includes}
-                COMMENT "Compiling ${_shader}.hlsl (${_profile})"
-                VERBATIM)
-
-        list(APPEND _shader_outputs "${_out}")
-    endforeach ()
-
-    add_custom_target(diffractor_shaders DEPENDS ${_shader_outputs})
-    add_dependencies(diffractor diffractor_shaders)
-
-    # The script names them without a path, so the directory holding them is what makes them found.
-    target_include_directories(diffractor PRIVATE "${_shader_dir}")
-
     # The .rc embeds these by name, and the generator only tracks the .rc itself: editing one of them
     # otherwise leaves the compiled resource stale and the binary silently running the old copy. That
-    # failure is invisible - it builds clean and the application uses last week's schema.
+    # failure is invisible - it builds clean and the application shows last week's icon.
     # CONFIGURE_DEPENDS re-globs on every build, so adding or deleting a resource cannot leave an
     # existing build tree depending on a file that is no longer there.
     file(GLOB _rc_embedded_resources CONFIGURE_DEPENDS
-            "${CMAKE_SOURCE_DIR}/src/Res/*.sql"
             "${CMAKE_SOURCE_DIR}/src/Res/*.png"
             "${CMAKE_SOURCE_DIR}/src/Res/*.ico"
             "${CMAKE_SOURCE_DIR}/src/Res/models/*")
 
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/platform_win_res.rc"
-            PROPERTIES OBJECT_DEPENDS "${_shader_outputs};${_rc_embedded_resources}")
+            PROPERTIES OBJECT_DEPENDS "${_rc_embedded_resources}")
+    libdesktop_render_resources("${CMAKE_SOURCE_DIR}/src/platform_win_res.rc")
 endif ()
 
 # Every resolved dependency is named here rather than relying on one library to pull in another.
@@ -485,9 +399,9 @@ endif ()
 set(DIFFRACTOR_LINK_DEPENDENCIES "")
 
 foreach (dep IN ITEMS
-        zlib png jpeg sqlite expat webp archive exif ffmpeg xmp
-        heif jxl raw hunspell minizip
-        de265 dav1d dng ebml matroska openmpt
+        zlib png jpeg sqlite webp archive ffmpeg
+        heif heif_ffmpeg jxl raw hunspell minizip
+        de265 dav1d dng openmpt
         bzip2 lzma brotli highway skcms)
     if (TARGET diffractor::${dep})
         list(APPEND DIFFRACTOR_LINK_DEPENDENCIES diffractor::${dep})
@@ -498,6 +412,7 @@ endforeach ()
 # naming them here is what puts them inside the rescan group below.
 get_property(_grouped_archives GLOBAL PROPERTY DIFFRACTOR_GROUPED_ARCHIVES)
 list(APPEND DIFFRACTOR_LINK_DEPENDENCIES ${_grouped_archives})
+list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::render)
 
 if (MSVC)
     target_link_libraries(diffractor PRIVATE ${DIFFRACTOR_LINK_DEPENDENCIES})
@@ -568,6 +483,7 @@ else ()
     foreach (_runtime_entry IN ITEMS
             test
             test-formats
+            test-generated
             languages
             dictionaries
             location-countries.txt

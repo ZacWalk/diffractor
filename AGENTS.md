@@ -23,7 +23,7 @@ open the listed source, and run the listed check. Do not read unrelated document
 | Places, distance, map, visits, tiles | [locations](docs/locations.md) | [model_locations.cpp](src/model_locations.cpp), [model_visits.cpp](src/model_visits.cpp), [ui_map_common.h](src/ui_map_common.h), [ui_globe.h](src/ui_globe.h), [model_tile_cache.cpp](src/model_tile_cache.cpp) | `/test:*location*`, `/test:*visit*`, `/test:*globe*` |
 | Reading or writing a media file, staging, sidecars, rollback | [file I/O](docs/file-io.md) | [files_core.cpp](src/files_core.cpp), [app_util.cpp](src/app_util.cpp) | `/test:*sidecar*`, `/test:*collision*` |
 | Which tag a property is read from or written to | [metadata](docs/metadata.md) | [metadata_exif.cpp](src/metadata_exif.cpp), [metadata_xmp.cpp](src/metadata_xmp.cpp), [metadata_iptc.cpp](src/metadata_iptc.cpp), [model_property.cpp](src/model_property.cpp) | `/test:*metadata*`, `/test:*tag*` |
-| Drawing, backends, device loss, colour, the video pipeline | [rendering](docs/rendering.md) | [platform_win_d3d11.cpp](src/platform_win_d3d11.cpp), [platform_win_software.cpp](src/platform_win_software.cpp), [render_surface.cpp](src/render_surface.cpp), [av_format.cpp](src/av_format.cpp) | `/test:*surface*`, `/test:*colour*`, `/test:*video*`, `/test:*audio*` |
+| Drawing, backends, device loss, colour, the video pipeline | [rendering](docs/rendering.md) | libdesktop's [platform_win_d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_d3d11.cpp), [platform_win_software.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_software.cpp), libdesktop's [render_surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_surface.cpp), [av_format.cpp](src/av_format.cpp) | `/test:*surface*`, `/test:*colour*`, `/test:*video*`, `/test:*audio*` |
 | The selection panel: form, content, order, density | [selection controls](docs/selection-controls.md) | [view_items.cpp](src/view_items.cpp), [ui_elements.h](src/ui_elements.h), [ui_flex.cpp](src/ui_flex.cpp) | `/test:*selection*`, `/test:*layout*` |
 | Tile geometry, scrolling, list layout | [design](docs/design.md#application-structure) | [view_items.h](src/view_items.h), [view_list.h](src/view_list.h), [ui_flex.cpp](src/ui_flex.cpp) | `/test:*layout*`, `/test:*scroll*` |
 | Command availability, targeting, keyboard | [design](docs/design.md#command-availability) | [app_commands.cpp](src/app_commands.cpp), [app_commands.h](src/app_commands.h) | `/test:*command*`, `/test:*selection*` |
@@ -32,7 +32,7 @@ open the listed source, and run the listed check. Do not read unrelated document
 | Where a test belongs, or why the suite is arranged this way | [testing](docs/testing.md) | `src/test_*.cpp` | `.\dd.ps1 test` |
 | Translated text, catalogs, plural forms | [testing](docs/testing.md) | [app_text.cpp](src/app_text.cpp), `exe/languages` | `.\dd.ps1 test` |
 | Upgrading or patching a vendored dependency | [third-party](docs/third-party.md) | `third-party/`, `cmake/vendored` | `.\dd.ps1 test` |
-| Portability, platform-boundary debt, the Linux build | [Linux port](docs/linux.md) | [platform.h](src/platform.h), `src/platform_linux*.cpp` | `.github/workflows/linux.yml` |
+| Portability, platform-boundary debt, the Linux build | [Linux port](docs/linux.md) | libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h), [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h), libdesktop's [platform_linux_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_ui.cpp), [platform_linux_app.cpp](src/platform_linux_app.cpp) | `.github/workflows/linux.yml` |
 
 `/test:` filters match the test **name**, case-insensitively, not the file. Every filter above is verified to match at least one test; a filter matching nothing is a failure, not a silent pass. Run them as `.\exe\diffractor64-d.exe /test:*zoom* | Out-Host`.
 
@@ -68,7 +68,7 @@ Start from the concrete failing behavior, symbol, test, or file, then route to t
 - `app*`: application coordination; `view*`/`ui*`: views, controls, layout, drawing.
 - `model*`: state, index, search, SQLite, properties; `files*`/`metadata*`: I/O, codecs, EXIF/IPTC/XMP/ICC.
 - `av*`: audio/video; `render*`: surfaces/color/transforms; `platform_win_d3d11.cpp`/`platform_win_software.cpp`: draw backends.
-- `platform*`: Windows/system integration; `util*`: shared utilities; `test*`: tests.
+- `platform*`: the app's own Windows and Linux glue - its side of FFmpeg's hardware decoding, its resource script, its Linux entry point; `util*`: the app's own helpers; `test*`: tests. The foundation (`df::`, `str::`) and the OS services (`platform.h`) are libdesktop's system module, and the desktop UI - `ui.h`, `platform_render.h`, the window layer and the renderers - its render module, all included as `libdesktop/<file>.h` - see [cmake/DiffractorLibdesktop.cmake](cmake/DiffractorLibdesktop.cmake).
 
 Editing a file under `src/` also loads the matching rules in `.github/instructions/`, which carry the threading, rendering, view, test, and platform detail for that area at the point it applies.
 
@@ -77,7 +77,7 @@ Four recurring workflows are `.github/prompts/` slash commands rather than proce
 ## Working rules
 
 - Build and validate with `.\dd.ps1 test`, which runs `tools/lint_repo.ps1`, the unit tests, and the translation checks. CMake is the only description of the build on both platforms; `tools/dd.py` drives it. App source belongs in `src/`; temporary output belongs in `tmp/`.
-- System, OS, Windows API, and other platform-specific implementation code MUST exist only in `platform*.*` files. Other modules use platform abstractions.
+- System, OS, Windows API, and other platform-specific implementation code MUST exist only in `platform*.*` files or in libdesktop. Other modules use platform abstractions.
 - Keep `// Purpose:` comments accurate in modified `src/*.h` and `src/*.cpp` files.
 - Preserve [product design](docs/design.md), especially targeting, recovery, navigation restoration, and preview-before-run.
 
@@ -139,12 +139,13 @@ Rules marked **[lint]** are enforced by `tools/lint_repo.ps1` and fail `.\dd.ps1
 - **Invalidation:** Paint functions never access SQLite or scan files, directly or indirectly; request Source work.
 - **Platform: [lint]** system headers and Windows handle types appear only in `platform*` files.
 - **Database: [lint]** `sqlite3_*` appears only in `model_db*` and `model_tile_cache*`.
-- **Vendors:** never edit `third-party/`; use owned wrappers or build configuration.
+- **Dependencies:** fetched at the pins in `cmake/dd-dependencies.json` and never patched; change
+  behavior in owned wrappers or build configuration, and a version by moving its pin.
 - **Cache keys:** a key must carry every input the cached value depends on. Invalidation is only as good as the identity it is keyed on, and a key that omits an input silently serves one caller's value to another.
 - **Argument order: [lint]** one call must not both capture a variable by copy, for a lambda, and `std::move` that same variable into another argument. Function arguments are indeterminately sequenced and MSVC evaluates them right to left, so the move empties the variable before the capture copies it and the lambda is left holding an emptied value. Give the lambda its own statement, so the capture is sequenced before the move. The fault surfaces wherever the callback is finally invoked, not at the call that built it, which is why this is linted rather than left to review. Moving the captured copy inside the lambda's own body, and an init-capture such as `[f = std::move(f)]`, are the correct forms and are not reported.
 - **Absent handles: [lint]** a `ui::frame_ptr` member that can be unset is reached only through an accessor that never returns null, and callers do not test it. `view_host::frame()`, and the `frame()` accessor on any `ui::frame_host`, answer `ui::no_frame()` when there is no window; a raw `_frame->` on such a member outside that accessor is the defect. `ui::control_frame_ptr` has no stand-in, so those members are instead either guarded at every use or safe by construction — text alone cannot tell the two apart in a file holding both, so `ui_dialog.h` is reviewed rather than linted. Either way, a member guarded at some call sites and dereferenced at others is this bug already, whether or not it has crashed yet.
 - **Existence is not visibility:** never bind a handle's lifetime to whether the thing is on screen. A hidden panel still populates, counts, ticks and invalidates, so attach it unconditionally and gate only the repaint.
-- **Animation:** alpha fades are disabled in CPU software rendering mode (`ui::animations_enabled`, mirroring `setting.can_animate`); never bypass the gate or animate alpha outside `ui::animate_alpha`.
+- **Animation:** alpha fades are disabled in CPU software rendering mode (`ui::animations_enabled`, which the renderer sets); never bypass the gate or animate alpha outside `ui::animate_alpha`.
 - **Exceptions:** every `catch` propagates, logs, returns a bounded error, or implements a documented bounded fallback; no unexplained swallowing.
 
 ## Detailed rules

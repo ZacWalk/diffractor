@@ -11,17 +11,14 @@
 
 #pragma once
 #include "model_property.h"
-
-namespace platform
-{
-	class thread_event;
-}
+#include "libdesktop/platform_render.h"
 
 struct AVChannelLayout;
 using channel_layout_ptr = std::shared_ptr<AVChannelLayout>;
 
 channel_layout_ptr av_get_def_channel_layout(int num_channels);
-channel_layout_ptr av_get_channel_layout(uint64_t mask, int fallback_channels);
+// An endpoint's layout: channels per frame, placed by its speaker mask where the two agree.
+channel_layout_ptr av_get_channel_layout(uint64_t mask, int channels);
 
 struct audio_info_t
 {
@@ -40,6 +37,9 @@ struct audio_info_t
 	uint32_t channel_count() const;
 	uint32_t bytes_per_sample() const;
 };
+
+// An endpoint's mix format as the buffers and the mixer take it.
+audio_info_t av_audio_info(const platform::audio_output_format& format);
 
 class audio_buffer final : df::no_copy
 {
@@ -105,6 +105,12 @@ public:
 	df::cspan cdata() const
 	{
 		return {data ? data + start_pos : nullptr, used_bytes()};
+	}
+
+	// Hands the endpoint as many of the samples as it has room for; what it takes leaves the buffer.
+	void write_to(platform::audio_output& device)
+	{
+		remove(static_cast<uint32_t>(device.write(cdata())));
 	}
 
 	uint32_t avail_bytes() const
@@ -297,46 +303,8 @@ private:
 		}
 	}
 
-	friend class wasapi_sound;
 	friend class av_visualizer;
 	friend class audio_resampler;
 	friend struct audio_ramp_probe;
 };
 
-
-class av_audio_device
-{
-public:
-	virtual std::string id() = 0;
-	virtual audio_info_t format() = 0;
-	virtual double time() const = 0;
-	virtual bool is_stopped() const = 0;
-	virtual bool is_device_lost() const = 0;
-
-	virtual void reset() = 0;
-	virtual void start() = 0;
-	virtual void stop() = 0;
-	virtual void wait_for_buffer(const platform::thread_event& wake_event, uint32_t timeout_ms) = 0;
-	virtual void write(audio_buffer& audio_buffer) = 0;
-	// Queues a short run of silence so an underrun plays silence instead of looping
-	// the last buffer (used to keep the tail clean at end of stream).
-	virtual void write_silence() = 0;
-	virtual void volume(double x) = 0;
-};
-
-using av_audio_device_ptr = std::shared_ptr<av_audio_device>;
-
-// A ring of zero seconds is the endpoint's minimum: a device period or two, which only a thread
-// waiting on wait_for_buffer can keep full. A caller that refills on its own schedule instead -- the
-// Movie preview, from the UI tick -- asks for a ring long enough to cover the gap between refills,
-// and has no buffer event to wait on.
-av_audio_device_ptr create_av_audio_device(std::string_view device_id, double ring_seconds = 0.0);
-
-struct sound_device
-{
-	std::string id;
-	std::string name;
-	bool is_current = false;
-};
-
-std::vector<sound_device> list_audio_playback_devices();

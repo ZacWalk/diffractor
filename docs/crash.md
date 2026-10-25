@@ -163,9 +163,9 @@ that says this configuration took that path. Two out of three is a hypothesis.
 | Crash-handling subject | Source |
 |---|---|
 | Exception filter and report contents | [app.cpp](../src/app.cpp) |
-| Minidump writing, and restart and recovery registration | [platform_win_process.cpp](../src/platform_win_process.cpp) |
+| Minidump writing, and restart and recovery registration | libdesktop's [platform_win_process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_process.cpp) |
 | The open-file list a fault records, and its bounds | [util_crash_files_db.h](../src/util_crash_files_db.h) |
-| The graphics crash guard and hardware-acceleration fallback | [platform_win_settings.cpp](../src/platform_win_settings.cpp) |
+| The graphics crash guard and hardware-acceleration fallback | libdesktop's [platform_win_settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
 | The degraded start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
-| Diagnostic log and session counters | [util_log.h](../src/util_log.h), [util.h](../src/util.h) |
+| Diagnostic log and session counters | libdesktop's [util_log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util_log.h) and [util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util.h); [app_perf.h](../src/app_perf.h) |
 | Symbol store tooling | `tools/symstore.exe`, `tools/symsrv.dll` |

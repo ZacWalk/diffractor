@@ -162,6 +162,16 @@ static constexpr auto s_sound_device = "sound_device";
 
 settings_t setting;
 
+void connect_yuv_latch()
+{
+	ui::yuv_textures_allowed = setting.use_yuv;
+	ui::on_yuv_fault = []
+	{
+		setting.use_yuv = false;
+		setting.write();
+	};
+}
+
 static std::atomic<uint64_t> s_feature_use{0};
 
 void record_feature_use(const uint64_t f)
@@ -356,7 +366,6 @@ settings_t::settings_t()
 	confirm_rotations = true;
 	first_run_today = true;
 	first_run_ever = true;
-	can_animate = false;
 	repeat = repeat_mode::repeat_none;
 	auto_play = true;
 	auto_advance = true;

@@ -16,7 +16,7 @@
 #include "model.h"
 #include "model_movie.h"
 #include "test_runner.h"
-#include "util_json.h"
+#include "libdesktop/util_json.h"
 #include "view_movie.h"
 
 static df::folder_path movie_test_folder()

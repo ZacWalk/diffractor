@@ -242,6 +242,6 @@ disable control. Aggregate feature-use diagnostics contain no stable user ID or 
 - [view_import.cpp](../src/view_import.cpp), [view_sync.cpp](../src/view_sync.cpp),
   [view_rename.cpp](../src/view_rename.cpp), and [view_batch.cpp](../src/view_batch.cpp): guided
   operations.
-- [app_util.cpp](../src/app_util.cpp) and [platform.h](../src/platform.h): file effects, collisions,
+- [app_util.cpp](../src/app_util.cpp) and libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): file effects, collisions,
   shared copies, and the recycle and share capabilities.
 - [app_settings.cpp](../src/app_settings.cpp): durable preferences and diagnostics settings.

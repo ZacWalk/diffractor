@@ -11,8 +11,8 @@
 
 #include "pch.h"
 
-#include "util_base64.h"
-#include "util_simd.h"
+#include "libdesktop/util_base64.h"
+#include "libdesktop/util_simd.h"
 #include "crypto.h"
 #include "crypto_sha.h"
 
@@ -62,36 +62,6 @@ std::string crypto::hmac_sha1(const std::string_view key, const std::string_view
 
 ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////
-// CRC-32
-
-
-uint32_t crypto::crc32c(const void* data, const size_t len)
-{
-	return ~crc32c(CRCINIT, data, len);
-}
-
-uint32_t crypto::crc32c(const uint32_t crc, const void* data, const size_t len)
-{
-	if (platform::crc32_supported)
-	{
-		return calc_crc32c_x86(crc, data, len);
-	}
-
-	if (platform::arm_crc32_supported)
-	{
-		return calc_crc32c_arm(crc, data, len);
-	}
-
-	return calc_crc32c_c(crc, data, len);
-}
-
-uint32_t crypto::crc32c(const std::string_view sv)
-{
-	return crc32c(sv.data(), sv.size());
-}
-
 ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////
 // Perceptual hash
@@ -263,19 +233,3 @@ crypto::phash_rotations crypto::perceptual_hash_rotations(const uint8_t* gray, c
 	return result;
 }
 
-static constexpr uint32_t FNV_PRIME_32 = 16777619u;
-static constexpr uint32_t OFFSET_BASIS_32 = 2166136261u;
-
-uint32_t crypto::fnv1a_i(const std::string_view sv)
-{
-	auto p = sv.begin();
-	uint32_t result = OFFSET_BASIS_32;
-
-	while (p < sv.end())
-	{
-		result ^= str::to_lower(str::pop_utf8_char(p, sv.end()));
-		result *= FNV_PRIME_32;
-	}
-
-	return result;
-}

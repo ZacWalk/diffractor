@@ -273,15 +273,14 @@ is in [model.h](../src/model.h); application entry, shutdown and command availab
 
 The command line batch is [app_movie_batch.cpp](../src/app_movie_batch.cpp). Its switches are parsed
 in [app.cpp](../src/app.cpp) into [app_command_line.h](../src/app_command_line.h), and
-[platform_win_ui.cpp](../src/platform_win_ui.cpp) runs it in place of the window.
+libdesktop's [platform_win_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_ui.cpp) runs it in place of the window.
 
 Frame and audio extraction are in [av_format.h](../src/av_format.h),
 [av_format.cpp](../src/av_format.cpp) and [av_player.h](../src/av_player.h). The audio endpoint the
-preview mixes into is [av_sound.h](../src/av_sound.h), with the Windows implementation in
-[platform_win_sound.cpp](../src/platform_win_sound.cpp). The platform writer contract
-is in [platform.h](../src/platform.h), with Windows implementation in
-[platform_win_encode.cpp](../src/platform_win_encode.cpp) and the unavailable-platform answer in
-[platform_linux_desktop.cpp](../src/platform_linux_desktop.cpp).
+preview mixes into and the platform writer contract are in libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h),
+with the Windows implementations in libdesktop's [platform_win_sound.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_sound.cpp) and
+[platform_win_encode.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_encode.cpp) and the unavailable-platform answers in
+libdesktop's [platform_linux_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_ui.cpp).
 
 Tests are in [test_movie.cpp](../src/test_movie.cpp), [test_view.cpp](../src/test_view.cpp),
 [test_av.cpp](../src/test_av.cpp), [test_platform_win.cpp](../src/test_platform_win.cpp) and, for the

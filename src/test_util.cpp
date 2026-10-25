@@ -13,11 +13,11 @@
 #include "test.h"
 #include "app_command_line.h"
 #include "crypto.h"
-#include "util_base64.h"
+#include "libdesktop/util_base64.h"
 #include "crypto_sha.h"
-#include "util_json.h"
-#include "util_kdtree.h"
-#include "util_simd.h"
+#include "libdesktop/util_json.h"
+#include "libdesktop/util_kdtree.h"
+#include "libdesktop/util_simd.h"
 #include "util_top.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
@@ -37,6 +37,16 @@ static void assert_assertion_fails(const std::function<void()>& f, const std::st
 	}
 
 	assert_equal(true, failed, name);
+}
+
+static void should_name_files_after_the_application()
+{
+	// The foundation and the platform layer derive their file, folder and key names from the
+	// application's name. These are the names Diffractor always used, so existing logs, settings
+	// and caches are still found.
+	assert_equal("diffractor"sv, df::app_file_stem(), "file stem");
+	assert_equal("diffractor.log"sv, df::log_path.name(), "log");
+	assert_equal("diffractor.previous.log"sv, df::previous_log_path.name(), "previous log");
 }
 
 static void should_complete_result_scope()
@@ -390,26 +400,26 @@ static void should_calc_hashes()
 	             "SHA256");
 
 	const auto crc_data = "hello world"s;
-	const auto crc_result = crypto::crc32c(crc_data.data(), crc_data.size());
+	const auto crc_result = df::crc32c(crc_data.data(), crc_data.size());
 	assert_equal(0xc99465aa, crc_result, "crc32");
-	assert_equal(0xe3069283, crypto::crc32c("123456789"sv), "crc32 standard vector");
+	assert_equal(0xe3069283, df::crc32c("123456789"sv), "crc32 standard vector");
 
-	const auto crc_c = ~calc_crc32c_c(crypto::CRCINIT, crc_data.data(), crc_data.size());
+	const auto crc_c = ~calc_crc32c_c(df::crc32c_init, crc_data.data(), crc_data.size());
 	assert_equal(0xc99465aa, crc_c, "crc32 c");
-	assert_equal(0xe3069283, ~calc_crc32c_c(crypto::CRCINIT, "123456789", 9), "crc32 c standard vector");
+	assert_equal(0xe3069283, ~calc_crc32c_c(df::crc32c_init, "123456789", 9), "crc32 c standard vector");
 
 	if (platform::crc32_supported)
 	{
-		const auto crc_x86 = ~calc_crc32c_x86(crypto::CRCINIT, crc_data.data(), crc_data.size());
+		const auto crc_x86 = ~calc_crc32c_x86(df::crc32c_init, crc_data.data(), crc_data.size());
 		assert_equal(0xc99465aa, crc_x86, "crc32 x86");
-		assert_equal(0xe3069283, ~calc_crc32c_x86(crypto::CRCINIT, "123456789", 9), "crc32 x86 standard vector");
+		assert_equal(0xe3069283, ~calc_crc32c_x86(df::crc32c_init, "123456789", 9), "crc32 x86 standard vector");
 	}
 
 	if (platform::arm_crc32_supported)
 	{
-		const auto crc_neon = ~calc_crc32c_arm(crypto::CRCINIT, crc_data.data(), crc_data.size());
+		const auto crc_neon = ~calc_crc32c_arm(df::crc32c_init, crc_data.data(), crc_data.size());
 		assert_equal(0xc99465aa, crc_neon, "crc32 neon");
-		assert_equal(0xe3069283, ~calc_crc32c_arm(crypto::CRCINIT, "123456789", 9), "crc32 arm standard vector");
+		assert_equal(0xe3069283, ~calc_crc32c_arm(df::crc32c_init, "123456789", 9), "crc32 arm standard vector");
 	}
 
 	alignas(16) std::array<uint8_t, 96> boundary_data;
@@ -423,22 +433,22 @@ static void should_calc_hashes()
 		for (auto len = 0u; len <= 80u; ++len)
 		{
 			const auto* const data = boundary_data.data() + offset;
-			const auto expected = calc_crc32c_c(crypto::CRCINIT, data, len);
-			assert_equal(~expected, crypto::crc32c(data, len), "crc32 dispatched boundary");
+			const auto expected = calc_crc32c_c(df::crc32c_init, data, len);
+			assert_equal(~expected, df::crc32c(data, len), "crc32 dispatched boundary");
 
 			if (platform::crc32_supported)
 			{
-				assert_equal(expected, calc_crc32c_x86(crypto::CRCINIT, data, len), "crc32 x86 boundary");
+				assert_equal(expected, calc_crc32c_x86(df::crc32c_init, data, len), "crc32 x86 boundary");
 				const auto split = len / 2;
-				const auto first = calc_crc32c_x86(crypto::CRCINIT, data, split);
+				const auto first = calc_crc32c_x86(df::crc32c_init, data, split);
 				assert_equal(expected, calc_crc32c_x86(first, data + split, len - split), "crc32 x86 continuation");
 			}
 
 			if (platform::arm_crc32_supported)
 			{
-				assert_equal(expected, calc_crc32c_arm(crypto::CRCINIT, data, len), "crc32 arm boundary");
+				assert_equal(expected, calc_crc32c_arm(df::crc32c_init, data, len), "crc32 arm boundary");
 				const auto split = len / 2;
-				const auto first = calc_crc32c_arm(crypto::CRCINIT, data, split);
+				const auto first = calc_crc32c_arm(df::crc32c_init, data, split);
 				assert_equal(expected, calc_crc32c_arm(first, data + split, len - split), "crc32 arm continuation");
 			}
 		}
@@ -1935,6 +1945,7 @@ static void should_rank_the_most_common_values()
 void register_util_tests(view_state& state, test_registry& tests)
 {
 	tests.add("Should natural compare"s, should_icmp_natural);
+	tests.add("Should name files after the application"s, should_name_files_after_the_application);
 	tests.add("Should detect utf16 either way round"s, should_detect_utf16_either_way_round);
 	tests.add("Should complete result scope"s, should_complete_result_scope);
 	tests.add("Should abort result scope during exception"s, should_abort_result_scope_during_exception);

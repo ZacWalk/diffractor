@@ -1,21 +1,18 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Build the vendored FFmpeg fork by driving its own configure and make, and expose the
-# five libraries av_format.cpp uses as diffractor::ffmpeg. FFmpeg's build system is the only
-# supported way to configure it; restating it in CMake would be a second source of truth for which
-# codecs exist.
+# Purpose: Build Diffractor's FFmpeg fork, fetched at the commit cmake/dd-dependencies.json pins, by
+# driving its own configure and make, and expose the five libraries av_format.cpp uses as
+# diffractor::ffmpeg. FFmpeg's build system is the only supported way to configure it; restating it
+# in CMake would be a second source of truth for which codecs exist.
 
 include_guard(GLOBAL)
+include(DiffractorFetch)
 include(ExternalProject)
 include(ProcessorCount)
 
-set(_ff_src "${CMAKE_SOURCE_DIR}/third-party/FFmpeg")
-
-if (NOT EXISTS "${_ff_src}/configure")
-    message(STATUS "ffmpeg: third-party/FFmpeg is not checked out; run 'git submodule update --init'")
-    return()
-endif ()
+diffractor_fetch(ffmpeg)
+set(_ff_src "${ffmpeg_SOURCE_DIR}")
 
 # On Windows the fork is not configured at all: config-x64.h, config-x86.h and their nasm
 # counterparts are checked in for exactly this, because FFmpeg's configure needs a shell. The
@@ -35,7 +32,7 @@ endif ()
 
 # The fork checks in config.h for the MSVC build, and FFmpeg refuses to configure out of tree while
 # that file sits in the source directory. Staging a copy is what makes the build possible at all,
-# and it keeps the checkout free of build output as a side effect.
+# and it keeps the fetched tree free of build output as a side effect.
 set(_ff_stage "${CMAKE_BINARY_DIR}/third-party/ffmpeg/src")
 set(_ff_prefix "${CMAKE_BINARY_DIR}/third-party/ffmpeg/install")
 
@@ -56,7 +53,7 @@ endif ()
 # .pc file, so describe the archives this build already produces. Without this for libopenmpt the
 # demuxer is simply absent and a tracked module scans as nothing at all rather than failing loudly;
 # without it for zlib, configure probes the system copy's headers while the link resolves against
-# the vendored zlib-ng beside it, which is a different implementation agreeing by convention.
+# libfiles' zlib-ng beside it, which is a different implementation agreeing by convention.
 #
 # -L/-l rather than the archive's path: configure sorts its probe's arguments into compiler flags and
 # libraries by looking for a -l prefix, so a bare path is placed ahead of the object it has to
@@ -72,24 +69,25 @@ set(_ff_openmpt "")
 
 if (TARGET diffractor_openmpt)
     set(_ff_openmpt --enable-libopenmpt)
-    _ff_describe_vendored(libopenmpt diffractor_openmpt 0.8.7
-            "${CMAKE_SOURCE_DIR}/third-party/libopenmpt" "-lstdc++ -lm")
+    _ff_describe_vendored(libopenmpt diffractor_openmpt 0.8.9
+            "${openmpt_SOURCE_DIR}" "-lstdc++ -lm")
 endif ()
 
-if (TARGET diffractor_zlib)
-    _ff_describe_vendored(zlib diffractor_zlib 1.3.1
-            "${CMAKE_SOURCE_DIR}/third-party/ZLib" "")
+# libfiles' zlib-ng: its generated headers and the fetched tree, as -I for each.
+if (TARGET libfiles-zlib)
+    _ff_describe_vendored(zlib libfiles-zlib 1.3.1
+            "$<JOIN:$<TARGET_PROPERTY:libfiles-zlib,INTERFACE_INCLUDE_DIRECTORIES>, -I>" "")
 endif ()
 
 # FFmpeg's own AV1 decoder only drives a hardware accelerator, so without libdav1d an AV1 file has
 # no software decoder at all: no thumbnail, no preview, and no playback where the GPU cannot decode
-# AV1. The vendored dav1d is already linked for AVIF; this registers it with libavcodec too.
+# AV1. libfiles' dav1d is already linked for AVIF; this registers it with libavcodec too.
 set(_ff_dav1d "")
 
-if (TARGET diffractor_dav1d)
+if (TARGET libfiles-dav1d)
     set(_ff_dav1d --enable-libdav1d)
-    _ff_describe_vendored(dav1d diffractor_dav1d 1.5.4
-            "${CMAKE_SOURCE_DIR}/third-party/dav1d/include" "-lpthread -lm")
+    _ff_describe_vendored(dav1d libfiles-dav1d 1.5.4
+            "$<JOIN:$<TARGET_PROPERTY:libfiles-dav1d,INTERFACE_INCLUDE_DIRECTORIES>, -I>" "-lpthread -lm")
 endif ()
 
 # bzlib and lzma have no pkg-config path in configure at all -- it probes them with a hard coded
@@ -103,7 +101,7 @@ if (TARGET diffractor_bzip2 AND TARGET diffractor_lzma)
     set(_ff_compression
             --enable-bzlib
             --enable-lzma
-            "--extra-cflags=-I${CMAKE_SOURCE_DIR}/third-party/bzip2 -I${CMAKE_SOURCE_DIR}/third-party/liblzma/src/liblzma/api"
+            "--extra-cflags=-I$<JOIN:$<TARGET_PROPERTY:diffractor_bzip2,INTERFACE_INCLUDE_DIRECTORIES>, -I> -I${lzma_SOURCE_DIR}/src/liblzma/api"
             "--extra-ldflags=-L${_ff_libdir}")
 
     add_custom_command(
@@ -188,7 +186,7 @@ set_property(GLOBAL PROPERTY DIFFRACTOR_GROUPED_ARCHIVES "${_ff_archives}")
 
 # configure links a probe against the archives named in the .pc files, so they have to be on disk
 # before the external project starts rather than merely before the application links.
-foreach (_ff_dep IN ITEMS diffractor_openmpt diffractor_zlib diffractor_dav1d ffmpeg_compression_libs)
+foreach (_ff_dep IN ITEMS diffractor_openmpt libfiles-zlib libfiles-dav1d ffmpeg_compression_libs)
     if (TARGET ${_ff_dep})
         add_dependencies(ffmpeg_external ${_ff_dep})
     endif ()

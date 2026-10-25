@@ -1,0 +1,19 @@
+﻿// This file is part of the Diffractor photo and video organizer
+// Copyright 2026  Zac Walker
+// 
+// This program is free software; you can redistribute it and / or modify it
+// under the terms of the LGPL License either version 2.1 or later.
+// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+
+// Purpose: The app's own colours beside the UI's palette: the highlights that mark ranked items,
+// sidecars and duplicates.
+
+#pragma once
+
+namespace app_colors
+{
+	constexpr ui::color32 rank_background = ui::bgr(0x00997711);
+	constexpr ui::color32 sidecar_background = ui::bgr(0x006677CC);
+	constexpr ui::color32 duplicate_background = ui::bgr(0x007711AA);
+}

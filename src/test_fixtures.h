@@ -28,6 +28,9 @@
 inline const auto test_files_folder = known_path(platform::known_folder::test_files_folder);
 // Beside the test folder, not in it: expected_cached_item_count below counts what is in there.
 inline const auto test_formats_folder = test_files_folder.parent().combine("test-formats");
+// Files an encoder wrote once, kept as written because it writes other bytes on other platforms: a
+// record of what decodes them could not be taken over files written afresh.
+inline const auto test_generated_folder = test_files_folder.parent().combine("test-generated");
 inline constexpr sizei thumbnail_max_dimension = {256, 256};
 inline constexpr int expected_cached_item_count = 49;
 

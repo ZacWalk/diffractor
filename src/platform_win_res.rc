@@ -66,29 +66,17 @@ END
 // remains consistent on all systems.
 IDR_DIFFRACTOR          ICON                    "res\\app.ico"
 
-IDI_DIFFRACTOR          ICON                    "res\\app.ico"
+IDI_APP_ICON            ICON                    "res\\app.ico"
 
 
 
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// Cursor
+// The desktop UI's own: its cursors, drop shadow and shaders
 //
 
-IDC_SELECT              CURSOR                  "res\\select.cur"
-
-IDC_MOVE                CURSOR                  "res\\move.cur"
-
-IDC_HANDLINK            CURSOR                  "res\\hand.cur"
-
-IDC_COLORSELECT         CURSOR                  "res\\color_select.cur"
-
-IDC_HANDDOWN            CURSOR                  "res\\hand_down.cur"
-
-IDC_HANDUP              CURSOR                  "res\\hand_up.cur"
-
-IDC_ZOOM                CURSOR                  "res\\zoom.cur"
+#include "platform_win_render.rc"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -100,39 +88,10 @@ IDC_ZOOM                CURSOR                  "res\\zoom.cur"
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// SQL
-//
-
-IDR_CREATE_SQL          SQL                     "Res\\create_tables.sql"
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
 // PNG
 //
 
-IDB_SHADOW              PNG                     "Res\\shadow.png"
-IDB_MAP                 PNG                      "Res\\map-hires.png"
-
 IDF_ICONS               BINARY                 "Res\\FluentSystemIcons-Resizable.ttf"
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// SHADER
-//
-
-IDR_SHADER_SOLID        SHADER                  "solid_ps.cso"
-IDR_SHADER_VERTEX       SHADER                  "vs.cso"
-IDR_SHADER_RGB          SHADER                  "rgb_ps.cso"
-IDR_SHADER_RGB_BICUBIC  SHADER          "rgb_bicubic_ps.cso"
-IDR_SHADER_YUV          SHADER                  "yuv_ps.cso"
-IDR_SHADER_YUV_BICUBIC  SHADER          "yuv_bicubic_ps.cso"
-IDR_SHADER_YUV_HDR      SHADER                  "yuv_hdr_ps.cso"
-IDR_SHADER_YUV_HDR_BICUBIC SHADER               "yuv_hdr_bicubic_ps.cso"
-IDR_SHADER_FONT         SHADER                  "font_ps.cso"
-IDR_SHADER_CIRCLE       SHADER                "circle_ps.cso"
-IDR_SHADER_PANO         SHADER                  "pano_ps.cso"
 
 
 /////////////////////////////////////////////////////////////////////////////

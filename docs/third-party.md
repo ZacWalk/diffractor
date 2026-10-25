@@ -2,8 +2,9 @@
 
 This document owns the dependency inventory, upstream sources, licensing, vendoring policy, and
 integration constraints that an upgrade must preserve. The inventory records the imported releases
-and snapshots; vendored version headers and submodule pins are authoritative, and CMake owns the
-exact compiled source lists. Wrapper behavior belongs to the corresponding subject document.
+and snapshots; the pins in [dd-dependencies.json](../cmake/dd-dependencies.json) and the revisions
+the libfiles and libdesktop modules name are authoritative, and CMake owns the exact compiled source
+lists. Wrapper behavior belongs to the corresponding subject document.
 
 ## Licensing
 
@@ -17,111 +18,138 @@ LGPL 2.1. Enabling a GPL component changes the outbound license of the combined 
 ordinary build option.
 
 A dependency or model with non-commercial terms, no redistribution grant, or incompatible
-additional restrictions cannot ship. Every vendored component must retain the license and notices
-required by its exact upstream version. Its folder's license file is the authority for those terms.
+additional restrictions cannot ship. Every dependency must retain the license and notices required
+by its exact upstream version; the license file in its pinned archive is the authority for those
+terms.
 
 ## Vendoring
 
-Dependencies are source copies under `third-party/`, header-only copies under `Include/`, assets in
-their consuming tree, or the FFmpeg/XMP git submodules. Owned CMake modules under `cmake/vendored/`
-select sources, definitions, generated configuration, and compiler policy.
+Nothing is vendored. Every dependency is an archive CMake fetches at the version
+[dd-dependencies.json](../cmake/dd-dependencies.json) pins by SHA-256 - Diffractor's own, the FFmpeg
+fork's commit among them - or one libfiles or libdesktop fetches at its own pin; assets live in their
+consuming tree. Owned CMake modules under `cmake/vendored/` select each library's sources,
+definitions and compiler policy, and keep beside them the configuration headers a library's own build
+would have generated.
 
-Treat vendored source as upstream material. Keep Diffractor changes in wrappers, CMake modules, or a
-maintained fork whenever possible. A required generated header or source-level integration patch that
-must remain inside the vendor tree is part of the upgrade checklist and must be reapplied explicitly.
+Fetched source is upstream material, never patched where it lands. Keep Diffractor changes in
+wrappers, CMake modules, or the maintained fork; a configuration header kept in `cmake/vendored/` is
+part of its library's upgrade checklist.
 
 ## Dependency Inventory
 
-Update this table with each import. A snapshot is an exact upstream commit, not a moving `main`
-branch or the API version left in its headers. Source-copy locations are relative to the repository
-root; FFmpeg and XMP are maintained forks, not interchangeable upstream release archives.
+Update this table with each pin. A snapshot is an exact upstream commit, not a moving `main`
+branch or the API version left in its headers. FFmpeg is a maintained fork, not an interchangeable
+upstream release archive.
 
 | Library | Imported release or upstream snapshot | Location | Type | Upstream / update source |
 | --- | --- | --- | --- | --- |
-| Brotli | 1.2.0 | `third-party/brotli` | Source copy | [google/brotli releases](https://github.com/google/brotli/releases); import `c/` |
-| bzip2 | 1.0.8 | `third-party/bzip2` | Source copy | [Sourceware](https://sourceware.org/bzip2/downloads.html) |
-| dav1d | 1.5.4 | `third-party/dav1d` | Source copy | [VideoLAN](https://code.videolan.org/videolan/dav1d); import `include/` and `src/` |
-| Adobe DNG SDK | 1.7.1 build 2724 | `third-party/dng` | Source copy | [Adobe source archive](https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2724_20260908.zip); import only `dng_sdk/source/` and the SDK license |
-| Expat | 2.8.5 | `third-party/expat` | Source copy | [libexpat releases](https://github.com/libexpat/libexpat/releases); import `expat/lib/` |
-| FFmpeg | `7366b2f552c929337a7cf14c3ed18b55ddfdbab3` plus Diffractor patches | `third-party/FFmpeg` | Fork / submodule | [Diffractor fork](https://github.com/diffractor/FFmpeg), based on [upstream FFmpeg](https://github.com/FFmpeg/FFmpeg) |
-| Highway | 1.4.0 | `third-party/highway` | Source copy | [google/highway releases](https://github.com/google/highway/releases) |
-| Hunspell | 1.7.4 | `third-party/hunspell` | Source copy | [Hunspell releases](https://github.com/hunspell/hunspell/releases); import `src/hunspell/` |
-| libarchive | 3.8.9 | `third-party/libarchive` | Source copy | [libarchive releases](https://github.com/libarchive/libarchive/releases) |
-| libde265 | 1.1.3 | `third-party/libde265` | Source copy | [strukturag/libde265 releases](https://github.com/strukturag/libde265/releases) |
-| libebml | 1.4.7 | `third-party/libebml` | Source copy | [Matroska-Org/libebml tags](https://github.com/Matroska-Org/libebml/tags); import `ebml/` and `src/` |
-| libexif | 0.6.26 | `third-party/libexif` | Source copy | [libexif releases](https://github.com/libexif/libexif/releases) |
-| libheif | 1.23.5 | `third-party/libheif` | Source copy | [strukturag/libheif releases](https://github.com/strukturag/libheif/releases); import the library subtree |
-| libjpeg-turbo | 3.2.0 | `third-party/LibJpeg` | Source copy | [libjpeg-turbo releases](https://github.com/libjpeg-turbo/libjpeg-turbo/releases) |
-| libjxl | 0.12.0 | `third-party/libjx` | Source copy | [libjxl releases](https://github.com/libjxl/libjxl/releases) |
-| XZ / liblzma | 5.8.4 | `third-party/liblzma` | Source copy | [XZ releases](https://github.com/tukaani-project/xz/releases); import `src/liblzma/` and `src/common/`, not the command-line tools |
-| libmatroska | 1.7.2 | `third-party/libmatroska` | Source copy | [Matroska-Org/libmatroska tags](https://github.com/Matroska-Org/libmatroska/tags); import `matroska/` and `src/` |
-| libopenmpt | 0.8.9 | `third-party/libopenmpt` | Source copy | [libopenmpt downloads](https://lib.openmpt.org/libopenmpt/download/); use the `.autotools` source release |
-| libpng | 1.6.59 | `third-party/libpng` | Source copy | [libpng](https://www.libpng.org/pub/png/libpng.html), [upstream tags](https://github.com/pnggroup/libpng/tags) |
-| LibRaw | 0.22.2 | `third-party/LibRaw` | Source copy | [LibRaw releases](https://github.com/LibRaw/LibRaw/releases); import `src/`, `libraw/` and `internal/` |
-| libwebp | 1.6.0 | `third-party/webp` | Source copy | [libwebp tags](https://github.com/webmproject/libwebp/tags) |
-| minizip-ng | 4.2.2 | `third-party/minizip` | Source copy | [minizip-ng releases](https://github.com/zlib-ng/minizip-ng/releases); include the `compat/` API |
-| RapidJSON | `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` | `third-party/rapidjson` | Header-only snapshot | [Tencent/rapidjson](https://github.com/Tencent/rapidjson); import `include/rapidjson/` and `license.txt` |
-| skcms | `7e572ada698a60ff50bd9038fd6e01e44f40868a` | `third-party/skcms` | Source snapshot | [Skia upstream](https://skia.googlesource.com/skcms/); import the library sources and `LICENSE` |
-| SQLite | 3.53.4 | `third-party/sqlite` | Amalgamation | [sqlite.org](https://www.sqlite.org/download.html) |
-| utf8cpp | 4.2.1 | `Include/utf8-cpp` | Header-only | [utfcpp releases](https://github.com/nemtrif/utfcpp/releases); import `source/` and `LICENSE` |
-| Adobe XMP Toolkit | v2025.03 plus later upstream and Diffractor fixes; fork `a6cb9ee25449ba58c1c2cef94e88836a973ea868` | `third-party/xmp` | Fork / submodule | [Diffractor fork](https://github.com/diffractor/XMP-Toolkit-SDK), based on [Adobe upstream](https://github.com/adobe/XMP-Toolkit-SDK) |
-| zlib-ng | 2.3.3, zlib-compatible API | `third-party/ZLib` | Source copy | [zlib-ng releases](https://github.com/zlib-ng/zlib-ng/releases), not stock zlib |
+| Brotli | 1.2.0 | Fetched by libfiles | Release archive by SHA-256 | [google/brotli releases](https://github.com/google/brotli/releases). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds its C decoder and encoder, every source this tree's vendored copy built, as `libfiles::brotli`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::brotli`, which libjxl and [files_jxl.cpp](../src/files_jxl.cpp), for a JPEG XL's compressed metadata boxes, link |
+| bzip2 | 1.0.8 | Fetched | Release archive by SHA-256 | [Sourceware](https://sourceware.org/bzip2/downloads.html). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json) and built unchanged by [bzip2.cmake](../cmake/vendored/bzip2.cmake): the copy once vendored here spelled four POSIX names the MSVC way, which the vendored policy's `_CRT_NONSTDC_NO_WARNINGS` makes needless |
+| dav1d | 1.5.4 | Fetched by libfiles | Release archive by SHA-256 | [VideoLAN](https://code.videolan.org/videolan/dav1d). libfiles pins the release archive in its `cmake/dd-dependencies.json` and builds it with the source list, configuration and bitdepth-template wrappers this tree's vendored copy used, as `libfiles::dav1d`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::dav1d`, which libheif and FFmpeg's AV1 decoder link |
+| Adobe DNG SDK | 1.7.1 build 2724 | Fetched by libfiles | Release archive by SHA-256 | [Adobe source archive](https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2724_20260908.zip). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds `dng_sdk/source/` - every source but the SDK's XMP backend, which its [dng_xmp_sdk.cpp](https://github.com/ZacWalk/libfiles/blob/main/src/dng_xmp_sdk.cpp) replaces - with the `RawEnvironment.h` this tree's copy carried, as `libfiles::dng`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::dng`, which LibRaw hands DNGs to |
+| FFmpeg | `eea8d39cc97af0ab398c23a2b2dc45efd8148159`: upstream `7366b2f552c929337a7cf14c3ed18b55ddfdbab3` and Diffractor's commits | Fetched | Fork commit archive by SHA-256 | [Diffractor fork](https://github.com/ZacWalk/FFmpeg), based on [upstream FFmpeg](https://github.com/FFmpeg/FFmpeg). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [FFmpeg.cmake](../cmake/vendored/FFmpeg.cmake) drives its configure and make on Linux, and [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) builds it on Windows with the configuration the fork checks in |
+| Highway | 1.4.0 | Fetched by libfiles | Release archive by SHA-256 | [google/highway releases](https://github.com/google/highway/releases). libfiles pins the archive and builds it with the source list this tree's vendored copy used, as `libfiles::highway`, which libjxl alone uses |
+| Hunspell | 1.7.4 | Fetched | Release archive by SHA-256 | [Hunspell releases](https://github.com/hunspell/hunspell/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [hunspell.cmake](../cmake/vendored/hunspell.cmake) builds its `src/hunspell/` unchanged, the version and visibility headers included |
+| libarchive | 3.8.9 | Fetched | Release archive by SHA-256 | [libarchive releases](https://github.com/libarchive/libarchive/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [archive.cmake](../cmake/vendored/archive.cmake) builds it unchanged, with the configuration its configure produced for Windows and for Linux kept in `cmake/vendored/archive-windows/` and `archive-linux/` |
+| libde265 | 1.1.3 | Fetched by libfiles | Release archive by SHA-256 | [strukturag/libde265 releases](https://github.com/strukturag/libde265/releases). libfiles pins the archive and builds it with the source list and generated `config.h` and `de265-version.h` this tree's vendored copy used, as `libfiles::de265`, libheif's HEVC decoder where FFmpeg's is not named |
+| libdesktop | `DIFFRACTOR_LIBDESKTOP_REVISION` in [DiffractorLibdesktop.cmake](../cmake/DiffractorLibdesktop.cmake) | Fetched by CMake | Shared library, LGPL-2.1-or-later | [ZacWalk/libdesktop](https://github.com/ZacWalk/libdesktop), its system and render modules only; a `../libdesktop` checkout is built instead when present. Owns the foundation (`df::`, `str::`), the OS services (`platform.h`) and the desktop UI (`ui.h`, the window layer and the renderers) Diffractor is written in, with their Windows and Linux backends |
+| libfiles | `DIFFRACTOR_LIBFILES_REVISION` in [DiffractorLibfiles.cmake](../cmake/DiffractorLibfiles.cmake) | Fetched by CMake | Shared library, LGPL-2.1-or-later | [ZacWalk/libfiles](https://github.com/ZacWalk/libfiles), shared with ImageWalker; a `../libfiles` checkout is built instead when present. Owns the XMP data model, the still-image scanners (JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF/AVIF, JPEG XL) and the camera raw scan, the JPEG, PNG, WebP, PSD, HEIF/AVIF and JPEG XL decoders, which write into the surface Diffractor allocates - a HEIF thumbnail item included - the camera raw loader, which hands back a raw file's JPEG preview or writes its bitmap preview or developed image into that surface, and the Commodore 64 listing; libpng and libwebp now only encode, libheif is called here only to register its FFmpeg decoder plugin, and libjxl only by the DNG SDK |
+| libheif | 1.23.5 | Fetched by libfiles | Release archive by SHA-256 | [strukturag/libheif releases](https://github.com/strukturag/libheif/releases). libfiles pins the archive and builds its library subtree with the JPEG, libde265, dav1d and uncompressed decoders, as `libfiles::heif`, which libfiles' HEIF decoder uses; its FFmpeg decoder plugin is built here, from that tree, by [DiffractorHeif.cmake](../cmake/DiffractorHeif.cmake), and registered by [files_heif.cpp](../src/files_heif.cpp), which names it to libfiles for HEVC images |
+| libjpeg-turbo | 3.2.0 | Fetched by libfiles | Release archive by SHA-256 | [libjpeg-turbo releases](https://github.com/libjpeg-turbo/libjpeg-turbo/releases). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds it with the recipe this tree's vendored copy used, as `libfiles::jpeg`, and decodes, encodes and losslessly turns JPEGs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::jpeg`, which the codecs that read JPEG data and the tests link |
+| libjxl | 0.12.0 | Fetched by libfiles | Release archive by SHA-256 | [libjxl releases](https://github.com/libjxl/libjxl/releases). libfiles pins the archive and builds its decoder, encoder, colour management and thread runners - the source list this tree's vendored copy used, less the `extras` nothing linked - with the version and export headers its own build generates, as `libfiles::jxl`, and decodes JPEG XL with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::jxl`, which the DNG SDK links. It and Highway were built unoptimised under MSVC for years, for a miscompile that decoded a JPEG XL to an empty image; with these versions and MSVC 14.51 it does not happen, so they take the release policy's `/O2` and `/GL` like the rest, and decode some fifty times faster |
+| XZ / liblzma | 5.8.4 | Fetched | Release archive by SHA-256 | [XZ releases](https://github.com/tukaani-project/xz/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [lzma.cmake](../cmake/vendored/lzma.cmake) builds `src/liblzma/` and `src/common/` unchanged, not the command-line tools, with the `config.h` the copy once vendored here carried, kept in `cmake/vendored/lzma/` |
+| libopenmpt | 0.8.9 | Fetched | Release archive by SHA-256 | [libopenmpt downloads](https://lib.openmpt.org/libopenmpt/download/). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json), the `.autotools` source release; [openmpt.cmake](../cmake/vendored/openmpt.cmake) builds it unchanged, with the release's own `svn_version.h` |
+| libpng | 1.6.59 | Fetched by libfiles | Release archive by SHA-256 | [libpng](https://www.libpng.org/pub/png/libpng.html), [upstream tags](https://github.com/pnggroup/libpng/tags). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds it in C alone, as this tree's vendored copy was built, with the same `pnglibconf.h`, as `libfiles::png`; and decodes and encodes PNGs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::png`, which the tests link |
+| LibRaw | 0.22.2 | Fetched by libfiles | Release archive by SHA-256 | [LibRaw releases](https://github.com/LibRaw/LibRaw/releases). libfiles pins the archive and builds its library's sources - the list this tree's vendored copy used - with the DNG SDK and libjpeg, as `libfiles::raw`, and loads raw files with it - their preview, or their raw data developed - and scans them - their metadata, the info pane's listing and a thumbnail; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::raw`, which diffractor links for libfiles and no longer calls itself |
+| libwebp | 1.6.0 | Fetched by libfiles | Release archive by SHA-256 | [libwebp tags](https://github.com/webmproject/libwebp/tags). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds its decoder, encoder, sharpyuv, mux and demux as one library, from the source list this tree's vendored copy used, as `libfiles::webp`; and decodes still WebPs and encodes WebPs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::webp`, which the tests link |
+| minizip-ng | 4.2.2 | Fetched | Tag archive by SHA-256 | [minizip-ng releases](https://github.com/zlib-ng/minizip-ng/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [minizip.cmake](../cmake/vendored/minizip.cmake) builds it unchanged, the `compat/` API included, with the `mz_config.h` the copy once vendored here carried, kept in `cmake/vendored/minizip/` |
+| RapidJSON | `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` | Fetched by libdesktop | Commit archive by SHA-256 | [Tencent/rapidjson](https://github.com/Tencent/rapidjson). libdesktop pins the archive in its `cmake/dd-dependencies.json` and gives its headers to `libdesktop::system`'s consumers, which [model_movie.cpp](../src/model_movie.cpp) includes; nothing of it is built |
+| skcms | `7e572ada698a60ff50bd9038fd6e01e44f40868a` | Fetched by libfiles | Git commit | [Skia upstream](https://skia.googlesource.com/skcms/). It makes no releases, and Skia's generated archives differ from one download to the next, so libfiles pins the commit, clones it, and builds its baseline, Haswell and Skylake units as `libfiles::skcms`, which libjxl's colour management uses |
+| SQLite | 3.53.4 | Fetched | Amalgamation archive by SHA-256 | [sqlite.org](https://www.sqlite.org/download.html). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [sqlite.cmake](../cmake/vendored/sqlite.cmake) builds the amalgamation unchanged, with Diffractor's compile-time options |
+| zlib-ng | 2.3.3, zlib-compatible API | Fetched by libfiles | Release archive by SHA-256 | [zlib-ng releases](https://github.com/zlib-ng/zlib-ng/releases), not stock zlib. libfiles pins the archive in its `cmake/dd-dependencies.json` and builds it with the recipe and generated headers this tree's vendored copy used, as `libfiles::zlib`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::zlib`, which libpng, libarchive, minizip, the DNG SDK and FFmpeg link |
 
-Version traps matter during an audit: XMP's `6.0.0` is an API version, RapidJSON's `1.1.0` does not
-identify a post-release snapshot, and zlib-ng's `1.3.1.zlib-ng` describes its compatibility API.
+Version traps matter during an audit: RapidJSON's `1.1.0` does not identify a post-release snapshot, and zlib-ng's `1.3.1.zlib-ng` describes its compatibility API.
 Use the SDK build number for DNG, the public `hunversion.h` for Hunspell, and `ZLIBNG_VERSION`
-in the generated `zlib.h` for zlib-ng rather than stale package strings or input templates.
+in the generated `zlib.h` - libfiles' `cmake/zlib-ng/zlib.h` - for zlib-ng rather than stale package
+strings or input templates.
 
-### Bundled Build Tools
+### Build Tools
 
 | Tool | Version | Location | Upstream / retained notice |
 | --- | --- | --- | --- |
-| NASM | 3.02 | `tools/nasm.exe` | [NASM Windows archives](https://www.nasm.us/pub/nasm/releasebuilds/3.02/); `tools/nasm-LICENSE.txt` |
-| 7-Zip Extra | 26.03 | `tools/7za.exe`, `tools/7za.dll`, `tools/7zxa.dll` | [7-Zip release](https://github.com/ip7z/7zip/releases/tag/26.03); `tools/7zip-LICENSE.txt` |
+| NASM | 3.02 | Fetched while configuring on Windows when none is on the path | [NASM Windows archives](https://www.nasm.us/pub/nasm/releasebuilds/3.02/), pinned in [dd-dependencies.json](../cmake/dd-dependencies.json) - libfiles' pin; its `LICENSE` is in the archive |
+| 7-Zip Extra | 26.03 | Fetched by `dd.ps1` into `tmp/tools/7zip/` | [7-Zip release](https://github.com/ip7z/7zip/releases/tag/26.03): `7zr.exe` unpacks `7z2603-extra.7z`, both pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); its `License.txt` is in the archive |
+| SymStore | 6.3.9600.16384 | `tools/symstore.exe`, `tools/symsrv.dll` | The Windows SDK's Debugging Tools for Windows, which `dd.ps1` will take once they are installed here |
 
-Keep the 7-Zip executable and both DLLs from the same architecture and release; the bundled set is
-x86. These are build and packaging tools, not additional media decoders. Installed Visual Studio,
+`dd.ps1` packs with the release's x86 `7za.exe` and its two DLLs, as `tools/` once carried. SignTool
+comes from the installed Windows SDK. These are build and packaging tools, not additional media
+decoders. Installed Visual Studio,
 CMake, Ninja, Windows SDK and NSIS prerequisites are described in [README](../README.md#building).
 
 ## Upgrade Procedure
 
 1. Identify the exact upstream release or commit and verify its license.
-2. Compare the old vendored subset with its old upstream release before importing the new one.
-   Copy the required sources over the existing tree, retaining the upstream license, generated
-   configuration and integration shims. Remove only identified obsolete upstream files; never
-   delete a vendor folder wholesale.
-3. Reapply the integration constraints below, update the owning CMake module, and update the
+2. Pin it: the archive's URL and SHA-256 in [dd-dependencies.json](../cmake/dd-dependencies.json),
+   or in libfiles' or libdesktop's pins for a library one of them owns. Compare the new release's
+   source inventory with the old one's.
+3. Reapply the integration constraints below - a configuration header kept in `cmake/vendored/` is
+   brought up to the release - update the owning CMake module's source list, and update the
    inventory. Record snapshot commit IDs and DNG build numbers, not just a branch or API version.
 4. Configure from a clean build directory so removed sources cannot survive as stale objects.
 5. Build Debug and Release x64 plus Release Win32 where the dependency has architecture-specific
    code, then run `.\dd.ps1 test` and its focused wrapper tests.
 
-Do not import upstream tests, benchmarks, examples, or build systems unless the application build
-requires them. CMake source lists are explicit; dropping a file into a vendor folder does not make it
-part of Diffractor.
+Build only what the application needs from a fetched archive: not upstream tests, benchmarks,
+examples or build systems. CMake source lists are explicit; a file in a fetched archive is not part
+of Diffractor until a module names it.
 
 ## XMP Toolkit
 
-`third-party/xmp` is the Diffractor fork of Adobe XMP Toolkit SDK. Its integration differences are
-observable metadata behavior and must survive a rebase:
+Diffractor no longer uses Adobe's XMP Toolkit. Its fork,
+[ZacWalk/XMP-Toolkit-SDK](https://github.com/ZacWalk/XMP-Toolkit-SDK), was the `third-party/xmp`
+submodule until 2026-10-22, and Expat left with it, having no other user: libarchive's XAR reader is
+built without an XML parser.
+
+[libfiles](https://github.com/ZacWalk/libfiles) replaced it. The XMP data model - parsing, editing and
+serializing packets - is libfiles', and so is reading and writing the packet in every file Diffractor
+embeds metadata in: the still formats (JPEG, PNG, GIF, WebP, TIFF and PSD) with their EXIF and IPTC,
+MP4 and QuickTime with their Xtra, `cprt` and `mvhd` fields, ASF with its header's Content Description,
+WM/Category, WM/SharedUserRating and File Properties date, RIFF with its INFO list, MPEG audio with its
+ID3v2 frames, and FLV. A format conversion reads the source's packet the same way - or, for a format
+libfiles does not read, such as HEIF, the packet the scan finds - and fills what the packet lacks from
+what the item shows, as the toolkit's import of legacy metadata did. JPX and WBMP, which nothing
+Diffractor uses can write, keep their metadata in an `.xmp` sidecar, as raw files do.
+
+The DNG SDK's XMP backend, `dng_xmp_sdk`, is libfiles'
+[dng_xmp_sdk.cpp](https://github.com/ZacWalk/libfiles/blob/main/src/dng_xmp_sdk.cpp), which implements the SDK's own `dng_xmp_sdk.h` over libfiles' XMP data model and is
+built in place of the SDK's `dng_xmp_sdk.cpp` (see the DNG SDK row below).
+
+libfiles reads a packet as the toolkit did, and its README records
+[how it behaves](https://github.com/ZacWalk/libfiles#how-it-behaves) and where it differs on purpose.
+Until the toolkit left, test_metadata held the two to the same reading of every packet in the
+fixtures, whole and truncated, and to byte-identical serialization; the same tests now hold libfiles to
+itself over those packets. The fork's integration differences are observable metadata behavior, and
+libfiles carries each of them:
 
 - WebP metadata rewrites preserve physical chunk order and payload boundaries.
-- MP3 POPM/TPE2, Windows keyword/rating fields, RIFF, and ASF reconciliation match the properties
-  described in [metadata.md](metadata.md).
-- MP4 avoids marking an unchanged Xtra box dirty and preserves bounded metadata updates.
-- Container handlers preserve unknown metadata and do not delete a legacy field merely because an
-  unrelated XMP property is absent.
+- MP3 POPM ratings and TPE2 album artists, and the Windows keyword and rating fields of MP4 (Xtra) and
+  ASF (WM/Category, WM/SharedUserRating), match the properties described in [metadata.md](metadata.md).
+- Unknown metadata is preserved, and a legacy field is not deleted merely because an unrelated XMP
+  property is absent; libfiles writes only the fields an edit sets.
+- An unchanged Xtra box is left as it is, and MP4 updates patch or append without moving the media.
 
-The write path and rollback boundary are owned by [file-io.md](file-io.md). A successful toolkit
-build is insufficient; metadata and format round-trip tests prove these patches remain effective.
+The write path and rollback boundary are owned by [file-io.md](file-io.md). A successful build is
+insufficient; metadata and format round-trip tests prove these behaviors remain effective.
 
 ## FFmpeg
 
-`third-party/FFmpeg` is the Diffractor fork. The fork's configuration controls available demuxers,
+FFmpeg is the Diffractor fork, [ZacWalk/FFmpeg](https://github.com/ZacWalk/FFmpeg), fetched at the
+commit [dd-dependencies.json](../cmake/dd-dependencies.json) pins: a rebase is a new commit on the fork
+and a new pin here. The fork's configuration controls available demuxers,
 decoders, parsers, hardware acceleration, and metadata keys. It builds no end-user programs and does
 not enable network protocols for application media access. It is configured for decode speed rather
 than size, which also keeps codec profile names; it decodes software AV1 through libdav1d, built
-against the vendored dav1d; D3D11VA is its only hardware acceleration; and it has no muxers or
+against libfiles' dav1d; D3D11VA is its only hardware acceleration; and it has no muxers or
 devices.
 
 Rebasing must preserve metadata-key normalization and the bounded metadata-probe behavior consumed by
@@ -162,7 +190,7 @@ rather than restating its codec inventory in application CMake.
   exclusions. The atomics compatibility layer needs both `compat/atomics` and
   `compat/atomics/win32` on the MSVC include path.
 - Compare the Windows/Linux component sets with `tools/compare_ffmpeg_config.py`. Explain any
-  intentional platform difference in `third-party/ffmpeg-config-divergence.txt`; do not simply
+  intentional platform difference in `cmake/vendored/ffmpeg-config-divergence.txt`; do not simply
   accept a changed baseline. A working Windows build does not verify the Linux configuration.
 - Prove metadata reconciliation and bounded probing through the application wrapper tests.
   Run the metadata, video, audio and format tests, then the complete suite. Do not replace a
@@ -182,40 +210,35 @@ behavior requires the corresponding format tests, not only a compile.
 
 | Dependency | Integration that an import must preserve |
 | --- | --- |
-| libpng | Keep `pnglibconf.h`. Refresh the relevant SIMD subdirectories as well as the root sources; a new version string alone does not update those implementations. |
-| Expat | Keep the root `expat_config.h`. Windows builds the `rand_s` entropy unit; the Linux module selects `getrandom` and its source. Do not import `xmlwf` or upstream build files as new application sources. |
-| libheif / libde265 | Regenerate version headers from the matching upstream templates. Keep static linkage, the selected decoder backends and libde265's platform configuration; do not enable additional encoder/plugin dependencies implicitly. Keep libheif's FFmpeg decoder plugin: [files_heif.cpp](../src/files_heif.cpp) names it for HEVC images, which it decodes faster than libde265 and, unlike libde265's 32-bit build, bit-exactly. Update both copies of the libde265 version header. |
-| libjpeg-turbo / libjxl | Keep architecture-correct generated configuration and version headers. Use the upstream source lists to identify added or removed units; preserve libjpeg-turbo's high-bit-depth API and JPEG XL's Highway/Brotli dependencies. |
-| liblzma | Keep `config.h` and the Linux POSIX-thread override. Import the library/common subset, not the differently licensed command-line scripts and tools. |
-| libarchive / minizip-ng | Keep the checked-in configuration. minizip-ng's zlib-style compatibility API lives in `compat/`; retain it and the platform-specific crypto selection. |
-| Hunspell | Keep the static-library configuration and import the public version header. The source list includes `hunspelltrace.cxx`; dropping it leaves the trace hooks unresolved. |
-| LibRaw / DNG SDK | Preserve the LibRaw wrapper boundary and DNG's `RawEnvironment.h`; document-history support remains disabled because the linked XMP subset has no `SXMPDocOps`. Import only the DNG source subset, not Adobe's bundled copies of libraries already owned here. |
-| skcms | Keep the baseline, Haswell and Skylake transform units and their compiler-specific instruction-set flags. Import the public/internal headers under `src/` together with the root headers. Validate ICC transforms, not only compilation. |
-| RapidJSON / utf8cpp | Import the complete header subset and its notices. RapidJSON's upstream `bin/jsonchecker/` has a different, restrictive license and is not part of the header-only import. |
+| libpng / zlib-ng | Upgraded in libfiles: a new archive pin, with the headers their own builds generate - libpng's `pnglibconf.h`, zlib-ng's `zlib.h`, `zconf.h` and `zlib_name_mangling.h`, in libfiles' `cmake/` - brought up to the release. Use the upstream source lists to identify added or removed units; zlib-ng's per-instruction-set sources need their compiler flags. libpng is built in C alone, as it always was here; turning on its SIMD filters is a change to measure, not part of an upgrade. |
+| libheif / libde265 | Upgraded in libfiles: a new archive pin, with the headers their own builds generate - libheif's `heif_version.h`, libde265's `config.h` and `de265-version.h`, in libfiles' `cmake/` - brought up to the release. Keep static linkage, the selected decoder backends and libde265's platform configuration; do not enable additional encoder/plugin dependencies implicitly. Keep libheif's FFmpeg decoder plugin, which [DiffractorHeif.cmake](../cmake/DiffractorHeif.cmake) builds from libfiles' libheif: [files_heif.cpp](../src/files_heif.cpp) registers it and names it for HEVC images, which it decodes faster than libde265 and, unlike libde265's 32-bit build, bit-exactly. |
+| libjpeg-turbo | Upgraded in libfiles: a new archive pin, with the configuration headers its `cmake/libjpeg-turbo/` carries for MSVC and for GCC and Clang brought up to the release. Use the upstream source lists to identify added or removed units, and preserve the high-bit-depth libraries. |
+| libjxl / Highway / Brotli | Upgraded in libfiles: a new archive pin, with the version and export headers libjxl's own build generates, in libfiles' `cmake/jxl/include/`, brought up to the release. Use the upstream source lists to identify added or removed units, and preserve libjxl's Highway, Brotli and skcms dependencies. An upgrade runs the JPEG XL tests in Release, optimised: "Should scan jxl metadata" is where an empty JPEG XL - the miscompile libjxl and Highway were once built unoptimised for - would show. |
+| liblzma | A new archive pin. Keep `cmake/vendored/lzma/config.h` and the Linux POSIX-thread override, and build the library and common subset, not the differently licensed command-line scripts and tools. |
+| libarchive | A new archive pin. Keep `cmake/vendored/archive-windows/config_windows.h` and `archive-linux/config_linux.h`, which `PLATFORM_CONFIG_H` names, and bring them up to the release's configure output for each platform. |
+| minizip-ng | A new archive pin. Keep `cmake/vendored/minizip/mz_config.h`, the configuration Windows and Linux both build with, and bring it up to the release's `mz_config.h.cmakein`. Its zlib-style compatibility API lives in `compat/`; retain it and the platform-specific crypto selection. |
+| Hunspell | A new archive pin. Keep the static-library configuration. The source list includes `hunspelltrace.cxx`; dropping it leaves the trace hooks unresolved. |
+| LibRaw / DNG SDK | Upgraded in libfiles: a new archive pin each, with the SDK's `RawEnvironment.h`, in libfiles' `cmake/dng/`, kept. Preserve the LibRaw wrapper boundary. Build only the SDK's `dng_sdk/source/`, not Adobe's bundled copies of libraries libfiles owns. The SDK's `dng_xmp_sdk.cpp` is not built: libfiles' [dng_xmp_sdk.cpp](https://github.com/ZacWalk/libfiles/blob/main/src/dng_xmp_sdk.cpp) is built in its place, so an upgrade that changes `dng_xmp_sdk.h` or `dng_xmp_sdk.cpp` must carry the change there - the namespaces `InitializeSDK` registers, which faults each call reports, swallows or throws, and the toolkit utilities it reproduces. The SDK is built with `qDNGXMPFiles=0`, and document-history support remains disabled, because that backend has neither XMPFiles nor `SXMPDocOps`. |
+| skcms | Upgraded in libfiles: a new commit pin. Keep the baseline, Haswell and Skylake transform units and their compiler-specific instruction-set flags. Validate ICC transforms, not only compilation. |
+| RapidJSON | Upgraded in libdesktop: a new archive pin. Its upstream `bin/jsonchecker/` has a different, restrictive license, and nothing of it is built or shipped. |
 
 ### dav1d
 
-Keep the four bitdepth-template wrappers that compile the upstream template sources for the
-supported bitdepths. Reconcile their include lists with upstream's source inventory. The checked-in
-`config.h` and `config.asm` serve both Windows architectures; replacing them with a single-arch
-Meson output breaks the other build. Keep the public API version in `include/dav1d/version.h` and
-the release string in `vcs_version.h`, without duplicate API macros. Linux assembly configuration
-is selected by [dav1d.local.cmake](../cmake/vendored/dav1d.local.cmake).
-
-### libebml And libmatroska
-
-Preserve the root `ebml_export.h` and `matroska_export.h` static-link shims. libebml also carries
-three source-level integration differences that must be retained or moved into owned build glue:
-the prefixed utf8cpp include, the signed 32-bit lower-bound literal in `EbmlSInteger.cpp`, and
-the Unicode constructor's unconditional `CreateFileW` path instead of the obsolete Windows-version
-check. The Linux long-integer compatibility include belongs to
-[ebml.local.cmake](../cmake/vendored/ebml.local.cmake). Build Win32 as well as x64 after an import.
+Upgraded in libfiles, whose `cmake/dav1d/` holds what an import used to carry here. Keep the four
+bitdepth-template wrappers that compile the upstream template sources for the supported bitdepths,
+and reconcile their include lists with upstream's source inventory. The `x86/config.h` and
+`asm-windows/config.asm` serve both Windows architectures; replacing them with a single-arch Meson
+output breaks the other build. `asm-elf/config.asm` is Linux's assembly configuration, and
+`generic/config.h` builds dav1d's C alone where there is no NASM. Keep the release string in
+`vcs_version.h`.
 
 ### libopenmpt
 
-Use the `.autotools` source release and import `common/`, `libopenmpt/`, `sounddsp/`, `soundlib/`
-and `src/`. Retain the static `svn_version.h` shim. Do not import player plugins or test programs
-into the library build. Its FFmpeg demuxer must remain present on both platforms.
+A new archive pin, of the `.autotools` source release. Build `common/`, `libopenmpt/`, `sounddsp/`,
+`soundlib/` and `src/`; `common/version.cpp` takes the release's `build/svn_version/svn_version.h`
+when no other is on the include path. Do not build player plugins or test programs into the library.
+Its FFmpeg demuxer must remain present on both platforms: both FFmpeg recipes name the fetched tree,
+which is why [CMakeLists.txt](../CMakeLists.txt) fetches it before any recipe runs.
 
 ## Assets
 
@@ -234,7 +257,8 @@ packaged data, not source dependencies, but the same redistribution rule applies
 
 ## Where this lives
 
-- `third-party/` and `Include/`: vendored sources, headers, and upstream license files.
+- [dd-dependencies.json](../cmake/dd-dependencies.json): the pinned archives, and
+  [DiffractorFetch.cmake](../cmake/DiffractorFetch.cmake), which fetches them.
 - `cmake/vendored/`: owned source selection, definitions, and generated configuration.
 - [DiffractorDependency.cmake](../cmake/DiffractorDependency.cmake) and
   [DiffractorCompilerPolicy.cmake](../cmake/DiffractorCompilerPolicy.cmake): common dependency and

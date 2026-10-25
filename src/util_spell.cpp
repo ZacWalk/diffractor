@@ -21,6 +21,41 @@ spell_check& spell()
 	return instance;
 }
 
+namespace
+{
+	class spell_check_dictionary final : public ui::spelling_dictionary
+	{
+	public:
+		void queue_load() override { spell().queue_load(); }
+
+		bool is_word_valid(const std::string_view word) const override { return spell().is_word_valid(word); }
+
+		std::vector<std::string> suggest(const std::string_view word) const override
+		{
+			return spell().suggest(word);
+		}
+
+		void add_word(const std::string_view word, std::function<void()> done) override
+		{
+			spell().add_word(word, [done = std::move(done)](const custom_dictionary_add_result& result)
+			{
+				if (result.status == custom_dictionary_add_status::failed)
+				{
+					df::log(__FUNCTION__, result.message);
+				}
+
+				if (done) done();
+			});
+		}
+	};
+}
+
+ui::spelling_dictionary& spell_dictionary()
+{
+	static spell_check_dictionary instance;
+	return instance;
+}
+
 void spell_check::set_default_paths()
 {
 	_shipped_folder = known_path(platform::known_folder::running_app_folder).combine("dictionaries");

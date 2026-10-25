@@ -6,265 +6,119 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: JPEG XL image format support. Decodes JPEG XL files using libjxl,
-// extracts basic info and Exif/XMP metadata boxes.
+// Purpose: JPEG XL decoding through libfiles, into a surface judged against the decode budget first.
+// libfiles scans these files too; this supplies the Brotli decoder its scan asks for when a container
+// keeps its metadata boxes compressed.
 
 #include "pch.h"
 #include "files.h"
 #include "files_jpeg.h"
 
-#include <jxl/decode.h>
+#include <brotli/decode.h>
 
-// Metadata boxes are attacker-controlled and JxlDecoderSetDecompressBoxes expands 'brob'
-// boxes for us, so cap the total payload we are willing to buffer for a single box.
-constexpr size_t max_metadata_bytes = 16u * 1024u * 1024u;
+// The first buffer a compressed metadata box is decompressed into, grown as far as libfiles allows.
 constexpr size_t box_chunk = 64u * 1024u;
 
-// JxlOrientation uses the same numbering as EXIF (1..8), which matches ui::orientation.
-static ui::orientation to_orientation(const uint32_t o)
+// What libfiles asks for when a JPEG XL keeps a metadata box compressed ('brob'): the box's one whole
+// Brotli stream, decompressed into at most max_size bytes. A stream that would need more is abandoned
+// there rather than decompressed to the end.
+static std::optional<std::vector<uint8_t>> decompress_brotli(const std::span<const uint8_t> compressed,
+                                                             std::string_view, const size_t max_size)
 {
-	if (o >= JXL_ORIENT_IDENTITY && o <= JXL_ORIENT_ROTATE_90_CCW)
-	{
-		return static_cast<ui::orientation>(o);
-	}
+	const df::releaser<BrotliDecoderState> dec(BrotliDecoderCreateInstance(nullptr, nullptr, nullptr),
+	                                           [](auto* d) { BrotliDecoderDestroyInstance(d); });
+	if (!dec.get()) return {};
 
-	return ui::orientation::top_left;
-}
-
-static str::cached to_pixel_format(const JxlBasicInfo& info)
-{
-	if (info.num_color_channels == 1) return "grayscale"_c;
-	return info.alpha_bits > 0 ? "rgba"_c : "rgb"_c;
-}
-
-file_scan_result scan_jxl(read_stream& s)
-{
-	file_scan_result result = {};
-	df::blob owned;
-	const auto data = s.view_all(owned);
-
-	const df::releaser<JxlDecoder> dec(JxlDecoderCreate(nullptr), [](auto* d) { JxlDecoderDestroy(d); });
-	if (!dec.get()) return result;
-
-	if (JxlDecoderSubscribeEvents(dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_BOX) != JXL_DEC_SUCCESS)
-	{
-		return result;
-	}
-
-	JxlDecoderSetDecompressBoxes(dec.get(), JXL_TRUE);
-
-	// By default libjxl re-orients the pixel data and reports xsize/ysize already rotated,
-	// with orientation forced to identity. Scanning records unrotated dimensions plus a
-	// separate orientation (scan_photo applies the Exif tag afterwards), so keep the
-	// bitstream geometry here or the rotation would be counted twice.
-	JxlDecoderSetKeepOrientation(dec.get(), JXL_TRUE);
-
-	JxlDecoderSetInput(dec.get(), data.data, data.size);
-	JxlDecoderCloseInput(dec.get());
-
-	enum class box_kind { none, exif, xmp };
-
-	df::blob box_data;
-	auto current_kind = box_kind::none;
-
-	const auto finalize_box = [&]()
-	{
-		if (current_kind == box_kind::none) return;
-
-		const auto remaining = JxlDecoderReleaseBoxBuffer(dec.get());
-		box_data.resize(box_data.size() - remaining);
-
-		if (current_kind == box_kind::exif)
-		{
-			result.metadata.exif = strip_exif_tiff_prefix(std::move(box_data));
-		}
-		else if (current_kind == box_kind::xmp)
-		{
-			result.metadata.xmp = std::move(box_data);
-		}
-
-		box_data.clear();
-		current_kind = box_kind::none;
-	};
+	std::vector<uint8_t> out(std::min(max_size, box_chunk));
+	auto available_in = compressed.size();
+	const auto* next_in = compressed.data();
+	size_t produced = 0;
 
 	for (;;)
 	{
-		const auto status = JxlDecoderProcessInput(dec.get());
+		auto available_out = out.size() - produced;
+		auto* next_out = out.data() + produced;
+		const auto status = BrotliDecoderDecompressStream(dec.get(), &available_in, &next_in, &available_out,
+		                                                  &next_out, nullptr);
+		produced = out.size() - available_out;
 
-		if (status == JXL_DEC_BASIC_INFO)
+		if (status == BROTLI_DECODER_RESULT_SUCCESS)
 		{
-			JxlBasicInfo info = {};
-
-			if (JxlDecoderGetBasicInfo(dec.get(), &info) == JXL_DEC_SUCCESS)
-			{
-				result.width = info.xsize;
-				result.height = info.ysize;
-				result.orientation = to_orientation(info.orientation);
-				result.pixel_format = to_pixel_format(info);
-				result.success = true;
-			}
+			// One whole stream and nothing after it, as libjxl requires of a 'brob' box.
+			if (available_in != 0) return {};
+			out.resize(produced);
+			return out;
 		}
-		else if (status == JXL_DEC_BOX)
-		{
-			finalize_box();
 
-			JxlBoxType type = {};
-
-			if (JxlDecoderGetBoxType(dec.get(), type, JXL_TRUE) == JXL_DEC_SUCCESS)
-			{
-				if (memcmp(type, "Exif", 4) == 0) current_kind = box_kind::exif;
-				else if (memcmp(type, "xml ", 4) == 0) current_kind = box_kind::xmp;
-
-				if (current_kind != box_kind::none)
-				{
-					// The raw size is only a hint (a compressed box expands past it), but it
-					// avoids reallocating through every chunk for the common small box.
-					uint64_t raw_size = 0;
-					const auto hint = JxlDecoderGetBoxSizeRaw(dec.get(), &raw_size) == JXL_DEC_SUCCESS
-						                  ? std::min<uint64_t>(raw_size, max_metadata_bytes)
-						                  : 0u;
-
-					box_data.resize(std::max<size_t>(box_chunk, static_cast<size_t>(hint)));
-
-					if (JxlDecoderSetBoxBuffer(dec.get(), box_data.data(), box_data.size()) != JXL_DEC_SUCCESS)
-					{
-						box_data.clear();
-						current_kind = box_kind::none;
-					}
-				}
-			}
-		}
-		else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT)
-		{
-			const auto remaining = JxlDecoderReleaseBoxBuffer(dec.get());
-			const auto written = box_data.size() - remaining;
-
-			if (box_data.size() >= max_metadata_bytes)
-			{
-				// Refuse to keep growing; drop the oversized box and stop scanning boxes.
-				box_data.clear();
-				current_kind = box_kind::none;
-				break;
-			}
-
-			// Grow geometrically so a multi-megabyte box does not cost hundreds of copies.
-			box_data.resize(std::min(max_metadata_bytes, box_data.size() * 2u));
-			JxlDecoderSetBoxBuffer(dec.get(), box_data.data() + written, box_data.size() - written);
-		}
-		else
-		{
-			// A box is only complete once the decoder reached the end of the stream. On
-			// JXL_DEC_ERROR or a truncated input the buffer holds a partial payload, so
-			// publishing it would surface half-parsed metadata.
-			if (status == JXL_DEC_SUCCESS) finalize_box();
-			break;
-		}
+		if (status != BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT || out.size() >= max_size) return {};
+		out.resize(std::min(max_size, out.size() * 2u));
 	}
+}
 
+file_scan_result scan_jxl_libfiles(read_stream& s, scan_intent, const bool want_thumbnail, files* const decoder)
+{
+	still_scan_extras extras;
+	extras.brotli = decompress_brotli;
+
+	// Scanned for indexing whatever the intent: libjxl's scan gave JPEG XL no structure report.
+	auto result = scan_still_libfiles(s, scan_intent::index, want_thumbnail, decoder, extras);
+	// The format the signature named, whatever the scan made of the rest.
+	result.format = detected_format::JXL;
 	return result;
+}
+
+namespace
+{
+	// A surface as the memory libfiles decodes a JPEG XL into, its size judged against the decode budget
+	// first, and the codestream's orientation carried on it.
+	class jxl_surface_sink final : public libfiles::image_sink
+	{
+		load_diagnostic* const _diagnostic;
+
+	public:
+		ui::surface_ptr surface;
+
+		explicit jxl_surface_sink(load_diagnostic* const diagnostic) : _diagnostic(diagnostic)
+		{
+		}
+
+		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
+		{
+			if (reject_over_budget_source(_diagnostic, {static_cast<int>(frame.width), static_cast<int>(frame.height)},
+			                              "JXL"))
+			{
+				return {};
+			}
+
+			auto s = std::make_shared<ui::surface>();
+			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
+			                              frame.format == libfiles::pixel_format::bgra8
+				                              ? ui::texture_format::ARGB
+				                              : ui::texture_format::RGB,
+			                              static_cast<ui::orientation>(frame.orientation));
+			if (!pixels) return {};
+			surface = std::move(s);
+			return {pixels, surface->stride()};
+		}
+	};
 }
 
 ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 {
-	ui::surface_ptr result;
-	ui::surface_ptr pending_surface;
-
 	try
 	{
 		df::blob owned;
 		const auto data = s.view_all(owned);
+		libfiles::reader r{std::span<const uint8_t>(data.data, data.size)};
 
-		const df::releaser<JxlDecoder> dec(JxlDecoderCreate(nullptr), [](auto* d) { JxlDecoderDestroy(d); });
-		if (!dec.get()) return result;
-
-		if (JxlDecoderSubscribeEvents(dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS)
-		{
-			return result;
-		}
-
-		// Match scan_jxl (and every other format): keep the bitstream geometry and carry the
-		// orientation on the surface, so scanned and loaded dimensions always agree.
-		if (JxlDecoderSetKeepOrientation(dec.get(), JXL_TRUE) != JXL_DEC_SUCCESS ||
-			JxlDecoderSetUnpremultiplyAlpha(dec.get(), JXL_TRUE) != JXL_DEC_SUCCESS)
-		{
-			df::log(__FUNCTION__, "Cannot configure JXL orientation and straight alpha");
-			return result;
-		}
-
-		JxlDecoderSetInput(dec.get(), data.data, data.size);
-		JxlDecoderCloseInput(dec.get());
-
-		JxlBasicInfo info = {};
-		bool have_info = false;
-
-		for (;;)
-		{
-			const auto status = JxlDecoderProcessInput(dec.get());
-
-			if (status == JXL_DEC_BASIC_INFO)
-			{
-				if (JxlDecoderGetBasicInfo(dec.get(), &info) != JXL_DEC_SUCCESS) break;
-				if (info.xsize == 0 || info.ysize == 0) break;
-
-				// Header dimensions are untrusted and the surface stride is computed with
-				// int arithmetic, so reject anything that could overflow it.
-				if (info.xsize > max_image_dimension || info.ysize > max_image_dimension) break;
-
-				if (reject_over_budget_source(diagnostic,
-				                              {static_cast<int>(info.xsize), static_cast<int>(info.ysize)}, "JXL"))
-				{
-					break;
-				}
-
-				have_info = true;
-			}
-			else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
-			{
-				if (!have_info) break;
-
-				auto surface = std::make_shared<ui::surface>();
-
-				if (!surface->alloc(info.xsize, info.ysize,
-				                    info.alpha_bits > 0 ? ui::texture_format::ARGB : ui::texture_format::RGB,
-				                    to_orientation(info.orientation)))
-				{
-					break;
-				}
-
-				// libjxl writes interleaved RGBA; the surface stores BGRA, so swap once decoded.
-				JxlPixelFormat format = {
-					4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, static_cast<uint32_t>(surface->stride())
-				};
-
-				if (JxlDecoderSetImageOutBuffer(dec.get(), &format, surface->pixels(), surface->size()) !=
-					JXL_DEC_SUCCESS)
-				{
-					break;
-				}
-
-				pending_surface = std::move(surface);
-			}
-			else if (status == JXL_DEC_FULL_IMAGE)
-			{
-				// First frame is sufficient for a still image.
-				if (pending_surface)
-				{
-					pending_surface->swap_rb();
-					result = std::move(pending_surface);
-				}
-				break;
-			}
-			else
-			{
-				// JXL_DEC_SUCCESS, JXL_DEC_ERROR, JXL_DEC_NEED_MORE_INPUT or anything else: done.
-				break;
-			}
-		}
+		jxl_surface_sink sink(diagnostic);
+		const auto decoded = libfiles::decode(r, sink);
+		if (decoded.success) return sink.surface;
 	}
 	catch (std::exception& e)
 	{
 		df::log(__FUNCTION__, e.what());
 	}
 
-	return result;
+	return {};
 }

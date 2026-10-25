@@ -39,7 +39,6 @@ intermediate/
 /.vscode
 /DiffractorStoreCert.pfx
 *.msix
-/third-party/FFmpeg/intermediate
 exe/tiles/*.png
 /build
 

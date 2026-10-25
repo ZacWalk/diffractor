@@ -781,54 +781,6 @@ std::string prop::format_bit_rate(const int64_t br)
 }
 
 
-prop::size_rounded prop::round_size(const uint64_t s)
-{
-	size_rounded result;
-
-	result.unit = "KB";
-	result.short_unit = "K";
-	result.div = KB;
-
-	if (s > TB / 5)
-	{
-		result.div = TB;
-		result.unit = "TB";
-		result.short_unit = "T";
-	}
-	else if (s > GB / 5)
-	{
-		result.div = GB;
-		result.unit = "GB";
-		result.short_unit = "G";
-	}
-	else if (s > MB / 5)
-	{
-		result.div = MB;
-		result.unit = "MB";
-		result.short_unit = "M";
-	}
-
-	if (s < KB)
-	{
-		result.div = KB;
-	}
-
-	const auto nn = df::round(s * 10.0 / result.div);
-	result.n = nn / 10;
-	result.dec = nn % 10;
-	result.rounded = df::round(static_cast<double>(s) / result.div);
-
-	return result;
-}
-
-std::string prop::format_size(const df::file_size& s)
-{
-	const auto rounded = round_size(s.to_int64());
-	return rounded.dec == 0
-		       ? std::format("{} {}", rounded.n, rounded.unit)
-		       : std::format("{}{}{} {}", rounded.n, platform::number_dec_sep(), rounded.dec, rounded.unit);
-}
-
 struct magnitude
 {
 	int64_t n;

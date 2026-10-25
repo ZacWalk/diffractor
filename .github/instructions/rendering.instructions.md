@@ -1,6 +1,6 @@
 ---
 description: Backend parity, device lifetime, and the animation gate for the rendering and media layers.
-applyTo: 'src/render_*.cpp, src/platform_win_d3d11.cpp, src/platform_win_software.cpp, src/platform_win_font.cpp, src/av_*.cpp, src/av_*.h, src/util_simd.h'
+applyTo: 'src/render_*.cpp, src/av_*.cpp, src/av_*.h'
 ---
 
 # Rendering and media
@@ -10,8 +10,8 @@ Owning document: [rendering](../../docs/rendering.md). Zoom's rendering tiers ar
 
 ## Two backends, one result
 
-`platform_win_d3d11.cpp` (hardware) and `platform_win_software.cpp` (CPU) must produce the same
-picture. A change to one is incomplete until the other agrees or the difference is stated as
+libdesktop-render's `platform_win_d3d11.cpp` (hardware) and `platform_win_software.cpp` (CPU) must
+produce the same picture - a change to either is made in libdesktop, under its AGENTS.md. A change to one is incomplete until the other agrees or the difference is stated as
 deliberate. The software backend rasterises through one fixed 512-square system-memory BGRA DIB
 walked across the damaged region, so it does **not** track window size — code that assumes a
 full-window buffer works on D3D and silently breaks here.
@@ -22,7 +22,7 @@ and it draws dialogs and bubble popups in every session.
 ## Animation
 
 Alpha fades are decoration and are dropped when they would cost more than they convey. Gate on
-`ui::animations_enabled` (mirroring `setting.can_animate`) and animate alpha only through
+`ui::animations_enabled` and animate alpha only through
 `ui::animate_alpha`. Never bypass the gate. Under CPU rendering every transition completes
 immediately — same result, sooner — and no state, target, or availability may differ between the
 animated and immediate presentation.

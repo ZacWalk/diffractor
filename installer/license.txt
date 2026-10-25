@@ -12,7 +12,7 @@ Diffractor's own source code is licensed under the GNU Lesser General Public Lic
 
 License details are available at https://www.gnu.org/licenses/lgpl-3.0.html
 
-You may use, copy, modify and redistribute this program under those terms, including for commercial purposes. The complete source code is published at https://github.com/diffractor/diffractor, from which the program can be rebuilt and relinked.
+You may use, copy, modify and redistribute this program under those terms, including for commercial purposes. The complete source code is published at https://github.com/ZacWalk/diffractor, from which the program can be rebuilt and relinked.
 
 Diffractor includes third-party libraries, each under its own license. Their terms are recorded with the source code.
 

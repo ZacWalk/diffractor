@@ -586,7 +586,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 
 	std::array<preview_audio, preview_audio_windows> _preview_audio;
 	uint64_t _preview_audio_wanted = 0;
-	av_audio_device_ptr _preview_device;
+	platform::audio_output_ptr _preview_device;
 	audio_buffer _preview_audio_buffer;
 	// Movie time up to which samples have been queued to the device, and the epoch that tells a
 	// buffer built before a seek from one built after it.

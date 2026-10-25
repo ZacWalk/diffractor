@@ -23,9 +23,10 @@
 
 #include "ui_dialog.h"
 #include "util_crash_files_db.h"
-#include "util_log.h"
+#include "libdesktop/util_log.h"
 #include "metadata_xmp.h"
 #include "files.h"
+#include "av_format.h"
 #include "view_items.h"
 #include "view_edit.h"
 #include "view_movie.h"
@@ -52,6 +53,18 @@
 const std::string_view s_app_name = "Diffractor";
 const std::string_view s_app_version = "127.3";
 const std::string_view g_app_build = "1313";
+
+const ui::chrome_icon_set ui::chrome_icons = {
+	.check = icon_index::check,
+	.checkbox_off = icon_index::checkbox_off,
+	.checkbox_on = icon_index::checkbox_on,
+	.radio_off = icon_index::radio_off,
+	.radio_on = icon_index::radio_on,
+	.close = icon_index::close,
+	.maximize = icon_index::maximize,
+	.minimize = icon_index::minimize,
+	.restore = icon_index::restore,
+};
 static constexpr auto s_search = "search";
 
 extern void start_worker(platform::task_queue& q, std::string_view name);
@@ -199,7 +212,7 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 	result.reserve(include_state ? 25_z : 19_z);
 	result.emplace_back("Version:", df::format_version(true));
 	result.emplace_back("Windows:", std::format("{} {} {}", platform::OS(), arch, config));
-	result.emplace_back("Id:", str::to_hex(crypto::crc32c(platform::user_name()), false));
+	result.emplace_back("Id:", str::to_hex(df::crc32c(platform::user_name()), false));
 	result.emplace_back("Running:", std::format("{} seconds", seconds_running));
 	platform::memory_usage_t mem;
 
@@ -306,8 +319,8 @@ void app_frame::app_fail(const std::string_view message, const std::string_view 
 		const auto dlg = make_dlg(parent);
 
 		std::vector<view_element_ptr> controls;
-		controls.emplace_back(set_margin(std::make_shared<ui::title_control>(icon_index::error, tt.title_error)));
-		controls.emplace_back(set_margin(std::make_shared<text_element>(tt.error_cannot_continue)));
+		controls.emplace_back(set_margin(std::make_shared<ui::title_control>(icon_index::error, tt.platform_text.title_error)));
+		controls.emplace_back(set_margin(std::make_shared<text_element>(tt.platform_text.error_cannot_continue)));
 		if (!message_s.empty()) controls.emplace_back(set_margin(std::make_shared<text_element>(message_s)));
 		if (!more_text_s.empty()) controls.emplace_back(set_margin(std::make_shared<text_element>(more_text_s)));
 		controls.emplace_back(std::make_shared<ui::close_control>(dlg->_frame));
@@ -3051,7 +3064,48 @@ bool app_frame::pre_init()
 	// (and read from disk) inside a faulting process.
 	(void)crash_files();
 
+	// The chrome's embedded PNGs decode with the application's own decoder on every backend.
+	ui::decode_embedded_image = [](const df::cspan data)
+	{
+		files ff;
+		return ff.image_to_surface(data);
+	};
+
+	// The renderers scale and convert pictures with FFmpeg's swscale, as the decoder does.
+	ui::make_surface_scaler = []() -> std::unique_ptr<ui::surface_scaler> { return std::make_unique<av_scaler>(); };
+
 	return true;
+}
+
+int run_console_tests(std::string_view test_filter);
+int generate_wiki_docs(std::string_view output_folder);
+int validate_po_files();
+
+bool app_frame::parse_command_line(const std::string_view command_line_text)
+{
+	command_line.parse(command_line_text);
+
+	return command_line.console_test || command_line.gen_docs || command_line.validate_po ||
+		command_line.dup_report || !command_line.movie_batch.projects.empty();
+}
+
+int app_frame::run_console_mode()
+{
+	// /test runs the suite; /gen-docs regenerates the wiki pages; /validate-po checks the
+	// translations against the strings app_text registers; /dup-report measures duplicate grouping
+	// over a real library, reading only; /movie-check, /movie-import and /movie-render report how
+	// Movie projects' sources resolve, and import or render them when asked.
+	if (command_line.console_test) return run_console_tests(command_line.test_filter);
+	if (command_line.gen_docs) return generate_wiki_docs(command_line.docs_path);
+	if (command_line.validate_po) return validate_po_files();
+	if (command_line.dup_report)
+		return run_duplicate_report(command_line.dup_report_folder, command_line.dup_report_output);
+	return run_movie_batch(command_line.movie_batch);
+}
+
+bool app_frame::wants_gpu() const
+{
+	return setting.use_gpu && !command_line.no_gpu;
 }
 
 
@@ -3333,7 +3387,6 @@ void app_frame::exit()
 {
 	log_func lf(__FUNCTION__);
 	_threads.clear();
-	metadata_xmp::term();
 }
 
 void app_frame::system_event(const ui::os_event_type ost)
@@ -3513,6 +3566,52 @@ void app_frame::crash(const df::file_path dump_file_path)
 	}
 }
 
+// Inspect the graphics crash-guard flags left by the previous run and fall back if it
+// crashed while a graphics subsystem was active. A HW-decode crash disables only hardware
+// video decoding (narrowest attribution); a crash with the GPU active but no decode in
+// progress disables GPU rendering. GPU device loss is handled as a one-session software
+// recovery: the user's preference is preserved and retried after that session exits cleanly.
+// Escalation is graceful: a decode crash drops decode first; GPU is dropped only if a later
+// run still crashes with decode already off (so only gpu_render remains set).
+static void apply_gpu_crash_guard()
+{
+	const auto decode_crashed = platform::read_crash_guard(platform::crash_guard::hw_video_decode);
+	const auto gpu_crashed = platform::read_crash_guard(platform::crash_guard::gpu_render);
+
+	if (!decode_crashed && !gpu_crashed)
+	{
+		return;
+	}
+
+	// Attribute to the narrowest subsystem: a hardware-decode crash disables only HW video
+	// decode (never the GPU), even if HW decode happens to already be off; only a crash with
+	// no decode in progress disables GPU rendering.
+	if (decode_crashed)
+	{
+		if (setting.use_d3d11va)
+		{
+			setting.use_d3d11va = false;
+			df::log(__FUNCTION__,
+			        "Previous run crashed during hardware video decode - disabling HW video decode (GPU rendering kept)");
+		}
+	}
+	else if (gpu_crashed)
+	{
+		if (setting.use_gpu)
+		{
+			platform::suppress_crash_guard(platform::crash_guard::gpu_render, true);
+			df::log(__FUNCTION__,
+			        "Previous run lost the GPU device - using software rendering for this recovery session");
+		}
+		return;
+	}
+
+	// Hardware-decode failures retain the existing persistent fallback policy.
+	setting.write();
+	platform::set_crash_guard(platform::crash_guard::hw_video_decode, false);
+	platform::set_crash_guard(platform::crash_guard::gpu_render, false);
+}
+
 bool app_frame::load_settings(const platform::setting_file_ptr& store)
 {
 	// Called early in startup (before the graphics factories and UI are created) so the
@@ -3544,6 +3643,9 @@ bool app_frame::load_settings(const platform::setting_file_ptr& store)
 		setting.reset_presentation();
 	}
 
+	apply_gpu_crash_guard();
+	connect_yuv_latch();
+
 	return true;
 }
 
@@ -3554,6 +3656,9 @@ std::string app_frame::restart_cmd_line()
 
 void app_frame::save_recovery_state()
 {
+	// First, so the files open when Windows terminated the process are skipped on the next start.
+	log_open_files_to_crash_files_list();
+	flush_open_files_to_crash_files_list();
 	save_options();
 }
 

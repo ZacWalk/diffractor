@@ -256,7 +256,7 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 			switch (i.action)
 			{
 			case import_action::import:
-				row->_text[0] = options.is_move ? tt.menu_move : tt.menu_copy;
+				row->_text[0] = options.is_move ? tt.menu_move : tt.platform_text.menu_copy;
 
 				// The destination already exists; name the policy that resolved it on the row itself
 				// so an overwrite or a renamed destination is never silently implied.
@@ -478,7 +478,7 @@ void import_view::analyze()
 	{
 		_analysis.clear();
 		_analysis_valid = false;
-		_status = std::string(tt.error_invalid_files.sv());
+		_status = std::string(tt.platform_text.error_invalid_files.sv());
 		_state.invalidate_view(view_invalid::status | view_invalid::command_state);
 		return;
 	}

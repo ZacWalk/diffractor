@@ -1,27 +1,30 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Build the vendored bzip2 as diffractor::bzip2.
+# Purpose: Build bzip2, fetched at its pinned release, as diffractor::bzip2.
 #
-# Imported from third-party/bzip2/bzip2.vcxproj (Release|x64) by tools/import_vcxproj.py.
-# Compiler and linker flags are not restated here: DiffractorCompilerPolicy.cmake owns those
-# for every target.
+# Imported from the bzip2.vcxproj of the copy once vendored here, by tools/import_vcxproj.py. The
+# release builds unchanged: the copy spelled four POSIX names the MSVC way, and the vendored policy's
+# _CRT_NONSTDC_NO_WARNINGS takes the release's own spellings. Compiler and linker flags are not
+# restated here: DiffractorCompilerPolicy.cmake owns those for every target.
 
 include_guard(GLOBAL)
+include(DiffractorFetch)
+diffractor_fetch(bzip2)
 
 add_library(diffractor_bzip2 STATIC
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/blocksort.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/bzip2.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/bzlib.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/compress.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/crctable.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/decompress.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/huffman.c"
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2/randtable.c"
+        "${bzip2_SOURCE_DIR}/blocksort.c"
+        "${bzip2_SOURCE_DIR}/bzip2.c"
+        "${bzip2_SOURCE_DIR}/bzlib.c"
+        "${bzip2_SOURCE_DIR}/compress.c"
+        "${bzip2_SOURCE_DIR}/crctable.c"
+        "${bzip2_SOURCE_DIR}/decompress.c"
+        "${bzip2_SOURCE_DIR}/huffman.c"
+        "${bzip2_SOURCE_DIR}/randtable.c"
 )
 
 target_include_directories(diffractor_bzip2 PUBLIC
-        "${CMAKE_SOURCE_DIR}/third-party/bzip2"
+        "${bzip2_SOURCE_DIR}"
 )
 
 if (WIN32)
@@ -29,10 +32,5 @@ if (WIN32)
 endif ()
 
 diffractor_apply_vendored_policy(diffractor_bzip2)
-
-# Anything the Windows project could not describe - a header its build generates, a flag a
-# different compiler needs. Hand written, and kept out of this file so that re-importing
-# does not discard it.
-include("${CMAKE_CURRENT_LIST_DIR}/bzip2.local.cmake" OPTIONAL)
 
 add_library(diffractor::bzip2 ALIAS diffractor_bzip2)

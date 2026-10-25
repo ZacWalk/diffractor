@@ -13,7 +13,7 @@
 
 #include "pch.h"
 #include "files.h"
-#include "platform.h"
+#include "libdesktop/platform.h"
 #include "av_format.h"
 
 #include <cstdio>

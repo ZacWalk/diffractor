@@ -1004,7 +1004,7 @@ public:
 
 			if (needs_render)
 			{
-				const auto update_result = texture->update(vf);
+				const auto update_result = texture->update(av_video_frame(vf));
 
 				if (update_result != ui::texture_update_result::failed)
 				{
@@ -1297,7 +1297,7 @@ public:
 	void decode_audio() const
 	{
 		std::string device_id;
-		av_audio_device_ptr ds;
+		platform::audio_output_ptr ds;
 		audio_buffer playback_buffer;
 		audio_buffer vis_buffer;
 
@@ -1389,13 +1389,13 @@ public:
 					ds.reset();
 				}
 
-				ds = create_av_audio_device(device_id);
+				ds = platform::create_audio_output(device_id);
 
 				if (ds)
 				{
 					const auto recovered_audio = session && session->_audio_unavailable.exchange(false);
 					play_audio_device_id(ds->id());
-					playback_buffer.init(ds->format());
+					playback_buffer.init(av_audio_info(ds->format()));
 					need_create_device = false;
 					if (recovered_audio)
 					{
@@ -1493,7 +1493,7 @@ public:
 									pending_fade_in = false;
 								}
 
-								ds->write(playback_buffer);
+								playback_buffer.write_to(*ds);
 
 								if (ds->is_stopped())
 								{

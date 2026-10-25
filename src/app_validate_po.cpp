@@ -14,7 +14,7 @@
 
 #include "pch.h"
 #include "app_text.h"
-#include "platform.h"
+#include "libdesktop/platform.h"
 
 #include <cstdio>
 

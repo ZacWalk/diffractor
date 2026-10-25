@@ -1231,7 +1231,7 @@ ui::const_surface_ptr edit_view::build_preview_surface(const ui::const_surface_p
 		                                    static_cast<double>(preview_edit_dimensions.cy) / edit_dimensions.cy));
 	}
 	preview_edits.scale(128);
-	return source->transform(preview_edits);
+	return apply_image_edits(source, preview_edits);
 }
 
 ui::const_surface_ptr edit_view::preview_surface() const

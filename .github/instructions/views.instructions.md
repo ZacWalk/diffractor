@@ -1,6 +1,6 @@
 ---
 description: UI-thread ownership, invalidation, handle safety, and naming for views and controls.
-applyTo: 'src/view_*.cpp, src/view_*.h, src/ui_*.cpp, src/ui_*.h, src/ui.cpp, src/ui.h'
+applyTo: 'src/view_*.cpp, src/view_*.h, src/ui_*.cpp, src/ui_*.h'
 ---
 
 # Views, controls, and layout

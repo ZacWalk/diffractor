@@ -171,6 +171,11 @@ open the shared texture, or cannot sample its format because the device has no p
 presentation is closed, asks for CPU frames, and so does the CPU backend when a hardware picture
 reaches it. From then on hardware pictures are downloaded and prepared on the decode thread.
 
+The renderers see a frame only through `ui::video_frame`: the picture the decode thread prepared,
+or else the decoder's texture with the lock its device takes around it, which a renderer copies only
+while holding it. Any other picture is converted by the application's scaler, made by
+`ui::make_surface_scaler`, so no renderer includes FFmpeg.
+
 When hardware decoding, shared textures, or YUV presentation are unavailable, playback falls back to
 software-decoded surfaces. The fallback preserves timing, orientation, color intent, and playback
 state. Closing or superseding a session releases decoder resources on their owning context before
@@ -215,17 +220,21 @@ initialized backend selected. Logical application state remains independent from
 
 ## Where this lives
 
-- [platform_win_d3d11.cpp](../src/platform_win_d3d11.cpp): device and adapter selection, image
+- libdesktop's [platform_win_d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_d3d11.cpp): device and adapter selection, image
   budgets, hardware drawing, swap-chain resources, texture upload and recycling, glyph atlases,
-  shared video textures, and the decode device made on the renderer's adapter.
-- [platform_win_ui.cpp](../src/platform_win_ui.cpp): each window's backend choice, swap chain,
+  shared video textures, and the render adapter published for the decode device.
+- libdesktop's [platform_win_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_ui.cpp): each window's backend choice, swap chain,
   presentation and its hidden-window standby, and the switch to software on device loss.
-- [platform_win_software.cpp](../src/platform_win_software.cpp): CPU backend and Windows present
+- libdesktop's [platform_win_software.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_software.cpp): CPU backend and Windows present
   target.
-- [platform_win_font.cpp](../src/platform_win_font.cpp): font resolution, shaping, and glyph masks.
-- [render_surface.cpp](../src/render_surface.cpp) and [render_software.h](../src/render_software.h):
+- libdesktop's [platform_win_font.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_font.cpp): font resolution, shaping, and glyph masks.
+- libdesktop's [render_surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_surface.cpp) and [render_software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render_software.h):
   shared surfaces and software rasterization, and the CPU side of the HDR cube.
 - [av_format.cpp](../src/av_format.cpp): video decode, hardware decode selection, decode-thread
   picture preparation, the HDR mapping, and hardware-frame publication.
-- [yuv_common.hlsli](../src/shaders/yuv_common.hlsli): YUV sampling and the GPU side of the HDR cube.
-- [ui.h](../src/ui.h): backend-neutral draw interfaces and presentation results.
+- [platform_win_av.cpp](../src/platform_win_av.cpp): the D3D11VA decoder the renderer presents
+  from, the driver's answer on whether it decodes a stream, the decode device on the renderer's GPU,
+  and the lock a hardware picture lends the renderer.
+- libdesktop's [yuv_common.hlsli](https://github.com/ZacWalk/libdesktop/blob/main/src/render/shaders/yuv_common.hlsli): YUV sampling and the GPU side of the HDR cube.
+- libdesktop's [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h): backend-neutral draw interfaces and presentation results, and the video frame
+  and scaler interfaces the application hands the renderers.

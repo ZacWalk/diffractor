@@ -1657,7 +1657,7 @@ static view_element_ptr make_link(view_state& s, std::string_view text, const pr
 
 static uint32_t calc_rank_color()
 {
-	return ui::average(ui::style::color::rank_background, ui::style::color::view_text);
+	return ui::average(app_colors::rank_background, ui::style::color::view_text);
 }
 
 static std::vector<view_element_ptr> format_dims(const uint16_t width, const uint16_t height, const file_type_ref ft,
@@ -2088,7 +2088,7 @@ public:
 
 		if (sidecars > 0)
 		{
-			result.emplace_back(str::to_string(sidecars), ui::style::color::sidecar_background);
+			result.emplace_back(str::to_string(sidecars), app_colors::sidecar_background);
 		}
 
 		// Issue #137 - the count includes this file, so below two it says "no other copy", which the
@@ -2097,7 +2097,7 @@ public:
 		if (_item->presence() != item_presence::unknown && _item->duplicates().count > 1)
 		{
 			result.emplace_back(str::format_count(_item->duplicates().count),
-			                    ui::style::color::duplicate_background);
+			                    app_colors::duplicate_background);
 		}
 
 		return result;
@@ -2232,11 +2232,11 @@ public:
 				for (const auto& part : ordered_unique)
 				{
 					const auto found = std::ranges::find(_sidecar_attributes, part, &sidecar_attribute::name);
-					table->add(part, ui::average(ui::style::color::sidecar_background, ui::style::color::view_text),
+					table->add(part, ui::average(app_colors::sidecar_background, ui::style::color::view_text),
 					           found == _sidecar_attributes.end()
 						           ? std::string{}
 						           : platform::format_date(found->modified.system_to_local()),
-					           found == _sidecar_attributes.end() ? std::string{} : prop::format_size(found->size));
+					           found == _sidecar_attributes.end() ? std::string{} : df::format_size(found->size));
 				}
 
 				hover.elements->add(table);
@@ -2258,17 +2258,17 @@ public:
 					table->no_shrink_col[2] = true;
 					table->add(tt.prop_name_filename, tt.prop_name_modified, tt.prop_name_size);
 					table->add(i->name(), platform::format_date(i->file_modified().system_to_local()),
-					           prop::format_size(i->file_size()));
+					           df::format_size(i->file_size()));
 
 					for (const auto& item : related)
 					{
 						if (item.first != i->path())
 						{
 							table->add(item.second.name,
-							           ui::average(ui::style::color::duplicate_background,
+							           ui::average(app_colors::duplicate_background,
 							                       ui::style::color::view_text),
 							           platform::format_date(item.second.file_modified.load().system_to_local()),
-							           prop::format_size(item.second.size));
+							           df::format_size(item.second.size));
 						}
 					}
 

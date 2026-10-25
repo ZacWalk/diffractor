@@ -15,8 +15,8 @@
 #pragma once
 
 #include "model_tile_cache.h"
-#include "ui.h"
-#include "util_kdtree.h"
+#include "libdesktop/ui.h"
+#include "libdesktop/util_kdtree.h"
 
 // For M_PI on some compilers, otherwise define it manually.
 #ifndef M_PI

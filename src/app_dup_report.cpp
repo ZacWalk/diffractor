@@ -17,7 +17,7 @@
 #include "crypto.h"
 #include "files.h"
 #include "metadata_xmp.h"
-#include "platform.h"
+#include "libdesktop/platform.h"
 
 #include <cstdio>
 #include <numeric>

@@ -2,7 +2,8 @@
 
 This document owns the mapping between Diffractor properties and media metadata standards.
 [Design](design.md) owns what metadata commands mean; [File I/O](file-io.md) owns staging, sidecars,
-backups, and failure; [Third-party](third-party.md) owns the XMP toolkit fork.
+backups, and failure; [Third-party](third-party.md) owns libfiles, which reads and writes the packets, and the DNG SDK's XMP
+backend.
 
 Media files remain authoritative. The index stores derived property snapshots for search and display.
 
@@ -13,15 +14,17 @@ Media files remain authoritative. The index stores derived property snapshots fo
 | JPEG, TIFF | EXIF, IPTC, XMP | XMP reconciled to EXIF/IPTC where supported |
 | PNG, WebP | EXIF/XMP where present | XMP |
 | RAW photos | EXIF and embedded/sidecar XMP | Sidecar XMP |
-| MP4, MOV, M4A | QuickTime/iTunes tags and XMP | XMP, movie header dates, ISO copyright |
-| MP3 | ID3v2 and XMP | XMP reconciled to ID3v2 |
+| JPX, WBMP | Sidecar XMP | Sidecar XMP |
+| MP4, MOV, M4A | QuickTime/iTunes tags and XMP | XMP, Windows tags and rating, movie header dates, ISO copyright |
+| MP3, MP2, MPA | ID3v2 and XMP | XMP reconciled to ID3v2 |
 | AVI, WAV | RIFF INFO and XMP | XMP reconciled to RIFF INFO |
 | ASF, WMV, WMA | Windows Media attributes and XMP | XMP reconciled to Windows Media attributes |
+| FLV | `onMetaData` and XMP | XMP |
 | HEIC, AVIF | EXIF and XMP | Not editable |
 | MKV, WebM | Matroska tags | Not editable |
 
-Read and write support are intentionally asymmetric. FFmpeg exposes more container tags than the XMP
-toolkit can reconcile, so displaying a property does not prove it can be stored back into that
+Read and write support are intentionally asymmetric. FFmpeg exposes more container tags than the
+writers reconcile, so displaying a property does not prove it can be stored back into that
 container. Per-format edit traits gate commands before the write path runs.
 
 ## Property Mapping
@@ -81,19 +84,45 @@ substituted for authored metadata during a metadata save.
 EXIF supplies camera, lens, exposure, dimensions, orientation, resolution, color space, GPS, and
 capture dates. IPTC supplies editorial title, caption, creator, copyright, location text, and
 keywords. JPEG stores IPTC in Photoshop image resources, so resource order, Pascal names, odd
-payload padding, and unrelated resources do not change the effective IPTC payload. XMP can override
+payload padding - a last resource may lack its pad byte - and unrelated resources do not change
+the effective IPTC payload; of IPTC resources a file repeats, the first that holds anything is the
+one read and the one an edit changes. IPTC text is
+UTF-8 where it is valid and Windows-1252 where it is not, as Photoshop and the wire services wrote
+it, so an older caption's curly quotes and dashes read as written. XMP can override
 or extend both and carries Diffractor's editable rating, label, tags, description, and location
 values.
 
 Orientation affects presentation and is therefore not treated as display-neutral metadata. A pixel
 edit draws the stored orientation into the pixels it writes, so saving one resets the orientation to
-upright rather than leaving the tag to turn the saved image a second time. Embedded
+upright rather than leaving the tag to turn the saved image a second time. The EXIF orientation is
+the last Orientation in IFD0, else the last in IFD1, which describes the thumbnail; a copy of the tag
+in any other directory is not the image's. The item, the scan and every decoder read it by that one
+rule, through libfiles, so a file is never shown turned one way and its thumbnail another. Embedded
 thumbnails and ICC profiles are parsed with the image and invalidated when their source metadata
 changes.
-Stored image dimensions follow transformed pixels, including lossless JPEG rotation.
+Stored image dimensions follow transformed pixels, including lossless JPEG rotation, which sets the
+EXIF orientation upright and the dimensions where the block holds them - every copy, where a block
+repeats a tag, so it reads back upright whichever copy a reader takes - and changes nothing else in
+it, maker notes included.
 
 Unknown tags are not rewritten merely because Diffractor does not display them. XMP updates begin
-from the existing packet and reconcile only fields managed by the toolkit and Diffractor's fork.
+from the existing packet. For a photo, each field an edit sets is also written to the EXIF and IPTC
+fields that hold it - title to IPTC Object Name; description to EXIF ImageDescription and IPTC
+Caption; tags to IPTC Keywords and Windows XP keywords; rating to the EXIF and Windows rating fields;
+creator, copyright, dates, GPS, orientation and location text likewise - and nothing else in either
+block changes. IPTC is created when a field it holds is written, and is stored as UTF-8. A tag edit
+on a packet without `dc:subject` starts from the tags the item shows, legacy keywords included.
+An MP4 or QuickTime edit writes tags and rating to the Xtra box Windows reads as well, a copyright to
+the ISO `cprt` box and a created date to the movie header; the packet always follows the movie box,
+since FFmpeg reads no XMP box before it. An ASF edit writes title, author, copyright and description
+to the header's Content Description, tags and rating to the WM/Category and WM/SharedUserRating
+descriptors, and a created date to the File Properties. An MP3 edit writes the ID3v2 text frames
+players read - title, artist, album, album artist, genre, comment, track, disc, copyright and date - and
+a rating to Windows Media Player's POPM frame, keeping the tag's version and every frame the edit does
+not own. A WAV or AVI edit writes title, artist, comment, copyright, date and genre to LIST INFO, an
+AVI's INFO before `movi` and its packet after it, where FFmpeg reads them. An FLV keeps its packet in an
+`onXMPData` tag after `onMetaData`. Only the fields an edit sets are written: a native field the packet
+lacks is left as it is.
 
 ## Audio And Video Metadata
 
@@ -107,7 +136,7 @@ gives the displayed dimensions for anamorphic video, and the display matrix give
 Both are read without decoding, so a scan that never opens a frame describes the same shape the
 player does.
 
-The XMP toolkit reconciles a bounded legacy subset. In particular, MP4/MOV writes do not rewrite the
+Writes reconcile a bounded legacy subset. In particular, MP4/MOV writes do not rewrite the
 full iTunes atom set, so software that ignores XMP may continue to show an older atom value.
 Matroska metadata is read-only.
 
@@ -133,15 +162,25 @@ is discarded. These values feed [zoom.md](zoom.md#panorama) and are not written 
 
 ## Where this lives
 
-- [platform_win.cpp](../src/platform_win.cpp) and [platform_linux.cpp](../src/platform_linux.cpp):
+- libdesktop's [platform_win.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win.cpp) and [platform_linux.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_linux.cpp):
   date-sensitive conversion between UTC and local wall time.
 
 - [model_dates.h](../src/model_dates.h): date sources, retained candidates, and resolution.
 - [metadata_exif.cpp](../src/metadata_exif.cpp), [metadata_iptc.cpp](../src/metadata_iptc.cpp), and
-  [metadata_xmp.cpp](../src/metadata_xmp.cpp): standard-specific mapping and reconciliation.
+  [metadata_xmp.cpp](../src/metadata_xmp.cpp): standard-specific mapping and reconciliation. EXIF is
+  read by libfiles' `read_exif`, the one parser the scan and the decoders use too;
+  `metadata_exif.cpp` maps it onto an item, writes EXIF through libfiles - a fresh block with
+  `make_exif`, a turned picture's numbers with `set_exif_numbers` - and lists it with
+  `list_exif`, which reads as libexif's listing did. IPTC is read by libfiles' `read_iptc` and
+  listed by its `list_iptc`; `metadata_iptc.cpp` maps the datasets onto an item after EXIF and
+  before XMP, combining the date and time datasets and merging keywords and bylines with what EXIF
+  supplied.
 - [av_format.cpp](../src/av_format.cpp): audio/video container metadata.
 - [model_property.cpp](../src/model_property.cpp): shared property identity and formatting.
 - [model_db_pack.h](../src/model_db_pack.h) and [model_db.cpp](../src/model_db.cpp): cached metadata
   serialization.
 - [files_core.cpp](../src/files_core.cpp) and [files_scan_photo.cpp](../src/files_scan_photo.cpp):
-  format dispatch and scan publication.
+  format dispatch and scan publication. Every still - JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and
+  AVIF, and JPEG XL - is scanned by [libfiles](https://github.com/ZacWalk/libfiles), whose result
+  `files_scan_photo.cpp` maps onto a `file_scan_result`; libfiles decodes a HEIF thumbnail item a scan
+  wants, and [files_jxl.cpp](../src/files_jxl.cpp) supplies the Brotli a JPEG XL's compressed boxes need.

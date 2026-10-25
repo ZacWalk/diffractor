@@ -1016,12 +1016,12 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 
 				if (min_size == max_size)
 				{
-					add_title_link(prop::format_size(min_size), {});
+					add_title_link(df::format_size(min_size), {});
 				}
 				else
 				{
-					const auto text = str_format(tt.group_title_size_range_fmt.sv(), prop::format_size(min_size),
-					                             prop::format_size(max_size));
+					const auto text = str_format(tt.group_title_size_range_fmt.sv(), df::format_size(min_size),
+					                             df::format_size(max_size));
 					add_title_link(text, {});
 				}
 			}
@@ -2044,7 +2044,7 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 
 	if (!info.size.is_empty())
 	{
-		_row_draw_info.file_size.update_extent(dc, prop::format_size(info.size),
+		_row_draw_info.file_size.update_extent(dc, df::format_size(info.size),
 		                                       static_cast<double>(info.size.to_int64()));
 	}
 
@@ -2319,8 +2319,8 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto group_text_color = ui::color(ft->text_color(dc.colors.foreground), alpha).emphasize(
 			background_is_highlighted);
 		const auto bg_disk = ui::color(ui::style::color::view_selected_background, dc.colors.alpha * 0.77f);
-		const auto bg_dups = ui::color(ui::style::color::duplicate_background, dc.colors.alpha * 0.77f);
-		const auto bg_sidecars = ui::color(ui::style::color::sidecar_background, dc.colors.alpha * 0.77f);
+		const auto bg_dups = ui::color(app_colors::duplicate_background, dc.colors.alpha * 0.77f);
+		const auto bg_sidecars = ui::color(app_colors::sidecar_background, dc.colors.alpha * 0.77f);
 
 		if (device_bounds.width() > 100)
 		{
@@ -2480,7 +2480,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!info.size.is_empty())
 				{
 					const auto bb = widths.file_size.calc_bounds(text_rect, text_x, text_y, text_padding);
-					const auto text = prop::format_size(info.size);
+					const auto text = df::format_size(info.size);
 					widths.file_size.draw(dc, text, static_cast<double>(info.size.to_int64()), bb, text_font,
 					                      text_style_far, text_color);
 				}
@@ -2604,8 +2604,8 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto group_text_color = ui::color(ft->text_color(dc.colors.foreground), text_alpha).emphasize(
 			background_is_highlighted);
 		const auto bg_disk = ui::color(ui::style::color::view_selected_background, text_alpha * 0.77f);
-		const auto bg_dups = ui::color(ui::style::color::duplicate_background, text_alpha * 0.77f);
-		const auto bg_sidecars = ui::color(ui::style::color::sidecar_background, text_alpha * 0.77f);
+		const auto bg_dups = ui::color(app_colors::duplicate_background, text_alpha * 0.77f);
+		const auto bg_sidecars = ui::color(app_colors::sidecar_background, text_alpha * 0.77f);
 		const auto thumb_padding = round(item_draw_info::_thumb_padding * dc.scale_factor);
 		auto title_style = ui::style::text_style::single_line_center;
 		auto title_line_height2 = dc.text_line_height(info.title_font);
@@ -2846,7 +2846,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 			if (show_size)
 			{
-				text = prop::format_size(info.size);
+				text = df::format_size(info.size);
 			}
 			else if (show_created)
 			{

@@ -15,10 +15,14 @@
 // Keeping them here is what lets every other test file stay free of system headers.
 
 #include "pch.h"
-#include "platform_win.h"
-#include "platform_win_visual.h"
+#include "libdesktop/platform_win.h"
+#include "libdesktop/platform_win_render.h"
+#include "libdesktop/platform_win_visual.h"
 #include "av_format.h"
+#include "libdesktop/platform_win_render_res.h"
 #include "test_fixtures.h"
+
+#include <mmreg.h>
 
 extern "C" {
 #include "libavutil/hwcontext.h"
@@ -523,6 +527,101 @@ static void should_create_the_decode_device_on_the_render_adapter()
 	assert_equal(true, av_platform_hw_device_usable(device), "and FFmpeg can decode on it");
 }
 
+// The renderer copies a hardware picture out of the decoder's surface under the lock the decoder takes
+// around it, so the lock a picture lends must be that device's own: its functions, with its context.
+static void should_lend_the_renderer_the_decode_device_lock()
+{
+	auto* device = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA);
+	assert_equal(true, device != nullptr, "a D3D11VA device context");
+	if (!device) return;
+	const df::scope_exit release_device([&device] { av_buffer_unref(&device); });
+
+	auto held = 0;
+	auto* const hwctx = static_cast<AVD3D11VADeviceContext*>(reinterpret_cast<AVHWDeviceContext*>(device->data)->hwctx);
+	hwctx->lock = [](void* context) { ++*static_cast<int*>(context); };
+	hwctx->unlock = [](void* context) { --*static_cast<int*>(context); };
+	hwctx->lock_ctx = &held;
+
+	auto* frames = av_hwframe_ctx_alloc(device);
+	assert_equal(true, frames != nullptr, "a frames context on it");
+	if (!frames) return;
+	const df::scope_exit release_frames([&frames] { av_buffer_unref(&frames); });
+
+	ui::video_picture picture;
+	av_platform_decode_lock(reinterpret_cast<const AVHWFramesContext*>(frames->data), picture);
+	assert_equal(true, picture.lock != nullptr && picture.unlock != nullptr, "the picture carries a lock");
+
+	if (picture.lock && picture.unlock)
+	{
+		picture.lock(picture.lock_context);
+		assert_equal(1, held, "which is the device's own");
+		picture.unlock(picture.lock_context);
+		assert_equal(0, held, "and is released with the device's own");
+	}
+
+	ui::video_picture none;
+	av_platform_decode_lock(nullptr, none);
+	assert_equal(true, none.lock == nullptr && none.unlock == nullptr, "a picture with no device carries none");
+}
+
+// Defined in platform_win_sound.cpp: what the device's format() answers for its mix format.
+platform::audio_output_format wasapi_mix_format(const WAVEFORMATEX* format);
+
+// An endpoint's mix format is a WAVEFORMATEX, extended or not, which the device describes as a sample
+// format and the channels with the speakers they feed. An extension too short to hold its speaker mask
+// names neither its samples nor its speakers.
+static void should_describe_a_wasapi_mix_format()
+{
+	constexpr GUID ieee_float = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+	constexpr GUID pcm = {0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+
+	WAVEFORMATEXTENSIBLE mix = {};
+	mix.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+	mix.Format.nChannels = 6;
+	mix.Format.nSamplesPerSec = 48000;
+	mix.Format.wBitsPerSample = 32;
+	mix.Format.nBlockAlign = 24;
+	mix.Format.nAvgBytesPerSec = 48000 * 24;
+	mix.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+	mix.Samples.wValidBitsPerSample = 32;
+	mix.dwChannelMask = 0x3F; // 5.1: front left, right and centre, LFE, back left and right
+	mix.SubFormat = ieee_float;
+
+	const auto described = wasapi_mix_format(&mix.Format);
+	assert_equal(48000u, described.sample_rate, "the endpoint's rate");
+	assert_equal(true, described.sample_format == platform::audio_sample_format::float32, "its float samples");
+	assert_equal(6u, described.channels, "its channels");
+	assert_equal(true, described.channel_mask == 0x3F, "and the speakers they feed");
+
+	mix.SubFormat = pcm;
+	assert_equal(true, wasapi_mix_format(&mix.Format).sample_format == platform::audio_sample_format::int32,
+	             "32-bit integer samples");
+
+	mix.Format.cbSize = 0;
+	const auto short_extension = wasapi_mix_format(&mix.Format);
+	assert_equal(true, short_extension.sample_format == platform::audio_sample_format::none,
+	             "an extension too short for its mask names no samples");
+	assert_equal(true, short_extension.channel_mask == 0, "and no speakers");
+
+	WAVEFORMATEX stereo = {};
+	stereo.wFormatTag = WAVE_FORMAT_PCM;
+	stereo.nChannels = 2;
+	stereo.nSamplesPerSec = 44100;
+	stereo.wBitsPerSample = 16;
+	stereo.nBlockAlign = 4;
+	stereo.nAvgBytesPerSec = 44100 * 4;
+	const auto plain = wasapi_mix_format(&stereo);
+	assert_equal(true, plain.sample_format == platform::audio_sample_format::int16, "a plain format's 16-bit samples");
+	assert_equal(2u, plain.channels, "on its channels");
+	assert_equal(true, plain.channel_mask == 0, "names no speakers");
+
+	stereo.wBitsPerSample = 24;
+	stereo.nBlockAlign = 6;
+	assert_equal(true, wasapi_mix_format(&stereo).sample_format == platform::audio_sample_format::none,
+	             "packed 24-bit samples are not spoken");
+	assert_equal(0u, wasapi_mix_format(nullptr).channels, "and no format describes no channels");
+}
+
 // WARP is in every Windows since 8 and needs no GPU, so the texture tests run the same everywhere.
 static ComPtr<ID3D11Device> create_warp_device(ComPtr<ID3D11DeviceContext>& context)
 {
@@ -686,6 +785,138 @@ static void should_overwrite_a_recycled_texture_with_the_new_picture()
 	assert_equal(true, returned.texture == first_texture, "the second picture was drawn into the first texture");
 	assert_equal(true, returned.texture && texture_holds(device.Get(), context.Get(), returned.texture.Get(), green),
 	             "and holds the new picture, not the old one");
+}
+
+// A decoded frame as the renderers see it, described by the test rather than by a decoder.
+class fake_video_frame final : public ui::video_frame
+{
+public:
+	ui::const_surface_ptr prepared;
+	ui::video_picture described;
+	mutable int cpu_requests = 0;
+
+	ui::const_surface_ptr prepared_surface() const override { return prepared; }
+	ui::video_picture picture() const override { return described; }
+	void request_cpu_frames() const override { ++cpu_requests; }
+};
+
+// Converts any frame into a 32 x 16 picture, and counts the frames it was asked for.
+class fake_frame_scaler final : public ui::surface_scaler
+{
+public:
+	std::shared_ptr<int> frames;
+
+	bool scale_surface(const ui::const_surface_ptr&, ui::surface_ptr&, sizei, bool) override { return false; }
+	bool convert_yuv_surface(const ui::surface&, const ui::surface_ptr&) override { return false; }
+
+	bool scale_surface(const ui::video_frame&, const ui::surface_ptr& surface_out) override
+	{
+		++*frames;
+		return surface_out->alloc(32, 16, ui::texture_format::RGB) != nullptr;
+	}
+};
+
+static std::function<std::unique_ptr<ui::surface_scaler>()> make_fake_frame_scaler(std::shared_ptr<int> frames)
+{
+	return [frames]() -> std::unique_ptr<ui::surface_scaler>
+	{
+		auto s = std::make_unique<fake_frame_scaler>();
+		s->frames = frames;
+		return s;
+	};
+}
+
+static std::shared_ptr<fake_video_frame> make_prepared_video_frame(const sizei dimensions)
+{
+	auto frame = std::make_shared<fake_video_frame>();
+	const auto picture = std::make_shared<ui::surface>();
+	picture->alloc(dimensions, ui::texture_format::RGB);
+	frame->prepared = picture;
+	return frame;
+}
+
+// A texture presents a video frame through the frame's interface alone: the picture the decode thread
+// prepared when there is one, and otherwise one the application's scaler converts. A hardware picture
+// is copied only under its decode device's lock, so one that brings no lock is refused, and with no
+// scaler there is nothing to fall back to.
+static void should_present_a_video_frame_through_its_interface()
+{
+	ComPtr<ID3D11DeviceContext> context;
+	const auto device = create_warp_device(context);
+	assert_equal(true, device != nullptr, "a WARP device");
+	if (!device) return;
+
+	const auto f = std::make_shared<factories>();
+	f->d3d_device = device;
+	f->d3d_context = context;
+	f->texture_pool = std::make_unique<d3d11_texture_pool>(1024 * 1024);
+
+	const auto frames_converted = std::make_shared<int>(0);
+	const auto restore_scaler = ui::make_surface_scaler;
+	const df::scope_exit restore([restore_scaler] { ui::make_surface_scaler = restore_scaler; });
+	ui::make_surface_scaler = make_fake_frame_scaler(frames_converted);
+
+	const auto texture = d3d11_create_texture(f);
+	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == ui::texture_update_result::tex_created,
+	             "a prepared picture is uploaded");
+	assert_equal(true, texture->dimensions() == sizei{64, 48}, "as it was prepared");
+	assert_equal(0, *frames_converted, "with nothing converted");
+
+	const auto unprepared = std::make_shared<fake_video_frame>();
+	assert_equal(true, texture->update(unprepared) != ui::texture_update_result::failed,
+	             "a picture in system memory is converted by the scaler");
+	assert_equal(true, texture->dimensions() == sizei{32, 16}, "and uploaded as converted");
+	assert_equal(1, *frames_converted, "once");
+	assert_equal(0, unprepared->cpu_requests, "which asks the decoder for nothing");
+
+	const auto unlocked = std::make_shared<fake_video_frame>();
+	auto texture_name = 0;
+	unlocked->described.texture = &texture_name;
+	assert_equal(true, d3d11_create_texture(f)->update(unlocked) == ui::texture_update_result::failed,
+	             "a hardware picture without its device's lock is refused");
+	assert_equal(1, *frames_converted, "rather than converted");
+
+	ui::make_surface_scaler = nullptr;
+	assert_equal(true, d3d11_create_texture(f)->update(unprepared) == ui::texture_update_result::failed,
+	             "and with no scaler a picture in system memory cannot be presented");
+}
+
+// The software renderer never samples the decoder's surfaces, so a hardware picture is converted by
+// the scaler like any other, and the decode thread is asked to deliver the rest of the clip in system
+// memory instead.
+static void should_present_a_video_frame_in_software_through_its_interface()
+{
+	const auto frames_converted = std::make_shared<int>(0);
+	const auto restore_scaler = ui::make_surface_scaler;
+	const df::scope_exit restore([restore_scaler] { ui::make_surface_scaler = restore_scaler; });
+	ui::make_surface_scaler = make_fake_frame_scaler(frames_converted);
+
+	const auto renderer = create_software_draw_context(nullptr, nullptr, false, normal_font_size);
+	const auto texture = renderer->create_texture();
+	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == ui::texture_update_result::tex_created,
+	             "a prepared picture is copied");
+	assert_equal(true, texture->dimensions() == sizei{64, 48}, "as it was prepared");
+	assert_equal(0, *frames_converted, "with nothing converted");
+
+	const auto unprepared = std::make_shared<fake_video_frame>();
+	assert_equal(true, texture->update(unprepared) == ui::texture_update_result::tex_created,
+	             "a picture in system memory is converted by the scaler");
+	assert_equal(true, texture->dimensions() == sizei{32, 16}, "and held as converted");
+	assert_equal(1, *frames_converted, "once");
+	assert_equal(0, unprepared->cpu_requests, "which asks the decoder for nothing");
+
+	const auto hardware = std::make_shared<fake_video_frame>();
+	auto texture_name = 0;
+	hardware->described.texture = &texture_name;
+	assert_equal(true, texture->update(hardware) == ui::texture_update_result::tex_updated,
+	             "a hardware picture is converted too");
+	assert_equal(2, *frames_converted, "by the scaler");
+	assert_equal(1, hardware->cpu_requests, "and the decoder is asked for pictures in system memory");
+
+	ui::make_surface_scaler = nullptr;
+	assert_equal(true,
+	             renderer->create_texture()->update(unprepared) == ui::texture_update_result::failed,
+	             "with no scaler a picture in system memory cannot be presented");
 }
 
 static void should_suppress_gpu_for_recovery_session()
@@ -1038,7 +1269,7 @@ static void should_materialize_advertised_clipboard_images()
 	const auto loaded = ff.load(test_files_folder.combine_file("Test.jpg"), false);
 	assert_equal(true, loaded.success, "test image loads");
 
-	const auto probe = platform::probe_drag_data_object(loaded);
+	const auto probe = platform::probe_drag_data_object(clipboard_image_of(loaded));
 
 	assert_equal(true, probe.advertises_bitmap, "captured image advertises CF_BITMAP");
 	assert_equal(true, probe.advertises_dib, "captured image advertises CF_DIB");
@@ -1164,6 +1395,50 @@ static void should_replace_the_full_trailing_spelling_word()
 	assert_equal(1_z, one.size(), "a one-character final word is found");
 	assert_equal(0, one.front().pos_start, "one-character start");
 	assert_equal(1, one.front().pos_end, "one-character end remains exclusive");
+}
+
+// The control checks words against the dictionary it is given and knows of no other: the application
+// supplies spell checking, and without it nothing is underlined.
+static void should_check_edit_words_against_the_supplied_dictionary()
+{
+	class listed_dictionary final : public ui::spelling_dictionary
+	{
+	public:
+		mutable std::vector<std::string> asked;
+
+		void queue_load() override {}
+
+		bool is_word_valid(const std::string_view word) const override
+		{
+			asked.emplace_back(word);
+			return word != "teh";
+		}
+
+		std::vector<std::string> suggest(std::string_view) const override { return {}; }
+		void add_word(std::string_view, std::function<void()> done) override { if (done) done(); }
+	};
+
+	listed_dictionary dictionary;
+	const auto unknown = platform::probe_edit_unknown_words(L"the teh cat", &dictionary);
+
+	assert_equal(1_z, unknown.size(), "the word the dictionary rejects is underlined");
+	assert_equal("teh"s, unknown.front().word, "which word");
+	assert_equal(4, unknown.front().pos_start, "where it starts");
+	assert_equal(7, unknown.front().pos_end, "where it ends");
+	assert_equal(3_z, dictionary.asked.size(), "every word is asked of the dictionary");
+	assert_equal(true, platform::probe_edit_unknown_words(L"the teh cat", nullptr).empty(),
+	             "without a dictionary nothing is underlined");
+}
+
+// The chrome's embedded PNGs decode with the application's decoder, which it installs before any
+// backend loads one, so both backends draw the same shadow with or without WIC.
+static void should_decode_embedded_chrome_images()
+{
+	assert_equal(true, static_cast<bool>(ui::decode_embedded_image), "the application installed its decoder");
+
+	const auto shadow = ui::decode_embedded(load_resource(IDB_SHADOW, L"PNG"));
+	assert_equal(true, shadow != nullptr, "the shadow decodes");
+	assert_equal(true, shadow && !shadow->dimensions().is_empty(), "to an image with pixels");
 }
 
 static void should_hit_test_the_last_trailing_spelling_character()
@@ -1454,9 +1729,14 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	tests.add("Should count shared memory for an integrated GPU"s, should_count_shared_memory_for_an_integrated_gpu);
 	tests.add("Should create the decode device on the render adapter"s,
 	          should_create_the_decode_device_on_the_render_adapter);
+	tests.add("Should lend the renderer the decode device's lock"s, should_lend_the_renderer_the_decode_device_lock);
+	tests.add("Should describe a WASAPI mix format"s, should_describe_a_wasapi_mix_format);
 	tests.add("Should recycle a texture only when nothing draws it"s, should_recycle_a_texture_only_when_nothing_draws_it);
 	tests.add("Should overwrite a recycled texture with the new picture"s,
 	          should_overwrite_a_recycled_texture_with_the_new_picture);
+	tests.add("Should present a video frame through its interface"s, should_present_a_video_frame_through_its_interface);
+	tests.add("Should present a video frame in software through its interface"s,
+	          should_present_a_video_frame_in_software_through_its_interface);
 	tests.add("Should suppress GPU for one recovery session"s, should_suppress_gpu_for_recovery_session);
 	tests.add("Issue #219: Should fall back for missing glyphs"s, should_fall_back_for_missing_glyphs);
 	tests.add("Issue #232/#189: Should cache font faces per face and size"s,
@@ -1482,6 +1762,9 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	tests.add("Should render common controls into a buffer"s, should_render_common_controls_into_a_buffer);
 	// PLAT-011 - trailing spelling correction range.
 	tests.add("Should replace the full trailing spelling word"s, should_replace_the_full_trailing_spelling_word);
+	tests.add("Should check edit words against the supplied dictionary"s,
+	          should_check_edit_words_against_the_supplied_dictionary);
+	tests.add("Should decode embedded chrome images"s, should_decode_embedded_chrome_images);
 	tests.add("Should hit test the last trailing spelling character"s,
 	          should_hit_test_the_last_trailing_spelling_character);
 	// PLAT-012 - native edit context-menu routing.

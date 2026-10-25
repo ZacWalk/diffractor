@@ -16,19 +16,25 @@ The Linux target is therefore a portability and headless-test target, not a dist
 
 ## Platform Boundary
 
-Portable application code depends on [platform.h](../src/platform.h). Operating-system headers,
-handles, and direct system calls remain in `platform*` files. Repository lint enforces the parts of
-this boundary visible from source text.
+Portable application code depends on libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) -
+the OS services of its system module, which also carries their Linux backend and
+[documents it](https://github.com/ZacWalk/libdesktop/blob/main/docs/system.md#the-linux-backend) - and on
+libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h) for what the desktop UI layer implements: icon glyphs,
+movie writing, audio output and the rendering probes. Operating-system headers, handles, and direct system calls
+remain in libdesktop and in the application's own `platform*` files - its side of FFmpeg's hardware
+decoding and its entry points. Repository lint enforces the parts
+of this boundary visible from source text.
 
 The Linux implementation currently provides:
 
 | Area | Implementation |
 | --- | --- |
-| Process, synchronization, locale, known folders | `platform_linux.cpp` |
-| Files, mapping, enumeration, paths | `platform_linux_files.cpp` |
-| Copy, move, delete, and shell stand-ins | `platform_linux_desktop.cpp` |
-| INI settings | `platform_linux_settings.cpp` |
-| System theme colours, key codes, and UI-thread identity | `platform_linux_ui.cpp` |
+| Process, synchronization, locale, known folders | libdesktop's `platform_linux.cpp` |
+| Files, mapping, enumeration, paths | libdesktop's `platform_linux_files.cpp` |
+| Copy, move, delete, and shell stand-ins | libdesktop's `platform_linux_desktop.cpp` |
+| INI settings | libdesktop's `platform_linux_settings.cpp` |
+| The desktop UI's stand-ins: theme colours, key codes, UI-thread identity, icon glyphs, movie writing and audio output | libdesktop's `platform_linux_ui.cpp` |
+| Entry point, the absent hardware video decode, and the empty platform test registration | `platform_linux_app.cpp` |
 
 Path identity follows the filesystem: case-insensitive on Windows and case-sensitive on Linux.
 Case-folded comparisons remain appropriate for media types, tags, and other vocabulary, but not for
@@ -66,8 +72,9 @@ its first backend is software.
 ## Build
 
 CMake is the only application build description. Linux builds vendored dependencies by default and
-uses the FFmpeg and XMP forks as required dependencies. Runtime fixtures, languages, dictionaries,
-and location data are staged beside the test binary.
+the FFmpeg fork as a required dependency, and fetches libfiles and libdesktop - or builds sibling
+`../libfiles` and `../libdesktop` checkouts. Runtime fixtures, languages, dictionaries, and location data are staged beside the test
+binary.
 
 Typical commands are:
 
@@ -79,6 +86,9 @@ cmake --build build
 
 CI definitions remain authoritative for compiler versions and installed system prerequisites.
 
+Build from a Linux checkout. A Windows checkout with `core.autocrlf` set, built from WSL, gives
+FFmpeg's `configure` CRLF line endings, which `/bin/sh` rejects as "No such file or directory".
+
 ### Retiring MSBuild
 
 The application solution and project files were removed after CMake reached parity. Repository lint
@@ -88,14 +98,14 @@ how they join the application build.
 
 ## Where this lives
 
-- [platform.h](../src/platform.h): abstraction required from each platform.
-- [platform_linux.cpp](../src/platform_linux.cpp),
-  [platform_linux_files.cpp](../src/platform_linux_files.cpp),
-  [platform_linux_settings.cpp](../src/platform_linux_settings.cpp),
-  [platform_linux_desktop.cpp](../src/platform_linux_desktop.cpp), and
-  [platform_linux_ui.cpp](../src/platform_linux_ui.cpp): current Linux implementation.
-- [platform_compat.h](../src/platform_compat.h): cross-platform compatibility helpers.
-- [render_software.h](../src/render_software.h) and
-  [render_software.cpp](../src/render_software.cpp): portable CPU rasterizer.
+- libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) and
+  [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h): abstraction required from each platform.
+- libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/system) and
+  [platform_linux_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_ui.cpp) and
+  [platform_linux_app.cpp](../src/platform_linux_app.cpp): current Linux implementation.
+- libdesktop's [platform_compat.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_compat.h): cross-platform
+  compatibility helpers.
+- libdesktop's [render_software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render_software.h) and
+  [render_software.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_software.cpp): portable CPU rasterizer.
 - [CMakeLists.txt](../CMakeLists.txt), `cmake/`, [dd.ps1](../dd.ps1), and
   [tools/dd.py](../tools/dd.py): build description and drivers.

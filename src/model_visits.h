@@ -14,7 +14,7 @@
 
 #include "model_location.h"
 #include "model_search.h"
-#include "util_date.h"
+#include "libdesktop/util_date.h"
 
 class location_cache;
 

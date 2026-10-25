@@ -406,7 +406,7 @@ static std::string format_term_value(const df::search_term& term)
 		return str::to_string(n);
 	}
 	if (t == prop::focal_length) return format_search_number(static_cast<float>(d)) + "mm";
-	if (t == prop::file_size) return prop::format_size(df::file_size(n64));
+	if (t == prop::file_size) return df::format_size(df::file_size(n64));
 	if (t->data_type == prop::data_type::int32)
 	{
 		return str::to_string(n);
@@ -1645,8 +1645,8 @@ static compare_result compare_term(const df::search_term& term, const int rr)
 
 static compare_result compare_file_size(const df::search_term& term, const uint64_t r)
 {
-	const auto ll = prop::round_size(term.int64_val).total();
-	const auto rr = prop::round_size(r).total();
+	const auto ll = df::round_size(term.int64_val).total();
+	const auto rr = df::round_size(r).total();
 
 	const auto res = ll < rr ? -1 : ll > rr ? 1 : 0;
 	return {true, res};
@@ -1828,7 +1828,7 @@ inline bool same_term(const std::string_view text, const df::search_term& term)
 df::search_result compare_text(const df::search_term& term, const df::index_file_item& file)
 {
 	if (contains_term(file.name, term)) return {df::search_result_type::match_prop, prop::file_name};
-	if (same_term(prop::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
+	if (same_term(df::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
 
 	const auto md = file.metadata.load();
 

@@ -6,8 +6,8 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: JPEG encoding and decoding using libjpeg-turbo. Handles JPEG compression,
-// decompression, lossless rotation, and metadata marker detection.
+// Purpose: JPEG encoding and lossless turns, which libfiles does, and metadata marker detection.
+// libfiles also decodes JPEGs.
 
 #pragma once
 
@@ -35,64 +35,54 @@ inline constexpr size_t icc_signature_len = icc_signature.size() + 2; // + seque
 inline constexpr size_t xmp_signature_len = xmp_signature.size();
 
 struct metadata_parts;
-struct jpeg_encoder_impl;
-struct jpeg_decoder_impl;
 struct file_encode_params;
 
+namespace libfiles
+{
+	struct embedded_metadata;
+	class jpeg_encoder;
+	class jpeg_transformer;
+}
+
+// The blocks as libfiles' encoders take them: views of the parts, which must outlive the encode.
+libfiles::embedded_metadata embedded_metadata_of(const metadata_parts& metadata);
+
+// libfiles' JPEG encoder, writing BGRX rows with their metadata. Long-lived and reused for every image,
+// as the one files holds is.
 class jpeg_encoder final : public df::no_copy
 {
 public:
-	std::unique_ptr<jpeg_encoder_impl> _impl;
-	df::blob _result;
-	sizei _result_dimensions;
+	std::unique_ptr<libfiles::jpeg_encoder> _encoder;
 
 	jpeg_encoder();
 	~jpeg_encoder() override;
 
-	void setup(uint32_t cx, uint32_t cy, const file_encode_params& params);
 	void start(uint32_t cx, uint32_t cy, ui::orientation orientation, const metadata_parts& metadata,
 	           const file_encode_params& params);
-	void encode_chunk(uint8_t** rows, uint32_t chunk) const;
-
-	df::blob complete(bool can_abort = true);
 	df::blob encode(uint32_t cx, uint32_t cy, const uint8_t* bitmap, uint32_t stride, ui::orientation orientation,
 	                const metadata_parts& metadata, const file_encode_params& params);
 
-	friend class jpeg_decoder_x;
+	// The size the image started last is written at.
+	sizei dimensions() const;
 };
 
-class jpeg_decoder_x final : df::no_copy
+// A JPEG's header, and its lossless transforms: what works on a JPEG's coefficients rather than its
+// pixels. The object is long-lived, reused for every image, and reset before and after each use.
+class jpeg_transformer final : df::no_copy
 {
 public:
-	std::unique_ptr<jpeg_decoder_impl> _impl;
-	ui::orientation _orientation_out = ui::orientation::top_left;
+	std::unique_ptr<libfiles::jpeg_transformer> _transformer;
 
-	jpeg_decoder_x();
-	~jpeg_decoder_x() override;
+	jpeg_transformer();
+	~jpeg_transformer() override;
 
-	bool can_render_nv12() const;
-
-	void create();
 	bool read_header(df::cspan cs);
-	bool read_header(const ui::const_image_ptr& image);
-	bool start_decompress(int scale_hint, bool raw, bool fancy_chroma) const;
-	bool read_nv12(uint8_t* pixels, int stride, int buffer_size, const df::cancel_token& token) const;
-	bool read_rgb(uint8_t* p, int stride, int buffer_size, const df::cancel_token& token) const;
-	void close() const;
 	sizei dimensions() const;
-	sizei dimensions_out() const;
 
 	// Bytes libjpeg holds in one whole-image DCT coefficient array for the stream whose header has
-	// been read. Full resolution always: a decode scale reduces the IDCT output, never the
-	// coefficients it reads. Zero for a lossless stream, whose data units are single samples that
-	// this accounting does not describe.
+	// been read - the full resolution always, which a lossless transform holds twice. Zero for a
+	// lossless stream, whose data units are single samples that this accounting does not describe.
 	int64_t coefficient_bytes() const;
-
-	// True when decoding that stream buffers every coefficient before it can produce a row, which a
-	// progressive or non-interleaved JPEG does and a baseline single-scan one does not.
-	bool buffers_whole_image() const;
-
-	void destroy();
 
 	// Empty when the rotation cannot be done losslessly or the stream cannot be read. over_budget,
 	// when given, is set when it could have been but its coefficients would not fit the decode

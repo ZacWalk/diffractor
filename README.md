@@ -1,5 +1,5 @@
 # Diffractor
-[![CI](https://github.com/diffractor/diffractor/actions/workflows/windows.yml/badge.svg)](https://github.com/diffractor/diffractor/actions/workflows/windows.yml)
+[![CI](https://github.com/ZacWalk/diffractor/actions/workflows/windows.yml/badge.svg)](https://github.com/ZacWalk/diffractor/actions/workflows/windows.yml)
 
 Free, high-performance photo and video organizer for Windows. Optimized for speed and local file control—no cloud storage or subscriptions required.
 
@@ -24,12 +24,12 @@ Free, high-performance photo and video organizer for Windows. Optimized for spee
 ## Building
 
 ```bash
-git clone --recursive https://github.com/diffractor/diffractor.git
+git clone https://github.com/ZacWalk/diffractor.git
 ```
 
-The build uses CMake and requires Visual Studio, Ninja, and the recursively cloned
-[FFmpeg](https://github.com/diffractor/FFmpeg) and
-[XMP Toolkit SDK](https://github.com/diffractor/XMP-Toolkit-SDK) submodules.
+The build uses CMake and requires Visual Studio and Ninja. CMake fetches the dependencies at the
+versions `cmake/dd-dependencies.json` pins, Diffractor's [FFmpeg](https://github.com/ZacWalk/FFmpeg)
+fork among them.
 
 Everything goes through the `dd` gateway, which finds Visual Studio, configures with Ninja and puts the binary in `exe/`:
 
@@ -39,8 +39,8 @@ python tools/dd.py build --config Release --arch x86     # the 32-bit desktop bi
 python tools/dd.py build --winstore                      # the Store binary
 ```
 
-Release packaging also requires NSIS, 7-Zip, the Windows SDK, and a code-signing
-certificate. Run `.\dd.ps1` for the complete command list.
+Release packaging also requires NSIS, the Windows SDK, and a code-signing certificate; `dd.ps1`
+fetches the 7-Zip it packs with. Run `.\dd.ps1` for the complete command list.
 
 Product behavior is documented in [docs/design.md](docs/design.md). Architecture is
 documented in [docs/implementation.md](docs/implementation.md), whose links lead to
@@ -77,7 +77,7 @@ report as it is written.
 
 ## Contributing
 
-Contributions are coordinated through [GitHub issues](https://github.com/diffractor/diffractor/issues).
+Contributions are coordinated through [GitHub issues](https://github.com/ZacWalk/diffractor/issues).
 Use [Poedit](https://poedit.net/) for catalogs under `exe/languages`, and run
 `.\dd.ps1 test` before submitting a change.
 

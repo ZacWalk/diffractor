@@ -20,7 +20,7 @@
 #include "files.h"
 #include "metadata_xmp.h"
 #include "model_movie.h"
-#include "platform.h"
+#include "libdesktop/platform.h"
 #include "view_movie.h"
 
 #include <chrono>
@@ -93,7 +93,7 @@ namespace
 		case movie_render_error::none: break;
 		}
 
-		return result.message.empty() ? std::string(tt.error_unknown.sv()) : result.message;
+		return result.message.empty() ? std::string(tt.platform_text.error_unknown.sv()) : result.message;
 	}
 
 	bool is_usable(const movie_clip& clip)

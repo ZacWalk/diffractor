@@ -214,7 +214,8 @@ repository lint, build, embedded tests, and translation validation. Focused test
   [model_index_summary.cpp](../src/model_index_summary.cpp): the summary, its vocabulary, and
   auto-complete.
 - [model_tile_cache.cpp](../src/model_tile_cache.cpp): separately owned map tile database.
-- [platform.h](../src/platform.h): operating-system abstraction.
+- libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): operating-system abstraction;
+  libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h): the platform services the window layer implements.
 - [ui_view.h](../src/ui_view.h), [ui_elements.h](../src/ui_elements.h), and
   [ui_controllers.h](../src/ui_controllers.h): view framework.
 - [util_crash_files_db.h](../src/util_crash_files_db.h): media crash-loop protection.

@@ -1,18 +1,19 @@
 ---
-description: Upgrade or patch a vendored dependency without losing an integration patch.
+description: Upgrade a fetched dependency without losing an integration patch.
 ---
 
-# Upgrade a vendored dependency
+# Upgrade a dependency
 
 Owning document: [third-party](../../docs/third-party.md).
 
 Ask which dependency and which target version if not already stated.
 
-1. **Never edit `third-party/`.** Everything Diffractor owns about a dependency is in
-   `cmake/vendored`, the CMake dependency and policy files, or the owned wrapper — the `files_*`
-   decoder, [av_format.cpp](../../src/av_format.cpp), [metadata_xmp.cpp](../../src/metadata_xmp.cpp),
-   [util_spell.cpp](../../src/util_spell.cpp) or [util_zip.cpp](../../src/util_zip.cpp). If a fix
-   seems to require editing vendored source, it belongs in the wrapper or the build configuration.
+1. **Never patch a fetched dependency.** Everything Diffractor owns about one is its pin in
+   `cmake/dd-dependencies.json`, `cmake/vendored`, the CMake dependency and policy files, or the
+   owned wrapper — the `files_*` decoder, [av_format.cpp](../../src/av_format.cpp),
+   [metadata_xmp.cpp](../../src/metadata_xmp.cpp), [util_spell.cpp](../../src/util_spell.cpp) or
+   [util_zip.cpp](../../src/util_zip.cpp). If a fix seems to require editing the library's source, it
+   belongs in the wrapper, the build configuration or, for FFmpeg, a commit on the fork.
 
 2. **Inventory the integration patches first.** Read [third-party.md](../../docs/third-party.md) for
    this dependency and list every patch, why it exists, and the test that catches its loss. Several
@@ -27,8 +28,9 @@ Ask which dependency and which target version if not already stated.
    Diffractor's integration. Run `/test:*metadata*`, `/test:*video*`, `/test:*audio*` and the format
    tests in [test_files.cpp](../../src/test_files.cpp), plus anything the patch list named.
 
-5. **Update the document.** Record the new version, any patch that changed shape, and any patch that
-   is no longer needed because upstream took it.
+5. **Move the pin and update the document.** Put the new archive's URL and SHA-256 in
+   `cmake/dd-dependencies.json`, and record the new version, any patch that changed shape, and any
+   patch that is no longer needed because upstream took it.
 
 6. **Full validation**, because a dependency change has no narrow blast radius:
 

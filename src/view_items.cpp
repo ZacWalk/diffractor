@@ -3404,7 +3404,7 @@ void items_view::add_metadata_elements(std::vector<view_element_ptr>& elements, 
 	auto title = std::string(format_metadata_standard(block.standard));
 	std::string summary;
 
-	if (block.bytes > 0) summary = prop::format_size(df::file_size(block.bytes));
+	if (block.bytes > 0) summary = df::format_size(df::file_size(block.bytes));
 
 	if (value_count > 0)
 	{

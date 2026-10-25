@@ -13,10 +13,11 @@
 
 #include <utility>
 
-#include "ui.h"
+#include "libdesktop/ui.h"
 #include "ui_elements.h"
 #include "files.h"
 #include "app_text.h"
+#include "util_spell.h"
 
 namespace ui
 {
@@ -497,7 +498,7 @@ namespace ui
 			style.vertical_scroll = true;
 			style.multi_line = true;
 			style.want_return = wants_return;
-			style.spelling = true;
+			style.spelling = &spell_dictionary();
 			_edit = h->create_edit(style, v, [this](const std::string_view text)
 			{
 				_text = text;
@@ -1201,10 +1202,10 @@ namespace ui
 		mutable texture_ptr _tex;
 
 	public:
-		image_control(const control_frame_ptr& h, const platform::resource_item i)
+		image_control(const control_frame_ptr& h, const app_resource i)
 		{
 			files ff;
-			_image = ff.image_to_surface(load_resource(i));
+			_image = ff.image_to_surface(load_app_resource(i));
 		}
 
 		~image_control() override

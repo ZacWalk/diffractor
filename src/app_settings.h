@@ -276,7 +276,6 @@ public:
 	bool check_for_updates = false;
 	bool send_crash_dumps = false;
 #endif
-	bool can_animate = false;
 	repeat_mode repeat = repeat_mode::repeat_none;
 	zoom_navigator_mode zoom_navigator = zoom_navigator_mode::auto_hide;
 	bool auto_play = false;
@@ -418,6 +417,10 @@ public:
 
 
 extern settings_t setting;
+
+// Hands the renderer its YUV latch from setting.use_yuv, and keeps it there when a driver fault
+// clears it: a backend reads ui::yuv_textures_allowed when it starts and calls ui::on_yuv_fault.
+void connect_yuv_latch();
 
 std::vector<std::string_view> split_collection_folders(std::string_view text);
 

@@ -13,16 +13,16 @@
 #include "util_zip.h"
 
 #include "files.h"
-#include "util_file.h"
+#include "libdesktop/util_file.h"
 
 #define ZLIB_CONST 1
 
 #include "zlib.h"
-#include "minizip/mz.h"
-#include "minizip/mz_os.h"
-#include "minizip/mz_strm.h"
-#include "minizip/compat/zip.h"
-#include "minizip/compat/unzip.h"
+#include "mz.h"
+#include "mz_os.h"
+#include "mz_strm.h"
+#include "compat/zip.h"
+#include "compat/unzip.h"
 
 // Archive entry names are attacker-controlled: reduce to a bare leaf name so an entry such as
 // "..\..\startup\evil.exe" cannot escape the destination folder. Returns empty to reject.

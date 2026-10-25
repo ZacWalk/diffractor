@@ -33,18 +33,16 @@ APT_TOOLCHAIN = [
     "git-lfs",  # exe/test fixtures are LFS objects, see .gitattributes
 ]
 
-# System copies of vendored libraries, used during bring-up. These are a convenience: the shipped
-# build vendors them (see docs/third-party.md). FFmpeg and the XMP toolkit are deliberately absent
-# because they are Diffractor forks and must never come from a distribution.
+# System copies of fetched libraries, used during bring-up. These are a convenience: the shipped
+# build fetches and builds its own (see docs/third-party.md). FFmpeg is deliberately absent because
+# it is a Diffractor fork and must never come from a distribution.
 APT_DEPENDENCIES = [
     "zlib1g-dev",
     "libpng-dev",
     "libjpeg-dev",  # virtual: resolves to libjpeg-turbo on Debian and Ubuntu
     "libsqlite3-dev",
-    "libexpat1-dev",
     "libwebp-dev",
     "libarchive-dev",
-    "libexif-dev",
     "libhunspell-dev",  # util_spell.cpp
     "libminizip-dev",  # util_zip.cpp
 ]
@@ -223,7 +221,8 @@ def cmd_setup(args: argparse.Namespace) -> None:
     if is_windows():
         say("")
         say("Windows setup is Visual Studio with the C++ workload, plus CMake and Ninja, which")
-        say("that workload installs. nasm is vendored at tools/nasm.exe. Nothing to do here.")
+        say("that workload installs. nasm is fetched while configuring when none is on the path.")
+        say("Nothing to do here.")
         say("")
         cmd_info(args)
         return
@@ -386,10 +385,6 @@ def cmd_info(args: argparse.Namespace) -> None:
     for tool in tools:
         found = shutil.which(tool)
         say(f"  {tool:<12} {found or 'MISSING'}")
-
-    if is_windows():
-        vendored_nasm = REPO_ROOT / "tools" / "nasm.exe"
-        say(f"  {'nasm (repo)':<12} {vendored_nasm if vendored_nasm.exists() else 'MISSING'}")
 
     say("")
 

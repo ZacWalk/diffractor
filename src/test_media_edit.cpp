@@ -17,6 +17,8 @@
 #include "app_util.h"
 #include "app_commands.h"
 
+#include "libfiles/write.h"
+
 
 // Writing metadata updates xmp:ModifyDate, and on a file that carried no XMP the toolkit can add an
 // xmp:CreateDate too, so neither is stable across a write. The capture time is: a write that moves
@@ -78,7 +80,7 @@ static void should_apply_perspective_correction()
 	image_edits edits;
 	edits.perspective_horizontal(0.4);
 	edits.perspective_vertical(-0.25);
-	const auto corrected = source->transform(edits);
+	const auto corrected = apply_image_edits(source, edits);
 
 	assert_equal(true, source->dimensions() == corrected->dimensions(), "perspective dimensions");
 	assert_equal(true, source->pixel_difference(corrected) == ui::pixel_difference_result::not_equal,
@@ -119,7 +121,7 @@ static void should_apply_perspective_correction()
 	edits.perspective_horizontal(0);
 	edits.perspective_vertical(0);
 	edits.crop_bounds({});
-	assert_equal(true, source->transform(edits).get() == source.get(), "zero perspective preserves surface");
+	assert_equal(true, apply_image_edits(source, edits).get() == source.get(), "zero perspective preserves surface");
 }
 
 static void should_fit_document_correction_to_controls()
@@ -285,7 +287,7 @@ static void should_crop_without_resampling()
 	image_edits edits;
 	edits.crop_bounds(quadd(rectd(3.4, 2.6, 8.0, 6.0)));
 
-	const auto cropped = source->transform(edits);
+	const auto cropped = apply_image_edits(source, edits);
 	assert_equal(true, cropped->dimensions() == sizei(8, 6), "crop extent");
 
 	for (auto y = 0u; y < cropped->height(); ++y)
@@ -306,7 +308,7 @@ static void should_apply_temperature_and_tint()
 	image_edits edits;
 	edits.temperature(0.5);
 	edits.tint(0.25);
-	const auto adjusted = source->transform(edits)->get_pixel(0, 0);
+	const auto adjusted = apply_image_edits(source, edits)->get_pixel(0, 0);
 	const auto adjusted_red = ui::get_b(adjusted);
 	const auto adjusted_green = ui::get_g(adjusted);
 	const auto adjusted_blue = ui::get_r(adjusted);
@@ -344,7 +346,7 @@ static void should_initialize_edit_rotation_from_orientation()
 
 	image_edits edits;
 	edits.crop_bounds(edit_view_state::initial_crop(source->dimensions(), ui::orientation::right_top));
-	const auto edited = source->transform(edits);
+	const auto edited = apply_image_edits(source, edits);
 	const auto displayed = source->transform(to_simple_transform(ui::orientation::right_top));
 	assert_equal(true, displayed->dimensions() == edited->dimensions(),
 	             "right-top edit dimensions match image view");
@@ -374,7 +376,7 @@ static void should_rotate_displayed_oriented_pixels_clockwise()
 
 		image_edits edits;
 		edits.crop_bounds(rotate_command_crop_bounds(source->dimensions(), orientation, simple_transform::rot_90, true));
-		const auto actual = source->transform(edits);
+		const auto actual = apply_image_edits(source, edits);
 		const auto displayed = source->transform(to_simple_transform(orientation));
 		const auto expected = displayed->transform(simple_transform::rot_270);
 
@@ -552,6 +554,115 @@ static void should_update_label(const std::string_view name)
 		const auto actual_scanned = ff_scan_after_update(ff, label_cleared, save_path, detect_xmp_sidecar(save_path));
 		assert_equal(std::string_view{}, actual_scanned.to_props()->label, "cleared label");
 	}
+}
+
+// Every format diffractor embeds metadata in is libfiles' to write. The packet's own toolkit identifier
+// says which wrote it, and a second edit that fits the first packet must leave the file the same size.
+static void should_write_packets_with_libfiles(const std::string_view name)
+{
+	files ff;
+
+	const auto ext = name.substr(df::find_ext(name));
+	const auto save_path = _temps.next_path(ext);
+	const auto load_path = test_files_folder.combine_file(name);
+
+	metadata_edits first;
+	first.rating = 2;
+	auto written = ff.update(load_path, save_path, first, {}, {}, false, {}, {}, ff_inspect_rescan(save_path));
+	assert_equal(true, written.success(), std::format("{} written ({})", name, written.format_error()));
+
+	const auto scanned = ff_scan_after_update(ff, written, save_path);
+	const std::string_view packet(std::bit_cast<const char*>(scanned.metadata.xmp.data()), scanned.metadata.xmp.size());
+	assert_equal(true, packet.find("libfiles XMP") != std::string_view::npos, std::format("{} packet from libfiles", name));
+	assert_equal(2, scanned.to_props()->rating, "rating");
+
+	const auto size_before = platform::file_attributes(save_path).size;
+
+	metadata_edits second;
+	second.rating = 4;
+	auto rewritten = ff.update(save_path, second, {}, {}, false, {}, ff_inspect_rescan(save_path));
+	assert_equal(true, rewritten.success(), std::format("{} rewritten ({})", name, rewritten.format_error()));
+
+	const auto rescanned = ff_scan_after_update(ff, rewritten, save_path);
+	assert_equal(4, rescanned.to_props()->rating, "second rating");
+	assert_equal(size_before, platform::file_attributes(save_path).size, "a packet that fits keeps the file size");
+}
+
+// A converted file keeps what its source shows, even where the source keeps it somewhere the new format
+// has no place for: IPTC, in a JPEG saved as PNG. The toolkit carried it by importing the source's IPTC
+// into the packet; the packet now takes it from what the item shows.
+static void should_carry_shown_metadata_into_a_converted_file()
+{
+	const auto source = _temps.next_path(".jpg");
+
+	{
+		const auto fixture = df::blob_from_file(test_files_folder.combine_file("IMG_9340.JPG"));
+		const std::vector<uint8_t> bytes(fixture.begin(), fixture.end());
+		libfiles::reader r(bytes);
+
+		libfiles::metadata_update iptc_only;
+		iptc_only.legacy.title = "Converted title";
+		iptc_only.legacy.keywords = std::vector<std::string>{"alpha", "beta"};
+		const auto plan = libfiles::plan_update(r, iptc_only);
+		assert_equal(true, plan.ok(), "source planned");
+
+		libfiles::memory_stream out;
+		libfiles::write_updated(r, plan, out);
+		const auto& written = out.bytes();
+		assert_equal(true, df::blob_save_to_file({written.data(), written.size()}, source), "source stored");
+	}
+
+	files ff;
+	const auto before = ff_scan_file(ff, source);
+	assert_equal(true, before.metadata.xmp.empty(), "source holds no packet");
+	assert_equal("Converted title"_c, before.to_props()->title, "source shows its IPTC title");
+
+	const auto destination = _temps.next_path(".png");
+	platform::copy_file(test_files_folder.combine_file("engine.png"), destination, false, false);
+
+	metadata_edits edits;
+	edits.rating = 3;
+	const auto result = metadata_xmp::update(destination, source, edits, {}, {});
+	assert_equal(true, result.success, "converted file written");
+
+	const auto after = ff_scan_file(ff, destination);
+	const auto props = after.to_props();
+	assert_equal("Converted title"_c, props->title, "title carried into the packet");
+	const auto tags = props->tags.sv();
+	assert_equal(true, str::contains(tags, "alpha") && str::contains(tags, "beta"), "tags carried");
+	assert_equal(3, props->rating, "the edit applied");
+}
+
+// JPX and WBMP have nowhere Diffractor writes metadata, so an edit goes to a sidecar, as a raw file's
+// does, and the image is left exactly as it was.
+static void should_write_a_sidecar_for_an_image_without_a_writer(const std::string_view ext)
+{
+	const auto path = _temps.next_path(ext);
+
+	// A WBMP of 8 by 2 pixels, or a JPEG 2000 signature box and file type box.
+	const std::vector<uint8_t> image = ext == ".wbmp"
+		                                   ? std::vector<uint8_t>{0, 0, 8, 2, 0xAA, 0x55}
+		                                   : std::vector<uint8_t>{0, 0, 0, 0x0C, 'j', 'P', ' ', ' ', 0x0D, 0x0A, 0x87, 0x0A,
+		                                                          0, 0, 0, 0x14, 'f', 't', 'y', 'p', 'j', 'p', 'x', ' ',
+		                                                          0, 0, 0, 0, 'j', 'p', 'x', ' '};
+	assert_equal(true, df::blob_save_to_file({image.data(), image.size()}, path), "image stored");
+
+	files ff;
+	metadata_edits edits;
+	edits.rating = 3;
+	const auto result = ff.update(path, edits, {}, {}, false, {});
+	assert_equal(true, result.success(), std::format("edit saved ({})", result.format_error()));
+
+	const auto image_after = df::blob_from_file(path);
+	assert_equal(true, std::ranges::equal(image, image_after), "image unchanged");
+
+	const auto sidecar = df::blob_from_file(path.extension(".xmp"));
+	assert_equal(false, sidecar.empty(), "sidecar written");
+
+	libfiles::xmp::meta packet;
+	packet.parse(std::string_view(std::bit_cast<const char*>(sidecar.data()), sidecar.size()));
+	std::int32_t rating = 0;
+	assert_equal(true, packet.get_property_int(libfiles::xmp::ns::xmp, "Rating", &rating) && rating == 3, "rating in the sidecar");
 }
 
 static void should_roundtrip_xmp_disc_metadata()
@@ -831,8 +942,8 @@ static void should_update_metadata(const std::string_view name)
 	expected->rating = 3;
 	expected->tags = make_unique_tags(tag_set(expected->tags), tags_to_add);
 
-	// The Adobe XMP SDK legacy-reconciles dc:description into the native ASF
-	// Content-Description "Description" field, which FFmpeg surfaces as "comment".
+	// libfiles reconciles dc:description into the native ASF Content-Description
+	// "Description" field, as the Adobe XMP SDK did, and FFmpeg surfaces it as "comment".
 	// So for ASF/WMV the description round-trips as both description and comment.
 	if (str::icmp(ext, ".asf") == 0 || str::icmp(ext, ".wmv") == 0 || str::icmp(ext, ".wm") == 0)
 	{
@@ -1059,8 +1170,8 @@ static void should_read_asf_wm_categories()
 }
 
 // Windows compatibility (write): Diffractor writes tags & rating via its normal
-// XMP update; the XMP SDK reconciles them into the Windows 'Xtra' atom, so the
-// Windows Shell (Explorer / Media Player) reads them back. Validates the SDK
+// XMP update; libfiles reconciles them into the Windows 'Xtra' atom, so the
+// Windows Shell (Explorer / Media Player) reads them back. Validates that libfiles
 // writes Microsoft's binary format byte-exactly. (#123)
 static void should_write_windows_tags_via_xmp(const std::string_view name)
 {
@@ -1310,12 +1421,12 @@ static void should_edit_video_metadata_in_place(const std::string_view name)
 	metadata_edits first;
 	first.rating = 3;
 	assert_equal(true, ff.update(path, first, {}, {}, false, {}).success(), "first rating saved");
-	assert_equal(true, metadata_xmp::has_embedded_xmp(path), "packet embedded");
+	assert_equal(false, ff_scan_file(ff, path).metadata.xmp.empty(), "packet embedded");
 
 	const auto size_before = platform::file_attributes(path).size;
 
-	// With a packet in place the toolkit patches the existing bytes, so the file is never
-	// staged and swapped, which proves the whole media file was not copied.
+	// A rating that fits the packet is patched where the file lies, so the file is never staged
+	// and swapped, which proves the whole media file was not copied.
 	metadata_edits second;
 	second.rating = 5;
 	const auto result = ff.update(path, second, {}, {}, false, {});
@@ -1337,9 +1448,9 @@ static void should_inject_video_metadata_in_place(const std::string_view name)
 	const auto path = _temps.next_path(source.extension());
 	platform::copy_file(source, path, false, false);
 
-	assert_equal(false, metadata_xmp::has_embedded_xmp(path), "starts with no packet");
-
 	files ff;
+	assert_equal(true, ff_scan_file(ff, path).metadata.xmp.empty(), "starts with no packet");
+
 	metadata_edits edits;
 	edits.rating = 4;
 	const auto result = ff.update(path, edits, {}, {}, false, {});
@@ -1352,9 +1463,10 @@ static void should_inject_video_metadata_in_place(const std::string_view name)
 	assert_equal(4, sr.to_props()->rating, "rating round trips");
 }
 
-// MP3 and RIFF handlers shift the whole payload inside the live file with no temp, and JPEG
-// rewrites whenever a rating dirties EXIF. All must stage, so the original survives a failure.
-static void should_stage_metadata_edit(const std::string_view name)
+// Every format libfiles writes takes an edit that fits the space the file holds where it lies. The
+// first edit leaves room - a padded packet, the EXIF rating fields, ID3 padding - so the second is a
+// patch: the file is not staged and swapped, and keeps its size.
+static void should_patch_a_metadata_edit_that_fits(const std::string_view name)
 {
 	const auto source = test_files_folder.combine_file(name);
 	const auto path = _temps.next_path(source.extension());
@@ -1366,17 +1478,97 @@ static void should_stage_metadata_edit(const std::string_view name)
 	first.rating = 3;
 	const auto first_result = ff.update(path, first, {}, {}, false, {});
 	assert_equal(true, first_result.success(), std::format("first rating saved ({})", first_result.format_error()));
+	assert_equal(true, first_result.created_files.files.empty(), "no staged files left behind");
+
+	const auto size_before = platform::file_attributes(path).size;
 
 	metadata_edits second;
 	second.rating = 5;
 	const auto result = ff.update(path, second, {}, {}, false, {});
 
 	assert_equal(true, result.success(), std::format("second rating saved ({})", result.format_error()));
-	assert_equal(true, result.staged, "edit staged and swapped");
+	assert_equal(false, result.staged, "the second rating is patched where the file lies");
 	assert_equal(true, result.created_files.files.empty(), "no staged files left behind");
+	assert_equal(size_before, platform::file_attributes(path).size, "nothing the file holds moved");
 
 	const auto sr = ff_scan_file(ff, path, detect_xmp_sidecar(path));
 	assert_equal(5, sr.to_props()->rating, "rating round trips");
+}
+
+// An edit that does not fit - a JPEG's first packet moves the image after it - is staged and swapped
+// in, so the original survives a failure.
+static void should_stage_a_metadata_edit_that_does_not_fit()
+{
+	const auto path = _temps.next_path(".jpg");
+	platform::copy_file(test_files_folder.combine_file("IMG_9340.JPG"), path, false, false);
+	const auto size_before = platform::file_attributes(path).size;
+
+	files ff;
+	metadata_edits edits;
+	edits.rating = 2;
+	const auto result = ff.update(path, edits, {}, {}, false, {});
+
+	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
+	assert_equal(true, result.staged, "edit staged and swapped");
+	assert_equal(true, result.created_files.files.empty(), "no staged files left behind");
+	assert_equal(true, platform::file_attributes(path).size != size_before, "the packet moved the image");
+
+	const auto sr = ff_scan_file(ff, path);
+	assert_equal(2, sr.to_props()->rating, "rating round trips");
+}
+
+// A staged edit holds the same bytes however it is staged: one pass from the source when the edit moves
+// what the file holds, a copy patched where it fits. Each is held to what copying the file and updating
+// the copy writes, and a file libfiles does not write is left to the caller, with nothing staged.
+static void should_stage_an_edit_as_copying_and_updating_would()
+{
+	const auto source = _temps.next_path(".jpg");
+	platform::copy_file(test_files_folder.combine_file("IMG_9340.JPG"), source, false, false);
+
+	const auto copied_and_updated = [](const df::file_path from, const metadata_edits& edits)
+	{
+		const auto path = _temps.next_path(".jpg");
+		platform::copy_file(from, path, false, false);
+		assert_equal(true, metadata_xmp::update(path, from, edits, {}, {}).success, "copy updated");
+		return df::blob_from_file(path);
+	};
+
+	// The file has no packet, so its first one moves the image after it.
+	metadata_edits first;
+	first.rating = 2;
+	first.title = "Staged in one pass";
+	const auto first_expected = copied_and_updated(source, first);
+	const auto first_stage = _temps.next_path(".jpg");
+	const auto first_staged = metadata_xmp::stage_update(first_stage, source, first, {});
+	assert_equal(true, first_staged.has_value() && first_staged->success, "first edit staged");
+
+	const auto first_bytes = df::blob_from_file(first_stage);
+	assert_equal(true, first_bytes.size() != platform::file_attributes(source).size, "the first packet moves the image");
+	assert_equal(true, std::ranges::equal(first_expected, first_bytes), "one pass writes what a copy and an update write");
+
+	// The second fits the packet and the EXIF fields the first wrote.
+	metadata_edits second;
+	second.rating = 4;
+	const auto second_expected = copied_and_updated(first_stage, second);
+	const auto second_stage = _temps.next_path(".jpg");
+	const auto second_staged = metadata_xmp::stage_update(second_stage, first_stage, second, {});
+	assert_equal(true, second_staged.has_value() && second_staged->success, "second edit staged");
+
+	const auto second_bytes = df::blob_from_file(second_stage);
+	assert_equal(first_bytes.size(), second_bytes.size(), "an edit that fits is a patch");
+	assert_equal(true, std::ranges::equal(second_expected, second_bytes), "a patched copy writes the same");
+
+	files ff;
+	const auto scanned = ff_scan_file(ff, second_stage);
+	assert_equal(4, scanned.to_props()->rating, "the edit reads back");
+	assert_equal("Staged in one pass"_c, scanned.to_props()->title, "with what the first edit wrote");
+
+	// A raw file keeps its metadata in a sidecar.
+	const auto raw = _temps.next_path(".CR2");
+	platform::copy_file(test_files_folder.combine("raw").combine_file("Screws.CR2"), raw, false, false);
+	const auto raw_stage = _temps.next_path(".CR2");
+	assert_equal(false, metadata_xmp::stage_update(raw_stage, raw, first, {}).has_value(), "a raw file is the caller's");
+	assert_equal(false, raw_stage.exists(), "and nothing is staged for it");
 }
 
 // A raw file's metadata lives in its sidecar, so rating one must not cost the size of the raw.
@@ -1745,7 +1937,7 @@ static void should_roundtrip_small_icc()
 	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
 
 	mem_read_stream stream(encoded->data());
-	const auto scanned = scan_jpg(stream);
+	const auto scanned = scan_photo(stream);
 
 	assert_equal(metadata.icc.size(), scanned.metadata.icc.size(), "small icc size round-trips");
 	assert_equal(true, metadata.icc == scanned.metadata.icc, "small icc bytes round-trip");
@@ -1772,7 +1964,7 @@ static void should_roundtrip_large_icc()
 	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
 
 	mem_read_stream stream(encoded->data());
-	const auto scanned = scan_jpg(stream);
+	const auto scanned = scan_photo(stream);
 
 	assert_equal(metadata.icc.size(), scanned.metadata.icc.size(), "large icc size round-trips");
 	assert_equal(true, metadata.icc == scanned.metadata.icc, "large icc bytes round-trip");
@@ -1809,7 +2001,7 @@ static void should_roundtrip_largest_xmp()
 	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
 
 	mem_read_stream stream(encoded->data());
-	const auto scanned = scan_jpg(stream);
+	const auto scanned = scan_photo(stream);
 
 	assert_equal(metadata.xmp.size(), scanned.metadata.xmp.size(), "largest xmp size round-trips");
 	assert_equal(true, metadata.xmp == scanned.metadata.xmp, "largest xmp bytes round-trip");
@@ -1848,7 +2040,7 @@ static void should_report_oversized_xmp()
 	assert_equal(true, is_valid(encoded), "encoder still usable after a rejected file");
 
 	mem_read_stream stream(encoded->data());
-	const auto scanned = scan_jpg(stream);
+	const auto scanned = scan_photo(stream);
 	assert_equal(true, writable.xmp == scanned.metadata.xmp, "next file keeps its xmp");
 }
 
@@ -1889,7 +2081,20 @@ void register_media_edit_tests(view_state& state, test_registry& tests)
 	}
 
 	tests.add("Should update gps in exif"s, should_update_gps_in_exif);
+	for (const auto name : {"engine.png"sv, "tuesday.gif"sv, "lake.webp"sv, "Test.jpg"sv, "jello.tif"sv, "cherrys.psd"sv,
+	                        "gizmo.mp4"sv, "ipod.mov"sv, "StPauls.MOV"sv, "gen.asf"sv, "gen.wmv"sv, "Byzantium.avi"sv,
+	                        "gen.wav"sv, "Colorblind.mp3"sv, "gen.flv"sv})
+	{
+		tests.add(std::format("Should write packets with libfiles {}", name),
+		          [name] { should_write_packets_with_libfiles(name); });
+	}
 	tests.add("Should round-trip Xmp disc metadata Byzantium.avi"s, should_roundtrip_xmp_disc_metadata);
+	tests.add("Should carry shown metadata into a converted file"s, should_carry_shown_metadata_into_a_converted_file);
+	for (const auto ext : {".jpx"sv, ".wbmp"sv})
+	{
+		tests.add(std::format("Should write a sidecar for an image without a writer {}", ext),
+		          [ext] { should_write_a_sidecar_for_an_image_without_a_writer(ext); });
+	}
 	tests.add("Should preserve metadata creator names with apostrophes"s,
 	          should_preserve_creator_names_with_apostrophes);
 	// Issue #252 - rotated video keeps its rotation across a metadata write
@@ -1912,12 +2117,18 @@ void register_media_edit_tests(view_state& state, test_registry& tests)
 	// cannot grow in place and the handler has to relocate rather than fall back to a copy.
 	tests.add("Should inject video metadata in place anamorphic.mp4"s,
 	          [] { should_inject_video_metadata_in_place("anamorphic.mp4"); });
-	tests.add("Should stage metadata edit Colorblind.mp3"s,
-	          [] { should_stage_metadata_edit("Colorblind.mp3"); });
-	tests.add("Should stage metadata edit gen.wav"s, [] { should_stage_metadata_edit("gen.wav"); });
-	tests.add("Should stage metadata edit Byzantium.avi"s,
-	          [] { should_stage_metadata_edit("Byzantium.avi"); });
-	tests.add("Should stage metadata edit Test.jpg"s, [] { should_stage_metadata_edit("Test.jpg"); });
+	tests.add("Should patch a metadata edit that fits Test.jpg"s, [] { should_patch_a_metadata_edit_that_fits("Test.jpg"); });
+	tests.add("Should patch a metadata edit that fits engine.png"s, [] { should_patch_a_metadata_edit_that_fits("engine.png"); });
+	tests.add("Should patch a metadata edit that fits tuesday.gif"s, [] { should_patch_a_metadata_edit_that_fits("tuesday.gif"); });
+	tests.add("Should patch a metadata edit that fits lake.webp"s, [] { should_patch_a_metadata_edit_that_fits("lake.webp"); });
+	tests.add("Should patch a metadata edit that fits Small.tif"s, [] { should_patch_a_metadata_edit_that_fits("Small.tif"); });
+	tests.add("Should patch a metadata edit that fits cherrys.psd"s, [] { should_patch_a_metadata_edit_that_fits("cherrys.psd"); });
+	tests.add("Should patch a metadata edit that fits Colorblind.mp3"s, [] { should_patch_a_metadata_edit_that_fits("Colorblind.mp3"); });
+	tests.add("Should patch a metadata edit that fits gen.wav"s, [] { should_patch_a_metadata_edit_that_fits("gen.wav"); });
+	tests.add("Should patch a metadata edit that fits Byzantium.avi"s, [] { should_patch_a_metadata_edit_that_fits("Byzantium.avi"); });
+	tests.add("Should patch a metadata edit that fits gen.flv"s, [] { should_patch_a_metadata_edit_that_fits("gen.flv"); });
+	tests.add("Should stage a metadata edit that does not fit"s, should_stage_a_metadata_edit_that_does_not_fit);
+	tests.add("Should stage an edit as copying and updating would"s, should_stage_an_edit_as_copying_and_updating_would);
 	tests.add("Should edit raw sidecar only"s, should_edit_raw_sidecar_only);
 	tests.add("Should write raw sidecar original date"s, should_write_raw_sidecar_original_date);
 	// SRC-020 - first RAW sidecar starts from effective embedded XMP

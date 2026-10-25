@@ -16,6 +16,7 @@
 #include "ui_elements.h"
 #include "ui_text_edit.h"
 #include "model_display.h"
+#include "libfiles/commodore.h"
 
 class display_state_t;
 
@@ -1585,7 +1586,7 @@ public:
 			if (c.count > 0)
 			{
 				const auto* const ft = file_group_from_index(i);
-				const auto size = c.size.is_empty() ? std::string{} : prop::format_size(c.size);
+				const auto size = c.size.is_empty() ? std::string{} : df::format_size(c.size);
 				const auto text = ft->display_name(c.count > 1);
 				const auto num = platform::format_number(str::to_string(c.count));
 
@@ -1709,10 +1710,10 @@ public:
 			const auto color = ft->text_color(ui::style::color::view_text);
 			const auto text = i.filename;
 			const auto created = prop::format_date(i.created);
-			const auto compressed_size = is_empty ? std::string{} : prop::format_size(i.compressed_size);
+			const auto compressed_size = is_empty ? std::string{} : df::format_size(i.compressed_size);
 			const auto uncompressed_size = i.uncompressed_size.is_empty()
 				                               ? std::string{}
-				                               : prop::format_size(i.uncompressed_size);
+				                               : df::format_size(i.uncompressed_size);
 
 			_lines.emplace_back(ft->icon, color,
 			                    std::array<std::string, col_count>{text, created, uncompressed_size, compressed_size},
@@ -1855,7 +1856,7 @@ public:
 		std::array<char_entry, 256> result;
 
 		const auto cl = ui::lighten(ui::style::color::view_selected_background, 0.22f);
-		const auto ch = ui::lighten(ui::style::color::duplicate_background, 0.66f);
+		const auto ch = ui::lighten(app_colors::duplicate_background, 0.66f);
 
 		for (auto i = 0; i < 256; i++)
 		{
@@ -2041,7 +2042,7 @@ class commodore_disk_control final : public std::enable_shared_from_this<commodo
 	mutable ui::texture_ptr _texture;
 	mutable sizei _tex_extent;
 
-	std::vector<files::d64_item> _lines;
+	libfiles::c64_listing _listing;
 	int _cols = 0;
 	int _rows = 0;
 
@@ -2066,10 +2067,10 @@ public:
 		view_element(style_in),
 		_display(std::move(display))
 	{
-		_lines = files::list_disk(_display->_selected_item_data);
-
-		for (const auto& line : _lines) _cols = std::max(_cols, static_cast<int>(line.screen_codes.size()));
-		_rows = static_cast<int>(_lines.size());
+		const auto& data = _display->_selected_item_data;
+		_listing = libfiles::list_c64_media({data.data(), data.size()});
+		_cols = static_cast<int>(_listing.columns);
+		_rows = static_cast<int>(_listing.rows.size());
 	}
 
 	// texture::is_valid() only answers "not null" - it knows nothing about the device that made it -
@@ -2090,7 +2091,7 @@ public:
 
 		if (!_texture || !_texture->is_valid())
 		{
-			const auto surface = files::c64_listing_surface(_lines, c64_light_blue, c64_blue);
+			const auto surface = files::c64_listing_surface(_listing, c64_light_blue, c64_blue);
 
 			if (surface)
 			{

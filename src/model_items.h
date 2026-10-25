@@ -2186,7 +2186,7 @@ namespace df
 			{
 				const auto importance_alpha = std::min(
 					color.a, static_cast<float>(0.7 * (val - val_min) / (val_max - val_min)));
-				rank_color = ui::color(ui::style::color::rank_background, importance_alpha);
+				rank_color = ui::color(app_colors::rank_background, importance_alpha);
 			}
 
 			draw(rc, text, rank_color, bounds, text_font, text_style, color);

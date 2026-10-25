@@ -65,16 +65,19 @@ contract. Compressed metadata is accepted only after its compressed stream compl
 `files::update` is the single media-update entry point and runs on `async_queue::work`:
 
 ```text
-no effective change                    -> return without touching disk
-eligible metadata-only change          -> patch the destination in place
-metadata-only format using a sidecar    -> stage and replace the sidecar
-all other changes                       -> stage, edit, back up if requested, replace, rescan
+no effective change                      -> return without touching disk
+metadata-only change that fits the file  -> patch the destination in place
+metadata-only format using a sidecar     -> stage and replace the sidecar
+all other changes                        -> stage, edit, back up if requested, replace, rescan
 ```
 
-The staged file is created in the destination folder. Metadata edits are applied to the stage using
-the source packet, preserving properties the edit did not mention. If a sidecar must also change, a
-rollback copy protects the media/sidecar pair across the two replacements. Temporary paths are
-cleaned on every bounded failure path.
+The staged file is created in the destination folder. A metadata edit starts from the source packet,
+preserving properties the edit did not mention. For a format libfiles writes, a staged metadata-only
+edit - one that does not fit the file, or a Save As or backup - is planned against the source before
+anything is staged: one that fits the space the file holds patches a copy, which the file system may
+make without moving the bytes, and any other is written to the stage in one pass over the source
+rather than copied and then rewritten. Other formats are copied, then updated. If a sidecar must also change, a rollback copy protects the media/sidecar pair across the two
+replacements. Temporary paths are cleaned on every bounded failure path.
 
 Pasted clipboard bitmaps follow the same publication rule: the encoder writes an owned temporary
 file off the UI thread, then publishes it to the chosen auto-numbered destination only after the
@@ -87,10 +90,16 @@ Metadata commands do not imply a backup: callers request one explicitly.
 
 ## In-Place Metadata
 
-In-place writing is allowed only when there is no path or pixel change, no backup request, and the
-format carries the explicit in-place trait. MP4-family containers admit bounded packet or box updates,
-including first insertion. ASF-family containers require an existing packet. JPEG, MP3, WAV, and AVI
-stage because their handlers can rewrite or shift substantial live-file content.
+In-place writing is allowed only when there is no path or pixel change and no backup request, for
+every format libfiles writes, which carries the in-place trait: JPEG, PNG, GIF, WebP, TIFF and DNG,
+PSD, the MP4 and ASF families, WAV, AVI, MP3 and FLV. libfiles plans the edit against the live file
+through one handle no one else may open meanwhile. An edit that fits the space the file holds - a
+packet that keeps its length, EXIF values of the same size, ID3 padding, the JUNK after a RIFF chunk,
+or what is new appended at the end, as a TIFF's directories and an MP4's boxes are - is patched where
+the file lies: nothing the file holds moves, the writes go in flushed steps ordered so that an
+interruption leaves a file that reads whole with each field old or new, and a rewrite that keeps its
+length writes only the span it changes. The patched file keeps its identity, named streams and
+attributes. An edit that does not fit is staged, as above.
 
 An in-place write that loses a sharing race waits for an unlock and retries once. Other errors fail
 immediately. Because no complete prior copy exists, the app cannot promise byte-for-byte rollback if
@@ -153,9 +162,9 @@ surviving paths.
 - [model.cpp](../src/model.cpp), [model.h](../src/model.h) and [model_display.h](../src/model_display.h):
   `texture_state` and `display_state_t`.
 - [model_index.cpp](../src/model_index.cpp): change discovery, scanning, and thumbnail scheduling.
-- [platform_win_files.cpp](../src/platform_win_files.cpp): replacement and coherent file handles.
+- libdesktop's [platform_win_files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_files.cpp): replacement and coherent file handles.
 - [view_rename.cpp](../src/view_rename.cpp): displaced rename groups and cancellation recovery.
 - [app_util.cpp](../src/app_util.cpp): Import planning, shared companions, and write rollback.
-- [platform_win_wic.cpp](../src/platform_win_wic.cpp): pasted clipboard bitmap encoding and staged
+- libdesktop's [platform_win_wic.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_wic.cpp): pasted clipboard bitmap encoding and staged
   publication.
 - [metadata_xmp.cpp](../src/metadata_xmp.cpp): XMP packet and sidecar updates.

@@ -323,12 +323,10 @@ try {
     }
 
     $rules['one-build-description'] = @{
-        # third-party/FFmpeg and third-party/xmp are submodules with their own history; the fork's
-        # project file is not this repository's to remove.
         Why   = 'docs/linux.md "Retiring MSBuild": CMake is the only description of the tree, and two descriptions drift.'
         Check = {
             $tracked = @(git ls-files '*.sln' '*.vcxproj' '*.vcxproj.filters' 2>$null) |
-                Where-Object { $_ -and $_ -notmatch '^third-party/(FFmpeg|xmp)/' }
+                Where-Object { $_ }
 
             $tracked | ForEach-Object { "$_ -- describe the build in CMakeLists.txt or cmake/vendored/" }
         }

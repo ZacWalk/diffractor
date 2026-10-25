@@ -108,13 +108,110 @@ void should_compact_consumed_audio_only_when_needed()
 	assert_equal(true, std::any_of(std::begin(visualizer._frame._data[0]),
 	                               std::end(visualizer._frame._data[0]), [](const int bar) { return bar > 0; }),
 	             "visualizer ignores consumed samples before the cursor");
+}
 
-	audio_info_t masked;
-	masked.channel_layout = av_get_channel_layout(3, 1);
-	assert_equal(2u, masked.channel_count(), "speaker mask defines channel count");
-	audio_info_t fallback;
-	fallback.channel_layout = av_get_channel_layout(0, 6);
-	assert_equal(6u, fallback.channel_count(), "missing speaker mask uses endpoint channel count");
+// An endpoint's frames hold its own count of channels, and its speaker mask only places them. A mask
+// that disagrees once made a mono endpoint with a stereo mask take stereo frames - twice the bytes of
+// the buffer it hands out for them.
+static void should_lay_out_an_endpoint_by_its_channel_count()
+{
+	const auto layout = [](const uint64_t mask, const int channels)
+	{
+		audio_info_t format;
+		format.channel_layout = av_get_channel_layout(mask, channels);
+		return format;
+	};
+	const auto mask_of = [](const audio_info_t& format)
+	{
+		return format.channel_layout->order == AV_CHANNEL_ORDER_NATIVE ? format.channel_layout->u.mask : 0;
+	};
+
+	const auto quad = layout(AV_CH_LAYOUT_QUAD, 4);
+	assert_equal(4u, quad.channel_count(), "a mask naming every channel");
+	assert_equal(true, mask_of(quad) == AV_CH_LAYOUT_QUAD, "places them on its speakers");
+
+	const auto fewer = layout(AV_CH_LAYOUT_5POINT1_BACK, 4);
+	assert_equal(4u, fewer.channel_count(), "speakers named past the endpoint's channels are ignored");
+	assert_equal(true, mask_of(fewer) == AV_CH_LAYOUT_3POINT1, "and its first four kept");
+
+	assert_equal(1u, layout(AV_CH_LAYOUT_STEREO, 1).channel_count(), "a mono endpoint with a stereo mask");
+	assert_equal(6u, layout(AV_CH_LAYOUT_STEREO, 6).channel_count(), "channels beyond the speakers named count");
+	assert_equal(6u, layout(0, 6).channel_count(), "missing speaker mask uses endpoint channel count");
+}
+
+// An endpoint with room for a set number of frames, keeping what it is handed.
+class fake_audio_output final : public platform::audio_output
+{
+public:
+	platform::audio_output_format mix;
+	size_t frame_bytes = 1;
+	size_t room_frames = 0;
+	std::vector<uint8_t> written;
+
+	std::string id() override { return "fake"; }
+	platform::audio_output_format format() override { return mix; }
+	double time() const override { return 0.0; }
+	bool is_stopped() const override { return true; }
+	bool is_device_lost() const override { return false; }
+	void reset() override {}
+	void start() override {}
+	void stop() override {}
+	void wait_for_buffer(const platform::thread_event&, uint32_t) override {}
+
+	size_t write(const df::cspan samples) override
+	{
+		const auto frames = std::min(samples.size / frame_bytes, room_frames);
+		const auto bytes = frames * frame_bytes;
+		written.insert(written.end(), samples.data, samples.data + bytes);
+		room_frames -= frames;
+		return bytes;
+	}
+
+	void write_silence() override {}
+	void volume(double) override {}
+};
+
+// The playback and preview buffers are laid out by the format their endpoint describes, hand it what
+// it has room for, and keep the rest queued, in order and on time, for the next write.
+static void should_hand_an_endpoint_the_samples_it_has_room_for()
+{
+	fake_audio_output endpoint;
+	endpoint.mix = {10, platform::audio_sample_format::int16, 2, AV_CH_LAYOUT_STEREO};
+	endpoint.frame_bytes = 4;
+
+	const auto format = av_audio_info(endpoint.format());
+	assert_equal(10u, format.sample_rate, "the endpoint's rate");
+	assert_equal(true, format.sample_fmt == prop::audio_sample_t::signed_16bit, "its samples");
+	assert_equal(2u, format.channel_count(), "and its channels lay out the buffer");
+
+	audio_buffer buffer;
+	buffer.init(format);
+
+	std::array<uint8_t, 40> second = {};
+	for (size_t i = 0; i < second.size(); ++i) second[i] = static_cast<uint8_t>(i + 1);
+	buffer.append(second.data(), static_cast<uint32_t>(second.size()), 5.0, 1);
+
+	endpoint.room_frames = 3;
+	buffer.write_to(endpoint);
+	assert_equal(12u, static_cast<uint32_t>(endpoint.written.size()), "the endpoint takes the frames it has room for");
+	assert_equal(28u, buffer.used_bytes(), "and the rest stays queued");
+	assert_equal(true, df::equiv(buffer.start_time(), 5.3), "from the time the endpoint reached");
+
+	buffer.write_to(endpoint);
+	assert_equal(28u, buffer.used_bytes(), "a full endpoint takes nothing");
+
+	endpoint.room_frames = 100;
+	buffer.write_to(endpoint);
+	assert_equal(true, buffer.is_empty(), "and one with room takes the rest");
+	assert_equal(true, std::ranges::equal(endpoint.written, second), "in order");
+
+	const auto surround = av_audio_info({48000, platform::audio_sample_format::float32, 6, AV_CH_LAYOUT_5POINT1});
+	assert_equal(true, surround.sample_fmt == prop::audio_sample_t::signed_float, "float samples");
+	assert_equal(6u, surround.channel_count(), "on six channels");
+	assert_equal(true, av_audio_info({48000, platform::audio_sample_format::int32, 2, 0}).sample_fmt ==
+	             prop::audio_sample_t::signed_32bit, "32-bit samples");
+	assert_equal(true, av_audio_info({48000, platform::audio_sample_format::none, 2, 0}).sample_fmt ==
+	             prop::audio_sample_t::none, "and none the mixer does not speak");
 }
 
 // audio_buffer keeps its samples private; this declared friend lets the test read them.
@@ -2817,6 +2914,9 @@ void register_av_tests(view_state& state, test_registry& tests)
 	tests.add("Should retain audio buffer timing across cursor compaction"s,
 	          should_compact_consumed_audio_only_when_needed);
 	tests.add("Should ramp audio at buffer edges"s, should_ramp_audio_at_buffer_edges);
+	tests.add("Should lay out an endpoint by its channel count"s, should_lay_out_an_endpoint_by_its_channel_count);
+	tests.add("Should hand an endpoint the samples it has room for"s,
+	          should_hand_an_endpoint_the_samples_it_has_room_for);
 	tests.add("Should time visualizer independently of refresh rate"s,
 	          should_time_visualizer_independently_of_refresh_rate);
 	// MEDIA-007 - visualizer frequency bins are immutable once initialized.

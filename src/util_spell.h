@@ -100,3 +100,7 @@ public:
 // directory. As a global that would run before WinMain, where a throw ends the process with nothing
 // logged and no message box; constructed on first use instead, inside the app's error handling.
 spell_check& spell();
+
+// spell() as the edit controls see it: they check words against it, and a word added through one is
+// logged here if writing it fails.
+ui::spelling_dictionary& spell_dictionary();

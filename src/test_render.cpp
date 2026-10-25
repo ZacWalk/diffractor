@@ -10,9 +10,9 @@
 
 #include "pch.h"
 #include "test.h"
-#include "util_simd.h"
+#include "libdesktop/util_simd.h"
 #include "av_format.h"
-#include "render_software.h"
+#include "libdesktop/render_software.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "ui_elements.h"
@@ -951,48 +951,6 @@ static void should_rotate133()
 	expected->width = 576;
 	expected->height = 384;
 	assert_metadata(*expected, *actual);
-}
-
-// Guards the drawn mark against silent drift. The same artwork is drawn independently by
-// tools/generate_store_assets.py for app.ico and the Store assets.
-static void should_draw_the_logo()
-{
-	for (const auto size : {16, 32, 44, 150, 256})
-	{
-		const auto s = std::make_shared<ui::surface>();
-		assert_equal(true, s->alloc(size, size, ui::texture_format::ARGB), "logo surface allocated");
-		s->fill_logo();
-
-		const auto last = size - 1;
-		assert_equal(0u, s->get_pixel(0, 0), "logo corner is transparent");
-		assert_equal(0u, s->get_pixel(last, last), "logo opposite corner is transparent");
-
-		// The four squares sit on the vertical and horizontal axes through the centre.
-		const auto mid = size / 2;
-		const auto near_edge = std::max(1, size / 8);
-		const auto top = s->get_pixel(mid, near_edge);
-		const auto bottom = s->get_pixel(mid, last - near_edge);
-		const auto left = s->get_pixel(near_edge, mid);
-		const auto right = s->get_pixel(last - near_edge, mid);
-
-		// Surface pixels are stored blue first, so ui::get_r reads the blue channel here.
-		const auto red_of = [](const ui::color32 c) { return ui::get_b(c); };
-		const auto green_of = [](const ui::color32 c) { return ui::get_g(c); };
-		const auto blue_of = [](const ui::color32 c) { return ui::get_r(c); };
-
-		assert_equal(true, green_of(top) > red_of(top) && green_of(top) > blue_of(top), "logo top is green");
-		assert_equal(true, red_of(bottom) > green_of(bottom) && red_of(bottom) > blue_of(bottom),
-		             "logo bottom is red");
-		assert_equal(true, red_of(left) > 0x80 && green_of(left) > 0x60 && blue_of(left) < 0x40,
-		             "logo left is yellow");
-		assert_equal(true, blue_of(right) > red_of(right) && blue_of(right) > green_of(right),
-		             "logo right is blue");
-
-		for (const auto c : {top, bottom, left, right})
-		{
-			assert_equal(255u, ui::get_a(c), "logo square centres are opaque");
-		}
-	}
 }
 
 // The neutral parameter set is the one a picture with no edits is rendered through, so any drift in
@@ -1954,7 +1912,6 @@ void register_render_tests(view_state& state, test_registry& tests)
 	tests.add("Should rotate"s, should_rotate);
 	tests.add("Should not CPU transform planar surfaces"s, should_not_cpu_transform_planar_surfaces);
 	tests.add("Should rotate 133"s, should_rotate133);
-	tests.add("Should draw the logo"s, should_draw_the_logo);
 	tests.add("Should render the globe"s, should_render_the_globe);
 	tests.add("Should render a projected panorama"s, should_render_a_projected_panorama);
 }

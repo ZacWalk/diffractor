@@ -13,6 +13,30 @@
 
 #include <variant>
 
+// The groups the app's commands fall in, which a ui::command carries for it; none comes first, so a
+// value-initialized group is none.
+enum class command_group
+{
+	none,
+	navigation,
+	selection,
+	open,
+	tools,
+	rate_flag,
+	options,
+	media_playback,
+	help,
+	file_management,
+	group_by,
+	sort_by,
+	edit_item
+};
+
+// The application's tree of view elements (ui_elements.h), named here for the headers that pass one
+// around. The UI layer knows one only as a bubble's content.
+class view_elements;
+using view_elements_ptr = std::shared_ptr<view_elements>;
+
 enum class view_type
 {
 	none,

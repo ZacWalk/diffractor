@@ -636,7 +636,7 @@ static std::atomic<int> g_hw_decode_sessions{0};
 ////////////////////////////////////////////////
 ////////////////////////////////////////////////
 
-class av_frame
+class av_frame final : public ui::video_frame
 {
 public:
 	double time = 0.0;
@@ -709,6 +709,18 @@ public:
 	{
 		if (surface) return surface->empty();
 		return frm->width == 0 || frm->height == 0 || frm->data[0] == nullptr;
+	}
+
+	ui::const_surface_ptr prepared_surface() const override
+	{
+		return surface;
+	}
+
+	ui::video_picture picture() const override;
+
+	void request_cpu_frames() const override
+	{
+		av_request_cpu_video_frames();
 	}
 
 private:
@@ -921,20 +933,20 @@ static ui::color_space av_frame_color_space(const AVFrame& frm)
 	}
 }
 
-av_frame_d3d av_get_d3d_info(const av_frame_ptr& frame_in)
+ui::video_picture av_frame::picture() const
 {
-	av_frame_d3d result;
-	result.width = frame_in->frm->width;
-	result.height = frame_in->frm->height;
-	result.orientation = frame_in->orientation;
-	result.color_space = av_frame_color_space(*frame_in->frm);
-	result.tone_map = frame_in->tone_map;
+	ui::video_picture result;
+	result.width = frm->width;
+	result.height = frm->height;
+	result.orientation = orientation;
+	result.color_space = av_frame_color_space(*frm);
+	result.tone_map = tone_map;
 
-	if (frame_in->frm->format == AV_PIX_FMT_D3D11)
+	if (frm->format == AV_PIX_FMT_D3D11)
 	{
-		result.ctx = std::bit_cast<AVHWFramesContext*>(frame_in->frm->hw_frames_ctx->data);
-		result.tex = std::bit_cast<ID3D11Texture2D*>(frame_in->frm->data[0]);
-		result.tex_index = std::bit_cast<uintptr_t>(frame_in->frm->data[1]);
+		result.texture = frm->data[0];
+		result.index = std::bit_cast<uintptr_t>(frm->data[1]);
+		av_platform_decode_lock(std::bit_cast<const AVHWFramesContext*>(frm->hw_frames_ctx->data), result);
 	}
 
 	return result;
@@ -1051,16 +1063,48 @@ channel_layout_ptr av_get_def_channel_layout(const int num_channels)
 	return dst;
 }
 
-channel_layout_ptr av_get_channel_layout(const uint64_t mask, const int fallback_channels)
+// A frame holds the endpoint's own count of channels whatever its speaker mask names: WAVEFORMATEXTENSIBLE
+// ignores speakers named past that count and leaves channels beyond the ones named unplaced. So the
+// mask places the channels where it names as many speakers, its first ones where it names more, and
+// the default layout places them where it names fewer. Audio mixed for the mask's count instead would
+// fill more of the endpoint's buffer than it hands out.
+channel_layout_ptr av_get_channel_layout(uint64_t mask, const int channels)
 {
+	while (mask && std::popcount(mask) > channels) mask &= ~std::bit_floor(mask);
+
 	auto dst = make_channel_layout();
 
-	if (mask == 0 || av_channel_layout_from_mask(dst.get(), mask) < 0)
+	if (mask == 0 || std::popcount(mask) != channels || av_channel_layout_from_mask(dst.get(), mask) < 0)
 	{
-		av_channel_layout_default(dst.get(), fallback_channels);
+		av_channel_layout_default(dst.get(), channels);
 	}
 
 	return dst;
+}
+
+audio_info_t av_audio_info(const platform::audio_output_format& format)
+{
+	audio_info_t result;
+	result.sample_rate = format.sample_rate;
+
+	switch (format.sample_format)
+	{
+	case platform::audio_sample_format::float32:
+		result.sample_fmt = prop::audio_sample_t::signed_float;
+		break;
+	case platform::audio_sample_format::int16:
+		result.sample_fmt = prop::audio_sample_t::signed_16bit;
+		break;
+	case platform::audio_sample_format::int32:
+		result.sample_fmt = prop::audio_sample_t::signed_32bit;
+		break;
+	case platform::audio_sample_format::none:
+		result.sample_fmt = prop::audio_sample_t::none;
+		break;
+	}
+
+	result.channel_layout = av_get_channel_layout(format.channel_mask, static_cast<int>(format.channels));
+	return result;
 }
 
 static channel_layout_ptr av_copy_to_ptr(const AVChannelLayout& src)
@@ -4100,8 +4144,16 @@ bool av_scaler::convert_frame(const AVFrame& frame, const ui::color_space cs, co
 
 bool av_scaler::scale_surface(const av_frame_ptr& frame_in, const ui::surface_ptr& surface_out)
 {
+	return scale_surface(static_cast<const ui::video_frame&>(*frame_in), surface_out);
+}
+
+bool av_scaler::scale_surface(const ui::video_frame& source, const ui::surface_ptr& surface_out)
+{
+	// The application hands the renderers only its own frames, so this is one of them.
+	const auto& frame_in = static_cast<const av_frame&>(source);
+
 	// A picture the decode thread already prepared needs copying, or converting out of its planes.
-	if (const auto& prepared = frame_in->surface)
+	if (const auto& prepared = frame_in.surface)
 	{
 		if (!ui::is_packed(prepared->format())) return convert_yuv_surface(*prepared, surface_out);
 		if (!surface_out->alloc(prepared->dimensions(), prepared->format(), prepared->orientation(), prepared->time()))
@@ -4119,7 +4171,7 @@ bool av_scaler::scale_surface(const av_frame_ptr& frame_in, const ui::surface_pt
 		return true;
 	}
 
-	const AVFrame* frame = frame_in->frm;
+	const AVFrame* frame = frame_in.frm;
 	AVFrame* downloaded = nullptr;
 	const df::scope_exit free_downloaded([&downloaded] { av_frame_free(&downloaded); });
 
@@ -4130,7 +4182,7 @@ bool av_scaler::scale_surface(const av_frame_ptr& frame_in, const ui::surface_pt
 		frame = downloaded;
 	}
 
-	return convert_frame(*frame, av_frame_color_space(*frame), surface_out, frame_in->time, frame_in->orientation);
+	return convert_frame(*frame, av_frame_color_space(*frame), surface_out, frame_in.time, frame_in.orientation);
 }
 
 // NV12 and P010 are one allocation: the full-height luma plane, then the half-height interleaved
@@ -4466,6 +4518,11 @@ void av_request_cpu_video_frames()
 ui::const_surface_ptr av_frame_surface(const av_frame_ptr& f)
 {
 	return f ? f->surface : nullptr;
+}
+
+ui::video_frame_ptr av_video_frame(const av_frame_ptr& f)
+{
+	return f;
 }
 
 void av_format_decoder::prepare_for_presentation(av_frame& frame)

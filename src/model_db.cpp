@@ -408,7 +408,7 @@ void database::open(const df::folder_path folder, const std::string_view file_na
 
 static std::string load_create_sql()
 {
-	auto sql = load_resource(platform::resource_item::sql);
+	auto sql = load_app_resource(app_resource::sql);
 	return std::string(std::bit_cast<const char*>(sql.data()), sql.size());
 }
 

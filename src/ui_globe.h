@@ -13,7 +13,7 @@
 #pragma once
 
 #include "model_location.h"
-#include "ui.h"
+#include "libdesktop/ui.h"
 
 // For M_PI on some compilers, otherwise define it manually.
 #ifndef M_PI

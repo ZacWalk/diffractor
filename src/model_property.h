@@ -528,23 +528,6 @@ namespace prop
 	double closest_fstop(double fs);
 	int64_t exp_round(double d);
 
-	struct size_rounded
-	{
-		std::string_view unit;
-		std::string_view short_unit;
-		uint64_t n = 0;
-		uint64_t dec = 0;
-		uint64_t div = 0;
-		int rounded = 0;
-
-		uint64_t total() const
-		{
-			return n * div + dec * div / 10;
-		}
-	};
-
-	size_rounded round_size(uint64_t s);
-
 	std::string format_f_num(double d);
 	std::string format_date(df::date_t d);
 
@@ -560,7 +543,6 @@ namespace prop
 	std::string format_audio_sample_rate(uint16_t v);
 	std::string format_audio_sample_type(audio_sample_t v);
 	std::string format_audio_channels(int v);
-	std::string format_size(const df::file_size& s);
 	std::string format_magnitude(const df::file_size& s);
 	std::string format_streams(int s);
 

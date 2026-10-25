@@ -394,7 +394,7 @@ public:
 						const auto is_copy = !keys.shift && (keys.control || desc.preferred_drop_effect ==
 							platform::drop_effect::copy);
 
-						update_status(is_copy ? tt.menu_copy : tt.menu_move,
+						update_status(is_copy ? tt.platform_text.menu_copy : tt.menu_move,
 						              std::format("{}\n{}\n{}", desc.first_name, tt.copy_to_join, dest_path.text()));
 
 						result = is_copy ? platform::drop_effect::copy : platform::drop_effect::move;
@@ -823,6 +823,9 @@ public:
 	void focus_view() override;
 	bool can_exit() override;
 	bool pre_init() override;
+	bool parse_command_line(std::string_view command_line_text) override;
+	int run_console_mode() override;
+	bool wants_gpu() const override;
 	void start_workers();
 	void start_index_workers();
 	bool claim_worker_start(std::atomic_bool& started);

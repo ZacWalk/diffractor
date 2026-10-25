@@ -11,7 +11,7 @@
 // prepared for sharing.
 
 #include "pch.h"
-#include "util_strings.h"
+#include "libdesktop/util_strings.h"
 #include "model_display.h"
 #include "model_db.h"
 #include "app_command_status.h"
@@ -1374,12 +1374,12 @@ std::string sync_invalid_message(const sync_analysis_result& analysis)
 	case sync_invalid_reason::empty_paths:
 	case sync_invalid_reason::overlapping_paths:
 	case sync_invalid_reason::ambiguous_local_root:
-		return std::string(tt.error_invalid_files.sv());
+		return std::string(tt.platform_text.error_invalid_files.sv());
 	case sync_invalid_reason::none:
 		break;
 	}
 
-	return std::string(tt.error_cannot_continue.sv());
+	return std::string(tt.platform_text.error_cannot_continue.sv());
 }
 
 sync_analysis_result sync_analysis(const df::index_roots& local_roots, const df::folder_path remote_path,

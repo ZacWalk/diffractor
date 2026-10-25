@@ -29,7 +29,7 @@
 
 static constexpr auto docs_url = "https://www.diffractor.com/docs";
 static constexpr auto releases_url = "https://www.diffractor.com/releases";
-static constexpr auto support_url = "https://github.com/diffractor/diffractor/issues";
+static constexpr auto support_url = "https://github.com/ZacWalk/diffractor/issues";
 static constexpr auto donate_url = "https://www.paypal.com/donate/?hosted_button_id=HX5NRS9JGKLRL";
 
 bool should_refresh_advanced_search_hover_thumbnail(const bool has_surface, const bool has_thumbnail,
@@ -844,7 +844,7 @@ void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent)
 
 		s.queue_async(async_queue::web, [download_complete]
 		{
-			platform::download_and_verify(download_complete);
+			platform::download_and_verify("diffractor.com"sv, "diffractor-setup.exe"sv, download_complete);
 		});
 
 		if (dlg->show_modal(controls) == ui::close_result::ok)
@@ -1414,7 +1414,7 @@ static std::string format_index_text(const view_state& s)
 	const auto file_types = s.item_index.file_types();
 	const auto total = file_types.total_items();
 	const auto num = platform::format_number(str::to_string(total.count));
-	const auto database_size = prop::format_size(s.item_index.stats.database_size);
+	const auto database_size = df::format_size(s.item_index.stats.database_size);
 	const auto text = str_format(tt.index_size_fmt.sv(), database_size, num);
 	return text;
 }

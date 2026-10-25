@@ -6,85 +6,20 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Precompiled header file. Includes common system headers and core utility headers
-// that are used throughout the application to improve build performance.
+// Purpose: Precompiled header file. Includes libdesktop's system module - the standard library, the
+// foundation and the OS services - and the application's core headers, which every file uses.
 
 #pragma once
 
-#include "platform_compat.h"
+#include "libdesktop/system.h"
 
-#include <cstdint>
-#include <climits>
-#include <cmath>
-#include <ctime>
-#include <clocale>
-#include <cassert>
-#include <cctype>
-#include <cwctype>
-#include <cinttypes>
-#include <cstring>
-
-#include <bit>
-#include <new>
-#include <string>
-#include <string_view>
-#include <charconv>
-#include <atomic>
-#include <memory>
-#include <functional>
-#include <vector>
-#include <array>
-#include <map>
-#include <set>
-#include <unordered_set>
-#include <unordered_map>
-#include <tuple>
-#include <algorithm>
-#include <queue>
-#include <iterator>
-#include <limits>
-#include <locale>
-#include <sstream>
-#include <fstream>
-#include <regex>
-#include <numeric>
-#include <any>
-#include <iomanip>
-#include <optional>
-#include <span>
-#include <variant>
-#include <format>
-#include <filesystem>
-
-#include <thread>
-#include <mutex>
-
-using namespace std::literals;
-
-// glibc's <cmath> defines M_PI as a macro; MSVC only does under _USE_MATH_DEFINES.
-#ifndef M_PI
-constexpr double M_PI = 3.141592653589793238463;
-#endif
-constexpr float M_PIF = 3.14159265358979f;
-// std::numbers c++ 20
-
-#include "util.h"
-#include "util_geometry.h"
-#include "util_strings.h"
-#include "util_path.h"
-#include "app_environment.h"
-#include "platform.h"
-#include "util_date.h"
-#include "util_selector.h"
-#include "util_file.h"
+#include "libdesktop/platform_render.h"
 #include "util_interfaces.h"
-#include "util_json.h"
-#include "util_map.h"
-
+#include "app_version.h"
+#include "app_perf.h"
+#include "crypto.h"
 #include "app_icons.h"
-#include "ui.h"
+#include "app_resources.h"
+#include "libdesktop/ui.h"
+#include "app_colors.h"
 #include "app_settings.h"
-
-extern const std::string_view s_app_name;
-extern const std::string_view s_app_version;
-extern const std::string_view g_app_build;

@@ -46,7 +46,7 @@ static void should_create_database_schema()
 		                                        raw_db ? sqlite3_errmsg(raw_db.get()) : "out of memory"));
 	}
 
-	const auto resource = load_resource(platform::resource_item::sql);
+	const auto resource = load_app_resource(app_resource::sql);
 	const std::string schema(reinterpret_cast<const char*>(resource.data()), resource.size());
 	if (sqlite3_exec(raw_db.get(), schema.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
 	{
@@ -152,7 +152,7 @@ static void should_keep_rollback_journal_schema_initialization()
 	assert_equal(SQLITE_OK, database_test_seams::set_journal_mode(raw_db.get(), "DELETE"sv),
 	             "rollback journal can be selected");
 
-	const auto resource = load_resource(platform::resource_item::sql);
+	const auto resource = load_app_resource(app_resource::sql);
 	const std::string schema(reinterpret_cast<const char*>(resource.data()), resource.size());
 	if (sqlite3_exec(raw_db.get(), schema.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
 	{
@@ -223,7 +223,7 @@ static void should_keep_rollback_journal_schema_initialization()
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 		assert_equal(SQLITE_OK, database_test_seams::set_journal_mode(raw.get(), "DELETE"sv),
 		             "seed rollback journal");
-		const auto seeded_schema = load_resource(platform::resource_item::sql);
+		const auto seeded_schema = load_app_resource(app_resource::sql);
 		const std::string seeded_sql(reinterpret_cast<const char*>(seeded_schema.data()), seeded_schema.size());
 		if (sqlite3_exec(raw.get(), seeded_sql.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
 			throw test_assert_exception("Failed to seed rollback schema"s);
@@ -309,7 +309,7 @@ static void should_store_item_properties()
 	db.open(index_path.folder(), index_path.file_name_without_extension());
 
 	auto data = blob_from_file(file_path);
-	const auto crc32c_expected = crypto::crc32c(data.data(), data.size());
+	const auto crc32c_expected = df::crc32c(data.data(), data.size());
 
 	auto md = std::make_shared<prop::item_metadata>();
 	md->album = "test"_c;

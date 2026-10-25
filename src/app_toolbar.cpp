@@ -316,7 +316,7 @@ std::string format_items_totals(const df::file_group_histogram& summary, const b
 
 	if (total_items.count > 0)
 	{
-		return std::format("{}|{}", str::format_count(total_items.count), prop::format_size(total_items.size));
+		return std::format("{}|{}", str::format_count(total_items.count), df::format_size(total_items.size));
 	}
 
 	const auto total_folders = summary.total_folders();
@@ -806,7 +806,7 @@ void app_frame::update_button_state(const bool resize)
 
 	// Analyze refuses only because a path is missing, so it names the same cause the analysis used
 	// to report after the fact. While a task is running the refusal is the task, not the paths.
-	const auto analyze_reason = view_processing ? std::string{} : std::string(tt.error_invalid_files.sv());
+	const auto analyze_reason = view_processing ? std::string{} : std::string(tt.platform_text.error_invalid_files.sv());
 
 	for (const auto id : {commands::import_analyze, commands::sync_analyze})
 	{

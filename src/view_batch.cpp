@@ -923,7 +923,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		controls.emplace_back(std::make_shared<text_element>(tt.destination_folder));
 		controls.emplace_back(std::make_shared<ui::folder_picker_control>(frame, setting.write_folder, false,
 		                                                                  [this](std::string_view) { refresh(); }));
-		auto jpeg = std::make_shared<ui::check_control>(frame, tt.jpeg_best, setting.convert.to_jpeg, true, false,
+		auto jpeg = std::make_shared<ui::check_control>(frame, tt.platform_text.jpeg_best, setting.convert.to_jpeg, true, false,
 		                                                [this](const bool checked)
 		                                                {
 			                                                if (checked) setting.convert.to_png = setting.convert.
@@ -938,7 +938,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		                                                       100, [this] { refresh_encode_settings(); }));
 		jpeg->child(jpeg_options);
 		controls.emplace_back(jpeg);
-		controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.png_best, setting.convert.to_png, true,
+		controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.platform_text.png_best, setting.convert.to_png, true,
 		                                                          false,
 		                                                          [this](const bool checked)
 		                                                          {
@@ -947,7 +947,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 			                                                          refresh();
 		                                                          },
 		                                                          ui::radio_group_format));
-		auto webp = std::make_shared<ui::check_control>(frame, tt.webp_best, setting.convert.to_webp, true, false,
+		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp, true, false,
 		                                                [this](const bool checked)
 		                                                {
 			                                                if (checked) setting.convert.to_jpeg = setting.convert.

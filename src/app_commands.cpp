@@ -195,10 +195,14 @@ static void burn_command_invoke(view_state& s, const ui::control_frame_ptr& pare
 			std::make_shared<ui::ok_cancel_control>(dlg->_frame, tt.burn_stage),
 		};
 
-		if (dlg->show_modal(controls) == ui::close_result::ok &&
-			!platform::burn_to_cd(items.file_paths(true), items.folder_paths()))
+		if (dlg->show_modal(controls) == ui::close_result::ok)
 		{
-			dlg->show_message(icon_index::error, title, tt.burn_failed);
+			record_feature_use(features::burn_to_disk);
+
+			if (!platform::burn_to_cd(items.file_paths(true), items.folder_paths()))
+			{
+				dlg->show_message(icon_index::error, title, tt.burn_failed);
+			}
 		}
 	}
 }
@@ -305,7 +309,7 @@ static void edit_paste_invoke(view_state& s, const ui::control_frame_ptr& parent
 		auto bitmap = ui_owned(s._async, data->capture_bitmap());
 		if (!bitmap)
 		{
-			result.error_message = tt.error_save_image;
+			result.error_message = tt.platform_text.error_save_image;
 		}
 		else
 		{
@@ -336,7 +340,7 @@ static void edit_paste_invoke(view_state& s, const ui::control_frame_ptr& parent
 				else
 				{
 					results->abort(str::is_empty(save_result.error_message)
-						               ? std::string(tt.error_unknown)
+						               ? std::string(tt.platform_text.error_unknown)
 						               : save_result.error_message);
 				}
 			});
@@ -349,7 +353,7 @@ static void edit_paste_invoke(view_state& s, const ui::control_frame_ptr& parent
 	if (result.failed())
 	{
 		dlg->show_message(icon_index::error, tt.command_edit_paste,
-		                  str::is_empty(result.error_message) ? tt.error_unknown.sv() : result.error_message);
+		                  str::is_empty(result.error_message) ? tt.platform_text.error_unknown.sv() : result.error_message);
 	}
 	else
 	{
@@ -620,7 +624,7 @@ static void capture_invoke(view_state& s, const ui::control_frame_ptr& parent)
 				if (!ff.save(save_path, lr))
 				{
 					const auto dlg = make_dlg(parent);
-					dlg->show_message(icon_index::error, tt.command_capture, tt.error_save_image);
+					dlg->show_message(icon_index::error, tt.command_capture, tt.platform_text.error_save_image);
 				}
 			}
 		}
@@ -788,7 +792,7 @@ static void cut_copy_invoke(const view_state& s, const ui::control_frame_ptr& pa
 
 		s.capture_display([item_paths, folder_paths, is_move = is_move](const file_load_result& loaded)
 		{
-			platform::set_clipboard(item_paths, folder_paths, loaded, is_move);
+			platform::set_clipboard(item_paths, folder_paths, clipboard_image_of(loaded), is_move);
 		});
 	}
 }
@@ -1819,7 +1823,7 @@ void app_frame::initialise_commands()
 	_commands[commands::playback_volume_toggle]->icon_can_change = true;
 	_commands[commands::favorite]->icon_can_change = true;
 
-	_commands[commands::option_highlight_large_items]->clr = ui::style::color::rank_background;
+	_commands[commands::option_highlight_large_items]->clr = app_colors::rank_background;
 	_commands[commands::rate_rejected]->clr = color_rate_rejected;
 	_commands[commands::label_approved]->clr = color_label_approved;
 	_commands[commands::label_to_do]->clr = color_label_to_do;
@@ -2603,7 +2607,7 @@ void app_frame::initialise_commands()
 			find_command(commands::playback_repeat_none),
 		};
 
-		const auto devices = list_audio_playback_devices();
+		const auto devices = platform::list_audio_playback_devices();
 
 		if (!devices.empty())
 		{

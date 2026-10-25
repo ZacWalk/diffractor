@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include "util_kdtree.h"
+#include "libdesktop/util_kdtree.h"
 #include "model_location.h"
 
 class database;

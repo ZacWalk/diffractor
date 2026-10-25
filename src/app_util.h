@@ -73,7 +73,7 @@ public:
 		{
 			if (std::uncaught_exceptions() > _uncaught_exceptions)
 			{
-				_r->abort(tt.error_cannot_continue);
+				_r->abort(tt.platform_text.error_cannot_continue);
 			}
 			else
 			{

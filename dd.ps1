@@ -416,6 +416,63 @@ function Invoke-SignTool {
     Start-Sleep -Seconds 1
 }
 
+# A file fetched at the release cmake/dd-dependencies.json pins, checked by SHA-256, into tmp/tools/.
+# Kept there between runs, and fetched again only when what is there does not match its pin.
+function Get-PinnedFile {
+    param(
+        [string]$Name,
+        [string]$Destination
+    )
+
+    $pin = (Get-Content (Join-Path $ScriptDir "cmake\dd-dependencies.json") -Raw | ConvertFrom-Json).dependencies.$Name
+    if (-not $pin) {
+        Write-Host "Error: $Name has no pin in cmake/dd-dependencies.json" -ForegroundColor Red
+        exit 1
+    }
+
+    if ((Test-Path $Destination) -and (Get-FileHash $Destination -Algorithm SHA256).Hash -eq $pin.sha256) {
+        return $Destination
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path $Destination) | Out-Null
+    $ProgressPreference = "SilentlyContinue"
+    Invoke-WebRequest -Uri $pin.url -OutFile $Destination -UseBasicParsing
+    $hash = (Get-FileHash $Destination -Algorithm SHA256).Hash
+
+    if ($hash -ne $pin.sha256) {
+        Remove-Item $Destination -Force
+        Write-Host "Error: $Name from $($pin.url) has SHA-256 $hash, not the one pinned" -ForegroundColor Red
+        exit 1
+    }
+
+    return $Destination
+}
+
+# 7-Zip's standalone console from the release the pins name: 7zr.exe, which reads only .7z, unpacks
+# the release's extra archive, whose x86 7za.exe and its two DLLs are what tools/ once carried.
+function Get-SevenZip {
+    $dir = Join-Path $ScriptDir "tmp\tools\7zip"
+    $extra = Get-PinnedFile -Name "7zip-extra" -Destination (Join-Path $dir "7z-extra.7z")
+    $unpacked = Join-Path $dir "extra"
+    $stamp = Join-Path $unpacked "pinned.sha256"
+    $hash = (Get-FileHash $extra -Algorithm SHA256).Hash
+
+    if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $hash) {
+        $sevenZr = Get-PinnedFile -Name "7zr" -Destination (Join-Path $dir "7zr.exe")
+        if (Test-Path $unpacked) { Remove-Item $unpacked -Recurse -Force }
+        & $sevenZr x -y "-o$unpacked" $extra | Out-Null
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: 7zr could not unpack $extra" -ForegroundColor Red
+            exit $LASTEXITCODE
+        }
+
+        Set-Content -Path $stamp -Value $hash -NoNewline
+    }
+
+    return (Join-Path $unpacked "7za.exe")
+}
+
 function Add-ToSymbolStore {
     param(
         [string]$File
@@ -544,14 +601,8 @@ function Build-Desktop {
     # Create portable ZIP
     Write-Host ""
     Write-Host "Creating portable ZIP..." -ForegroundColor Yellow
+    $sevenZip = Get-SevenZip
     Push-Location $SourceFilesDir
-    
-    $sevenZip = Join-Path $ToolsDir "7za.exe"
-    if (-not (Test-Path $sevenZip)) {
-        Write-Host "Error: 7za.exe not found at $sevenZip" -ForegroundColor Red
-        Pop-Location
-        exit 1
-    }
     
     $zipFiles = @(
         "diffractor32.exe",
@@ -1100,7 +1151,7 @@ function New-GitHubRelease {
     Write-Host ""
     Write-Host "Release: $releaseName"
     Write-Host "Tag: $tagName"
-    Write-Host "URL: https://github.com/diffractor/diffractor/releases/tag/$tagName"
+    Write-Host "URL: https://github.com/ZacWalk/diffractor/releases/tag/$tagName"
     Write-Host ""
     Write-Host "Uploaded assets:"
     Write-Host "  - diffractor-setup.exe"
