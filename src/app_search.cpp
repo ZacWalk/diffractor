@@ -6,8 +6,9 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Main application implementation. Handles app initialization, window management,
-// command processing, toolbar/menu creation, and coordinates all background worker threads.
+// Purpose: The address box. Search editing, focus, Enter, Cancel and accepting a prediction, and
+// the auto-complete that ranks history, recent folders, tags, index vocabulary and scoped values
+// (tag:, with:, ...) on the auto-complete worker before publishing them to the prediction list.
 
 #include "pch.h"
 
@@ -69,7 +70,7 @@ public:
 		_state.recent_tags.count_strings(_known, 1);
 		if (!setting.write_folder.empty()) ++_known[str::cache(setting.write_folder)];
 
-		for (const auto ks : prop::key_scopes())
+		for (const auto& ks : prop::key_scopes())
 		{
 			++_known[str::cache(std::format("with:{}", ks.scope))];
 			++_known[str::cache(std::format("without:{}", ks.scope))];
@@ -204,7 +205,14 @@ public:
 				                          // paths may be presented (and normalized) as folders.
 				                          for (const auto& recent : *recents)
 				                          {
-					                          if (df::is_path(recent))
+					                          // Only a folder that is there is presented as a folder; one that has gone
+					                          // stays a recent query. A network location is not checked: confirming
+					                          // it could wait out a dropped share with every prediction queued behind.
+					                          const auto folder_is_offered = df::is_path(recent) &&
+						                          (platform::is_network_location(df::folder_path(recent)) ||
+							                          df::folder_path(recent).exists());
+
+					                          if (folder_is_offered)
 					                          {
 						                          found.emplace_back(
 							                          std::make_shared<folder_match>(*this, df::folder_path(recent)));
@@ -418,9 +426,9 @@ public:
 			                          });
 
 			                          if (found.size() > max_predictions) found.resize(max_predictions);
-			                          _state.queue_ui([this, complete, found, search_generation]
+			                          _state.queue_ui([keep_alive, complete, found, search_generation]
 			                          {
-				                          if (_search_generation == search_generation) complete(found);
+				                          if (keep_alive->_search_generation == search_generation) complete(found);
 			                          });
 		                          });
 	}
@@ -505,7 +513,8 @@ void app_frame::focus_search(const bool has_focus)
 		}
 		else
 		{
-			_search_session.end();
+			const auto outcome = _search_session.end();
+			if (outcome.set_edit_text) set_search_edit_text(outcome.edit_text);
 			hide_search_predictions();
 		}
 	}

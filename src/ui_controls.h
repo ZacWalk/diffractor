@@ -15,8 +15,58 @@
 #include "ui_controllers.h"
 #include "ui_elements.h"
 #include "ui_text_edit.h"
+#include "model_display.h"
+#include "libfiles/commodore.h"
 
 class display_state_t;
+
+inline recti comparison_divider_device_bounds(const recti logical_bounds, const pointi element_offset)
+{
+	return logical_bounds.offset(element_offset);
+}
+
+inline int slider_value_to_track_x(const recti track_bounds, const int value, const int min_value, const int max_value)
+{
+	const auto range = std::max(1, max_value - min_value);
+	const auto clamped = std::clamp(value, min_value, max_value);
+	return track_bounds.left + df::round(static_cast<double>(clamped - min_value) * track_bounds.width() / range);
+}
+
+inline int slider_track_x_to_value(const recti track_bounds, const int x, const int min_value, const int max_value,
+                                   const int current_value)
+{
+	const auto range = std::max(1, max_value - min_value);
+	const auto target = std::clamp(x, track_bounds.left, track_bounds.right);
+	const auto width = std::max(1, track_bounds.width());
+	const auto raw = static_cast<double>(target - track_bounds.left) * range / width;
+	const auto distance_to = [&](const int value)
+	{
+		return std::abs(slider_value_to_track_x(track_bounds, value, min_value, max_value) - target);
+	};
+
+	// Start from the proportional value so both ends stay reachable when several values share a pixel,
+	// and let a neighbour win only when its painted thumb is strictly closer.
+	const auto nearest = std::clamp(min_value + df::round(raw), min_value, max_value);
+	auto best = nearest;
+	auto best_distance = distance_to(nearest);
+
+	for (const auto offset : {-1, 1, -2, 2})
+	{
+		const auto value = nearest + offset;
+		if (value < min_value || value > max_value) continue;
+		const auto distance = distance_to(value);
+		if (distance < best_distance)
+		{
+			best = value;
+			best_distance = distance;
+		}
+	}
+
+	// Pressing the thumb where it is drawn keeps its value.
+	const auto current = std::clamp(current_value, min_value, max_value);
+	if (distance_to(current) <= best_distance) best = current;
+	return best;
+}
 
 class slider_element final : public std::enable_shared_from_this<slider_element>, public view_element
 {
@@ -30,6 +80,17 @@ class slider_element final : public std::enable_shared_from_this<slider_element>
 	const text_t& _tooltip;
 	mutable recti _slider_bounds;
 	mutable recti _track_bounds;
+	mutable int _handle_size = 12;
+	mutable int _track_height = 4;
+
+	static recti calc_track_bounds(const recti slider_bounds, const int handle_size, const int track_height)
+	{
+		const auto center_y = slider_bounds.center().y;
+		return {
+			slider_bounds.left + handle_size / 2, center_y - track_height / 2,
+			slider_bounds.right - handle_size / 2, center_y + (track_height + 1) / 2
+		};
+	}
 
 public:
 	slider_element(std::function<int()> value, std::function<void(int)> changed, const int min, const int max,
@@ -41,26 +102,33 @@ public:
 
 	sizei measure(ui::measure_context& mc, const int width_limit) const override
 	{
+		_handle_size = std::max(mc.padding2, df::round(12 * mc.scale_factor));
+		_track_height = std::max(2, df::round(4 * mc.scale_factor));
 		return {width_limit, std::max(mc.scroll_width, mc.text_line_height(ui::style::font_face::dialog))};
+	}
+
+	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	{
+		view_element::layout(mc, bounds_in, positions);
+		_handle_size = std::max(mc.padding2, df::round(12 * mc.scale_factor));
+		_track_height = std::max(2, df::round(4 * mc.scale_factor));
+		_slider_bounds = bounds;
+		_track_bounds = calc_track_bounds(_slider_bounds, _handle_size, _track_height);
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = _slider_bounds = bounds.offset(element_offset);
-		const auto handle_size = std::max(dc.padding2, df::round(12 * dc.scale_factor));
-		const auto track_height = std::max(2, df::round(4 * dc.scale_factor));
+		_handle_size = std::max(dc.padding2, df::round(12 * dc.scale_factor));
+		_track_height = std::max(2, df::round(4 * dc.scale_factor));
 		const auto center_y = logical_bounds.center().y;
-		_track_bounds = {
-			logical_bounds.left + handle_size / 2, center_y - track_height / 2,
-			logical_bounds.right - handle_size / 2, center_y + (track_height + 1) / 2
-		};
+		_track_bounds = calc_track_bounds(logical_bounds, _handle_size, _track_height);
 
-		const auto range = std::max(1, _max - _min);
 		const auto value = std::clamp(_value(), _min, _max);
-		const auto handle_x = _track_bounds.left +
-			df::round(static_cast<double>(value - _min) * _track_bounds.width() / range);
-		const auto handle_bounds = recti(handle_x - handle_size / 2, center_y - handle_size / 2,
-		                                 handle_x + (handle_size + 1) / 2, center_y + (handle_size + 1) / 2);
+		const auto handle_x = slider_value_to_track_x(_track_bounds, value, _min, _max);
+		const auto handle_bounds = recti(handle_x - _handle_size / 2, center_y - _handle_size / 2,
+		                                 handle_x + (_handle_size + 1) / 2,
+		                                 center_y + (_handle_size + 1) / 2);
 		const auto is_hover = is_style_bit_set(view_element_style::hover);
 		const auto is_tracking = is_style_bit_set(view_element_style::tracking);
 
@@ -74,11 +142,18 @@ public:
 	{
 		const auto was_tracking = is_style_bit_set(view_element_style::tracking);
 		if (was_tracking != ic.tracking) ic.invalidate_view = true;
-		if ((was_tracking || ic.tracking) && !_slider_bounds.is_empty())
+
+		// A controller being torn down says the pointer is gone by passing {-1,-1}. That is a
+		// leave, not a drag off the left edge - and clamping it lands on _min, so a slider or a
+		// scrubber jumped to the start as the control that owned it was replaced, taking the
+		// playback position or the setting with it.
+		const auto pointer_left = ic.loc.x < 0 && ic.loc.y < 0;
+
+		if ((was_tracking || ic.tracking) && !pointer_left && !_slider_bounds.is_empty())
 		{
-			const auto pos = std::clamp(ic.loc.x, _slider_bounds.left, _slider_bounds.right) - _slider_bounds.left;
-			const auto value = _min + df::round(static_cast<double>(pos) * (_max - _min) /
-				std::max(1, _slider_bounds.width()));
+			const auto slider_bounds = bounds.offset(ic.element_offset);
+			const auto track_bounds = calc_track_bounds(slider_bounds, _handle_size, _track_height);
+			const auto value = slider_track_x_to_value(track_bounds, ic.loc.x, _min, _max, _value());
 			if (value != _value()) _changed(value);
 		}
 
@@ -96,9 +171,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -228,10 +303,10 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		_device_bounds = bounds.offset(element_offset);
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 private:
@@ -424,17 +499,28 @@ public:
 		auto text_changed = false;
 
 		if (keys.control && key == 'A') model.select_all();
-		else if (keys.control && key == 'C') platform::set_clipboard(model.selected_text());
+		else if (keys.control && key == 'C')
+		{
+			// Nothing selected is nothing to copy. Sending it anyway replaced whatever the user had
+			// put on the clipboard with an empty string, which is a loss they did not ask for and
+			// cannot undo.
+			const auto selected = model.selected_text();
+			if (!selected.empty()) platform::set_clipboard(selected);
+		}
 		else if (keys.control && key == 'X')
 		{
-			platform::set_clipboard(model.selected_text());
-			model.erase_selection();
-			text_changed = true;
+			const auto selected = model.selected_text();
+			if (!selected.empty())
+			{
+				text_changed = model.cut_to_clipboard([](const std::string_view text)
+				{
+					return platform::set_clipboard(text);
+				});
+			}
 		}
 		else if (keys.control && key == 'V')
 		{
-			model.insert(platform::clipboard_text());
-			text_changed = true;
+			text_changed = model.paste_from_clipboard([] { return platform::clipboard_text(); });
 		}
 		else if (keys.control && key == 'Z')
 		{
@@ -569,7 +655,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 	void dispatch_event(const view_element_event& event) override
 	{
@@ -643,14 +729,21 @@ private:
 		_widths.clear();
 		_widths.reserve(_offsets.size());
 
-		for (const auto offset : _offsets)
+		auto layout = mc.create_text_layout(ui::style::font_face::dialog);
+		if (layout)
 		{
+			layout->update(value, ui::style::text_style::single_line);
+			_widths = layout->offset_xs(_offsets, 10000);
+			if (_widths.size() == _offsets.size()) return;
+		}
+
+		_widths.clear();
+		for (const auto offset : _offsets)
 			_widths.emplace_back(offset == 0
 				                     ? 0
 				                     : mc.measure_text(std::string_view(value).substr(0, offset),
 				                                       ui::style::font_face::dialog,
 				                                       ui::style::text_style::single_line, 10000).cx);
-		}
 	}
 
 	int offset_x(const size_t offset) const
@@ -757,7 +850,7 @@ public:
 
 inline view_controller_ptr edit_element::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                                   const pointi element_offset,
-                                                                  const std::vector<recti>& excluded_bounds)
+                                                                  hit_test_context& ctx)
 {
 	const auto draw_bounds = bounds.offset(element_offset);
 	if (!is_visible() || !draw_bounds.contains(loc)) return nullptr;
@@ -860,15 +953,16 @@ public:
 
 	static int to_rating(const recti rating_bounds, const pointi loc)
 	{
-		// fix - divide by zero!
-		return (loc.x - rating_bounds.left) / std::max(1, rating_bounds.width() / 5) + 1;
+		// Clamped: the cells are whole divisions of the width, so the pixels past the last full cell
+		// - and the inclusive right edge - divided out to a sixth star no rating has.
+		return std::clamp((loc.x - rating_bounds.left) / std::max(1, rating_bounds.width() / 5) + 1, 1, 5);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	void dispatch_event(const view_element_event& event) override;
@@ -956,9 +1050,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	// Clicking the mark that is already set clears it, so every value stays reachable without a
@@ -1018,9 +1112,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -1051,9 +1145,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -1156,9 +1250,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -1232,9 +1326,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -1303,9 +1397,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(static_cast<T&>(*this), host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(static_cast<T&>(*this), host, loc, element_offset, ctx);
 	}
 };
 
@@ -1448,9 +1542,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -1492,7 +1586,7 @@ public:
 			if (c.count > 0)
 			{
 				const auto* const ft = file_group_from_index(i);
-				const auto size = c.size.is_empty() ? std::string{} : prop::format_size(c.size);
+				const auto size = c.size.is_empty() ? std::string{} : df::format_size(c.size);
 				const auto text = ft->display_name(c.count > 1);
 				const auto num = platform::format_number(str::to_string(c.count));
 
@@ -1616,10 +1710,10 @@ public:
 			const auto color = ft->text_color(ui::style::color::view_text);
 			const auto text = i.filename;
 			const auto created = prop::format_date(i.created);
-			const auto compressed_size = is_empty ? std::string{} : prop::format_size(i.compressed_size);
+			const auto compressed_size = is_empty ? std::string{} : df::format_size(i.compressed_size);
 			const auto uncompressed_size = i.uncompressed_size.is_empty()
 				                               ? std::string{}
-				                               : prop::format_size(i.uncompressed_size);
+				                               : df::format_size(i.uncompressed_size);
 
 			_lines.emplace_back(ft->icon, color,
 			                    std::array<std::string, col_count>{text, created, uncompressed_size, compressed_size},
@@ -1733,8 +1827,6 @@ class hex_control final : public std::enable_shared_from_this<hex_control>, publ
 	using hex_source = std::variant<display_state_ptr, std::vector<uint8_t>>;
 	hex_source _source;
 
-	mutable int _x_data = 0;
-	mutable int _x_text = 0;
 	mutable int _bytes_per_line = 0;
 	mutable int _chars_per_line = 0;
 	mutable int _line_height = 0;
@@ -1764,7 +1856,7 @@ public:
 		std::array<char_entry, 256> result;
 
 		const auto cl = ui::lighten(ui::style::color::view_selected_background, 0.22f);
-		const auto ch = ui::lighten(ui::style::color::duplicate_background, 0.66f);
+		const auto ch = ui::lighten(app_colors::duplicate_background, 0.66f);
 
 		for (auto i = 0; i < 256; i++)
 		{
@@ -1950,7 +2042,7 @@ class commodore_disk_control final : public std::enable_shared_from_this<commodo
 	mutable ui::texture_ptr _texture;
 	mutable sizei _tex_extent;
 
-	std::vector<files::d64_item> _lines;
+	libfiles::c64_listing _listing;
 	int _cols = 0;
 	int _rows = 0;
 
@@ -1975,10 +2067,10 @@ public:
 		view_element(style_in),
 		_display(std::move(display))
 	{
-		_lines = files::list_disk(_display->_selected_item_data);
-
-		for (const auto& line : _lines) _cols = std::max(_cols, static_cast<int>(line.screen_codes.size()));
-		_rows = static_cast<int>(_lines.size());
+		const auto& data = _display->_selected_item_data;
+		_listing = libfiles::list_c64_media({data.data(), data.size()});
+		_cols = static_cast<int>(_listing.columns);
+		_rows = static_cast<int>(_listing.rows.size());
 	}
 
 	// texture::is_valid() only answers "not null" - it knows nothing about the device that made it -
@@ -1999,7 +2091,7 @@ public:
 
 		if (!_texture || !_texture->is_valid())
 		{
-			const auto surface = files::c64_listing_surface(_lines, c64_light_blue, c64_blue);
+			const auto surface = files::c64_listing_surface(_listing, c64_light_blue, c64_blue);
 
 			if (surface)
 			{
@@ -2090,9 +2182,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
@@ -2205,6 +2297,28 @@ public:
 		const auto track_bounds = calc_track_bounds(ic.element_offset);
 		if (track_bounds.is_empty()) return;
 
+		const auto is_tracking = is_style_bit_set(view_element_style::tracking);
+
+		// {-1,-1} is a controller saying the pointer is gone: Escape, or the controller being torn
+		// down. That is a leave, not a drag off the left edge - clamping it lands on the start, so a
+		// scrub cancelled that way sent playback back to the beginning. A scrub still in progress
+		// ends where it is, which also takes the player out of scrubbing.
+		if (ic.loc.x < 0 && ic.loc.y < 0)
+		{
+			if (is_tracking && !ic.tracking)
+			{
+				set_style_bit(view_element_style::tracking, false);
+				ic.invalidate_view = true;
+
+				if (_display->_session)
+				{
+					_player->seek(_display->_session, _display->media_pos(), false);
+				}
+			}
+
+			return;
+		}
+
 		const auto scrubber_width = track_bounds.width();
 		const auto media_start = _display->media_start();
 		const auto media_end = _display->media_end();
@@ -2217,8 +2331,6 @@ public:
 			_display->load_seek_preview(scrubber_pos, scrubber_width,
 			                            [d = ui_owned(_display->_async, _display)] { d->preview_loaded(); });
 		}
-
-		const auto is_tracking = is_style_bit_set(view_element_style::tracking);
 
 		if (is_tracking || ic.tracking || is_tracking != ic.tracking)
 		{
@@ -2260,10 +2372,10 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		if (calc_track_bounds(element_offset).is_empty()) return {};
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -2359,14 +2471,14 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		view_controller_ptr result;
 		for (const auto& e : elements)
 		{
 			if (e.visible)
 			{
-				result = e.v->controller_from_location(host, loc, element_offset, {});
+				result = e.v->controller_from_location(host, loc, element_offset, ctx);
 				if (result) break;
 			}
 		}
@@ -2712,7 +2824,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 	friend class zoom_controller;
 	friend class pan_controller;
@@ -2811,7 +2923,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 	friend class zoom_controller;
 	friend class pan_controller;
@@ -2920,7 +3032,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 	friend class zoom_controller;
 	friend class pan_controller;
@@ -3148,7 +3260,7 @@ public:
 			else if (!_display->is_zoom_mode())
 			{
 				// Only the two-pane arrangement has a divider to grab.
-				auto rr = _display->_compare_bounds.offset(element_offset);
+				auto rr = comparison_divider_device_bounds(_display->_compare_bounds, element_offset);
 				rr.left = (rr.left + rr.right) / 2;
 				rr.right = rr.left + 1;
 				dc.draw_rect(rr, ui::color(ui::average(dc.colors.background, 0), dc.colors.alpha));
@@ -3336,7 +3448,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 	void compare(const int x, const bool tracking) const
 	{
@@ -3552,7 +3664,7 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		const auto badge = _pin_badge_bounds.offset(element_offset);
 
@@ -3641,9 +3753,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return _child->controller_from_location(host, loc, element_offset, excluded_bounds);
+		return _child->controller_from_location(host, loc, element_offset, ctx);
 	}
 
 	sizei measure(ui::measure_context& mc, const int width_limit) const override
@@ -3718,9 +3830,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return _child->controller_from_location(host, loc, element_offset, excluded_bounds);
+		return _child->controller_from_location(host, loc, element_offset, ctx);
 	}
 
 	sizei measure(ui::measure_context& mc, const int width_limit) const override

@@ -1,6 +1,0 @@
-[submodule "third-party/FFmpeg"]
-	path = third-party/FFmpeg
-	url = https://github.com/diffractor/FFmpeg.git
-[submodule "third-party/xmp"]
-	path = third-party/xmp
-	url = https://github.com/diffractor/XMP-Toolkit-SDK.git

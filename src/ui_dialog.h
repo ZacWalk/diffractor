@@ -13,11 +13,11 @@
 
 #include <utility>
 
-#include "ui.h"
+#include "libdesktop/ui.h"
 #include "ui_elements.h"
 #include "files.h"
 #include "app_text.h"
-
+#include "util_spell.h"
 
 namespace ui
 {
@@ -90,17 +90,25 @@ namespace ui
 		int _min;
 		int _max;
 		std::function<void()> _changed;
+		// Once a change is complete: the thumb let go, a key step, a click on the track. The values a
+		// drag passes through arrive first through `_changed`, so an owner keeping history can make one
+		// gesture one step.
+		std::function<void()> _settled;
+		bool _showing_bound_value = false;
 
 	public:
 		slider_control(const control_frame_ptr& h, const std::string_view label, int& v, const int min, const int max,
-		               std::function<void()> changed = {}) :
-			_label(label), _val(v), _min(min), _max(max), _changed(std::move(changed))
+		               std::function<void()> changed = {}, std::function<void()> settled = {}) :
+			_label(label), _val(v), _min(min), _max(max), _changed(std::move(changed)), _settled(std::move(settled))
 		{
 			edit_styles style;
 			style.number = true;
 			style.align_center = true;
 			_edit = h->create_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
-			_slider = h->create_slider(min, max, [this](const int pos, bool is_tracking) { slider_change(pos); });
+			_slider = h->create_slider(min, max, [this](const int pos, const bool is_tracking)
+			{
+				slider_change(pos, is_tracking);
+			});
 
 			update_slider();
 			update_edit();
@@ -180,18 +188,32 @@ namespace ui
 			}
 		}
 
+		// Shows the bound value again after its owner changed it directly, as an undo or a
+		// reloaded document does. The native edit reports text written from code as typed, so the
+		// change callback is muted while the value is written: an echo is not an edit.
+		void show_bound_value()
+		{
+			_showing_bound_value = true;
+			update_slider();
+			update_edit();
+			_showing_bound_value = false;
+		}
+
 		void edit_change(const std::string_view text)
 		{
+			if (_showing_bound_value) return;
+
 			_val = str::to_int(text);
 			update_slider();
 			if (_changed) _changed();
 		}
 
-		void slider_change(const int pos)
+		void slider_change(const int pos, const bool is_tracking)
 		{
 			_val = pos;
 			update_edit();
 			if (_changed) _changed();
+			if (!is_tracking && _settled) _settled();
 		}
 	};
 
@@ -476,7 +498,7 @@ namespace ui
 			style.vertical_scroll = true;
 			style.multi_line = true;
 			style.want_return = wants_return;
-			style.spelling = true;
+			style.spelling = &spell_dictionary();
 			_edit = h->create_edit(style, v, [this](const std::string_view text)
 			{
 				_text = text;
@@ -1180,10 +1202,10 @@ namespace ui
 		mutable texture_ptr _tex;
 
 	public:
-		image_control(const control_frame_ptr& h, const platform::resource_item i)
+		image_control(const control_frame_ptr& h, const app_resource i)
 		{
 			files ff;
-			_image = ff.image_to_surface(load_resource(i));
+			_image = ff.image_to_surface(load_app_resource(i));
 		}
 
 		~image_control() override
@@ -1218,6 +1240,7 @@ namespace ui
 	{
 		const_surface_ptr _before;
 		const_surface_ptr _after;
+		simple_transform _after_transform = simple_transform::none;
 
 		mutable texture_ptr _tex_before;
 		mutable texture_ptr _tex_after;
@@ -1230,12 +1253,30 @@ namespace ui
 		{
 		}
 
+		before_after_control(const_surface_ptr before, const simple_transform after_transform) : _before(before),
+			_after(std::move(before)), _after_transform(after_transform)
+		{
+		}
+
+		static sizei transform_dimensions(sizei dims, const simple_transform t)
+		{
+			if (t == simple_transform::rot_90 || t == simple_transform::rot_270) std::swap(dims.cx, dims.cy);
+			return dims;
+		}
+
+		static simple_transform preview_destination_transform(const simple_transform t)
+		{
+			if (t == simple_transform::rot_90) return simple_transform::rot_270;
+			if (t == simple_transform::rot_270) return simple_transform::rot_90;
+			return t;
+		}
+
 		sizei measure(measure_context& mc, const int cx) const override
 		{
 			_text_height = mc.text_line_height(style::font_face::dialog);
 
 			const auto s1 = scale_dimensions(_before->dimensions(), cx / 2);
-			const auto s2 = scale_dimensions(_after->dimensions(), cx / 2);
+			const auto s2 = scale_dimensions(transform_dimensions(_after->dimensions(), _after_transform), cx / 2);
 			return {cx, std::max(s1.cy, s2.cy) + _text_height};
 		}
 
@@ -1277,7 +1318,17 @@ namespace ui
 
 			auto r2 = rImage;
 			r2.left = center.x + 2;
-			if (_tex_after) dc.draw_texture(_tex_after, scale_dimensions(_tex_after->dimensions(), r2));
+			if (_tex_after)
+			{
+				const auto after_bounds = scale_dimensions(transform_dimensions(_tex_after->dimensions(),
+				                                                               _after_transform), r2);
+				const auto destination_transform = preview_destination_transform(_after_transform);
+				const auto after_destination = destination_transform == simple_transform::none
+					                               ? quadd(after_bounds)
+					                               : quadd(after_bounds).transform(destination_transform);
+				dc.draw_texture(_tex_after, after_destination, recti({}, _tex_after->dimensions()), dc.colors.alpha,
+				                texture_sampler::bilinear);
+			}
 
 			r1.top -= _text_height;
 			r2.top -= _text_height;
@@ -1631,7 +1682,6 @@ namespace ui
 		{
 			const auto scroll_offset = element_offset - _scroller.scroll_offset();
 			const auto show_scroll = can_scroll && _scroller.can_scroll();
-			const auto clip_bounds = dc.clip_bounds();
 
 			if (show_scroll)
 			{
@@ -1729,7 +1779,7 @@ namespace ui
 
 		view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 		                                             const pointi element_offset,
-		                                             const std::vector<recti>& excluded_bounds) override
+		                                             hit_test_context& ctx) override
 		{
 			view_controller_ptr result;
 
@@ -1748,7 +1798,7 @@ namespace ui
 					{
 						if (e.element->bounds.contains(loc - scroll_offset))
 						{
-							result = e.element->controller_from_location(host, loc, scroll_offset, excluded_bounds);
+							result = e.element->controller_from_location(host, loc, scroll_offset, ctx);
 							if (result)
 							{
 								return result;
@@ -2019,6 +2069,7 @@ namespace ui
 		mutable std::vector<sizei> _surface_extents;
 		std::vector<recti> _surface_bounds;
 		size_t _selection_overflow_count = 0;
+		uint64_t _surface_generation = 0;
 
 		const size_t max_surfaces = 7;
 
@@ -2055,6 +2106,15 @@ namespace ui
 			init(surfaces);
 		}
 
+		title_control2(control_frame_ptr h, const icon_index& icon, const std::string_view text,
+		               const std::string_view text2, const std::vector<const_surface_ptr>& surfaces,
+		               const size_t selection_count) : _text1(text),
+		                                               _text2(text2), _icon(icon), _parent(std::move(h))
+		{
+			init(surfaces);
+			_selection_overflow_count = selection_count - std::min(selection_count, _surfaces.size());
+		}
+
 		void init(const std::vector<const_image_ptr>& images)
 		{
 			files ff;
@@ -2064,7 +2124,8 @@ namespace ui
 			{
 				if (is_valid(image))
 				{
-					_surfaces.emplace_back(ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims)));
+					auto surface = ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims));
+					if (is_valid(surface)) _surfaces.emplace_back(std::move(surface));
 					if (_surfaces.size() >= max_surfaces) break;
 				}
 			}
@@ -2079,7 +2140,8 @@ namespace ui
 			{
 				if (is_valid(surface))
 				{
-					_surfaces.emplace_back(ff.scale_if_needed(surface, max_dims));
+					auto fitted = ff.fit_within(surface, max_dims);
+					if (is_valid(fitted)) _surfaces.emplace_back(std::move(fitted));
 					if (_surfaces.size() >= max_surfaces) break;
 				}
 			}
@@ -2095,16 +2157,55 @@ namespace ui
 			_text1 = a;
 		}
 
-		void selection(const std::string_view text, const std::vector<const_image_ptr>& images,
+		void selection(const std::string_view text, const std::vector<const_surface_ptr>& surfaces,
 		               const size_t selection_count)
 		{
+			++_surface_generation;
 			_text2 = text;
 			_surfaces.clear();
 			_textures.clear();
 			_surface_extents.clear();
 			_surface_bounds.clear();
-			init(images);
+			init(surfaces);
 			_selection_overflow_count = selection_count - std::min(selection_count, _surfaces.size());
+		}
+
+		void selection_async(const std::vector<const_image_ptr>& images, const size_t selection_count,
+		                     df::async_i& async)
+		{
+			const auto generation = ++_surface_generation;
+			const auto weak = weak_from_this();
+			const auto max = max_surfaces;
+			auto staged_images = images;
+
+			async.queue_async(async_queue::render, [weak, generation, max, selection_count,
+			                                        staged_images = std::move(staged_images), &async]() mutable
+			{
+				files ff;
+				constexpr sizei max_dims(128, 128);
+				std::vector<const_surface_ptr> surfaces;
+				surfaces.reserve(std::min(max, staged_images.size()));
+
+				for (const auto& image : staged_images)
+				{
+					if (is_valid(image))
+					{
+						auto surface = ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims));
+						if (is_valid(surface)) surfaces.emplace_back(std::move(surface));
+						if (surfaces.size() >= max) break;
+					}
+				}
+
+				async.queue_ui([weak, generation, selection_count, surfaces = std::move(surfaces)]() mutable
+				{
+					const auto self = weak.lock();
+					if (!self || self->_surface_generation != generation) return;
+
+					self->selection(self->_text2, surfaces, selection_count);
+					self->_parent->layout();
+					self->_parent->invalidate();
+				});
+			});
 		}
 
 		sizei measure(measure_context& mc, const int cx) const override
@@ -2262,22 +2363,21 @@ namespace ui
 				             color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 
-			if (_textures.empty())
-			{
-				for (const auto& s : _surfaces)
-				{
-					auto t = dc.create_texture();
+			if (_textures.size() != _surfaces.size()) _textures.resize(_surfaces.size());
 
-					if (t && t->update(s) != texture_update_result::failed)
-					{
-						_textures.emplace_back(t);
-					}
-				}
+			for (auto index = 0u; index < _surfaces.size(); ++index)
+			{
+				if (_textures[index]) continue;
+
+				auto t = dc.create_texture();
+
+				if (t && t->update(_surfaces[index]) != texture_update_result::failed) _textures[index] = std::move(t);
 			}
 
-			for (auto i = 0u; i < std::min(_textures.size(), _surface_bounds.size()); ++i)
+			for (auto i = 0u; i < std::min(_surfaces.size(), _surface_bounds.size()); ++i)
 			{
 				const auto& texture = _textures[i];
+				if (!texture) continue;
 				const auto orientation = _surfaces[i]->orientation();
 				const auto draw_bounds = _surface_bounds[i].offset(element_offset);
 				const auto destination = setting.show_rotated
@@ -2301,14 +2401,19 @@ namespace ui
 		}
 	};
 
-	class selection_thumbnails_control final : public view_element
+	class selection_thumbnails_control final : public view_element,
+	                                         public std::enable_shared_from_this<selection_thumbnails_control>
 	{
-		control_frame_ptr _parent;
+		// Weak, because the frame's own child controls hold this strip in their callbacks. A strong
+		// reference closes a cycle whose last link is released while the frame is clearing those
+		// children, destroying the frame inside its own teardown.
+		control_frame_weak_ptr _parent;
 		std::vector<const_surface_ptr> _surfaces;
 		mutable std::vector<texture_ptr> _textures;
 		mutable std::vector<sizei> _surface_extents;
 		std::vector<recti> _surface_bounds;
 		size_t _overflow_count = 0;
+		uint64_t _surface_generation = 0;
 		static constexpr size_t max_surfaces = 7;
 
 	public:
@@ -2316,20 +2421,22 @@ namespace ui
 		{
 		}
 
-		void selection(const std::vector<const_image_ptr>& images, const size_t selection_count)
+		void selection(const std::vector<const_surface_ptr>& surfaces, const size_t selection_count)
 		{
+			++_surface_generation;
 			_surfaces.clear();
 			_textures.clear();
 			_surface_extents.clear();
 			_surface_bounds.clear();
 
-			files ff;
 			constexpr sizei max_dims(128, 128);
-			for (const auto& image : images)
+			files ff;
+			for (const auto& surface : surfaces)
 			{
-				if (is_valid(image))
+				if (is_valid(surface))
 				{
-					_surfaces.emplace_back(ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims)));
+					auto fitted = ff.fit_within(surface, max_dims);
+					if (is_valid(fitted)) _surfaces.emplace_back(std::move(fitted));
 					if (_surfaces.size() >= max_surfaces) break;
 				}
 			}
@@ -2337,6 +2444,47 @@ namespace ui
 				                  ? 0
 				                  : selection_count - std::min(selection_count, _surfaces.size());
 			is_visible(!_surfaces.empty());
+		}
+
+		void selection_async(const std::vector<const_image_ptr>& images, const size_t selection_count,
+		                     df::async_i& async)
+		{
+			const auto generation = ++_surface_generation;
+			const auto weak = weak_from_this();
+			auto staged_images = images;
+
+			async.queue_async(async_queue::render, [weak, generation, selection_count,
+			                                        staged_images = std::move(staged_images), &async]() mutable
+			{
+				files ff;
+				constexpr sizei max_dims(128, 128);
+				std::vector<const_surface_ptr> surfaces;
+				surfaces.reserve(std::min(max_surfaces, staged_images.size()));
+
+				for (const auto& image : staged_images)
+				{
+					if (is_valid(image))
+					{
+						auto surface = ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims));
+						if (is_valid(surface)) surfaces.emplace_back(std::move(surface));
+						if (surfaces.size() >= max_surfaces) break;
+					}
+				}
+
+				async.queue_ui([weak, generation, selection_count, surfaces = std::move(surfaces)]() mutable
+				{
+					const auto self = weak.lock();
+					if (!self || self->_surface_generation != generation) return;
+
+					self->selection(surfaces, selection_count);
+
+					if (const auto parent = self->_parent.lock())
+					{
+						parent->layout();
+						parent->invalidate();
+					}
+				});
+			});
 		}
 
 		sizei measure(measure_context& mc, const int cx) const override
@@ -2377,18 +2525,19 @@ namespace ui
 
 		void render(draw_context& dc, const pointi element_offset) const override
 		{
-			if (_textures.empty())
+			if (_textures.size() != _surfaces.size()) _textures.resize(_surfaces.size());
+
+			for (auto index = 0u; index < _surfaces.size(); ++index)
 			{
-				for (const auto& surface : _surfaces)
-				{
-					auto texture = dc.create_texture();
-					if (texture && texture->update(surface) != texture_update_result::failed)
-						_textures.emplace_back(texture);
-				}
+				if (_textures[index]) continue;
+				auto texture = dc.create_texture();
+				if (texture && texture->update(_surfaces[index]) != texture_update_result::failed)
+					_textures[index] = std::move(texture);
 			}
 
-			for (auto index = 0u; index < std::min(_textures.size(), _surface_bounds.size()); ++index)
+			for (auto index = 0u; index < std::min(_surfaces.size(), _surface_bounds.size()); ++index)
 			{
+				if (!_textures[index]) continue;
 				const auto draw_bounds = _surface_bounds[index].offset(element_offset);
 				const auto orientation = _surfaces[index]->orientation();
 				const auto destination = setting.show_rotated
@@ -2713,6 +2862,11 @@ namespace ui
 			handler(_check);
 		}
 
+		bool child_interactive() const
+		{
+			return _val && child_shown() && _child && _child->is_visible();
+		}
+
 		void on_check(const bool checked) const
 		{
 			_val = checked;
@@ -2728,6 +2882,15 @@ namespace ui
 			if (_val == checked) return;
 			on_check(checked);
 			_check->set_checked(checked);
+		}
+
+		// Shows the bound value again after its owner changed it directly, as an undo or a
+		// reloaded document does. checked() cannot: it compares against the bound value, which
+		// already holds the new answer. The change callback does not run.
+		void show_bound_value() const
+		{
+			on_check(_val);
+			_check->set_checked(_val);
 		}
 
 		sizei measure(measure_context& mc, const int cx) const override
@@ -2797,6 +2960,18 @@ namespace ui
 			{
 				_child->render(dc, element_offset);
 			}
+		}
+
+		bool is_control_area(const pointi loc, const pointi element_offset) const override
+		{
+			return child_interactive() && _child->is_control_area(loc, element_offset);
+		}
+
+		view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+		                                             const pointi element_offset,
+		                                             hit_test_context& ctx) override
+		{
+			return child_interactive() ? _child->controller_from_location(host, loc, element_offset, ctx) : nullptr;
 		}
 
 		void dispatch_event(const view_element_event& event) override
@@ -3024,7 +3199,7 @@ namespace ui
 		auto_complete_results _results;
 		complete_strategy_ptr _completes;
 		view_scroller _scroller;
-		uint32_t _height = 0;
+		int _height = 0;
 		bool _is_popup = false;
 		color_style _colors;
 
@@ -3166,7 +3341,6 @@ namespace ui
 			control_layouts positions;
 			const auto text_height = mc.text_line_height(style::font_face::dialog);
 			auto y = mc.padding2;
-			auto n = 0;
 
 			for (const auto& i : _results)
 			{
@@ -3192,7 +3366,7 @@ namespace ui
 			}
 			else
 			{
-				_height = _completes->max_predictions * (text_height + mc.padding1) + mc.padding2 *
+				_height = static_cast<int>(_completes->max_predictions) * (text_height + mc.padding1) + mc.padding2 *
 					2;
 			}
 
@@ -3260,9 +3434,9 @@ namespace ui
 			return _owner;
 		}
 
-		view_controller_ptr controller_from_location(const pointi loc) override
+		view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 		{
-			if (_scroller.can_scroll() && _scroller.scroll_bounds().contains(loc))
+			if (_scroller.can_scroll() && ctx.occluded(_scroller.scroll_bounds()))
 			{
 				return std::make_shared<scroll_controller>(shared_from_this(), _scroller, _scroller.scroll_bounds());
 			}
@@ -3271,7 +3445,7 @@ namespace ui
 
 			for (const auto& r : _results)
 			{
-				auto controller = r->controller_from_location(shared_from_this(), loc, offset, {});
+				auto controller = r->controller_from_location(shared_from_this(), loc, offset, ctx);
 				if (controller) return controller;
 			}
 
@@ -3397,7 +3571,7 @@ namespace ui
 		void visit_controls(const std::function<void(const control_base_ptr&)>& handler) override
 		{
 			handler(_edit);
-			handler(_list->_frame);
+			handler(_list->frame());
 		}
 
 		sizei measure(measure_context& mc, const int cx) const override
@@ -3434,11 +3608,13 @@ namespace ui
 
 			auto search_bounds = bounds;
 			search_bounds.top = search_bounds.top + _edit_line_height + mc.padding2;
-			positions.emplace_back(_list->_frame, search_bounds, is_visible());
+			positions.emplace_back(_list->frame(), search_bounds, is_visible());
 		}
 
-		bool key_down(const int key, const key_state keys) const
+		bool key_down(const int key_code, const key_state keys) const
 		{
+			const auto key = static_cast<char32_t>(key_code);
+
 			if (key == keys::UP)
 			{
 				_list->step_selection(-1);
@@ -3499,6 +3675,17 @@ public:
 	void create_frame()
 	{
 		_frame = _parent->create_dlg(shared_from_this(), true);
+
+		// Creating the native dialog can fail - desktop heap exhaustion, or a request made while the
+		// session is ending. There is no stand-in for a control_frame the way ui::no_frame() stands in
+		// for a window, so one is used here: every call site opening a dialog would otherwise have to
+		// test for null, and none of the dozens of them do.
+		if (!_frame)
+		{
+			df::log(__FUNCTION__, "dialog window could not be created");
+			_frame = ui::no_control_frame();
+		}
+
 		_scroller._scroll_child_controls = true;
 		_scroller.changed_func = [this]
 		{
@@ -3649,6 +3836,16 @@ public:
 		}
 
 		_controls.clear();
+
+		// The active controller holds this dialog as its host, so the pair keeps itself alive.
+		// on_window_destroy breaks that when the native window finally goes, which has not
+		// necessarily happened by the time the caller lets go of the dialog - and a dialog that
+		// outlives its modal loop takes a hidden popup window with it. The close callback holds
+		// the frame and whatever the caller gave it, so it goes here too.
+		_active_controller.reset();
+		_controller_invalid = true;
+		_close_cb = {};
+
 		enable_parent();
 		ui::focus(_parent_focus);
 		return result;
@@ -3669,6 +3866,12 @@ public:
 
 	void initialise(const std::vector<view_element_ptr>& controls)
 	{
+		// The controller answers for an element in the outgoing set, and it holds this dialog as its
+		// host - so the two keep each other alive, and the controller outlives the control it speaks
+		// for. Dropped here, where the set it belongs to is replaced.
+		_active_controller.reset();
+		_controller_invalid = true;
+
 		const auto destroyer = [](const ui::control_base_ptr& c) { c->destroy(); };
 		const std::unordered_set<view_element_ptr> controls_set(controls.begin(), controls.end());
 
@@ -3921,9 +4124,9 @@ public:
 	{
 	}
 
-	view_controller_ptr controller_from_location(const pointi loc) override
+	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 	{
-		if (_scroller.can_scroll() && _scroller.scroll_bounds().contains(loc))
+		if (_scroller.can_scroll() && ctx.occluded(_scroller.scroll_bounds()))
 		{
 			return std::make_shared<scroll_controller>(shared_from_this(), _scroller, _scroller.scroll_bounds());
 		}
@@ -3940,7 +4143,7 @@ public:
 			const auto in_body = i >= split_header && i < split_body;
 			// Body elements scrolled under the header or footer must not answer for them.
 			if (in_body && clip_body && !_scroller.client_bounds().contains(loc)) continue;
-			auto controller = e->controller_from_location(shared_from_this(), loc, in_body ? offset : pointi{}, {});
+			auto controller = e->controller_from_location(shared_from_this(), loc, in_body ? offset : pointi{}, ctx);
 			if (controller) return controller;
 		}
 

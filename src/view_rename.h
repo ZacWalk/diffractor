@@ -22,7 +22,6 @@ class rename_view final :
 {
 	std::vector<rename_item> _renames;
 	std::string _title;
-	std::string _status;
 	uint64_t _analysis_generation = 0;
 	bool _analysis_valid = false;
 
@@ -59,11 +58,6 @@ public:
 	// What would make a dimmed Run work again, empty when nothing is wrong.
 	std::string run_blocked_reason() const;
 
-	std::string_view status() override
-	{
-		return _status;
-	}
-
 	void activate(sizei extent) override
 	{
 		refresh();
@@ -71,6 +65,7 @@ public:
 
 	void deactivate() override
 	{
+		abandon_processing();
 		_rows.clear();
 		_renames.clear();
 		_status.clear();

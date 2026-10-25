@@ -15,8 +15,8 @@
 #pragma once
 
 #include "model_tile_cache.h"
-#include "ui.h"
-#include "util_kdtree.h"
+#include "libdesktop/ui.h"
+#include "libdesktop/util_kdtree.h"
 
 // For M_PI on some compilers, otherwise define it manually.
 #ifndef M_PI
@@ -257,6 +257,22 @@ public:
 		uint32_t count = 1;
 	};
 
+	struct marker_snapshot
+	{
+		struct cell
+		{
+			gps_coordinate coordinate;
+			int count = 0;
+			uint32_t rep_index = UINT32_MAX;
+		};
+
+		int zoom = 0;
+		std::vector<cell> cells;
+		kd_points coords; // x=longitude, y=latitude, offset=cell index
+		kd_tree tree;
+		bool has_markers = false;
+	};
+
 private:
 	async_strategy& _async;
 	std::function<void()> _invalidate;
@@ -272,17 +288,17 @@ private:
 	pointi _temp_drag_offset = {0, 0};
 
 	std::map<map_tile_id, cache_entry_ptr> _tile_cache;
-	std::map<map_tile_id, ui::texture_ptr> _texture_cache;
+	// A derived GPU cache rather than logical state, so it is shed on device loss from the const
+	// broadcast the same way an element's texture is.
+	mutable std::map<map_tile_id, ui::texture_ptr> _texture_cache;
 
-	// Item-location markers, indexed spatially so only the visible ones are
-	// projected/clustered each view change.
-	kd_points _marker_coords; // x=longitude, y=latitude, offset=caller index
-	std::vector<uint32_t> _marker_counts;
-	kd_tree _marker_tree;
-	bool _has_markers = false;
+	// Item-location markers, indexed spatially by worker-prepared snapshots so publication is a
+	// bounded move on the UI thread.
+	marker_snapshot _markers;
 	std::vector<map_cluster> _clusters;
 	bool _clusters_dirty = false;
 	sizei _cluster_extent;
+	size_t _last_cluster_work = 0;
 
 	// The cluster the user picked, kept as a coordinate so it survives zooming and panning.
 	gps_coordinate _selected;
@@ -478,35 +494,95 @@ public:
 		_texture_cache.clear();
 	}
 
+	// The tile textures belong to the lost device. Keeping the decoded tiles means the map redraws
+	// from what is already in memory; keeping the textures would draw nothing at all, because the
+	// cache hit returns before the placeholder the miss path draws.
+	void free_graphics_resources() const
+	{
+		_texture_cache.clear();
+	}
+
 	// Provide the item-location markers to aggregate on the map. `markers` is indexed
 	// by the caller; hit_test_marker returns the representative coordinate's index so
 	// the caller can map a hovered cluster back to its own item array.
-	void set_markers(const std::vector<marker>& markers)
+	static marker_snapshot prepare_marker_snapshot(const std::vector<marker>& markers, const int zoom)
 	{
-		_marker_coords.clear();
-		_marker_coords.reserve(markers.size());
-		_marker_counts.assign(markers.size(), 0);
+		marker_snapshot result;
+		result.zoom = zoom;
+
+		struct accum
+		{
+			double latitude = 0.0;
+			double longitude = 0.0;
+			int count = 0;
+			uint32_t rep = UINT32_MAX;
+		};
+
+		std::map<std::pair<int, int>, accum> cells;
 
 		for (uint32_t i = 0; i < markers.size(); ++i)
 		{
 			if (markers[i].coordinate.is_valid() && markers[i].count > 0)
 			{
-				_marker_coords.emplace_back(static_cast<float>(markers[i].coordinate.longitude()),
-				                            static_cast<float>(markers[i].coordinate.latitude()),
-				                            i, 0, 0, 0.0f);
-				_marker_counts[i] = markers[i].count;
+				const auto world_cell = map_marker_world_cell(markers[i].coordinate, zoom, cluster_cell_px);
+				auto& cell = cells[std::make_pair(world_cell.x, world_cell.y)];
+				cell.latitude += markers[i].coordinate.latitude() * markers[i].count;
+				cell.longitude += markers[i].coordinate.longitude() * markers[i].count;
+				cell.count += markers[i].count;
+				cell.rep = std::min(cell.rep, i);
 			}
 		}
 
-		_has_markers = !_marker_coords.empty();
+		result.cells.reserve(cells.size());
 
-		if (_has_markers)
+		for (const auto& [key, cell] : cells)
 		{
-			_marker_tree.build(_marker_coords);
+			result.cells.push_back({
+				gps_coordinate(cell.latitude / cell.count, cell.longitude / cell.count),
+				cell.count, cell.rep
+			});
 		}
 
+		result.has_markers = !result.cells.empty();
+
+		result.coords.reserve(result.cells.size());
+		for (auto i = 0u; i < result.cells.size(); ++i)
+		{
+			const auto& cell = result.cells[i];
+			result.coords.emplace_back(static_cast<float>(cell.coordinate.longitude()),
+			                           static_cast<float>(cell.coordinate.latitude()),
+			                           i, 0, 0, 0.0f);
+		}
+
+		if (result.has_markers)
+		{
+			result.tree.build(result.coords);
+		}
+
+		return result;
+	}
+
+	static size_t prepared_marker_count(const marker_snapshot& markers)
+	{
+		return markers.cells.size();
+	}
+
+	size_t last_cluster_work() const
+	{
+		return _last_cluster_work;
+	}
+
+	void set_marker_snapshot(marker_snapshot markers)
+	{
+		_markers = std::move(markers);
+		_clusters.clear();
 		_clusters_dirty = true;
 		_invalidate();
+	}
+
+	void set_markers(const std::vector<marker>& markers)
+	{
+		set_marker_snapshot(prepare_marker_snapshot(markers, _zoom));
 	}
 
 	// Marks the cluster the user picked. Purely presentational: it shows which bubble the
@@ -529,10 +605,16 @@ public:
 
 	// The ground radius a cluster bubble covers at the current zoom, in kilometres. Web
 	// Mercator resolves 156543.03392 m/px at the equator for zoom 0, scaled by cos(latitude).
+	//
+	// The whole cell diagonal, not half a cell width: a bubble sits at the weighted average of its
+	// members rather than at the centre of its cell, so a member in the opposite corner is up to a
+	// full diagonal away. Half a width left those members out of the search the bubble opened,
+	// which is the one thing a cluster's radius promises not to do.
 	double cluster_radius_km(const gps_coordinate& at) const
 	{
+		constexpr auto cell_diagonal_px = cluster_cell_px * 1.4142135623730951;
 		const auto meters_per_pixel = 156543.03392 * std::cos(at.latitude() * M_PI / 180.0) / std::pow(2.0, _zoom);
-		return meters_per_pixel * (cluster_cell_px / 2.0) / 1000.0;
+		return meters_per_pixel * cell_diagonal_px / 1000.0;
 	}
 
 	std::vector<gps_coordinate> visible_cluster_coordinates(const sizei& extent)
@@ -564,8 +646,11 @@ public:
 	// none. Fills the on-screen anchor and aggregated photo count.
 	int hit_test_marker(const pointi loc, const sizei& extent, pointi& anchor_out, int& count_out) const
 	{
-		for (const auto& c : _clusters)
+		// Reverse order: render_markers draws them forwards, so the last one is on top and is the
+		// one the user sees where two bubbles overlap.
+		for (auto i = _clusters.rbegin(); i != _clusters.rend(); ++i)
 		{
+			const auto& c = *i;
 			const int radius = cluster_radius(c.count);
 			const auto dx = loc.x - c.screen_pos.x;
 			const auto dy = loc.y - c.screen_pos.y;
@@ -640,14 +725,14 @@ private:
 		recompute_clusters(extent);
 	}
 
-	// Query the kd-tree for the markers inside the visible bounds, then aggregate them
-	// into world-pixel cells. Anchoring cells to the map instead of the viewport keeps
-	// cluster membership stable while panning.
+	// Cull and project the worker-prepared marker cells. Cell membership is already anchored to
+	// the map at the snapshot zoom, so paint and hit testing do no source-marker aggregation.
 	void recompute_clusters(const sizei& extent)
 	{
 		_clusters.clear();
+		_last_cluster_work = 0;
 
-		if (!_has_markers || extent.is_empty() || _marker_tree.is_empty())
+		if (!_markers.has_markers || extent.is_empty() || _markers.tree.is_empty())
 		{
 			return;
 		}
@@ -661,51 +746,24 @@ private:
 		const auto ymax = static_cast<float>(std::max(tl.latitude(), br.latitude()));
 
 		std::vector<kd_coordinates_t> found;
-		_marker_tree.find_in_bounds(_marker_coords, xmin, ymin, xmax, ymax, found);
+		_markers.tree.find_in_bounds(_markers.coords, xmin, ymin, xmax, ymax, found);
+		_last_cluster_work = found.size();
+		_clusters.reserve(found.size());
 
-		if (found.empty())
+		for (const auto& found_cell : found)
 		{
-			return;
-		}
+			const auto& marker_cell = _markers.cells[found_cell.offset];
+			const auto screen_pos = screen_from_gps(marker_cell.coordinate, extent);
+			if (screen_pos.x < -cell || screen_pos.y < -cell ||
+				screen_pos.x > extent.cx + cell || screen_pos.y > extent.cy + cell)
+			{
+				continue;
+			}
 
-		struct accum
-		{
-			double world_x = 0.0;
-			double world_y = 0.0;
-			int count = 0;
-			uint32_t rep = UINT32_MAX;
-		};
-
-		std::map<std::pair<int, int>, accum> cells;
-
-		for (const auto& c : found)
-		{
-			const auto world_x = lon_to_tile_x(c.x, _zoom) * TILE_SIZE;
-			const auto world_y = lat_to_tile_y(c.y, _zoom) * TILE_SIZE;
-			const auto world_cell = map_marker_world_cell(gps_coordinate(c.y, c.x), _zoom, cell);
-			const auto key = std::make_pair(world_cell.x, world_cell.y);
-			auto& a = cells[key];
-			const auto weight = _marker_counts[c.offset];
-			a.world_x += world_x * weight;
-			a.world_y += world_y * weight;
-			a.rep = std::min(a.rep, c.offset);
-			a.count += weight;
-		}
-
-		const auto center_world_x = lon_to_tile_x(_location.longitude(), _zoom) * TILE_SIZE;
-		const auto center_world_y = lat_to_tile_y(_location.latitude(), _zoom) * TILE_SIZE;
-		const auto total_offset = _scroll_offset + _temp_drag_offset;
-
-		_clusters.reserve(cells.size());
-
-		for (const auto& [key, a] : cells)
-		{
 			map_cluster mc;
-			mc.screen_pos = pointi(
-				static_cast<int>(std::lround(extent.cx / 2.0 + a.world_x / a.count - center_world_x + total_offset.x)),
-				static_cast<int>(std::lround(extent.cy / 2.0 + a.world_y / a.count - center_world_y + total_offset.y)));
-			mc.count = a.count;
-			mc.rep_index = a.rep;
+			mc.screen_pos = screen_pos;
+			mc.count = marker_cell.count;
+			mc.rep_index = marker_cell.rep_index;
 			_clusters.push_back(mc);
 		}
 	}
@@ -780,7 +838,7 @@ private:
 		constexpr int line_width = 3;
 		constexpr int half = line_width / 2;
 
-		const auto crosshair_color = ui::color(ui::style::color::important_background, 0.6);
+		const auto crosshair_color = ui::color(ui::style::color::important_background, 0.6f);
 		// A thin lighter underlay keeps the cross readable over both dark and pale tiles.
 		const auto outline_color = ui::color(1.0f, 1.0f, 1.0f, 0.35f);
 

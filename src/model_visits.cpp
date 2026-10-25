@@ -16,10 +16,58 @@
 
 namespace
 {
+	// A running spherical mean. Summing latitude and longitude directly is wrong across the
+	// antimeridian - +179 and -179 average to 0, the middle of the map rather than the middle of the
+	// pair - and wrong again near the poles. Unit vectors have no seam, so they sum and merge the
+	// same way everywhere and read back as a direction.
+	struct coordinate_sum
+	{
+		double x = 0.0;
+		double y = 0.0;
+		double z = 0.0;
+
+		void add(const gps_coordinate c)
+		{
+			const auto lat = gps_coordinate::deg2rad(c.latitude());
+			const auto lon = gps_coordinate::deg2rad(c.longitude());
+			const auto cos_lat = std::cos(lat);
+			x += cos_lat * std::cos(lon);
+			y += cos_lat * std::sin(lon);
+			z += std::sin(lat);
+		}
+
+		void add(const coordinate_sum& other)
+		{
+			x += other.x;
+			y += other.y;
+			z += other.z;
+		}
+
+		// Degenerate only when the members cancel out exactly - antipodal pairs have no meaningful
+		// centre - so the caller's fallback is the answer rather than a direction read from zero.
+		gps_coordinate mean(const gps_coordinate fallback) const
+		{
+			const auto hypotenuse = std::sqrt(x * x + y * y);
+
+			if (hypotenuse < 1e-12 && std::abs(z) < 1e-12) return fallback;
+
+			const auto lat = std::atan2(z, hypotenuse);
+			const auto lon = (hypotenuse < 1e-12) ? 0.0 : std::atan2(y, x);
+
+			// gps_coordinate reserves 180 as its "no coordinate" sentinel, so a mean that lands
+			// exactly on the antimeridian has to be nudged inside the representable range rather
+			// than answered as an absent coordinate.
+			auto lon_deg = gps_coordinate::rad2deg(lon);
+			if (lon_deg >= 180.0) lon_deg = std::nextafter(180.0, 0.0);
+			else if (lon_deg <= -180.0) lon_deg = std::nextafter(-180.0, 0.0);
+
+			return gps_coordinate(gps_coordinate::rad2deg(lat), lon_deg);
+		}
+	};
+
 	struct cluster_t
 	{
-		double lat_sum = 0.0;
-		double lon_sum = 0.0;
+		coordinate_sum coordinates;
 		uint32_t coord_count = 0;
 		std::vector<size_t> members;
 
@@ -41,6 +89,29 @@ namespace
 	// locations.md 2.3/3.1: stored text qualifies nothing, so a bare `Richmond` would resolve to
 	// the largest Richmond on earth rather than the one the items are in. The gazetteer record for
 	// the stored parts supplies both the qualified label and the point a radius measures from.
+	// The identity a place name carries. Place alone merges namesakes - a Springfield in Illinois
+	// and one in Massachusetts are not the same visit - so the qualifying parts belong in the key,
+	// and folding the case is what stops one spelling splitting into two.
+	std::string place_identity_key(const str::cached place, const str::cached state, const str::cached country)
+	{
+		auto key = std::format("{}\x1f{}\x1f{}", place.sv(), state.sv(), country.sv());
+		return str::to_lower(key);
+	}
+
+	std::string place_subset_key(const df::visit_place_tally& t, const uint32_t mask)
+	{
+		return place_identity_key((mask & 1u) != 0 ? t.place : str::cached{},
+		                          (mask & 2u) != 0 ? t.state : str::cached{},
+		                          (mask & 4u) != 0 ? t.country : str::cached{});
+	}
+
+	uint32_t place_mask(const df::visit_place_tally& t)
+	{
+		return (is_empty(t.place) ? 0u : 1u) |
+			(is_empty(t.state) ? 0u : 2u) |
+			(is_empty(t.country) ? 0u : 4u);
+	}
+
 	resolved_name_t resolve_stored_name(const df::visit_sample& s, const location_cache& locations,
 	                                    std::map<std::string, resolved_name_t>& memo)
 	{
@@ -58,8 +129,7 @@ namespace
 
 		// find_by_name matches case-insensitively, so the memo has to as well or the same place
 		// spelt differently misses and re-reads the gazetteer.
-		const auto memo_key = query;
-		str::to_lower(memo_key);
+		const auto memo_key = str::to_lower(query);
 
 		const auto found = memo.find(memo_key);
 		if (found != memo.end()) return found->second;
@@ -82,67 +152,228 @@ namespace
 		return result;
 	}
 
-	uint32_t place_specificity(const df::visit_place_tally& t)
+	class place_components
 	{
-		return (is_empty(t.place) ? 0u : 1u) + (is_empty(t.state) ? 0u : 1u) + (is_empty(t.country) ? 0u : 1u);
-	}
+		std::vector<size_t> _parent;
 
-	// Whether `general`'s chip query already returns everything `specific` counted. A field the
-	// entry left empty emits no term, so it constrains nothing.
-	bool place_subsumes(const df::visit_place_tally& general, const df::visit_place_tally& specific)
-	{
-		const auto covers = [](const str::cached g, const str::cached s)
+	public:
+		explicit place_components(const size_t n) : _parent(n)
 		{
-			return is_empty(g) || (!is_empty(s) && icmp(g, s) == 0);
-		};
+			for (auto i = 0u; i < _parent.size(); ++i) _parent[i] = i;
+		}
 
-		return place_specificity(general) < place_specificity(specific) &&
-			covers(general.place, specific.place) &&
-			covers(general.state, specific.state) &&
-			covers(general.country, specific.country);
-	}
+		size_t find(const size_t i)
+		{
+			if (_parent[i] != i) _parent[i] = find(_parent[i]);
+			return _parent[i];
+		}
+
+		bool unite(const size_t l, const size_t r)
+		{
+			const auto lr = find(l);
+			const auto rr = find(r);
+			if (lr == rr) return false;
+			_parent[rr] = lr;
+			return true;
+		}
+	};
 
 	// locations.md 7.2: the strip is a partition, and a chip's count and its click are one promise.
-	// Two entries where one only omits what the other names cannot both keep it -- the vaguer query
-	// returns the sharper entry's items too -- so the vaguer one absorbs the sharper.
-	void collapse_subsumed_places(std::vector<df::visit_place_tally>& tallies)
+	// Exact identities are collapsed through the finite place/state/country predicate subsets. If
+	// a partial chip would return sharper identities, the whole connected set merges to the common
+	// predicate its search can honestly advertise.
+	bool collapse_subsumed_places(std::vector<df::visit_place_tally>& tallies, const df::cancel_token& token,
+	                              df::visit_work_counters* counters)
 	{
-		std::vector<size_t> order(tallies.size());
-		for (auto i = 0u; i < order.size(); ++i) order[i] = i;
+		if (tallies.size() < 2) return true;
 
-		std::ranges::stable_sort(order, [&tallies](const size_t l, const size_t r)
-		{
-			return place_specificity(tallies[l]) > place_specificity(tallies[r]);
-		});
+		place_components components(tallies.size());
+		std::map<std::string, size_t> exact_keys;
+		std::map<std::string, std::vector<size_t>> subset_keys;
 
-		std::vector<bool> absorbed(tallies.size(), false);
-
-		// Sharpest first, so a count absorbed into a middle entry travels on to a vaguer one.
-		for (const auto i : order)
-		{
-			size_t into = tallies.size();
-
-			for (auto j = 0u; j < tallies.size(); ++j)
-			{
-				if (j == i || absorbed[j] || !place_subsumes(tallies[j], tallies[i])) continue;
-				if (into == tallies.size() || place_specificity(tallies[j]) < place_specificity(tallies[into]))
-				{
-					into = j;
-				}
-			}
-
-			if (into == tallies.size()) continue;
-
-			tallies[into].count += tallies[i].count;
-			absorbed[i] = true;
-		}
-
-		auto write = 0u;
 		for (auto i = 0u; i < tallies.size(); ++i)
 		{
-			if (!absorbed[i]) tallies[write++] = std::move(tallies[i]);
+			if ((i & 0xffu) == 0 && token.is_cancelled()) return false;
+			const auto mask = place_mask(tallies[i]);
+			exact_keys[place_subset_key(tallies[i], mask)] = i;
+
+			for (auto subset = 1u; subset < 8u; ++subset)
+			{
+				if ((subset & mask) == subset) subset_keys[place_subset_key(tallies[i], subset)].emplace_back(i);
+			}
 		}
-		tallies.resize(write);
+
+		auto unite_predicate_matches = [&](const std::string& key, const size_t with)
+		{
+			auto changed = false;
+			const auto found = subset_keys.find(key);
+			if (found == subset_keys.end()) return false;
+
+			for (const auto i : found->second)
+			{
+				if (counters) ++counters->place_predicate_unions;
+				changed |= components.unite(with, i);
+			}
+
+			return changed;
+		};
+
+		for (auto i = 0u; i < tallies.size(); ++i)
+		{
+			if ((i & 0xffu) == 0 && token.is_cancelled()) return false;
+			const auto mask = place_mask(tallies[i]);
+			unite_predicate_matches(place_subset_key(tallies[i], mask), i);
+		}
+
+		auto changed = true;
+		while (changed)
+		{
+			changed = false;
+
+			std::map<size_t, std::vector<size_t>> groups;
+			for (auto i = 0u; i < tallies.size(); ++i) groups[components.find(i)].emplace_back(i);
+			std::set<std::string> processed_predicates;
+
+			for (const auto& [root, group] : groups)
+			{
+				if (token.is_cancelled()) return false;
+				df::visit_place_tally predicate;
+				auto mask = 7u;
+
+				const auto resolve_field = [&](const auto ptr, const uint32_t bit)
+				{
+					auto value = tallies[group.front()].*ptr;
+
+					for (const auto i : group)
+					{
+						const auto current = tallies[i].*ptr;
+						if (is_empty(value) || is_empty(current) || icmp(value, current) != 0)
+						{
+							value = {};
+							mask &= ~bit;
+							break;
+						}
+					}
+
+					return value;
+				};
+
+				predicate.place = resolve_field(&df::visit_place_tally::place, 1u);
+				predicate.state = resolve_field(&df::visit_place_tally::state, 2u);
+				predicate.country = resolve_field(&df::visit_place_tally::country, 4u);
+
+				if (mask != 0)
+				{
+					const auto key = place_subset_key(predicate, mask);
+					if (processed_predicates.emplace(key).second)
+					{
+						changed |= unite_predicate_matches(key, root);
+					}
+				}
+			}
+		}
+
+		std::map<size_t, std::vector<size_t>> groups;
+		for (auto i = 0u; i < tallies.size(); ++i) groups[components.find(i)].emplace_back(i);
+
+		std::vector<df::visit_place_tally> collapsed;
+		collapsed.reserve(groups.size());
+
+		for (const auto& [root, group] : groups)
+		{
+			df::visit_place_tally merged;
+			for (const auto i : group) merged.count += tallies[i].count;
+			auto mask = 7u;
+
+			const auto merge_field = [&](const auto ptr, const uint32_t bit)
+			{
+				auto value = tallies[group.front()].*ptr;
+
+				for (const auto i : group)
+				{
+					const auto current = tallies[i].*ptr;
+					if (is_empty(value) || is_empty(current) || icmp(value, current) != 0)
+					{
+						value = {};
+						mask &= ~bit;
+						break;
+					}
+				}
+
+				return value;
+			};
+
+			merged.place = merge_field(&df::visit_place_tally::place, 1u);
+			merged.state = merge_field(&df::visit_place_tally::state, 2u);
+			merged.country = merge_field(&df::visit_place_tally::country, 4u);
+
+			if (mask == 0)
+			{
+				struct candidate
+				{
+					size_t index = 0;
+					std::string key;
+					std::vector<size_t> covered;
+					uint32_t count = 0;
+				};
+
+				std::vector<candidate> candidates;
+
+				for (const auto i : group)
+				{
+					const auto exact_key = place_subset_key(tallies[i], place_mask(tallies[i]));
+					const auto found = subset_keys.find(exact_key);
+
+					if (found != subset_keys.end())
+					{
+						candidate c;
+						c.index = i;
+						c.key = exact_key;
+						c.covered = found->second;
+
+						for (const auto covered : c.covered)
+						{
+							c.count += tallies[covered].count;
+						}
+
+						candidates.emplace_back(std::move(c));
+					}
+				}
+
+				std::ranges::sort(candidates, [](const candidate& l, const candidate& r)
+				{
+					return l.count == r.count ? l.key < r.key : l.count > r.count;
+				});
+
+				std::vector<bool> covered(tallies.size(), false);
+
+				for (const auto& candidate : candidates)
+				{
+					auto overlaps = false;
+
+					for (const auto i : candidate.covered)
+					{
+						overlaps = covered[i];
+						if (overlaps) break;
+					}
+
+					if (overlaps) continue;
+
+					for (const auto i : candidate.covered) covered[i] = true;
+
+					auto tally = tallies[candidate.index];
+					tally.count = candidate.count;
+					collapsed.emplace_back(std::move(tally));
+				}
+
+				continue;
+			}
+
+			collapsed.emplace_back(std::move(merged));
+		}
+
+		tallies = std::move(collapsed);
+		return true;
 	}
 
 	std::string place_label(const df::visit_place_tally& t, const location_qualification level)
@@ -255,9 +486,15 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 
 	for (size_t i = 0; i < samples.size(); ++i)
 	{
+		if ((i & 0xffu) == 0 && request.token.is_cancelled()) return result;
 		const auto& s = samples[i];
 
-		const auto has_location = s.coordinate.is_valid() || !is_empty(s.place) || !is_empty(s.country);
+		// A state or province is a location. Leaving it out of this test counted a photograph
+		// described only by its state as unlocated, so the summary understated how much of the
+		// result is placed - and the place breakdown below, which keys on the same fields, still
+		// listed it.
+		const auto has_location = s.coordinate.is_valid() || !is_empty(s.place) || !is_empty(s.state) ||
+			!is_empty(s.country);
 
 		if (s.days == 0)
 		{
@@ -286,6 +523,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 
 		for (const auto i : usable)
 		{
+			if ((i & 0xffu) == 0 && request.token.is_cancelled()) return result;
 			const auto& s = samples[i];
 			auto place = s.place;
 			auto state = s.state;
@@ -312,8 +550,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 
 			if (is_empty(place) && is_empty(state) && is_empty(country)) continue;
 
-			auto key = std::format("{}\x1f{}\x1f{}", place.sv(), state.sv(), country.sv());
-			str::to_lower(key);
+			auto key = place_identity_key(place, state, country);
 
 			const auto found = keys.find(key);
 
@@ -333,7 +570,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 			tallies.emplace_back(std::move(tally));
 		}
 
-		collapse_subsumed_places(tallies);
+		if (!collapse_subsumed_places(tallies, request.token, request.counters)) return result;
 
 		std::ranges::stable_sort(tallies, [](const visit_place_tally& l, const visit_place_tally& r)
 		{
@@ -368,10 +605,11 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		}
 		else
 		{
-			const auto by_place = !is_empty(s.place);
-			const auto text = by_place ? s.place.sv() : s.country.sv();
-			auto key = std::string(text);
-			str::to_lower(key);
+			// The same identity the place tallies use. Keying on the place name alone merged
+			// namesakes into one visit - a Springfield in Illinois and one in Massachusetts are not
+			// the same trip - and a name that appeared with and without its qualifiers split into
+			// two. A country-only sample keys on the country, which is all the identity it has.
+			auto key = place_identity_key(s.place, s.state, s.country);
 
 			const auto found = text_clusters.find(key);
 
@@ -403,28 +641,23 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 
 	for (const auto* const b : ordered)
 	{
-		auto lat_sum = 0.0;
-		auto lon_sum = 0.0;
+		coordinate_sum bucket_coordinates;
 
 		for (const auto i : b->second)
 		{
-			lat_sum += samples[i].coordinate.latitude();
-			lon_sum += samples[i].coordinate.longitude();
+			bucket_coordinates.add(samples[i].coordinate);
 		}
 
-		const auto n = static_cast<double>(b->second.size());
-		const auto centre = gps_coordinate(lat_sum / n, lon_sum / n);
+		const auto centre = bucket_coordinates.mean(samples[b->second.front()].coordinate);
 		auto merged = false;
 
 		for (size_t c = first_coord_cluster; c < clusters.size(); ++c)
 		{
 			if (clusters[c].centre.distance_in_kilometers(centre) <= visit_cluster_merge_km)
 			{
-				clusters[c].lat_sum += lat_sum;
-				clusters[c].lon_sum += lon_sum;
+				clusters[c].coordinates.add(bucket_coordinates);
 				clusters[c].coord_count += static_cast<uint32_t>(b->second.size());
-				clusters[c].centre = gps_coordinate(clusters[c].lat_sum / clusters[c].coord_count,
-				                                    clusters[c].lon_sum / clusters[c].coord_count);
+				clusters[c].centre = clusters[c].coordinates.mean(clusters[c].centre);
 				clusters[c].members.insert(clusters[c].members.end(), b->second.begin(), b->second.end());
 				merged = true;
 				break;
@@ -435,8 +668,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		if (clusters.size() >= visit_max_clusters) continue;
 
 		cluster_t c;
-		c.lat_sum = lat_sum;
-		c.lon_sum = lon_sum;
+		c.coordinates = bucket_coordinates;
 		c.coord_count = static_cast<uint32_t>(b->second.size());
 		c.centre = centre;
 		c.members = b->second;

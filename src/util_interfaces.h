@@ -13,7 +13,29 @@
 
 #include <variant>
 
-class LoadJob;
+// The groups the app's commands fall in, which a ui::command carries for it; none comes first, so a
+// value-initialized group is none.
+enum class command_group
+{
+	none,
+	navigation,
+	selection,
+	open,
+	tools,
+	rate_flag,
+	options,
+	media_playback,
+	help,
+	file_management,
+	group_by,
+	sort_by,
+	edit_item
+};
+
+// The application's tree of view elements (ui_elements.h), named here for the headers that pass one
+// around. The UI layer knows one only as a bubble's content.
+class view_elements;
+using view_elements_ptr = std::shared_ptr<view_elements>;
 
 enum class view_type
 {
@@ -21,6 +43,7 @@ enum class view_type
 	items,
 	media,
 	edit,
+	movie,
 	rename,
 	batch,
 	import,
@@ -35,6 +58,11 @@ enum class repeat_mode
 	repeat_all,
 	repeat_one
 };
+
+constexpr bool is_valid_repeat_mode(const uint32_t value) noexcept
+{
+	return value <= static_cast<uint32_t>(repeat_mode::repeat_one);
+}
 
 // design.md "Play and Slideshow": what a tick does when the displayed item reaches its end.
 enum class playback_advance

@@ -10,6 +10,9 @@
 // distance, map-driven queries, visits and the timeline. Owning document: docs/locations.md.
 
 #include "pch.h"
+
+#include <sqlite3.h>
+
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "model_location.h"
@@ -173,6 +176,83 @@ static void should_bound_tile_cache_by_size()
 	db.close();
 }
 
+static void should_budget_expired_tile_pruning()
+{
+	tile_cache_db db;
+	db.open(_temps.next_path(".db"));
+
+	const df::blob bytes = {1, 2, 3, 4};
+	const auto long_ago = tile_days_ago(60);
+	const auto recent = tile_days_ago(1);
+
+	for (auto i = 0; i < 4100; ++i)
+	{
+		db.store(map_tile_db_key(8, i, i), df::cspan(bytes), long_ago);
+	}
+
+	for (auto i = 0; i < 3; ++i)
+	{
+		db.store(map_tile_db_key(9, i, i), df::cspan(bytes), recent);
+	}
+
+	assert_equal(4103, static_cast<int>(db.count()), "stored before prune", "tile cache");
+
+	db.prune(30, tile_cache_db::max_bytes);
+	assert_equal(7, static_cast<int>(db.count()), "one maintenance pass removes only its row budget",
+	             "tile cache");
+
+	db.prune(30, tile_cache_db::max_bytes);
+	assert_equal(3, static_cast<int>(db.count()), "a later pass finishes expired cleanup", "tile cache");
+
+	db.close();
+}
+
+static void should_classify_tile_cache_open_failures_before_replacement()
+{
+	assert_equal(false, tile_cache_test_seams::failure_allows_replacement(SQLITE_BUSY),
+	             "busy is environmental, not replaceable", "tile cache");
+	assert_equal(false, tile_cache_test_seams::failure_allows_replacement(SQLITE_LOCKED),
+	             "locked is environmental, not replaceable", "tile cache");
+	assert_equal(false, tile_cache_test_seams::failure_allows_replacement(SQLITE_IOERR),
+	             "I/O is environmental, not replaceable", "tile cache");
+	assert_equal(true, tile_cache_test_seams::failure_allows_replacement(SQLITE_ERROR),
+	             "incompatible schema is replaceable", "tile cache");
+	assert_equal(true, tile_cache_test_seams::failure_allows_replacement(SQLITE_CORRUPT),
+	             "corrupt bytes are replaceable", "tile cache");
+	assert_equal(true, tile_cache_test_seams::failure_allows_replacement(SQLITE_NOTADB),
+	             "non-database bytes are replaceable", "tile cache");
+}
+
+static void should_keep_tile_transaction_bookkeeping_after_commit_failure()
+{
+	tile_cache_db db;
+	db.open(_temps.next_path(".db"));
+
+	const df::blob bytes = {1, 2, 3, 4};
+	for (auto i = 0u; i < tile_cache_db::prune_write_interval; ++i)
+	{
+		db.store(map_tile_db_key(10, static_cast<int>(i), static_cast<int>(i)), df::cspan(bytes));
+	}
+
+	tile_cache_test_seams::fail_next_commit();
+	db.flush();
+
+	assert_equal(false, tile_cache_test_seams::wrapper_transaction_active(db),
+	             "wrapper state is not left inside a transaction", "tile cache");
+	assert_equal(false, tile_cache_test_seams::sqlite_transaction_active(db),
+	             "SQLite state agrees after failed commit recovery", "tile cache");
+	assert_equal(tile_cache_db::prune_write_interval, tile_cache_test_seams::writes_since_prune(db),
+	             "prune is not run after persistence failed", "tile cache");
+	assert_equal(0, static_cast<int>(db.count()), "rolled back rows are not reported as stored", "tile cache");
+
+	constexpr auto key = map_tile_db_key(11, 1, 1);
+	db.store(key, df::cspan(bytes));
+	db.flush();
+	assert_equal(true, db.load(key) == bytes, "subsequent writes persist after the fault clears", "tile cache");
+
+	db.close();
+}
+
 static void should_keep_tiles_inside_the_retention_window()
 {
 	// The OSM tile usage policy asks clients to keep what they download for at least a week, so a
@@ -191,6 +271,8 @@ static void should_keep_tiles_inside_the_retention_window()
 	db.prune(0, 1);
 
 	assert_equal(4, static_cast<int>(db.count()), "recently fetched tiles survive any cap", "tile cache");
+	assert_equal(0u, tile_cache_test_seams::writes_since_prune(db),
+	             "protected tiles over the cap do not reschedule idle prune passes", "tile cache");
 
 	db.close();
 }
@@ -243,6 +325,93 @@ static void should_anchor_map_marker_cells_to_world()
 	             "map markers");
 	assert_equal(true, first_cell == nearby_cell, "nearby markers aggregate in the same world cell", "map markers");
 	assert_equal(false, first_cell == map_marker_world_cell(first, 17), "zoom recalculates world cells", "map markers");
+}
+
+static void should_publish_prepared_map_marker_snapshots()
+{
+	null_async_strategy async;
+	auto invalidated = false;
+	map_engine engine(async, [&invalidated] { invalidated = true; });
+	constexpr sizei extent(800, 600);
+	constexpr recti bounds(0, 0, extent.cx, extent.cy);
+	const gps_coordinate prague(50.0755, 14.4378);
+
+	std::vector<map_engine::marker> markers;
+	for (auto i = 0; i < 100; ++i) markers.push_back({prague, 1});
+
+	auto snapshot = map_engine::prepare_marker_snapshot(markers, 16);
+	assert_equal(true, snapshot.has_markers, "snapshot has markers", "map markers");
+	assert_equal(1u, static_cast<uint32_t>(map_engine::prepared_marker_count(snapshot)),
+	             "snapshot work is bounded by prepared cells", "map markers");
+
+	engine.set_location(prague, bounds);
+	invalidated = false;
+	engine.set_marker_snapshot(std::move(snapshot));
+	assert_equal(true, invalidated, "publishing a snapshot invalidates once", "map markers");
+
+	const auto visible = engine.visible_cluster_coordinates(extent);
+	assert_equal(1u, static_cast<uint32_t>(visible.size()), "colocated markers form one bubble", "map markers");
+	assert_equal(1u, static_cast<uint32_t>(engine.last_cluster_work()),
+	             "paint clustering visits prepared cells, not source markers", "map markers");
+
+	pointi anchor;
+	auto count = 0;
+	const auto marker = engine.hit_test_marker({extent.cx / 2, extent.cy / 2}, extent, anchor, count);
+	assert_equal(true, marker >= 0, "the prepared bubble is hit-testable", "map markers");
+	assert_equal(100, count, "hit testing and paint use the same aggregate count", "map markers");
+}
+
+static void should_cull_prepared_map_marker_cells_to_view()
+{
+	null_async_strategy async;
+	map_engine engine(async, [] {});
+	constexpr sizei extent(800, 600);
+	constexpr recti bounds(0, 0, extent.cx, extent.cy);
+	const gps_coordinate prague(50.0755, 14.4378);
+	std::vector<map_engine::marker> markers;
+
+	for (auto lat = -60; lat <= 60; lat += 5)
+	{
+		for (auto lon = -175; lon <= 175; lon += 5)
+		{
+			markers.push_back({gps_coordinate(static_cast<double>(lat), static_cast<double>(lon)), 1});
+		}
+	}
+	markers.push_back({prague, 1});
+
+	auto snapshot = map_engine::prepare_marker_snapshot(markers, 8);
+	const auto prepared_count = map_engine::prepared_marker_count(snapshot);
+	assert_equal(true, prepared_count > 100u, "test prepares many cells", "map markers");
+
+	engine.set_location(prague, bounds);
+	engine.set_marker_snapshot(std::move(snapshot));
+	const auto visible = engine.visible_cluster_coordinates(extent);
+
+	assert_equal(true, !visible.empty(), "the viewport still has visible cells", "map markers");
+	assert_equal(true, engine.last_cluster_work() < prepared_count / 4,
+	             "viewport clustering visits nearby prepared cells, not every prepared cell", "map markers");
+}
+
+static void should_clear_map_marker_hits_when_snapshot_changes()
+{
+	null_async_strategy async;
+	map_engine engine(async, [] {});
+	constexpr sizei extent(800, 600);
+	constexpr recti bounds(0, 0, extent.cx, extent.cy);
+	const gps_coordinate prague(50.0755, 14.4378);
+
+	engine.set_location(prague, bounds);
+	engine.set_marker_snapshot(map_engine::prepare_marker_snapshot({{prague, 1}}, 16));
+	(void)engine.visible_cluster_coordinates(extent);
+
+	pointi anchor;
+	auto count = 0;
+	assert_equal(true, engine.hit_test_marker({extent.cx / 2, extent.cy / 2}, extent, anchor, count) >= 0,
+	             "initial snapshot is hit-testable", "map markers");
+
+	engine.set_marker_snapshot({});
+	assert_equal(-1, engine.hit_test_marker({extent.cx / 2, extent.cy / 2}, extent, anchor, count),
+	             "a replaced snapshot cannot return stale hit-test indices", "map markers");
 }
 
 static void should_measure_distance_to_map_cells()
@@ -587,15 +756,45 @@ static void should_find_location()
 	assert_equal(true, !czech_matches.empty(), "country code produces location predictions");
 	assert_equal("Czechia"s, std::string(czech_matches.front().location.country), "CZ predicts Czechia");
 
+	const auto short_local = locations.auto_complete("bi", 4, default_location);
+	assert_equal(true, std::ranges::any_of(short_local, [](const location_match& match)
+	             {
+		             return str::icmp(match.location.place, "Birmingham") == 0 &&
+			             str::icmp(match.location.country, "United Kingdom") == 0;
+	             }),
+	             "short prefixes include local places by canonical country code");
+	assert_equal(true, short_local.size() <= 4, "short completion honours the result cap");
+
+	const auto short_nonlocal = locations.auto_complete("ar", 8, default_location);
+	assert_equal(false, std::ranges::any_of(short_nonlocal, [](const location_match& match)
+	             {
+		             return str::icmp(match.location.place, "Armidale") == 0;
+	             }),
+	             "short prefixes still suppress non-local place matches");
+
 	// Issue #119: the displayed place and country names follow the selected UI language.
 	locations.set_display_language("de");
 	const auto munich_de = locations.find_by_id(2867714);
 	assert_equal("München", munich_de.place, "German place");
 	assert_equal("Deutschland", munich_de.country, "German country");
+	const auto local_de = locations.auto_complete("bi", 4, default_location);
+	assert_equal(true, std::ranges::any_of(local_de, [](const location_match& match)
+	             {
+		             return str::icmp(match.location.place, "Birmingham") == 0 &&
+			             str::icmp(match.location.country, "Vereinigtes Königreich") == 0;
+	             }),
+	             "localized display names do not break short local completion");
 	locations.set_display_language("es");
 	const auto munich_es = locations.find_by_id(2867714);
 	assert_equal("Múnich", munich_es.place, "Spanish place");
 	assert_equal("Alemania", munich_es.country, "Spanish country");
+	const auto local_es = locations.auto_complete("bi", 4, default_location);
+	assert_equal(true, std::ranges::any_of(local_es, [](const location_match& match)
+	             {
+		             return str::icmp(match.location.place, "Birmingham") == 0 &&
+			             str::icmp(match.location.country, "Reino Unido") == 0;
+	             }),
+	             "a second localized display language still completes local short prefixes");
 	locations.set_display_language("zh");
 	const auto munich_zh = locations.find_by_id(2867714);
 	assert_equal("慕尼黑", munich_zh.place, "Chinese place");
@@ -618,6 +817,39 @@ static void should_find_location()
 	assert_equal("Germany", munich_default.country, "Default country");
 	locations.set_display_language("en"); // English exonym equals the default name -> fallback
 	assert_equal("Munich", locations.find_by_id(2867714).place, "English name");
+}
+
+static void should_return_no_place_for_empty_location_lookup()
+{
+	const location_cache locations;
+
+	const auto closest = locations.find_closest(0.0, 0.0);
+	assert_equal(true, str::is_empty(closest.place), "empty gazetteer has no closest place");
+	assert_equal(0u, closest.id, "empty gazetteer has no closest id");
+
+	const auto invalid = locations.find_closest(std::numeric_limits<double>::quiet_NaN(), 0.0);
+	assert_equal(true, str::is_empty(invalid.place), "invalid lookup has no closest place");
+
+	const auto country = locations.find_country(std::numeric_limits<double>::quiet_NaN(), 0.0);
+	assert_equal(0u, country.code, "invalid country lookup has no country code");
+}
+
+static void should_find_places_across_the_antimeridian_and_poles()
+{
+	auto& locations = test_locations();
+
+	const auto seam = locations.find_closest(66.323, 179.9);
+	assert_equal("Egvekinot"s, std::string(seam.place.sv()),
+	             "nearest lookup wraps across the antimeridian");
+
+	const auto attributed = locations.find_attributed(66.323, 179.9);
+	assert_equal("Egvekinot"s, std::string(attributed.nearest.place.sv()),
+	             "attribution starts from the wrapped nearest place");
+
+	assert_equal(180.0, location_longitude_span_degrees(89.9, 100.0),
+	             "a polar attribution radius conservatively spans every longitude");
+	assert_equal(true, location_longitude_span_degrees(0.0, 100.0) < 1.0,
+	             "ordinary midlatitude bounds stay narrow");
 }
 
 // Records are read back through a mapping that load_index drops and rebuilds, and the index is
@@ -925,6 +1157,33 @@ static void should_describe_bearing()
 	assert_equal(""s, bearing_descriptor(london), "an item At its place carries no bearing");
 }
 
+// Attribution starts from the nearest place, and it has to be the same nearest place find_closest
+// names. Searching raw degrees there while find_closest weighed longitude by latitude meant that far
+// from the equator an item was labelled after somewhere half as close as a place it was actually
+// nearer to. The grid spans high latitudes, where a degree of longitude is least like a degree of
+// latitude; against the unweighted search it finds disagreements.
+static void should_attribute_from_the_place_find_closest_names()
+{
+	const auto& locations = test_locations();
+	auto compared = 0;
+	auto disagreements = 0;
+
+	for (auto latitude = 56.0; latitude <= 70.0; latitude += 0.5)
+	{
+		for (auto longitude = 5.0; longitude <= 60.0; longitude += 1.5)
+		{
+			const auto attributed = locations.find_attributed(latitude, longitude);
+			const auto closest = locations.find_closest(latitude, longitude);
+
+			if (attributed.nearest.id != closest.id) ++disagreements;
+			++compared;
+		}
+	}
+
+	assert_equal(true, compared > 1000, "the grid covers a wide band of high latitudes");
+	assert_equal(0, disagreements, "attribution starts from the place find_closest names");
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Location search
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1065,6 +1324,30 @@ static void should_step_search_distance()
 	auto added = df::search_t::parse("loc:London");
 	added.set_place_distance(0.5);
 	assert_equal("loc:London, 500m", added.format_terms(), "a radius can be added to a bare place");
+}
+
+// locations.md 3.5: every location scope spelling is one entry in df::location_scopes, and completing,
+// parsing and writing a query all read it - so a spelling added there works everywhere at its level.
+static void should_read_every_location_scope_from_one_table()
+{
+	for (const auto& scope : df::location_scopes)
+	{
+		const auto query = std::format("{}:Paris", scope.name);
+
+		const auto completion = df::classify_search_scope(query);
+		assert_equal(true, completion.kind == df::search_scope_kind::location,
+		             std::format("{} completes as a location", scope.name));
+		assert_equal(true, completion.level == scope.level, std::format("{} completes at its level", scope.name));
+
+		const auto search = df::search_t::parse(query);
+		assert_equal(1_z, search.terms().size(), std::format("{} parses to one term", scope.name));
+		assert_equal(true, search.terms().front().type == df::search_term_type::location,
+		             std::format("{} parses to a location term", scope.name));
+		assert_equal(true, search.terms().front().level == scope.level,
+		             std::format("{} parses at its level", scope.name));
+		assert_equal(std::format("{}:Paris", df::location_scope_name(scope.level)), search.format_terms(),
+		             std::format("{} is written back in its level's spelling", scope.name));
+	}
 }
 
 static void should_resolve_location_vocabulary()
@@ -1296,6 +1579,22 @@ static void should_open_a_map_area_as_a_place_and_radius()
 	assert_equal(location_distance_at_detent(0), point.search_radius_km(),
 	             "a degenerate area uses the smallest detent");
 
+	// A zoomed-out area is wider than the widest detent. Rounding it down to the top of the ladder
+	// dropped every item the area showed beyond 100 km, which is the one thing the radius promises
+	// not to do. The slider clamps at its widest; the search covers what was displayed.
+	map_location_area wide;
+	wide.position = wide.place_position = gps_coordinate(0.0, 0.0);
+	wide.min_latitude = -10.0;
+	wide.max_latitude = 10.0;
+	wide.min_longitude = -10.0;
+	wide.max_longitude = 10.0;
+
+	const auto wide_furthest = wide.place_position.distance_in_kilometers(gps_coordinate(10.0, 10.0));
+	assert_equal(true, wide_furthest > location_distance_at_detent(location_distance_detent_count - 1),
+	             "the fixture is wider than the ladder");
+	assert_equal(true, wide.search_radius_km() >= wide_furthest,
+	             "a radius past the widest detent still covers the area");
+
 	// What the click opens: a resolved place term the distance slider can then widen.
 	auto named = df::search_t();
 	named.location(area.name, df::location_level::any).set_place_distance(km);
@@ -1454,6 +1753,83 @@ static void should_derive_visits_from_a_result_set()
 	assert_equal(10u, timeline.places[0].count, "largest place count");
 }
 
+// A visit centre used to be the arithmetic mean of latitude and longitude, which has a seam: a trip
+// straddling the antimeridian averaged +179 and -179 to 0 and put the visit off West Africa, from
+// where its covering radius reached half the planet.
+static void should_centre_a_visit_across_the_antimeridian()
+{
+	const location_cache locations;
+	df::visit_request request;
+
+	for (auto d = 1; d <= 6; ++d)
+	{
+		request.samples.emplace_back(visit_sample_at(2022, 5, d, -16.9, 179.9, "Taveuni"));
+		request.samples.emplace_back(visit_sample_at(2022, 5, d + 6, -16.9, -179.9, "Taveuni"));
+	}
+
+	const auto timeline = df::compute_visits(request, locations);
+
+	assert_equal(1u, static_cast<uint32_t>(timeline.nodes.size()),
+	             std::format("one visit either side of the line (located {}, nodes {})",
+	                         timeline.located_count, timeline.nodes.size()));
+
+	const auto centre = timeline.nodes.front().centre;
+	assert_equal(true, centre.is_valid(),
+	             std::format("the visit has a centre ({}, {})", centre.latitude(), centre.longitude()));
+	assert_equal(true, std::abs(centre.longitude()) > 179.0,
+	             std::format("the centre stays on the meridian the samples straddle ({}, {})",
+	                         centre.latitude(), centre.longitude()));
+	assert_equal(true, std::abs(centre.latitude() + 16.9) < 0.5, "and keeps the latitude it was given");
+
+	// The radius covers the members, so a centre on the wrong side of the planet would show up as a
+	// radius of thousands of kilometres rather than a few.
+	assert_equal(true, timeline.nodes.front().radius_km < 100.0,
+	             "the covering radius is local, not half the planet");
+}
+
+// A text-only visit is keyed by the same identity the place tallies use. Keying on the place name
+// alone merged namesakes into one trip: two Springfields in different states are not one visit, and
+// a timeline that says they are cannot be reproduced by the search the node promises.
+static void should_tell_text_only_namesakes_apart()
+{
+	const location_cache locations;
+	df::visit_request request;
+
+	const auto sample_at = [](const int year, const int month, const int day, const std::string_view place,
+	                          const std::string_view state)
+	{
+		df::visit_sample s;
+		s.days = df::date_t(year, month, day, 12, 0, 0).to_days();
+		s.place = str::cache(place);
+		s.state = str::cache(state);
+		s.country = str::cache("United States");
+		return s;
+	};
+
+	for (auto d = 1; d <= 8; ++d)
+	{
+		request.samples.emplace_back(sample_at(2021, 4, d, "Springfield", "Illinois"));
+	}
+
+	for (auto d = 1; d <= 8; ++d)
+	{
+		request.samples.emplace_back(sample_at(2023, 9, d, "Springfield", "Massachusetts"));
+	}
+
+	const auto timeline = df::compute_visits(request, locations);
+
+	assert_equal(2u, static_cast<uint32_t>(timeline.nodes.size()), "two Springfields are two visits");
+	assert_equal(2u, static_cast<uint32_t>(timeline.places.size()), "and two places");
+	assert_equal(8u, timeline.nodes.front().count, "neither absorbed the other");
+	assert_equal(8u, timeline.nodes.back().count, "and both kept their own items");
+
+	// The node count alone does not discriminate: one cluster spanning both years would split at the
+	// gap into two nodes regardless. It is the cluster identity that says the two places were told
+	// apart in the first place.
+	assert_equal(false, timeline.nodes.front().cluster == timeline.nodes.back().cluster,
+	             "and they are two clusters, not one split at the gap");
+}
+
 static void should_split_a_cluster_at_long_gaps()
 {
 	const location_cache locations;
@@ -1502,6 +1878,308 @@ static void should_exclude_items_that_cannot_sit_on_a_timeline()
 	assert_equal(1u, timeline.undated_count, "undated count");
 	assert_equal(1u, timeline.unlocated_count, "unlocated count");
 	assert_equal(2u, static_cast<uint32_t>(timeline.nodes.size()), "node count");
+}
+
+// A state or province places a photograph as surely as a town does. Leaving it out of the test for
+// "has a location" counted an item described only by its state as unlocated, so the summary
+// understated how much of the result is placed - while the place breakdown, which keys on the same
+// fields, still listed it.
+static void should_count_a_state_only_sample_as_located()
+{
+	const location_cache locations;
+	df::visit_request request;
+
+	for (auto d = 1; d <= 8; ++d)
+	{
+		request.samples.emplace_back(visit_sample_at(2020, 5, d, 48.85, 2.35, "Paris"));
+	}
+
+	// Described by its state alone: no coordinate, no town, no country.
+	auto state_only = visit_sample_at(2020, 5, 20, 0.0, 0.0, {});
+	state_only.coordinate = {};
+	state_only.state = "Bavaria"_c;
+	request.samples.emplace_back(state_only);
+
+	const auto timeline = df::compute_visits(request, locations);
+
+	assert_equal(0u, timeline.unlocated_count, "a state-only sample is not unlocated");
+	assert_equal(9u, timeline.located_count, "it is counted among the located");
+}
+
+static df::visit_sample text_place_sample(const int day, const char* place, const char* state, const char* country)
+{
+	auto s = visit_sample_at(2022, 4, day, 0.0, 0.0, place);
+	s.coordinate = {};
+	s.state = str::cache(state);
+	s.country = str::cache(country);
+	return s;
+}
+
+static uint32_t count_matching_place_chip(const location_cache& locations, const df::visit_request& request,
+                                          const df::visit_place_tally& place)
+{
+	const auto search = df::visit_place_search(df::search_t(), place);
+	const df::search_matcher matcher(search, platform::now().to_days(), &locations);
+	auto count = 0u;
+
+	for (const auto& s : request.samples)
+	{
+		df::index_file_item file;
+		file.ft = files::file_type_from_name("test.jpg");
+		const auto md = file.safe_ps();
+		md->coordinate = s.coordinate;
+		md->location_place = s.place;
+		md->location_state = s.state;
+		md->location_country = s.country;
+		file.calc_search_presence();
+
+		if (matcher.match_item({}, file).is_match()) ++count;
+	}
+
+	return count;
+}
+
+static bool place_chip_matches_sample(const df::visit_place_tally& place, const df::visit_sample& sample)
+{
+	const auto matches = [](const str::cached chip, const str::cached value)
+	{
+		return is_empty(chip) || (!is_empty(value) && str::icmp(chip, value) == 0);
+	};
+
+	return matches(place.place, sample.place) &&
+		matches(place.state, sample.state) &&
+		matches(place.country, sample.country);
+}
+
+static uint32_t count_matching_place_chip_direct(const df::visit_request& request, const df::visit_place_tally& place)
+{
+	auto count = 0u;
+
+	for (const auto& sample : request.samples)
+	{
+		if (place_chip_matches_sample(place, sample)) ++count;
+	}
+
+	return count;
+}
+
+static void assert_place_chips_match_direct_predicates(const df::visit_request& request,
+                                                       const df::visit_timeline& timeline,
+                                                       const std::string_view context)
+{
+	for (const auto& place : timeline.places)
+	{
+		assert_equal(place.count, count_matching_place_chip_direct(request, place),
+		             std::format("{}: chip predicate returns its count", context));
+	}
+}
+
+static void should_fold_place_breakdown_identity_case()
+{
+	const location_cache locations;
+	df::visit_request request;
+
+	request.samples.emplace_back(text_place_sample(1, "Paris", "Ile-de-France", "France"));
+	request.samples.emplace_back(text_place_sample(2, "paris", "ile-de-france", "france"));
+	request.samples.emplace_back(text_place_sample(3, "PARIS", "ILE-DE-FRANCE", "FRANCE"));
+
+	const auto timeline = df::compute_visits(request, locations);
+
+	assert_equal(1u, static_cast<uint32_t>(timeline.places.size()), "case variants form one identity");
+	assert_equal(3u, timeline.places[0].count, "case variants aggregate");
+	assert_equal(3u, count_matching_place_chip(locations, request, timeline.places[0]),
+	             "the case-folded chip search returns its count");
+}
+
+static void should_merge_overlapping_partial_place_breakdowns()
+{
+	const location_cache locations;
+
+	const auto run_permutation = [&locations](const std::array<int, 3>& order)
+	{
+		const std::array samples = {
+			text_place_sample(1, "Paris", "", "France"),
+			text_place_sample(2, "", "Ile-de-France", "France"),
+			text_place_sample(3, "Paris", "Ile-de-France", "France"),
+		};
+
+		df::visit_request request;
+		for (const auto i : order) request.samples.emplace_back(samples[i]);
+
+		const auto timeline = df::compute_visits(request, locations);
+		assert_equal(1u, static_cast<uint32_t>(timeline.places.size()),
+		             "overlapping partial identities merge to one predicate");
+		assert_equal("France"s, timeline.places[0].name, "the common predicate is deterministic");
+		assert_equal(3u, timeline.places[0].count, "the merged chip counts all overlapping items");
+		assert_equal(3u, count_matching_place_chip(locations, request, timeline.places[0]),
+		             "the merged chip search returns its count");
+	};
+
+	run_permutation({0, 1, 2});
+	run_permutation({0, 2, 1});
+	run_permutation({1, 0, 2});
+	run_permutation({1, 2, 0});
+	run_permutation({2, 0, 1});
+	run_permutation({2, 1, 0});
+}
+
+static void should_drop_unbounded_partial_place_breakdowns()
+{
+	const location_cache locations;
+
+	struct place_group
+	{
+		const char* place = "";
+		const char* state = "";
+		const char* country = "";
+		uint32_t count = 0;
+	};
+
+	const std::array groups = {
+		place_group{"Paris", "", "", 1},
+		place_group{"", "", "France", 1},
+		place_group{"Paris", "Ile-de-France", "France", 1},
+		place_group{"Lyon", "Auvergne-Rhone-Alpes", "France", 5},
+		place_group{"Nice", "Provence-Alpes-Cote d'Azur", "France", 7},
+	};
+
+	std::array<int, groups.size()> order = {0, 1, 2, 3, 4};
+	auto permutations = 0u;
+
+	do
+	{
+		df::visit_request request;
+		auto day = 1;
+
+		for (const auto group_index : order)
+		{
+			const auto& group = groups[group_index];
+
+			for (auto i = 0u; i < group.count; ++i)
+			{
+				request.samples.emplace_back(text_place_sample(day++, group.place, group.state, group.country));
+			}
+		}
+
+		const auto timeline = df::compute_visits(request, locations);
+		assert_place_chips_match_direct_predicates(request, timeline, "permuted partial place identities");
+		++permutations;
+	}
+	while (std::next_permutation(order.begin(), order.end()));
+
+	assert_equal(120u, permutations, "all group-order permutations were checked");
+}
+
+static void should_keep_the_largest_partial_place_candidate()
+{
+	const location_cache locations;
+	df::visit_request request;
+	auto day = 1;
+
+	for (auto i = 0; i < 1000; ++i)
+	{
+		request.samples.emplace_back(text_place_sample(day++, "", "", "France"));
+	}
+
+	request.samples.emplace_back(text_place_sample(day++, "Paris", "", ""));
+	request.samples.emplace_back(text_place_sample(day++, "Paris", "Ile-de-France", "France"));
+
+	for (auto i = 0; i < 5; ++i)
+	{
+		request.samples.emplace_back(text_place_sample(day++, "Lyon", "Auvergne-Rhone-Alpes", "France"));
+	}
+
+	const auto timeline = df::compute_visits(request, locations);
+	assert_equal(true, !timeline.places.empty(), "the row keeps a visible place chip");
+	assert_place_chips_match_direct_predicates(request, timeline, "largest partial place candidate");
+	assert_equal("France"s, timeline.places.front().name, "the largest valid predicate survives");
+	assert_equal(1006u, timeline.places.front().count, "the largest predicate keeps its covered items");
+}
+
+static void should_keep_random_place_breakdown_predicates_authoritative()
+{
+	const location_cache locations;
+	const std::array<const char*, 4> places = {"Paris", "Lyon", "Nice", "Rouen"};
+	const std::array<const char*, 4> states = {
+		"Ile-de-France", "Auvergne-Rhone-Alpes", "Provence-Alpes-Cote d'Azur", "Normandy"
+	};
+	const std::array<const char*, 2> countries = {"France", "Germany"};
+	auto rng = 0x6008u;
+	const auto next = [&rng]
+	{
+		rng = rng * 1664525u + 1013904223u;
+		return rng;
+	};
+
+	for (auto iteration = 0; iteration < 200; ++iteration)
+	{
+		df::visit_request request;
+
+		for (auto i = 0; i < 18; ++i)
+		{
+			const auto place_index = static_cast<size_t>(next() % places.size());
+			const auto country_index = static_cast<size_t>(next() % countries.size());
+			auto mask = next() % 7u + 1u;
+			if ((mask & 4u) == 0 && (next() % 3u) == 0) mask |= 4u;
+
+			request.samples.emplace_back(text_place_sample(
+				i + 1,
+				(mask & 1u) != 0 ? places[place_index] : "",
+				(mask & 2u) != 0 ? states[place_index] : "",
+				(mask & 4u) != 0 ? countries[country_index] : ""));
+		}
+
+		const auto timeline = df::compute_visits(request, locations);
+		assert_place_chips_match_direct_predicates(
+			request, timeline, std::format("random partial identity set {}", iteration));
+	}
+}
+
+static void should_bound_place_breakdown_collapse_work()
+{
+	const location_cache locations;
+
+	const auto run = [&locations](const int distinct_places)
+	{
+		df::visit_request request;
+		df::visit_work_counters counters;
+		request.counters = &counters;
+		request.samples.emplace_back(text_place_sample(1, "", "", "France"));
+
+		for (auto i = 0; i < distinct_places; ++i)
+		{
+			const auto place = std::format("Place{:04}", i);
+			const auto state = std::format("State{:04}", i);
+			request.samples.emplace_back(text_place_sample(i + 2, place.c_str(), state.c_str(), "France"));
+		}
+
+		const auto timeline = df::compute_visits(request, locations);
+		assert_place_chips_match_direct_predicates(request, timeline, "bounded collapse work");
+		return counters.place_predicate_unions;
+	};
+
+	const auto small = run(64);
+	const auto medium = run(128);
+	const auto large = run(256);
+
+	assert_equal(true, medium <= small * 3, "doubling identities keeps bounded work near linear");
+	assert_equal(true, large <= medium * 3, "doubling again keeps bounded work near linear");
+}
+
+static void should_cancel_place_breakdown_derivation()
+{
+	const location_cache locations;
+	std::atomic_bool cancelled = true;
+	df::visit_request request{df::cancel_token(cancelled)};
+
+	for (auto i = 0; i < 512; ++i)
+	{
+		request.samples.emplace_back(text_place_sample(i + 1, "Paris", "Ile-de-France", "France"));
+	}
+
+	const auto timeline = df::compute_visits(std::move(request), locations);
+	assert_equal(0u, timeline.located_count, "cancelled visit derivation stops before tallying places");
+	assert_equal(0u, static_cast<uint32_t>(timeline.places.size()), "cancelled visit derivation publishes no chips");
 }
 
 // locations.md 7.2: a chip states a count and then runs a search. They are one promise, so the
@@ -1741,14 +2419,28 @@ void register_location_tests(view_state& state, test_registry& tests)
 	tests.add("Should cache tiles in a database"s, should_cache_tiles_in_a_database);
 	tests.add("Should prune unused tiles"s, should_prune_unused_tiles);
 	tests.add("Should bound tile cache by size"s, should_bound_tile_cache_by_size);
+	// MOD-023 - age pruning and vacuum share bounded maintenance work with size pruning.
+	tests.add("Should budget expired tile pruning"s, should_budget_expired_tile_pruning);
 	tests.add("Should keep tiles inside the retention window"s, should_keep_tiles_inside_the_retention_window);
+	// SRC-037 - environmental tile-cache open failures must not replace healthy bytes.
+	tests.add("Should classify tile cache open failures before replacement"s,
+	          should_classify_tile_cache_open_failures_before_replacement);
 	tests.add("Should replace an unreadable tile cache"s, should_replace_an_unreadable_tile_cache);
+	// MOD-022 - failed COMMIT must leave wrapper and SQLite transaction state coherent.
+	tests.add("Should keep tile transaction bookkeeping after commit failure"s,
+	          should_keep_tile_transaction_bookkeeping_after_commit_failure);
 	tests.add("Should resolve tile cache db beside index db"s, should_resolve_tile_cache_db_beside_index_db);
 
 	//
 	// Map geometry
 	//
 	tests.add("Should anchor map marker cells to world"s, should_anchor_map_marker_cells_to_world);
+	// UI-008 - marker snapshots are prepared before UI publication
+	tests.add("Should publish prepared map marker snapshots"s, should_publish_prepared_map_marker_snapshots);
+	tests.add("Should cull prepared map marker cells to view"s,
+	          should_cull_prepared_map_marker_cells_to_view);
+	tests.add("Should clear map marker hits when snapshot changes"s,
+	          should_clear_map_marker_hits_when_snapshot_changes);
 	tests.add("Should measure distance to map cells"s, should_measure_distance_to_map_cells);
 	tests.add("Should frame map on the box that holds items"s, should_frame_map_on_the_box_that_holds_items);
 	tests.add("Should build aggregate location matrix"s, should_build_aggregate_location_matrix);
@@ -1766,7 +2458,12 @@ void register_location_tests(view_state& state, test_registry& tests)
 	//
 	// Gazetteer lookup
 	//
+	// MOD-003/MOD-004/MOD-005 - canonical country identity and bounded gazetteer lookup
 	tests.add("Should find Location"s, should_find_location);
+	tests.add("Should return no place for empty location lookup"s,
+	          should_return_no_place_for_empty_location_lookup);
+	tests.add("Should find places across the antimeridian and poles"s,
+	          should_find_places_across_the_antimeridian_and_poles);
 	tests.add("Should reload location index"s, should_reload_location_index);
 	// Issue #119 - localized place and country names
 	tests.add("Should offset localized name"s, should_offset_localized_name);
@@ -1778,6 +2475,7 @@ void register_location_tests(view_state& state, test_registry& tests)
 	tests.add("Should compose qualified place name"s, should_compose_qualified_place_name);
 	tests.add("Should bound place attribution"s, should_bound_place_attribution);
 	tests.add("Should describe bearing"s, should_describe_bearing);
+	tests.add("Should attribute from the place find closest names"s, should_attribute_from_the_place_find_closest_names);
 
 	//
 	// Location search
@@ -1788,6 +2486,7 @@ void register_location_tests(view_state& state, test_registry& tests)
 	tests.add("Should defer height classes"s, should_defer_height_classes);
 	tests.add("Should step search distance"s, should_step_search_distance);
 	tests.add("Should resolve location vocabulary"s, should_resolve_location_vocabulary);
+	tests.add("Should read every location scope from one table"s, should_read_every_location_scope_from_one_table);
 	tests.add("Should complete locations as search terms"s, should_complete_locations_as_search_terms);
 	tests.add("Should match location radius and presence"s, should_match_location_radius_and_presence);
 
@@ -1806,10 +2505,29 @@ void register_location_tests(view_state& state, test_registry& tests)
 	//
 	tests.add("Should derive visits from a result set"s, should_derive_visits_from_a_result_set);
 	tests.add("Should split a cluster at long gaps"s, should_split_a_cluster_at_long_gaps);
+	tests.add("Should centre a visit across the antimeridian"s, should_centre_a_visit_across_the_antimeridian);
+	tests.add("Should tell text only namesakes apart"s, should_tell_text_only_namesakes_apart);
 	tests.add("Should exclude items that cannot sit on a timeline"s,
 	          should_exclude_items_that_cannot_sit_on_a_timeline);
+	tests.add("Should count a state only sample as located"s, should_count_a_state_only_sample_as_located);
+	// MOD-006 - place breakdown identity case folding
+	tests.add("Should fold place breakdown identity case"s, should_fold_place_breakdown_identity_case);
 	tests.add("Should reproduce a place breakdown from its chip"s,
 	          should_reproduce_a_place_breakdown_from_its_chip);
+	// MOD-007/MOD-008 - deterministic non-overlapping place breakdown predicates
+	tests.add("Should merge overlapping partial place breakdowns"s,
+	          should_merge_overlapping_partial_place_breakdowns);
+	tests.add("Should drop unbounded partial place breakdowns"s,
+	          should_drop_unbounded_partial_place_breakdowns);
+	tests.add("Should keep the largest partial place candidate"s,
+	          should_keep_the_largest_partial_place_candidate);
+	tests.add("Should keep random place breakdown predicates authoritative"s,
+	          should_keep_random_place_breakdown_predicates_authoritative);
+	// MOD-008 - collapse work scales with identities, not identity pairs
+	tests.add("Should bound place breakdown collapse work"s,
+	          should_bound_place_breakdown_collapse_work);
+	tests.add("Should cancel place breakdown derivation"s,
+	          should_cancel_place_breakdown_derivation);
 	tests.add("Should tell two place chips apart"s, should_tell_two_place_chips_apart);
 	tests.add("Should suppress an era until the query names it"s, should_suppress_an_era_until_the_query_names_it);
 	tests.add("Should run the search a timeline node promises"s, should_run_the_search_a_timeline_node_promises);

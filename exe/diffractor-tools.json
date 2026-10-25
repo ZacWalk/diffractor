@@ -133,6 +133,62 @@
         "text": "Inkscape"
       },
       {
+        "exe": "Nuke17.1",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 17.1"
+      },
+      {
+        "exe": "Nuke17.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 17.0"
+      },
+      {
+        "exe": "Nuke16.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 16.0"
+      },
+      {
+        "exe": "Nuke15.2",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 15.2"
+      },
+      {
+        "exe": "Nuke15.1",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 15.1"
+      },
+      {
+        "exe": "Nuke15.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 15.0"
+      },
+      {
+        "exe": "Nuke14.1",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 14.1"
+      },
+      {
+        "exe": "Nuke14.0",
+        "invoke": "{exe-path} -v {item-path}",
+        "extensions": "exr,dpx,cin,hdr,sgi,pic,tiff,tif,png,jpg,jpeg,jpe,tga,psd,dng,mov,mp4,mxf,r3d",
+        "group": "photo",
+        "text": "Nuke 14.0"
+      },
+      {
         "exe": "vlc",
         "invoke": "{exe-path} {item-path}",
         "extensions": "mp4,mkv,avi,mov,wmv,flv,webm,m4v,mpg,mpeg,mp3,flac,wav,m4a,aac,ogg,wma,opus",

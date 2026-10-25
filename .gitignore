@@ -29,6 +29,9 @@ intermediate/
 /exe/*.cso
 /exe/dictionaries/en_GB.aff
 /exe/dictionaries/en_GB.dic
+# Licence texts staged into exe/ by `dd.ps1 desktop` so the installer and diffractor.zip carry them.
+/exe/LICENSE.txt
+/exe/COPYING.GPLv3.txt
 /.vs
 /src/secrets.h
 /diffractor.zip
@@ -36,7 +39,6 @@ intermediate/
 /.vscode
 /DiffractorStoreCert.pfx
 *.msix
-/third-party/FFmpeg/intermediate
 exe/tiles/*.png
 /build
 

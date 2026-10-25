@@ -11,7 +11,7 @@
 // geocoding, and distance calculations.
 
 #pragma once
-#include "util.h"
+#include "libdesktop/util.h"
 
 
 class gps_coordinate
@@ -148,7 +148,12 @@ public:
 		const auto lon2r = deg2rad(other._longitude);
 		const auto u = sin((lat2r - lat1r) / 2.0);
 		const auto v = sin((lon2r - lon1r) / 2.0);
-		const auto result = 2.0 * earth_radius_km * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
+
+		// The haversine term is a sine squared and so cannot exceed one, but rounding in the two
+		// cosines can carry it a hair past it for a near-antipodal pair - and asin of anything above
+		// one is NaN, which then poisons every distance comparison it reaches.
+		const auto h = std::min(1.0, u * u + cos(lat1r) * cos(lat2r) * v * v);
+		const auto result = 2.0 * earth_radius_km * asin(sqrt(h));
 
 		return result;
 	}
@@ -447,6 +452,12 @@ struct map_location_area
 				furthest = std::max(furthest, centre.distance_in_kilometers(gps_coordinate(lat, lon)));
 			}
 		}
+
+		// Past the top of the ladder there is no detent that covers the area, and covering what was
+		// displayed is the contract: the slider clamps at its widest, the search does not. Rounding
+		// down to 100 km here dropped every item a zoomed-out area showed beyond that.
+		constexpr auto widest_detent = location_distance_detents_km[location_distance_detent_count - 1];
+		if (furthest > widest_detent) return furthest;
 
 		return location_distance_at_detent(location_distance_detent_at_least(furthest));
 	}

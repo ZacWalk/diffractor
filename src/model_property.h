@@ -261,6 +261,7 @@ namespace prop
 	extern key album_artist;
 	extern key audio_codec;
 	extern key audio_sample_rate;
+	extern key audio_sample_rate_full;
 	extern key audio_sample_type;
 	extern key bitrate;
 	extern key camera_manufacturer;
@@ -436,7 +437,7 @@ namespace prop
 		uint16_t iso_speed = 0;
 		int16_t rating = 0;
 		uint16_t audio_channels = 0;
-		uint16_t audio_sample_rate = 0;
+		uint32_t audio_sample_rate = 0;
 		uint16_t audio_sample_type = 0;
 		uint16_t width = 0;
 		uint16_t year = 0;
@@ -525,25 +526,7 @@ namespace prop
 
 	int64_t size_bucket(int64_t n);
 	double closest_fstop(double fs);
-	int megapixels_order(double val);
 	int64_t exp_round(double d);
-
-	struct size_rounded
-	{
-		std::string_view unit;
-		std::string_view short_unit;
-		uint64_t n = 0;
-		uint64_t dec = 0;
-		uint64_t div = 0;
-		int rounded = 0;
-
-		uint64_t total() const
-		{
-			return n * div + dec * div / 10;
-		}
-	};
-
-	size_rounded round_size(uint64_t s);
 
 	std::string format_f_num(double d);
 	std::string format_date(df::date_t d);
@@ -556,10 +539,10 @@ namespace prop
 	std::string format_gps(double lat, double lon);
 	std::string format_iso(int i);
 	std::string format_audio_sample_rate(int v);
+	std::string format_audio_sample_rate(uint32_t v);
 	std::string format_audio_sample_rate(uint16_t v);
 	std::string format_audio_sample_type(audio_sample_t v);
 	std::string format_audio_channels(int v);
-	std::string format_size(const df::file_size& s);
 	std::string format_magnitude(const df::file_size& s);
 	std::string format_streams(int s);
 

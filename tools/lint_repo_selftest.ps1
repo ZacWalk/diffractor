@@ -28,6 +28,12 @@ $cases = @(
     @{ Rule = 'platform-containment'; File = 'src/model_search.cpp'; Text = "`n#include <windows.h>`n" }
     @{ Rule = 'sqlite-containment'; File = 'src/model_search.cpp'; Text = "`n// sqlite3_step`n" }
     @{ Rule = 'no-const-pointer-cast'; File = 'src/model_search.cpp'; Text = "`n// const_pointer_cast`n" }
+    # The lambda copies s and the same call moves it; MSVC evaluates the move first.
+    @{ Rule = 'no-capture-and-move'; File = 'src/model_search.cpp'; Text = "`nstatic void lint_selftest_capture(std::string s) { consume([s] { return s; }, std::move(s)); }`n" }
+    # An init-capture that copies is the same defect as a plain one; only the moving form is exempt.
+    @{ Rule = 'no-capture-and-move'; File = 'src/model_search.cpp'; Text = "`nstatic void lint_selftest_init_capture(std::string s) { consume([t = s] { return t; }, std::move(s)); }`n" }
+    # A digit separator is not a character literal: read as one, it hid the rest of the file.
+    @{ Rule = 'no-capture-and-move'; File = 'src/model_search.cpp'; Text = "`nconstexpr auto lint_selftest_count = 100'000;`nstatic void lint_selftest_separated(std::string s) { consume([s] { return s; }, std::move(s)); }`n" }
     @{ Rule = 'frame-accessor'; File = 'src/ui_map.h'; Text = "`n// _frame->invalidate();`n" }
     @{ Rule = 'doc-links'; File = 'docs/testing.md'; Text = "`n[nope](does-not-exist.md)`n" }
     @{ Rule = 'doc-anchors'; File = 'docs/testing.md'; Text = "`n[nope](design.md#no-such-heading)`n" }
@@ -98,11 +104,11 @@ try {
 
     Write-Host ''
     if ($missed -eq 0) {
-        Write-Host ("Lint self-test passed: {0} rules proven to fail on a real violation." -f $cases.Count) -ForegroundColor Green
+        Write-Host ("Lint self-test passed: {0} violations caught by the rules they break." -f $cases.Count) -ForegroundColor Green
         exit 0
     }
 
-    Write-Host ("Lint self-test FAILED: {0} rules did not fire." -f $missed) -ForegroundColor Red
+    Write-Host ("Lint self-test FAILED: {0} violations were missed." -f $missed) -ForegroundColor Red
     exit 1
 }
 finally {

@@ -4,9 +4,9 @@
 !define PRODUCT32_EXE "diffractor32.exe"
 !define PRODUCT64_EXE "diffractor64.exe"
 !define PRODUCT_PUBLISHER "Diffractor"
-!define BUILD_NUM "1305"
-!define PRODUCT_VERSION "127.2"
-!define FILE_VERSION "1.27.2.${BUILD_NUM}"
+!define BUILD_NUM "1313"
+!define PRODUCT_VERSION "127.3"
+!define FILE_VERSION "1.27.3.${BUILD_NUM}"
 !define PRODUCT_WEB_SITE "http://www.Diffractor.com/"
 !define PRODUCT_STARTMENU_REGVAL "NSIS:StartMenuDir"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
@@ -114,7 +114,7 @@ VIAddVersionKey CompanyName "${PRODUCT_PUBLISHER}"
 VIAddVersionKey CompanyWebsite "${PRODUCT_WEB_SITE}"
 VIAddVersionKey FileVersion "${FILE_VERSION}"
 VIAddVersionKey FileDescription ""
-VIAddVersionKey LegalCopyright "Copyright (C) 2025 Zac Walker"
+VIAddVersionKey LegalCopyright "Copyright (C) 2026 Zac Walker"
 
 
 
@@ -328,6 +328,11 @@ Section "Diffractor"
 	File "..\exe\location-states.txt"
 	File "..\exe\diffractor-tools.json"
 
+	; The installed program is LGPL-3.0-or-later, whose text and the GPL-3.0 it incorporates must
+	; accompany every copy. dd.ps1 desktop stages both into exe\ before this script is compiled.
+	File "..\exe\LICENSE.txt"
+	File "..\exe\COPYING.GPLv3.txt"
+
 	File "..\exe\${PRODUCT32_EXE}"
 	File "..\exe\${PRODUCT64_EXE}"
 		
@@ -470,6 +475,8 @@ Section "Uninstall"
 	Delete "$INSTDIR\location-places.txt"
 	Delete "$INSTDIR\location-states.txt"
 	Delete "$INSTDIR\diffractor-tools.json"
+	Delete "$INSTDIR\LICENSE.txt"
+	Delete "$INSTDIR\COPYING.GPLv3.txt"
 	Delete "$INSTDIR\diffractor.log"
 	Delete "$INSTDIR\diffractor.previous.log"
 	Delete "$INSTDIR\languages\*.po"

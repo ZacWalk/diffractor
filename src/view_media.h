@@ -345,66 +345,36 @@ public:
 		_host->frame()->invalidate();
 	}
 
-	// excluded_bounds cannot cover this: recti::exclude only clips away from the pointer, so a pointer
-	// inside a panel would leave the media controller spanning it, and view_host would cache that.
-	bool is_over_overlay_panel(const pointi loc) const
-	{
-		return (_controls_element && !_controls_element->bounds.is_empty() &&
-				_controls_element->bounds.contains(loc)) ||
-			(_description_element && !_description_element->bounds.is_empty() &&
-				_description_element->bounds.contains(loc));
-	}
-
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc) override
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                             hit_test_context& ctx) override
 	{
 		constexpr pointi media_offset{};
-		view_controller_ptr controller;
 
 		if (_display && (_display->is_zoom_mode() || _display->comparing()))
 		{
-			if (_media_element)
-			{
-				controller = _media_element->controller_from_location(host, loc, media_offset, {});
-			}
+			return _media_element ? _media_element->controller_from_location(host, loc, media_offset, ctx) : nullptr;
 		}
-		else
+
+		// The arrows float on the picture, so they are opaque only where they actually answer; asking
+		// first and recording the miss is what keeps the picture usable when they are not offered.
+		for (const auto& arrow : std::array<view_element_ptr, 2>{_left_arrow_element, _right_arrow_element})
 		{
-			if (!controller)
-			{
-				controller = _left_arrow_element->controller_from_location(host, loc, media_offset, {});
-			}
+			if (!arrow) continue;
+			if (auto controller = arrow->controller_from_location(host, loc, media_offset, ctx)) return controller;
+			ctx.passed_over(arrow->bounds);
+		}
 
-			if (!controller)
+		// The panels are drawn backgrounds, so they are opaque throughout: a pointer on one must not
+		// reach the picture underneath even where the panel itself answers nothing.
+		for (const auto& panel : std::array<view_element_ptr, 2>{_controls_element, _description_element})
+		{
+			if (panel && ctx.occluded(panel->bounds))
 			{
-				controller = _right_arrow_element->controller_from_location(host, loc, media_offset, {});
-			}
-
-			if (!controller && _controls_element && !_controls_element->bounds.is_empty() &&
-				_controls_element->bounds.contains(loc))
-			{
-				controller = _controls_element->controller_from_location(host, loc, media_offset, {});
-			}
-
-			if (!controller && _description_element && !_description_element->bounds.is_empty() &&
-				_description_element->bounds.contains(loc))
-			{
-				controller = _description_element->controller_from_location(host, loc, media_offset, {});
-			}
-
-			if (!controller && _media_element && !is_over_overlay_panel(loc))
-			{
-				const std::vector<recti> excluded_bounds = {
-					_left_arrow_element->bounds,
-					_right_arrow_element->bounds,
-					_controls_element ? _controls_element->bounds : recti{},
-					_description_element ? _description_element->bounds : recti{},
-				};
-
-				controller = _media_element->controller_from_location(host, loc, media_offset, excluded_bounds);
+				return panel->controller_from_location(host, loc, media_offset, ctx);
 			}
 		}
 
-		return controller;
+		return _media_element ? _media_element->controller_from_location(host, loc, media_offset, ctx) : nullptr;
 	}
 
 	// design.md L5: Escape peels one layer. A region can be drawn here too, so clearing it comes

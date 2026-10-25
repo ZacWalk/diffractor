@@ -130,6 +130,42 @@ selector_view::selector_view(view_state& state, view_host_ptr host, select_item_
 {
 }
 
+selector_view::rebuild_stats selector_view::rebuild_selector_items(std::vector<selector_item>& existing,
+                                                                   const std::vector<df::item_element_ptr>& ordered,
+                                                                   std::vector<selector_item>& items)
+{
+	rebuild_stats stats;
+	std::unordered_map<const df::item_element*, size_t> old_by_item;
+	old_by_item.reserve(existing.size());
+
+	for (size_t index = 0; index < existing.size(); ++index)
+	{
+		old_by_item.emplace(existing[index].item.get(), index);
+	}
+
+	stats.lookup_entries = old_by_item.size();
+	std::vector<bool> reused(existing.size(), false);
+	items.reserve(ordered.size());
+
+	for (const auto& item : ordered)
+	{
+		++stats.probes;
+		const auto found = old_by_item.find(item.get());
+		if (found != old_by_item.end() && !reused[found->second])
+		{
+			reused[found->second] = true;
+			items.emplace_back(std::move(existing[found->second]));
+			++stats.reused;
+		}
+		else
+		{
+			items.push_back({item});
+		}
+	}
+
+	return stats;
+}
+
 void selector_view::filter(item_filter_fn item_filter)
 {
 	// The strip is rebuilt by the activate that follows, so setting the filter does not walk the
@@ -240,21 +276,7 @@ void selector_view::rebuild_items()
 		for (const auto& entry : _items) entry.item->is_visible(false);
 
 		std::vector<selector_item> items;
-		items.reserve(ordered.size());
-
-		for (auto& item : ordered)
-		{
-			auto found = std::ranges::find(_items, item, &selector_item::item);
-			if (found != _items.end())
-			{
-				items.emplace_back(std::move(*found));
-			}
-			else
-			{
-				items.push_back({std::move(item)});
-			}
-		}
-
+		rebuild_selector_items(_items, ordered, items);
 		_items = std::move(items);
 	}
 
@@ -271,7 +293,7 @@ void selector_view::update_visible_items()
 	if (!_active || _extent.is_empty()) return;
 
 	df::item_elements visible;
-	const auto logical_bounds = recti(_extent).offset(_scroll_x, 0).inflate(_extent.cx / 2, 0);
+	const auto logical_bounds = resource_logical_bounds();
 
 	for (const auto& entry : _items)
 	{
@@ -281,6 +303,66 @@ void selector_view::update_visible_items()
 	}
 
 	if (!visible.empty()) _state.item_index.queue_load_visible_thumbnails(std::move(visible));
+	retire_off_band_resources();
+}
+
+recti selector_view::resource_logical_bounds() const
+{
+	return recti(_extent).offset(_scroll_x, 0).inflate(_extent.cx / 2, 0);
+}
+
+void selector_view::retire_off_band_resources()
+{
+	if (_extent.is_empty()) return;
+
+	retire_off_band_resources(_items, resource_logical_bounds());
+}
+
+size_t selector_view::retire_off_band_resources(std::vector<selector_item>& items, const recti logical_bounds)
+{
+	size_t retired = 0;
+
+	for (auto& entry : items)
+	{
+		if (!entry.bounds.intersects(logical_bounds) && entry.has_retained_resource())
+		{
+			entry.retire_resources();
+			++retired;
+		}
+	}
+
+	return retired;
+}
+
+bool selector_view::publish_decoded_surface(const df::item_element_ptr& item, const ui::const_image_ptr& image,
+                                            const uint64_t request, ui::surface_ptr surface)
+{
+	return publish_decoded_surface(_items, resource_logical_bounds(), item, image, request, std::move(surface));
+}
+
+bool selector_view::publish_decoded_surface(std::vector<selector_item>& items, const recti logical_bounds,
+                                            const df::item_element_ptr& item, const ui::const_image_ptr& image,
+                                            const uint64_t request, ui::surface_ptr surface)
+{
+	const auto found = std::ranges::find(items, item, &selector_item::item);
+	if (found == items.end() || found->image != image || found->decode_request != request) return false;
+
+	found->decode_pending = false;
+
+	if (!found->bounds.intersects(logical_bounds))
+	{
+		found->retire_resources();
+		return false;
+	}
+
+	if (!ui::is_valid(surface))
+	{
+		found->decode_failed = true;
+		return false;
+	}
+
+	found->surface = std::move(surface);
+	return true;
 }
 
 void selector_view::layout(ui::measure_context& mc, const sizei extent)
@@ -370,6 +452,7 @@ void selector_view::render(ui::draw_context& dc, const view_controller_ptr contr
 			entry.surface.reset();
 			entry.decode_pending = false;
 			entry.decode_failed = false;
+			++entry.decode_request;
 		}
 
 		if (entry.surface)
@@ -390,33 +473,25 @@ void selector_view::render(ui::draw_context& dc, const view_controller_ptr contr
 			// Paint asks for the decode instead of performing it. The item type icon below stands in
 			// until the surface lands, which is what an item without a thumbnail already draws.
 			entry.decode_pending = true;
+			const auto request = ++entry.decode_request;
 
 			_state._async.queue_async(async_queue::load,
 			                          [weak = weak_from_this(), &async = _state._async, item = entry.item, image,
-				                          extent = image_bounds.extent()]
+				                          extent = image_bounds.extent(), can_use_yuv = ui::yuv_textures_enabled,
+				                          request]
 			                          {
 				                          files ff;
-				                          auto surface = ff.image_to_surface(image, extent, true);
+				                          auto surface = ff.image_to_surface(image, extent, can_use_yuv);
 
-				                          async.queue_ui([weak, item, image, surface = std::move(surface)]() mutable
+				                          async.queue_ui([weak, item, image, request, surface = std::move(surface)]() mutable
 				                          {
 					                          const auto view = weak.lock();
 					                          if (!view) return;
 
-					                          const auto found = std::ranges::find(
-						                          view->_items, item, &selector_item::item);
-					                          if (found == view->_items.end() || found->image != image) return;
-
-					                          found->decode_pending = false;
-
-					                          if (!ui::is_valid(surface))
+					                          if (view->publish_decoded_surface(item, image, request, std::move(surface)))
 					                          {
-						                          found->decode_failed = true;
-						                          return;
+						                          view->_host->frame()->invalidate();
 					                          }
-
-					                          found->surface = std::move(surface);
-					                          view->_host->frame()->invalidate();
 				                          });
 			                          });
 		}
@@ -467,9 +542,10 @@ bool selector_view::mouse_wheel(const pointi loc, const ui::wheel_notch notch)
 	return can_scroll();
 }
 
-view_controller_ptr selector_view::controller_from_location(const view_host_ptr& host, const pointi loc)
+view_controller_ptr selector_view::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                           hit_test_context& ctx)
 {
-	if (can_scroll() && scrollbar_bounds().contains(loc))
+	if (can_scroll() && ctx.occluded(scrollbar_bounds()))
 	{
 		return std::make_shared<selector_scroll_controller>(host, *this, scrollbar_bounds());
 	}
@@ -559,7 +635,116 @@ void selector_view::broadcast_event(const view_element_event& event) const
 		for (auto& entry : const_cast<std::vector<selector_item>&>(_items))
 		{
 			entry.texture.reset();
+			entry.decode_pending = false;
 			entry.decode_failed = false;
+			++entry.decode_request;
 		}
 	}
+}
+
+void selector_view::test_add_pending_decode_for_resource_event()
+{
+	selector_item entry;
+	entry.decode_pending = true;
+	entry.decode_failed = true;
+	entry.decode_request = 3;
+	_items.emplace_back(std::move(entry));
+}
+
+bool selector_view::test_resource_event_cleared_pending_decode() const
+{
+	return !_items.empty() && !_items.front().decode_pending && !_items.front().decode_failed &&
+		_items.front().decode_request == 4;
+}
+
+selector_view::rebuild_stats selector_view::test_rebuild_reuse(const size_t count)
+{
+	std::vector<selector_item> existing;
+	std::vector<df::item_element_ptr> ordered;
+	existing.reserve(count);
+	ordered.reserve(count + 1);
+
+	for (size_t index = 0; index < count; ++index)
+	{
+		df::index_file_item indexed;
+		indexed.name = str::cache(str::print("item%zu.jpg", index));
+		indexed.ft = files::file_type_from_name(indexed.name);
+		auto item = std::make_shared<df::item_element>(df::file_path(str::print("c:\\item%zu.jpg", index)), indexed);
+		existing.push_back({item, recti(static_cast<int>(index), 0, static_cast<int>(index + 1), 1)});
+		ordered.emplace_back(std::move(item));
+	}
+
+	std::ranges::reverse(ordered);
+
+	df::index_file_item indexed;
+	indexed.name = str::cache("appended.jpg");
+	indexed.ft = files::file_type_from_name(indexed.name);
+	ordered.emplace_back(std::make_shared<df::item_element>(df::file_path("c:\\appended.jpg"), indexed));
+
+	std::vector<selector_item> rebuilt;
+	auto stats = rebuild_selector_items(existing, ordered, rebuilt);
+
+	for (size_t index = 0; index < count; ++index)
+	{
+		if (rebuilt[index].bounds.left == static_cast<int>(count - index - 1)) ++stats.preserved_markers;
+	}
+
+	return stats;
+}
+
+selector_view::resource_stats selector_view::test_resource_retirement(const size_t count, const sizei extent,
+                                                                      const int item_width, const int scroll_x)
+{
+	std::vector<selector_item> items;
+	items.reserve(count);
+
+	const auto image = std::make_shared<ui::image>(df::blob(16), sizei(16, 16), ui::image_format::JPEG,
+	                                               ui::orientation::top_left);
+
+	for (size_t index = 0; index < count; ++index)
+	{
+		df::index_file_item indexed;
+		indexed.name = str::cache(str::print("resource%zu.jpg", index));
+		indexed.ft = files::file_type_from_name(indexed.name);
+		auto item = std::make_shared<df::item_element>(df::file_path(str::print("c:\\resource%zu.jpg", index)),
+		                                               indexed);
+		auto surface = std::make_shared<ui::surface>();
+		surface->alloc({8, 8}, ui::texture_format::ARGB, ui::orientation::top_left);
+		items.push_back({std::move(item), recti(static_cast<int>(index) * item_width, 0,
+		                                        static_cast<int>(index + 1) * item_width, extent.cy), image, {},
+		                 std::move(surface), index == 0, false, static_cast<uint64_t>(index + 1)});
+	}
+
+	const auto retained = [&items]
+	{
+		return std::ranges::count_if(items, [](const selector_item& entry)
+		{
+			return entry.has_retained_resource();
+		});
+	};
+
+	resource_stats stats;
+	stats.before = retained();
+	const auto stale_item = items.front().item;
+	const auto stale_request = items.front().decode_request;
+	const auto scrolled_bounds = recti(extent).offset(scroll_x, 0).inflate(extent.cx / 2, 0);
+	retire_off_band_resources(items, scrolled_bounds);
+	stats.after_retire = retained();
+
+	auto stale_surface = std::make_shared<ui::surface>();
+	stale_surface->alloc({8, 8}, ui::texture_format::ARGB, ui::orientation::top_left);
+	publish_decoded_surface(items, scrolled_bounds, stale_item, image, stale_request, std::move(stale_surface));
+	stats.after_stale_publish = retained();
+
+	auto reentry_surface = std::make_shared<ui::surface>();
+	reentry_surface->alloc({8, 8}, ui::texture_format::ARGB, ui::orientation::top_left);
+	auto& reentry = items.front();
+	reentry.image = image;
+	const auto reentry_request = ++reentry.decode_request;
+	const auto reentered_bounds = recti(extent).inflate(extent.cx / 2, 0);
+	retire_off_band_resources(items, reentered_bounds);
+	publish_decoded_surface(items, reentered_bounds, reentry.item, image, reentry_request, std::move(reentry_surface));
+	stats.after_reentry_publish = retained();
+
+	return stats;
 }

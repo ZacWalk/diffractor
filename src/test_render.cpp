@@ -10,9 +10,9 @@
 
 #include "pch.h"
 #include "test.h"
-#include "util_simd.h"
+#include "libdesktop/util_simd.h"
 #include "av_format.h"
-#include "render_software.h"
+#include "libdesktop/render_software.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "ui_elements.h"
@@ -23,6 +23,19 @@
 static uint8_t blend_opaque_channel(const uint8_t dest, const float src, const float alpha)
 {
 	return static_cast<uint8_t>(std::clamp(static_cast<int>(src * alpha + dest * (1.0f - alpha) + 0.5f), 0, 255));
+}
+
+static void should_unpremultiply_surface_alpha()
+{
+	ui::surface surface;
+	assert_equal(true, surface.alloc(3, 1, ui::texture_format::ARGB) != nullptr, "alpha fixture allocated");
+	surface.set_pixel(0, 0, 0x80402010u);
+	surface.set_pixel(1, 0, 0x00112233u);
+	surface.set_pixel(2, 0, 0xff336699u);
+	surface.unpremultiply_alpha();
+	assert_equal(0x80804020u, surface.get_pixel(0, 0), "associated channels are divided by alpha");
+	assert_equal(0u, surface.get_pixel(1, 0), "transparent pixels have defined zero colors");
+	assert_equal(0xff336699u, surface.get_pixel(2, 0), "opaque pixels are unchanged");
 }
 
 static uint8_t blend_opaque_normalized_channel(const uint8_t dest, const float src, const float alpha)
@@ -58,6 +71,7 @@ static void should_match_simd_software_blends()
 				auto actual = original;
 				for (size_t i = 0; i < count; ++i) scalar(expected.data() + i * 4, i);
 				const auto processed = simd(actual.data());
+				assert_equal(count & ~size_t{3}, processed, message);
 				for (size_t i = processed; i < count; ++i) scalar(actual.data() + i * 4, i);
 				assert_equal(true, expected == actual, message);
 			};
@@ -106,6 +120,121 @@ static void should_match_simd_software_blends()
 		}
 	}
 #endif
+}
+
+// The CPU renderer and every CPU conversion map HDR through the cube the GPU samples, so the lookup has
+// to be the arithmetic of a trilinear texture sample: the signal scaled onto the samples, with 0 and
+// 65535 on the end samples, and the eight around it blended by distance. Each output channel is a
+// different function of the axes, so a swapped axis, channel or byte order shows; the SIMD path and
+// the one other architectures run must both agree with an independent double-precision sample.
+static void should_tone_map_through_a_cube_as_a_trilinear_sample()
+{
+	constexpr int n = 5;
+	ui::tone_map_lut lut;
+	lut.size = n;
+	lut.rgba.resize(static_cast<size_t>(n) * n * n * 4);
+
+	const auto at = [](const int r, const int g, const int b)
+	{
+		const auto fr = r / (n - 1.0);
+		const auto fg = g / (n - 1.0);
+		const auto fb = b / (n - 1.0);
+		return std::array{fr, fg * fg * (1.0 - 0.5 * fb), fb * (1.0 - 0.5 * fr) + 0.25 * fg * fr};
+	};
+
+	for (auto b = 0; b < n; ++b)
+	{
+		for (auto g = 0; g < n; ++g)
+		{
+			for (auto r = 0; r < n; ++r)
+			{
+				const auto v = at(r, g, b);
+				auto* const out = lut.rgba.data() + ((static_cast<size_t>(b) * n + g) * n + r) * 4;
+				for (auto c = 0; c < 3; ++c) out[c] = static_cast<uint16_t>(std::lround(std::clamp(v[c], 0.0, 1.0) * 65535.0));
+				out[3] = 0xffff;
+			}
+		}
+	}
+
+	// The sample a texture unit would take, in the cube's own 16-bit units.
+	const auto expected = [&lut](const uint16_t* const px)
+	{
+		std::array<double, 3> result = {};
+		std::array<int, 3> index = {};
+		std::array<double, 3> weight = {};
+
+		for (auto axis = 0; axis < 3; ++axis)
+		{
+			const auto x = px[axis] / 65535.0 * (n - 1);
+			index[axis] = std::min(static_cast<int>(x), n - 2);
+			weight[axis] = x - index[axis];
+		}
+
+		for (auto corner = 0; corner < 8; ++corner)
+		{
+			auto w = 1.0;
+			std::array<int, 3> sample = {};
+
+			for (auto axis = 0; axis < 3; ++axis)
+			{
+				const auto upper = (corner >> axis & 1) != 0;
+				sample[axis] = index[axis] + (upper ? 1 : 0);
+				w *= upper ? weight[axis] : 1.0 - weight[axis];
+			}
+
+			const auto* const s = lut.rgba.data() + ((static_cast<size_t>(sample[2]) * n + sample[1]) * n + sample[0]) * 4;
+			for (auto c = 0; c < 3; ++c) result[c] += w * s[c];
+		}
+
+		return result;
+	};
+
+	std::vector<uint16_t> signal = {0, 0, 0, 65535, 65535, 65535, 65535, 0, 0, 0, 65535, 0, 0, 0, 65535, 32768, 16384, 49152};
+	uint32_t seed = 12345;
+	for (auto i = 0; i < 3 * 500; ++i)
+	{
+		seed = seed * 1664525u + 1013904223u;
+		signal.push_back(static_cast<uint16_t>(seed >> 16));
+	}
+
+	const auto pixels = signal.size() / 3;
+	std::vector<ui::color32> fast(pixels);
+	std::vector<ui::color32> baseline(pixels);
+	lut.apply(signal.data(), pixels, fast.data());
+	lut.apply_baseline(signal.data(), pixels, baseline.data());
+
+	auto worst = 0;
+
+	for (size_t i = 0; i < pixels; ++i)
+	{
+		const auto want = expected(signal.data() + i * 3);
+
+		for (const auto& [name, got] : {std::pair{"SIMD", fast[i]}, std::pair{"baseline", baseline[i]}})
+		{
+			// Blue is the low byte of a packed RGB pixel, red the third, and the cube's alpha is opaque.
+			const std::array channels = {static_cast<int>(got >> 16 & 0xff), static_cast<int>(got >> 8 & 0xff),
+			                             static_cast<int>(got & 0xff)};
+			assert_equal(0xffu, got >> 24, std::format("{} pixel {} is opaque", name, i));
+
+			for (auto c = 0; c < 3; ++c)
+			{
+				worst = std::max(worst, std::abs(channels[c] - static_cast<int>(std::lround(want[c] * 255.0 / 65535.0))));
+			}
+		}
+	}
+
+	assert_equal(true, worst <= 1, std::format("both lookups take the trilinear sample to within one level ({})", worst));
+
+	const auto sample_pixel = [&lut](const int r, const int g, const int b)
+	{
+		const auto* const s = lut.rgba.data() + ((static_cast<size_t>(b) * n + g) * n + r) * 4;
+		const auto byte = [](const uint16_t v) { return static_cast<uint32_t>(std::lround(v * 255.0 / 65535.0)); };
+		return 0xff000000u | byte(s[0]) << 16 | byte(s[1]) << 8 | byte(s[2]);
+	};
+
+	assert_equal(sample_pixel(n - 1, n - 1, n - 1), fast[1], "the brightest signal takes the last sample");
+	assert_equal(sample_pixel(0, 0, 0), fast[0], "and the darkest the first");
+	assert_equal(sample_pixel(n - 1, 0, 0), fast[2], "full red takes the sample at the end of the red axis");
 }
 
 static void should_convert_yuv_surfaces_for_software_rendering()
@@ -174,7 +303,102 @@ static void should_convert_yuv_surfaces_for_software_rendering()
 	assert_equal(true, scaled->format() == ui::texture_format::RGB, "scaled P010 format");
 }
 
-static void should_area_downscale_packed_surfaces()
+// An enlargement is what area_downscale refuses, and it is the case the software backend hits every
+// frame when the window is larger than the video. swscale answers it with an RGB->YUV->RGB round
+// trip through its scalar full-chroma converter, so this path exists to keep it out of that.
+static void should_bilinear_resize_packed_surfaces()
+{
+	const auto make_source = [](const int cx, const int cy)
+	{
+		auto s = std::make_shared<ui::surface>();
+		s->alloc(cx, cy, ui::texture_format::ARGB, ui::orientation::left_bottom);
+		s->color_space(ui::color_space::rec709_limited);
+		return s;
+	};
+
+	// Two samples widened to four. Sampling at centres and clamping the outer half sample is what
+	// keeps the ends exact; extrapolating instead is what puts a dark fringe round an enlargement.
+	{
+		const auto src = make_source(2, 1);
+		auto* const row = src->pixels_line(0);
+		row[0] = row[1] = row[2] = row[3] = 0;
+		row[4] = row[5] = row[6] = row[7] = 200;
+
+		ui::surface_ptr dst;
+		assert_equal(true, ui::bilinear_resize(src, dst, {4, 1}), "widen a two sample ramp");
+		assert_equal(true, dst->dimensions() == sizei{4, 1}, "enlarged dimensions");
+		assert_equal(true, dst->format() == ui::texture_format::ARGB, "enlarged format");
+		assert_equal(true, dst->orientation() == ui::orientation::left_bottom, "enlarged orientation");
+		assert_equal(true, dst->color_space() == ui::color_space::rec709_limited, "enlarged colour space");
+
+		const auto* const out = dst->pixels_line(0);
+		assert_equal(0, static_cast<int>(out[0]), "first sample keeps the source end");
+		assert_equal(50, static_cast<int>(out[4]), "quarter weight");
+		assert_equal(150, static_cast<int>(out[8]), "three quarter weight");
+		assert_equal(200, static_cast<int>(out[12]), "last sample keeps the source end");
+	}
+
+	// A flat surface must survive any enlargement untouched, which a pair of weights not summing to
+	// 256 would shift.
+	{
+		const auto src = make_source(7, 5);
+
+		for (auto y = 0; y < 5; ++y)
+		{
+			auto* const row = src->pixels_line(y);
+
+			for (auto x = 0; x < 7; ++x)
+			{
+				row[x * 4 + 0] = 19;
+				row[x * 4 + 1] = 140;
+				row[x * 4 + 2] = 233;
+				row[x * 4 + 3] = 77;
+			}
+		}
+
+		ui::surface_ptr dst;
+		assert_equal(true, ui::bilinear_resize(src, dst, {31, 22}), "enlarge a flat surface");
+
+		auto flat = true;
+
+		for (auto y = 0; y < 22; ++y)
+		{
+			const auto* const row = dst->pixels_line(y);
+
+			for (auto x = 0; x < 31; ++x)
+			{
+				flat = flat && row[x * 4 + 0] == 19 && row[x * 4 + 1] == 140 &&
+					row[x * 4 + 2] == 233 && row[x * 4 + 3] == 77;
+			}
+		}
+
+		assert_equal(true, flat, "an enlarged flat surface is unchanged");
+	}
+
+	// One axis growing while the other shrinks is neither a reduction nor an enlargement, so
+	// area_downscale refuses it and this is what answers it.
+	{
+		const auto src = make_source(16, 16);
+		ui::surface_ptr dst;
+		assert_equal(false, ui::area_downscale(src, dst, {32, 8}), "the area filter refuses a mixed resize");
+		assert_equal(true, ui::bilinear_resize(src, dst, {32, 8}), "bilinear takes a mixed resize");
+		assert_equal(true, dst->dimensions() == sizei{32, 8}, "mixed resize dimensions");
+	}
+
+	// Planar surfaces are four bytes a pixel to this walk; they belong to swscale.
+	{
+		ui::surface nv12;
+		nv12.alloc(8, 8, ui::texture_format::NV12);
+		const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
+		{
+		});
+
+		ui::surface_ptr dst;
+		assert_equal(false, ui::bilinear_resize(nv12_view, dst, {16, 16}), "refuse a planar format");
+	}
+}
+
+static void should_area_downscale_packed_and_planar_surfaces()
 {
 	const auto make_source = [](const int cx, const int cy, const ui::texture_format format)
 	{
@@ -284,12 +508,82 @@ static void should_area_downscale_packed_surfaces()
 		assert_equal(false, ui::area_downscale(rgb, dst, {16, 4}), "refuse an enlargement");
 		assert_equal(false, ui::area_downscale(rgb, dst, {0, 4}), "refuse an empty extent");
 
+		// P010 samples are 16 bit, which the Q8 accumulators cannot hold.
+		ui::surface p010;
+		p010.alloc(8, 8, ui::texture_format::P010);
+		const auto p010_view = ui::const_surface_ptr(&p010, [](const ui::surface*)
+		{
+		});
+		assert_equal(false, ui::area_downscale(p010_view, dst, {4, 4}), "refuse a 16 bit planar format");
+
+		// NV12 chroma is one pair per 2x2 luma block, so an odd extent has no whole answer.
 		ui::surface nv12;
 		nv12.alloc(8, 8, ui::texture_format::NV12);
 		const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
 		{
 		});
-		assert_equal(false, ui::area_downscale(nv12_view, dst, {4, 4}), "refuse a planar format");
+		assert_equal(false, ui::area_downscale(nv12_view, dst, {5, 4}), "refuse an odd nv12 extent");
+	}
+
+	// NV12 reduces as two planes: the luma on its own, and the interleaved chroma pair at half the
+	// extent. A flat picture must survive both, and U must not bleed into V.
+	{
+		ui::surface nv12;
+		nv12.alloc(64, 32, ui::texture_format::NV12);
+		nv12.color_space(ui::color_space::rec601_full);
+
+		const auto stride = nv12.stride();
+		auto* const luma = nv12.pixels();
+		auto* const chroma = luma + stride * 32;
+
+		for (auto y = 0; y < 32; ++y)
+		{
+			auto* const row = luma + stride * y;
+			for (auto x = 0; x < 64; ++x) row[x] = static_cast<uint8_t>(((x + y) & 1) ? 200 : 0);
+		}
+
+		for (auto y = 0; y < 16; ++y)
+		{
+			auto* const row = chroma + stride * y;
+			for (auto x = 0; x < 32; ++x)
+			{
+				row[x * 2] = 90;
+				row[x * 2 + 1] = 210;
+			}
+		}
+
+		const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
+		{
+		});
+
+		ui::surface_ptr dst;
+		assert_equal(true, ui::area_downscale(nv12_view, dst, {32, 16}), "reduce an nv12 surface");
+		assert_equal(true, dst->format() == ui::texture_format::NV12, "reduced nv12 format");
+		assert_equal(true, dst->color_space() == ui::color_space::rec601_full, "reduced nv12 colour space");
+
+		const auto dst_stride = dst->stride();
+		auto luma_correct = true;
+
+		for (auto y = 0; y < 16; ++y)
+		{
+			const auto* const row = dst->pixels() + dst_stride * y;
+			for (auto x = 0; x < 32; ++x) luma_correct = luma_correct && row[x] == 100;
+		}
+
+		assert_equal(true, luma_correct, "nv12 luma is the 2x2 mean");
+
+		auto chroma_correct = true;
+
+		for (auto y = 0; y < 8; ++y)
+		{
+			const auto* const row = dst->pixels() + dst_stride * 16 + dst_stride * y;
+			for (auto x = 0; x < 16; ++x)
+			{
+				chroma_correct = chroma_correct && row[x * 2] == 90 && row[x * 2 + 1] == 210;
+			}
+		}
+
+		assert_equal(true, chroma_correct, "nv12 chroma keeps u and v apart");
 	}
 
 	// Same size on one axis is still a reduction; the identity run must not be rejected or shifted.
@@ -399,6 +693,36 @@ static void should_refuse_over_budget_sources()
 	assert_equal(true, files::exceeds_decode_budget(sizei{8000, 8000}), "the predicate agrees with the loader");
 	assert_equal(true, reject_over_budget_source(nullptr, {8000, 8000}, "test"),
 	             "a caller that wants no diagnostic is still told to refuse");
+}
+
+// LibRaw builds the whole frame inside unpack/dcraw_process, so the budget has to be asked before
+// that starts. RAW was the one source that allocated a full frame without asking, so a raw large
+// enough to exhaust the machine walked straight past the ceiling every other decoder observes.
+static void should_refuse_an_over_budget_raw()
+{
+	const auto path = test_files_folder.combine("raw").combine_file("Screws.CR2");
+
+	const auto restore_budget = df::max_decode_bytes;
+	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+
+	files ff;
+
+	// The preview path answers first and is not the subject, so it is asked for the full decode.
+	const auto whole = ff.load(path, false);
+	assert_equal(true, whole.success, "the fixture decodes within the default budget");
+
+	const auto dimensions = whole.dimensions();
+	assert_equal(false, dimensions.is_empty(), "and reports its size");
+
+	// One pixel's worth under what this source needs.
+	df::max_decode_bytes = static_cast<int64_t>(dimensions.cx) * dimensions.cy * 4 - 4;
+
+	const auto refused = ff.load(path, false);
+	assert_equal(false, refused.success, "a raw past the budget is refused");
+	assert_equal(true, refused.reason == file_load_result::failure::too_large,
+	             "and says so as a property of the file");
+	assert_equal(false, is_valid(refused.s), "no frame was committed");
+	assert_equal(false, is_valid(refused.i), "and no image either");
 }
 
 static void should_animate_alpha_between_values()
@@ -599,6 +923,15 @@ static void should_rotate()
 	}
 }
 
+static void should_not_cpu_transform_planar_surfaces()
+{
+	const auto planar = std::make_shared<ui::surface>();
+	assert_equal(true, planar->alloc(8, 8, ui::texture_format::NV12), "nv12 surface allocates");
+
+	const auto rotated = planar->transform(simple_transform::rot_90);
+	assert_equal(false, ui::is_valid(rotated), "planar surfaces are not transformed as packed pixels");
+}
+
 static void should_rotate133()
 {
 	const auto save_path = _temps.next_path();
@@ -618,48 +951,6 @@ static void should_rotate133()
 	expected->width = 576;
 	expected->height = 384;
 	assert_metadata(*expected, *actual);
-}
-
-// Guards the drawn mark against silent drift. The same artwork is drawn independently by
-// tools/generate_store_assets.py for app.ico and the Store assets.
-static void should_draw_the_logo()
-{
-	for (const auto size : {16, 32, 44, 150, 256})
-	{
-		const auto s = std::make_shared<ui::surface>();
-		assert_equal(true, s->alloc(size, size, ui::texture_format::ARGB), "logo surface allocated");
-		s->fill_logo();
-
-		const auto last = size - 1;
-		assert_equal(0u, s->get_pixel(0, 0), "logo corner is transparent");
-		assert_equal(0u, s->get_pixel(last, last), "logo opposite corner is transparent");
-
-		// The four squares sit on the vertical and horizontal axes through the centre.
-		const auto mid = size / 2;
-		const auto near_edge = std::max(1, size / 8);
-		const auto top = s->get_pixel(mid, near_edge);
-		const auto bottom = s->get_pixel(mid, last - near_edge);
-		const auto left = s->get_pixel(near_edge, mid);
-		const auto right = s->get_pixel(last - near_edge, mid);
-
-		// Surface pixels are stored blue first, so ui::get_r reads the blue channel here.
-		const auto red_of = [](const ui::color32 c) { return ui::get_b(c); };
-		const auto green_of = [](const ui::color32 c) { return ui::get_g(c); };
-		const auto blue_of = [](const ui::color32 c) { return ui::get_r(c); };
-
-		assert_equal(true, green_of(top) > red_of(top) && green_of(top) > blue_of(top), "logo top is green");
-		assert_equal(true, red_of(bottom) > green_of(bottom) && red_of(bottom) > blue_of(bottom),
-		             "logo bottom is red");
-		assert_equal(true, red_of(left) > 0x80 && green_of(left) > 0x60 && blue_of(left) < 0x40,
-		             "logo left is yellow");
-		assert_equal(true, blue_of(right) > red_of(right) && blue_of(right) > green_of(right),
-		             "logo right is blue");
-
-		for (const auto c : {top, bottom, left, right})
-		{
-			assert_equal(255u, ui::get_a(c), "logo square centres are opaque");
-		}
-	}
 }
 
 // The neutral parameter set is the one a picture with no edits is rendered through, so any drift in
@@ -792,6 +1083,64 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 	for (auto x = 1; x < ui::texture_transform::curve_len; ++x)
 	{
 		assert_equal(true, transform.curve[x] >= transform.curve[x - 1], "the tone curve never folds back");
+	}
+
+	// MEDIA-001 - raw BGRA primaries catch a saved-path red/blue swap that a grey ramp cannot.
+	{
+		ui::color_adjust desaturate;
+		desaturate.color_params(0, -1.0, 0, 0, 0, 0, 0);
+
+		const auto primaries = std::make_shared<ui::surface>();
+		assert_equal(true, primaries->alloc(3, 1, ui::texture_format::ARGB), "primary source allocated");
+		auto* const primary_row = primaries->pixels_line(0);
+		const std::array<std::array<uint8_t, 4>, 3> bgra_pixels{{
+			{0, 0, 255, 255}, // red in BGRA memory order
+			{0, 255, 0, 255},
+			{255, 0, 0, 255}
+		}};
+		for (auto x = 0; x < 3; ++x) std::memcpy(primary_row + x * 4, bgra_pixels[x].data(), 4);
+
+		const auto primary_out = std::make_shared<ui::surface>();
+		assert_equal(true, primary_out->alloc(3, 1, ui::texture_format::ARGB), "primary destination allocated");
+		assert_equal(true, desaturate.apply(primaries, primary_out->pixels(), primary_out->stride(), {}),
+		             "primary desaturation applied");
+
+		const auto* const desaturated = primary_out->pixels_line(0);
+		const std::array<int, 3> expected_luma{76, 150, 29};
+		for (auto x = 0; x < 3; ++x)
+		{
+			const auto b = static_cast<int>(desaturated[x * 4 + 0]);
+			const auto g = static_cast<int>(desaturated[x * 4 + 1]);
+			const auto r = static_cast<int>(desaturated[x * 4 + 2]);
+			assert_equal(true, std::abs(r - expected_luma[x]) <= 1, "primary red-channel luminance");
+			assert_equal(true, std::abs(g - expected_luma[x]) <= 1, "primary green-channel luminance");
+			assert_equal(true, std::abs(b - expected_luma[x]) <= 1, "primary blue-channel luminance");
+		}
+	}
+
+	// MEDIA-001 - temperature is channel-directed: warming a red pixel should not boost the stored
+	// blue byte, and cooling a blue pixel should not boost the stored red byte.
+	{
+		ui::color_adjust warm;
+		warm.color_params(0, 0, 0, 0, 0, 0, 0, 1.0, 0);
+
+		const auto src_warm = std::make_shared<ui::surface>();
+		assert_equal(true, src_warm->alloc(2, 1, ui::texture_format::ARGB), "temperature source allocated");
+		auto* const row_warm = src_warm->pixels_line(0);
+		const std::array<std::array<uint8_t, 4>, 2> bgra_pixels{{
+			{10, 20, 160, 255},
+			{160, 20, 10, 255}
+		}};
+		for (auto x = 0; x < 2; ++x) std::memcpy(row_warm + x * 4, bgra_pixels[x].data(), 4);
+
+		const auto dst_warm = std::make_shared<ui::surface>();
+		assert_equal(true, dst_warm->alloc(2, 1, ui::texture_format::ARGB), "temperature destination allocated");
+		assert_equal(true, warm.apply(src_warm, dst_warm->pixels(), dst_warm->stride(), {}),
+		             "temperature adjustment applied");
+
+		const auto* const out_warm = dst_warm->pixels_line(0);
+		assert_equal(true, out_warm[2] > row_warm[2], "warming raises red for a red-biased pixel");
+		assert_equal(true, out_warm[0] < row_warm[0], "warming lowers blue for a blue-biased pixel");
 	}
 }
 
@@ -1516,16 +1865,24 @@ static void should_keep_an_overlapped_month_selectable()
 
 void register_render_tests(view_state& state, test_registry& tests)
 {
+	tests.add("Should unpremultiply surface alpha"s, should_unpremultiply_surface_alpha);
+#if defined(COMPILE_SIMD_INTRINSIC)
+	// TEST-007 - registration follows the compiled assertion body.
 	tests.add("Should match SIMD software blends"s, should_match_simd_software_blends);
+#endif
 	tests.add("Should rasterise tiles identically to the whole surface"s,
 	          should_rasterise_tiles_identically_to_the_whole_surface);
 	tests.add("Should rasterise one scene to one answer on every platform"s,
 	          should_rasterise_one_scene_to_one_answer_on_every_platform);
 	tests.add("Should convert YUV surfaces for software rendering"s,
 	          should_convert_yuv_surfaces_for_software_rendering);
-	tests.add("Should area downscale packed surfaces"s, should_area_downscale_packed_surfaces);
+	tests.add("Should tone map through a cube as a trilinear sample"s,
+	          should_tone_map_through_a_cube_as_a_trilinear_sample);
+	tests.add("Should area downscale packed and planar surfaces"s, should_area_downscale_packed_and_planar_surfaces);
+	tests.add("Should bilinear resize packed surfaces"s, should_bilinear_resize_packed_surfaces);
 	tests.add("Should estimate decode cost"s, should_estimate_decode_cost);
 	tests.add("Should refuse over budget sources"s, should_refuse_over_budget_sources);
+	tests.add("Should refuse an over budget raw"s, should_refuse_an_over_budget_raw);
 	tests.add("Should animate alpha between values"s, should_animate_alpha_between_values);
 	tests.add("Should fade at the same rate on any refresh rate"s, should_fade_at_the_same_rate_on_any_refresh_rate);
 	tests.add("Should skip alpha animation when disabled"s, should_skip_alpha_animation_when_disabled);
@@ -1543,6 +1900,7 @@ void register_render_tests(view_state& state, test_registry& tests)
 	// Colour adjustment
 	//
 	tests.add("Should leave colour unchanged when neutral"s, should_leave_colour_unchanged_when_neutral);
+	// MEDIA-001 - saved colour adjustment must use the same BGRA channel order as preview paths.
 	tests.add("Should match the preview curve to the applied curve"s,
 	          should_match_the_preview_curve_to_the_applied_curve);
 	tests.add("Should desaturate to grey"s, should_desaturate_to_grey);
@@ -1552,8 +1910,8 @@ void register_render_tests(view_state& state, test_registry& tests)
 	//
 	tests.add("Should resize"s, should_resize);
 	tests.add("Should rotate"s, should_rotate);
+	tests.add("Should not CPU transform planar surfaces"s, should_not_cpu_transform_planar_surfaces);
 	tests.add("Should rotate 133"s, should_rotate133);
-	tests.add("Should draw the logo"s, should_draw_the_logo);
 	tests.add("Should render the globe"s, should_render_the_globe);
 	tests.add("Should render a projected panorama"s, should_render_a_projected_panorama);
 }

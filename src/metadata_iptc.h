@@ -11,14 +11,6 @@
 
 #pragma once
 
-struct tag_iptc
-{
-	uint32_t id;
-	uint32_t string_id;
-};
-
-extern tag_iptc g_iptc_tags[];
-
 struct metadata_iptc
 {
 	static void parse(prop::item_metadata& pd, df::cspan cs);

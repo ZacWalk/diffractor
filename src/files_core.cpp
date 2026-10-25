@@ -20,11 +20,14 @@
 #include "metadata_iptc.h"
 
 #define LIBARCHIVE_STATIC
-#include "libarchive/libarchive/archive.h"
-#include "libarchive/libarchive/archive_entry.h"
+#include <archive.h>
+#include <archive_entry.h>
 
+// windows.h arrives through the vendored headers above and brings the min/max function macros with
+// it, which swallow the std:: calls further down this file. Both go, not just min.
 #undef GetObject
 #undef min
+#undef max
 
 
 df_assert_move_only(file_scan_result);
@@ -46,7 +49,12 @@ ui::const_surface_ptr file_type::default_thumbnail() const
 
 struct file_type_config
 {
-	file_group_by_name groups_by_name;
+	// Replaced whole, never edited in place. parse_file_group reads it on workers - auto-complete and
+	// query - while a language switch registers that language's spellings on the UI thread, and an
+	// insert that rehashed under a lookup left the reader walking freed buckets.
+	std::atomic<std::shared_ptr<const file_group_by_name>> groups_by_name{
+		std::make_shared<const file_group_by_name>()
+	};
 	file_type_by_extension types_by_name;
 
 	std::vector<file_group_ref> groups;
@@ -75,14 +83,38 @@ file_group_ref file_group_from_index(const int from_id)
 
 file_group_ref parse_file_group(const std::string& text)
 {
-	const auto found = s_config.groups_by_name.find(text);
+	const auto groups = s_config.groups_by_name.load();
+	if (!groups) return nullptr;
 
-	if (found != s_config.groups_by_name.end())
+	const auto found = groups->find(text);
+	return found != groups->end() ? found->second : nullptr;
+}
+
+// `@photo` is not the only spelling that reaches parse_file_group: format_term writes the group's
+// translated display name, and the search vocabulary offers the plural. A term that cannot be read
+// back is dropped silently, so an address box the user can read has to be one the parser accepts.
+//
+// They are registered here rather than compared per call because parse_file_group runs on the
+// auto-complete worker once per candidate per keystroke, and display_name reads the translation
+// catalog, which the language switch replaces wholesale. A canonical name always wins a collision.
+// The table is copied, extended and published whole, because that worker may be reading it.
+void register_file_group_spellings()
+{
+	auto groups = std::make_shared<file_group_by_name>(*s_config.groups_by_name.load());
+
+	for (const auto g : s_config.groups)
 	{
-		return found->second;
+		const auto add = [g, &groups](const std::string_view name)
+		{
+			if (!str::is_empty(name)) groups->try_emplace(str::cache(name), g);
+		};
+
+		add(g->plural_name);
+		add(g->display_name(false));
+		add(g->display_name(true));
 	}
 
-	return nullptr;
+	s_config.groups_by_name.store(std::shared_ptr<const file_group_by_name>(std::move(groups)));
 }
 
 static constexpr file_traits photo_traits = file_traits::bitmap | file_traits::cache_metadata |
@@ -174,14 +206,14 @@ void load_file_types()
 		{file_group::video, "ast", "Audio Stream", {}},
 		{
 			file_group::video, "avi", "Audio Visual Interleave",
-			file_traits::embedded_xmp | file_traits::edit
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
 		{file_group::video, "avr", {}, {}},
 		{file_group::video, "avs", {}, {}},
 		{file_group::video, "avs2", {}, {}},
 		{file_group::video, "bcstm", {}, {}},
 		{file_group::video, "bfstm", {}, {}},
-		{file_group::photo, "bmp", "Microsoft Windows Bitmap", {}},
+		still_file_type(detected_format::BMP),
 		{file_group::video, "bmv", {}, {}},
 		{file_group::video, "brstm", "Binary Revolution Stream", {}},
 		{file_group::video, "caf", {}, {}},
@@ -204,7 +236,7 @@ void load_file_types()
 		{file_group::audio, "dmf", {}, {}},
 		{
 			file_group::photo, "dng", "Adobe Digital Negative",
-			file_traits::raw | file_traits::edit | file_traits::embedded_xmp
+			file_traits::raw | file_traits::edit | file_traits::embedded_xmp | file_traits::in_place_metadata
 		},
 		{file_group::video, "dnxhd", {}, {}},
 		{file_group::video, "dnxhr", {}, {}},
@@ -229,7 +261,10 @@ void load_file_types()
 		{file_group::video, "fits", {}, {}},
 		{file_group::audio, "flac", "Free Lossless Audio", {}},
 		{file_group::video, "flm", {}, {}},
-		{file_group::video, "flv", "Flash video", file_traits::embedded_xmp | file_traits::edit},
+		{
+			file_group::video, "flv", "Flash video",
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
+		},
 		{file_group::video, "fsb", {}, {}},
 		{file_group::video, "fwse", {}, {}},
 		{file_group::video, "g722", {}, {}},
@@ -238,10 +273,7 @@ void load_file_types()
 		{file_group::video, "g729", {}, {}},
 		{file_group::audio, "gdm", {}, {}},
 		{file_group::video, "genh", {}, {}},
-		{
-			file_group::photo, "gif,giff", "CompuServe's Graphics Interchange Format",
-			file_traits::embedded_xmp | file_traits::edit
-		},
+		still_file_type(detected_format::GIF),
 		{file_group::video, "gsm", "GSM Full Rate", {}},
 		{file_group::video, "gxf", {}, {}},
 		{file_group::video, "h261", "H.261 video", {}},
@@ -273,12 +305,11 @@ void load_file_types()
 		{file_group::photo, "jif", {}, {}},
 		{file_group::video, "jls", {}, {}},
 		{file_group::photo, "jp2", "JPEG2000", {}},
-		{
-			file_group::photo, "jpeg,jpg,jpe,jfif", "Joint Photographic Experts Group",
-			file_traits::embedded_xmp | file_traits::edit
-		},
-		{file_group::photo, "jpx", "Jpeg 2000", file_traits::embedded_xmp | file_traits::edit},
-		{file_group::photo, "jxl", "JPEG XL", file_traits::embedded_xmp},
+		still_file_type(detected_format::JPEG),
+		// Its metadata goes to a sidecar: nothing Diffractor uses writes a JPEG 2000 packet, and its own
+		// scan would not read one back.
+		{file_group::photo, "jpx", "Jpeg 2000", file_traits::edit},
+		still_file_type(detected_format::JXL),
 		{file_group::video, "jss", {}, {}},
 		{file_group::photo, "koa", {}, {}},
 		{file_group::video, "kux", {}, {}},
@@ -317,32 +348,29 @@ void load_file_types()
 		{file_group::photo, "mos", "Leaf raw", file_traits::raw | file_traits::edit},
 		{
 			file_group::audio, "mp3", "MPEG Layer 3",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail
+			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail | file_traits::in_place_metadata
 		},
 		{
 			file_group::video, "mov", {},
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata |
-			file_traits::in_place_metadata_inject
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
 		{
 			file_group::video, "mp4,mp4a,mp4v,m4v,m4b,f4v,3g2,3gp2,3gp,3gpp,crm", "MPEG-4",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata |
-			file_traits::in_place_metadata_inject
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
 		{
 			file_group::video, "crm", "Canon Cinema RAW Light",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata |
-			file_traits::in_place_metadata_inject
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
 		{
 			file_group::audio, "m4a,mp4a,m4r", "MPEG-4 Audio",
 			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail |
-			file_traits::in_place_metadata | file_traits::in_place_metadata_inject
+			file_traits::in_place_metadata
 		},
 		{
 			file_group::audio, "m4p", "MPEG-4 (DRM)",
 			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail |
-			file_traits::in_place_metadata | file_traits::in_place_metadata_inject
+			file_traits::in_place_metadata
 		},
 		{file_group::audio, "mpc", "Musepack", {}},
 		{file_group::video, "mpd", {}, {}},
@@ -350,11 +378,11 @@ void load_file_types()
 			file_group::video, "mpeg,mpg,mpe,m1v,m2v,mp2,mpv,m2p,m2t,vob,ms-pvr,dvr-ms", "MPEG",
 			file_traits::edit
 		},
-		{file_group::audio, "mpa,m2a", "MPEG", file_traits::embedded_xmp | file_traits::edit},
 		{
-			file_group::photo, "heif, heifs, heic, heics, avci, avcs, avif, avifs",
-			"High Efficiency Image File Format", file_traits::embedded_xmp
+			file_group::audio, "mpa,m2a", "MPEG",
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
+		still_file_type(detected_format::HEIF),
 		{file_group::video, "avc1", "Advanced Video Coding", {}},
 		{file_group::audio, "mptm", {}, {}},
 		{file_group::video, "msbc", {}, {}},
@@ -400,15 +428,9 @@ void load_file_types()
 		{file_group::photo, "pict", "Apple Macintosh PICT image", {}},
 		{file_group::video, "pjs", {}, {}},
 		{file_group::audio, "plm", {}, {}},
-		{
-			file_group::photo, "png", "Portable Network Graphic",
-			file_traits::embedded_xmp | file_traits::edit
-		},
+		still_file_type(detected_format::PNG),
 		{file_group::photo, "ppm", "Portable Pixmap", {}},
-		{
-			file_group::photo, "psd", "Adobe Photoshop Drawing",
-			file_traits::embedded_xmp | file_traits::edit
-		},
+		still_file_type(detected_format::PSD),
 		{file_group::audio, "psm", {}, {}},
 		{file_group::video, "psp", "Paint Shop Pro image", {}},
 		{file_group::audio, "pt36", {}, {}},
@@ -467,10 +489,7 @@ void load_file_types()
 		{file_group::photo, "tga,targa", "Truevision TGA (Targa) image", {}},
 		{file_group::video, "tco", {}, {}},
 		{file_group::video, "thd", {}, {}},
-		{
-			file_group::photo, "tiff, tif", "Tagged Image File Format",
-			file_traits::embedded_xmp | file_traits::edit
-		},
+		still_file_type(detected_format::TIFF),
 		{file_group::photo, "cin", "Kodak Cineon Image", {}},
 		{file_group::photo, "dpx", "Digital Picture Exchange", {}},
 		{file_group::video, "tod", {}, {}},
@@ -492,12 +511,16 @@ void load_file_types()
 		{file_group::video, "vql", {}, {}},
 		{file_group::video, "w64", {}, {}},
 		{file_group::photo, "wap", {}, {}},
-		{file_group::audio, "wav", "Microsoft Wave", file_traits::embedded_xmp | file_traits::edit},
+		{
+			file_group::audio, "wav", "Microsoft Wave",
+			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
+		},
 		{file_group::photo, "wbm", {}, {}},
-		{file_group::photo, "wbmp", {}, file_traits::embedded_xmp | file_traits::edit},
+		// WBMP has no metadata container, so its metadata goes to a sidecar.
+		{file_group::photo, "wbmp", {}, file_traits::edit},
 		{file_group::video, "web", {}, {}},
 		{file_group::video, "webm", "WebM video", {}},
-		{file_group::photo, "webp", {}, file_traits::embedded_xmp | file_traits::edit},
+		still_file_type(detected_format::WEBP),
 		{
 			file_group::audio, "wma", "Windows Media Audio 9",
 			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
@@ -550,13 +573,20 @@ void load_file_types()
 	};
 
 	int next_id = 0;
+	auto canonical = std::make_shared<file_group_by_name>();
 
 	for (const auto g : s_config.groups)
 	{
-		s_config.groups_by_name[g->name] = g;
+		(*canonical)[g->name] = g;
 		g->id = next_id;
 		next_id += 1;
 	}
+
+	s_config.groups_by_name.store(std::shared_ptr<const file_group_by_name>(std::move(canonical)));
+
+	// The plural and the current-language spellings, so the address box round trips before any
+	// catalog is loaded. Loading one calls this again.
+	register_file_group_spellings();
 
 	for (auto& ft : s_config.types)
 	{
@@ -579,7 +609,7 @@ void load_file_types()
 		}
 	}
 
-	av_initialise(s_config.types_by_name);
+	av_initialise();
 }
 
 static std::vector<file_map_link> s_map_links;
@@ -891,6 +921,8 @@ namespace
 	_Guarded_by_(file_op_mutex) df::hash_map<file_type_ref, file_op_row> file_op_stats;
 }
 
+std::function<void(df::file_path destination)> test_before_file_update_publish;
+
 void record_file_op(const file_type_ref ft, const file_op_stat stat)
 {
 	if (!ft) return;
@@ -922,12 +954,6 @@ void log_file_op_summary()
 		return row_total(a.second) > row_total(b.second);
 	});
 
-	const auto format_row = [](const std::string_view name, const std::string_view caps, const file_op_row& r)
-	{
-		return std::format("{:<10} {:<9} reads={:<7} in-place={:<6} replace={:<6} sidecar={:<6} write-failed={}",
-		                   name, caps, r[0], r[1], r[2], r[3], r[4]);
-	};
-
 	// The first extension names the whole group, and the capability marker states what the traits
 	// table promises - so a row that patches when it claims it cannot, or replaces when it claims
 	// it can patch, is visible without cross-referencing the traits.
@@ -939,19 +965,89 @@ void log_file_op_summary()
 
 	const auto capability = [](const file_type_ref ft)
 	{
-		if (!ft->has_trait(file_traits::in_place_metadata)) return "-"sv;
-		return ft->has_trait(file_traits::in_place_metadata_inject) ? "inject"sv : "if-xmp"sv;
+		return ft->has_trait(file_traits::in_place_metadata) ? "if it fits"sv : "-"sv;
 	};
 
 	file_op_row totals{};
+	std::string report =
+		"\n### Diffractor file operation results\n\n"
+		"| File type | In-place capability | Reads | In-place writes | Replacements | Sidecars | Write failures |\n"
+		"|---|---|---:|---:|---:|---:|---:|\n";
 
 	for (const auto& [ft, row] : rows)
 	{
 		for (auto i = 0_z; i < file_op_stat_count; ++i) totals[i] += row[i];
-		df::log("perf file types", format_row(group_name(ft->extension), capability(ft), row));
+		report += std::format("| {} | {} | {} | {} | {} | {} | {} |\n", group_name(ft->extension),
+		                      capability(ft), row[0], row[1], row[2], row[3], row[4]);
 	}
 
-	df::log("perf file types", format_row("(total)", ""sv, totals));
+	report += std::format("| **Total** | - | {} | {} | {} | {} | {} |\n", totals[0], totals[1], totals[2],
+	                      totals[3], totals[4]);
+	df::log("perf file types", report);
+}
+
+namespace
+{
+	class loaded_clipboard_image final : public platform::clipboard_image
+	{
+		file_load_result _loaded;
+
+	public:
+		explicit loaded_clipboard_image(file_load_result loaded) : _loaded(std::move(loaded))
+		{
+		}
+
+		sizei dimensions() const override
+		{
+			return _loaded.dimensions();
+		}
+
+		void write_pixels(const std::span<uint8_t> pixels) const override
+		{
+			const auto s = _loaded.to_surface();
+
+			if (!is_valid(s))
+			{
+				// A picture that could not be decoded is not a picture to offer: an empty frame on the
+				// clipboard would report the copy as having worked.
+				df::log(__FUNCTION__, "clipboard image could not be decoded");
+				throw std::invalid_argument("Invalid clipboard image");
+			}
+
+			const auto dimensions = _loaded.dimensions();
+			const auto stride_out = dimensions.cx * 4_z;
+			const auto stride_in = s->stride();
+			const auto copy_len = std::min(stride_out, stride_in);
+			const auto* const pixels_in = s->pixels();
+
+			if (pixels_in == nullptr)
+			{
+				df::log(__FUNCTION__, "Invalid pixel buffer pointers");
+				throw std::invalid_argument("Invalid pixel buffers");
+			}
+
+			for (auto y = 0; y < dimensions.cy; ++y)
+			{
+				const auto src_offset = stride_in * y;
+				const auto dest_offset = stride_out * y;
+
+				// Bounds checking for buffer operations
+				if (src_offset + copy_len > s->size() || dest_offset + copy_len > pixels.size())
+				{
+					df::log(__FUNCTION__, "Buffer bounds exceeded");
+					throw std::invalid_argument("Invalid pixel buffer size");
+				}
+
+				memcpy(pixels.data() + dest_offset, pixels_in + src_offset, copy_len);
+			}
+		}
+	};
+}
+
+platform::clipboard_image_ptr clipboard_image_of(const file_load_result& loaded)
+{
+	if (!loaded.success) return {};
+	return std::make_shared<loaded_clipboard_image>(loaded);
 }
 
 sizei file_load_result::dimensions() const
@@ -973,7 +1069,7 @@ ui::const_surface_ptr file_load_result::to_surface(const sizei scale_hint, const
 
 		if (is_valid(s))
 		{
-			return ff.scale_if_needed(s, scale_hint);
+			return ff.fit_within(s, scale_hint);
 		}
 
 		if (is_valid(i))
@@ -1258,139 +1354,21 @@ bool files::is_jpeg(const std::string_view name)
 	return str::icmp(ext, ".jpg") == 0 || str::icmp(ext, ".jpeg") == 0 || str::icmp(ext, ".jpe") == 0;
 }
 
-static bool is_heif(const df::cspan image_buffer_in)
-{
-	if (image_buffer_in.size < 12u)
-	{
-		return false;
-	}
-
-	constexpr std::array<uint8_t, 4> ftyp_header = {'f', 't', 'y', 'p'};
-	constexpr std::array<std::array<uint8_t, 4>, 10> brand = {
-		{
-			{'h', 'e', 'i', 'c'},
-			{'h', 'e', 'i', 'x'},
-			{'h', 'e', 'v', 'c'},
-			{'h', 'e', 'v', 'x'},
-			{'h', 'e', 'i', 'm'},
-			{'h', 'e', 'i', 's'},
-			{'h', 'e', 'v', 'm'},
-			{'h', 'e', 'v', 's'},
-			{'m', 'i', 'f', '1'},
-			{'m', 's', 'f', '1'},
-		}
-	};
-
-	if (!std::equal(std::begin(ftyp_header), std::end(ftyp_header), image_buffer_in.data + 4))
-		return false;
-
-	return std::any_of(std::begin(brand), std::end(brand), [image_buffer_in](const auto& b)
-	{
-		return std::equal(std::begin(b), std::end(b), image_buffer_in.data + 8);
-	});
-}
-
-inline bool is_avif(const df::cspan image_buffer_in)
-{
-	if (image_buffer_in.size < 12u)
-	{
-		return false;
-	}
-
-	constexpr std::array<unsigned char, 4> ftyp_header = {'f', 't', 'y', 'p'};
-	constexpr std::array<std::array<unsigned char, 4>, 2> brand = {
-		{
-			{'a', 'v', 'i', 'f'},
-			{'a', 'v', 'i', 's'},
-		}
-	};
-
-	if (!std::equal(std::begin(ftyp_header), std::end(ftyp_header), image_buffer_in.data + 4))
-		return false;
-
-	return std::any_of(std::begin(brand), std::end(brand), [image_buffer_in](const auto& b)
-	{
-		return std::equal(std::begin(b), std::end(b), image_buffer_in.data + 8);
-	});
-}
-
 detected_format files::detect_format(const df::cspan image_buffer_in)
 {
-	// https://en.wikipedia.org/wiki/List_of_file_signatures
-
-	// Read through memcpy: the span often points into the middle of another file - an embedded
-	// thumbnail sits at an offset taken straight from an IFD entry - so its alignment is never
-	// ours to assume. The signature constants below are little-endian host order throughout.
-	const auto* const data = image_buffer_in.data;
-
-	const auto read_u32 = [data](const size_t offset)
+	switch (libfiles::detect_image_format({image_buffer_in.data, image_buffer_in.size}))
 	{
-		uint32_t n;
-		std::memcpy(&n, data + offset, sizeof(n));
-		return n;
-	};
-
-	if (image_buffer_in.size >= 4)
-	{
-		const auto header32 = read_u32(0);
-
-		if (header32 == 0x53504238)
-		{
-			return detected_format::PSD;
-		}
-
-		// 47 49 46 38 
-		if (header32 == 0x38464947)
-		{
-			return detected_format::GIF;
-		}
-
-		// JPEG XL container: 00 00 00 0C 'J' 'X' 'L' ' '
-		if (header32 == 0x0C000000 && image_buffer_in.size >= 8 && read_u32(4) == 0x204C584A)
-		{
-			return detected_format::JXL;
-		}
-
-		// RIFF containers ('RIFF' .... 'WEBP'): verify the WEBP FourCC at offset 8 so
-		// other RIFF payloads (WAV, AVI) are not misidentified as WebP.
-		if (header32 == 0x46464952 && image_buffer_in.size >= 12 && read_u32(8) == 0x50424557)
-		{
-			return detected_format::WEBP;
-		}
-
-		uint16_t header16;
-		std::memcpy(&header16, data, sizeof(header16));
-
-		switch (header16)
-		{
-		case 0xD8FF: return detected_format::JPEG;
-		case 0x4D42: return detected_format::BMP;
-		case 0x5089: return detected_format::PNG;
-		case 0x4949: // 'II' little-endian
-		case 0x4d4d: // 'MM' big-endian
-			{
-				// The byte-order mark alone matches any file starting with those two letters, so
-				// require the version word too: 42 for classic TIFF, 43 for BigTIFF.
-				const auto version = header16 == 0x4949
-					                     ? static_cast<uint16_t>(data[2] | data[3] << 8)
-					                     : static_cast<uint16_t>(data[2] << 8 | data[3]);
-
-				if (version == 42u || version == 43u)
-				{
-					return detected_format::TIFF;
-				}
-			}
-			break;
-		case 0x0AFF: return detected_format::JXL; // JPEG XL codestream: FF 0A
-		}
+	case libfiles::image_format::jpeg: return detected_format::JPEG;
+	case libfiles::image_format::png: return detected_format::PNG;
+	case libfiles::image_format::webp: return detected_format::WEBP;
+	case libfiles::image_format::gif: return detected_format::GIF;
+	case libfiles::image_format::psd: return detected_format::PSD;
+	case libfiles::image_format::bmp: return detected_format::BMP;
+	case libfiles::image_format::tiff: return detected_format::TIFF;
+	case libfiles::image_format::heif: return detected_format::HEIF;
+	case libfiles::image_format::jxl: return detected_format::JXL;
+	default: return detected_format::Unknown;
 	}
-
-	if (is_heif(image_buffer_in) || is_avif(image_buffer_in))
-	{
-		return detected_format::HEIF;
-	}
-
-	return detected_format::Unknown;
 }
 
 files::files()
@@ -1407,7 +1385,9 @@ ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface
 {
 	ui::const_image_ptr result;
 
-	if (is_valid(surface_in))
+	// save_png and the jpeg encoder both walk the surface as four-byte pixels, so a planar one would
+	// be written out as its luma plane read as BGRX - grey and tiled rather than a visible failure.
+	if (is_valid(surface_in) && ui::is_packed(surface_in->format()))
 	{
 		const auto dimensions = surface_in->dimensions();
 		const auto has_alpha = surface_in->format() == ui::texture_format::ARGB;
@@ -1449,8 +1429,24 @@ ui::const_image_ptr files::surface_to_thumbnail(const ui::const_surface_ptr& sur
 
 	ui::const_image_ptr result = save_webp(surface_in, {}, params);
 
-	// save_webp accepts only RGB and ARGB, so anything else falls back to what the thumbnail store
-	// held before WebP: PNG when the surface carries alpha, JPEG otherwise.
+	// The fallbacks below encode packed pixels only, so a planar surface the WebP encoder would not
+	// take - a video frame carrying a rec709 matrix, say - is converted rather than dropped.
+	if (!is_valid(result) && !ui::is_packed(surface_in->format()))
+	{
+		const auto packed = std::make_shared<ui::surface>();
+
+		if (scaler().convert_yuv_surface(*surface_in, packed) && ui::is_valid(packed))
+		{
+			result = save_webp(packed, {}, params);
+			if (!is_valid(result)) result = surface_to_image(packed, {}, params, ui::image_format::Unknown);
+		}
+
+		return result;
+	}
+
+	// save_webp accepts packed pixels and the NV12 planes VP8 encodes natively, so anything else
+	// falls back to what the thumbnail store held before WebP: PNG when the surface carries alpha,
+	// JPEG otherwise.
 	if (!is_valid(result)) result = surface_to_image(surface_in, {}, params, ui::image_format::Unknown);
 
 	return result;
@@ -1466,38 +1462,55 @@ av_scaler& files::scaler()
 	return *_scaler;
 }
 
+// A ceiling, not a size to fill. Every caller passes a limit - a thumbnail bound, a display scale
+// hint, a preview cap - so a picture already inside it is handed back untouched rather than
+// resampled up to fill it, which would cost a pass and an allocation to add no information.
 template <typename Ptr>
-static Ptr scale_surface_if_needed(av_scaler& scaler, Ptr surface_in, const sizei target_extent)
+Ptr files::fit_within_impl(Ptr surface_in, const sizei ceiling)
 {
-	Ptr result;
+	if (!is_valid(surface_in) || ceiling.is_empty()) return surface_in;
 
-	if (is_valid(surface_in))
+	const auto dimensions_out = [&]
 	{
-		const auto dimensions_out = ui::scale_dimensions(surface_in->dimensions(), target_extent);
+		auto fitted = ui::scale_dimensions(surface_in->dimensions(), ceiling, true);
 
-		if (surface_in->dimensions() == dimensions_out || target_extent.is_empty())
+		// NV12 carries one chroma pair per 2x2 luma block, so a fitted extent has to be even for the
+		// planar reduction to take it. Rounding down keeps it inside the ceiling.
+		if (surface_in->format() == ui::texture_format::NV12)
 		{
-			std::swap(surface_in, result);
+			fitted = {std::max(2, fitted.cx & ~1), std::max(2, fitted.cy & ~1)};
 		}
-		else
-		{
-			auto surface = std::make_shared<ui::surface>();
-			scaler.scale_surface(surface_in, surface, dimensions_out);
-			result = surface;
-		}
+
+		return fitted;
+	}();
+
+	if (dimensions_out == surface_in->dimensions()) return surface_in;
+
+	ui::surface_ptr reduced;
+
+	if (ui::area_downscale(surface_in, reduced, dimensions_out)) return reduced;
+
+	// What the area filter will not take - P010, or a planar surface whose fitted extent lands odd -
+	// still has to come back reduced, and swscale converts it to packed on the way.
+	ui::surface_ptr converted;
+
+	if (scaler().scale_surface(surface_in, converted, dimensions_out) && is_valid(converted))
+	{
+		return converted;
 	}
 
-	return result;
+	// A resampler that failed is not a reason to lose pixels already in hand.
+	return surface_in;
 }
 
-ui::surface_ptr files::scale_if_needed(ui::surface_ptr surface_in, const sizei target_extent)
+ui::surface_ptr files::fit_within(ui::surface_ptr surface_in, const sizei ceiling)
 {
-	return scale_surface_if_needed(scaler(), std::move(surface_in), target_extent);
+	return fit_within_impl(std::move(surface_in), ceiling);
 }
 
-ui::const_surface_ptr files::scale_if_needed(ui::const_surface_ptr surface_in, const sizei target_extent)
+ui::const_surface_ptr files::fit_within(ui::const_surface_ptr surface_in, const sizei ceiling)
 {
-	return scale_surface_if_needed(scaler(), std::move(surface_in), target_extent);
+	return fit_within_impl(std::move(surface_in), ceiling);
 }
 
 ui::pixel_difference_result files::pixel_difference(const ui::const_image_ptr& expected,
@@ -1518,100 +1531,119 @@ ui::pixel_difference_result files::pixel_difference(const ui::const_image_ptr& e
 }
 
 
-// Single JPEG decode path shared by both image_to_surface overloads. Returns an
-// unscaled surface; NV12 results are flagged via is_yuv because the GPU sampler
-// resizes those at draw time. When orientation_override is empty the orientation
-// recovered from the embedded EXIF block is used.
+namespace
+{
+	// A surface as the memory libfiles decodes a JPEG into, so it lands there with nothing copied.
+	//
+	// The decode budget is charged here, the one point both image_to_surface overloads reach, from the
+	// frame libfiles reports before it reads a pixel. libjpeg reduces while it decodes, so the charge
+	// is what the decode will allocate rather than what the file stores: charging the full size would
+	// refuse a large stitch even as a thumbnail, which is the one request that was always affordable.
+	// A progressive or non-interleaved stream cannot produce a row until every coefficient of the
+	// full-resolution image is buffered, and no reduction touches that, so its coefficients are
+	// charged too - without them, a stream whose coefficients alone ran to gigabytes passed a check
+	// that said tens of megabytes.
+	class jpeg_surface_sink final : public libfiles::image_sink
+	{
+		const std::optional<ui::orientation> _orientation_override;
+		const df::cancel_token& _token;
+
+	public:
+		ui::surface_ptr surface;
+
+		jpeg_surface_sink(const std::optional<ui::orientation> orientation_override, const df::cancel_token& token) :
+			_orientation_override(orientation_override), _token(token)
+		{
+		}
+
+		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
+		{
+			const auto scale = static_cast<int64_t>(frame.scale_denominator);
+			const auto scaled_output_bytes = static_cast<int64_t>(frame.source_width) * frame.source_height * 4 /
+				(scale * scale);
+			const auto decode_bytes = scaled_output_bytes + static_cast<int64_t>(frame.working_bytes);
+
+			if (decode_bytes > df::max_decode_bytes)
+			{
+				df::log("files::decode_jpeg", std::format("decode of {} x {} needs {}, over the {} budget",
+				                                          frame.source_width, frame.source_height,
+				                                          df::file_size(decode_bytes).str(),
+				                                          df::file_size(df::max_decode_bytes).str()));
+				return {};
+			}
+
+			// The decoder reads the EXIF orientation by libfiles' one rule, the scan's and parse's.
+			const auto orientation = _orientation_override
+				                         ? *_orientation_override
+				                         : static_cast<ui::orientation>(frame.orientation);
+			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
+			auto s = std::make_shared<ui::surface>();
+
+			if (frame.format == libfiles::pixel_format::nv12)
+			{
+				// JPEG/JFIF is full-range BT.601, which the shader applies through rec601_full.
+				if (!s->alloc(dimensions, ui::texture_format::NV12, orientation)) return {};
+				s->color_space(ui::color_space::rec601_full);
+			}
+			else if (!s->alloc(dimensions, ui::texture_format::RGB, orientation))
+			{
+				return {};
+			}
+
+			surface = std::move(s);
+			return {surface->pixels(), surface->stride()};
+		}
+
+		bool cancelled() override
+		{
+			return _token.is_cancelled();
+		}
+	};
+}
+
+// The JPEG decode both image_to_surface overloads share. Returns an unscaled surface; an NV12 one is
+// flagged through is_yuv, because the GPU sampler resizes it at draw time. Without an
+// orientation_override, the orientation is the one the file's EXIF gives.
 ui::surface_ptr files::decode_jpeg(const df::cspan data, const sizei target_extent, const bool can_use_yuv,
                                    const std::optional<ui::orientation> orientation_override, bool& is_yuv,
                                    const df::cancel_token& token, const decode_intent intent)
 {
-	ui::surface_ptr result;
 	is_yuv = false;
 
 	try
 	{
-		if (!_jpeg_decoder.read_header(data))
-			return {};
+		libfiles::reader r(std::span<const uint8_t>(data.data, data.size));
+		jpeg_surface_sink sink(orientation_override, token);
 
-		// close() aborts or finishes the decompress. _jpeg_decoder is a long-lived
-		// member reused for every image, so it must run on every exit path once the
-		// header has been read - otherwise the next decode fails with a bad state.
-		const df::scope_exit close_decoder([this] { _jpeg_decoder.close(); });
+		libfiles::decode_options options;
+		options.target_width = static_cast<uint32_t>(std::max(0, target_extent.cx));
+		options.target_height = static_cast<uint32_t>(std::max(0, target_extent.cy));
+		options.allow_nv12 = can_use_yuv;
+		options.smooth_chroma = intent == decode_intent::display;
 
-		// The budget belongs here rather than at the callers: the const_image_ptr overload of
-		// image_to_surface gates at its head but the df::cspan one does not, and this is the single
-		// point both reach. The header has just been read, so these are the file's own dimensions -
-		// but libjpeg reduces while it decodes, so the ceiling is what the decode will allocate rather
-		// than what the file stores. Charging the full size would refuse a large stitch even as a
-		// thumbnail, which is the one request that was always affordable.
-		const auto source_dimensions = _jpeg_decoder.dimensions();
-		const auto scale_hint = ui::calc_scale_down_factor(source_dimensions, target_extent);
-		const auto decode_bytes = (static_cast<int64_t>(source_dimensions.cx) * source_dimensions.cy * 4) /
-			(static_cast<int64_t>(scale_hint) * scale_hint);
+		const auto result = _decoder.decode(r, sink, options);
 
-		if (decode_bytes > df::max_decode_bytes)
+		if (!result.success)
 		{
-			df::log(__FUNCTION__, std::format("decode of {} x {} needs {}, over the {} budget",
-			                                  source_dimensions.cx, source_dimensions.cy,
-			                                  df::file_size(decode_bytes).str(),
-			                                  df::file_size(df::max_decode_bytes).str()));
+			if (!result.error.empty()) df::log(__FUNCTION__, result.error);
 			return {};
 		}
 
-		// _orientation_out is only valid once the header has been parsed.
-		const auto orientation = orientation_override.value_or(_jpeg_decoder._orientation_out);
-
-		// YCbCr JPEGs can be uploaded as an NV12 texture and converted on the
-		// GPU (smaller uploads, no CPU colour conversion). JPEG/JFIF is full-range
-		// BT.601, which the shader applies via the rec601_full matrix.
-		// setting.use_yuv is the one switch behind the Advanced option, safe start and the
-		// D3D11 driver-fault fallback, so it has to be read where the format is chosen.
-		const auto use_yuv = can_use_yuv && setting.use_yuv && _jpeg_decoder.can_render_nv12();
-
-		if (!_jpeg_decoder.start_decompress(scale_hint, use_yuv, intent == decode_intent::display))
-			return {};
-
-		const auto dimensions = _jpeg_decoder.dimensions_out();
-		auto temp_surface = std::make_shared<ui::surface>();
-
-		if (use_yuv)
-		{
-			// NV12 requires even dimensions; crop at most one pixel per odd axis.
-			const sizei nv12_dims{dimensions.cx & ~1, dimensions.cy & ~1};
-
-			if (nv12_dims.cx < 2 || nv12_dims.cy < 2)
-				return {};
-
-			if (!temp_surface->alloc(nv12_dims, ui::texture_format::NV12, orientation))
-				return {};
-
-			temp_surface->color_space(ui::color_space::rec601_full);
-
-			if (!_jpeg_decoder.read_nv12(temp_surface->pixels(), static_cast<int>(temp_surface->stride()),
-			                             static_cast<int>(temp_surface->size()), token))
-				return {};
-
-			is_yuv = true;
-		}
-		else
-		{
-			if (!temp_surface->alloc(dimensions, ui::texture_format::RGB, orientation))
-				return {};
-
-			if (!_jpeg_decoder.read_rgb(temp_surface->pixels(), static_cast<int>(temp_surface->stride()),
-			                            static_cast<int>(temp_surface->size()), token))
-				return {};
-		}
-
-		result = std::move(temp_surface);
+		is_yuv = result.frame.format == libfiles::pixel_format::nv12;
+		return std::move(sink.surface);
 	}
-	catch (std::exception& e)
+	catch (const std::exception& e)
 	{
 		df::log(__FUNCTION__, e.what());
 	}
 
-	return result;
+	return {};
+}
+
+ui::surface_ptr files_test_hooks::decode_jpeg(files& ff, const df::cspan data, const sizei target_extent,
+                                              const bool can_use_yuv, const decode_intent intent, bool& is_yuv)
+{
+	return ff.decode_jpeg(data, target_extent, can_use_yuv, {}, is_yuv, {}, intent);
 }
 
 int64_t files::estimate_decode_bytes(const sizei source_dimensions)
@@ -1698,8 +1730,10 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 
 				if (is_valid(decoded))
 				{
-					// NV12 is resized by the GPU sampler at draw time; RGB is resized to the target here.
-					surface_result = is_yuv ? std::move(decoded) : scale_if_needed(std::move(decoded), target_extent);
+					// As above: only a decode bound for a texture keeps its native planar size.
+					surface_result = is_yuv && intent != decode_intent::thumbnail
+						                 ? std::move(decoded)
+						                 : fit_within(std::move(decoded), target_extent);
 				}
 			}
 			else if (format == ui::image_format::PNG)
@@ -1710,7 +1744,7 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 
 					if (is_valid(loaded))
 					{
-						surface_result = scale_if_needed(std::move(loaded), target_extent);
+						surface_result = fit_within(std::move(loaded), target_extent);
 					}
 				}
 				catch (std::exception& e)
@@ -1722,11 +1756,11 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 			{
 				try
 				{
-					auto loaded = load_webp(image->data(), can_use_yuv);
+					auto loaded = load_webp(image->data(), can_use_yuv, target_extent);
 
 					if (is_valid(loaded))
 					{
-						surface_result = scale_if_needed(std::move(loaded), target_extent);
+						surface_result = fit_within(std::move(loaded), target_extent);
 					}
 				}
 				catch (std::exception& e)
@@ -1753,93 +1787,11 @@ ui::surface_ptr files::image_to_surface(const df::cspan image_buffer_in, const s
 	{
 		if (!image_buffer_in.empty())
 		{
-			const auto format = detect_format(image_buffer_in);
+			const auto* const still = find_still_format(detect_format(image_buffer_in));
 
-			if (format == detected_format::JPEG)
+			if (still && still->decode)
 			{
-				bool is_yuv = false;
-				auto decoded = decode_jpeg(image_buffer_in, target_extent, false, {}, is_yuv, {}, intent);
-
-				if (is_valid(decoded))
-				{
-					surface_result = scale_if_needed(std::move(decoded), target_extent);
-				}
-			}
-			else if (format == detected_format::PSD)
-			{
-				mem_read_stream stream(image_buffer_in);
-				auto loaded = load_psd(stream);
-
-				if (is_valid(loaded))
-				{
-					surface_result = scale_if_needed(std::move(loaded), target_extent);
-				}
-			}
-			else if (format == detected_format::PNG)
-			{
-				try
-				{
-					auto loaded = load_png(image_buffer_in);
-
-					if (is_valid(loaded))
-					{
-						surface_result = scale_if_needed(std::move(loaded), target_extent);
-					}
-				}
-				catch (std::exception& e)
-				{
-					df::log(__FUNCTION__, e.what());
-				}
-			}
-			else if (format == detected_format::WEBP)
-			{
-				try
-				{
-					auto loaded = load_webp(image_buffer_in, can_use_yuv);
-
-					if (is_valid(loaded))
-					{
-						surface_result = scale_if_needed(std::move(loaded), target_extent);
-					}
-				}
-				catch (std::exception& e)
-				{
-					df::log(__FUNCTION__, e.what());
-				}
-			}
-			else if (format == detected_format::HEIF)
-			{
-				try
-				{
-					mem_read_stream stream(image_buffer_in);
-					auto loaded = load_heif(stream);
-
-					if (is_valid(loaded))
-					{
-						surface_result = scale_if_needed(std::move(loaded), target_extent);
-					}
-				}
-				catch (std::exception& e)
-				{
-					df::log(__FUNCTION__, e.what());
-				}
-			}
-			else if (format == detected_format::JXL)
-			{
-				try
-				{
-					mem_read_stream stream(image_buffer_in);
-					auto loaded = load_jxl(stream);
-
-					if (is_valid(loaded))
-					{
-						surface_result = scale_if_needed(std::move(loaded), target_extent);
-					}
-				}
-				catch (std::exception& e)
-				{
-					df::log(__FUNCTION__, e.what());
-				}
+				surface_result = still->decode(*this, image_buffer_in, {target_extent, can_use_yuv, intent});
 			}
 
 			if (is_empty(surface_result))
@@ -1977,6 +1929,25 @@ void file_read_stream::read(const uint64_t pos, uint8_t* buffer, const size_t le
 	memcpy(buffer, _buffer + pos - _loaded_start_pos, len);
 }
 
+void file_read_stream::read_through(const uint64_t pos, uint8_t* buffer, const size_t len)
+{
+	check_range(pos, len);
+
+	if (_h->seek(pos, platform::file::whence::begin) != pos)
+	{
+		const auto message = std::format("invalid read_through seek: {} {}", pos, _h->path());
+		df::log(__FUNCTION__, message);
+		throw app_exception(message);
+	}
+
+	if (_h->read(buffer, len) != len)
+	{
+		const auto message = std::format("invalid read_through read: {} {}", len, _h->path());
+		df::log(__FUNCTION__, message);
+		throw app_exception(message);
+	}
+}
+
 void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 {
 	// Overflow-safe: pos and len both originate from untrusted file fields.
@@ -2052,8 +2023,40 @@ bool file_read_stream::open(const df::file_path path)
 	return open(open_file(path, platform::file_open_mode::sequential_scan));
 }
 
+uint64_t platform_file_stream::size()
+{
+	return _f->size();
+}
+
+size_t platform_file_stream::read(const uint64_t offset, void* data, const size_t size)
+{
+	if (_f->seek(offset, platform::file::whence::begin) != offset) return 0;
+	return static_cast<size_t>(_f->read(static_cast<uint8_t*>(data), size));
+}
+
+bool platform_file_stream::write(const uint64_t offset, const void* data, const size_t size)
+{
+	if (_f->seek(offset, platform::file::whence::begin) != offset) return false;
+	return _f->write(static_cast<const uint8_t*>(data), size) == size;
+}
+
+bool platform_file_stream::resize(const uint64_t size)
+{
+	return _f->trunc(size);
+}
+
+bool platform_file_stream::flush()
+{
+	return _f->flush();
+}
+
 bool file_read_stream::open(platform::file_ptr h)
 {
+	_loaded_start_pos = 0;
+	_loaded_end_pos = 0;
+	_file_size = 0;
+	_block_size = 0;
+
 	_h = std::move(h);
 
 	if (_h)
@@ -2069,11 +2072,16 @@ bool file_read_stream::open(platform::file_ptr h)
 void file_read_stream::close()
 {
 	_h.reset();
+	_loaded_start_pos = 0;
+	_loaded_end_pos = 0;
+	_file_size = 0;
+	_block_size = 0;
 
 	if (_buffer)
 	{
 		_aligned_free(_buffer);
 		_buffer = nullptr;
+		_buffer_size = 0;
 	}
 }
 
@@ -2087,6 +2095,18 @@ df::blob file_read_stream::read_all()
 	// Parenthesised: the Windows max macro is in scope here.
 	if (_file_size > (std::numeric_limits<size_t>::max)())
 		throw app_exception("file too large to load"s);
+
+	// The size is the file's own claim, and the caller is about to hold all of it at once. Without
+	// the ceiling every other whole-file read observes, a scan of an arbitrarily large file
+	// allocates to match it. Answered empty rather than thrown: one file that cannot be held must
+	// not abandon the batch that was scanning it, and every caller already treats an empty view as
+	// a file it could not read.
+	if (_file_size > df::max_blob_size)
+	{
+		df::log(__FUNCTION__, std::format("{} is too large to read whole ({})", _h->path(),
+		                                  df::file_size(_file_size).str()));
+		return {};
+	}
 
 	const auto len = static_cast<size_t>(_file_size);
 	df::blob result(len);
@@ -2180,7 +2200,9 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 
 			df::blob data;
 
-			if ((is_small_file || load_from_mem) && fits_in_memory)
+			const auto can_load_whole_file = fits_in_memory && file_len <= df::max_blob_size;
+
+			if ((is_small_file || load_from_mem) && can_load_whole_file)
 			{
 				data.resize(static_cast<size_t>(file_len));
 				const auto read = f->read(data.data(), file_len);
@@ -2209,7 +2231,9 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 					{
 						if (load_thumb)
 						{
-							auto s = image_to_surface(data, max_thumb_size, false, decode_intent::thumbnail);
+							// Planar is allowed here: a JPEG or WebP thumbnail reaches the encoder as the
+							// planes VP8 wants, skipping the colour conversion in both directions.
+							auto s = image_to_surface(data, max_thumb_size, true, decode_intent::thumbnail);
 
 							if (is_valid(s))
 							{
@@ -2229,7 +2253,16 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 
 					if (stream.open(f))
 					{
-						result = scan_photo(stream, intent, load_thumb, this);
+						if (load_from_mem && file_len > df::max_blob_size)
+						{
+							df::log(__FUNCTION__, std::format("{} is too large to thumbnail ({})", path.name(),
+							                                  df::file_size(file_len).str()));
+							result = scan_photo(stream, intent, false, this);
+						}
+						else
+						{
+							result = scan_photo(stream, intent, load_thumb, this);
+						}
 					}
 				}
 			}
@@ -2285,7 +2318,7 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 
 			if (!data.empty())
 			{
-				result.crc32c = crypto::crc32c(data.data(), data.size());
+				result.crc32c = df::crc32c(data.data(), data.size());
 			}
 		}
 	}
@@ -2312,21 +2345,8 @@ ui::image_ptr load_image_file(df::cspan file)
 			// thumbnail, so asking for one again would let a file of nested thumbnails recurse -
 			// and scan_jpg carries a 64K buffer per frame, so that ends in a blown stack.
 			const auto info = scan_photo(stream);
-			auto format = ui::image_format::Unknown;
-
-			switch (info.format)
-			{
-			case detected_format::JPEG:
-				format = ui::image_format::JPEG;
-				break;
-			case detected_format::PNG:
-				format = ui::image_format::PNG;
-				break;
-			case detected_format::WEBP:
-				format = ui::image_format::WEBP;
-				break;
-			default: ;
-			}
+			const auto* const still = find_still_format(info.format);
+			const auto format = still ? still->encoded : ui::image_format::Unknown;
 
 			result = std::make_shared<ui::image>(file, info.dimensions(), format, info.orientation);
 		}
@@ -2344,7 +2364,7 @@ ui::image_ptr load_image_file(df::cspan file)
 
 file_load_result files::load(const df::file_path path, const bool can_load_preview)
 {
-	df::last_loaded_path = path;
+	df::last_loaded_path.store(path, std::memory_order_relaxed);
 	df::bump(df::file_perf.loads);
 	df::perf_timer timer(df::file_perf.load_us, &df::file_perf.load_max_us);
 
@@ -2360,6 +2380,19 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 		}
 		else
 		{
+			// Larger than this can hold at once. Reading a prefix would decode a frame whose tail is
+			// whatever the codec fills missing rows with, and the edit path would re-encode that over
+			// the original. Named as a property of the file, so it is not retried.
+			const auto attributes = platform::file_attributes(path);
+
+			if (attributes.size > static_cast<uint64_t>(df::max_blob_size))
+			{
+				df::log(__FUNCTION__, std::format("{} is too large to load ({})", path.name(),
+				                                  df::file_size(attributes.size).str()));
+				result.reason = file_load_result::failure::too_large;
+				return result;
+			}
+
 			const auto file = blob_from_file(path);
 
 			if (!file.empty())
@@ -2369,6 +2402,7 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 				if (stream.size() > 16)
 				{
 					const auto detected = detect_format(stream.peek128(0));
+					const auto* const still = find_still_format(detected);
 
 					if (is_image_format(detected))
 					{
@@ -2382,42 +2416,28 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 						// so here rather than looking like a corrupt file.
 						load_diagnostic diagnostic;
 
-						switch (detected)
+						if (still && still->load)
 						{
-						case detected_format::PSD:
-							result.s = load_psd(stream, &diagnostic);
-							break;
-
-						case detected_format::HEIF:
-							result.s = load_heif(stream, &diagnostic);
-							break;
-
-						case detected_format::JXL:
-							result.s = load_jxl(stream, &diagnostic);
-							break;
-
-						default:
+							result.s = still->load(stream, &diagnostic);
+						}
+						else
+						{
 							// GIF, BMP and TIFF, plus the bitmap types we recognise by extension but
 							// not by signature (TGA, SGI, PPM, DPX), are decoded by ffmpeg. scan_photo
 							// reads the geometry from the header without decoding - but only for the
 							// formats it has a branch for, so a refusal here is the one that can name the
 							// size in the diagnostic, not the one that makes the budget safe. That gate is
 							// inside av_decode_still, which sees every source this reaches.
+							const auto scanned = scan_photo(stream);
+							const sizei scanned_dimensions{
+								static_cast<int>(scanned.width), static_cast<int>(scanned.height)
+							};
+
+							if (scanned_dimensions.is_empty() ||
+								!reject_over_budget_source(&diagnostic, scanned_dimensions, "image"))
 							{
-								const auto scanned = scan_photo(stream);
-								const sizei scanned_dimensions{
-									static_cast<int>(scanned.width), static_cast<int>(scanned.height)
-								};
-
-								if (!scanned_dimensions.is_empty() &&
-									reject_over_budget_source(&diagnostic, scanned_dimensions, "image"))
-								{
-									break;
-								}
-
-								result.s = av_decode_still(file, {}, path.extension());
+								result.s = av_decode_still(file, {}, path.extension(), &diagnostic);
 							}
-							break;
 						}
 
 						result.success = is_valid(result.s);
@@ -2508,11 +2528,32 @@ ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surfa
 	return {};
 }
 
+// A re-encode copies the source's Exif into the new file. An orientation reset otherwise reaches only
+// the XMP, which PNG and WebP do not mirror into the Exif they write, so the copied tag would turn the
+// upright pixels a second time. The pixel dimensions move with them.
+static metadata_parts upright_save_metadata(const metadata_parts& source, const sizei dimensions)
+{
+	metadata_parts result;
+	result.xmp = source.xmp.clone();
+	result.iptc = source.iptc.clone();
+	result.icc = source.icc.clone();
+	result.photoshop_resources = source.photoshop_resources.clone();
+
+	df::blob exif;
+	if (!is_exif_signature(source.exif)) exif.assign(exif_signature.begin(), exif_signature.end());
+	exif.insert(exif.end(), source.exif.begin(), source.exif.end());
+
+	result.exif = metadata_exif::fix_dims({exif.data(), exif.size()}, dimensions.cx, dimensions.cy);
+	return result;
+}
+
 
 platform::file_op_result files::update_impl(const df::file_path path_src, const df::file_path path_dst,
                                             const metadata_edits& metadata_edits, const image_edits& photo_edits,
                                             const file_encode_params& params, const bool create_original,
-                                            const std::string_view src_xmp_name, const std::string_view dst_xmp_name)
+                                            const std::string_view src_xmp_name, const std::string_view dst_xmp_name,
+                                            const file_update_publish& publish,
+                                            bool* const live_file_maybe_changed)
 {
 	platform::file_op_result result = {platform::file_op_result_code::OK};
 
@@ -2578,42 +2619,53 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			return result;
 		}
 
-		// This branch hands the LIVE file to the toolkit and lets the handler choose, so it is
-		// limited to containers whose handler patches: MP3 and RIFF move the whole payload inside
-		// the file with no temp, and JPEG rewrites whenever a rating dirties EXIF or a tag dirties
-		// the PSIR. ISO base media patches boxes even with no packet to overwrite, so it needs no
-		// existing packet; ASF only patches an existing packet and rewrites otherwise. The other
-		// exclusions cannot be a patch: a save-as or a pixel edit has to produce a second file, and
-		// a backup needs the prior bytes.
-		const auto can_patch_in_place = !path_change && !has_photo_edits && !create_original &&
-			mt->has_trait(file_traits::in_place_metadata) &&
-			(mt->has_trait(file_traits::in_place_metadata_inject) || metadata_xmp::has_embedded_xmp(path_dst));
+		// A metadata-only edit that fits the space the LIVE file holds is patched where it lies:
+		// nothing the file holds moves, and libfiles orders the writes so that an interruption leaves
+		// a file that reads whole, each field old or new (todo.md D18). An edit that does not fit is
+		// staged below. A save-as or a pixel edit has to produce a second file, and a backup needs the
+		// prior bytes, so none of them is a patch.
+		const auto may_patch = !path_change && !has_photo_edits && !create_original &&
+			mt->has_trait(file_traits::in_place_metadata);
 
-		if (can_patch_in_place)
+		if (may_patch)
 		{
+			// Set before the attempt, so a failure is counted against the format.
 			op_type = mt;
-			record_file_op(mt, file_op_stat::patch_in_place);
 
-			xmp_update_result in_place;
+			auto patched = false;
+			const auto before_attempt = platform::file_attributes(path_dst);
 
 			try
 			{
-				in_place = metadata_xmp::update(path_dst, path_dst, metadata_edits, src_xmp_name, {});
+				patched = metadata_xmp::patch(path_dst, metadata_edits, src_xmp_name);
 			}
 			catch (const app_exception&)
 			{
-				// The toolkit reports a lost race with a reader as an opaque open failure, so retry
-				// once, but only while the file is merely locked.
+				// A lost race with a reader shows as an opaque open failure, so one retry is worth
+				// having - but it cannot be told from any other app_exception, and
+				// wait_for_unlocked_write answers true the moment the file is writable, which it also
+				// is for a corrupt container that will fail in exactly the same way. This branch
+				// writes the LIVE file, so the retry is gated on the file being untouched: an attempt
+				// that already wrote part of it must not run again over its own half-finished work.
+				const auto after_attempt = platform::file_attributes(path_dst);
+
+				if (after_attempt.modified != before_attempt.modified ||
+					after_attempt.size != before_attempt.size)
+				{
+					if (live_file_maybe_changed) *live_file_maybe_changed = true;
+					throw;
+				}
+
 				if (!platform::wait_for_unlocked_write(path_dst)) throw;
-				in_place = metadata_xmp::update(path_dst, path_dst, metadata_edits, src_xmp_name, {});
+				if (live_file_maybe_changed) *live_file_maybe_changed = true;
+				patched = metadata_xmp::patch(path_dst, metadata_edits, src_xmp_name);
 			}
 
-			if (!in_place.success)
+			if (patched)
 			{
-				result.code = platform::file_op_result_code::FAILED;
+				record_file_op(mt, file_op_stat::patch_in_place);
+				return result;
 			}
-
-			return result;
 		}
 
 		// A container with no embedded XMP keeps its metadata in the sidecar, so the media file's
@@ -2652,6 +2704,9 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			return result;
 		}
 
+		// Set when the stage was written with the metadata edit already in it.
+		auto staged_with_edit = false;
+
 		if (has_photo_edits)
 		{
 			const auto loaded = load(path_src, false);
@@ -2669,16 +2724,25 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 				const auto jpeg_to_jpeg = ui::is_jpeg(loaded.i) && dst_path_is_jpeg;
 
 				df::blob transformed;
+				auto rotate_over_budget = false;
 
 				if (jpeg_to_jpeg && photo_edits.is_no_loss(dimensions_in) && params.jpeg_save_quality >= 75)
 				{
 					// Empty when the rotation would not be lossless, which the re-encode below handles.
-					transformed = _jpeg_decoder.transform(loaded.i->data(), _jpeg_encoder,
+					transformed = _jpeg_transformer.transform(loaded.i->data(), _jpeg_encoder,
 					                                      angle_to_transform(
-						                                      df::round(photo_edits.rotation_angle())));
+						                                      df::round(photo_edits.rotation_angle())),
+					                                      &rotate_over_budget);
 				}
 
-				if (!transformed.empty())
+				if (rotate_over_budget)
+				{
+					// Lossless was possible and refused for the coefficients it would hold. The
+					// re-encode would hold the decoded picture and a rotated copy - more than that -
+					// and give up quality besides, so the edit fails rather than falling back.
+					result.code = platform::file_op_result_code::FAILED;
+				}
+				else if (!transformed.empty())
 				{
 					// The file is created before a short write can fail, so the stage is claimed for
 					// cleanup either way; otherwise a full disk leaves a truncated diffractor_* file
@@ -2694,8 +2758,8 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 				{
 					const auto surface_in = loaded.to_surface();
 					const auto temp_surface = is_empty(surface_in)
-						                          ? decltype(surface_in->transform(photo_edits)){}
-						                          : surface_in->transform(photo_edits);
+						                          ? ui::const_surface_ptr{}
+						                          : apply_image_edits(surface_in, photo_edits);
 
 					if (is_empty(temp_surface))
 					{
@@ -2710,8 +2774,18 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 						if (jpeg_to_jpeg) encode_params.jpeg_source = loaded.i->data();
 
 						metadata_parts save_meta;
+						const auto& source_meta = scan_result.save_metadata(save_meta);
+						metadata_parts upright_meta;
+						const auto reset_orientation = metadata_edits.orientation.has_value() &&
+							*metadata_edits.orientation == ui::orientation::top_left && !source_meta.exif.empty();
+						if (reset_orientation)
+						{
+							upright_meta = upright_save_metadata(source_meta, temp_surface->dimensions());
+						}
+
 						const auto saved = save_surface(extension_to_format(path_temp.extension()), temp_surface,
-						                                scan_result.save_metadata(save_meta), encode_params);
+						                                reset_orientation ? upright_meta : source_meta,
+						                                encode_params);
 
 						if (is_empty(saved))
 						{
@@ -2736,13 +2810,26 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			// Always staged, whatever the size. Handing the original to the metadata update lets a
 			// crash, a full disk or a handler fault mid-rewrite leave the user with a corrupt file
 			// and nothing to roll back to.
-			// Claimed before the copy: CopyFile leaves the partial destination behind when it runs out
-			// of disk part way, and this is the branch every metadata-only staged write takes.
+			// Claimed before anything is written: CopyFile leaves the partial destination behind when it
+			// runs out of disk part way, as a failed write does, and this is the branch every
+			// metadata-only staged write takes.
 			temp_file_created = true;
-			result = platform::copy_file(path_src, path_temp, true, false);
+
+			// A packet libfiles writes is staged with the edit already in it - in one pass from the
+			// source when the edit moves what the file holds, where a copy would then be rewritten in
+			// full. Anything else is copied, and updated below.
+			if (const auto staged = metadata_xmp::stage_update(path_temp, path_src, metadata_edits, src_xmp_name))
+			{
+				xmp_result = *staged;
+				staged_with_edit = true;
+			}
+			else
+			{
+				result = platform::copy_file(path_src, path_temp, true, false);
+			}
 		}
 
-		if (result.success())
+		if (result.success() && !staged_with_edit)
 		{
 			const auto has_metadata_changes = metadata_edits.has_changes();
 
@@ -2769,7 +2856,19 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			{
 				op_type = mt;
 				record_file_op(mt, file_op_stat::replace);
-				result = platform::replace_file(path_dst, path_temp, create_original);
+				if (test_before_file_update_publish) test_before_file_update_publish(path_dst);
+				if (publish.fail_if_exists)
+				{
+					result = platform::move_file(path_temp, path_dst, true);
+					temp_file_created = result.failed();
+				}
+				else
+				{
+					result = platform::replace_file(path_dst, path_temp, create_original,
+					                                publish.require_unchanged_destination
+						                                ? std::optional{publish.destination_attributes}
+						                                : std::optional<platform::file_attributes_t>{});
+				}
 			}
 
 			if (result.success() && !xmp_result.xmp_path.is_empty())
@@ -2781,7 +2880,9 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 				const auto media_modified = result.modified;
 
 				const auto path_temp_xmp = xmp_result.xmp_path;
-				const auto xmp_replace = platform::replace_file(path_dst_xmp, path_temp_xmp, create_original);
+				const auto xmp_replace = publish.fail_if_exists
+					                         ? platform::move_file(path_temp_xmp, path_dst_xmp, true)
+					                         : platform::replace_file(path_dst_xmp, path_temp_xmp, create_original);
 
 				if (xmp_replace.failed())
 				{
@@ -2846,11 +2947,14 @@ file_update_result files::update(const df::file_path path_src, const df::file_pa
                                  const metadata_edits& metadata_edits, const image_edits& photo_edits,
                                  const file_encode_params& params, const bool create_original,
                                  const std::string_view src_xmp_name, const std::string_view dst_xmp_name,
-                                 const rescan_spec& rescan)
+                                 const rescan_spec& rescan, const file_update_publish& publish)
 {
 	file_update_result result;
+	bool live_file_maybe_changed = false;
 	static_cast<platform::file_op_result&>(result) = update_impl(path_src, path_dst, metadata_edits, photo_edits,
-	                                                             params, create_original, src_xmp_name, dst_xmp_name);
+	                                                             params, create_original, src_xmp_name, dst_xmp_name,
+	                                                             publish, &live_file_maybe_changed);
+	result.live_file_maybe_changed = result.failed() && live_file_maybe_changed;
 
 	// Only replace_file hands back a handle, and only for the media file, so this distinguishes a
 	// staged-and-swapped write from an in-place patch or a sidecar-only write.
@@ -2916,6 +3020,22 @@ static int archive_read_open_native(archive* a, const std::string& path, const s
 	return archive_read_open_filename(a, path.c_str(), block_size);
 }
 
+static df::date_t archive_entry_created(archive_entry* entry)
+{
+	if (!archive_entry_ctime_is_set(entry)) return {};
+	const auto seconds = static_cast<int64_t>(archive_entry_ctime(entry));
+	const auto nanos = archive_entry_ctime_nsec(entry);
+	constexpr auto ticks = df::date_t::intervals_per_second;
+	constexpr auto epoch_seconds = static_cast<int64_t>(df::date_t::offset_1970 / ticks);
+	if (nanos < 0 || nanos >= 1000000000 || seconds < -epoch_seconds ||
+		seconds > static_cast<int64_t>((UINT64_MAX - 9999999) / ticks) - epoch_seconds)
+	{
+		df::log_once(__FUNCTION__, "Archive timestamp is outside the supported range");
+		return {};
+	}
+	return df::date_t(static_cast<uint64_t>(seconds + epoch_seconds) * ticks + static_cast<uint64_t>(nanos) / 100);
+}
+
 std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 {
 	std::vector<archive_item> results;
@@ -2942,8 +3062,22 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 
 		archive_entry* entry = nullptr;
 
-		while (results.size() < max_entries && archive_read_next_header(a, &entry) == ARCHIVE_OK)
+		for (auto examined = 0_z; examined < max_entries; ++examined)
 		{
+			const auto status = archive_read_next_header(a, &entry);
+			if (status == ARCHIVE_EOF) break;
+			if (status != ARCHIVE_OK)
+			{
+				const auto* error = archive_error_string(a);
+				df::log_once(__FUNCTION__, error ? error : "Cannot read archive entry");
+				if (status != ARCHIVE_WARN) break;
+			}
+			if (!entry)
+			{
+				df::log_once(__FUNCTION__, "Archive reader returned no entry");
+				break;
+			}
+
 			// Null for entries whose stored name is not valid UTF-8, which is common
 			// in older zip/rar archives using a local code page.
 			const auto* const pathname = archive_entry_pathname_utf8(entry);
@@ -2954,7 +3088,7 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 			archive_item result_info;
 			result_info.filename = str::utf8_cast(pathname);
 			result_info.uncompressed_size = df::file_size(archive_entry_size(entry));
-			result_info.created = df::date_t(archive_entry_ctime(entry));
+			result_info.created = archive_entry_created(entry);
 			results.emplace_back(std::move(result_info));
 		}
 	}
@@ -3224,14 +3358,15 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 		metadata_xmp::parse(*result, metadata.xmp);
 	}
 
-	// These fields are 16 bit in the metadata record. High ISO, 96/192 kHz audio and a stitched
-	// panorama past 65535 pixels all exceed that, so saturate - wrapping would report 96000 Hz as
-	// 30464 Hz, and a 70000 pixel stitch as 4464, which is a shape no panorama test can recognise.
+	// Most legacy fields are 16 bit in the metadata record. High ISO and a stitched panorama past
+	// 65535 pixels exceed that, so saturate - wrapping would report a 70000 pixel stitch as 4464,
+	// which is a shape no panorama test can recognise. Audio sample rate is stored wider below.
 	const auto to_u16 = [](const int64_t v)
 	{
 		return static_cast<uint16_t>(std::clamp<int64_t>(v, 0, UINT16_MAX));
 	};
 
+	if (created_local.is_valid()) result->dates.add(created_local_source, created_local);
 	if (created_utc.is_valid()) result->dates.add_utc(prop::date_source::embedded_created, created_utc);
 	if (prop::is_null(result->iso_speed)) result->iso_speed = to_u16(iso_speed);
 	if (prop::is_null(result->exposure_time)) result->exposure_time = exposure_time;
@@ -3248,7 +3383,8 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	if (prop::is_null(result->audio_codec)) result->audio_codec = audio_codec;
 	if (prop::is_null(result->audio_channels)) result->audio_channels = audio_channels;
 	if (prop::is_null(result->audio_sample_type)) result->audio_sample_type = static_cast<uint16_t>(audio_sample_type);
-	if (prop::is_null(result->audio_sample_rate)) result->audio_sample_rate = to_u16(audio_sample_rate);
+	if (prop::is_null(result->audio_sample_rate))
+		result->audio_sample_rate = static_cast<uint32_t>(std::clamp<int64_t>(audio_sample_rate, 0, UINT32_MAX));
 
 	if (!result->coordinate.is_valid())
 	{
@@ -3256,22 +3392,18 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	}
 
 	const auto xmp_properties = metadata_xmp::properties(metadata.xmp);
-	if (!result->tags.is_empty() || (!keywords.empty() && metadata.xmp.empty()) ||
+	if (!result->tags.is_empty() || (!keywords.empty() && !xmp_properties.tags) ||
 		(!windows_categories.empty() && !xmp_properties.tags))
 	{
 		auto tags = split(result->tags, true);
 
 		// Native container keywords (the MP4 'KEYW' atom, or Windows Explorer /
-		// Media Player tags from the 'Xtra' atom / ASF 'WM/Category') are only
-		// merged when the file has no embedded XMP. When XMP is present, dc:subject
-		// is the authoritative tag list, so a tag removed via XMP is not resurrected
-		// by a stale native tag left behind by another app (#3).
-		if (metadata.xmp.empty())
-		{
-			tags.insert(tags.end(), keywords.begin(), keywords.end());
-		}
+		// Media Player tags from the 'Xtra' atom / ASF 'WM/Category') are only merged when
+		// XMP has no dc:subject. An unrelated XMP packet says nothing about tags, while an
+		// empty dc:subject is authoritative and must not resurrect stale native tags.
 		if (!xmp_properties.tags)
 		{
+			tags.insert(tags.end(), keywords.begin(), keywords.end());
 			tags.insert(tags.end(), windows_categories.begin(), windows_categories.end());
 		}
 
@@ -3350,6 +3482,10 @@ static void decode_embedded_images(metadata_kv_list& kv)
 {
 	files ff;
 
+	// Bigger than the pane will ever draw. A ceiling only ever reduces, so a small payload still
+	// decodes at its own size.
+	constexpr sizei preview_limit{1024, 1024};
+
 	for (auto& row : kv)
 	{
 		auto* const binary = std::get_if<metadata_binary_detail>(&row.detail);
@@ -3368,21 +3504,7 @@ static void decode_embedded_images(metadata_kv_list& kv)
 
 		if (!scanned_dimensions.is_empty() && files::exceeds_decode_budget(scanned_dimensions)) continue;
 
-		// Decoded at its own size. A target extent would ENLARGE it: image_to_surface finishes with
-		// scale_if_needed, which scales up to fill whatever size it is given.
-		auto surface = ff.image_to_surface(bytes, {}, false, decode_intent::thumbnail);
-
-		if (ui::is_valid(surface))
-		{
-			// Only a payload bigger than the pane will ever draw is reduced, and only downwards.
-			constexpr sizei preview_limit{1024, 1024};
-			const auto dims = surface->dimensions();
-
-			if (dims.cx > preview_limit.cx || dims.cy > preview_limit.cy)
-			{
-				surface = ff.scale_if_needed(std::move(surface), preview_limit);
-			}
-		}
+		auto surface = ff.image_to_surface(bytes, preview_limit, false, decode_intent::thumbnail);
 
 		if (ui::is_valid(surface))
 		{
@@ -3428,8 +3550,8 @@ av_media_info file_scan_result::to_info() const
 
 	if (!metadata.xmp.empty())
 	{
-		auto kv = metadata_xmp::to_info(metadata.xmp);
-		const auto parsed = !kv.empty();
+		bool parsed = false;
+		auto kv = metadata_xmp::to_info(metadata.xmp, parsed);
 
 		// The packet is the block's real content, so it stays reachable whether or not the toolkit
 		// could make a tree from it.

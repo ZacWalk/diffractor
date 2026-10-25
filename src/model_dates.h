@@ -168,6 +168,11 @@ namespace prop
 			return offset == utc_instant ? value.system_to_local() : value;
 		}
 
+		static constexpr bool compatible_representation(const int16_t left, const int16_t right)
+		{
+			return (left == utc_instant) == (right == utc_instant);
+		}
+
 	public:
 		date_pack() noexcept = default;
 
@@ -245,6 +250,7 @@ namespace prop
 			for (auto i = 0; i < _count; ++i)
 			{
 				if (whole_seconds(group_wall_clock(i)) != whole_seconds(wall_clock)) continue;
+				if (!compatible_representation(_offsets[i], utc_offset_mins)) continue;
 
 				_sources[i] |= static_cast<uint64_t>(source);
 

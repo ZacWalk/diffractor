@@ -14,7 +14,7 @@
 
 #include "pch.h"
 #include "app_text.h"
-#include "platform.h"
+#include "libdesktop/platform.h"
 
 #include <cstdio>
 
@@ -28,11 +28,13 @@ namespace
 		std::vector<std::string> untranslated; // present but with an empty translation
 		std::vector<std::string> plural_mismatch; // msgid_plural differs from the registered plural form
 		std::vector<std::string> duplicates; // msgid appears more than once
+		std::vector<std::string> parse_errors; // malformed or unsupported PO syntax
 
 		// Structural problems make the .po file inconsistent with app_text.cpp.
 		bool has_structural_issues() const
 		{
-			return !missing.empty() || !not_needed.empty() || !plural_mismatch.empty() || !duplicates.empty();
+			return !missing.empty() || !not_needed.empty() || !plural_mismatch.empty() || !duplicates.empty() ||
+				!parse_errors.empty();
 		}
 	};
 
@@ -41,7 +43,13 @@ namespace
 		po_report report;
 		report.file = std::string(lang_path.name().sv());
 
-		const auto entries = load_po(lang_path);
+		const auto loaded = load_po_report(lang_path);
+		const auto& entries = loaded.entries;
+
+		for (const auto& error : loaded.errors)
+		{
+			report.parse_errors.emplace_back(std::format("line {}: {}", error.line, error.message));
+		}
 
 		// Index the .po entries by msgid, detecting duplicates. The first entry
 		// (with an empty msgid) is the header and is skipped.
@@ -170,6 +178,7 @@ int validate_po_files()
 		print_list("Missing (needed by app_text.cpp but absent)", report.missing);
 		print_list("Not needed (present but not in app_text.cpp)", report.not_needed);
 		print_list("Duplicate msgid", report.duplicates);
+		print_list("Parse errors", report.parse_errors);
 		print_list("Plural mismatch (msgid_plural differs from app_text.cpp)", report.plural_mismatch);
 		print_list("Untranslated (empty translation)", report.untranslated);
 

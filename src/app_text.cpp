@@ -38,10 +38,8 @@ std::string format_plural_text(const plural_text& fmt, const std::string_view fi
 	}
 	else
 	{
-		const size_t extra = static_cast<size_t>(form) - 2;
-		template_text = (extra < fmt.extra_forms.size() && !fmt.extra_forms[extra].empty())
-			                ? std::string_view(fmt.extra_forms[extra])
-			                : std::string_view(fmt.plural);
+		const auto extra = fmt.extra_form(static_cast<size_t>(form) - 2);
+		template_text = extra.empty() ? std::string_view(fmt.plural) : extra;
 	}
 
 	const auto number = [](const int64_t n) { return platform::format_number(str::to_string(n)); };
@@ -52,7 +50,7 @@ std::string format_plural_text(const plural_text& fmt, const std::string_view fi
 		else if (token == "count" || token.empty()) result << number(count);
 		else if (token == "other") result << number(count - 1);
 		else if (token == "total") result << number(of_total);
-		else if (token == "size") result << prop::format_size(size);
+		else if (token == "size") result << df::format_size(size);
 	};
 
 	return str::replace_tokens(template_text, substitute);
@@ -227,9 +225,58 @@ std::string_view tt_prep(std::string_view result)
 	return result;
 }
 
-std::vector<po_entry> load_po(const df::file_path lang_file)
+static std::optional<int> parse_msgstr_plural_index(const std::string& line, std::vector<po_parse_error>& errors,
+                                                    const size_t line_number)
 {
-	std::vector<po_entry> result;
+	const auto open = line.find('[');
+	const auto close = line.find(']', open == std::string::npos ? 0 : open + 1);
+
+	if (open == std::string::npos || close == std::string::npos || close == open + 1)
+	{
+		errors.emplace_back(line_number, "Malformed msgstr plural index");
+		return {};
+	}
+
+	const auto index_text = std::string_view(line).substr(open + 1, close - open - 1);
+
+	if (!std::ranges::all_of(index_text, [](const char ch) { return ch >= '0' && ch <= '9'; }))
+	{
+		errors.emplace_back(line_number, "Malformed msgstr plural index");
+		return {};
+	}
+
+	int form = -1;
+	const auto* const first = index_text.data();
+	const auto* const last = first + index_text.size();
+	const auto parsed = std::from_chars(first, last, form);
+
+	if (parsed.ec != std::errc{} || parsed.ptr != last)
+	{
+		errors.emplace_back(line_number, "Malformed msgstr plural index");
+		return {};
+	}
+
+	if (static_cast<size_t>(form) > max_supported_plural_index)
+	{
+		errors.emplace_back(line_number, std::format("Unsupported msgstr plural index {}; Diffractor supports 0..{}",
+		                                             form, max_supported_plural_index));
+		return {};
+	}
+
+	auto tail = std::string_view(line).substr(close + 1);
+	tail = str::trim(tail);
+	if (!tail.empty() && tail.front() != '"')
+	{
+		errors.emplace_back(line_number, "Malformed msgstr plural index");
+		return {};
+	}
+
+	return form;
+}
+
+po_load_result load_po_report(const df::file_path lang_file)
+{
+	po_load_result result;
 	std::ifstream fs(platform::to_stream_path(lang_file));
 
 	enum class parse_po_state
@@ -246,11 +293,13 @@ std::vector<po_entry> load_po(const df::file_path lang_file)
 	auto parse_state = parse_po_state::none;
 	int extra_index = 0;
 	po_entry entry;
+	size_t line_number = 0;
 
 	while (fs)
 	{
 		std::string line;
 		std::getline(fs, line);
+		++line_number;
 
 		std::string::size_type pos = line.find_last_not_of(" \t\r\n");
 		if (pos != std::string::npos && pos < line.size() - 1)
@@ -266,14 +315,8 @@ std::vector<po_entry> load_po(const df::file_path lang_file)
 				{
 					// Parse the form index N from msgstr[N]. Forms 0 and 1 map to
 					// str/str_plural; forms >= 2 (Slavic "many" etc.) go to str_extra.
-					const auto open = line.find('[');
-					int form = -1;
-
-					if (open != std::string::npos)
-					{
-						const auto* const first = line.data() + open + 1;
-						if (std::from_chars(first, line.data() + line.size(), form).ec != std::errc{}) form = -1;
-					}
+					const auto parsed_form = parse_msgstr_plural_index(line, result.errors, line_number);
+					const auto form = parsed_form.value_or(-1);
 
 					if (form == 0) parse_state = parse_po_state::str;
 					else if (form == 1) parse_state = parse_po_state::str1;
@@ -294,7 +337,7 @@ std::vector<po_entry> load_po(const df::file_path lang_file)
 
 				if (parse_state == parse_po_state::id && !entry.is_empty() && line[0] != u8'\"')
 				{
-					result.emplace_back(std::move(entry));
+					result.entries.emplace_back(std::move(entry));
 					entry.clear();
 				}
 
@@ -308,17 +351,28 @@ std::vector<po_entry> load_po(const df::file_path lang_file)
 			}
 			catch (std::invalid_argument&)
 			{
-				// Malformed msgstr[N] index: skip the line rather than reject the whole catalog.
+				result.errors.emplace_back(line_number, "Malformed PO entry");
+				parse_state = parse_po_state::ignore;
 			}
 		}
 	}
 
 	if (!entry.is_empty())
 	{
-		result.emplace_back(std::move(entry));
+		result.entries.emplace_back(std::move(entry));
 	}
 
 	return result;
+}
+
+std::vector<po_entry> load_po(const df::file_path lang_file)
+{
+	auto result = load_po_report(lang_file);
+	for (const auto& error : result.errors)
+	{
+		df::log(__FUNCTION__, std::format("{}:{}: {}", lang_file.name(), error.line, error.message));
+	}
+	return std::move(result.entries);
 }
 
 
@@ -389,6 +443,12 @@ int app_text_t::plural_form(const int64_t count) const
 
 app_text_t::app_text_t()
 {
+	// The platform layer's defaults name no application. This is Diffractor's wording, and the
+	// msgids its catalogs translate.
+	platform_text.error_sse2_needed = "Diffractor requires a processor with sse2.";
+	platform_text.error_unsupported_os = "Diffractor requires Windows 7 or newer.";
+	platform_text.error_cannot_continue = "Diffractor has a serious problem and cannot continue.";
+	platform_text.title_error = "Diffractor ERROR";
 	calc_text_mapping();
 }
 
@@ -431,6 +491,12 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 	auto missing = 0;
 	auto total = 0;
 
+	// Storage that outlives the switch, so a worker holding a translation pointer keeps valid text.
+	const auto publish = [this](text_t& target, const std::string_view translated)
+	{
+		target.publish(&_translation_storage.emplace_back(translated));
+	};
+
 	for (const auto& t : _all_texts)
 	{
 		auto found = text_map.find(t.get().text);
@@ -438,13 +504,13 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 
 		if (found != text_map.end())
 		{
-			t.get().trans = found->second;
+			publish(t.get(), found->second);
 		}
 		else
 		{
 			++missing;
 			df::trace(std::format("{} missing: msgid \"{}\"", lang_file, t.get().text));
-			t.get().trans.clear();
+			t.get().clear();
 		}
 	}
 
@@ -455,35 +521,34 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 
 		if (found != text_map.end())
 		{
-			p.get().one.trans = found->second;
+			publish(p.get().one, found->second);
 		}
 		else
 		{
 			++missing;
 			df::trace(std::format("{} missing: msgid \"{}\"", lang_file, p.get().one.text));
-			p.get().one.trans.clear();
+			p.get().one.clear();
 		}
 
 		found = text_map.find(p.get().plural.text);
 
 		if (found != text_map.end())
 		{
-			p.get().plural.trans = found->second;
+			publish(p.get().plural, found->second);
 		}
 		else
 		{
 			++missing;
 			df::trace(std::format("{} missing: msgid_plural \"{}\"", lang_file, p.get().plural.text));
-			p.get().plural.trans.clear();
+			p.get().plural.clear();
 		}
 
-		// Extra Slavic plural forms (msgstr[2..]); empty for binary languages.
-		p.get().extra_forms.clear();
+		// Extra Slavic plural forms (msgstr[2..]); none for binary languages.
 		const auto found_extra = extra_map.find(p.get().plural.text);
-		if (found_extra != extra_map.end())
-		{
-			p.get().extra_forms = *found_extra->second;
-		}
+		p.get().extra_forms.store(found_extra != extra_map.end()
+			                          ? &_plural_form_storage.emplace_back(*found_extra->second)
+			                          : nullptr,
+		                          std::memory_order_release);
 	}
 
 	df::log(__FUNCTION__, std::format("{}: {} of {} strings translated", lang_file, total - missing, total));
@@ -491,14 +556,16 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 
 void app_text_t::clear()
 {
-	for (auto&& m : _text_mapping)
+	for (auto&& t : _all_texts)
 	{
-		m.second.get().clear();
+		t.get().clear();
 	}
 
 	for (auto&& p : _all_plurals)
 	{
-		p.get().extra_forms.clear();
+		p.get().one.clear();
+		p.get().plural.clear();
+		p.get().extra_forms.store(nullptr, std::memory_order_release);
 	}
 
 	_plural_rule = nullptr;
@@ -548,6 +615,7 @@ void app_text_t::calc_text_mapping()
 		button_save,
 		button_save_as_jpeg,
 		button_send,
+		button_share,
 		button_sync,
 		button_tag,
 		button_update,
@@ -600,6 +668,53 @@ void app_text_t::calc_text_mapping()
 		command_auto_straighten,
 		edit_original,
 		edit_info,
+		movie_title,
+		movie_info,
+		movie_settings_title,
+		movie_clip_title,
+		movie_crossfade,
+		movie_cut,
+		movie_transition_length,
+		movie_fade_length,
+		movie_fade_in,
+		movie_fade_out,
+		movie_photo_duration,
+		movie_clip_duration,
+		movie_use_default,
+		movie_empty,
+		movie_output_fmt,
+		movie_clip_fmt,
+		movie_project_files,
+		movie_maker_files,
+		movie_media_files,
+		movie_open_failed_fmt,
+		movie_save_failed_fmt,
+		movie_video_files,
+		movie_rendering,
+		movie_render_failed_fmt,
+		movie_error_no_length,
+		movie_error_no_encoder,
+		movie_error_no_memory,
+		movie_error_undecodable,
+		movie_error_encoder_failed,
+		movie_error_output_is_source,
+		movie_rendered_fmt,
+		movie_render_cancelled,
+		movie_relink_none,
+		movie_unsaved_prompt,
+		movie_discard,
+		command_movie,
+		tooltip_movie,
+		command_movie_render,
+		tooltip_movie_render,
+		command_movie_relink,
+		tooltip_movie_relink,
+		command_movie_add,
+		command_movie_remove,
+		command_movie_send_to_end,
+		command_movie_open,
+		command_movie_save,
+		command_movie_import,
 		convert_info,
 		edit_metadata_info,
 		adjust_date_info,
@@ -715,6 +830,8 @@ void app_text_t::calc_text_mapping()
 		related_group_location,
 		command_share_email,
 		email_preparing,
+		command_share,
+		share_preparing,
 		command_show_in_file_browser,
 		command_show_in_folder,
 		command_sort_date_created,
@@ -818,51 +935,54 @@ void app_text_t::calc_text_mapping()
 		email_sending,
 		email_small_help,
 		email_zip,
+		share_small_help,
+		share_zip,
+		share_failed,
 		empty,
 		ending_fmt,
-		error_access_denied_src,
-		error_atl_direct3d,
-		error_cannot_continue,
-		error_connect_scanner,
+		platform_text.error_access_denied_src,
+		platform_text.error_atl_direct3d,
+		platform_text.error_cannot_continue,
+		platform_text.error_connect_scanner,
 		error_create_file_failed_fmt,
 		error_create_folder_failed_fmt,
 		error_create_window_failed,
-		error_dest_is_cd_record,
-		error_dest_is_cd_rom,
-		error_dest_is_dvd,
-		error_dest_same_tree,
-		error_dest_subtree,
-		error_diff_dir,
-		error_dst_root_dir,
-		error_file_dest_is_fld,
-		error_file_too_large,
-		error_filename_too_long,
-		error_fld_dest_is_file,
+		platform_text.error_dest_is_cd_record,
+		platform_text.error_dest_is_cd_rom,
+		platform_text.error_dest_is_dvd,
+		platform_text.error_dest_same_tree,
+		platform_text.error_dest_subtree,
+		platform_text.error_diff_dir,
+		platform_text.error_dst_root_dir,
+		platform_text.error_file_dest_is_fld,
+		platform_text.error_file_too_large,
+		platform_text.error_filename_too_long,
+		platform_text.error_fld_dest_is_file,
 		error_index_database_failed,
-		error_invalid_files,
+		platform_text.error_invalid_files,
 		error_invalid_path_fmt,
 		error_invalid_path,
-		error_many_dest,
-		error_many_src_1_dest,
-		error_max,
-		error_ole_failed,
-		error_on_dest,
-		error_op_cancelled,
+		platform_text.error_many_dest,
+		platform_text.error_many_src_1_dest,
+		platform_text.error_max,
+		platform_text.error_ole_failed,
+		platform_text.error_on_dest,
+		platform_text.error_op_cancelled,
 		error_analysis_cancelled,
-		error_path_too_deep,
+		platform_text.error_path_too_deep,
 		error_rename_failed,
-		error_same_file,
-		error_save_image,
-		error_scanner,
-		error_src_is_cd_record,
-		error_src_is_cdrom,
-		error_src_is_dvd,
-		error_src_root_dir,
-		error_sse2_needed,
-		error_unknown,
-		error_unsupported_os,
-		error_windows_common_controls_failed,
-		error_winsock_failed,
+		platform_text.error_same_file,
+		platform_text.error_save_image,
+		platform_text.error_scanner,
+		platform_text.error_src_is_cd_record,
+		platform_text.error_src_is_cdrom,
+		platform_text.error_src_is_dvd,
+		platform_text.error_src_root_dir,
+		platform_text.error_sse2_needed,
+		platform_text.error_unknown,
+		platform_text.error_unsupported_os,
+		platform_text.error_windows_common_controls_failed,
+		platform_text.error_winsock_failed,
 		exif_metadata_title,
 		failed_to_create_folder_fmt,
 		favorite_add_fmt,
@@ -1145,7 +1265,7 @@ void app_text_t::calc_text_mapping()
 		item_oriented_tooltip_fmt,
 		items_identical,
 		items_not_identical,
-		jpeg_best,
+		platform_text.jpeg_best,
 		keyboard,
 		keyboard_accelerator_press,
 		keyboard_alt,
@@ -1234,40 +1354,40 @@ void app_text_t::calc_text_mapping()
 		metadata_title,
 		metadata_select_field,
 		genre_separator_help,
-		menu_add_fmt,
-		menu_copy,
-		menu_cut,
-		menu_delete,
+		platform_text.menu_add_fmt,
+		platform_text.menu_copy,
+		platform_text.menu_cut,
+		platform_text.menu_delete,
 		menu_move,
-		menu_paste,
-		menu_select_all,
-		menu_undo,
+		platform_text.menu_paste,
+		platform_text.menu_select_all,
+		platform_text.menu_undo,
 		metadata,
 		midtones,
-		month_april,
-		month_august,
-		month_december,
-		month_february,
-		month_january,
-		month_july,
-		month_june,
-		month_march,
-		month_may,
-		month_november,
-		month_october,
-		month_september,
-		month_short_apr,
-		month_short_aug,
-		month_short_dec,
-		month_short_feb,
-		month_short_jan,
-		month_short_jul,
-		month_short_jun,
-		month_short_mar,
-		month_short_may,
-		month_short_nov,
-		month_short_oct,
-		month_short_sep,
+		words.month_april,
+		words.month_august,
+		words.month_december,
+		words.month_february,
+		words.month_january,
+		words.month_july,
+		words.month_june,
+		words.month_march,
+		words.month_may,
+		words.month_november,
+		words.month_october,
+		words.month_september,
+		words.month_short_apr,
+		words.month_short_aug,
+		words.month_short_dec,
+		words.month_short_feb,
+		words.month_short_jan,
+		words.month_short_jul,
+		words.month_short_jun,
+		words.month_short_mar,
+		words.month_short_may,
+		words.month_short_nov,
+		words.month_short_oct,
+		words.month_short_sep,
 		move_items,
 		nav_history_title,
 		nav_search_title,
@@ -1315,7 +1435,6 @@ void app_text_t::calc_text_mapping()
 		options_updates,
 		options_use_gpu,
 		options_use_gpu_video,
-		options_use_yuv_tex,
 		options_show_shadow,
 		options_last_played_pos,
 		options_show_help_tooltips,
@@ -1337,7 +1456,7 @@ void app_text_t::calc_text_mapping()
 		resolution_none,
 		pixels_small,
 		pixels_title,
-		png_best,
+		platform_text.png_best,
 		presence_loading,
 		presence_newer_in,
 		presence_newer_in_long,
@@ -1460,6 +1579,7 @@ void app_text_t::calc_text_mapping()
 		query_related,
 		query_with,
 		query_without,
+
 		rate_title,
 		rating_keys,
 		rating_remove_fmt,
@@ -1515,7 +1635,7 @@ void app_text_t::calc_text_mapping()
 		search_sub_folders,
 		search_videos,
 		searching_text,
-		select_folder,
+		platform_text.select_folder,
 		select_location,
 		selected_date_range_label,
 		selected_items_fmt,
@@ -1608,9 +1728,9 @@ void app_text_t::calc_text_mapping()
 		convert_dimension_required,
 		metadata_fields_required,
 		no_items_selected_message,
-		text_false,
-		text_true,
-		title_error,
+		words.text_false,
+		words.text_true,
+		platform_text.title_error,
 		title_folder,
 		title_rate,
 		title_updating,
@@ -1656,7 +1776,7 @@ void app_text_t::calc_text_mapping()
 		vibrance,
 		video,
 		videos,
-		webp_best,
+		platform_text.webp_best,
 		xmp_metadata_title,
 		icc_metadata_title,
 		zoom_kb,
@@ -1724,6 +1844,7 @@ void app_text_t::calc_text_mapping()
 		canceled_items_fmt,
 		ignored_exist_already_fmt,
 		ignored_previous_fmt,
+		import_date_unset_fmt,
 		delete_info_fmt,
 		delete_info_permanent_fmt,
 		delete_many_warning_fmt,
@@ -1736,8 +1857,12 @@ void app_text_t::calc_text_mapping()
 		tag_info_fmt,
 		adjust_date_info_fmt,
 		email_info_fmt,
+		share_info_fmt,
 		would_overwrite_fmt,
 		gps_overwrite_count_fmt,
+		movie_ignored_fmt,
+		movie_missing_fmt,
+		movie_relink_fmt,
 	};
 
 	text_mapping mapping;
@@ -1882,3 +2007,7 @@ std::vector<std::string> app_text_t::known_genres(const genre_kind kinds) const
 
 
 app_text_t tt;
+
+// The foundation and the platform layer write their words and messages with tt's translations of them.
+[[maybe_unused]] static const auto s_text_installed =
+	(str::install_words(&tt.words), platform::install_text(&tt.platform_text), true);

@@ -28,6 +28,9 @@
 inline const auto test_files_folder = known_path(platform::known_folder::test_files_folder);
 // Beside the test folder, not in it: expected_cached_item_count below counts what is in there.
 inline const auto test_formats_folder = test_files_folder.parent().combine("test-formats");
+// Files an encoder wrote once, kept as written because it writes other bytes on other platforms: a
+// record of what decodes them could not be taken over files written afresh.
+inline const auto test_generated_folder = test_files_folder.parent().combine("test-generated");
 inline constexpr sizei thumbnail_max_dimension = {256, 256};
 inline constexpr int expected_cached_item_count = 49;
 
@@ -119,10 +122,6 @@ public:
 	}
 
 	void view_changed(view_type m) override
-	{
-	}
-
-	void play_state_changed(const bool play) override
 	{
 	}
 
@@ -321,7 +320,8 @@ class temp_files
 {
 	mutable df::folder_path _folder;
 	df::file_paths _paths;
-	int _folder_seq = 0;
+	mutable int _folder_seq = 0;
+	mutable bool _owns_folder = false;
 
 	// Base folder for temp files. Overridable via the /test-temp:<path> command
 	// line option so round-trip tests can be run against a network drive.
@@ -341,7 +341,30 @@ class temp_files
 	{
 		if (_folder.is_empty())
 		{
-			_folder = temp_base().combine(std::format("diffractor-{}", platform::tick_count()));
+			const auto base = temp_base();
+			if (!base.exists())
+			{
+				platform::create_folder(base);
+			}
+
+			for (auto attempt = 0; attempt < 100; ++attempt)
+			{
+				const auto candidate = base.combine(std::format("diffractor-{}-{}", platform::tick_count(), attempt));
+				if (candidate.exists()) continue;
+
+				const auto result = platform::create_folder(candidate);
+				if (result.success())
+				{
+					_folder = candidate;
+					_owns_folder = true;
+					break;
+				}
+			}
+
+			if (_folder.is_empty())
+			{
+				throw std::runtime_error("Failed to create an exclusive test temp folder");
+			}
 		}
 
 		return _folder;
@@ -349,6 +372,10 @@ class temp_files
 
 public:
 	temp_files() = default;
+
+	explicit temp_files(const df::folder_path existing_folder) : _folder(existing_folder)
+	{
+	}
 
 	~temp_files()
 	{
@@ -360,15 +387,44 @@ public:
 	temp_files& operator=(const temp_files& other) = delete;
 	temp_files& operator=(temp_files&& other) noexcept = delete;
 
-	void delete_temps()
+	std::vector<std::string> delete_temps()
 	{
-		df::file_paths paths;
-		std::swap(paths, _paths);
+		std::vector<std::string> errors;
+		df::file_paths remaining_paths;
 
-		for (const auto& path : paths)
+		for (const auto& path : _paths)
 		{
-			platform::delete_file(path);
+			if (!path.exists()) continue;
+
+			const auto result = platform::delete_file(path);
+			if (result.failed() && path.exists())
+			{
+				errors.emplace_back(result.format_error("delete temp file", path.str()));
+				remaining_paths.emplace_back(path);
+			}
 		}
+
+		_paths = std::move(remaining_paths);
+
+		if (_owns_folder && !_folder.is_empty() && _folder.exists())
+		{
+			std::error_code ec;
+			std::filesystem::remove_all(platform::to_stream_path(_folder), ec);
+			if (ec)
+			{
+				errors.emplace_back(std::format("delete temp folder\n{}\n{}", _folder.text(), ec.message()));
+			}
+
+			if (!_folder.exists())
+			{
+				_folder = {};
+				_owns_folder = false;
+				_folder_seq = 0;
+				_paths.clear();
+			}
+		}
+
+		return errors;
 	}
 
 	df::folder_path folder() const
@@ -379,11 +435,6 @@ public:
 	df::file_path next_path(const std::string_view ext = ".jpg")
 	{
 		const auto folder = resolve_folder();
-
-		if (!folder.exists())
-		{
-			platform::create_folder(folder);
-		}
 
 		auto result = platform::temp_file(ext, folder);
 		_paths.emplace_back(result);
@@ -483,6 +534,7 @@ int count_search_results(index_state& index, std::string_view query);
 std::shared_ptr<av_player> make_test_player();
 // Never opened, so it holds no file and no decoder threads; only its identity is of interest.
 std::shared_ptr<av_session> make_test_session();
+std::shared_ptr<av_session> make_test_session(std::function<void(df::file_path, double)> save_position);
 
 // The gazetteer costs seconds to load, so every test that needs real place data shares one
 // loaded instance. A test that mutates it (set_display_language) must restore it before returning.
@@ -558,6 +610,18 @@ public:
 		return *this;
 	}
 
+	prop_test& disk(const uint8_t n, const uint8_t of = 0)
+	{
+		_f.safe_ps()->disk = df::xy8::make(n, of);
+		return *this;
+	}
+
+	prop_test& episode(const uint8_t n, const uint8_t of = 0)
+	{
+		_f.safe_ps()->episode = df::xy8::make(n, of);
+		return *this;
+	}
+
 	prop_test& iso(const uint16_t n)
 	{
 		_f.safe_ps()->iso_speed = n;
@@ -570,9 +634,52 @@ public:
 		return *this;
 	}
 
+	prop_test& exposure_time(const double seconds)
+	{
+		_f.safe_ps()->exposure_time = static_cast<float>(seconds);
+		return *this;
+	}
+
 	prop_test& digitized(const int y, const int m, const int d)
 	{
 		_f.safe_ps()->dates.add(prop::date_source::exif_digitized, df::date_t(y, m, d));
+		return *this;
+	}
+
+	prop_test& orientation(const ui::orientation o)
+	{
+		_f.safe_ps()->orientation = o;
+		return *this;
+	}
+
+	prop_test& dimensions(const int cx, const int cy)
+	{
+		_f.safe_ps()->width = static_cast<uint16_t>(cx);
+		_f.safe_ps()->height = static_cast<uint16_t>(cy);
+		return *this;
+	}
+
+	prop_test& focal_length(const double mm)
+	{
+		_f.safe_ps()->focal_length = static_cast<float>(mm);
+		return *this;
+	}
+
+	prop_test& audio_channels(const uint16_t n)
+	{
+		_f.safe_ps()->audio_channels = n;
+		return *this;
+	}
+
+	prop_test& audio_sample_rate(const uint16_t n)
+	{
+		_f.safe_ps()->audio_sample_rate = n;
+		return *this;
+	}
+
+	prop_test& media_type(const std::string_view name)
+	{
+		_f.ft = files::file_type_from_name(name);
 		return *this;
 	}
 

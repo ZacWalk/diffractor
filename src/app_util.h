@@ -7,15 +7,49 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Utility functions for file operations. Includes rename templating, import/sync
-// analysis, collection management, and file operation helpers.
+// analysis, collection management, preparation of files to share, and file operation helpers.
 
 #pragma once
 
 #include "model_db.h"
 
+#include <optional>
+
 struct folder_scan_item;
 
 static constexpr auto doc_template_url = "https://www.diffractor.com/docs/template";
+
+// The encoding a command that rewrites pixels uses: the user's JPEG quality.
+inline file_encode_params make_file_encode_params()
+{
+	file_encode_params result;
+	result.jpeg_save_quality = setting.jpeg_save_quality;
+	return result;
+}
+
+inline bool failed_write_needs_forced_rescan(const file_update_result& result)
+{
+	return result.failed() && result.live_file_maybe_changed;
+}
+
+inline bool update_result_revalidates_folder(const file_update_result& result)
+{
+	return result.success() || result.live_file_maybe_changed;
+}
+
+inline void preserve_failed_update_error(std::string& first_error, const file_update_result& result)
+{
+	if (!result.success() && first_error.empty()) first_error = result.format_error();
+}
+
+template <typename FolderSet>
+inline item_status apply_batch_update_result(FolderSet& written, const df::folder_path folder,
+                                             std::string& first_error, const file_update_result& result)
+{
+	if (update_result_revalidates_folder(result)) written.emplace(folder);
+	preserve_failed_update_error(first_error, result);
+	return result.success() ? item_status::success : item_status::fail;
+}
 
 class command_status;
 
@@ -39,7 +73,7 @@ public:
 		{
 			if (std::uncaught_exceptions() > _uncaught_exceptions)
 			{
-				_r->abort(tt.error_cannot_continue);
+				_r->abort(tt.platform_text.error_cannot_continue);
 			}
 			else
 			{
@@ -63,6 +97,14 @@ struct rename_item
 	bool destination_exists = false;
 	std::vector<std::pair<df::file_path, df::file_path>> sidecars;
 	std::vector<bool> sidecar_destinations_exist;
+	// The file identity the review was made against. The run moves the source and, under Replace,
+	// writes over the destination, so both have to still be the files the user saw - existence alone
+	// cannot tell a file that was replaced in between from the one that was reviewed. Folders carry
+	// none of this: a folder's contents change without the folder becoming a different folder.
+	platform::file_attributes_t source_attributes;
+	platform::file_attributes_t destination_attributes;
+	std::vector<platform::file_attributes_t> sidecar_source_attributes;
+	std::vector<platform::file_attributes_t> sidecar_destination_attributes;
 	collision_policy policy = collision_policy::block_run;
 	std::string original_name;
 	std::string new_name;
@@ -143,6 +185,9 @@ struct import_result
 	item_import_set imports;
 	// Rows whose files no longer matched the review. They wrote nothing and need a fresh analysis.
 	uint32_t refused = 0;
+	// Rows that arrived but whose requested created date the filesystem refused. The file is there,
+	// so this is not a failed import, but the user asked for the date and did not get it.
+	uint32_t dates_unset = 0;
 };
 
 struct import_analysis_item
@@ -159,9 +204,22 @@ struct import_analysis_item
 	// that writes over a file instead of proving the name is free.
 	platform::file_attributes_t source_fi;
 	platform::file_attributes_t destination_fi;
+
 	// Sidecars travel with the file they describe rather than standing as rows of their own, so a
-	// partial import can never leave metadata at one end and its file at the other.
-	std::vector<std::pair<df::file_path, df::file_path>> sidecars;
+	// partial import can never leave metadata at one end and its file at the other. Each carries the
+	// same pair of stamps the primary does: the run writes the group that was reviewed or none of
+	// it, and a sidecar destination that appeared since the review is not a reviewed replacement.
+	// Shared companions remain dependencies of every primary, including ignored rows; Move removes
+	// the source only after all dependent primaries have moved successfully.
+	struct sidecar_move
+	{
+		df::file_path source;
+		df::file_path destination;
+		platform::file_attributes_t source_fi;
+		platform::file_attributes_t destination_fi;
+	};
+
+	std::vector<sidecar_move> sidecars;
 };
 
 using import_analysis_result = std::map<df::folder_path, std::vector<import_analysis_item>, df::iless>;
@@ -177,7 +235,16 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 import_result import_copy(index_state& index, df::results_ptr results, const import_analysis_result& src_items,
                           const import_options& options, df::cancel_token token);
 
-std::vector<import_source> calc_import_sources(const view_state& s);
+extern std::function<void(df::file_path path)> test_before_import_rollback_cleanup;
+extern std::function<std::optional<platform::file_op_result>(df::file_path destination)>
+test_import_sidecar_write_override;
+
+std::optional<import_source> calc_import_selected_source(const view_state& s);
+std::vector<import_source> calc_import_sources(std::optional<import_source> selected_source);
+
+// The removable drives Import offers as sources: those holding media, in drive order, at most max. The
+// limit applies after the filter, so fixed drives and empty card-reader slots cannot use it up.
+platform::drives import_source_drives(const platform::drives& drives, size_t max);
 
 size_t count_imports(const std::vector<import_analysis_item>& items);
 size_t count_imports(const import_analysis_result& items);
@@ -217,7 +284,10 @@ struct sync_analysis_item
 	df::folder_path remote_root;
 
 	sync_action action = sync_action::none;
-	uint32_t delete_crc = 0;
+	// Unset when the analysis could not read the file it planned to delete. Two failed reads both
+	// answering zero would otherwise compare equal and prove the content unchanged, which is how a
+	// file nobody could read got deleted.
+	std::optional<uint32_t> delete_crc;
 };
 
 struct sync_analysis_folder
@@ -293,6 +363,9 @@ struct convert_item_plan
 	df::file_path destination;
 	// True when the destination existed before the policy was applied.
 	bool collides = false;
+	// What stood at a colliding destination when it was reviewed. A row that replaces it is held to
+	// this, as every other operation that writes over a reviewed file is.
+	platform::file_attributes_t destination_fi;
 	// Resolved outcome of the collision policy for this row.
 	bool skipped = false;
 	bool renamed_to_avoid_collision = false;
@@ -309,6 +382,37 @@ df::file_path next_free_destination(df::file_path destination);
 
 // Review statement for a plan: names the policy and the number of rows it resolved.
 std::string format_collision_summary(collision_policy policy, int count);
+
+// What leaves the app when files are shared or emailed. A file the options leave alone goes as
+// itself; one that is resized, converted or zipped goes as a copy in the staging folder, named as
+// the recipient will see it.
+struct outgoing_options
+{
+	bool zip = false;
+	bool convert_to_jpeg = false;
+	// The longest side a photo may keep. Zero leaves dimensions alone.
+	int max_side = 0;
+
+	bool writes_copies() const { return zip || convert_to_jpeg || max_side > 0; }
+};
+
+struct outgoing_files
+{
+	std::vector<df::file_path> paths;
+	bool success = false;
+	// Empty when the failure has no more specific description than the caller's own.
+	std::string error;
+};
+
+// One share's copies at a time. The recipient reads them after the share returns, so they are
+// cleared when the next share starts rather than when this one ends.
+df::folder_path outgoing_staging_folder();
+void clear_outgoing_staging(df::folder_path staging);
+
+// Worker only: decodes, encodes and writes. Stops at the first failure or cancel, and never
+// modifies a source.
+outgoing_files prepare_outgoing_files(const std::vector<df::file_path>& sources, const outgoing_options& options,
+                                      df::folder_path staging, df::status_i& status);
 
 df::date_t adjusted_item_date(df::date_t created, df::date_t new_start, df::date_t original_start);
 std::string_view adjust_date_source_name(const prop::item_metadata_const_ptr& md);

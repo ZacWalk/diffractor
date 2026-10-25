@@ -127,20 +127,14 @@ df::search_t df::search_t::parse_from_input(const std::string_view text) const
 	}
 
 	auto result = parse(text);
-	result.raw_text(raw);
+	const auto has_query_parts = result.has_selector() &&
+		(result.selectors().size() > 1 || !result.terms().empty());
+	result.raw_text(has_query_parts ? std::string(text) : raw);
 	return result;
 }
 
 namespace
 {
-	bool is_location_scope(const std::string_view scope)
-	{
-		return str::icmp(scope, "loc") == 0 || str::icmp(scope, "near") == 0 ||
-			str::icmp(scope, "place") == 0 || str::icmp(scope, "city") == 0 ||
-			str::icmp(scope, "state") == 0 || str::icmp(scope, "country") == 0 ||
-			str::icmp(scope, "countries") == 0;
-	}
-
 	bool is_distance_token(const std::string_view token)
 	{
 		auto i = size_t{0};
@@ -154,7 +148,9 @@ namespace
 
 	bool is_size_unit_token(const std::string_view token)
 	{
-		return str::icmp(token, "kb") == 0 || str::icmp(token, "mb") == 0 || str::icmp(token, "gb") == 0;
+		// Every unit format_size writes, since format_term writes it apart from its number.
+		return str::icmp(token, "kb") == 0 || str::icmp(token, "mb") == 0 || str::icmp(token, "gb") == 0 ||
+			str::icmp(token, "tb") == 0;
 	}
 }
 
@@ -183,7 +179,7 @@ std::vector<search_part> df::coalesce_parts(std::vector<search_part> parts)
 			// absorb only what is recognisably part of the place, so that a following word such as
 			// "sunset" stays a separate text term; the first unrecognised token ends the location
 			// an explicitly quoted part is the user asking for a distinct thing, so it is never absorbed
-			if (is_location_scope(location.scope) && !part.literal &&
+			if (find_location_scope(location.scope) && !part.literal &&
 				(part.after_comma || is_distance_token(part.term) || is_country_code(part.term)))
 			{
 				location.term += ", ";
@@ -245,9 +241,41 @@ df::search_t df::search_t::parse(const std::string_view text)
 	return result;
 }
 
+// Wrapping a value so the tokenizer reads it back whole. The rule lives here alone because every
+// formatted term has to agree with the tokenizer's single un-quoting rule.
+static std::string quote_term_value(const std::string_view term_text)
+{
+	const char quote_char = term_text.find('\"') == std::string::npos ? '\"' : '\'';
+	std::string result;
+	result += quote_char;
+
+	// the tokenizer has no escape, so a value containing the delimiter is doubled and un-doubled on read
+	for (const auto c : term_text)
+	{
+		result += c;
+		if (c == quote_char) result += c;
+	}
+
+	result += quote_char;
+	return result;
+}
+
 static std::string term_quote(const std::string_view term_text)
 {
-	auto has_special_char = term_text.find_first_of(" \t\'\"!-#@") != std::string::npos;
+	auto has_special_char = std::ranges::any_of(term_text, [](const char c)
+	{
+		return c == ' ' || c == '\t' || c == '\'' || c == '"' || c == '!' || c == '-' ||
+			c == '<' || c == '>' || c == '=' || c == '&' ||
+			c == '@' || (c != ':' && search_tokenizer::is_delimiter_char(c));
+	});
+
+	// The tokenizer reads a bare "and" or "or" as the operator, so a term that is one of those words
+	// has to be written quoted to read back as the text it is.
+	if (!has_special_char && (str::icmp(term_text, "and") == 0 || str::icmp(term_text, "or") == 0 ||
+		str::icmp(term_text, tt.query_and) == 0 || str::icmp(term_text, tt.query_or) == 0))
+	{
+		has_special_char = true;
+	}
 
 	if (!has_special_char)
 	{
@@ -273,28 +301,7 @@ static std::string term_quote(const std::string_view term_text)
 		}
 	}
 
-	std::string result;
-
-	if (has_special_char)
-	{
-		const char quote_char = term_text.find('\"') == std::string::npos ? '\"' : '\'';
-		result = quote_char;
-
-		// the tokenizer has no escape, so a value containing the delimiter is doubled and un-doubled on read
-		for (const auto c : term_text)
-		{
-			result += c;
-			if (c == quote_char) result += c;
-		}
-
-		result += quote_char;
-	}
-	else
-	{
-		result = term_text;
-	}
-
-	return result;
+	return has_special_char ? quote_term_value(term_text) : std::string(term_text);
 }
 
 // A search term has to read back as itself, so numbers are trimmed rather than rounded away.
@@ -309,6 +316,22 @@ static std::string trim_trailing_zeros(std::string v)
 static std::string format_search_coordinate(const double v)
 {
 	return trim_trailing_zeros(std::format("{:.6f}", v));
+}
+
+static std::string format_search_number(const double v)
+{
+	std::array<char, 64> buffer{};
+	const auto [end, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), v);
+	if (ec == std::errc{}) return {buffer.data(), end};
+	return trim_trailing_zeros(std::format("{:.17g}", v));
+}
+
+static std::string format_search_number(const float v)
+{
+	std::array<char, 64> buffer{};
+	const auto [end, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), v);
+	if (ec == std::errc{}) return {buffer.data(), end};
+	return trim_trailing_zeros(std::format("{:.9g}", v));
 }
 
 // locations.md 4.2: a radius reads in the same metres and kilometres a user would type.
@@ -361,12 +384,12 @@ static std::string format_term_value(const df::search_term& term)
 	if (t == prop::megapixels) return str::print("%1.1f", d);
 	if (t == prop::dimensions) return prop::format_dimensions({xy.x, xy.y});
 	if (t == prop::duration) return prop::format_duration(n);
-	if (t == prop::exposure_time) return prop::format_exposure(d);
+	if (t == prop::exposure_time) return format_search_number(static_cast<float>(d)) + "s";
 	if (t == prop::iso_speed) return prop::format_iso(n);
 	if (t == prop::latitude) return prop::format_gps(d);
 	if (t == prop::longitude) return prop::format_gps(d);
 	if (t == prop::rating) return str::to_string(n);
-	if (t == prop::audio_sample_rate) return prop::format_audio_sample_rate(n);
+	if (t == prop::audio_sample_rate) return str::to_string(n);
 	if (t == prop::audio_channels) return prop::format_audio_channels(n);
 	if (t == prop::audio_sample_type) return format_audio_sample_type(static_cast<prop::audio_sample_t>(n));
 	if (t == prop::streams) return prop::format_streams(n);
@@ -382,8 +405,8 @@ static std::string format_term_value(const df::search_term& term)
 	{
 		return str::to_string(n);
 	}
-	if (t == prop::focal_length) return prop::format_focal_length(d, 0);
-	if (t == prop::file_size) return prop::format_size(df::file_size(n64));
+	if (t == prop::focal_length) return format_search_number(static_cast<float>(d)) + "mm";
+	if (t == prop::file_size) return df::format_size(df::file_size(n64));
 	if (t->data_type == prop::data_type::int32)
 	{
 		return str::to_string(n);
@@ -515,20 +538,7 @@ std::string df::format_term(const search_term& term)
 		}
 		else if (term.type == search_term_type::location)
 		{
-			std::string prefix;
-
-			switch (term.level)
-			{
-			case location_level::place: prefix = "place:";
-				break;
-			case location_level::state: prefix = "state:";
-				break;
-			case location_level::country: prefix = "country:";
-				break;
-			default: prefix = "loc:";
-				break;
-			}
-
+			const auto prefix = std::string(location_scope_name(term.level)) + ':';
 			result << prefix;
 
 			if (term.coord_val.is_valid())
@@ -615,27 +625,9 @@ static void term_join(std::string& result, const std::string_view term)
 	result += term_quote(term);
 }
 
-static void term_join(std::string& result, const char modifier, const std::string_view term)
-{
-	if (!result.empty()) result += ' ';
-	result += modifier;
-	result += term_quote(term);
-}
-
 static void term_join(std::string& result, const std::string_view scope, const std::string_view term)
 {
 	if (!result.empty()) result += ' ';
-	result += scope;
-	result += ':';
-	result += ' ';
-	result += term_quote(term);
-}
-
-static void term_join(std::string& result, const char modifier, const std::string_view scope,
-                      const std::string_view term)
-{
-	if (!result.empty()) result += ' ';
-	result += modifier;
 	result += scope;
 	result += ':';
 	result += ' ';
@@ -687,7 +679,7 @@ static int days_per_month(const int month, const int year = -1)
 
 	if (month == 2)
 	{
-		const auto leap_year = year >= 0 && year % 4 == 0 && year % 100 != 0 || year % 400 == 0;
+		const auto leap_year = (year >= 0 && year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 		return leap_year ? 29 : 28;
 	}
 
@@ -721,7 +713,10 @@ void df::search_t::next_date(const bool forward)
 	{
 		if (forward)
 		{
-			const auto days_in_month = days_per_month(parts.month);
+			// The year decides February's length, and passing only the month left it at 28 - so
+			// stepping forward from the 28th of a leap February skipped the 29th entirely. A
+			// year-less date still takes the 28-day reading, which is what it did before.
+			const auto days_in_month = days_per_month(parts.month, parts.year ? parts.year : -1);
 			parts.day += 1;
 
 			if (parts.day > days_in_month)
@@ -758,7 +753,7 @@ void df::search_t::next_date(const bool forward)
 					}
 				}
 
-				parts.day = days_per_month(parts.month);
+				parts.day = days_per_month(parts.month, parts.year ? parts.year : -1);
 			}
 		}
 
@@ -1037,36 +1032,29 @@ void df::search_t::parse_part(const search_part& part)
 
 	if (type == prop::null)
 	{
-		if (str::icmp(part.scope, "without") == 0 || str::icmp(part.scope, tt.query_without) == 0)
+		const auto is_with = str::icmp(part.scope, "with") == 0 || str::icmp(part.scope, tt.query_with) == 0;
+		const auto is_without = str::icmp(part.scope, "without") == 0 || str::icmp(part.scope, tt.query_without) == 0;
+
+		if (is_with || is_without)
 		{
+			// The scope spells the polarity and a leading `-` inverts it. Everything else the tokenizer
+			// read - the or/and join and the grouping parentheses - belongs to the term either way, so
+			// the modifier is carried rather than rebuilt from the polarity alone.
+			auto mods = part.modifier;
+			mods.positive = part.modifier.positive == is_with;
+
 			if (str::icmp(part.term, "location") == 0)
 			{
-				_terms.emplace_back(search_term_type::has_location, search_term_modifier(false));
+				_terms.emplace_back(search_term_type::has_location, mods);
 				return;
 			}
 
-			const auto* const without_type = prop::from_prefix(part.term);
+			const auto* const scope_type = prop::from_prefix(part.term);
 
 			// an unresolvable scope would build a null-key has_type term, which inverts to "match everything"
-			if (without_type != prop::null)
+			if (scope_type != prop::null)
 			{
-				_terms.emplace_back(search_term(without_type, false));
-				return;
-			}
-		}
-		if (str::icmp(part.scope, "with") == 0 || str::icmp(part.scope, tt.query_with) == 0)
-		{
-			if (str::icmp(part.term, "location") == 0)
-			{
-				_terms.emplace_back(search_term_type::has_location, search_term_modifier(true));
-				return;
-			}
-
-			const auto* const with_type = prop::from_prefix(part.term);
-
-			if (with_type != prop::null)
-			{
-				_terms.emplace_back(search_term(with_type, true));
+				_terms.emplace_back(search_term(scope_type, mods));
 				return;
 			}
 		}
@@ -1080,7 +1068,6 @@ void df::search_t::parse_part(const search_part& part)
 	date_t date;
 	auto n = str::to_int(part.term);
 	auto d = str::to_double(part.term);
-	auto probably_number = str::is_probably_num(part.term);
 	auto is_num = str::is_num(part.term);
 	auto is_date = date.parse(part.term) && date.is_valid();
 	double d1, d2;
@@ -1089,7 +1076,9 @@ void df::search_t::parse_part(const search_part& part)
 
 	if (part.scope == "@")
 	{
-		static const hash_map<std::string_view, search_term_type, ihash, ieq> pre_title_stop_words
+		// Rebuilt per call rather than held in a function static: the tt.* entries are views into
+		// the loaded catalog, and switching language in-session rewrites the buffers behind them.
+		const hash_map<std::string_view, search_term_type, ihash, ieq> pre_title_stop_words
 		{
 			{tt.query_duplicates, search_term_type::duplicate},
 			{tt.query_duplicates_alt1, search_term_type::duplicate},
@@ -1109,7 +1098,7 @@ void df::search_t::parse_part(const search_part& part)
 			result = search_term(found_flag->second, part.modifier);
 		}
 	}
-	else if (str::icmp(part.scope, "loc") == 0 || str::icmp(part.scope, "near") == 0)
+	else if (const auto* const location = find_location_scope(part.scope); location && location->takes_centre)
 	{
 		// locations.md 3.5: the guessable spelling of a built-in class is accepted and
 		// canonicalizes to the `@` form, so there is only ever one vocabulary to learn.
@@ -1137,23 +1126,15 @@ void df::search_t::parse_part(const search_part& part)
 			}
 		}
 	}
-	else if (str::icmp(part.scope, "place") == 0 || str::icmp(part.scope, "city") == 0 ||
-		str::icmp(part.scope, "state") == 0 ||
-		str::icmp(part.scope, "country") == 0 || str::icmp(part.scope, "countries") == 0)
+	else if (location)
 	{
 		// These resolve locations, not the raw stored field; `with:place` asks about the field.
-		const auto is_place = str::icmp(part.scope, "place") == 0 || str::icmp(part.scope, "city") == 0;
-		const auto is_state = str::icmp(part.scope, "state") == 0;
-
 		// Only place level takes a radius; a region or country has extent, not a centre.
+		const auto is_place = location->level == location_level::place;
 		const auto pq = is_place ? split_place_query(part.term) : place_query{std::string(part.term), 0.0};
 		result = search_term(search_term_type::location, pq.name, part.modifier);
 		result.float_val = pq.km;
-		result.level = is_state
-			               ? location_level::state
-			               : is_place
-			               ? location_level::place
-			               : location_level::country;
+		result.level = location->level;
 	}
 	else if (str::icmp(part.scope, "area") == 0)
 	{
@@ -1223,7 +1204,14 @@ void df::search_t::parse_part(const search_part& part)
 			_terms.emplace_back(search_term(part.term, text_mods));
 
 			search_term_modifier ap_mods = part.modifier;
-			ap_mods.logical_op = search_term_modifier_bool::m_or;
+
+			// Negated, the two arms have to be joined the other way round: "not either reading" is
+			// "neither reading", which is De Morgan's law. Left as OR, a negated pair read as
+			// "not the text OR not the aperture" - true of very nearly every photograph, so the
+			// exclusion the user asked for removed almost nothing.
+			ap_mods.logical_op = part.modifier.positive
+				                     ? search_term_modifier_bool::m_or
+				                     : search_term_modifier_bool::m_and;
 			ap_mods.end_group += 1;
 			result = search_term(prop::f_number, d1, ap_mods);
 		}
@@ -1311,6 +1299,10 @@ void df::search_t::parse_part(const search_part& part)
 		if (_snscanf_s(std::bit_cast<const char*>(part.term.data()), part.term.size(), "%lf/%lfs", &d1, &d2) == 2)
 		{
 			result = search_term(prop::exposure_time, d1 / d2, part.modifier);
+		}
+		else if (_snscanf_s(std::bit_cast<const char*>(part.term.data()), part.term.size(), "%lfs", &d1) == 1)
+		{
+			result = search_term(prop::exposure_time, d1, part.modifier);
 		}
 		else
 		{
@@ -1419,26 +1411,31 @@ void df::search_t::parse_part(const search_part& part)
 	}
 	else if (type == prop::file_size)
 	{
-		// Not 0ull: under LP64 unsigned long long is a distinct type from uint64_t, so the
-		// search_term overload set has no exact match and the call is ambiguous.
+		// Scaled from the double, not the int: a bare byte count above two billion overflowed the
+		// int and matched small files instead. Clamped rather than wrapped at the top of the range.
+		const auto scaled = [d](const double multiplier) -> uint64_t
+		{
+			const auto bytes = d * multiplier;
+			if (!std::isfinite(bytes) || bytes <= 0.0) return 0;
+
+			constexpr auto limit = static_cast<double>(std::numeric_limits<uint64_t>::max());
+			// std::round, not df::round: that one answers an int32 and turned every size at or above
+			// two gigabytes into a negative number, which then widened to an enormous unsigned one.
+			return bytes >= limit ? std::numeric_limits<uint64_t>::max() : static_cast<uint64_t>(std::round(bytes));
+		};
+
+		constexpr auto kb = 1024.0;
+		constexpr auto mb = kb * 1024.0;
+		constexpr auto gb = mb * 1024.0;
+		constexpr auto tb = gb * 1024.0;
+
 		uint64_t size = 0;
 
-		if (str::ends(part.term, "gb"))
-		{
-			size = round(d * 1024ull * 1024ull * 1024ull);
-		}
-		else if (str::ends(part.term, "mb"))
-		{
-			size = round(d * 1024ull * 1024ull);
-		}
-		else if (str::ends(part.term, "kb"))
-		{
-			size = round(d * 1024ull);
-		}
-		else
-		{
-			size = n;
-		}
+		if (str::ends(part.term, "tb")) size = scaled(tb);
+		else if (str::ends(part.term, "gb")) size = scaled(gb);
+		else if (str::ends(part.term, "mb")) size = scaled(mb);
+		else if (str::ends(part.term, "kb")) size = scaled(kb);
+		else size = scaled(1.0);
 
 		result = search_term(type, size, part.modifier);
 	}
@@ -1463,8 +1460,12 @@ void df::search_t::parse_part(const search_part& part)
 			break;
 		case prop::data_type::int_pair:
 			{
-				// "N" or "N/M", as format_xy writes it back out
-				const auto sep = part.term.find('/');
+				// "N" or "N/M" as format_xy writes a track or a disc, and "WxH" as
+				// format_dimensions writes a size. Splitting on '/' alone read "1920x1080" as a bare
+				// 1920, and compare_term treats a zero second component as "any" - so a saved
+				// dimensions query came back matching every image of that width whatever its
+				// height, which is broader than what the user asked for and than what was shown.
+				const auto sep = part.term.find_first_of("/xX");
 				const auto x = static_cast<int16_t>(str::to_int(part.term.substr(0, sep)));
 				const auto y = sep == std::string_view::npos
 					               ? int16_t{0}
@@ -1494,12 +1495,16 @@ void df::related_info::load(const item_element_ptr& i)
 	file_created = i->file_created();
 	ft = i->file_type();
 	crc32c = i->crc32c();
-	group = i->duplicates().group;
+	const auto duplicate_info = i->duplicates();
+	group = duplicate_info.group;
+	duplicate_grade = duplicate_info.grade;
+	duplicate_crowded = duplicate_info.same_picture_crowded;
 
 	if (md)
 	{
 		gps = md->coordinate;
 		metadata_created = md->created();
+		dimensions = md->dimensions();
 		album = md->album;
 		album_artist = md->album_artist;
 		show = md->show;
@@ -1640,8 +1645,8 @@ static compare_result compare_term(const df::search_term& term, const int rr)
 
 static compare_result compare_file_size(const df::search_term& term, const uint64_t r)
 {
-	const auto ll = prop::round_size(term.int64_val).total();
-	const auto rr = prop::round_size(r).total();
+	const auto ll = df::round_size(term.int64_val).total();
+	const auto rr = df::round_size(r).total();
 
 	const auto res = ll < rr ? -1 : ll > rr ? 1 : 0;
 	return {true, res};
@@ -1748,9 +1753,17 @@ static compare_result compare_term(const df::search_term& term, const double rr)
 	return {true, res};
 }
 
+static compare_result compare_float32_term(const df::search_term& term, const float rr)
+{
+	const auto ll = static_cast<float>(term.float_val);
+	const auto res = ll < rr ? -1 : ll > rr ? 1 : 0;
+	return {true, res};
+}
+
 static compare_result compare_exposure_time(const df::search_term& term, const double r)
 {
-	const double ll = term.float_val < 1.0 ? -1.0 / term.float_val : term.float_val;
+	const auto query = static_cast<float>(term.float_val);
+	const double ll = query < 1.0f ? -1.0 / query : query;
 	const double rr = r < 1.0 ? -1.0 / r : r;
 
 	if (df::equiv(ll, rr, 0.00001)) return {true, 0};
@@ -1763,11 +1776,11 @@ static compare_result compare_term(const df::search_term& term, const df::xy8 r)
 	const auto l = term.xy_val;
 
 	int res = 0;
-	if (l.x > r.x) res = -1;
-	else if (l.x < r.x) res = 1;
+	if (l.x < r.x) res = -1;
+	else if (l.x > r.x) res = 1;
 	else if (l.y == 0) res = 0; // a bare "track:3" matches 3 of any total
-	else if (l.y > r.y) res = -1;
-	else if (l.y < r.y) res = 1;
+	else if (l.y < r.y) res = -1;
+	else if (l.y > r.y) res = 1;
 	return {true, res};
 }
 
@@ -1776,11 +1789,11 @@ static compare_result compare_term(const df::search_term& term, const df::xy16 r
 	const auto l = term.xy_val;
 
 	int res = 0;
-	if (l.x > r.x) res = -1;
-	else if (l.x < r.x) res = 1;
+	if (l.x < r.x) res = -1;
+	else if (l.x > r.x) res = 1;
 	else if (l.y == 0) res = 0; // a bare "track:3" matches 3 of any total
-	else if (l.y > r.y) res = -1;
-	else if (l.y < r.y) res = 1;
+	else if (l.y < r.y) res = -1;
+	else if (l.y > r.y) res = 1;
 	return {true, res};
 }
 
@@ -1814,10 +1827,8 @@ inline bool same_term(const std::string_view text, const df::search_term& term)
 
 df::search_result compare_text(const df::search_term& term, const df::index_file_item& file)
 {
-	const auto& text = term.text;
-
 	if (contains_term(file.name, term)) return {df::search_result_type::match_prop, prop::file_name};
-	if (same_term(prop::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
+	if (same_term(df::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
 
 	const auto md = file.metadata.load();
 
@@ -2032,7 +2043,7 @@ static compare_result compare_val(const df::search_term& term, const df::index_f
 			return compare_exposure_time(
 				term, md->exposure_time);
 		if (t == prop::f_number && !prop::is_null(md->f_number)) return compare_aperture(term, md->f_number);
-		if (t == prop::focal_length && !prop::is_null(md->focal_length)) return compare_term(term, md->focal_length);
+		if (t == prop::focal_length && !prop::is_null(md->focal_length)) return compare_float32_term(term, md->focal_length);
 		if (t == prop::focal_length_35mm_equivalent && !prop::is_null(md->focal_length_35mm_equivalent))
 			return
 				compare_term(term, md->focal_length_35mm_equivalent);
@@ -2063,7 +2074,7 @@ static compare_result compare_val(const df::search_term& term, const df::index_f
 				term, md->audio_sample_type);
 		if (t == prop::audio_sample_rate && !prop::is_null(md->audio_sample_rate))
 			return compare_term(
-				term, md->audio_sample_rate);
+				term, static_cast<int>(md->audio_sample_rate));
 		if (t == prop::audio_channels && !prop::is_null(md->audio_channels))
 			return compare_term(
 				term, md->audio_channels);
@@ -2108,8 +2119,12 @@ bool has_type(const prop::key_ref t, const df::index_file_item& file)
 		if (t == prop::raw_file_name) return !prop::is_null(md->raw_file_name);
 		if (t == prop::pixel_format) return !prop::is_null(md->pixel_format);
 		if (t == prop::bitrate) return !prop::is_null(md->bitrate);
-		if (t == prop::orientation) return md->orientation != ui::orientation::left_top;
+		// top_left is the default and none means nothing was recorded, so neither is an orientation
+		// anyone asked for. This is the same test the packer and the presence bit apply.
+		if (t == prop::orientation)
+			return md->orientation != ui::orientation::top_left && md->orientation != ui::orientation::none;
 		if (t == prop::dimensions) return !prop::is_null(md->width);
+		if (t == prop::megapixels) return !prop::is_null(md->width);
 		if (t == prop::year) return !prop::is_null(md->year);
 		if (t == prop::rating) return !prop::is_null(md->rating);
 		if (t == prop::season) return !prop::is_null(md->season);
@@ -2135,7 +2150,11 @@ bool has_type(const prop::key_ref t, const df::index_file_item& file)
 		if (t == prop::video_codec) return !prop::is_null(md->video_codec);
 		if (t == prop::audio_sample_rate) return !prop::is_null(md->audio_sample_rate);
 		if (t == prop::audio_sample_type) return !prop::is_null(md->audio_sample_type);
+		if (t == prop::audio_channels) return md->audio_channels != 0;
 		if (t == prop::audio_codec) return !prop::is_null(md->audio_codec);
+		if (t == prop::altitude) return md->altitude != 0.0f;
+		if (t == prop::gps_speed) return md->gps_speed != 0.0f;
+		if (t == prop::doc_id) return !prop::is_null(md->doc_id);
 		if (t == prop::album_artist) return !prop::is_null(md->album_artist);
 		if (t == prop::artist) return !prop::is_null(md->artist);
 		if (t == prop::album) return !prop::is_null(md->album);
@@ -2564,23 +2583,35 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.type == search_term_type::text)
 	{
+		const auto match_folder = can_match_folder &&
+			str::contains(term.text, "**") &&
+			str::wildcard_icmp(folder_name.sv(), term.text);
+
 		// special case - exclusions can match folder name
 		if (!term.modifiers.positive)
 		{
-			if (contains_term(folder_name, term)) return result;
+			if (match_folder || contains_term(folder_name, term)) return result;
 		}
 
-		const auto match_text = compare_text(term, file);
-
-		if (match_text.is_match() && term.modifiers.positive)
+		if (term.modifiers.positive && match_folder)
 		{
-			// positive match
-			result = match_text;
+			result.type = search_result_type::match_folder;
+			result.text = folder_name;
 		}
-		else if (!match_text.is_match() && !term.modifiers.positive)
+		else
 		{
-			// negative match
-			result.type = search_result_type::match_text;
+			const auto match_text = compare_text(term, file);
+
+			if (match_text.is_match() && term.modifiers.positive)
+			{
+				// positive match
+				result = match_text;
+			}
+			else if (!match_text.is_match() && !term.modifiers.positive)
+			{
+				// negative match
+				result.type = search_result_type::match_text;
+			}
 		}
 	}
 	else if (term.is_date())
@@ -2727,21 +2758,6 @@ df::search_result df::search_matcher::match_item(const file_path path, const ind
 		result.type = search_result_type::match_folder;
 	}
 
-	if (can_match_folder)
-	{
-		for (const auto& t : _search._terms)
-		{
-			if (t.type == search_term_type::text &&
-				str::contains(t.text, "**") &&
-				wildcard_icmp(path.folder().text(), t.text))
-			{
-				result.type = search_result_type::match_folder;
-				result.text = path.folder().text();
-				return result;
-			}
-		}
-	}
-
 	if (_search._terms.empty())
 	{
 		return result;
@@ -2767,25 +2783,38 @@ df::search_result df::search_matcher::match_all_terms(const str::cached folder_n
 	{
 		bool logical_and = true;
 		bool state = true;
+		// A level starts with no value rather than with an operator's identity. `true` is the
+		// identity for AND but the annihilator for OR, so an OR level seeded with it stays true
+		// whatever it later receives - which is what made a nested group after OR match everything.
+		bool has_value = false;
 	};
 
 	constexpr auto max_levels = 32;
 	level level_results[max_levels];
 	auto current_level = 0;
 
-	const auto fold_level = [](level* levels, int& depth)
+	const auto contribute = [](level& target, const bool value, const bool logical_and)
+	{
+		if (!target.has_value)
+		{
+			target.state = value;
+			target.has_value = true;
+		}
+		else if (logical_and)
+		{
+			target.state &= value;
+		}
+		else
+		{
+			target.state |= value;
+		}
+	};
+
+	const auto fold_level = [&contribute](level* levels, int& depth)
 	{
 		if (depth > 0)
 		{
-			if (levels[depth].logical_and)
-			{
-				levels[depth - 1].state &= levels[depth].state;
-			}
-			else
-			{
-				levels[depth - 1].state |= levels[depth].state;
-			}
-
+			contribute(levels[depth - 1], levels[depth].state, levels[depth].logical_and);
 			depth -= 1;
 		}
 	};
@@ -2804,20 +2833,15 @@ df::search_result df::search_matcher::match_all_terms(const str::cached folder_n
 				level_results[current_level].logical_and = term.modifiers.logical_op !=
 					search_term_modifier_bool::m_or;
 				level_results[current_level].state = true;
+				level_results[current_level].has_value = false;
 				opened += 1;
 			}
 		}
 
 		// combine into whichever level the term now sits in, so a '(' beyond max_levels still
 		// contributes its match rather than being discarded
-		if (opened > 0 || term.modifiers.logical_op != search_term_modifier_bool::m_or)
-		{
-			level_results[current_level].state &= is_match;
-		}
-		else
-		{
-			level_results[current_level].state |= is_match;
-		}
+		contribute(level_results[current_level], is_match,
+		           opened > 0 || term.modifiers.logical_op != search_term_modifier_bool::m_or);
 
 		for (auto i = 0; i < term.modifiers.end_group; i++)
 		{

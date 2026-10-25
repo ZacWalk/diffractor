@@ -12,12 +12,12 @@ owning document.
 
 - **Move information to its owner; link rather than duplicate.** Duplicated volatile detail is how
   two documents come to disagree, and an agent reading the wrong one cannot tell.
-- **GitHub issues own work, status, discussion and follow-up.** A document is not a work log and
-  must not record the sequence of attempts that produced a change.
+- **GitHub issues and releases own work, status, discussion, follow-up, and release history.**
+  Repository documents describe current behavior and constraints, not how they evolved.
 - **Source owns exact APIs, enums, signatures and file lists.** Documents name files and stable
   symbols so a reader can route; they do not restate a signature that the compiler already checks.
-- The release notes state what a user can now do and which reported issues closed. Anything scoped
-  out, unfinished, unvalidated or merely explanatory belongs in post-release context.
+- Unfinished ideas, alternatives, open questions, validation transcripts, and rejected designs do
+  not belong in the documentation set.
 
 ## Where this lives
 

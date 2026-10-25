@@ -2,20 +2,23 @@ End User License Agreement
 
 The Diffractor SOFTWARE PRODUCT is protected by copyright laws and international copyright treaties, as well as other intellectual property laws and treaties. Diffractor Software is licensed, not sold.
 
-Diffractor is the trading name of Zachariah David Walker (abbreviated Zac Walker) registered in the Czech Republic - number 87852969 sole trader. Zac Walker is the maker and licensor of Diffractor software and owns all title including but not limited to copyrights.
+Diffractor is the trading name of Zachariah David Walker (abbreviated Zac Walker) registered in the Czech Republic - number 87852969 sole trader. Zac Walker is the maker of Diffractor and holds the copyright in the Diffractor source code. Third-party components included in this program remain the copyright of their respective authors and are used under their own licenses.
 
 Use of Diffractor software indicates acceptance of this license agreement and warranty.
 
-Diffractor is free software; you can redistribute it and / or modify it under the terms of the LGPL License either version 2.1 or later.
-License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
+Diffractor is free software.
+
+Diffractor's own source code is licensed under the GNU Lesser General Public License, version 2.1 or later. This installed program is licensed under the GNU Lesser General Public License, version 3.0 or later, because it statically links libheif and libde265, which are LGPL-3.0-or-later.
+
+License details are available at https://www.gnu.org/licenses/lgpl-3.0.html
+
+You may use, copy, modify and redistribute this program under those terms, including for commercial purposes. The complete source code is published at https://github.com/ZacWalk/diffractor, from which the program can be rebuilt and relinked.
+
+Diffractor includes third-party libraries, each under its own license. Their terms are recorded with the source code.
 
 The Diffractor project does not collect personal information about users.
 
 You must not remove or alter any copyright notices on any copy of Diffractor.
-
-You may not distribute or sell Diffractor to third parties. Licenses will be revoked if distributed or sold to third parties.
-
-You may not rent, lease, or lend Diffractor licenses.
 
 Diffractor software and the accompanying files are licensed "as is" and without warranties as to performance of merchantability or any other warranties whether expressed or implied.
 

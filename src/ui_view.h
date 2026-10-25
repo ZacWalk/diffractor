@@ -7,12 +7,10 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: View framework and element hosting. Defines view_element base class,
-// view_controller for interactions, and view hosting infrastructure.
+// view_controller for interactions, hit_test_context, and view hosting infrastructure.
 
 #pragma once
 
-class ui_element_render;
-class ui_element_state;
 class view_controller;
 class view_element;
 class view_elements;
@@ -20,6 +18,7 @@ class view_host;
 class view_host_base;
 class view_state;
 enum class render_valid;
+struct hit_test_context;
 struct view_hover_element;
 
 using view_host_ptr = std::shared_ptr<view_host>;
@@ -32,7 +31,8 @@ enum class menu_type
 	view,
 	sidebar,
 	media,
-	items
+	items,
+	movie
 };
 
 enum class view_element_event_type
@@ -147,7 +147,54 @@ struct interaction_context
 	bool invalidate_view = false;
 };
 
-constexpr ui::color view_handle_color(const bool selected, const bool hover, const bool tracking,
+// Threaded through one hit test. It accumulates the region within which view_host may reuse the
+// controller the test produces: anything tested at higher precedence and passed over is cut out of
+// it, so moving the pointer onto that region forces a fresh test. Recording is a side effect of
+// testing, which is what stops a new tool from being hit tested but forgotten here.
+//
+// Every rect is device space, the space _loc is in.
+struct hit_test_context
+{
+	hit_test_context(const pointi loc, const recti extent) : _loc(loc), _stability(extent)
+	{
+	}
+
+	// The region a controller found at this location remains the right answer for.
+	recti stability() const
+	{
+		return _stability;
+	}
+
+	// Answers whether the pointer is inside a region that takes precedence, so nothing beneath it
+	// may claim the pointer. When it is not, the region is cut away instead.
+	bool occluded(const recti bounds)
+	{
+		if (bounds.is_empty()) return false;
+		if (bounds.contains(_loc)) return true;
+		_stability.exclude(_loc, bounds);
+		return false;
+	}
+
+	// For a region that was tested and missed by some other means, so it still has to be cut away.
+	// Prefer occluded(): a caller that tests one way and records another can disagree with itself.
+	void passed_over(const recti bounds)
+	{
+		if (!bounds.is_empty()) _stability.exclude(_loc, bounds);
+	}
+
+	// Narrows the region to one the answer provably cannot travel outside of, for a caller that has
+	// already chosen between panes or regions rather than between overlapping targets.
+	void confine(const recti bounds)
+	{
+		if (!bounds.is_empty()) _stability = _stability.intersection(bounds);
+	}
+
+private:
+	pointi _loc;
+	recti _stability;
+};
+
+inline ui::color view_handle_color(const bool selected, const bool hover, const bool tracking,
                                       const bool view_has_focus, const bool text_over,
                                       const ui::color bg_clr = ui::color(ui::style::color::group_background))
 {
@@ -216,10 +263,12 @@ public:
 	virtual ~view_controller() = default;
 
 	view_host_ptr _host;
+	// The controller's own region: what it paints over, and what a release has to land in for the
+	// gesture to count. Never the region the host caches it for -- that is hit_test_context's job,
+	// and clipping this to it silently drops clicks and hover highlights on a partly covered target.
 	recti _bounds;
 	pointi _last_loc;
 	pointi _start_loc;
-	int64_t _first_tic = 0;
 	float _alpha = 1.0f;
 
 	const recti bounds() const
@@ -239,7 +288,6 @@ public:
 	virtual void on_mouse_left_button_down(const pointi loc, const ui::key_state keys)
 	{
 		_last_loc = _start_loc = loc;
-		_first_tic = platform::tick_count();
 	}
 
 	virtual void on_mouse_move(const pointi loc)
@@ -319,7 +367,7 @@ public:
 	// below dereferences this without checking, and so may every caller.
 	virtual const ui::frame_ptr frame() const = 0;
 	virtual const ui::control_frame_ptr owner() = 0;
-	virtual view_controller_ptr controller_from_location(pointi loc) = 0;
+	virtual view_controller_ptr controller_from_location(pointi loc, hit_test_context& ctx) = 0;
 
 	virtual void scroll_controls()
 	{
@@ -341,7 +389,9 @@ public:
 		if (!_tracking && (_controller_invalid || !_controller_bounds.contains(loc)))
 		{
 			_active_controller.reset();
-			_active_controller = controller_from_location(loc);
+
+			hit_test_context ctx{loc, recti(_extent)};
+			_active_controller = controller_from_location(loc, ctx);
 
 			auto cursor = ui::style::cursor::normal;
 
@@ -352,7 +402,12 @@ public:
 			}
 
 			_cursor = cursor;
-			_controller_bounds = _active_controller ? _active_controller->bounds() : recti{};
+			// The controller answers for its own region; the hit test answers for how far that answer
+			// travels. An empty rect here is the idiom for re-testing on every move, which is what a
+			// controller standing in for whatever happens to be under the pointer wants.
+			_controller_bounds = _active_controller
+				                     ? _active_controller->bounds().intersection(ctx.stability())
+				                     : recti{};
 			_controller_invalid = false;
 
 			controller_changed();
@@ -423,15 +478,18 @@ public:
 
 	bool escape_controller()
 	{
-		if (!_tracking || !_active_controller) return false;
+		if (!_active_controller) return false;
 		if (!_active_controller->escape()) return false;
 
-		// The button is still down -- _tracking is what says so -- and the cancelled controller is
-		// the one that must receive its own release. Replacing it here handed that release to a
-		// fresh controller with no memory of the cancel, which then performed the very gesture
-		// Escape had just refused: a rubber-band selection cancelled mid-drag was replaced on
-		// release by the single item under the pointer. The re-test happens once the button is up.
-		_controller_invalid = true;
+		if (_tracking)
+		{
+			// The button is still down -- _tracking is what says so -- and the cancelled controller is
+			// the one that must receive its own release. Replacing it here handed that release to a
+			// fresh controller with no memory of the cancel, which then performed the very gesture
+			// Escape had just refused: a rubber-band selection cancelled mid-drag was replaced on
+			// release by the single item under the pointer. The re-test happens once the button is up.
+			_controller_invalid = true;
+		}
 		update_cursor();
 		return true;
 	}
@@ -507,6 +565,11 @@ public:
 	virtual void deactivate() = 0;
 	virtual void refresh() = 0;
 
+	virtual void refresh_from_source()
+	{
+		refresh();
+	}
+
 	virtual void reload()
 	{
 	};
@@ -515,7 +578,8 @@ public:
 	{
 	}
 
-	virtual view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc)
+	virtual view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                                     hit_test_context& ctx)
 	{
 		return nullptr;
 	}
@@ -533,6 +597,21 @@ public:
 	virtual menu_type context_menu(const pointi loc)
 	{
 		return menu_type::view;
+	}
+
+	// Files dropped on this view, in view coordinates. A view that answers true has consumed the
+	// drop; the default is false, which leaves the frame's own handling - opening the first item, or
+	// copying into the folder being shown - alone.
+	virtual bool drop_paths(const std::vector<df::file_path>& paths, const pointi loc)
+	{
+		return false;
+	}
+
+	// Files from outside are being dragged over this view at `loc`, in view coordinates, or have left
+	// it, ended or dropped when empty. A view that inserts a drop at a position shows that position
+	// while the drag lasts.
+	virtual void drag_paths_over(const std::optional<pointi> loc)
+	{
 	}
 
 	virtual bool escape()
@@ -1010,12 +1089,13 @@ public:
 
 	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
 	{
+		const auto moved = loc != _last_loc;
 		_last_loc = loc;
 
 		// Escape may already have ended the drag and restored the position; do not re-apply it.
 		if (_parent._tracking)
 		{
-			update_pos(loc.y);
+			if (moved) update_pos(loc.y);
 			_parent._tracking = false;
 		}
 

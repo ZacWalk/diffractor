@@ -7,7 +7,7 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Batch file rename view. Provides template-based renaming with preview,
-// sequential numbering, and metadata-driven naming patterns.
+// sequential numbering, metadata-driven naming patterns, and grouped sidecar recovery.
 
 #include "pch.h"
 #include "model.h"
@@ -17,6 +17,22 @@
 #include "view_rename.h"
 
 #include "ui_controls.h"
+
+static void notify_rename_after_move(const df::file_path source, const df::file_path destination)
+{
+	if (df::rename_after_move_for_test) df::rename_after_move_for_test(source, destination);
+}
+
+static platform::file_op_result rename_recovery_failed(const df::file_path expected_path,
+                                                       const df::file_path surviving_path,
+                                                       platform::file_op_result result)
+{
+	result.code = platform::file_op_result_code::FAILED;
+	result.error_message = std::format("Could not restore {}; surviving path is {}. {}",
+	                                   expected_path.str(), surviving_path.str(), result.format_error());
+	df::log(__FUNCTION__, result.error_message);
+	return result;
+}
 
 static platform::file_op_result move_rename_path(const df::file_path source, const df::file_path destination,
                                                  const bool fail_if_exists, const bool is_folder = false)
@@ -38,21 +54,46 @@ static platform::file_op_result move_rename_path(const df::file_path source, con
 		auto result = platform::move_file(source_folder, temporary_folder);
 		if (result.success())
 		{
+			const auto temporary_path = df::file_path(temporary_folder.parent(), temporary_folder.name());
+			notify_rename_after_move(source, temporary_path);
 			result = platform::move_file(temporary_folder, destination_folder);
-			if (result.failed()) platform::move_file(temporary_folder, source_folder);
+			if (result.success())
+			{
+				notify_rename_after_move(temporary_path, destination);
+			}
+			else
+			{
+				const auto rollback = platform::move_file(temporary_folder, source_folder);
+				if (rollback.success()) notify_rename_after_move(temporary_path, source);
+				else return rename_recovery_failed(source, temporary_path, rollback);
+			}
 		}
 		return result;
 	}
 
 	if (source.icmp(destination) != 0 || source.pack() == destination.pack())
-		return platform::move_file(source, destination, fail_if_exists);
+	{
+		auto result = platform::move_file(source, destination, fail_if_exists);
+		if (result.success()) notify_rename_after_move(source, destination);
+		return result;
+	}
 
 	const auto temporary = platform::temp_file(source.extension(), source.folder());
 	auto result = platform::move_file(source, temporary, true);
 	if (result.success())
 	{
+		notify_rename_after_move(source, temporary);
 		result = platform::move_file(temporary, destination, fail_if_exists);
-		if (result.failed()) platform::move_file(temporary, source, true);
+		if (result.success())
+		{
+			notify_rename_after_move(temporary, destination);
+		}
+		else
+		{
+			const auto rollback = platform::move_file(temporary, source, true);
+			if (rollback.success()) notify_rename_after_move(temporary, source);
+			else return rename_recovery_failed(source, temporary, rollback);
+		}
 	}
 	return result;
 }
@@ -62,42 +103,35 @@ void rename_view::run()
 	if (!can_run()) return;
 
 	const auto renames = _renames;
+	const auto review_status = _status;
 	_analysis_valid = false;
+	// Releasing the displayed file's handles can pump messages, and a Close handled in there leaves
+	// this view. A run started after that would rename files with nothing on screen to show it.
+	const auto generation_before_detach = processing_generation();
 	const auto detach = std::make_shared<detach_file_handles>(_state);
+	if (processing_generation() != generation_before_detach) return;
 	begin_processing(renames.size());
 	const auto processing_generation = this->processing_generation();
 	const auto cancel_source = processing_cancel_source();
 	_status = std::string(tt.processing.sv());
-	const auto view = shared_from_this();
-	const auto results = std::make_shared<view_command_status>(_state._async, cancel_source,
-	                                                           [view, processing_generation](const size_t index)
-	                                                           {
-		                                                           if (view->is_processing_generation(
-			                                                           processing_generation)) view->
-				                                                           processing_work_item(index);
-	                                                           },
-	                                                           [view, processing_generation, detach](
-	                                                           std::string message,
-	                                                           const std::vector<view_operation_result>&
-	                                                           operation_results)
-	                                                           {
-		                                                           if (!view->is_processing_generation(
-			                                                           processing_generation)) return;
-		                                                           view->end_processing();
-		                                                           const auto result_summary = view->show_results(
-			                                                           operation_results);
-		                                                           view->_status = !message.empty()
-			                                                           ? std::move(message)
-			                                                           : result_summary;
-		                                                           view->_state.invalidate_view(
-			                                                           view_invalid::status |
-			                                                           view_invalid::command_state);
-	                                                           });
+	const auto results = make_run_status(shared_from_this(), processing_generation, cancel_source, review_status,
+	                                     detach);
 
 	_state.queue_async(async_queue::work, [renames, results, &index = _state.item_index]
 	{
 		result_scope rr(results);
 		df::unique_folders scan_folders;
+
+		// Existence alone cannot tell the reviewed file from one that replaced it since. A source
+		// that changed would be moved under a name chosen for content the user never saw, and under
+		// Replace a changed destination would be written over without having been reviewed. Folders
+		// are held to existence only: their contents change without the folder becoming another.
+		const auto reviewed_file = [](const df::file_path path, const platform::file_attributes_t& reviewed)
+		{
+			return reviewed.exists()
+				       ? unchanged_since_analysis(path, reviewed.modified, reviewed.size)
+				       : !path.exists();
+		};
 
 		for (const auto& rename : renames)
 		{
@@ -107,10 +141,21 @@ void rename_view::run()
 				rr.complete(tt.sync_analysis_changed);
 				return;
 			}
+
+			if (!rename.is_folder &&
+				(!reviewed_file(rename.source, rename.source_attributes) ||
+					!reviewed_file(rename.destination, rename.destination_attributes)))
+			{
+				rr.complete(tt.sync_analysis_changed);
+				return;
+			}
+
 			for (auto index = 0_z; index < rename.sidecars.size(); ++index)
 			{
 				const auto& [source, destination] = rename.sidecars[index];
-				if (!source.exists() || destination.exists() != rename.sidecar_destinations_exist[index])
+				if (!source.exists() || destination.exists() != rename.sidecar_destinations_exist[index] ||
+					!reviewed_file(source, rename.sidecar_source_attributes[index]) ||
+					!reviewed_file(destination, rename.sidecar_destination_attributes[index]))
 				{
 					rr.complete(tt.sync_analysis_changed);
 					return;
@@ -133,7 +178,10 @@ void rename_view::run()
 
 			vacating.emplace(source_key);
 			for (const auto& [source, destination] : rename.sidecars)
-				if (df::compare_path_key(source.pack(), destination.pack()) != 0) vacating.emplace(source.pack());
+				if (df::compare_path_key(source.pack(), destination.pack()) != 0)
+				{
+					vacating.emplace(source.pack());
+				}
 		}
 
 		struct parked_path
@@ -144,6 +192,17 @@ void rename_view::run()
 		};
 
 		std::map<std::string, parked_path, df::path_key_less> parked;
+		std::string first_recovery_error;
+
+		const auto remember_recovery_error = [&](const platform::file_op_result& op)
+		{
+			if (op.failed() && first_recovery_error.empty()) first_recovery_error = op.format_error();
+		};
+
+		const auto remember_recovery_message = [&](const std::string& message)
+		{
+			if (first_recovery_error.empty()) first_recovery_error = message;
+		};
 
 		auto current_path = [&parked](const df::file_path path, const bool is_folder)
 		{
@@ -182,20 +241,27 @@ void rename_view::run()
 
 			std::vector<std::pair<df::file_path, df::file_path>> moved_sidecars;
 			platform::file_op_result result{platform::file_op_result_code::OK, {}, {}};
+			df::unique_folders touched_folders;
+			touched_folders.emplace(rename.source.folder());
+			touched_folders.emplace(rename.destination.folder());
 			for (auto index = 0_z; index < rename.sidecars.size(); ++index)
 			{
 				const auto& [source, destination] = rename.sidecars[index];
+				touched_folders.emplace(source.folder());
+				touched_folders.emplace(destination.folder());
 				result = free_destination(destination, false);
 				if (result.failed()) break;
 				result = move_rename_path(current_path(source, false), destination,
 				                          rename.policy != collision_policy::replace);
 				if (result.failed()) break;
 				parked.erase(rename_path_key(source, false));
-				// Only paths this run created are rolled back: under Replace the write can land on a
-				// destination that already existed, and moving it back would destroy the original. A
-				// destination this run emptied itself is one it created, so it does roll back.
-				if (!rename.sidecar_destinations_exist[index] || vacating.contains(destination.pack()))
-					moved_sidecars.emplace_back(source, destination);
+				// Every sidecar this row moved rolls back, whatever stood at the destination. A
+				// rename is always a move, so under Replace the destination's former content is
+				// already gone by the time the primary can fail; putting the sidecar back destroys
+				// nothing further and is what leaves the group whole at its source, which is what
+				// the run promises. Import cannot take this rule - a copy that replaced a
+				// destination would leave that path empty rather than restored.
+				moved_sidecars.emplace_back(source, destination);
 			}
 			if (result.success()) result = free_destination(rename.destination, rename.is_folder);
 			if (result.success())
@@ -207,7 +273,15 @@ void rename_view::run()
 			if (result.failed())
 			{
 				for (auto sidecar = moved_sidecars.rbegin(); sidecar != moved_sidecars.rend(); ++sidecar)
-					move_rename_path(sidecar->second, sidecar->first, true);
+				{
+					const auto rollback = move_rename_path(sidecar->second, sidecar->first, true);
+					if (rollback.failed()) result = rename_recovery_failed(sidecar->first, sidecar->second, rollback);
+				}
+			}
+			if (result.failed())
+			{
+				remember_recovery_error(result);
+				for (const auto& folder : touched_folders) scan_folders.emplace(folder);
 			}
 			else
 			{
@@ -217,18 +291,135 @@ void rename_view::run()
 			results->end_item(rename.original_name, to_status(result.code));
 		}
 
-		// A row that failed or never ran leaves its source parked, so put it back under its own name.
-		for (const auto& [key, entry] : parked)
+		// Recover the whole row, including companions that never needed parking. Independent
+		// destinations could attach a recovered sidecar to an unrelated, occupied primary.
+		for (const auto& rename : renames)
 		{
-			// A row that did complete can have taken that name. Landing beside it is best effort: if
-			// that name is taken too the item keeps the temporary one, which is where it already was.
-			if (move_rename_path(entry.temporary, entry.original, true, entry.is_folder).failed())
-				move_rename_path(entry.temporary, next_free_destination(entry.original), true, entry.is_folder);
-			scan_folders.emplace(entry.original.folder());
+			if (!parked.contains(rename_path_key(rename.source, rename.is_folder)) &&
+				std::ranges::none_of(rename.sidecars, [&parked](const auto& sidecar)
+				{
+					return parked.contains(rename_path_key(sidecar.first, false));
+				}))
+			{
+				continue;
+			}
+
+			struct recovery_member
+			{
+				df::file_path original;
+				df::file_path current;
+				df::file_path reviewed;
+				bool is_folder;
+			};
+			const auto primary = rename.is_folder
+				                     ? df::file_path(rename.source.folder().parent(), rename.source.folder().name())
+				                     : rename.source;
+			std::vector<recovery_member> group{
+				{primary, current_path(rename.source, rename.is_folder), rename.destination, rename.is_folder}
+			};
+			for (const auto& [source, destination] : rename.sidecars)
+				group.push_back({source, current_path(source, false), destination, false});
+
+			const auto destinations_free = [&group](const std::vector<df::file_path>& destinations)
+			{
+				for (size_t i = 0; i < group.size(); ++i)
+				{
+					const auto& member = group[i];
+					if (df::compare_path_key(rename_path_key(member.current, member.is_folder),
+					                         rename_path_key(destinations[i], member.is_folder)) != 0 &&
+						rename_path_exists(destinations[i], member.is_folder))
+						return false;
+				}
+				return true;
+			};
+			const auto recover = [&](const std::vector<df::file_path>& destinations)
+			{
+				platform::file_op_result recovery{platform::file_op_result_code::ALREADY_EXISTS};
+				if (!destinations_free(destinations)) return recovery;
+				for (const auto& member : group)
+					if (!rename_path_exists(member.current, member.is_folder))
+						return platform::file_op_result{platform::file_op_result_code::FAILED,
+							std::format("Missing rename recovery source {}", member.current.str())};
+
+				std::vector<std::pair<size_t, df::file_path>> moved;
+				for (size_t i = 0; i < group.size(); ++i)
+				{
+					auto& member = group[i];
+					scan_folders.emplace(member.current.folder());
+					scan_folders.emplace(destinations[i].folder());
+					if (rename_path_key(member.current, member.is_folder) ==
+						rename_path_key(destinations[i], member.is_folder)) continue;
+
+					recovery = move_rename_path(member.current, destinations[i], true, member.is_folder);
+					if (recovery.failed())
+					{
+						for (auto it = moved.rbegin(); it != moved.rend(); ++it)
+						{
+							auto& previous = group[it->first];
+							const auto rollback = move_rename_path(previous.current, it->second, true,
+							                                       previous.is_folder);
+							if (rollback.success()) previous.current = it->second;
+							else (void)rename_recovery_failed(previous.original, previous.current, rollback);
+						}
+						return recovery;
+					}
+					moved.emplace_back(i, member.current);
+					member.current = destinations[i];
+				}
+				return platform::file_op_result{platform::file_op_result_code::OK};
+			};
+
+			std::vector<df::file_path> destinations;
+			for (const auto& member : group) destinations.emplace_back(member.original);
+			auto recovery = recover(destinations);
+			if (recovery.failed())
+			{
+				for (size_t i = 0; i < group.size(); ++i) destinations[i] = group[i].reviewed;
+				recovery = recover(destinations);
+			}
+
+			auto numbered = false;
+			if (recovery.failed())
+			{
+				const auto base = rename.is_folder ? std::string(primary.name()) :
+					std::string(primary.file_name_without_extension());
+				const auto extension = rename.is_folder ? ""sv : primary.extension();
+				for (auto suffix = 2; suffix < 10000; ++suffix)
+				{
+					destinations[0] = df::file_path(primary.folder(), std::format("{} ({})", base, suffix), extension);
+					for (size_t i = 1; i < group.size(); ++i)
+						destinations[i] = destinations[0].extension(group[i].original.extension());
+					if (!destinations_free(destinations)) continue;
+					recovery = recover(destinations);
+					numbered = recovery.success();
+					if (recovery.code != platform::file_op_result_code::ALREADY_EXISTS) break;
+				}
+			}
+
+			if (recovery.success())
+			{
+				for (const auto& member : group) parked.erase(rename_path_key(member.original, member.is_folder));
+				if (numbered)
+				{
+					const auto message = std::format("Recovered {} as {}", primary.str(), destinations[0].str());
+					df::log(__FUNCTION__, message);
+					remember_recovery_message(message);
+				}
+			}
+			else
+			{
+				for (const auto& member : group)
+				{
+					if (auto found = parked.find(rename_path_key(member.original, member.is_folder));
+						found != parked.end())
+						found->second.temporary = member.current;
+					remember_recovery_error(rename_recovery_failed(member.original, member.current, recovery));
+				}
+			}
 		}
 
 		index.queue_scan_folders(std::move(scan_folders));
-		rr.complete();
+		rr.complete(first_recovery_error);
 	});
 }
 
@@ -260,6 +451,7 @@ void rename_view::refresh()
 	// The worker reports against the reviewed rows, so re-analysing under it would repoint the run
 	// at a different set of names.
 	if (progress().active) return;
+	_showing_results = false;
 
 	const auto& items = _state.selected_items();
 	const auto sources = snapshot_rename_sources(items);
@@ -353,7 +545,7 @@ view_controls_host_ptr rename_view::controls(const ui::control_frame_ptr& owner)
 	// Move duplicates
 	folder_structure_completes.erase(last, folder_structure_completes.end());
 	const auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
-	selection_thumbnails->selection(items.thumbs(), items.size());
+	selection_thumbnails->selection_async(items.thumbs(), items.size(), _state._async);
 
 	const auto name_template = std::make_shared<ui::edit_picker_control>(
 		frame, setting.rename.name_template, folder_structure_completes,

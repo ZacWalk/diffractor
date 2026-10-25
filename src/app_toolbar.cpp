@@ -6,8 +6,10 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Application commands, toolbars, initialization, and lifecycle management.
-// Contains command definitions, toolbar creation, app init/exit, and crash handling.
+// Purpose: Toolbars and how commands present. Builds the toolbars, decides each command's enabled,
+// checked and visible state and its disabled reason, sets command text and icons, owns the default
+// keyboard accelerators, and shows command tooltips. What a command does is registered in
+// app_commands.cpp.
 
 #include "pch.h"
 
@@ -26,6 +28,8 @@
 #include "view_rename.h"
 #include "view_batch.h"
 #include "view_locate.h"
+#include "view_movie.h"
+#include "view_edit.h"
 
 #include "app_sidebar.h"
 #include "app_commands.h"
@@ -35,6 +39,9 @@
 
 bool toggle_details_state = false;
 
+// The address bar shows the scope of the current search: a folder, a folder searched recursively,
+// or the kind of the first term. The star glyph is reserved for ratings, so fall back to the
+// generic search icon rather than showing it here.
 static icon_index address_icon(const df::search_t& search)
 {
 	if (search.has_recursive_selector()) return icon_index::recursive;
@@ -153,6 +160,22 @@ void app_frame::create_toolbars()
 		find_command(commands::view_close),
 	};
 
+	const std::vector<ui::command_ptr> movie_commands =
+	{
+		find_command(commands::tool_movie_render),
+		find_command(commands::tool_movie_add),
+		find_command(commands::tool_movie_remove),
+		find_command(commands::tool_movie_relink),
+		find_command(commands::tool_movie_open),
+		find_command(commands::tool_movie_save),
+		find_command(commands::tool_movie_import),
+		find_command(commands::view_cancel),
+		nullptr,
+		find_command(commands::view_maximize),
+		find_command(commands::view_restore),
+		find_command(commands::view_close),
+	};
+
 	ui::toolbar_styles tb_styles;
 	tb_styles.button_extent = {30, 40};
 	_navigate1 = _app_frame->create_toolbar(tb_styles, tbButtonsNav1);
@@ -166,8 +189,10 @@ void app_frame::create_toolbars()
 	search_styles.rounded_corners = true;
 	search_styles.select_all_on_focus = true;
 	search_styles.bg_clr = ui::style::color::toolbar_background;
-	search_styles.capture_key_down = [this](const int key, const ui::key_state keys)
+	search_styles.capture_key_down = [this](const int key_code, const ui::key_state keys)
 	{
+		const auto key = static_cast<char32_t>(key_code);
+
 		if (key == keys::RETURN)
 		{
 			search_enter();
@@ -202,6 +227,7 @@ void app_frame::create_toolbars()
 	_locate_commands = _app_frame->create_toolbar(tb_styles, locate_commands);
 	_sync_commands = _app_frame->create_toolbar(tb_styles, sync_commands);
 	_tags_commands = _app_frame->create_toolbar(tb_styles, tags_commands);
+	_movie_commands = _app_frame->create_toolbar(tb_styles, movie_commands);
 	_busy_commands = _app_frame->create_toolbar(tb_styles, busy_commands);
 }
 
@@ -290,7 +316,7 @@ std::string format_items_totals(const df::file_group_histogram& summary, const b
 
 	if (total_items.count > 0)
 	{
-		return std::format("{}|{}", str::format_count(total_items.count), prop::format_size(total_items.size));
+		return std::format("{}|{}", str::format_count(total_items.count), df::format_size(total_items.size));
 	}
 
 	const auto total_folders = summary.total_folders();
@@ -413,6 +439,12 @@ void app_frame::update_button_state(const bool resize)
 	const auto is_media_or_items_view = df::command_active == 0 && (view_mode == view_type::items || view_mode ==
 		view_type::media);
 	const auto has_selection = is_media_or_items_view && _state.has_selection();
+	const auto has_movie_selection = is_media_or_items_view && std::any_of(
+		_state.selected_items().items().begin(), _state.selected_items().items().end(), [](const auto& item)
+		{
+			const auto* const type = item->file_type();
+			return type && (type->group == file_group::photo || type->group == file_group::video);
+		});
 	const auto is_single_media_selection = is_media_or_items_view && selection_status.has_single_media_selection;
 	const auto local_files_result = _state.selection_process_result(df::process_items_type::local_file);
 	const auto local_items_result = _state.selection_process_result(df::process_items_type::local_file_or_folder);
@@ -464,16 +496,16 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::browse_search]->enable = is_items_view;
 	_commands[commands::edit_copy]->enable = can_process_local_items;
 	_commands[commands::edit_copy_item_path]->enable = can_process_local_items;
-	_commands[commands::edit_cut]->enable = has_selection;
-	_commands[commands::edit_item_auto_color]->enable = is_edit_view && _state._edit_item &&
-		_state._edit_item->file_type()->has_trait(file_traits::bitmap);
-	_commands[commands::edit_item_auto_document]->enable = is_edit_view && _state._edit_item &&
-		_state._edit_item->file_type()->has_trait(file_traits::bitmap);
-	_commands[commands::edit_item_auto_straighten]->enable = is_edit_view && _state._edit_item &&
-		_state._edit_item->file_type()->has_trait(file_traits::bitmap);
-	_commands[commands::edit_item_preview]->enable = is_edit_view && _state._edit_item &&
-		_state._edit_item->file_type()->has_trait(file_traits::bitmap);
-	_commands[commands::edit_item_color_reset]->enable = is_edit_view;
+	// Cut runs the same eligibility test as Copy when invoked, so it answers the same way here. Enabled
+	// on a bare selection, it offered itself for offline items and outside the item views only to
+	// refuse once chosen.
+	_commands[commands::edit_cut]->enable = can_process_local_items;
+	const auto can_edit_pixels = is_edit_view && _view_edit && _view_edit->can_edit_pixels();
+	_commands[commands::edit_item_auto_color]->enable = can_edit_pixels;
+	_commands[commands::edit_item_auto_document]->enable = can_edit_pixels;
+	_commands[commands::edit_item_auto_straighten]->enable = can_edit_pixels;
+	_commands[commands::edit_item_preview]->enable = can_edit_pixels;
+	_commands[commands::edit_item_color_reset]->enable = can_edit_pixels;
 	_commands[commands::edit_item_save]->enable = is_edit_view && _state._edit_item && edit_has_changes();
 	// In the locate view these run the same operation as locate_run, so they answer to the same
 	// test: an enabled button that writes nothing reads as a broken command.
@@ -495,7 +527,7 @@ void app_frame::update_button_state(const bool resize)
 		                                                             ? std::string{}
 		                                                             : std::string(
 			                                                             tt.command_save_and_next_tooltip.sv());
-	_commands[commands::edit_item_save_as]->enable = is_edit_view;
+	_commands[commands::edit_item_save_as]->enable = can_edit_pixels;
 	_commands[commands::edit_paste]->enable = is_items_view && has_save_folder;
 	_commands[commands::english]->enable = true;
 	_commands[commands::exit]->enable = true;
@@ -649,6 +681,9 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::tags_run]->enable = view_mode == view_type::tags && !view_processing && _view_tags &&
 		_view_tags->can_run();
 	_commands[commands::tool_adjust_date]->enable = can_save_metadata;
+	// A machine with no writer cannot burn at all, and design.md is explicit that a capability the
+	// platform lacks is absent rather than dimmed - dimming would say "not now" forever.
+	_commands[commands::tool_burn]->visible = has_burner;
 	_commands[commands::tool_burn]->enable = has_selection && has_burner;
 	_commands[commands::tool_convert]->enable = is_media_or_items_view && photos_only_result.success();
 	_commands[commands::tool_copy_to_folder]->enable = can_process_local_items;
@@ -657,13 +692,37 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::tool_edit]->enable = is_media_or_items_view && _state.can_edit_media();
 	_commands[commands::tool_edit_description]->enable = can_save_metadata;
 	_commands[commands::tool_edit_metadata]->enable = can_save_metadata;
-	_commands[commands::tool_email]->enable = can_process_local_files;
+	_commands[commands::tool_share]->enable = can_process_local_files;
 	// Ejecting a drive does not depend on what is being browsed, so it answers from every view.
 	_commands[commands::tool_eject]->enable = true;
 	_commands[commands::tool_file_properties]->enable = has_selection;
 	_commands[commands::tool_import]->enable = is_media_or_items_view;
 	_commands[commands::tool_locate]->enable = can_save_metadata;
 	_commands[commands::tool_move_to_folder]->enable = can_process_local_items;
+
+	const auto is_movie_view = view_mode == view_type::movie && _view_movie;
+	// A timeline outlives the view, so clearing the selection must not lock the user out of the
+	// movie they are part way through building.
+	_commands[commands::tool_movie]->enable = is_media_or_items_view &&
+		(has_movie_selection || (_view_movie && _view_movie->has_clips()));
+	const auto movie_project_busy = is_movie_view && _view_movie->project_io_active();
+	_commands[commands::tool_movie_add]->enable = is_movie_view && !movie_project_busy;
+	_commands[commands::tool_movie_open]->enable = is_movie_view && !movie_project_busy;
+	_commands[commands::tool_movie_import]->enable = is_movie_view && !movie_project_busy;
+	_commands[commands::tool_movie_save]->enable = is_movie_view && !movie_project_busy && _view_movie->can_save_project();
+	_commands[commands::tool_movie_remove]->enable = is_movie_view && _view_movie->has_clips();
+	_commands[commands::tool_movie_send_to_end]->enable = is_movie_view && _view_movie->has_clips();
+	_commands[commands::tool_movie_select_all]->enable = is_movie_view && _view_movie->has_clips();
+	// Nothing to repair is not the same as a repair that is unavailable, so the offer appears only
+	// once the probe has found a clip that is gone.
+	_commands[commands::tool_movie_relink]->visible = is_movie_view && _view_movie->has_missing_clips();
+	_commands[commands::tool_movie_relink]->enable = is_movie_view && !movie_project_busy && _view_movie->has_missing_clips();
+	// A machine with no encoder cannot render at all, so Render is absent rather than dimmed, as
+	// Burn is on a machine with no writer. The answer comes from the startup worker.
+	const auto can_write_movies = _can_write_movies.value_or(false);
+	_commands[commands::tool_movie_render]->visible = can_write_movies;
+	_commands[commands::tool_movie_render]->enable = is_movie_view && !view_processing && can_write_movies &&
+		_view_movie->can_render();
 	_commands[commands::tool_new_folder]->enable = is_media_or_items_view && has_save_folder;
 	_commands[commands::tool_open_with]->enable = has_selection;
 	_commands[commands::tool_rename]->enable = can_process_local_items;
@@ -733,10 +792,11 @@ void app_frame::update_button_state(const bool resize)
 		                     commands::tool_rotate_anticlockwise, commands::tool_rotate_clockwise
 	                     });
 	set_disabled_reasons(photos_only_result, {commands::tool_convert});
-	set_disabled_reasons(local_files_result, {commands::print, commands::tool_email});
+	set_disabled_reasons(local_files_result, {commands::print, commands::tool_share});
 	set_disabled_reasons(local_items_result, {
 		                     commands::tool_copy_to_folder, commands::tool_delete, commands::tool_move_to_folder,
-		                     commands::tool_rename, commands::edit_copy, commands::edit_copy_item_path
+		                     commands::tool_rename, commands::edit_copy, commands::edit_copy_item_path,
+		                     commands::edit_cut
 	                     });
 
 	// Photo editing is singular, so its refusal is about the displayed item, not the whole selection.
@@ -746,7 +806,7 @@ void app_frame::update_button_state(const bool resize)
 
 	// Analyze refuses only because a path is missing, so it names the same cause the analysis used
 	// to report after the fact. While a task is running the refusal is the task, not the paths.
-	const auto analyze_reason = view_processing ? std::string{} : std::string(tt.error_invalid_files.sv());
+	const auto analyze_reason = view_processing ? std::string{} : std::string(tt.platform_text.error_invalid_files.sv());
 
 	for (const auto id : {commands::import_analyze, commands::sync_analyze})
 	{
@@ -869,6 +929,7 @@ void app_frame::update_button_state(const bool resize)
 	_tool_commands->update_button_state(resize, close_text_changed);
 	_sync_commands->update_button_state(resize, close_text_changed);
 	_tags_commands->update_button_state(resize, close_text_changed);
+	_movie_commands->update_button_state(resize, close_text_changed);
 
 	const view_element_event e{view_element_event_type::update_command_state, _view_frame};
 	_view->broadcast_event(e);
@@ -953,7 +1014,7 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::tool_import, {keys::F9}},
 		{commands::browse_recursive, {keys::F9, control}},
 		{commands::tool_sync, {keys::F9, shift | control}},
-		{commands::tool_email, {keys::F10}},
+		{commands::tool_share, {keys::F10}},
 		{commands::option_scale_up, {keys::F11, shift | control}},
 		{commands::view_fullscreen, {keys::F11}},
 		{commands::view_fullscreen, {keys::SPACE, shift | control}},
@@ -1018,26 +1079,39 @@ void app_frame::update_command_text()
 	def_command(commands::browse_previous_item_extend, command_group::selection, icon_index::left,
 	            tt.command_browse_previous_item_extend);
 	def_command(commands::tool_burn, command_group::tools, icon_index::disk, tt.command_burn);
-	def_command(commands::tool_save_current_video_frame, command_group::tools, icon_index::none, tt.command_capture);
+	def_command(commands::tool_save_current_video_frame, command_group::tools, icon_index::photo, tt.command_capture);
 	def_command(commands::view_close, command_group::none, icon_index::close, tt.command_close);
 	def_command(commands::edit_item_color_reset, command_group::none, icon_index::undo, tt.command_color_reset,
 	            tt.tooltip_color_reset);
 	def_command(commands::tool_convert, command_group::tools, icon_index::convert, tt.command_convert_or_resize);
 	def_command(commands::tool_copy_to_folder, command_group::file_management, icon_index::copy_to_folder,
 	            tt.command_copy);
-	def_command(commands::tool_delete, command_group::file_management, icon_index::cancel, tt.command_delete);
+	def_command(commands::tool_delete, command_group::file_management, icon_index::del, tt.command_delete);
 	def_command(commands::tool_desktop_background, command_group::tools, icon_index::wallpaper,
 	            tt.command_desktop_background);
 	def_command(commands::menu_display_options, command_group::none, icon_index::none, tt.command_display_options);
 	def_command(commands::tool_edit, command_group::tools, icon_index::edit, tt.command_edit,
 	            tt.tooltip_edit1);
+	def_command(commands::tool_movie, command_group::tools, icon_index::video, tt.command_movie, tt.tooltip_movie);
+	def_command(commands::tool_movie_render, command_group::tools, icon_index::movies, tt.command_movie_render,
+	            tt.tooltip_movie_render);
+	def_command(commands::tool_movie_add, command_group::tools, icon_index::add, tt.command_movie_add);
+	def_command(commands::tool_movie_remove, command_group::tools, icon_index::del, tt.command_movie_remove);
+	def_command(commands::tool_movie_relink, command_group::tools, icon_index::link, tt.command_movie_relink,
+	            tt.tooltip_movie_relink);
+	def_command(commands::tool_movie_open, command_group::tools, icon_index::folder, tt.command_movie_open);
+	def_command(commands::tool_movie_save, command_group::tools, icon_index::save, tt.command_movie_save);
+	def_command(commands::tool_movie_import, command_group::tools, icon_index::import, tt.command_movie_import);
+	def_command(commands::tool_movie_send_to_end, command_group::tools, icon_index::right,
+	            tt.command_movie_send_to_end);
+	def_command(commands::tool_movie_select_all, command_group::tools, icon_index::none, tt.command_select_all);
 	def_command(commands::edit_copy, command_group::file_management, icon_index::edit_copy, tt.command_edit_copy);
 	def_command(commands::edit_copy_item_path, command_group::file_management, icon_index::edit_copy,
 	            tt.command_edit_copy_item_path);
 	def_command(commands::edit_cut, command_group::file_management, icon_index::edit_cut, tt.command_edit_cut);
 	def_command(commands::edit_paste, command_group::file_management, icon_index::edit_paste, tt.command_edit_paste);
 	def_command(commands::tool_eject, command_group::file_management, icon_index::eject, tt.command_eject);
-	def_command(commands::tool_file_properties, command_group::file_management, icon_index::none,
+	def_command(commands::tool_file_properties, command_group::file_management, icon_index::document_information,
 	            tt.command_file_properties);
 	def_command(commands::browse_search, command_group::navigation, icon_index::search, tt.command_file_search);
 	def_command(commands::browse_recursive, command_group::navigation, icon_index::recursive, tt.command_flatten);
@@ -1117,7 +1191,7 @@ void app_frame::update_command_text()
 	def_command(commands::edit_item_save, command_group::edit_item, icon_index::save, tt.command_save);
 	def_command(commands::edit_item_auto_color, command_group::edit_item, icon_index::lightbulb, tt.command_auto_color,
 	            tt.tooltip_auto_color);
-	def_command(commands::edit_item_auto_document, command_group::edit_item, icon_index::scan, tt.command_auto_document,
+	def_command(commands::edit_item_auto_document, command_group::edit_item, icon_index::scan_text, tt.command_auto_document,
 	            tt.tooltip_auto_document);
 	def_command(commands::edit_item_auto_straighten, command_group::edit_item, icon_index::lightbulb,
 	            tt.command_auto_straighten, tt.tooltip_auto_straighten);
@@ -1130,13 +1204,21 @@ void app_frame::update_command_text()
 	def_command(commands::edit_item_save_as, command_group::edit_item, icon_index::save_copy, tt.command_save_as);
 	def_command(commands::option_scale_up, command_group::options, icon_index::fit, tt.command_scale_up,
 	            tt.tooltip_scale_up);
-	def_command(commands::tool_scan, command_group::tools, icon_index::scan, tt.command_scan);
+	def_command(commands::tool_scan, command_group::tools, icon_index::scanner, tt.command_scan);
 	def_command(commands::options_sidebar, command_group::options, icon_index::none, tt.command_customise);
 	def_command(commands::favorite_tags, command_group::options, icon_index::tag, tt.customise_tags_title);
 	def_command(commands::select_all, command_group::selection, icon_index::none, tt.command_select_all);
 	def_command(commands::select_invert, command_group::selection, icon_index::none, tt.command_select_invert);
 	def_command(commands::select_nothing, command_group::selection, icon_index::none, tt.command_select_nothing);
-	def_command(commands::tool_email, command_group::tools, icon_index::mail, tt.command_share_email);
+	// Named for what it will do on this system: the share sheet, or an email draft where there is none.
+	if (platform::can_share_files())
+	{
+		def_command(commands::tool_share, command_group::tools, icon_index::share, tt.command_share);
+	}
+	else
+	{
+		def_command(commands::tool_share, command_group::tools, icon_index::mail, tt.command_share_email);
+	}
 	def_command(commands::option_show_rotated, command_group::options, icon_index::orientation, tt.item_oriented);
 	def_command(commands::verbose_metadata, command_group::options, icon_index::verbose_metadata,
 	            tt.show_verbose_metadata);
@@ -1183,7 +1265,7 @@ void app_frame::update_command_text()
 	def_command(commands::view_zoom_in, command_group::media_playback, icon_index::zoom_in, tt.command_zoom_in);
 	def_command(commands::view_zoom_pane_flip, command_group::media_playback, icon_index::swap, tt.command_zoom_flip);
 	def_command(commands::view_zoom_out, command_group::media_playback, icon_index::zoom_out, tt.command_zoom_out);
-	def_command(commands::view_zoom_100, command_group::media_playback, icon_index::zoom_in, tt.command_zoom_100);
+	def_command(commands::view_zoom_100, command_group::media_playback, icon_index::one_to_one, tt.command_zoom_100);
 	def_command(commands::menu_zoom, command_group::media_playback, icon_index::overview,
 	            tt.command_zoom_presets);
 	def_command(commands::menu_zoom_navigator, command_group::media_playback, icon_index::overview,
@@ -1252,6 +1334,9 @@ void app_frame::update_command_text()
 		     commands::tool_refresh,
 		     commands::edit_item_save, commands::edit_item_save_and_prev, commands::edit_item_save_and_next,
 		     commands::edit_item_save_as, commands::edit_item_preview,
+		     commands::tool_movie_add, commands::tool_movie_remove, commands::tool_movie_open,
+		     commands::tool_movie_save, commands::tool_movie_import,
+		     commands::tool_movie_render, commands::tool_movie_relink,
 		     commands::menu_group_toolbar, commands::filter_photos, commands::filter_videos,
 		     commands::filter_audio
 	     })
@@ -1339,19 +1424,16 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 
 		if (i)
 		{
-			const auto& image = i->thumbnail();
+			const auto surface = i->thumbnail_surface();
 
-			if (is_valid(image))
+			if (is_valid(surface))
 			{
-				files ff;
-				const auto surface = ff.image_to_surface(image);
-
-				if (is_valid(surface))
-				{
-					hover.elements->add(
-						std::make_shared<surface_element>(surface, 200,
-						                                  flex_item::center | flex_item::new_line));
-				}
+				hover.elements->add(
+					std::make_shared<surface_element>(surface, 200, flex_item::center | flex_item::new_line));
+			}
+			else if (is_valid(i->thumbnail()))
+			{
+				i->stage_thumbnail_surface(_state._async, false, true);
 			}
 
 			hover.elements->add(std::make_shared<text_element>(i->name()));

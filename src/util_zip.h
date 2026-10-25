@@ -27,9 +27,13 @@ namespace df
 		bool create(file_path path);
 		bool close();
 
+		bool add(file_path path, std::string_view name, date_t modified) const;
 		bool add(file_path path, std::string_view name) const;
 		bool add(file_path path);
 
 		static std::vector<archive_item> list(file_path zip_file_path);
 	};
+
+	// Whether an entry starting at this archive offset and holding this many bytes needs ZIP64 headers.
+	bool zip_entry_needs_zip64(uint64_t offset, uint64_t size);
 }

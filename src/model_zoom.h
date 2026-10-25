@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "util_geometry.h"
+#include "libdesktop/util_geometry.h"
 
 namespace df
 {
@@ -41,6 +41,9 @@ namespace df
 		double _scale = 1.0;
 		pointd _center{0.5, 0.5};
 		pointd _last_explicit_center{0.5, 0.5};
+		// What Fit replaced, so toggling back restores it as it was. A Fit width or Fill left for Fit
+		// came back as the fixed scale it last computed, which then stopped following the viewport.
+		zoom_scale_mode _restore_mode = zoom_scale_mode::explicit_scale;
 		sized _source;
 		bool _carried_fit = false;
 		bool _has_explicit = false;
@@ -170,8 +173,11 @@ namespace df
 		{
 			if (_mode == zoom_scale_mode::fit_width || _mode == zoom_scale_mode::fill)
 			{
+				// The scale follows the viewport; where the user panned to is theirs to keep. This
+				// runs on every layout, so recentring here threw the pan away whenever the window
+				// was resized or a panel opened or closed. Choosing Fit width or Fill still
+				// recentres - that is what those commands do, and they say so themselves.
 				_scale = fit_variant_scale(_mode, source, viewport, enlarge);
-				_center = {0.5, 0.5};
 				_carried_fit = false;
 			}
 		}
@@ -181,6 +187,7 @@ namespace df
 			if (!is_fit())
 			{
 				_last_explicit_center = _center;
+				_restore_mode = _mode;
 				_has_explicit = true;
 			}
 			_mode = zoom_scale_mode::fit;
@@ -228,9 +235,15 @@ namespace df
 			if (source.Width <= 0.0 || source.Height <= 0.0 || old_scale <= 0.0 || scale <= 0.0) return;
 
 			const pointd viewport_center{viewport.Width / 2.0, viewport.Height / 2.0};
+
+			// The anchor has to be resolved against what is on screen, and geometry() draws from
+			// the clamped centre. Pivoting about the raw one turned every zoom taken while the
+			// centre sat outside its clamped range into a pivot about a point the user is not
+			// looking at, and the picture slid out from under the pointer.
+			const auto center = clamp_center(_center, source, viewport, old_scale);
 			const auto source_anchor = pointd{
-				_center.X * source.Width + (anchor.X - viewport_center.X) / old_scale,
-				_center.Y * source.Height + (anchor.Y - viewport_center.Y) / old_scale
+				center.X * source.Width + (anchor.X - viewport_center.X) / old_scale,
+				center.Y * source.Height + (anchor.Y - viewport_center.Y) / old_scale
 			};
 			const auto new_center = pointd{
 				(source_anchor.X - (anchor.X - viewport_center.X) / scale) / source.Width,
@@ -251,9 +264,14 @@ namespace df
 			const auto scale = effective_scale(fit);
 			if (source.Width <= 0.0 || source.Height <= 0.0 || scale <= 0.0) return {};
 			const pointd viewport_center{viewport.Width / 2.0, viewport.Height / 2.0};
+
+			// Reads from the clamped centre for the same reason set_anchored writes to it: this
+			// names the source point under a screen point, and what is under a screen point is
+			// decided by what geometry() drew.
+			const auto center = clamp_center(_center, source, viewport, scale);
 			return {
-				_center.X * source.Width + (anchor.X - viewport_center.X) / scale,
-				_center.Y * source.Height + (anchor.Y - viewport_center.Y) / scale
+				center.X * source.Width + (anchor.X - viewport_center.X) / scale,
+				center.Y * source.Height + (anchor.Y - viewport_center.Y) / scale
 			};
 		}
 
@@ -274,7 +292,8 @@ namespace df
 		{
 			if (is_fit() && _has_explicit)
 			{
-				_mode = zoom_scale_mode::explicit_scale;
+				// A Fit width or Fill comes back as itself; the next layout recomputes its scale.
+				_mode = _restore_mode;
 				_center = _last_explicit_center;
 				_carried_fit = false;
 			}
@@ -288,8 +307,10 @@ namespace df
 		{
 			const auto scale = effective_scale(fit);
 			if (source.Width <= 0.0 || source.Height <= 0.0 || scale <= 0.0) return;
-			_center = {std::clamp(_center.X + delta.X / source.Width, 0.0, 1.0),
-			           std::clamp(_center.Y + delta.Y / source.Height, 0.0, 1.0)};
+			const auto center = clamp_center(_center, source, viewport, scale);
+			_center = clamp_center({center.X + delta.X / source.Width, center.Y + delta.Y / source.Height},
+			                       source, viewport, scale);
+			if (_mode == zoom_scale_mode::explicit_scale) _last_explicit_center = _center;
 		}
 
 		void zoom_region(const rectd region, const sized source, const sized viewport, const double fit) noexcept

@@ -17,7 +17,6 @@
 #include "ui_elements.h"
 
 class group_title_control;
-class sort_items_element;
 class view_state;
 class index_state;
 class async_strategy;
@@ -155,6 +154,9 @@ namespace df
 
 	struct item_row_draw_info;
 
+	extern std::function<void(file_path source, file_path destination)> rename_after_move_for_test;
+	extern std::function<void(std::string_view message)> rename_recovery_report_for_test;
+
 	using item_element_ptr = std::shared_ptr<item_element>;
 	using const_item_element_ptr = std::shared_ptr<const item_element>;
 	using item_summary_ptr = std::shared_ptr<file_group_histogram>;
@@ -163,10 +165,6 @@ namespace df
 
 	using item_groups = std::vector<item_group_ptr>;
 	using item_elements = std::vector<item_element_ptr>;
-
-	struct item_less;
-	struct item_eq;
-	struct item_hash;
 
 	using unique_item_elements = hash_map<file_path, item_element_ptr, ihash, ieq>;
 
@@ -254,6 +252,7 @@ namespace df
 		texture_is_cover_art = 1 << 8,
 		fade_pending = 1 << 9,
 		invalidate_on_stage = 1 << 10,
+		tooltip_on_stage = 1 << 11,
 
 		// Any claim that means another path already owns producing this thumbnail.
 		load_blocked = loading | load_failed | shell_pending | db_query_pending,
@@ -306,7 +305,7 @@ namespace df
 		str::cached pixel_format = {};
 		sizei dimensions = {};
 		uint16_t audio_channels = 0;
-		uint16_t audio_sample_rate = 0;
+		uint32_t audio_sample_rate = 0;
 		uint16_t audio_sample_type = 0;
 
 		file_size size = {};
@@ -352,7 +351,8 @@ namespace df
 	struct duplicate_info
 	{
 		uint32_t group = 0;
-		uint32_t count : 30 = 0;
+		uint32_t count : 29 = 0;
+		uint32_t same_picture_crowded : 1 = 0;
 		// How this item joined its set, not how the set as a whole was reached.
 		copy_grade grade : 2 = copy_grade::none;
 
@@ -448,8 +448,8 @@ namespace df
 
 	struct index_file_item
 	{
-		// Declared widest-first. MSVC aligns atomic<shared_ptr> to 16 bytes, so leading with the two
-		// published pointers and trailing with the 32-bit members keeps the record at 96 rather than 112.
+		// Declared widest-first. MSVC aligns atomic<shared_ptr> to 16 bytes, so leading with the
+		// published pointers and trailing with the 32-bit members keeps the record compact.
 		//
 		// Published exactly like metadata: an immutable set replaced whole, never edited in place, so a
 		// reader that holds the pointer holds four orientations of one picture. Null means not computed;
@@ -468,6 +468,7 @@ namespace df
 		mutable std::atomic<date_t> file_modified;
 		mutable std::atomic<date_t> metadata_scanned;
 		mutable std::atomic<duplicate_info> duplicates;
+		mutable std::atomic<uint32_t> exact_duplicate_group = 0;
 
 		index_item_flags flags = index_item_flags::none;
 		str::cached name;
@@ -485,6 +486,7 @@ namespace df
 			  file_modified(other.file_modified.load()),
 			  metadata_scanned(other.metadata_scanned.load()),
 			  duplicates(other.duplicates.load()),
+			  exact_duplicate_group(other.exact_duplicate_group.load()),
 			  flags(other.flags),
 			  name(other.name),
 			  search_presence(other.search_presence.load()),
@@ -501,6 +503,7 @@ namespace df
 			  file_modified(other.file_modified.load()),
 			  metadata_scanned(other.metadata_scanned.load()),
 			  duplicates(other.duplicates.load()),
+			  exact_duplicate_group(other.exact_duplicate_group.load()),
 			  flags(other.flags),
 			  name(std::move(other.name)),
 			  search_presence(other.search_presence.load()),
@@ -524,6 +527,7 @@ namespace df
 			metadata.store(other.metadata.load());
 			search_presence = other.search_presence.load();
 			duplicates = other.duplicates.load();
+			exact_duplicate_group = other.exact_duplicate_group.load();
 			crc32c = other.crc32c.load();
 			phash = other.phash.load();
 			return *this;
@@ -544,6 +548,7 @@ namespace df
 			other.metadata.store(nullptr);
 			search_presence = other.search_presence.load();
 			duplicates = other.duplicates.load();
+			exact_duplicate_group = other.exact_duplicate_group.load();
 			crc32c = other.crc32c.load();
 			phash = other.phash.load();
 			other.phash.store(nullptr);
@@ -643,6 +648,7 @@ namespace df
 		// OR-summary of item presence masks. Missing bits reject the whole folder;
 		// extra stale bits are safe because item masks and exact matching follow.
 		std::atomic<search_presence_mask> search_presence_summary;
+		std::atomic_uint64_t content_revision = 0;
 
 		// is_in_collection / is_excluded are flipped by the indexing thread (index_folders)
 		// while UI and database threads read them through shared node pointers. They are
@@ -651,6 +657,7 @@ namespace df
 		std::atomic<bool> is_in_collection = false;
 		std::atomic<bool> is_excluded = false;
 		bool is_read_only = false;
+		bool can_recurse = true;
 
 		index_folder_item() = default;
 		index_folder_item(const index_folder_item&) noexcept = delete;
@@ -668,6 +675,21 @@ namespace df
 		std::shared_ptr<const index_folder_infos> folders_snapshot() const
 		{
 			return child_folders.load();
+		}
+
+		uint64_t revision_snapshot() const
+		{
+			return content_revision.load(std::memory_order_acquire);
+		}
+
+		void mark_content_changed()
+		{
+			content_revision.fetch_add(1, std::memory_order_release);
+		}
+
+		void set_content_revision(const uint64_t revision)
+		{
+			content_revision.store(revision, std::memory_order_release);
 		}
 
 		void replace_child(const str::cached folder_name, const index_folder_item_ptr& replacement)
@@ -717,6 +739,12 @@ namespace df
 				updated |= file_node.search_presence.load();
 			}
 			while (!search_presence_summary.compare_exchange_weak(existing, updated));
+		}
+
+		void update_search_presence(const index_file_item& file_node, const search_presence_mask previous)
+		{
+			(void)previous;
+			update_search_presence(file_node);
 		}
 	};
 
@@ -947,6 +975,7 @@ namespace df
 		// while image_to_surface() was running on the render worker.
 		mutable uint64_t _thumbnail_surface_generation = 0;
 		uint64_t _thumbnail_request_generation = 0;
+		uint64_t _thumbnail_load_generation = 0;
 		uint64_t _total_count = 0;
 		double _media_position = 0.0;
 
@@ -997,7 +1026,7 @@ namespace df
 			update(id, info);
 		}
 
-		item_element(const folder_path path, index_folder_item_ptr info) noexcept : _path(path), _info(std::move(info))
+		item_element(const folder_path path, index_folder_item_ptr info) noexcept : _info(std::move(info)), _path(path)
 		{
 			_is_read_only = _info->is_read_only;
 			_name = path.name();
@@ -1291,6 +1320,14 @@ namespace df
 			set_thumbnail_state(thumbnail_state::surface_cached, false);
 		}
 
+		uint64_t begin_thumbnail_load()
+		{
+			assert_true(ui::is_ui_thread());
+			set_thumbnail_state(thumbnail_state::loading, true);
+			_thumbnail_load_generation = ++_thumbnail_request_generation;
+			return _thumbnail_load_generation;
+		}
+
 		uint64_t begin_thumbnail_request()
 		{
 			assert_true(ui::is_ui_thread());
@@ -1302,6 +1339,18 @@ namespace df
 		{
 			assert_true(ui::is_ui_thread());
 			return generation == _thumbnail_request_generation;
+		}
+
+		bool is_current_thumbnail_load(const uint64_t generation) const
+		{
+			assert_true(ui::is_ui_thread());
+			return generation == _thumbnail_load_generation;
+		}
+
+		uint64_t thumbnail_request_generation() const
+		{
+			assert_true(ui::is_ui_thread());
+			return _thumbnail_request_generation;
 		}
 
 		void clear_cached_surface() const
@@ -1329,6 +1378,12 @@ namespace df
 			return _thumbnail_state && thumbnail_state::surface_cached;
 		}
 
+		bool is_staging_thumbnail_surface() const
+		{
+			assert_true(ui::is_ui_thread());
+			return _thumbnail_state && thumbnail_state::staging_surface;
+		}
+
 		// The decoded thumbnail, where the browser has already staged one. Handed to the display so it can
 		// show something the moment an item is selected instead of decoding the same pixels again.
 		const ui::const_surface_ptr& thumbnail_surface() const
@@ -1337,7 +1392,8 @@ namespace df
 			return _thumbnail_surface;
 		}
 
-		void stage_thumbnail_surface(async_strategy& async, bool invalidate_on_complete = false) const;
+		void stage_thumbnail_surface(async_strategy& async, bool invalidate_on_complete = false,
+		                             bool tooltip_on_complete = false) const;
 		void start_thumbnail_animation(view_state& state) const;
 
 		void render_bg(ui::draw_context& dc, const item_group& group, pointi element_offset) const;
@@ -1356,7 +1412,7 @@ namespace df
 		sizei measure(ui::measure_context& mc, int width_limit) const override;
 		void layout(ui::measure_context& mc, recti bounds_in, ui::control_layouts& positions) override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-		                                             const std::vector<recti>& excluded_bounds) override;
+		                                             hit_test_context& ctx) override;
 
 		platform::file_op_result rename(index_state& index, std::string_view name);
 
@@ -1667,12 +1723,12 @@ namespace df
 			return _path.folder();
 		}
 
-		bool begin_db_thumbnail_query()
+		uint64_t begin_db_thumbnail_query()
 		{
 			assert_true(ui::is_ui_thread());
-			if (!(_thumbnail_state && thumbnail_state::db_query_pending)) return false;
+			if (!(_thumbnail_state && thumbnail_state::db_query_pending)) return 0;
 			set_thumbnail_state(thumbnail_state::db_query_pending, false);
-			return true;
+			return ++_thumbnail_request_generation;
 		}
 	};
 
@@ -1964,6 +2020,10 @@ namespace df
 
 		std::vector<ui::const_image_ptr> thumbs(size_t max = max_thumbnails_to_display,
 		                                        const item_element_ptr& skip_this = nullptr) const;
+		std::vector<ui::const_surface_ptr> thumbnail_surfaces(size_t max = max_thumbnails_to_display,
+		                                                      const item_element_ptr& skip_this = nullptr) const;
+		void stage_thumbnail_surfaces(async_strategy& async, size_t max = max_thumbnails_to_display,
+		                              const item_element_ptr& skip_this = nullptr) const;
 
 		process_result can_process(process_items_type file_types, bool mark_errors,
 		                           const view_host_base_ptr& view) const;
@@ -2126,7 +2186,7 @@ namespace df
 			{
 				const auto importance_alpha = std::min(
 					color.a, static_cast<float>(0.7 * (val - val_min) / (val_max - val_min)));
-				rank_color = ui::color(ui::style::color::rank_background, importance_alpha);
+				rank_color = ui::color(app_colors::rank_background, importance_alpha);
 			}
 
 			draw(rc, text, rank_color, bounds, text_font, text_style, color);
@@ -2264,10 +2324,10 @@ namespace df
 
 		int _scroll_tooltip_rating = 0;
 		std::vector<std::string> _scroll_tooltip_text;
+		mutable item_element_ptr _scroll_tooltip_staging_item;
 
 		mutable std::vector<recti> _layout_bounds;
 		sort_by _sort_order = sort_by::def;
-		bool _reverse_sort = false;
 		bool _show_folder = true;
 		group_key _key;
 
@@ -2320,10 +2380,10 @@ namespace df
 		void render(ui::draw_context& dc, pointi element_offset) const override;
 		sizei measure(ui::measure_context& mc, int width_limit) const override;
 		void layout(ui::measure_context& mc, recti bounds_in, ui::control_layouts& positions) override;
-		void scroll_tooltip(const ui::const_image_ptr& thumbnail, const view_elements_ptr& elements) const;
+		void scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements, async_strategy& async) const;
 		void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-		                                             const std::vector<recti>& excluded_bounds) override;
+		                                             hit_test_context& ctx) override;
 
 		item_element_ptr drawable_from_layout_location(pointi loc) const;
 		void update_scroll_info(group_by gb);
@@ -2332,7 +2392,6 @@ namespace df
 		friend class item_set;
 		friend class item_element;
 		friend class item_group_header;
-		friend class sort_items_element;
 	};
 
 

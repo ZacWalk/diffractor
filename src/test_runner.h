@@ -21,6 +21,7 @@ void register_index_tests(view_state& state, test_registry& tests);
 void register_location_tests(view_state& state, test_registry& tests);
 void register_media_edit_tests(view_state& state, test_registry& tests);
 void register_metadata_tests(view_state& state, test_registry& tests);
+void register_movie_tests(view_state& state, test_registry& tests);
 void register_platform_tests(view_state& state, test_registry& tests);
 void register_render_tests(view_state& state, test_registry& tests);
 void register_search_tests(view_state& state, test_registry& tests);
@@ -40,6 +41,7 @@ inline void register_tests(view_state& state, test_registry& registry)
 	register_index_tests(state, registry);
 	register_search_tests(state, registry);
 	register_location_tests(state, registry);
+	register_movie_tests(state, registry);
 	register_view_tests(state, registry);
 	register_app_tests(state, registry);
 	register_platform_tests(state, registry);

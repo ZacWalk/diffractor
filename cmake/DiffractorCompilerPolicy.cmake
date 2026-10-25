@@ -40,7 +40,9 @@ if (MSVC)
             $<$<COMPILE_LANGUAGE:C,CXX>:/Zi>         # DebugInformationFormat, in Release too
             $<$<COMPILE_LANGUAGE:CXX>:/EHsc>         # ExceptionHandling Sync
             $<$<COMPILE_LANGUAGE:CXX>:/GR>           # RuntimeTypeInfo
-            $<$<COMPILE_LANGUAGE:C,CXX>:/fp:fast>    # changes results, not just speed
+            $<$<COMPILE_LANGUAGE:C,CXX>:/fp:precise> # preserve floating-point semantics
+                $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/O2>
+                $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/GL>
     )
 
     # EnableEnhancedInstructionSet StreamingSIMDExtensions2. SSE2 is unconditional on x64, where
@@ -63,7 +65,7 @@ if (MSVC)
 
     # Optimization MaxSpeed, InlineFunctionExpansion AnySuitable, FavorSizeOrSpeed Size,
     # OmitFramePointers, WholeProgramOptimization, SupportJustMyCode false.
-    set(CMAKE_C_FLAGS_RELEASE "/O2 /Ob2 /Os /Oy /GL /JMC- /DNDEBUG")
+    set(CMAKE_C_FLAGS_RELEASE "/Ob2 /Os /Oy /JMC- /DNDEBUG")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
     # GenerateDebugInformation is true in both configurations: a release build without symbols
@@ -119,8 +121,10 @@ function(diffractor_apply_app_policy target)
         # case-insensitive filesystem and reports every declaration in it as a redefinition.
         target_precompile_headers(${target} PRIVATE "${CMAKE_SOURCE_DIR}/src/pch.h")
 
-        # SubSystem Windows.
+        # SubSystem Windows. The entry point is libdesktop-render's wWinMain, which lives in a library,
+        # where the linker does not look when it picks the CRT's startup: named, the startup pulls it in.
         set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE ON)
+        target_link_options(${target} PRIVATE /ENTRY:wWinMainCRTStartup)
 
         # GenerateManifest false. platform_win_res.rc embeds platform_win.manifest itself, and a
         # linker-generated one collides with it rather than being ignored.
@@ -139,7 +143,7 @@ function(diffractor_apply_vendored_policy target)
                 $<$<COMPILE_LANGUAGE:C,CXX>:_CRT_NONSTDC_NO_WARNINGS>)
     else ()
         # Must not reach an assembler: there -w expects an argument and would swallow the next
-        # define. See cmake/vendored/LibJpeg.cmake.
+        # define.
         target_compile_options(${target} PRIVATE
                 $<$<COMPILE_LANGUAGE:C>:-w>
                 $<$<COMPILE_LANGUAGE:CXX>:-w>)

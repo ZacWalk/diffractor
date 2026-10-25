@@ -56,6 +56,7 @@ enum class icon_index
 	map_pin = 0xEC1A, // ic_fluent_map_pin_20_regular
 	world = 0xE99B, // ic_fluent_globe_20_regular
 	mail = 0xEBBC, // ic_fluent_mail_20_regular
+	share = 0xF023, // ic_fluent_share_20_regular
 	navigation = 0xEB58, // ic_fluent_line_horizontal_3_20_regular
 	next = 0xE141, // ic_fluent_arrow_right_20_regular
 	next_image = 0xEA5C, // ic_fluent_image_arrow_forward_20_regular
@@ -79,7 +80,10 @@ enum class icon_index
 	save = 0xEF99, // ic_fluent_save_20_regular
 	save_copy = 0xEF9D, // ic_fluent_save_copy_20_regular
 	scan = 0xEFB1, // ic_fluent_scan_20_regular
+	scan_text = 0xEFBD, // ic_fluent_scan_text_20_regular
+	scanner = 0xE899, // ic_fluent_fax_20_regular
 	fit = 0xE0F7, // ic_fluent_arrow_fit_20_regular
+	one_to_one = 0xEF19, // ic_fluent_ratio_one_to_one_20_regular
 	search = 0xEFD7, // ic_fluent_search_20_regular
 	shuffle = 0xE14B, // ic_fluent_arrow_shuffle_20_regular
 	slideshow = 0xF0BD, // ic_fluent_slide_play_20_regular
@@ -149,6 +153,7 @@ enum class icon_index
 	language = 0xEB88, // ic_fluent_local_language_20_regular
 	edit_metadata = 0xE723, // ic_fluent_document_edit_20_regular
 	verbose_metadata = 0xF35D, // ic_fluent_text_description_20_regular
+	document_information = 0xEA88, // ic_fluent_info_20_regular
 	edit_cut = 0xE617, // ic_fluent_cut_20_regular
 	edit_copy = 0xE5D7, // ic_fluent_copy_20_regular
 	edit_paste = 0xE4F2, // ic_fluent_clipboard_paste_20_regular

@@ -2321,13 +2321,6 @@ msgstr ""
 msgid "Use hardware acceleration to decode video (when available)"
 msgstr "Použít hardwarovou akceleraci k dekódování videa (je-li k dispozici)"
 
-msgid ""
-"Use NV12 and P010 format textures (Automatically turned off if problems "
-"detected)"
-msgstr ""
-"Použít textury formátu NV12 a P010 (Automaticky se vypne, pokud jsou "
-"zjištěny problémy)"
-
 msgid "Show an inset shadow surrounding the image view panel."
 msgstr "Zobrazit vložený stín kolem panelu zobrazení obrázku."
 
@@ -2862,6 +2855,24 @@ msgstr "Příprava importu souborů..."
 msgid "Preparing files for email..."
 msgstr "Příprava souborů pro e-mail..."
 
+msgid "Share"
+msgstr "Sdílet"
+
+msgid "Preparing files to share..."
+msgstr "Příprava souborů ke sdílení..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows nabídne aplikace, které mohou soubory přijmout. Originály zůstanou beze změny."
+
+msgid "Send the files as one zip file"
+msgstr "Odeslat soubory jako jeden soubor ZIP"
+
+msgid "&Share"
+msgstr "&Sdílet"
+
+msgid "The files could not be shared."
+msgstr "Soubory se nepodařilo sdílet."
+
 msgid "Preparing to synchronize files..."
 msgstr "Příprava synchronizace souborů..."
 
@@ -3329,11 +3340,18 @@ msgstr[0] "{first-name} bylo ignorováno, protože bylo dříve importováno."
 msgstr[1] "{count} položky byly ignorovány, protože byly dříve importovány."
 msgstr[2] "{count} položek bylo ignorováno, protože byly dříve importovány."
 
-msgid "{first-name} will be moved to the recycle bin."
-msgid_plural "{count} items ({size}) will be moved to the recycle bin."
-msgstr[0] "{first-name} bude přesunuto do koše."
-msgstr[1] "{count} položky ({size}) budou přesunuty do koše."
-msgstr[2] "{count} položek ({size}) bude přesunuto do koše."
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "1 položka byla importována, ale její datum vytvoření se nepodařilo nastavit."
+msgstr[1] "{count} položky byly importovány, ale jejich datum vytvoření se nepodařilo nastavit."
+msgstr[2] "{count} položek bylo importováno, ale jejich datum vytvoření se nepodařilo nastavit."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} bude přesunut do Koše, pokud jej Windows dokáže přesunout do Koše."
+msgstr[1] "{count} položek ({size}) bude přesunuto do Koše, pokud je Windows dokáže přesunout do Koše."
+msgstr[2] "{count} položek ({size}) bude přesunuto do Koše, pokud je Windows dokáže přesunout do Koše."
 
 msgid "{first-name} will be permanently deleted."
 msgid_plural "{count} items ({size}) will be permanently deleted."
@@ -3397,6 +3415,12 @@ msgid_plural "A desktop email draft will be opened with {count} selected items a
 msgstr[0] "V e-mailovém klientovi se otevře koncept s přílohou {first-name}."
 msgstr[1] "V e-mailovém klientovi se otevře koncept s {count} vybranými položkami v příloze."
 msgstr[2] "V e-mailovém klientovi se otevře koncept s {count} vybranými položkami v příloze."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "Položka {first-name} bude nabídnuta aplikaci, kterou zvolíte."
+msgstr[1] "{count} vybrané položky budou nabídnuty aplikaci, kterou zvolíte."
+msgstr[2] "{count} vybraných položek bude nabídnuto aplikaci, kterou zvolíte."
 
 msgid "{first-name} already exists. Do you want to replace it?"
 msgid_plural ""
@@ -3801,3 +3825,160 @@ msgstr "Seskupit podle data originálu"
 
 msgid "Sort by Date original"
 msgstr "Řadit podle data originálu"
+
+msgid "Movie mixer"
+msgstr "Mixér filmu"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Sestavte z vybraných fotografií a videí jedno video. Klipy na pásu níže přidávejte, odebírejte a přeuspořádávejte a vybraný klip ořízněte. Náhled odpovídá tomu, co se vykreslí; dokud nevykreslíte nebo neuložíte, nic se nezapisuje."
+
+msgid "Movie"
+msgstr "Film"
+
+msgid "Selected clip"
+msgstr "Vybraný klip"
+
+msgid "Crossfade between clips"
+msgstr "Prolínání mezi klipy"
+
+msgid "Cut between clips"
+msgstr "Střih mezi klipy"
+
+msgid "Transition (tenths of a second)"
+msgstr "Přechod (desetiny sekundy)"
+
+msgid "Fade (tenths of a second)"
+msgstr "Rozjasnění/ztmavení (desetiny sekundy)"
+
+msgid "Fade in from black"
+msgstr "Rozjasnit z černé"
+
+msgid "Fade out to black"
+msgstr "Ztmavit do černé"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "Doba zobrazení fotografie (desetiny sekundy)"
+
+msgid "This photo (tenths of a second)"
+msgstr "Tato fotografie (desetiny sekundy)"
+
+msgid "Use the movie default"
+msgstr "Použít výchozí hodnotu filmu"
+
+msgid "Add photos and videos to build a movie."
+msgstr "Přidejte fotografie a videa a sestavte film."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "Výstup {} x {} při {} fps, délka {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - klip {} z {}, začíná v {}."
+
+msgid "Movie project"
+msgstr "Projekt filmu"
+
+msgid "Windows Movie Maker project"
+msgstr "Projekt Windows Movie Maker"
+
+msgid "Photos and videos"
+msgstr "Fotografie a videa"
+
+msgid "Could not read the project {}."
+msgstr "Projekt {} se nepodařilo načíst."
+
+msgid "Could not save the project {}."
+msgstr "Projekt {} se nepodařilo uložit."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "Sestaví z vybraných fotografií a videí jedno video."
+
+msgid "Add files"
+msgstr "Přidat soubory"
+
+msgid "Remove from movie"
+msgstr "Odebrat z filmu"
+
+msgid "Send to the end"
+msgstr "Přesunout na konec"
+
+msgid "Open project"
+msgstr "Otevřít projekt"
+
+msgid "Save project"
+msgstr "Uložit projekt"
+
+msgid "Import Movie Maker project"
+msgstr "Importovat projekt Movie Maker"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Rendering the movie"
+msgstr "Vykreslování filmu"
+
+msgid "The movie could not be rendered. {}"
+msgstr "Film se nepodařilo vykreslit. {}"
+
+msgid "The movie has no length."
+msgstr "Film nemá žádnou délku."
+
+msgid "The encoder would not accept this movie."
+msgstr "Kodér tento film nepřijal."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "Pro snímek filmu nebylo dost paměti."
+
+msgid "A clip could not be decoded."
+msgstr "Jeden z klipů se nepodařilo dekódovat."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "Kodér se zastavil dříve, než byl film dokončen."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "Tento název patří klipu v tomto filmu. Zvolte jiný název."
+
+msgid "Rendered {}."
+msgstr "Vykresleno: {}."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "Vykreslování bylo zrušeno. Nic nebylo zapsáno."
+
+msgid "No missing clip was found in that folder."
+msgstr "V dané složce nebyl nalezen žádný chybějící klip."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "Tento film obsahuje změny, které nejsou v souboru projektu. Zůstane zachován, dokud Diffractor běží, a jeho ukončením se zahodí."
+
+msgid "Close without saving"
+msgstr "Zavřít bez uložení"
+
+msgid "Render"
+msgstr "Vykreslit"
+
+msgid "Write the movie to a video file."
+msgstr "Zapíše film do souboru videa."
+
+msgid "Relink missing files"
+msgstr "Znovu propojit chybějící soubory"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "Nasměruje klipy, jejichž zdrojový soubor se přesunul, do vybrané složky."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "1 prvek importovaného projektu byl vynechán, protože jej Film neumí zachytit."
+msgstr[1] "{count} prvky importovaného projektu byly vynechány, protože je Film neumí zachytit."
+msgstr[2] "{count} prvků importovaného projektu bylo vynecháno, protože je Film neumí zachytit."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 klip nemůže najít svůj zdrojový soubor."
+msgstr[1] "{count} klipy nemohou najít své zdrojové soubory."
+msgstr[2] "{count} klipů nemůže najít své zdrojové soubory."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 klip byl znovu propojen."
+msgstr[1] "{count} klipy byly znovu propojeny."
+msgstr[2] "{count} klipů bylo znovu propojeno."
+

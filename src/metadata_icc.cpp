@@ -78,12 +78,23 @@ public:
 	struct Tag
 	{
 		uint32_t type_ = 0;
-		std::vector<uint8_t> data_;
+
+		// Shared, because several tags may name one region of the profile - the spec allows it, and
+		// the common sRGB profile points all three tone curves at a single curve. Each is a view of
+		// that region, not a copy of it.
+		std::shared_ptr<const std::vector<uint8_t>> payload_;
 
 		Tag() = default;
 
-		Tag(const uint32_t type, std::vector<uint8_t> data) : type_(type), data_(std::move(data))
+		Tag(const uint32_t type, std::shared_ptr<const std::vector<uint8_t>> payload) : type_(type),
+			payload_(std::move(payload))
 		{
+		}
+
+		const std::vector<uint8_t>& data() const
+		{
+			static const std::vector<uint8_t> none;
+			return payload_ ? *payload_ : none;
 		}
 	};
 
@@ -117,7 +128,7 @@ public:
 	// whose payload is either a Mac/ASCII pair or a table of UTF-16BE strings.
 	static std::string decode_text(const Tag& t)
 	{
-		const auto& d = t.data_;
+		const auto& d = t.data();
 
 		const auto be32 = [&d](const size_t i)
 		{
@@ -138,25 +149,36 @@ public:
 		if (t.type_ == TYPE_MLUC)
 		{
 			// multiLocalizedUnicodeType: 4 byte reserved, record count, record size, then records
-			// of language, country, length and offset. The first record is enough here.
-			if (d.size() < 28) return {};
-			const auto len = be32(20);
-			auto offset = be32(24);
-			// Offsets are from the start of the tag, and data_ begins after the 4 byte signature.
-			if (offset < 4) return {};
-			offset -= 4;
-			if (len < 2 || offset > d.size() || len > d.size() - offset) return {};
+			// of language, country, length and tag-relative offset.
+			if (d.size() < 24) return {};
+			const auto count = be32(4);
+			const auto record_size = be32(8);
+			constexpr size_t records_at = 12;
+			constexpr size_t minimum_record_size = 12;
+			if (count == 0 || record_size < minimum_record_size) return {};
+			if (count > (d.size() - records_at) / record_size) return {};
 
-			// The payload is UTF-16BE, so the code unit is two bytes on every platform.
-			std::u16string utf16;
-			utf16.reserve(len / 2);
-
-			for (size_t i = 0; i + 1 < len; i += 2)
+			for (size_t record = 0; record < count; ++record)
 			{
-				utf16.push_back(static_cast<char16_t>(d[offset + i] << 8 | d[offset + i + 1]));
-			}
+				const auto record_at = records_at + record * record_size;
+				const auto len = be32(record_at + 4);
+				auto offset = be32(record_at + 8);
+				// Offsets are from the start of the tag, and the payload begins after the 4 byte signature.
+				if (offset < 4) continue;
+				offset -= 4;
+				if (len < 2 || (len & 1u) != 0 || offset > d.size() || len > d.size() - offset) continue;
 
-			return str::utf16_to_utf8(utf16);
+				// The payload is UTF-16BE, so the code unit is two bytes on every platform.
+				std::u16string utf16;
+				utf16.reserve(len / 2);
+
+				for (size_t i = 0; i + 1 < len; i += 2)
+				{
+					utf16.push_back(static_cast<char16_t>(d[offset + i] << 8 | d[offset + i + 1]));
+				}
+
+				return str::utf16_to_utf8(utf16);
+			}
 		}
 
 		if (t.type_ == TYPE_TEXT)
@@ -249,7 +271,7 @@ public:
 	{
 		const auto found = tags_.find(sig);
 		if (found == tags_.end() || found->second.type_ != TYPE_XYZ) return false;
-		const auto& d = found->second.data_;
+		const auto& d = found->second.data();
 		if (d.size() < 16) return false;
 		out = {s15f16(d, 4), s15f16(d, 8), s15f16(d, 12)};
 		return true;
@@ -318,7 +340,7 @@ public:
 	// A tone curve is a table or a parametric function; either way the shape is what matters.
 	static std::string describe_curve(const Tag& t)
 	{
-		const auto& d = t.data_;
+		const auto& d = t.data();
 
 		if (t.type_ == TYPE_CURV)
 		{
@@ -348,18 +370,19 @@ public:
 
 	std::string describe_tag(const Tag& t) const
 	{
-		const auto text = str::strip(decode_text(t));
+		const auto decoded = decode_text(t);
+		const auto text = str::strip(decoded);
 		if (!text.empty()) return std::string(text);
 
-		if (t.type_ == TYPE_XYZ && t.data_.size() >= 16)
+		if (t.type_ == TYPE_XYZ && t.data().size() >= 16)
 		{
-			return format_xyz({s15f16(t.data_, 4), s15f16(t.data_, 8), s15f16(t.data_, 12)});
+			return format_xyz({s15f16(t.data(), 4), s15f16(t.data(), 8), s15f16(t.data(), 12)});
 		}
 
 		const auto curve = describe_curve(t);
 		if (!curve.empty()) return curve;
 
-		return str::print("binary, %zu bytes", t.data_.size() + 4);
+		return str::print("binary, %zu bytes", t.data().size() + 4);
 	}
 
 	void add_row(metadata_kv_list& result, const str::cached key, std::string value, const int depth,
@@ -400,7 +423,8 @@ public:
 
 			if (found != tags_.end())
 			{
-				const auto text = str::strip(decode_text(found->second));
+				const auto decoded = decode_text(found->second);
+				const auto text = str::strip(decoded);
 				if (!text.empty()) add_row(result, name, std::string(text), 1);
 			}
 		}
@@ -465,11 +489,11 @@ public:
 
 			auto& row = result.emplace_back(sig_text, describe_tag(tag));
 			row.depth = 1;
-			row.shape = std::format("{}, {} bytes", type_text, tag.data_.size() + 4);
+			row.shape = std::format("{}, {} bytes", type_text, tag.data().size() + 4);
 			row.id = std::format("icc.tag.{}", sig_text);
-			const auto kept = std::min(tag.data_.size(), str::max_hex_dump_bytes);
+			const auto kept = std::min(tag.data().size(), str::max_hex_dump_bytes);
 			row.detail = metadata_binary_detail{
-				std::vector<uint8_t>(tag.data_.begin(), tag.data_.begin() + kept)
+				std::vector<uint8_t>(tag.data().begin(), tag.data().begin() + kept)
 			};
 		}
 
@@ -657,6 +681,16 @@ bool load_from_mem(icc_profile& p, const df::cspan data)
 
 	p.declared_tag_count_ = tagCount;
 
+	// A tag's payload is a region of this profile, so the regions the tags name cannot legitimately
+	// amount to more than the profile itself. Without this running total a thousand tags pointing
+	// into the same megabyte copied a gigabyte out of a file that size. A region several tags share
+	// is charged once and its payload shared: the spec allows the sharing, and the sRGB profile most
+	// cameras embed points all three tone curves at one curve, so charging each tag for it refused
+	// two of the three.
+	const auto max_total_tag_bytes = data.size;
+	size_t total_tag_bytes = 0;
+	std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<const std::vector<uint8_t>>> regions;
+
 	for (uint32_t u = 0; u < tagCount; u++)
 	{
 		if (stream.index_ + 12 > data.size) // Need 12 bytes for tag entry
@@ -693,8 +727,27 @@ bool load_from_mem(icc_profile& p, const df::cspan data)
 
 		const uint32_t tag_type = stream.uint32();
 		const uint32_t remaining_size = size >= 4 ? size - 4 : 0;
+		const auto region = std::make_pair(offs, size);
 
-		p.tags_[sig] = icc_profile::Tag(tag_type, stream.array(remaining_size));
+		if (const auto shared = regions.find(region); shared != regions.end())
+		{
+			stream.seek(current);
+			p.tags_[sig] = icc_profile::Tag(tag_type, shared->second);
+			continue;
+		}
+
+		if (total_tag_bytes + remaining_size > max_total_tag_bytes)
+		{
+			stream.seek(current);
+			p.unread_.emplace_back(sig, str::print("beyond the profile's own size (%u bytes)", size));
+			continue;
+		}
+
+		total_tag_bytes += remaining_size;
+
+		auto payload = std::make_shared<const std::vector<uint8_t>>(stream.array(remaining_size));
+		regions.emplace(region, payload);
+		p.tags_[sig] = icc_profile::Tag(tag_type, std::move(payload));
 		stream.seek(current);
 	}
 

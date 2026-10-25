@@ -152,11 +152,17 @@ int run_console_tests(const std::string_view test_filter)
 		}
 	}
 
-	_temps.delete_temps();
+	const auto cleanup_errors = _temps.delete_temps();
+	const auto cleanup_failures = static_cast<int>(cleanup_errors.size());
+	for (const auto& error : cleanup_errors)
+	{
+		printf("  FAIL  temporary fixture cleanup\n        %s\n", error.c_str());
+	}
 
 	printf("\n========================================\n");
-	printf("Results: %d passed, %d failed, %d total\n", passed, failed, total);
+	printf("Results: %d passed, %d failed, %d total\n", passed, failed + cleanup_failures,
+	       total + cleanup_failures);
 	printf("========================================\n");
 
-	return failed > 0 || structural_failures > 0 ? 1 : 0;
+	return failed > 0 || cleanup_failures > 0 || structural_failures > 0 ? 1 : 0;
 }

@@ -4,18 +4,7 @@ This document owns the collection: what it is, how membership is decided and cha
 
 Both [primary design drivers](design.md#primary-design-drivers) apply without exception. The collection is the feature most able to violate them: it is the largest thing the application knows, it is built by walking storage the user controls, and it is the source of nearly every aggregate the user navigates by.
 
-## 1. Why a collection exists
-
-Media tools usually pick one of two shapes:
-
-- A **viewer** opens whatever it is pointed at. It is fast and honest but knows nothing, so every question larger than one file — how many, where, when, do I already have this — is unanswerable.
-- A **library** takes custody. It imports files into a managed store, and from then on the application's database is the truth and the filesystem is an implementation detail. It answers large questions, but it owns the user's files, is expensive to leave, and disagrees with the folder tree the user already maintains.
-
-Diffractor is neither. It is a viewer that also knows the answers, because it **indexes folders the user already keeps, in place**. The collection is the mechanism: a declaration of which folders count, from which everything else — search, aggregates, duplicates, presence, sync — is derived.
-
-This is the product's central bet. Everything below exists to keep it true.
-
-## 2. What a collection is
+## What A Collection Is
 
 **A collection is a declaration, not an accumulation.** It is a short list of included root folders plus a list of exclusions. It is not a record of per-file decisions, and nothing a user does while browsing quietly adds to it.
 
@@ -86,6 +75,7 @@ Membership is not a label; it is the precondition for every whole-collection cap
 | [Related items](design.md#related-items) | An item's copies, album, series, capture time, and capture place are answered from members only, so "what else belongs with this?" has a defined population too. |
 | [Presence](design.md#collection-presence) | An outside file can be compared against members to answer "do I already have this?". |
 | Import and Sync | Both name a collection side, so their direction and effect are stated against a defined set rather than against an ad-hoc folder pair. |
+| [Movie](movie.md#6-project-files) import | An old Movie Maker project's moved sources are found again among members, by name and by the length the project recorded, so the search has a defined population instead of the whole disk. |
 | Totals | "The collection contains N items" is meaningful because N has a definition the user can inspect. |
 
 The corollary is that a scope outside the collection cannot honestly offer these. When the current scope is not in the collection, that fact is reported plainly — the items shown are not from the collection. Where the report explains an empty or partial result, it also carries the action that would widen the collection, so the explanation and its remedy are the same surface. Silently returning empty or partial aggregates for a non-member scope would read as a broken product rather than as a scope distinction.
@@ -162,10 +152,6 @@ This is the case redundancy reporting is most likely to get wrong, because the s
 - **It does not persist a verdict.** Redundancy is recomputed from current evidence, never stored as a judgement that could outlive the files that justified it. Improving the comparison therefore changes the answers instead of leaving a stale one behind, and a grouping the user disagrees with is corrected by fixing the comparison, not by migrating data.
 - **It offers no bulk automatic resolution.** There is no "remove all duplicates" command. Such a command would have to choose keepers, would act partly on claims graded *possible*, and could not be previewed item by item at the scale where it would be worth having.
 
-### 7.5 Where the effort goes
-
-Redundancy is derived over the whole collection, so it answers to the first driver. Comparison is layered so that cheap, certain evidence carries the volume and expensive, uncertain evidence is asked for rarely: checksums, names, sizes, and capture times are read from the index, and pictures are compared only for candidates a cheaper grade has already narrowed. Work is progressive — results improve as the index converges, and completed work replaces provisional results in place — and no redundancy comparison runs on the interaction path.
-
 ## 8. Truth, staleness, and honesty
 
 The collection is a cache over storage the user can change behind Diffractor's back. Three rules keep the cache from becoming a second, competing truth:
@@ -174,33 +160,7 @@ The collection is a cache over storage the user can change behind Diffractor's b
 2. **Knowledge is retained when storage is not reachable.** A member folder on a detached or offline drive stays a member, and what is known about it stays known and searchable, marked as offline rather than deleted. Forgetting a collection because a drive was unplugged would make the collection less trustworthy than the folder tree it describes.
 3. **Incompleteness is disclosed, not hidden.** Indexing improves results progressively while browsing remains usable, and a surface whose results may be incomplete says so. Completed work replaces provisional results without requiring navigation or restart.
 
-## 9. What a collection is not
-
-Stated explicitly because each has been a plausible-sounding wrong turn:
-
-- **Not an album or a curated set.** Membership carries no judgement about quality, order, or intent. Curation is expressed by folders, tags, ratings, labels, and saved searches.
-- **Not custody.** Diffractor does not own, relocate, or restructure member files, and leaving Diffractor costs nothing because there is nothing to export.
-- **Not a mode.** The collection is one [scope](design.md#user-mental-model) among several. Browsing outside it is a first-class activity, not a degraded state.
-- **Not per-file state.** There is no "in collection" flag on a file to get out of sync with where the file is.
-- **Not a uniqueness guarantee, and not a deletion authority.** See [§6](#6-the-collections-edge) and [§7](#7-redundancy-one-relation-three-questions).
-- **Not a remote service.** The collection is built and held locally from storage the user controls; any network feature discloses its own trigger, data, recipient, and purpose independently.
-
-## 10. Design review
-
-- The collection definition is fully visible, and any folder's membership is explainable from it.
-- Nothing joins the collection as a side effect of browsing, viewing, searching, or editing.
-- Changing the definition changes only what is known, and says so.
-- A result limited by the collection's edge says so and offers the action that widens it.
-- Every whole-collection number states the population it was computed over.
-- Membership and presence are reported as different kinds of claim, and neither is presented as a deletion recommendation.
-- Offline members remain members; incomplete indexing never publishes an absence.
-- Presence, duplicate search, and related items never disagree about a pair, in either direction, at any grade.
-- Every copy claim states its evidence grade, and *certain* is never presented as *possible* or the reverse.
-- A set is presented as a set only where every member was compared against a common anchor; no item reaches a set by resembling another member.
-- Photographs are never reported as copies of one another on the strength of a shared capture time.
-- No redundancy surface chooses a keeper, enlarges a target, persists a verdict, or offers bulk automatic resolution.
-
-Presence wording and confidence values belong to [design.md](design.md#collection-presence), and the relations a related search reports belong to [design.md](design.md#related-items); the copy relation those surfaces share, its evidence grades, and the rules that keep them in parity are owned here in [§7](#7-redundancy-one-relation-three-questions). Place resolution over collection items belongs to [locations.md](locations.md). Index, summary, and scanning architecture belongs to [implementation.md](implementation.md#index-search-and-database). How a metadata write reaches disk belongs to [file-io.md](file-io.md). GitHub issues own design gaps and planned changes.
+Presence wording and confidence values belong to [design.md](design.md#collection-presence), and the relations a related search reports belong to [design.md](design.md#related-items); the copy relation those surfaces share, its evidence grades, and the rules that keep them in parity are owned here in [§7](#7-redundancy-one-relation-three-questions). Place resolution over collection items belongs to [locations.md](locations.md). Index, summary, and scanning architecture belongs to [implementation.md](implementation.md#index-search-and-database). How a metadata write reaches disk belongs to [file-io.md](file-io.md).
 
 ## Where this lives
 
@@ -209,12 +169,12 @@ Presence wording and confidence values belong to [design.md](design.md#collectio
 | The declared collection folders, includes and excludes | [app_settings.h](../src/app_settings.h), [app_settings.cpp](../src/app_settings.cpp) |
 | Membership resolution, folder roots, the collection edge | [model_index.cpp](../src/model_index.cpp), [model_index.h](../src/model_index.h) — `index_state` |
 | The indexed record a member earns | [model_index.h](../src/model_index.h) — `df::index_file_item`, `df::index_folder_item` |
-| Duplicate grouping and the perceptual-hash stage | [model_index.cpp](../src/model_index.cpp) — `index_state::update_predictions`; [app_dup_report.cpp](../src/app_dup_report.cpp) measures it over a real library |
+| Duplicate grouping and the perceptual-hash stage | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::update_predictions`; [app_dup_report.cpp](../src/app_dup_report.cpp) measures it over a real library |
 | The bounded nearest-match sets a related search answers with | [model_related.h](../src/model_related.h) |
-| Presence evaluation for a file outside the collection | [model_index.cpp](../src/model_index.cpp), [model_search.cpp](../src/model_search.cpp) |
+| Presence evaluation for a file outside the collection | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::queue_update_presence`, [model_search.cpp](../src/model_search.cpp) |
+| Finding a Movie Maker project's moved sources among members | [view_movie.cpp](../src/view_movie.cpp) — `import_movie_maker_project`; [model_movie.cpp](../src/model_movie.cpp) — `choose_movie_sources`; [app_movie_batch.cpp](../src/app_movie_batch.cpp) walks the member folders for the command line |
 | Persistence of the cached index | [model_db.cpp](../src/model_db.cpp), [model_db_pack.h](../src/model_db_pack.h) |
 
 The three redundancy surfaces in [§7](#7-redundancy-one-relation-three-questions) read one relation,
-so a change to the copy rules in `update_predictions` moves duplicate search, presence and related
-items together. `/test:*duplicate*` and `/test:*presence*` are the checks that hold them in parity;
-a change that improves one and not the others has broken the invariant this document exists to state.
+so a change to the copy rules in `update_predictions` moves duplicate search, presence, and related
+items together.

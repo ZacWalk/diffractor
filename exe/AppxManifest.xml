@@ -2,9 +2,12 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop3="http://schemas.microsoft.com/appx/manifest/desktop/windows10/3"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:rescap3="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities/3"
-  IgnorableNamespaces="uap rescap rescap3">
+  IgnorableNamespaces="uap uap3 desktop desktop3 rescap rescap3">
 
   <!--
   ===============================================================================================================
@@ -20,7 +23,7 @@
   <Identity
     Name="46714Diffractor.Diffractor"
     Publisher="CN=93EAD558-C663-408E-B7C1-B1A6FED88763"
-    Version="1.27.2.0"
+    Version="1.27.3.0"
     ProcessorArchitecture="x64" />
 
   <!--
@@ -152,6 +155,30 @@
             </rescap3:MigrationProgIds>
           </uap:FileTypeAssociation>
         </uap:Extension>
+
+        <!-- A "diffractor" command, so a terminal, a script or another app can open a folder or file
+             in the Store build the way the desktop build's command line does. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="diffractor.exe"
+                        EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="diffractor.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+
+        <!-- Offered by Windows AutoPlay when a camera card (a DCIM folder raises ShowPicturesOnArrival)
+             or a USB stick is inserted. Diffractor opens the volume with its subfolders - "**", as in
+             the address box - where Presence shows what is already in the collection. The action text
+             is not translated: it would need a string resource for every language in resources.pri. -->
+        <desktop3:Extension Category="windows.autoPlayHandler">
+          <desktop3:AutoPlayHandler>
+            <desktop3:InvokeAction ActionDisplayName="View photos and videos" ProviderDisplayName="Diffractor">
+              <desktop3:Content ContentEvent="ShowPicturesOnArrival" Verb="viewpictures" Parameters="&quot;%1**&quot;" />
+              <desktop3:Content ContentEvent="PlayVideoFilesOnArrival" Verb="viewvideos" Parameters="&quot;%1**&quot;" />
+              <desktop3:Content ContentEvent="MixedContentOnArrival" Verb="viewmixed" Parameters="&quot;%1**&quot;" />
+              <desktop3:Content ContentEvent="StorageOnArrival" Verb="viewstorage" Parameters="&quot;%1**&quot;" />
+            </desktop3:InvokeAction>
+          </desktop3:AutoPlayHandler>
+        </desktop3:Extension>
 
       </Extensions>
 

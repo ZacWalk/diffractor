@@ -15,17 +15,23 @@
 template <typename val_t, typename sorter_t>
 std::vector<val_t> top_vec(std::vector<std::pair<int, val_t>> all, int max)
 {
-	std::ranges::sort(all, [](auto&& l, auto&& r) { return l.first > r.first; });
+	if (max <= 0 || all.empty()) return {};
+
+	const auto result_count = std::min(static_cast<size_t>(max), all.size());
+	const auto by_count_then_value = [](const auto& l, const auto& r)
+	{
+		if (l.first != r.first) return l.first > r.first;
+		return sorter_t{}(l.second, r.second);
+	};
+
+	std::ranges::partial_sort(all, all.begin() + static_cast<ptrdiff_t>(result_count), by_count_then_value);
 
 	std::vector<val_t> results;
-	results.reserve(max);
+	results.reserve(result_count);
 
-	for (const auto& i : all)
+	for (auto i = 0_z; i < result_count; ++i)
 	{
-		if (max-- > 0)
-		{
-			results.emplace_back(i.second);
-		}
+		results.emplace_back(all[i].second);
 	}
 
 	std::ranges::sort(results, sorter_t());
@@ -43,5 +49,5 @@ inline std::vector<std::string_view> top_map(const df::string_counts& counts, co
 		all.emplace_back(i.second, i.first);
 	}
 
-	return top_vec<std::string_view, str::iless>(all, limit);
+	return top_vec<std::string_view, str::iless>(std::move(all), limit);
 }

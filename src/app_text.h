@@ -28,10 +28,17 @@ struct plural_text
 	text_t one;
 	text_t plural;
 
-	// Translated plural forms with index >= 2 (e.g. the Slavic "many" form).
-	// English and binary-plural languages leave this empty; one/plural cover
-	// forms 0 and 1. Populated from msgstr[2..] by app_text_t::load_lang.
-	std::vector<std::string> extra_forms;
+	// Translated plural forms with index >= 2 (e.g. the Slavic "many" form), from msgstr[2..].
+	// English and binary-plural languages leave it null; one/plural cover forms 0 and 1. Published
+	// the way a text_t is - a pointer to storage app_text_t never frees - because a worker formatting
+	// a count can hold a form across a language switch, which reassigned a vector under it.
+	std::atomic<const std::vector<std::string>*> extra_forms{nullptr};
+
+	std::string_view extra_form(const size_t index) const
+	{
+		const auto* const forms = extra_forms.load(std::memory_order_acquire);
+		return forms != nullptr && index < forms->size() ? std::string_view((*forms)[index]) : std::string_view{};
+	}
 };
 
 struct po_entry
@@ -63,6 +70,22 @@ struct po_entry
 	}
 };
 
+constexpr size_t max_supported_plural_forms = 4;
+constexpr size_t max_supported_plural_index = max_supported_plural_forms - 1;
+
+struct po_parse_error
+{
+	size_t line = 0;
+	std::string message;
+};
+
+struct po_load_result
+{
+	std::vector<po_entry> entries;
+	std::vector<po_parse_error> errors;
+};
+
+po_load_result load_po_report(df::file_path lang_file);
 std::vector<po_entry> load_po(df::file_path lang_file);
 
 std::string format_plural_text(const plural_text& fmt, int64_t count, int64_t of_total = 0);
@@ -106,6 +129,15 @@ struct app_text_t
 	std::vector<std::reference_wrapper<plural_text>> _all_plurals;
 	std::vector<std::reference_wrapper<text_t>> _all_texts;
 
+	// Every translation this session has loaded. A switch publishes new strings and leaves the
+	// previous ones in place, because a worker that read a translation pointer just before the
+	// switch still has to find valid storage behind it. A deque, so appending never moves what is
+	// already published. Bounded by the catalog size times the number of switches in one session.
+	std::deque<std::string> _translation_storage;
+
+	// The same for the extra plural forms of each plural text, which are published as a set.
+	std::deque<std::vector<std::string>> _plural_form_storage;
+
 	// Plural rule for the active language. Maps a count to a form index.
 	// Defaults to the binary one/plural rule used by English.
 	int (*_plural_rule)(int64_t) = nullptr;
@@ -139,16 +171,9 @@ struct app_text_t
 	text_t error_invalid_path = "File names cannot contain the following characters:";
 	text_t error_create_file_failed_fmt = "The destination file '{}' cannot be opened or created.";
 	text_t error_rename_failed = "Failed to rename.";
-	text_t error_ole_failed = "OleInitialize Failed";
-	text_t error_windows_common_controls_failed = "Failed to register windows common control classes.";
 	text_t error_create_folder_failed_fmt = "The destination folder '{}' cannot be opened or created.";
-	text_t error_atl_direct3d = "Failed to Initialize Direct3d";
 	text_t error_create_window_failed = "Diffractor cannot be started. The main window could not be created.";
-	text_t error_winsock_failed = "Failed to initialize Winsock";
-	text_t error_sse2_needed = "Diffractor requires a processor with sse2.";
-	text_t error_unsupported_os = "Diffractor requires Windows 7 or newer.";
 	text_t error_index_database_failed = "Index database failed.";
-	text_t error_cannot_continue = "Diffractor has a serious problem and cannot continue.";
 	text_t command_menu_group_sort = "Group or Sort";
 	text_t command_view_sort = "Sort";
 	text_t command_view_menu = "Menu";
@@ -179,6 +204,8 @@ struct app_text_t
 	text_t command_file_properties = "Open properties";
 	text_t command_share_email = "Email";
 	text_t email_preparing = "Preparing files for email...";
+	text_t command_share = "Share";
+	text_t share_preparing = "Preparing files to share...";
 	text_t command_desktop_background = "Desktop background";
 	text_t command_select_nothing = "Select none";
 	text_t command_options = "General options";
@@ -420,7 +447,6 @@ struct app_text_t
 		"family food friends landscape nature night portrait selfie todo travel urban viewed";
 	text_t title_rate = "rate";
 	text_t title_folder = "folder:{}";
-	text_t title_error = "Diffractor ERROR";
 	text_t type_to_search = "Type to search";
 	text_t prop_name_album = "Album";
 	text_t prop_name_show = "Show";
@@ -518,51 +544,8 @@ struct app_text_t
 	text_t prop_name_game = "Game//property";
 	text_t prop_name_label = "Label";
 	text_t prop_name_doc_id = "Document Id";
-	text_t menu_add_fmt = "Add '{}'";
-	text_t menu_undo = "Undo";
-	text_t menu_cut = "Cut";
-	text_t menu_copy = "Copy";
 	text_t menu_move = "Move";
-	text_t menu_paste = "Paste";
-	text_t menu_delete = "Delete";
-	text_t menu_select_all = "Select All";
-	text_t error_same_file = "The source and destination files are the same file.";
-	text_t error_many_src_1_dest =
-		"Multiple file paths were specified in the source buffer, but only one destination file path.";
-	text_t error_diff_dir =
-		"Rename operation was specified but the destination path is a different directory. Use the move operation instead.";
-	text_t error_src_root_dir = "The source is a root directory, which cannot be moved or renamed.";
-	text_t error_op_cancelled = "The operation was canceled.";
 	text_t error_analysis_cancelled = "The analysis was canceled.";
-	text_t error_dest_subtree = "The destination is a subtree of the source.";
-	text_t error_access_denied_src = "Security options denied access to the source.";
-	text_t error_path_too_deep = "The source or destination path exceeded or would exceed MAX_PATH.";
-	text_t error_many_dest =
-		"The operation involved multiple destination paths, which can fail in the case of a move operation.";
-	text_t error_invalid_files = "The path in the source or destination or both was invalid.";
-	text_t error_dest_same_tree = "The source and destination have the same parent folder.";
-	text_t error_fld_dest_is_file = "The destination path is an existing file.";
-	text_t error_file_dest_is_fld = "The destination path is an existing folder.";
-	text_t error_filename_too_long = "The name of the file exceeds MAX_PATH.";
-	text_t error_dest_is_cd_rom = "The destination is a read-only CD-ROM, possibly unformatted.";
-	text_t error_dest_is_dvd = "The destination is a read-only DVD, possibly unformatted.";
-	text_t error_dest_is_cd_record = "The destination is a writable CD-ROM, possibly unformatted.";
-	text_t error_file_too_large =
-		"The file involved in the operation is too large for the destination media or file system.";
-	text_t error_src_is_cdrom = "The source is a read-only CD-ROM, possibly unformatted.";
-	text_t error_src_is_dvd = "The source is a read-only DVD, possibly unformatted.";
-	text_t error_src_is_cd_record = "The source is a writable CD-ROM, possibly unformatted.";
-	text_t error_max = "MAX_PATH was exceeded during the operation.";
-	text_t error_unknown = "An unknown error occurred.";
-	text_t error_on_dest = "An unspecified error occurred on the destination.";
-	text_t error_dst_root_dir = "Destination is a root directory and cannot be renamed.";
-	text_t select_folder = "Select Folder...";
-	text_t jpeg_best = "JPEG - Best compression for photos";
-	text_t png_best = "PNG - Best for non photos";
-	text_t webp_best = "WEBP - Best for the web";
-	text_t error_connect_scanner = "Could not connect to scanner";
-	text_t error_scanner = "Scanner reported an error";
-	text_t error_save_image = "Failed to save image.";
 	text_t indexing = "Indexing";
 	text_t indexing_message =
 		"Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works.";
@@ -606,32 +589,10 @@ struct app_text_t
 	text_t tags_title = "Tags";
 	text_t album_artist = "Album Artist";
 	text_t copyright_title = "Copyright";
-	text_t month_january = "January";
-	text_t month_february = "February";
-	text_t month_march = "March";
-	text_t month_april = "April";
-	text_t month_may = "May";
-	text_t month_june = "June";
-	text_t month_july = "July";
-	text_t month_august = "August";
-	text_t month_september = "September";
-	text_t month_october = "October";
-	text_t month_november = "November";
-	text_t month_december = "December";
-	text_t month_short_jan = "jan";
-	text_t month_short_feb = "feb";
-	text_t month_short_mar = "mar";
-	text_t month_short_apr = "apr";
-	text_t month_short_may = "may";
-	text_t month_short_jun = "jun";
-	text_t month_short_jul = "jul";
-	text_t month_short_aug = "aug";
-	text_t month_short_sep = "sep";
-	text_t month_short_oct = "oct";
-	text_t month_short_nov = "nov";
-	text_t month_short_dec = "dec";
-	text_t text_true = "true";
-	text_t text_false = "false";
+	// Month names and booleans: the foundation's words, which this text translates and installs.
+	str::words words;
+	// The platform layer's messages, which this text translates and installs.
+	platform::messages platform_text;
 	text_t compare = "Compare";
 	text_t compare_tooltip = "Hold down left mouse button to compare items.";
 	text_t zoom_kb = "press ctrl+space";
@@ -647,6 +608,7 @@ struct app_text_t
 	text_t query_duplicates = "duplicates";
 	text_t query_duplicates_alt1 = "dups";
 	text_t query_duplicates_alt2 = "duplicate";
+
 	text_t pixels_title = "Pixels";
 	text_t pixels_icon = "icon";
 	text_t pixels_small = "small";
@@ -880,8 +842,6 @@ struct app_text_t
 	text_t options_check_for_update = "Check for updates by connecting to the internet";
 	text_t options_use_gpu = "Use hardware acceleration to draw the Diffractor user interface (requires restart)";
 	text_t options_use_gpu_video = "Use hardware acceleration to decode video (when available)";
-	text_t options_use_yuv_tex =
-		"Use NV12 and P010 format textures (Automatically turned off if problems detected)";
 	text_t options_send_crash_reports =
 		"Help make Diffractor better. If Diffractor crashes send anonymous diagnostics to Diffractor HQ. No personal data is sent - just crash diagnostics.";
 	text_t options_show_debug_info = "Show application debugging information (for the programmers).";
@@ -926,6 +886,11 @@ struct app_text_t
 	text_t email_sending = "Sending email using MAPI...";
 	text_t email_canceled = "Email draft was canceled.";
 	text_t email_failed = "Failed to send email using MAPI.";
+	text_t share_small_help =
+		"Windows lists the apps that can receive the files. Originals are unchanged.";
+	text_t share_zip = "Send the files as one zip file";
+	text_t button_share = "&Share";
+	text_t share_failed = "The files could not be shared.";
 	text_t keyboard_or = "OR";
 	text_t keyboard_alt = "alt";
 	text_t keyboard_control = "ctrl";
@@ -1245,6 +1210,57 @@ struct app_text_t
 	text_t editing_title = "Editing";
 	text_t edit_info =
 		"Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save.";
+	text_t movie_title = "Movie mixer";
+	text_t movie_info =
+		"Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save.";
+	text_t movie_settings_title = "Movie";
+	text_t movie_clip_title = "Selected clip";
+	text_t movie_crossfade = "Crossfade between clips";
+	text_t movie_cut = "Cut between clips";
+	text_t movie_transition_length = "Transition (tenths of a second)";
+	// The same number sets the crossfade and the fades at the movie's ends, so it is labelled for
+	// whichever of the two the current settings actually use.
+	text_t movie_fade_length = "Fade (tenths of a second)";
+	text_t movie_fade_in = "Fade in from black";
+	text_t movie_fade_out = "Fade out to black";
+	text_t movie_photo_duration = "Photo duration (tenths of a second)";
+	text_t movie_clip_duration = "This photo (tenths of a second)";
+	text_t movie_use_default = "Use the movie default";
+	text_t movie_empty = "Add photos and videos to build a movie.";
+	text_t movie_output_fmt = "Output {} x {} at {} fps, {} long.";
+	text_t movie_clip_fmt = "{} - clip {} of {}, starting at {}.";
+	text_t movie_project_files = "Movie project";
+	text_t movie_maker_files = "Windows Movie Maker project";
+	text_t movie_media_files = "Photos and videos";
+	text_t movie_open_failed_fmt = "Could not read the project {}.";
+	text_t movie_save_failed_fmt = "Could not save the project {}.";
+	text_t movie_video_files = "Video";
+	text_t movie_rendering = "Rendering the movie";
+	text_t movie_render_failed_fmt = "The movie could not be rendered. {}";
+	text_t movie_error_no_length = "The movie has no length.";
+	text_t movie_error_no_encoder = "The encoder would not accept this movie.";
+	text_t movie_error_no_memory = "There was not enough memory for a movie frame.";
+	text_t movie_error_undecodable = "A clip could not be decoded.";
+	text_t movie_error_encoder_failed = "The encoder stopped before the movie was finished.";
+	text_t movie_error_output_is_source = "That name belongs to a clip in this movie. Choose another name.";
+	text_t movie_rendered_fmt = "Rendered {}.";
+	text_t movie_render_cancelled = "Rendering was canceled. Nothing was written.";
+	text_t movie_relink_none = "No missing clip was found in that folder.";
+	text_t movie_unsaved_prompt =
+		"This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it.";
+	text_t movie_discard = "Close without saving";
+	text_t command_movie = "Movie mixer";
+	text_t tooltip_movie = "Assemble the selected photos and videos into one video.";
+	text_t command_movie_render = "Render";
+	text_t tooltip_movie_render = "Write the movie to a video file.";
+	text_t command_movie_relink = "Relink missing files";
+	text_t tooltip_movie_relink = "Point clips whose source file has moved at a folder you choose.";
+	text_t command_movie_add = "Add files";
+	text_t command_movie_remove = "Remove from movie";
+	text_t command_movie_send_to_end = "Send to the end";
+	text_t command_movie_open = "Open project";
+	text_t command_movie_save = "Save project";
+	text_t command_movie_import = "Import Movie Maker project";
 	text_t convert_info =
 		"Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder.";
 	text_t edit_metadata_info =
@@ -1432,9 +1448,13 @@ struct app_text_t
 		"{first-name} was ignored because it was previously imported.",
 		"{count} items were ignored because they were previously imported."
 	};
+	plural_text import_date_unset_fmt = {
+		"1 item was imported but its created date could not be set.",
+		"{count} items were imported but their created date could not be set."
+	};
 	plural_text delete_info_fmt = {
-		"{first-name} will be moved to the recycle bin.",
-		"{count} items ({size}) will be moved to the recycle bin."
+		"{first-name} will be moved to the recycle bin when Windows can recycle it.",
+		"{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
 	};
 	plural_text delete_info_permanent_fmt = {
 		"{first-name} will be permanently deleted.",
@@ -1471,6 +1491,10 @@ struct app_text_t
 		"A desktop email draft will be opened with {first-name} attached.",
 		"A desktop email draft will be opened with {count} selected items attached."
 	};
+	plural_text share_info_fmt = {
+		"{first-name} will be offered to the app you choose.",
+		"{count} selected items will be offered to the app you choose."
+	};
 	plural_text would_overwrite_fmt = {
 		"{first-name} already exists. Do you want to replace it?",
 		"{first-name} and {other} other items already exist. Do you want to replace them?"
@@ -1479,6 +1503,14 @@ struct app_text_t
 		"{first-name} will have existing GPS position metadata overwritten.",
 		"{first-name} and {other} other items will have existing GPS position metadata overwritten."
 	};
+	plural_text movie_ignored_fmt = {
+		"1 element of the imported project was left out because Movie cannot represent it.",
+		"{count} elements of the imported project were left out because Movie cannot represent them."
+	};
+	plural_text movie_missing_fmt = {
+		"1 clip cannot find its source file.", "{count} clips cannot find their source files."
+	};
+	plural_text movie_relink_fmt = {"1 clip was relinked.", "{count} clips were relinked."};
 };
 
 extern app_text_t tt;

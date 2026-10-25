@@ -159,12 +159,12 @@ static uint32_t RotateLeft(const uint32_t x, const uint32_t n)
 // F, G, H and I are basic MD5 functions.
 static uint32_t F(const uint32_t x, const uint32_t y, const uint32_t z)
 {
-	return x & y | ~x & z;
+	return (x & y) | (~x & z);
 }
 
 static uint32_t G(const uint32_t x, const uint32_t y, const uint32_t z)
 {
-	return x & z | y & ~z;
+	return (x & z) | (y & ~z);
 }
 
 static uint32_t H(const uint32_t x, const uint32_t y, const uint32_t z)

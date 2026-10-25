@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "ui.h"
+#include "libdesktop/ui.h"
 
 struct plasma
 {
@@ -116,8 +116,8 @@ struct plasma
 		for (int i = 0; i < 256; ++i)
 		{
 			const auto b = _cosinus[i];
-			const auto g = _cosinus[i + 32 & 0x0ff];
-			const auto r = _cosinus[i + 64 & 0x0ff];
+			const auto g = _cosinus[(i + 32) & 0x0ff];
+			const auto r = _cosinus[(i + 64) & 0x0ff];
 
 			const auto c = b + g + r;
 			const auto bb = df::round(b * fc / fade_max + c * fb / cd);
@@ -179,6 +179,6 @@ struct plasma
 	static int calc_stride(const int width, const int bpp) noexcept
 	{
 		const int bpp_width = width * bpp;
-		return (bpp_width + (bpp_width % 8 ? 8 : 0)) / 8 + 3 & ~3;
+		return ((bpp_width + (bpp_width % 8 ? 8 : 0)) / 8 + 3) & ~3;
 	}
 };

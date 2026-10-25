@@ -84,6 +84,11 @@ namespace features
 	constexpr uint64_t view_sync = 1ull << 54;
 	constexpr uint64_t view_locate = 1ull << 55;
 	constexpr uint64_t view_tags = 1ull << 56;
+	constexpr uint64_t view_movie = 1ull << 57;
+
+	// The tool bits above ran out at the view bits, so later tools continue here. Email keeps its bit
+	// for the draft that Share falls back to where the system has no share sheet.
+	constexpr uint64_t share = 1ull << 58;
 
 	constexpr uint64_t view_bit(const view_type v)
 	{
@@ -92,6 +97,7 @@ namespace features
 		case view_type::items: return view_items;
 		case view_type::media: return view_media;
 		case view_type::edit: return view_edit;
+		case view_type::movie: return view_movie;
 		case view_type::rename: return view_rename;
 		case view_type::batch: return view_batch;
 		case view_type::import: return view_import;
@@ -270,7 +276,6 @@ public:
 	bool check_for_updates = false;
 	bool send_crash_dumps = false;
 #endif
-	bool can_animate = false;
 	repeat_mode repeat = repeat_mode::repeat_none;
 	zoom_navigator_mode zoom_navigator = zoom_navigator_mode::auto_hide;
 	bool auto_play = false;
@@ -343,17 +348,25 @@ public:
 		bool maximize = false;
 	} desktop_background;
 
-	struct email_t
+	// What Share and Email each let the user change about the files that leave the app. Each keeps
+	// its own: an email draft wants small attachments, while a share usually goes somewhere that
+	// wants the original.
+	struct outgoing_choices_t
 	{
-		std::string to;
-		std::string subject;
-		std::string message;
-
 		bool zip = false;
 		bool limit = false;
 		bool convert = false;
 		int max_side = 0;
+	};
+
+	struct email_t : outgoing_choices_t
+	{
+		std::string to;
+		std::string subject;
+		std::string message;
 	} email;
+
+	outgoing_choices_t share;
 
 	struct convert_t
 	{
@@ -405,4 +418,12 @@ public:
 
 extern settings_t setting;
 
+// Hands the renderer its YUV latch from setting.use_yuv, and keeps it there when a driver fault
+// clears it: a backend reads ui::yuv_textures_allowed when it starts and calls ui::on_yuv_fault.
+void connect_yuv_latch();
+
 std::vector<std::string_view> split_collection_folders(std::string_view text);
+
+// The collection roots the settings name, includes and excludes alike. Defined with the index
+// workers that start from it; the Movie command line reads the same roots to search the collection.
+df::index_roots index_folders(const settings_t::index_t& collection);

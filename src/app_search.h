@@ -56,9 +56,22 @@ public:
 		_previewing = false;
 	}
 
-	void end()
+	// Focus leaving the address box ends the session. A preview is a suggestion the user was
+	// looking at, not one they chose, so the draft they typed comes back with them - otherwise the
+	// highlighted completion is left sitting in the box and becomes the address as far as the next
+	// Enter, and anything else reading the box, can tell.
+	outcome end()
 	{
+		outcome result;
+
+		if (_previewing)
+		{
+			result.edit_text = _typed;
+			result.set_edit_text = true;
+		}
+
 		_previewing = false;
+		return result;
 	}
 
 	// Typing maintains a draft separate from the committed address.

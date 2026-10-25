@@ -10,7 +10,8 @@
 #
 # This has already found four divergences, each silent: zlib declined by --disable-autodetect and
 # with it thirty-odd decoders, libopenmpt never asked for, network demuxers present on one side
-# only, and the entire encoder and muxer set being compiled into a reader. See docs/linux.md.
+# only, and the entire encoder and muxer set being compiled into a reader. See the FFmpeg checklist
+# in docs/third-party.md.
 #
 # The divergences that remain are real and expected -- the hardware accelerators, Media Foundation
 # and SChannel are Windows-only by nature -- so the guard is not "no divergence" but "no divergence
@@ -31,15 +32,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Both platforms split their switches across two generated headers, and the component list -- every
 # decoder, demuxer, encoder and muxer, which is what this comparison is for -- is in the second.
-# Windows checks in one per architecture plus a shared component list; Linux generates both into the
-# build's staging directory, which also holds a copy of the Windows headers that must not be read.
-WINDOWS_DIR = REPO_ROOT / "third-party" / "FFmpeg"
+# The fork checks in Windows' headers, one per architecture plus a shared component list, and they
+# are read from the copy of the fork the Linux build fetched; Linux generates both into the build's
+# staging directory, which also holds a copy of the Windows headers that must not be read.
+WINDOWS_DIR = REPO_ROOT / "tmp" / "linux-build" / "_deps" / "ffmpeg-src"
 WINDOWS_HEADERS = ("config-x64.h", "config_components.h")
 
 LINUX_DIR = REPO_ROOT / "tmp" / "linux-build" / "third-party" / "ffmpeg" / "src"
 LINUX_HEADERS = ("config.h", "config_components.h")
 
-BASELINE = REPO_ROOT / "third-party" / "ffmpeg-config-divergence.txt"
+BASELINE = REPO_ROOT / "cmake" / "vendored" / "ffmpeg-config-divergence.txt"
 
 DEFINE = re.compile(r"^#define\s+(CONFIG_[A-Z0-9_]+)\s+(\S+)")
 
@@ -109,7 +111,7 @@ def write_baseline(path: Path, lines: list[str]) -> None:
         "# Windows side, glibc's iconv on the Linux side. A decoder, demuxer, encoder or muxer here is",
         "# a defect rather than a divergence, and so is anything that is merely a choice one side made.",
         "#",
-        "# See docs/linux.md, 'FFmpeg is configured twice, and the two answers differ'.",
+        "# See docs/third-party.md, 'FFmpeg Configuration And Rebase Checklist'.",
         "",
     ]
     path.write_text("\n".join(header + lines) + "\n", encoding="utf-8")
@@ -118,7 +120,7 @@ def write_baseline(path: Path, lines: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare the two FFmpeg configurations")
     parser.add_argument("--windows", type=Path, default=WINDOWS_DIR,
-                        help="directory holding the checked-in Windows headers")
+                        help="directory holding the fork's checked-in Windows headers")
     parser.add_argument("--linux", type=Path, default=LINUX_DIR,
                         help="directory holding the headers the Linux build generated")
     parser.add_argument("--baseline", type=Path, default=BASELINE)

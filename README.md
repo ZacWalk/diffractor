@@ -1,5 +1,5 @@
 # Diffractor
-[![CI](https://github.com/diffractor/diffractor/actions/workflows/windows.yml/badge.svg)](https://github.com/diffractor/diffractor/actions/workflows/windows.yml)
+[![CI](https://github.com/ZacWalk/diffractor/actions/workflows/windows.yml/badge.svg)](https://github.com/ZacWalk/diffractor/actions/workflows/windows.yml)
 
 Free, high-performance photo and video organizer for Windows. Optimized for speed and local file control—no cloud storage or subscriptions required.
 
@@ -12,42 +12,24 @@ Free, high-performance photo and video organizer for Windows. Optimized for spee
 | **Viewing** | Unified photo/video/audio playback; native support for most formats including RAW |
 | **Zoom** | One scale-and-center model across mouse, keyboard, wheel, and touch; hold to inspect, an overview navigator, and linked side-by-side magnification |
 | **Search** | Instant metadata-based search (tags, location, camera data) via local indexing |
-| **Places** | Photos and videos are placed from GPS alone, searchable by place, city, state, country, or distance, with a map and a timeline of derived visits |
+| **Places** | Photos and videos are placed from GPS alone, searchable by place, city, state, country, or distance, with map and visit-derived grouping |
 | **Metadata** | Read/write XMP, IPTC, EXIF, ID3; add tags, ratings, location |
 | **Organization** | Side-by-side comparison, and duplicate detection ("Presence") that recognizes a re-encoded, resized, or rotated copy as well as an identical one |
 | **Related items** | Finds possible copies, the same album, the same series, and the closest capture times and places, each as its own group |
 | **File operations** | Rename, Import, and Sync preview every file before they run, and state how each name collision will be resolved |
 | **Sync** | Bidirectional sync to NAS/network drives for backup and collaboration |
 | **Editing** | Resize, rotate, crop, perspective, temperature and tint, color adjustment, and automatic color, straighten, and document correction |
-| **Languages** | English plus 13 fully translated languages |
-
-## Quick Start
-
-1. Download from [diffractor.com](https://diffractor.com/) and install
-2. Point to your media folders—Diffractor indexes automatically
-3. Browse via sidebar (date, location, folder, file type)
-4. Apply ratings/tags via keyboard shortcuts or UI; select two like items to compare them for burst sorting
-5. Sync to network drives; use metadata tools for maintenance
-
-**Why Diffractor?** Fast (handles large libraries without lag), private (local-only), lightweight, free.
-
-## Deployment Options
-
-| Distribution | Description |
-|--------------|-------------|
-| **Windows Desktop** | Traditional installer (`diffractor-setup.exe`) with auto-update support |
-| **Windows Store** | MSIX package for Microsoft Store distribution (updates handled by Store) |
-| **Portable** | ZIP archive for standalone use without installation |
-
-Both Desktop and Store builds share the same codebase. The `WINSTORE` preprocessor define controls Store-specific behavior (disables built-in auto-update since the Store handles updates).
+| **Languages** | English plus 13 translation catalogs |
 
 ## Building
 
 ```bash
-git clone --recursive https://github.com/diffractor/diffractor.git
+git clone https://github.com/ZacWalk/diffractor.git
 ```
 
-The build is CMake on both platforms. Submodules: [FFmpeg](https://github.com/diffractor/FFmpeg), [XMP-SDK](https://github.com/diffractor/XMP-Toolkit-SDK).
+The build uses CMake and requires Visual Studio and Ninja. CMake fetches the dependencies at the
+versions `cmake/dd-dependencies.json` pins, Diffractor's [FFmpeg](https://github.com/ZacWalk/FFmpeg)
+fork among them.
 
 Everything goes through the `dd` gateway, which finds Visual Studio, configures with Ninja and puts the binary in `exe/`:
 
@@ -57,63 +39,65 @@ python tools/dd.py build --config Release --arch x86     # the 32-bit desktop bi
 python tools/dd.py build --winstore                      # the Store binary
 ```
 
-For debugging and profiling in the IDE, generate projects on demand — they are not checked in:
+Release packaging also requires NSIS, the Windows SDK, and a code-signing certificate; `dd.ps1`
+fetches the 7-Zip it packs with. Run `.\dd.ps1` for the complete command list.
+
+Product behavior is documented in [docs/design.md](docs/design.md). Architecture is
+documented in [docs/implementation.md](docs/implementation.md), whose links lead to
+the specialized subject documents. Contributor routing and repository rules are in
+[AGENTS.md](AGENTS.md).
+
+## Rendering Movie projects from the command line
+
+Movie projects can be checked, imported and rendered without opening a window. Import turns each
+Windows Live Movie Maker `.wlmp` project into a native `.otio` one, finding its moved sources in your
+collection; render makes a movie from a native project. How moved sources are found again is described
+in [docs/movie.md](docs/movie.md#6-project-files), and the switches in
+[docs/movie.md](docs/movie.md#9-command-line).
+
+| Switch | Effect |
+|--------|--------|
+| `-movie-check:<project or folder>` | Reports what import would make of each `.wlmp`, or what render would find in each `.otio`. Writes nothing |
+| `-movie-import:<project or folder>` | Writes a native `.otio` project for each `.wlmp`, with sources found in the collection |
+| `-movie-render:<project or folder>` | Writes an `.mp4` for each `.otio` project whose sources are all usable |
+| `-movie-media:<folder>` | Also searches this folder and its subfolders, by name, for sources missing from their stored paths |
+| `-movie-out:<folder>` | Sets where imported projects or rendered movies go. By default each goes beside its project |
+| `-movie-overwrite` | Replaces a project or movie that already exists instead of skipping it |
+| `-movie-skip-missing` | Renders without the clips whose source cannot be used |
 
 ```powershell
-cmake -S . -B tmp/vs -G "Visual Studio 18 2026" -A x64
+.\exe\diffractor64.exe -movie-check:D:\Projects | Out-Host
+.\exe\diffractor64.exe -movie-import:D:\Projects | Out-Host
+.\exe\diffractor64.exe -movie-render:D:\Projects -movie-out:D:\Movies | Out-Host
 ```
 
-### Build Script
-
-Use `dd.ps1` from a Developer PowerShell:
-
-| Command | Description |
-|---------|-------------|
-| `.\dd.ps1` | Show usage information and current version |
-| `.\dd.ps1 build` | Build x64 Debug and Release, auto-increments build number |
-| `.\dd.ps1 test` | Run the unit tests and validate the translation catalogs |
-| `.\dd.ps1 bean` | Run the tests with file-I/O scratch on an SMB share |
-| `.\dd.ps1 desktop` | Build desktop versions (Win32 + x64), auto-increments build number |
-| `.\dd.ps1 store` | Build Windows Store MSIX package, auto-increments build number |
-| `.\dd.ps1 run` | Run the recently built diffractor64.exe |
-| `.\dd.ps1 cpu` | Run diffractor64.exe with CPU software rendering |
-| `.\dd.ps1 bump-build` | Manually increment build number without building |
-| `.\dd.ps1 bump-ver` | Increment minor version (e.g., 1.26.2 -> 1.26.3) |
-
-**Prerequisites for release builds:** NSIS, 7-Zip, Windows SDK, code signing certificate.
-
-## Documentation
-
-| Document | Subject |
-|----------|---------|
-| [docs/design.md](docs/design.md) | Durable product behavior and the scope/contents/target/effect model |
-| [docs/implementation.md](docs/implementation.md) | Architecture, data flow, threading, and validation |
-| [docs/collections.md](docs/collections.md) | The collection: membership, what it earns, and its edge |
-| [docs/locations.md](docs/locations.md) | Places, location search, distance, and visits |
-| [docs/zoom.md](docs/zoom.md) | The zoom model, behavior contract, and how it is judged |
-| [docs/selection-controls.md](docs/selection-controls.md) | The selection panel: form, content, ordering, and density |
-| [docs/file-io.md](docs/file-io.md) | Reading, writing, and change response for media files |
-| [docs/metadata.md](docs/metadata.md) | Property-to-tag mapping across XMP, EXIF, IPTC, and container tags |
-| [docs/rendering.md](docs/rendering.md) | Surfaces, color, and the draw backends |
-| [docs/third-party.md](docs/third-party.md) | Vendored dependencies and how they are updated |
-| [docs/v-1.27.2.md](docs/v-1.27.2.md) | What the current release changed, and how it was verified |
-| [docs/v-next.md](docs/v-next.md) | Deferred work, open issues, and constraints that must not be lost |
+Paths must be full paths. Quote the whole switch when a path contains a space, as in
+`"-movie-import:D:\My Projects\trip.wlmp"`. Piping into `Out-Host` makes PowerShell wait and show the
+report as it is written.
 
 ## Contributing
 
-Contributions welcome via [issues](https://github.com/diffractor/diffractor/issues).
+Contributions are coordinated through [GitHub issues](https://github.com/ZacWalk/diffractor/issues).
+Use [Poedit](https://poedit.net/) for catalogs under `exe/languages`, and run
+`.\dd.ps1 test` before submitting a change.
 
-**Translations:** Edit PO files with [poedit](https://poedit.net/). Files in [exe/languages](https://github.com/diffractor/diffractor/tree/master/exe/languages). Use German as template for new languages. Test by copying to `%LOCALAPPDATA%\Diffractor\languages`.
+## License
 
-**Tests:** Run the embedded suite with `diffractor64.exe /test` or `diffractor64.exe /test:*filter*`; the process exits with `0` when all selected tests pass and `1` when any test fails. `/run-tests` remains an alias for a complete command-line run.
+Diffractor is free software.
 
-**Diagnostics (Debug builds only):** The former test-view diagnostics are available as startup options. `-test-reset-graphics` resets graphics resources, `-test-new-version` simulates the new-version UI, `-test-send-crash-report` submits the test crash report, and `-test-crash` deliberately crashes the process. The non-crashing options leave Diffractor open for inspection.
+**Diffractor's own source** — everything in `src/`, `tools` and `cmake/` — is licensed under the
+**GNU Lesser General Public License, version 2.1 or later**.
 
-**Documentation screenshots (Debug builds only):** Use `-screenshot:<scene>` with a media file or folder. Diffractor opens the requested scene in a 1600 x 1000 window, waits 10 seconds, captures and scales the window to 800 x 500, replaces `screenshot.webp` beside the source tree, and exits. The optional `-screenshot-output:<absolute-path>` selects a different image file and format.
+**Released binaries are licensed under the LGPL, version 3.0 or later.** They statically link
+[libheif](https://github.com/strukturag/libheif) and [libde265](https://github.com/strukturag/libde265),
+both of which are LGPL-3.0-or-later, and LGPL 2.1 cannot absorb LGPL 3 code. Because Diffractor's own
+code is offered as "2.1 or later", the combined work resolves to 3.0 or later. Anyone who removes
+those two dependencies may use the remaining Diffractor code under 2.1.
 
-```powershell
-.\exe\diffractor64-d.exe -screenshot:items "C:\Users\zacwalker\Pictures\favs\2021-01-05 18.45.43.jpg"
-```
+The full texts are in [LICENSE](LICENSE) (LGPL-3.0) and [COPYING.GPLv3](COPYING.GPLv3), which LGPL-3.0
+incorporates by reference.
 
-Supported scenes: `items`, `fullscreen`, `edit`, `edit-preview`, `rename`, `adjust-date`, `convert`, `metadata`, `import`, `sync`, and `locate`.
+Vendored libraries and their terms are listed in
+[docs/third-party.md](docs/third-party.md#licensing). FFmpeg is deliberately configured with
+`CONFIG_GPL 0`, so no GPL-only component is included and it is used under the LGPL.
 

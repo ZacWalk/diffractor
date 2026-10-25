@@ -235,7 +235,7 @@ void sha1::buffer_to_block(const uint8_t* buf, uint32_t block[BLOCK_INTS])
 	// Convert the byte buffer to a uint32 array (MSB) 
 	for (uint32_t i = 0; i < BLOCK_INTS; i++)
 	{
-		block[i] = buf[4 * i + 3] & 0xff
+		block[i] = (buf[4 * i + 3] & 0xff)
 			| (buf[4 * i + 2] & 0xff) << 8
 			| (buf[4 * i + 1] & 0xff) << 16
 			| (buf[4 * i + 0] & 0xff) << 24;

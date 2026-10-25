@@ -32,6 +32,38 @@ private:
 		// Terminal: a decode that returned nothing will return nothing again for the same image, and
 		// paint is what asks. Without this the strip re-requests on every frame it repaints.
 		bool decode_failed = false;
+		uint64_t decode_request = 0;
+
+		bool has_retained_resource() const
+		{
+			return texture || surface || decode_pending;
+		}
+
+		void retire_resources()
+		{
+			image.reset();
+			texture.reset();
+			surface.reset();
+			decode_pending = false;
+			decode_failed = false;
+			++decode_request;
+		}
+	};
+
+	struct rebuild_stats
+	{
+		size_t lookup_entries = 0;
+		size_t probes = 0;
+		size_t reused = 0;
+		size_t preserved_markers = 0;
+	};
+
+	struct resource_stats
+	{
+		size_t before = 0;
+		size_t after_retire = 0;
+		size_t after_stale_publish = 0;
+		size_t after_reentry_publish = 0;
 	};
 
 	view_state& _state;
@@ -50,8 +82,19 @@ private:
 	bool _scroll_to_focus = false;
 
 	void rebuild_items();
+	static rebuild_stats rebuild_selector_items(std::vector<selector_item>& existing,
+	                                            const std::vector<df::item_element_ptr>& ordered,
+	                                            std::vector<selector_item>& items);
+	static size_t retire_off_band_resources(std::vector<selector_item>& items, recti logical_bounds);
+	static bool publish_decoded_surface(std::vector<selector_item>& items, recti logical_bounds,
+	                                    const df::item_element_ptr& item, const ui::const_image_ptr& image,
+	                                    uint64_t request, ui::surface_ptr surface);
 	void clamp_scroll();
 	void update_visible_items();
+	recti resource_logical_bounds() const;
+	void retire_off_band_resources();
+	bool publish_decoded_surface(const df::item_element_ptr& item, const ui::const_image_ptr& image,
+	                             uint64_t request, ui::surface_ptr surface);
 	selector_item* item_from_location(pointi loc);
 	const selector_item* item_from_location(pointi loc) const;
 
@@ -72,7 +115,7 @@ public:
 	void layout(ui::measure_context& mc, sizei extent) override;
 	void render(ui::draw_context& dc, view_controller_ptr controller) override;
 	bool mouse_wheel(pointi loc, ui::wheel_notch notch) override;
-	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc) override;
+	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 	void broadcast_event(const view_element_event& event) const override;
 
 	void make_visible(const df::item_element_ptr& item);
@@ -81,4 +124,9 @@ public:
 	recti scrollbar_thumb_bounds() const;
 	void scrollbar_to(int x);
 	void scroll_by(int delta_x);
+
+	static rebuild_stats test_rebuild_reuse(size_t count);
+	static resource_stats test_resource_retirement(size_t count, sizei extent, int item_width, int scroll_x);
+	void test_add_pending_decode_for_resource_event();
+	bool test_resource_event_cleared_pending_decode() const;
 };

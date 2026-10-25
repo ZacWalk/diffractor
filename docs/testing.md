@@ -7,7 +7,6 @@ This document owns the test taxonomy: which subject owns which test, where a new
 Tests are compiled into the application and run from the command line. There is no separate test binary and no external framework.
 
 ```powershell
-.\dd.ps1 test                              # unit tests + .po validation + translation check
 .\exe\diffractor64-d.exe /test             # x64 Debug, everything
 .\exe\diffractor64-d.exe /test:*search*    # one subject
 .\exe\diffractor64-d.exe "/test:Should rename file case"
@@ -33,9 +32,10 @@ One file per subject, matching the `src/` prefixes in [implementation](implement
 | [test_index.cpp](../src/test_index.cpp) | `register_index_tests` | `model_index`, `model_db`, `model_postings`: indexing, the inverted and trigram indexes, the database, the thumbnail pipeline, duplicates and presence, stale-result discarding, hydration |
 | [test_search.cpp](../src/test_search.cpp) | `register_search_tests` | `model_search`, `model_related`, `app_match`: query parsing, term matching, scopes, negation, exclusion, related items, prediction |
 | [test_locations.cpp](../src/test_locations.cpp) | `register_location_tests` | `model_locations`, `model_visits`, `ui_map*`, `ui_globe`, `model_tile_cache`: the gazetteer, place naming, map areas and geometry, the globe's projection and framing, visits, the timeline, the map tile cache. See [locations](locations.md) |
+| [test_movie.cpp](../src/test_movie.cpp) | `register_movie_tests` | `model_movie`: the Movie document -- derived output geometry, transition and duration arithmetic, timeline edits and undo, what entering Movie does with the timeline it holds, the OpenTimelineIO project file, the Movie Maker reader, finding a moved source among same-named files. See [movie](movie.md) |
 | [test_view.cpp](../src/test_view.cpp) | `register_view_tests` | `view*`, `ui*`, `model_zoom`, `ui_flex`: the zoom model, the panorama camera and its field-of-view ladder, the item selector, the view scroller, flex layout, tile geometry, detail rows, the task-list run highlight, text editing |
 | [test_app.cpp](../src/test_app.cpp) | `register_app_tests` | `app*`: selection and command enablement, settings persistence, rename, import, sync and convert planning, external tools, history, the crash guard |
-| [test_platform_win.cpp](../src/test_platform_win.cpp) | `register_platform_tests` | `platform_win*`: extended paths, DXGI device loss, the font stack, the registry store, the shell data object, control painting. The only file that may include system headers |
+| [test_platform_win.cpp](../src/test_platform_win.cpp) | `register_platform_tests` | `platform_win*`: extended paths, DXGI device loss, adapter classification and texture budgets, the decode device's adapter, texture recycling, the font stack, the registry store, the shell data object, control painting. The only file that may include system headers |
 
 [test.h](../src/test.h) holds the assertion helpers, [test_fixtures.h](../src/test_fixtures.h) / [test_fixtures.cpp](../src/test_fixtures.cpp) the shared fixtures, and [test_runner.cpp](../src/test_runner.cpp) the console runner. None of them contains a test.
 
@@ -43,7 +43,7 @@ One file per subject, matching the `src/` prefixes in [implementation](implement
 
 Ask what the test constrains, not what prompted it.
 
-- A regression goes in the file that owns the behavior, with the issue recorded as a comment above its registration: `// Issue #177 - search term negation`. There is no regressions file. Organizing by provenance means a subject-scoped run silently misses coverage, which is exactly what happened before 2026-08.
+- A regression goes in the file that owns the behavior, with the issue recorded as a comment above its registration. There is no separate regressions file.
 - A test that needs two subjects belongs to the one whose contract it would falsify. A metadata value read through the AV probe is a metadata test; the probe's byte budget is an AV test.
 - A helper used by tests in one file stays `static` in that file. A helper used from two files moves to `test_fixtures.h` as `inline`.
 
@@ -58,14 +58,13 @@ Ask what the test constrains, not what prompted it.
 
 - **Persist user state.** A test that appends to a real dictionary, settings key or collection passes once and then fails, and it edits a file the user owns. Write to `_temps` instead.
 - **Depend on another test.** Tests share one `shared_test_context` for the loaded index and gazetteer, because loading those per test is not affordable, but nothing else may carry between them.
-- **Depend on ordering, wall-clock timing, or the machine's fonts and DPI.** Layout tests measure through a stub measure context for this reason.
+- **Depend on ordering, wall-clock timing, or the machine's fonts and DPI.** Layout tests measure through a stub measure context for this reason. Ordering includes the order a folder lists in: NTFS lists names sorted and ext4 does not, and a Linux build from a checkout under WSL's `/mnt/c` reaches `exe/` through links that list as NTFS does, so only CI shows the dependency. The record tests sort what they collect (`scan_parity::add_folder` in [test_files.cpp](../src/test_files.cpp)). The processor matters too, where a codec picks its kernels when it runs: dav1d decodes a damaged stream differently with each set, so the HEIF record pins its SSE4.1 kernels.
 - **Add files to `exe/test`.** That folder is indexed recursively and its file count is asserted by `expected_cached_item_count` and by every search-count test. Fixtures loaded directly by path go in `exe/test/excluded1`, which indexing skips.
 
 ## Proving a test is worth having
 
-A test that cannot fail is worse than no test, because it reports coverage that does not exist. Before adding one, break the behavior it targets, confirm the test fails, then restore. Record the negative case in the test's comment where it is not obvious.
-
-Two current examples: `Should leave colour unchanged when neutral` asserts the residual is *unbiased*, not merely bounded, because a bound alone cannot see truncation — truncating in `adjust_color` costs at most one level but costs it in the same direction on every pixel. `Should area downscale packed surfaces` compares the AVX2 and SSE2 paths byte for byte, which is what proves the AVX2 path is live at all.
+A test must be able to fail for the defect it claims to cover. Break the targeted behavior, confirm the
+test fails, then restore it. Record a non-obvious discriminating case beside the test.
 
 ## Fixtures
 
@@ -89,19 +88,6 @@ Where a decision is trapped inside a method that also performs it, extract the d
 
 A test that drives the completion strategy must run the pass on a real worker thread: `index_state::auto_complete_words` asserts it is not on the UI thread, which is the contract the shipped code keeps. `run_completion_worker` in [test_app.cpp](../src/test_app.cpp) models the hop with a `deferred_async_strategy`; running it inline trips the assertion rather than passing. That is also what makes the latest-wins test possible, because it can publish two passes out of order.
 
-## Known gaps
-
-Recorded so they are not rediscovered as surprises:
-
-- `app_dup_report.cpp` is a read-only diagnostic whose logic lives entirely in an anonymous namespace; it mirrors the index's union-find rather than owning behavior.
-- `ui_dialog.h`, `ui_text_view.h` and `ui_plasma.h` have no coverage. The suite has no `ui::draw_context`, so anything whose only output is pixels on a real device is verified by eye.
-- View-level behavior for `view_locate`, `view_tags`, `view_batch`, `view_items` and `view_media` is covered only through their planning helpers.
-- Nothing drives `view_state::tick` end to end; `calc_playback_advance` covers the decision, not the player calls around it.
-- Maker note decoding is exercised only on Canon. The other makes libexif handles reach the same call, but no fixture carries one.
-- No fixture holds an embedded image that fails to decode, so the pane's fall back from a picture to a hex dump is proven by construction rather than end to end.
-- `parse_mpf_index` in [files_jpeg.cpp](../src/files_jpeg.cpp) is file-static, so its bounds guard against a malformed Multi-Picture index has no test. It parses untrusted file offsets, which is exactly where a silent regression would matter.
-- `metadata_tree_control` in [view_items.cpp](../src/view_items.cpp) is file-static and lays out its own detail rows, so nothing covers the box each detail control is given. A control that fills its bounds was once stretched by this and would be again without notice.
-
 ## Where this lives
 
 The taxonomy table above is the routing for tests. The runner and its supporting pieces are:
@@ -113,9 +99,5 @@ The taxonomy table above is the routing for tests. The runner and its supporting
 | Registration and the console runner | [test_runner.h](../src/test_runner.h), [test_runner.cpp](../src/test_runner.cpp) |
 | The `/test`, `/test-temp:` and `/validate-po` entry points | [app_command_line.h](../src/app_command_line.h), [app_validate_po.cpp](../src/app_validate_po.cpp) |
 
-Beyond the suite, `.\dd.ps1 test` also runs `tools/lint_repo.ps1`, which enforces the mechanically
-checkable subset of [AGENTS.md](../AGENTS.md) — platform containment, SQLite ownership, application
-threads, frame accessors, and the integrity of every link and `src/` anchor in this documentation
-set. `tools/lint_repo_selftest.ps1` applies this document's own standard to that lint: it breaks each
-rule in turn and asserts the rule fires, so a lint rule cannot quietly stop matching and report PASS
-forever.
+Build orchestration and the repository-wide validation command are owned by
+[implementation.md](implementation.md#build-and-validation).

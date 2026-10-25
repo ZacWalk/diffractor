@@ -6,8 +6,11 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: List view display mode. Renders items in a compact list format
-// with columns for metadata details.
+// Purpose: The row list the task views share (Rename, Import, Sync, Convert/Metadata/Date, Tags).
+// list_view lays out the column header and rows and tracks a run's progress and results;
+// view_command_status is the status a run reports through; view_controls_host pairs the list with
+// its controls panel; and the CollisionPolicy control is defined once here for every operation
+// that writes to a destination.
 
 #pragma once
 
@@ -19,6 +22,7 @@
 
 class list_view;
 class view_controls_host;
+class view_command_status;
 using view_controls_host_ptr = std::shared_ptr<view_controls_host>;
 
 struct view_operation_result
@@ -105,8 +109,12 @@ protected:
 	bool _rows_clickable = false;
 	progress_state _progress;
 	bool _showing_results = false;
+	bool _refresh_requested = false;
 	size_t _processing_generation = 0;
 	std::shared_ptr<std::atomic_int> _processing_cancel;
+
+	// The line under the rows: what the plan would do while it is reviewed, what the run did after.
+	std::string _status;
 
 	static constexpr int max_col_count = 4;
 	int col_count = 4;
@@ -160,7 +168,6 @@ public:
 		void render(ui::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto bg_alpha = dc.colors.alpha * dc.colors.bg_alpha;
-			const auto dir_color = ui::color(ui::style::color::dialog_selected_background, dc.colors.alpha);
 			const auto logical_bounds = bounds.offset(element_offset);
 
 			if (dc.clip_bounds().intersects(logical_bounds))
@@ -202,9 +209,9 @@ public:
 
 		view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 		                                             const pointi element_offset,
-		                                             const std::vector<recti>& excluded_bounds) override
+		                                             hit_test_context& ctx) override
 		{
-			return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+			return default_controller_from_location(*this, host, loc, element_offset, ctx);
 		}
 	};
 
@@ -231,8 +238,30 @@ public:
 		return _progress;
 	}
 
+	std::string_view status() override
+	{
+		return _status;
+	}
+
+	// A completed run keeps its results through the file notifications its own writes raise. Refresh
+	// is the user asking to re-plan, so it is honoured even then; both arrive as the same invalidation,
+	// which is why the request is remembered here rather than read from the flag.
+	void reload() override
+	{
+		_refresh_requested = true;
+	}
+
+	void refresh_from_source() override
+	{
+		if (std::exchange(_refresh_requested, false) || !showing_results()) refresh();
+	}
+
 	void begin_processing(const size_t total)
 	{
+		// A run still going belongs to whatever this one replaces - an Analyze restarted by Refresh,
+		// say. Its worker reads the source it was given, so bumping that is what stops it; swapping
+		// in a new source alone let it scan on to an answer nobody would publish.
+		if (_processing_cancel) ++(*_processing_cancel);
 		++_processing_generation;
 		_processing_cancel = std::make_shared<std::atomic_int>();
 		_progress = {true, 0, static_cast<int64_t>(total)};
@@ -245,6 +274,28 @@ public:
 	size_t processing_generation() const { return _processing_generation; }
 	bool is_processing_generation(const size_t generation) const { return generation == _processing_generation; }
 	std::shared_ptr<std::atomic_int> processing_cancel_source() const { return _processing_cancel; }
+
+	// The status line a finished run leaves: what it did (the result counts), then why some rows did
+	// nothing (the run's own message) - a partial run needs both. A run that reports neither leaves
+	// the status the review showed.
+	static std::string conclude_run(std::string summary, std::string message, std::string review_status)
+	{
+		if (summary.empty()) return message.empty() ? std::move(review_status) : std::move(message);
+		if (message.empty()) return summary;
+		return summary + "  " + message;
+	}
+
+	// The status a run reports through. Progress highlights the row being worked on; completion
+	// swaps the reviewed rows for the results and concludes the status line from them. Both are
+	// ignored once the view has moved past `generation`. The caller reads the generation and the
+	// cancel source straight after begin_processing: anything run in between can pump messages, and
+	// a view abandoned there must not have its next state mistaken for this run's. `hold` lives
+	// until the run reports back - the file handles a run detaches stay detached until then.
+	static std::shared_ptr<view_command_status> make_run_status(const std::shared_ptr<list_view>& view,
+	                                                            size_t generation,
+	                                                            std::shared_ptr<std::atomic_int> cancel_source,
+	                                                            std::string review_status,
+	                                                            std::shared_ptr<void> hold = {});
 
 	void processing_item(const size_t row_index, const size_t work_position)
 	{
@@ -429,6 +480,18 @@ public:
 		return true;
 	}
 
+	// Everything queued before this point belongs to a view that is no longer on screen. Bumping the
+	// generation is what makes their completion callbacks no-ops: without it, an analysis still
+	// running when the user switched away published on its return and restored a runnable plan built
+	// from a selection the view had already let go of.
+	void abandon_processing()
+	{
+		++_processing_generation;
+		if (_processing_cancel) ++(*_processing_cancel);
+		_progress = {};
+		_active_row.reset();
+	}
+
 	void cancel_operation() override
 	{
 		cancel_processing();
@@ -591,7 +654,7 @@ public:
 	{
 	}
 
-	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc) override;
+	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 
 	view_element_ptr element_from_location(const int y) const
 	{
@@ -822,6 +885,28 @@ private:
 	}
 };
 
+inline std::shared_ptr<view_command_status> list_view::make_run_status(const std::shared_ptr<list_view>& view,
+                                                                       const size_t generation,
+                                                                       std::shared_ptr<std::atomic_int> cancel_source,
+                                                                       std::string review_status,
+                                                                       std::shared_ptr<void> hold)
+{
+	return std::make_shared<view_command_status>(
+		view->_state._async, std::move(cancel_source),
+		[view, generation](const size_t index)
+		{
+			if (view->is_processing_generation(generation)) view->processing_work_item(index);
+		},
+		[view, generation, review_status = std::move(review_status), hold = std::move(hold)](
+		std::string message, const std::vector<view_operation_result>& results)
+		{
+			if (!view->is_processing_generation(generation)) return;
+			view->end_processing();
+			view->_status = conclude_run(view->show_results(results), std::move(message), review_status);
+			view->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
+		});
+}
+
 class view_controls_host : public view_host, public std::enable_shared_from_this<view_controls_host>
 {
 public:
@@ -831,8 +916,8 @@ public:
 	ui::frame_ptr _frame;
 	std::vector<view_element_ptr> _controls;
 	ui::color _clr = ui::color(ui::style::color::dialog_text);
-	long _layout_height = 0;
-	long _layout_width = 0;
+	int _layout_height = 0;
+	int _layout_width = 0;
 	ui::coll_widths _label_width;
 	// Set by a view whose panel exists to be typed into. Applied after the first layout because the
 	// child controls are not shown, and so cannot take focus, until their positions are applied.
@@ -970,9 +1055,9 @@ public:
 		frame()->invalidate();
 	}
 
-	view_controller_ptr controller_from_location(const pointi loc) override
+	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 	{
-		if (_scroller.can_scroll() && _scroller.scroll_bounds().contains(loc))
+		if (_scroller.can_scroll() && ctx.occluded(_scroller.scroll_bounds()))
 		{
 			return std::make_shared<scroll_controller>(shared_from_this(), _scroller, _scroller.scroll_bounds());
 		}
@@ -981,7 +1066,7 @@ public:
 
 		for (const auto& e : _controls)
 		{
-			auto controller = e->controller_from_location(shared_from_this(), loc, offset, {});
+			auto controller = e->controller_from_location(shared_from_this(), loc, offset, ctx);
 			if (controller) return controller;
 		}
 
@@ -1096,8 +1181,18 @@ public:
 	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
 	{
 		_last_loc = loc;
+
+		// A press that escape abandoned, or that was released away from the header it started on,
+		// is not a click on that header. Sorting regardless re-ordered the whole list on a gesture
+		// the user had already taken back.
+		const auto was_tracking = _parent._header_tracking;
 		_parent._header_tracking = false;
-		_parent.sort(_col_num);
+
+		if (was_tracking && _bounds.contains(loc))
+		{
+			_parent.sort(_col_num);
+		}
+
 		_host->frame()->invalidate();
 	}
 
@@ -1113,19 +1208,20 @@ public:
 	}
 };
 
-inline view_controller_ptr list_view::controller_from_location(const view_host_ptr& host, const pointi loc)
+inline view_controller_ptr list_view::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                              hit_test_context& ctx)
 {
 	if (_progress.active) return nullptr;
 
 	for (int i = 0; i < col_count; ++i)
 	{
-		if (_col_header_bounds[i].contains(loc))
+		if (ctx.occluded(_col_header_bounds[i]))
 		{
 			return std::make_shared<header_controller>(host, *this, _col_header_bounds[i], i);
 		}
 	}
 
-	if (_scroller.scroll_bounds().contains(loc))
+	if (ctx.occluded(_scroller.scroll_bounds()))
 	{
 		return std::make_shared<scroll_controller>(host, _scroller, _scroller.scroll_bounds());
 	}

@@ -1,5 +1,4 @@
--- Use WAL for fast batched writes without sacrificing concurrent readers.
-PRAGMA journal_mode = WAL;
+-- The database owner selects WAL or rollback journaling before running this idempotent schema.
 PRAGMA synchronous = NORMAL;
 
 -- Cached metadata and scan state for each indexed file.

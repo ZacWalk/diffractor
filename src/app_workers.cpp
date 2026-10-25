@@ -6,12 +6,14 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Application frame management, layout, options, input handling, and queuing.
-// Contains UI layout, event processing, input handling, and async queue management.
+// Purpose: Background execution behind async_strategy. Starts the worker threads and their queues,
+// routes each queue_* request to its queue, runs the media read/decode and preview workers, and
+// records queue wait counters for diagnostics.
 
 #include "pch.h"
 
 #include "app_text.h"
+#include "app_command_line.h"
 
 #include "model_location.h"
 #include "model_db.h"
@@ -25,9 +27,19 @@
 
 #include <utility>
 
-#include "util_log.h"
+#include "libdesktop/util_log.h"
 
 static std::atomic_int index_version;
+
+df::cancel_token make_scan_uncached_token_for_index_workers()
+{
+	return df::cancel_token::current(index_version);
+}
+
+df::cancel_token make_index_update_token_for_worker_tests()
+{
+	return df::cancel_token(index_version);
+}
 
 // Declared ahead of the queueing entry points below, which start these workers on first use.
 void start_worker(platform::task_queue& q, std::string_view name);
@@ -44,6 +56,13 @@ struct worker_queue_binding
 
 void start_worker_group(std::vector<worker_queue_binding> bindings, std::string_view group_name);
 
+static void record_queue_wait(const platform::task_queue::task_t& task, df::queue_counters* const perf)
+{
+	const auto wait_us = task.wait_us();
+	df::bump(perf->wait_us, wait_us);
+	df::record_peak(perf->wait_max_us, static_cast<uint32_t>(std::min<uint64_t>(wait_us, UINT32_MAX)));
+}
+
 platform::thread_event media_preview_event(false, false);
 static platform::mutex media_preview_mutex;
 static _Guarded_by_(media_preview_mutex) std::function<void(media_preview_state&)> next_media_preview;
@@ -53,30 +72,32 @@ static _Guarded_by_(media_preview_mutex) std::deque<std::function<void(media_pre
 // media_preview_mutex so the running task cannot miss a request queued after it started.
 static std::atomic_bool media_preview_superseded = false;
 
-df::index_roots index_folders()
+// The collection roots the settings name. Taken as a value rather than read from the global: the
+// callers copy the settings on the thread that owns them and hand the copy to a worker.
+df::index_roots index_folders(const settings_t::index_t& collection)
 {
 	df::index_roots result;
 	const auto local_folders = platform::local_folders();
 
-	if (setting.collection.pictures && !local_folders.pictures.is_empty())
+	if (collection.pictures && !local_folders.pictures.is_empty())
 		result.folders.emplace(
 			local_folders.pictures);
-	if (setting.collection.video && !local_folders.video.is_empty()) result.folders.emplace(local_folders.video);
-	if (setting.collection.music && !local_folders.music.is_empty()) result.folders.emplace(local_folders.music);
-	if (setting.collection.drop_box && !local_folders.dropbox_photos.is_empty())
+	if (collection.video && !local_folders.video.is_empty()) result.folders.emplace(local_folders.video);
+	if (collection.music && !local_folders.music.is_empty()) result.folders.emplace(local_folders.music);
+	if (collection.drop_box && !local_folders.dropbox_photos.is_empty())
 		result.folders.emplace(
 			local_folders.dropbox_photos);
-	if (setting.collection.onedrive_pictures && !local_folders.onedrive_pictures.is_empty())
+	if (collection.onedrive_pictures && !local_folders.onedrive_pictures.is_empty())
 		result.folders.emplace(
 			local_folders.onedrive_pictures);
-	if (setting.collection.onedrive_video && !local_folders.onedrive_video.is_empty())
+	if (collection.onedrive_video && !local_folders.onedrive_video.is_empty())
 		result.folders.emplace(
 			local_folders.onedrive_video);
-	if (setting.collection.onedrive_music && !local_folders.onedrive_music.is_empty())
+	if (collection.onedrive_music && !local_folders.onedrive_music.is_empty())
 		result.folders.emplace(
 			local_folders.onedrive_music);
 
-	parse_more_folders(result, setting.collection.more_folders);
+	parse_more_folders(result, collection.more_folders);
 
 	return result;
 }
@@ -111,6 +132,70 @@ void app_frame::queue_media_preview(std::function<void(media_preview_state&)> f,
 	media_preview_event.set();
 }
 
+// No collection walk may validate folders before the database cache has loaded. The cache loader
+// (merge_folder) and folder validation (validate_folder) both mutate the same folder nodes; if
+// validation of a large folder races ahead of the loader it writes back nodes with
+// metadata_scanned=0, causing that whole folder to be re-scanned on every startup. The database thread
+// reports the load - including when it opened nothing and no cache can arrive - so the timeout is a
+// safety net rather than the normal path. The event stays set, so every walk after the load passes
+// straight through.
+static void wait_for_index_cache(index_state& index)
+{
+	const std::vector<std::reference_wrapper<platform::thread_event>> cache_events = {
+		index.cache_loaded_event(), platform::event_exit
+	};
+
+	platform::wait_for(cache_events, 30000, false);
+}
+
+// Runs on the UI thread from every completion that can finish the index bring-up - the database open,
+// the startup collection walk and any walk that replaced it - and acts for whichever observes init as
+// complete first. Starting the workers twice would put two consumers on every index queue: concurrent
+// reads against the one disk this pipeline is deliberately serialised on, and concurrent mutation of
+// the shared index by two prediction, summary and presence passes. Every walk asks because a Refresh
+// or a device change replaces a pending walk, and when that was the startup one the only ask went
+// with it: the scan workers then never started.
+void app_frame::start_index_workers()
+{
+	if (!df::is_closing && !_index_workers_started && _state.item_index.is_init_complete())
+	{
+		_index_workers_started = true;
+
+		if (!command_line.no_indexing)
+		{
+			const auto token = df::cancel_token(index_version);
+			index_task_queue.enqueue([this, token]
+			{
+				_state.item_index.scan_uncached(token);
+
+				invalidate_view(view_invalid::sidebar |
+					view_invalid::command_state |
+					view_invalid::item_scan |
+					view_invalid::presence |
+					view_invalid::refresh_items |
+					view_invalid::index_summary);
+			});
+		}
+
+		_threads.start_if_running([&q = crc_task_queue] { start_worker(q, "crc"); });
+		_threads.start_if_running([&q = scan_folder_task_queue] { start_worker(q, "scan_folder"); });
+		_threads.start_if_running([&q = scan_modified_items_task_queue]
+		{
+			start_worker(q, "scan_modified_items");
+		});
+		_threads.start_if_running([&q = scan_displayed_items_task_queue]
+		{
+			start_worker(q, "scan_displayed_items");
+		});
+	}
+
+	invalidate_view(view_invalid::sidebar |
+		view_invalid::item_scan |
+		view_invalid::refresh_items |
+		view_invalid::command_state |
+		view_invalid::index_summary);
+}
+
 void app_frame::update_index()
 {
 	queue_index_update(false);
@@ -123,10 +208,23 @@ void app_frame::rebuild_index()
 
 void app_frame::queue_index_update(const bool forget_cached_metadata)
 {
+	if (command_line.no_indexing) return;
+
 	auto token = df::cancel_token(index_version);
 
-	index_task_queue.reset_and_enqueue([this, token, forget_cached_metadata]
+	// Copied here, on the thread that owns the settings, and read from the copy on the worker. The
+	// collection settings are ordinary mutable globals: reading more_folders on a worker while the
+	// options dialog assigns it is a data race on a std::string, and the folder set the worker acts
+	// on should in any case be the one the user just applied.
+	const auto collection = setting.collection;
+
+	index_task_queue.reset_and_enqueue([this, token, forget_cached_metadata, collection]
 	{
+		// A Refresh or a device change early in startup gets here before the cache has loaded.
+		wait_for_index_cache(_state.item_index);
+
+		if (df::is_closing) return;
+
 		// Forgetting runs on this queue, not the caller's, so it cannot interleave with the
 		// scan_uncached it is meant to feed.
 		if (forget_cached_metadata)
@@ -134,13 +232,21 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 			_state.item_index.forget_cached_metadata();
 		}
 
-		_state.item_index.index_roots(index_folders());
+		_state.item_index.index_roots(index_folders(collection));
 		_state.item_index.index_folders(token);
 		invalidate_view(view_invalid::sidebar | view_invalid::presence);
 
 		_state.item_index.scan_uncached(token);
 		invalidate_view(view_invalid::sidebar | view_invalid::item_scan | view_invalid::presence |
 			view_invalid::refresh_items);
+
+		// This walk can replace the startup one before that has run, and the startup walk carried the
+		// only request to bring the index workers up. Once they are up this hop does nothing, so a
+		// routine Refresh adds no second round of invalidations.
+		queue_ui([this]
+		{
+			if (!_index_workers_started) start_index_workers();
+		});
 	});
 
 	_state.update_search_is_favorite_or_collection_root();
@@ -218,6 +324,7 @@ static void start_database(database& db, platform::task_queue& database_task_que
 					{
 						try
 						{
+							record_queue_wait(t, perf);
 							df::perf_timer timer(perf->busy_us, &perf->task_max_us);
 							t();
 						}
@@ -437,6 +544,23 @@ static void start_media_preview()
 	log_func lf(__FUNCTION__);
 	platform::set_thread_description("media_preview");
 
+	// Every other worker truncates its queue on the way out, and for the same reason: these tasks
+	// hold handles to UI-owned objects, and leaving them in a file static defers their release to
+	// static destruction, after the factories and COM are already gone. It runs on the way out of
+	// the loop AND out of the catch, so a throw does not skip it. The lambdas are destroyed after
+	// the lock is released, because releasing a ui_owned_ptr posts to the UI queue.
+	const df::scope_exit truncate([]
+	{
+		std::deque<std::function<void(media_preview_state&)>> must_run;
+		std::function<void(media_preview_state&)> next;
+
+		{
+			platform::exclusive_lock media_lock(media_preview_mutex);
+			std::swap(media_preview_must_run, must_run);
+			std::swap(next_media_preview, next);
+		}
+	});
+
 	try
 	{
 		platform::thread_init c;
@@ -526,6 +650,7 @@ static void drain_queue(platform::task_queue& q, df::queue_counters* perf)
 		{
 			try
 			{
+				record_queue_wait(t, perf);
 				df::perf_timer timer(perf->busy_us, &perf->task_max_us);
 				t();
 			}
@@ -691,6 +816,7 @@ void start_map_worker(platform::task_queue& q)
 						df::scope_locked_inc l(df::jobs_running);
 						df::bump(perf->batches);
 						df::bump(perf->tasks);
+						record_queue_wait(task, perf);
 						df::perf_timer timer(perf->busy_us, &perf->task_max_us);
 						task();
 					}
@@ -748,6 +874,7 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 				{
 					try
 					{
+						record_queue_wait(t, perf);
 						df::perf_timer timer(perf->busy_us, &perf->task_max_us);
 						t();
 					}
@@ -795,55 +922,11 @@ void app_frame::start_workers()
 	_threads.start_if_running([&player = _player] { start_media_decode_audio(player); });
 	_threads.start_if_running([&player = _player] { start_media_reading(player); });
 
-	auto scan_uncached_func = [this]
-	{
-		// Runs on the UI thread from two completions - the database open and the folder discovery -
-		// whichever observes init as complete first. Starting the workers twice would put two
-		// consumers on every index queue: concurrent reads against the one disk this pipeline is
-		// deliberately serialised on, and concurrent mutation of the shared index by two prediction,
-		// summary and presence passes.
-		if (!df::is_closing && !_index_workers_started && _state.item_index.is_init_complete())
-		{
-			_index_workers_started = true;
-
-			auto token = df::cancel_token(index_version);
-
-			index_task_queue.enqueue([this, token]
-			{
-				_state.item_index.scan_uncached(token);
-
-				invalidate_view(view_invalid::sidebar |
-					view_invalid::command_state |
-					view_invalid::item_scan |
-					view_invalid::presence |
-					view_invalid::refresh_items |
-					view_invalid::index_summary);
-			});
-
-			_threads.start_if_running([&q = crc_task_queue] { start_worker(q, "crc"); });
-			_threads.start_if_running([&q = scan_folder_task_queue] { start_worker(q, "scan_folder"); });
-			_threads.start_if_running([&q = scan_modified_items_task_queue]
-			{
-				start_worker(q, "scan_modified_items");
-			});
-			_threads.start_if_running([&q = scan_displayed_items_task_queue]
-			{
-				start_worker(q, "scan_displayed_items");
-			});
-		}
-
-		invalidate_view(view_invalid::sidebar |
-			view_invalid::item_scan |
-			view_invalid::refresh_items |
-			view_invalid::command_state |
-			view_invalid::index_summary);
-	};
-
-	auto index_loaded_func = [this, scan_uncached_func]
+	auto index_loaded_func = [this]
 	{
 		if (!df::is_closing)
 		{
-			scan_uncached_func();
+			start_index_workers();
 		}
 	};
 
@@ -878,27 +961,17 @@ void app_frame::start_workers()
 	// created by the entry point that first queues to it, so a session that never searches, never
 	// reaches the network, never opens the map and never plays media runs without those threads.
 
-	index_task_queue.enqueue([this, scan_uncached_func]
+	index_task_queue.enqueue([this, collection = setting.collection, scan_collection = !command_line.no_indexing]
 	{
-		// Wait for the database cache to finish loading before validating folders. The cache
-		// loader (merge_folder) and folder validation (validate_folder) both mutate the same
-		// folder nodes; if validation of a large folder races ahead of the loader it writes back
-		// nodes with metadata_scanned=0, causing that whole folder to be re-scanned on every
-		// startup. The database thread reports the load - including when it opened nothing and no
-		// cache can arrive - so the timeout is a safety net rather than the normal path.
-		const std::vector<std::reference_wrapper<platform::thread_event>> cache_events = {
-			_state.item_index.cache_loaded_event(), platform::event_exit
-		};
-
-		platform::wait_for(cache_events, 30000, false);
+		wait_for_index_cache(_state.item_index);
 
 		if (df::is_closing) return;
 
-		_state.item_index.index_roots(index_folders());
+		_state.item_index.index_roots(index_folders(collection));
 
 		const auto token = df::cancel_token(index_version);
-		_state.item_index.index_folders(token);
-		queue_ui(scan_uncached_func);
+		_state.item_index.index_folders(token, scan_collection);
+		queue_ui([this] { start_index_workers(); });
 		invalidate_view(view_invalid::sidebar | view_invalid::command_state | view_invalid::presence |
 			view_invalid::index_summary);
 	});

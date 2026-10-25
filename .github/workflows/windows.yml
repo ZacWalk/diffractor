@@ -36,7 +36,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         lfs: true
 
     # The cheapest gate in the repository, and it catches boundary violations a passing test
@@ -86,7 +85,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         lfs: true
 
     - name: Build

@@ -61,7 +61,7 @@ struct csv_entry
 
 	uint32_t hash() const
 	{
-		return crypto::fnv1a_i(_s);
+		return str::fnv1a_i(_s);
 	}
 
 	std::string_view to_range() const
@@ -924,7 +924,7 @@ static bool is_flags_column(const std::string_view s)
 
 int location_cache::scan_entries(const std::string_view line, csv_entry* entries)
 {
-	memset(entries, 0, sizeof(csv_entry) * max_location_cols);
+	std::fill_n(entries, max_location_cols, csv_entry{});
 
 	auto col_count = 0;
 	auto* col = entries;
@@ -987,7 +987,7 @@ location_t location_cache::build_location(const uint32_t offset) const
 location_t location_cache::build_location(const csv_entry* entries) const
 {
 	const auto country_code = entries[Cols::countryCode].to_code2();
-	const auto country = find_country_locked(country_code);
+	const auto& country = find_country_locked(country_code);
 	const auto state = country.state(entries[Cols::stateCode].to_code2());
 	const auto population = entries[Cols::population].to_double();
 	const auto lang_bit = _display_lang_bit.load(std::memory_order_relaxed);
@@ -1261,7 +1261,8 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 	std::vector<uint32_t> ngram_matches;
 	std::vector<location_match_possible> possible_matches;
 
-	const auto closest = find_closest_locked(default_location.latitude(), default_location.longitude(), nullptr);
+	country_loc closest_country;
+	find_closest_locked(default_location.latitude(), default_location.longitude(), &closest_country);
 	const auto query_lower = str::to_lower(query);
 	auto query_parts = str::split(query_lower, true);
 
@@ -1305,9 +1306,9 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 			{
 				csv_entry entries[max_location_cols];
 				const auto entry_count = scan_entries(record_at(line_offset), entries);
-				const auto country = find_country_locked(entries[Cols::countryCode].to_code2());
+				const auto& country = find_country_locked(entries[Cols::countryCode].to_code2());
 				const auto state = country.state(entries[Cols::stateCode].to_code2());
-				const auto is_same_country = closest.country == country.code();
+				const auto is_same_country = closest_country.code == country.code2();
 				const auto name_col_count = entry_count - _place_name_col;
 
 				auto match_count = 0u;
@@ -1502,7 +1503,7 @@ location_t location_cache::find_by_name(const std::string_view query) const
 
 		if (!name_matched) continue;
 
-		const auto country = find_country_locked(entries[Cols::countryCode].to_code2());
+		const auto& country = find_country_locked(entries[Cols::countryCode].to_code2());
 		const auto state = country.state(entries[Cols::stateCode].to_code2());
 		auto qualifiers_matched = true;
 
@@ -1546,10 +1547,65 @@ location_t location_cache::find_by_id(const uint32_t id) const
 	return result;
 }
 
+// locations.md 4.1: a degree of longitude is only a degree of latitude's worth of ground at the
+// equator, so a nearest-place search over raw degrees ranks somewhere too far east or west as
+// nearer than somewhere just up the road. collect_within_km already corrects for this; the same
+// factor, and the same floor near the poles, applies to the nearest-point search.
+static float lon_scale_at(const double latitude)
+{
+	return static_cast<float>(std::max(0.05, std::cos(gps_coordinate::deg2rad(latitude))));
+}
+
+static double normalize_longitude(double longitude)
+{
+	while (longitude < -180.0) longitude += 360.0;
+	while (longitude > 180.0) longitude -= 360.0;
+	return longitude;
+}
+
+double location_longitude_span_degrees(const double latitude, const double max_km)
+{
+	const auto lat_span = max_km / 111.0;
+	const auto min_lat = std::max(-90.0, latitude - lat_span);
+	const auto max_lat = std::min(90.0, latitude + lat_span);
+	const auto reaches_pole = min_lat <= -90.0 || max_lat >= 90.0;
+	const auto angular_radius = max_km / 6371.0;
+	const auto cos_latitude = std::abs(std::cos(gps_coordinate::deg2rad(latitude)));
+
+	if (reaches_pole || cos_latitude <= 1e-12) return 180.0;
+
+	const auto ratio = std::sin(angular_radius) / cos_latitude;
+	return ratio < 1.0 ? gps_coordinate::rad2deg(std::asin(ratio)) : 180.0;
+}
+
+kd_coordinates_t location_cache::find_closest_geo_locked(const double latitude, const double longitude) const
+{
+	const gps_coordinate at(latitude, longitude);
+	const auto y_scale = lon_scale_at(latitude);
+	kd_coordinates_t result{};
+	auto best_km = std::numeric_limits<double>::max();
+
+	for (const auto wrapped_longitude : {longitude, longitude - 360.0, longitude + 360.0})
+	{
+		const auto candidate = _tree.find_closest(_coords, static_cast<float>(latitude),
+		                                          static_cast<float>(wrapped_longitude), y_scale);
+		if (candidate.id == 0) continue;
+
+		const auto km = at.distance_in_kilometers(gps_coordinate(candidate.x, candidate.y));
+		if (km < best_km)
+		{
+			best_km = km;
+			result = candidate;
+		}
+	}
+
+	return result;
+}
+
 country_loc location_cache::find_country(const double x, const double y) const
 {
 	platform::shared_lock lock(_rw);
-	const auto closest = _tree.find_closest(_coords, static_cast<float>(x), static_cast<float>(y));
+	const auto closest = find_closest_geo_locked(x, y);
 	const auto found = _countries.find(closest.country);
 	// NOTE: returns the canonical (English) name deliberately. This feeds the map/heat-map
 	// country grouping whose label doubles as a search term (sidebar .with(name)); the search
@@ -1572,7 +1628,7 @@ location_t location_cache::find_closest(const double x, const double y, country_
 
 location_t location_cache::find_closest_locked(const double x, const double y, country_loc* country) const
 {
-	const auto closest = _tree.find_closest(_coords, static_cast<float>(x), static_cast<float>(y));
+	const auto closest = find_closest_geo_locked(x, y);
 
 	if (country)
 	{
@@ -1589,10 +1645,10 @@ void location_cache::collect_within_km(const double x, const double y, const dou
                                        std::vector<kd_coordinates_t>& candidates) const
 {
 	const auto lat_span = max_km / 111.0;
-	const auto lon_scale = std::max(0.05, std::cos(gps_coordinate::deg2rad(x)));
-	const auto lon_span = std::min(180.0, max_km / (111.0 * lon_scale));
 	const auto min_lat = std::max(-90.0, x - lat_span);
 	const auto max_lat = std::min(90.0, x + lat_span);
+	const auto lon_span = location_longitude_span_degrees(x, max_km);
+
 	const auto min_lon = y - lon_span;
 	const auto max_lon = y + lon_span;
 
@@ -1606,13 +1662,13 @@ void location_cache::collect_within_km(const double x, const double y, const dou
 
 	if (min_lon < -180.0)
 	{
-		collect(-180.0, max_lon);
-		collect(min_lon + 360.0, 180.0);
+		collect(-180.0, normalize_longitude(max_lon));
+		collect(normalize_longitude(min_lon), 180.0);
 	}
 	else if (max_lon > 180.0)
 	{
-		collect(min_lon, 180.0);
-		collect(-180.0, max_lon - 360.0);
+		collect(normalize_longitude(min_lon), 180.0);
+		collect(-180.0, normalize_longitude(max_lon));
 	}
 	else
 	{
@@ -1664,7 +1720,9 @@ located_place location_cache::find_attributed(const double x, const double y, co
 	platform::shared_lock lock(_rw);
 	if (_tree.is_empty()) return {};
 
-	const auto closest = _tree.find_closest(_coords, static_cast<float>(x), static_cast<float>(y));
+	// Weighed the same way as find_closest: raw degrees rank somewhere far east or west as nearer
+	// than somewhere up the road, and this is the lookup that names the place an item is shown at.
+	const auto closest = find_closest_geo_locked(x, y);
 	const auto closest_km = at.distance_in_kilometers(gps_coordinate(closest.x, closest.y));
 
 	auto winner = closest;

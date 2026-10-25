@@ -149,7 +149,8 @@ static void assert_near(const double expected, const double actual, const double
 {
 	++test_assert_count;
 
-	if (std::abs(expected - actual) > tolerance)
+	if (!std::isfinite(expected) || !std::isfinite(actual) || !std::isfinite(tolerance) || tolerance < 0.0 ||
+		std::abs(expected - actual) > tolerance)
 	{
 		throw test_assert_exception(
 			std::format("{} - {}: expected '{}' within '{}', got '{}' at {}", message, name, expected, tolerance,
@@ -161,7 +162,15 @@ static void assert_equal(const df::date_t expected, const df::date_t actual, con
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(platform::format_date_time(expected), platform::format_date_time(actual), name, message, loc);
+	++test_assert_count;
+
+	if (expected.to_int64() != actual.to_int64())
+	{
+		throw test_assert_exception(
+			std::format("{} - {}: expected '{}' ({}), got '{}' ({}) at {}", message, name,
+			            platform::format_date_time(expected), expected.to_int64(),
+			            platform::format_date_time(actual), actual.to_int64(), test_assert_where(loc)));
+	}
 }
 
 static void assert_equal(const gps_coordinate expected, const gps_coordinate actual, const std::string_view name = {},

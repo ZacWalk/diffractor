@@ -14,7 +14,7 @@
 
 #include "model_location.h"
 #include "model_search.h"
-#include "util_date.h"
+#include "libdesktop/util_date.h"
 
 class location_cache;
 
@@ -81,9 +81,19 @@ namespace df
 		bool publish = false;
 	};
 
+	struct visit_work_counters
+	{
+		uint64_t place_predicate_unions = 0;
+	};
+
 	struct visit_request
 	{
+		visit_request() = default;
+		explicit visit_request(cancel_token value) : token(std::move(value)) {}
+
 		std::vector<visit_sample> samples;
+		cancel_token token;
+		visit_work_counters* counters = nullptr;
 
 		// locations.md 6.2 step 6: an era is revealed only when the query names its place.
 		std::string intent_place;

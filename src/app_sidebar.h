@@ -56,7 +56,7 @@ static std::string format_total_text(const df::count_and_size total, const bool 
 		if (!total.size.is_empty())
 		{
 			result += "\n";
-			result += prop::format_size(total.size);
+			result += df::format_size(total.size);
 		}
 	}
 
@@ -138,13 +138,15 @@ struct sidebar_tooltip_thumbnail
 		}
 		if (!item) return;
 
-		const auto thumbnail = item->thumbnail();
-		if (is_valid(thumbnail))
+		const auto surface = item->thumbnail_surface();
+		if (is_valid(surface))
 		{
-			files file_loader;
 			hover.elements->add(std::make_shared<surface_element>(
-				file_loader.image_to_surface(thumbnail), 160,
-				flex_item::center | flex_item::new_line, item->layout_orientation()));
+				surface, 160, flex_item::center | flex_item::new_line, item->layout_orientation()));
+		}
+		else if (is_valid(item->thumbnail()))
+		{
+			item->stage_thumbnail_surface(state._async, false, true);
 		}
 		else if (!requested)
 		{
@@ -266,9 +268,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
@@ -393,8 +395,8 @@ public:
 				             draw_clr.a));
 		}
 
-		const auto total_text = std::format("{}|{}", prop::format_size(_drive.used),
-		                                    prop::format_size(_drive.capacity));
+		const auto total_text = std::format("{}|{}", df::format_size(_drive.used),
+		                                    df::format_size(_drive.capacity));
 
 		if (!str::is_empty(total_text))
 		{
@@ -417,9 +419,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
@@ -478,9 +480,21 @@ struct sidebar_summary
 
 using search_items_by_key_t = df::hash_map<std::string, sidebar_summary, df::ihash, df::ieq>;
 
+inline bool should_publish_sidebar_structural_request(const uint64_t current_request, const uint64_t packet_request)
+{
+	return current_request == packet_request;
+}
+
 class search_item_factory
 {
 public:
+	struct sidebar_config_snapshot
+	{
+		settings_t::search_t search;
+		settings_t::sidebar_t sidebar;
+		std::string favorite_tags;
+	};
+
 	static std::vector<drive_item_ptr> create_drive_items(view_state& s, const platform::drives& drives)
 	{
 		std::vector<drive_item_ptr> results;
@@ -493,14 +507,15 @@ public:
 		return results;
 	}
 
-	std::vector<search_item_ptr> create_search_items(view_state& s, const search_items_by_key_t& existing) const
+	std::vector<search_item_ptr> create_search_items(view_state& s, const search_items_by_key_t& existing,
+	                                                 const sidebar_config_snapshot& config) const
 	{
 		std::vector<search_item_ptr> results;
 
-		for (auto i = 0; i < setting.search.count; i++)
+		for (auto i = 0; i < config.search.count; i++)
 		{
-			auto&& title = setting.search.title[i];
-			auto&& path = setting.search.path[i];
+			auto&& title = config.search.title[i];
+			auto&& path = config.search.path[i];
 
 			if (!title.empty() && !path.empty())
 			{
@@ -560,18 +575,19 @@ public:
 		}
 	}
 
-	std::vector<search_item_ptr> create_tags(view_state& s, const search_items_by_key_t& existing) const
+	std::vector<search_item_ptr> create_tags(view_state& s, const search_items_by_key_t& existing,
+	                                         const sidebar_config_snapshot& config) const
 	{
 		std::vector<search_item_ptr> results;
 
 		index_state::distinct_results tags;
 
-		if (!setting.sidebar.show_favorite_tags_only)
+		if (!config.sidebar.show_favorite_tags_only)
 		{
 			tags = s.item_index.distinct_tags();
 		}
 
-		str::split2(setting.favorite_tags, true, [&tags](std::string_view part)
+		str::split2(config.favorite_tags, true, [&tags](std::string_view part)
 		{
 			tags.emplace_back(part, df::file_group_histogram{});
 		});
@@ -707,7 +723,7 @@ public:
 	}
 };
 
-static int calc_indexing_perc(const index_statistic& stats)
+static int calc_indexing_perc(const index_progress_snapshot& stats)
 {
 	const auto total = stats.index_item_count;
 	const auto processed = stats.index_item_count - stats.index_item_remaining;
@@ -732,7 +748,7 @@ public:
 
 	std::string format_text() const
 	{
-		return std::format("{} {}%", tt.indexing, calc_indexing_perc(_s.item_index.stats));
+		return std::format("{} {}%", tt.indexing, calc_indexing_perc(_s.item_index.indexing_progress()));
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
@@ -770,9 +786,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -948,7 +964,7 @@ public:
 			const auto total = file_types.total_items();
 			const auto num = platform::format_number(str::to_string(total.count));
 			const auto num_folder = platform::format_number(str::to_string(_state.item_index.stats.index_folder_count));
-			const auto size = prop::format_size(total.size);
+			const auto size = df::format_size(total.size);
 			const auto text = str_format(tt.total_title.sv(), num, size, num_folder);
 
 			hover.elements->add(std::make_shared<text_element>(tt.collection_title, ui::style::font_face::title,
@@ -976,7 +992,7 @@ public:
 				folder_text->foreground_color(ui::emphasize(ui::style::color::view_text));
 				const auto count_text = std::make_shared<text_element>(str::format_count(f.count),
 				                                                       ui::style::text_style::single_line_far);
-				const auto size_text = std::make_shared<text_element>(prop::format_size(f.size),
+				const auto size_text = std::make_shared<text_element>(df::format_size(f.size),
 				                                                      ui::style::text_style::single_line_far);
 				table->add(folder_text, count_text, size_text);
 			}
@@ -998,7 +1014,7 @@ public:
 					const auto ft = e.group;
 					const auto icon = ft->icon;
 					const auto num = platform::format_number(str::to_string(e.count));
-					const auto size = prop::format_size(e.size);
+					const auto size = df::format_size(e.size);
 
 					hover.elements->add(make_icon_element(icon, flex_item::no_break));
 					hover.elements->add(std::make_shared<text_element>(ft->display_name(e.count > 1),
@@ -1192,9 +1208,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
@@ -1677,9 +1693,9 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	bool hover_month_is_valid() const
@@ -2368,7 +2384,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 	void hover(interaction_context& ic) override
 	{
@@ -2449,14 +2465,16 @@ public:
 
 				if (representative.item)
 				{
-					const auto thumbnail = representative.item->thumbnail();
-					if (is_valid(thumbnail))
+					const auto surface = representative.item->thumbnail_surface();
+					if (is_valid(surface))
 					{
-						files file_loader;
 						hover.elements->add(std::make_shared<surface_element>(
-							file_loader.image_to_surface(thumbnail), 160,
-							flex_item::center | flex_item::new_line,
+							surface, 160, flex_item::center | flex_item::new_line,
 							representative.item->layout_orientation()));
+					}
+					else if (is_valid(representative.item->thumbnail()))
+					{
+						representative.item->stage_thumbnail_surface(_state._async, false, true);
 					}
 					else if (_thumbnail_requests.emplace(representative.path).second)
 					{
@@ -2526,12 +2544,18 @@ public:
 
 // Drags turn the globe; anything shorter than a few pixels is still a click on whatever marker is
 // under the pointer. The sidebar scrolls by its scrollbar, so no direction has to be handed back.
+inline bool should_invoke_globe_release(const bool was_cancelled, const bool was_turning, const bool release_in_bounds)
+{
+	return !was_cancelled && !was_turning && release_in_bounds;
+}
+
 class globe_rotate_controller final : public view_controller
 {
 	const std::shared_ptr<sidebar_map_element> _element;
 	const pointi _element_offset;
 	bool _tracking = false;
 	bool _turned = false;
+	bool _cancelled = false;
 
 public:
 	globe_rotate_controller(const view_host_ptr& host, std::shared_ptr<sidebar_map_element> e,
@@ -2559,6 +2583,7 @@ public:
 		view_controller::on_mouse_left_button_down(loc, keys);
 		_tracking = true;
 		_turned = false;
+		_cancelled = false;
 		_element->begin_drag();
 		update_hover(loc);
 	}
@@ -2581,12 +2606,14 @@ public:
 	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
 	{
 		_last_loc = loc;
+		const auto was_cancelled = _cancelled;
 		const auto was_turning = _turned;
 		_tracking = false;
+		_cancelled = false;
 		update_hover(loc);
 
 		// locations.md 5.5: a drag is never read as a click.
-		if (!was_turning && _bounds.contains(loc))
+		if (should_invoke_globe_release(was_cancelled, was_turning, _bounds.contains(loc)))
 		{
 			const view_element_event click{view_element_event_type::click, _host};
 			const view_element_event invoke{view_element_event_type::invoke, _host};
@@ -2603,6 +2630,7 @@ public:
 
 		_tracking = false;
 		_turned = false;
+		_cancelled = true;
 		_element->cancel_drag(_element_offset);
 		invalidate();
 		return true;
@@ -2629,15 +2657,12 @@ private:
 
 inline view_controller_ptr sidebar_map_element::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                                         const pointi element_offset,
-                                                                        const std::vector<recti>& excluded_bounds)
+                                                                        hit_test_context& ctx)
 {
 	if (!is_visible() || !bounds.contains(loc - element_offset)) return nullptr;
 
-	auto controller_bounds = bounds;
-	for (const auto& excluded : excluded_bounds) controller_bounds.exclude(loc - element_offset, excluded);
-
 	return std::make_shared<globe_rotate_controller>(host, shared_from_this(), element_offset,
-	                                                 controller_bounds.offset(element_offset));
+	                                                 bounds.offset(element_offset));
 }
 
 class app_logo_element final : public std::enable_shared_from_this<app_logo_element>, public view_element
@@ -2708,7 +2733,7 @@ public:
 
 				if (logo_surface->alloc(logo_size, logo_size, ui::texture_format::ARGB))
 				{
-					logo_surface->fill_logo();
+					fill_app_logo(*logo_surface);
 					_logo_tex = t;
 					_logo_tex->update(logo_surface);
 					_logo_size = logo_size;
@@ -2752,7 +2777,7 @@ public:
 		{
 			// app_frame calls this directly on the copy it owns. The About dialog's second instance
 			// lives in a dialog's control list, which no broadcast walks, so this arm is what a route
-			// to it would need rather than proof that one exists; v-next.md records the gap.
+			// to that instance would need rather than proof that one currently exists.
 			free_graphics_resources();
 		}
 	}
@@ -2761,10 +2786,10 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		if (!_interactive) return {};
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	bool step_plasma(const double time_now) const
@@ -2809,11 +2834,12 @@ public:
 
 	bool step_background()
 	{
-		const auto delta = _bg_target - _bg_color;
-		if (delta.abs_sum() <= ui::color::color_epsilon) return false;
+		return ui::step_color_alpha(_bg_color, _bg_target);
+	}
 
-		_bg_color += delta * 0.2345f;
-		return true;
+	bool step_background_if_animations_disabled()
+	{
+		return ui::animations_enabled ? false : step_background();
 	}
 
 	void free_graphics_resources() const
@@ -2849,6 +2875,7 @@ public:
 	// blocks for as long as an unreachable network mapping takes to time out. Held so only a real drive
 	// event pays that, not every rebuild the index asks for.
 	platform::drives _drive_info;
+	uint64_t _structural_request_id = 0;
 	// The rows the factories built, kept so the chrome above them can change without rebuilding them.
 	std::vector<view_element_ptr> _item_elements;
 	std::vector<view_element_ptr> _elements;
@@ -2866,7 +2893,7 @@ public:
 		_history_chart = std::make_shared<sidebar_history_element>(s);
 
 		files ff;
-		const auto surface = ff.image_to_surface(load_resource(platform::resource_item::map_png));
+		const auto surface = ff.image_to_surface(load_app_resource(app_resource::map_png));
 		_map = std::make_shared<sidebar_map_element>(s, surface);
 
 		// The three lit visuals are one group, so they carry one margin between them. Left on the
@@ -2951,6 +2978,7 @@ public:
 		if (setting.sidebar.show_total_items) _elements.emplace_back(_type_chart);
 		if (setting.sidebar.show_world_map) _elements.emplace_back(_map);
 		if (setting.sidebar.show_history) _elements.emplace_back(_history_chart);
+
 		_elements.insert(_elements.end(), _item_elements.begin(), _item_elements.end());
 	}
 
@@ -3002,6 +3030,10 @@ public:
 		if (_map->populate(histograms->_locations, histograms->map_locations(_map->cell_span()))) invalidate();
 
 		search_items_by_key_t existing;
+		const auto request_id = ++_structural_request_id;
+		const search_item_factory::sidebar_config_snapshot config{
+			setting.search, setting.sidebar, setting.favorite_tags
+		};
 
 		for (const auto& i : _items)
 		{
@@ -3010,7 +3042,7 @@ public:
 
 		_state.queue_async(async_queue::sidebar,
 		                   [t = ui_owned(_state._async, shared_from_this()), &s = _state, existing,
-			                   drive_info = _drive_info]
+			                   drive_info = _drive_info, config, request_id]
 		                   {
 			                   constexpr search_item_factory f;
 			                   std::vector<search_item_ptr> items;
@@ -3025,7 +3057,7 @@ public:
 					                   item_elements.emplace_back(
 						                   std::make_shared<divider_element>());
 
-				                   for (const auto i : items_to_add)
+				                   for (const auto& i : items_to_add)
 				                   {
 					                   if (!added_elements.contains(i))
 					                   {
@@ -3036,12 +3068,12 @@ public:
 				                   }
 			                   };
 
-			                   if (setting.sidebar.show_favorite_searches)
+			                   if (config.sidebar.show_favorite_searches)
 			                   {
-				                   add_elements(f.create_search_items(s, existing));
+				                   add_elements(f.create_search_items(s, existing, config));
 			                   }
 
-			                   if (setting.sidebar.show_drives)
+			                   if (config.sidebar.show_drives)
 			                   {
 				                   drives = f.create_drive_items(s, drive_info);
 				                   if (!drives.empty() && !item_elements.empty())
@@ -3050,25 +3082,25 @@ public:
 				                   item_elements.insert(item_elements.end(), drives.begin(), drives.end());
 			                   }
 
-			                   if (setting.sidebar.show_ratings)
+			                   if (config.sidebar.show_ratings)
 			                   {
 				                   add_elements(f.create_ratings(s, existing));
 			                   }
 
-			                   if (setting.sidebar.show_labels)
+			                   if (config.sidebar.show_labels)
 			                   {
 				                   add_elements(f.create_labels(s, existing));
 			                   }
 
-			                   if (setting.sidebar.show_tags)
+			                   if (config.sidebar.show_tags)
 			                   {
-				                   add_elements(f.create_tags(s, existing));
+				                   add_elements(f.create_tags(s, existing, config));
 			                   }
 
 
 			                   item_elements.emplace_back(std::make_shared<divider_element>());
 
-			                   const auto tag_show_text = setting.sidebar.show_favorite_tags_only
+			                   const auto tag_show_text = config.sidebar.show_favorite_tags_only
 				                                              ? tt.command_all_tags
 				                                              : tt.command_favorite_tags;
 
@@ -3095,8 +3127,12 @@ public:
 
 			                   s.queue_ui(
 				                   [t, items = std::move(items), drives = std::move(drives), item_elements = std::move(
-					                   item_elements)]
+					                   item_elements), request_id]
 				                   {
+					                   if (!should_publish_sidebar_structural_request(t->_structural_request_id, request_id))
+					                   {
+						                   return;
+					                   }
 					                   t->update_content(std::move(items), std::move(drives), std::move(item_elements));
 				                   });
 		                   });
@@ -3224,11 +3260,11 @@ public:
 		});
 	}
 
-	view_controller_ptr controller_from_location(const pointi loc) override
+	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 	{
 		df::assert_true(ui::is_ui_thread());
 
-		if (_scroller.can_scroll() && _scroller.scroll_bounds().contains(loc))
+		if (_scroller.can_scroll() && ctx.occluded(_scroller.scroll_bounds()))
 		{
 			return std::make_shared<scroll_controller>(shared_from_this(), _scroller, _scroller.scroll_bounds());
 		}
@@ -3237,7 +3273,7 @@ public:
 
 		for (const auto& e : _elements)
 		{
-			auto controller = e->controller_from_location(shared_from_this(), loc, offset, {});
+			auto controller = e->controller_from_location(shared_from_this(), loc, offset, ctx);
 			if (controller) return controller;
 		}
 
@@ -3348,7 +3384,7 @@ public:
 
 			if (_show_indexing_control)
 			{
-				const auto perc = calc_indexing_perc(_state.item_index.stats);
+				const auto perc = calc_indexing_perc(_state.item_index.indexing_progress());
 
 				if (_last_indexing_perc != perc)
 				{

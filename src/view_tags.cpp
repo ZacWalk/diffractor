@@ -24,21 +24,113 @@
 std::vector<tag_action> parse_tag_actions(const std::string_view text)
 {
 	std::vector<tag_action> result;
-	search_tokenizer tokenizer;
+	auto pos = 0_z;
 
-	for (const auto& part : tokenizer.parse(text))
+	const auto skip_separator = [&]
 	{
-		const auto found = std::ranges::find_if(result, [&part](const tag_action& action)
+		while (pos < text.size() && str::is_separator(text[pos])) ++pos;
+	};
+
+	const auto read_quoted = [&](const char quote_char)
+	{
+		std::string tag;
+		++pos;
+
+		while (pos < text.size())
 		{
-			return str::icmp(action.first, part.term) == 0;
+			const auto c = text[pos++];
+
+			if (c == quote_char)
+			{
+				if (pos < text.size() && text[pos] == quote_char)
+				{
+					tag += c;
+					++pos;
+				}
+				else
+				{
+					break;
+				}
+			}
+			else
+			{
+				tag += c;
+			}
+		}
+
+		return tag;
+	};
+
+	const auto read_bare = [&]
+	{
+		const auto start = pos;
+		while (pos < text.size() && !str::is_separator(text[pos])) ++pos;
+		return std::string(text.substr(start, pos - start));
+	};
+
+	while (pos < text.size())
+	{
+		skip_separator();
+		if (pos >= text.size()) break;
+
+		auto positive = true;
+		if (text[pos] == '-' || text[pos] == '!')
+		{
+			positive = false;
+			++pos;
+			skip_separator();
+		}
+
+		if (pos < text.size() && text[pos] == '#') ++pos;
+		const auto quoted = pos < text.size() && (text[pos] == '"' || text[pos] == '\'');
+		auto tag = quoted ? read_quoted(text[pos]) : read_bare();
+		if (tag.empty()) continue;
+
+		const auto found = std::ranges::find_if(result, [&tag](const tag_action& action)
+		{
+			return str::icmp(action.first, tag) == 0;
 		});
 
 		if (found == result.end())
-			result.emplace_back(part.term, part.modifier.positive);
+			result.emplace_back(std::move(tag), positive);
 		else
-			found->second = part.modifier.positive;
+			found->second = positive;
 	}
 
+	return result;
+}
+
+static bool tag_action_needs_quote(const std::string_view tag)
+{
+	if (tag.empty()) return true;
+	if (tag.front() == '-' || tag.front() == '!') return true;
+	if (str::icmp(tag, "and") == 0 || str::icmp(tag, "or") == 0 ||
+		str::icmp(tag, tt.query_and) == 0 || str::icmp(tag, tt.query_or) == 0)
+	{
+		return true;
+	}
+
+	return std::ranges::any_of(tag, [](const char c)
+	{
+		return str::is_separator(c) || c == '\'' || c == '"' || search_tokenizer::is_delimiter_char(c);
+	});
+}
+
+static std::string quote_tag_action_literal(const std::string_view tag)
+{
+	if (!tag_action_needs_quote(tag)) return std::string(tag);
+
+	const auto quote_char = tag.find('"') == std::string::npos ? '"' : '\'';
+	std::string result;
+	result += quote_char;
+
+	for (const auto c : tag)
+	{
+		result += c;
+		if (c == quote_char) result += c;
+	}
+
+	result += quote_char;
 	return result;
 }
 
@@ -48,7 +140,7 @@ std::string serialize_tag_actions(const std::vector<tag_action>& actions)
 
 	for (const auto& [tag, positive] : actions)
 	{
-		auto text = str::quote_if_white_space(tag);
+		auto text = quote_tag_action_literal(tag);
 		parts.emplace_back(positive ? std::move(text) : std::format("-{}", text));
 	}
 
@@ -193,33 +285,10 @@ void tags_view::run()
 	begin_processing(item_list.size());
 	const auto processing_generation = this->processing_generation();
 	const auto cancel_source = processing_cancel_source();
+	const auto review_status = _status;
 	_status = std::string(tt.processing.sv());
 
-	const auto view = shared_from_this();
-	const auto results = std::make_shared<view_command_status>(_state._async, cancel_source,
-	                                                           [view, processing_generation](const size_t index)
-	                                                           {
-		                                                           if (view->is_processing_generation(
-			                                                           processing_generation)) view->
-				                                                           processing_work_item(index);
-	                                                           },
-	                                                           [view, processing_generation](
-	                                                           std::string message,
-	                                                           const std::vector<view_operation_result>& results)
-	                                                           {
-		                                                           if (!view->is_processing_generation(
-			                                                           processing_generation)) return;
-		                                                           view->end_processing();
-		                                                           const auto result_summary = view->show_results(
-			                                                           results);
-		                                                           if (!message.empty()) view->_status = std::move(
-			                                                           message);
-		                                                           else if (!result_summary.empty()) view->_status =
-			                                                           result_summary;
-		                                                           view->_state.invalidate_view(
-			                                                           view_invalid::status |
-			                                                           view_invalid::command_state);
-	                                                           });
+	const auto results = make_run_status(shared_from_this(), processing_generation, cancel_source, review_status);
 
 	metadata_edits edits;
 	edits.add_tags = tag_set(_adds);
@@ -236,7 +305,7 @@ view_controls_host_ptr tags_view::controls(const ui::control_frame_ptr& owner)
 
 	const auto& items = _state.selected_items();
 	auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
-	selection_thumbnails->selection(items.thumbs(), items.size());
+	selection_thumbnails->selection_async(items.thumbs(), items.size(), _state._async);
 
 	constexpr size_t recommended_tag_limit = 20;
 

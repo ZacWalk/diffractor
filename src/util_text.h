@@ -6,8 +6,8 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Text formatting and natural language processing. Handles
-// pluralization, localized text formatting, and text templates.
+// Purpose: Counting the words in names and text for the index's summaries of a collection;
+// util_text.cpp says which words count.
 
 #pragma once
 

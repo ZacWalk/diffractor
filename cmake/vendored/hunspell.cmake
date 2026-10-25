@@ -1,29 +1,33 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Build the vendored hunspell as diffractor::hunspell.
+# Purpose: Build Hunspell, fetched at its pinned release, as diffractor::hunspell.
 #
-# Imported from third-party/hunspell/hunspell.vcxproj (Release|x64) by tools/import_vcxproj.py.
+# Imported from the hunspell.vcxproj of the copy once vendored here, by tools/import_vcxproj.py. The
+# release's src/hunspell/ builds unchanged.
 # Compiler and linker flags are not restated here: DiffractorCompilerPolicy.cmake owns those
 # for every target.
 
 include_guard(GLOBAL)
+include(DiffractorFetch)
+diffractor_fetch(hunspell)
 
 add_library(diffractor_hunspell STATIC
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/affentry.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/affixmgr.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/csutil.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/filemgr.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/hashmgr.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/hunspell.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/hunzip.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/phonet.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/replist.cxx"
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell/suggestmgr.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/affentry.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/affixmgr.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/csutil.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/filemgr.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/hashmgr.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/hunspell.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/hunspelltrace.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/hunzip.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/phonet.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/replist.cxx"
+        "${hunspell_SOURCE_DIR}/src/hunspell/suggestmgr.cxx"
 )
 
 target_include_directories(diffractor_hunspell PUBLIC
-        "${CMAKE_SOURCE_DIR}/third-party/hunspell"
+        "${hunspell_SOURCE_DIR}/src/hunspell"
 )
 
 target_compile_definitions(diffractor_hunspell PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:W32>" "$<$<COMPILE_LANGUAGE:C,CXX>:HUNSPELL_STATIC>")

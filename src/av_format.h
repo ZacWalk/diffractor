@@ -21,8 +21,8 @@ struct SwrContext;
 struct AVCodecContext;
 struct AVBufferRef;
 struct AVFrame;
+struct AVPacket;
 struct AVHWFramesContext;
-struct ID3D11Texture2D;
 
 class file_scan_result;
 class audio_buffer;
@@ -47,6 +47,7 @@ struct av_pts_correction;
 struct audio_info_t;
 struct video_info_t;
 struct file_load_result;
+struct load_diagnostic;
 
 // These cannot be forward-declared: an opaque enum declaration is an MSVC extension, and giving
 // them a fixed underlying type here would contradict FFmpeg's own definition.
@@ -54,11 +55,108 @@ extern "C"
 {
 #include <libavutil/pixfmt.h>
 #include <libavutil/samplefmt.h>
+#include <libavcodec/codec_id.h>
 }
+
+// Whether FFmpeg can hand this stream to the platform's hardware decoder at all. It offers hardware
+// surfaces only for 4:2:0 -- 8-bit for H.264, MPEG-2 and VC-1, and 10-bit as well for HEVC, VP9 and
+// AV1 -- so 10-bit or 4:2:2 H.264 and 4:2:2 HEVC from a camera decode in software from the start,
+// with threads, instead of meeting a hardware decoder that has no surface to give them. A stream
+// whose format the probe did not settle is left for the decoder to answer.
+inline bool av_hw_decode_eligible(const AVCodecID codec, const AVPixelFormat format)
+{
+	const auto any = format == AV_PIX_FMT_NONE;
+	const auto eight_bit_420 = format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P;
+
+	switch (codec)
+	{
+	case AV_CODEC_ID_H264:
+	case AV_CODEC_ID_MPEG2VIDEO:
+	case AV_CODEC_ID_VC1:
+	case AV_CODEC_ID_WMV3:
+		return any || eight_bit_420;
+	case AV_CODEC_ID_HEVC:
+	case AV_CODEC_ID_VP9:
+	case AV_CODEC_ID_AV1:
+		return any || eight_bit_420 || format == AV_PIX_FMT_YUV420P10LE;
+	default:
+		return false;
+	}
+}
+
+// Decoded pictures frame threading may hold beyond the read-ahead queue: each thread keeps one in
+// flight, so the thread count is what bounds them.
+inline constexpr size_t av_frame_thread_bytes = 192_z * 1024 * 1024;
+
+// Threads for a software video decoder. Slice threading holds no extra pictures, so cores alone bound
+// it -- MPEG-2, DV, ProRes and DNxHD thread only this way. Frame threading is bounded by cores and by
+// what its pictures cost, so 1080p gets the full eight while 8K keeps two.
+constexpr int av_video_decode_threads(const bool frame_threading, const size_t frame_bytes, const unsigned cores)
+{
+	const auto by_cores = static_cast<int>(std::clamp(cores, 1u, 8u));
+	if (!frame_threading || frame_bytes == 0) return by_cores;
+	const auto by_memory = static_cast<int>(std::clamp<size_t>(av_frame_thread_bytes / frame_bytes, 2, 8));
+	return std::min(by_cores, by_memory);
+}
+
+// Whether this hardware device can decode this stream, answered by the platform from the driver's
+// decoder profiles, output formats and configurations at this size. Asked before a session commits:
+// FFmpeg's own AV1 decoder has no software path to fall back to, and every other decoder falls back
+// single-threaded, so a refusal is cheaper found first than discovered while decoding.
+bool av_platform_hw_decode_supported(AVBufferRef* device, AVCodecID codec, int bit_depth, int width, int height);
+
+// False once the driver has removed the device - a reset or an update - so a cached device is
+// replaced rather than handed to the next session.
+bool av_platform_hw_device_usable(AVBufferRef* device);
+
+// Makes the hardware decode device, on the GPU the renderer draws with where there is one: a decoder
+// on another GPU cannot share its pictures with the renderer, so each would be copied through system
+// memory. Null when no device can be made, and the stream then decodes in software.
+AVBufferRef* av_platform_create_hw_device(int device_type);
 
 
 using av_packet_ptr = std::shared_ptr<av_packet>;
 using av_frame_ptr = std::shared_ptr<av_frame>;
+
+struct av_nearest_frame_choice
+{
+	bool found = false;
+	bool reached = false;
+	double best_time = 0.0;
+	double best_dist = std::numeric_limits<double>::max();
+
+	bool consider(const double time, const double wanted_time, const double tolerance)
+	{
+		const auto dist = fabs(time - wanted_time);
+		const auto improved = dist < best_dist;
+
+		if (improved)
+		{
+			best_dist = dist;
+			best_time = time;
+			found = true;
+		}
+
+		if (time >= wanted_time || (found && best_dist <= tolerance))
+		{
+			reached = true;
+		}
+
+		return improved;
+	}
+};
+
+inline bool should_drain_delayed_video_frames_at_eof(const av_nearest_frame_choice& choice)
+{
+	return !choice.reached;
+}
+
+inline bool should_use_kept_sequential_frame(const double kept_time, const double decoded_time,
+                                             const double target_time)
+{
+	return !df::equiv(kept_time, decoded_time) &&
+		fabs(kept_time - target_time) <= fabs(decoded_time - target_time);
+}
 
 inline bool is_key(const std::string_view l, const std::string_view r)
 {
@@ -67,7 +165,7 @@ inline bool is_key(const std::string_view l, const std::string_view r)
 
 class file_type;
 using file_type_by_extension = df::hash_map<std::string_view, file_type_ref, df::ihash, df::ieq>;
-void av_initialise(file_type_by_extension& file_types);
+void av_initialise();
 
 // Describes a single FFmpeg codec for documentation generation.
 enum class av_codec_media_type
@@ -94,18 +192,9 @@ std::vector<av_codec_doc> av_supported_codecs();
 // decoded here. Returns an invalid date when no usable pack is present.
 df::date_t dv_extract_rec_datetime(const uint8_t* frame, size_t frame_size);
 
-struct av_frame_d3d
-{
-	int width = 0;
-	int height = 0;
-	AVHWFramesContext* ctx = nullptr;
-	ID3D11Texture2D* tex = nullptr;
-	uintptr_t tex_index = 0;
-	ui::orientation orientation = ui::orientation::top_left;
-	ui::color_space color_space = ui::color_space::rec601_limited;
-};
-
-av_frame_d3d av_get_d3d_info(const av_frame_ptr& frame_in);
+// Fills in the lock a hardware decode device takes around its pictures, for the renderer to hold while
+// it copies one: the platform's, since the device is. Leaves it empty where the device has none.
+void av_platform_decode_lock(const AVHWFramesContext* frames, ui::video_picture& picture);
 
 // The hardware decoder whose surfaces the renderer can present, answered by the platform layer.
 // A hwaccel is installed only for this exact pair, so a decoder can never hand back a surface
@@ -124,6 +213,19 @@ av_hw_decode_target av_platform_hw_decode_target();
 double av_time_from_frame(const av_frame_ptr& f);
 int av_seek_gen_from_frame(const av_frame_ptr& f);
 bool av_frame_is_eof(const av_frame_ptr& f);
+int av_packet_stream_index(const av_packet_ptr& p);
+bool av_packet_is_eof(const av_packet_ptr& p);
+
+// The picture the decode thread converted for upload, or null while the frame still holds the
+// decoder's own buffers - a hardware surface the renderer shares directly.
+ui::const_surface_ptr av_frame_surface(const av_frame_ptr& f);
+// The frame as the renderers take it. av_frame is complete only in av_format.cpp, so a caller that
+// holds one converts it here.
+ui::video_frame_ptr av_video_frame(const av_frame_ptr& f);
+
+// Asked by a renderer that cannot share the decoder's hardware surfaces, so from then on the decode
+// thread downloads and converts them rather than the thread that presents them.
+void av_request_cpu_video_frames();
 // Playing time covered by an audio frame's samples; 0 when the frame is not audio.
 double av_audio_frame_duration(const av_frame_ptr& f);
 bool av_is_frame_empty(const av_frame_ptr& f);
@@ -193,32 +295,60 @@ public:
 	audio_resampler(const audio_info_t& info);
 	~audio_resampler() override;
 
+	// Reset after a discontinuity; unlike drain(), this discards filter history.
 	void flush();
 	// Emits any samples the resampler still has buffered (e.g. rate-conversion tail)
 	// into audio_buffer at end of stream so the audio is not cut short.
 	void drain(audio_buffer& audio_buffer, int gen);
 	void resample(const av_frame_ptr& frame, audio_buffer& audio_buffer);
+	void resample(const AVFrame& frame, audio_buffer& audio_buffer, double time, int generation);
 
 	// Software gain (>= 1.0) applied to resampled samples. Used for volume boost
 	// above 100%, which the device volume (0.0-1.0) cannot provide. 1.0 = no boost.
 	void set_gain(const double gain) { _gain = gain; }
 };
 
-class av_scaler final : df::no_copy
+class av_scaler final : public ui::surface_scaler, df::no_copy
 {
 	SwsContext* _scaler = nullptr;
+	// The 16-bit R'G'B' an HDR picture passes through on its way to the tone-mapping cube, kept between
+	// frames: at 4K it is 50 MB, which allocated and cleared for every frame cost as much as the
+	// conversion itself.
+	std::vector<uint16_t> _hdr_signal;
+	// A download that fails fails for every later frame too, so the report is made once rather than
+	// once a frame.
+	bool _hw_download_failure_logged = false;
+
+	// Rows of three 16-bit samples a pixel for a picture of this extent, in _hdr_signal.
+	uint16_t* hdr_signal_rows(sizei extent);
+
+	// A hardware frame's pixels in system memory, with the frame's properties copied across, or null.
+	AVFrame* download(const AVFrame& frame);
+	// Converts a software frame at its own size into packed BGRA.
+	bool convert_frame(const AVFrame& frame, ui::color_space cs, const ui::surface_ptr& surface_out, double time,
+	                   ui::orientation orientation);
+	// Converts a PQ or HLG frame into BT.709 SDR BGRA at dimensions_out, through the cube the renderer
+	// samples for the same frame.
+	bool convert_hdr(const AVFrame& frame, const ui::tone_map_lut& lut, const ui::surface_ptr& surface_out,
+	                 sizei dimensions_out, double time, ui::orientation orientation, bool high_quality);
 
 public:
 	~av_scaler() override;
 
 	bool scale_surface(const ui::const_surface_ptr& surface_in, ui::surface_ptr& surface_out, sizei dimensions_out,
-	                   bool high_quality = true);
-	bool convert_yuv_surface(const ui::surface& surface_in, const ui::surface_ptr& surface_out);
+	                   bool high_quality = true) override;
+	bool convert_yuv_surface(const ui::surface& surface_in, const ui::surface_ptr& surface_out) override;
+	bool scale_surface(const ui::video_frame& frame, const ui::surface_ptr& surface_out) override;
 	bool scale_surface(const av_frame_ptr& frame, const ui::surface_ptr& surface_out);
 	// container_sar carries the demuxer's stream aspect ratio, which is the only place an MP4 pasp
 	// box surfaces - FFmpeg never copies it onto the codec parameters or the decoded frame.
 	bool scale_frame(const AVFrame& frame, ui::surface_ptr& surface, sizei max_dim, double time,
-	                 ui::orientation orientation, av_rational container_sar = {});
+	                 ui::orientation orientation, av_rational container_sar = {}, bool preserve_alpha = false);
+
+	// The picture exactly as the renderer will upload it, made on the decode thread: NV12 or P010 for a
+	// renderer that samples YUV - the planes hardware-decoded frames arrive in - and packed BGRA for
+	// anything else. Null when it cannot be made, which leaves the frame for the presenter as before.
+	ui::surface_ptr presentable_surface(const AVFrame& frame, double time, ui::orientation orientation);
 };
 
 // Decodes one still image from encoded bytes. This is the path for the formats Diffractor reads but
@@ -227,7 +357,8 @@ public:
 //
 // TGA, SGI, the portable pixmaps and DPX have no signature worth probing, so a caller that knows the
 // file name passes its extension: that is the only thing that can name the format for those.
-ui::surface_ptr av_decode_still(df::cspan data, sizei max_dim, std::string_view extension_hint = {});
+ui::surface_ptr av_decode_still(df::cspan data, sizei max_dim, std::string_view extension_hint = {},
+                                load_diagnostic* diagnostic = nullptr);
 
 
 template <typename T>
@@ -340,6 +471,12 @@ struct av_stream_info
 	std::string fourcc;
 	std::string language;
 	std::string pixel_format;
+	// The codec profile as FFmpeg names it - "Main 10", "High" - or empty where the stream names none.
+	std::string profile;
+	// Bits a sample of a video stream carries; zero when the stream does not say.
+	int bit_depth = 0;
+	// The HDR transfer a video stream is tagged with - "PQ" or "HLG" - or empty for SDR.
+	std::string hdr_transfer;
 	int audio_sample_rate = 0;
 	int audio_channels = 0;
 	prop::audio_sample_t audio_sample_type = prop::audio_sample_t::none;
@@ -402,6 +539,9 @@ public:
 	int64_t bitrate = 0;
 	double start = 0;
 	double end = 0;
+	// Frames per second as the container reports it, guessed where the stream does not say. Zero
+	// when there is no video stream.
+	double video_frame_rate = 0;
 
 	sizei display_dimensions;
 	sizei render_dimensions;
@@ -471,6 +611,9 @@ public:
 
 private:
 	mutable std::unique_ptr<av_scaler> _scaler;
+	// Used only by the video decode thread to prepare pictures for upload. A scaler holds conversion
+	// state, and _scaler is also reached from the read thread when a frame is captured.
+	std::unique_ptr<av_scaler> _presentation_scaler;
 
 	AVCodecContext* _video_context = nullptr;
 	AVCodecContext* _audio_context = nullptr;
@@ -484,7 +627,6 @@ private:
 
 	bool _has_video = false;
 	bool _has_audio = false;
-	bool _is_open = false;
 	bool _has_multiple_audio_streams = false;
 
 	int _video_stream_index = -1; // _pVideoStream->index
@@ -498,6 +640,13 @@ private:
 	double _end_time = 0;
 	std::atomic<int> _rotation = 0;
 
+	// Where extract_frame_at last left the decoder, so the next call can tell a step forward from a
+	// jump. Negative means the position is unknown and the next call must seek. Any seek clears it,
+	// so a decoder shared with another extraction path cannot walk on from somewhere it no longer is.
+	mutable double _sequential_time = -1;
+	mutable av_frame_ptr _sequential_prev;
+	mutable av_frame_ptr _sequential_next;
+
 	av_rational _video_base;
 	av_rational _audio_base;
 	av_rational _video_stream_aspect_ratio;
@@ -510,16 +659,44 @@ private:
 	// video survives; subtracting each stream's own start_time silently removed it.
 	int64_t _time_origin = 0;
 
+	// The cancel token of an audio walk in progress, for its duration only, so a read blocked on a slow
+	// volume gives up once its caller has moved on. A picture extraction never sets it: its caller
+	// always gets the first frame it can, cancelled or not. Closing the application stops every read.
+	const df::cancel_token* _io_abandon = nullptr;
+
+	bool io_should_stop() const;
+	static int read_io(void* opaque, uint8_t* buf, int buf_size);
+	static int64_t seek_io(void* opaque, int64_t offset, int whence);
+	static int interrupt_io(void* opaque);
+
+	// Sets a stream's AVDiscard for a scope, and puts the previous one back.
+	class stream_discard_scope final : df::no_copy
+	{
+		AVStream* _stream = nullptr;
+		int _previous = 0;
+
+	public:
+		stream_discard_scope(AVStream* stream, int discard);
+		~stream_discard_scope() override;
+	};
+
+	stream_discard_scope discard_video_while_reading_audio() const;
+
 	void update_orientation(const AVFrame* frame);
 	ui::orientation calc_orientation() const;
 
-	bool decode_frame(ui::surface_ptr& dest_surface, AVCodecContext* ctx, const av_packet_ptr& packet, sizei max_dim);
+	// A null packet drains the decoder, which is how the last pictures of a stream come out.
+	bool decode_frame(ui::surface_ptr& dest_surface, AVCodecContext* ctx, const AVPacket* packet, sizei max_dim);
 
 	// Pulls every frame the decoder currently has ready onto the output queue,
 	// timestamping each from the stream's time base. Shared by the normal decode
 	// path and the end-of-stream drain so both stay in step.
 	void receive_available_frames(AVCodecContext* ctx, av_pts_correction& pts, av_rational base, int64_t start,
 	                              int seek_gen, av_frame_queue& frames);
+
+	// Converts a decoded picture into the surface the renderer uploads, on the decode thread, so that
+	// presenting it does no conversion. A hardware frame the renderer can share is left as it is.
+	void prepare_for_presentation(av_frame& frame);
 
 	// Decode forward from the current (freshly seeked) position to the frame
 	// nearest wanted_time, scaling that frame into dest_surface. Shared by thumbnail
@@ -529,10 +706,11 @@ private:
 	// once `abandon` fires.
 	bool decode_nearest_frame(ui::surface_ptr& dest_surface, sizei max_dim, double wanted_time, double tolerance,
 	                          df::cancel_token abandon);
+	void clear_sequential_frame_bracket() const;
+	bool scale_sequential_frame(ui::surface_ptr& dest_surface, sizei max_dim, const av_frame& frame) const;
 
 	friend class av_player;
 	friend class av_session;
-	friend class av_converter;
 
 public:
 	bool has_audio() const
@@ -557,6 +735,7 @@ public:
 
 
 	video_info_t video_information() const;
+	double video_frame_rate() const;
 	audio_info_t audio_info() const;
 
 	bool extract_seek_frame(ui::surface_ptr& dest_surface, sizei max_dim, double pos_numerator = 10,
@@ -567,6 +746,26 @@ public:
 	bool extract_thumbnail(ui::surface_ptr& dest_surface, sizei max_dim, double pos_numerator = 10,
 	                       double pos_denominator = 100, bool exact_frame = true,
 	                       double tolerance_fraction = 0.0, df::cancel_token abandon = {});
+	// The frame nearest `wanted_time`, decoding forward from wherever this decoder already sits and
+	// seeking only when the target is behind it or far enough ahead that walking there costs more.
+	// A caller stepping through a clip in order therefore keeps one decoder open across frames
+	// instead of reopening the file for each, which is the difference between a preview and a
+	// slideshow.
+	bool extract_frame_at(ui::surface_ptr& dest_surface, sizei max_dim, double wanted_time,
+	                      double tolerance_seconds = 0.0, df::cancel_token abandon = {});
+	// Peak amplitude per bucket over the whole audio stream, 0-255, for showing where the sound is.
+	// Empty when the file carries no audio. This decodes the stream once from wherever it is
+	// positioned, so it belongs on a worker and on a decoder nothing else is using.
+	std::vector<uint8_t> extract_audio_peaks(int buckets, df::cancel_token abandon = {});
+	// The whole audio stream as interleaved 16-bit stereo at `sample_rate`. A buffer is what lets a
+	// caller play a clip by position rather than by packet clock, and that simplicity is what it is
+	// bought with: 48 kHz stereo costs 192 KB a second, so the read stops at `max_seconds`.
+	// Empty when the file carries no audio. Decodes the whole stream, so it belongs on a worker.
+	std::vector<int16_t> extract_audio_pcm(int sample_rate, double max_seconds, df::cancel_token abandon = {});
+	// Decodes only the retained presentation interval. Samples are placed by timestamp, so a stream
+	// offset becomes silence rather than shifting the soundtrack against the picture.
+	std::vector<int16_t> extract_audio_pcm_range(int sample_rate, double start_seconds, double duration_seconds,
+	                                           df::cancel_token abandon = {});
 	file_load_result render_frame(const av_frame_ptr& frame_in) const;
 	void receive_frames(av_packet_queue& packets, av_frame_queue& frames);
 

@@ -2234,9 +2234,6 @@ msgstr "ハードウェアアクセラレーションを使用してDiffractor�
 msgid "Use hardware acceleration to decode video (when available)"
 msgstr "ハードウェアアクセラレーションを使用してビデオをデコードします (利用可能な場合)"
 
-msgid "Use NV12 and P010 format textures (Automatically turned off if problems detected)"
-msgstr "NV12およびP010形式のテクスチャを使用します (問題が検出された場合は自動的にオフになります)"
-
 msgid "Show an inset shadow surrounding the image view panel."
 msgstr "画像表示パネルの周りに内側の影を表示します。"
 
@@ -2761,6 +2758,24 @@ msgstr "ファイルのインポートを準備中..."
 msgid "Preparing files for email..."
 msgstr "メール送信用にファイルを準備中..."
 
+msgid "Share"
+msgstr "共有"
+
+msgid "Preparing files to share..."
+msgstr "共有するファイルを準備中..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "ファイルを受け取れるアプリが Windows に表示されます。元のファイルは変更されません。"
+
+msgid "Send the files as one zip file"
+msgstr "ファイルを 1 つの ZIP ファイルにまとめて送信する"
+
+msgid "&Share"
+msgstr "共有(&S)"
+
+msgid "The files could not be shared."
+msgstr "ファイルを共有できませんでした。"
+
 msgid "Preparing to synchronize files..."
 msgstr "ファイル同期の準備中..."
 
@@ -3193,10 +3208,16 @@ msgid_plural "{count} items were ignored because they were previously imported."
 msgstr[0] "{first-name} は以前にインポートされたため無視されました。"
 msgstr[1] "{count} 個のアイテムは以前にインポートされたため無視されました。"
 
-msgid "{first-name} will be moved to the recycle bin."
-msgid_plural "{count} items ({size}) will be moved to the recycle bin."
-msgstr[0] "{first-name} はごみ箱に移動されます。"
-msgstr[1] "{count} 個のアイテム ({size}) はごみ箱に移動されます。"
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "1 個のアイテムをインポートしましたが、作成日を設定できませんでした。"
+msgstr[1] "{count} 個のアイテムをインポートしましたが、作成日を設定できませんでした。"
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} は、Windows でリサイクルできる場合、ごみ箱に移動されます。"
+msgstr[1] "{count} 個の項目 ({size}) は、Windows でリサイクルできる場合、ごみ箱に移動されます。"
 
 msgid "{first-name} will be permanently deleted."
 msgid_plural "{count} items ({size}) will be permanently deleted."
@@ -3250,6 +3271,11 @@ msgid "A desktop email draft will be opened with {first-name} attached."
 msgid_plural "A desktop email draft will be opened with {count} selected items attached."
 msgstr[0] "{first-name} を添付した下書きがデスクトップのメールクライアントで開きます。"
 msgstr[1] "選択した {count} 個のアイテムを添付した下書きがデスクトップのメールクライアントで開きます。"
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name} を選んだアプリに渡します。"
+msgstr[1] "選択した {count} 個のアイテムを選んだアプリに渡します。"
 
 msgid "{first-name} already exists. Do you want to replace it?"
 msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
@@ -3640,3 +3666,157 @@ msgstr "元の日時でグループ化"
 
 msgid "Sort by Date original"
 msgstr "元の日時で並べ替え"
+
+msgid "Movie mixer"
+msgstr "ムービー ミキサー"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "選択した写真と動画を 1 本の動画にまとめます。下のストリップでクリップを追加、削除、並べ替えでき、選択したクリップをトリミングできます。プレビューはレンダリング結果と同じです。レンダリングまたは保存するまで何も書き込まれません。"
+
+msgid "Movie"
+msgstr "ムービー"
+
+msgid "Selected clip"
+msgstr "選択したクリップ"
+
+msgid "Crossfade between clips"
+msgstr "クリップ間をクロスフェード"
+
+msgid "Cut between clips"
+msgstr "クリップ間をカット"
+
+msgid "Transition (tenths of a second)"
+msgstr "トランジション (10 分の 1 秒)"
+
+msgid "Fade (tenths of a second)"
+msgstr "フェード (10 分の 1 秒)"
+
+msgid "Fade in from black"
+msgstr "黒からフェードイン"
+
+msgid "Fade out to black"
+msgstr "黒へフェードアウト"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "写真の表示時間 (10 分の 1 秒)"
+
+msgid "This photo (tenths of a second)"
+msgstr "この写真 (10 分の 1 秒)"
+
+msgid "Use the movie default"
+msgstr "ムービーの既定値を使う"
+
+msgid "Add photos and videos to build a movie."
+msgstr "写真と動画を追加してムービーを作成します。"
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "出力は {} x {}、{} fps、長さ {} です。"
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - クリップ {}/{}、開始位置 {}。"
+
+msgid "Movie project"
+msgstr "ムービー プロジェクト"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows ムービー メーカー プロジェクト"
+
+msgid "Photos and videos"
+msgstr "写真と動画"
+
+msgid "Could not read the project {}."
+msgstr "プロジェクト {} を読み込めませんでした。"
+
+msgid "Could not save the project {}."
+msgstr "プロジェクト {} を保存できませんでした。"
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "選択した写真と動画を 1 本の動画にまとめます。"
+
+msgid "Add files"
+msgstr "ファイルを追加"
+
+msgid "Remove from movie"
+msgstr "ムービーから削除"
+
+msgid "Send to the end"
+msgstr "最後に移動"
+
+msgid "Open project"
+msgstr "プロジェクトを開く"
+
+msgid "Save project"
+msgstr "プロジェクトを保存"
+
+msgid "Import Movie Maker project"
+msgstr "ムービー メーカー プロジェクトをインポート"
+
+msgid "Video"
+msgstr "動画"
+
+msgid "Rendering the movie"
+msgstr "ムービーをレンダリングしています"
+
+msgid "The movie could not be rendered. {}"
+msgstr "ムービーをレンダリングできませんでした。{}"
+
+msgid "The movie has no length."
+msgstr "ムービーの長さがありません。"
+
+msgid "The encoder would not accept this movie."
+msgstr "エンコーダーがこのムービーを受け付けませんでした。"
+
+msgid "There was not enough memory for a movie frame."
+msgstr "ムービーのフレームに使うメモリが足りませんでした。"
+
+msgid "A clip could not be decoded."
+msgstr "クリップをデコードできませんでした。"
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "ムービーが完成する前にエンコーダーが停止しました。"
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "その名前はこのムービー内のクリップで使われています。別の名前を選んでください。"
+
+msgid "Rendered {}."
+msgstr "{} をレンダリングしました。"
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "レンダリングはキャンセルされました。何も書き込まれていません。"
+
+msgid "No missing clip was found in that folder."
+msgstr "そのフォルダーに見つからないクリップはありませんでした。"
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "このムービーにはプロジェクト ファイルにない変更があります。Diffractor の実行中は保持されますが、Diffractor を閉じると破棄されます。"
+
+msgid "Close without saving"
+msgstr "保存せずに閉じる"
+
+msgid "Render"
+msgstr "レンダリング"
+
+msgid "Write the movie to a video file."
+msgstr "ムービーを動画ファイルに書き出します。"
+
+msgid "Relink missing files"
+msgstr "見つからないファイルを再リンク"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "ソース ファイルが移動したクリップを、選んだフォルダーに向け直します。"
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "インポートしたプロジェクトの 1 個の要素は、ムービーで表現できないため除外されました。"
+msgstr[1] "インポートしたプロジェクトの {count} 個の要素は、ムービーで表現できないため除外されました。"
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 個のクリップがソース ファイルを見つけられません。"
+msgstr[1] "{count} 個のクリップがソース ファイルを見つけられません。"
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 個のクリップを再リンクしました。"
+msgstr[1] "{count} 個のクリップを再リンクしました。"
+

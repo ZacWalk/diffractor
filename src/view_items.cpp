@@ -90,10 +90,10 @@ static void render_toolbar_button(ui::draw_context& dc, const ui::command_ptr& c
 	}
 }
 
-// Discussion #251: the menu the always-visible scroll control opens. Scroll to top is the control's
-// own action and comes first, because the click no longer performs it. Everything after that is the
+// Discussion #251: the menu the always-visible scroll control opens. Every entry but the last is the
 // toolbar's own command object, so a second copy of the toolbar cannot disagree with the first about
-// what is offered, enabled or ticked.
+// what is offered, enabled or ticked. Scroll to top is the control's own action, offered because the
+// click no longer performs it, and it comes last, directly below the settings the menu exists for.
 std::vector<ui::command_ptr> items_scroll_menu(const view_state& state, const bool at_top,
                                                std::function<void()> scroll_to_top)
 {
@@ -113,14 +113,6 @@ std::vector<ui::command_ptr> items_scroll_menu(const view_state& state, const bo
 		if (auto c = state.find_command(id)) result.emplace_back(std::move(c));
 	};
 
-	auto top = std::make_shared<ui::command>();
-	top->icon = icon_index::up;
-	top->text = tt.tooltip_scroll_to_top;
-	top->enable = !at_top;
-	top->invoke = std::move(scroll_to_top);
-	result.emplace_back(std::move(top));
-	add_separator();
-
 	if (const auto group = state.find_command(commands::menu_group_toolbar); group && group->menu)
 	{
 		for (auto& c : group->menu()) result.emplace_back(std::move(c));
@@ -136,7 +128,12 @@ std::vector<ui::command_ptr> items_scroll_menu(const view_state& state, const bo
 	add_separator();
 	add_command(commands::browse_recursive);
 
-	if (!result.empty() && result.back() == nullptr) result.pop_back();
+	auto top = std::make_shared<ui::command>();
+	top->icon = icon_index::up;
+	top->text = tt.tooltip_scroll_to_top;
+	top->enable = !at_top;
+	top->invoke = std::move(scroll_to_top);
+	result.emplace_back(std::move(top));
 
 	return result;
 }
@@ -242,10 +239,10 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		_device_bounds = column_bounds(element_offset);
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -315,9 +312,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return _child->controller_from_location(host, loc, element_offset, excluded_bounds);
+		return _child->controller_from_location(host, loc, element_offset, ctx);
 	}
 };
 
@@ -374,10 +371,10 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		_device_bounds = bounds.offset(element_offset);
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -406,21 +403,9 @@ protected:
 		{
 			_state.hover_item(_host, _hover_item, true);
 
-			// A hovered item paints an expanded caption that can overhang the grid. view_host keeps
-			// the active controller until the pointer leaves its bounds, so confining the controller
-			// to the item region is what keeps the status bar underneath it clickable.
-			_bounds = _scroller.logical_to_device(_hover_item->interactive_bounds())
-			                   .intersection(_parent.calc_items_bounds());
-
-			// The pin badge is drawn inside those same bounds, so a controller spanning them made the
-			// badge unreachable: the pointer never left the item, so the badge was never hit tested
-			// and clicking it re-selected the item instead of releasing the hold. Carving it out means
-			// moving onto the badge leaves the controller and forces the re-test.
-			if (_state._pin_item == _hover_item)
-			{
-				const auto badge = _hover_item->pin_badge_bounds();
-				if (!badge.is_empty()) _bounds.exclude(loc, _scroller.logical_to_device(badge));
-			}
+			// The item's own region, expanded caption and all. Keeping it inside the grid, and keeping
+			// the pin badge reachable, are the hit test's business rather than this constructor's.
+			_bounds = _scroller.logical_to_device(_hover_item->interactive_bounds());
 		}
 	}
 
@@ -522,7 +507,6 @@ public:
 		_parent.blur_rendered_filter();
 		_tracking = true;
 		_cancel = false;
-		_first_tic = platform::tick_count();
 		_last_loc = _start_loc = loc;
 		_last_logical_loc = _start_logical_loc = _scroller.device_to_logical(loc);
 		update_state();
@@ -672,7 +656,6 @@ public:
 		_parent.blur_rendered_filter();
 		_tracking = true;
 		_cancel = false;
-		_first_tic = platform::tick_count();
 		_last_loc = _start_loc = loc;
 		_last_logical_loc = _start_logical_loc = _scroller.device_to_logical(loc);
 		_drag_started = false;
@@ -750,23 +733,6 @@ void items_view::deactivate()
 void items_view::refresh()
 {
 	_state.open(_host, _state.search(), {});
-}
-
-// The address bar shows the scope of the current search: a folder, a folder searched recursively,
-// or the kind of the first term. The star glyph is reserved for ratings, so fall back to the
-// generic search icon rather than showing it here.
-static icon_index address_icon(const df::search_t& search)
-{
-	if (search.has_recursive_selector()) return icon_index::recursive;
-	if (search.has_selector()) return icon_index::folder;
-
-	if (search.has_terms())
-	{
-		const auto icon = search.first_type()->icon;
-		if (icon != icon_index::star && icon != icon_index::none) return icon;
-	}
-
-	return icon_index::search;
 }
 
 items_view::items_view(view_state& s, view_host_ptr host) :
@@ -1522,7 +1488,8 @@ void items_view::update_regions()
 	if (_media_scroller.can_scroll()) _regions.media_scroll = _media_scroller.scroll_bounds();
 }
 
-view_controller_ptr items_view::media_controller_from_location(const view_host_ptr& host, const pointi loc)
+view_controller_ptr items_view::media_controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                               hit_test_context& ctx)
 {
 	const auto media_offset = -_media_scroller.scroll_offset();
 
@@ -1530,12 +1497,12 @@ view_controller_ptr items_view::media_controller_from_location(const view_host_p
 	{
 		// Only the primary media element was laid out in this mode; the rest of the stack holds
 		// bounds from the previous layout and must not answer hit tests.
-		return _media_element ? _media_element->controller_from_location(host, loc, media_offset, {}) : nullptr;
+		return _media_element ? _media_element->controller_from_location(host, loc, media_offset, ctx) : nullptr;
 	}
 
 	for (const auto& e : _media_elements)
 	{
-		if (auto controller = e->controller_from_location(host, loc, media_offset, {}))
+		if (auto controller = e->controller_from_location(host, loc, media_offset, ctx))
 		{
 			return controller;
 		}
@@ -1544,13 +1511,14 @@ view_controller_ptr items_view::media_controller_from_location(const view_host_p
 	return nullptr;
 }
 
-view_controller_ptr items_view::items_controller_from_location(const view_host_ptr& host, const pointi loc)
+view_controller_ptr items_view::items_controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                               hit_test_context& ctx)
 {
 	const auto items_offset = -_items_scroller.scroll_offset();
 
 	for (const auto& e : _item_elements)
 	{
-		if (auto controller = e->controller_from_location(host, loc, items_offset, {}))
+		if (auto controller = e->controller_from_location(host, loc, items_offset, ctx))
 		{
 			return controller;
 		}
@@ -1561,9 +1529,7 @@ view_controller_ptr items_view::items_controller_from_location(const view_host_p
 	// The pin badge wins over selection: it is the only way to release the held item from the grid.
 	if (i && _state._pin_item == i)
 	{
-		const auto badge = i->pin_badge_bounds().offset(items_offset);
-
-		if (!badge.is_empty() && badge.contains(loc))
+		if (const auto badge = i->pin_badge_bounds().offset(items_offset); ctx.occluded(badge))
 		{
 			return std::make_shared<unpin_badge_controller>(host, _state, badge);
 		}
@@ -1594,29 +1560,52 @@ items_view::view_region items_view::region_at(const pointi loc) const
 	return view_region::none;
 }
 
-view_controller_ptr items_view::controller_from_location(const view_host_ptr& host, const pointi loc)
+recti items_view::region_bounds(const view_region region) const
 {
+	switch (region)
+	{
+	case view_region::sidebar_splitter: return _regions.sidebar_splitter;
+	case view_region::sidebar: return _regions.sidebar;
+	case view_region::splitter: return _regions.splitter;
+	case view_region::items_scroll: return _regions.items_scroll;
+	case view_region::items_scroll_top: return _regions.items_scroll_top;
+	case view_region::media_scroll: return _regions.media_scroll;
+	case view_region::media: return _regions.media;
+	case view_region::items: return _regions.items;
+	case view_region::none: break;
+	}
+
+	return {};
+}
+
+view_controller_ptr items_view::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                         hit_test_context& ctx)
+{
+	const auto region = region_at(loc);
+
 	// Each controller is confined to the region that produced it: view_host caches the active
-	// controller's bounds and only re-tests once the pointer leaves them, so a controller that
-	// overhangs its region would make the neighbouring region unclickable.
-	switch (region_at(loc))
+	// controller and only re-tests once the pointer leaves it, so a controller that overhangs its
+	// region - a hovered item's expanded caption does - would make the neighbouring region unclickable.
+	ctx.confine(region_bounds(region));
+
+	switch (region)
 	{
 	case view_region::sidebar_splitter:
 		return std::make_shared<sidebar_splitter_controller>(host, *this, _regions.sidebar_splitter);
 	case view_region::sidebar:
-		return _sidebar->controller_from_location(loc);
+		return _sidebar->controller_from_location(loc, ctx);
 	case view_region::splitter:
 		return std::make_shared<splitter_controller>(host, *this, _regions.splitter);
 	case view_region::items_scroll:
 		return std::make_shared<scroll_controller>(host, _items_scroller, _regions.items_scroll);
 	case view_region::items_scroll_top:
-		return _items_scroll_top->controller_from_location(host, loc, {}, {});
+		return _items_scroll_top->controller_from_location(host, loc, {}, ctx);
 	case view_region::media_scroll:
 		return std::make_shared<scroll_controller>(host, _media_scroller, _regions.media_scroll);
 	case view_region::media:
-		return media_controller_from_location(host, loc);
+		return media_controller_from_location(host, loc, ctx);
 	case view_region::items:
-		return items_controller_from_location(host, loc);
+		return items_controller_from_location(host, loc, ctx);
 	case view_region::none:
 		break;
 	}
@@ -1900,10 +1889,9 @@ void items_view::update_visible_items_list()
 				center_element = i.i;
 			}
 
-			if (i.i->begin_db_thumbnail_query())
+			if (const auto generation = i.i->begin_db_thumbnail_query())
 			{
-				db_thumbnail_requests.emplace_back(i.i, i.i->path(), i.i->folder(), i.i->is_folder(),
-				                                   i.i->has_thumb());
+				db_thumbnail_requests.emplace_back(database::make_thumbnail_request(i.i, generation));
 			}
 			else
 			{
@@ -2543,9 +2531,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -2614,10 +2602,10 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
 		_device_bounds = bounds.offset(element_offset);
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -2799,9 +2787,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return _controls->controller_from_location(host, loc, element_offset, excluded_bounds);
+		return _controls->controller_from_location(host, loc, element_offset, ctx);
 	}
 };
 
@@ -2898,6 +2886,11 @@ class metadata_tree_control final : public std::enable_shared_from_this<metadata
 		uint32_t spines = 0; // bit c set while an ancestor's connector column c passes through
 		bool open = false;
 	};
+
+	// One bit of spines a connector column. A path deeper than this draws no spine beyond the last
+	// column rather than shifting past the width of the mask, which is undefined and on MSVC wraps
+	// the count to draw a spine belonging to column zero.
+	static constexpr int max_spine_columns = 32;
 
 	std::vector<row> _rows;
 	metadata_tree_state_ptr _tree_state;
@@ -3123,7 +3116,7 @@ public:
 			const auto& r = _rows[v.index];
 			const auto mid = top + _line_height / 2;
 
-			for (auto c = 0; c + 1 < r.depth; ++c)
+			for (auto c = 0; c + 1 < r.depth && c < max_spine_columns; ++c)
 			{
 				if (v.spines & (1u << c))
 				{
@@ -3235,7 +3228,7 @@ public:
 			if (spines.size() < depth) spines.resize(depth, false);
 
 			uint32_t mask = 0;
-			for (auto c = 0_z; c + 1 < depth && c < 32; ++c)
+			for (auto c = 0_z; c + 1 < depth && c < static_cast<size_t>(max_spine_columns); ++c)
 			{
 				if (spines[c]) mask |= 1u << c;
 			}
@@ -3311,7 +3304,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 };
 
 // Hovering and clicking are resolved per row, so the whole listing latches one controller and
@@ -3320,6 +3313,9 @@ class metadata_tree_controller final : public view_controller
 {
 	std::shared_ptr<metadata_tree_control> _control;
 	pointi _element_offset;
+	// The row the press landed on. A release resolves its own row and the two have to agree, or a
+	// press that drifted would act on whichever row it drifted onto.
+	int _pressed_row = -1;
 
 public:
 	metadata_tree_controller(const view_host_ptr& host, std::shared_ptr<metadata_tree_control> control,
@@ -3354,10 +3350,22 @@ public:
 		update_hot(loc);
 	}
 
+	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	{
+		_last_loc = loc;
+		_pressed_row = _bounds.contains(loc) ? _control->row_from_location(loc, _element_offset) : -1;
+	}
+
 	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
 	{
-		const auto row = _control->row_from_location(loc, _element_offset);
-		if (row >= 0) _control->toggle(row);
+		// The row that was pressed is the row that toggles. Reading the release alone meant a press
+		// that drifted onto a neighbour, or off the control entirely, expanded or collapsed a row
+		// the user had never pointed at.
+		const auto row = _bounds.contains(loc) ? _control->row_from_location(loc, _element_offset) : -1;
+
+		if (row >= 0 && row == _pressed_row) _control->toggle(row);
+
+		_pressed_row = -1;
 	}
 
 	ui::style::cursor cursor() const override
@@ -3368,15 +3376,12 @@ public:
 
 inline view_controller_ptr metadata_tree_control::controller_from_location(
 	const view_host_ptr& host, const pointi loc, const pointi element_offset,
-	const std::vector<recti>& excluded_bounds)
+	hit_test_context& ctx)
 {
 	if (!is_visible() || !bounds.contains(loc - element_offset)) return nullptr;
 
-	auto clipped = bounds;
-	for (const auto& ex : excluded_bounds) clipped.exclude(loc - element_offset, ex);
-
 	auto result = std::make_shared<metadata_tree_controller>(host, shared_from_this(), element_offset,
-	                                                         clipped.offset(element_offset));
+	                                                         bounds.offset(element_offset));
 	result->update_hot(loc);
 	return result;
 }
@@ -3399,7 +3404,7 @@ void items_view::add_metadata_elements(std::vector<view_element_ptr>& elements, 
 	auto title = std::string(format_metadata_standard(block.standard));
 	std::string summary;
 
-	if (block.bytes > 0) summary = prop::format_size(df::file_size(block.bytes));
+	if (block.bytes > 0) summary = df::format_size(df::file_size(block.bytes));
 
 	if (value_count > 0)
 	{
@@ -3417,12 +3422,16 @@ void items_view::add_metadata_elements(std::vector<view_element_ptr>& elements, 
 
 	auto tree = std::make_shared<metadata_tree_control>(block, _metadata_tree, flex_item::stretch);
 
-	elements.emplace_back(make_section(
-		std::make_shared<group_title_control>(title, std::vector<view_element_ptr>{
-			                                      std::make_shared<copy_clip_element>(
-				                                      [tree, title] { return tree->copy_text(title); })
-		                                      }),
-		std::move(tree)));
+	// The copy button reproduces the tree, so it holds the tree alive itself. Built in its own
+	// statement because the section below moves `tree`: function arguments are indeterminately
+	// sequenced, MSVC evaluates them right to left, and capturing in one argument while moving in
+	// another left the lambda holding an emptied pointer. The listing still drew, because the
+	// section owns the tree either way - only pressing copy dereferenced null.
+	auto section_title = std::make_shared<group_title_control>(title, std::vector<view_element_ptr>{
+		std::make_shared<copy_clip_element>([tree, title] { return tree->copy_text(title); })
+	});
+
+	elements.emplace_back(make_section(std::move(section_title), std::move(tree)));
 }
 
 // Every prose field the item carries reads as one section. A lone field is just its text; a list
@@ -3582,6 +3591,23 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 		}
 
 		auto format = st.pixel_format;
+		auto codec = st.codec;
+
+		if (st.type == av_stream_type::video)
+		{
+			// Tokens in the same terse form as the audio row's, which is the form the format and
+			// codec names already take.
+			const auto append = [](std::string& text, const std::string_view token)
+			{
+				if (token.empty()) return;
+				if (!text.empty()) text += "  ";
+				text += token;
+			};
+
+			append(codec, st.profile);
+			if (st.bit_depth > 0) append(format, std::format("{}bit", st.bit_depth));
+			if (!st.hdr_transfer.empty()) append(format, std::format("HDR {}", st.hdr_transfer));
+		}
 
 		if (st.type == av_stream_type::audio)
 		{
@@ -3607,7 +3633,7 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 			std::make_shared<text_element>(str::to_string(st.index)),
 			std::make_shared<text_element>(type),
 			stream,
-			std::make_shared<text_element>(st.codec),
+			std::make_shared<text_element>(codec),
 			std::make_shared<text_element>(st.fourcc),
 			std::make_shared<text_element>(format),
 			std::make_shared<text_element>(st.rotation == 0.0
@@ -3908,7 +3934,7 @@ void items_view::items_scroll_popup(view_hover_element& hover, const pointi loc)
 	if (found.group && found.item)
 	{
 		const auto elements = std::make_shared<view_elements>();
-		found.group->scroll_tooltip(found.item->thumbnail(), elements);
+		found.group->scroll_tooltip(found.item, elements, _state._async);
 
 		if (!elements->is_empty())
 		{

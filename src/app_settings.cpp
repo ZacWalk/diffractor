@@ -113,6 +113,7 @@ static constexpr auto s_set_disk = "set_disk";
 static constexpr auto s_ignore_previous = "ignore_previous";
 static constexpr auto s_hidden = "hidden";
 static constexpr auto s_email = "email";
+static constexpr auto s_share = "share";
 static constexpr auto s_rename = "rename";
 static constexpr auto s_collision = "collision_policy";
 static constexpr auto s_template = "template";
@@ -160,6 +161,16 @@ static constexpr auto s_show_help_tooltips = "show_help_tooltips";
 static constexpr auto s_sound_device = "sound_device";
 
 settings_t setting;
+
+void connect_yuv_latch()
+{
+	ui::yuv_textures_allowed = setting.use_yuv;
+	ui::on_yuv_fault = []
+	{
+		setting.use_yuv = false;
+		setting.write();
+	};
+}
 
 static std::atomic<uint64_t> s_feature_use{0};
 
@@ -355,7 +366,6 @@ settings_t::settings_t()
 	confirm_rotations = true;
 	first_run_today = true;
 	first_run_ever = true;
-	can_animate = false;
 	repeat = repeat_mode::repeat_none;
 	auto_play = true;
 	auto_advance = true;
@@ -409,6 +419,12 @@ settings_t::settings_t()
 	email.convert = true;
 	email.limit = true;
 	email.max_side = 1024;
+
+	// Nothing changed unless asked; the size is what a ticked limit starts from.
+	share.zip = false;
+	share.convert = false;
+	share.limit = false;
+	share.max_side = 1024;
 
 	convert.to_jpeg = true;
 	convert.to_png = false;
@@ -498,10 +514,11 @@ void settings_t::reset_presentation()
 	detail_items = defaults.detail_items;
 
 	// Not the defaults: a crash before the first frame is most often the graphics path, and the
-	// user cannot turn it off from a window that never appears.
+	// user cannot turn it off from a window that never appears. use_yuv is left alone: it is a
+	// latch only a driver fault clears and no option sets again, so clearing it here disabled YUV
+	// textures for good. Turning the GPU off already keeps them out of this session.
 	use_gpu = false;
 	use_d3d11va = false;
-	use_yuv = false;
 }
 
 class setting_formatter
@@ -569,13 +586,12 @@ public:
 
 	bool read(const std::string_view section, const std::string_view name, repeat_mode& v) const
 	{
+		// Reject values outside the closed ontology rather than inventing a state: an enumerator no
+		// switch has an arm for behaves as none while the menu ticks nothing.
 		uint32_t vv{};
-		if (_file->read(section, name, vv))
-		{
-			v = std::bit_cast<repeat_mode>(vv);
-			return true;
-		}
-		return false;
+		if (!_file->read(section, name, vv) || !is_valid_repeat_mode(vv)) return false;
+		v = static_cast<repeat_mode>(vv);
+		return true;
 	}
 
 	bool read(const std::string_view section, const std::string_view name, zoom_navigator_mode& v) const
@@ -618,9 +634,14 @@ public:
 	bool read(const std::string_view section, const std::string_view name, double& v) const
 	{
 		std::string str;
-		const bool success = _file->read(section, name, str);
+
+		// Only a value that was really there may replace the default. Converting unconditionally
+		// wrote to_double("") - which is zero - over whatever the constructor had set, so the first
+		// read of a setting that had never been written silently zeroed it.
+		if (!_file->read(section, name, str)) return false;
+
 		v = str::to_double(str);
-		return success;
+		return true;
 	}
 
 	bool write(const std::string_view section, const std::string_view name, const double v) const
@@ -867,7 +888,7 @@ void settings_t::read()
 
 	int last_run = 0;
 	store.read({}, s_last_run, last_run);
-	first_run_today = last_run != platform::now().to_days();
+	first_run_today = last_run != static_cast<int>(platform::now().to_days());
 	store.read({}, s_first_time, first_run_ever);
 
 	store.read(s_rename, s_template, rename.name_template);
@@ -913,6 +934,11 @@ void settings_t::read()
 	store.read(s_email, s_limit, email.limit);
 	store.read(s_email, s_max, email.max_side);
 
+	store.read(s_share, s_zip, share.zip);
+	store.read(s_share, s_convert, share.convert);
+	store.read(s_share, s_limit, share.limit);
+	store.read(s_share, s_max, share.max_side);
+
 	store.read(s_index, s_pictures, collection.pictures);
 	store.read(s_index, s_video, collection.video);
 	store.read(s_index, s_music, collection.music);
@@ -921,6 +947,7 @@ void settings_t::read()
 	store.read(s_index, s_onedrive_video, collection.onedrive_video);
 	store.read(s_index, s_onedrive_music, collection.onedrive_music);
 	store.read(s_index, s_more, collection.more_folders);
+
 
 	store.read(s_favorite_search, s_title, search.title, search.count);
 	store.read(s_favorite_search, s_path, search.path, search.count);
@@ -1086,6 +1113,11 @@ void settings_t::write() const
 	store.write(s_email, s_limit, email.limit);
 	store.write(s_email, s_max, email.max_side);
 
+	store.write(s_share, s_zip, share.zip);
+	store.write(s_share, s_convert, share.convert);
+	store.write(s_share, s_limit, share.limit);
+	store.write(s_share, s_max, share.max_side);
+
 	store.write(s_index, s_pictures, collection.pictures);
 	store.write(s_index, s_video, collection.video);
 	store.write(s_index, s_music, collection.music);
@@ -1094,6 +1126,7 @@ void settings_t::write() const
 	store.write(s_index, s_onedrive_video, collection.onedrive_video);
 	store.write(s_index, s_onedrive_music, collection.onedrive_music);
 	store.write(s_index, s_more, collection.more_folders);
+
 
 	store.write(s_favorite_search, s_title, search.title, search.count);
 	store.write(s_favorite_search, s_path, search.path, search.count);

@@ -16,10 +16,10 @@
 
 if (DIFFRACTOR_TARGET_ARCH STREQUAL "x86")
     set_source_files_properties(
-            "${CMAKE_SOURCE_DIR}/third-party/FFmpeg/libavcodec/x86/simple_idct10.asm"
-            "${CMAKE_SOURCE_DIR}/third-party/FFmpeg/libswscale/x86/ops_common.asm"
-            "${CMAKE_SOURCE_DIR}/third-party/FFmpeg/libswscale/x86/ops_float.asm"
-            "${CMAKE_SOURCE_DIR}/third-party/FFmpeg/libswscale/x86/ops_int.asm"
+            "${ffmpeg_SOURCE_DIR}/libavcodec/x86/simple_idct10.asm"
+            "${ffmpeg_SOURCE_DIR}/libswscale/x86/ops_common.asm"
+            "${ffmpeg_SOURCE_DIR}/libswscale/x86/ops_float.asm"
+            "${ffmpeg_SOURCE_DIR}/libswscale/x86/ops_int.asm"
             PROPERTIES HEADER_FILE_ONLY ON)
 
     # PREFIX makes x86inc.asm emit the leading underscore that MSVC gives every 32-bit cdecl C

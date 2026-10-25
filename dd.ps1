@@ -62,6 +62,9 @@ param(
     [ValidateSet("desktop", "store", "run", "run32", "cpu", "test", "bean", "build", "bump-build", "bump-ver", "deploy", "release", "loc", "code", "clear-cache", "setup", "configure", "clean", "info", "help", "")]
     [string]$Command = "",
 
+    # Package the version already in the tree, for rebuilding a submission that was never accepted.
+    [switch]$NoBump,
+
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest = @()
 )
@@ -94,9 +97,11 @@ if (-not $IsLinuxHost) {
 # Insider dev machine must not raise it. Bump this when a new release ships.
 $MaxVersionTestedCap = "10.0.26200.0"
 
-# Signing certificates
+# Signing certificates. The desktop cert is a real CA-issued one, so SmartScreen trusts the
+# installer. The Store cert is self-signed on CN=<publisher id> because the Store re-signs what it
+# distributes; only the Identity/Publisher match matters, so regenerating it costs nothing.
 $DesktopSignThumbprint = "B3B4EA219B9BCB79749D5E84066DDCAC61E5C4C3"
-$StoreSignThumbprint = "0BC1CD0A4F37CE2A5A2CE72DAA9B08B1EC1CB522"
+$StoreSignThumbprint = "F9B6105B47FA98932E21D265ACD3936A5F626EB6"
 
 # Version file paths. Forward slashes so the same literals resolve on both hosts.
 $NsiFile = Join-Path $InstallerDir "diff.nsi"
@@ -210,12 +215,9 @@ function Update-AllVersionFiles {
     $content = $content -replace '(name="diffractor\.exe"\s+)version="\d+\.\d+\.\d+\.\d+"', "`$1version=`"$fileVersion`""
     Set-Content $AppManifestFile $content -NoNewline
     
-    # Update dd.ps1 StorePackageName
-    Write-Host "Updating dd.ps1 StorePackageName..." -ForegroundColor Yellow
-    $ddContent = Get-Content $PSCommandPath -Raw
-    $ddContent = $ddContent -replace '\$StorePackageName = "Diffractor_\d+\.\d+\.\d+\.\d+_x64"', "`$StorePackageName = `"Diffractor_${fileVersion}_x64`""
-    Set-Content $PSCommandPath $ddContent -NoNewline
-    
+    # $StorePackageName is computed from the exe's own FileVersion further down, so there is no
+    # literal here to rewrite - the version bump reaches it for free.
+
     Write-Host ""
     Write-Host "Version updated successfully!" -ForegroundColor Green
     Write-Host ""
@@ -414,6 +416,63 @@ function Invoke-SignTool {
     Start-Sleep -Seconds 1
 }
 
+# A file fetched at the release cmake/dd-dependencies.json pins, checked by SHA-256, into tmp/tools/.
+# Kept there between runs, and fetched again only when what is there does not match its pin.
+function Get-PinnedFile {
+    param(
+        [string]$Name,
+        [string]$Destination
+    )
+
+    $pin = (Get-Content (Join-Path $ScriptDir "cmake\dd-dependencies.json") -Raw | ConvertFrom-Json).dependencies.$Name
+    if (-not $pin) {
+        Write-Host "Error: $Name has no pin in cmake/dd-dependencies.json" -ForegroundColor Red
+        exit 1
+    }
+
+    if ((Test-Path $Destination) -and (Get-FileHash $Destination -Algorithm SHA256).Hash -eq $pin.sha256) {
+        return $Destination
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path $Destination) | Out-Null
+    $ProgressPreference = "SilentlyContinue"
+    Invoke-WebRequest -Uri $pin.url -OutFile $Destination -UseBasicParsing
+    $hash = (Get-FileHash $Destination -Algorithm SHA256).Hash
+
+    if ($hash -ne $pin.sha256) {
+        Remove-Item $Destination -Force
+        Write-Host "Error: $Name from $($pin.url) has SHA-256 $hash, not the one pinned" -ForegroundColor Red
+        exit 1
+    }
+
+    return $Destination
+}
+
+# 7-Zip's standalone console from the release the pins name: 7zr.exe, which reads only .7z, unpacks
+# the release's extra archive, whose x86 7za.exe and its two DLLs are what tools/ once carried.
+function Get-SevenZip {
+    $dir = Join-Path $ScriptDir "tmp\tools\7zip"
+    $extra = Get-PinnedFile -Name "7zip-extra" -Destination (Join-Path $dir "7z-extra.7z")
+    $unpacked = Join-Path $dir "extra"
+    $stamp = Join-Path $unpacked "pinned.sha256"
+    $hash = (Get-FileHash $extra -Algorithm SHA256).Hash
+
+    if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $hash) {
+        $sevenZr = Get-PinnedFile -Name "7zr" -Destination (Join-Path $dir "7zr.exe")
+        if (Test-Path $unpacked) { Remove-Item $unpacked -Recurse -Force }
+        & $sevenZr x -y "-o$unpacked" $extra | Out-Null
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: 7zr could not unpack $extra" -ForegroundColor Red
+            exit $LASTEXITCODE
+        }
+
+        Set-Content -Path $stamp -Value $hash -NoNewline
+    }
+
+    return (Join-Path $unpacked "7za.exe")
+}
+
 function Add-ToSymbolStore {
     param(
         [string]$File
@@ -449,6 +508,18 @@ function Clear-IncrementalLink {
             }
         }
     }
+}
+
+function Copy-LicenceTexts {
+    # The released binary is LGPL-3.0-or-later, which must travel with every copy alongside the
+    # GPL-3.0 it incorporates by reference - so the installer, the zip and the Store package each
+    # carry both, renamed .txt so they open from Explorer.
+    param(
+        [string]$Destination
+    )
+
+    Copy-Item (Join-Path $ScriptDir "LICENSE") (Join-Path $Destination "LICENSE.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "COPYING.GPLv3") (Join-Path $Destination "COPYING.GPLv3.txt") -Force
 }
 
 function Build-Desktop {
@@ -492,6 +563,9 @@ function Build-Desktop {
 
     Write-Host ""
     Invoke-SignTool -Description "desktop executables" -Files @($exe32, $exe64)
+
+    # Staged into exe\ before either package is made: the installer and the zip both take them from there.
+    Copy-LicenceTexts -Destination $SourceFilesDir
     
     # Build NSIS installer
     Write-Host ""
@@ -527,19 +601,15 @@ function Build-Desktop {
     # Create portable ZIP
     Write-Host ""
     Write-Host "Creating portable ZIP..." -ForegroundColor Yellow
+    $sevenZip = Get-SevenZip
     Push-Location $SourceFilesDir
-    
-    $sevenZip = Join-Path $ToolsDir "7za.exe"
-    if (-not (Test-Path $sevenZip)) {
-        Write-Host "Error: 7za.exe not found at $sevenZip" -ForegroundColor Red
-        Pop-Location
-        exit 1
-    }
     
     $zipFiles = @(
         "diffractor32.exe",
         "diffractor64.exe",
         "diffractor-tools.json",
+        "LICENSE.txt",
+        "COPYING.GPLv3.txt",
         "location-countries.txt",
         "location-places.txt",
         "location-states.txt",
@@ -627,8 +697,13 @@ function Assert-StoreVersionUnused {
 }
 
 function Build-Store {
+    param(
+        [switch]$NoBump
+    )
+
     # Auto-increment build number before building
-    Invoke-BumpBuild
+    if ($NoBump) { Write-Host "Skipping the build-number bump (-NoBump)." -ForegroundColor Yellow }
+    else { Invoke-BumpBuild }
 
     $version = Get-CurrentVersion
     $storePackage = "Diffractor_$($version.FileVersion)_x64"
@@ -713,6 +788,7 @@ function Build-Store {
     Copy-Item (Join-Path $SourceFilesDir "dictionaries\*.aff") (Join-Path $PackageRoot "dictionaries") -Force
     Copy-Item (Join-Path $SourceFilesDir "dictionaries\*.dic") (Join-Path $PackageRoot "dictionaries") -Force
     Copy-Item (Join-Path $SourceFilesDir "AppxManifest.xml") $PackageRoot -Force
+    Copy-LicenceTexts -Destination $PackageRoot
     
     # Generate resources.pri using MakePri (required for asset qualifiers like _altform-unplated)
     Write-Host ""
@@ -1075,7 +1151,7 @@ function New-GitHubRelease {
     Write-Host ""
     Write-Host "Release: $releaseName"
     Write-Host "Tag: $tagName"
-    Write-Host "URL: https://github.com/diffractor/diffractor/releases/tag/$tagName"
+    Write-Host "URL: https://github.com/ZacWalk/diffractor/releases/tag/$tagName"
     Write-Host ""
     Write-Host "Uploaded assets:"
     Write-Host "  - diffractor-setup.exe"
@@ -1324,7 +1400,7 @@ function Deploy-Desktop {
 # Main entry point
 switch ($Command) {
     "desktop" { Build-Desktop }
-    "store" { Build-Store }
+    "store" { Build-Store -NoBump:$NoBump }
     "deploy" { Deploy-Desktop }
     "release" { New-GitHubRelease }
     "run32" { Start-Diffractor -Platform "Win32" }

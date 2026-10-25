@@ -1,416 +1,247 @@
 # Diffractor Product Design
 
-This document owns Diffractor's durable user concepts and behavior. It describes what the product should mean and do, not the class structure or backlog. Differences between code and this document are design issues to resolve.
+This document owns durable user concepts and observable behavior. Specialized documents own the
+details of collections, locations, zoom, selection controls, metadata, file I/O, and Movie
+mixer. [Implementation](implementation.md) owns architecture; GitHub owns plans and issue status.
 
-## Primary design drivers
+## Primary Design Drivers
 
-Diffractor has two co-equal primary design drivers:
+1. **Fast, lightweight performance.** Start and respond quickly, scale to large collections, work
+   progressively, and bound CPU, memory, storage, and network use.
+2. **A clear user mental model.** Make scope, contents, command target, effect, and recovery
+   predictable. Hidden targets and silent state changes are defects.
 
-1. **Fast, lightweight performance.** The application starts quickly, responds immediately to common interactions, scales to large collections, works progressively during indexing, and avoids unnecessary CPU, memory, storage, and network use. Performance is part of the user experience, not an implementation detail.
-2. **A clear user mental model.** The application uses consistent concepts so users can predict the current scope and contents, the target of every command, the resulting effect, and whether it is recoverable. Hidden targets, silent state changes, and context-dependent surprises violate this driver.
+Neither driver overrides the other. Performance changes preserve behavior, and clearer workflows
+must not introduce avoidable blocking or unbounded work.
 
-Features and workflows must satisfy both drivers. A faster interaction that obscures its target or effect is not acceptable, and clearer behavior should not require avoidable delay or resource cost.
+## Product Promise
 
-## Product promise
+Diffractor is a private Windows organizer for photos, video, and audio on storage the user controls.
+It finds, views, compares, describes, edits, and manages media without making its rebuildable index
+the authority for user files or metadata.
 
-Diffractor is a fast, private Windows organizer for photos, videos, and audio. It helps people find, inspect, compare, describe, edit, and safely manage media on storage they control. It should feel like one persistent collection viewed through changing scopes, not unrelated tools.
+## User Mental Model
 
-## User mental model
+Every user-visible interaction states four facts:
 
-Every interaction makes four facts clear:
+| Field | Closed values or meaning |
+| --- | --- |
+| Scope | Indexed collection, Folder, Recursive folder, External folder, Search, or justified All scopes |
+| Contents | Query, filters, grouping, sorting, and visible/hidden counts |
+| Target | Focused item, Singular displayed item, Complete visibly selected set, or Visible items |
+| Effect | Action, affected count, destination/collisions, retained originals, and recovery |
 
-1. **Scope: where results come from.** The indexed collection, one folder, a recursive folder, an external folder, or a search. Changing scope is navigation and does not modify files.
-2. **Contents: what is visible.** The query, photo/video/audio filters, grouping, and sorting determine presentation, not files. Show visible and hidden counts when filters apply.
-3. **Target: what a command affects.** Singular commands act on the focused or singular displayed item; batch commands act on the complete, visibly selected set. Focus, viewing, comparison, and pin state never create hidden targets.
-4. **Effect: what changes.** Consequential commands identify the action, count, source, destination, collisions, retained originals, and recovery before execution.
+`All scopes` is used only when behavior is provably identical in every concrete scope. Internal work
+has no user scope or target. A behavior that cannot be expressed with this ontology requires product
+clarification rather than a new alias or implicit state.
 
-Every workflow must support this sentence:
+The target is always visible. Focus is the keyboard cursor and range anchor; selection is the
+complete batch target; a displayed or pinned item does not silently enlarge it.
 
-> In this scope, this command affects this target and produces this recoverable or permanent effect.
+### Command Availability
 
-The following JSON Schema is the normative shape of the user mental model. All four fields are required, unknown fields are forbidden, and each value must describe the current interaction rather than an implicit or future state.
+A command is offered when its effect is visible on the current surface and its target qualifies.
+Ineligible target commands retain a concrete disabled reason. A submenu reflects the eligibility of
+its entries. A platform capability that does not exist is absent rather than permanently disabled.
+Configured external tools in the Open menu declare a singular `{item-path}` invocation, so they are
+offered only when exactly one file is selected. Multi-file selections omit those entries; association
+handlers that accept the whole selected set remain available when the selection qualifies.
 
-```json
-{
-	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "diffractor.user-mental-model.schema.json",
-	"title": "UserMentalModel",
-	"type": "object",
-	"additionalProperties": false,
-	"required": ["Scope", "Contents", "Target", "Effect"],
-	"properties": {
-		"Scope": {
-			"type": "string",
-			"enum": ["Indexed collection", "Folder", "Recursive folder", "External folder", "Search", "All scopes"]
-		},
-		"Contents": {
-			"type": "string",
-			"minLength": 1,
-			"description": "The query, media filters, grouping, sorting, and visible/hidden counts that determine presentation."
-		},
-		"Target": {
-			"type": "string",
-			"enum": ["Focused item", "Singular displayed item", "Complete visibly selected set", "Visible items"]
-		},
-		"Effect": {
-			"type": "string",
-			"minLength": 1,
-			"description": "The action, count, source, destination when applicable, collision policy when applicable, retained originals, and recovery class."
-		}
-	}
-}
-```
-
-These names and values form a closed ontology. An implementation or design proposal must use them exactly and must not infer additional scope or target states. When a proposed interaction cannot be represented by this schema, product clarification is required before implementation.
-
-The schema describes user-visible interactions. Work that changes no observable behavior — rendering backends, threading, indexing internals, codecs, build configuration, tests, refactors — has no scope and no target, and must not be described with these values. Such work is governed by [implementation.md](implementation.md) and the change classes in [AGENTS.md](../AGENTS.md); borrowing a scope or target for it is a violation, not a fallback.
-
-### Command availability
-
-Whether a command is offered answers two questions and no others: **is its effect visible on the current surface**, and **does its target qualify**. Nothing else dims a command, and a command that passes both is never silently inert.
-
-- A command is available on the surfaces where its effect can be seen. Commands that change the item listing or the sidebar — filters, recursion, grouping, sorting, detail and thumbnail size, sidebar visibility, large-item highlighting — belong to Items. Commands that change what is rendered of an item — scale, rotation, RAW preview, verbose metadata, zoom, playback — belong to Items and Fullscreen alike. Commands that belong to a task view are offered only in that task view, and window, help, language, and eject commands answer from everywhere because they do not depend on what is being browsed.
-- A command that acts on items is available when its target qualifies, and when it does not it says why rather than dimming without explanation. The eligibility test names the reason: nothing selected, not a local file, not writable, not a photo.
-- A submenu answers the same test as the entries it opens. A parent that opens onto a menu of uniformly disabled entries promises what its contents refuse, so the parent carries the union of their tests.
-- While a command is running, availability describes the view, not the running command. The re-entrancy guard that suppresses target-acting commands during a run never inverts into making an unrelated command available.
-- A command the platform cannot perform is **absent, not dimmed**. Dimming says "not now"; absence says "not here", and only the second is true of a capability the running system does not provide. This is the one case where a command disappears without naming a reason, because the reason is not about the target. Capability is answered at run time — the same question `can_recycle` already asks of a path — rather than being fixed when the application is built, so the same build can offer a command on one machine and not another.
+Commands affecting list contents or presentation belong to Items. Commands affecting rendered media
+belong to Items and Fullscreen. Task commands belong to their task view. Keyboard, toolbar, menu,
+context-menu, and accessibility entry points share the same eligibility, target, confirmation, and
+effect.
 
 ## Vocabulary
 
-| Term | Meaning |
-|---|---|
-| Collection | Persistent folders indexed by Diffractor. Membership, its declaration, and its edge are owned by [collections.md](collections.md). |
-| Scope | The collection, folder, recursive folder, external folder, or search being viewed. Shared presentation infrastructure may use All scopes only when its behavior is provably identical in every concrete scope, stated with its reason; it is never a default for work that fits one concrete scope or no scope. |
-| Query | Search criteria within a scope. |
-| Results | Items matching the scope and query. |
-| Visible items | Results remaining after visibility filters. Viewport-driven loading and cache work may operate on the currently presented subset without making it an implicit command target. |
-| Focus | Keyboard cursor and range-selection anchor. |
-| Selection | Complete visible target set for batch commands. |
-| Displayed item | Singular item shown in a preview or media surface. |
-| Pin | A visibly selected item held while focus moves for comparison. It carries an orange badge wherever it appears, leads the selection preview, and is released by clicking that badge. |
-| Preview | A non-committing media display or proposed operation. |
-| Analyze | Compute an operation from a specific snapshot. |
-| Run | Execute an analyzed operation after revalidating its snapshot. |
-| Presence | A file's direct membership in the collection and, for an outside file, whether possible copies are known in the collection. |
-| Duplicate | Items considered identical with stated confidence. |
-| Relation | Why one item is reported as related to another: possible copy, same album, same series, same capture time, or same capture place. |
+- **Scope** supplies candidate items; a **query** narrows them; filters determine **visible items**.
+- **Focus** is navigation state; **selection** is the complete visible batch target.
+- **Pin** visibly holds one selected item while focus moves for comparison.
+- **Preview** is non-committing presentation; **Analyze** computes a plan; **Run** executes the
+  validated reviewed plan.
+- **Presence** compares one file with collection membership and likely copies.
+- **Relation** says why another collection item is connected: copy, album, series, capture time, or
+  capture place.
 
-Qualify overloaded terms: use **navigation history**, **recent searches**, **import history**, and **date chart**, not simply "history."
+### Naming Views, Modes, And Presentation Choices
 
-### Naming views, modes, and presentation choices
+Top-level views are Items, Fullscreen, Edit, Movie mixer, Tags, Locate, Rename, Convert, Metadata,
+Date, Import, and Sync. “Media view” names the internal Fullscreen renderer, not another user view.
 
-Names are closed in the same way scope and target are. One concept has one name, used in the product, in these documents, and in source.
+The user-entered modes are zoom mode and a running Slideshow. Inspect zoom is a gesture, not a mode.
+Grouping, sorting, density, verbose metadata, and navigator display are presentation choices.
+Singular, Comparison, and Selection summary are panel forms selected by the current selection.
 
-**View.** A named top-level presentation that occupies the main surface; exactly one is current. The set is closed:
+## Application Structure
 
-| View | Kind | Source `view_type` |
-|---|---|---|
-| Items | Browser | `items` |
-| Fullscreen | Presentation | `media` |
-| Edit | Task view | `edit` |
-| Tags | Task view | `tags` |
-| Locate | Task view | `locate` |
-| Rename | Task view | `rename` |
-| Convert | Task view | `batch` |
-| Metadata | Task view | `batch` |
-| Date | Task view | `batch` |
-| Import | Task view | `import` |
-| Sync | Task view | `sync` |
+Items is the windowed browser: grouped thumbnails or details, optional media/metadata preview, and
+independent list/preview scrolling. Fullscreen reuses the same logical scope, query, filters,
+grouping, sorting, focus, selection, and media state. Leaving it restores Items without rebuilding
+the browsing context.
 
-Write the name capitalized and alone; the word "view" may follow it in lowercase where the sentence needs a noun, as in "the Edit view". A view is never a mode, so "edit mode", "tag mode", and "items mode" name nothing. **Fullscreen** is one word — never "full screen" or "full-screen" — and is the only user-facing name for that view; **Media view** names the internal renderer that draws it and belongs to [implementation.md](implementation.md).
-
-**Mode.** A durable state the user enters and must leave, which changes what commands do or which are offered. There are exactly two: **zoom mode**, owned by [zoom.md](zoom.md), and a running **Slideshow**. A state that lasts exactly as long as one gesture is not a mode and carries its own name, such as **inspect zoom**.
-
-**Presentation choice.** A user-owned setting that changes how the current view draws without changing scope, contents, or target: thumbnails or details, detail and thumbnail size, grouping, sorting, regular or compact density, verbose metadata, and navigator display. Each is named directly and none is called a mode.
-
-**Panel form.** The selection information panel's classification — Singular, Comparison, or Selection summary — determined by the selection rather than entered by the user. Owned by [selection-controls.md](selection-controls.md).
-
-"Mode" keeps its ordinary engineering meaning for states no user enters, such as a failure mode or the software rendering mode.
-
-## Application structure
-
-The search/address box navigates folders, dates, locations, media types, ratings, labels, tags, duplicates, drives, and saved searches. The sidebar carries the same destinations except folders: a collection's folders are how it was declared, not a place worth a standing row apiece, and a folder the user does want to hand is a saved search away.
-
-- **Items** is the windowed browser. It shows grouped thumbnails or details alongside an optional media/metadata preview.
-- **Fullscreen** gives media the whole display for immersive photo, video, audio, comparison, or selection presentation.
-- **Task views** cover Edit, Tags, Locate, Rename, Convert, Metadata, Date, Import, and Sync.
-
-Items is the only windowed browsing presentation. Its browser and preview use a resizable divider and scroll independently. Relayout from resizing, toolbar wrapping, or presentation changes preserves orientation in each pane: the focused visible item remains at its prior screen position when possible, otherwise the content nearest the viewport center is retained, with proportional scroll position as a fallback when that content no longer exists. When a command names the items it has just produced — a paste, or opening a specific file — the listing scrolls that new selection into view, because the command selected it in order to show it. Zoom or comparison may temporarily give the content area to media; leaving restores the browser without changing scope or target. Fullscreen is temporary presentation state and preserves scope, query, filters, grouping, sorting, focus, selection, splitter position, and Items scroll position.
-
-The main render surface owns every affordance that acts on something visible in it. The right controls panel exists only for task views whose parameters have no visible referent. Commands therefore sit on the surface they change:
-
-- The commands that act on selected items sit in the information panel that describes them, so a command and the complete visibly selected target are read together. [Selection controls](selection-controls.md) owns this panel's form classification, region order, content priorities, state and user-metadata presentation, command placement, comparison and summary rules, regular and compact density, responsive behavior, spacing, long-form Description placement, and relationship to verbose metadata in Items and Fullscreen.
-- The item list carries the commands that decide its own contents and presentation — media-type filters, recursion, grouping, sorting, detail and thumbnail size, and the filter box. They sit at the head of the list and scroll with it, so a long list is never permanently shortened by a fixed band. Focusing the filter box brings the list back to the top so the box being typed into is always visible.
-- A thumbnail shows the whole picture. Tiles are laid out in rows of one shared height, so each tile can be the shape of what it holds and a row fills the width without cutting anything off. Where a row cannot be filled that way — a trailing row, one or two portraits, a panorama — it is left short rather than cropped; only a residual gap, never more than a twentieth of a tile, is closed by trimming the sides. Thumbnail size sets the nominal row height, and a trailing row is never drawn taller than the row above it.
-- Reporting and control are separate affordances at the head of the list: the totals affordance reports the visible item count and total size and discloses its per-type breakdown on hover, and it carries no menu. Changing grouping and sorting belongs to its own control, labelled with the current grouping, so what the list is doing and how to change it are never the same button. The one control that is always on screen is exempt, because it is the only place a setting can be reached without first scrolling — see the back-to-top action below.
-- The control area may carry additional optional rows below the filter row when the current scope makes them meaningful — a parameter control for the active query, a breakdown strip offering drill-down within the current results, or a derived-cluster strip. Each row appears only when it would act on something present, keeps a stable height while shown, and is presentation and navigation only: no such row changes grouping, sorting, focus, or selection. Location's rows are specified in [locations.md](locations.md#7-the-items-control-bar).
-- Optional control rows share a height budget measured against available content height, because the user came to see items. When applicable rows would exceed it they collapse to one-line headers from the bottom of a defined priority order, never while one of their controls is captured, and a row the user expands explicitly stays expanded for the session.
-- A control the user is actively manipulating keeps ownership of its value across result refreshes. Refreshes triggered by that control coalesce, discard superseded results, and must not recreate, reposition, or write back to the captured control; the settled value commits once.
-- When the item list can scroll, the base of its scrollbar carries the listing's own settings. It is sticky by construction, so it is the one control reachable without scrolling first, and pinning a toolbar instead would spend vertical space permanently in the view whose purpose is showing thumbnails. Hovering reports what the listing holds, broken down by file type, and how many items a filter is hiding — the number a user needs before opening the filter menu. Clicking opens a menu carrying grouping, sorting, the media-type filter, whether items in subfolders are shown, and scroll-to-top. The menu opens in every scroll position, because scrolling when scrolled and opening a menu when not would be a context-dependent surprise; scrolling to the top is the menu's first entry. Every other entry is the item list's own command, so the two copies cannot disagree about what is offered, enabled or ticked. Scrolling to the top changes no focus or selection; the entries that change what the listing contains prune focus, the pin and the selection to what remains visible, as they do wherever else they are invoked.
-- When filters hide some items, the bottom of the visible items states the hidden count and offers to clear them. When filters hide every item, this action appears directly below the filter controls, covering the common recovery case without leaving an apparently empty list.
-- The wheel belongs to whatever the pointer is over, and a modifier chooses which of that surface's axes moves rather than changing meaning with position. [zoom.md](zoom.md#111-the-wheel) states it for every surface in the application, and [zoom.md](zoom.md#112-pinch) does the same for pinch.
-
-Every task view opens its controls panel with one explainer stating what the task does, what it acts on, and what it keeps or writes. The explainer is visually distinct from the controls below it, so it reads as a description of the task rather than as a parameter; being distinct, it needs no divider under it. Where a task can preview before running, the explainer says so. Below the explainer the panel names the target set and its count before it offers parameters, so the target is read before the parameters that act on it.
-
-A toolbar button names the operation the current view will actually perform. Where one toolbar serves several tasks, its run button is relabelled per task, so the button never promises an operation the view cannot do.
-
-Task views preserve their originating context so Cancel or completion returns to an understandable place.
-
-Edit, Locate, Tags, and the metadata batch task place their selector strip below the primary renderer. The selector remains part of the task context while keeping the main work surface directly below the shared top bar; the task controls continue beside both regions.
-
-The strip offers only the items the task can act on, so what it shows is what a run would write. Where the task acts on one item, a click moves the task to that item. Where it acts on a set, a plain click selects one item and anchors the range, Ctrl adds or removes one item, and Shift selects from the anchor to the clicked item; the clicked item takes focus in every case. Entering a task reveals the focused item, and a task view without a strip holds no items.
-
-In a task view, the view-specific toolbar replaces the Items window-control group and is right-aligned in the shared top bar. Its final group is separated from task actions and contains the current Maximize or Restore command followed by a text-bearing Close command. This Close exits the task and returns to Items; it never exits the application. Items retains the application Minimize, Maximize/Restore, and Close controls.
-
-Because that toolbar lives in the shared top bar, a task view is never fullscreen. Fullscreen is refused from a task view, and starting a task from fullscreen leaves fullscreen and keeps the selection the task targets, so the task always opens with its own controls visible rather than being started into a presentation that hides them.
-
-The application mark — four interlocking squares — is drawn, not stored. `ui::surface::fill_logo` renders it to an ARGB surface at exactly the size it will be shown at, so it stays sharp at every scale factor without shipping a bitmap per size. The mark and the product name beside it form one lockup, used at title size in the top bar and at display size as the About heading; they are the same element, so the two can never disagree. In the top bar the lockup is also an affordance: it opens Help, reports the version on hover, and its backdrop animates while background work runs. Where the lockup is presentation only, it takes no hover, click, or tooltip.
-
-That drawing is duplicated by design. `tools/generate_store_assets.py` draws the same mark independently for the artwork that cannot be produced at runtime — the executable icon and the Microsoft Store tiles and logos, which the shell and the Store read from files before any Diffractor code runs. The two drawings are one design and must be changed together; changing either alone makes the packaged identity disagree with the running one. The `Should draw the logo` test pins the drawn mark's structure so a one-sided edit is caught, and the packaged artwork is regenerated with `generate_store_assets.py --res src\Res` for the icon and `dd.ps1 store` for the Store assets.
-
-Command and status icons come from one bundled set, the same on every platform. They are shipped with the application rather than read from the operating system, so the picture a user sees is a property of the Diffractor version they are running and not of the system it happens to be running on. Icons carry meaning only alongside their command's name or tooltip; no command is identified by its icon alone.
-
-## Navigation and search
-
-Search uses the local index and supports text, phrases, tags, media types, metadata, dates, locations, ratings, negation, comparisons, and Boolean expressions. The address box also accepts folders and offers relevant completions.
-
-- Focusing the address box begins an editing session and snapshots the committed address. Typing maintains a separate draft and refreshes completions for that draft.
-- Up and Down highlight completions and preview the highlighted text in the address box without changing the draft or regenerating the completion list. Clicking a completion commits it and returns focus to the content view.
-- While previewing a completion, Escape restores the latest typed draft, keeps the popup open, and highlights its first completion. A subsequent Escape, or Escape when no completion is being previewed, restores the address captured when editing began, closes the popup, and returns focus to the content view.
-- Enter commits the highlighted completion when one is selected, otherwise it commits the visible address. Plain Tab accepts the highlighted completion into the draft without running it, refreshes completions, keeps the popup open, and retains address focus. Shift+Tab performs normal reverse focus traversal.
-- Moving focus elsewhere closes the completion popup without redirecting focus back to the content view.
-- Parsed input retains the user's visible spelling and quoting.
-- Sidebar actions disclose whether they replace or refine the current query.
-- A history entry owns at least its query and selection. Back and Forward restore the destination without overwriting it; navigating after Back removes the forward branch.
-- Parent means **broaden this scope** and must not depend surprisingly on incidental selection. It drops one narrowing at a time - date, then media type, then the remaining terms, then a folder level - so the step is the same size whether or not a folder is in the query. A scope with nothing wider to show, such as a drive root, reports no parent and Parent is unavailable rather than repeating the query.
-- Next and Previous folder move between siblings of the current folder. At the first or last sibling they do nothing and are unavailable; they never change level.
-- Navigating from a visualization, summary, breakdown, or group header changes the query only. Grouping, sorting, and filters are user-owned presentation and are never reassigned as a side effect of navigation.
-- Filters change what is visible, not what exists. An item a filter hides leaves the selection, so every command still targets only visible items; removing the filter shows the item again but does not reselect it. Grouping and sorting reorganize visible items without modifying files. Shuffle is visibly exclusive with deterministic sorting.
-- Place names, distances, and location queries follow [locations.md](locations.md).
-
-## Selection and viewing
-
-- Plain click selects one item, except for a visibly pinned comparison item.
-- Ctrl toggles, Shift extends from focus, and Ctrl+Shift combines both.
-- Dragging empty space creates a rectangular selection; Select All targets visible items.
-- Empty space is inert: a click that hits no item, and a drag whose rectangle covers no item, leave the selection unchanged rather than clearing it.
-- Right-clicking an unselected item selects it before a batch-oriented menu opens.
-
-Selection, focus, pin, hover, and error states are visually distinct. The preview represents selection: one file previews, two compatible files compare, and larger selections summarize. Folder selection does not masquerade as media.
-
-Opening media preserves selection. Fullscreen is presentation state, not a different target model.
-
-Play and Slideshow are separate named behaviors and neither one changes a durable preference.
-
-- **Play** is transport for the displayed video or audio only. It is unavailable when the displayed item cannot play, and it also stops a running slideshow so the key that started a sequence always ends it.
-- **Slideshow** presents the visible items in order starting from the focused displayed item. Photos are held for the slideshow delay, which is at least one second; video and audio play to their end. Only photos, video, and audio take part, so a folder, document, or archive is stepped over rather than stalling the sequence, and a slideshow that can no longer reach a playable item stops instead of appearing to keep playing. A video or audio item reached by a slideshow starts playing even when autoplay is off.
-- **Continue with the next item** governs whether finishing one item hands over to the next while browsing normally. A slideshow always continues, because continuing is what the mode means.
-- **Repeat** governs only what happens at the ends of the sequence: repeat one holds on the current item, repeat all returns to the first item after the last, and no repeat stops there.
-
-Playback advances through visible media according to these clearly named behaviors. When the displayed media has multiple audio tracks, playback visibly names the active track and offers the alternatives as one exclusive choice, separate from the audio output device. Track names prefer authored title, language, role, and channel layout, with a one-based `Audio track N` fallback; "track" identifies the selectable stream while "channels" describes its mono, stereo, or surround layout. Temporary and latched zoom are distinguishable; comparison always uses two visibly selected items.
-
-Hovering across a video thumbnail previews frames by pointer position. Preview requests are latest-wins; only a successfully decoded frame is shown or retained, and an obsolete result is not shown after the item's path or modified date changes. The final successfully previewed frame becomes that video's rebuildable SQLite thumbnail and survives restart. Every durable thumbnail records the source file's modified timestamp as its version key: exact equality reuses it without opening the source, while any forward or backward change makes it stale and allows one replacement decode. Previewing never hydrates an offline file and never changes a media file.
-
-Resume from the last played position is an optional playback preference and is enabled by default. Closing media, including navigation to another item, saves the last presented position to the rebuildable index; if a seek or resume is still synchronizing, it saves the accepted target instead, so closing before the first resumed frame arrives does not replace that position with zero. Resume applies to media longer than ten seconds only when the saved position is more than two seconds from the start and five seconds from the end, avoiding a surprising resume for barely started or effectively completed media. Disabling resume starts playback normally but does not modify the media file.
-
-## Collection presence
-
-Presence is a file-only browsing aid that separates direct collection membership from possible-copy assessment:
-
-- **In collection** means the file itself is in a folder that belongs to the indexed collection. It does not mean the file is unique.
-- For a file outside the collection, **Possible copy**, **Possible newer copy**, and **Possible older copy** mean that current evidence identifies one or more likely collection copies. **Possible** states confidence rather than identity proof.
-- When candidates imply different relationships, report the result most useful to an import decision: a possible newer collection copy takes precedence; otherwise a possible same version takes precedence over a possible older copy.
-- **Outside collection; no possible copy identified** means no likely copy was found from the collection information currently available. It does not prove that no copy exists.
-- Show **Checking presence** while the comparison is incomplete. Do not publish an absence result from incomplete collection information.
-
-Presence refreshes when the outside file changes, indexed evidence changes, or collection membership changes. Results may improve progressively during indexing, but completed work must replace provisional results without requiring navigation or restart.
-
-Presence supports browsing and import decisions. It is not a deletion recommendation, does not choose a keeper, and never adds possible copies to the command target. Duplicate inspection or resolution must independently establish its confidence, target, effects, and recovery.
-
-Presence is one of the three redundancy surfaces; the copy relation it shares with duplicate search and related items, and the parity required between them, is owned by [collections.md](collections.md#7-redundancy-one-relation-three-questions).
-
-## Related items
-
-Related items answers one question about one item: what else in the indexed collection belongs with it. The scope is always the indexed collection, the target is the focused item, and nothing is created, moved, or modified.
-
-A relation is one of exactly five, listed here in the order they are reported:
-
-| Relation | Means |
-|---|---|
-| This item and possible copies | The item itself, and items the duplicate rules identify as possible copies of it. |
-| Same album | The same album, by the same album artist where both name one. |
-| Same series | The same show. |
-| Taken at the same time | Capture times close together. File times do not count, because a collection copied in one pass shares them. |
-| Taken in the same place | Capture coordinates close together. |
-
-A possible copy includes the same picture in a different file. Two items that share an exact capture time but agree on nothing a checksum can see are compared as pictures, so a re-encoded, re-saved or resized copy is recognised rather than missed. A rotated copy is claimed as a copy: a quarter turn is a common grading step, and the picture is the one the user already has. A cropped version is a different picture and is not claimed. An image with too little detail to identify - a blank frame, a solid colour, a plain scanned page - is never claimed to match anything, because at that point every such image looks alike. Photographs sharing one capture time are not copies of one another on that basis: a burst shares a timestamp.
-
-Copies found this way are the same duplicates the rest of the product means. Duplicate search, presence, and the possible-copies relation all read one answer, so a copy identified by any of them is reported by all of them, at the same strength. [Collections](collections.md#7-redundancy-one-relation-three-questions) owns that relation, its evidence grades, and the rule that a possible-copy set is anchored on one item rather than chained from member to member.
-
-Two rules keep the answer useful:
-
-- **An item appears once.** A photo can be near in both time and place; it is reported under its strongest relation only, using the order above, and never listed twice.
-- **Closeness bounds the answer, not a threshold the user sets.** Each relation reports at most a fixed number of the closest items rather than everything that qualifies, so a related search never returns an overwhelming list. Where "close" would otherwise be meaningless — the nearest item in a sparse collection may be years or continents away — an outer window applies as well, and whichever bound is reached first decides.
-
-Results are grouped by relation and ordered by closeness within each group, whatever grouping the user last chose for ordinary searches; that choice is left intact for the next one. A related search is expressible as search text, so it can be saved as a favorite and reopened, and reopening it answers with the same relations.
-
-Related items is a browsing aid on the same terms as presence. It states relation rather than identity, and related items never become targets automatically.
-
-## Metadata, editing, and files
-
-Diffractor reads and writes common EXIF, IPTC, XMP, ID3, and container metadata, including ratings, labels, tags, descriptions, dates, and locations. Metadata persists in the media file or an XMP sidecar; the workflow states which. The index is a cache, not the authority. Mixed selections either pass eligibility as a whole or explicitly show unsupported items as Skipped. [File I/O](file-io.md) owns how a write reaches disk and what it guarantees on failure. [Metadata](metadata.md) owns which standard each container is read from and written to, the per-property tag mappings, and the current read and write limitations.
-
-Single-item Edit contains only photo pixel adjustments and keeps them as a draft until Save. Save updates the file; Save As creates and opens another file; leaving a changed draft offers Save, Don't Save, and Cancel. Reset affects the draft, not a saved file.
-
-Metadata changes use the Metadata task for the complete visibly selected set. Each non-tag field is independently optional and changes only when its checkbox is selected. A field shows its editor only while it is selected, so the task reads as a list of field names until the user says what the run is about, and the selection is remembered between runs and between sessions. Review still names every selected field per item, so a field left selected from an earlier run is visible before Run. Tag changes use the Tags task, so metadata and photo editing do not duplicate tag controls.
-
-Adjust Date and Time is one shift applied to the complete visibly selected set. The new starting date replaces the earliest known date in the selection and every other item keeps its distance from that date; items with no known date all receive the new starting date. The offered starting date is the earliest date in the selection, so an untouched task leaves every date as it is. The picker never shows a date the task would not use, and the offered date comes from the current selection rather than from a previous use. Review names the date the task changes and, per item, the tag that item resolves it from, because a set where one file is dated by its shutter and another by the day it landed on this disk is not a set the same shift means the same thing to. Run writes the capture metadata in place, creates no original backup, and cannot be undone. It does not rewrite the filesystem creation stamp: shifting a camera clock says nothing about when the file was written. A starting date that cannot be a capture date, such as a future date, refuses Run and states why.
-
-Direct rotation is an in-place selected-set command. Rotating one item is reviewed before it runs until the user turns that review off from the review itself or from Options; rotating several items overwrites several originals at once and is always reviewed, so the checkbox is offered only when one item is targeted. Convert or Resize creates new output while retaining sources. Rename, Copy, Move, Paste, and Delete follow the same target/effect rules. Primary files and sidecars are one logical item. Destination commands require an unambiguous folder.
-
-Every collision uses one explicit policy: Replace, Skip, Auto-rename, or Block Run. A destination claimed twice by one plan is a collision on the same terms as a destination that already exists on disk, so two sources can never resolve to one file without the policy being stated in Review. A destination held by a file the same plan renames away is not a collision: the plan empties it, so a set can be renamed onto the names it is vacating, and Skip leaving a source in place returns that name to being occupied for whatever row was waiting on it. A command with no Review stage states it at the point of collision instead: it names the files already there and asks, offering only the policies that resolve what it found, and defaults to the one that destroys nothing. Silently resolving a collision is not permitted even when the resolution is safe, because the user cannot tell a renamed destination from the one they asked for.
-
-Delete distinguishes **Recycle**, recoverable from the desktop's own bin, from **Permanent delete**, which cannot be recovered and always requires count-bearing confirmation. Recycle means the same promise on every platform — the file leaves Diffractor, appears where the user already looks for deleted files, and is restored from there to where it was — and it is named for whatever that place is called: the Recycle Bin on Windows, the Trash on Linux. Use direct wording: "Can be recovered from the Recycle Bin," "An original backup will be created," "The source file will remain unchanged," or "Cannot be undone." Diffractor has no unified application-wide undo.
-
-Recycle is a capability of the location, not of the application. Where no bin can hold the file — a read-only or network volume, or a delete that would have to cross a volume boundary to reach one — Recycle is not offered and Permanent delete is, with its usual confirmation. The user is never shown Recycle and then given a permanent deletion, and a bin that would silently copy rather than move the file is not a bin.
-
-The following enumerations are closed. Agents and implementations must not add aliases, fallback values, or inferred states:
-
-```json
-{
-	"CollisionPolicy": ["Replace", "Skip", "Auto-rename", "Block Run"],
-	"DeleteOperation": ["Recycle", "Permanent delete"],
-	"PresenceConfidence": [
-		"In collection",
-		"Possible copy",
-		"Possible newer copy",
-		"Possible older copy",
-		"Outside collection; no possible copy identified"
-	]
-}
-```
-
-`Checking presence` is an incomplete evaluation status, not a `PresenceConfidence` value. A confidence value may be published only after the presence evaluation is complete.
-
-## Guided operations
-
-Import, Sync, Convert, batch Metadata, Date adjustment, batch Rename, and future duplicate resolution use one grammar:
-
-1. **Scope**: identify sources and destinations.
-2. **Target**: capture and show the item snapshot and count.
-3. **Options**: choose transformations, direction, collisions, and recovery.
-4. **Analyze**: compute a proposed plan.
-5. **Review**: show actions, overwrites, skips, conflicts, and permanent effects.
-6. **Run**: revalidate and execute the approved snapshot.
-7. **Results**: retain Succeeded, Failed, Skipped, and Canceled details.
-
-Changing options, target, destination, or relevant files invalidates analysis. Cancellation belongs to one operation, stops future work, and reports partial completion without claiming rollback.
-
-This grammar is a strict state machine:
-
-```json
-{
-	"GuidedOperationState": ["Scope", "Target", "Options", "Analyze", "Review", "Run", "Results"],
-	"initialState": "Scope",
-	"terminalState": "Results",
-	"forwardTransitions": {
-		"Scope": ["Target"],
-		"Target": ["Options"],
-		"Options": ["Analyze"],
-		"Analyze": ["Review"],
-		"Review": ["Run"],
-		"Run": ["Results"],
-		"Results": []
-	},
-	"runPreconditions": {
-		"currentState": "Review",
-		"analyzeObjectExists": true,
-		"analyzeObjectValidated": true,
-		"approvedSnapshotMatchesCurrentInputs": true
-	}
-}
-```
-
-`Run` is logically dependent on a validated `Analyze` object for the reviewed snapshot. `Options -> Run` is forbidden, as is any direct execution path that bypasses `Analyze` or `Review`. Changing scope, target, options, destination, or relevant files invalidates the `Analyze` object; the operation must return to the changed state and traverse `Analyze -> Review` again before `Run` becomes eligible.
-
-Import distinguishes new imports, import-history records, existing destinations, overwrites, and skips; history or path collision is not proof of duplicate content. Sync names both ends and direction and separates copies, replacements, conflicts, and deletions on each side.
-
-Duplicate resolution states confidence, requires an explicit keeper, and lists every removal and recovery class. Related items never become targets automatically.
-
-## System states and consistency
-
-Surfaces distinguish Loading, Searching, Empty Folder, No Results, Filtered Results, Unavailable Scope, Indexing, Offline, Download Required, Unsupported, and Decode Failed. Each names the scope and offers a next action; blank content is not an error state.
-
-Long work shows operation, current item, completed and total counts, and Cancel. Results and actionable errors remain afterward. Indexing progressively improves results while browsing remains usable and discloses when results may be incomplete.
-
-A task view that lists what a run will do keeps the row it is working on visible while it runs. Visible means clear of the chrome painted over the list — the column headers above it and the status band below it — with a line of text of margin, not merely inside the scrolling area.
-
-Visible state converges automatically after its source changes. Results, filters, groups, selection, focus, command availability, address, sidebar summaries, presence, previews, layout, and paint must not remain stale until unrelated navigation or input. Progressive background results apply only to the scope and generation that requested them; superseded work must not overwrite newer state.
-
-Changes refresh the smallest sufficient surface while preserving every dependent invariant. Paint-only changes must not restart searches or scans, while data changes must refresh all affected derived state before it is presented as current. The implementation-level invalidation contract is defined in [implementation.md](implementation.md#view-invalidation).
-
-Fades and other alpha transitions are decoration, never a carrier of meaning, so they are dropped whenever they would cost more than they convey. When the application runs on the CPU software renderer, or the system asks for reduced client-area animation, every alpha transition completes immediately: thumbnails, photos, loading indicators, and the edit grid appear at their final appearance instead of fading in or out. The result is identical, only sooner; no state, target, or availability differs between the animated and immediate presentation.
-
-Persist durable preferences, not transient focus, selection, pin, zoom, playback, or operation progress. Settings either apply immediately and say so or use Apply/Cancel consistently.
-
-A file that crashed the application is skipped only by work the user did not ask for. Indexing, scanning, and thumbnailing reach files the user never chose to touch, so repeating that crash is the application's to prevent, and a skipped file presents as a failed item rather than as one still loading. Work the user asked for is always attempted: an explicit open is a request, and refusing it silently would trade a crash the user can choose to avoid for an inaction they cannot explain. The skip lapses on the next update, so a fix reaches the file without the user knowing a list exists.
-
-A crash before the first window is the one failure the user has no mental model for, because nothing they did caused it and nothing they can stop doing avoids it. After two consecutive launches that never reach a settled window, the next one opens with the default layout and hardware acceleration off, and says so. Only presentation is reverted; files, collection, recent items, favorite tags, language and task settings are unchanged, and the user restores their own choices from Options. Opening degraded and explained is always preferred to not opening.
-
-Network features independently disclose trigger, transmitted data, recipient, purpose, and disable control. Keyboard, toolbar, menu, context-menu, and accessibility paths share availability, targeting, confirmation, and validation. Escape unwinds the most local temporary state first.
-
-### What the daily report says, and what it may not
-
-The update check reports what would decide where effort goes: the version and build, whether this is a first run, which features were used since the last report, how many times the application has run, and a packed value identifying the machine — OS family, a coarse OS version, the process architecture, the native machine architecture, and the package the build was installed from.
-
-**Identity and measurement are separate.** A feature bit means *at least once since the last report* and is cleared once sent; a system value means *right now* and is recomputed every time. Merging the two would make anyone who once ran a 32-bit build look like a permanent 32-bit user. Anything being measured is its own counter, never a field in the identity, because every field in the identity multiplies the daily rows while a separate counter only adds.
-
-**The store keeps daily aggregate totals, and that decides the encoding.** There is no row per report, so whatever the ingest aggregates on is the only view of that day that will ever exist, and a misread day cannot be re-read. So the packed value is aggregated whole and re-decodable rather than split into columns at ingest; its layout version is read first and anything else fails closed; reserved bits are zero and the reader masks them; 0 is always unknown and the top value is always other, so a rising "other" is the warning that a field has run out of room; and a meaning is fixed once assigned — retire a value, never reuse it, the rule [`date_source`](metadata.md#dates) and `panorama_projection` already carry. Anything open-ended travels as its own parameter carrying the real identifier, because there is no honest fixed width for a set that grows.
-
-**Deliberately not carried.** Nothing uniquely identifying: there is no stable id, and adding one would change what this is rather than what it measures. No free-text OS, GPU or CPU strings. Nothing about the user's files.
-
-**What the numbers can and cannot say.** With no stable id a day's total is daily active *reports*, not installs, so proportions and trends are sound and absolute counts are not. A decline cannot separate users upgrading from users leaving.
-
-## Feature map
-
-| Area | Capabilities |
-|---|---|
-| Collection and find | Indexed/external folders, metadata search, filters, groups, sorting, saved searches. Collection membership owned by [collections.md](collections.md). |
-| Locations | Qualified place names, place and distance search, map areas, visit timeline. Owned by [locations.md](locations.md). |
-| View and organize | Photos, RAW, video, audio, archives, slideshow, zoom, compare, tags, ratings, dates, locations. |
-| Edit and files | Crop, rotate, color, optional metadata fields, tags, convert, email, rename, copy, move, recycle, permanent delete. |
-| Operations | Import, sync, duplicate inspection, progress, cancellation, results. |
-| Preferences | Collection, display, playback, language, privacy, and performance. |
-
-## Design review
-
-- Scope, contents, target, and effect are unambiguous.
-- Consequential actions show counts, destinations, collisions, and recovery.
-- Previewed operations execute only the validated snapshot.
-- Cancellation and partial failure leave accurate results.
-- Empty, loading, offline, unsupported, and error states offer a next action.
-- All command entry points behave alike and invariants have regression tests.
-
-Collection membership belongs in [collections.md](collections.md). Location behavior belongs in [locations.md](locations.md). Zoom behavior belongs in [zoom.md](zoom.md). Implementation structure belongs in [implementation.md](implementation.md). GitHub issues own design gaps and planned changes.
+Task views expose their parameters beside the work surface and return to Items on task Close. Edit,
+Locate, Tags, and Metadata can show a selector strip containing only items the task can act on.
+Fullscreen is unavailable from a task view because it would hide the task's target and controls.
+
+The item list owns its filters, recursion, grouping, sorting, density, and size controls. Totals and
+grouping are separate affordances. Optional query-specific rows are navigation/presentation only and
+do not change grouping, sorting, focus, or selection. A captured control retains its value and
+position while its result refresh is in flight.
+
+Thumbnail rows share a height and preserve each image's aspect. A short trailing row remains short;
+the layout does not crop images merely to fill width. Relayout preserves the focused visible item or
+the content nearest the viewport center when possible.
+
+The selection panel and responsive behavior are owned by [selection-controls.md](selection-controls.md).
+Wheel and pinch routing are owned by [zoom.md](zoom.md#input).
+
+## Navigation And Search
+
+The address box accepts folders and indexed search terms for text, metadata, dates, locations, media
+types, ratings, labels, tags, duplicates, comparisons, negation, and Boolean expressions.
+When Diffractor writes a query back to text, literal operands are quoted whenever the tokenizer
+would otherwise read their characters as syntax, and numeric operands preserve the predicate value
+rather than a rounded display label unless the property is explicitly bucketed.
+
+Address editing keeps a committed value, a typed draft, and an optional completion preview. Up/Down
+preview completions without replacing the draft. Tab accepts into the draft; Enter commits; Escape
+first restores the draft from a preview, then restores the address captured when editing began.
+
+History entries retain query and selection. Back and Forward restore rather than rewrite them, and
+move the history position only after the target navigation is accepted; a refused or unavailable
+target leaves the current entry and the next Back/Forward target unchanged. Navigating after Back
+removes the forward branch. Parent broadens one narrowing at a time. Sibling folder commands remain
+at the same level and are unavailable at their ends.
+
+Navigation from a map, chart, breakdown, summary, or group header changes the query only. Grouping,
+sorting, and filters remain user-owned. Filtering removes hidden items from selection; removing the
+filter does not reselect them.
+
+## Selection And Viewing
+
+Plain click selects one item; Ctrl toggles; Shift extends from the focus anchor; Ctrl+Shift combines
+both. Empty-space clicks and empty selection rectangles leave selection unchanged. Right-clicking an
+unselected item selects it before opening a batch-oriented menu. Select All targets visible items.
+
+One selected media item previews, two compatible files compare, and other selections summarize.
+Opening media preserves selection. Selection, focus, pin, hover, and errors remain visually distinct.
+
+Play controls the displayed audio/video. Slideshow walks visible photo/video/audio items from the
+focused item, holds photos for the configured delay, plays timed media to completion, and stops when
+no eligible next item exists. Repeat controls sequence ends; normal continuation and Slideshow are
+separate choices. Resume stores playback position in the rebuildable index and never changes media.
+
+Video thumbnail preview is latest-wins, does not hydrate offline files, and may publish the last
+successful frame as the versioned SQLite thumbnail.
+
+## Collection Presence
+
+Presence distinguishes direct membership from possible-copy evidence:
+
+- **In collection** means this file path belongs to a collection folder.
+- **Possible copy**, **Possible newer copy**, and **Possible older copy** compare an outside file with
+  likely collection copies and state uncertainty explicitly.
+- **Outside collection; no possible copy identified** is a completed absence of current evidence,
+  not proof that no copy exists.
+- **Checking presence** is incomplete work and cannot publish an absence result.
+
+Presence supports browsing and import decisions. It never chooses a keeper, recommends deletion, or
+adds a candidate to the command target. [Collections](collections.md) owns duplicate evidence parity.
+
+## Related Items
+
+Related items searches the indexed collection from one focused anchor and changes no files. Each
+result appears under its strongest relation only, in this order: possible copy, same album, same
+series, nearby capture time, nearby capture place. Each group is bounded and ordered by closeness.
+
+Copy identity is shared with duplicate search and Presence. Re-encoded, resized, or rotated images
+may match through perceptual evidence; crops, bursts sharing only a timestamp, and low-information
+images are not asserted as copies. Related results never become targets automatically.
+
+## Metadata, Editing, And Files
+
+Metadata persists in media or sidecars; the index is a cache. [Metadata](metadata.md) owns format and
+tag support, and [File I/O](file-io.md) owns write safety and read-back.
+
+Edit holds photo adjustments as a draft. Save updates the file; Save As creates and opens a new file;
+leaving a changed draft offers Save, Don’t Save, and Cancel. Reset changes only the draft.
+If source pixels are still loading, unreadable, or refused as too large, Edit shows that bounded
+state and withholds pixel operations rather than editing a placeholder.
+
+Metadata and Tags operate on the complete visibly selected set. Optional metadata fields change only
+when selected for the run. Date adjustment applies one shift while preserving relative offsets;
+items without a known date receive the chosen start. Rotation changes selected originals and is
+always reviewed for multiple items. Convert/Resize creates output and retains sources. Share hands
+the complete visibly selected set to an app chosen in the system share sheet, or to an email draft
+where the system has none. Files its options leave unchanged go as themselves; converted, resized,
+or zipped copies are staged in a temporary folder and kept until the next share, because the
+receiving app may read them later. Sources are never changed.
+
+Collisions use Replace, Skip, Auto-rename, or Block Run. Two plan rows claiming one destination are
+a collision. Delete distinguishes recoverable Recycle from confirmed Permanent delete. A location
+without a usable recycle facility never presents permanent deletion as Recycle; when a requested
+Recycle would instead destroy an item, Windows owns the mandatory permanent-delete confirmation
+before that item is removed. If the user has enabled Windows' Recycle Bin delete confirmation,
+Windows may also confirm ordinary recycles.
+
+## Guided Operations
+
+Import, Sync, Convert, Metadata, Date, and batch Rename follow one state grammar:
+
+1. Scope and destination.
+2. Complete visible target and count.
+3. Options, collision policy, and recovery.
+4. Analyze a snapshot.
+5. Review actions, overwrites, skips, and permanent effects.
+6. Revalidate and Run the approved snapshot.
+7. Retain per-item Succeeded, Failed, Skipped, and Canceled results.
+
+A finished run's status states what it did, then why any rows did nothing; a run that reports neither
+leaves the review's status.
+
+Changing scope, target, options, destination, or relevant files invalidates the analysis. Cancellation
+stops future work and reports partial completion without claiming rollback. Import history is not
+duplicate proof; Sync names both endpoints and direction. Convert carries the reviewed collision
+decision through final publication: a destination that appears or changes after review is refused
+rather than overwritten. Sync applies full-path collection exclusions to corresponding relative
+folders on both compared trees.
+
+## System States And Consistency
+
+Surfaces distinguish loading, searching, empty folder, no results, filtered results, unavailable
+scope, indexing, offline, download required, unsupported, and decode failed. Each state names its
+scope and next action; blank content is not an error message.
+
+Long work shows operation, current item, completed/total counts, and Cancel. The taskbar button shows
+the same progress, and flashes when work ends while another application is in front. Results and
+actionable errors remain afterward. Progressive results apply only to the requesting scope and
+generation. Visible state converges after source changes without unrelated input. [Implementation](implementation.md#view-invalidation)
+owns the invalidation ordering.
+
+Animation carries no meaning and completes immediately in software rendering or when the system
+disables client-area animation. Durable preferences persist; transient focus, selection, pin, zoom,
+and operation progress do not.
+
+Unattended indexing skips media attributed to a prior crash for the current release line; an explicit
+user open is still attempted. Repeated unsettled launches reset presentation and disable hardware
+acceleration while retaining collection and user data.
+
+Network capabilities independently disclose trigger, transmitted data, recipient, purpose, and
+disable control. Aggregate feature-use diagnostics contain no stable user ID or file information.
 
 ## Where this lives
 
-This document owns meaning, not structure. These anchors exist so a reader can route from a behavior to the code that implements it without searching; [implementation.md](implementation.md) owns the architecture behind them, and the source owns the exact API.
-
-| Design subject | Source |
-|---|---|
-| Scope, contents, navigation history, the view/mode transitions | [model.h](../src/model.h), [model.cpp](../src/model.cpp) — `view_state` |
-| Command availability, targeting, keyboard | [app_commands.h](../src/app_commands.h) — `default_keyboard_accelerators`; [app_commands.cpp](../src/app_commands.cpp) |
-| The address box editing session and completions | [app_search.h](../src/app_search.h) — `search_edit_session`, `make_search_auto_complete` |
-| Query parsing and matching | [model_search.cpp](../src/model_search.cpp), [model_tokenizer.h](../src/model_tokenizer.h), [util_selector.h](../src/util_selector.h) — `item_selector` |
-| Items: listing, tiles, control bar, selection panel | [view_items.h](../src/view_items.h) — `command_bar_element`; [view_items.cpp](../src/view_items.cpp), [view_list.h](../src/view_list.h), [ui_flex.cpp](../src/ui_flex.cpp) |
-| Fullscreen, Play, Slideshow, Repeat, resume | [view_media.h](../src/view_media.h); [av_player.h](../src/av_player.h) — `should_resume_at`, `position_to_save`; [util_interfaces.h](../src/util_interfaces.h) — `calc_playback_advance` |
-| Guided operations, Scope through Results | [view_import.cpp](../src/view_import.cpp), [view_sync.cpp](../src/view_sync.cpp), [view_rename.cpp](../src/view_rename.cpp), [view_batch.cpp](../src/view_batch.cpp), [view_tags.cpp](../src/view_tags.cpp), [app_util.cpp](../src/app_util.cpp) |
-| Collision policy, Recycle versus Permanent delete | [app_util.cpp](../src/app_util.cpp); [platform.h](../src/platform.h) — `can_recycle` |
-| The application mark and lockup | [render_surface.cpp](../src/render_surface.cpp) — `ui::surface::fill_logo`; [app_sidebar.h](../src/app_sidebar.h); `tools/generate_store_assets.py` |
-| Sidebar navigation and summaries | [app_sidebar.h](../src/app_sidebar.h) |
-| Durable preferences | [app_settings.h](../src/app_settings.h), [app_settings.cpp](../src/app_settings.cpp) |
-| Crash-loop protection and the degraded start | [util_crash_files_db.h](../src/util_crash_files_db.h), [app_toolbar.cpp](../src/app_toolbar.cpp) |
-| Alpha transitions and the animation gate | [ui.h](../src/ui.h) — `ui::animate_alpha`, `ui::animations_enabled` |
-
-Most of this behavior is reachable headless: `view_state` runs with null strategies, so selection, filtering, grouping, sibling navigation and the browsing sequence are testable without a window. See [testing.md](testing.md).
+- [model.cpp](../src/model.cpp), [model.h](../src/model.h), and [model_display.h](../src/model_display.h):
+  scope, navigation, selection, display, and view transitions.
+- [app_commands.cpp](../src/app_commands.cpp) and [app_commands.h](../src/app_commands.h): command
+  availability, targeting, and keyboard behavior.
+- [app_search.h](../src/app_search.h), [model_search.cpp](../src/model_search.cpp), and
+  [model_tokenizer.h](../src/model_tokenizer.h): address editing, parsing, and matching.
+- [view_items.cpp](../src/view_items.cpp), [view_items.h](../src/view_items.h), and
+  [view_media.h](../src/view_media.h): Items, selection presentation, and Fullscreen.
+- [view_import.cpp](../src/view_import.cpp), [view_sync.cpp](../src/view_sync.cpp),
+  [view_rename.cpp](../src/view_rename.cpp), and [view_batch.cpp](../src/view_batch.cpp): guided
+  operations.
+- [app_util.cpp](../src/app_util.cpp) and libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): file effects, collisions,
+  shared copies, and the recycle and share capabilities.
+- [app_settings.cpp](../src/app_settings.cpp): durable preferences and diagnostics settings.

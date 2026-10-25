@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include "util_kdtree.h"
+#include "libdesktop/util_kdtree.h"
 #include "model_location.h"
 
 class database;
@@ -41,6 +41,10 @@ str::cached normalize_county_name(str::cached country);
 // Used to recognise a country qualifier in unquoted location search input, where the
 // gazetteer is not available because it is owned by the location worker.
 bool is_country_code(std::string_view token);
+
+// Conservative longitude span for a spherical radius query at `latitude`. Exposed so tests can
+// pin the antimeridian/pole contract without reaching into the gazetteer index.
+double location_longitude_span_degrees(double latitude, double max_km);
 
 // Issue #119: returns the record column offset for a display-language bit relative to the
 // default name column (0 = default name, 1 = first localized name, ...). A place record
@@ -312,6 +316,7 @@ class location_cache final : public df::no_copy
 	}
 
 	location_t find_closest_locked(double x, double y, country_loc* country) const;
+	kd_coordinates_t find_closest_geo_locked(double latitude, double longitude) const;
 
 	// Collects every place within max_km of (x, y). Latitude is clamped: a box reaching past a
 	// pole covers no places the clamped box misses. Longitude wraps, so a box crossing the

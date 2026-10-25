@@ -22,6 +22,19 @@ class db_statement;
 
 using item_writes_t = platform::queue<item_db_write>;
 
+namespace database_test_seams
+{
+	bool schema_failure_allows_replacement(int sqlite_result);
+	int set_journal_mode(sqlite3* db, std::string_view requested);
+	int probe_journal_mode(sqlite3* db);
+	void fail_next_journal_probe(int sqlite_result);
+	size_t folder_thumbnail_visit_budget();
+	void visit_folder_thumbnail_candidates(
+		const df::folder_path& root,
+		const std::function<bool(const df::folder_path&)>& visit,
+		const std::function<std::vector<df::folder_path>(const df::folder_path&)>& enumerate);
+}
+
 struct item_import
 {
 	str::cached name = {};
@@ -88,11 +101,16 @@ public:
 		std::weak_ptr<df::item_element> lifetime;
 		df::file_path path;
 		df::folder_path folder;
+		uint64_t generation = 0;
 		bool is_folder = false;
 		bool has_thumbnail = false;
+
+		thumbnail_request(std::weak_ptr<df::item_element> lifetime, df::file_path path, df::folder_path folder,
+		                  const uint64_t generation, const bool is_folder, const bool has_thumbnail) noexcept;
 	};
 
 	using thumbnail_requests = std::vector<thumbnail_request>;
+	static thumbnail_request make_thumbnail_request(const df::item_element_ptr& item, uint64_t generation);
 
 	struct db_thumbnail
 	{
@@ -134,6 +152,7 @@ public:
 	void upgrade_cached_metadata();
 	bool invalidate_cached_metadata() const;
 	bool request_date_pack_rescan() const;
+	bool request_audio_metadata_rescan() const;
 	void perform_writes();
 	void perform_writes(std::deque<item_db_write> writes) const;
 	void maintenance(bool is_reset);

@@ -2237,9 +2237,6 @@ msgstr "Hardware-Beschleunigung verwenden, um die Benutzeroberfläche von Diffra
 msgid "Use hardware acceleration to decode video (when available)"
 msgstr "Hardware-Beschleunigung verwenden, um Video zu decodieren (wenn verfügbar)"
 
-msgid "Use NV12 and P010 format textures (Automatically turned off if problems detected)"
-msgstr "Texturen im NV12- und P010-Format verwenden (automatisch ausgeschaltet, wenn Probleme erkannt werden)"
-
 msgid "Show an inset shadow surrounding the image view panel."
 msgstr "Einen eingesetzten (Inset-) Schatten zeigen, der das Bildansichtsfenster umgibt."
 
@@ -2766,6 +2763,24 @@ msgstr "Vorbereitung, um Dateien zu importieren ..."
 msgid "Preparing files for email..."
 msgstr "Vorbereitung der Dateien für E-Mail ..."
 
+msgid "Share"
+msgstr "Teilen"
+
+msgid "Preparing files to share..."
+msgstr "Vorbereitung der Dateien zum Teilen ..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows zeigt die Apps an, die die Dateien empfangen können. Die Originale bleiben unverändert."
+
+msgid "Send the files as one zip file"
+msgstr "Dateien als eine ZIP-Datei senden"
+
+msgid "&Share"
+msgstr "&Teilen"
+
+msgid "The files could not be shared."
+msgstr "Die Dateien konnten nicht geteilt werden."
+
 msgid "Preparing to synchronize files..."
 msgstr "Vorbereitung, um Dateien zu synchronisieren ..."
 
@@ -3198,10 +3213,16 @@ msgid_plural "{count} items were ignored because they were previously imported."
 msgstr[0] "{first-name} wurde ignoriert, weil es zuvor importiert wurde."
 msgstr[1] "{count} Items wurden ignoriert, weil diese zuvor importiert wurden."
 
-msgid "{first-name} will be moved to the recycle bin."
-msgid_plural "{count} items ({size}) will be moved to the recycle bin."
-msgstr[0] "{first-name} wird in den Papierkorb verschoben."
-msgstr[1] "{count} Items ({size}) werden in den Papierkorb verschoben."
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "1 Item wurde importiert, aber sein Erstellungsdatum konnte nicht gesetzt werden."
+msgstr[1] "{count} Items wurden importiert, aber ihr Erstellungsdatum konnte nicht gesetzt werden."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} wird in den Papierkorb verschoben, wenn Windows es in den Papierkorb verschieben kann."
+msgstr[1] "{count} Elemente ({size}) werden in den Papierkorb verschoben, wenn Windows sie in den Papierkorb verschieben kann."
 
 msgid "{first-name} will be permanently deleted."
 msgid_plural "{count} items ({size}) will be permanently deleted."
@@ -3255,6 +3276,11 @@ msgid "A desktop email draft will be opened with {first-name} attached."
 msgid_plural "A desktop email draft will be opened with {count} selected items attached."
 msgstr[0] "Im Desktop-E-Mail-Programm wird ein Entwurf mit der angehängten Datei {first-name} geöffnet."
 msgstr[1] "Im Desktop-E-Mail-Programm wird ein Entwurf mit {count} ausgewählten Items als Anlagen geöffnet."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name} wird der App angeboten, die Sie auswählen."
+msgstr[1] "{count} ausgewählte Items werden der App angeboten, die Sie auswählen."
 
 msgid "{first-name} already exists. Do you want to replace it?"
 msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
@@ -3644,3 +3670,157 @@ msgstr "Gruppieren nach Originaldatum"
 
 msgid "Sort by Date original"
 msgstr "Sortieren nach Originaldatum"
+
+msgid "Movie mixer"
+msgstr "Film-Mixer"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Fügen Sie die ausgewählten Fotos und Videos zu einem Video zusammen. Fügen Sie Clips im Streifen unten hinzu, entfernen und ordnen Sie sie neu, und schneiden Sie den ausgewählten Clip zu. Die Vorschau zeigt, was gerendert wird; es wird nichts geschrieben, bis Sie rendern oder speichern."
+
+msgid "Movie"
+msgstr "Film"
+
+msgid "Selected clip"
+msgstr "Ausgewählter Clip"
+
+msgid "Crossfade between clips"
+msgstr "Überblendung zwischen Clips"
+
+msgid "Cut between clips"
+msgstr "Harter Schnitt zwischen Clips"
+
+msgid "Transition (tenths of a second)"
+msgstr "Übergang (Zehntelsekunden)"
+
+msgid "Fade (tenths of a second)"
+msgstr "Auf-/Abblenden (Zehntelsekunden)"
+
+msgid "Fade in from black"
+msgstr "Von Schwarz aufblenden"
+
+msgid "Fade out to black"
+msgstr "Nach Schwarz abblenden"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "Fotodauer (Zehntelsekunden)"
+
+msgid "This photo (tenths of a second)"
+msgstr "Dieses Foto (Zehntelsekunden)"
+
+msgid "Use the movie default"
+msgstr "Filmstandard verwenden"
+
+msgid "Add photos and videos to build a movie."
+msgstr "Fügen Sie Fotos und Videos hinzu, um einen Film zu erstellen."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "Ausgabe {} x {} mit {} fps, Länge {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - Clip {} von {}, beginnt bei {}."
+
+msgid "Movie project"
+msgstr "Filmprojekt"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows Movie Maker-Projekt"
+
+msgid "Photos and videos"
+msgstr "Fotos und Videos"
+
+msgid "Could not read the project {}."
+msgstr "Das Projekt {} konnte nicht gelesen werden."
+
+msgid "Could not save the project {}."
+msgstr "Das Projekt {} konnte nicht gespeichert werden."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "Fügt die ausgewählten Fotos und Videos zu einem Video zusammen."
+
+msgid "Add files"
+msgstr "Dateien hinzufügen"
+
+msgid "Remove from movie"
+msgstr "Aus Film entfernen"
+
+msgid "Send to the end"
+msgstr "Ans Ende verschieben"
+
+msgid "Open project"
+msgstr "Projekt öffnen"
+
+msgid "Save project"
+msgstr "Projekt speichern"
+
+msgid "Import Movie Maker project"
+msgstr "Movie Maker-Projekt importieren"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Rendering the movie"
+msgstr "Film wird gerendert"
+
+msgid "The movie could not be rendered. {}"
+msgstr "Der Film konnte nicht gerendert werden. {}"
+
+msgid "The movie has no length."
+msgstr "Der Film hat keine Länge."
+
+msgid "The encoder would not accept this movie."
+msgstr "Der Encoder hat diesen Film nicht akzeptiert."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "Für ein Frame des Films war nicht genügend Speicher verfügbar."
+
+msgid "A clip could not be decoded."
+msgstr "Ein Clip konnte nicht decodiert werden."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "Der Encoder hat angehalten, bevor der Film fertig war."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "Dieser Name gehört zu einem Clip in diesem Film. Wählen Sie einen anderen Namen."
+
+msgid "Rendered {}."
+msgstr "{} wurde gerendert."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "Das Rendern wurde abgebrochen. Es wurde nichts geschrieben."
+
+msgid "No missing clip was found in that folder."
+msgstr "In diesem Ordner wurde kein fehlender Clip gefunden."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "Dieser Film enthält Änderungen, die in keiner Projektdatei stehen. Er bleibt erhalten, solange Diffractor läuft, und geht beim Schließen von Diffractor verloren."
+
+msgid "Close without saving"
+msgstr "Schließen ohne zu speichern"
+
+msgid "Render"
+msgstr "Rendern"
+
+msgid "Write the movie to a video file."
+msgstr "Schreibt den Film in eine Videodatei."
+
+msgid "Relink missing files"
+msgstr "Fehlende Dateien neu verknüpfen"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "Verweist Clips, deren Quelldatei verschoben wurde, auf einen von Ihnen gewählten Ordner."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "1 Element des importierten Projekts wurde ausgelassen, weil Film es nicht abbilden kann."
+msgstr[1] "{count} Elemente des importierten Projekts wurden ausgelassen, weil Film sie nicht abbilden kann."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 Clip findet seine Quelldatei nicht."
+msgstr[1] "{count} Clips finden ihre Quelldateien nicht."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 Clip wurde neu verknüpft."
+msgstr[1] "{count} Clips wurden neu verknüpft."
+

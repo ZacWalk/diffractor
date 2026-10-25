@@ -21,9 +21,11 @@ class sync_view final :
 {
 	bool _select_other_folder = false;
 	std::string _title;
-	std::string _status;
 	sync_analysis_result _analysis;
 	bool _analysis_valid = false;
+	// The processing generation a Run began. Refresh re-plans, and a Run still under way is executing
+	// the plan already reviewed, so it is left alone rather than cancelled partway.
+	size_t _run_generation = 0;
 
 	void invalidate_analysis();
 
@@ -57,13 +59,9 @@ public:
 
 	bool can_run() const { return _analysis_valid && count_sync_actions(_analysis) > 0; }
 
-	std::string_view status() override
-	{
-		return _status;
-	}
-
 	void deactivate() override
 	{
+		abandon_processing();
 		_rows.clear();
 		_status.clear();
 		_analysis.clear();

@@ -112,6 +112,8 @@ prop::key prop::audio_channels('ch', "", "audio.channels", tt.prop_name_channels
 prop::key prop::audio_sample_rate('sr', "", "audio.sample.rate", tt.prop_name_samplerate, icon_index::star,
                                   data_type::int32, style::groupable | style::sortable | style::auto_complete,
                                   search_presence_mask::audio_codec);
+prop::key prop::audio_sample_rate_full('sR', "", "audio.sample.rate.full", tt.prop_name_samplerate, icon_index::star,
+                                       data_type::int32, style::none, search_presence_mask::audio_codec);
 prop::key prop::audio_sample_type('sa', "", "audio.sample.type", tt.prop_name_sampletype, icon_index::star,
                                   data_type::int32, style::groupable | style::sortable | style::auto_complete,
                                   search_presence_mask::audio_codec);
@@ -411,6 +413,9 @@ std::vector<prop::prop_scope> prop::search_scopes()
 		// spelling a user sees for the second one.
 		dates_packed,
 		panorama,
+		// Registered as a name and never stored against an item, so any value the user types for it
+		// is compared against nothing.
+		encoding_tool,
 	};
 
 	std::vector<prop_scope> result;
@@ -443,12 +448,20 @@ std::vector<prop::prop_scope> prop::key_scopes()
 	// `date.pack` is the storage the three dates live in rather than a date anyone asks for, and
 	// `digitized` is the old spelling of the concept now called `created` - offering both teaches a
 	// fourth date that no longer exists. `panorama` has no arm in has_type for the same reason it has
-	// none in compare_val; `@panorama` is the spelling that answers.
+	// none in compare_val; `@panorama` is the spelling that answers. The rest below are names with no
+	// stored value behind them, so `with:` would answer no and `without:` would answer the whole
+	// collection - and `null` is not a scope at all.
 	const std::unordered_set<const key*> exclusions
 	{
 		created_digitized,
 		dates_packed,
 		panorama,
+		null,
+		crc32c,
+		encoding_tool,
+		media_category,
+		streams,
+		unique_id,
 	};
 
 	std::vector<prop_scope> result;
@@ -528,7 +541,8 @@ search_presence_mask prop::item_metadata::calc_search_presence() const
 	if (!is_null(dates.created())) result.types |= prop::created_utc.search_presence_bit;
 	if (is_panorama()) result.types |= prop::panorama.search_presence_bit;
 	if (!is_null(year)) result.types |= prop::year.search_presence_bit;
-	if (orientation != ui::orientation::top_left) result.types |= prop::orientation.search_presence_bit;
+	if (orientation != ui::orientation::top_left && orientation != ui::orientation::none)
+		result.types |= prop::orientation.search_presence_bit;
 	if (coordinate.is_valid()) result.types |= latitude.search_presence_bit;
 	if (!is_null(altitude)) result.types |= prop::altitude.search_presence_bit;
 	if (!is_null(gps_speed)) result.types |= prop::gps_speed.search_presence_bit;
@@ -767,54 +781,6 @@ std::string prop::format_bit_rate(const int64_t br)
 }
 
 
-prop::size_rounded prop::round_size(const uint64_t s)
-{
-	size_rounded result;
-
-	result.unit = "KB";
-	result.short_unit = "K";
-	result.div = KB;
-
-	if (s > TB / 5)
-	{
-		result.div = TB;
-		result.unit = "TB";
-		result.short_unit = "T";
-	}
-	else if (s > GB / 5)
-	{
-		result.div = GB;
-		result.unit = "GB";
-		result.short_unit = "G";
-	}
-	else if (s > MB / 5)
-	{
-		result.div = MB;
-		result.unit = "MB";
-		result.short_unit = "M";
-	}
-
-	if (s < KB)
-	{
-		result.div = KB;
-	}
-
-	const auto nn = df::round(s * 10.0 / result.div);
-	result.n = nn / 10;
-	result.dec = nn % 10;
-	result.rounded = df::round(static_cast<double>(s) / result.div);
-
-	return result;
-}
-
-std::string prop::format_size(const df::file_size& s)
-{
-	const auto rounded = round_size(s.to_int64());
-	return rounded.dec == 0
-		       ? std::format("{} {}", rounded.n, rounded.unit)
-		       : std::format("{}{}{} {}", rounded.n, platform::number_dec_sep(), rounded.dec, rounded.unit);
-}
-
 struct magnitude
 {
 	int64_t n;
@@ -899,6 +865,11 @@ std::string prop::format_magnitude(const df::file_size& s)
 
 std::string prop::format_audio_sample_rate(const int v)
 {
+	return v <= 0 ? std::string{} : format_audio_sample_rate(static_cast<uint32_t>(v));
+}
+
+std::string prop::format_audio_sample_rate(const uint32_t v)
+{
 	const auto remainder = v % 1000 / 100;
 	const auto khz = v / 1000;
 
@@ -910,13 +881,7 @@ std::string prop::format_audio_sample_rate(const int v)
 
 std::string prop::format_audio_sample_rate(const uint16_t v)
 {
-	const auto remainder = v % 1000 / 100;
-	const auto khz = v / 1000;
-
-	if (v > 1000 && remainder == 0) return std::format("{}kHz", khz);
-	if (v > 1000) return std::format("{}{}{}kHz", khz, platform::number_dec_sep(), remainder);
-	if (v > 0) return std::format("{}Hz", v);
-	return {};
+	return format_audio_sample_rate(static_cast<uint32_t>(v));
 }
 
 std::string prop::format_audio_sample_type(const audio_sample_t v)

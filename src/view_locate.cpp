@@ -98,9 +98,9 @@ public:
 	// element returns no controller, so the dropdown only responds to the keyboard.
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -130,6 +130,11 @@ public:
 	ui::auto_complete_results _results;
 	ui::auto_complete_match_ptr _selected;
 
+	// Each keystroke supersedes the last. The gazetteer answers on its own queue, so an older query
+	// can return after a newer one and put its matches back in the list - where the first is
+	// selected, retargeting the operation to a place the user had already typed past.
+	uint64_t _search_generation = 0;
+
 	std::function<void(const location_t&)> _changed;
 
 	locate_auto_complete_strategy(view_state& s, ui::control_frame_ptr parent,
@@ -138,6 +143,14 @@ public:
 	{
 		resize_to_show_results = false;
 		max_predictions = 15u;
+	}
+
+	// A coordinate chosen on the map, or a new item to locate, supersedes any search still on the
+	// location queue the same way a keystroke does. Its answer would otherwise select its first match
+	// and move the coordinate back to a place the user had moved away from.
+	void supersede_pending_search()
+	{
+		++_search_generation;
 	}
 
 	std::string no_results_message() override
@@ -152,17 +165,22 @@ public:
 
 	void search(const std::string& query, std::function<void(const ui::auto_complete_results&)> complete) override
 	{
+		const auto generation = ++_search_generation;
+
 		if (str::is_empty(query))
 		{
-			_state.queue_ui([complete = std::move(complete)]
+			_state.queue_ui([t = shared_from_this(), generation, complete = std::move(complete)]
 			{
+				if (t->_search_generation != generation) return;
+				t->_results.clear();
 				complete({});
 			});
 			return;
 		}
 
 		_state.queue_location(
-			[t = shared_from_this(), query, complete = std::move(complete)](const location_cache& locations)
+			[t = shared_from_this(), query, generation, complete = std::move(complete)](
+			const location_cache& locations)
 			{
 				const auto locally_found = locations.auto_complete(query, t->max_predictions, setting.default_location);
 
@@ -178,8 +196,10 @@ public:
 						                                             static_cast<int>(found.size())));
 				}
 
-				t->_state.queue_ui([t, complete, found]
+				t->_state.queue_ui([t, generation, complete, found]
 				{
+					if (t->_search_generation != generation) return;
+
 					t->_results = found;
 					if (t->_results.size() > t->max_predictions) t->_results.resize(t->max_predictions);
 					complete(t->_results);
@@ -259,6 +279,16 @@ void locate_view::clear_resolved_place()
 	_bearing.clear();
 }
 
+void locate_view::supersede_place_search() const
+{
+	if (const auto search = _place_search.lock()) search->supersede_pending_search();
+}
+
+std::shared_ptr<ui::complete_strategy_t> locate_view::place_search_for_tests() const
+{
+	return _place_search.lock();
+}
+
 void locate_view::update_location(const location_t& loc)
 {
 	if (!loc.position.is_valid())
@@ -294,7 +324,7 @@ void locate_view::rebuild_markers()
 	df::assert_true(ui::is_ui_thread());
 
 	std::vector<map_engine::marker> markers;
-	_marker_items.clear();
+	std::vector<marker_item> marker_items;
 	_thumbnail_requests.clear();
 	auto excluded = std::make_shared<df::unique_paths>();
 
@@ -311,23 +341,20 @@ void locate_view::rebuild_markers()
 
 			if (metadata && metadata->coordinate.is_valid() && excluded->emplace(item->path()).second)
 			{
-				_marker_items.push_back({item->path(), item});
+				marker_items.push_back({item->path(), item});
 				markers.push_back({metadata->coordinate, 1});
 			}
 		}
 	});
 
-	// The current list is already in hand, so it draws immediately; the rest of the collection
-	// comes from the index, which is never read on the UI thread.
-	_engine.set_markers(markers);
-
 	const auto generation = ++_marker_generation;
-	const auto listed_count = markers.size();
 	const auto zoom = _engine.zoom_level();
 	const std::weak_ptr<locate_view> weak_self = shared_from_this();
+	_pending_marker_generation = generation;
+	_pending_marker_items = std::move(marker_items);
 
 	_state.queue_async(async_queue::query,
-	                   [&state = _state, weak_self, generation, listed_count, zoom, excluded,
+	                   [&state = _state, weak_self, generation, zoom, excluded,
 		                   markers = std::move(markers)]() mutable
 	                   {
 		                   location_matrix_params params;
@@ -343,25 +370,27 @@ void locate_view::rebuild_markers()
 			                   markers.push_back({cell.centroid, cell.count});
 		                   }
 
-		                   state._async.queue_ui([weak_self, generation, listed_count,
-				                   markers = std::move(markers), paths = std::move(paths)]() mutable
+		                   auto marker_snapshot = map_engine::prepare_marker_snapshot(markers, zoom);
+
+		                   state._async.queue_ui([weak_self, generation,
+				                   marker_snapshot = std::move(marker_snapshot), paths = std::move(paths)]() mutable
 			                   {
 				                   const auto self = weak_self.lock();
 
-				                   // A newer rebuild has already replaced the list entries these
-				                   // collection cells were meant to sit behind.
 				                   if (!self || self->_marker_generation != generation ||
-					                   self->_marker_items.size() != listed_count)
+					                   self->_pending_marker_generation != generation)
 				                   {
 					                   return;
 				                   }
 
 				                   for (auto& path : paths)
 				                   {
-					                   self->_marker_items.push_back({std::move(path), {}});
+					                   self->_pending_marker_items.push_back({std::move(path), {}});
 				                   }
 
-				                   self->_engine.set_markers(markers);
+				                   self->_marker_items = std::move(self->_pending_marker_items);
+				                   self->_pending_marker_generation = 0;
+				                   self->_engine.set_marker_snapshot(std::move(marker_snapshot));
 				                   self->_state.invalidate_view(view_invalid::view_redraw);
 			                   });
 	                   });
@@ -371,6 +400,8 @@ void locate_view::deactivate()
 {
 	_populate_controls = nullptr;
 	_status.clear();
+	// A search still answering belongs to the session being left.
+	supersede_place_search();
 	// Reset selected location so the next activation re-evaluates from the
 	// newly selected items rather than reusing stale data.
 	*_location = selected_location_t{};
@@ -380,6 +411,8 @@ void locate_view::deactivate()
 	// Release the marker set and its item references.
 	_engine.set_markers({});
 	_marker_items.clear();
+	_pending_marker_items.clear();
+	_pending_marker_generation = 0;
 	// Any collection scan still running belongs to a map that is no longer on screen.
 	++_marker_generation;
 	_thumbnail_requests.clear();
@@ -436,6 +469,7 @@ void locate_view::select_default_location()
 	if (!initial_loc.is_valid()) initial_loc = setting.default_location;
 	if (!initial_loc.is_valid()) initial_loc = gps_coordinate(48.8566, 2.3522);
 
+	supersede_place_search();
 	clear_resolved_place();
 	_location->latitude = initial_loc.latitude();
 	_location->longitude = initial_loc.longitude();
@@ -459,6 +493,7 @@ void locate_view::on_map_panned(const gps_coordinate& new_center)
 	}
 
 	// Update coordinates immediately so the UI reflects the new position
+	supersede_place_search();
 	clear_resolved_place();
 	_location->latitude = new_center.latitude();
 	_location->longitude = new_center.longitude();
@@ -492,14 +527,16 @@ void locate_view::on_marker_hover(view_hover_element& hover, const int marker_in
 	// Thumbnail of the representative photo (mirrors the items-view scrollbar preview).
 	// It may be absent if the item's thumbnail has not been decoded into memory, so a
 	// caption is always added below to guarantee the bubble has content.
-	const auto thumb = item->thumbnail();
+	const auto surface = item->thumbnail_surface();
 
-	if (is_valid(thumb))
+	if (is_valid(surface))
 	{
-		files ff;
-		elements->add(std::make_shared<surface_element>(ff.image_to_surface(thumb), 160,
-		                                                flex_item::center,
+		elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center,
 		                                                item->layout_orientation()));
+	}
+	else if (is_valid(item->thumbnail()))
+	{
+		item->stage_thumbnail_surface(_state._async, false, true);
 	}
 	else if (_thumbnail_requests.emplace(item->path()).second)
 	{
@@ -528,6 +565,7 @@ void locate_view::on_marker_clicked(const gps_coordinate& coordinate, const int 
 {
 	if (!coordinate.is_valid()) return;
 
+	supersede_place_search();
 	clear_resolved_place();
 	_location->latitude = coordinate.latitude();
 	_location->longitude = coordinate.longitude();
@@ -675,6 +713,7 @@ view_controls_host_ptr locate_view::controls(const ui::control_frame_ptr& owner)
 
 	auto strategy = std::make_shared<locate_auto_complete_strategy>(
 		_state, frame, sel_changed);
+	_place_search = strategy;
 	const auto search = std::make_shared<ui::search_control>(frame, _location->search_text, strategy);
 	search->flex.align_self = flex_align::stretch;
 
@@ -707,7 +746,7 @@ view_controls_host_ptr locate_view::controls(const ui::control_frame_ptr& owner)
 			if (item->has_gps()) gps_items.emplace_back(item);
 		}
 
-		selection_thumbnails->selection(items.thumbs(), items.size());
+		selection_thumbnails->selection_async(items.thumbs(), items.size(), _state._async);
 		target_summary->text(format_plural_text(tt.be_updated_fmt, items));
 		overwrite_summary->text(gps_items.empty()
 			                        ? std::string{}

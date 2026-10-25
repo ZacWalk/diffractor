@@ -28,7 +28,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         lfs: true
 
     # The vendored build is the default (DIFFRACTOR_PREFER_SYSTEM is OFF), so these are the

@@ -13,22 +13,13 @@
 #include "ui_controllers.h"
 #include "ui_dialog.h"
 
-static std::string_view strip_quotes(const std::string_view str)
-{
-	if (str.size() > 1 && str::is_quote(str[0]) && str[str.size() - 1] == str[0])
-	{
-		return str.substr(1, str.size() - 2);
-	}
-
-	return str;
-}
-
-
 inline bool find_auto_complete(const std::vector<std::string_view>& queries, const std::string_view text,
                                const bool is_path, ui::match_highlights& match)
 {
 	std::vector<str::part_t> found_subs;
 
+	// Every part has to be found: the result test below counts one hit per query part, so a part
+	// that matches must move on to the next part rather than ending the walk.
 	for (const auto& q : queries)
 	{
 		if (!q.empty())
@@ -48,11 +39,13 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 					}
 				}
 
+				auto text_pos = text.begin() + static_cast<std::ptrdiff_t>(std::min(match_pos, text.size()));
+				auto query_pos = q.begin();
 				if (match_pos < text.size() &&
-					str::normalize_for_compare(text[match_pos]) == str::normalize_for_compare(q[0]))
+					str::normalize_for_compare(str::pop_utf8_char(text_pos, text.end())) ==
+					str::normalize_for_compare(str::pop_utf8_char(query_pos, q.end())))
 				{
-					found_subs.emplace_back(match_pos, 1);
-					break;
+					found_subs.emplace_back(match_pos, str::matched_text_byte_length(text, match_pos, q));
 				}
 			}
 			else
@@ -61,8 +54,7 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 
 				if (found != std::string_view::npos)
 				{
-					found_subs.emplace_back(found, q.size());
-					break;
+					found_subs.emplace_back(found, str::matched_text_byte_length(text, found, q));
 				}
 			}
 		}
@@ -72,6 +64,14 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 
 	if (is_match)
 	{
+		// Both text renderers walk the string forwards and consume highlights in order, dropping any
+		// whose offset is already behind them. found_subs is built in query order, which is not text
+		// order the moment the user types the words in a different order from the one they appear in.
+		std::ranges::sort(found_subs, [](const str::part_t& l, const str::part_t& r)
+		{
+			return l.offset < r.offset;
+		});
+
 		match = std::move(found_subs);
 	}
 
@@ -130,23 +130,29 @@ public:
 	df::folder_path folder;
 	ui::match_highlights match;
 	std::string lead;
+	bool raw_edit_text = false;
 
 	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, ui::match_highlights m = {},
-	             const int w = 1) :
-		auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f), match(std::move(m))
+	             const int w = 1, const bool raw = false) :
+		auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f), match(std::move(m)),
+		raw_edit_text(raw)
 	{
 		weight = w;
 	}
 
 	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, std::string l, ui::match_highlights m = {},
-	             const int w = 1) : auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f),
-	                                match(std::move(m)), lead(std::move(l))
+	             const int w = 1, const bool raw = false) : auto_complete_match(view_element_style::can_invoke),
+	                                                        _parent(parent), folder(f),
+	                                                        match(std::move(m)), lead(std::move(l)),
+	                                                        raw_edit_text(raw)
 	{
 		weight = w;
 	}
 
 	std::string edit_text() const override
 	{
+		if (raw_edit_text) return std::string(folder.text());
+
 		// Issue #139: a completed path containing spaces must read as one term, not two. The whole
 		// input is only auto-quoted when it is nothing but a path, which a completion after a lead
 		// term never is - so the same rule is applied here rather than a second one invented.
@@ -204,9 +210,9 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
@@ -282,8 +288,8 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override
+	                                             hit_test_context& ctx) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, excluded_bounds);
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };

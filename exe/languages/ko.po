@@ -2234,9 +2234,6 @@ msgstr "하드웨어 가속을 사용하여 Diffractor 사용자 인터페이스
 msgid "Use hardware acceleration to decode video (when available)"
 msgstr "하드웨어 가속을 사용하여 비디오 디코딩(가능한 경우)"
 
-msgid "Use NV12 and P010 format textures (Automatically turned off if problems detected)"
-msgstr "NV12 및 P010 형식 텍스처 사용(문제가 감지되면 자동으로 꺼짐)"
-
 msgid "Show an inset shadow surrounding the image view panel."
 msgstr "이미지 보기 패널 주위에 삽입 그림자를 표시합니다."
 
@@ -2759,6 +2756,24 @@ msgstr "파일 가져오기 준비 중..."
 msgid "Preparing files for email..."
 msgstr "이메일 전송을 위해 파일 준비 중..."
 
+msgid "Share"
+msgstr "공유"
+
+msgid "Preparing files to share..."
+msgstr "공유할 파일 준비 중..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "파일을 받을 수 있는 앱이 Windows에 표시됩니다. 원본은 변경되지 않습니다."
+
+msgid "Send the files as one zip file"
+msgstr "파일을 하나의 ZIP 파일로 보내기"
+
+msgid "&Share"
+msgstr "공유(&S)"
+
+msgid "The files could not be shared."
+msgstr "파일을 공유하지 못했습니다."
+
 msgid "Preparing to synchronize files..."
 msgstr "파일 동기화 준비 중..."
 
@@ -3191,10 +3206,16 @@ msgid_plural "{count} items were ignored because they were previously imported."
 msgstr[0] "{first-name}는 이전에 가져왔기 때문에 무시되었습니다."
 msgstr[1] "{count} 항목은 이전에 가져왔기 때문에 무시되었습니다."
 
-msgid "{first-name} will be moved to the recycle bin."
-msgid_plural "{count} items ({size}) will be moved to the recycle bin."
-msgstr[0] "{first-name}가 휴지통으로 이동됩니다."
-msgstr[1] "{count} 항목({size})이 휴지통으로 이동됩니다."
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "항목 1개를 가져왔지만 생성 날짜를 설정할 수 없습니다."
+msgstr[1] "항목 {count}개를 가져왔지만 생성 날짜를 설정할 수 없습니다."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "Windows에서 재활용할 수 있으면 {first-name}이(가) 휴지통으로 이동됩니다."
+msgstr[1] "Windows에서 재활용할 수 있으면 {count}개 항목({size})이(가) 휴지통으로 이동됩니다."
 
 msgid "{first-name} will be permanently deleted."
 msgid_plural "{count} items ({size}) will be permanently deleted."
@@ -3248,6 +3269,11 @@ msgid "A desktop email draft will be opened with {first-name} attached."
 msgid_plural "A desktop email draft will be opened with {count} selected items attached."
 msgstr[0] "{first-name}을(를) 첨부한 임시 보관 메일이 데스크톱 이메일 클라이언트에서 열립니다."
 msgstr[1] "선택한 항목 {count}개를 첨부한 임시 보관 메일이 데스크톱 이메일 클라이언트에서 열립니다."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "{first-name}을(를) 선택하는 앱으로 보냅니다."
+msgstr[1] "선택한 항목 {count}개를 선택하는 앱으로 보냅니다."
 
 msgid "{first-name} already exists. Do you want to replace it?"
 msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
@@ -3638,3 +3664,157 @@ msgstr "원본 날짜별로 그룹화"
 
 msgid "Sort by Date original"
 msgstr "원본 날짜를 기준으로 정렬"
+
+msgid "Movie mixer"
+msgstr "동영상 믹서"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다. 아래 스트립에서 클립을 추가, 제거, 재정렬하고 선택한 클립을 자를 수 있습니다. 미리 보기는 렌더링 결과와 같으며, 렌더링하거나 저장하기 전까지는 아무것도 기록되지 않습니다."
+
+msgid "Movie"
+msgstr "동영상"
+
+msgid "Selected clip"
+msgstr "선택한 클립"
+
+msgid "Crossfade between clips"
+msgstr "클립 사이 크로스페이드"
+
+msgid "Cut between clips"
+msgstr "클립 사이 컷"
+
+msgid "Transition (tenths of a second)"
+msgstr "전환 (10분의 1초)"
+
+msgid "Fade (tenths of a second)"
+msgstr "페이드 (10분의 1초)"
+
+msgid "Fade in from black"
+msgstr "검은 화면에서 페이드 인"
+
+msgid "Fade out to black"
+msgstr "검은 화면으로 페이드 아웃"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "사진 표시 시간 (10분의 1초)"
+
+msgid "This photo (tenths of a second)"
+msgstr "이 사진 (10분의 1초)"
+
+msgid "Use the movie default"
+msgstr "동영상 기본값 사용"
+
+msgid "Add photos and videos to build a movie."
+msgstr "사진과 동영상을 추가하여 동영상을 만드세요."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "출력 {} x {}, {} fps, 길이 {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - {}/{}번째 클립, 시작 {}."
+
+msgid "Movie project"
+msgstr "동영상 프로젝트"
+
+msgid "Windows Movie Maker project"
+msgstr "Windows Movie Maker 프로젝트"
+
+msgid "Photos and videos"
+msgstr "사진 및 동영상"
+
+msgid "Could not read the project {}."
+msgstr "프로젝트 {}을(를) 읽을 수 없습니다."
+
+msgid "Could not save the project {}."
+msgstr "프로젝트 {}을(를) 저장할 수 없습니다."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다."
+
+msgid "Add files"
+msgstr "파일 추가"
+
+msgid "Remove from movie"
+msgstr "동영상에서 제거"
+
+msgid "Send to the end"
+msgstr "맨 뒤로 보내기"
+
+msgid "Open project"
+msgstr "프로젝트 열기"
+
+msgid "Save project"
+msgstr "프로젝트 저장"
+
+msgid "Import Movie Maker project"
+msgstr "Movie Maker 프로젝트 가져오기"
+
+msgid "Video"
+msgstr "동영상"
+
+msgid "Rendering the movie"
+msgstr "동영상 렌더링 중"
+
+msgid "The movie could not be rendered. {}"
+msgstr "동영상을 렌더링할 수 없습니다. {}"
+
+msgid "The movie has no length."
+msgstr "동영상의 길이가 없습니다."
+
+msgid "The encoder would not accept this movie."
+msgstr "인코더가 이 동영상을 받아들이지 않았습니다."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "동영상 프레임에 사용할 메모리가 부족했습니다."
+
+msgid "A clip could not be decoded."
+msgstr "클립을 디코딩할 수 없습니다."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "동영상이 완성되기 전에 인코더가 중지되었습니다."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "이 이름은 이 동영상의 클립에서 사용 중입니다. 다른 이름을 선택하세요."
+
+msgid "Rendered {}."
+msgstr "{}을(를) 렌더링했습니다."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "렌더링이 취소되었습니다. 아무것도 기록되지 않았습니다."
+
+msgid "No missing clip was found in that folder."
+msgstr "해당 폴더에서 누락된 클립을 찾지 못했습니다."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "이 동영상에는 프로젝트 파일에 없는 변경 내용이 있습니다. Diffractor가 실행되는 동안에는 유지되며, Diffractor를 닫으면 사라집니다."
+
+msgid "Close without saving"
+msgstr "저장하지 않고 닫기"
+
+msgid "Render"
+msgstr "렌더링"
+
+msgid "Write the movie to a video file."
+msgstr "동영상을 비디오 파일로 기록합니다."
+
+msgid "Relink missing files"
+msgstr "누락된 파일 다시 연결"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "원본 파일이 이동한 클립을 선택한 폴더로 다시 지정합니다."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "가져온 프로젝트의 요소 1개는 동영상에서 표현할 수 없어 제외했습니다."
+msgstr[1] "가져온 프로젝트의 요소 {count}개는 동영상에서 표현할 수 없어 제외했습니다."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "클립 1개가 원본 파일을 찾지 못했습니다."
+msgstr[1] "클립 {count}개가 원본 파일을 찾지 못했습니다."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "클립 1개를 다시 연결했습니다."
+msgstr[1] "클립 {count}개를 다시 연결했습니다."
+

@@ -129,6 +129,47 @@ namespace
 	// One pass evicts at most this many rows so a prune cannot hold the tile thread for seconds.
 	constexpr int prune_batch_rows = 512;
 	constexpr int prune_max_batches = 8;
+	constexpr int vacuum_batch_pages = 512;
+	std::atomic_bool fail_next_commit_flag = false;
+
+	bool tile_failure_allows_replacement(const int result)
+	{
+		switch (result & 0xff)
+		{
+		case SQLITE_CORRUPT:
+		case SQLITE_NOTADB:
+		case SQLITE_FORMAT:
+		case SQLITE_ERROR:
+			return true;
+		default:
+			return false;
+		}
+	}
+}
+
+bool tile_cache_test_seams::failure_allows_replacement(const int sqlite_result)
+{
+	return tile_failure_allows_replacement(sqlite_result);
+}
+
+void tile_cache_test_seams::fail_next_commit()
+{
+	fail_next_commit_flag.store(true);
+}
+
+bool tile_cache_test_seams::wrapper_transaction_active(const tile_cache_db& db)
+{
+	return db._in_transaction;
+}
+
+bool tile_cache_test_seams::sqlite_transaction_active(const tile_cache_db& db)
+{
+	return db._db != nullptr && sqlite3_get_autocommit(db._db) == 0;
+}
+
+uint32_t tile_cache_test_seams::writes_since_prune(const tile_cache_db& db)
+{
+	return db._writes_since_prune;
 }
 
 df::file_path resolve_tile_cache_db_path()
@@ -166,6 +207,43 @@ int tile_cache_db::exec(const std::string_view sql) const
 	return result;
 }
 
+bool tile_cache_db::last_failure_allows_replacement() const
+{
+	return tile_failure_allows_replacement(_last_open_result);
+}
+
+bool tile_cache_db::commit_transaction()
+{
+	if (!_in_transaction) return true;
+
+	if (fail_next_commit_flag.exchange(false))
+	{
+		tile_db_error(_db, "COMMIT fault injection"sv);
+		if (sqlite3_get_autocommit(_db) == 0)
+		{
+			exec("ROLLBACK"sv);
+		}
+
+		_in_transaction = false;
+		return false;
+	}
+
+	const auto result = exec("COMMIT"sv);
+	if (result == SQLITE_OK)
+	{
+		_in_transaction = false;
+		return true;
+	}
+
+	if (sqlite3_get_autocommit(_db) == 0)
+	{
+		exec("ROLLBACK"sv);
+	}
+
+	_in_transaction = false;
+	return false;
+}
+
 int64_t tile_cache_db::pragma_value(const std::string_view pragma) const
 {
 	if (_db == nullptr) return 0;
@@ -176,8 +254,11 @@ int64_t tile_cache_db::pragma_value(const std::string_view pragma) const
 
 bool tile_cache_db::connect_and_prepare()
 {
+	_last_open_result = SQLITE_OK;
+
 	if (sqlite3_open(std::bit_cast<const char*>(_db_path.str().c_str()), &_db) != SQLITE_OK)
 	{
+		_last_open_result = _db == nullptr ? SQLITE_NOMEM : sqlite3_errcode(_db);
 		df::log(__FUNCTION__, std::format("Failed to open tile cache: {}",
 		                                  _db ? str::utf8_cast(sqlite3_errmsg(_db)) : "out of memory"));
 		return false;
@@ -187,18 +268,19 @@ bool tile_cache_db::connect_and_prepare()
 
 	// auto_vacuum only takes hold on a database that has no schema yet, and it is what lets a prune
 	// hand pages back to the filesystem instead of leaving a file that only ever grows.
-	if (exec("PRAGMA auto_vacuum=INCREMENTAL;"sv) != SQLITE_OK) return false;
+	if ((_last_open_result = exec("PRAGMA auto_vacuum=INCREMENTAL;"sv)) != SQLITE_OK) return false;
 
 	exec("PRAGMA journal_mode=WAL;"sv);
 
-	if (exec("PRAGMA cache_size=-2048; PRAGMA trusted_schema=OFF;"sv) != SQLITE_OK) return false;
-	if (exec(tile_schema_sql) != SQLITE_OK) return false;
-	if (exec("PRAGMA user_version=1;"sv) != SQLITE_OK) return false;
+	if ((_last_open_result = exec("PRAGMA cache_size=-2048; PRAGMA trusted_schema=OFF;"sv)) != SQLITE_OK) return false;
+	if ((_last_open_result = exec(tile_schema_sql)) != SQLITE_OK) return false;
+	if ((_last_open_result = exec("PRAGMA user_version=1;"sv)) != SQLITE_OK) return false;
 
 	const auto prepare = [this](sqlite3_stmt** handle, const std::string_view sql)
 	{
 		if (sqlite3_prepare_v2(_db, sql.data(), static_cast<int>(sql.size()), handle, nullptr) != SQLITE_OK)
 		{
+			_last_open_result = sqlite3_errcode(_db);
 			tile_db_error(_db, sql);
 			*handle = nullptr;
 			return false;
@@ -243,8 +325,15 @@ void tile_cache_db::open(df::file_path path)
 
 	if (connect_and_prepare()) return;
 
-	// Nothing here is worth recovering - every row can be downloaded again - so a file this build
-	// cannot use is replaced rather than diagnosed.
+	// Rebuildable tiles justify replacing bytes this build cannot use, but a transient prepare or
+	// I/O failure is not evidence that the healthy cache should be deleted.
+	if (!last_failure_allows_replacement())
+	{
+		close();
+		df::log(__FUNCTION__, "Tile cache unavailable - map tiles will be fetched this session"sv);
+		return;
+	}
+
 	close();
 	delete_database_files();
 
@@ -358,11 +447,7 @@ void tile_cache_db::flush()
 		_touched.clear();
 	}
 
-	if (_in_transaction)
-	{
-		exec("COMMIT"sv);
-		_in_transaction = false;
-	}
+	if (!commit_transaction()) return;
 
 	if (_writes_since_prune >= prune_write_interval)
 	{
@@ -381,11 +466,7 @@ void tile_cache_db::prune(const uint32_t unused_days, const int64_t max_size_byt
 
 	df::assert_true(is_db_thread());
 
-	if (_in_transaction)
-	{
-		exec("COMMIT"sv);
-		_in_transaction = false;
-	}
+	if (!commit_transaction()) return;
 
 	const auto now = static_cast<int64_t>(platform::now().to_int64());
 	const auto days = [now](const uint32_t count)
@@ -398,27 +479,36 @@ void tile_cache_db::prune(const uint32_t unused_days, const int64_t max_size_byt
 	// off limits to both passes below, however large the cache has grown.
 	const auto protected_after = days(min_retention_days);
 
+	auto remaining_rows = prune_batch_rows * prune_max_batches;
+
 	{
-		const tile_stmt statement(_db, "DELETE FROM tiles WHERE accessed < ?1 AND fetched < ?2"sv);
+		const tile_stmt statement(
+			_db,
+			"DELETE FROM tiles WHERE id IN (SELECT id FROM tiles WHERE accessed < ?1 AND fetched < ?2 LIMIT ?3)"sv);
 		statement.bind(1, days(unused_days));
 		statement.bind(2, protected_after);
+		statement.bind(3, remaining_rows);
 		statement.exec();
+		remaining_rows -= std::clamp(sqlite3_changes(_db), 0, remaining_rows);
 	}
 
-	for (auto pass = 0; pass < prune_max_batches && used_bytes() > max_size_bytes; ++pass)
+	for (auto pass = 0; pass < prune_max_batches && remaining_rows > 0 && used_bytes() > max_size_bytes; ++pass)
 	{
+		const auto rows = std::min(prune_batch_rows, remaining_rows);
 		const tile_stmt statement(
 			_db, "DELETE FROM tiles WHERE id IN (SELECT id FROM tiles WHERE fetched < ?1 ORDER BY accessed LIMIT ?2)"sv);
 		statement.bind(1, protected_after);
-		statement.bind(2, prune_batch_rows);
+		statement.bind(2, rows);
 		statement.exec();
 
 		// Nothing left to give: what remains is all inside the retention window.
-		if (sqlite3_changes(_db) == 0) break;
+		const auto changed = sqlite3_changes(_db);
+		if (changed == 0) break;
+		remaining_rows -= std::clamp(changed, 0, remaining_rows);
 	}
 
-	exec("PRAGMA incremental_vacuum;"sv);
-	_writes_since_prune = 0;
+	exec(std::format("PRAGMA incremental_vacuum({});", vacuum_batch_pages));
+	_writes_since_prune = remaining_rows == 0 ? prune_write_interval : 0;
 }
 
 int64_t tile_cache_db::count() const

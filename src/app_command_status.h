@@ -22,12 +22,16 @@ class command_status final : public std::enable_shared_from_this<command_status>
 	std::atomic_int _cancel_version = 0;
 	int _cancel_initial_value = 0;
 
-	dialog_ptr _dlg;
+	// UI-owned, though the status itself is not: the worker that runs the operation can hold its last
+	// reference - a task's captures live until its whole batch has run - and a dialog destroyed there
+	// destroys windows and moves focus from the wrong thread. The final release is handed back to the
+	// UI thread instead.
+	ui_owned_ptr<dialog> _dlg;
 	icon_index _icon;
 	std::string _title;
 
-	std::shared_ptr<ui::progress_control> _progress;
-	std::shared_ptr<ui::close_control> _cancel;
+	ui_owned_ptr<ui::progress_control> _progress;
+	ui_owned_ptr<ui::close_control> _cancel;
 
 	bool _closed = false;
 	std::atomic<bool> _completed = false;
@@ -73,11 +77,11 @@ public:
 	command_status(async_strategy& as, const dialog_ptr& dlg, const icon_index& icon, const std::string_view title,
 	               const size_t total, const std::string_view preparing = {}) :
 		_async(as),
-		_dlg(dlg),
+		_dlg(as, dlg),
 		_icon(icon),
 		_title(title),
-		_progress(std::make_shared<ui::progress_control>(dlg->_frame, preparing.empty() ? title : preparing)),
-		_cancel(std::make_shared<ui::close_control>(dlg->_frame, [this, h = dlg->_frame]
+		_progress(as, std::make_shared<ui::progress_control>(dlg->_frame, preparing.empty() ? title : preparing)),
+		_cancel(as, std::make_shared<ui::close_control>(dlg->_frame, [this, h = dlg->_frame]
 		{
 			++_cancel_version;
 			h->close(true);
@@ -87,8 +91,8 @@ public:
 		const std::vector<view_element_ptr> controls{
 			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon, title, std::string{})),
 			std::make_shared<divider_element>(),
-			_progress,
-			_cancel
+			_progress.shared(),
+			_cancel.shared()
 		};
 
 		_dlg->show_controls(controls, {44}, {44});
@@ -255,11 +259,13 @@ private:
 		if (!_closed && pending.has_progress)
 		{
 			_progress->message(pending.progress_message, pending.progress_pos, pending.progress_total);
+			_async.work_progress(this, pending.progress_pos, pending.progress_total);
 		}
 
 		if (pending.completion != completion_type::none)
 		{
 			_completed = true;
+			_async.work_finished(this);
 			if (pending.completion == completion_type::abort) _error_message = std::move(pending.completion_message);
 			if (pending.completion == completion_type::complete) _message = std::move(pending.completion_message);
 			show_results_or_close();
@@ -361,7 +367,7 @@ private:
 					controls.emplace_back(set_margin(std::make_shared<text_element>(_error_message)));
 				}
 
-				controls.emplace_back(_cancel);
+				controls.emplace_back(_cancel.shared());
 
 				_dlg->show_controls(controls, {44}, {44});
 			}
@@ -370,7 +376,7 @@ private:
 				const std::vector<view_element_ptr> controls = {
 					set_margin(std::make_shared<ui::title_control2>(_dlg->_frame, _icon, _title, _message)),
 					std::make_shared<divider_element>(),
-					_cancel
+					_cancel.shared()
 				};
 
 				_dlg->show_controls(controls, {44}, {44});

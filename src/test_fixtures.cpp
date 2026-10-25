@@ -318,6 +318,11 @@ std::shared_ptr<av_player> make_test_player()
 
 std::shared_ptr<av_session> make_test_session()
 {
+	return make_test_session(nullptr);
+}
+
+std::shared_ptr<av_session> make_test_session(std::function<void(df::file_path, double)> save_position)
+{
 	static null_av_host navh;
-	return std::make_shared<av_session>(navh, nullptr);
+	return std::make_shared<av_session>(navh, std::move(save_position));
 }

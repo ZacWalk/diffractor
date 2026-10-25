@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "model_display.h"
 #include "model_tile_cache.h"
 #include "app_search.h"
 
@@ -21,6 +22,7 @@ class edit_view_controls;
 class items_view;
 class selector_view;
 class edit_view;
+class movie_view;
 class media_view;
 class rename_view;
 class batch_tool_view;
@@ -37,6 +39,27 @@ extern icon_index volumes_icons[5];
 
 std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_state& index, bool include_state);
 bool is_app_installed();
+
+inline float command_progress_alpha(const bool active, const int64_t total, const uint64_t tick_count)
+{
+	if (!active || total != 0) return 1.0f;
+	if (!ui::animations_enabled) return 0.65f;
+
+	constexpr int64_t period_ms = 1200;
+	constexpr double pi = 3.14159265358979323846;
+	const auto phase = static_cast<double>(tick_count % period_ms) / period_ms;
+	return 0.45f + 0.35f * static_cast<float>((std::sin(phase * pi * 2.0) + 1.0) / 2.0);
+}
+
+inline bool command_progress_needs_animation(const bool active, const int64_t total)
+{
+	return ui::animations_enabled && active && total == 0;
+}
+
+inline bool status_needs_animation(const bool progress_active, const int64_t progress_total, const bool show_debug_info)
+{
+	return command_progress_needs_animation(progress_active, progress_total) || show_debug_info;
+}
 
 // Defined in app.cpp so callers do not need the whole sidebar header for the logo lockup.
 view_element_ptr create_app_logo_element(view_state& s, ui::style::font_face font, bool interactive,
@@ -69,9 +92,6 @@ public:
 
 	std::shared_ptr<view_base> _view;
 
-	int _fps_counter = 0;
-	int _fps_avg = 0;
-	int _fps_second = 0;
 	bool _control_down = false;
 
 	// Wheel accumulation happens once, here, rather than in each consumer. Two remainders per axis
@@ -107,8 +127,6 @@ public:
 		if (notch.steps == 0 && notch.delta == 0) return false;
 		return _view->mouse_wheel(loc, notch);
 	}
-
-	double frame_render_time = 0.0;
 
 	void init(const ui::control_frame_ptr& owner)
 	{
@@ -164,27 +182,6 @@ public:
 		update_controller(frame()->cursor_location());
 	}
 
-	int fps() const
-	{
-		return _fps_avg;
-	}
-
-	void calc_fps(const double time)
-	{
-		const auto sec = static_cast<int>(time);
-
-		if (sec == _fps_second)
-		{
-			_fps_counter += 1;
-		}
-		else
-		{
-			_fps_avg = (_fps_avg + _fps_counter + 1) / 2;
-			_fps_counter = 1;
-			_fps_second = sec;
-		}
-	}
-
 	void on_window_destroy() override
 	{
 	}
@@ -197,10 +194,7 @@ public:
 
 	void on_window_paint(ui::draw_context& dc) override
 	{
-		const auto time_now = df::now();
-
-		calc_fps(time_now);
-		dc.time_now = time_now;
+		dc.time_now = df::now();
 		dc.colors.alpha = 1.0;
 		dc.colors.overlay_alpha = 1.0;
 
@@ -221,8 +215,6 @@ public:
 			const auto pad = df::round(2 * dc.scale_factor);
 			dc.draw_border(_controller_bounds, _controller_bounds.inflate(pad), c, c);
 		}
-
-		frame_render_time = (frame_render_time + df::now() - time_now) / 2.0;
 	}
 
 	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
@@ -322,9 +314,9 @@ public:
 		_state.invalidate_view(view_invalid::tooltip);
 	}
 
-	view_controller_ptr controller_from_location(const pointi loc) override
+	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 	{
-		return _view->controller_from_location(shared_from_this(), loc);
+		return _view->controller_from_location(shared_from_this(), loc, ctx);
 	}
 
 	void invoke(const commands cmd) override
@@ -368,6 +360,25 @@ public:
 	{
 		auto result = platform::drop_effect::none;
 
+		// The Movie timeline is a document, so a drop adds to the movie rather than opening a file
+		// or copying one into a folder. It is answered before anything else because none of the
+		// questions below - is this over the items, is there a save path - mean anything there.
+		if (_state.view_mode() == view_type::movie)
+		{
+			if (data.has_drop_files())
+			{
+				update_status(tt.command_movie_add, data.files_description().first_name);
+				_view->drag_paths_over(loc);
+				result = platform::drop_effect::copy;
+			}
+			else
+			{
+				_view->drag_paths_over(std::nullopt);
+			}
+
+			return result;
+		}
+
 		if (df::dragging_items == 0)
 		{
 			if (_view->is_over_items(loc))
@@ -383,7 +394,7 @@ public:
 						const auto is_copy = !keys.shift && (keys.control || desc.preferred_drop_effect ==
 							platform::drop_effect::copy);
 
-						update_status(is_copy ? tt.menu_copy : tt.menu_move,
+						update_status(is_copy ? tt.platform_text.menu_copy : tt.menu_move,
 						              std::format("{}\n{}\n{}", desc.first_name, tt.copy_to_join, dest_path.text()));
 
 						result = is_copy ? platform::drop_effect::copy : platform::drop_effect::move;
@@ -408,6 +419,17 @@ public:
 	platform::drop_effect drag_drop(platform::clipboard_data& data, const ui::key_state keys, const pointi loc) override
 	{
 		auto result = platform::drop_effect::none;
+
+		if (_state.view_mode() == view_type::movie)
+		{
+			if (data.has_drop_files() && _view->drop_paths(data.drop_paths(), loc))
+			{
+				result = platform::drop_effect::copy;
+			}
+
+			drag_leave();
+			return result;
+		}
 
 		if (df::dragging_items == 0)
 		{
@@ -466,6 +488,7 @@ public:
 	void drag_leave() override
 	{
 		clear_status();
+		if (_view) _view->drag_paths_over(std::nullopt);
 	}
 
 	void invalidate_view(const view_invalid invalid) override
@@ -513,12 +536,13 @@ public:
 	std::shared_ptr<av_player> _player;
 	view_state _state;
 	edit_view_state _edit_view_state;
+	movie_view_state _movie_view_state;
 	database _db;
 	tile_cache_db _tile_db;
 	const ui::plat_app_ptr _pa;
 	platform::setting_file_ptr _settings;
 
-	platform::queue<std::function<void()>> _ui_queue;
+	platform::queue<platform::task_queue::task_t> _ui_queue;
 	platform::task_queue cloud_task_queue;
 	platform::task_queue database_task_queue;
 	platform::task_queue index_task_queue;
@@ -547,8 +571,8 @@ public:
 	platform::task_queue work_task_queue;
 	platform::threads _threads;
 
-	// UI-thread owned. Both the database-open and the folder-discovery completions ask to bring the
-	// index workers up, and either can win, so the bring-up is claimed once.
+	// UI-thread owned. The database-open completion and every collection walk ask to bring the index
+	// workers up, and any of them can win, so the bring-up is claimed once.
 	bool _index_workers_started = false;
 
 	// These workers are created on first use rather than at startup, so a session that never opens the
@@ -576,9 +600,8 @@ public:
 	ui::toolbar_ptr _locate_commands;
 	ui::toolbar_ptr _sync_commands;
 	ui::toolbar_ptr _tags_commands;
+	ui::toolbar_ptr _movie_commands;
 	ui::toolbar_ptr _busy_commands;
-
-	std::string _last_favorite_tags;
 
 	std::shared_ptr<ui::complete_strategy_t> _search_completes;
 	ui::list_window_ptr _search_predictions_frame;
@@ -607,6 +630,7 @@ public:
 	std::shared_ptr<items_view> _view_items;
 	std::shared_ptr<selector_view> _view_selector;
 	std::shared_ptr<edit_view> _view_edit;
+	std::shared_ptr<movie_view> _view_movie;
 	std::shared_ptr<media_view> _view_media;
 	std::shared_ptr<view_base> _view;
 
@@ -653,6 +677,12 @@ public:
 	// is answered once rather than by instantiating a shell COM object on every command-state update.
 	std::optional<bool> _has_burner;
 
+	// Whether this machine can encode a movie, once the startup worker has asked. Asking starts Media
+	// Foundation and enumerates its encoders, about half a second, which the first command-state update
+	// used to spend on the UI thread before the window had painted. Unknown reads as no, so Render is
+	// absent for the moment before the answer, as it is on a machine that cannot render at all.
+	std::optional<bool> _can_write_movies;
+
 	// Recovery from a crash that happened before the user could touch anything. _safe_start says
 	// this launch reverted presentation because previous ones never settled; _startup_settled
 	// latches the moment this one did, which clears the persisted count.
@@ -670,6 +700,7 @@ public:
 	commands_map _commands;
 	ui::command_ptr _hover_command;
 	recti _hover_command_bounds;
+	work_progress_reports _work_reports;
 
 	std::atomic<view_invalid> _invalids = view_invalid::none;
 
@@ -749,7 +780,6 @@ public:
 	void display_changed() override;
 	void open_default_folder();
 	void view_changed(view_type m) override;
-	void play_state_changed(bool play) override;
 	void search_complete(const df::search_t& path, bool path_changed) override;
 	void save_options(bool search_only = false);
 	void reload();
@@ -762,6 +792,8 @@ public:
 	void web_service_cache(std::string key, std::function<void(const std::string&)> f) override;
 	void web_service_cache(std::string key, std::string value) override;
 	void queue_media_preview(std::function<void(media_preview_state&)> f, bool must_run) override;
+	void work_progress(const void* source, int64_t done, int64_t total) override;
+	void work_finished(const void* source) override;
 	static icon_index repeat_toggle_icon();
 	bool update_toolbar_text(commands cc, const std::string& text);
 	void update_button_state(bool resize);
@@ -791,7 +823,11 @@ public:
 	void focus_view() override;
 	bool can_exit() override;
 	bool pre_init() override;
+	bool parse_command_line(std::string_view command_line_text) override;
+	int run_console_mode() override;
+	bool wants_gpu() const override;
 	void start_workers();
+	void start_index_workers();
 	bool claim_worker_start(std::atomic_bool& started);
 	void ensure_worker(std::atomic_bool& started, platform::task_queue& q, std::string_view name);
 	void update_font_size() const;

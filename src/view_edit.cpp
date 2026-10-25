@@ -1231,7 +1231,7 @@ ui::const_surface_ptr edit_view::build_preview_surface(const ui::const_surface_p
 		                                    static_cast<double>(preview_edit_dimensions.cy) / edit_dimensions.cy));
 	}
 	preview_edits.scale(128);
-	return source->transform(preview_edits);
+	return apply_image_edits(source, preview_edits);
 }
 
 ui::const_surface_ptr edit_view::preview_surface() const
@@ -1266,8 +1266,13 @@ void edit_view::deactivate()
 	_preview_source.reset();
 	_dialog_preview_source.reset();
 	++_display_generation;
+	++_preview_generation;
+	_pending_source_load_request.reset();
+	_pending_preview_decode_request.reset();
+	_source_loading = false;
 	_texture.reset();
 	_loaded.clear();
+	clear_crop_interaction_bounds();
 }
 
 void edit_view::refresh()
@@ -1278,13 +1283,10 @@ void edit_view::refresh()
 
 void edit_view::layout(ui::measure_context& mc, const sizei extent)
 {
-	if (_extent != extent)
-	{
-		_preview_source.reset();
-		_texture.reset();
-		_invalid = true;
-	}
+	// No reset on a new extent: queue_preview_decode asks again only if the wanted size changed, and
+	// the picture on screen stays until its replacement arrives.
 	_extent = extent;
+	queue_preview_decode();
 
 	if (_media_element && _play_element && _scrubber_element)
 	{
@@ -1337,7 +1339,296 @@ void edit_view::update_media_elements()
 
 bool edit_view::is_photo() const
 {
-	return !_loaded.is_empty() && _mt->has_trait(file_traits::bitmap);
+	return can_edit_pixels() && _mt->has_trait(file_traits::bitmap);
+}
+
+bool edit_load_has_source_pixels(const file_load_result& loaded)
+{
+	return loaded.success && loaded.reason == file_load_result::failure::none && !loaded.is_empty();
+}
+
+bool edit_view::can_edit_pixels() const
+{
+	return edit_load_has_source_pixels(_loaded);
+}
+
+std::string_view edit_load_status_text(const file_load_result& loaded, const bool source_loading)
+{
+	if (source_loading) return tt.loading.sv();
+	if (loaded.reason == file_load_result::failure::too_large) return tt.image_too_large.sv();
+	if (!loaded.success) return tt.image_display_failed.sv();
+	return {};
+}
+
+bool should_accept_edit_async_result(const size_t current_display_generation, const size_t result_display_generation)
+{
+	return current_display_generation == result_display_generation;
+}
+
+bool should_accept_edit_preview_result(const size_t current_display_generation, const size_t result_display_generation,
+                                       const size_t current_preview_generation, const size_t result_preview_generation,
+                                       const sizei current_request_dimensions, const sizei result_dimensions)
+{
+	return should_accept_edit_async_result(current_display_generation, result_display_generation) &&
+		current_preview_generation == result_preview_generation &&
+		current_request_dimensions == result_dimensions;
+}
+
+bool should_accept_edit_analysis(const size_t current_display_generation, const size_t result_display_generation,
+                                 const size_t current_edit_generation, const size_t result_edit_generation)
+{
+	return should_accept_edit_async_result(current_display_generation, result_display_generation) &&
+		current_edit_generation == result_edit_generation;
+}
+
+bool edit_preview_is_current(const ui::const_surface_ptr& preview, const sizei answered_request, const sizei wanted)
+{
+	return is_valid(preview) && answered_request == wanted;
+}
+
+file_load_result::failure edit_preview_failure(const ui::const_surface_ptr& preview, const file_load_result& loaded,
+                                               const sizei request)
+{
+	if (is_valid(preview)) return file_load_result::failure::none;
+	return files::exceeds_decode_budget(loaded.i, request)
+		       ? file_load_result::failure::too_large
+		       : file_load_result::failure::unreadable;
+}
+
+file_load_result edit_load_without_preview(const file_load_result& loaded, const file_load_result::failure failure)
+{
+	file_load_result result;
+	result.reason = failure;
+	result.source_dimensions = loaded.dimensions();
+	return result;
+}
+
+std::optional<quadd> edit_pending_crop_for_loaded_photo(std::optional<rectd> pending_crop,
+                                                        const file_load_result& loaded, const bool show_rotated)
+{
+	if (!pending_crop || pending_crop->is_empty() || !edit_load_has_source_pixels(loaded)) return {};
+	return edit_view_state::crop_from_displayed_rect(*pending_crop, loaded.dimensions(), loaded.orientation(),
+	                                                 show_rotated);
+}
+
+bool edit_pixel_controls_visible(const bool is_bitmap, const bool can_edit_pixels)
+{
+	return is_bitmap && can_edit_pixels;
+}
+
+edit_preview_render_decision decide_edit_preview_render(const bool has_texture, const bool has_current_preview,
+                                                        const bool has_loading_status)
+{
+	return {has_texture || has_current_preview, !has_texture && !has_current_preview && has_loading_status,
+		has_texture || has_current_preview};
+}
+
+edit_request_coalescing_decision decide_edit_request_coalescing(const bool request_in_flight)
+{
+	return request_in_flight ? edit_request_coalescing_decision{false, true} : edit_request_coalescing_decision{true, false};
+}
+
+bool should_start_edit_follow_up_request(const bool has_latest_request)
+{
+	return has_latest_request;
+}
+
+static prop::item_metadata_const_ptr safe_metadata(const df::item_element_ptr& i);
+
+void edit_view::queue_source_load(source_load_request request)
+{
+	const auto decision = decide_edit_request_coalescing(_source_load_in_flight);
+	if (decision.remember_latest)
+	{
+		_pending_source_load_request = std::move(request);
+		return;
+	}
+
+	start_source_load(std::move(request));
+}
+
+void edit_view::start_source_load(source_load_request request)
+{
+	_source_load_in_flight = true;
+	const auto weak = weak_from_this();
+	_state.queue_async(async_queue::load, [weak, request = std::move(request), &s = _state]
+	{
+		df::scope_locked_inc l(df::loading_media);
+		files loader;
+		auto loaded = loader.load(request.path, false);
+		s.queue_ui([weak, request, loaded = std::move(loaded)]() mutable
+		{
+			if (const auto self = weak.lock()) self->complete_source_load(request, std::move(loaded));
+		});
+	});
+}
+
+void edit_view::complete_source_load(const source_load_request& request, file_load_result loaded)
+{
+	_source_load_in_flight = false;
+
+	if (should_accept_edit_async_result(_display_generation, request.display_generation) && _path == request.path)
+	{
+		_source_loading = false;
+		_loaded = std::move(loaded);
+		_preview_source.reset();
+		_dialog_preview_source.reset();
+		_preview_request_dimensions = {};
+		_preview_failed_request = {};
+		++_preview_generation;
+		_invalid = true;
+
+		_edit_state.reset(safe_metadata(_state._edit_item), _loaded.dimensions(), _loaded.orientation());
+
+		if (const auto crop = edit_pending_crop_for_loaded_photo(request.pending_crop, _loaded, setting.show_rotated))
+		{
+			_edit_state._edits.crop_bounds(*crop);
+		}
+
+		queue_preview_decode();
+
+		if (is_photo())
+		{
+			const auto loaded_copy = _loaded;
+			const auto preview_dimensions = ui::scale_dimensions(loaded_copy.dimensions(), 192);
+			const auto weak_dialog = weak_from_this();
+			const auto dialog_generation = _display_generation;
+			_state.queue_async(async_queue::render,
+			                   [weak_dialog, loaded_copy, preview_dimensions, dialog_generation, &s = _state]
+			                   {
+				                   const auto source = loaded_copy.to_surface(preview_dimensions);
+				                   s.queue_ui([weak_dialog, source, dialog_generation]
+				                   {
+					                   if (const auto current = weak_dialog.lock();
+						                   current && current->_display_generation == dialog_generation)
+					                   {
+						                   current->_dialog_preview_source = source;
+					                   }
+				                   });
+			                   });
+		}
+
+		if (_edit_controls->_dlg)
+		{
+			_edit_controls->populate();
+			_edit_controls->_dlg->layout();
+		}
+		_state.invalidate_view(view_invalid::command_state | view_invalid::view_redraw | view_invalid::controller);
+		_host->frame()->invalidate();
+	}
+
+	if (should_start_edit_follow_up_request(_pending_source_load_request.has_value()))
+	{
+		auto next = std::move(*_pending_source_load_request);
+		_pending_source_load_request.reset();
+		start_source_load(std::move(next));
+	}
+}
+
+void edit_view::queue_preview_decode()
+{
+	if (!can_edit_pixels() || _extent.is_empty()) return;
+
+	const auto preview_dimensions = ui::scale_dimensions(_loaded.dimensions(), _extent);
+	if (preview_dimensions.is_empty()) return;
+	if (edit_preview_is_current(_preview_source, _preview_source_request, preview_dimensions)) return;
+	if (_preview_request_dimensions == preview_dimensions) return;
+	if (_preview_failed_request == preview_dimensions) return;
+
+	preview_decode_request request{_loaded, preview_dimensions, _display_generation, ++_preview_generation};
+	const auto decision = decide_edit_request_coalescing(_preview_decode_in_flight);
+	if (decision.remember_latest)
+	{
+		_pending_preview_decode_request = std::move(request);
+		return;
+	}
+
+	start_preview_decode(std::move(request));
+}
+
+void edit_view::start_preview_decode(preview_decode_request request)
+{
+	_preview_decode_in_flight = true;
+	_preview_request_dimensions = request.dimensions;
+	const auto weak = weak_from_this();
+	_state.queue_async(async_queue::render,
+	                   [weak, request, &s = _state]
+	                   {
+		                   const auto source = request.loaded.to_surface(request.dimensions);
+		                   const auto failure = edit_preview_failure(source, request.loaded, request.dimensions);
+		                   s.queue_ui([weak, request, source, failure]
+		                   {
+			                   if (const auto self = weak.lock())
+			                   {
+				                   self->complete_preview_decode(request, source, failure);
+			                   }
+		                   });
+	                   });
+}
+
+void edit_view::complete_preview_decode(const preview_decode_request& request, ui::const_surface_ptr source,
+                                        const file_load_result::failure failure)
+{
+	_preview_decode_in_flight = false;
+
+	if (should_accept_edit_preview_result(_display_generation, request.display_generation, _preview_generation,
+	                                      request.preview_generation, _preview_request_dimensions, request.dimensions))
+	{
+		_preview_request_dimensions = {};
+		if (is_valid(source))
+		{
+			_preview_source = source;
+			_preview_source_request = request.dimensions;
+			_invalid = true;
+			_host->frame()->invalidate();
+		}
+		else if (is_valid(_preview_source))
+		{
+			// An earlier size is on screen and stays there. Asking again for this one would fail the
+			// same way on every repaint.
+			_preview_failed_request = request.dimensions;
+		}
+		else
+		{
+			// Nothing of this file has been shown, and its load read only the header, so it cannot be
+			// edited: say why, as the media view does, and withdraw the pixel controls with it.
+			_loaded = edit_load_without_preview(_loaded, failure);
+			_invalid = true;
+
+			if (_edit_controls->_dlg)
+			{
+				_edit_controls->populate();
+				_edit_controls->_dlg->layout();
+			}
+			_state.invalidate_view(view_invalid::command_state | view_invalid::view_redraw | view_invalid::controller);
+			_host->frame()->invalidate();
+		}
+	}
+
+	if (should_start_edit_follow_up_request(_pending_preview_decode_request.has_value()))
+	{
+		auto next = std::move(*_pending_preview_decode_request);
+		_pending_preview_decode_request.reset();
+		start_preview_decode(std::move(next));
+	}
+}
+
+void edit_view::clear_crop_interaction_bounds()
+{
+	_crop_bounds = {};
+	_crop_handle_tl = {};
+	_crop_handle_tr = {};
+	_crop_handle_bl = {};
+	_crop_handle_br = {};
+}
+
+void edit_view::draw_loading_status(ui::draw_context& dc, const std::string_view status) const
+{
+	if (status.empty()) return;
+
+	const recti status_bounds(0, 0, _extent.cx, _extent.cy);
+	dc.draw_text(status, status_bounds, ui::style::font_face::title,
+	             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, dc.colors.alpha), {});
 }
 
 df::item_element_ptr edit_view::next_editable_item(const bool forward) const
@@ -1365,29 +1656,30 @@ df::item_element_ptr edit_view::next_editable_item(const bool forward) const
 	return editable[(index + (forward ? 1 : count - 1)) % count];
 }
 
-view_controller_ptr edit_view::controller_from_location(const view_host_ptr& host, const pointi loc)
+view_controller_ptr edit_view::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                       hit_test_context& ctx)
 {
 	if (is_photo() && !_edit_state._preview_mode)
 	{
-		if (_crop_handle_tl.round().inflate(8).contains(loc))
+		if (ctx.occluded(_crop_handle_tl.round().inflate(8)))
 		{
 			return std::make_shared<handle_move_controller<edit_view>>(host, *this, _crop_handle_tl, true, true, false,
 			                                                           false);
 		}
 
-		if (_crop_handle_tr.round().inflate(8).contains(loc))
+		if (ctx.occluded(_crop_handle_tr.round().inflate(8)))
 		{
 			return std::make_shared<handle_move_controller<edit_view>>(host, *this, _crop_handle_tr, false, true, true,
 			                                                           false);
 		}
 
-		if (_crop_handle_bl.round().inflate(8).contains(loc))
+		if (ctx.occluded(_crop_handle_bl.round().inflate(8)))
 		{
 			return std::make_shared<handle_move_controller<edit_view>>(host, *this, _crop_handle_bl, true, false, false,
 			                                                           true);
 		}
 
-		if (_crop_handle_br.round().inflate(8).contains(loc))
+		if (ctx.occluded(_crop_handle_br.round().inflate(8)))
 		{
 			return std::make_shared<handle_move_controller<edit_view>>(host, *this, _crop_handle_br, false, false, true,
 			                                                           true);
@@ -1395,29 +1687,22 @@ view_controller_ptr edit_view::controller_from_location(const view_host_ptr& hos
 
 		if (_crop_bounds.contains(loc))
 		{
-			auto crop_bounds = _crop_bounds.round();
-			const auto crop_center = _crop_bounds.center().round();
-
-			crop_bounds.exclude(crop_center, _crop_handle_tl.round());
-			crop_bounds.exclude(crop_center, _crop_handle_tr.round());
-			crop_bounds.exclude(crop_center, _crop_handle_bl.round());
-			crop_bounds.exclude(crop_center, _crop_handle_br.round());
-
-			return std::make_shared<selection_move_controller<edit_view>>(host, *this, crop_bounds);
+			return std::make_shared<selection_move_controller<edit_view>>(host, *this, _crop_bounds.round());
 		}
 	}
 	else if (_media_element)
 	{
 		constexpr pointi element_offset{};
-		const std::vector<recti> excluded_bounds;
 
-		if (const auto controller = _play_element->controller_from_location(host, loc, element_offset,
-		                                                                    excluded_bounds))
+		if (const auto controller = _play_element->controller_from_location(host, loc, element_offset, ctx))
 			return controller;
-		if (const auto controller = _scrubber_element->controller_from_location(host, loc, element_offset,
-			excluded_bounds))
+		ctx.passed_over(_play_element->bounds);
+
+		if (const auto controller = _scrubber_element->controller_from_location(host, loc, element_offset, ctx))
 			return controller;
-		return _media_element->controller_from_location(host, loc, element_offset, excluded_bounds);
+		ctx.passed_over(_scrubber_element->bounds);
+
+		return _media_element->controller_from_location(host, loc, element_offset, ctx);
 	}
 
 	return nullptr;
@@ -1580,6 +1865,8 @@ void edit_view::select_item(const df::item_element_ptr& item)
 
 void edit_view::save_current()
 {
+	if (!can_edit_pixels()) return;
+
 	auto path = _path;
 	const auto xmp_name = _xmp_name;
 	const auto owner = _host->owner();
@@ -1617,8 +1904,8 @@ void edit_view::save(const df::file_path src_path, const df::file_path dst_path,
 	dlg->show_status(icon_index::save, str_format(tt.saving_file_name.sv(), dst_path.name()));
 
 	auto detach = std::make_shared<detach_file_handles>(_state);
-	const metadata_edits me;
 	const auto has_pixel_changes = _edit_state.has_pixel_changes();
+	const auto me = edit_view_state::save_metadata_edits(has_pixel_changes, _loaded.orientation());
 	const auto pe = has_pixel_changes ? _edit_state._edits : image_edits{};
 	const auto dimensions = _loaded.dimensions();
 	const auto photo_metadata = _mt->has_trait(file_traits::photo_metadata);
@@ -1752,6 +2039,8 @@ void edit_view::save_and_next(const bool forward)
 
 void edit_view::save_as()
 {
+	if (!can_edit_pixels()) return;
+
 	auto path = _path;
 	const auto xmp_name = _xmp_name;
 
@@ -1803,6 +2092,7 @@ void edit_view::exit()
 
 void edit_view::rotate_anticlockwise()
 {
+	if (!can_edit_pixels()) return;
 	const auto selection = _edit_state._edits.crop_bounds();
 	_edit_state._edits.crop_bounds(selection.transform(simple_transform::rot_270));
 	const auto horizontal = _edit_state._perspective_horizontal;
@@ -1814,6 +2104,7 @@ void edit_view::rotate_anticlockwise()
 
 void edit_view::rotate_clockwise()
 {
+	if (!can_edit_pixels()) return;
 	const auto selection = _edit_state._edits.crop_bounds();
 	_edit_state._edits.crop_bounds(selection.transform(simple_transform::rot_90));
 	const auto horizontal = _edit_state._perspective_horizontal;
@@ -1825,6 +2116,7 @@ void edit_view::rotate_clockwise()
 
 void edit_view::rotate_reset()
 {
+	if (!can_edit_pixels()) return;
 	_edit_state._edits.crop_bounds(edit_view_state::initial_crop(_loaded.dimensions(), _loaded.orientation()));
 	_edit_state._straighten = 0;
 	_edit_state._perspective_horizontal = 0;
@@ -1835,6 +2127,7 @@ void edit_view::rotate_reset()
 
 void edit_view::color_reset()
 {
+	if (!can_edit_pixels()) return;
 	_edit_state.color_reset();
 	_edit_controls->populate();
 	changed();
@@ -1851,21 +2144,34 @@ void edit_view::queue_auto_adjust(const int max_dimension, std::string title,
                                   std::function<std::function<void(edit_view_state&)>(const ui::const_surface_ptr&)>
                                   analyze)
 {
+	if (!can_edit_pixels()) return;
+
 	const auto loaded = _loaded;
 	const auto scale_hint = ui::scale_dimensions(loaded.dimensions(), max_dimension, true);
 	const auto generation = _display_generation;
+	const auto edit_generation = _edit_generation;
 	const auto weak = weak_from_this();
 
 	_state.queue_async(async_queue::render,
-	                   [weak, loaded, scale_hint, generation, title = std::move(title), analyze = std::move(analyze),
-		                   &s = _state]() mutable
+	                   [weak, loaded, scale_hint, generation, edit_generation, title = std::move(title),
+		                   analyze = std::move(analyze), &s = _state]() mutable
 	                   {
 		                   auto apply = analyze(loaded.to_surface(scale_hint));
 
-		                   s.queue_ui([weak, generation, title = std::move(title), apply = std::move(apply)]
+		                   s.queue_ui([weak, generation, edit_generation, title = std::move(title),
+			                   apply = std::move(apply)]
 		                   {
 			                   const auto self = weak.lock();
-			                   if (!self || self->_display_generation != generation) return;
+			                   if (!self || !should_accept_edit_analysis(self->_display_generation, generation,
+				                   self->_edit_generation, edit_generation))
+			                   {
+				                   return;
+			                   }
+
+			                   // The analysis describes the picture as it stood when it was asked
+			                   // for. Anything adjusted since is newer than its answer, and applying
+			                   // it now would undo the user's own work with a reply to a question
+			                   // they have already moved past.
 
 			                   if (!apply)
 			                   {
@@ -2216,6 +2522,7 @@ bool edit_view::escape()
 
 void edit_view::changed()
 {
+	++_edit_generation;
 	_state.invalidate_view(view_invalid::command_state);
 
 	if (_mt && _edit_controls && _edit_controls->_straighten_slider)
@@ -2250,23 +2557,24 @@ void edit_view_controls::layout_controls(ui::measure_context& mc)
 		const auto item = _state._edit_item;
 		const auto* const ft = item ? item->file_type() : file_type::other;
 		const auto is_bitmap = ft->has_trait(file_traits::bitmap);
-		_straighten_title->is_visible(is_bitmap);
-		_straighten_slider->is_visible(is_bitmap);
-		_perspective_horizontal_slider->is_visible(is_bitmap);
-		_perspective_vertical_slider->is_visible(is_bitmap);
-		_rotate_toolbar->is_visible(is_bitmap);
-		_color_divider->is_visible(is_bitmap);
-		_color_title->is_visible(is_bitmap);
-		_vibrance_slider->is_visible(is_bitmap);
-		_darks_slider->is_visible(is_bitmap);
-		_midtones_slider->is_visible(is_bitmap);
-		_lights_slider->is_visible(is_bitmap);
-		_contrast_slider->is_visible(is_bitmap);
-		_brightness_slider->is_visible(is_bitmap);
-		_saturation_slider->is_visible(is_bitmap);
-		_temperature_slider->is_visible(is_bitmap);
-		_tint_slider->is_visible(is_bitmap);
-		_color_toolbar->is_visible(is_bitmap);
+		const auto show_pixel_controls = edit_pixel_controls_visible(is_bitmap, _view && _view->can_edit_pixels());
+		_straighten_title->is_visible(show_pixel_controls);
+		_straighten_slider->is_visible(show_pixel_controls);
+		_perspective_horizontal_slider->is_visible(show_pixel_controls);
+		_perspective_vertical_slider->is_visible(show_pixel_controls);
+		_rotate_toolbar->is_visible(show_pixel_controls);
+		_color_divider->is_visible(show_pixel_controls);
+		_color_title->is_visible(show_pixel_controls);
+		_vibrance_slider->is_visible(show_pixel_controls);
+		_darks_slider->is_visible(show_pixel_controls);
+		_midtones_slider->is_visible(show_pixel_controls);
+		_lights_slider->is_visible(show_pixel_controls);
+		_contrast_slider->is_visible(show_pixel_controls);
+		_brightness_slider->is_visible(show_pixel_controls);
+		_saturation_slider->is_visible(show_pixel_controls);
+		_temperature_slider->is_visible(show_pixel_controls);
+		_tint_slider->is_visible(show_pixel_controls);
+		_color_toolbar->is_visible(show_pixel_controls);
 
 		view_controls_host::layout_controls(mc);
 	}
@@ -2309,7 +2617,7 @@ void edit_view_controls::create_controls()
 		                              [this] { _view->rotate_clockwise(); }),
 		std::make_shared<ui::command>(icon_index::lightbulb, commands::edit_item_auto_straighten,
 		                              [this] { _view->auto_straighten(); }),
-		std::make_shared<ui::command>(icon_index::scan, commands::edit_item_auto_document,
+		std::make_shared<ui::command>(icon_index::scan_text, commands::edit_item_auto_document,
 		                              [this] { _view->auto_document(); }),
 		std::make_shared<ui::command>(icon_index::undo, commands::tool_rotate_reset,
 		                              [this] { _view->rotate_reset(); }),
@@ -2434,21 +2742,28 @@ void edit_view::display_changed()
 	_loaded.clear();
 	_preview_source.reset();
 	_dialog_preview_source.reset();
+	_preview_request_dimensions = {};
+	_preview_failed_request = {};
 	_texture.reset();
 	_invalid = true;
+	clear_crop_interaction_bounds();
+	_source_loading = false;
+	_pending_source_load_request.reset();
+	_pending_preview_decode_request.reset();
 	const auto display_generation = ++_display_generation;
+	++_preview_generation;
 
 	if (item)
 	{
 		_path = item->path();
 		_xmp_name = item->xmp();
 		_mt = item->file_type();
+		auto pending_crop = _state.take_pending_edit_crop(_path);
 
 		if (_mt->has_trait(file_traits::bitmap))
 		{
-			files loader;
-			prop::item_metadata ps;
-			_loaded = loader.load(_path, false);
+			_source_loading = true;
+			queue_source_load({_path, display_generation, pending_crop});
 		}
 		else
 		{
@@ -2463,41 +2778,7 @@ void edit_view::display_changed()
 
 	update_media_elements();
 
-	if (_loaded.is_empty())
-	{
-		_loaded.s = _mt->default_thumbnail();
-		_loaded.success = true;
-	}
-
 	_edit_state.reset(safe_metadata(item), _loaded.dimensions(), _loaded.orientation());
-
-	// design.md: a region drawn on the displayed picture opens Edit as that crop, so a selection the
-	// user already made is not one they have to make again. `reset` has already set the full-frame
-	// baseline, so the incoming crop is left reading as a pending change - re-baselining here would
-	// grey out Save and drop the crop on the way to the file.
-	if (const auto region = _state.take_pending_edit_crop(_path); region && !region->is_empty() && is_photo())
-	{
-		_edit_state._edits.crop_bounds(edit_view_state::crop_from_displayed_rect(
-			*region, _loaded.dimensions(), _loaded.orientation(), setting.show_rotated));
-	}
-
-	if (is_photo())
-	{
-		const auto loaded = _loaded;
-		const auto preview_dimensions = ui::scale_dimensions(loaded.dimensions(), 192);
-		const auto weak = weak_from_this();
-		_state.queue_async(async_queue::render, [weak, loaded, preview_dimensions, display_generation, &s = _state]
-		{
-			const auto source = loaded.to_surface(preview_dimensions);
-			s.queue_ui([weak, source, display_generation]
-			{
-				if (const auto self = weak.lock(); self && self->_display_generation == display_generation)
-				{
-					self->_dialog_preview_source = source;
-				}
-			});
-		});
-	}
 
 	if (_edit_controls->_dlg)
 	{
@@ -2552,22 +2833,48 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		if (_invalid || !_texture)
 		{
 			const auto preview_dimensions = ui::scale_dimensions(_loaded.dimensions(), _extent);
-			if (!is_valid(_preview_source) || _preview_source->dimensions() != preview_dimensions)
+			const auto has_current_preview = edit_preview_is_current(_preview_source, _preview_source_request,
+			                                                         preview_dimensions);
+			if (!has_current_preview)
 			{
-				_preview_source = _loaded.to_surface(preview_dimensions);
-			}
-			auto t = dc.create_texture();
-			if (t && is_valid(_preview_source) && t->update(_preview_source) != ui::texture_update_result::failed)
-			{
-				_texture = t;
-			}
+				queue_preview_decode();
 
-			_invalid = false;
+				// With no texture, the last good preview stands in: it shows the whole picture at
+				// another size, which is better than Loading while the current one is decoded - or
+				// for good, if this size cannot be.
+				if (!(_texture && _texture->is_valid()) && is_valid(_preview_source))
+				{
+					if (const auto t = dc.create_texture();
+						t && t->update(_preview_source) != ui::texture_update_result::failed)
+					{
+						_texture = t;
+					}
+				}
+
+				const auto decision = decide_edit_preview_render(_texture && _texture->is_valid(), false, true);
+				if (!decision.draw_texture)
+				{
+					clear_crop_interaction_bounds();
+					draw_loading_status(dc, tt.loading.sv());
+					return;
+				}
+			}
+			else
+			{
+				auto t = dc.create_texture();
+				if (t && t->update(_preview_source) != ui::texture_update_result::failed)
+				{
+					_texture = t;
+					_invalid = false;
+				}
+			}
 		}
 
 		if (!_texture)
 		{
 			_invalid = true;
+			clear_crop_interaction_bounds();
+			draw_loading_status(dc, tt.loading.sv());
 			return;
 		}
 
@@ -2775,18 +3082,31 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 
 		if (_invalid || !_texture)
 		{
-			auto t = dc.create_texture();
-
-			if (t && t->update(_loaded.to_surface(bounds.extent())) != ui::texture_update_result::failed)
+			if (!is_valid(_preview_source))
 			{
-				_texture = t;
-				_invalid = false;
+				queue_preview_decode();
+				const auto decision = decide_edit_preview_render(_texture && _texture->is_valid(), false, true);
+				if (!decision.draw_texture)
+				{
+					draw_loading_status(dc, tt.loading.sv());
+					return;
+				}
+			}
+			else
+			{
+				auto t = dc.create_texture();
+				if (t && t->update(_preview_source) != ui::texture_update_result::failed)
+				{
+					_texture = t;
+					_invalid = false;
+				}
 			}
 		}
 
 		if (!_texture)
 		{
 			_invalid = true;
+			draw_loading_status(dc, tt.loading.sv());
 			return;
 		}
 
@@ -2800,5 +3120,10 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 
 		dc.draw_text(_path.name(), draw_text_rect, ui::style::font_face::title,
 		             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, alpha), {});
+	}
+	else
+	{
+		const auto status = edit_load_status_text(_loaded, _source_loading);
+		draw_loading_status(dc, status);
 	}
 }

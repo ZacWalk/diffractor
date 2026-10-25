@@ -16,7 +16,7 @@ document; this is only how to find out which one is at fault.
 
 The post is a `crash.zip` attachment plus form fields carrying `calc_app_info` — the
 same block the About tooltip shows with debug info on — under the subject
-`Diffractor CRASH report`. The **Support** command (`send_info`, src/app_commands.cpp)
+`Diffractor CRASH report`. The **Support** command (`send_info`, src/app_dialogs.cpp)
 posts to the same endpoint with the same app-info block, but as `logs.zip` under the
 subject `Diffractor LOG` and with no dump. Read the subject first: a `LOG` report is a
 user asking for help, not a fault.
@@ -84,17 +84,17 @@ enough, and pointing `-i` at the symbol server does not help either.
 The image has to be on disk, uncompressed, and matched:
 
 ```powershell
-# 1. module range: end - start gives the size, e.g. 0x31443000 - 0x2e3a0000 = 0x30A3000
+<# Step 1: module range end minus start gives the image size. #>
 & $cdb -z <dump> -c "lm m diffractor*; q"
 
-# 2. store keys are <TimeDateStamp><size>, so filter by that size suffix
+<# Step 2: store keys are TimeDateStamp plus size; filter by the size suffix. #>
 Get-ChildItem c:\code\symbols\diffractor64.exe | Where-Object Name -like '*30a3000'
 
-# 3. expand the image and its PDB side by side
+<# Step 3: expand the image and PDB side by side. #>
 expand c:\code\symbols\diffractor64.exe\<key>\diffractor64.ex_ tmp\bin\diffractor64.exe
 expand c:\code\symbols\diffractor64.pdb\<guid+age>\diffractor64.pd_ tmp\bin\diffractor64.pdb
 
-# 4. -i supplies the image, -y the symbols
+<# Step 4: -i supplies the image and -y supplies symbols. #>
 & $cdb -z <dump> `
   -y "c:\code\diffractor\tmp\bin;srv*c:\code\symbols*https://msdl.microsoft.com/download/symbols" `
   -i "c:\code\diffractor\tmp\bin" `
@@ -119,9 +119,8 @@ has been relinked since. Force the mismatched PDB on:
 .reload /f /i diffractor64-d.exe=<base>,<size>
 ```
 
-The result is approximate — treat function names as a strong hint, line numbers as
-weaker — but it has been accurate enough to name the failing function and file. Verify
-the answer against current source before acting on it.
+The result is approximate: treat function names as a strong hint and line numbers as weaker evidence.
+Verify the answer against current source before acting on it.
 
 ## 6. Reading the fault
 
@@ -152,33 +151,21 @@ In order, and stopping as soon as the answer is unambiguous:
   writes a buffer — and check whether the previous session shows the same thing.
 - **Deliberate test crashes.** A three-line log (`main` version, OS, `*** CRASH ***`)
   with a process uptime of a few seconds is a `/test:` console run, not a user
-  session. Check the stack for `run_console_tests` and check
-  [v-next.md](v-next.md) before treating it as a defect — some negative cases are
-  verified by observing `0xC0000005`.
+  session. Check the stack for `run_console_tests`; some negative tests deliberately
+  verify an access violation.
 
 An attributed crash needs three things that agree: the faulting instruction, a
 mechanism in our code that produces it, and something in the log or the dump's globals
 that says this configuration took that path. Two out of three is a hypothesis.
 
-## 8. Afterwards
-
-- Expanded images and PDBs are hundreds of megabytes; delete them from `tmp\` when
-  done. They are reproducible from the store at any time.
-- If the root cause is a setting, a driver, or a fallback that did not fire, record the
-  invariant in the owning document so the next reader does not re-derive it.
-
 ## Where this lives
 
 | Crash-handling subject | Source |
 |---|---|
-| Exception filter, dump writing, report contents | [app_toolbar.cpp](../src/app_toolbar.cpp) |
+| Exception filter and report contents | [app.cpp](../src/app.cpp) |
+| Minidump writing, and restart and recovery registration | libdesktop's [platform_win_process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_process.cpp) |
 | The open-file list a fault records, and its bounds | [util_crash_files_db.h](../src/util_crash_files_db.h) |
-| The graphics crash guard and hardware-acceleration fallback | [platform_win_settings.cpp](../src/platform_win_settings.cpp) |
+| The graphics crash guard and hardware-acceleration fallback | libdesktop's [platform_win_settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
 | The degraded start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
-| Diagnostic log and session counters | [util_log.h](../src/util_log.h), [util.h](../src/util.h) |
+| Diagnostic log and session counters | libdesktop's [util_log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util_log.h) and [util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util.h); [app_perf.h](../src/app_perf.h) |
 | Symbol store tooling | `tools/symstore.exe`, `tools/symsrv.dll` |
-
-The guard's own behavior is tested — the crash-guard recovery session and DXGI device loss are in
-[test_platform_win.cpp](../src/test_platform_win.cpp), the only test file permitted system headers.
-What is *not* tested is the faulting path itself, so treat a change to the exception filter as
-unverified by the suite and say so.

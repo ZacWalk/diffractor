@@ -141,6 +141,7 @@ void batch_tool_view::activate(const sizei extent)
 
 void batch_tool_view::deactivate()
 {
+	abandon_processing();
 	_rows.clear();
 	_convert_plan.clear();
 	_plan_valid = false;
@@ -599,6 +600,9 @@ void batch_tool_view::run_convert()
 		// The review found this destination occupied and the policy said to replace it. Every other row
 		// was reviewed as free, so anything now in its way is a file the user never saw.
 		bool replaces_existing = false;
+		// What the review saw at that destination. Replace was agreed to for that file, not for one
+		// edited or swapped in since.
+		platform::file_attributes_t destination_fi;
 	};
 	std::vector<convert_request> requests;
 	requests.reserve(_convert_plan.size());
@@ -612,7 +616,7 @@ void batch_tool_view::run_convert()
 		// Nothing has been attempted yet, so a row the run never reaches reports itself as not run.
 		statuses[index] = item_status::cancel;
 		requests.emplace_back(index, entry.source.path, entry.destination, entry.source.xmp,
-		                      entry.collides && !entry.renamed_to_avoid_collision);
+		                      entry.collides && !entry.renamed_to_avoid_collision, entry.destination_fi);
 	}
 	const auto title = std::string(tt.command_convert_or_resize.sv());
 	const auto max_side = setting.convert.limit_dimension ? setting.convert.max_side : 0;
@@ -621,7 +625,11 @@ void batch_tool_view::run_convert()
 	const auto webp_quality = setting.convert.webp_quality;
 	const auto webp_lossless = setting.convert.webp_lossless;
 	const auto write_folder = df::folder_path(setting.write_folder);
+	// Releasing the displayed file's handles can pump messages, and a Close handled in there leaves
+	// this view. A run started after that would write files with nothing on screen to show it.
+	const auto generation_before_detach = processing_generation();
 	const auto detach = std::make_shared<detach_file_handles>(_state);
+	if (processing_generation() != generation_before_detach) return;
 	begin_processing(requests.size());
 	const auto generation = processing_generation();
 	const auto cancel_source = processing_cancel_source();
@@ -664,17 +672,30 @@ void batch_tool_view::run_convert()
 
 					                   // The review is a snapshot, and the write itself cannot refuse an existing
 					                   // file. A destination that filled up in between belongs to something the user
-					                   // never reviewed, so the row is left alone rather than written over.
-					                   if (!request.replaces_existing && request.destination.exists())
+					                   // never reviewed, so the row is left alone rather than written over - and so
+					                   // is a reviewed one that has changed since, which is no longer the file the
+					                   // user agreed to replace.
+					                   const auto destination_exists = request.destination.exists();
+
+					                   if (destination_exists && (!request.replaces_existing ||
+						                   !unchanged_since_analysis(request.destination,
+						                                             request.destination_fi.modified,
+						                                             request.destination_fi.size)))
 					                   {
 						                   statuses[plan_index] = item_status::ignore;
 						                   continue;
 					                   }
 
+					                   file_update_publish publish;
+					                   publish.fail_if_exists = !request.replaces_existing;
+					                   publish.require_unchanged_destination = request.replaces_existing;
+					                   publish.destination_attributes = request.destination_fi;
+
 					                   const auto result = ff.update(request.source, request.destination, {},
 					                                                 max_side > 0
 						                                                 ? image_edits(max_side)
-						                                                 : image_edits(), params, false, request.xmp);
+						                                                 : image_edits(), params, false, request.xmp,
+					                                                 {}, {}, publish);
 
 					                   // One unreadable or unwritable source must not decide the fate of the rest.
 					                   // The row records the failure and the run carries on, so the result list
@@ -728,7 +749,10 @@ void batch_tool_view::run_metadata()
 	const auto title = std::string(tt.command_edit_metadata.sv());
 	const auto edits = metadata_changes();
 	record_feature_use(features::batch_edit);
+	// See run_convert: a Close handled while the handles are released leaves this view.
+	const auto generation_before_detach = processing_generation();
 	const auto detach = std::make_shared<detach_file_handles>(_state);
+	if (processing_generation() != generation_before_detach) return;
 	begin_processing(items.size());
 	const auto generation = processing_generation();
 	const auto cancel_source = processing_cancel_source();
@@ -764,10 +788,8 @@ void batch_tool_view::run_metadata()
 				                   {
 					                   const auto result = ff.update(request.path, edits, {}, file_encode_params{},
 					                                                 false, request.xmp);
-					                   statuses[index] = result.success() ? item_status::success : item_status::fail;
-
-					                   if (result.success()) written.emplace(request.path.folder());
-					                   else if (first_error.empty()) first_error = result.format_error();
+					                   statuses[index] = apply_batch_update_result(written, request.path.folder(),
+					                                                                first_error, result);
 				                   }
 				                   catch (const std::exception& e)
 				                   {
@@ -813,7 +835,10 @@ void batch_tool_view::run_dates()
 	const auto title = std::string(tt.command_adjust_date.sv());
 	const auto new_start = _new_start;
 	const auto original_start = _original_start;
+	// See run_convert: a Close handled while the handles are released leaves this view.
+	const auto generation_before_detach = processing_generation();
 	const auto detach = std::make_shared<detach_file_handles>(_state);
+	if (processing_generation() != generation_before_detach) return;
 	begin_processing(requests.size());
 	const auto generation = processing_generation();
 	const auto cancel_source = processing_cancel_source();
@@ -853,19 +878,8 @@ void batch_tool_view::run_dates()
 				                   {
 					                   const auto result = ff.update(request.path, edits, {}, file_encode_params{},
 					                                                 false, request.xmp);
-
-					                   if (result.success())
-					                   {
-						                   // Shifting a camera clock says nothing about when the file was
-						                   // written, so the filesystem creation stamp is left alone.
-						                   statuses[index] = item_status::success;
-						                   written.emplace(request.path.folder());
-					                   }
-					                   else
-					                   {
-						                   statuses[index] = item_status::fail;
-						                   if (first_error.empty()) first_error = result.format_error();
-					                   }
+					                   statuses[index] = apply_batch_update_result(written, request.path.folder(),
+					                                                                first_error, result);
 				                   }
 				                   catch (const std::exception& e)
 				                   {
@@ -898,7 +912,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 	std::vector<view_element_ptr> controls;
 	const auto& items = _state.selected_items();
 	auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
-	selection_thumbnails->selection(items.thumbs(), items.size());
+	selection_thumbnails->selection_async(items.thumbs(), items.size(), _state._async);
 
 	if (_mode == batch_tool_mode::convert)
 	{
@@ -909,7 +923,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		controls.emplace_back(std::make_shared<text_element>(tt.destination_folder));
 		controls.emplace_back(std::make_shared<ui::folder_picker_control>(frame, setting.write_folder, false,
 		                                                                  [this](std::string_view) { refresh(); }));
-		auto jpeg = std::make_shared<ui::check_control>(frame, tt.jpeg_best, setting.convert.to_jpeg, true, false,
+		auto jpeg = std::make_shared<ui::check_control>(frame, tt.platform_text.jpeg_best, setting.convert.to_jpeg, true, false,
 		                                                [this](const bool checked)
 		                                                {
 			                                                if (checked) setting.convert.to_png = setting.convert.
@@ -924,7 +938,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		                                                       100, [this] { refresh_encode_settings(); }));
 		jpeg->child(jpeg_options);
 		controls.emplace_back(jpeg);
-		controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.png_best, setting.convert.to_png, true,
+		controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.platform_text.png_best, setting.convert.to_png, true,
 		                                                          false,
 		                                                          [this](const bool checked)
 		                                                          {
@@ -933,7 +947,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 			                                                          refresh();
 		                                                          },
 		                                                          ui::radio_group_format));
-		auto webp = std::make_shared<ui::check_control>(frame, tt.webp_best, setting.convert.to_webp, true, false,
+		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp, true, false,
 		                                                [this](const bool checked)
 		                                                {
 			                                                if (checked) setting.convert.to_jpeg = setting.convert.

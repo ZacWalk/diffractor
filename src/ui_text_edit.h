@@ -267,6 +267,23 @@ namespace ui
 			_caret = _anchor = previous;
 		}
 
+		bool paste_from_clipboard(const std::function<std::optional<std::string>()>& read_text)
+		{
+			const auto value = read_text();
+			if (!value) return false;
+			insert(*value);
+			return true;
+		}
+
+		bool cut_to_clipboard(const std::function<bool(std::string_view)>& write_text)
+		{
+			const auto selected = selected_text();
+			if (selected.empty()) return false;
+			if (!write_text(selected)) return false;
+			erase_selection();
+			return true;
+		}
+
 		void delete_forward()
 		{
 			if (has_selection())

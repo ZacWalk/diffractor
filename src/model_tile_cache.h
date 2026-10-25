@@ -14,6 +14,16 @@
 
 struct sqlite3;
 struct sqlite3_stmt;
+class tile_cache_db;
+
+namespace tile_cache_test_seams
+{
+	bool failure_allows_replacement(int sqlite_result);
+	void fail_next_commit();
+	bool wrapper_transaction_active(const tile_cache_db& db);
+	bool sqlite_transaction_active(const tile_cache_db& db);
+	uint32_t writes_since_prune(const tile_cache_db& db);
+}
 
 // Packs a slippy-map tile address into the rowid the tile store is keyed by. Zoom never exceeds 18,
 // so x and y stay below 2^20 and the whole address fits in a positive 64-bit integer - which makes
@@ -36,6 +46,7 @@ class tile_cache_db final : public df::no_copy
 	sqlite3_stmt* _load = nullptr;
 	sqlite3_stmt* _store = nullptr;
 	sqlite3_stmt* _touch = nullptr;
+	int _last_open_result = 0;
 
 	// Reads are the common case and must not each cost a commit, so the accessed stamps they earn
 	// are collected here and written with the batch the worker thread is already draining.
@@ -45,8 +56,10 @@ class tile_cache_db final : public df::no_copy
 	uint32_t _writes_since_prune = 0;
 
 	bool connect_and_prepare();
+	bool last_failure_allows_replacement() const;
 	void delete_database_files() const;
 	void begin();
+	bool commit_transaction();
 	int exec(std::string_view sql) const;
 	int64_t pragma_value(std::string_view pragma) const;
 
@@ -83,4 +96,8 @@ public:
 
 	int64_t count() const;
 	int64_t used_bytes() const;
+
+	friend bool tile_cache_test_seams::wrapper_transaction_active(const tile_cache_db& db);
+	friend bool tile_cache_test_seams::sqlite_transaction_active(const tile_cache_db& db);
+	friend uint32_t tile_cache_test_seams::writes_since_prune(const tile_cache_db& db);
 };

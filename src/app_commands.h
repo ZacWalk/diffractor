@@ -11,8 +11,13 @@
 
 #pragma once
 
-#include "ui.h"
+#include "libdesktop/ui.h"
 
+class view_state;
+namespace ui
+{
+	class complete_strategy_t;
+}
 
 enum class commands
 {
@@ -165,11 +170,20 @@ enum class commands
 	tool_edit_description,
 	tool_edit_metadata,
 	tool_eject,
-	tool_email,
 	tool_file_properties,
 	tool_import,
 	tool_locate,
 	tool_move_to_folder,
+	tool_movie,
+	tool_movie_add,
+	tool_movie_import,
+	tool_movie_open,
+	tool_movie_relink,
+	tool_movie_remove,
+	tool_movie_render,
+	tool_movie_save,
+	tool_movie_select_all,
+	tool_movie_send_to_end,
 	tool_new_folder,
 	tool_open_with,
 	// Re-plans the active task view after a run, so its results are never mistaken for a live plan.
@@ -182,6 +196,8 @@ enum class commands
 	tool_run,
 	tool_save_current_video_frame,
 	tool_scan,
+	// Share where the system has a share sheet, an email draft where it does not.
+	tool_share,
 	tool_sync,
 	tool_tag,
 	verbose_metadata,
@@ -218,3 +234,14 @@ struct command_accelerator
 // nothing else can tell whether two commands have quietly claimed the same key.
 std::vector<command_accelerator> default_keyboard_accelerators();
 
+// Configured external tools accept one {item-path}; the Open menu therefore offers them only for a
+// single selected file. Association handlers keep their separate whole-selection contract.
+df::file_path selected_external_tool_target(const df::item_set& selected_items);
+quadd rotate_command_crop_bounds(sizei dimensions, ui::orientation stored_orientation, simple_transform transform,
+                                 bool show_rotated);
+
+using destination_folder_enumerator = std::function<df::folder_paths(const df::folder_path&)>;
+
+std::shared_ptr<ui::complete_strategy_t> make_destination_folder_auto_complete_for_test(
+	view_state& state, std::shared_ptr<void> picker_lifetime, std::shared_ptr<const df::folder_counts> folders,
+	destination_folder_enumerator enumerate_child_folders = {});

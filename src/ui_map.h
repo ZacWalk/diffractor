@@ -263,6 +263,15 @@ public:
 		}
 	}
 
+	void set_marker_snapshot(map_engine::marker_snapshot markers)
+	{
+		if (_engine)
+		{
+			hide_marker_bubble();
+			_engine->set_marker_snapshot(std::move(markers));
+		}
+	}
+
 	uint32_t view_generation() const
 	{
 		return _view_generation;

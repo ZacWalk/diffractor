@@ -19,10 +19,43 @@ class location_cache;
 class database;
 class async_strategy;
 
+// The content identity a hash was computed against. A checksum or picture hash describes the bytes
+// that were read, so publishing one against a path alone attaches it to whatever occupies that path
+// when the work finishes. A file replaced while it was being hashed is a different file at the same
+// name, and giving it the old hash reports it as a copy of what the previous content matched.
+struct index_file_revision
+{
+	df::date_t modified;
+	uint64_t size = 0;
+
+	bool operator==(const index_file_revision& other) const
+	{
+		return modified == other.modified && size == other.size;
+	}
+};
+
+inline index_file_revision revision_of(const df::index_file_item& file)
+{
+	return {file.file_modified.load(), file.size.to_int64()};
+}
+
+// One file the predictions walk wants a picture hash for, with the revision it was wanted at.
+struct phash_request
+{
+	df::file_path path;
+	index_file_revision revision;
+};
+
+struct phash_result
+{
+	df::file_path path;
+	index_file_revision revision;
+	crypto::phash_rotations rotations{};
+};
+
 struct item_db_write
 {
 	df::file_path path;
-
 	std::optional<prop::item_metadata_ptr> md;
 	std::optional<df::date_t> modified;
 	std::optional<double> media_position;
@@ -32,6 +65,9 @@ struct item_db_write
 	std::optional<df::date_t> metadata_scanned;
 	std::optional<uint32_t> crc32c;
 	std::optional<crypto::phash_rotations> phash;
+	// The bytes changed, so the stored checksum and picture hash describe content that is gone. The
+	// optional fields above cannot say this: a write that carries no hash keeps the stored one.
+	bool clear_hashes = false;
 
 	item_db_write() noexcept = default;
 	item_db_write(const item_db_write&) = delete;
@@ -115,6 +151,7 @@ struct index_statistic
 	int thumbs_saved = 0;
 
 	int media_item_count = 0;
+	int picture_item_count = 0;
 	int index_item_count = 0;
 	int indexed_dup_folder_count = 0;
 	int indexed_max_compare_count = 0;
@@ -136,6 +173,11 @@ struct index_statistic
 	df::file_path database_path;
 };
 
+struct index_progress_snapshot
+{
+	int index_item_count = 0;
+	int index_item_remaining = 0;
+};
 
 using unique_key_vals = df::hash_map<key_val, df::int_counter, phash, peq>;
 using db_items_t = std::vector<db_item_t>;
@@ -144,59 +186,186 @@ using items_by_folder_t = df::dense_hash_map<df::folder_path, df::index_folder_i
 using item_writes_t = platform::queue<item_db_write>;
 using index_folders_t = std::vector<std::pair<df::folder_path, df::index_folder_item_ptr>>;
 
+struct index_folder_snapshot
+{
+	df::index_folder_item_ptr folder;
+	uint64_t content_revision = 0;
+};
+
 class index_items
 {
 	mutable platform::mutex _rw;
 	_Guarded_by_(_rw) items_by_folder_t _index;
 
+	struct child_replacement
+	{
+		df::index_folder_item_ptr parent;
+		std::shared_ptr<const df::index_folder_infos> expected;
+		std::shared_ptr<const df::index_folder_infos> replacement;
+
+		explicit operator bool() const
+		{
+			return parent && expected && replacement;
+		}
+	};
+
 public:
-	df::index_folder_item_ptr find(const df::folder_path folder) const
+	index_folder_snapshot find_snapshot(const df::folder_path folder) const
 	{
 		platform::shared_lock lock(_rw);
 		const auto found_in_index = _index.find(folder);
-		return found_in_index != _index.end() ? found_in_index->second : nullptr;
+		if (found_in_index == _index.end()) return {};
+
+		const auto current = found_in_index->second;
+		return {current, current ? current->revision_snapshot() : 0};
+	}
+
+	df::index_folder_item_ptr find(const df::folder_path folder) const
+	{
+		return find_snapshot(folder).folder;
 	}
 
 	void replace(const df::folder_path folder_path, const df::index_folder_item_ptr& i)
 	{
-		platform::exclusive_lock lock(_rw);
-
-		_index[folder_path] = i;
-
-		// update parent to point to this
-		if (!folder_path.is_root())
+		for (;;)
 		{
-			const auto parent_folder = folder_path.parent();
-			const auto found_in_index = _index.find(parent_folder);
+			df::index_folder_item_ptr old_node;
+			child_replacement child;
+			prepare_child_replacement(folder_path, i, child);
+			auto retry = false;
 
-			if (found_in_index != _index.end())
 			{
-				const auto parent_node = found_in_index->second;
-				parent_node->replace_child(i->name, i);
+				platform::exclusive_lock lock(_rw);
+				if (child && !is_child_replacement_current(folder_path, child))
+				{
+					retry = true;
+				}
+				else
+				{
+					retry = !replace_locked(folder_path, i, child, old_node);
+				}
 			}
+
+			if (retry) continue;
+			old_node.reset();
+			return;
 		}
 	}
 
-	void erase(const std::vector<df::folder_path>& folders)
+	// Publishes only while the folder still holds the node the caller built from, and answers what
+	// the index holds afterwards. A rebuild reads the node, enumerates the file system without a
+	// lock, then publishes - and another thread that rebuilt or scanned the same folder inside that
+	// window left newer state in the index. Storing unconditionally puts the pre-enumeration copy
+	// back over it, losing every scan result recorded since.
+	df::index_folder_item_ptr replace_if(const df::folder_path folder_path,
+	                                     const df::index_folder_item_ptr& expected,
+	                                     const uint64_t expected_content_revision,
+	                                     const df::index_folder_item_ptr& i)
+	{
+		for (;;)
+		{
+			df::index_folder_item_ptr old_node;
+			child_replacement child;
+			prepare_child_replacement(folder_path, i, child);
+			auto retry = false;
+			df::index_folder_item_ptr result;
+
+			{
+				platform::exclusive_lock lock(_rw);
+
+				const auto found_in_index = _index.find(folder_path);
+				const auto current = found_in_index != _index.end() ? found_in_index->second : nullptr;
+
+				if (current != expected) return current;
+				if (current && current->revision_snapshot() != expected_content_revision)
+				{
+					return current;
+				}
+				if (child && !is_child_replacement_current(folder_path, child))
+				{
+					retry = true;
+				}
+				else
+				{
+					retry = !replace_locked(folder_path, i, child, old_node);
+					if (!retry) result = i;
+				}
+			}
+
+			if (retry) continue;
+			old_node.reset();
+			return result;
+		}
+	}
+
+	template <typename Func>
+	bool update_file(const df::file_path path, Func func) const
+	{
+		platform::shared_lock lock(_rw);
+		const auto found_folder = _index.find(path.folder());
+		if (found_folder == _index.end()) return false;
+
+		const auto folder = found_folder->second;
+		if (!folder) return false;
+
+		const auto found_file = std::lower_bound(folder->files.begin(), folder->files.end(), path.name());
+		if (found_file == folder->files.end()) return false;
+		if (icmp(found_file->name, path.name()) != 0) return false;
+		if (!func(folder, *found_file)) return false;
+		folder->mark_content_changed();
+		return true;
+	}
+
+	template <typename Func>
+	bool update_folder(const df::folder_path folder_path, Func func) const
 	{
 		platform::exclusive_lock lock(_rw);
+		const auto found_folder = _index.find(folder_path);
+		if (found_folder == _index.end() || !found_folder->second) return false;
+		if (!func(found_folder->second)) return false;
+		found_folder->second->mark_content_changed();
+		return true;
+	}
 
-		for (const auto& g : folders)
+	// Erases each folder and everything indexed beneath it. The index is flat and keyed by folder
+	// path, so erasing only the named key left every descendant indexed - still searchable, still
+	// counted - after the folder that held them was deleted.
+	void erase(const std::vector<df::folder_path>& folders)
+	{
+		if (folders.empty()) return;
+
+		platform::exclusive_lock lock(_rw);
+
+		std::erase_if(_index, [&folders](const auto& entry)
 		{
-			const auto found_in_index = _index.find(g);
-
-			if (found_in_index != _index.end())
+			return std::ranges::any_of(folders, [&entry](const df::folder_path removed)
 			{
-				_index.erase(found_in_index);
-			}
-		}
+				return df::folder_contains(removed.text().sv(), entry.first.text().sv());
+			});
+		});
 	}
 
 	index_folders_t all_folders() const
 	{
-		platform::shared_lock lock(_rw);
-		index_folders_t result(_index.begin(), _index.end());
-		return result;
+		for (;;)
+		{
+			size_t size = 0;
+			{
+				platform::shared_lock lock(_rw);
+				size = _index.size();
+			}
+
+			index_folders_t result;
+			result.reserve(size);
+
+			{
+				platform::shared_lock lock(_rw);
+				if (result.capacity() < _index.size()) continue;
+				result.insert(result.end(), _index.begin(), _index.end());
+			}
+
+			return result;
+		}
 	}
 
 	df::index_folder_item_ptr find_or_create(const df::folder_path folder_path,
@@ -223,11 +392,96 @@ public:
 		platform::exclusive_lock lock(_rw);
 		_index.clear();
 	}
+
+private:
+	_Requires_lock_held_(_rw) bool replace_locked(const df::folder_path folder_path,
+	                                              const df::index_folder_item_ptr& i,
+	                                              child_replacement& child,
+	                                              df::index_folder_item_ptr& old_node)
+	{
+		if (child)
+		{
+			auto expected = child.expected;
+			if (!child.parent->child_folders.compare_exchange_strong(expected, child.replacement)) return false;
+			child.parent->mark_content_changed();
+		}
+
+		const auto [found, inserted] = _index.try_emplace(folder_path, i);
+		if (!inserted)
+		{
+			old_node.swap(found->second);
+			found->second = i;
+		}
+
+		return true;
+	}
+
+	void prepare_child_replacement(const df::folder_path folder_path,
+	                               const df::index_folder_item_ptr& i,
+	                               child_replacement& child) const
+	{
+		child = {};
+		if (folder_path.is_root()) return;
+
+		df::index_folder_item_ptr parent;
+		{
+			platform::shared_lock lock(_rw);
+			const auto found_parent = _index.find(folder_path.parent());
+			if (found_parent == _index.end()) return;
+			parent = found_parent->second;
+		}
+		if (!parent) return;
+
+		auto existing = parent->folders_snapshot();
+		auto updated = std::make_shared<df::index_folder_infos>(*existing);
+		const auto found = std::lower_bound(updated->begin(), updated->end(), i->name,
+		                                    [](const df::index_folder_item_ptr& left, const std::string_view right)
+		                                    {
+			                                    return icmp(left->name, right) < 0;
+		                                    });
+
+		if (found == updated->end() || icmp((*found)->name, i->name) != 0) return;
+		*found = i;
+		child = {parent, std::move(existing), std::move(updated)};
+	}
+
+	_Requires_lock_held_(_rw) bool is_child_replacement_current(const df::folder_path folder_path,
+	                                                            const child_replacement& child) const
+	{
+		const auto found_parent = _index.find(folder_path.parent());
+		return found_parent != _index.end() &&
+			found_parent->second == child.parent &&
+			child.parent->folders_snapshot() == child.expected;
+	}
+
 };
+
+// Hamming distance across 63 meaningful bits. Every hash sets exactly 31 of them, so a distance is
+// always even and only 0, 2, 4 and 6 are distinct settings; 6 is the loosest of the four.
+constexpr auto max_duplicate_phash_distance = 6;
 
 // Strongest evidence linking two indexed files, or none. This is the exact half of the copy
 // relation: every rule here is a conjunction of equalities, so it is transitive and safe to close
 // over (docs/collections.md section 7.2). The perceptual half is not, and is not decided here.
+__forceinline bool same_picture_shape(const sizei a, const sizei b, const bool allow_swap = true)
+{
+	if (a.is_empty() || b.is_empty()) return true;
+
+	const auto close = [](const sizei left, const sizei right)
+	{
+		constexpr double mcu_block = 16.0;
+		const auto left_aspect = static_cast<double>(left.cx) / left.cy;
+		const auto right_aspect = static_cast<double>(right.cx) / right.cy;
+		const auto shortest = std::min({left.cx, left.cy, right.cx, right.cy});
+		const auto tolerance = mcu_block / shortest + 0.01;
+		return std::abs(left_aspect - right_aspect) <= std::max(left_aspect, right_aspect) * tolerance;
+	};
+
+	if (close(a, b)) return true;
+
+	return allow_swap && close(a, {b.cy, b.cx});
+}
+
 __forceinline df::copy_grade dup_match_grade(const df::index_file_item* file,
                                              const df::index_file_item* other_file)
 {
@@ -295,11 +549,11 @@ __forceinline dup_match_result dup_match(const df::related_info& file, const df:
 {
 	const auto other_dups = other_file.duplicates.load();
 
-	// Already in one set. The set is anchored on a single item rather than chained, so membership is
-	// evidence, and the grade recorded when that item joined is the strength to report.
-	if (file.group != 0 && file.group == other_dups.group)
+	// Exact duplicate sets are transitive, so common exact membership is pair evidence. Perceptual
+	// sets are anchored rather than chained and may be mixed with exact subgroups.
+	if (file.exact_group != 0 && file.exact_group == other_file.exact_duplicate_group.load())
 	{
-		return {0, other_dups.grade == df::copy_grade::none ? df::copy_grade::same_file : other_dups.grade};
+		return {0, other_dups.grade == df::copy_grade::none ? df::copy_grade::same_file : df::strongest(other_dups.grade, df::copy_grade::same_file)};
 	}
 
 	if (file.crc32c != 0 && file.size == other_file.size && file.crc32c == other_file.crc32c)
@@ -307,21 +561,40 @@ __forceinline dup_match_result dup_match(const df::related_info& file, const df:
 		return {0, df::copy_grade::identical};
 	}
 
-	if (icmp(file.path.name(), other_file.name) != 0)
+	if (icmp(file.path.name(), other_file.name) == 0)
 	{
-		return {};
+		// A related search restored from text may not have resolved a file type, so the
+		// audio/video rule is skipped rather than dereferencing an unknown type.
+		if (file.ft && file.ft->has_trait(file_traits::av) &&
+			file.size.to_int64() != 0 && other_file.size.to_int64() != 0 &&
+			file.size == other_file.size)
+		{
+			return {1, df::copy_grade::same_file};
+		}
+
+		const auto created = file.created();
+		if (created.is_valid() && created == other_file.created())
+		{
+			return {2, df::copy_grade::same_file};
+		}
 	}
 
-	// A related search restored from text may not have resolved a file type, so the
-	// audio/video rule is skipped rather than dereferencing an unknown type.
-	if (file.ft && file.ft->has_trait(file_traits::av) && file.size == other_file.size)
+	const auto other_hashes = other_file.phash.load();
+	const auto other_metadata = other_file.metadata.load();
+	if (file.ft && file.ft->has_trait(file_traits::bitmap) &&
+		other_file.ft->has_trait(file_traits::bitmap) &&
+		file.created() == other_file.created() &&
+		crypto::phash_is_usable(file.phash[0]) &&
+		other_hashes && other_hashes->is_usable() &&
+		!file.duplicate_crowded &&
+		!other_dups.same_picture_crowded &&
+		same_picture_shape(file.dimensions, other_metadata ? other_metadata->dimensions() : sizei{}) &&
+		crypto::phash_distance(file.phash[0], other_hashes->rotations) <= max_duplicate_phash_distance)
 	{
-		return {1, df::copy_grade::same_file};
+		return {3, df::copy_grade::same_picture};
 	}
 
-	return file.created() == other_file.created()
-		       ? dup_match_result{2, df::copy_grade::same_file}
-		       : dup_match_result{};
+	return {};
 }
 
 __forceinline int dup_match_rank(const df::related_info& file, const df::index_file_item& other_file)
@@ -656,6 +929,7 @@ class index_state final : public df::no_copy
 	// must still be released rather than wait for a signal that has already been consumed.
 	platform::thread_event _cache_loaded_event{true, false};
 	std::atomic<bool> _folders_indexed = false;
+	std::atomic<bool> _collection_discovery_complete = false;
 	const location_cache& _locations;
 	std::atomic<bool> _fully_loaded = false;
 
@@ -666,10 +940,18 @@ class index_state final : public df::no_copy
 	df::hash_map<df::file_path, int, df::ihash, df::ieq> _write_claims;
 	df::item_set _deferred_modified_scans;
 
+	// Folders whose validation gave up to writers still publishing into them, each with whether its
+	// follow-up must rescan the folder's items and subfolders rather than only revalidate it. Keyed by
+	// folder so a folder that keeps giving up holds one queued follow-up, not one per attempt.
+	platform::mutex _deferred_validations_rw;
+	_Guarded_by_(_deferred_validations_rw) df::hash_map<df::folder_path, bool, df::ihash, df::ieq>
+	_deferred_validations;
+
 	void add_distinct_other_folders(df::unique_folders folders);
 	void enqueue_db_write(item_db_write write);
 	void enqueue_db_writes(std::vector<item_db_write> writes);
 	bool is_collection_search(const df::search_t& search) const;
+	void queue_deferred_validation(df::folder_path folder_path, bool rescan);
 
 public:
 	enum class query_item_kind
@@ -701,6 +983,7 @@ public:
 		bool load_thumbnail = false;
 		bool thumbnail_needed = false;
 		bool had_thumbnail = false;
+		uint64_t thumbnail_generation = 0;
 	};
 
 	using item_scan_requests = std::vector<item_scan_request>;
@@ -719,6 +1002,7 @@ public:
 		ui::const_image_ptr thumbnail;
 		ui::const_image_ptr cover_art;
 		df::date_t timestamp;
+		uint64_t generation = 0;
 	};
 
 	using thumbnail_results = std::vector<thumbnail_result>;
@@ -740,6 +1024,8 @@ public:
 	std::atomic_int searching = 0;
 
 	index_statistic stats;
+	std::atomic<std::shared_ptr<const index_progress_snapshot>> _indexing_progress =
+		std::make_shared<const index_progress_snapshot>();
 
 	void cache_load_complete()
 	{
@@ -753,24 +1039,27 @@ public:
 	{
 		return _cache_loaded_event;
 	}
-
 	void merge_folder(df::folder_path folder_path, const db_items_t& items);
 
 	void save_media_position(df::file_path id, double media_position);
-	void save_crc(df::file_path id, uint32_t crc);
-	void save_phash(df::file_path id, const crypto::phash_rotations& phash);
-	void save_phashes(std::vector<std::pair<df::file_path, crypto::phash_rotations>> hashes);
-	void queue_calc_perceptual_hashes(std::vector<df::file_path> paths);
+	// Each carries the revision its hash was read from; a file whose index entry no longer matches
+	// keeps neither the published hash nor the database row, so the next pass hashes it again.
+	void save_crc(df::file_path id, index_file_revision revision, uint32_t crc);
+	void save_phash(df::file_path id, index_file_revision revision, const crypto::phash_rotations& phash);
+	void save_phashes(std::vector<phash_result> hashes, bool continue_predictions = true);
+	void queue_calc_perceptual_hashes(std::vector<phash_request> requests);
 	void save_thumbnail(df::file_path id, const ui::const_image_ptr& thumbnail_image,
 	                    const ui::const_image_ptr& cover_art, df::date_t scan_timestamp);
 	void publish_thumbnail(std::weak_ptr<df::item_element> item, df::file_path path,
 	                       ui::const_image_ptr thumbnail, ui::const_image_ptr cover_art,
-	                       df::date_t timestamp, bool fade_in = false, bool stage_surface = false) const;
+	                       df::date_t timestamp, uint64_t generation = 0, bool fade_in = false,
+	                       bool stage_surface = false) const;
 	void publish_thumbnails(thumbnail_results results, bool invalidate_group_layout) const;
 	void publish_item_update(std::weak_ptr<df::item_element> item, df::file_path path) const;
-	void publish_thumbnail_failure(std::weak_ptr<df::item_element> item, df::file_path path) const;
+	void publish_thumbnail_failure(std::weak_ptr<df::item_element> item, df::file_path path,
+	                               uint64_t generation = 0) const;
 	void publish_crc(std::weak_ptr<df::item_element> item, df::file_path path, df::file_size size,
-	                 df::item_online_status online_status, uint32_t existing_crc, uint32_t crc);
+	                 df::date_t modified, df::item_online_status online_status, uint32_t existing_crc, uint32_t crc);
 
 	df::index_file_item find_item(df::file_path id) const;
 
@@ -813,6 +1102,12 @@ public:
 	void update_predictions();
 	void update_summary(uint64_t generation = 0);
 
+	index_progress_snapshot indexing_progress() const
+	{
+		const auto snapshot = _indexing_progress.load();
+		return snapshot ? *snapshot : index_progress_snapshot{};
+	}
+
 	void query_items(const df::search_t& search,
 	                 const std::function<void(query_item_results, bool)>& found_callback,
 	                 const df::cancel_token& token);
@@ -822,6 +1117,10 @@ public:
 	{
 		df::index_folder_item_ptr folder;
 		bool was_updated = false;
+		bool enumeration_failed = false;
+		// Writers kept publishing into the folder while this pass merged it, so nothing was published
+		// and folder holds the current node, which may predate the file system. A follow-up is queued.
+		bool deferred = false;
 	};
 
 	validate_folder_result validate_folder(df::folder_path folder_path,
@@ -869,13 +1168,14 @@ public:
 	                       bool load_thumb, bool thumbnail_needed, bool had_thumbnail,
 	                       const std::weak_ptr<df::item_element>& item, bool publish_to_item,
 	                       bool publish_item_update_immediately, bool invalidate_summary,
-	                       db_write_batch* writes = nullptr);
+	                       db_write_batch* writes = nullptr, bool clear_existing_hashes = false,
+	                       uint64_t thumbnail_generation = 0);
 	void scan_item(const df::index_folder_item_ptr& folder, df::file_path file_path, bool load_thumbnails,
 	               bool thumbnail_needed, bool had_thumbnail, bool scan_if_offline,
 	               const std::weak_ptr<df::item_element>& item, bool publish_to_item, file_type_ref ft,
 	               bool force = false,
 	               bool publish_item_update_immediately = true, bool invalidate_summary = true,
-	               db_write_batch* writes = nullptr);
+	               db_write_batch* writes = nullptr, uint64_t thumbnail_generation = 0);
 	void scan_item(const df::item_element_ptr& i, bool load_thumb, bool scan_if_offline);
 	// Immediately (synchronously, on the caller's thread) apply the scan that files::update took
 	// through its still-open, cache-coherent handle. Reuses the cached folder node (no filesystem
@@ -891,11 +1191,12 @@ public:
 	                                    bool want_image = false, bool want_handle = false);
 	void scan_offline_item(const df::index_folder_item_ptr& folder, df::file_path file_path, bool thumbnail_needed,
 	                       const std::weak_ptr<df::item_element>& item, bool publish_to_item,
-	                       const df::index_file_item& file, df::date_t now, bool invalidate_summary);
+	                       const df::index_file_item& file, df::date_t now, bool invalidate_summary,
+	                       uint64_t thumbnail_generation = 0);
 	bool needs_scan(const df::item_element_ptr&) const;
 	bool is_in_collection(df::folder_path folder) const;
 
-	void index_folders(df::cancel_token token);
+	void index_folders(df::cancel_token token, bool scan_collection = true);
 	void index_roots(df::index_roots roots);
 	void scan_uncached(const df::cancel_token& token);
 	std::vector<folder_scan_item> scan_items(const df::index_roots& roots, bool recursive, bool scan_if_offline,
@@ -930,10 +1231,12 @@ public:
 	void queue_load_visible_thumbnails(const df::item_elements& visible);
 	// Load one tooltip/hover thumbnail without cancelling the visible-items thumbnail batch.
 	// Checks the thumbnail database first, then decodes locally or asks the cloud shell provider.
-	void queue_load_thumbnail(df::item_element_ptr item);
+	void queue_load_thumbnail(df::item_element_ptr item,
+	                         view_invalid invalid = view_invalid::tooltip | view_invalid::view_redraw);
 	// Fetch shell (cloud provider) thumbnails for visible cloud-only placeholders WITHOUT
 	// hydrating. Best-effort; caches the result in the database so it is not re-fetched.
-	void queue_scan_offline_thumbnails(const df::item_set& items, bool visible_only = true);
+	void queue_scan_offline_thumbnails(const df::item_set& items, bool visible_only = true,
+	                                   view_invalid invalid = view_invalid::tooltip | view_invalid::view_redraw);
 	void queue_update_presence(const df::item_set& items);
 	void queue_update_predictions();
 	void queue_update_summary();
@@ -965,10 +1268,15 @@ public:
 
 		for (const auto& folder : folders)
 		{
-			for (const auto& file : folder.second->files)
+			_items.update_folder(folder.first, [](const df::index_folder_item_ptr& current_folder)
 			{
-				file.metadata_scanned = df::date_t{};
-			}
+				for (const auto& file : current_folder->files)
+				{
+					file.metadata_scanned = df::date_t{};
+				}
+				current_folder->reset_search_presence();
+				return true;
+			});
 		}
 
 		_fully_loaded = false;
@@ -1092,6 +1400,7 @@ public:
 	std::vector<auto_complete_word> auto_complete_tag_companions(const std::vector<std::string>& tags,
 	                                                             std::string_view prefix,
 	                                                             size_t max_results) const;
+	size_t tag_companion_entry_count() const;
 	std::vector<auto_complete_word> auto_complete_locations(std::string_view query, size_t max_results,
 	                                                        df::location_level level =
 		                                                        df::location_level::any) const;

@@ -24,7 +24,6 @@ class batch_tool_view final : public list_view, public std::enable_shared_from_t
 {
 	batch_tool_mode _mode = batch_tool_mode::convert;
 	std::string _title;
-	std::string _status;
 	std::vector<convert_item_plan> _convert_plan;
 	// The plan probes the filesystem on a worker, so the rows can be describing an older one.
 	bool _plan_valid = false;
@@ -85,7 +84,6 @@ public:
 	// during review, and it is the only way out of results mode, so it is offered whenever idle.
 	bool can_refresh() const { return !progress().active && showing_results(); }
 	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
-	std::string_view status() override { return _status; }
 	std::string_view title() override;
 	text_t empty_message() override { return tt.no_items_selected_message; }
 	std::array<text_t, max_col_count> col_titles() override;

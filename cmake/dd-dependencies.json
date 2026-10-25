@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "dependencies": {
+    "bzip2": {
+      "url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+      "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269",
+      "method": "application"
+    },
+    "lzma": {
+      "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.gz",
+      "sha256": "0014c7886930454fe8bd4228665b51af55eeae560ea135c9c4cd33f55b2591d9",
+      "method": "application"
+    },
+    "sqlite": {
+      "url": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+      "sha256": "1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d",
+      "method": "application"
+    },
+    "minizip": {
+      "url": "https://github.com/zlib-ng/minizip-ng/archive/refs/tags/4.2.2.tar.gz",
+      "sha256": "71af7b9799856d8b03619df3949e9c1be9703f8de0795af71399ba283cb27aac",
+      "method": "application"
+    },
+    "libarchive": {
+      "url": "https://github.com/libarchive/libarchive/releases/download/v3.8.9/libarchive-3.8.9.tar.gz",
+      "sha256": "f5a6539059cf5e597dbeda37bfa4874b1e8dea063c8d93bf85a2b44af90a5bd4",
+      "method": "application"
+    },
+    "hunspell": {
+      "url": "https://github.com/hunspell/hunspell/releases/download/v1.7.4/hunspell-1.7.4.tar.gz",
+      "sha256": "66ec82a577395fe9d471504267e6dd04615c76517c61af7c6b9c19e5e34e73c8",
+      "method": "application"
+    },
+    "openmpt": {
+      "url": "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.9+release.autotools.tar.gz",
+      "sha256": "d7ce84fd05d686c4bcf66af40eae857afa371442db60eeda3f874bd6cf6fc318",
+      "method": "application"
+    },
+    "ffmpeg": {
+      "url": "https://github.com/ZacWalk/FFmpeg/archive/eea8d39cc97af0ab398c23a2b2dc45efd8148159.tar.gz",
+      "sha256": "38faca6d27aa153436e8f495e0733739e486dc54466ffca2b6a287f43eb5c51a",
+      "method": "application"
+    },
+    "nasm": {
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/win64/nasm-3.02-win64.zip",
+      "sha256": "161d0bfaff53c2f9e9f3e69fd0672323ebabafd1268976a5cec11be92a19aee7",
+      "method": "application"
+    },
+    "7zr": {
+      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7zr.exe",
+      "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d",
+      "method": "application"
+    },
+    "7zip-extra": {
+      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-extra.7z",
+      "sha256": "191894e6acb3647ffb69ce630479ff318523b2e2b9890aa7f05c1127c2e59b8f",
+      "method": "application"
+    }
+  }
+}

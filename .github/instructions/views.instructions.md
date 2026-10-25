@@ -1,6 +1,6 @@
 ---
 description: UI-thread ownership, invalidation, handle safety, and naming for views and controls.
-applyTo: 'src/view_*.cpp, src/view_*.h, src/ui_*.cpp, src/ui_*.h, src/ui.cpp, src/ui.h'
+applyTo: 'src/view_*.cpp, src/view_*.h, src/ui_*.cpp, src/ui_*.h'
 ---
 
 # Views, controls, and layout
@@ -18,8 +18,15 @@ indexing, hashing, querying, thumbnail, map or network work happens here — req
 Paint functions never access SQLite and never scan files, directly or through a helper. If a paint
 path needs data it does not have, it asks for Source work and draws what it has.
 
-## Absent handles
+## Hit testing
 
+A controller's `bounds()` is its own region, never the element narrowed by what covers it. Clipping
+it there drops the click and the hover highlight on the clipped-away part. What the host may cache
+the answer for is `hit_test_context`: test every higher-precedence region through `ctx.occluded()`
+so recording it cannot be forgotten, and never restate the same rectangles afterwards as exclusion
+arithmetic. See [implementation](../../docs/implementation.md#hit-testing).
+
+## Absent handles
 A `ui::frame_ptr` member that can be unset is reached **only** through its accessor, which answers
 `ui::no_frame()` rather than null. Callers do not test it. A raw `_frame->` on such a member
 outside that accessor is a lint failure.

@@ -15,11 +15,13 @@ class crash_files_db
 {
 	struct open_file
 	{
+		df::file_path path;
 		std::string_view context;
 		uint32_t thread_id = 0;
 	};
 
-	using path_map = df::hash_map<df::file_path, open_file, df::ihash, df::ieq>;
+	using open_file_id = uint64_t;
+	using open_file_map = df::hash_map<open_file_id, open_file>;
 	using path_set = df::hash_set<df::file_path, df::ihash, df::ieq>;
 
 	// The list only has to survive until the next launch, so a small ceiling is enough to stop a
@@ -33,7 +35,8 @@ class crash_files_db
 	path_set _crash_files;
 	size_t _lines_on_disk = 0;
 
-	path_map _open_files;
+	open_file_map _open_files;
+	open_file_id _next_open_file_id = 1;
 	platform::mutex _mtx;
 
 	// Each line is "<release>\t<path>". Only the running release's entries skip a file. A decoder fix
@@ -103,27 +106,39 @@ public:
 		return _lines_on_disk >= max_entries;
 	}
 
-	void add_open(const df::file_path path, const std::string_view context)
+	open_file_id add_open(const df::file_path path, const std::string_view context)
 	{
 		platform::exclusive_lock lock(_mtx);
-		_open_files[path] = {context, platform::current_thread_id()};
+		const auto id = _next_open_file_id++;
+		_open_files[id] = {path, context, platform::current_thread_id()};
+		return id;
 	}
 
-	void remove_open(const df::file_path path)
+	void remove_open(const open_file_id id)
 	{
 		platform::exclusive_lock lock(_mtx);
-		_open_files.erase(path);
+		_open_files.erase(id);
 	}
 
 	// The following two readers run from the crash / application-recovery handler
-	// (see app_frame::crash and recover_callback). They deliberately do NOT take _mtx:
-	// a blocking acquire would deadlock the handler if the crashing thread happened to
-	// hold the lock inside add_open/remove_open. Those mutators hold the lock only for a
-	// brief map insert/erase, so a best-effort lock-free read here is the safer trade-off
-	// for diagnostic output produced while the process is already failing.
+	// (see app_frame::crash and recover_callback). They take _mtx only if it is free: a blocking
+	// acquire would deadlock the handler if the crashing thread happened to hold the lock inside
+	// add_open/remove_open, and iterating without it is undefined - a concurrent insert rehashes the
+	// map and invalidates the iterator, which turns one crash into two and loses the protection this
+	// list exists to provide. A refused lock costs one unrecorded crash, which is bounded and stated.
 	void flush_open_files() const
 	{
-		if (_open_files.empty() || is_full()) return;
+		if (is_full()) return;
+
+		platform::try_exclusive_lock lock(_mtx);
+
+		if (!lock.locked())
+		{
+			df::log(__FUNCTION__, "open files busy - crash list not updated");
+			return;
+		}
+
+		if (_open_files.empty()) return;
 
 		// Several workers decode at once, so most open files are bystanders. Only the thread running
 		// this handler faulted, so record what it had open and leave the rest scannable. The recovery
@@ -137,14 +152,17 @@ public:
 		auto room = max_entries - _lines_on_disk;
 		std::string appended;
 
-		for (const auto& [path, open] : _open_files)
+		path_set appended_paths;
+
+		for (const auto& [id, open] : _open_files)
 		{
 			if (room == 0) break;
 			if (attributed && open.thread_id != faulting_thread) continue;
-			if (_crash_files.contains(path)) continue;
+			if (_crash_files.contains(open.path) || appended_paths.contains(open.path)) continue;
 
-			df::log(__FUNCTION__, std::format("Add file type to crash list {}", path.extension()));
-			appended += std::format("{}\t{}\n", _release_tag, path.str());
+			df::log(__FUNCTION__, std::format("Add file type to crash list {}", open.path.extension()));
+			appended += std::format("{}\t{}\n", _release_tag, open.path.str());
+			appended_paths.emplace(open.path);
 			--room;
 		}
 
@@ -162,14 +180,22 @@ public:
 
 	void log_open_files() const
 	{
+		platform::try_exclusive_lock lock(_mtx);
+
+		if (!lock.locked())
+		{
+			df::log(__FUNCTION__, "open files busy - not listed");
+			return;
+		}
+
 		const auto faulting_thread = platform::current_thread_id();
 
-		for (const auto& [path, open] : _open_files)
+		for (const auto& [id, open] : _open_files)
 		{
 			// The report is uploaded, so the file is identified by what diagnoses the fault - its type
 			// and the stage that had it open - rather than by name. The full path is recorded locally
 			// in the crash-files list, which stays on the machine.
-			df::log(__FUNCTION__, std::format("Open file {} in {}{}", path.extension(), open.context,
+			df::log(__FUNCTION__, std::format("Open file {} in {}{}", open.path.extension(), open.context,
 			                                  open.thread_id == faulting_thread ? " (faulting thread)" : ""));
 		}
 	}
@@ -178,21 +204,18 @@ public:
 
 struct record_open_path
 {
-	df::file_path _path;
 	crash_files_db& files_that_crash_diffractor_;
-	std::string_view _context;
+	uint64_t _id = 0;
 
 	record_open_path(crash_files_db& files_that_crash_diffractor, const df::file_path path,
-	                 const std::string_view context) : _path(path),
-	                                                   files_that_crash_diffractor_(files_that_crash_diffractor),
-	                                                   _context(context)
+	                 const std::string_view context) : files_that_crash_diffractor_(files_that_crash_diffractor)
 	{
-		files_that_crash_diffractor_.add_open(path, _context);
+		_id = files_that_crash_diffractor_.add_open(path, context);
 	}
 
 	~record_open_path()
 	{
-		files_that_crash_diffractor_.remove_open(_path);
+		files_that_crash_diffractor_.remove_open(_id);
 	}
 };
 

@@ -11,8 +11,7 @@
 
 #pragma once
 
-#include "app_commands.h"
-#include "ui.h"
+#include "libdesktop/ui.h"
 #include "ui_view.h"
 
 enum class view_element_style : uint32_t
@@ -101,7 +100,7 @@ struct view_element_padding
 		return {cx, cy};
 	}
 
-	constexpr sizei operator *(const double d) const noexcept
+	sizei operator *(const double d) const noexcept
 	{
 		return {df::round(cx * d), df::round(cy * d)};
 	}
@@ -410,7 +409,7 @@ public:
 	}
 
 	virtual view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                                     const std::vector<recti>& excluded_bounds);
+	                                                     hit_test_context& ctx);
 
 	bool is_style_bit_set(const view_element_style mask) const
 	{
@@ -454,7 +453,7 @@ flex_layout_result calc_flex_layout(const std::vector<view_element_ptr>& element
 sizei layout_flex_elements(const std::vector<view_element_ptr>& elements, ui::measure_context& mc,
                            ui::control_layouts& positions, recti bounds, const flex_container_layout& container);
 
-class view_elements : public view_element, public std::enable_shared_from_this<view_elements>
+class view_elements : public view_element, public ui::bubble_content, public std::enable_shared_from_this<view_elements>
 {
 protected:
 	std::vector<view_element_ptr> _children;
@@ -595,7 +594,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 
 protected:
 	// Metrics such as a gap in device pixels are only known once there is a measure context, so a
@@ -617,7 +616,7 @@ struct view_hover_element
 	int x_focus = -1;
 	int preferred_size = default_preferred_size;
 	bool horizontal = false;
-	commands id = commands::none;
+	commands id = {};
 
 	view_hover_element() = default;
 
@@ -634,7 +633,7 @@ struct view_hover_element
 		x_focus = -1;
 		preferred_size = default_preferred_size;
 		horizontal = false;
-		id = commands::none;
+		id = {};
 	}
 
 	friend class ui_popup_controler;
@@ -792,7 +791,7 @@ public:
 
 class link_element final : public std::enable_shared_from_this<link_element>, public text_element_base
 {
-	commands _cmd = commands::none;
+	commands _cmd = {};
 	std::function<void()> _invoke;
 	std::function<void(view_hover_element&)> _tooltip;
 	bool _full_background = false;
@@ -850,8 +849,8 @@ public:
 
 	void update_style()
 	{
-		set_style_bit(view_element_style::has_tooltip, _cmd != commands::none || _tooltip);
-		set_style_bit(view_element_style::can_invoke, _cmd != commands::none || _invoke);
+		set_style_bit(view_element_style::has_tooltip, _cmd != commands{} || _tooltip);
+		set_style_bit(view_element_style::can_invoke, _cmd != commands{} || _invoke);
 
 		_foreground_clr = link_foreground_color();
 	}
@@ -882,7 +881,7 @@ public:
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             const std::vector<recti>& excluded_bounds) override;
+	                                             hit_test_context& ctx) override;
 };
 
 inline std::string icon_to_utf8(const icon_index i)

@@ -78,14 +78,16 @@ view_controls_host_ptr import_view::controls(const ui::control_frame_ptr& owner)
 
 	const std::weak_ptr<import_view> weak_view = shared_from_this();
 	const std::weak_ptr<view_controls_host> weak_controls = result;
+	auto selected_source = calc_import_selected_source(_state);
 
-	_state.queue_async(async_queue::work, [&s = _state, weak_view, weak_controls, frame]
+	_state.queue_async(async_queue::work, [&s = _state, weak_view, weak_controls, frame,
+		                   selected_source = std::move(selected_source)]
 	{
 		std::vector<import_source> sources_temp;
 		std::string error;
 		try
 		{
-			sources_temp = calc_import_sources(s);
+			sources_temp = calc_import_sources(std::move(selected_source));
 		}
 		catch (const std::exception& e)
 		{
@@ -132,7 +134,7 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 		src.selected = is_first_source;
 		if (is_first_source)
 		{
-			selection_thumbnails->selection(src.items.thumbs(), src.items.size());
+			selection_thumbnails->selection_async(src.items.thumbs(), src.items.size(), _state._async);
 		}
 		auto check = std::make_shared<ui::check_control>(frame, src.text, src.selected, true, false,
 		                                                 [this, selection_thumbnails, source_index, weak_controls](
@@ -143,8 +145,9 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 			                                                 {
 				                                                 const auto& source_items = _sources[source_index].
 					                                                 items;
-				                                                 selection_thumbnails->selection(
-					                                                 source_items.thumbs(), source_items.size());
+				                                                 selection_thumbnails->selection_async(
+					                                                 source_items.thumbs(), source_items.size(),
+					                                                 _state._async);
 				                                                 if (const auto controls = weak_controls.lock())
 					                                                 controls->scroll_controls();
 			                                                 }
@@ -253,7 +256,7 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 			switch (i.action)
 			{
 			case import_action::import:
-				row->_text[0] = options.is_move ? tt.menu_move : tt.menu_copy;
+				row->_text[0] = options.is_move ? tt.menu_move : tt.platform_text.menu_copy;
 
 				// The destination already exists; name the policy that resolved it on the row itself
 				// so an overwrite or a renamed destination is never silently implied.
@@ -418,44 +421,20 @@ void import_view::run()
 	const auto total = count_imports(analysis_result);
 	begin_processing(total);
 	const auto processing_generation = this->processing_generation();
+	_run_generation = processing_generation;
 	const auto cancel_source = processing_cancel_source();
 	_status = std::string(tt.processing.sv());
-	const auto detach = std::make_shared<detach_file_handles>(_state);
+	// Both made before the handles are released, which can pump messages: a Cancel - or a Close the
+	// user confirms - handled in there has to reach this run. Made afterwards, each took the cancelled
+	// count as its starting point and the copy went ahead regardless.
 	auto token = df::cancel_token(*cancel_source);
 	const auto view = shared_from_this();
-	const auto results = std::make_shared<view_command_status>(_state._async, cancel_source,
-	                                                           [view, processing_generation](const size_t index)
-	                                                           {
-		                                                           if (view->is_processing_generation(
-			                                                           processing_generation)) view->
-				                                                           processing_work_item(index);
-	                                                           },
-	                                                           [view, completion_status, processing_generation](
-	                                                           std::string message,
-	                                                           const std::vector<view_operation_result>& results)
-	                                                           {
-		                                                           if (!view->is_processing_generation(
-			                                                           processing_generation)) return;
-		                                                           view->end_processing();
-		                                                           const auto result_summary = view->show_results(
-			                                                           results);
-		                                                           // The counts state what the run did; the message
-		                                                           // states why some rows did nothing. A partial run
-		                                                           // needs both.
-		                                                           view->_status = result_summary.empty()
-			                                                           ? (message.empty()
-				                                                              ? completion_status
-				                                                              : std::move(message))
-			                                                           : (message.empty()
-				                                                              ? result_summary
-				                                                              : result_summary + "  " + message);
-		                                                           view->_state.invalidate_view(
-			                                                           view_invalid::status |
-			                                                           view_invalid::command_state);
-	                                                           });
+	const auto results = make_run_status(view, processing_generation, cancel_source, completion_status);
+	const auto detach = std::make_shared<detach_file_handles>(_state);
 
 	_state.queue_async(async_queue::work,
-	                   [&s = _state, results, view, analysis_result, options, token, detach]
+	                   [&s = _state, results, view, analysis_result, options, token, cancel_source, detach,
+		                   processing_generation]
 	                   {
 		                   result_scope rr(results);
 		                   const auto copy_result = import_copy(s.item_index, results, analysis_result, options,
@@ -465,8 +444,17 @@ void import_view::run()
 			                   db.writes_item_imports(copy_result.imports);
 		                   });
 
-		                   s.queue_ui([&s, view, folder = copy_result.folder, detach]
+		                   // The token reads cancel_source without owning it, and this hop can outlive the
+		                   // run status that otherwise keeps the source alive.
+		                   s.queue_ui([&s, view, folder = copy_result.folder, detach, processing_generation, token,
+			                   cancel_source]
 		                   {
+			                   // Navigation is the run's own conclusion, so a run the user cancelled or
+			                   // replaced must not take the view somewhere when its worker finally
+			                   // finishes - by then the user has moved on and would be pulled back.
+			                   // Cancel stops the run without replacing it, so it is asked separately.
+			                   if (token.is_cancelled() || !view->is_processing_generation(processing_generation)) return;
+
 			                   if (!folder.is_empty())
 			                   {
 				                   detach->keep_display_closed();
@@ -475,10 +463,9 @@ void import_view::run()
 			                   }
 		                   });
 
-		                   // A refused row is a file that moved on, not a disk error, and the two are
-		                   // indistinguishable from the row alone. Without this the user would read a
-		                   // partial run as a partly broken one.
-		                   rr.complete(copy_result.refused > 0 ? tt.sync_analysis_changed.sv() : std::string_view{});
+		                   // import_copy completes the run itself, refused rows explained, and the first
+		                   // completion is the only one shown. The scope above stands behind it for a
+		                   // copy that throws instead.
 	                   });
 }
 
@@ -491,7 +478,7 @@ void import_view::analyze()
 	{
 		_analysis.clear();
 		_analysis_valid = false;
-		_status = std::string(tt.error_invalid_files.sv());
+		_status = std::string(tt.platform_text.error_invalid_files.sv());
 		_state.invalidate_view(view_invalid::status | view_invalid::command_state);
 		return;
 	}
@@ -503,8 +490,11 @@ void import_view::analyze()
 	auto token = df::cancel_token(*cancel_source);
 	_status = std::string(tt.analyzing.sv());
 
+	// The token points into cancel_source without owning it, and the next Analyze replaces the view's
+	// copy while this one may still be scanning, so the workers hold the source for as long as the token.
 	_state._async.queue_database(
-		[&s = _state, import_root, view = shared_from_this(), options, token, processing_generation](const database& db)
+		[&s = _state, import_root, view = shared_from_this(), options, token, cancel_source, processing_generation](
+		const database& db)
 		{
 			item_import_set previous_imported;
 			try
@@ -526,7 +516,7 @@ void import_view::analyze()
 			}
 
 			s.queue_async(async_queue::work,
-			              [&s, import_root, previous_imported, view, options, token, processing_generation]
+			              [&s, import_root, previous_imported, view, options, token, cancel_source, processing_generation]
 			              {
 				              import_analysis_result analysis_result;
 				              try
@@ -580,5 +570,8 @@ void import_view::refresh()
 
 void import_view::reload()
 {
+	// Refresh re-plans, which restarts an Analyze in progress. A Run in progress is left alone:
+	// analyzing again would cancel it partway through without reporting what it had done.
+	if (progress().active && is_processing_generation(_run_generation)) return;
 	analyze();
 }

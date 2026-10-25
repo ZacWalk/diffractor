@@ -7,8 +7,9 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Compressed posting lists for the search inverted index. Encodes a strictly
-// increasing list of document (item) ids as delta + variable-byte (VByte) bytes, and
-// provides the boolean set operations (AND / OR / AND-NOT) used to compose term queries.
+// increasing list of document (item) ids as delta + variable-byte (VByte) bytes. The
+// trigram index built on top of it accelerates substring prediction in the address box;
+// the boolean set operations and the inverted index above them are implemented and tested
 
 #pragma once
 

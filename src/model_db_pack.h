@@ -15,6 +15,8 @@
 class metadata_packer
 {
 public:
+	static constexpr uint8_t version = 1;
+
 	df::blob _data;
 
 	void reset_to_header()
@@ -22,7 +24,7 @@ public:
 		_data.clear();
 		_data.reserve(256);
 		_data.push_back(0xff); // marker
-		_data.push_back(0x01); // version
+		_data.push_back(version);
 	}
 
 	metadata_packer()
@@ -182,7 +184,7 @@ public:
 	// recognise is skipped by its length instead of truncating everything that follows it.
 	bool at_end() const
 	{
-		return _version != 1 || remaining() < 2;
+		return (_version == 0 || _version > metadata_packer::version) || remaining() < 2;
 	}
 
 	// The property for the next record, or prop::null when this build does not know the id.
@@ -230,6 +232,28 @@ public:
 		if (sizeof(v) == ser_len && remaining() >= ser_len)
 		{
 			std::memcpy(&v, _data.data + _pos, ser_len);
+		}
+
+		_pos += ser_len;
+	}
+
+	template <typename T>
+	void read_val_compatible(T& v)
+	{
+		const auto ser_len = read_len();
+
+		if (remaining() >= ser_len)
+		{
+			if (ser_len == sizeof(uint16_t))
+			{
+				uint16_t stored = 0;
+				std::memcpy(&stored, _data.data + _pos, sizeof(stored));
+				v = static_cast<T>(stored);
+			}
+			else if (ser_len == sizeof(T))
+			{
+				std::memcpy(&v, _data.data + _pos, ser_len);
+			}
 		}
 
 		_pos += ser_len;

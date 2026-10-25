@@ -58,40 +58,7 @@ struct item_and_group
 	df::item_group_ptr g;
 	df::item_element_ptr i;
 
-	friend bool operator==(const item_and_group& lhs, const item_and_group& rhs)
-	{
-		return lhs.g == rhs.g
-			&& lhs.i == rhs.i;
-	}
-
-	friend bool operator!=(const item_and_group& lhs, const item_and_group& rhs)
-	{
-		return !(lhs == rhs);
-	}
-
-	friend bool operator<(const item_and_group& lhs, const item_and_group& rhs)
-	{
-		if (lhs.g < rhs.g)
-			return true;
-		if (rhs.g < lhs.g)
-			return false;
-		return lhs.i < rhs.i;
-	}
-
-	friend bool operator<=(const item_and_group& lhs, const item_and_group& rhs)
-	{
-		return !(rhs < lhs);
-	}
-
-	friend bool operator>(const item_and_group& lhs, const item_and_group& rhs)
-	{
-		return rhs < lhs;
-	}
-
-	friend bool operator>=(const item_and_group& lhs, const item_and_group& rhs)
-	{
-		return !(lhs < rhs);
-	}
+	friend auto operator<=>(const item_and_group&, const item_and_group&) = default;
 };
 
 // Discussion #251: the menu opened by the always-visible control in the scroller track. Only
@@ -119,6 +86,8 @@ public:
 
 	view_element_ptr _media_element;
 	df::item_element_ptr _layout_center_item;
+	df::zoom_view_state _touch_pan_start_zoom;
+	bool _touch_pan_zoom_active = false;
 
 	view_scroller _items_scroller;
 	view_scroller _media_scroller;
@@ -312,14 +281,28 @@ public:
 
 	void pan_start(const pointi start_loc) override
 	{
+		_touch_pan_zoom_active = false;
+		if (!_display) return;
+
+		const auto region = region_at(start_loc);
+		if (region != view_region::media && region != view_region::media_scroll) return;
+		if (!_display->zoom()) return;
+
+		_display->active_zoom_pane_at(pointd(start_loc));
+		_touch_pan_start_zoom = _display->zoom_state();
+		_touch_pan_zoom_active = true;
 	}
 
 	void pan(const pointi start_loc, const pointi current_loc) override
 	{
+		if (_touch_pan_zoom_active && _display && _display->zoom())
+			_display->pan_zoom(pointd(current_loc - start_loc), _touch_pan_start_zoom);
 	}
 
 	void pan_end(const pointi start_loc, const pointi final_loc) override
 	{
+		pan(start_loc, final_loc);
+		_touch_pan_zoom_active = false;
 	}
 
 	recti calc_items_bounds() const
@@ -348,9 +331,10 @@ public:
 	void update_edit_caret();
 	recti calc_spliter_bounds() const { return _regions.splitter; }
 	void update_regions();
-	view_controller_ptr media_controller_from_location(const view_host_ptr& host, pointi loc);
-	view_controller_ptr items_controller_from_location(const view_host_ptr& host, pointi loc);
-	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc) override;
+	recti region_bounds(view_region region) const;
+	view_controller_ptr media_controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx);
+	view_controller_ptr items_controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx);
+	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 
 	void broadcast_event(const view_element_event& event) const override;
 

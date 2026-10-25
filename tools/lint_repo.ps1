@@ -28,6 +28,201 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Push-Location $repo
 
+function Get-BlankedSource {
+    <#
+        Replaces comments and literals with spaces of the same length, so offsets and line numbers
+        stay valid while brackets inside them stop counting as structure.
+    #>
+    param([string]$Text)
+
+    $sb = [System.Text.StringBuilder]::new($Text)
+    $n = $Text.Length
+    $i = 0
+
+    $blank = {
+        param($at)
+        if ($Text[$at] -ne "`n" -and $Text[$at] -ne "`r") { $sb[$at] = ' ' }
+    }
+
+    while ($i -lt $n) {
+        $c = $Text[$i]
+        $next = if ($i + 1 -lt $n) { $Text[$i + 1] } else { [char]0 }
+
+        # A C++14 digit separator (100'000) does not open a character literal. The token the quote
+        # ends decides it: a number starts with a digit, and a literal prefix (u8'x', L'x') does
+        # not. Read as a literal, one separator blanked everything up to the next quote in the file.
+        $isSeparator = $false
+        if ($c -eq "'" -and $i -gt 0) {
+            $s = $i
+            while ($s -gt 0 -and "$($Text[$s - 1])" -match '[0-9A-Za-z_.]') { $s-- }
+            $isSeparator = $s -lt $i -and [char]::IsDigit($Text[$s])
+        }
+
+        if ($c -eq '/' -and $next -eq '/') {
+            while ($i -lt $n -and $Text[$i] -ne "`n") { & $blank $i; $i++ }
+        }
+        elseif ($c -eq '/' -and $next -eq '*') {
+            & $blank $i; $i++
+            while ($i -lt $n) {
+                if ($Text[$i] -eq '*' -and $i + 1 -lt $n -and $Text[$i + 1] -eq '/') {
+                    & $blank $i; & $blank ($i + 1); $i += 2
+                    break
+                }
+                & $blank $i; $i++
+            }
+        }
+        elseif ($c -eq 'R' -and $next -eq '"') {
+            $open = $Text.IndexOf('(', $i + 2)
+            if ($open -lt 0) { $i++; continue }
+            $terminator = ')' + $Text.Substring($i + 2, $open - ($i + 2)) + '"'
+            $end = $Text.IndexOf($terminator, $open)
+            if ($end -lt 0) { $i++; continue }
+            for ($k = $i; $k -lt $end + $terminator.Length; $k++) { & $blank $k }
+            $i = $end + $terminator.Length
+        }
+        elseif (($c -eq '"' -or $c -eq "'") -and -not $isSeparator) {
+            $quote = $c
+            & $blank $i; $i++
+            while ($i -lt $n -and $Text[$i] -ne $quote) {
+                if ($Text[$i] -eq '\') { & $blank $i; $i++; if ($i -lt $n) { & $blank $i; $i++ }; continue }
+                & $blank $i; $i++
+            }
+            if ($i -lt $n) { & $blank $i; $i++ }
+        }
+        else { $i++ }
+    }
+
+    return $sb.ToString()
+}
+
+function Find-CaptureAndMove {
+    <#
+        One call that both captures a variable by copy, for a lambda, and std::move-s that same
+        variable into another argument. See the no-capture-and-move rule below for why that is a
+        defect and what is deliberately not reported.
+    #>
+    param([string]$Path)
+
+    $raw = Get-Content -Raw -LiteralPath $Path
+    if (-not $raw) { return }
+    $text = Get-BlankedSource $raw
+    $n = $text.Length
+
+    # Requiring a body after the bracket keeps attributes and array subscripts out.
+    $lambda = [regex]'\[([^\[\]]*)\](?:\s*\([^()]*\))?(?:\s*mutable)?(?:\s*noexcept)?(?:\s*->[^{;]+)?\s*\{'
+
+    $found = @()
+    foreach ($m in $lambda.Matches($text)) {
+        $copied = @()
+        $declared = @()
+
+        foreach ($part in $m.Groups[1].Value.Split(',')) {
+            $p = $part.Trim()
+            if (-not $p -or $p -eq 'this' -or $p -eq '*this' -or $p -eq '=' -or $p -eq '&') { continue }
+
+            if ($p -match '^&?\s*([A-Za-z_]\w*)') { $declared += $matches[1] }
+
+            # Only a plain by-copy capture of an outer variable can observe a move elsewhere in the
+            # call: '&' does not copy, and an init-capture introduces a binding of its own.
+            if ($p -notmatch '=' -and -not $p.StartsWith('&') -and $p -match '^([A-Za-z_]\w*)$') {
+                $copied += $matches[1]
+            }
+
+            # Except an init-capture that copies an outer variable ([t = tree]): it reads the
+            # variable when the lambda is built, so it observes a move in the same call exactly as
+            # a plain capture does. Only the moving form, [t = std::move(tree)], is exempt.
+            if ($p -match '^[A-Za-z_]\w*\s*=\s*([A-Za-z_]\w*)$') {
+                $copied += $matches[1]
+            }
+        }
+
+        $found += [pscustomobject]@{
+            CaptureStart = $m.Groups[1].Index
+            BraceAt      = $m.Index + $m.Length - 1
+            Copied       = $copied
+            Declared     = $declared
+            BodyEnd      = -1
+        }
+    }
+
+    if (-not $found.Count) { return }
+
+    # One scan collects parenthesis pairs, brace pairs, and the open parentheses at each lambda.
+    $parens = [System.Collections.Generic.List[int]]::new()
+    $braces = [System.Collections.Generic.List[int]]::new()
+    $parenEnd = @{}
+    $braceEnd = @{}
+    $enclosingParens = @{}
+    $lambdaAt = @{}
+    foreach ($f in $found) { $lambdaAt[$f.CaptureStart] = $f }
+
+    for ($i = 0; $i -lt $n; $i++) {
+        $ch = $text[$i]
+
+        if ($lambdaAt.ContainsKey($i)) { $enclosingParens[$i] = @($parens.ToArray()) }
+
+        if ($ch -eq '(') { $parens.Add($i) }
+        elseif ($ch -eq ')') {
+            if ($parens.Count) { $o = $parens[$parens.Count - 1]; $parens.RemoveAt($parens.Count - 1); $parenEnd[$o] = $i }
+        }
+        elseif ($ch -eq '{') { $braces.Add($i) }
+        elseif ($ch -eq '}') {
+            if ($braces.Count) { $o = $braces[$braces.Count - 1]; $braces.RemoveAt($braces.Count - 1); $braceEnd[$o] = $i }
+        }
+    }
+
+    foreach ($f in $found) {
+        $f.BodyEnd = if ($braceEnd.ContainsKey($f.BraceAt)) { $braceEnd[$f.BraceAt] } else { $f.BraceAt }
+    }
+
+    foreach ($f in $found) {
+        if (-not $f.Copied.Count) { continue }
+
+        $opens = $enclosingParens[$f.CaptureStart]
+        if (-not $opens) { continue }
+
+        # A lambda nested inside another sees the enclosing lambda's capture, not the function's
+        # variable, so a move naming it further out is about a different entity.
+        $shadowed = @()
+        foreach ($other in $found) {
+            if ($other.CaptureStart -lt $f.CaptureStart -and $other.BodyEnd -gt $f.CaptureStart) {
+                $shadowed += $other.Declared
+            }
+        }
+
+        foreach ($name in ($f.Copied | Select-Object -Unique)) {
+            if ($shadowed -contains $name) { continue }
+
+            $move = [regex]"std::move\(\s*$([regex]::Escape($name))\s*\)"
+
+            foreach ($open in $opens) {
+                if (-not $parenEnd.ContainsKey($open)) { continue }
+                $close = $parenEnd[$open]
+
+                # The lambda's own extent is excluded: moving the captured copy inside the body is
+                # ordinary, and an init-capture is the correct way to move a value into a lambda.
+                $lamStart = [Math]::Max($open, $f.CaptureStart - 1)
+                $lamEnd = [Math]::Min($f.BodyEnd + 1, $close)
+
+                $region = $text.Substring($open, $close - $open)
+                $cutAt = $lamStart - $open
+                $cutLen = [Math]::Max(0, $lamEnd - $lamStart)
+                if ($cutAt -ge 0 -and $cutAt + $cutLen -le $region.Length) {
+                    $region = $region.Remove($cutAt, $cutLen).Insert($cutAt, ' ' * $cutLen)
+                }
+
+                $hit = $move.Match($region)
+                if ($hit.Success) {
+                    $at = $open + $hit.Index
+                    $line = ($text.Substring(0, $at) -split "`n").Count
+                    "src/$(Split-Path $Path -Leaf):${line}: '$name' is captured by copy and moved in one call -- sequence the capture first"
+                    break
+                }
+            }
+        }
+    }
+}
+
 try {
     # secrets.h is generated locally and git-ignored; it is not part of the source contract.
     $sourceFiles = Get-ChildItem src -File -Include *.cpp, *.h -Recurse |
@@ -100,6 +295,16 @@ try {
         }
     }
 
+    $rules['no-capture-and-move'] = @{
+        # A by-copy capture is reported, plain ([tree]) or through an init-capture ([t = tree]). A
+        # '[=]' default capture would need to know which names it binds, and guessing there would
+        # report the safe cases too.
+        Why   = 'AGENTS.md "Argument order": a variable captured by copy and moved in one call is read in unspecified order.'
+        Check = {
+            $sourceFiles | ForEach-Object { Find-CaptureAndMove $_.FullName }
+        }
+    }
+
     $rules['frame-accessor'] = @{
         # ui_dialog.h is excluded because it declares both a ui::frame_ptr and a
         # ui::control_frame_ptr named _frame in different classes, and only the first is
@@ -118,12 +323,10 @@ try {
     }
 
     $rules['one-build-description'] = @{
-        # third-party/FFmpeg and third-party/xmp are submodules with their own history; the fork's
-        # project file is not this repository's to remove.
         Why   = 'docs/linux.md "Retiring MSBuild": CMake is the only description of the tree, and two descriptions drift.'
         Check = {
             $tracked = @(git ls-files '*.sln' '*.vcxproj' '*.vcxproj.filters' 2>$null) |
-                Where-Object { $_ -and $_ -notmatch '^third-party/(FFmpeg|xmp)/' }
+                Where-Object { $_ }
 
             $tracked | ForEach-Object { "$_ -- describe the build in CMakeLists.txt or cmake/vendored/" }
         }

@@ -2236,9 +2236,6 @@ msgstr "Використовуйте апаратне прискорення д�
 msgid "Use hardware acceleration to decode video (when available)"
 msgstr "Використовувати апаратне прискорення для декодування відео (за наявності)"
 
-msgid "Use NV12 and P010 format textures (Automatically turned off if problems detected)"
-msgstr "Використовуйте текстури формату NV12 і P010 (автоматично вимикається при виявленні проблем)"
-
 msgid "Show an inset shadow surrounding the image view panel."
 msgstr "Показати вставну тінь навколо панелі перегляду зображення."
 
@@ -2761,6 +2758,24 @@ msgstr "Підготовка до імпорту файлів..."
 msgid "Preparing files for email..."
 msgstr "Підготовка файлів для надсилання електронною поштою..."
 
+msgid "Share"
+msgstr "Поділитися"
+
+msgid "Preparing files to share..."
+msgstr "Підготовка файлів до надсилання..."
+
+msgid "Windows lists the apps that can receive the files. Originals are unchanged."
+msgstr "Windows покаже програми, які можуть отримати файли. Оригінали залишаться без змін."
+
+msgid "Send the files as one zip file"
+msgstr "Надіслати файли одним ZIP-архівом"
+
+msgid "&Share"
+msgstr "&Поділитися"
+
+msgid "The files could not be shared."
+msgstr "Не вдалося поділитися файлами."
+
 msgid "Preparing to synchronize files..."
 msgstr "Підготовка до синхронізації файлів..."
 
@@ -3223,12 +3238,20 @@ msgstr[1] "Пропущено {count} елементи, оскільки їх у
 msgstr[2] "Пропущено {count} елементів, оскільки їх уже було імпортовано."
 msgstr[3] "Пропущено {count} елемента, оскільки їх уже було імпортовано."
 
-msgid "{first-name} will be moved to the recycle bin."
-msgid_plural "{count} items ({size}) will be moved to the recycle bin."
-msgstr[0] "{first-name} буде переміщено до Кошика."
-msgstr[1] "{count} елементи ({size}) буде переміщено до Кошика."
-msgstr[2] "{count} елементів ({size}) буде переміщено до Кошика."
-msgstr[3] "{count} елемента ({size}) буде переміщено до Кошика."
+msgid "1 item was imported but its created date could not be set."
+msgid_plural ""
+"{count} items were imported but their created date could not be set."
+msgstr[0] "Імпортовано 1 елемент, але не вдалося встановити його дату створення."
+msgstr[1] "Імпортовано {count} елементи, але не вдалося встановити їхню дату створення."
+msgstr[2] "Імпортовано {count} елементів, але не вдалося встановити їхню дату створення."
+msgstr[3] "Імпортовано {count} елемента, але не вдалося встановити їхню дату створення."
+
+msgid "{first-name} will be moved to the recycle bin when Windows can recycle it."
+msgid_plural "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
+msgstr[0] "{first-name} буде переміщено до кошика, якщо Windows зможе це зробити."
+msgstr[1] "{count} елементів ({size}) буде переміщено до кошика, якщо Windows зможе це зробити."
+msgstr[2] "{count} елементів ({size}) буде переміщено до кошика, якщо Windows зможе це зробити."
+msgstr[3] "{count} елементів ({size}) буде переміщено до кошика, якщо Windows зможе це зробити."
 
 msgid "{first-name} will be permanently deleted."
 msgid_plural "{count} items ({size}) will be permanently deleted."
@@ -3302,6 +3325,13 @@ msgstr[0] "У поштовому клієнті буде відкрито чер
 msgstr[1] "У поштовому клієнті буде відкрито чернетку з {count} вибраними елементами у вкладенні."
 msgstr[2] "У поштовому клієнті буде відкрито чернетку з {count} вибраними елементами у вкладенні."
 msgstr[3] "У поштовому клієнті буде відкрито чернетку з {count} вибраними елементами у вкладенні."
+
+msgid "{first-name} will be offered to the app you choose."
+msgid_plural "{count} selected items will be offered to the app you choose."
+msgstr[0] "Елемент {first-name} буде передано вибраній вами програмі."
+msgstr[1] "{count} вибрані елементи буде передано вибраній вами програмі."
+msgstr[2] "{count} вибраних елементів буде передано вибраній вами програмі."
+msgstr[3] "{count} вибраних елементів буде передано вибраній вами програмі."
 
 msgid "{first-name} already exists. Do you want to replace it?"
 msgid_plural "{first-name} and {other} other items already exist. Do you want to replace them?"
@@ -3700,3 +3730,160 @@ msgstr "Групувати за датою оригіналу"
 
 msgid "Sort by Date original"
 msgstr "Сортувати за датою оригіналу"
+
+msgid "Movie mixer"
+msgstr "Мікшер фільму"
+
+msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Зберіть вибрані фотографії та відео в один ролик. Додавайте, вилучайте та змінюйте порядок кліпів на смузі нижче й обрізайте вибраний кліп. Попередній перегляд показує те, що буде відтворено; нічого не записується, доки ви не відтворите або не збережете."
+
+msgid "Movie"
+msgstr "Фільм"
+
+msgid "Selected clip"
+msgstr "Вибраний кліп"
+
+msgid "Crossfade between clips"
+msgstr "Перехресне згасання між кліпами"
+
+msgid "Cut between clips"
+msgstr "Склейка між кліпами"
+
+msgid "Transition (tenths of a second)"
+msgstr "Перехід (десяті частки секунди)"
+
+msgid "Fade (tenths of a second)"
+msgstr "Поява/згасання (десяті частки секунди)"
+
+msgid "Fade in from black"
+msgstr "Поява з чорного"
+
+msgid "Fade out to black"
+msgstr "Згасання в чорне"
+
+msgid "Photo duration (tenths of a second)"
+msgstr "Тривалість фотографії (десяті частки секунди)"
+
+msgid "This photo (tenths of a second)"
+msgstr "Ця фотографія (десяті частки секунди)"
+
+msgid "Use the movie default"
+msgstr "Використовувати типове значення фільму"
+
+msgid "Add photos and videos to build a movie."
+msgstr "Додайте фотографії та відео, щоб створити фільм."
+
+msgid "Output {} x {} at {} fps, {} long."
+msgstr "Результат {} x {}, {} кадр/с, тривалість {}."
+
+msgid "{} - clip {} of {}, starting at {}."
+msgstr "{} - кліп {} з {}, початок {}."
+
+msgid "Movie project"
+msgstr "Проєкт фільму"
+
+msgid "Windows Movie Maker project"
+msgstr "Проєкт Windows Movie Maker"
+
+msgid "Photos and videos"
+msgstr "Фотографії та відео"
+
+msgid "Could not read the project {}."
+msgstr "Не вдалося прочитати проєкт {}."
+
+msgid "Could not save the project {}."
+msgstr "Не вдалося зберегти проєкт {}."
+
+msgid "Assemble the selected photos and videos into one video."
+msgstr "Збирає вибрані фотографії та відео в один ролик."
+
+msgid "Add files"
+msgstr "Додати файли"
+
+msgid "Remove from movie"
+msgstr "Вилучити з фільму"
+
+msgid "Send to the end"
+msgstr "Перемістити в кінець"
+
+msgid "Open project"
+msgstr "Відкрити проєкт"
+
+msgid "Save project"
+msgstr "Зберегти проєкт"
+
+msgid "Import Movie Maker project"
+msgstr "Імпортувати проєкт Movie Maker"
+
+msgid "Video"
+msgstr "Відео"
+
+msgid "Rendering the movie"
+msgstr "Візуалізація фільму"
+
+msgid "The movie could not be rendered. {}"
+msgstr "Не вдалося візуалізувати фільм. {}"
+
+msgid "The movie has no length."
+msgstr "Фільм має нульову тривалість."
+
+msgid "The encoder would not accept this movie."
+msgstr "Кодувальник не прийняв цей фільм."
+
+msgid "There was not enough memory for a movie frame."
+msgstr "Не вистачило пам'яті для кадру фільму."
+
+msgid "A clip could not be decoded."
+msgstr "Не вдалося декодувати один із кліпів."
+
+msgid "The encoder stopped before the movie was finished."
+msgstr "Кодувальник зупинився до завершення фільму."
+
+msgid "That name belongs to a clip in this movie. Choose another name."
+msgstr "Ця назва належить кліпу в цьому фільмі. Виберіть іншу назву."
+
+msgid "Rendered {}."
+msgstr "Візуалізовано: {}."
+
+msgid "Rendering was canceled. Nothing was written."
+msgstr "Візуалізацію скасовано. Нічого не записано."
+
+msgid "No missing clip was found in that folder."
+msgstr "У цій теці не знайдено жодного відсутнього кліпу."
+
+msgid "This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it."
+msgstr "Цей фільм має зміни, яких немає в жодному файлі проєкту. Він зберігається, доки Diffractor запущено, а після закриття Diffractor його буде втрачено."
+
+msgid "Close without saving"
+msgstr "Закрити без збереження"
+
+msgid "Render"
+msgstr "Візуалізувати"
+
+msgid "Write the movie to a video file."
+msgstr "Записує фільм у відеофайл."
+
+msgid "Relink missing files"
+msgstr "Перепризначити відсутні файли"
+
+msgid "Point clips whose source file has moved at a folder you choose."
+msgstr "Спрямовує кліпи, вихідні файли яких було переміщено, до вибраної вами теки."
+
+msgid "1 element of the imported project was left out because Movie cannot represent it."
+msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
+msgstr[0] "1 елемент імпортованого проєкту пропущено, оскільки Фільм не може його представити."
+msgstr[1] "{count} елементи імпортованого проєкту пропущено, оскільки Фільм не може їх представити."
+msgstr[2] "{count} елементів імпортованого проєкту пропущено, оскільки Фільм не може їх представити."
+
+msgid "1 clip cannot find its source file."
+msgid_plural "{count} clips cannot find their source files."
+msgstr[0] "1 кліп не може знайти свій вихідний файл."
+msgstr[1] "{count} кліпи не можуть знайти свої вихідні файли."
+msgstr[2] "{count} кліпів не можуть знайти свої вихідні файли."
+
+msgid "1 clip was relinked."
+msgid_plural "{count} clips were relinked."
+msgstr[0] "1 кліп перепризначено."
+msgstr[1] "{count} кліпи перепризначено."
+msgstr[2] "{count} кліпів перепризначено."
+

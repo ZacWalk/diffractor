@@ -17,7 +17,7 @@
 #include "crypto.h"
 #include "files.h"
 #include "metadata_xmp.h"
-#include "platform.h"
+#include "libdesktop/platform.h"
 
 #include <cstdio>
 #include <numeric>
@@ -53,17 +53,20 @@ namespace
 
 	struct report_writer
 	{
-		FILE* file = nullptr;
-
-		~report_writer()
-		{
-			if (file) fclose(file);
-		}
+		platform::file_ptr file;
+		bool write_failed = false;
 
 		void line(const std::string_view text) const
 		{
 			printf("%.*s\n", static_cast<int>(text.size()), text.data());
-			if (file) fprintf(file, "%.*s\n", static_cast<int>(text.size()), text.data());
+			if (file)
+			{
+				const auto line = std::format("{}\n", text);
+				if (file->write(std::bit_cast<const uint8_t*>(line.data()), line.size()) != line.size())
+				{
+					const_cast<report_writer*>(this)->write_failed = true;
+				}
+			}
 		}
 	};
 
@@ -137,6 +140,110 @@ namespace
 
 		return result;
 	}
+
+	struct anchor_stats
+	{
+		size_t sets = 0;
+		size_t grouped_photos = 0;
+		size_t largest = 0;
+		int worst_diameter = 0;
+		size_t declined_capture_times = 0;
+		size_t declined_photos = 0;
+		std::map<size_t, size_t> size_histogram;
+	};
+
+	anchor_stats calc_anchor_stats(const std::vector<photo_entry>& photos,
+	                               const std::map<uint64_t, std::vector<size_t>>& buckets)
+	{
+		anchor_stats result;
+
+		for (const auto& [key, members] : buckets)
+		{
+			if (members.size() < 2 || members.size() > max_photos_sharing_capture_time) continue;
+
+			// Lowest path among the pictures that could be identified.
+			std::optional<size_t> anchor;
+
+			for (const auto m : members)
+			{
+				if (!crypto::phash_is_usable(photos[m].phash[0])) continue;
+				if (!anchor.has_value() || photos[m].path < photos[*anchor].path) anchor = m;
+			}
+
+			if (!anchor.has_value()) continue;
+
+			std::vector<size_t> matched;
+
+			// Mirrors the shipped crowd rule: only an untuned match is burst evidence, because
+			// continuous shooting never produces a rotated frame.
+			size_t same_orientation_matches = 0;
+
+			for (const auto m : members)
+			{
+				if (m == *anchor || !crypto::phash_is_usable(photos[m].phash[0])) continue;
+				if (crypto::phash_distance(photos[*anchor].phash[0], photos[m].phash) <= shipped_threshold)
+				{
+					matched.push_back(m);
+
+					if (crypto::phash_distance(photos[*anchor].phash[0], photos[m].phash[0]) <= shipped_threshold)
+					{
+						++same_orientation_matches;
+					}
+				}
+			}
+
+			if (matched.empty()) continue;
+
+			if (same_orientation_matches > max_similar_pictures_at_one_capture_time)
+			{
+				++result.declined_capture_times;
+				result.declined_photos += matched.size() + 1;
+				continue;
+			}
+
+			++result.sets;
+			const auto set_size = matched.size() + 1;
+			result.grouped_photos += set_size;
+			result.largest = std::max(result.largest, set_size);
+			++result.size_histogram[set_size];
+
+			matched.push_back(*anchor);
+
+			for (size_t a = 0; a < matched.size(); ++a)
+			{
+				for (size_t b = a + 1; b < matched.size(); ++b)
+				{
+					result.worst_diameter = std::max(result.worst_diameter,
+					                                crypto::phash_distance(photos[matched[a]].phash[0],
+					                                                       photos[matched[b]].phash));
+				}
+			}
+		}
+
+		return result;
+	}
+}
+
+duplicate_report_anchor_stats calc_duplicate_report_anchor_stats_for_tests(
+	const std::vector<duplicate_report_test_photo>& test_photos)
+{
+	std::vector<photo_entry> photos;
+	photos.reserve(test_photos.size());
+
+	for (const auto& test_photo : test_photos)
+	{
+		photo_entry photo;
+		photo.path = test_photo.path;
+		photo.created_key = test_photo.created_key;
+		photo.phash = test_photo.phash;
+		photos.emplace_back(photo);
+	}
+
+	std::map<uint64_t, std::vector<size_t>> buckets;
+	for (auto i = 0_z; i < photos.size(); ++i) buckets[photos[i].created_key].push_back(i);
+
+	const auto stats = calc_anchor_stats(photos, buckets);
+	return {stats.sets, stats.grouped_photos, stats.declined_capture_times};
 }
 
 int run_duplicate_report(const std::string_view folder_text, const std::string_view output_text)
@@ -156,8 +263,16 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 
 	if (!output_text.empty())
 	{
-		const auto output_path = std::string(output_text);
-		if (fopen_s(&out.file, output_path.c_str(), "wt") != 0) out.file = nullptr;
+		const auto output_path = df::find_last_slash(output_text) == std::string_view::npos
+			                         ? df::file_path(df::folder_path("."), output_text)
+			                         : df::file_path(output_text);
+		out.file = platform::open_file(output_path, platform::file_open_mode::create);
+		if (!out.file)
+		{
+			printf("dup-report: could not open output file: %.*s\n", static_cast<int>(output_text.size()),
+			       output_text.data());
+			return 1;
+		}
 	}
 
 	out.line(std::format("Duplicate grouping report"));
@@ -502,85 +617,25 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	                     shipped_threshold, max_similar_pictures_at_one_capture_time));
 
 	{
-		size_t sets = 0;
-		size_t grouped_photos = 0;
-		size_t largest = 0;
-		int worst_diameter = 0;
-		size_t declined_capture_times = 0;
-		size_t declined_photos = 0;
-		std::map<size_t, size_t> size_histogram;
+		const auto stats = calc_anchor_stats(photos, buckets);
 
-		for (const auto& [key, members] : buckets)
-		{
-			if (members.size() < 2 || members.size() > max_photos_sharing_capture_time) continue;
-
-			// Lowest path among the pictures that could be identified.
-			auto anchor = members.size();
-
-			for (const auto m : members)
-			{
-				if (!crypto::phash_is_usable(photos[m].phash[0])) continue;
-				if (anchor == members.size() || photos[m].path < photos[anchor].path) anchor = m;
-			}
-
-			if (anchor == members.size()) continue;
-
-			std::vector<size_t> matched;
-
-			// Mirrors the shipped crowd rule: only an untuned match is burst evidence, because
-			// continuous shooting never produces a rotated frame.
-			size_t same_orientation_matches = 0;
-
-			for (const auto m : members)
-			{
-				if (m == anchor || !crypto::phash_is_usable(photos[m].phash[0])) continue;
-				if (crypto::phash_distance(photos[anchor].phash[0], photos[m].phash) <= shipped_threshold)
-				{
-					matched.push_back(m);
-
-					if (crypto::phash_distance(photos[anchor].phash[0], photos[m].phash[0]) <= shipped_threshold)
-					{
-						++same_orientation_matches;
-					}
-				}
-			}
-
-			if (matched.empty()) continue;
-
-			if (same_orientation_matches > max_similar_pictures_at_one_capture_time)
-			{
-				++declined_capture_times;
-				declined_photos += matched.size() + 1;
-				continue;
-			}
-
-			++sets;
-			const auto set_size = matched.size() + 1;
-			grouped_photos += set_size;
-			largest = std::max(largest, set_size);
-			++size_histogram[set_size];
-
-			matched.push_back(anchor);
-
-			for (size_t a = 0; a < matched.size(); ++a)
-			{
-				for (size_t b = a + 1; b < matched.size(); ++b)
-				{
-					worst_diameter = std::max(worst_diameter,
-					                          crypto::phash_distance(photos[matched[a]].phash[0],
-					                                                 photos[matched[b]].phash));
-				}
-			}
-		}
-
-		out.line(std::format("  sets                         : {}", sets));
-		out.line(std::format("  photos in a set              : {}", grouped_photos));
-		out.line(std::format("  largest set                  : {}", largest));
-		out.line(std::format("  worst in-set distance        : {}", worst_diameter));
-		out.line(std::format("  capture times declined       : {}", declined_capture_times));
-		out.line(std::format("  photos those would have held : {}", declined_photos));
+		out.line(std::format("  sets                         : {}", stats.sets));
+		out.line(std::format("  photos in a set              : {}", stats.grouped_photos));
+		out.line(std::format("  largest set                  : {}", stats.largest));
+		out.line(std::format("  worst in-set distance        : {}", stats.worst_diameter));
+		out.line(std::format("  capture times declined       : {}", stats.declined_capture_times));
+		out.line(std::format("  photos those would have held : {}", stats.declined_photos));
 		out.line("      set sizes:");
-		out.line(format_histogram(size_histogram, "size"));
+		out.line(format_histogram(stats.size_histogram, "size"));
+	}
+
+	if (out.file && !out.file->flush()) out.write_failed = true;
+
+	if (out.write_failed)
+	{
+		printf("dup-report: could not write output file: %.*s\n", static_cast<int>(output_text.size()),
+		       output_text.data());
+		return 1;
 	}
 
 	return 0;

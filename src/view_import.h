@@ -21,10 +21,12 @@ class import_view final :
 	bool _select_other_folder = false;
 	std::vector<import_source> _sources;
 	std::string _title;
-	std::string _status;
 	import_analysis_result _analysis;
 	import_options _analysis_options;
 	bool _analysis_valid = false;
+	// The processing generation a Run began. Refresh re-plans, and a Run still under way is executing
+	// the plan already reviewed, so it is left alone rather than cancelled partway.
+	size_t _run_generation = 0;
 
 	void invalidate_analysis();
 
@@ -62,13 +64,9 @@ public:
 			!(_analysis_options.collision == collision_policy::block_run && count_import_collisions(_analysis) > 0);
 	}
 
-	std::string_view status() override
-	{
-		return _status;
-	}
-
 	void deactivate() override
 	{
+		abandon_processing();
 		_rows.clear();
 		_sources.clear();
 		_status.clear();

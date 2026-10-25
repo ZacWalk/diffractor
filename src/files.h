@@ -17,6 +17,10 @@
 #include "model_location.h"
 #include "model_property.h"
 
+#include "libfiles/commodore.h"
+#include "libfiles/decode.h"
+#include "libfiles/stream.h"
+
 enum class group_key_type : uint32_t
 {
 	folder = 1 << 0,
@@ -30,9 +34,10 @@ enum class group_key_type : uint32_t
 	other = 1 << 8,
 };
 
-template <class tStringObj>
-class TXMPMeta;
-using SXMPMeta = TXMPMeta<std::string>;
+namespace libfiles::xmp
+{
+	class meta;
+}
 
 class read_stream;
 class files;
@@ -68,7 +73,8 @@ enum class file_traits : uint32_t
 	none = 0,
 	raw = 1 << 0,
 	embedded_xmp = 1 << 1,
-	// The XMP handler patches this container's live bytes rather than relocating or rewriting it.
+	// A metadata-only edit that fits the space the file holds is patched where the file lies; one that
+	// does not is staged.
 	in_place_metadata = 1 << 2,
 	no_metadata_grouping = 1 << 3,
 	disk_image = 1 << 4,
@@ -77,8 +83,6 @@ enum class file_traits : uint32_t
 	preview_video = 1 << 7,
 	cache_metadata = 1 << 8,
 	zoom = 1 << 9,
-	// A first packet can be injected boundedly too, so no existing packet is required.
-	in_place_metadata_inject = 1 << 10,
 	hide_overlays = 1 << 12,
 	thumbnail = 1 << 13,
 	file_name_metadata = 1 << 14,
@@ -169,7 +173,8 @@ public:
 	static file_group archive;
 	static file_group commodore;
 
-	static constexpr size_t max_count = 7;
+	// An int because it bounds the int indexes file_group_from_index takes.
+	static constexpr int max_count = 7;
 
 	std::string display_name(bool is_plural) const;
 
@@ -334,6 +339,9 @@ struct file_tools_result
 
 file_group_ref file_group_from_index(int from_id);
 file_group_ref parse_file_group(const std::string& text);
+// Teaches parse_file_group the plural and current-language spellings of every media type. Called at
+// startup and again whenever a catalog is loaded, because format_term writes the translated name.
+void register_file_group_spellings();
 void load_file_types();
 file_tools_result scan_tools();
 void apply_tools(file_tools_result result);
@@ -366,6 +374,7 @@ struct metadata_parts
 	df::blob exif;
 	df::blob iptc;
 	df::blob icc;
+	df::blob photoshop_resources;
 
 	// Move-only: each member is a full metadata buffer, so an implicit copy is a silent deep copy.
 	metadata_parts() noexcept = default;
@@ -374,6 +383,13 @@ struct metadata_parts
 	metadata_parts(metadata_parts&&) noexcept = default;
 	metadata_parts& operator=(metadata_parts&&) noexcept = default;
 };
+
+namespace files_test_hooks
+{
+	void fail_next_webp_chunk(std::string_view fourcc);
+	void set_jpeg_photoshop_resource_cap(size_t bytes);
+	size_t jpeg_photoshop_resource_cap();
+}
 
 class file_scan_result
 {
@@ -408,9 +424,9 @@ public:
 	// How the file itself is assembled, as read by the format scanner rather than a metadata parser.
 	metadata_kv_list structure_metadata;
 
-	uint64_t exif_file_offset = 0;
-
 	df::date_t created_utc;
+	df::date_t created_local;
+	prop::date_source created_local_source = prop::date_source::none;
 	int iso_speed = 0;
 	float exposure_time = 0;
 	float f_number = 0;
@@ -527,26 +543,10 @@ struct file_load_result
 	}
 };
 
+// A loaded picture as the clipboard offers it: decoded into a target's rows only when one asks. Null
+// when the load produced nothing.
+platform::clipboard_image_ptr clipboard_image_of(const file_load_result& loaded);
 
-struct png_parts
-{
-	uint32_t width = 0;
-	uint32_t height = 0;
-	df::blob idat;
-	df::blob plte;
-
-	metadata_parts metadata;
-};
-
-struct webp_parts
-{
-	int width = 0;
-	int height = 0;
-	str::cached pixel_format;
-
-	metadata_parts metadata;
-	std::vector<ui::surface_ptr> frames;
-};
 
 struct file_encode_params
 {
@@ -598,6 +598,9 @@ struct file_update_result : platform::file_op_result
 	bool scanned = false;
 	// True when the scan was taken through the post-swap handle, so modified is authoritative.
 	bool coherent = false;
+	// True when an in-place writer failed after it may have changed the live destination. The
+	// operation remains failed, but callers must force a rescan because cached state may be stale.
+	bool live_file_maybe_changed = false;
 	file_scan_result scan;
 	// The written bytes as a displayable image, for the item currently on screen. Free for
 	// JPEG/PNG/WEBP because the scan already materialises and wraps them.
@@ -613,12 +616,15 @@ struct file_update_result : platform::file_op_result
 	file_update_result& operator=(file_update_result&&) noexcept = default;
 };
 
-file_scan_result scan_png(read_stream& s);
-file_scan_result scan_jpg(read_stream& s, scan_intent intent = scan_intent::index, bool want_thumbnail = false);
-file_scan_result scan_psd(read_stream& s);
-file_scan_result scan_heif(read_stream& s, scan_intent intent = scan_intent::index, bool want_thumbnail = false);
-file_scan_result scan_jxl(read_stream& s);
-webp_parts scan_webp(df::cspan data, bool decode_surface);
+struct file_update_publish
+{
+	bool fail_if_exists = false;
+	bool require_unchanged_destination = false;
+	platform::file_attributes_t destination_attributes;
+};
+
+extern std::function<void(df::file_path destination)> test_before_file_update_publish;
+
 
 // Shared by the format scanners to build the file-structure block: a leaf row, a section heading,
 // and a pass that drops the sections a given file had nothing to put in.
@@ -633,7 +639,6 @@ void add_structure_section(metadata_kv_list& kv, std::string_view key, std::stri
                            bool open_by_default = false);
 void finish_structure_sections(metadata_kv_list& kv);
 
-png_parts split_png(read_stream& s);
 media_name_props scan_info_from_title(std::string_view name);
 
 // What a loader read from the header before it committed to decoding. Lets a caller tell "too big
@@ -648,11 +653,17 @@ struct load_diagnostic
 // not fit in df::max_decode_bytes. Called before any pixels are allocated.
 bool reject_over_budget_source(load_diagnostic* diagnostic, sizei source_dimensions, std::string_view format);
 
+// A PSD's composite image, decoded by libfiles. Throws for a file cut short, so a damaged PSD is not
+// offered to ffmpeg.
 ui::surface_ptr load_psd(read_stream& s, load_diagnostic* diagnostic = nullptr);
 file_load_result load_raw(df::file_path path, bool can_load_preview);
 ui::surface_ptr load_png(df::cspan data);
-ui::surface_ptr load_webp(df::cspan data, bool can_use_yuv = false);
+ui::surface_ptr load_webp(df::cspan data, bool can_use_yuv = false, sizei target_extent = {});
 ui::surface_ptr load_heif(read_stream& s, load_diagnostic* diagnostic = nullptr);
+// The libheif decoder plugin HEVC goes to - "ffmpeg" where libheif carries that plugin - or null.
+const char* heif_hevc_decoder_id();
+// The decoder plugin a file's primary image is steered to, or null where libheif keeps its own choice.
+const char* heif_primary_decoder_id(read_stream& s);
 ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* diagnostic = nullptr);
 
 ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const metadata_parts& metadata);
@@ -702,6 +713,12 @@ public:
 	virtual df::blob read_all() = 0;
 	virtual df::blob read(uint64_t pos, size_t len) = 0;
 	virtual void read(uint64_t pos, uint8_t* buffer, size_t len) = 0;
+
+	// As read, but bypassing any window the stream keeps, for a caller that buffers for itself.
+	virtual void read_through(const uint64_t pos, uint8_t* buffer, const size_t len)
+	{
+		read(pos, buffer, len);
+	}
 
 	// Empty unless the whole stream is already resident and can be borrowed without copying.
 	virtual df::cspan view() const
@@ -809,6 +826,11 @@ class file_read_stream final : public read_stream
 	void load_buffer(uint64_t pos, size_t len);
 
 public:
+	file_read_stream() = default;
+	// It owns _buffer, which the destructor frees, so a copy would free it twice.
+	file_read_stream(const file_read_stream&) = delete;
+	file_read_stream& operator=(const file_read_stream&) = delete;
+
 	bool open(df::file_path path);
 	bool open(platform::file_ptr h);
 	void close();
@@ -850,6 +872,7 @@ public:
 	}
 
 	void read(uint64_t pos, uint8_t* buffer, size_t len) override;
+	void read_through(uint64_t pos, uint8_t* buffer, size_t len) override;
 
 	df::blob read(const uint64_t pos, const size_t len) override
 	{
@@ -863,6 +886,50 @@ public:
 	// Reads straight off the handle: routing the whole file through the sliding window would
 	// allocate and copy it a second time.
 	df::blob read_all() override;
+};
+
+// A platform file as the stream libfiles reads and writes. Every access seeks first, so the handle's
+// own position is not to be shared with another reader.
+class platform_file_stream final : public libfiles::writable_stream
+{
+	platform::file_ptr _f;
+
+public:
+	explicit platform_file_stream(platform::file_ptr f) : _f(std::move(f))
+	{
+	}
+
+	uint64_t size() override;
+	size_t read(uint64_t offset, void* data, size_t size) override;
+	bool write(uint64_t offset, const void* data, size_t size) override;
+	bool resize(uint64_t size) override;
+	bool flush() override;
+};
+
+// A read_stream as libfiles' positional stream. libfiles keeps its own window, so the reads go through
+// read_through and the file is not buffered twice.
+class read_stream_source final : public libfiles::stream
+{
+	read_stream& _s;
+
+public:
+	explicit read_stream_source(read_stream& s) : _s(s)
+	{
+	}
+
+	uint64_t size() override
+	{
+		return _s.size();
+	}
+
+	size_t read(const uint64_t offset, void* data, const size_t size) override
+	{
+		if (offset >= _s.size()) return 0;
+
+		const auto n = static_cast<size_t>(std::min<uint64_t>(size, _s.size() - offset));
+		_s.read_through(offset, static_cast<uint8_t*>(data), n);
+		return n;
+	}
 };
 
 struct codec_info final : df::no_copy
@@ -1146,6 +1213,11 @@ public:
 	double rotation_angle() const;
 };
 
+// The edits applied to a surface: perspective, straightening, crop and scale, then the colour. The
+// surface itself when none of them changes it; empty when a canvas cannot be had or the token cancels.
+ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, const image_edits& photo_edits,
+                                        const df::cancel_token& token = {});
+
 class metadata_edits
 {
 public:
@@ -1193,7 +1265,7 @@ public:
 	metadata_edits(metadata_edits&&) noexcept = default;
 	metadata_edits& operator=(metadata_edits&&) noexcept = default;
 
-	void apply(SXMPMeta& meta) const;
+	void apply(libfiles::xmp::meta& meta) const;
 
 	bool has_changes() const
 	{
@@ -1249,11 +1321,47 @@ struct archive_item
 	df::date_t created;
 };
 
+// What a caller decoding in-memory bytes asks for: the extent the result has to fit, whether planar
+// YUV may come back, and whether it is for display or a thumbnail.
+struct still_decode_request
+{
+	sizei target_extent;
+	bool can_use_yuv = false;
+	decode_intent intent = decode_intent::display;
+};
+
+// Everything Diffractor knows about one still image format libfiles names from its first bytes: the
+// file type it registers, how its header is read without decoding, and how it decodes. A format with
+// no decoder of its own is decoded by ffmpeg. Supporting another is one entry in files_formats.cpp,
+// plus a still_file_type line at its place in the extension table.
+struct still_format
+{
+	detected_format format = detected_format::Unknown;
+	std::string_view extensions;
+	std::string_view description;
+	file_traits traits = file_traits::none;
+	// A loaded file keeps its encoded bytes in this form rather than decoding them.
+	ui::image_format encoded = ui::image_format::Unknown;
+	// Dimensions, metadata and, when asked for, a thumbnail, read without decoding the frame.
+	file_scan_result (*scan)(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder) = nullptr;
+	// Decodes a whole file for a load. The diagnostic names a source refused for its size.
+	ui::surface_ptr (*load)(read_stream& s, load_diagnostic* diagnostic) = nullptr;
+	// Decodes in-memory bytes for display or a thumbnail.
+	ui::surface_ptr (*decode)(files& ff, df::cspan data, const still_decode_request& request) = nullptr;
+};
+
+std::span<const still_format> still_formats();
+const still_format* find_still_format(detected_format format);
+// The extension-table entry for a still format, built from its still_format.
+file_type still_file_type(detected_format format);
+// The JPEG entry's decoder. A friend of files, whose decoder state it uses.
+ui::surface_ptr decode_still_jpeg(files& ff, df::cspan data, const still_decode_request& request);
+
+// Formats whose loaded files stay encoded: the bytes are the image.
 inline bool is_image_format(const detected_format& format)
 {
-	return format == detected_format::JPEG ||
-		format == detected_format::PNG ||
-		format == detected_format::WEBP;
+	const auto* const still = find_still_format(format);
+	return still && still->encoded != ui::image_format::Unknown;
 }
 
 
@@ -1264,12 +1372,46 @@ ui::image_ptr load_image_file(df::cspan data);
 // an awkward format has to be decoded; a null one makes the scan build its own.
 file_scan_result scan_photo(read_stream& s, scan_intent intent = scan_intent::index,
                             bool want_thumbnail = false, files* decoder = nullptr);
+// The scan of a still libfiles reads with nothing added: JPEG, PNG, WebP, GIF, TIFF, PSD and BMP.
+file_scan_result scan_photo_libfiles(read_stream& s, scan_intent intent = scan_intent::index,
+                                     bool want_thumbnail = false, files* decoder = nullptr);
+// libfiles' rows of a structure or a listing, as the info pane's rows.
+metadata_kv_list to_metadata_kv(std::vector<libfiles::structure_row>& rows);
+// What a still format adds to a scan through libfiles.
+struct still_scan_extras
+{
+	// Decompresses a JPEG XL's Brotli-compressed metadata box into at most max_size bytes, or answers
+	// nothing.
+	std::function<std::optional<std::vector<uint8_t>>(std::span<const uint8_t> compressed,
+	                                                  std::string_view box_type, size_t max_size)> brotli;
+	// Decodes a thumbnail the container holds as a coded image - a HEIF thumbnail item - which a libfiles
+	// scan counts and leaves to a decoder. Run only for a caller that wants a thumbnail, before the Exif
+	// one.
+	std::function<void(read_stream& s, file_scan_result& result)> container_thumbnail;
+};
 
+file_scan_result scan_still_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder,
+                                     const still_scan_extras& extras);
+// HEIF/AVIF and JPEG XL through libfiles. libfiles' decoder decodes a HEIF thumbnail item for a caller
+// that wants one, and the Brotli a JPEG XL's compressed boxes need is supplied here.
+file_scan_result scan_heif_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder);
+file_scan_result scan_jxl_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder);
+
+
+namespace files_test_hooks
+{
+	// files::decode_jpeg, which every path that decodes a JPEG takes.
+	ui::surface_ptr decode_jpeg(files& ff, df::cspan data, sizei target_extent, bool can_use_yuv,
+	                            decode_intent intent, bool& is_yuv);
+}
 
 class files final : df::no_copy
 {
-	jpeg_decoder_x _jpeg_decoder;
+	jpeg_transformer _jpeg_transformer;
 	jpeg_encoder _jpeg_encoder;
+
+	// libfiles' decoders, which keep their codecs' state between images.
+	libfiles::decoder _decoder;
 
 	std::unique_ptr<av_scaler> _scaler{};
 
@@ -1281,12 +1423,23 @@ class files final : df::no_copy
 	platform::file_op_result update_impl(df::file_path path_src, df::file_path path_dst,
 	                                     const metadata_edits& metadata_edits, const image_edits& photo_edits,
 	                                     const file_encode_params& params, bool create_original,
-	                                     std::string_view src_xmp_name, std::string_view dst_xmp_name);
+	                                     std::string_view src_xmp_name, std::string_view dst_xmp_name,
+	                                     const file_update_publish& publish, bool* live_file_maybe_changed);
 
 	av_scaler& scaler();
 	ui::surface_ptr decode_jpeg(df::cspan data, sizei target_extent, bool can_use_yuv,
 	                            std::optional<ui::orientation> orientation_override, bool& is_yuv,
 	                            const df::cancel_token& token, decode_intent intent);
+
+	friend ui::surface_ptr files_test_hooks::decode_jpeg(files& ff, df::cspan data, sizei target_extent,
+	                                                     bool can_use_yuv, decode_intent intent, bool& is_yuv);
+
+	// The still_format entry for JPEG decodes through the decoder state this object holds.
+	friend ui::surface_ptr decode_still_jpeg(files& ff, df::cspan data, const still_decode_request& request);
+
+	// Shared by the two fit_within overloads; defined in files_core.cpp, where both instantiate it.
+	template <typename Ptr>
+	Ptr fit_within_impl(Ptr surface_in, sizei ceiling);
 
 public:
 	files();
@@ -1300,8 +1453,12 @@ public:
 	                                 decode_intent intent = decode_intent::display);
 	ui::surface_ptr image_to_surface(df::cspan data, sizei scale_hint = {}, bool can_use_yuv = false,
 	                                 decode_intent intent = decode_intent::display);
-	ui::surface_ptr scale_if_needed(ui::surface_ptr surface_in, sizei target_extent);
-	ui::const_surface_ptr scale_if_needed(ui::const_surface_ptr surface_in, sizei target_extent);
+
+	// Reduces a surface to fit within a ceiling, never enlarging: a picture already inside it comes
+	// back untouched, and so does one no resampler would take. Whoever asks for a ceiling wants a
+	// bound on the pixels it will hold, not a size to fill.
+	ui::surface_ptr fit_within(ui::surface_ptr surface_in, sizei ceiling);
+	ui::const_surface_ptr fit_within(ui::const_surface_ptr surface_in, sizei ceiling);
 
 	// A 64-bit perceptual hash of the picture, or 0 when it has too little detail to identify.
 	// Reads the stored pixels, not the oriented ones, so a file whose only change is an orientation
@@ -1382,7 +1539,7 @@ public:
 	                          const metadata_edits& metadata_edits, const image_edits& photo_edits,
 	                          const file_encode_params& params, bool create_original,
 	                          std::string_view src_xmp_name, std::string_view dst_xmp_name = {},
-	                          const rescan_spec& rescan = {});
+	                          const rescan_spec& rescan = {}, const file_update_publish& publish = {});
 
 	file_update_result update(const df::file_path path, const metadata_edits& metadata_edits,
 	                          const image_edits& photo_edits, const file_encode_params& params,
@@ -1394,17 +1551,8 @@ public:
 
 	static std::vector<archive_item> list_archive(df::file_path zip_file_path);
 
-	struct d64_item
-	{
-		std::string line; // plain-text form of the row, one character per screen code
-		std::vector<uint8_t> screen_codes; // C64 screen codes, one per character, for glyph rendering
-	};
-
-	static std::vector<d64_item> list_disk(const df::blob& selected_item_data);
-
-	// Renders a whole directory listing into a single RGB surface using the
-	// embedded 8x8 C64 character set (8 pixels per glyph cell). Glyph pixels use
-	// fg, everything else bg. Returns null when there are no lines. The caller
-	// scales the resulting texture to fit its available space.
-	static ui::const_surface_ptr c64_listing_surface(const std::vector<d64_item>& lines, uint32_t fg, uint32_t bg);
+	// A Commodore 64 image's listing, as libfiles lists it, drawn by libfiles into an RGB surface eight
+	// pixels a character, the glyphs in fg on bg; null when there is nothing to draw. The caller scales
+	// the texture to fit the space it has.
+	static ui::const_surface_ptr c64_listing_surface(const libfiles::c64_listing& listing, uint32_t fg, uint32_t bg);
 };
