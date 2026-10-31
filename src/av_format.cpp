@@ -7,14 +7,16 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: FFmpeg media decoder implementation. Provides video/audio decoding, frame scaling,
-// audio resampling, metadata extraction, hardware acceleration support, decode-thread preparation
-// of pictures for upload, and the HDR-to-SDR tone mapping cube.
+// audio resampling, metadata extraction for the files libfiles cannot describe, hardware acceleration
+// support, decode-thread preparation of pictures for upload, and the HDR-to-SDR tone mapping cube.
+// A played file's streams and tags are described by libfiles' reading of its container.
 
 #include "pch.h"
 #include "av_format.h"
 #include "av_player.h"
 #include "metadata_xmp.h"
 #include "files.h"
+#include "libfiles/media.h"
 
 // Both of these are MSVC dialect repairs. excpt.h has no equivalent elsewhere, and __restrict__ is
 // a real keyword on GCC and Clang: defining it away there would strip the qualifier FFmpeg's
@@ -339,27 +341,48 @@ static bool reject_hinted_over_budget_still(load_diagnostic* const diagnostic, c
 	return false;
 }
 
-// Decodes a 3x3 display matrix into a clockwise rotation normalised onto [0,360).
-// Shared by the container-level (stream) and frame-level side data so both map
-// onto the same set of orientations.
-static double rotation_from_display_matrix(const uint8_t* const data, const size_t size)
+// A display matrix's clockwise turn, normalised onto [0,360), and whether it mirrors the picture before
+// turning it. Shared by the container-level (stream) and frame-level side data so both map onto the same
+// set of orientations, and read as libfiles reads a container's transform, so the player shows a file as
+// its scan does: a transform that mirrors has a negative determinant, and undoing the mirror leaves the turn.
+struct display_turn
+{
+	double rotation = 0.0;
+	bool mirrored = false;
+};
+
+static display_turn turn_from_display_matrix(const uint8_t* const data, const size_t size)
 {
 	if (!data || size < 9 * sizeof(int32_t))
 	{
-		return 0.0;
+		return {};
 	}
 
-	const auto theta = -av_display_rotation_get(reinterpret_cast<const int32_t*>(data));
-	return theta - 360.0 * floor(theta / 360.0 + 0.9 / 360.0);
+	int32_t matrix[9];
+	std::memcpy(matrix, data, sizeof(matrix));
+
+	display_turn result;
+	result.mirrored = static_cast<double>(matrix[0]) * matrix[4] - static_cast<double>(matrix[1]) * matrix[3] < 0.0;
+
+	if (result.mirrored)
+	{
+		const auto negated = [](const int32_t v) { return v == INT32_MIN ? INT32_MAX : -v; };
+		matrix[0] = negated(matrix[0]);
+		matrix[1] = negated(matrix[1]);
+	}
+
+	const auto theta = -av_display_rotation_get(matrix);
+	result.rotation = theta - 360.0 * floor(theta / 360.0 + 0.9 / 360.0);
+	return result;
 }
 
-double get_rotation(const AVStream* const st)
+static display_turn get_display_turn(const AVStream* const st)
 {
 	const AVPacketSideData* side_data = av_packet_side_data_get(st->codecpar->coded_side_data,
 	                                                            st->codecpar->nb_coded_side_data,
 	                                                            AV_PKT_DATA_DISPLAYMATRIX);
 
-	return side_data ? rotation_from_display_matrix(side_data->data, side_data->size) : 0.0;
+	return side_data ? turn_from_display_matrix(side_data->data, side_data->size) : display_turn{};
 }
 
 // Locates a DV VAUX recording-date (0x62) or recording-time (0x63) pack within a
@@ -470,21 +493,28 @@ static df::date_t read_dv_rec_datetime(AVFormatContext* fc, const int video_stre
 	return result;
 }
 
-static void populate_properties(const AVFormatContext* ctx, file_scan_result& result)
+static void populate_properties(const AVFormatContext* ctx, file_scan_result& result, const bool with_tags)
 {
 	if (ctx)
 	{
 		result.nb_streams = ctx->nb_streams;
 		result.duration = calc_duration(ctx->duration, AV_NOPTS_VALUE);
 
-
+		// FFmpeg's mov demuxer reads the iTunes 'rtng' atom - the content advisory flag, 0 none,
+		// 1 explicit, 2 clean - under the shared "rating" key, where an explicit-content marker would
+		// read as a one-star rating.
+		const auto is_mov = ctx->iformat && std::string_view(ctx->iformat->name).starts_with("mov");
 		const AVDictionaryEntry* tag = nullptr;
 
-		while ((tag = av_dict_get(ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
+		while (with_tags && (tag = av_dict_get(ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
 		{
 			if (str::icmp(tag->key, "xmp") == 0 || str::icmp(tag->key, "id3v2_priv.XMP") == 0)
 			{
 				result.metadata.xmp = unescape_xmp(tag->value);
+			}
+			else if (is_mov && str::icmp(tag->key, "rating") == 0)
+			{
+				result.ffmpeg_metadata.emplace_back(std::string_view{"itunes_advisory"}, str::utf8_cast(tag->value));
 			}
 			else
 			{
@@ -541,28 +571,100 @@ static prop::audio_sample_t to_sample_type(const AVSampleFormat format)
 	return prop::audio_sample_t::none;
 }
 
-static ui::orientation calc_orientation_impl(const int rr)
+// The orientation a turn shows the picture with, numbered as EXIF numbers it: a quarter turn exactly, as a
+// container states one, after the mirror when there is one; any other angle is shown unturned.
+static ui::orientation calc_orientation_impl(const display_turn& turn)
 {
-	if (rr == 90) return ui::orientation::right_top;
-	if (rr == 180) return ui::orientation::bottom_right;
-	if (rr == 270) return ui::orientation::left_bottom;
-	return ui::orientation::top_left;
+	const auto rr = df::round(turn.rotation);
+	const auto quarter = rr == 90 || rr == 180 || rr == 270 ? rr : 0;
+	return static_cast<ui::orientation>(libfiles::orientation_from_turn(quarter, turn.mirrored));
 }
 
-// Name of the decoder that would be used for a stream, or empty when none is built in.
-static str::cached decoder_name(const AVCodecParameters* const codec)
+// The codec in Diffractor's terms: FFmpeg's codec name, but "mpeg2" for "mpeg2video", "dv" for
+// "dvvideo" and "pcm" for every linear PCM layout, whose depth is the sample type - the names libfiles
+// gives the codecs it reads, so a file reads alike whichever described it.
+static str::cached short_codec_name(const AVCodecParameters* const codec)
 {
-	const auto* const found = codec ? avcodec_find_decoder(codec->codec_id) : nullptr;
-	return found ? str::cache(found->name) : str::cached{};
+	if (!codec || codec->codec_id == AV_CODEC_ID_NONE) return {};
+
+	switch (codec->codec_id)
+	{
+	case AV_CODEC_ID_MPEG1VIDEO: return "mpeg1"_c;
+	case AV_CODEC_ID_MPEG2VIDEO: return "mpeg2"_c;
+	case AV_CODEC_ID_DVVIDEO: return "dv"_c;
+	case AV_CODEC_ID_PCM_ALAW: return "alaw"_c;
+	case AV_CODEC_ID_PCM_MULAW: return "mulaw"_c;
+	default: break;
+	}
+
+	const std::string_view name = avcodec_get_name(codec->codec_id);
+	if (name.starts_with("pcm_")) return "pcm"_c;
+	return str::cache(name);
 }
 
-// Human-readable name of an AVPixelFormat value, or empty when unset/unknown.
-static str::cached pixel_format_name(const int format)
+// A pixel format as chroma and depth, as libfiles names a stream's: "yuv420", "yuv422 10bit", "gray",
+// "rgb". Empty when unset or unknown.
+static str::cached own_pixel_format(const int format)
 {
 	const auto* const desc = format == AV_PIX_FMT_NONE
 		                         ? nullptr
 		                         : av_pix_fmt_desc_get(static_cast<AVPixelFormat>(format));
-	return desc ? str::cache(desc->name) : str::cached{};
+	if (!desc) return {};
+
+	const auto alpha = (desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0;
+	std::string name;
+
+	if (desc->flags & (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_BAYER))
+	{
+		name = alpha ? "rgba" : "rgb";
+	}
+	else if (desc->nb_components <= 2)
+	{
+		name = alpha ? "graya" : "gray";
+	}
+	else
+	{
+		const auto w = desc->log2_chroma_w;
+		const auto h = desc->log2_chroma_h;
+		const auto* const chroma = w == 1 && h == 1
+			                           ? "420"
+			                           : w == 1 && h == 0
+			                           ? "422"
+			                           : w == 0 && h == 0
+			                           ? "444"
+			                           : w == 2 && h == 0
+			                           ? "411"
+			                           : w == 2 && h == 2
+			                           ? "410"
+			                           : w == 0 && h == 1
+			                           ? "440"
+			                           : nullptr;
+		if (!chroma) return {};
+		name = std::format("{}{}", alpha ? "yuva" : "yuv", chroma);
+	}
+
+	if (desc->comp[0].depth > 8) name += std::format(" {}bit", desc->comp[0].depth);
+	return str::cache(name);
+}
+
+// The audio sample type as the stream codes it: a depth for linear PCM and lossless codecs, none for a
+// lossy one, whose samples have no depth until a decoder gives them one.
+static prop::audio_sample_t coded_sample_type(const AVCodecParameters* const codec)
+{
+	const auto* const desc = codec ? avcodec_descriptor_get(codec->codec_id) : nullptr;
+	if (!desc || (desc->props & AV_CODEC_PROP_LOSSLESS) == 0 || (desc->props & AV_CODEC_PROP_LOSSY) != 0)
+	{
+		return prop::audio_sample_t::none;
+	}
+
+	auto bits = codec->bits_per_raw_sample;
+	if (bits <= 0) bits = av_get_bits_per_sample(codec->codec_id);
+	if (bits <= 0) bits = codec->bits_per_coded_sample;
+
+	const auto id = codec->codec_id;
+	const auto is_float = id == AV_CODEC_ID_PCM_F16LE || id == AV_CODEC_ID_PCM_F24LE || id == AV_CODEC_ID_PCM_F32BE ||
+		id == AV_CODEC_ID_PCM_F32LE || id == AV_CODEC_ID_PCM_F64BE || id == AV_CODEC_ID_PCM_F64LE;
+	return coded_sample_type(static_cast<unsigned>(std::max(bits, 0)), is_float);
 }
 
 static void populate_audio_properties(const AVStream* const s, file_scan_result& result)
@@ -571,11 +673,11 @@ static void populate_audio_properties(const AVStream* const s, file_scan_result&
 
 	if (codec && codec->codec_type == AVMEDIA_TYPE_AUDIO)
 	{
-		if (const auto name = decoder_name(codec); !str::is_empty(name)) result.audio_codec = name;
+		if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.audio_codec = name;
 
 		result.audio_sample_rate = codec->sample_rate;
 		result.audio_channels = codec->ch_layout.nb_channels;
-		result.audio_sample_type = to_sample_type(static_cast<AVSampleFormat>(codec->format));
+		result.audio_sample_type = coded_sample_type(codec);
 	}
 }
 
@@ -585,7 +687,7 @@ static void populate_video_properties(const AVStream* const s, file_scan_result&
 
 	if (codec && codec->codec_type == AVMEDIA_TYPE_VIDEO)
 	{
-		if (const auto name = decoder_name(codec); !str::is_empty(name)) result.video_codec = name;
+		if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.video_codec = name;
 
 		result.width = codec->width;
 		result.height = codec->height;
@@ -607,12 +709,12 @@ static void populate_video_properties(const AVStream* const s, file_scan_result&
 				w, static_cast<int64_t>(sar.den) * codec->height, static_cast<int64_t>(sar.num) * w));
 		}
 
-		if (const auto name = pixel_format_name(codec->format); !str::is_empty(name))
+		if (const auto name = own_pixel_format(codec->format); !str::is_empty(name))
 		{
 			result.pixel_format = name;
 		}
 
-		result.orientation = calc_orientation_impl(df::round(get_rotation(s)));
+		result.orientation = calc_orientation_impl(get_display_turn(s));
 	}
 }
 
@@ -1321,13 +1423,13 @@ av_packet_ptr av_format_decoder::read_packet() const
 	return result;
 }
 
-void av_format_decoder::extract_metadata(file_scan_result& sr) const
+void av_format_decoder::extract_metadata(file_scan_result& sr, const bool with_tags) const
 {
 	const auto* const fc = _format_context;
 
 	if (fc)
 	{
-		populate_properties(fc, sr);
+		populate_properties(fc, sr, with_tags);
 		const AVStream* audio_stream = nullptr;
 		const AVStream* video_stream = nullptr;
 
@@ -1388,7 +1490,7 @@ void av_format_decoder::extract_metadata(file_scan_result& sr) const
 			sr.duration = df::round(calc_duration(fc->duration, AV_NOPTS_VALUE));
 		}
 
-		// _rotation is only established by init_streams, and a decoded frame may then correct it.
+		// _orientation is only established by init_streams, and a decoded frame may then correct it.
 		// Until then it holds its default, which means "not yet known" rather than "upright", so
 		// letting it through erased the container rotation populate_video_properties had just read
 		// from the display matrix. Every scan that does not decode a frame - indexing, and the
@@ -1457,6 +1559,7 @@ void av_format_decoder::close()
 
 	_scaler.reset();
 	_file.reset();
+	_media_scan.reset();
 	_path.clear();
 	_eof = false;
 	_has_video = false;
@@ -1469,7 +1572,7 @@ void av_format_decoder::close()
 	_cover_art.reset();
 	_start_time = 0;
 	_end_time = 0;
-	_rotation = 0;
+	_orientation = ui::orientation::top_left;
 	_video_base = {};
 	_audio_base = {};
 	_video_stream_aspect_ratio = {};
@@ -1602,6 +1705,14 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 		}
 	}
 
+	// Played media is described by libfiles' reading of the container; FFmpeg only decodes it. Read
+	// first, since FFmpeg's I/O reads the handle from where it stands, and scan_media_file leaves it at 0.
+	if (intent == media_intent::playback)
+	{
+		_media_scan = scan_media_file(file, scan_intent::inspect, false).scan;
+		if (_media_scan && !_media_scan->success) _media_scan.reset();
+	}
+
 	static constexpr int io_buffer_size = df::two_fifty_six_k;
 	auto* io_buffer = static_cast<uint8_t*>(av_mallocz(io_buffer_size + 16));
 	auto* fc = io_buffer ? avformat_alloc_context() : nullptr;
@@ -1654,13 +1765,15 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 	if (intent == media_intent::metadata)
 	{
-		// The probe decoder is the only entropy decoding an index scan performs, and H.264 is the one
-		// codec the probe keeps decoding after the stream is already characterised. AVDISCARD_ALL drops
-		// each slice once its header is read; the fork applies the SPS on that path, so width, height,
-		// pixel format and frame rate still land. This bounds decoding, not reading, so unlike the read
-		// bound below it needs no guarantee about the header - a stream the demuxer has to discover is
-		// still discovered, just without the entropy decode. find_stream_info takes one dictionary per
-		// stream and hands it to that stream's probe decoder at avcodec_open2.
+		// The probe decoder is the only entropy decoding a metadata scan performs - and FFmpeg probes
+		// only the files libfiles could not describe whole - and H.264 is the one codec the probe keeps
+		// decoding after the stream is already characterised. AVDISCARD_NONKEY (the option value "nokey";
+		// a value FFmpeg cannot parse fails the probe decoder's open) decodes only the key
+		// frames, which is where FFmpeg's H.264 decoder applies the SPS, so width, height, pixel format
+		// and frame rate still land; discarding every frame would leave the pixel format unknown. This
+		// bounds decoding, not reading, so unlike the read bound below it needs no guarantee about the
+		// header - a stream the demuxer has to discover is still discovered. find_stream_info takes one
+		// dictionary per stream and hands it to that stream's probe decoder at avcodec_open2.
 		if (stream_opts)
 		{
 			for (unsigned i = 0; i < opts_stream_count; ++i)
@@ -1669,7 +1782,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 				if (stream && stream->codecpar && stream->codecpar->codec_id == AV_CODEC_ID_H264)
 				{
-					av_dict_set(&stream_opts[i], "skip_frame", "all", 0);
+					av_dict_set(&stream_opts[i], "skip_frame", "nokey", 0);
 				}
 			}
 		}
@@ -1724,7 +1837,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 			s.is_commentary = (stream->disposition & AV_DISPOSITION_COMMENT) != 0;
 			s.is_audio_description = (stream->disposition & AV_DISPOSITION_VISUAL_IMPAIRED) != 0;
-			s.rotation = df::round(get_rotation(stream));
+			s.rotation = df::round(get_display_turn(stream).rotation);
 
 			if ((stream->disposition & AV_DISPOSITION_ATTACHED_PIC) && !_cover_art)
 			{
@@ -1743,7 +1856,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 				if (codec->codec_type == AVMEDIA_TYPE_VIDEO)
 				{
-					s.pixel_format = pixel_format_name(codec->format);
+					s.pixel_format = std::string(own_pixel_format(codec->format).sv());
 
 					if (const auto* const profile = avcodec_profile_name(codec->codec_id, codec->profile))
 					{
@@ -1765,10 +1878,10 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 				{
 					s.audio_sample_rate = codec->sample_rate;
 					s.audio_channels = codec->ch_layout.nb_channels;
-					s.audio_sample_type = to_sample_type(static_cast<AVSampleFormat>(codec->format));
+					s.audio_sample_type = coded_sample_type(codec);
 				}
 				const auto codec_name = std::string(str::utf8_cast(avcodec_get_name(codec->codec_id)));
-				if (s.codec.empty()) s.codec = codec_name;
+				if (s.codec.empty()) s.codec = std::string(short_codec_name(codec).sv());
 				s.metadata.emplace_back("codec"_c, codec_name);
 
 				if (codec->codec_tag)
@@ -2054,7 +2167,7 @@ void av_format_decoder::init_streams(int video_track, int audio_track, const boo
 					_video_stream_aspect_ratio = {
 						video_stream->sample_aspect_ratio.num, video_stream->sample_aspect_ratio.den
 					};
-					_rotation = df::round(get_rotation(video_stream));
+					_orientation = calc_orientation_impl(get_display_turn(video_stream));
 				}
 				else
 				{
@@ -2255,17 +2368,35 @@ av_media_info av_format_decoder::info() const
 				(stream->disposition & AV_DISPOSITION_ATTACHED_PIC) == 0 && !video_properties_set)
 			{
 				video_properties_set = true;
-				if (const auto name = decoder_name(codec); !str::is_empty(name)) result.video_codec = name;
-				if (const auto fmt = pixel_format_name(codec->format); !str::is_empty(fmt)) result.pixel_format = fmt;
+				if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.video_codec = name;
+				if (const auto fmt = own_pixel_format(codec->format); !str::is_empty(fmt)) result.pixel_format = fmt;
 			}
 			else if (codec->codec_type == AVMEDIA_TYPE_AUDIO)
 			{
-				if (const auto name = decoder_name(codec); !str::is_empty(name)) result.audio_codec = name;
+				if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.audio_codec = name;
 
 				result.audio_sample_rate = codec->sample_rate;
 				result.audio_channels = codec->ch_layout.nb_channels;
-				result.audio_sample_type = to_sample_type(static_cast<AVSampleFormat>(codec->format));
+				result.audio_sample_type = coded_sample_type(codec);
 			}
+		}
+
+		// What libfiles read of the container describes the rows FFmpeg opened, matched by the container's
+		// stream numbers, and its tags, packet and structure replace FFmpeg's.
+		if (_media_scan)
+		{
+			std::vector<uint64_t> stream_ids;
+			stream_ids.reserve(result.streams.size());
+
+			for (const auto& row : result.streams)
+			{
+				const auto* const st = row.index >= 0 && row.index < static_cast<int>(ctx->nb_streams)
+					                       ? ctx->streams[row.index]
+					                       : nullptr;
+				stream_ids.push_back(st ? static_cast<uint64_t>(st->id) : UINT64_MAX);
+			}
+
+			overlay_media_scan(*_media_scan, result, stream_ids);
 		}
 	}
 
@@ -2275,7 +2406,7 @@ av_media_info av_format_decoder::info() const
 
 ui::orientation av_format_decoder::calc_orientation() const
 {
-	return calc_orientation_impl(_rotation);
+	return _orientation;
 }
 
 void av_format_decoder::update_orientation(const AVFrame* const frame)
@@ -2289,10 +2420,10 @@ void av_format_decoder::update_orientation(const AVFrame* const frame)
 
 	if (side_data)
 	{
-		// Adopt the frame's rotation outright. Subtracting the whole-turn part of the
-		// angle (as this used to) left _rotation at the container value and silently
+		// Adopt the frame's turn and mirror outright. Subtracting the whole-turn part of the
+		// angle (as this used to) left the orientation at the container value and silently
 		// dropped a rotation signalled only per frame.
-		_rotation = df::round(rotation_from_display_matrix(side_data->data, side_data->size));
+		_orientation = calc_orientation_impl(turn_from_display_matrix(side_data->data, side_data->size));
 	}
 }
 

@@ -7,8 +7,9 @@ metadata, rendering, locations, zoom, and selection controls. Source owns exact 
 ## System Shape
 
 Diffractor is a C++20 media organizer with a custom retained UI. SQLite stores a rebuildable index and
-thumbnail cache. Media files and sidecars remain authoritative. FFmpeg handles audio/video; format
-libraries handle still images; platform modules contain operating-system integration.
+thumbnail cache. Media files and sidecars remain authoritative. libfiles reads still images and
+audio/video containers; FFmpeg decodes audio and video; format libraries decode still images;
+platform modules contain operating-system integration.
 
 ## Source Organization
 

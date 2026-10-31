@@ -31,7 +31,6 @@
 #define HAVE_LINUX_MAGIC_H 1
 #define HAVE_LINUX_TYPES_H 1
 #define HAVE_LOCALE_H 1
-#define HAVE_MEMORY_H 1
 #define HAVE_PATHS_H 1
 #define HAVE_POLL_H 1
 #define HAVE_PTHREAD_H 1
@@ -142,6 +141,7 @@
 #define HAVE_UTIMES 1
 #define HAVE_VFORK 1
 #define HAVE_VPRINTF 1
+#define HAVE_WAITPID 1
 #define HAVE_WCRTOMB 1
 #define HAVE_WCSCMP 1
 #define HAVE_WCSCPY 1

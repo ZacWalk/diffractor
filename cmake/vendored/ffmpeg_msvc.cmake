@@ -1,23 +1,30 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Build Diffractor's FFmpeg fork, fetched by FFmpeg.cmake, as diffractor::ffmpeg_msvc.
+# Purpose: Build upstream FFmpeg, fetched by FFmpeg.cmake, as diffractor::ffmpeg_msvc, with the
+# configuration its own configure generated for Windows kept beside this file in ffmpeg-windows/.
 #
-# Imported from the fork's ffmpeg.vcxproj (Release|x64) by tools/import_vcxproj.py.
+# First imported from ffmpeg.vcxproj (Release|x64) by tools/import_vcxproj.py; the source list now
+# follows the make -Bn dry runs of docs/third-party.md's upgrade checklist.
 # Compiler and linker flags are not restated here: DiffractorCompilerPolicy.cmake owns those
 # for every target.
 
 include_guard(GLOBAL)
 
-# The fork checks in one pre-generated nasm config per architecture, because FFmpeg's configure
-# needs a shell that Windows does not have. The importer read the Release|x64 configuration, so it
-# emitted the x64 file for every architecture, and a 32-bit assemble of any of these sources then
-# failed with "impossible combination of address sizes" -- the config says ARCH_X86_64 while nasm
-# is emitting win32. Selected by target here rather than baked in.
+# FFmpeg's configure needs a shell that Windows does not have, so what it generates - config.h and
+# config.asm with a half for each architecture, the component lists, avconfig.h and ffversion.h - is
+# kept in ffmpeg-windows/, laid out as FFmpeg's own build tree would hold it and searched before the
+# source. Every file FFmpeg includes from it is named by its path from the root, so the directory
+# stands in for that build tree. The importer read the Release|x64 configuration, so it emitted the
+# x64 nasm config for every architecture, and a 32-bit assemble then failed with "impossible
+# combination of address sizes" -- the config says ARCH_X86_64 while nasm is emitting win32. Selected
+# by target here rather than baked in.
+set(_ffmpeg_generated "${CMAKE_CURRENT_LIST_DIR}/ffmpeg-windows")
+
 if (DIFFRACTOR_TARGET_ARCH STREQUAL "x86")
-    set(_ffmpeg_config_asm "${ffmpeg_SOURCE_DIR}/config-x86.asm")
+    set(_ffmpeg_config_asm "${_ffmpeg_generated}/config-x86.asm")
 else ()
-    set(_ffmpeg_config_asm "${ffmpeg_SOURCE_DIR}/config-x64.asm")
+    set(_ffmpeg_config_asm "${_ffmpeg_generated}/config-x64.asm")
 endif ()
 
 # These assembly sources share a file name with another in this library, and CMake names a
@@ -1024,7 +1031,6 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${ffmpeg_SOURCE_DIR}/libavformat/asf.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/asfcrypt.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/asfdec_f.c"
-        "${ffmpeg_SOURCE_DIR}/libavformat/asfdec_o.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/asf_tags.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/assdec.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/ast.c"
@@ -1495,9 +1501,11 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/dovi_rpu.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/dovi_split.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/eia608_to_smpte436m.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/jpegapp.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/lcevc_merge.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/lcevc_metadata.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/packetsync.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/side_data.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/sink.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/smpte436m_to_eia608.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/bsf/source.c"
@@ -1508,6 +1516,8 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${ffmpeg_SOURCE_DIR}/libavcodec/dovi_rpuenc.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/ffv1_parser.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/g728dec.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/gain_map.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/imm6.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/indeo2.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/indeo3.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/indeo4.c"
@@ -1524,13 +1534,17 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${ffmpeg_SOURCE_DIR}/libavcodec/prores_raw_parser.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/rv60dec.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/rv60dsp.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/rw2_parser.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/rw2dec.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/twinvqdec.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/version.c"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/x86/bitpacked_init.c"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/snowdsp_init.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/apvdec.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/codecstring.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/g728dec.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/hxvs.c"
+        "${ffmpeg_SOURCE_DIR}/libavformat/jpegmpfdec.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/lc3.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/lcevc.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/mvrdec.c"
@@ -1541,12 +1555,12 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${ffmpeg_SOURCE_DIR}/libavformat/vpcc.c"
         "${ffmpeg_SOURCE_DIR}/libavformat/webp_anim_dec.c"
         "${ffmpeg_SOURCE_DIR}/libavutil/detection_bbox.c"
+        "${ffmpeg_SOURCE_DIR}/libavutil/framepool.c"
         "${ffmpeg_SOURCE_DIR}/libavutil/hwcontext_stub.c"
         "${ffmpeg_SOURCE_DIR}/libavutil/raw_color_params.c"
         "${ffmpeg_SOURCE_DIR}/libavutil/video_hint.c"
         "${ffmpeg_SOURCE_DIR}/libswresample/version.c"
         "${ffmpeg_SOURCE_DIR}/libswscale/filters.c"
-        "${ffmpeg_SOURCE_DIR}/libswscale/framepool.c"
         "${ffmpeg_SOURCE_DIR}/libswscale/jit.c"
         "${ffmpeg_SOURCE_DIR}/libswscale/ops.c"
         "${ffmpeg_SOURCE_DIR}/libswscale/ops_chain.c"
@@ -1565,6 +1579,7 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/alacdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/apv_dsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/audiodsp.asm"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/x86/bitpacked.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/blockdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/bswapdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/cavsidct.asm"
@@ -1657,6 +1672,7 @@ add_library(diffractor_ffmpeg_msvc STATIC
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_vvc_sao.asm"
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_vvc_sao_10bit.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/dmvr.asm"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/intra.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/xvididct.asm"
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/cpuid.asm"
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/emms.asm"
@@ -1694,6 +1710,7 @@ add_library(diffractor_ffmpeg_msvc STATIC
 )
 
 target_include_directories(diffractor_ffmpeg_msvc PUBLIC
+        "${_ffmpeg_generated}"
         "${ffmpeg_SOURCE_DIR}"
         "${ffmpeg_SOURCE_DIR}/libavcodec"
         "${lzma_SOURCE_DIR}/src/liblzma/api"
@@ -1723,6 +1740,7 @@ set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/alacdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/apv_dsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/audiodsp.asm"
+        "${ffmpeg_SOURCE_DIR}/libavcodec/x86/bitpacked.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/blockdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/bswapdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/cavsidct.asm"
@@ -1807,12 +1825,12 @@ set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/snowdsp.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/vc1dsp_inv_trans.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/simple_idct10.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/h26x/h2656_inter.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/h26x/h2656_sao.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/h26x/h2656_sao_10bit.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/h26x/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/h26x/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/hevc/add_res.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/hevc/deblock.asm"
@@ -1822,7 +1840,7 @@ set_source_files_properties(
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_hevc_mc.asm"
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_hevc_sao.asm"
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_hevc_sao_10bit.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/hevc/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/hevc/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/alf.asm"
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_vvc_mc.asm"
@@ -1831,7 +1849,8 @@ set_source_files_properties(
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_vvc_sao.asm"
         "${CMAKE_BINARY_DIR}/vendored/ffmpeg_msvc-asm/third-party_FFmpeg_libavcodec_x86_vvc_sao_10bit.asm"
         "${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/dmvr.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        "${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/intra.asm"
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavcodec/x86/vvc/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/cpuid.asm"
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/emms.asm"
@@ -1843,12 +1862,12 @@ set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/lls.asm"
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/tx_float.asm"
         "${ffmpeg_SOURCE_DIR}/libavutil/x86/crc.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavutil/x86/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libavutil/x86/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libswresample/x86/audio_convert.asm"
         "${ffmpeg_SOURCE_DIR}/libswresample/x86/rematrix.asm"
         "${ffmpeg_SOURCE_DIR}/libswresample/x86/resample.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libswresample/x86/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libswresample/x86/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libswscale/x86/input.asm"
         "${ffmpeg_SOURCE_DIR}/libswscale/x86/output.asm"
@@ -1861,7 +1880,7 @@ set_source_files_properties(
         "${ffmpeg_SOURCE_DIR}/libswscale/x86/ops_common.asm"
         "${ffmpeg_SOURCE_DIR}/libswscale/x86/ops_float.asm"
         "${ffmpeg_SOURCE_DIR}/libswscale/x86/ops_int.asm"
-        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libswscale/x86/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
+        PROPERTIES COMPILE_FLAGS "-I${ffmpeg_SOURCE_DIR}/libswscale/x86/ -I${_ffmpeg_generated}/ -I${ffmpeg_SOURCE_DIR}/ -P${_ffmpeg_config_asm}")
 
 diffractor_apply_vendored_policy(diffractor_ffmpeg_msvc)
 

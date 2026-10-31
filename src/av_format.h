@@ -25,6 +25,11 @@ struct AVPacket;
 struct AVHWFramesContext;
 
 class file_scan_result;
+
+namespace libfiles
+{
+	struct media_scan_result;
+}
 class audio_buffer;
 class av_frame;
 class av_packet;
@@ -580,6 +585,8 @@ class av_format_decoder final : public df::no_copy
 	av_pts_correction _pts_vid;
 	av_pts_correction _pts_aud;
 	platform::file_ptr _file;
+	// For playback, the container as libfiles read it: info() describes the streams and tags by it.
+	std::shared_ptr<const libfiles::media_scan_result> _media_scan;
 
 public:
 	av_format_decoder() = default;
@@ -603,7 +610,8 @@ public:
 	// nearest a preview position - so a seek must never skip past what was asked for.
 	bool seek(double wanted) const;
 	void close();
-	void extract_metadata(file_scan_result& sr) const;
+	// with_tags false leaves the container's tags and packet to a libfiles scan that read them.
+	void extract_metadata(file_scan_result& sr, bool with_tags = true) const;
 
 	int64_t bitrate() const;
 
@@ -638,7 +646,8 @@ private:
 
 	double _start_time = 0;
 	double _end_time = 0;
-	std::atomic<int> _rotation = 0;
+	// What the container's transform, or the latest frame's, shows the picture as: turn and mirror together.
+	std::atomic<ui::orientation> _orientation = ui::orientation::top_left;
 
 	// Where extract_frame_at last left the decoder, so the next call can tell a step forward from a
 	// jump. Negative means the position is unknown and the next call must seek. Any seek clears it,

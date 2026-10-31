@@ -23,7 +23,7 @@ Media files remain authoritative. The index stores derived property snapshots fo
 | HEIC, AVIF | EXIF and XMP | Not editable |
 | MKV, WebM | Matroska tags | Not editable |
 
-Read and write support are intentionally asymmetric. FFmpeg exposes more container tags than the
+Read and write support are intentionally asymmetric. libfiles reads more container tags than the
 writers reconcile, so displaying a property does not prove it can be stored back into that
 container. Per-format edit traits gate commands before the write path runs.
 
@@ -114,27 +114,45 @@ block changes. IPTC is created when a field it holds is written, and is stored a
 on a packet without `dc:subject` starts from the tags the item shows, legacy keywords included.
 An MP4 or QuickTime edit writes tags and rating to the Xtra box Windows reads as well, a copyright to
 the ISO `cprt` box and a created date to the movie header; the packet always follows the movie box,
-since FFmpeg reads no XMP box before it. An ASF edit writes title, author, copyright and description
-to the header's Content Description, tags and rating to the WM/Category and WM/SharedUserRating
+since FFmpeg reads no XMP box before it. An ASF edit writes the title, the artist - or the creators where
+no artist is given - as the author, the copyright, and the comment as the description to the header's
+Content Description, where Windows and FFmpeg read them; tags and rating to the WM/Category and WM/SharedUserRating
 descriptors, and a created date to the File Properties. An MP3 edit writes the ID3v2 text frames
 players read - title, artist, album, album artist, genre, comment, track, disc, copyright and date - and
 a rating to Windows Media Player's POPM frame, keeping the tag's version and every frame the edit does
 not own. A WAV or AVI edit writes title, artist, comment, copyright, date and genre to LIST INFO, an
-AVI's INFO before `movi` and its packet after it, where FFmpeg reads them. An FLV keeps its packet in an
+AVI's INFO before `movi` and its packet after it, where libfiles' media scan reads them. An FLV keeps its packet in an
 `onXMPData` tag after `onMetaData`. Only the fields an edit sets are written: a native field the packet
 lacks is left as it is.
 
 ## Audio And Video Metadata
 
-FFmpeg container dictionaries are normalized into shared properties. Language-suffixed comment and
-description keys are selected by plain value, UI language, then any available value. Container
-duration, streams, codecs and their profiles, bitrate, frame rate, pixel/audio format, bit depth and
-HDR transfer are technical properties and are not written through the user metadata editor.
+libfiles' media scan reads every audio and video container libfiles knows - MP4 and QuickTime,
+Matroska and WebM, AVI, WAV, AIFF, ASF, MPEG audio, FLAC, Ogg, FLV, MPEG-TS and MPEG-PS - without
+decoding: its streams, duration, tags, XMP packet and cover art. Its tags are mapped onto shared
+properties by the names FFmpeg's demuxers give them, so a recording files where it did; the Windows
+tags and ratings libfiles writes (MP4's Xtra box, ASF's WM/Category and WM/SharedUserRating, MP3's
+POPM) read back from where they were written. A file libfiles cannot describe whole has its streams
+described by FFmpeg, and its tags too when libfiles could not read them at all. Language-tagged
+comments are selected by an untagged value, then the UI language, then any available value; the info
+panel lists every tag under the name the container stores it by, beside the container's structure.
+A date keeps the zone the file states: a creation date with its offset, as Apple's cameras write it,
+is the time the camera's clock showed, as a photo's EXIF time with its offset is; a UTC instant, as an
+MP4 movie header holds, is converted for display; and a date alone, as an MP3's ID3 date often is, is
+that day wherever it is shown.
+
+Container duration, streams, codecs and their profiles, bitrate, frame rate, pixel format, audio
+sample type, bit depth and HDR transfer are technical properties and are not written through the user
+metadata editor. They are Diffractor's own terms whichever library read them: codecs by short name
+(`h264`, `mpeg2`, `dv`, `pcm`), a pixel format as chroma with a depth past 8 bits (`yuv420`,
+`yuv422 10bit`), and the audio sample type as the stream codes its samples - `16bit`, `24bit`,
+`float` for PCM and lossless audio, none for a lossy codec.
 
 A video's shape also comes from the container rather than from its frames: the sample aspect ratio
-gives the displayed dimensions for anamorphic video, and the display matrix gives the orientation.
-Both are read without decoding, so a scan that never opens a frame describes the same shape the
-player does.
+gives the displayed dimensions for anamorphic video, and the display matrix gives the orientation -
+its turn, and its mirror where the transform reflects the picture, numbered as EXIF numbers an
+orientation. Both are read without decoding, so a scan that never opens a frame describes the same
+shape the player does.
 
 Writes reconcile a bounded legacy subset. In particular, MP4/MOV writes do not rewrite the
 full iTunes atom set, so software that ignores XMP may continue to show an older atom value.
@@ -144,7 +162,8 @@ Matroska metadata is read-only.
 
 - HEIC, AVIF, JXL, MKV, and WebM do not expose editable metadata traits.
 - MP4/MOV legacy iTunes atoms are broader on read than on write.
-- ID3 POPM ratings are recognized only for supported owner conventions.
+- A POPM rating is read from Windows Media Player's frame, or failing that the first one; other
+  players' scales are read as Windows Media Player's.
 - A fixed number of date candidates is retained; excess sources remain marked present but may not
   participate in resolution.
 
@@ -184,7 +203,10 @@ read on its own, never combined with an incomplete embedded declaration.
   listed by its `list_iptc`; `metadata_iptc.cpp` maps the datasets onto an item after EXIF and
   before XMP, combining the date and time datasets and merging keywords and bylines with what EXIF
   supplied.
-- [av_format.cpp](../src/av_format.cpp): audio/video container metadata.
+- [files_scan_media.cpp](../src/files_scan_media.cpp): an audio or video file as libfiles' media scan
+  reads it - its streams, properties, cover art and info panel blocks, in Diffractor's own terms.
+- [av_format.cpp](../src/av_format.cpp): what FFmpeg describes of a file libfiles cannot describe
+  whole, mapped onto the same terms.
 - [model_property.cpp](../src/model_property.cpp): shared property identity and formatting.
 - [model_db_pack.h](../src/model_db_pack.h) and [model_db.cpp](../src/model_db.cpp): cached metadata
   serialization.

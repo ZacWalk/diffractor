@@ -17,6 +17,7 @@
 #include "app_util.h"
 #include "app_commands.h"
 
+#include "libfiles/media.h"
 #include "libfiles/write.h"
 
 
@@ -665,6 +666,33 @@ static void should_write_a_sidecar_for_an_image_without_a_writer(const std::stri
 	assert_equal(true, packet.get_property_int(libfiles::xmp::ns::xmp, "Rating", &rating) && rating == 3, "rating in the sidecar");
 }
 
+// An ID3 tag before a FLAC stream does not make a file MPEG audio, whatever its name says, and libfiles
+// cannot update FLAC: an edit is refused as one the format cannot store, and the file is left as it was.
+// Before, the gate read the first bytes as an MP3's, and the edit failed in libfiles' plan instead.
+static void should_refuse_an_edit_to_flac_behind_an_id3_tag()
+{
+	// An ID3v2.3 tag of padding alone, then a FLAC stream's signature and STREAMINFO: 44.1 kHz stereo,
+	// 16 bits, one second.
+	std::string file("ID3\x03\x00\x00\x00\x00\x00\x0A", 10);
+	file.append(10, '\0');
+	file += "fLaC";
+	file.append("\x80\x00\x00\x22", 4);
+	file.append("\x10\x00\x10\x00\x00\x00\x00\x00\x00\x00\x0A\xC4\x42\xF0\x00\x00\xAC\x44", 18);
+	file.append(16, '\0');
+
+	const auto path = _temps.next_path(".mp3");
+	write_test_file(path, file);
+
+	files ff;
+	metadata_edits edits;
+	edits.rating = 3;
+	const auto result = ff.update(path, edits, {}, {}, false, {});
+	assert_equal(false, result.success(), "the edit is refused");
+	assert_equal(true, str::contains(result.format_error(), "this file format cannot store the metadata"),
+	             std::format("refused as a format that cannot store metadata ({})", result.format_error()));
+	assert_equal(file, read_test_file(path), "the file is left as it was");
+}
+
 static void should_roundtrip_xmp_disc_metadata()
 {
 	const auto source = test_files_folder.combine_file("Byzantium.avi");
@@ -942,14 +970,6 @@ static void should_update_metadata(const std::string_view name)
 	expected->rating = 3;
 	expected->tags = make_unique_tags(tag_set(expected->tags), tags_to_add);
 
-	// libfiles reconciles dc:description into the native ASF Content-Description
-	// "Description" field, as the Adobe XMP SDK did, and FFmpeg surfaces it as "comment".
-	// So for ASF/WMV the description round-trips as both description and comment.
-	if (str::icmp(ext, ".asf") == 0 || str::icmp(ext, ".wmv") == 0 || str::icmp(ext, ".wm") == 0)
-	{
-		expected->comment = "Description xx"_c;
-	}
-
 	reconcile_write_mutable_dates(*expected, *actual, "metadata");
 	assert_metadata(*expected, *actual);
 }
@@ -1114,34 +1134,41 @@ static void should_remove_shell_written_tags()
 	}
 }
 
-// The FFmpeg 'Xtra' box reader surfaces Windows Explorer / Media Player tags
-// (WM/Category) as "keywords" and the user rating (WM/SharedUserRating). The
-// committed fixtures carry these in-file, so we can read them without the Shell
-// API — proving the FFmpeg-only read path for Windows-tagged MP4/MOV. (#123)
+// libfiles reads the Windows Explorer / Media Player tags (WM/Category) and user rating
+// (WM/SharedUserRating) from an MP4 or QuickTime file's 'Xtra' box, where it also writes them. The
+// committed fixtures carry these in-file, so they read without the Shell API. (#123)
 static void should_read_mp4_xtra_metadata(const std::string_view name, const std::string_view expect_tag)
 {
 	files ff;
 	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(name));
+	assert_equal(true, sr.media != nullptr, std::format("libfiles read {}", name));
+	if (!sr.media) return;
 
-	bool found_keywords = false;
+	bool found_category = false;
 	bool found_rating = false;
-	for (const auto& kv : sr.ffmpeg_metadata)
+	for (const auto& tag : sr.media->tags)
 	{
-		if (str::icmp(kv.key, "WM/Category") == 0 &&
-			kv.value.find(expect_tag) != std::string_view::npos)
-			found_keywords = true;
-		if (str::icmp(kv.key, "WM/SharedUserRating") == 0)
+		if (str::icmp(tag.key, "WM/Category") == 0 && tag.value.find(expect_tag) != std::string::npos)
+			found_category = true;
+		if (str::icmp(tag.key, "WM/SharedUserRating") == 0)
 			found_rating = true;
 	}
 
-	assert_equal(true, found_keywords, std::format("xtra keywords {}", name));
+	const auto& keywords = sr.media->properties.keywords;
+	const auto keyword = std::ranges::any_of(keywords, [expect_tag](const std::string& k)
+	{
+		return k.find(expect_tag) != std::string::npos;
+	});
+
+	assert_equal(true, found_category, std::format("xtra category tag {}", name));
+	assert_equal(true, keyword, std::format("xtra keywords {}", name));
 	assert_equal(true, found_rating, std::format("xtra rating {}", name));
+	assert_equal(true, sr.media->properties.rating.has_value(), std::format("xtra rating property {}", name));
 }
 
-// FFmpeg's ASF demuxer must surface ALL Windows 'WM/Category' keywords, not just
-// the first. Windows stores them as separate descriptors across the Extended-
-// Content-Description and Metadata-Library objects; the demuxer now appends them
-// (';'-separated). Tag a WMV via the Shell, then read the raw metadata. (#123)
+// An ASF file's Windows 'WM/Category' keywords all read, not just the first. Windows stores them as
+// separate descriptors across the Extended Content Description and Metadata Library objects, and
+// libfiles writes them as separate descriptors too. Tag a WMV, then read it back. (#123)
 static void should_read_asf_wm_categories()
 {
 	const auto load_path = test_files_folder.combine_file("gen.wmv");
@@ -1157,16 +1184,15 @@ static void should_read_asf_wm_categories()
 	assert_equal(true, tag_result.success(), std::format("asf tags written ({})", tag_result.format_error()));
 
 	const auto sr = ff_scan_file(ff, save_path);
+	assert_equal(true, sr.media != nullptr, "libfiles read the asf");
+	if (!sr.media) return;
 
-	std::string_view categories;
-	for (const auto& kv : sr.ffmpeg_metadata)
-	{
-		if (str::icmp(kv.key, "WM/Category") == 0) categories = kv.value;
-	}
+	const auto& keywords = sr.media->properties.keywords;
+	const auto has = [&keywords](const std::string_view k) { return std::ranges::find(keywords, k) != keywords.end(); };
 
-	assert_equal(true, categories.find("AsfTagA") != std::string_view::npos, "asf WM/Category A");
-	assert_equal(true, categories.find("AsfTagB") != std::string_view::npos, "asf WM/Category B");
-	assert_equal(true, categories.find("AsfTagC") != std::string_view::npos, "asf WM/Category C");
+	assert_equal(true, has("AsfTagA"), "asf WM/Category A");
+	assert_equal(true, has("AsfTagB"), "asf WM/Category B");
+	assert_equal(true, has("AsfTagC"), "asf WM/Category C");
 }
 
 // Windows compatibility (write): Diffractor writes tags & rating via its normal
@@ -2095,6 +2121,7 @@ void register_media_edit_tests(view_state& state, test_registry& tests)
 		tests.add(std::format("Should write a sidecar for an image without a writer {}", ext),
 		          [ext] { should_write_a_sidecar_for_an_image_without_a_writer(ext); });
 	}
+	tests.add("Should refuse an edit to FLAC behind an ID3 tag"s, should_refuse_an_edit_to_flac_behind_an_id3_tag);
 	tests.add("Should preserve metadata creator names with apostrophes"s,
 	          should_preserve_creator_names_with_apostrophes);
 	// Issue #252 - rotated video keeps its rotation across a metadata write

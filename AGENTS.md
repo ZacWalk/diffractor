@@ -67,7 +67,7 @@ Start from the concrete failing behavior, symbol, test, or file, then route to t
 
 - `app*`: application coordination; `view*`/`ui*`: views, controls, layout, drawing.
 - `model*`: state, index, search, SQLite, properties; `files*`/`metadata*`: I/O, codecs, EXIF/IPTC/XMP/ICC.
-- `av*`: audio/video; `render*`: surfaces/color/transforms; `platform_win_d3d11.cpp`/`platform_win_software.cpp`: draw backends.
+- `av*`: audio/video; `render*`: software rasterisers for the sidebar's charts and globe and for panoramas. The draw backends and surfaces are libdesktop's render module.
 - `platform*`: the app's own Windows and Linux glue - its side of FFmpeg's hardware decoding, its resource script, its Linux entry point; `util*`: the app's own helpers; `test*`: tests. The foundation (`df::`, `str::`) and the OS services (`platform.h`) are libdesktop's system module, and the desktop UI - `ui.h`, `platform_render.h`, the window layer and the renderers - its render module, all included as `libdesktop/<file>.h` - see [cmake/DiffractorLibdesktop.cmake](cmake/DiffractorLibdesktop.cmake).
 
 Editing a file under `src/` also loads the matching rules in `.github/instructions/`, which carry the threading, rendering, view, test, and platform detail for that area at the point it applies.

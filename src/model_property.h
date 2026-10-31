@@ -184,10 +184,12 @@ namespace prop
 		none = 0,
 		unsigned_8bit = 8,
 		signed_16bit = 16,
+		signed_24bit = 24,
 		signed_32bit = 32,
 		signed_64bit = 64,
 		signed_float = 32 | 1,
 		signed_double = 64 | 1,
+		// What FFmpeg's decoders put out, which older scans recorded; a scan records the coded samples.
 		unsigned_planar_8bit = 8 | 2,
 		signed_planar_16bit = 16 | 2,
 		signed_planar_32bit = 32 | 2,

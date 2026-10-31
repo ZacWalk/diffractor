@@ -28,8 +28,8 @@ git clone https://github.com/ZacWalk/diffractor.git
 ```
 
 The build uses CMake and requires Visual Studio and Ninja. CMake fetches the dependencies at the
-versions `cmake/dd-dependencies.json` pins, Diffractor's [FFmpeg](https://github.com/ZacWalk/FFmpeg)
-fork among them.
+versions `cmake/dd-dependencies.json` pins, upstream [FFmpeg](https://github.com/FFmpeg/FFmpeg)
+among them.
 
 Everything goes through the `dd` gateway, which finds Visual Studio, configures with Ninja and puts the binary in `exe/`:
 

@@ -16,6 +16,7 @@
 #include "metadata_xmp.h"
 #include "files.h"
 
+#include "libfiles/identify.h"
 #include "libfiles/write.h"
 #include "libfiles/xmp.h"
 
@@ -652,7 +653,8 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 	{
 		const int r = std::clamp(rating.value(), -1, 5);
 		meta.set_property_int(xmp_ns::xmp, "Rating", r);
-		meta.set_property_int(xmp_ns::microsoft_photo, "Rating", rating_to_percent(r));
+		// Windows' scale, 1/25/50/75/99, which Explorer buckets: a plain star*20 shows one star too many there.
+		meta.set_property_int(xmp_ns::microsoft_photo, "Rating", libfiles::percent_from_stars(r));
 	}
 
 	if (label.has_value())
@@ -941,15 +943,28 @@ prop::panorama_geometry metadata_xmp::panorama(const df::file_path path)
 	return result;
 }
 
-// The formats libfiles reads and writes: every one diffractor embeds metadata in.
+// The format libfiles updates a file as, by what the file holds rather than its first bytes alone: an ID3
+// tag before a FLAC stream does not make the file MPEG audio, and libfiles cannot update FLAC.
+static libfiles::file_format libfiles_update_format(libfiles::reader& r)
+{
+	return libfiles::info(libfiles::identify(r)).update_format;
+}
+
 static libfiles::file_format libfiles_update_format(const df::file_path path)
 {
 	const auto f = open_file(path, platform::file_open_mode::read);
-	uint8_t head[16] = {};
+	if (!f) return libfiles::file_format::unknown;
 
-	if (!f || f->read(head, sizeof(head)) != sizeof(head)) return libfiles::file_format::unknown;
+	platform_file_stream stream(f);
+	libfiles::reader r(stream);
+	return libfiles_update_format(r);
+}
 
-	return libfiles::detect_file_format(head);
+// A format Diffractor reads a packet from but libfiles writes none to - a FLAC stream behind an ID3 tag,
+// named as an MP3 - is refused for an edit before anything is planned, whichever way the edit is written.
+static void require_updatable(const df::file_path path)
+{
+	if (!libfiles::can_update(libfiles_update_format(path))) throw app_exception("this file format cannot store the metadata");
 }
 
 // The packet a file holds, where libfiles reads and writes it. Nothing when libfiles does not read the
@@ -961,11 +976,7 @@ static std::optional<libfiles::packet_reading> read_file_packet(const df::file_p
 
 	platform_file_stream stream(f);
 	libfiles::reader r(stream);
-	if (r.size() < 16) return {};
-
-	uint8_t head[16];
-	r.read(0, head, sizeof(head));
-	if (!libfiles::can_update(libfiles::detect_file_format(head))) return {};
+	if (r.size() < 16 || !libfiles::can_update(libfiles_update_format(r))) return {};
 
 	return libfiles::read_packet(r);
 }
@@ -1042,7 +1053,7 @@ static libfiles::legacy_edits legacy_edits_of(const metadata_edits& edits, const
 	{
 		const auto r = std::clamp(edits.rating.value(), -1, 5);
 		legacy.rating = r;
-		legacy.rating_percent = rating_to_percent(r);
+		legacy.rating_percent = libfiles::percent_from_stars(r);
 	}
 
 	if (edits.remove_rating)
@@ -1293,11 +1304,7 @@ xmp_update_result metadata_xmp::update(const df::file_path update_path, const df
 
 		if (is_embedded_dst)
 		{
-			// A format diffractor reads a packet from but nothing writes one to.
-			if (!libfiles::can_update(libfiles_update_format(update_path)))
-			{
-				throw app_exception("this file format cannot store the metadata");
-			}
+			require_updatable(update_path);
 
 			libfiles::metadata_update update{&xmp};
 			update.legacy = legacy_edits_of(edits, xmp);
@@ -1370,11 +1377,7 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 
 	platform_file_stream source(f);
 	libfiles::reader r(source);
-	if (r.size() < 16) return {};
-
-	uint8_t head[16];
-	r.read(0, head, sizeof(head));
-	if (!libfiles::can_update(libfiles::detect_file_format(head))) return {};
+	if (r.size() < 16 || !libfiles::can_update(libfiles_update_format(r))) return {};
 
 	run_test_update_failure(stage_path);
 
@@ -1440,6 +1443,8 @@ bool metadata_xmp::patch(const df::file_path path, const metadata_edits& edits, 
 
 	try
 	{
+		require_updatable(path);
+
 		libfiles::xmp::meta xmp;
 		read_edit_source(path, files::file_type_from_name(path), false, edits, src_xmp_name, xmp);
 

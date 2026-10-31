@@ -14,9 +14,11 @@
 #include "libfiles/commodore.h"
 #include "libfiles/exif.h"
 #include "libfiles/exif_listing.h"
+#include "libfiles/media.h"
 #include "libfiles/scan.h"
 #include "test.h"
 #include "util_zip.h"
+#include "av_format.h"
 #include "metadata_exif.h"
 #include "metadata_iptc.h"
 #include "metadata_xmp.h"
@@ -4025,6 +4027,107 @@ static void should_scan_stills_alike_from_memory_and_streams()
 	             std::format("a scan through a stream reads as one from memory{}", report));
 }
 
+// Audio and video are read by libfiles' media scan, and FFmpeg is opened only to decode or to describe
+// what libfiles cannot. Every fixture in a container libfiles knows is read whole, so indexing never
+// opens FFmpeg for it, and what libfiles reads of its streams is what FFmpeg makes of them in
+// Diffractor's terms. Cut short and corrupted, each still scans without a fault, and a scan reads the
+// headers it needs rather than the media.
+static void should_read_media_with_libfiles()
+{
+	std::vector<df::file_path> corpus;
+	scan_parity::add_folder(test_files_folder, corpus);
+
+	auto files_read = 0;
+	std::vector<std::string> differences;
+
+	const auto differ = [&differences](const std::string& name, const std::string_view field, const auto& from_libfiles,
+	                                   const auto& from_ffmpeg)
+	{
+		if (from_libfiles != from_ffmpeg)
+		{
+			differences.push_back(std::format("{}: {} libfiles '{}' FFmpeg '{}'", name, field, from_libfiles,
+			                                  from_ffmpeg));
+		}
+	};
+
+	for (const auto& path : corpus)
+	{
+		if (!files::file_type_from_name(path)->has_trait(file_traits::av)) continue;
+
+		auto bytes = df::blob_from_file(path);
+		if (bytes.size() < 16) continue;
+
+		const auto name = path.str();
+		libfiles::memory_stream source(std::vector<uint8_t>(bytes.begin(), bytes.end()));
+		libfiles::reader r(source);
+		auto scan = libfiles::scan_media(r);
+		if (scan.format == libfiles::media_format::unknown) continue;
+
+		++files_read;
+		assert_equal(true, scan.success, name, std::format("libfiles reads it ({})", scan.error));
+		assert_equal(true, scan.complete, name, "libfiles describes every stream");
+		assert_equal(true, r.source_bytes() <= std::max<uint64_t>(4ull * 1024 * 1024, bytes.size() / 16), name,
+		             std::format("the scan reads headers, not media ({} bytes in {} reads)", r.source_bytes(),
+		                         r.source_reads()));
+
+		file_scan_result from_libfiles;
+		media_scan_read read;
+		read.scan = std::make_shared<libfiles::media_scan_result>(std::move(scan));
+		apply_media_scan(from_libfiles, std::move(read), true);
+
+		file_scan_result from_ffmpeg;
+		av_format_decoder decoder;
+		assert_equal(true, decoder.open(path, media_intent::metadata), name, "FFmpeg opens it");
+		decoder.extract_metadata(from_ffmpeg, false);
+
+		differ(name, "video codec", from_libfiles.video_codec.sv(), from_ffmpeg.video_codec.sv());
+		// FFmpeg names a pixel format only once it has decoded a frame, and a file that interleaves
+		// seconds of audio before its first video frame - indy.mp4 - spends FFmpeg's analysis window
+		// first. libfiles reads it from the codec configuration, so only a format both name can differ.
+		if (!from_ffmpeg.pixel_format.sv().empty())
+		{
+			differ(name, "pixel format", from_libfiles.pixel_format.sv(), from_ffmpeg.pixel_format.sv());
+		}
+		differ(name, "width", from_libfiles.width, from_ffmpeg.width);
+		differ(name, "height", from_libfiles.height, from_ffmpeg.height);
+		differ(name, "orientation", static_cast<int>(from_libfiles.orientation), static_cast<int>(from_ffmpeg.orientation));
+		differ(name, "audio codec", from_libfiles.audio_codec.sv(), from_ffmpeg.audio_codec.sv());
+		differ(name, "sample rate", from_libfiles.audio_sample_rate, from_ffmpeg.audio_sample_rate);
+		differ(name, "channels", from_libfiles.audio_channels, from_ffmpeg.audio_channels);
+		differ(name, "sample type", static_cast<int>(from_libfiles.audio_sample_type),
+		       static_cast<int>(from_ffmpeg.audio_sample_type));
+
+		// Durations are whole seconds in the index, and the two may round a fraction either way.
+		if (std::abs(from_libfiles.duration - from_ffmpeg.duration) > 1.0)
+		{
+			differences.push_back(std::format("{}: duration libfiles {} FFmpeg {}", name, from_libfiles.duration,
+			                                  from_ffmpeg.duration));
+		}
+
+		for (const auto cut : scan_parity::cut_points(bytes.size()))
+		{
+			libfiles::reader prefix(std::span<const uint8_t>(bytes.data(), cut));
+			(void)libfiles::scan_media(prefix);
+		}
+
+		for (uint64_t k = 0; k < 48; ++k)
+		{
+			const auto at = scan_parity::corruption_position(k, bytes.size());
+			const auto original = bytes[at];
+			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
+			libfiles::reader damaged(std::span<const uint8_t>(bytes.data(), bytes.size()));
+			(void)libfiles::scan_media(damaged);
+			bytes[at] = original;
+		}
+	}
+
+	std::string report;
+	for (const auto& d : differences) report += "\n  " + d;
+
+	assert_equal(true, files_read >= 15, "the fixtures hold audio and video libfiles reads");
+	assert_equal(0, static_cast<int>(differences.size()), std::format("libfiles reads media as FFmpeg does{}", report));
+}
+
 // Diffractor's PSD loader moved to libfiles. Before the switch both decoded every PSD in the fixtures
 // and in DIFFRACTOR_SCAN_PARITY_CORPUS, and a synthetic one in every colour mode, raw and PackBits -
 // whole, cut short and with single bytes corrupted - and agreed on every byte of every row, on what
@@ -4602,8 +4705,12 @@ static void should_read_exif_as_diffractors_parser_did()
 	// 04e30fb reads it, and the 35 mm focal length, as the first value where it lies, at its type's width,
 	// where the parser read the entry's field as a SHORT. All 227 are of blocks whose ISO entry the sweep
 	// damaged - a SHORT made a LONG, or a count that puts the values beyond the field - and none of an
-	// undamaged block.
-	assert_equal(std::format("{:08x}", 0x48e303bbu), std::format("{:08x}", checksum),
+	// undamaged block. And but for the rating in 9 more, each of exif-rating.jpg with its RatingPercent of 50
+	// damaged: libfiles reads a percent as Windows does - 1 to 12 is one star, 13 to 37 two, 38 to 62 three,
+	// 63 to 87 four, and 88 and above five - so that 13 is two stars, and a percent past 100 five, where the
+	// parser took its fifths rounded up, and past 100 took them twice: 306 was one star. That moved the
+	// record from 48e303bb.
+	assert_equal(std::format("{:08x}", 0x719bdff7u), std::format("{:08x}", checksum),
 	             "every reading is the one Diffractor's parser made before it moved to libfiles");
 }
 
@@ -6397,6 +6504,9 @@ namespace heif_sweep
 
 static void should_decode_heifs_as_load_heif_did()
 {
+	// libheif 1.23.7 keeps all 37 complete-file outcomes and inputs unchanged. Of the 2,347 variants,
+	// 86 damaged ones now recover pixels and 52 report dimensions without pixels; the 1.23.5 control
+	// still matches da7bc3f5. Keep the entire sweep, with its accepted updated recovery record.
 	[[maybe_unused]] const heif_sweep::sse41_av1_kernels kernels;
 	auto corpus = heif_sweep::corpus();
 	const auto real_files = corpus.size();
@@ -6433,8 +6543,8 @@ static void should_decode_heifs_as_load_heif_did()
 	assert_equal(true, real_files >= 2, "the fixtures hold HEIF and AVIF");
 	assert_equal(true, decoded > 1000, "much of what is decoded decodes");
 	assert_equal(2347, recorded_outcomes, "the sweep is the one the record was taken over");
-	assert_equal(std::format("{:08x}", 0xda7bc3f5u), std::format("{:08x}", checksum),
-	             "every outcome is the one load_heif had before it moved to libfiles");
+	assert_equal(std::format("{:08x}", 0x252463efu), std::format("{:08x}", checksum),
+	             "every outcome matches libheif 1.23.7's recovery record");
 }
 
 // Diffractor's JPEG XL loader moved to libfiles. Before the switch both decoded every JPEG XL in the
@@ -7615,6 +7725,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should keep archive entries after warnings"s, should_keep_archive_entries_after_warnings);
 	tests.add("Should convert archive Unix timestamps"s, should_convert_archive_unix_timestamps);
 	tests.add("Should scan stills alike from memory and streams"s, should_scan_stills_alike_from_memory_and_streams);
+	tests.add("Should read media with libfiles"s, should_read_media_with_libfiles);
 	tests.add("Should decode PSDs as load_psd did"s, should_decode_psds_as_load_psd_did);
 	tests.add("Should decode JPEGs as jpeg_decoder_x did"s, should_decode_jpegs_as_jpeg_decoder_x_did);
 	tests.add("Should read EXIF as Diffractor's parser did"s, should_read_exif_as_diffractors_parser_did);

@@ -166,16 +166,16 @@ diffractor_dependency(archive PKG_CONFIG libarchive VENDORED_MODULE vendored/arc
 diffractor_dependency(bzip2 VENDORED_MODULE vendored/bzip2 OPTIONAL)
 diffractor_dependency(lzma VENDORED_MODULE vendored/lzma OPTIONAL)
 
-# Tracked music. Declared before the forks because FFmpeg's configure enables its libopenmpt
-# demuxer only when it can already see the library, and a dependency can only be stated on a target
-# that already exists.
+# Tracked music. Declared before FFmpeg because its configure enables the libopenmpt demuxer only
+# when it can already see the library, and a dependency can only be stated on a target that already
+# exists.
 diffractor_dependency(openmpt VENDORED_MODULE vendored/openmpt OPTIONAL)
 
-# The fork. Never resolvable from the system: docs/third-party.md records the patches a distribution
-# copy would silently discard. Not OPTIONAL: media is not a feature Diffractor is valid without, so a
-# configuration that cannot build it fails here rather than producing an application that reports
-# every media file as absent.
-diffractor_dependency(ffmpeg FORK VENDORED_MODULE vendored/FFmpeg)
+# FFmpeg, built as docs/third-party.md configures it. Never resolvable from the system: a
+# distribution's copy is configured otherwise. Not OPTIONAL: media is not a feature Diffractor is
+# valid without, so a configuration that cannot build it fails here rather than producing an
+# application that reports every media file as absent.
+diffractor_dependency(ffmpeg NO_SYSTEM VENDORED_MODULE vendored/FFmpeg)
 
 # The foundation, OS services and desktop UI Diffractor is written in, fetched from libdesktop: see
 # cmake/DiffractorLibdesktop.cmake.
@@ -220,6 +220,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/files_formats.cpp
         src/files_psd.cpp
         src/files_scan_photo.cpp
+        src/files_scan_media.cpp
         src/files_jpeg.cpp
         src/files_png.cpp
         src/files_webp.cpp

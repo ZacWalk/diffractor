@@ -40,14 +40,6 @@ inline df::blob make_orientation_exif(ui::orientation orientation)
 	return exif_block;
 }
 
-// Windows Explorer buckets the percent rating as 1/25/50/75/99. A plain star*20 reads back into
-// Diffractor correctly but shows one star too many everywhere else.
-constexpr int rating_to_percent(const int stars)
-{
-	constexpr int percent[] = {0, 1, 25, 50, 75, 99};
-	return percent[stars < 0 ? 0 : stars > 5 ? 5 : stars];
-}
-
 namespace metadata_exif
 {
 	template <typename T>

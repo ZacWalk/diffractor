@@ -561,8 +561,10 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 		const auto inspected = ff.scan_file(path, false, ft, {}, {}, scan_intent::inspect);
 		const auto indexed = ff.scan_file(path, false, ft, {}, {}, scan_intent::index);
 
+		// The player's summary comes from a playback open, which lays libfiles' reading of the container
+		// over FFmpeg's streams.
 		av_format_decoder decoder;
-		assert_equal(true, decoder.open(path, media_intent::metadata), name, "open media for its displayed summary");
+		assert_equal(true, decoder.open(path, media_intent::playback), name, "open media for its displayed summary");
 		const auto displayed = decoder.info();
 		assert_equal(inspected.video_codec.sv(), displayed.video_codec.sv(), name,
 		             "attached artwork cannot replace the main video codec");
@@ -978,6 +980,84 @@ static void should_report_container_rotation_to_the_player()
 	assert_equal(ui::orientation::right_top, ses->info().display_orientation, "player agrees with the scan");
 
 	ses->close(false);
+}
+
+// A mirrored video. A container's transform can mirror the picture as well as turn it, and the scan and
+// the player both read the mirror from it, as they read the turn, so a mirrored file's tile and its
+// playback agree. rotated90.mp4 is made mirrored here by its track's matrix alone. Before, the scan
+// dropped the mirror and the player read a horizontal mirror as a half turn: these failed with the scan
+// upright and the player turned 180 degrees, and with the scan turned a quarter (6) and the player
+// three quarters (8).
+static void should_report_a_mirrored_container_to_the_player()
+{
+	const auto original = read_test_file(test_files_folder.combine("excluded1").combine_file("rotated90.mp4"));
+
+	// The matrix's first four entries, 16.16 fixed point, of the track rotated90.mp4 turns a quarter.
+	constexpr uint32_t one = 0x00010000u;
+	constexpr uint32_t minus_one = 0xFFFF0000u;
+	const auto load_be32 = [](const std::string& s, const size_t at)
+	{
+		return static_cast<uint32_t>(static_cast<uint8_t>(s[at])) << 24 | static_cast<uint32_t>(static_cast<uint8_t>(s[at + 1])) << 16 |
+			static_cast<uint32_t>(static_cast<uint8_t>(s[at + 2])) << 8 | static_cast<uint32_t>(static_cast<uint8_t>(s[at + 3]));
+	};
+
+	size_t matrix_at = 0;
+
+	for (auto at = original.find("tkhd"); at != std::string::npos && matrix_at == 0; at = original.find("tkhd", at + 4))
+	{
+		// After the type: version and flags, the times, track and duration - wider in version 1 - then
+		// eight reserved bytes, layer, group, volume and two more reserved.
+		const auto version = static_cast<uint8_t>(original[at + 4]);
+		const auto candidate = at + 4 + 4 + (version == 1 ? 32 : 20) + 8 + 8;
+
+		if (candidate + 16 <= original.size() && load_be32(original, candidate) == 0 && load_be32(original, candidate + 4) == one &&
+			load_be32(original, candidate + 8) == 0 && load_be32(original, candidate + 12) == minus_one)
+		{
+			matrix_at = candidate;
+		}
+	}
+
+	assert_equal(true, matrix_at != 0, "rotated90.mp4 has a track turned a quarter");
+
+	struct variant
+	{
+		const char* name;
+		// The matrix's a, b, c and d; the projection entry u between b and c keeps its value.
+		uint32_t a, b, c, d;
+		ui::orientation expected;
+	};
+
+	const variant variants[] = {
+		{"mirrored", minus_one, 0, 0, one, ui::orientation::top_right},
+		{"mirrored, then turned a quarter", 0, minus_one, minus_one, 0, ui::orientation::right_bottom},
+	};
+
+	for (const auto& v : variants)
+	{
+		auto bytes = original;
+		const auto store_be32 = [&bytes](const size_t at, const uint32_t value)
+		{
+			for (auto i = 0; i < 4; ++i) bytes[at + i] = static_cast<char>(value >> (24 - 8 * i) & 0xFF);
+		};
+
+		store_be32(matrix_at, v.a);
+		store_be32(matrix_at + 4, v.b);
+		store_be32(matrix_at + 12, v.c);
+		store_be32(matrix_at + 16, v.d);
+
+		const auto path = _temps.next_path(".mp4");
+		write_test_file(path, bytes);
+
+		files ff;
+		const auto scanned = ff_scan_file(ff, path).to_props();
+		assert_equal(v.expected, scanned->orientation, std::format("scan reads a track {}", v.name));
+
+		const auto ses = make_test_session();
+		assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
+		             "session opened");
+		assert_equal(v.expected, ses->info().display_orientation, std::format("player agrees with the scan: {}", v.name));
+		ses->close(false);
+	}
 }
 
 // A media seek can only land on a key frame, so the caller has to say which side of the
@@ -3038,6 +3118,7 @@ void register_av_tests(view_state& state, test_registry& tests)
 	          should_report_container_aspect_ratio_to_the_player);
 	// Issue #252 - the player reports the same rotation the scan does
 	tests.add("Should report container rotation to the player"s, should_report_container_rotation_to_the_player);
+	tests.add("Should report a mirrored container to the player"s, should_report_a_mirrored_container_to_the_player);
 	tests.add("Should seek to the frame at the requested time"s, should_seek_to_the_frame_at_the_requested_time);
 	tests.add("Should seek short video thumbnails"s, should_seek_short_video_thumbnails);
 

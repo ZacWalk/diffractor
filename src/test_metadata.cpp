@@ -581,9 +581,8 @@ static void should_scan_mp3()
 	expected.genre = "Rock"_c;
 	expected.duration = 10;
 	expected.audio_sample_rate = 22050;
-	expected.audio_sample_type = 35;
 	expected.audio_channels = 2;
-	expected.audio_codec = "mp3float"_c;
+	expected.audio_codec = "mp3"_c;
 	expected.track.x = 7;
 	expected.year = 1999;
 
@@ -600,12 +599,11 @@ static void should_scan_mp3()
 	expected2.genre = "Rock"_c;
 	expected2.duration = 10;
 	expected2.audio_sample_rate = 44100;
-	expected2.audio_sample_type = 35;
 	expected2.audio_channels = 2;
 	expected2.track.x = 5;
 	expected2.disk.x = 1;
 	expected2.encoder = "Lavf51.12.1"_c;
-	expected2.audio_codec = "mp3float"_c;
+	expected2.audio_codec = "mp3"_c;
 
 	assert_metadata(expected2, *actual2.to_props(), "Games Without Frontiers.mp3");
 
@@ -620,11 +618,11 @@ static void should_scan_mp3()
 	expected3.genre = "Rock"_c;
 	expected3.duration = 10;
 	expected3.audio_sample_rate = 44100;
-	expected3.audio_sample_type = 35;
 	expected3.audio_channels = 2;
 	expected3.track.x = 2;
-	expected3.audio_codec = "mp3float"_c;
-	expected3.dates.add_utc(prop::date_source::container_created, df::date_t(2006, 6, 20, 0, 0, 0));
+	expected3.audio_codec = "mp3"_c;
+	// TDRC "2006-06-20" names a calendar day, not an instant, so it is the day wherever it is shown.
+	expected3.dates.add(prop::date_source::container_created, df::date_t(2006, 6, 20, 0, 0, 0));
 	expected3.publisher = "Interscope"_c;
 
 	assert_metadata(expected3, *actual3.to_props(), "Is It Any Wonder.mp3");
@@ -643,7 +641,6 @@ static void should_scan_mp4()
 	expected.tags = "gadget test"_c;
 	expected.audio_codec = "aac"_c;
 	expected.audio_sample_rate = 48000;
-	expected.audio_sample_type = 35;
 	expected.audio_channels = 1;
 	expected.duration = 6;
 	expected.width = 560;
@@ -654,7 +651,7 @@ static void should_scan_mp4()
 	expected.year = 2010;
 	expected.video_codec = "h264"_c;
 	expected.encoder = "HandBrake 0.9.4 2009112300"_c;
-	expected.pixel_format = "yuv420p"_c;
+	expected.pixel_format = "yuv420"_c;
 
 	assert_metadata(expected, *actual.to_props(), "gizmo.mp4");
 
@@ -673,7 +670,6 @@ static void should_scan_mp4()
 	expected2.duration = 10;
 	expected2.audio_codec = "aac"_c;
 	expected2.audio_sample_rate = 44100;
-	expected2.audio_sample_type = 35;
 	expected2.audio_channels = 2;
 	expected2.track = {7, 0};
 	expected2.width = 0;
@@ -824,9 +820,8 @@ static void should_scan_mov()
 	expected.comment = "What to do if you ipad dies"_c;
 	expected.audio_codec = "aac"_c;
 	expected.audio_sample_rate = 32000;
-	expected.audio_sample_type = 35;
 	expected.audio_channels = 1;
-	expected.pixel_format = "yuv420p"_c;
+	expected.pixel_format = "yuv420"_c;
 	expected.duration = 86;
 	expected.width = 640;
 	expected.height = 480;
@@ -842,7 +837,9 @@ static void should_scan_mov()
 	const auto actual2 = ff_scan_file(ff, load_path2);
 
 	prop::item_metadata expected2;
-	expected2.dates.add_utc(prop::date_source::container_created, df::date_t(2011, 3, 13, 15, 13, 49));
+	// Apple's creation date states the offset of the zone it was made in, so it is the time the camera's
+	// clock showed there, as a photo's EXIF time with its offset is.
+	expected2.dates.add(prop::date_source::container_created, df::date_t(2011, 3, 13, 15, 13, 49), 0);
 	expected2.audio_codec = "aac"_c;
 	// Issue #61: the QuickTime ISO6709 location tag must reach the coordinate, or the world map
 	// cannot plot the video.
@@ -854,13 +851,12 @@ static void should_scan_mov()
 	expected2.height = 480;
 	expected2.duration = 10;
 	expected2.audio_sample_rate = 44100;
-	expected2.audio_sample_type = 35;
 	expected2.audio_channels = 1;
 	expected2.video_codec = "h264"_c;
 	expected2.camera_manufacturer = "Apple"_c;
 	expected2.camera_model = "iPhone 3GS"_c;
 	expected2.encoder = "4.3"_c;
-	expected2.pixel_format = "yuv420p"_c;
+	expected2.pixel_format = "yuv420"_c;
 	expected2.year = 2011;
 
 	assert_metadata(expected2, *actual2.to_props(), "StPauls.MOV");
@@ -879,14 +875,13 @@ static void should_scan_avi()
 	expected.comment =
 		"John Romer recreates the glory and history of Byzantium. From the Hagia Sophia in present-day Istanbul to the looted treasures of the empire now located in St. Marks in Venice."_c;
 	expected.audio_sample_rate = 48000;
-	expected.audio_sample_type = 35;
 	expected.audio_channels = 2;
 	expected.duration = 12;
 	expected.width = 854;
 	expected.height = 480;
 	expected.video_codec = "wmv3"_c;
 	expected.tags = "Byzantium History Turkey"_c;
-	expected.pixel_format = "yuv420p"_c;
+	expected.pixel_format = "yuv420"_c;
 
 	assert_metadata(expected, *actual.to_props(), "Byzantium.avi");
 }

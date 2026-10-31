@@ -10,6 +10,8 @@ include_guard(GLOBAL)
 include(FetchContent)
 
 function(diffractor_fetch NAME)
+    # file(READ) is not tracked: without this a pin change would leave the build on the old archive.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/cmake/dd-dependencies.json")
     file(READ "${CMAKE_SOURCE_DIR}/cmake/dd-dependencies.json" _pins)
     string(JSON _url ERROR_VARIABLE _missing GET "${_pins}" dependencies ${NAME} url)
 
@@ -25,7 +27,7 @@ function(diffractor_fetch NAME)
             URL "${_url}"
             URL_HASH SHA256=${_sha256}
             SOURCE_SUBDIR no-cmake-project
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+            DOWNLOAD_EXTRACT_TIMESTAMP FALSE)
     FetchContent_MakeAvailable(${NAME})
     set(${NAME}_SOURCE_DIR "${${NAME}_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()

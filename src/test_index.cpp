@@ -491,7 +491,9 @@ static void should_keep_answering_while_upgrading_to_the_date_pack()
 	assert_equal("test", item_md->album.sv(), "the rest of the cached metadata is untouched");
 }
 
-static void should_keep_answering_while_upgrading_audio_metadata()
+// Versions 3 and 4 both changed only what an audio or video scan records, so either upgrade asks those
+// items alone to be re-scanned, and every row keeps answering meanwhile.
+static void should_keep_answering_while_upgrading_audio_metadata(const int stored_version)
 {
 	const auto index_path = _temps.next_path();
 	const auto db_path = df::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
@@ -535,7 +537,8 @@ static void should_keep_answering_while_upgrading_audio_metadata()
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 
 		if (open_result != SQLITE_OK ||
-			sqlite3_exec(raw.get(), "PRAGMA user_version = 3;", nullptr, nullptr, nullptr) != SQLITE_OK)
+			sqlite3_exec(raw.get(), std::format("PRAGMA user_version = {};", stored_version).c_str(), nullptr,
+			             nullptr, nullptr) != SQLITE_OK)
 		{
 			throw test_assert_exception("Failed to set the audio metadata version"s);
 		}
@@ -636,7 +639,7 @@ static void should_reclaim_a_cache_written_by_a_newer_build()
 		}
 	}
 
-	assert_equal(4, stamped, "the stamp comes back down to what this build writes");
+	assert_equal(5, stamped, "the stamp comes back down to what this build writes");
 }
 
 // A cache file this build cannot read must be replaced, not refused. Everything it holds can be
@@ -4787,7 +4790,9 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should keep answering while upgrading to the date pack"s,
 	          should_keep_answering_while_upgrading_to_the_date_pack);
 	tests.add("Should keep answering while upgrading audio metadata"s,
-	          should_keep_answering_while_upgrading_audio_metadata);
+	          [] { should_keep_answering_while_upgrading_audio_metadata(3); });
+	tests.add("Should keep answering while upgrading to libfiles media scans"s,
+	          [] { should_keep_answering_while_upgrading_audio_metadata(4); });
 	tests.add("Should reclaim a cache written by a newer build"s,
 	          should_reclaim_a_cache_written_by_a_newer_build);
 	tests.add("Should replace an unreadable database"s, should_replace_an_unreadable_database);
