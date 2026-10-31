@@ -24,7 +24,6 @@
  *
  * $FreeBSD$
  */
-#define __LIBARCHIVE_CONFIG_H_INCLUDED 1
 
 #define _CRT_SECURE_NO_WARNINGS
 
@@ -54,6 +53,7 @@ typedef long ssize_t;
 #define HAVE_WINCRYPT_H 1
 /* libarchive 3.8.x uses the CNG (bcrypt) backend for Windows digests. */
 #define HAVE_BCRYPT_H 1
+#define ARCHIVE_CRYPTO_WIN 1
 #define ARCHIVE_CRYPTO_MD5_WIN 1
 #define ARCHIVE_CRYPTO_SHA1_WIN 1
 #define ARCHIVE_CRYPTO_SHA256_WIN 1
@@ -146,7 +146,8 @@ typedef long ssize_t;
 #define HAVE_FCHFLAGS 1
 //#define HAVE_FCHMOD 1
 #define HAVE_FCHOWN 1
-#define HAVE_FCNTL 1
+/* Windows has no fcntl(); archive_windows.h's three-argument no-op cannot take 3.8.11's F_GETFL call. */
+//#define HAVE_FCNTL 1
 #define HAVE_FCNTL_H 1
 #define HAVE_FDOPENDIR 1
 #define HAVE_FORK 1
@@ -183,7 +184,6 @@ typedef long ssize_t;
 #define HAVE_LUTIMES 1
 #define HAVE_MBRTOWC 1
 #define HAVE_MEMMOVE 1
-#define HAVE_MEMORY_H 1
 #define HAVE_MEMSET 1
 #define HAVE_MKDIR 1
 #define HAVE_MKFIFO 1

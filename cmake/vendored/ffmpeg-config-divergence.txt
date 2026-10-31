@@ -6,7 +6,7 @@
 # Windows side, glibc's iconv on the Linux side. A decoder, demuxer, encoder or muxer here is
 # a defect rather than a divergence, and so is anything that is merely a choice one side made.
 #
-# See docs/third-party.md, 'FFmpeg Configuration And Rebase Checklist'.
+# See docs/third-party.md, 'FFmpeg Configuration And Upgrade Checklist'.
 
 WINDOWS CONFIG_AV1_D3D11VA2_HWACCEL
 WINDOWS CONFIG_AV1_D3D11VA_HWACCEL

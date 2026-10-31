@@ -40,6 +40,11 @@ namespace libfiles::xmp
 	class meta;
 }
 
+namespace libfiles
+{
+	struct media_scan_result;
+}
+
 class read_stream;
 class files;
 class av_media_info;
@@ -395,6 +400,7 @@ namespace files_test_hooks
 class file_scan_result
 {
 	void parse_metadata_ffmpeg_kv(prop::item_metadata& result) const;
+	void parse_media_properties(prop::item_metadata& result) const;
 
 public:
 	detected_format format = detected_format::Unknown;
@@ -422,6 +428,9 @@ public:
 
 	metadata_kv_list ffmpeg_metadata;
 	metadata_kv_list libraw_metadata;
+	// An audio or video file as libfiles read it: its properties and tags stand in for FFmpeg's metadata,
+	// and the info panel shows its tags and structure.
+	std::shared_ptr<const libfiles::media_scan_result> media;
 
 	// How the file itself is assembled, as read by the format scanner rather than a metadata parser.
 	metadata_kv_list structure_metadata;
@@ -1398,6 +1407,33 @@ file_scan_result scan_still_libfiles(read_stream& s, scan_intent intent, bool wa
 // that wants one, and the Brotli a JPEG XL's compressed boxes need is supplied here.
 file_scan_result scan_heif_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder);
 file_scan_result scan_jxl_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder);
+
+// An audio or video file as libfiles reads it, with its cover art's encoded bytes when asked for.
+struct media_scan_read
+{
+	std::shared_ptr<const libfiles::media_scan_result> scan;
+	df::blob cover_art;
+};
+
+// Reads the container through libfiles, leaving the handle at the start for a decoder opened next.
+media_scan_read scan_media_file(const platform::file_ptr& f, scan_intent intent, bool want_cover_art);
+// Takes the packet, cover art, tags and properties of a scan libfiles read, and its streams' facts too
+// when stream_facts is set: a scan that was not complete leaves those to FFmpeg.
+void apply_media_scan(file_scan_result& result, media_scan_read&& read, bool stream_facts);
+// The audio sample type as a stream codes its samples: a depth for PCM and lossless audio, none for lossy.
+prop::audio_sample_t coded_sample_type(unsigned bits_per_sample, bool float_samples);
+// The info panel's blocks for a scan: its tags under their native names, its packet when with_xmp, and
+// its structure.
+void add_media_blocks(const libfiles::media_scan_result& scan, av_media_info& info, bool with_xmp);
+// The info panel's streams and summary, from a scan alone.
+void describe_media_streams(const libfiles::media_scan_result& scan, av_media_info& info);
+// libfiles' descriptions over the rows of a session FFmpeg opened - each matched by the container's
+// stream number where FFmpeg records one (stream_ids[i] is info.streams[i]'s AVStream::id), else by its
+// place among the streams of its kind - and its blocks in place of FFmpeg's metadata.
+void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& info,
+                        const std::vector<uint64_t>& stream_ids);
+// True when an ISO 639-2 code, bibliographic or terminological, names the UI's two-letter language.
+bool language_matches_ui(std::string_view iso639, std::string_view ui_language);
 
 
 namespace files_test_hooks

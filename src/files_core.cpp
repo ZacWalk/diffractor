@@ -18,6 +18,7 @@
 #include "av_format.h"
 #include "metadata_icc.h"
 #include "metadata_iptc.h"
+#include "libfiles/media.h"
 
 #define LIBARCHIVE_STATIC
 #include <archive.h>
@@ -2268,42 +2269,54 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 			}
 			else if (ft->has_trait(file_traits::av))
 			{
-				av_format_decoder decoder;
+				// libfiles reads the container. FFmpeg is opened only to decode a thumbnail, or to describe
+				// the streams of a file libfiles could not describe whole - when it then keeps libfiles' tags
+				// and packet if libfiles read them.
+				auto read = scan_media_file(f, intent, true);
+				const auto read_whole = read.scan && read.scan->success;
+				const auto complete = read_whole && read.scan->complete;
+				apply_media_scan(result, std::move(read), complete);
+				result.success = complete;
 
-				// An inspect scan reports the file's structure, so it is never held to the metadata budget.
-				const auto open_intent = load_thumb
-					                         ? media_intent::thumbnail
-					                         : (intent == scan_intent::index
-						                            ? media_intent::metadata
-						                            : media_intent::playback);
-
-				if (decoder.open(f, path, open_intent))
+				if (load_thumb || !complete)
 				{
-					result.cover_art = decoder.cover_art();
+					av_format_decoder decoder;
 
-					if (load_thumb)
+					// An inspect scan reports the file's structure, so it is never held to the metadata budget.
+					const auto open_intent = load_thumb
+						                         ? media_intent::thumbnail
+						                         : (intent == scan_intent::index
+							                            ? media_intent::metadata
+							                            : media_intent::playback);
+
+					if (decoder.open(f, path, open_intent))
 					{
-						decoder.init_streams(-1, -1, false, true, false);
+						if (!result.cover_art) result.cover_art = decoder.cover_art();
 
-						int pos_numerator = 10;
-						int pos_denominator = 100;
-
-						if (!ft->has_trait(file_traits::thumbnail))
+						if (load_thumb)
 						{
-							pos_numerator = 0;
+							decoder.init_streams(-1, -1, false, true, false);
+
+							int pos_numerator = 10;
+							int pos_denominator = 100;
+
+							if (!ft->has_trait(file_traits::thumbnail))
+							{
+								pos_numerator = 0;
+							}
+
+							ui::surface_ptr thumbnail_surface;
+
+							if (decoder.extract_thumbnail(thumbnail_surface, max_thumb_size, pos_numerator,
+							                              pos_denominator, false))
+							{
+								result.thumbnail_surface = std::move(thumbnail_surface);
+							}
 						}
 
-						ui::surface_ptr thumbnail_surface;
-
-						if (decoder.extract_thumbnail(thumbnail_surface, max_thumb_size, pos_numerator,
-						                              pos_denominator, false))
-						{
-							result.thumbnail_surface = std::move(thumbnail_surface);
-						}
+						if (!complete) decoder.extract_metadata(result, !read_whole);
+						result.success = true;
 					}
-
-					decoder.extract_metadata(result);
-					result.success = true;
 				}
 
 				// Some containers store XMP only in a sidecar rather than embedded — notably
@@ -3096,13 +3109,9 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 	return results;
 }
 
-// The app UI language is a 2-letter code (app_settings::language). FFmpeg tags id3v2
-// COMM/USLT comments with a lowercase ISO 639-2 3-letter code taken verbatim from the
-// file, so either the bibliographic (e.g. "ger") or terminological ("deu") variant may
-// appear. Returns true when `key` is exactly "comment-<code>" for a code matching ui_lang.
-static bool comment_key_matches_ui_language(const std::string_view key, const std::string_view ui_lang)
+bool language_matches_ui(const std::string_view iso639, const std::string_view ui_language)
 {
-	if (ui_lang.empty()) return false;
+	if (ui_language.empty()) return false;
 
 	struct lang_map
 	{
@@ -3117,17 +3126,24 @@ static bool comment_key_matches_ui_language(const std::string_view key, const st
 		{"br", "bre"}, {"lv", "lav"}, {"sr", "srp"}, {"sr", "scc"},
 	};
 
-	constexpr std::string_view prefix = "comment-";
-	if (key.size() != prefix.size() + 3) return false; // only the plain "comment-<lang>" form
-	const auto code = key.substr(prefix.size());
-
 	for (const auto& m : map)
 	{
-		if (str::icmp(ui_lang, m.ui2) == 0 && str::icmp(code, m.iso3) == 0)
+		if (str::icmp(ui_language, m.ui2) == 0 && str::icmp(iso639, m.iso3) == 0)
 			return true;
 	}
 
 	return false;
+}
+
+// The app UI language is a 2-letter code (app_settings::language). FFmpeg tags id3v2
+// COMM/USLT comments with a lowercase ISO 639-2 3-letter code taken verbatim from the
+// file, so either the bibliographic (e.g. "ger") or terminological ("deu") variant may
+// appear. Returns true when `key` is exactly "comment-<code>" for a code matching ui_lang.
+static bool comment_key_matches_ui_language(const std::string_view key, const std::string_view ui_lang)
+{
+	constexpr std::string_view prefix = "comment-";
+	if (key.size() != prefix.size() + 3) return false; // only the plain "comment-<lang>" form
+	return language_matches_ui(key.substr(prefix.size()), ui_lang);
 }
 
 void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) const
@@ -3215,28 +3231,6 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 				const auto year = str::to_int(kv.value);
 				if (year > 1800 && year < 2100) result.dates.add(prop::date_source::id3_original_release,
 				                                                df::date_t(year, 1, 1, 0, 0, 0));
-			}
-		}
-		else if (is_key(kv.key, "id3v2_priv.Windows Media Player 9 Series"))
-		{
-			// FFmpeg exposes the PRIV payload with non-printable bytes escaped as \xNN and
-			// printable bytes verbatim (ff_id3v2_parse_priv_dict). WMP stores the rating as a
-			// single byte on a 0-255 scale, and the values it writes include 1 and 64 ('@'),
-			// so both the escaped and the verbatim form have to be handled.
-			int wmp_rating = 0;
-
-			if (kv.value.size() == 4 && kv.value[0] == '\\' && (kv.value[1] == 'x' || kv.value[1] == 'X'))
-			{
-				wmp_rating = static_cast<int>(str::hex_to_num(kv.value.substr(2, 2)));
-			}
-			else if (kv.value.size() == 1)
-			{
-				wmp_rating = static_cast<uint8_t>(kv.value[0]);
-			}
-
-			if (wmp_rating > 0)
-			{
-				result.rating = std::clamp(1 + wmp_rating / 52, 1, 5);
 			}
 		}
 		else if (is_key(kv.key, "encoder") || is_key(kv.key, "encoded_by"))
@@ -3355,6 +3349,11 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	if (!ffmpeg_metadata.empty())
 	{
 		parse_metadata_ffmpeg_kv(*result);
+	}
+
+	if (media)
+	{
+		parse_media_properties(*result);
 	}
 
 	if (!metadata.xmp.empty())
@@ -3528,7 +3527,12 @@ av_media_info file_scan_result::to_info() const
 {
 	av_media_info result;
 
-	if (!ffmpeg_metadata.empty())
+	if (media)
+	{
+		describe_media_streams(*media, result);
+		add_media_blocks(*media, result, false);
+	}
+	else if (!ffmpeg_metadata.empty())
 	{
 		result.metadata.emplace_back(metadata_standard::media, ffmpeg_metadata);
 	}

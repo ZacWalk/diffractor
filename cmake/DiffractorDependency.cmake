@@ -4,8 +4,7 @@
 # Purpose: Resolve one third-party dependency, either from a system package or from the release
 # its owned module in cmake/vendored/ fetches, at the pin in cmake/dd-dependencies.json, and builds.
 # The choice is per library because it is genuinely case by case -- see docs/third-party.md. FFmpeg
-# is a Diffractor fork whose value is the patches it carries, so it is never offered a system option
-# at all.
+# is built as Diffractor configures it, so it is never offered a system option at all.
 
 include_guard(GLOBAL)
 
@@ -16,8 +15,8 @@ find_package(PkgConfig QUIET)
 # them statically would move CVE patching from the distribution onto us.
 option(DIFFRACTOR_STATIC_VENDORED "Build vendored third-party libraries as static archives" ON)
 
-# A shipped Diffractor is fully vendored: docs/third-party.md records the patches and the pinned
-# versions a distribution copy would silently discard, and the vendored zlib is zlib-ng rather than
+# A shipped Diffractor is fully vendored: docs/third-party.md records the pinned versions and the
+# configuration a distribution copy would silently discard, and the vendored zlib is zlib-ng rather than
 # zlib at all. System packages remain available per library, as a way to bring a new platform up
 # before its vendored modules build, not as the configuration anything ships in.
 option(DIFFRACTOR_PREFER_SYSTEM "Default each dependency to the system copy where one is offered" OFF)
@@ -29,20 +28,20 @@ set(DIFFRACTOR_RESOLVED_MISSING "" CACHE INTERNAL "")
 # diffractor_dependency(<name>
 #     PKG_CONFIG      <module>...     pkg-config module(s) for the system copy
 #     VENDORED_MODULE <module>       owned cmake/ module that defines diffractor::<name>
-#     [FORK]                         never resolvable from the system
+#     [NO_SYSTEM]                    never resolvable from the system
 #     [OPTIONAL]                     absence is reported, not fatal
 # )
 #
 # Defines the imported target diffractor::<name> when the dependency resolves.
 function(diffractor_dependency NAME)
-    cmake_parse_arguments(DEP "FORK;OPTIONAL" "VENDORED_MODULE" "PKG_CONFIG" ${ARGN})
+    cmake_parse_arguments(DEP "NO_SYSTEM;OPTIONAL" "VENDORED_MODULE" "PKG_CONFIG" ${ARGN})
 
     string(TOUPPER "${NAME}" UPPER)
     set(TARGET_NAME "diffractor::${NAME}")
 
-    if (DEP_FORK)
-        # No option is declared: a system copy of a fork silently discards the patches that are
-        # the entire reason it is vendored.
+    if (DEP_NO_SYSTEM)
+        # No option is declared: a distribution's copy is configured otherwise - with GPL components,
+        # typically, which would change the outbound licence - and is the wrong library to ship.
         set(USE_SYSTEM OFF)
     else ()
         option(DIFFRACTOR_SYSTEM_${UPPER}
@@ -77,9 +76,9 @@ function(diffractor_dependency NAME)
     set(DIFFRACTOR_RESOLVED_MISSING "${DIFFRACTOR_RESOLVED_MISSING};${NAME}" CACHE INTERNAL "")
 
     if (NOT DEP_OPTIONAL)
-        if (DEP_FORK)
+        if (DEP_NO_SYSTEM)
             message(FATAL_ERROR
-                    "Fork '${NAME}' did not resolve, and it has no system or stubbed alternative.\n"
+                    "'${NAME}' did not resolve, and it has no system or stubbed alternative.\n"
                     "  module: cmake/${DEP_VENDORED_MODULE}.cmake")
         endif ()
 

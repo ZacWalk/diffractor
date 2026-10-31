@@ -2,11 +2,11 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Compare the two FFmpeg configurations against each other. The fork is configured twice
-# and nothing keeps the two answers in step: Windows compiles from a checked-in config-x64.h
-# because configure needs a shell, while Linux runs the fork's own configure. A format can
-# therefore be supported on one platform and silently absent on the other, and no build failure,
-# test or diff reveals it.
+# Purpose: Compare the two FFmpeg configurations against each other. FFmpeg is configured twice and
+# nothing keeps the two answers in step: Windows compiles from config-x64.h, kept in
+# cmake/vendored/ffmpeg-windows because configure needs a shell, while Linux runs FFmpeg's own
+# configure. A format can therefore be supported on one platform and silently absent on the other,
+# and no build failure, test or diff reveals it.
 #
 # This has already found four divergences, each silent: zlib declined by --disable-autodetect and
 # with it thirty-odd decoders, libopenmpt never asked for, network demuxers present on one side
@@ -15,8 +15,8 @@
 #
 # The divergences that remain are real and expected -- the hardware accelerators, Media Foundation
 # and SChannel are Windows-only by nature -- so the guard is not "no divergence" but "no divergence
-# that has not been accounted for". The accepted set is checked in beside the fork, and any change
-# to it fails until someone looks and re-records it.
+# that has not been accounted for". The accepted set is checked in beside the Windows configuration,
+# and any change to it fails until someone looks and re-records it.
 #
 #   python tools/compare_ffmpeg_config.py            compare, and fail on an unaccounted difference
 #   python tools/compare_ffmpeg_config.py --update   re-record the accepted set
@@ -32,10 +32,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Both platforms split their switches across two generated headers, and the component list -- every
 # decoder, demuxer, encoder and muxer, which is what this comparison is for -- is in the second.
-# The fork checks in Windows' headers, one per architecture plus a shared component list, and they
-# are read from the copy of the fork the Linux build fetched; Linux generates both into the build's
-# staging directory, which also holds a copy of the Windows headers that must not be read.
-WINDOWS_DIR = REPO_ROOT / "tmp" / "linux-build" / "_deps" / "ffmpeg-src"
+# Windows' headers, one per architecture plus a shared component list, are checked in; Linux generates
+# both into the build's staging directory.
+WINDOWS_DIR = REPO_ROOT / "cmake" / "vendored" / "ffmpeg-windows"
 WINDOWS_HEADERS = ("config-x64.h", "config_components.h")
 
 LINUX_DIR = REPO_ROOT / "tmp" / "linux-build" / "third-party" / "ffmpeg" / "src"
@@ -111,7 +110,7 @@ def write_baseline(path: Path, lines: list[str]) -> None:
         "# Windows side, glibc's iconv on the Linux side. A decoder, demuxer, encoder or muxer here is",
         "# a defect rather than a divergence, and so is anything that is merely a choice one side made.",
         "#",
-        "# See docs/third-party.md, 'FFmpeg Configuration And Rebase Checklist'.",
+        "# See docs/third-party.md, 'FFmpeg Configuration And Upgrade Checklist'.",
         "",
     ]
     path.write_text("\n".join(header + lines) + "\n", encoding="utf-8")
@@ -120,7 +119,7 @@ def write_baseline(path: Path, lines: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare the two FFmpeg configurations")
     parser.add_argument("--windows", type=Path, default=WINDOWS_DIR,
-                        help="directory holding the fork's checked-in Windows headers")
+                        help="directory holding the checked-in Windows headers")
     parser.add_argument("--linux", type=Path, default=LINUX_DIR,
                         help="directory holding the headers the Linux build generated")
     parser.add_argument("--baseline", type=Path, default=BASELINE)

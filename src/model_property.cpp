@@ -891,6 +891,7 @@ std::string prop::format_audio_sample_type(const audio_sample_t v)
 	case audio_sample_t::none: return "none"s;
 	case audio_sample_t::unsigned_8bit: return "8bit"s;
 	case audio_sample_t::signed_16bit: return "16bit"s;
+	case audio_sample_t::signed_24bit: return "24bit"s;
 	case audio_sample_t::signed_32bit: return "32bit"s;
 	case audio_sample_t::signed_64bit: return "64bit"s;
 	case audio_sample_t::signed_float: return "float"s;

@@ -1343,6 +1343,7 @@ void df::search_t::parse_part(const search_part& part)
 			{"none", prop::audio_sample_t::none},
 			{"8bit", prop::audio_sample_t::unsigned_8bit},
 			{"16bit", prop::audio_sample_t::signed_16bit},
+			{"24bit", prop::audio_sample_t::signed_24bit},
 			{"32bit", prop::audio_sample_t::signed_32bit},
 			{"64bit", prop::audio_sample_t::signed_64bit},
 			{"float", prop::audio_sample_t::signed_float},

@@ -76,7 +76,7 @@ its first backend is software.
 ## Build
 
 CMake is the only application build description. Linux builds vendored dependencies by default and
-the FFmpeg fork as a required dependency, and fetches libfiles and libdesktop - or builds sibling
+upstream FFmpeg as a required dependency, and fetches libfiles and libdesktop - or builds sibling
 `../libfiles` and `../libdesktop` checkouts. Runtime fixtures, languages, dictionaries, and location data are staged beside the test
 binary.
 

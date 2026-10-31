@@ -423,7 +423,10 @@ static std::string load_create_sql()
 // so this is a re-scan request too.
 // 4: audio channel count joined the serialized cache record and sample rate widened past 16 bits.
 // Existing rows still answer with unrelated metadata, so only their scan stamp is cleared.
-constexpr int db_metadata_version = 4;
+// 5: audio and video are read by libfiles in Diffractor's own terms - short codec names, a pixel format
+// as chroma and depth, the coded sample type - and FFmpeg only where libfiles cannot. Rows written
+// before still answer meanwhile, so audio and video items are only asked to be re-scanned, as for 4.
+constexpr int db_metadata_version = 5;
 
 // Only the metadata is dropped. Thumbnails, hashes, playback positions, and import history
 // stay, so the re-index re-reads files but never re-encodes a thumbnail.
@@ -519,7 +522,7 @@ void database::upgrade_cached_metadata()
 	// those rows would leave every one of them dateless until a scan happened to reach it.
 	const auto upgraded = stored_version == 1
 		                      ? request_date_pack_rescan()
-		                      : stored_version == 3
+		                      : stored_version == 3 || stored_version == 4
 		                      ? request_audio_metadata_rescan()
 		                      : invalidate_cached_metadata();
 

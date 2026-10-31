@@ -58,7 +58,7 @@ jobs:
     - name: Run tests
       run: bash ./dd test
 
-    # The fork is configured twice and nothing else notices when the two answers drift. It only
+    # FFmpeg is configured twice and nothing else notices when the two answers drift. It only
     # needs one configuration, since the comparison is against the checked-in Windows config.
     - name: Compare FFmpeg configurations
       if: matrix.config == 'Release'

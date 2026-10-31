@@ -17,18 +17,25 @@ if (NOT libheif_POPULATED OR NOT TARGET libfiles-heif)
     message(FATAL_ERROR "libfiles did not bring libheif: build libfiles with LIBFILES_HEIF")
 endif ()
 
-# FFmpeg's headers, from the fork FFmpeg.cmake fetched.
-FetchContent_GetProperties(ffmpeg)
-
-if (NOT ffmpeg_POPULATED)
-    message(FATAL_ERROR "FFmpeg was not fetched, and libheif's FFmpeg decoder plugin needs its headers")
+# FFmpeg's headers as its own target exposes them: on Windows its source and the configuration kept in
+# cmake/vendored/ffmpeg-windows, elsewhere the headers its build installs, which have to be there first.
+if (TARGET diffractor_ffmpeg_msvc)
+    set(_heif_ffmpeg diffractor_ffmpeg_msvc)
+elseif (TARGET diffractor_ffmpeg)
+    set(_heif_ffmpeg diffractor_ffmpeg)
+else ()
+    message(FATAL_ERROR "FFmpeg was not resolved, and libheif's FFmpeg decoder plugin needs its headers")
 endif ()
 
 add_library(diffractor_heif_ffmpeg STATIC "${libheif_SOURCE_DIR}/libheif/plugins/decoder_ffmpeg.cc")
 target_include_directories(diffractor_heif_ffmpeg PRIVATE
         "${libheif_SOURCE_DIR}/libheif"
         "${libheif_SOURCE_DIR}/libheif/plugins"
-        "${ffmpeg_SOURCE_DIR}")
+        "$<TARGET_PROPERTY:${_heif_ffmpeg},INTERFACE_INCLUDE_DIRECTORIES>")
+
+if (TARGET ffmpeg_external)
+    add_dependencies(diffractor_heif_ffmpeg ffmpeg_external)
+endif ()
 target_compile_definitions(diffractor_heif_ffmpeg PRIVATE
         HAVE_FFMPEG_DECODER ENABLE_MULTITHREADING_SUPPORT=1 ENABLE_PARALLEL_TILE_DECODING=1 IS_BIG_ENDIAN=0
         _CRT_NONSTDC_NO_DEPRECATE)
