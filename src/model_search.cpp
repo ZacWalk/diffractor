@@ -28,6 +28,9 @@ static_assert(sizeof(df::search_result) <= sizeof(void*) * 2 + 8);
 constexpr static auto sv_duplicates = "duplicates";
 constexpr static auto sv_remote = "remote";
 constexpr static auto sv_panorama = "panorama";
+constexpr static auto sv_movie = "movie";
+constexpr static auto sv_episode = "episode";
+constexpr static auto sv_in_progress = "inprogress";
 
 void df::search_t::clear_date_properties()
 {
@@ -35,33 +38,72 @@ void df::search_t::clear_date_properties()
 	_raw.clear();
 }
 
+// The file a path names by its spelling: a name after the last separator, in a folder that is a path.
+static std::optional<df::file_path> file_named_by(const std::string_view text)
+{
+	const auto last_slash = df::find_last_slash(text);
+	const auto has_file_name = last_slash != std::string_view::npos && last_slash + 1 < text.size();
+	const auto parent = has_file_name ? text.substr(0, last_slash) : std::string_view{};
+	const auto has_drive_parent = parent.size() == 2 && parent[1] == ':';
+
+	if (!has_file_name || (!df::is_path(parent) && !has_drive_parent))
+	{
+		return std::nullopt;
+	}
+
+	const df::file_path file(text);
+	if (!file.is_valid()) return std::nullopt;
+	return file;
+}
+
+static df::search_t file_search(const df::file_path& file)
+{
+	df::search_t result;
+	result.add_selector(df::item_selector(file.folder())).with(file.name());
+	return result;
+}
+
+// What a UNC spelling names short of a share. "\\" names nothing. "\\server" and "\\server\" name a
+// server: a place whose folders are the shares it offers. Off Windows a leading backslash is an
+// ordinary name character, so there is no server to name.
+enum class unc_root
+{
+	none,
+	nothing,
+	server,
+};
+
+static unc_root unc_root_of(const std::string_view trimmed)
+{
+	if (trimmed.size() < 2 || !df::is_path_sep(trimmed[0]) || !df::is_path_sep(trimmed[1])) return unc_root::none;
+
+	const auto share_separator = trimmed.find_first_of("\\/", 2);
+	if (trimmed.size() == 2 || share_separator == 2) return unc_root::nothing;
+	if (share_separator != std::string_view::npos && share_separator + 1 != trimmed.size()) return unc_root::none;
+	return df::windows_path_semantics ? unc_root::server : unc_root::nothing;
+}
+
 df::search_t df::search_t::parse_path(const std::string_view text)
 {
 	search_t result;
+
+	// A server is no folder, so asking the file system whether it exists would only wait on the network to
+	// say no. It is a place all the same, and opening it lists its shares.
+	if (const auto trimmed = str::trim(text); unc_root_of(trimmed) == unc_root::server)
+	{
+		result.add_selector(item_selector(trimmed));
+		return result;
+	}
+
 	const folder_path folder(text);
 
 	if (folder.is_drive() || folder.exists())
 	{
 		result.add_selector(item_selector(folder));
 	}
-	else
+	else if (const auto file = file_named_by(text); file && file->exists())
 	{
-		const auto last_slash = find_last_slash(text);
-		const auto has_file_name = last_slash != std::string_view::npos && last_slash + 1 < text.size();
-		const auto parent = has_file_name ? text.substr(0, last_slash) : std::string_view{};
-		const auto has_drive_parent = parent.size() == 2 && parent[1] == ':';
-
-		if (!has_file_name || (!is_path(parent) && !has_drive_parent))
-		{
-			return result;
-		}
-
-		const file_path file(text);
-
-		if (file.exists() && file.is_valid())
-		{
-			result.add_selector(item_selector(file.folder())).with(file.name());
-		}
+		result = file_search(*file);
 	}
 
 	return result;
@@ -194,19 +236,58 @@ std::vector<search_part> df::coalesce_parts(std::vector<search_part> parts)
 	return results;
 }
 
+// The words of a search, a path among them read as a place. Probing asks the file system whether the
+// place is there, as typing does; without it each path reads as the place it names. A search of words
+// alone keeps the text it was read from, so it shows as typed.
+static df::search_t parse_parts(const std::string_view text, const bool probe)
+{
+	const auto trimmed = str::trim(text);
+	df::search_t result;
+	if (!df::is_path(trimmed)) result.raw_text(text);
+
+	search_tokenizer t;
+	const auto parts = df::coalesce_parts(t.parse(trimmed));
+
+	for (const auto& part : parts)
+	{
+		if (part.scope.empty() && (probe ? df::item_selector::can_iterate(part.term) : df::is_path(part.term)))
+		{
+			result.add_selector(df::item_selector(part.term));
+		}
+		else
+		{
+			result.parse_part(part);
+		}
+	}
+
+	// Existing folder-plus-query parses take precedence. An unavailable absolute path is
+	// still a scope, so navigation must report it rather than broadening to collection text.
+	if (!result.has_selector())
+	{
+		std::string_view path;
+		if (df::is_path(trimmed)) path = trimmed;
+		else if (parts.size() == 1 && parts.front().scope.empty() && df::is_path(parts.front().term))
+			path = parts.front().term;
+
+		if (!path.empty())
+		{
+			result = {};
+			result.add_selector(df::item_selector(path));
+		}
+	}
+
+	return result;
+}
+
 df::search_t df::search_t::parse(const std::string_view text)
 {
 	const auto trimmed = str::trim(text);
 	search_t result;
 	result.raw_text(text);
 
-	if (trimmed.size() >= 2 && is_path_sep(trimmed[0]) && is_path_sep(trimmed[1]))
+	if (unc_root_of(trimmed) == unc_root::nothing)
 	{
-		const auto share_separator = trimmed.find_first_of("\\/", 2);
-		if (share_separator == std::string_view::npos || share_separator == 2 || share_separator + 1 == trimmed.size())
-		{
-			return result;
-		}
+		return result;
 	}
 
 	if (is_path(trimmed))
@@ -222,40 +303,33 @@ df::search_t df::search_t::parse(const std::string_view text)
 		}
 		else
 		{
-			search_tokenizer t;
-			const auto parts = coalesce_parts(t.parse(trimmed));
-
-			for (const auto& part : parts)
-			{
-				if (part.scope.empty() && item_selector::can_iterate(part.term))
-				{
-					result.add_selector(item_selector(part.term));
-				}
-				else
-				{
-					result.parse_part(part);
-				}
-			}
-
-			// Existing folder-plus-query parses take precedence. An unavailable absolute path is
-			// still a scope, so navigation must report it rather than broadening to collection text.
-			if (!result.has_selector())
-			{
-				std::string_view path;
-				if (is_path(trimmed)) path = trimmed;
-				else if (parts.size() == 1 && parts.front().scope.empty() && is_path(parts.front().term))
-					path = parts.front().term;
-
-				if (!path.empty())
-				{
-					result = {};
-					result.add_selector(item_selector(path));
-				}
-			}
+			result = parse_parts(text, true);
 		}
 	}
 
 	return result;
+}
+
+bool df::search_t::can_be_read_from(const std::string_view text) const
+{
+	const auto trimmed = str::trim(text);
+
+	if (is_empty() || unc_root_of(trimmed) == unc_root::nothing)
+	{
+		return false;
+	}
+
+	if (is_path(trimmed))
+	{
+		// The whole text as one place - a folder, its wildcard, or everything under it.
+		search_t place;
+		place.add_selector(item_selector(trimmed));
+		if (*this == place) return true;
+
+		if (const auto file = file_named_by(trimmed); file && *this == file_search(*file)) return true;
+	}
+
+	return *this == parse_parts(text, false);
 }
 
 // Wrapping a value so the tokenizer reads it back whole. The rule lives here alone because every
@@ -615,6 +689,21 @@ std::string df::format_term(const search_term& term)
 		{
 			result << "@";
 			result << sv_panorama;
+		}
+		else if (term.type == search_term_type::film)
+		{
+			result << "@";
+			result << sv_movie;
+		}
+		else if (term.type == search_term_type::episode)
+		{
+			result << "@";
+			result << sv_episode;
+		}
+		else if (term.type == search_term_type::in_progress)
+		{
+			result << "@";
+			result << sv_in_progress;
 		}
 	}
 
@@ -1106,6 +1195,15 @@ void df::search_t::parse_part(const search_part& part)
 			{sv_remote, search_term_type::remote},
 			{sv_panorama, search_term_type::panorama},
 			{"pano", search_term_type::panorama},
+			{sv_movie, search_term_type::film},
+			{"movies", search_term_type::film},
+			{"film", search_term_type::film},
+			{"films", search_term_type::film},
+			{sv_episode, search_term_type::episode},
+			{"episodes", search_term_type::episode},
+			{"tv", search_term_type::episode},
+			{sv_in_progress, search_term_type::in_progress},
+			{"watching", search_term_type::in_progress},
 		};
 
 		const auto found_flag = pre_title_stop_words.find(part.term);
@@ -1215,12 +1313,16 @@ void df::search_t::parse_part(const search_part& part)
 			&& d1 > 0.0)
 		{
 			// Bare "f/N.N" term: match either as text (e.g. lens description "f/3.5-5.6")
-			// OR as aperture f-number value. Wrap in a group with OR semantics.
+			// OR as aperture f-number value. Wrap in a group with OR semantics. The pair stands where
+			// the part stood, so a group the part opens opens before the first arm and one it closes
+			// closes after the second.
 			auto text_mods = part.modifier;
 			text_mods.begin_group += 1;
+			text_mods.end_group = 0;
 			_terms.emplace_back(search_term(part.term, text_mods));
 
 			search_term_modifier ap_mods = part.modifier;
+			ap_mods.begin_group = 0;
 
 			// Negated, the two arms have to be joined the other way round: "not either reading" is
 			// "neither reading", which is De Morgan's law. Left as OR, a negated pair read as
@@ -1526,6 +1628,9 @@ void df::related_info::load(const item_element_ptr& i)
 		album = md->album;
 		album_artist = md->album_artist;
 		show = md->show;
+		title = md->title;
+		year = md->year;
+		kind = md->kind;
 		season = md->season;
 		episode = md->episode;
 		disk = md->disk;
@@ -2599,6 +2704,28 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 			result.type = search_result_type::match_flag;
 		}
 	}
+	else if (term.type == search_term_type::film || term.type == search_term_type::episode)
+	{
+		// What the item's name, tags and folder's library kind make it; never a guess from its length.
+		const auto md = file.metadata.load();
+		const auto wanted = term.type == search_term_type::film ? prop::media_kind::film : prop::media_kind::episode;
+		const bool is_kind = md && md->kind == wanted;
+
+		if (is_kind == term.modifiers.positive)
+		{
+			result.type = search_result_type::match_flag;
+		}
+	}
+	else if (term.type == search_term_type::in_progress)
+	{
+		const auto md = file.metadata.load();
+		const bool started = md && md->is_in_progress();
+
+		if (started == term.modifiers.positive)
+		{
+			result.type = search_result_type::match_flag;
+		}
+	}
 	else if (term.type == search_term_type::text)
 	{
 		const auto match_folder = can_match_folder &&
@@ -2669,6 +2796,30 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	return result;
 }
 
+// Two titles that differ only in case, punctuation and spacing are one: "Dont Look Up" and "Don't Look Up".
+static bool same_title(const std::string_view a, const std::string_view b)
+{
+	const auto next = [](const std::string_view s, size_t& i)
+	{
+		while (i < s.size() && !std::isalnum(static_cast<unsigned char>(s[i])) && static_cast<unsigned char>(s[i]) < 0x80)
+			++i;
+		return i < s.size() ? static_cast<char>(std::tolower(static_cast<unsigned char>(s[i]))) : '\0';
+	};
+
+	size_t i = 0;
+	size_t j = 0;
+
+	for (;;)
+	{
+		const auto ca = next(a, i);
+		const auto cb = next(b, j);
+		if (ca != cb) return false;
+		if (ca == '\0') return true;
+		++i;
+		++j;
+	}
+}
+
 // The axes are tried in priority order, so an item that qualifies several ways is reported once
 // under its strongest relation and appears in exactly one group.
 std::optional<df::related_match> df::search_matcher::evaluate_related(const file_path path,
@@ -2697,6 +2848,16 @@ std::optional<df::related_match> df::search_matcher::evaluate_related(const file
 		return {};
 	}
 
+	// The same film in another file: graded by whether its year agrees, or only one side gives a year. Films of
+	// one title and different years - a remake - are different films.
+	if (related.kind == prop::media_kind::film && md->kind == prop::media_kind::film && !str::is_empty(related.title) &&
+		same_title(md->title.sv(), related.title.sv()) &&
+		(related.year == 0 || md->year == 0 || related.year == md->year))
+	{
+		const auto year_agrees = related.year != 0 && related.year == md->year;
+		return related_match{related_axis::film, year_agrees ? 0 : 1};
+	}
+
 	if (!str::is_empty(related.album) && icmp(md->album, related.album) == 0)
 	{
 		// Two artists can both have a "Greatest Hits", so a named artist on both sides has to agree.
@@ -2712,7 +2873,7 @@ std::optional<df::related_match> df::search_matcher::evaluate_related(const file
 
 	if (!str::is_empty(related.show) && icmp(md->show, related.show) == 0)
 	{
-		const auto ordinal = static_cast<int64_t>(md->season) * 1000 + md->episode.x;
+		const auto ordinal = static_cast<int64_t>(md->season) * 100000 + md->episode.x;
 		return related_match{related_axis::series, std::abs(ordinal - related.episode_ordinal())};
 	}
 

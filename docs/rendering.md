@@ -35,19 +35,24 @@ callers use `ui::animate_alpha` rather than bypassing that gate.
 
 Shared D3D and DXGI factories live for the process, and swap chains come from the factory that owns
 the device's adapter. Each hardware window owns its swap chain and size-dependent targets. Device
-creation enables BGRA support and multithread protection because the video decoder and UI renderer
-can touch D3D resources from different owning contexts.
+creation enables BGRA and video support and multithread protection: the hardware decoder decodes on
+the render device where it can, and the UI renderer copies out of its surfaces from another thread. A
+driver that cannot make a device with video support is given one without, and the decoder then gets a
+device of its own.
 
-A frame records draw commands, submits the retained scene, and presents. Resize keeps the old target
+A frame records draw commands, submits the retained scene, and presents. The window's tick runs on a
+high-resolution periodic timer at the display's refresh period; a standard timer fires on the 15.6 ms
+system tick whatever period it is given, which paced 120 and 144 Hz displays at 64 Hz and dropped a tick
+of a 60 Hz display every half second. Resize keeps the old target
 until a new one is ready, then replaces size-dependent resources together. A window that cannot be
 seen skips drawing and presenting: one whose top-level window is minimised, or whose present was
 answered with `DXGI_STATUS_OCCLUDED`, as behind the secure desktop of a UAC prompt or another user's
 session. A flip-model swap chain reports neither a minimised nor a covered window, so minimising is
 asked of the window itself. Visibility is answered afresh each frame, and a poll repaints the whole
 window once it can be seen again, so a skipped frame never leaves stale pixels behind. The app's own
-tick is not slowed, because playback consumes at most one video frame per tick and would fall behind
-its audio. Device loss releases GPU objects and requests recreation without dropping logical view,
-selection, zoom, or playback state.
+tick is not slowed, so playback goes on taking frames at its clock's pace and the picture is current
+the moment the window can be seen again. Device loss releases GPU objects and requests recreation
+without dropping logical view, selection, zoom, or playback state.
 
 Resources are keyed by every input that changes their pixels or geometry. DPI, font, theme, device,
 and graphics resets invalidate the dependent caches. View-owned graphics objects are released when
@@ -113,6 +118,22 @@ pixels drawn.
 Both text backends report the identity pixel-space transform and one pixel per DIP to DirectWrite.
 A layout that could not be created is logged and left undrawn rather than dereferenced.
 
+## Subtitles
+
+A subtitle is drawn from a bitmap made off the UI thread in the pixels of the picture as it is drawn -
+turned, for a video recorded turned and shown upright - then scaled with the picture; a picture that
+changes shape has its lines laid out again. Text goes through libdesktop's `platform::render_styled_text`,
+which lays its styled runs out with DirectWrite and composes them over a dilated outline in straight
+alpha; pictures - Blu-ray, DVD and DVB subtitles - are expanded from their palettes, each from the canvas
+its stream states as it decodes. A picture stream shows one picture at a time: the next picture, or a
+clear, ends the one before it. Sizes follow the script's canvas, so a line takes the
+same share of the picture at every window size. The UI thread uploads each bitmap once while it stays up
+and draws it over the frame the picture last drew. A line coming, going or finishing its rasterising
+rebuilds the scene once, since the lines are recorded into it and a replay would present the old ones.
+Two lines up at once are stacked rather than drawn
+over each other, and lines in the lower half rise clear of media controls floating over the picture as
+those fade in. Linux has no text renderer for subtitles yet, so only picture subtitles draw there.
+
 ## Images And Pixel Formats
 
 Surfaces carry explicit color and alpha semantics. Upload maps supported RGB, YUV, and grayscale
@@ -135,11 +156,21 @@ display dimensions and the frame is stretched into them.
 Video decoding runs off the UI thread, and so does preparing each picture for display: the decode
 thread converts it into the texture the renderer uploads - NV12 or P010 planes where the renderer
 samples YUV and the picture is 4:2:0 at an even size, with P010 only where the device samples it too,
-and packed BGRA otherwise - so presenting a frame is an upload and nothing more. A decoder reads only
+and packed BGRA otherwise - so presenting a frame is an upload and nothing more. A prepared picture is
+written over once the queue, the presenter and the renderer have all let it go, rather than allocated
+again for every frame. A decoder reads only
 the streams it decodes; the others are discarded
 in the demuxer. Closing a session, or abandoning an audio walk, interrupts a read blocked inside the
 demuxer rather than waiting it out. Software decode uses frame and slice threads, bounded by the
 core count and by the memory each frame thread holds.
+
+The decode thread decodes every packet already queued while its frame queue wants frames, asking the
+reader for more as soon as there is room rather than waiting on it, and the presenter taking a frame
+wakes it again: with nothing else to wake it, a stream with no audio ran its queue dry waiting out a
+poll. The playing session and Movie's frame sources share the thread in turns of a few packets. The
+presenter takes every frame its clock has reached and shows the nearest, so content faster than the
+tick, or a tick that arrives late, drops frames rather than falling behind its audio. Of several seeks
+waiting for the read thread, only the latest is made.
 
 Movie's bounded PCM reads place converted audio by its source timestamp minus the resampler's
 buffered delay. Continuous source audio stays continuous when its sample rate changes; genuine
@@ -158,18 +189,25 @@ Hardware decode is chosen per stream, before the decoder is opened, and only whe
 acceleration covers the stream and the driver reports a decoder for its profile and format. A stream
 the driver still refuses decodes in software from the same context rather than producing no
 pictures. One D3D11 decode device serves every video in the process, and is replaced only once it is
-no longer usable. It is made on the adapter the renderer draws with, found by that adapter's LUID,
-because a shared texture cannot cross adapters. Left to choose, FFmpeg would take whichever adapter
+no longer usable. Where the render device carries the video interfaces it is the decode device, so a
+picture reaches the screen in one copy on one device. Otherwise the decode device is made on the
+adapter the renderer draws with, found by that adapter's LUID, because a shared texture cannot cross
+adapters. Left to choose, FFmpeg would take whichever adapter
 was the default when the first video opened, and docking or a new primary display can move that.
 Where the renderer has no adapter, or it is gone, the decode device falls back to that default.
 
-Completed textures are shared with the render device through keyed synchronization. The decoder
-publishes an immutable frame description; the UI copies it into a render-owned texture, which
-releases the decoder's surface at once - sampling the shared texture directly would hold the decoder
-until the frame was presented. Session generation is verified before display. A renderer that cannot
-open the shared texture, or cannot sample its format because the device has no plane views or YUV
-presentation is closed, asks for CPU frames, and so does the CPU backend when a hardware picture
-reaches it. From then on hardware pictures are downloaded and prepared on the decode thread.
+The decoder publishes an immutable frame description, and the UI copies its picture into a
+render-owned texture under the decoder's lock. A picture decoded on the render device is copied
+straight out of the decoder's surface, ordered after the decode by the device's own command stream. A
+decode device of its own shares completed textures through keyed synchronization: the picture is
+copied into a texture shared between the devices and from there into the render-owned texture, which
+frees the shared texture for the next picture at once. The session keeps the frame on show, and so its
+decoder surface, until the next replaces it, and the decoder's surface pool allows for that. Session
+generation is verified before display. A renderer that cannot open the shared texture, or cannot
+sample its format because the device has no plane views or YUV presentation is closed, asks for CPU
+frames of that surface layout, and so does the CPU backend when a hardware picture reaches it. From
+then on hardware pictures of that layout are downloaded and prepared on the decode thread; other
+layouts are still shared.
 
 The renderers see a frame only through `ui::video_frame`: the picture the decode thread prepared,
 or else the decoder's texture with the lock its device takes around it, which a renderer copies only
@@ -222,19 +260,27 @@ initialized backend selected. Logical application state remains independent from
 
 - libdesktop's [platform_win_d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_d3d11.cpp): device and adapter selection, image
   budgets, hardware drawing, swap-chain resources, texture upload and recycling, glyph atlases,
-  shared video textures, and the render adapter published for the decode device.
+  video textures copied from the render device's decoder or shared from another device, and the render
+  device and adapter published for the decoder.
 - libdesktop's [platform_win_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_ui.cpp): each window's backend choice, swap chain,
-  presentation and its hidden-window standby, and the switch to software on device loss.
+  presentation and its hidden-window standby, the frame timer, and the switch to software on device loss.
 - libdesktop's [platform_win_software.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_software.cpp): CPU backend and Windows present
   target.
 - libdesktop's [platform_win_font.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_font.cpp): font resolution, shaping, and glyph masks.
+- libdesktop's [platform_win_wic.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_wic.cpp): text rendered into surfaces, styled
+  and outlined for subtitles.
+- [av_subtitle.cpp](../src/av_subtitle.cpp): subtitle placement, stacking and rasterising, and
+  [model.cpp](../src/model.cpp) `display_state_t::draw_subtitles`, which draws them over the picture.
 - libdesktop's [render_surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_surface.cpp) and [render_software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render_software.h):
   shared surfaces and software rasterization, and the CPU side of the HDR cube.
 - [av_format.cpp](../src/av_format.cpp): video decode, hardware decode selection, decode-thread
   picture preparation, the HDR mapping, and hardware-frame publication.
 - [platform_win_av.cpp](../src/platform_win_av.cpp): the D3D11VA decoder the renderer presents
-  from, the driver's answer on whether it decodes a stream, the decode device on the renderer's GPU,
-  and the lock a hardware picture lends the renderer.
+  from, the driver's answer on whether it decodes a stream, the decode device - the render device where
+  it carries the video interfaces, else one on the renderer's GPU - and the lock a hardware picture lends
+  the renderer.
+- [av_player.h](../src/av_player.h): the playback threads, the presenter that takes the frames its clock
+  has reached, and the queue that makes only the latest waiting seek.
 - libdesktop's [yuv_common.hlsli](https://github.com/ZacWalk/libdesktop/blob/main/src/render/shaders/yuv_common.hlsli): YUV sampling and the GPU side of the HDR cube.
 - libdesktop's [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h): backend-neutral draw interfaces and presentation results, and the video frame
   and scaler interfaces the application hands the renderers.

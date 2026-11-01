@@ -38,7 +38,9 @@ fullscreen commands; commands whose target or effect is not visible are suppress
 8. Flat-image pixels use point sampling at exactly 1:1, bicubic above 1:1 through 3x, and point
    sampling above 3x. Interactive magnification uses bilinear sampling inside that 1:1-to-3x
    interval; above 3x it also uses point sampling. Magnified stand-ins stay smooth until source
-   pixels arrive.
+   pixels arrive. A video frame is never pre-scaled, so a picture drawn below three quarters of its
+   decoded size on both axes is sampled bilinearly, and the choice is made from the fitted picture
+   rather than the pane it sits in.
 
 ## Rendering Tiers
 

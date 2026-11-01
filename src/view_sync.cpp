@@ -30,6 +30,7 @@
 #include "model_index.h"
 #include "ui_dialog.h"
 #include "view_sync.h"
+#include "app_commands.h"
 #include "app_util.h"
 
 uint32_t count_sync_actions(const sync_analysis_result& analysis)
@@ -99,6 +100,11 @@ void sync_view::invalidate_analysis()
 	_status.clear();
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
 		view_invalid::command_state);
+}
+
+view_bars sync_view::bars() const
+{
+	return task_view_bars({commands::sync_analyze, commands::sync_run});
 }
 
 view_controls_host_ptr sync_view::controls(const ui::control_frame_ptr& owner)

@@ -6,13 +6,15 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: JPEG XL decoding through libfiles, into a surface judged against the decode budget first.
-// libfiles scans these files too; this supplies the Brotli decoder its scan asks for when a container
-// keeps its metadata boxes compressed.
+// Purpose: JPEG XL decoding and encoding through libfiles: decoding into a surface judged against the
+// decode budget first, and encoding a surface with its metadata for a save. libfiles scans these files
+// too; this supplies the Brotli decoder its scan asks for when a container keeps its metadata boxes
+// compressed.
 
 #include "pch.h"
 #include "files.h"
 #include "files_jpeg.h"
+#include "libfiles/encode.h"
 
 #include <brotli/decode.h>
 
@@ -22,8 +24,8 @@ constexpr size_t box_chunk = 64u * 1024u;
 // What libfiles asks for when a JPEG XL keeps a metadata box compressed ('brob'): the box's one whole
 // Brotli stream, decompressed into at most max_size bytes. A stream that would need more is abandoned
 // there rather than decompressed to the end.
-static std::optional<std::vector<uint8_t>> decompress_brotli(const std::span<const uint8_t> compressed,
-                                                             std::string_view, const size_t max_size)
+std::optional<std::vector<uint8_t>> decompress_jxl_box(const std::span<const uint8_t> compressed, std::string_view,
+                                                       const size_t max_size)
 {
 	const df::releaser<BrotliDecoderState> dec(BrotliDecoderCreateInstance(nullptr, nullptr, nullptr),
 	                                           [](auto* d) { BrotliDecoderDestroyInstance(d); });
@@ -58,7 +60,7 @@ static std::optional<std::vector<uint8_t>> decompress_brotli(const std::span<con
 file_scan_result scan_jxl_libfiles(read_stream& s, scan_intent, const bool want_thumbnail, files* const decoder)
 {
 	still_scan_extras extras;
-	extras.brotli = decompress_brotli;
+	extras.brotli = decompress_jxl_box;
 
 	// Scanned for indexing whatever the intent: libjxl's scan gave JPEG XL no structure report.
 	auto result = scan_still_libfiles(s, scan_intent::index, want_thumbnail, decoder, extras);
@@ -121,4 +123,45 @@ ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 	}
 
 	return {};
+}
+
+// Packed pixels only: a planar surface - a video frame - is converted to packed by its caller first.
+// The orientation, when given, is which way the pixels stand in place of the surface's own.
+ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const metadata_parts& metadata,
+                       const file_encode_params& params, const std::optional<ui::orientation> orientation)
+{
+	if (!is_valid(surface_in)) return {};
+
+	const auto dimensions = surface_in->dimensions();
+	const auto turn = orientation.value_or(surface_in->orientation());
+
+	libfiles::image_view view;
+	view.pixels = surface_in->pixels();
+	view.stride = surface_in->stride();
+	view.width = static_cast<uint32_t>(dimensions.cx);
+	view.height = static_cast<uint32_t>(dimensions.cy);
+
+	switch (surface_in->format())
+	{
+	case ui::texture_format::RGB:
+		view.format = libfiles::pixel_format::bgrx8;
+		break;
+	case ui::texture_format::ARGB:
+		view.format = libfiles::pixel_format::bgra8;
+		break;
+	default:
+		return {};
+	}
+
+	libfiles::jxl_options options;
+	options.lossless = params.jxl_lossless;
+	options.quality = params.jxl_quality;
+
+	const auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), embedded_metadata_of(metadata),
+	                                          options);
+	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
+	if (encoded.data.empty()) return {};
+
+	return std::make_shared<ui::image>(df::cspan(encoded.data.data(), encoded.data.size()), dimensions,
+	                                   ui::image_format::JXL, turn);
 }

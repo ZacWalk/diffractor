@@ -298,6 +298,11 @@ void tags_view::run()
 	_state.recent_tags.add_items(adds);
 }
 
+view_bars tags_view::bars() const
+{
+	return task_view_bars({commands::tags_run});
+}
+
 view_controls_host_ptr tags_view::controls(const ui::control_frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);

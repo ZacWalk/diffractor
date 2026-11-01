@@ -337,6 +337,30 @@ static void should_match_parsed_property_values()
 	prop_test().episode(3, 13)
 	           .is_match("episode:3")
 	           .is_match(">episode:3/12");
+	// A number with no total is still that number.
+	prop_test().episode(5)
+	           .is_match("episode:5")
+	           .is_not_match("episode:6");
+	prop_test().track(7)
+	           .is_match("track:7");
+
+	// What a library of films and television says an item is.
+	prop_test().kind(prop::media_kind::film)
+	           .is_match("@movie")
+	           .is_match("@film")
+	           .is_not_match("@episode")
+	           .is_match("-@episode");
+	prop_test().kind(prop::media_kind::episode)
+	           .is_match("@episode")
+	           .is_match("@tv")
+	           .is_not_match("@movie");
+	prop_test().is_not_match("@movie").is_not_match("@episode");
+
+	// Started and not finished; neither just opened nor played to the credits.
+	prop_test().duration(3600).media_position(1200).is_match("@inprogress").is_match("@watching");
+	prop_test().duration(3600).media_position(10).is_not_match("@inprogress");
+	prop_test().duration(3600).media_position(3500).is_not_match("@inprogress");
+	prop_test().duration(3600).is_not_match("@inprogress");
 	prop_test().dimensions(4000, 3000)
 	           .is_match(">dimensions:3000x2000")
 	           .is_not_match("<dimensions:3000x2000")
@@ -707,6 +731,35 @@ static void should_group_search_terms()
 	assert_equal(false, matches("(alpha) (beta)", "alpha.jpg"), "two and-groups both have to match");
 	assert_equal(true, matches("(alpha) or (beta)", "beta.jpg"), "either or-group may match");
 	assert_equal(false, matches("(alpha) or (beta)", "delta.jpg"), "an or of groups is not unconditional");
+
+	// A bare f/N reads as text or as an aperture, a pair that stands where the term stood. The
+	// aperture arm took the group's closing bracket with it, so it was ored in a level outside the
+	// group - and an f/2.8 from any camera answered "(camera:canon f/2.8)".
+	const auto shot = [](const std::string_view query, const std::string_view camera, const float aperture,
+	                     const uint16_t iso)
+	{
+		df::index_file_item file;
+		file.name = "shot.jpg"_c;
+		file.ft = files::file_type_from_name("shot.jpg");
+		const auto md = file.safe_ps();
+		md->camera_model = str::cache(camera);
+		md->f_number = aperture;
+		md->iso_speed = iso;
+
+		const auto search = df::search_t::parse(query);
+		const df::search_matcher matcher(search, df::date_t(2000, 1, 1).to_days());
+		return matcher.match_all_terms(test_files_folder.text(), file).is_match();
+	};
+
+	constexpr auto grouped = "(camera:canon f/2.8) or iso:100"sv;
+	assert_equal(false, shot(grouped, "Nikon", 2.8f, 200), "the aperture alone does not answer the group");
+	assert_equal(true, shot(grouped, "Canon", 2.8f, 200), "the whole group does");
+	assert_equal(true, shot(grouped, "Nikon", 4.0f, 100), "and so does the term ored after it");
+	assert_equal(false, shot(grouped, "Canon", 4.0f, 200), "a group with its aperture unmet does not");
+	assert_equal(true, shot("(f/2.8 camera:canon) or iso:100"sv, "Canon", 2.8f, 200),
+	             "an f/N that opens a group keeps the group's and");
+	assert_equal(false, shot("(f/2.8 camera:canon) or iso:100"sv, "Nikon", 2.8f, 200),
+	             "with the rest of its group");
 }
 
 // Four ways a query came back as a different question from the one that was asked. Each is a silent
@@ -930,10 +983,16 @@ static void should_detect_folder_browse()
 	const std::string folder(test_files_folder.text());
 
 #ifdef _WIN32
-	// A UNC path is a Windows spelling; elsewhere a leading backslash is an ordinary name character.
-	assert_equal(true, df::search_t::parse("\\\\").is_empty(), "incomplete UNC root");
-	assert_equal(true, df::search_t::parse("\\\\server").is_empty(), "incomplete UNC server");
-	assert_equal(true, df::search_t::parse("\\\\server\\").is_empty(), "incomplete UNC server root");
+	// A UNC path is a Windows spelling; elsewhere a leading backslash is an ordinary name character. "\\"
+	// names no server, so it searches for nothing. A server is a place - its folders are the shares it
+	// offers - read from its spelling alone, since the file system would only wait on the network to say it
+	// is no folder.
+	assert_equal(true, df::search_t::parse("\\\\").is_empty(), "a UNC prefix alone names nothing");
+	const auto server = df::search_t().add_selector(df::item_selector(df::folder_path("\\\\server")));
+	assert_equal(true, df::search_t::parse("\\\\server") == server, "a server opens on its shares");
+	assert_equal(true, df::search_t::parse("\\\\server\\") == server, "with or without a closing separator");
+	assert_equal(true, server.is_folder(), "browsed as a folder is");
+	assert_equal(true, server.can_be_read_from("\\\\server"), "and read back from its text, as a favourite is");
 #endif
 	assert_equal(true, df::search_t::parse(folder).is_folder(), "plain folder path");
 	assert_equal(true, df::search_t::parse(folder + df::preferred_path_sep + "**").is_folder(),
@@ -946,6 +1005,89 @@ static void should_detect_folder_browse()
 	assert_equal(false, df::search_t::parse("dog").is_folder(), "term with no selector");
 	assert_equal(false, df::search_t::parse("2014").is_folder(), "date term");
 	assert_equal(false, df::search_t().is_folder(), "empty search");
+}
+
+// The favourite star compares the search in view with every favourite at each navigation, on the UI
+// thread, so it reads them rather than parsing them: parsing asks the file system, and a favourite on a
+// share that was away held the window for twenty seconds. Wherever parsing matched, reading has to.
+static void should_read_a_favourite_without_the_file_system()
+{
+	const std::string folder(test_files_folder.text());
+	const auto quoted = df::quote_path_term(folder);
+	const std::string sep(1, df::preferred_path_sep);
+	const auto plain = _temps.next_folder("favourite");
+	const std::string spaced(_temps.next_folder("favourite place").text());
+
+	for (const auto& typed : {folder, spaced, folder + sep + "**", folder + sep + "*.jpg", quoted + " @photo",
+	                          quoted + " 2019", df::quote_path_term(spaced) + " 2019", "dog"s, "@photo"s})
+	{
+		const auto search = df::search_t::parse(typed);
+		const auto saved = search.text();
+		assert_equal(true, df::search_t::parse(saved) == search, typed + " parses back as the star compared it");
+		assert_equal(true, search.can_be_read_from(saved), typed + " reads back as saved");
+		assert_equal(true, search.can_be_read_from(typed), typed + " reads back as typed");
+	}
+
+	const auto file = folder + sep + "Test.jpg";
+	const auto file_search = df::search_t::parse(file);
+	assert_equal(1_z, file_search.terms().size(), "a file parses as its folder and its name");
+	assert_equal(true, file_search.can_be_read_from(file), "a file reads back");
+
+	// Without the file system a path and the words after it read either way: the folder named by all of
+	// it, or a folder and a year. Parsing picks the one that is there, as the place in view is.
+	const auto ambiguous = std::string(plain.text()) + " 2019";
+	assert_equal(true, df::search_t::parse(ambiguous).can_be_read_from(ambiguous), "a folder and a year");
+	assert_equal(true, df::search_t().add_selector(df::item_selector(ambiguous)).can_be_read_from(ambiguous),
+	             "a folder named with a year, read without asking whether it is there");
+
+	// A favourite on a place that is away reads as that place, as parsing it does.
+	const auto away = std::string(plain.combine("away").text());
+	const auto away_search = df::search_t().add_selector(df::item_selector(away));
+	assert_equal(true, df::search_t::parse(away) == away_search, "parsing keeps a place that is away");
+	assert_equal(true, away_search.can_be_read_from(away), "a place that is away reads back");
+
+	const auto in_view = df::search_t::parse(folder);
+	assert_equal(false, in_view.can_be_read_from(spaced), "another folder");
+	assert_equal(false, in_view.can_be_read_from(folder + sep + "**"), "the folder's tree");
+	assert_equal(false, in_view.can_be_read_from(quoted + " 2019"), "the folder and a year");
+	assert_equal(false, df::search_t::parse(quoted + " 2019").can_be_read_from(folder), "the folder alone");
+	assert_equal(false, df::search_t::parse("dog").can_be_read_from("cat"), "another word");
+	assert_equal(false, df::search_t().can_be_read_from(""), "an empty search");
+}
+
+// The toolbar's star shows whether the search in view is a favourite, worked out at each navigation from
+// the favourites as saved - one after an empty slot, as removing another leaves them.
+static void should_star_a_favourite_search_in_view()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	const view_host_base_ptr view;
+	const auto saved = setting.search;
+	const df::scope_exit restore([saved] { setting.search = saved; });
+
+	const auto starred = _temps.next_folder("starred");
+	const auto folder = df::search_t().add_selector(starred);
+	const auto filtered = df::search_t::parse(df::quote_path_term(starred.text()) + " 2019");
+	const auto other = df::search_t().add_selector(_temps.next_folder("unstarred"));
+
+	setting.search = {};
+	setting.search.path[3] = folder.text();
+	setting.search.path[5] = filtered.text();
+	state.view_mode(view_type::items);
+
+	assert_equal(true, state.open(view, folder, {}), "the favourite folder opens");
+	assert_equal(true, state.search_is_favorite(), "a favourite folder is starred");
+	assert_equal(true, state.open(view, filtered, {}), "the favourite search opens");
+	assert_equal(true, state.search_is_favorite(), "a favourite folder and year is starred");
+	assert_equal(true, state.open(view, other, {}), "another folder opens");
+	assert_equal(false, state.search_is_favorite(), "another folder is not starred");
+
+	setting.search.path[3].clear();
+	assert_equal(true, state.open(view, folder, {}), "the folder opens again");
+	assert_equal(false, state.search_is_favorite(), "a folder no longer a favourite is not starred");
 }
 
 static bool contains(const std::vector<platform::file_info>& files, const std::string_view find)
@@ -1146,6 +1288,7 @@ static std::string_view related_axis_name(const df::related_axis axis)
 	switch (axis)
 	{
 	case df::related_axis::duplicate: return "duplicate";
+	case df::related_axis::film: return "film";
 	case df::related_axis::album: return "album";
 	case df::related_axis::series: return "series";
 	case df::related_axis::time: return "time";
@@ -1246,6 +1389,38 @@ static void should_match_related_by_series()
 
 	candidate.safe_ps()->show = str::cache("Other show");
 	assert_equal(false, match_related(anchor, "episode7.mkv", candidate).is_match(), "a different show is unrelated");
+}
+
+// The same film in another file is evidence beside it, graded by whether its year agrees; a remake is not it.
+static void should_match_related_by_film()
+{
+	auto anchor = make_related_anchor();
+	anchor.title = str::cache("Don't Look Up");
+	anchor.year = 2021;
+	anchor.kind = prop::media_kind::film;
+
+	auto candidate = make_related_candidate("Dont.Look.Up.2021.720p.mkv");
+	candidate.safe_ps()->title = str::cache("Dont Look Up");
+	candidate.safe_ps()->year = 2021;
+	candidate.safe_ps()->kind = prop::media_kind::film;
+
+	const auto match = match_related(anchor, "Dont.Look.Up.2021.720p.mkv", candidate);
+	assert_equal(true, match.is_match(), "another release of the film is related");
+	assert_equal("film", matched_axis(match), "film axis");
+	assert_equal(0, static_cast<int>(match.distance), "title and year agree");
+
+	candidate.safe_ps()->year = 0;
+	assert_equal(1, static_cast<int>(match_related(anchor, "Dont.Look.Up.2021.720p.mkv", candidate).distance),
+	             "only the title agrees");
+
+	candidate.safe_ps()->year = 1984;
+	assert_equal(false, match_related(anchor, "Dont.Look.Up.2021.720p.mkv", candidate).is_match(),
+	             "a film of another year is another film");
+
+	candidate.safe_ps()->year = 2021;
+	candidate.safe_ps()->kind = prop::media_kind::none;
+	assert_equal(false, match_related(anchor, "Dont.Look.Up.2021.720p.mkv", candidate).is_match(),
+	             "a home video of the same name is no copy of the film");
 }
 
 static void should_match_related_by_capture_time()
@@ -2515,6 +2690,8 @@ void register_search_tests(view_state& state, test_registry& tests)
 	tests.add("Should next date search"s, should_next_date_search);
 	tests.add("Should parse selector"s, should_parse_selector);
 	tests.add("Should detect folder browse"s, should_detect_folder_browse);
+	tests.add("Should read a favourite without the file system"s, should_read_a_favourite_without_the_file_system);
+	tests.add("Should star a favourite search in view"s, should_star_a_favourite_search_in_view);
 	tests.add("Should select files"s, should_select_files);
 	// APP-004 - recursive toggles preserve the copied query
 	tests.add("Should preserve query when toggling recursive selectors"s,
@@ -2546,6 +2723,7 @@ void register_search_tests(view_state& state, test_registry& tests)
 	tests.add("Should group related results by axis"s, should_group_related_results_by_axis);
 	tests.add("Should match related by album"s, should_match_related_by_album);
 	tests.add("Should match related by series"s, should_match_related_by_series);
+	tests.add("Should match related by film"s, should_match_related_by_film);
 	tests.add("Should match related by capture time"s, should_match_related_by_capture_time);
 	tests.add("Should match related by capture place"s, should_match_related_by_capture_place);
 	tests.add("Should report the strongest related axis"s, should_report_the_strongest_related_axis);
@@ -2715,6 +2893,12 @@ void register_search_tests(view_state& state, test_registry& tests)
 	register_assert_parse("@panorama"s);
 	// The short spelling is the same term, so it round-trips to the long one.
 	register_assert_parse("@pano"s, "@panorama"s);
+	register_assert_parse("@movie"s);
+	register_assert_parse("@films"s, "@movie"s);
+	register_assert_parse("@episode"s);
+	register_assert_parse("@tv"s, "@episode"s);
+	register_assert_parse("@inprogress"s);
+	register_assert_parse("@watching"s, "@inprogress"s);
 	register_assert_parse("loc:-30.515+151.66+5"s, "loc:-30.515,151.66,5km"s);
 	register_assert_parse("loc:\"Boulder City\""s);
 	register_assert_parse("place:London"s);

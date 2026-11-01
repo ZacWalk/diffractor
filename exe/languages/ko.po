@@ -200,9 +200,6 @@ msgstr "필터"
 msgid "Close"
 msgstr "닫기"
 
-msgid "Collection options"
-msgstr "컬렉션 옵션"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "항목 앞에 '-'를 붙이면 제외됩니다. -c:\\photos\\secret 같은 전체 경로는 폴더 하나를 제외합니다. -secret 같은 이름이나 -proxy* 같은 와일드카드는 컬렉션 내 어디에 있든 일치하는 폴더를 제외합니다."
 
@@ -470,9 +467,6 @@ msgstr "구글 지도에서 열기"
 msgid "Open with"
 msgstr "다음으로 열기"
 
-msgid "General options"
-msgstr "일반 옵션"
-
 msgid "Pin or hold item"
 msgstr "항목 고정 또는 고정"
 
@@ -622,9 +616,6 @@ msgstr "축소판 크기 전환"
 
 msgid "Change thumbnail size"
 msgstr "축소판 크기 변경"
-
-msgid "Back to the top of the list"
-msgstr "목록 맨 위로 이동"
 
 msgid "Tools"
 msgstr "도구"
@@ -1814,6 +1805,9 @@ msgstr "파일이 다릅니다."
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG - 최고의 사진 압축"
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL - 가장 작은 사진 파일"
+
 msgid "Keyboard"
 msgstr "키보드"
 
@@ -2209,6 +2203,9 @@ msgstr "JPEG 저장 품질"
 
 msgid "WEBP save quality"
 msgstr "WEBP 저장 품질"
+
+msgid "JPEG XL save quality"
+msgstr "JPEG XL 저장 품질"
 
 msgid "When saving"
 msgstr "저장할 때"
@@ -3614,8 +3611,8 @@ msgstr "항목을 한 줄 위 또는 아래로 이동합니다. 확대된 이미
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "표시된 이미지를 확대하거나 축소합니다. 0을 누르면 창에 맞춥니다."
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "컬렉션에 폴더 추가 (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "컬렉션에 폴더 추가 (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "검색 조건을 하나 이상 선택하세요."
@@ -3818,3 +3815,114 @@ msgid_plural "{count} clips were relinked."
 msgstr[0] "클립 1개를 다시 연결했습니다."
 msgstr[1] "클립 {count}개를 다시 연결했습니다."
 
+
+msgid "SID monitor"
+msgstr "SID 모니터"
+
+msgid "Voice {}"
+msgstr "보이스 {}"
+
+msgid "Output"
+msgstr "출력"
+
+msgid "Filter"
+msgstr "필터"
+
+msgid "Volume"
+msgstr "볼륨"
+
+msgid "Register writes"
+msgstr "레지스터 쓰기"
+
+msgid "Solo"
+msgstr "솔로"
+
+msgid "Same film"
+msgstr "같은 영화"
+
+msgid "Viewing and playback"
+msgstr "보기 및 재생"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "사진, 동영상, 음악을 표시하고 재생하는 방법입니다."
+
+msgid "Shown in the sidebar"
+msgstr "사이드바에 표시"
+
+msgid "Editing and saving"
+msgstr "편집 및 저장"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "Diffractor가 파일을 변경하기 전에 확인할지 여부와 파일을 저장하는 품질입니다."
+
+msgid "Confirmations"
+msgstr "확인"
+
+msgid "General"
+msgstr "일반"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "Diffractor가 표시되는 언어, 도움말 및 실행 방식입니다."
+
+msgid "Save options and close"
+msgstr "옵션 저장 후 닫기"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "일부 옵션을 변경했습니다. 닫기 전에 저장할까요?"
+
+msgid "Viewing"
+msgstr "보기"
+
+msgid "What each folder holds"
+msgstr "각 폴더의 내용"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "영화와 TV 프로그램은 파일 이름에서 이름, 번호, 날짜를 가져옵니다. 개인 녹화물과 음악은 그대로 둡니다. '각 파일 이름으로 결정'은 이름이 릴리스 이름처럼 보이는 파일을 영화나 에피소드로 취급합니다."
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "위에서 컬렉션 폴더를 선택하고 저장하면 각 폴더의 내용을 지정할 수 있습니다."
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "위에서 추가한 폴더는 옵션을 저장하면 여기에 표시됩니다."
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Kodi, Jellyfin, Emby가 동영상 옆에 두는 .nfo 파일에서 제목, 줄거리, 시즌, 에피소드, 날짜를 읽습니다. 이 설정을 바꾸면 컬렉션을 다시 읽습니다."
+
+msgid "Decided by each file's name"
+msgstr "각 파일 이름으로 결정"
+
+msgid "Personal recordings"
+msgstr "개인 녹화물"
+
+msgid "Films and TV shows"
+msgstr "영화 및 TV 프로그램"
+
+msgid "Music"
+msgstr "음악"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "끄기 (영화가 강제하는 자막 제외)"
+
+msgid "Always"
+msgstr "항상"
+
+msgid "When the speech is in another language"
+msgstr "음성이 다른 언어일 때"
+
+msgid "Show subtitles in"
+msgstr "자막 언어"
+
+msgid "The language Diffractor is shown in"
+msgstr "Diffractor 표시 언어"
+
+msgid "The system's default"
+msgstr "시스템 기본값"
+
+msgid "forced"
+msgstr "강제"
+
+msgid "Subtitles {}"
+msgstr "자막 {}"
+
+msgid "Subtitles"
+msgstr "자막"

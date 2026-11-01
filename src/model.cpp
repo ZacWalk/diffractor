@@ -12,6 +12,7 @@
 #include "pch.h"
 #include "model.h"
 #include "model_display.h"
+#include "model_document.h"
 #include "model_index.h"
 
 #include "app_command_line.h"
@@ -22,6 +23,7 @@
 #include "metadata_xmp.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
+#include "ui_sid.h"
 #include "app_command_status.h"
 
 
@@ -216,6 +218,7 @@ void display_state_t::update_av_session(const std::shared_ptr<av_session>& ses)
 	if (ses)
 	{
 		_player_media_info = ses->info();
+		if (_sid) _sid->describe(_player_media_info);
 		_full_metadata_loaded = true;
 		load_xmp_sidecar();
 	}
@@ -238,16 +241,22 @@ void display_state_t::load_selected_item_data()
 	const auto item = _item1;
 	if (!item) return;
 
+	// A Commodore program is shown as its listing and a dump, whatever its bytes look like.
+	const auto text_allowed = !item->file_type()->has_trait(file_traits::commodore);
+
 	_async.queue_async(async_queue::load,
-	                   [self = ui_owned(_async, shared_from_this()), path = item->path()]
+	                   [self = ui_owned(_async, shared_from_this()), path = item->path(), text_allowed]
 	                   {
 		                   df::scope_locked_inc l(df::loading_media);
 		                   // Shared because the UI task is stored in a std::function, which requires a copyable target.
 		                   auto data = std::make_shared<df::blob>(blob_head_from_file(path, df::one_meg));
+		                   auto text = std::make_shared<document_text>(
+			                   decode_document(*data, path.extension(), text_allowed));
 
-		                   self->_async.queue_ui([self, data]
+		                   self->_async.queue_ui([self, data, text]
 		                   {
 			                   self->_selected_item_data = std::move(*data);
+			                   self->_document = std::make_shared<document_state>(std::move(*text));
 			                   self->_async.invalidate_view(
 				                   view_invalid::media_elements | view_invalid::view_layout);
 		                   });
@@ -897,8 +906,27 @@ void view_state::open_av_session(const std::shared_ptr<display_state_t>& d, cons
                                  const bool use_last_played_pos, platform::file_ptr file) const
 {
 	const auto generation = ++d->_av_generation;
+	auto resume = use_last_played_pos;
 
-	_player->open(i, auto_play, video_track, audio_track, av_can_use_hw(), use_last_played_pos,
+	// A SID tune is played from its render, which reads the file on the player's thread when the session
+	// opens. Every tune starts at its beginning: resuming one part way would render all that comes before.
+	if (!file && i->file_type()->has_trait(file_traits::sid_tune))
+	{
+		d->_sid = std::make_shared<sid_tune_render>(i->path(), d->_sid_song);
+		d->_sid->mix(d->_sid_mix);
+		file = open_sid_stream(d->_sid);
+		resume = false;
+	}
+
+	// The sidecars come from the index, which the player cannot reach; the choice from the menu, or else
+	// the settings.
+	subtitle_request subtitles;
+	subtitles.chosen = d->_subtitle_choice;
+	subtitles.sidecars = sidecar_subtitle_offers(i->path(), i->sidecars());
+	subtitles.mode = setting.subtitles;
+	subtitles.language = setting.subtitle_language.empty() ? setting.language : setting.subtitle_language;
+
+	_player->open(i, auto_play, video_track, audio_track, av_can_use_hw(), resume,
 	              [d = ui_owned(_async, d), generation, player = _player](const std::shared_ptr<av_session>& ses)
 	              {
 		              // Dropping a superseded session instead of closing it would leave the file open
@@ -907,7 +935,35 @@ void view_state::open_av_session(const std::shared_ptr<display_state_t>& d, cons
 		              {
 			              player->close(ses, {});
 		              }
-	              }, std::move(file));
+	              }, std::move(file), std::move(subtitles));
+}
+
+void view_state::select_sid_song(const int song) const
+{
+	const auto d = _display;
+	if (!d || !d->_item1 || !d->_sid) return;
+
+	const auto auto_play = !d->_session || d->_session->is_playing();
+	d->_sid_song = song;
+
+	// The new tune is a new stream, so the outgoing session is closed here rather than left for whichever
+	// thread drops its last reference.
+	if (d->_session)
+	{
+		_player->close(d->_session, {});
+		d->_session.reset();
+	}
+
+	open_av_session(d, d->_item1, auto_play, -1, -1, false);
+}
+
+void view_state::mix_sid_voices(const sid_voice_mix& mix) const
+{
+	const auto d = _display;
+	if (!d) return;
+
+	d->_sid_mix = mix;
+	if (d->_sid) d->_sid->mix(mix);
 }
 
 void view_state::change_tracks(const int video_track, const int audio_track) const
@@ -926,6 +982,27 @@ void view_state::change_tracks(const int video_track, const int audio_track) con
 
 		open_av_session(d, d->_item1, auto_play, video_track, audio_track, true);
 	}
+}
+
+void view_state::change_subtitles(const subtitle_choice& choice) const
+{
+	const auto d = _display;
+	if (!d || !d->_session) return;
+
+	d->_subtitle_choice = choice;
+
+	// The audio the user is listening to stays; only a file with a choice of it names one.
+	auto audio_track = -1;
+
+	if (d->_player_media_info.has_multiple_audio_streams)
+	{
+		for (const auto& st : d->_player_media_info.streams)
+		{
+			if (st.type == av_stream_type::audio && st.is_playing) audio_track = st.index;
+		}
+	}
+
+	change_tracks(-1, audio_track);
 }
 
 void view_state::change_audio_device(const std::string& id) const
@@ -3183,9 +3260,9 @@ static bool calc_search_is_favorite(const df::search_t& search)
 		{
 			if (!str::is_empty(setting.search.path[i]))
 			{
-				const auto fav = df::search_t::parse(setting.search.path[i]);
-
-				if (search == fav)
+				// Read, not parsed: this runs on the UI thread at every navigation, and parsing a
+				// favourite on a share that is away waits on the network.
+				if (search.can_be_read_from(setting.search.path[i]))
 				{
 					return true;
 				}
@@ -3551,6 +3628,51 @@ df::item_element_ptr view_state::next_item(const bool forward, const bool extend
 	}
 
 	return nullptr;
+}
+
+// The episode after this one in its show, among those on display: by season, episode and the day it aired, so a show
+// continues in order whatever its files are called or however the view is sorted. Null when it is the last, or is
+// no episode.
+df::item_element_ptr view_state::next_episode(const df::item_element_ptr& current) const
+{
+	if (!current) return nullptr;
+
+	const auto md = current->metadata();
+	if (!md || md->kind != prop::media_kind::episode || is_empty(md->show)) return nullptr;
+
+	// Numbered episodes follow by season and number, so another copy of this one - the 1080p beside the 720p - is
+	// not the next. Dated episodes and specials, which have no number, follow by their date.
+	const auto key_of = [](const prop::item_metadata& m)
+	{
+		const auto numbered = !m.is_special && m.episode.x != 0;
+		return std::make_tuple(static_cast<int>(m.season), m.is_special ? 0 : static_cast<int>(m.episode.x),
+		                       numbered ? int64_t{0} : static_cast<int64_t>(m.created().to_int64()));
+	};
+
+	const auto current_key = key_of(*md);
+	df::item_element_ptr best;
+	std::tuple<int, int, int64_t> best_key;
+
+	for (const auto& g : _item_groups)
+	{
+		for (const auto& i : g->items())
+		{
+			if (i == current) continue;
+
+			const auto other = i->metadata();
+			if (!other || other->kind != prop::media_kind::episode || icmp(other->show, md->show) != 0) continue;
+
+			const auto key = key_of(*other);
+			if (key <= current_key) continue;
+			if (!best || key < best_key)
+			{
+				best = i;
+				best_key = key;
+			}
+		}
+	}
+
+	return best;
 }
 
 df::item_element_ptr view_state::next_media_item(const bool forward, const bool wrap) const
@@ -4150,7 +4272,9 @@ void view_state::tick(const view_host_base_ptr& view, const double time_now)
 
 					if (t.can_next && t.repeat != repeat_mode::repeat_one && (is_slideshow || setting.auto_advance))
 					{
-						next = next_media_item(true, false);
+						// An episode continues with the next in its show; anything else with the next on display.
+						next = is_media_end ? next_episode(display_item) : nullptr;
+						if (!next) next = next_media_item(true, false);
 						t.has_next = next != nullptr;
 						t.next_is_current = next == display_item;
 
@@ -4191,7 +4315,7 @@ void view_state::tick(const view_host_base_ptr& view, const double time_now)
 			}
 		}
 
-		d->update_scrubber();
+		d->update_scrubber(should_show_overlays());
 
 		if (d->_selected_texture1)
 		{
@@ -4723,6 +4847,7 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 
 	_panorama = {};
 	update_decode(rc);
+	_last_picture_bounds = {};
 
 	// After the upload above, because that is what starts the dissolve. Read before it, this is the
 	// previous fade's finished value: the incoming texture would draw opaque for one frame, the
@@ -4778,8 +4903,6 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 	{
 		const auto tex_dims = tex->source_extent();
 		const auto orientation = tex->_orientation;
-		const auto sampler = calc_sampler(media_bounds.extent(), tex_dims, orientation, interactive,
-		                                  tex == _tex && is_provisional());
 
 		// rendering.md: the destination is shaped by what the item is, not by what has arrived to
 		// draw into it, and a stand-in staged before the decode need not be that shape. Fitting it
@@ -4790,6 +4913,10 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 		const auto image_bounds = df::fit_preserving_aspect(
 			rectd(media_bounds), sized(calc_draw_shape(oriented_extent(tex_dims, orientation),
 			                                           calc_display_dimensions(), tex == _vid_tex)));
+		const auto sampler = tex == _vid_tex
+			                     ? calc_video_sampler(image_bounds.extent(), tex_dims, orientation, interactive)
+			                     : calc_sampler(media_bounds.extent(), tex_dims, orientation, interactive,
+			                                    tex == _tex && is_provisional());
 		auto draw_bounds = image_bounds;
 		auto tex_bounds = rectd(tex_dims);
 
@@ -4862,6 +4989,12 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 		rc.draw_texture(tex, dst_quad, tex_bounds.round(), alpha, sampler);
 
 		draw_texture_info(rc, image_bounds.round().offset(offset), tex, orientation, sampler, alpha);
+
+		if (tex == _vid_tex)
+		{
+			_last_picture_bounds = image_bounds.round().offset(offset);
+			_last_picture_alpha = alpha;
+		}
 
 		_last_draw_tex = tex;
 		_last_draw_source_rect = tex_bounds.round();
@@ -5281,9 +5414,97 @@ render_valid display_state_t::update_for_present(const double time_now) const
 				}
 			}
 		}
+
+		// The SID monitor's moving parts follow the session's clock for every present, and rebuild the scene
+		// only when the text beside them falls behind; the position it shows is the one the session reports.
+		if (_sid)
+		{
+			_session->mark_presented(time_now);
+
+			if (_sid_motion)
+			{
+				const auto motion = _sid_motion->update(_sid, _session->pos(time_now), time_now);
+				if (motion == render_valid::invalid) result = render_valid::invalid;
+				else if (motion == render_valid::present && result == render_valid::valid) result = render_valid::present;
+			}
+		}
+
+		// A line can come, go or finish rasterising at any tick, with or without a new frame. The lines are
+		// recorded into the scene, so a replay would present the ones it was recorded with: the scene has to
+		// be built again. Asked once per change, so a view that does not draw the picture, and so never
+		// records what was asked for, costs one repaint per change rather than one per tick.
+		if (result != render_valid::invalid && _player_media_info.has_video)
+		{
+			const auto shown_key = _session->subtitles_key(time_now);
+
+			if (shown_key != _subtitles_drawn_key && shown_key != _subtitles_requested_key)
+			{
+				_subtitles_requested_key = shown_key;
+				result = render_valid::invalid;
+			}
+		}
 	}
 
 	return result;
+}
+
+void display_state_t::draw_subtitles(ui::draw_context& dc) const
+{
+	// Whatever this draws answers any repaint asked for since, so a later return to a key asked for
+	// before is asked for again.
+	const df::scope_exit answered([this] { _subtitles_requested_key = _subtitles_drawn_key; });
+
+	const auto st = _selected_texture1;
+	const auto picture = st ? st->_last_picture_bounds : recti{};
+	// The shape the picture is drawn in: turned, when the video records a turn and is shown turned.
+	const auto video = st ? st->calc_display_dimensions() : sizei{};
+
+	if (!_session || picture.is_empty() || video.cx <= 0 || video.cy <= 0)
+	{
+		// Nothing to draw them on; the frame that arrives will draw them, so this is no reason to repaint.
+		_subtitles_drawn_key = _session ? _session->subtitles_key(dc.time_now) : 0;
+		_subtitle_textures.clear();
+		return;
+	}
+
+	// Lines are laid out for that shape, and laid out again when it changes.
+	_session->subtitles_layout(video);
+	const auto shown = _session->subtitles(dc.time_now);
+	_subtitles_drawn_key = subtitle_shown_key(shown);
+
+	if (shown.empty())
+	{
+		_subtitle_textures.clear();
+		return;
+	}
+
+	// Lines in the lower half rise over controls floating on the picture, as far as they need and as the
+	// controls fade in.
+	const auto raise = _overlay_top > 0 ? static_cast<double>(dc.colors.overlay_alpha) : 0.0;
+	const auto placements = place_subtitles_on_picture(shown, video, picture, _overlay_top, raise,
+	                                                   df::round(8 * dc.scale_factor));
+
+	using texture_entry = std::pair<ui::const_surface_ptr, ui::texture_ptr>;
+	std::vector<texture_entry> textures;
+	const auto alpha = dc.colors.alpha * st->_last_picture_alpha;
+
+	for (const auto& p : placements)
+	{
+		const auto& surface = p.bitmap->surface;
+		const auto cached = std::ranges::find(_subtitle_textures, surface, &texture_entry::first);
+		auto tex = cached != _subtitle_textures.end() ? cached->second : ui::texture_ptr{};
+
+		if (!tex || !tex->is_valid())
+		{
+			tex = dc.create_texture();
+			if (!tex || tex->update(surface) == ui::texture_update_result::failed) continue;
+		}
+
+		dc.draw_texture(tex, p.bounds, alpha, ui::texture_sampler::bilinear);
+		textures.emplace_back(surface, std::move(tex));
+	}
+
+	_subtitle_textures = std::move(textures);
 }
 
 texture_state::texture_state(async_strategy& async, const df::item_element_ptr& i) : _async(async)
@@ -5379,8 +5600,37 @@ ui::texture_sampler calc_sampler(const sizei draw_extent, const sizei texture_ex
 	// Catmull-Rom in both directions until a magnified source pixel covers roughly three
 	// device pixels. Beyond that threshold point sampling keeps source pixels exact.
 	// Minification never exceeds ~2x because calc_scale_hint() already pre-scales the
-	// decoded surface, so the 4x4 footprint stays well sampled.
+	// decoded surface, so the 4x4 footprint stays well sampled. Video is not pre-scaled;
+	// calc_video_sampler handles its minification.
 	return ui::texture_sampler::bicubic;
+}
+
+ui::texture_sampler calc_video_sampler(const sized picture_extent, const sizei texture_extent,
+                                       const ui::orientation& orientation, const bool interactive)
+{
+	auto dims = texture_extent;
+
+	if (setting.show_rotated && flips_xy(orientation))
+	{
+		std::swap(dims.cx, dims.cy);
+	}
+
+	if (dims.cx <= 0 || dims.cy <= 0) return ui::texture_sampler::bilinear;
+
+	// A video frame is drawn at the size it was decoded, never pre-scaled as a still is, so a picture
+	// smaller than the frame is minified by the sampler itself, on every frame. Catmull-Rom's 4x4 footprint
+	// does not widen with the scale: below three quarters it aliases as bilinear does at five times the
+	// texture reads. Just below one-to-one it still keeps the edges bilinear would soften.
+	constexpr double minified_below = 0.75;
+
+	if (picture_extent.Width < dims.cx * minified_below && picture_extent.Height < dims.cy * minified_below)
+	{
+		return ui::texture_sampler::bilinear;
+	}
+
+	// The picture's own extent rather than the area it is fitted into: a pillarboxed video at one-to-one
+	// is exact, and a portrait one shrunk into a landscape pane is not mistaken for a magnified one.
+	return calc_sampler(picture_extent.round(), texture_extent, orientation, interactive, false);
 }
 
 sizei calc_draw_shape(const sizei oriented_texture_extent, const sizei display_dimensions, const bool is_video)

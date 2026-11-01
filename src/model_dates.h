@@ -49,6 +49,14 @@ namespace prop
 		legacy_original = 1ull << 18,
 		legacy_created = 1ull << 19,
 		legacy_modified = 1ull << 20,
+
+		// A film's release year or an episode's air date, read from its name. Derived whenever the item loads,
+		// like every value read from a name, so it is never stored: the pack written to the index leaves it out.
+		file_name = 1ull << 21,
+
+		// A film's premiere or an episode's air date, as the .nfo a media manager - Kodi, Jellyfin, Emby - keeps
+		// beside it records them. Read from a file, so stored like any other.
+		media_manager = 1ull << 22,
 	};
 
 	constexpr date_source operator|(const date_source a, const date_source b)
@@ -90,14 +98,19 @@ namespace prop
 		{date_source::xmp_exif_original, date_concept::original, 2},
 		{date_source::iptc_created, date_concept::original, 3},
 		{date_source::id3_original_release, date_concept::original, 4},
+		// What a media manager's .nfo says: curated, but about the work rather than this copy of it.
+		{date_source::media_manager, date_concept::original, 5},
+		// Added only for an item its name and folder make a film or an episode, and only when the file's own
+		// dates name another year: a download otherwise files under the day it was copied.
+		{date_source::file_name, date_concept::original, 6},
 		// Nominally a mirror of DateTimeOriginal, but the one an image editor rewrites on save.
 		// Ranked last so it serves files carrying nothing else without moving a photograph to the
 		// day it was retouched.
-		{date_source::photoshop_created, date_concept::original, 5},
+		{date_source::photoshop_created, date_concept::original, 7},
 		// The Windows shell's reading of DateTimeOriginal, used only for a cloud placeholder that
 		// cannot be opened without downloading it. Nothing better is available when it is.
-		{date_source::shell_date_taken, date_concept::original, 6},
-		{date_source::legacy_original, date_concept::original, 7},
+		{date_source::shell_date_taken, date_concept::original, 8},
+		{date_source::legacy_original, date_concept::original, 9},
 
 		{date_source::exif_digitized, date_concept::created, 1},
 		{date_source::xmp_exif_digitized, date_concept::created, 2},
@@ -238,6 +251,27 @@ namespace prop
 		bool has_source(const date_source s) const
 		{
 			return all_sources() && s;
+		}
+
+		// The pack less one source, for storing a pack whose derived readings are not stored.
+		date_pack without(const date_source source) const
+		{
+			const auto mask = static_cast<uint64_t>(source);
+			date_pack result;
+
+			for (auto i = 0; i < _count; ++i)
+			{
+				const auto remaining = _sources[i] & ~mask;
+				if (remaining == 0) continue;
+
+				result._values[result._count] = _values[i];
+				result._sources[result._count] = remaining;
+				result._offsets[result._count] = _offsets[i];
+				++result._count;
+			}
+
+			result._overflow = _overflow & ~mask;
+			return result;
 		}
 
 		// A source with no date says nothing and must never erase one already recorded.
@@ -487,6 +521,8 @@ namespace prop
 		case date_source::legacy_original:
 		case date_source::legacy_created:
 		case date_source::legacy_modified: return "Indexed before rescan";
+		case date_source::file_name: return "File name";
+		case date_source::media_manager: return "Media manager .nfo";
 		default: return {};
 		}
 	}

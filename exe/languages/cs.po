@@ -216,9 +216,6 @@ msgstr "filtr"
 msgid "Close"
 msgstr "Zavřít"
 
-msgid "Collection options"
-msgstr "Možnosti sbírky"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "Předřaďte položce '-', chcete-li ji vyloučit. Úplná cesta jako -c:\\photos\\secret vyloučí jednu složku. Název jako -secret nebo zástupný znak jako -proxy* vyloučí odpovídající složky kdekoli ve vaší sbírce."
 
@@ -492,9 +489,6 @@ msgstr "Otevřít v google maps"
 msgid "Open with"
 msgstr "Otevřít pomocí"
 
-msgid "General options"
-msgstr "Obecné volby"
-
 msgid "Pin or hold item"
 msgstr "Připnout nebo podržet položku"
 
@@ -644,9 +638,6 @@ msgstr "Přepnout velikost miniatury"
 
 msgid "Change thumbnail size"
 msgstr "Změnit velikost miniatur"
-
-msgid "Back to the top of the list"
-msgstr "Zpět na začátek seznamu"
 
 msgid "Tools"
 msgstr "Nástroje"
@@ -1883,6 +1874,9 @@ msgstr "Soubory jsou různé."
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG – Nejlepší komprese pro fotografie"
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL – Nejmenší soubory pro fotografie"
+
 msgid "Keyboard"
 msgstr "Klávesnice"
 
@@ -2286,6 +2280,9 @@ msgstr "Kvalita uložení JPEG"
 
 msgid "WEBP save quality"
 msgstr "Kvalita uložení WEBP"
+
+msgid "JPEG XL save quality"
+msgstr "Kvalita uložení JPEG XL"
 
 msgid "When saving"
 msgstr "Při ukládání"
@@ -3775,8 +3772,8 @@ msgstr "Posun o řádek položek nahoru nebo dolů. Posouvá přiblížený obr�
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "Přiblíží nebo oddálí zobrazený obrázek. Stisknutím 0 jej přizpůsobíte oknu."
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "Přidat složky do sbírky (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "Přidat složky do sbírky (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "Vyberte alespoň jedno kritérium hledání."
@@ -3982,3 +3979,114 @@ msgstr[0] "1 klip byl znovu propojen."
 msgstr[1] "{count} klipy byly znovu propojeny."
 msgstr[2] "{count} klipů bylo znovu propojeno."
 
+
+msgid "SID monitor"
+msgstr "SID monitor"
+
+msgid "Voice {}"
+msgstr "Hlas {}"
+
+msgid "Output"
+msgstr "Výstup"
+
+msgid "Filter"
+msgstr "Filtr"
+
+msgid "Volume"
+msgstr "Hlasitost"
+
+msgid "Register writes"
+msgstr "Zápisy do registrů"
+
+msgid "Solo"
+msgstr "Sólo"
+
+msgid "Same film"
+msgstr "Stejný film"
+
+msgid "Viewing and playback"
+msgstr "Zobrazení a přehrávání"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "Jak se zobrazují a přehrávají fotografie, videa a hudba."
+
+msgid "Shown in the sidebar"
+msgstr "Zobrazeno v postranním panelu"
+
+msgid "Editing and saving"
+msgstr "Editace a ukládání"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "Zda se Diffractor zeptá, než změní vaše soubory, a v jaké kvalitě je ukládá."
+
+msgid "Confirmations"
+msgstr "Potvrzení"
+
+msgid "General"
+msgstr "Obecné"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "Jazyk, ve kterém se Diffractor zobrazuje, jeho nápověda a jak běží."
+
+msgid "Save options and close"
+msgstr "Uložit možnosti a zavřít"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "Změnili jste některé možnosti. Uložit je před zavřením?"
+
+msgid "Viewing"
+msgstr "Zobrazení"
+
+msgid "What each folder holds"
+msgstr "Co obsahuje každá složka"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "Filmy a seriály se pojmenují, očíslují a datují podle názvů souborů. Vlastní nahrávky a hudba zůstanou beze změny. Volba „Podle názvu každého souboru“ považuje soubor za film nebo epizodu, když jeho název vypadá jako vydání."
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "Výše vyberte složky sbírky a uložte, abyste mohli určit, co každá obsahuje."
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "Složka přidaná výše se zde objeví po uložení možností."
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Načítat názvy, děje, řady, epizody a data ze souborů .nfo, které Kodi, Jellyfin a Emby ukládají vedle videí. Při změně této volby se sbírka načte znovu."
+
+msgid "Decided by each file's name"
+msgstr "Podle názvu každého souboru"
+
+msgid "Personal recordings"
+msgstr "Vlastní nahrávky"
+
+msgid "Films and TV shows"
+msgstr "Filmy a seriály"
+
+msgid "Music"
+msgstr "Hudba"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "Vypnuto, kromě titulků vynucených filmem"
+
+msgid "Always"
+msgstr "Vždy"
+
+msgid "When the speech is in another language"
+msgstr "Když se mluví jiným jazykem"
+
+msgid "Show subtitles in"
+msgstr "Zobrazit titulky v jazyce"
+
+msgid "The language Diffractor is shown in"
+msgstr "Jazyk, ve kterém se zobrazuje Diffractor"
+
+msgid "The system's default"
+msgstr "Výchozí systémové"
+
+msgid "forced"
+msgstr "vynucené"
+
+msgid "Subtitles {}"
+msgstr "Titulky {}"
+
+msgid "Subtitles"
+msgstr "Titulky"

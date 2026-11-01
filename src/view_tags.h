@@ -98,6 +98,8 @@ public:
 		return _title;
 	}
 
+	view_bars bars() const override;
+
 	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
 
 private:

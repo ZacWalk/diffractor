@@ -41,10 +41,26 @@ namespace metadata_xmp
 	// the caller resolves against the pixels it actually has.
 	prop::panorama_geometry panorama(df::file_path path);
 
+	// Whether a file's metadata is read from and written to its sidecar rather than the file: always for
+	// a raw with no packet of its own, and for a DNG when a sidecar is beside it. That is Camera Raw's
+	// rule unless it is told to ignore sidecars, and the one the raw scan reads by, so an edit lands
+	// where it is read back from; a DNG with no sidecar is written itself, as Lightroom does. A sidecar
+	// that cannot be seen is not taken to be absent.
+	bool sidecar_holds_metadata(df::file_path path, std::string_view xmp_name);
+
 	// dst_xmp_path is the exact sidecar file to write. The caller stages it next to the media
-	// file actually being written so a failure can never touch the live sidecar.
+	// file actually being written so a failure can never touch the live sidecar. src_in_sidecar is
+	// sidecar_holds_metadata(src_path, src_xmp_name) when the caller has already asked it and acted on
+	// the answer: asked again, a sidecar another application removed meanwhile would send an edit the
+	// caller is writing to a sidecar alone into the media file itself.
 	xmp_update_result update(df::file_path file_path, df::file_path src_path, const metadata_edits& edits,
-	                         std::string_view src_xmp_name, df::file_path dst_xmp_path);
+	                         std::string_view src_xmp_name, df::file_path dst_xmp_path,
+	                         std::optional<bool> src_in_sidecar = {});
+	// The packet for a file about to be encoded at dst_path with its packet in it - a JPEG XL, whose boxes
+	// libjxl writes as it encodes. Read as update() reads the source, with the edit applied and, where the
+	// format changes, what the source shows that its packet lacks. Empty when the packet would hold nothing.
+	df::blob encoded_packet(df::file_path src_path, df::file_path dst_path, const metadata_edits& edits,
+	                        std::string_view src_xmp_name);
 	// Stages a metadata-only edit at stage_path, a new file, with the edit already in it, when the file
 	// keeps its packet in a format libfiles writes: a copy patched where the edit fits the space the file
 	// holds, otherwise one pass over the source. Nothing, with nothing written, for any other file; the

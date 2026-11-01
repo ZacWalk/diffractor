@@ -262,20 +262,26 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 		}
 	}
 
-	const auto pair = [](const int x, const int of)
-	{
-		return df::xy8(static_cast<uint8_t>(std::clamp(x, 0, 255)), static_cast<uint8_t>(std::clamp(of, 0, 255)));
-	};
-
 	if (p.year != 0) result.year = p.year;
-	if (p.track != 0) result.track = pair(p.track, p.track_count);
-	if (p.disc != 0) result.disk = pair(p.disc, p.disc_count);
-	if (p.season != 0) result.season = p.season;
-	if (p.episode != 0) result.episode = pair(p.episode, 0);
+	if (p.track != 0) result.track = prop::number_pair(p.track, p.track_count);
+	if (p.disc != 0) result.disk = prop::number_pair(p.disc, p.disc_count);
+
+	// An iTunes film (stik 9) is no episode, whatever tvsn and tves it was left with.
+	if (p.media_kind != 9)
+	{
+		if (p.season != 0) result.season = static_cast<uint16_t>(std::clamp(p.season, 0, 9999));
+		if (p.episode != 0) result.episode = prop::number_pair(p.episode, 0);
+	}
+
 	if (p.rating) result.rating = std::clamp(*p.rating, 0, 5);
 
 	add_date(result, prop::date_source::container_created, p.created);
 	if (p.created.valid() && p.created.year > 1800 && p.created.year < 2100 && prop::is_null(result.year)) result.year = p.created.year;
+
+	// A tag giving only a year - ©day "1998", TYER, WM/Year - dates its track or film to that year, rather than
+	// leaving it to the day the file was copied.
+	const auto year_only = p.created.valid() ? (p.created.month == 0 ? p.created.year : 0) : p.year;
+	if (year_only > 1800 && year_only < 2100) result.dates.add(prop::date_source::container_created, df::date_t(year_only, 1, 1, 0, 0, 0));
 
 	if (p.original_release.valid())
 	{

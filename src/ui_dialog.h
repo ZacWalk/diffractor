@@ -25,6 +25,12 @@ namespace ui
 
 	std::vector<recti> layout_collage(recti draw_bounds, const std::vector<sizei>& dimensions);
 
+	// Where text ends as an edit control counts it to place a selection: in UTF-16 units, not bytes.
+	inline int edit_offset(const std::string_view text)
+	{
+		return static_cast<int>(str::utf8_to_utf16(text).size());
+	}
+
 	static int default_control_height(measure_context& mc, const int lines = 1)
 	{
 		return mc.text_line_height(style::font_face::dialog) * lines + mc.padding2;
@@ -232,7 +238,9 @@ namespace ui
 		{
 			if (_showing_bound_value) return;
 
-			_val = str::to_int(text);
+			// Typed, the number can be anything; what it is bound to - a save quality, a delay - takes
+			// only the slider's range, and a WebP quality of 150 failed every save that used it.
+			_val = std::clamp(str::to_int(text), _min, _max);
 			update_slider();
 			if (_changed) _changed();
 		}
@@ -1008,7 +1016,7 @@ namespace ui
 				if (_multiline)
 				{
 					const auto text = std::string(browse_path.text());
-					const auto original_len = static_cast<int>(_text.size());
+					const auto original_len = edit_offset(_text);
 					if (!_text.empty()) _text += "\r\n";
 					_text += text;
 					_edit->window_text(_text);
@@ -1080,11 +1088,11 @@ namespace ui
 
 			if (ui::browse_for_term(_state, _parent, term))
 			{
-				const auto original_len = _val.size();
+				const auto original_len = edit_offset(_val);
 				if (!_val.empty()) _val += " ";
 				_val += term;
 				_edit->window_text(_val);
-				_edit->select(static_cast<int>(original_len), -1);
+				_edit->select(original_len, -1);
 				_edit->focus();
 			}
 		}
@@ -1098,16 +1106,19 @@ namespace ui
 		mutable recti _label_bounds;
 		mutable recti _text_bounds;
 
-		const control_frame_ptr& _parent;
+		// Held, not referenced: a panel's frame is often a local of the function that builds the panel.
+		control_frame_ptr _parent;
 		std::function<std::vector<command_ptr>(const std::shared_ptr<select_control>&)> _commands;
 
 	public:
+		// The button's icon says what its menu does: add to the value, or choose it.
 		select_control(const control_frame_ptr& h, const std::string_view label, std::string& text,
-		               std::function<std::vector<command_ptr>(const std::shared_ptr<select_control>&)> commands) :
+		               std::function<std::vector<command_ptr>(const std::shared_ptr<select_control>&)> commands,
+		               const icon_index icon = icon_index::add) :
 			labelled_element(label), _text(text), _parent(h), _commands(std::move(commands))
 		{
 			const auto c = std::make_shared<command>();
-			c->icon = icon_index::add;
+			c->icon = icon;
 			c->invoke = [this] { show_menu(); };
 
 			toolbar_styles styles;
@@ -1802,6 +1813,17 @@ namespace ui
 				for (const auto& e : r.cells)
 				{
 					e.element->visit_controls(handler);
+				}
+			}
+		}
+
+		void enable_controls(const bool enable) override
+		{
+			for (const auto& r : _rows)
+			{
+				for (const auto& e : r.cells)
+				{
+					e.element->enable_controls(enable);
 				}
 			}
 		}
@@ -2805,10 +2827,9 @@ namespace ui
 		}
 	};
 
-	static void enable_element(const view_element_ptr& e, bool enable)
+	static void enable_element(const view_element_ptr& e, const bool enable)
 	{
-		const auto enabler = [enable](const control_base_ptr& c) { c->enable(enable); };
-		e->visit_controls(enabler);
+		e->enable_controls(enable);
 	}
 
 	// Showing is left to the next layout pass, which knows where the controls belong and shows them
@@ -2889,6 +2910,13 @@ namespace ui
 		{
 			if (_child) _child->visit_controls(handler);
 			handler(_check);
+		}
+
+		// The options of an unticked box stay disabled when the panel around it is enabled again.
+		void enable_controls(const bool enable) override
+		{
+			if (_child) _child->enable_controls(enable && _val);
+			_check->enable(enable);
 		}
 
 		bool child_interactive() const

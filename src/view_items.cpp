@@ -17,234 +17,10 @@
 #include "ui_view.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
+#include "ui_document.h"
+#include "ui_sid.h"
 #include "view_items.h"
 #include "app_sidebar.h"
-
-static int rendered_toolbar_margin(const int scroll_width)
-{
-	return std::max(4, scroll_width / 3);
-}
-
-static int command_bar_height(ui::measure_context& mc)
-{
-	return mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
-}
-
-static int rendered_toolbar_button_extent(const int chrome_height, const int margin)
-{
-	return std::max(1, chrome_height - margin * 2);
-}
-
-template <typename Context>
-static int rendered_toolbar_button_width(Context& context, const ui::command_ptr& command,
-                                         const int button_extent)
-{
-	if (command->toolbar_text.empty()) return button_extent;
-	return button_extent + context.measure_text(command->toolbar_text, ui::style::font_face::dialog,
-	                                            ui::style::text_style::single_line, 10000).cx + context.padding2;
-}
-
-static void render_toolbar_button(ui::draw_context& dc, const ui::command_ptr& command, const recti bounds,
-                                  const bool window_style, const bool pressed = false)
-{
-	if (pressed || command->checked)
-	{
-		const auto background = ui::color(ui::style::color::view_selected_background, dc.colors.alpha);
-		dc.draw_rounded_rect(bounds, background, dc.padding1);
-	}
-
-	const auto alpha = (command->enable ? 1.0f : 0.35f) * dc.colors.alpha;
-	const auto color = pressed || command->checked
-		                   ? ui::color(ui::style::color::view_text, alpha)
-		                   : ui::color(ui::average(ui::style::color::view_text,
-		                                           ui::style::color::dialog_selected_background), alpha);
-	if (command->icon != icon_index::none)
-	{
-		auto icon_bounds = bounds;
-		if (window_style)
-		{
-			const auto icon_extent = std::max(1, bounds.height() / 2);
-			icon_bounds = center_rect(sizei{icon_extent, icon_extent}, bounds);
-		}
-		else if (!command->toolbar_text.empty())
-		{
-			icon_bounds.right = icon_bounds.left + bounds.height();
-		}
-		const auto font = window_style
-			                  ? ui::style::font_face::small_icons
-			                  : ui::style::font_face::icons;
-		xdraw_icon(dc, command->icon, icon_bounds, color, {}, font);
-		if (!command->toolbar_text.empty())
-		{
-			auto text_bounds = bounds;
-			text_bounds.left = icon_bounds.right;
-			dc.draw_text(command->toolbar_text, text_bounds.inflate(-dc.padding1, 0),
-			             ui::style::font_face::dialog, ui::style::text_style::single_line, color, {});
-		}
-	}
-	else
-	{
-		const auto& text = command->toolbar_text.empty() ? command->text : command->toolbar_text;
-		dc.draw_text(text, bounds.inflate(-dc.padding1, 0), ui::style::font_face::dialog,
-		             ui::style::text_style::single_line_center, color, {});
-	}
-}
-
-// Discussion #251: the menu the always-visible scroll control opens. Every entry but the last is the
-// toolbar's own command object, so a second copy of the toolbar cannot disagree with the first about
-// what is offered, enabled or ticked. Scroll to top is the control's own action, offered because the
-// click no longer performs it, and it comes last, directly below the settings the menu exists for.
-std::vector<ui::command_ptr> items_scroll_menu(const view_state& state, const bool at_top,
-                                               std::function<void()> scroll_to_top)
-{
-	std::vector<ui::command_ptr> result;
-
-	// A null entry is the menu's separator, so an unresolved command must be dropped rather than
-	// emplaced - it would become a divider instead of a visible failure. That is also why a
-	// separator is only emitted where there is already something for it to divide: two adjacent
-	// nulls draw as a double rule, and a trailing one as a rule under the last entry.
-	const auto add_separator = [&result]
-	{
-		if (!result.empty() && result.back() != nullptr) result.emplace_back(nullptr);
-	};
-
-	const auto add_command = [&result, &state](const commands id)
-	{
-		if (auto c = state.find_command(id)) result.emplace_back(std::move(c));
-	};
-
-	if (const auto group = state.find_command(commands::menu_group_toolbar); group && group->menu)
-	{
-		for (auto& c : group->menu()) result.emplace_back(std::move(c));
-	}
-
-	add_separator();
-
-	for (const auto id : {commands::filter_photos, commands::filter_videos, commands::filter_audio})
-	{
-		add_command(id);
-	}
-
-	add_separator();
-	add_command(commands::browse_recursive);
-
-	auto top = std::make_shared<ui::command>();
-	top->icon = icon_index::up;
-	top->text = tt.tooltip_scroll_to_top;
-	top->enable = !at_top;
-	top->invoke = std::move(scroll_to_top);
-	result.emplace_back(std::move(top));
-
-	return result;
-}
-
-// design.md: the base of the item scrollbar is a back-to-top action. It is painted as the foot of
-// the same column as the track above it -- same inset, same band -- so the two read as one control
-// rather than as a button parked under a scrollbar.
-//
-// Discussion #251: it is also the one items-view control that is always on screen. The filter
-// toolbar at the top scrolls away, so changing a filter over a long listing meant scrolling to the
-// top first. Pinning that toolbar would spend vertical space permanently in the view whose whole
-// purpose is showing thumbnails; this control is sticky by construction, so nothing has to be.
-class scroll_to_top_element final : public std::enable_shared_from_this<scroll_to_top_element>, public view_element
-{
-	view_scroller& _scroller;
-	view_state& _state;
-	mutable recti _device_bounds;
-
-public:
-	scroll_to_top_element(view_scroller& scroller, view_state& state) :
-		view_element(view_element_style::can_invoke | view_element_style::has_tooltip), _scroller(scroller),
-		_state(state)
-	{
-		padding = {0, 0};
-	}
-
-	bool is_at_top() const
-	{
-		return _scroller.scroll_offset().y <= 0;
-	}
-
-	recti column_bounds(const pointi element_offset) const
-	{
-		return bounds.offset(element_offset).inflate(-_scroller.track_inset(), 0);
-	}
-
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
-	{
-		return {width_limit, mc.icon_cxy};
-	}
-
-	void render(ui::draw_context& dc, const pointi element_offset) const override
-	{
-		const auto r = column_bounds(element_offset);
-		_device_bounds = r;
-		const auto bg = calc_background_color(dc);
-		dc.draw_rounded_rect(r, bg.a > 0.0f ? bg : ui::color(0x000000, dc.colors.alpha * dc.colors.bg_alpha),
-		                     dc.padding1);
-
-		// Dimming says the scroll has nothing left to do; removing it would resize the track under
-		// the pointer every time the list reached the top. It is a resting state only: the click
-		// opens the menu in every scroll position (discussion #251), and a listing opens at the top,
-		// so a control that stayed at a quarter alpha under the pointer would read as disabled in
-		// exactly the state the view is usually in.
-		const auto engaged = is_style_bit_set(view_element_style::hover) ||
-			is_style_bit_set(view_element_style::tracking);
-		const auto alpha = dc.colors.alpha * (engaged ? 1.0f : is_at_top() ? 0.25f : 0.66f);
-		xdraw_icon(dc, icon_index::up, r, ui::color(dc.colors.foreground, alpha), {});
-	}
-
-	// What the listing holds, and - when a filter is hiding anything - how much it is not showing.
-	// That second number is the one a user needs before opening the filter menu, not after.
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
-	{
-		hover.elements->add(make_icon_element(icon_index::up, flex_item::no_break));
-		hover.elements->add(std::make_shared<text_element>(
-			format_items_totals(_state.summary_shown(), _state.item_index.is_init_complete()),
-			ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::line_break));
-		hover.elements->add(std::make_shared<summary_control>(_state.summary_shown(), flex_item::line_break));
-
-		const auto total_count = _state.search_items().size();
-		const auto shown_count = _state.display_items().size();
-
-		// The same guard the footer uses: while a search is running the results run ahead of the items
-		// added to the listing, and reporting that gap as "filtered out" would be a lie that corrects
-		// itself a moment later.
-		const auto is_searching = _state.item_index.searching > 0;
-
-		if (!is_searching && total_count > shown_count)
-		{
-			hover.elements->add(std::make_shared<text_element>(
-				str_format(tt.some_items_filtered_fmt.sv(), total_count - shown_count),
-				ui::style::font_face::dialog, ui::style::text_style::multiline, flex_item::new_line));
-		}
-
-		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
-	}
-
-	void dispatch_event(const view_element_event& event) override
-	{
-		if (event.type != view_element_event_type::invoke) return;
-
-		// By address: the menu command outlives this call, so a reference to a local reference would
-		// dangle the moment the handler returned.
-		const auto scroller = &_scroller;
-		const auto host = event.host;
-		event.host->track_menu(_device_bounds, items_scroll_menu(_state, is_at_top(),
-		                                                         [scroller, host]
-		                                                         {
-			                                                         scroller->scroll_offset(host, 0, 0);
-		                                                         }));
-	}
-
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
-	{
-		_device_bounds = column_bounds(element_offset);
-		return default_controller_from_location(*this, host, loc, element_offset, ctx);
-	}
-};
 
 static view_element_ptr find_center_scroll_element(const std::vector<view_element_ptr>& elements,
                                                    const view_scroller& scroller)
@@ -267,116 +43,6 @@ static view_element_ptr find_center_scroll_element(const std::vector<view_elemen
 
 	return result;
 }
-
-class preferred_width_element final : public view_element
-{
-	view_element_ptr _child;
-	int _preferred_width = 0;
-
-public:
-	preferred_width_element(view_element_ptr child, const int preferred_width) :
-		view_element(flex_item::center), _child(std::move(child)), _preferred_width(preferred_width)
-	{
-	}
-
-	bool is_control_area(const pointi loc, const pointi element_offset) const override
-	{
-		return _child->is_control_area(loc, element_offset);
-	}
-
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
-	{
-		return _child->measure(mc, std::min(width_limit, df::round(_preferred_width * mc.scale_factor)));
-	}
-
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
-	{
-		bounds = bounds_in;
-		_child->layout(mc, bounds, positions);
-	}
-
-	void render(ui::draw_context& dc, const pointi offset) const override
-	{
-		_child->render(dc, offset);
-	}
-
-	void hover(interaction_context& ic) override
-	{
-		_child->hover(ic);
-	}
-
-	void dispatch_event(const view_element_event& event) override
-	{
-		_child->dispatch_event(event);
-	}
-
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
-	{
-		return _child->controller_from_location(host, loc, element_offset, ctx);
-	}
-};
-
-class rendered_toolbar_command_element final : public view_element,
-                                               public std::enable_shared_from_this<rendered_toolbar_command_element>
-{
-	commands _id = commands::none;
-	ui::command_ptr _command;
-	mutable recti _device_bounds;
-
-public:
-	rendered_toolbar_command_element(const commands id, ui::command_ptr command) :
-		view_element(flex_item::center | view_element_style::can_invoke |
-			view_element_style::has_tooltip),
-		_id(id), _command(std::move(command))
-	{
-		margin = {2, 2};
-	}
-
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
-	{
-		const auto margin = rendered_toolbar_margin(mc.scroll_width);
-		const auto extent = rendered_toolbar_button_extent(command_bar_height(mc), margin);
-		return {std::min(width_limit, rendered_toolbar_button_width(mc, _command, extent)), extent};
-	}
-
-	void render(ui::draw_context& dc, const pointi element_offset) const override
-	{
-		_device_bounds = bounds.offset(element_offset);
-		render_background(dc, element_offset);
-		render_toolbar_button(dc, _command, _device_bounds, false);
-	}
-
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
-	{
-		hover.id = _id;
-		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
-	}
-
-	void dispatch_event(const view_element_event& event) override
-	{
-		if (event.type != view_element_event_type::invoke || !_command->enable) return;
-
-		if (_command->menu)
-		{
-			const auto menu = _command->menu();
-			if (!menu.empty()) event.host->track_menu(_device_bounds, menu);
-		}
-		else
-		{
-			event.host->invoke(_id);
-		}
-	}
-
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
-	{
-		_device_bounds = bounds.offset(element_offset);
-		return default_controller_from_location(*this, host, loc, element_offset, ctx);
-	}
-};
 
 // Shared pointer behaviour for the item grid. Both grid gestures track the item under the pointer,
 // scrub preview-video frames while hovering and open on double click; only what happens between
@@ -504,7 +170,6 @@ public:
 
 	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
 	{
-		_parent.blur_rendered_filter();
 		_tracking = true;
 		_cancel = false;
 		_last_loc = _start_loc = loc;
@@ -653,7 +318,6 @@ public:
 
 	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
 	{
-		_parent.blur_rendered_filter();
 		_tracking = true;
 		_cancel = false;
 		_last_loc = _start_loc = loc;
@@ -734,7 +398,20 @@ void items_view::deactivate()
 	_visible_items.clear();
 	_draw_items.clear();
 	_visible_items_valid = false;
-	blur_rendered_filter();
+
+	// Nor does it keep the keyboard for a document no longer on screen: Copy in the view that
+	// replaces it acts on what that view shows.
+	release_document();
+}
+
+// The panel's document gives Copy, Cut and Select all back to the items.
+void items_view::release_document() const
+{
+	if (_display && _display->_document && _display->_document->focused)
+	{
+		_display->_document->focused = false;
+		if (_host) _host->invalidate_view(view_invalid::view_redraw);
+	}
 }
 
 void items_view::refresh()
@@ -747,27 +424,12 @@ items_view::items_view(view_state& s, view_host_ptr host) :
 	_host(std::move(host)),
 	_sidebar(std::make_shared<sidebar_host>(s))
 {
-	_filter_edit->text(_state.filter().text());
-	_filter_edit->cue = &tt.filter;
-	_filter_edit->changed = [this](std::string_view) { apply_rendered_filter(); };
-	_filter_edit->request_focus = [this] { focus_rendered_filter(); };
-	_filter_edit->focus_changed = [this](const bool focused)
-	{
-		_host->frame()->invalidate(rendered_filter_bounds());
-	};
-
 	_items_scroller.popup_func = [this](view_hover_element& hover, const pointi loc)
 	{
 		items_scroll_popup(hover, loc);
 	};
-	_items_scroller.changed_func = [this]
-	{
-		update_visible_items_list();
-		blur_rendered_filter_if_scrolled_away();
-	};
+	_items_scroller.changed_func = [this] { update_visible_items_list(); };
 	_media_scroller.changed_func = [this] { _state.invalidate_view(view_invalid::view_redraw); };
-
-	_items_scroll_top = std::make_shared<scroll_to_top_element>(_items_scroller, _state);
 
 	_metadata_tree->invalidate = [this]
 	{
@@ -851,7 +513,6 @@ public:
 
 	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
 	{
-		_view.blur_rendered_filter();
 		_tracking = true;
 		_start_width = _view._sidebar_width;
 		_view.sidebar_width(loc.x);
@@ -881,98 +542,29 @@ public:
 	}
 };
 
-recti items_view::rendered_filter_bounds() const
-{
-	// The filter box is laid out inside the list control bar, in item-list logical space.
-	return _filter_edit->bounds.offset(-_items_scroller.scroll_offset());
-}
-
-void items_view::update_edit_caret()
-{
-	if (_filter_edit->update_caret()) _host->frame()->invalidate(rendered_filter_bounds());
-}
-
 bool items_view::is_caption_area(const pointi loc) const
 {
 	return false;
 }
 
-void items_view::apply_rendered_filter()
+// The list's own controls sit at the end of the status bar, where they stay on screen however far
+// the list scrolls: size and filter first, then the type filters and subfolders, then the totals
+// beside the grouping they are not part of. The bar starts under the sidebar with one toolbar: the
+// Options cog, beside the overview of the collection Options opens on; Tools and Playback options, as
+// icons; then Open, labelled with what is selected, where a file browser's status bar says it.
+view_bars items_view::bars() const
 {
-	_state.filter().wildcard(_filter_edit->text());
-	_state.invalidate_view(view_invalid::group_layout | view_invalid::view_redraw);
-}
-
-void items_view::focus_rendered_filter()
-{
-	_host->frame()->focus();
-	// The list controls scroll with the list, so bring them back into view before taking focus;
-	// typing into a box that is scrolled off screen would be invisible state.
-	_items_scroller.scroll_offset(_host, 0, 0);
-	_filter_edit->focus();
-	_host->frame()->invalidate(rendered_filter_bounds());
-}
-
-void items_view::blur_rendered_filter()
-{
-	// Repaint here rather than at every call site: several of them only release focus and would
-	// otherwise leave a caret blinking in a box that no longer has it.
-	const auto bounds = rendered_filter_bounds();
-	if (_filter_edit->blur()) _host->frame()->invalidate(bounds);
-}
-
-// The filter box heads the list and scrolls with it. Focus that has scrolled out of the item
-// viewport is hidden state: focus_mode() still reports text_edit, so every key is routed into a box
-// the user can no longer see. Hooked to the scroller so the wheel, the scroll bar, the back-to-top
-// action and the anchor restore are all covered by one rule.
-void items_view::blur_rendered_filter_if_scrolled_away()
-{
-	if (!_filter_edit->focused()) return;
-	const auto bounds = rendered_filter_bounds();
-	if (!bounds.is_empty() && bounds.intersects(_regions.items)) return;
-	blur_rendered_filter();
-}
-
-// Text focus must not survive a press somewhere else in the view. While the filter box holds
-// focus, focus_mode() is text_edit and app_frame::key_down routes every key into the box, so a
-// press on the sidebar, the preview pane, the control bar or a scroll bar would silently disable
-// the whole keyboard until the user clicked a thumbnail.
-void items_view::mouse_down(const pointi loc)
-{
-	if (!_filter_edit->focused()) return;
-	if (region_hit(rendered_filter_bounds(), loc)) return;
-	blur_rendered_filter();
-}
-
-void items_view::focus(const bool has_focus)
-{
-	view_base::focus(has_focus);
-
-	// Keyboard focus left the render window, so the caret in the filter box is no longer where
-	// typing goes. Release it rather than restoring a stale text focus when the window comes back.
-	if (!has_focus) blur_rendered_filter();
-}
-
-bool items_view::key_down(const char32_t key, const ui::key_state keys)
-{
-	if (_filter_edit->key_down(key, keys))
-	{
-		_host->frame()->invalidate(rendered_filter_bounds());
-		return true;
-	}
-
-	return false;
-}
-
-bool items_view::text_input(const std::string_view text)
-{
-	if (_filter_edit->text_input(text))
-	{
-		_host->frame()->invalidate(rendered_filter_bounds());
-		return true;
-	}
-
-	return false;
+	return {
+		.navigation = true,
+		.bottom = {
+			bar_control::item_size, bar_control::item_filter, commands::filter_photos, commands::filter_videos,
+			commands::filter_audio, commands::browse_recursive, bar_control::item_totals,
+			commands::menu_group_toolbar
+		},
+		.bottom_leading = {
+			commands::options, commands::menu_tools, commands::playback_menu, commands::menu_open_status,
+		},
+	};
 }
 
 namespace
@@ -1145,40 +737,6 @@ void items_view::items_changed(const bool path_changed)
 	const auto total_count = _state.search_items().size();
 	const auto shown_count = _state.display_items().size();
 
-	const auto filter = std::make_shared<view_elements>(flex_item::stretch);
-	filter->add(std::make_shared<preferred_width_element>(
-		std::make_shared<slider_element>(
-			[] { return setting.item_scale_position; },
-			[this](const int value)
-			{
-				setting.set_item_scale_position(value);
-				_state.invalidate_view(view_invalid::view_layout);
-			},
-			0, settings_t::item_scale_position_max, tt.tooltip_thumbnail_size),
-		100));
-	filter->add(std::make_shared<preferred_width_element>(_filter_edit, 137));
-	for (const auto id : {commands::filter_photos, commands::filter_videos, commands::filter_audio})
-	{
-		filter->add(std::make_shared<rendered_toolbar_command_element>(id, _state.find_command(id)));
-	}
-	// locations.md 7.1, baseline defect 5: the totals stand on their own. Hovering them shows the
-	// breakdown by type; they open nothing, so reaching for the count never opens a grouping menu.
-	auto totals = std::make_shared<link_element>(
-		format_items_totals(_state.summary_shown(), _state.item_index.is_init_complete()),
-		std::function<void()>{},
-		[this](const view_hover_element& hover)
-		{
-			hover.elements->add(std::make_shared<summary_control>(_state.summary_shown(), flex_item::line_break));
-		},
-		ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::center);
-	totals->foreground_color(0);
-	totals->padding = {6, 4};
-	filter->add(std::move(totals));
-
-	filter->add(std::make_shared<rendered_toolbar_command_element>(commands::menu_group_toolbar,
-	                                                               _state.find_command(commands::menu_group_toolbar)));
-	elements.emplace_back(filter);
-
 	if (auto related_row = build_related_header_row())
 	{
 		elements.emplace_back(std::move(related_row));
@@ -1298,18 +856,14 @@ void items_view::items_changed(const bool path_changed)
 			// State the collection's edge, then offer the one move that widens it.
 			add_status(tt.nothing_found2, ui::style::font_face::dialog);
 			add_action(tt.nothing_found_add_folders.sv(),
-			           std::function<void()>([this] { _state.invoke(commands::options_collection); }));
+			           std::function<void()>([this] { _state.invoke(commands::options); }));
 		}
 	}
 
 	if (has_filtered_out)
 	{
 		add_action(str_format(tt.some_items_filtered_fmt.sv(), total_count - shown_count),
-		           std::function<void()>([this]
-		           {
-			           _filter_edit->text({});
-			           _state.clear_filters();
-		           }));
+		           std::function<void()>([this] { _state.clear_filters(); }));
 	}
 
 	if (has_items && is_date_group_order(_state.effective_group_order()))
@@ -1437,8 +991,9 @@ public:
 	}
 };
 
-// design.md L5: Escape peels one layer. With a rectangle on the picture it clears it; without one it
-// falls through to the unwind ladder view_state::escape owns, so there is one order rather than two.
+// design.md L5: Escape peels one layer. With a rectangle on the picture it clears it, and with text
+// selected in the panel's document it clears that; without either it falls through to the unwind
+// ladder view_state::escape owns, so there is one order rather than two.
 bool items_view::escape()
 {
 	if (const auto photo = std::dynamic_pointer_cast<photo_control>(_media_element); photo && photo->has_region())
@@ -1447,7 +1002,21 @@ bool items_view::escape()
 		return true;
 	}
 
+	if (_display && _display->_document && _display->_document->focused && _display->_document->has_selection())
+	{
+		_display->_document->clear_selection();
+		if (_host) _host->invalidate_view(view_invalid::view_redraw);
+		return true;
+	}
+
 	return false;
+}
+
+// The view sees a press before any controller does, so a press on the document clears its focus here
+// and its own controller takes it back.
+void items_view::mouse_down(const pointi loc)
+{
+	release_document();
 }
 
 void items_view::update_regions()
@@ -1476,8 +1045,8 @@ void items_view::update_regions()
 	const auto x_max = _client_extent.cx - _scroll_width * 3;
 	const auto split_x = splitter_pos();
 	constexpr auto top = 0;
-	// The item list and the media pane run to the bottom of the client: their controls are drawn
-	// inside them rather than in a fixed band, so no height is reserved here.
+	// The item list and the media pane run to the bottom of the client: the list's controls are in
+	// the frame's status bar below the view, so no height is reserved here.
 	const auto bottom = std::max(top, _client_extent.cy);
 
 	_regions.media = {left, top, std::max(left, split_x - padding), bottom};
@@ -1487,11 +1056,7 @@ void items_view::update_regions()
 		_media_scroller.can_scroll() ? bottom / 2 : bottom
 	};
 
-	if (_items_scroller.can_scroll())
-	{
-		_regions.items_scroll = _items_scroller.scroll_bounds();
-		_regions.items_scroll_top = _items_scroll_top_bounds;
-	}
+	if (_items_scroller.can_scroll()) _regions.items_scroll = _items_scroller.scroll_bounds();
 	if (_media_scroller.can_scroll()) _regions.media_scroll = _media_scroller.scroll_bounds();
 }
 
@@ -1553,14 +1118,13 @@ view_controller_ptr items_view::items_controller_from_location(const view_host_p
 // One ordered walk over the regions calculated by update_regions(). Chrome, scroll bars and
 // splitters are all tested before the item grid. Hit testing, wheel routing and the context menu all
 // consume this rather than each writing the order out again: they had drifted, and the wheel's copy
-// had lost the splitters, both scroll bars and the scroll control entirely.
+// had lost the splitters and both scroll bars entirely.
 items_view::view_region items_view::region_at(const pointi loc) const
 {
 	if (region_hit(_regions.sidebar_splitter, loc)) return view_region::sidebar_splitter;
 	if (region_hit(_regions.sidebar, loc)) return view_region::sidebar;
 	if (region_hit(_regions.splitter, loc)) return view_region::splitter;
 	if (region_hit(_regions.items_scroll, loc)) return view_region::items_scroll;
-	if (region_hit(_regions.items_scroll_top, loc)) return view_region::items_scroll_top;
 	if (region_hit(_regions.media_scroll, loc)) return view_region::media_scroll;
 	if (region_hit(_regions.media, loc)) return view_region::media;
 	if (region_hit(_regions.items, loc)) return view_region::items;
@@ -1575,7 +1139,6 @@ recti items_view::region_bounds(const view_region region) const
 	case view_region::sidebar: return _regions.sidebar;
 	case view_region::splitter: return _regions.splitter;
 	case view_region::items_scroll: return _regions.items_scroll;
-	case view_region::items_scroll_top: return _regions.items_scroll_top;
 	case view_region::media_scroll: return _regions.media_scroll;
 	case view_region::media: return _regions.media;
 	case view_region::items: return _regions.items;
@@ -1605,8 +1168,6 @@ view_controller_ptr items_view::controller_from_location(const view_host_ptr& ho
 		return std::make_shared<splitter_controller>(host, *this, _regions.splitter);
 	case view_region::items_scroll:
 		return std::make_shared<scroll_controller>(host, _items_scroller, _regions.items_scroll);
-	case view_region::items_scroll_top:
-		return _items_scroll_top->controller_from_location(host, loc, {}, ctx);
 	case view_region::media_scroll:
 		return std::make_shared<scroll_controller>(host, _media_scroller, _regions.media_scroll);
 	case view_region::media:
@@ -1622,22 +1183,20 @@ view_controller_ptr items_view::controller_from_location(const view_host_ptr& ho
 
 menu_type items_view::context_menu(const pointi loc)
 {
-	// A press that opens a menu is still a press somewhere else in the view, so it releases text
-	// focus by the same rule as a left press. Left focused, the box keeps focus_mode() at text_edit
-	// and every keyboard command stays dead after the menu closes.
-	mouse_down(loc);
-
 	const auto region = region_at(loc);
+
+	// A menu opened on the media pane may copy the text selected in its document; one opened anywhere
+	// else is about the items, so it takes the keyboard back for them first.
+	if (region != view_region::media) release_document();
 
 	if (region == view_region::sidebar || region == view_region::sidebar_splitter)
 	{
 		return menu_type::sidebar;
 	}
 
-	// The scroll bar and the scroll control are drawn inside the grid's rectangle and belong to the
-	// listing, so a press on either offers the listing's menu -- the same answer the wheel gives them.
-	if (region == view_region::items || region == view_region::items_scroll ||
-		region == view_region::items_scroll_top)
+	// The scroll bar is drawn inside the grid's rectangle and belongs to the listing, so a press on
+	// it offers the listing's menu -- the same answer the wheel gives it.
+	if (region == view_region::items || region == view_region::items_scroll)
 	{
 		const auto i = _state.item_from_location(_items_scroller.device_to_logical(loc));
 
@@ -1673,7 +1232,6 @@ bool items_view::mouse_wheel(const pointi loc, const ui::wheel_notch notch)
 
 	case view_region::items:
 	case view_region::items_scroll:
-	case view_region::items_scroll_top:
 		// Ctrl is scale, and for a grid of thumbnails scale is the size of a thumbnail.
 		if (notch.keys.control)
 		{
@@ -1760,7 +1318,6 @@ bool items_view::pinch(const pointi loc, const int steps)
 
 	case view_region::items:
 	case view_region::items_scroll:
-	case view_region::items_scroll_top:
 		if (steps == 0) return true;
 		setting.step_item_scale(steps > 0 ? 1 : -1);
 		_state.invalidate_view(view_invalid::view_layout);
@@ -2027,12 +1584,6 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 		const auto logical_view_bounds = calc_logical_items_bounds();
 
 		_items_scroller.draw_scroll(dc);
-
-		if (!_regions.items_scroll_top.is_empty())
-		{
-			_items_scroll_top->render(dc, {});
-		}
-
 		_media_scroller.draw_scroll(dc);
 
 		if (_splitter_active == 0)
@@ -2139,14 +1690,6 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 	// Last, and over everything: the address bar above shares this view's background, so without an
 	// edge the two read as one surface and it is not obvious which part scrolls.
 	dc.draw_rect(recti(0, 0, _client_extent.cx, 1), ui::color(0.0f, 0.0f, 0.0f, dc.colors.alpha * 0.5f));
-}
-
-void items_view::layout_chrome(ui::measure_context& mc)
-{
-	// The list command bar is laid out with the list it heads. All that is decided here is whether
-	// it takes part at all: a zoomed or comparing image owns the whole client.
-	const auto owns_client = _display && (_display->is_zoom_mode() || _display->comparing());
-	_filter_edit->is_visible(!owns_client);
 }
 
 void items_view::make_visible(const df::item_element_ptr& i)
@@ -2343,14 +1886,6 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 	_client_extent = extent;
 	_scroll_width = mc.scroll_width;
 	_scale_factor = mc.scale_factor;
-	// A zoomed or comparing view gives the whole client to the media element, so neither the list
-	// nor the filter box that heads it is laid out or drawn. Focus left in the box would be
-	// invisible and, because focus_mode() would still report text_edit, would keep every keyboard
-	// command dead until the user found a thumbnail to click.
-	if (_display && (_display->is_zoom_mode() || _display->comparing()))
-	{
-		blur_rendered_filter();
-	}
 	_top_chrome_height = 0;
 	_sidebar_splitter_width = mc.scroll_width;
 	const auto sidebar_min = df::round(64 * mc.scale_factor);
@@ -2372,10 +1907,6 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 	{
 		_sidebar->layout_embedded(mc, sidebar_bounds());
 	}
-
-	// Keep the edits in sync with the state unless the user is typing in them.
-	if (!_filter_edit->focused()) _filter_edit->text(_state.filter().text());
-	layout_chrome(mc);
 
 	df::assert_true(ui::is_ui_thread());
 
@@ -2439,21 +1970,13 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 				_client_extent.cx - scroll_padding, _top_chrome_height, _client_extent.cx, _client_extent.cy
 			};
 			const sizei scroll_extent = {avail_item_bounds.width(), items_height};
-			_items_scroll_top_bounds = _items_scroller.layout_with_footer(
-				scroll_extent, avail_item_bounds, item_scroll_bounds,
-				show_scroll_items ? scroll_padding : 0, mc.padding1);
+			_items_scroller.layout(scroll_extent, avail_item_bounds, item_scroll_bounds);
 
 			if (show_scroll_items != _items_scroller.can_scroll())
 			{
 				// can scroll change - redo layout
 				item_layout_iteration_count = 2;
 			}
-		}
-
-		_items_scroll_top->is_visible(_items_scroller.can_scroll());
-		if (_items_scroller.can_scroll())
-		{
-			_items_scroll_top->layout(mc, _items_scroll_top_bounds, positions);
 		}
 
 		update_item_scroller_sections();
@@ -2485,9 +2008,6 @@ void items_view::broadcast_event(const view_element_event& event) const
 	{
 		i->dispatch_event(event);
 	}
-
-	_filter_edit->dispatch_event(event);
-	_items_scroll_top->dispatch_event(event);
 
 	// The sidebar is a host of its own and app_frame::dpi_changed already walks it, so only the
 	// broadcasts nothing else delivers are forwarded here - a second dpi_changed would re-measure
@@ -2792,6 +2312,11 @@ public:
 		_controls->visit_controls(handler);
 	}
 
+	void enable_controls(const bool enable) override
+	{
+		_controls->enable_controls(enable);
+	}
+
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
 	                                             const pointi element_offset,
 	                                             hit_test_context& ctx) override
@@ -2956,7 +2481,7 @@ private:
 			added.shape = r.shape;
 			if (const auto binary = std::get_if<metadata_binary_detail>(&r.detail))
 			{
-				added.detail_control = std::make_shared<hex_control>(binary->bytes, flex_item::center);
+				added.detail_control = std::make_shared<document_control>(binary->bytes, flex_item::center);
 			}
 			else if (const auto image = std::get_if<metadata_image_detail>(&r.detail); image && image->surface)
 			{
@@ -3698,6 +3223,14 @@ void items_view::update_media_elements()
 				elements.emplace_back(media_padding(4));
 				elements.emplace_back(media_control_style(media_control_element));
 			}
+			else if (file_type->has_trait(file_traits::sid_tune) && !media_unavailable)
+			{
+				_media_element = std::make_shared<sid_monitor_control>(_state, display, _host);
+
+				elements.emplace_back(_media_element);
+				elements.emplace_back(media_padding(4));
+				elements.emplace_back(media_control_style(media_control_element));
+			}
 			else if (file_type->has_trait(file_traits::visualize_audio) && !media_unavailable)
 			{
 				_media_element = std::make_shared<audio_control>(_state, display, _host);
@@ -3728,7 +3261,7 @@ void items_view::update_media_elements()
 				priority_end_element.reset();
 				elements.emplace_back(media_control_style(media_control_element));
 
-				if (display && !display->_selected_item_data.empty())
+				if (display && display->_document && !display->_selected_item_data.empty())
 				{
 					elements.emplace_back(media_padding(4));
 					elements.emplace_back(std::make_shared<commodore_disk_control>(display, flex_item::center));
@@ -3737,7 +3270,7 @@ void items_view::update_media_elements()
 					if (file_type->extension == "prg" || file_type->extension == "p00")
 					{
 						elements.emplace_back(media_padding(4));
-						elements.emplace_back(std::make_shared<hex_control>(display, flex_item::center));
+						elements.emplace_back(std::make_shared<document_control>(display, flex_item::center));
 					}
 				}
 			}
@@ -3746,9 +3279,10 @@ void items_view::update_media_elements()
 				priority_end_element.reset();
 				elements.emplace_back(media_control_style(media_control_element));
 
-				if (display && !display->_selected_item_data.empty())
+				// The head of the file, as text when it reads as text and as a hex dump when not.
+				if (display && display->_document && !display->_selected_item_data.empty())
 				{
-					elements.emplace_back(std::make_shared<hex_control>(display, flex_item::center));
+					elements.emplace_back(std::make_shared<document_control>(display, flex_item::center));
 
 					if (item->file_size().to_int64() > df::one_meg)
 					{

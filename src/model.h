@@ -87,11 +87,17 @@ class av_format_decoder;
 class files;
 class scrubber_element;
 class display_state_t;
+struct sid_voice_mix;
+struct subtitle_choice;
 
 using display_state_ptr = std::shared_ptr<display_state_t>;
 
 ui::texture_sampler calc_sampler(sizei draw_extent, sizei texture_extent, const ui::orientation& orientation,
                                  bool interactive = false, bool provisional = false);
+// The sampler for a video frame drawn into picture_extent: bilinear when it is minified, otherwise as
+// calc_sampler chooses for the picture's own extent.
+ui::texture_sampler calc_video_sampler(sized picture_extent, sizei texture_extent, const ui::orientation& orientation,
+                                       bool interactive = false);
 void draw_texture_info(ui::draw_context& rc, recti media_bounds, const ui::texture_ptr& tex,
                        ui::orientation orientation, ui::texture_sampler sampler, float alpha);
 df::unique_paths make_unique_paths(df::paths selection);
@@ -772,6 +778,11 @@ public:
 	ui::orientation _display_orientation = ui::orientation::top_left;
 	sizei _display_dimensions;
 	display_problem _display_problem = display_problem::none;
+
+	// Where the last draw put a video frame, in the view's pixels, and how opaque it was: what subtitles
+	// are placed on. Empty until a frame has been drawn.
+	recti _last_picture_bounds;
+	float _last_picture_alpha = 0.0f;
 
 	texture_state(async_strategy& async, const df::item_element_ptr& i);
 
@@ -1521,6 +1532,7 @@ public:
 	df::item_element_ptr end_item(bool forward) const;
 	df::item_element_ptr next_item(bool forward, bool extend) const;
 	df::item_element_ptr next_media_item(bool forward, bool wrap) const;
+	df::item_element_ptr next_episode(const df::item_element_ptr& current) const;
 	bool can_slideshow() const;
 	df::item_element_ptr next_group_item(bool forward) const;
 	df::item_element_ptr next_unselected_item() const;
@@ -1729,7 +1741,14 @@ public:
 	void release_retained_textures() { _common_display_state.clear_retained_textures(); }
 
 	void change_tracks(int video_track, int audio_track) const;
+	// Shows another of the video's subtitles, or none, reopening it where it is as a change of track does.
+	// The choice stays with the display, so it holds across a change of audio track.
+	void change_subtitles(const subtitle_choice& choice) const;
 	void change_audio_device(const std::string& id) const;
+	// Plays another tune of the displayed .sid file, 1-based, keeping the voices the user silenced.
+	void select_sid_song(int song) const;
+	// Silences voices of the playing SID tune; see sid_voice_mix.
+	void mix_sid_voices(const sid_voice_mix& mix) const;
 	// The only way to publish a player session onto a display; see display_state_t::_av_generation.
 	// An open handle, when supplied, is moved into the session instead of opening the path again.
 	void open_av_session(const std::shared_ptr<display_state_t>& d, const df::item_element_ptr& i, bool auto_play,

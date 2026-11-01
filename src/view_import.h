@@ -91,5 +91,7 @@ public:
 		return _title;
 	}
 
+	view_bars bars() const override;
+
 	void update_rows(const import_analysis_result& analysis_result, const import_options& options);
 };

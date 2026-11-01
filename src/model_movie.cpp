@@ -14,6 +14,7 @@
 
 #include "pch.h"
 #include "model_movie.h"
+#include "util_text.h"
 
 #include "files.h"
 
@@ -1030,67 +1031,6 @@ namespace
 		}
 	};
 
-	std::string decode_entities(const std::string_view text)
-	{
-		if (text.find('&') == std::string_view::npos) return std::string(text);
-
-		std::string result;
-		result.reserve(text.size());
-
-		for (size_t i = 0; i < text.size();)
-		{
-			if (text[i] != '&')
-			{
-				result += text[i++];
-				continue;
-			}
-
-			// An entity is a handful of characters, so its ';' is looked for only that far. Looking to the
-			// end of the text from every '&' made a run of bare ampersands cost the square of its length.
-			const auto semicolon = text.substr(i, 11).find(';');
-
-			if (semicolon == std::string_view::npos)
-			{
-				result += text[i++];
-				continue;
-			}
-
-			const auto end = i + semicolon;
-			const auto entity = text.substr(i + 1, end - i - 1);
-
-			if (entity == "amp") result += '&';
-			else if (entity == "lt") result += '<';
-			else if (entity == "gt") result += '>';
-			else if (entity == "quot") result += '"';
-			else if (entity == "apos") result += '\'';
-			else if (entity.size() > 1 && entity[0] == '#')
-			{
-				const auto hex = entity[1] == 'x' || entity[1] == 'X';
-				const auto digits = entity.substr(hex ? 2 : 1);
-				uint32_t code = 0;
-
-				const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(), code,
-				                                       hex ? 16 : 10);
-
-				// A surrogate is half of a UTF-16 pair and no character of its own; encoded alone it would
-				// put a path into the timeline that no file system call can convert.
-				if (ec == std::errc{} && ptr == digits.data() + digits.size() && code > 0 && code < 0x110000 &&
-					(code < 0xD800 || code > 0xDFFF))
-				{
-					str::char32_to_utf8(std::back_inserter(result), code);
-				}
-			}
-			else
-			{
-				result.append(text.substr(i, end - i + 1));
-			}
-
-			i = end + 1;
-		}
-
-		return result;
-	}
-
 	std::vector<xml_element> scan_xml(const std::string_view text)
 	{
 		std::vector<xml_element> result;
@@ -1143,7 +1083,7 @@ namespace
 				const auto value = text.substr(value_start, i - value_start);
 				if (i < text.size()) ++i;
 
-				if (!key.empty()) element.attributes.emplace_back(key, decode_entities(value));
+				if (!key.empty()) element.attributes.emplace_back(key, str::decode_xml_entities(value));
 			}
 
 			if (i < text.size()) ++i;

@@ -46,6 +46,35 @@ std::function<void(const df::index_file_item& anchor)> test_after_duplicate_anch
 
 static auto next_dup_group = 1000u;
 
+// A set keeps the id one of its members already carries, unless another set has claimed that id this
+// pass; only a set with none takes a new one. Renumbering every set on every pass rewrote every grouped
+// record each time, and left the id an item had already taken - the one its tooltip lists copies by -
+// matching nothing.
+template <typename RootOf, typename PreviousId>
+static df::hash_map<size_t, uint32_t> assign_group_ids(const size_t file_count, const RootOf& root_of,
+                                                       const df::hash_map<size_t, df::int_counter>& counts,
+                                                       const PreviousId& previous_id)
+{
+	df::hash_map<size_t, uint32_t> ids;
+	df::hash_set<uint32_t> claimed;
+
+	for (size_t i = 0; i < file_count; ++i)
+	{
+		const auto root = root_of(i);
+		if (counts.at(root) < 2 || ids.contains(root)) continue;
+
+		const auto previous = previous_id(i);
+		if (previous != 0 && claimed.emplace(previous).second) ids.emplace(root, previous);
+	}
+
+	for (const auto& [root, count] : counts)
+	{
+		if (count > 1 && !ids.contains(root)) ids.emplace(root, ++next_dup_group);
+	}
+
+	return ids;
+}
+
 static __forceinline uint32_t x64to32(const uint64_t n)
 {
 	constexpr uint64_t fnv_prime = 1099511628211u;
@@ -60,6 +89,8 @@ std::vector<std::pair<df::file_path, df::index_file_item>> index_state::duplicat
 	std::vector<std::pair<df::file_path, df::index_file_item>> result;
 	const auto folders = _items.all_folders();
 
+	// Read-only: this answers a tooltip on the UI thread. Clearing the ids of files outside the
+	// collection is update_predictions' work.
 	for (const auto& ifn : folders)
 	{
 		if (ifn.second->is_in_collection)
@@ -70,19 +101,6 @@ std::vector<std::pair<df::file_path, df::index_file_item>> index_state::duplicat
 				{
 					result.emplace_back(df::file_path(ifn.first, file.name), file);
 				}
-			}
-		}
-		else
-		{
-			for (const auto& file : ifn.second->files)
-			{
-				_items.update_file(df::file_path(ifn.first, file.name), [](const df::index_folder_item_ptr&,
-				                                                           const df::index_file_item& current_file)
-				{
-					if (current_file.exact_duplicate_group.load() == 0) return false;
-					current_file.exact_duplicate_group = 0;
-					return true;
-				});
 			}
 		}
 	}
@@ -276,11 +294,11 @@ void index_state::update_predictions()
 		++exact_component_counts[find_root(i)];
 	}
 
-	df::hash_map<size_t, uint32_t> exact_component_groups;
-	for (const auto& [root, count] : exact_component_counts)
-	{
-		if (count > 1) exact_component_groups[root] = ++next_dup_group;
-	}
+	const auto exact_component_groups = assign_group_ids(files.size(), find_root, exact_component_counts,
+	                                                     [&files](const size_t i)
+	                                                     {
+		                                                     return files[i].file->exact_duplicate_group.load();
+	                                                     });
 
 	for (auto i = 0u; i < files.size(); ++i)
 	{
@@ -549,11 +567,13 @@ void index_state::update_predictions()
 		++component_counts[find_root(i)];
 	}
 
-	df::hash_map<size_t, uint32_t> component_groups;
-	for (const auto& [root, count] : component_counts)
-	{
-		if (count > 1) component_groups[root] = ++next_dup_group;
-	}
+	const auto component_groups = assign_group_ids(files.size(), find_root, component_counts,
+	                                               [&files](const size_t i)
+	                                               {
+		                                               return files[i].file->duplicates.load().group;
+	                                               });
+
+	auto duplicates_changed = false;
 
 	for (auto i = 0u; i < files.size(); ++i)
 	{
@@ -564,8 +584,9 @@ void index_state::update_predictions()
 		const auto group = found_group == component_groups.end() ? 0u : found_group->second;
 		const auto grade = group == 0 ? df::copy_grade::none : grades[i];
 		const auto dup_info = df::duplicate_info{group, count, crowded[i], grade};
-		_items.update_file(df::file_path(files[i].path, files[i].file->name),
-		                    [dup_info](const df::index_folder_item_ptr& folder, const df::index_file_item& file)
+		duplicates_changed |= _items.update_file(df::file_path(files[i].path, files[i].file->name),
+		                                         [dup_info](const df::index_folder_item_ptr& folder,
+		                                                    const df::index_file_item& file)
 		{
 			const auto existing = file.duplicates.load();
 			if (existing.count == dup_info.count && existing.group == dup_info.group &&
@@ -588,6 +609,13 @@ void index_state::update_predictions()
 	df::set_gauge(df::index_perf.pass_dup_groups, static_cast<uint32_t>(component_groups.size()));
 
 	df::trace(std::format("Index update predictions: {} folders in {} ms", folder_count, stats.predictions_ms));
+
+	// Items already listed copied their duplicate counts when they were listed; presence hands them
+	// the new ones. Presence never asks for predictions, so this cannot cycle the way refresh_items did.
+	if (duplicates_changed)
+	{
+		_async.invalidate_view(view_invalid::presence);
+	}
 
 	if (!phash_wanted.empty() && !df::is_closing)
 	{

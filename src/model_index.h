@@ -735,6 +735,8 @@ struct index_summary
 	index_summary& operator=(index_summary&&) noexcept = delete;
 
 	df::index_roots _roots;
+	// Each collection folder whose owner set what it holds. The nearest one above a folder answers for it.
+	std::vector<std::pair<df::folder_path, prop::library_kind>> _library_kinds;
 	std::shared_ptr<const df::unique_folders> _distinct_folders = std::make_shared<df::unique_folders>();
 	std::shared_ptr<const df::unique_folders> _distinct_other_folders = std::make_shared<df::unique_folders>();
 	std::shared_ptr<const df::unique_folders> _distinct_prime_folders = std::make_shared<df::unique_folders>();
@@ -932,6 +934,9 @@ class index_state final : public df::no_copy
 	std::atomic<bool> _collection_discovery_complete = false;
 	const location_cache& _locations;
 	std::atomic<bool> _fully_loaded = false;
+	// Set when the library kinds change and cleared only by a re-reading of names that ran to the end, so a
+	// pass another index update cancels is made again by the next.
+	std::atomic<bool> _rederive_pending = false;
 
 	// Paths a writer currently holds, counted because two batches can claim one path at once and a
 	// plain set would let the first to finish release the second's claim. Every consumer queues from
@@ -951,6 +956,7 @@ class index_state final : public df::no_copy
 	void enqueue_db_write(item_db_write write);
 	void enqueue_db_writes(std::vector<item_db_write> writes);
 	bool is_collection_search(const df::search_t& search) const;
+	bool is_excluded_from_collection(df::folder_path folder) const;
 	void queue_deferred_validation(df::folder_path folder_path, bool rescan);
 
 public:
@@ -1198,6 +1204,15 @@ public:
 
 	void index_folders(df::cancel_token token, bool scan_collection = true);
 	void index_roots(df::index_roots roots);
+	// What each collection folder holds, as its owner set it in Options. Answers whether a video in it can
+	// be a film or an episode; a change takes effect through rederive_name_values. Returns whether it changed.
+	bool library_kinds(std::vector<std::pair<df::folder_path, prop::library_kind>> kinds);
+	// The kind the nearest collection folder holding this folder was given; automatic when none was.
+	prop::library_kind library_kind_of(df::folder_path folder) const;
+	// Reads every loaded video's name again, as loading it does, and republishes the items it changes, when the
+	// library kinds have changed since a pass last ran to the end: without a rescan. Returns whether any item
+	// changed.
+	bool rederive_name_values(const df::cancel_token& token);
 	void scan_uncached(const df::cancel_token& token);
 	std::vector<folder_scan_item> scan_items(const df::index_roots& roots, bool recursive, bool scan_if_offline,
 	                                         const df::cancel_token& token);

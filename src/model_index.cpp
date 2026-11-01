@@ -7,8 +7,9 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: File indexing engine. Scans folders, extracts metadata, keeps the in-memory item
-// collection and answers queries over it. Duplicate prediction and presence live in
-// model_index_duplicates.cpp; the summary and its vocabulary in model_index_summary.cpp.
+// collection and answers queries over it. Reads films, episodes and shows from file and folder names,
+// and fills what a video's tags leave out from them as items load. Duplicate prediction and presence live
+// in model_index_duplicates.cpp; the summary and its vocabulary in model_index_summary.cpp.
 
 #include "pch.h"
 
@@ -738,12 +739,21 @@ void index_state::add_distinct_other_folders(df::unique_folders folders)
 	for (;;)
 	{
 		std::shared_ptr<const df::unique_folders> current;
+		std::shared_ptr<const df::unique_folders> collection;
 		{
 			platform::shared_lock lock(_summary_rw);
 			current = _summary._distinct_other_folders;
+			collection = _summary._distinct_folders;
 		}
 
-		if (std::ranges::all_of(folders, [&](const auto& folder) { return current->contains(folder); }))
+		// A collection folder is offered from _distinct_folders already. Adding each one here as a
+		// re-walk found it unchanged copied this whole set once per folder.
+		std::erase_if(folders, [&](const df::folder_path folder)
+		{
+			return current->contains(folder) || collection->contains(folder);
+		});
+
+		if (folders.empty())
 		{
 			return;
 		}
@@ -776,7 +786,7 @@ bool index_state::is_in_collection(const df::folder_path folder) const
 
 	{
 		platform::shared_lock lock(_summary_rw);
-		const auto roots = _summary._roots;
+		const auto& roots = _summary._roots;
 
 		if (df::is_excluded(roots, folder))
 		{
@@ -797,18 +807,30 @@ bool index_state::is_in_collection(const df::folder_path folder) const
 		return found_folder->is_in_collection;
 	}
 
-	const auto found_parent = _items.find(parent);
-
-	if (found_parent)
+	// Not indexed yet - created, copied in or renamed since the walk. It belongs with its nearest
+	// indexed ancestor, unless an exclude or a root comes first on the way up.
+	for (auto ancestor = parent;; ancestor = ancestor.parent())
 	{
-		return found_parent->is_in_collection;
-	}
+		{
+			platform::shared_lock lock(_summary_rw);
+			if (df::is_excluded(_summary._roots, ancestor)) return false;
+			if (_summary._roots.folders.contains(ancestor)) return true;
+		}
 
-	return false;
+		const auto found_ancestor = _items.find(ancestor);
+		if (found_ancestor) return found_ancestor->is_in_collection;
+		if (ancestor.parent() == ancestor) return false;
+	}
+}
+
+bool index_state::is_excluded_from_collection(const df::folder_path folder) const
+{
+	platform::shared_lock lock(_summary_rw);
+	return df::is_excluded(_summary._roots, folder);
 }
 
 static df::index_folder_item_ptr find_or_create_folder(index_items& items, const df::folder_path path,
-                                                       const platform::folder_info& fd)
+                                                       const platform::folder_info& fd, const bool is_member)
 {
 	df::assert_true(!is_empty(fd.name));
 
@@ -818,12 +840,22 @@ static df::index_folder_item_ptr find_or_create_folder(index_items& items, const
 	candidate->created = fd.attributes.created;
 	candidate->is_read_only = fd.attributes.is_readonly;
 	candidate->can_recurse = fd.can_recurse;
+	candidate->is_in_collection = is_member;
 	const auto result = items.find_or_create(path, std::move(candidate));
 	result->can_recurse = fd.can_recurse;
 	return result;
 }
 
-void populate_file_info(df::index_file_item& file_node, const platform::file_info& fd, const bool cache_items_loaded)
+// The folders a file's name is read with, and what its collection folder holds.
+struct name_context
+{
+	str::cached folder;
+	str::cached parent;
+	prop::library_kind library = prop::library_kind::automatic;
+};
+
+void populate_file_info(df::index_file_item& file_node, const platform::file_info& fd, const bool cache_items_loaded,
+                        const name_context& names)
 {
 	df::assert_true(!is_empty(fd.name));
 
@@ -846,22 +878,18 @@ void populate_file_info(df::index_file_item& file_node, const platform::file_inf
 		file_node.name = name;
 		file_node.ft = files::file_type_from_name(name);
 
+		// A video the index has never scanned reads its name now, so its title shows before a slow scan of
+		// a network folder reaches it. The scan that follows replaces this with the file's own tags.
 		if (cache_items_loaded &&
 			md == nullptr &&
-			file_node.ft->has_trait(file_traits::file_name_metadata))
+			file_node.ft->has_trait(file_traits::video_metadata))
 		{
 			const auto ext_pos = df::find_ext(name);
 
 			if (ext_pos != std::string_view::npos)
 			{
 				md = std::make_shared<prop::item_metadata>();
-				const auto name_props = scan_info_from_title(name.substr(0, ext_pos));
-
-				if (!str::is_empty(name_props.show)) md->show = str::cache(name_props.show);
-				if (!str::is_empty(name_props.title)) md->title = str::cache(name_props.title);
-				if (name_props.year != 0) md->year = name_props.year;
-				if (name_props.episode != 0) md->episode = df::xy8::make(name_props.episode, name_props.episode_of);
-				if (name_props.season != 0) md->season = name_props.season;
+				derive_name_values(*md, name.substr(0, ext_pos), names.folder, names.parent, names.library);
 				md->file_name = name;
 				file_node.metadata.store(md);
 			}
@@ -914,11 +942,21 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 		std::ranges::sort(contents.folders, less_name);
 		std::ranges::sort(contents.files, less_name);
 
+		const name_context names{folder_path.name(), folder_path.parent().name(), library_kind_of(folder_path)};
+
 		for (auto publication_attempt = 0; publication_attempt < 3; ++publication_attempt)
 		{
 		existing_snapshot = _items.find_snapshot(folder_path);
 		existing_folder = existing_snapshot.folder;
 		if (test_after_validate_folder_snapshot) test_after_validate_folder_snapshot(folder_path, publication_attempt);
+		// A subfolder first seen here - created, copied in or renamed since the walk - belongs where this
+		// folder does, unless an exclude names it. Only a walk demotes a folder.
+		const auto is_member = existing_folder ? existing_folder->is_in_collection.load()
+		                                       : is_in_collection(folder_path);
+		const auto child_is_member = [this, is_member](const df::folder_path child)
+		{
+			return is_member && !is_excluded_from_collection(child);
+		};
 		changes_detected = false;
 		updated_files.clear();
 		updated_folders.clear();
@@ -955,8 +993,9 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 				if (d < 0)
 				{
 					// create: only in new
+					const auto child = folder_path.combine(folder_first->name);
 					updated_folders.emplace_back(
-						find_or_create_folder(_items, folder_path.combine(folder_first->name), *folder_first));
+						find_or_create_folder(_items, child, *folder_first, child_is_member(child)));
 					changes_detected = true;
 					++folder_first;
 				}
@@ -970,8 +1009,9 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 				else
 				{
 					// copy: in both
-					auto index_folder_item = find_or_create_folder(_items, folder_path.combine(folder_first->name),
-					                                               *folder_first);
+					const auto child = folder_path.combine(folder_first->name);
+					auto index_folder_item = find_or_create_folder(_items, child, *folder_first,
+					                                               child_is_member(child));
 					updated_folders.emplace_back(index_folder_item);
 					if (*old_first != index_folder_item) changes_detected = true;
 					++folder_first;
@@ -997,8 +1037,9 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 		while (folder_first != folder_last)
 		{
 			// only in new
+			const auto child = folder_path.combine(folder_first->name);
 			updated_folders.emplace_back(
-				find_or_create_folder(_items, folder_path.combine(folder_first->name), *folder_first));
+				find_or_create_folder(_items, child, *folder_first, child_is_member(child)));
 			changes_detected = true;
 			++folder_first;
 		}
@@ -1031,7 +1072,7 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 				{
 					// create: only in new
 					df::index_file_item info;
-					populate_file_info(info, *file_first, _cache_items_loaded);
+					populate_file_info(info, *file_first, _cache_items_loaded, names);
 					updated_files.emplace_back(info);
 					changes_detected = true;
 					++file_first;
@@ -1084,7 +1125,7 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 					}
 
 					const auto was_offline = old_first->flags && df::index_item_flags::is_offline;
-					populate_file_info(info, *file_first, _cache_items_loaded);
+					populate_file_info(info, *file_first, _cache_items_loaded, names);
 					if (was_loaded_from_database) loaded_from_database.emplace(info.name);
 					const auto now_offline = info.flags && df::index_item_flags::is_offline;
 
@@ -1117,7 +1158,7 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 		{
 			// only in new
 			df::index_file_item info;
-			populate_file_info(info, *file_first, _cache_items_loaded);
+			populate_file_info(info, *file_first, _cache_items_loaded, names);
 			updated_files.emplace_back(info);
 			changes_detected = true;
 			++file_first;
@@ -1128,6 +1169,19 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 			for (const auto& sc : f.ft->sidecars)
 			{
 				sidecar_extensions.emplace(sc);
+			}
+		}
+
+		// The names of the files that keep sidecars. A subtitle named for one of them is that file's alone: with
+		// Johnny.English.mkv beside Johnny.mkv, Johnny.English.srt is the first film's, not the second's in English.
+		df::hash_set<std::string_view, df::ihash, df::ieq> owner_stems;
+
+		for (const auto& f : updated_files)
+		{
+			if (!f.ft->sidecars.empty())
+			{
+				const auto file_name = f.name.sv();
+				owner_stems.emplace(file_name.substr(0, df::find_ext(file_name)));
 			}
 		}
 
@@ -1146,6 +1200,21 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 					const auto without_extension = path.file_name_without_extension();
 
 					sidecars.emplace(without_extension, name);
+
+					// Movie.en.srt, Movie.English.forced.srt: a subtitle names its language, and whether it is
+					// forced, after the name of the video it belongs to.
+					if (is_subtitle_extension(ext))
+					{
+						auto stem = without_extension;
+
+						for (auto i = 0; i < 2 && !owner_stems.contains(stem); ++i)
+						{
+							const auto dot = stem.rfind('.');
+							if (dot == std::string_view::npos || !is_subtitle_suffix(stem.substr(dot + 1))) break;
+							stem = stem.substr(0, dot);
+							sidecars.emplace(stem, name);
+						}
+					}
 
 					if (str::icmp(ext, "xmp") == 0)
 					{
@@ -1261,6 +1330,7 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 			else
 			{
 				folder_node->name = folder_path.name();
+				folder_node->is_in_collection = is_member;
 			}
 
 			df::assert_true(!is_empty(folder_node->name));
@@ -1629,6 +1699,17 @@ void index_state::scan_offline_item(const df::index_folder_item_ptr& folder,
 	ui::const_image_ptr shell_thumbnail;
 	const auto resp = read_cached_file_properties(file_path, *metadata, shell_thumbnail);
 
+	// A cloud-only video's name is read as any other's is, or it would lose the show, episode and kind its name gave.
+	const auto derive_names = [&]
+	{
+		if (file.ft && file.ft->has_trait(file_traits::video_metadata))
+		{
+			const auto folder_path = file_path.folder();
+			derive_name_values(*metadata, file_path.file_name_without_extension(), folder_path.name(),
+			                   folder_path.parent().name(), library_kind_of(folder_path));
+		}
+	};
+
 	item_db_write write;
 	write.path = file_path;
 	write.metadata_scanned = now;
@@ -1638,6 +1719,7 @@ void index_state::scan_offline_item(const df::index_folder_item_ptr& folder,
 		df::scope_locked_inc l(scanning_items);
 
 		metadata->file_name = file_path.name();
+		derive_names();
 
 		ui::const_image_ptr thumbnail_image;
 
@@ -1709,6 +1791,7 @@ void index_state::scan_offline_item(const df::index_folder_item_ptr& folder,
 		// write.md so perform_writes performs an insert-or-replace that creates the row -- a
 		// bare metadata_scanned update would affect zero rows when no row exists yet.
 		metadata->file_name = file_path.name();
+		derive_names();
 		const auto published = _items.update_file(file_path, [&](const df::index_folder_item_ptr& current_folder,
 		                                                         const df::index_file_item& current_file)
 		{
@@ -1786,19 +1869,9 @@ void index_state::apply_scan_result(const df::index_folder_item_ptr& folder,
 
 		if (mt->has_trait(file_traits::video_metadata))
 		{
-			const auto name_props = scan_info_from_title(file_path.file_name_without_extension());
-
-			if (is_empty(metadata->show) && !str::is_empty(name_props.show))
-				metadata->show = str::cache(
-					name_props.show);
-			if (is_empty(metadata->title) && !str::is_empty(name_props.title))
-				metadata->title = str::cache(
-					name_props.title);
-			if (metadata->year == 0 && name_props.year != 0) metadata->year = name_props.year;
-			if (metadata->episode == df::xy8::make(0, 0) && name_props.episode != 0)
-				metadata->episode =
-					df::xy8::make(name_props.episode, name_props.episode_of);
-			if (metadata->season == 0 && name_props.season != 0) metadata->season = name_props.season;
+			const auto folder = file_path.folder();
+			derive_name_values(*metadata, file_path.file_name_without_extension(), folder.name(), folder.parent().name(),
+			                   library_kind_of(folder));
 		}
 
 		item_db_write write;
@@ -2387,6 +2460,97 @@ void index_state::index_roots(df::index_roots roots)
 	}
 }
 
+bool index_state::library_kinds(std::vector<std::pair<df::folder_path, prop::library_kind>> kinds)
+{
+	platform::exclusive_lock lock(_summary_rw);
+	if (_summary._library_kinds == kinds) return false;
+	std::swap(_summary._library_kinds, kinds);
+	_rederive_pending = true;
+	return true;
+}
+
+prop::library_kind index_state::library_kind_of(const df::folder_path folder) const
+{
+	platform::shared_lock lock(_summary_rw);
+	const auto& kinds = _summary._library_kinds;
+	if (kinds.empty() || folder.is_empty()) return prop::library_kind::automatic;
+
+	for (auto ancestor = folder;; ancestor = ancestor.parent())
+	{
+		for (const auto& [path, kind] : kinds)
+		{
+			if (path == ancestor) return kind;
+		}
+
+		if (ancestor.parent() == ancestor) return prop::library_kind::automatic;
+	}
+}
+
+bool index_state::rederive_name_values(const df::cancel_token& token)
+{
+	if (!_rederive_pending.exchange(false)) return false;
+
+	auto any_changed = false;
+
+	for (const auto& [folder_path, folder] : _items.all_folders())
+	{
+		if (token.is_cancelled())
+		{
+			// Cut short by another index update, which makes the pass again.
+			_rederive_pending = true;
+			break;
+		}
+
+		if (!folder) continue;
+
+		const auto library = library_kind_of(folder_path);
+		const auto folder_name = folder_path.name();
+		const auto parent_name = folder_path.parent().name();
+
+		for (const auto& file : folder->files)
+		{
+			if (!file.ft || !file.ft->has_trait(file_traits::video_metadata)) continue;
+
+			const auto existing = file.metadata.load();
+			if (!existing) continue;
+
+			auto updated = std::make_shared<prop::item_metadata>(*existing);
+			const auto name = file.name.sv();
+			const auto ext_pos = df::find_ext(name);
+			derive_name_values(*updated, ext_pos == std::string_view::npos ? name : name.substr(0, ext_pos), folder_name,
+			                   parent_name, library);
+
+			if (updated->kind == existing->kind && updated->dates == existing->dates &&
+				updated->from_name == existing->from_name && updated->title == existing->title &&
+				updated->show == existing->show && updated->year == existing->year)
+				continue;
+
+			// Published only over the snapshot it was derived from: a scan that landed meanwhile is newer, and one
+			// landing now must not be overwritten between the test and the store.
+			const auto published = _items.update_file(folder_path.combine_file(file.name),
+			                                          [&](const df::index_folder_item_ptr& current_folder,
+			                                              const df::index_file_item& current_file)
+			                                          {
+				                                          auto expected = existing;
+				                                          if (!current_file.metadata.compare_exchange_strong(expected, updated))
+					                                          return false;
+				                                          current_file.calc_search_presence();
+				                                          current_folder->update_search_presence(current_file);
+				                                          return true;
+			                                          });
+
+			any_changed |= published;
+		}
+	}
+
+	if (any_changed)
+	{
+		_async.invalidate_view(view_invalid::index_summary | view_invalid::refresh_items);
+	}
+
+	return any_changed;
+}
+
 void index_state::index_folders(df::cancel_token token, const bool scan_collection)
 {
 	if (!scan_collection)
@@ -2417,15 +2581,13 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 	auto exhausted = unique_folder_paths.size() > max_folders_to_index;
 	std::vector<df::folder_path> failed_enumerations;
 	df::unique_folders revisited;
-	// Folders whose files the walk has recorded. A node republished since then has lost the walk's
-	// mark, and the fix-up below must not record its files a second time.
+	// Folders the walk has validated and recorded. The fix-up below restores only folders it could not
+	// reach, so it never records a folder's files twice.
 	df::unique_folders counted;
-
-	for (const auto& f : _items.all_folders())
-	{
-		f.second->is_in_collection = false;
-		f.second->is_excluded = false;
-	}
+	// Children the walk found excluded, the only folders the reconciliation below leaves marked so.
+	df::unique_folders excluded_folders;
+	auto contents_changed = false;
+	auto membership_changed = false;
 
 	while (!folders.empty() && !token.is_cancelled())
 	{
@@ -2453,7 +2615,8 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 
 			if (node.enumeration_failed || node.deferred) failed_enumerations.emplace_back(folder_path);
 			if (!node.folder) continue;
-			node.folder->is_in_collection = true;
+			contents_changed |= node.was_updated;
+			membership_changed |= !node.folder->is_in_collection.exchange(true);
 
 			for (const auto& file : node.folder->files)
 			{
@@ -2493,12 +2656,15 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 				}
 
 				sub_folder->is_excluded = is_excluded;
+				if (is_excluded) excluded_folders.emplace(sub_folder_path);
 			}
 		}
 
 		// Histogram snapshots are large; rate-limit progress copies while always publishing the final state below.
+		// Only the first walk shows progress: a re-walk counting up from zero showed the collection
+		// emptying on every Refresh, device change and resume.
 		const auto current_ms = df::now_ms();
-		if (current_ms >= next_histogram_publish_ms)
+		if (!_folders_indexed && current_ms >= next_histogram_publish_ms)
 		{
 			index_histograms_const_ptr histogram_snapshot = std::make_shared<index_histograms>(histograms);
 			{
@@ -2535,7 +2701,7 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 
 	for (const auto& cached : _items.all_folders())
 	{
-		if (cached.second->is_in_collection) continue;
+		if (counted.contains(cached.first)) continue;
 
 		const auto under_failed_enumeration = std::ranges::any_of(failed_enumerations, [&cached](
 			const df::folder_path failed)
@@ -2548,9 +2714,8 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 		const auto root = containing_root(cached.first);
 		if (!root || has_excluded_ancestor(*root, cached.first)) continue;
 
-		cached.second->is_in_collection = true;
+		membership_changed |= !cached.second->is_in_collection.exchange(true);
 		unique_folder_paths.emplace(cached.first);
-		if (counted.contains(cached.first)) continue;
 
 		for (const auto& file : cached.second->files)
 		{
@@ -2598,6 +2763,24 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 		});
 	}
 
+	// Membership is settled here, once the walk has finished, instead of being cleared before it
+	// started: a cleared index answered every search, count, duplicate and summary pass that ran during
+	// the walk from part of the collection. A cancelled walk leaves this to the walk replacing it.
+	if (!token.is_cancelled())
+	{
+		for (const auto& [path, folder] : _items.all_folders())
+		{
+			const auto member = unique_folder_paths.contains(path);
+			membership_changed |= folder->is_in_collection.exchange(member) != member;
+			folder->is_excluded = excluded_folders.contains(path);
+		}
+	}
+
+	// A cancelled re-walk keeps what it would have replaced. The walk replacing it publishes no
+	// progress, so a partial answer would stand until that one finished.
+	const auto publish = !token.is_cancelled() || !_folders_indexed;
+
+	if (publish)
 	{
 		stats.index_folder_count = static_cast<int>(unique_folder_paths.size());
 		std::shared_ptr<const df::unique_folders> folders_snapshot =
@@ -2625,7 +2808,14 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 	{
 		platform::exclusive_lock lock(_summary_rw);
 		_summary._distinct_prime_folders.swap(prime_folders_snapshot);
-		_summary._histograms.swap(histogram_snapshot);
+		if (publish) _summary._histograms.swap(histogram_snapshot);
+	}
+
+	// Files gone or added, folders joining or leaving the collection: duplicate sets and the summary
+	// move with them, and nothing else recomputes them after a walk.
+	if (!token.is_cancelled() && (contents_changed || membership_changed))
+	{
+		_async.invalidate_view(view_invalid::index_summary);
 	}
 
 	_folders_indexed = true;
@@ -2634,260 +2824,624 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 
 static void scan_trim(std::string& s)
 {
-	const auto pred = [](const int ch)
+	// Spaces, and the hyphens a release group or an episode range leaves at either end.
+	const auto keep = [](const char c)
 	{
-		return !std::iswspace(ch) && ch != '-';
+		return c != ' ' && c != '\t' && c != '\n' && c != '\v' && c != '\f' && c != '\r' && c != '-';
 	};
 
-	s.erase(s.begin(), std::ranges::find_if(s, pred));
-	s.erase(std::find_if(s.rbegin(), s.rend(), pred).base(), s.end());
+	s.erase(s.begin(), std::ranges::find_if(s, keep));
+	s.erase(std::find_if(s.rbegin(), s.rend(), keep).base(), s.end());
 }
 
-std::string build_result_string(const std::vector<std::string>& tokens,
-                                const std::vector<std::string>::const_iterator& begin,
-                                const std::vector<std::string>::const_iterator& end)
+// Release names are read from their words, the way the scene writes them: Show.S01E02.Title.1080p is an
+// episode, Show.2024.01.07.Title.720p a dated one and Title.2024.1080p a film. It is pure string work, run by
+// the scan and load workers for every video, so it uses no regular expressions.
+
+using name_word_set = df::hash_set<std::string_view, df::ihash, df::ieq>;
+
+static bool name_is_space(const char c)
+{
+	return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+}
+
+static bool name_is_digit(const char c)
+{
+	return c >= '0' && c <= '9';
+}
+
+static bool name_is_letter(const char c)
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static char name_lower(const char c)
+{
+	return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+static bool name_all_digits(const std::string_view s)
+{
+	return !s.empty() && std::ranges::all_of(s, name_is_digit);
+}
+
+// Only ever given digits already checked, and never more than five of them.
+static int name_to_int(const std::string_view digits)
+{
+	auto value = 0;
+	for (const auto c : digits) value = value * 10 + (c - '0');
+	return value;
+}
+
+// The number written in at most max_digits digits at s[i], moving i past it: -1 for no digits or too many.
+static int name_read_number(const std::string_view s, size_t& i, const size_t max_digits)
+{
+	const auto start = i;
+	auto value = 0;
+
+	while (i < s.size() && name_is_digit(s[i]))
+	{
+		if (i - start == max_digits) return -1;
+		value = value * 10 + (s[i] - '0');
+		++i;
+	}
+
+	return i == start ? -1 : value;
+}
+
+// 19xx and 20xx: the years a release name gives.
+static bool name_is_year(const std::string_view s)
+{
+	return s.size() == 4 && name_all_digits(s) && ((s[0] == '1' && s[1] == '9') || (s[0] == '2' && s[1] == '0'));
+}
+
+static bool name_is_month(const std::string_view s)
+{
+	return s.size() == 2 && ((s[0] == '0' && s[1] >= '1' && s[1] <= '9') || (s[0] == '1' && s[1] >= '0' && s[1] <= '2'));
+}
+
+static bool name_is_day(const std::string_view s)
+{
+	return s.size() == 2 && name_all_digits(s) && ((s[0] == '0' && s[1] != '0') || s[0] == '1' || s[0] == '2' ||
+		(s[0] == '3' && s[1] <= '1'));
+}
+
+// 1920x1080: a frame size, which no title contains.
+static bool name_is_dimensions(const std::string_view t)
+{
+	size_t i = 0;
+	while (i < t.size() && name_is_digit(t[i])) ++i;
+	const auto width_digits = i;
+	if (width_digits < 3 || width_digits > 5 || i >= t.size() || name_lower(t[i]) != 'x') return false;
+
+	const auto height_start = ++i;
+	while (i < t.size() && name_is_digit(t[i])) ++i;
+	const auto height_digits = i - height_start;
+	if (height_digits < 3 || height_digits > 5 || i != t.size()) return false;
+
+	return name_to_int(t.substr(0, width_digits)) >= 320 && name_to_int(t.substr(height_start, height_digits)) >= 200;
+}
+
+// Tags that end a title wherever they stand: resolutions, codecs, sources and release flags.
+static const name_word_set& name_hard_tags()
+{
+	static const name_word_set words
+	{
+		"480p", "720p", "720", "1080p", "1080", "1440p", "1440", "2160p", "2160", "4320p", "4320", "4k", "8k", "uhd",
+		"hdtv", "x264", "x265", "h264", "h265", "hevc", "av1", "ac3", "eac3", "ddp", "dts", "aac", "brrip", "bdrip",
+		"bluray", "hdrip", "dvdrip", "web", "webdl", "webrip", "pdtv", "dvdscr", "xvid", "hdr", "hdr10", "hdr10plus",
+		"dv", "dolbyvision", "remux", "proper", "repack", "internal", "unrated", "10bit", "extended", "5.1", "7.1",
+	};
+
+	return words;
+}
+
+// Language, edition and format tags. Before a year or an episode marker these are words - The German Doctor,
+// Polish wedding 2010, Limited edition 2001 - so they end a title only after one, and only in a release name.
+static const name_word_set& name_soft_tags()
+{
+	static const name_word_set words
+	{
+		"german", "french", "truefrench", "multi", "multisubs", "dubbed", "subbed", "subfrench", "vostfr", "nordic",
+		"swedish", "danish", "norwegian", "finnish", "dutch", "flemish", "spanish", "castellano", "latino", "italian",
+		"polish", "czech", "slovak", "russian", "ukrainian", "hungarian", "turkish", "korean", "japanese", "chinese",
+		"portuguese", "hindi", "icelandic", "estonian", "latvian", "lithuanian", "romanian", "bulgarian", "croatian",
+		"serbian", "slovenian", "greek", "hebrew", "arabic", "thai", "vff", "vfq", "vfi", "swesub", "nlsub", "dksub",
+		"fisub", "nosub", "plsub", "engsub", "dl", "pl", "latin", "ger", "ita", "spa", "kor", "jap", "rus",
+		"remastered", "uncut", "uncensored", "limited", "theatrical", "imax", "dc", "3d", "hybrid", "dirfix",
+		"nfofix", "samplefix", "syncfix", "subfix", "prooffix", "rerip", "readnfo", "ws", "fs", "docu", "doku", "stv",
+		"dsr", "hlg", "dovi", "sdr", "ddp5", "ddp2", "dd5", "dd2", "atmos", "truehd", "dtshd", "opus", "aac2",
+		"hdtvrip", "webhd", "uhd2bd", "1080i", "anime", "alternative", "criterion", "openmatte", "restored",
+		"colorized", "pal", "ntsc", "dvb", "retail", "svcd", "cz", "ahdtv", "tvrip", "dsrip",
+	};
+
+	return words;
+}
+
+// Tags no title ever contains: resolutions, codecs and disc or broadcast sources. One marks a release name,
+// and in a film's name the last year ahead of the first of them is its release year.
+static const name_word_set& name_strong_tags()
+{
+	static const name_word_set words
+	{
+		"480p", "576p", "720p", "1080p", "1080i", "1440p", "2160p", "4320p", "x264", "x265", "h264", "h265", "hevc",
+		"avc", "xvid", "divx", "av1", "bluray", "bdrip", "brrip", "bdremux", "remux", "dvdrip", "dvdr", "hdtv",
+		"hdtvrip", "webrip", "webdl", "hdrip", "pdtv", "sdtv", "uhd", "4k",
+	};
+
+	return words;
+}
+
+struct name_episode
+{
+	int season = 0;
+	int episode = 0;
+	int episode_of = 0;
+};
+
+// S01E02, with seasons and episodes of up to four digits (S235E09, S01E1001). S03E00 is a special, and a
+// double episode, S10E21E22 or S01E01-E02, reads as its first.
+static bool name_match_sxxeyy(const std::string_view t, name_episode& out)
+{
+	if (t.empty() || name_lower(t[0]) != 's') return false;
+
+	size_t i = 1;
+	const auto season = name_read_number(t, i, 4);
+	if (season < 0 || i >= t.size() || name_lower(t[i]) != 'e') return false;
+	++i;
+	const auto episode = name_read_number(t, i, 4);
+	if (episode < 0) return false;
+
+	while (i < t.size())
+	{
+		if (t[i] == '-') ++i;
+		if (i >= t.size() || name_lower(t[i]) != 'e') return false;
+		++i;
+		if (name_read_number(t, i, 4) < 0) return false;
+	}
+
+	out = {season, episode, 0};
+	return true;
+}
+
+// 02of10: one part of a numbered series.
+static bool name_match_part_of(const std::string_view t, name_episode& out)
+{
+	size_t i = 0;
+	const auto episode = name_read_number(t, i, 3);
+	if (episode < 0 || i + 2 > t.size() || name_lower(t[i]) != 'o' || name_lower(t[i + 1]) != 'f') return false;
+	i += 2;
+	const auto of = name_read_number(t, i, 3);
+	if (of < 0 || i != t.size() || episode == 0 || episode > of || of > 255) return false;
+
+	out = {0, episode, of};
+	return true;
+}
+
+// 1x02, as some groups write a season and episode.
+static bool name_match_season_x(const std::string_view t, name_episode& out)
+{
+	size_t i = 0;
+	const auto season = name_read_number(t, i, 2);
+	if (season < 0 || i >= t.size() || name_lower(t[i]) != 'x') return false;
+	++i;
+	const auto episode = name_read_number(t, i, 3);
+	if (episode <= 0 || episode > 255 || i != t.size()) return false;
+
+	out = {season, episode, 0};
+	return true;
+}
+
+// E426: an episode numbered without a season, as anime and long-running shows number them.
+static bool name_match_bare_episode(const std::string_view t, name_episode& out)
+{
+	if (t.empty() || name_lower(t[0]) != 'e') return false;
+
+	size_t i = 1;
+	const auto episode = name_read_number(t, i, 4);
+	if (episode <= 0 || i != t.size()) return false;
+
+	out = {0, episode, 0};
+	return true;
+}
+
+static std::optional<name_episode> name_parse_episode(const std::string_view t)
+{
+	name_episode e;
+	if (name_match_sxxeyy(t, e) || name_match_part_of(t, e) || name_match_season_x(t, e) ||
+		name_match_bare_episode(t, e))
+		return e;
+	return std::nullopt;
+}
+
+// s?\d+[ex]\d+, or with require_s s\d+e\d+: a side of an episode range like S04E11-12 or S02E13-S03E04.
+static bool name_is_episode_like(const std::string_view w, const bool require_s)
+{
+	size_t i = 0;
+	if (i < w.size() && name_lower(w[i]) == 's') ++i;
+	else if (require_s) return false;
+
+	const auto first = i;
+	while (i < w.size() && name_is_digit(w[i])) ++i;
+	if (i == first || i >= w.size()) return false;
+
+	const auto marker = name_lower(w[i]);
+	if (marker != 'e' && (marker != 'x' || require_s)) return false;
+
+	const auto second = ++i;
+	while (i < w.size() && name_is_digit(w[i])) ++i;
+	return i > second && i == w.size();
+}
+
+// A.B.C: single letters joined by single dots.
+static bool name_is_dotted_letters(const std::string_view w)
+{
+	if (w.size() < 3 || w.size() % 2 == 0) return false;
+
+	for (size_t i = 0; i < w.size(); ++i)
+	{
+		if (i % 2 == 0 ? !name_is_letter(w[i]) : w[i] != '.') return false;
+	}
+
+	return true;
+}
+
+static bool name_is_pre_title_stop(const std::string_view t)
+{
+	return t == "(" || t == "[" || t == "-";
+}
+
+// The words of a name. "(", "[", "]", ")" and "-" are words of their own; runs of spaces, "_" and "." only
+// separate. A hyphenated word (X-Men, 8-Bit) and a dotted abbreviation (S.W.A.T, Chicago.P.D) stay whole.
+static std::vector<std::string> name_tokens(const std::string_view name)
+{
+	// Text and separators alternating, text first and last: text, separator, text, ..., text.
+	std::vector<std::string> parts;
+	size_t start = 0;
+	size_t i = 0;
+
+	while (i < name.size())
+	{
+		const auto c = name[i];
+		size_t separator = 0;
+
+		if (name_is_space(c))
+		{
+			separator = 1;
+			while (i + separator < name.size() && name_is_space(name[i + separator])) ++separator;
+		}
+		else if (c == '_' || c == '-' || c == '.' || c == '(' || c == '[' || c == ']' || c == ')')
+		{
+			separator = 1;
+		}
+
+		if (separator == 0)
+		{
+			++i;
+			continue;
+		}
+
+		parts.emplace_back(name.substr(start, i - start));
+		parts.emplace_back(name.substr(i, separator));
+		i += separator;
+		start = i;
+	}
+
+	parts.emplace_back(name.substr(start));
+
+	// A hyphen with text tight on both sides joins one word, unless the left side is a release tag or the
+	// right side ends the name - x264-GROUP and Title-GROUP stay apart - or either side is an episode marker
+	// or a number, so S04E11-12 and 2023-11-09 keep their parts.
+	std::vector<std::string> hyphenated;
+	hyphenated.reserve(parts.size());
+	hyphenated.emplace_back(std::move(parts[0]));
+
+	for (size_t k = 1; k + 1 < parts.size(); k += 2)
+	{
+		auto& separator = parts[k];
+		auto& text = parts[k + 1];
+		auto& left = hyphenated.back();
+		const auto more_follows = k + 2 < parts.size();
+		const auto is_tag = name_hard_tags().contains(left) || name_soft_tags().contains(left);
+		const auto episode_side = name_is_episode_like(left, false) || name_all_digits(text) ||
+			name_is_episode_like(text, true);
+
+		if (separator == "-" && !left.empty() && !text.empty() && more_follows && !is_tag && !episode_side &&
+			!(name_all_digits(left) && name_all_digits(text)))
+		{
+			left += '-';
+			left += text;
+		}
+		else
+		{
+			hyphenated.emplace_back(std::move(separator));
+			hyphenated.emplace_back(std::move(text));
+		}
+	}
+
+	std::vector<std::string> joined;
+	joined.reserve(hyphenated.size());
+	joined.emplace_back(std::move(hyphenated[0]));
+
+	for (size_t k = 1; k + 1 < hyphenated.size(); k += 2)
+	{
+		auto& separator = hyphenated[k];
+		auto& text = hyphenated[k + 1];
+		auto& left = joined.back();
+		const auto last_dot = left.rfind('.');
+		const auto last = last_dot == std::string::npos
+			                  ? std::string_view(left)
+			                  : std::string_view(left).substr(last_dot + 1);
+
+		if (separator == "." && text.size() == 1 && name_is_letter(text[0]) && last.size() == 1 &&
+			name_is_letter(last[0]) && (left.size() == 1 || name_is_dotted_letters(left)))
+		{
+			left += '.';
+			left += text;
+		}
+		else
+		{
+			joined.emplace_back(std::move(separator));
+			joined.emplace_back(std::move(text));
+		}
+	}
+
+	std::vector<std::string> tokens;
+	tokens.reserve(joined.size());
+
+	for (auto& part : joined)
+	{
+		if (part.empty() || part == "_" || part == "." || name_is_space(part[0])) continue;
+		tokens.emplace_back(std::move(part));
+	}
+
+	return tokens;
+}
+
+// The words from begin to end joined by spaces, leaving out anything in square brackets: [GROUP] is a tag. Round
+// brackets keep what they hold, tight against it: The Office (US).
+static std::string name_build(const std::vector<std::string>& tokens, const size_t begin, const size_t end)
 {
 	std::string result;
-	bool brackets = false;
-	auto i = begin;
+	auto brackets = false;
 
-	while (i < end)
+	for (auto i = begin; i < end && i < tokens.size(); ++i)
 	{
-		if (*i == "[")
+		const auto& t = tokens[i];
+
+		if (t == "[")
 		{
 			brackets = true;
 		}
 		else if (brackets)
 		{
-			brackets = *i != "]";
+			brackets = t != "]";
+		}
+		else if (t == ")")
+		{
+			result += t;
 		}
 		else
 		{
-			if (!result.empty()) result += " ";
-			result += *i;
+			if (!result.empty() && result.back() != '(') result += ' ';
+			result += t;
 		}
-
-		++i;
 	}
 
-	return std::string(str::utf8_cast(result));
+	return result;
 }
 
 media_name_props scan_info_from_title(const std::string_view name8)
 {
 	media_name_props result;
 
-	static const df::hash_set<std::string_view, df::ihash, df::ieq> stop_words
-	{
-		"480p",
-		"720p",
-		"720",
-		"1080p",
-		"1080",
-		"1440p",
-		"1440",
-		"2160p",
-		"2160",
-		"4320p",
-		"4320",
-		"4k",
-		"8k",
-		"uhd",
-		"hdtv",
-		"x264",
-		"x265",
-		"h264",
-		"h265",
-		"hevc",
-		"av1",
-		"ac3",
-		"eac3",
-		"ddp",
-		"dts",
-		"aac",
-		"brrip",
-		"bdrip",
-		"bluray",
-		"hdrip",
-		"dvdrip",
-		"web",
-		"webdl",
-		"webrip",
-		"pdtv",
-		"dvdscr",
-		"xvid",
-		"hdr",
-		"hdr10",
-		"hdr10plus",
-		"dv",
-		"dolbyvision",
-		"remux",
-		"proper",
-		"repack",
-		"internal",
-		"unrated",
-		"10bit",
-		"extended",
-		"5.1",
-		"7.1"
-	};
-
-	static const df::hash_set<std::string_view, df::ihash, df::ieq> pre_title_stop_words
-	{
-		"(",
-		"[",
-		"-",
-	};
-
-	static const df::hash_set<std::string_view, df::ihash, df::ieq> pre_show_stop_words
-	{
-		"-",
-	};
-
-	static const auto split_rx = std::regex{R"([\s]+|_|\-|\.|\(|\[|\]|\))"s};
-
 	const auto name = std::string_view(std::bit_cast<const char*>(name8.data()), name8.size());
+	const auto tokens = name_tokens(name);
+	const auto n = tokens.size();
 
-	auto tokens = std::vector<std::string>(
-		std::regex_token_iterator<std::string_view::const_iterator>{name.begin(), name.end(), split_rx, {-1, 0}},
-		std::regex_token_iterator<std::string_view::const_iterator>{}
-	);
-
-	static const auto separator_rx = std::regex{R"([\s]+|_|\.)"s};
-
-	std::erase_if(tokens, [](auto&& i) { return i.empty() || std::regex_match(i, separator_rx); });
-
-	static const auto episode_rx = std::regex{"s([0-9]{1,2})e([0-9]{1,3})"s, std::regex_constants::icase};
-	static const auto episode_of_rx = std::regex{"([0-9]{1,3})of([0-9]{1,3})"s, std::regex_constants::icase};
-	static const auto episode_x_rx = std::regex{"([0-9]{1,2})x([0-9]{1,3})"s, std::regex_constants::icase};
-	static const auto year_rx = std::regex{"(19|20)[0-9]{2}"s};
-	static const auto dimensions_rx = std::regex{"([0-9]{3,5})x([0-9]{3,5})"s, std::regex_constants::icase};
-
-	struct episode_info
+	const auto is_hard = [&tokens](const size_t i)
 	{
-		int season = 0;
-		int episode = 0;
-		int episode_of = 0;
+		return name_hard_tags().contains(tokens[i]) || name_is_dimensions(tokens[i]);
 	};
 
-	const auto parse_episode = [&](const std::string& token) -> std::optional<episode_info>
+	// The release group ends a scene name after a hyphen: "-E5150" is a group, not episode 5150.
+	const auto is_group = [&tokens, n](const size_t i)
 	{
-		std::smatch match;
-
-		if (std::regex_match(token, match, episode_rx))
-		{
-			const auto season = str::to_int(match[1].str());
-			const auto episode = str::to_int(match[2].str());
-			if (season <= 99 && episode > 0 && episode <= 255) return episode_info{season, episode, 0};
-		}
-		else if (std::regex_match(token, match, episode_of_rx))
-		{
-			const auto episode = str::to_int(match[1].str());
-			const auto episode_of = str::to_int(match[2].str());
-			if (episode > 0 && episode <= episode_of && episode_of <= 255)
-				return episode_info{0, episode, episode_of};
-		}
-		else if (std::regex_match(token, match, episode_x_rx))
-		{
-			const auto season = str::to_int(match[1].str());
-			const auto episode = str::to_int(match[2].str());
-			if (season <= 99 && episode > 0 && episode <= 255) return episode_info{season, episode, 0};
-		}
-
-		return std::nullopt;
+		const std::string_view t = tokens[i];
+		return i + 1 == n && i > 0 && tokens[i - 1] == "-" && t.size() > 1 && name_lower(t[0]) == 'e' &&
+			name_all_digits(t.substr(1));
 	};
 
-	const auto found_episode_num = std::ranges::find_if(tokens, [&](const auto& token)
-	{
-		return parse_episode(token).has_value();
-	});
+	auto first_year = n;
+	auto found = n;
 
-	auto end_show = found_episode_num;
-
-	while (end_show != tokens.begin() &&
-		end_show != tokens.end() &&
-		pre_show_stop_words.contains(*(end_show - 1)))
+	for (size_t i = 0; i < n; ++i)
 	{
-		--end_show;
+		if (!result.is_release && (is_hard(i) || name_strong_tags().contains(tokens[i]))) result.is_release = true;
+		if (first_year == n && name_is_year(tokens[i])) first_year = i;
+		if (found == n && name_parse_episode(tokens[i]) && !is_group(i)) found = i;
 	}
 
-	if (end_show != tokens.begin() &&
-		end_show != tokens.end() &&
-		*(end_show - 1) == ")")
+	const auto marker = std::min(found, first_year);
+
+	const auto is_stop = [&](const size_t i)
 	{
-		--end_show;
+		return is_hard(i) || (result.is_release && i > marker && name_soft_tags().contains(tokens[i]));
+	};
 
-		if (end_show != tokens.begin() &&
-			end_show != tokens.end() &&
-			std::regex_match(*(end_show - 1), year_rx))
+	const auto first_stop = [&](const size_t from)
+	{
+		for (auto i = from; i < n; ++i)
 		{
-			--end_show;
+			if (is_stop(i)) return i;
+		}
 
-			if (end_show != tokens.begin() &&
-				end_show != tokens.end() &&
-				*(end_show - 1) == "(")
+		return n;
+	};
+
+	if (found == n)
+	{
+		// Show.2024.01.07, as sports and daily shows are named, or Show.2023-11-09 as German broadcasters write
+		// it. Only a release name - one with tags after the date - is a dated episode: "Four men 1906-03-28" is
+		// a personal name with a date in it.
+		const auto stop = first_stop(0);
+		const auto limit = stop < n ? std::min(n < 2 ? 0 : n - 2, stop) : 0;
+
+		for (size_t i = 1; i < limit; ++i)
+		{
+			if (!name_is_year(tokens[i])) continue;
+
+			const size_t step = i + 4 < n && tokens[i + 1] == "-" && tokens[i + 3] == "-" ? 2 : 1;
+			const std::string_view month = tokens[i + step];
+			const std::string_view day = i + 2 * step < n ? std::string_view(tokens[i + 2 * step]) : std::string_view{};
+
+			if (name_is_month(month) && name_is_day(day))
 			{
-				result.year = str::to_int(*end_show);
-				--end_show;
+				const auto title_begin = i + 2 * step + 1;
+				result.show = name_build(tokens, 0, i);
+				result.title = name_build(tokens, title_begin, first_stop(title_begin));
+				result.year = name_to_int(tokens[i]);
+				result.aired_month = name_to_int(month);
+				result.aired_day = name_to_int(day);
+				result.has_episode = true;
+				scan_trim(result.title);
+				scan_trim(result.show);
+				return result;
 			}
 		}
+
+		// In a release name a film's title is everything before its release year: the last year ahead of the
+		// first resolution, codec or disc source. Title words that are also tags (Madame.Web) stay in the title.
+		size_t anchor = 0;
+
+		for (size_t i = 1; i < n; ++i)
+		{
+			if (name_strong_tags().contains(tokens[i]))
+			{
+				anchor = i;
+				break;
+			}
+		}
+
+		for (auto j = anchor; j-- > 1;)
+		{
+			if (!name_is_year(tokens[j])) continue;
+
+			auto title_end = j;
+			while (title_end > 0 && name_is_pre_title_stop(tokens[title_end - 1])) --title_end;
+
+			result.year = name_to_int(tokens[j]);
+			result.title = name_build(tokens, 0, title_end);
+			scan_trim(result.title);
+			return result;
+		}
 	}
 
-	auto end_title = std::ranges::find_if(tokens, [&](const auto& token)
+	auto end_show = found;
+
+	while (end_show != 0 && end_show != n && tokens[end_show - 1] == "-")
 	{
-		if (stop_words.contains(token)) return true;
+		--end_show;
+	}
 
-		std::smatch match;
-		if (!std::regex_match(token, match, dimensions_rx)) return false;
+	if (end_show >= 3 && end_show != n && tokens[end_show - 1] == ")" && name_is_year(tokens[end_show - 2]) &&
+		tokens[end_show - 3] == "(")
+	{
+		// Show (2023) - S01E05: the year belongs to the show. Brackets holding anything else are part of its name,
+		// as The Office (US) is another show from The Office (UK).
+		result.year = name_to_int(tokens[end_show - 2]);
+		end_show -= 3;
+	}
+	else if (end_show > 1 && end_show != n && name_is_year(tokens[end_show - 1]))
+	{
+		// Found.2023.S01E05: the year belongs to the show, as (2023) would.
+		result.year = name_to_int(tokens[end_show - 1]);
+		--end_show;
+	}
 
-		const auto width = str::to_int(match[1].str());
-		const auto height = str::to_int(match[2].str());
-		return width >= 320 && height >= 200;
-	});
+	auto end_title = first_stop(0);
 
-	while (end_title != tokens.begin() &&
-		end_title != tokens.end() &&
-		pre_title_stop_words.contains(*(end_title - 1)))
+	while (end_title != 0 && end_title != n && name_is_pre_title_stop(tokens[end_title - 1]))
 	{
 		--end_title;
 	}
 
-	if (found_episode_num != tokens.end() && found_episode_num != tokens.begin())
-	{
-		result.show = build_result_string(tokens, tokens.begin(), end_show);
+	name_episode leading;
 
-		const auto episode = parse_episode(*found_episode_num);
-		if (episode)
+	// A file holding several episodes numbers the rest of its range after the first - S01E01-E02, S01E01-02,
+	// Sonarr's S01E01 - S01E02 - and those belong to the marker, not the title. A bare number counts only close
+	// above the first, so a title that starts with a number keeps it: S01E05 - 22 Minutes.
+	const auto past_range = [&tokens, n](size_t i, const int first_episode)
+	{
+		while (i + 1 < n && tokens[i] == "-")
 		{
-			result.season = episode->season;
-			result.episode = episode->episode;
-			result.episode_of = episode->episode_of;
+			const std::string_view next = tokens[i + 1];
+			name_episode e;
+			const auto marker = name_match_sxxeyy(next, e) || name_match_bare_episode(next, e);
+			const auto number = !marker && next.size() <= 3 && name_all_digits(next) &&
+				name_to_int(next) > first_episode && name_to_int(next) <= first_episode + 5;
+			if (!marker && !number) break;
+			i += 2;
 		}
 
-		result.title = build_result_string(tokens, found_episode_num + 1, end_title);
+		return i;
+	};
+
+	if (found != n && found != 0)
+	{
+		const auto episode = *name_parse_episode(tokens[found]);
+		result.show = name_build(tokens, 0, end_show);
+		result.season = episode.season;
+		result.episode = episode.episode;
+		result.episode_of = episode.episode_of;
+		result.has_episode = true;
+		result.title = name_build(tokens, past_range(found + 1, episode.episode), end_title);
+	}
+	else if (found == 0 && n != 0 && name_match_sxxeyy(tokens[0], leading))
+	{
+		// S01E05.Pilot: an episode whose show only its folders name.
+		result.season = leading.season;
+		result.episode = leading.episode;
+		result.has_episode = true;
+		result.title = name_build(tokens, past_range(1, leading.episode), end_title);
 	}
 	else
 	{
 		auto movie_title_end = end_title;
 		auto found_year = false;
 
-		if (movie_title_end != tokens.begin() && std::regex_match(*(movie_title_end - 1), year_rx))
+		if (movie_title_end != 0 && name_is_year(tokens[movie_title_end - 1]))
 		{
-			result.year = str::to_int(*(movie_title_end - 1));
+			result.year = name_to_int(tokens[movie_title_end - 1]);
 			--movie_title_end;
 			found_year = true;
 		}
-		else if (movie_title_end - tokens.begin() >= 3 && *(movie_title_end - 1) == ")" &&
-			std::regex_match(*(movie_title_end - 2), year_rx) && *(movie_title_end - 3) == "(")
+		else if (movie_title_end >= 3 && tokens[movie_title_end - 1] == ")" &&
+			name_is_year(tokens[movie_title_end - 2]) && tokens[movie_title_end - 3] == "(")
 		{
-			result.year = str::to_int(*(movie_title_end - 2));
+			result.year = name_to_int(tokens[movie_title_end - 2]);
 			movie_title_end -= 3;
 			found_year = true;
 		}
-
-		if ((end_title != tokens.end() || found_year) && movie_title_end != tokens.begin())
+		else if (end_title != n)
 		{
-			result.title = build_result_string(tokens, tokens.begin(), movie_title_end);
+			// Movie.2023.GERMAN.1080p: in a name with a release tag the year is the last one ahead of it, past any
+			// language or edition tags. A personal name with no release tag keeps its plain reading.
+			for (auto j = movie_title_end; j-- > 1;)
+			{
+				if (name_is_year(tokens[j]))
+				{
+					result.year = name_to_int(tokens[j]);
+					movie_title_end = j;
+					found_year = true;
+					break;
+				}
+			}
+		}
+
+		if ((end_title != n || found_year) && movie_title_end != 0)
+		{
+			result.title = name_build(tokens, 0, movie_title_end);
 		}
 	}
 
@@ -2895,6 +3449,345 @@ media_name_props scan_info_from_title(const std::string_view name8)
 	scan_trim(result.show);
 
 	return result;
+}
+
+// What a folder says of the show inside it: "Breaking Bad (2008)", a season pack such as "Show.Name.S01.1080p",
+// or a season folder - "Season 2", "Specials" - that leaves the show to the folder above.
+struct folder_show_reading
+{
+	std::string show;
+	int season = 0;
+	int year = 0;
+	bool is_season_folder = false;
+};
+
+static folder_show_reading read_show_folder(const std::string_view folder8)
+{
+	static const name_word_set season_words{"season", "series", "staffel", "saison", "temporada", "stagione", "seizoen"};
+	static const name_word_set special_words{"specials", "special", "extras"};
+
+	folder_show_reading result;
+	const auto folder = std::string_view(std::bit_cast<const char*>(folder8.data()), folder8.size());
+
+	// A drive or share root names no show: C:\, \\server\video.
+	if (folder.find_first_of("\\/:") != std::string_view::npos) return result;
+
+	std::vector<std::string_view> words;
+	size_t start = 0;
+
+	for (size_t i = 0; i <= folder.size(); ++i)
+	{
+		if (i == folder.size() || name_is_space(folder[i]) || folder[i] == '.' || folder[i] == '_')
+		{
+			if (i > start) words.emplace_back(folder.substr(start, i - start));
+			start = i + 1;
+		}
+	}
+
+	if (words.size() == 1 && special_words.contains(words[0]))
+	{
+		result.is_season_folder = true;
+		return result;
+	}
+
+	auto show_end = words.size();
+
+	for (size_t i = 0; i < words.size(); ++i)
+	{
+		const auto w = words[i];
+
+		if (season_words.contains(w) && i + 1 < words.size() && name_all_digits(words[i + 1]) && words[i + 1].size() <= 4)
+		{
+			result.season = name_to_int(words[i + 1]);
+			result.is_season_folder = true;
+			show_end = i;
+			break;
+		}
+
+		if (w.size() >= 2 && w.size() <= 5 && name_lower(w[0]) == 's' && name_all_digits(w.substr(1)))
+		{
+			result.season = name_to_int(w.substr(1));
+			result.is_season_folder = true;
+			show_end = i;
+			break;
+		}
+	}
+
+	std::string show_text;
+
+	for (size_t i = 0; i < show_end; ++i)
+	{
+		if (!show_text.empty()) show_text += ' ';
+		show_text += words[i];
+	}
+
+	if (!show_text.empty())
+	{
+		auto parsed = scan_info_from_title(show_text);
+
+		if (!parsed.title.empty() && !parsed.has_episode)
+		{
+			result.show = std::move(parsed.title);
+			result.year = parsed.year;
+		}
+		else
+		{
+			result.show = std::move(show_text);
+		}
+
+		scan_trim(result.show);
+	}
+
+	return result;
+}
+
+media_name_props scan_info_from_path(const std::string_view name, const std::string_view folder,
+                                     const std::string_view parent_folder)
+{
+	auto result = scan_info_from_title(name);
+	if (result.aired_month != 0) return result;
+
+	const auto here = read_show_folder(folder);
+
+	if (!result.has_episode && here.is_season_folder)
+	{
+		// E05.Title or 1x05 in a season folder: a name that numbers only its episode. Out of one, E30 is as
+		// likely a car as an episode, so only a season folder makes it one.
+		const auto tokens = name_tokens(std::string_view(std::bit_cast<const char*>(name.data()), name.size()));
+		name_episode leading;
+
+		if (!tokens.empty() && (name_match_bare_episode(tokens[0], leading) || name_match_season_x(tokens[0], leading)))
+		{
+			auto title_end = size_t{1};
+			while (title_end < tokens.size() && !name_hard_tags().contains(tokens[title_end]) &&
+				!name_is_dimensions(tokens[title_end]))
+				++title_end;
+
+			result = {};
+			result.season = leading.season;
+			result.episode = leading.episode;
+			result.has_episode = true;
+			result.title = name_build(tokens, 1, title_end);
+			scan_trim(result.title);
+		}
+	}
+
+	if (!result.has_episode) return result;
+
+	// E05 in "Show/Season 2" names its episode but not its season; S01E05 names both.
+	const auto needs_show = result.show.empty();
+	const auto needs_season = result.season == 0 && result.episode_of == 0;
+	if (!needs_show && !needs_season) return result;
+
+	auto show = here.show;
+	auto year = here.year;
+
+	if (show.empty() && here.is_season_folder)
+	{
+		const auto above = read_show_folder(parent_folder);
+		show = above.show;
+		year = above.year;
+	}
+
+	if (needs_show && !show.empty())
+	{
+		result.show = std::move(show);
+		if (result.year == 0) result.year = year;
+	}
+
+	if (needs_season && here.season != 0)
+	{
+		result.season = here.season;
+	}
+
+	return result;
+}
+
+// A domain such as MkvCage.com or MVGroup.org, which a release group writes into a container's title.
+static bool text_has_domain(const std::string_view text)
+{
+	static const name_word_set domains{
+		"com", "net", "org", "info", "biz", "xyz", "to", "cc", "tv", "ws", "ru", "me", "io", "club", "online", "site", "top"
+	};
+
+	if (str::contains(text, "www.")) return true;
+
+	for (size_t i = 1; i < text.size(); ++i)
+	{
+		if (text[i] != '.' || !(name_is_letter(text[i - 1]) || name_is_digit(text[i - 1]))) continue;
+
+		auto end = i + 1;
+		while (end < text.size() && name_is_letter(text[end])) ++end;
+
+		const auto after_ok = end == text.size() || !(name_is_letter(text[end]) || name_is_digit(text[end]));
+		if (end > i + 1 && after_ok && domains.contains(text.substr(i + 1, end - i - 1))) return true;
+	}
+
+	return false;
+}
+
+// Text in a container's title or comment that is no title at all: a release name, a website, or the file's own
+// name. 58 of the 64 container titles in one collection of films were these, and each displaced a good name.
+static bool is_release_text(const std::string_view text8, const std::string_view file_name8, const bool is_title)
+{
+	if (text8.empty()) return false;
+
+	const auto text = std::string_view(std::bit_cast<const char*>(text8.data()), text8.size());
+	const auto file_name = std::string_view(std::bit_cast<const char*>(file_name8.data()), file_name8.size());
+
+	if (str::icmp(str::trim(text8), file_name8) == 0) return true;
+	if (text_has_domain(text)) return true;
+
+	const auto tokens = name_tokens(text);
+	const auto is_release_tag = [](const std::string_view t)
+	{
+		// uhd and 4k name nature films as often as they name a release.
+		return (name_strong_tags().contains(t) && str::icmp(t, "uhd") != 0 && str::icmp(t, "4k") != 0) ||
+			name_is_dimensions(t);
+	};
+
+	if (std::ranges::any_of(tokens, is_release_tag)) return true;
+	if (!is_title) return false;
+
+	name_episode e;
+	if (std::ranges::any_of(tokens, [&e](const std::string& t)
+	{
+		return name_match_sxxeyy(t, e) || name_match_season_x(t, e) || name_match_part_of(t, e);
+	}))
+		return true;
+
+	// Star.Wars.Rebels.4x05.The.Occupation: words joined by dots with no space is a scene name. S.W.A.T. is not.
+	if (text.find(' ') == std::string_view::npos)
+	{
+		auto words = 0;
+		auto long_words = 0;
+
+		for (const auto part : str::split(text, false, [](const char c) { return c == '.'; }))
+		{
+			++words;
+			if (part.size() > 1) ++long_words;
+		}
+
+		if (words >= 3 && long_words >= 2) return true;
+	}
+
+	// "Equilibrium - YIFY": a title signed by the group the file name ends with.
+	if (const auto dash = text.rfind(" - "); dash != std::string_view::npos)
+	{
+		const auto group = str::trim(text8.substr(dash + 3));
+
+		if (group.size() > 1 && group.find(' ') == std::string_view::npos)
+		{
+			const auto name_tokens_list = name_tokens(file_name);
+			const auto first_tag = std::ranges::find_if(name_tokens_list, [](const std::string& t)
+			{
+				return name_hard_tags().contains(t) || name_strong_tags().contains(t) || name_is_dimensions(t);
+			});
+
+			if (std::any_of(first_tag, name_tokens_list.end(), [group](const std::string& t)
+			{
+				return str::icmp(t, group) == 0;
+			}))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+void derive_name_values(prop::item_metadata& md, const std::string_view name, const std::string_view folder,
+                        const std::string_view parent_folder, const prop::library_kind library)
+{
+	// What an earlier derivation filled goes first, so every load answers from the current reading of names.
+	if (md.from_name & prop::from_name::show) md.show = {};
+	if (md.from_name & prop::from_name::title) md.title = {};
+	if (md.from_name & prop::from_name::year) md.year = 0;
+	if (md.from_name & prop::from_name::season) md.season = 0;
+	if (md.from_name & prop::from_name::episode) md.episode = {0, 0};
+	if (md.dates.has_source(prop::date_source::file_name)) md.dates = md.dates.without(prop::date_source::file_name);
+	md.from_name = 0;
+	md.kind = prop::media_kind::none;
+	md.is_special = false;
+
+	const auto props = scan_info_from_path(name, folder, parent_folder);
+
+	// A title that repeats the file's name gives way to what the name says. A plain name says no title of its own,
+	// so the title repeating it - Birthday party.mp4's "Birthday party" - is the only one there is, and stays.
+	const auto title_is_name = !is_empty(md.title) && str::icmp(str::trim(md.title.sv()), name) == 0;
+	const auto name_says_more = !props.title.empty() || props.has_episode || props.is_release;
+	if (title_is_name ? name_says_more : is_release_text(md.title.sv(), name, true)) md.title = {};
+	if (is_release_text(md.comment.sv(), name, false)) md.comment = {};
+
+	if (is_empty(md.show) && !props.show.empty())
+	{
+		md.show = str::cache(props.show);
+		md.from_name |= prop::from_name::show;
+	}
+
+	if (is_empty(md.title) && !props.title.empty())
+	{
+		md.title = str::cache(props.title);
+		md.from_name |= prop::from_name::title;
+	}
+
+	if (md.year == 0 && props.year != 0)
+	{
+		md.year = static_cast<uint16_t>(props.year);
+		md.from_name |= prop::from_name::year;
+	}
+
+	if (md.season == 0 && props.season != 0)
+	{
+		md.season = static_cast<uint16_t>(props.season);
+		md.from_name |= prop::from_name::season;
+	}
+
+	if (props.has_episode && prop::is_null(md.episode))
+	{
+		if (props.episode != 0)
+		{
+			md.episode = prop::number_pair(props.episode, props.episode_of);
+			md.from_name |= prop::from_name::episode;
+		}
+		else if (props.aired_month == 0)
+		{
+			md.is_special = true;
+		}
+	}
+
+	if (library == prop::library_kind::personal || library == prop::library_kind::music) return;
+
+	const auto is_episode = props.has_episode || (!is_empty(md.show) && !prop::is_null(md.episode));
+	// A media manager's .nfo dates what it describes, so that date marks a film it described, whatever the name.
+	const auto is_film = !is_episode && (library == prop::library_kind::films_tv || (props.is_release && md.year != 0) ||
+		md.dates.has_source(prop::date_source::media_manager));
+
+	if (is_episode)
+	{
+		md.kind = prop::media_kind::episode;
+
+		if (props.aired_month != 0)
+		{
+			const df::date_t aired(props.year, props.aired_month, props.aired_day, 0, 0, 0);
+			const auto best = md.dates.best();
+
+			if (aired.is_valid() && (!best.is_valid() || best.to_days() != aired.to_days()))
+				md.dates.add(prop::date_source::file_name, aired);
+		}
+	}
+	else if (is_film)
+	{
+		md.kind = prop::media_kind::film;
+
+		// A download files under the year it was released, not the day it was copied; a file whose own dates
+		// already name that year keeps them.
+		if (md.year > 1800 && md.year < 2100)
+		{
+			const auto best = md.dates.best();
+			if (!best.is_valid() || best.year() != md.year)
+				md.dates.add(prop::date_source::file_name, df::date_t(md.year, 1, 1, 0, 0, 0));
+		}
+	}
 }
 
 
@@ -3731,9 +4624,10 @@ void index_state::queue_update_predictions()
 		update_predictions();
 		if (generation != _predictions_generation.load()) return;
 
-		// Predictions only feed the sidebar; asking for refresh_items here closed a cycle that never
-		// reached a steady state. Counts only: nothing about which rows exist has changed, so rebuilding
-		// them would discard every sidebar text layout to publish a number.
+		// Predictions feed the sidebar, and listed items through the presence update_predictions asks
+		// for; asking for refresh_items here closed a cycle that never reached a steady state. Counts
+		// only: nothing about which rows exist has changed, so rebuilding them would discard every
+		// sidebar text layout to publish a number.
 		_async.invalidate_view(view_invalid::sidebar_counts);
 	});
 }
@@ -3772,18 +4666,25 @@ void index_state::queue_validate_changed_folders(df::unique_folders paths)
 	{
 		const auto now = platform::now();
 		auto changed = false;
+		auto member_changed = false;
 
 		for (const auto& path : paths)
 		{
 			// A large set is still a bounded walk, but nothing here is worth holding a worker open
 			// for while the application is closing.
 			if (df::is_closing) return;
-			changed |= validate_folder(path, true, now).was_updated;
+			const auto node = validate_folder(path, true, now);
+			changed |= node.was_updated;
+			member_changed |= node.was_updated && node.folder && node.folder->is_in_collection;
 		}
 
 		if (changed)
 		{
-			_async.invalidate_view(view_invalid::refresh_items);
+			// As scan_folder asks: a member folder that lost or gained files moves duplicate sets and
+			// the summary, and nothing else recomputes them for a deletion.
+			_async.invalidate_view(member_changed
+				                       ? view_invalid::refresh_items | view_invalid::index_summary
+				                       : view_invalid::refresh_items);
 		}
 	});
 }
@@ -3819,9 +4720,21 @@ void index_state::queue_deferred_validation(const df::folder_path folder_path, c
 		if (df::is_closing) return;
 
 		const auto now = platform::now();
-		const auto changed = rescan
-			                     ? scan_folder(folder_path, is_in_collection(folder_path), now)
-			                     : validate_folder(folder_path, true, now).was_updated;
+		auto changed = false;
+
+		if (rescan)
+		{
+			changed = scan_folder(folder_path, is_in_collection(folder_path), now);
+		}
+		else
+		{
+			const auto node = validate_folder(folder_path, true, now);
+			changed = node.was_updated;
+			if (changed && node.folder && node.folder->is_in_collection)
+			{
+				_async.invalidate_view(view_invalid::index_summary);
+			}
+		}
 
 		if (changed)
 		{
@@ -3875,8 +4788,23 @@ void index_state::merge_folder(const df::folder_path folder_path, const db_items
 
 	std::vector<cached_db_item> prepared_items;
 	prepared_items.reserve(items.size());
+
+	// Values read from names are not stored, so each video's are read again as its row loads: a better
+	// reading of names reaches every item without a rescan.
+	const auto library = library_kind_of(folder_path);
+	const auto folder_name = folder_path.name();
+	const auto parent_name = folder_path.parent().name();
+
 	for (const auto& item : items)
 	{
+		if (item.metadata && files::file_type_from_name(item.path)->has_trait(file_traits::video_metadata))
+		{
+			const auto name = item.path.sv();
+			const auto ext_pos = df::find_ext(name);
+			derive_name_values(*item.metadata, ext_pos == std::string_view::npos ? name : name.substr(0, ext_pos),
+			                   folder_name, parent_name, library);
+		}
+
 		prepared_items.emplace_back(item.path, item.metadata, item.metadata_scanned, item.crc32c,
 		                            picture_hashes_from_db(item.phash));
 	}

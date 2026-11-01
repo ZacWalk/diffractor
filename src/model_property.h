@@ -365,9 +365,70 @@ namespace prop
 		return xy.is_empty();
 	}
 
+	// A number with an optional total - track 3, or 3 of 12. Only a missing number is null: a track or episode
+	// with no total is still that track or episode.
 	constexpr bool is_null(const df::xy8 xy)
 	{
-		return xy.x == 0 || xy.y == 0;
+		return xy.x == 0;
+	}
+
+	// The number and total that df::xy8 holds in 16 bits each; its constructor takes bytes.
+	constexpr df::xy8 number_pair(const int n, const int of)
+	{
+		df::xy8 result{0, 0};
+		result.x = static_cast<int16_t>(std::clamp(n, 0, static_cast<int>(INT16_MAX)));
+		result.y = static_cast<int16_t>(std::clamp(of, 0, static_cast<int>(INT16_MAX)));
+		return result;
+	}
+
+	// What an item is to a library of films and television. Derived on load from its name, its tags and its
+	// collection folder's library type, and never stored.
+	enum class media_kind : uint8_t
+	{
+		none,
+		film,
+		episode,
+	};
+
+	// How far through a recording a saved playback position stands, from 0 to 1; 0 when none is saved.
+	inline double playback_progress(const double position, const int duration)
+	{
+		if (position <= 0.0 || duration <= 0) return 0.0;
+		return std::clamp(position / duration, 0.0, 1.0);
+	}
+
+	// Started and not finished: past its first minute - or its first twentieth, for a short recording - and short
+	// of its last twentieth, where the credits leave a finished film's position.
+	inline bool is_in_progress(const double position, const int duration)
+	{
+		if (position <= 0.0 || duration <= 0) return false;
+		const auto length = static_cast<double>(duration);
+		return position >= std::min(60.0, length * 0.05) && position <= length * 0.95;
+	}
+
+	// What a collection folder holds, as its owner sets it in Options. Stored in settings by name.
+	enum class library_kind : uint8_t
+	{
+		// Names decide: a release name - one with a resolution, codec or source tag - is a film or an episode.
+		automatic,
+		// The user's own recordings: nothing in it is a film or an episode, whatever its name.
+		personal,
+		// Films and television: every video is an episode when its name numbers one, and otherwise a film.
+		films_tv,
+		// Music: its videos are music videos, never films.
+		music,
+	};
+
+	// Which of an item's values were read from its name or folders rather than from the file. They are derived
+	// afresh whenever the item loads or is scanned, so a better reading of names reaches every item without a
+	// rescan, and they are never written to the index.
+	namespace from_name
+	{
+		constexpr uint8_t show = 1 << 0;
+		constexpr uint8_t title = 1 << 1;
+		constexpr uint8_t year = 1 << 2;
+		constexpr uint8_t season = 1 << 3;
+		constexpr uint8_t episode = 1 << 4;
 	}
 
 #pragma pack(push, 1)
@@ -443,12 +504,18 @@ namespace prop
 		uint16_t audio_sample_type = 0;
 		uint16_t width = 0;
 		uint16_t year = 0;
-		uint8_t season = 0;
+		uint16_t season = 0;
 		panorama_projection panorama = panorama_projection::none;
 		ui::orientation orientation = ui::orientation::top_left;
 		df::xy8 disk = {0, 0};
 		df::xy8 episode = {0, 0};
 		df::xy8 track = {0, 0};
+
+		// prop::from_name bits: the values read from the name, which are never stored.
+		uint8_t from_name = 0;
+		media_kind kind = media_kind::none;
+		// An episode named S03E00: a special, which an episode number of 0 cannot say on its own.
+		bool is_special = false;
 
 		double media_position = 0.0;
 
@@ -491,6 +558,11 @@ namespace prop
 		bool has_gps() const
 		{
 			return coordinate.is_valid();
+		}
+
+		bool is_in_progress() const
+		{
+			return prop::is_in_progress(media_position, duration);
 		}
 
 		std::string format(std::string_view name) const;
@@ -557,6 +629,14 @@ namespace prop
 
 	std::string replace_tokens(std::string_view name_template, const item_metadata_const_ptr& md,
 	                           std::string_view name, df::date_t created);
+
+	// An episode's place in its show as a library names it - S01E02, S03E00 for a special, E426 numbered without
+	// a season, 2 / 6 for a part, or the day it aired - interned, as it is drawn for every visible item. Empty
+	// for anything that is no episode.
+	str::cached episode_label(const item_metadata& md);
+	// What a library titles an item: "S01E02 · Pilot" for an episode, "Dont Look Up (2021)" for a film, and the
+	// title alone for anything else.
+	str::cached library_caption(const item_metadata& md);
 
 	inline double aperture_to_fstop(const double d)
 	{

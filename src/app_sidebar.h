@@ -770,7 +770,7 @@ public:
 		hover.elements->add(std::make_shared<text_element>(tt.indexing_message, ui::style::font_face::dialog,
 		                                                   ui::style::text_style::multiline,
 		                                                   flex_item::line_break));
-		hover.elements->add(std::make_shared<action_element>(tt.command_collection_options));
+		hover.elements->add(std::make_shared<action_element>(tt.options_title));
 
 		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 		hover.horizontal = true;
@@ -780,7 +780,7 @@ public:
 	{
 		if (event.type == view_element_event_type::invoke)
 		{
-			event.host->invoke(commands::options_collection);
+			event.host->invoke(commands::options);
 		}
 	}
 
@@ -999,7 +999,7 @@ public:
 
 			hover.elements->add(table);
 			hover.elements->add(std::make_shared<divider_element>());
-			hover.elements->add(std::make_shared<action_element>(tt.command_collection_options));
+			hover.elements->add(std::make_shared<action_element>(tt.options_title));
 
 			hover.preferred_size = view_hover_element::default_preferred_size + 64;
 		}
@@ -1087,7 +1087,7 @@ public:
 		{
 			if (_center_hover)
 			{
-				_state.invoke(commands::options_collection);
+				_state.invoke(commands::options);
 			}
 			else
 			{
@@ -1140,7 +1140,7 @@ public:
 		}
 
 		// The well floor is opaque so the total reads against a surface of its own, and so the
-		// centre has pixels the pointer can claim for collection options.
+		// centre has pixels the pointer can claim for Options, which opens on the collection.
 		auto hole_color = ui::darken(ui::style::color::sidebar_background, 0.35f);
 
 		if (_center_hover)

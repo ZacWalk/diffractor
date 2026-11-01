@@ -11,7 +11,7 @@ The selected set determines one form:
 | Form | Condition | Purpose |
 | --- | --- | --- |
 | Singular media | One selected media file | Identify, view, grade, edit, and inspect the item |
-| Singular file | One selected non-media file | Identify the file and offer applicable file actions |
+| Singular file | One selected non-media file | Identify the file, show its contents read only, and offer applicable file actions |
 | Comparison | Two comparable files | Align per-item actions and facts for comparison |
 | Selection summary | Every other non-empty selection | Summarize the complete selected set and its batch actions |
 
@@ -57,6 +57,25 @@ A non-media file shows name, containing folder, size, created and modified dates
 Pin, Open, and Tools where applicable. It does not claim media navigation, playback, rotation,
 rating, tags, or editable media metadata.
 
+Below them the panel shows the file's first MiB, read only, with a note when the file is longer:
+
+- Bytes that read as text are shown as text: UTF-8 or UTF-16 with a byte order mark, UTF-8 without
+  one where the bytes are valid as such, and Windows-1252 otherwise. A NUL without a byte order mark,
+  or control characters past one byte in a hundred, leave the file a hex dump. Lines wrap at word
+  boundaries to the pane's width in the code font; tabs reach stops of four, and a control character
+  shows as a dot.
+- C and C++, Rust, Python, PowerShell and Markdown are coloured by their extension, with
+  libdesktop's highlighters. Plain text is not coloured.
+- Anything else is the hex dump: offset, hex and ASCII columns, as many bytes a row, in fours up to
+  32, as fit. A Commodore program's dump follows its listing, and a raw metadata block's detail is a
+  dump of the block.
+
+A drag selects text, a double click selects a word, and Shift extends the selection; while the
+document has the keyboard, Escape clears it. Copy takes the text as written, with Windows line
+breaks, or a dump's rows as drawn; [design](design.md#selection-and-viewing) owns when Copy, Cut and
+Select all target the document rather than the items. Nothing is written to the file, and nothing
+about it is indexed.
+
 ## Comparison
 
 Each item receives its own label/reject, rating, Pin, Delete, and Unselect controls. Shared commands
@@ -101,3 +120,7 @@ form or command target.
 - [model_property.cpp](../src/model_property.cpp): descriptive-field ordering and de-duplication.
 - [ui_elements.h](../src/ui_elements.h) and [ui_flex.cpp](../src/ui_flex.cpp): panel elements and
   responsive layout.
+- [model_document.h](../src/model_document.h): a file's head decoded as text or kept as a dump, its
+  rows, selection and copy; [ui_document.h](../src/ui_document.h): drawing it and selecting with the
+  mouse; `display_state_t::load_selected_item_data` in [model.cpp](../src/model.cpp) reads and
+  decodes it off the UI thread.

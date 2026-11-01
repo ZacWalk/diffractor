@@ -1326,6 +1326,25 @@ static void should_step_search_distance()
 	assert_equal("loc:London, 500m", added.format_terms(), "a radius can be added to a bare place");
 }
 
+// A coordinate is signed numbers from the start, as ISO 6709 writes one. A place with two hyphens in its
+// name was read as two numbers - a coordinate of 0, 0 - and found nothing but photos at that point.
+static void should_read_only_signed_numbers_as_a_coordinate()
+{
+	const auto iso = split_location("+47.6062-122.3321+056.000/");
+	assert_equal(true, iso.success, "ISO 6709 with an altitude");
+	assert_equal(true, std::abs(iso.x - 47.6062) < 1e-9 && std::abs(iso.y + 122.3321) < 1e-9, "its position");
+	assert_equal(true, split_location("+37.3317-122.0306/").success, "ISO 6709 without one");
+	assert_equal(true, split_location("-30.515+151.66+5").success, "a coordinate typed into a search");
+	assert_equal(false, split_location("Stratford-upon-Avon").success, "a place with two hyphens");
+	assert_equal(false, split_location("Aix-en-Provence, France").success, "named with its country");
+	assert_equal(false, split_location("-upon-Avon").success, "words after a sign");
+
+	assert_equal(true, df::search_t::parse("loc:Stratford-upon-Avon").single_place_term() != nullptr,
+	             "searched as a place");
+	assert_equal(true, df::search_t::parse("near:Aix-en-Provence").single_place_term() != nullptr,
+	             "near: too");
+}
+
 // locations.md 3.5: every location scope spelling is one entry in df::location_scopes, and completing,
 // parsing and writing a query all read it - so a spelling added there works everywhere at its level.
 static void should_read_every_location_scope_from_one_table()
@@ -2485,6 +2504,7 @@ void register_location_tests(view_state& state, test_registry& tests)
 	          should_reproduce_a_location_group_from_its_header);
 	tests.add("Should defer height classes"s, should_defer_height_classes);
 	tests.add("Should step search distance"s, should_step_search_distance);
+	tests.add("Should read only signed numbers as a coordinate"s, should_read_only_signed_numbers_as_a_coordinate);
 	tests.add("Should resolve location vocabulary"s, should_resolve_location_vocabulary);
 	tests.add("Should read every location scope from one table"s, should_read_every_location_scope_from_one_table);
 	tests.add("Should complete locations as search terms"s, should_complete_locations_as_search_terms);

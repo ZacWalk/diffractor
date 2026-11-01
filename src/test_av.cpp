@@ -7,12 +7,14 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Tests for the audio and video layer (av*) -- stream naming, audio buffering, resampling and
-// visualization, container probing, seeking, playback timing and the hover preview decoder.
+// visualization, container probing, seeking, playback timing, the hover preview decoder, and subtitles:
+// their styling, placement, timing and choice, and decoding them from sidecars and streams.
 
 #include "pch.h"
 #include "test.h"
 #include "av_format.h"
 #include "av_player.h"
+#include "av_sid.h"
 #include "av_sound.h"
 #include "av_visualizer.h"
 #include "files.h"
@@ -1185,6 +1187,122 @@ static void should_end_a_silent_clip_at_the_stream_end()
 	ses->close(false);
 }
 
+// Drives a video-only session's demux and decode until its frame queue holds frames, as the player threads
+// would before the first present.
+static void prime_video_only_session(const std::shared_ptr<av_session>& ses, const int passes)
+{
+	const platform::thread_event video_event(false, false);
+	const platform::thread_event audio_event(false, false);
+	const platform::thread_event read_event(false, false);
+
+	for (auto i = 0; i < passes; ++i)
+	{
+		ses->process_io(video_event, audio_event);
+		ses->process_video(read_event);
+	}
+}
+
+static bool is_signalled(platform::thread_event& e)
+{
+	return platform::wait_for({e}, 1, false) == 0;
+}
+
+// The presenter is the only thing that frees a place in the frame queue, so taking a frame wakes the decode
+// thread. Without it a stream with no audio - whose interleaved packets would otherwise wake it - waited out
+// the decode thread's poll with its queue running dry: three 4K frames last 50 ms at 60 fps, as long as the
+// poll itself.
+static void should_wake_the_decoder_when_the_presenter_takes_a_frame()
+{
+	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto wake = std::make_shared<platform::thread_event>(false, false);
+	const auto ses = make_test_session_with_decode_wake(wake);
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, true, true),
+	             "the video opens without its audio");
+	const df::scope_exit close([ses] { ses->close(false); });
+
+	prime_video_only_session(ses, 8);
+	assert_equal(false, is_signalled(*wake), "decoding alone does not wake the decoder");
+
+	auto now = df::now();
+	auto presented = false;
+
+	for (auto i = 0; i < 50 && !presented; ++i)
+	{
+		now += 0.02;
+		presented = ses->update_for_present(now);
+	}
+
+	assert_equal(true, presented, "a frame is presented");
+	assert_equal(true, is_signalled(*wake), "and taking it wakes the decoder");
+}
+
+// One pass decodes every packet already queued while the frame queue wants frames. Stopping after each
+// packet left decoding waiting on the reader with a backlog queued, so a stalled read - a network share, a
+// cloud file - throttled the picture to one packet per wake.
+static void should_decode_queued_packets_without_waiting_on_the_reader()
+{
+	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto ses = make_test_session();
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, true, true),
+	             "the video opens without its audio");
+	const df::scope_exit close([ses] { ses->close(false); });
+
+	prime_video_only_session(ses, 1);
+
+	// Nothing decodes from here: every frame presented below came from that single pass.
+	const auto interval = ses->video_frame_interval();
+	auto now = df::now();
+	auto presented = 0;
+
+	for (auto i = 0; i < 40; ++i)
+	{
+		now += interval;
+		if (ses->update_for_present(now)) ++presented;
+	}
+
+	assert_equal(true, presented >= 3,
+	             std::format("one pass decodes the queued packets, not one of them (presented {})", presented));
+}
+
+// The clock can pass more than one frame between presents - content faster than the tick, or a tick that
+// came late - and the presenter takes every frame it has reached and shows the nearest. Taking one a tick
+// left the picture behind its clock for good.
+static void should_present_the_nearest_frame_when_the_clock_passes_several()
+{
+	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto ses = make_test_session();
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, true, true),
+	             "the video opens without its audio");
+	const df::scope_exit close([ses] { ses->close(false); });
+
+	prime_video_only_session(ses, 8);
+
+	const auto interval = ses->video_frame_interval();
+	auto now = df::now();
+	auto presented = false;
+
+	for (auto i = 0; i < 50 && !presented; ++i)
+	{
+		now += 0.001;
+		presented = ses->update_for_present(now);
+	}
+
+	assert_equal(true, presented, "the first frame is presented");
+
+	// Step once more so the clock is anchored to a presented frame, then let it pass four frames at once.
+	now += interval;
+	ses->update_for_present(now);
+	const auto before = ses->time();
+
+	now += interval * 4.0;
+	ses->update_for_present(now);
+	const auto advanced = ses->time() - before;
+
+	assert_equal(true, advanced > interval * 3.0,
+	             std::format("the picture keeps up with its clock (advanced {:.3f}s for {:.3f}s)", advanced,
+	                         interval * 4.0));
+}
+
 // Movie's preview wants frames from a session and supplies its own sound, so the session opens
 // without its audio stream. That is not a saving: process_io stops reading when *either* packet
 // queue fills, so a session whose audio nothing drains stalls its own video and delivers nothing.
@@ -1600,6 +1718,69 @@ static void should_refresh_paused_media_time_after_seeking()
 	}
 }
 
+// A playing video hides its controls, which then draw at alpha 0. Repainting the whole view whenever the
+// elapsed time or the bar moved changed no pixels, and cost a scene build and a present each time.
+static void should_repaint_the_scrubber_only_while_the_controls_show()
+{
+	struct recording_async_strategy final : null_async_strategy
+	{
+		view_invalid invalids = view_invalid::none;
+
+		void invalidate_view(const view_invalid invalid) override
+		{
+			invalids |= invalid;
+		}
+	};
+
+	recording_async_strategy as;
+	common_display_state_t common;
+	const auto display = std::make_shared<display_state_t>(as, common);
+
+	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto session = make_test_session();
+	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1,
+	                                false, false, false), "paused session opened");
+	const df::scope_exit close([session] { session->close(false); });
+	session->mark_audio_output_unavailable();
+	display->update_av_session(session);
+	display->_scrubber_width = 1000;
+
+	const auto texture = std::make_shared<playback_time_test_texture>();
+	const platform::thread_event video_event(false, false);
+	const platform::thread_event audio_event(false, false);
+	const platform::thread_event read_event(false, false);
+	auto now = df::now();
+
+	const auto present_at = [&](const double target)
+	{
+		session->seek(target, false);
+
+		for (auto i = 0; i < 300 && std::abs(session->last_frame_time() - target) > 0.2; ++i)
+		{
+			session->process_io(video_event, audio_event);
+			session->process_video(read_event);
+			now += 0.02;
+			session->update_for_present(now);
+			session->update_texture(texture);
+		}
+
+		assert_equal(true, std::abs(session->last_frame_time() - target) <= 0.2, "the sought frame is presented");
+	};
+
+	present_at(3.0);
+	as.invalids = view_invalid::none;
+	display->update_scrubber(false);
+	assert_equal(str::format_seconds(df::round(session->last_frame_time())), display->_time,
+	             "hidden controls still follow the presented frame");
+	assert_equal(false, as.invalids && view_invalid::view_redraw, "but do not repaint the view");
+
+	present_at(1.0);
+	display->update_scrubber(true);
+	assert_equal(str::format_seconds(df::round(session->last_frame_time())), display->_time,
+	             "shown controls follow the presented frame");
+	assert_equal(true, as.invalids && view_invalid::view_redraw, "and repaint the view when they move");
+}
+
 // MEDIA-004 - duplicate suppression is only for an outstanding request. Once playback has moved
 // away from a settled target, asking for that target again is a real seek.
 static void should_seek_to_the_same_position_after_playback_has_advanced()
@@ -1755,6 +1936,45 @@ static av_frame_ptr first_presented_picture(const df::file_path path)
 	}
 
 	return result;
+}
+
+// The decode thread writes each prepared picture over one the queue, the presenter and the renderer have let
+// go, rather than allocating a frame's worth of fresh pages for every frame. One still held is never written
+// over.
+static void should_reuse_a_prepared_picture_once_it_is_let_go()
+{
+	auto* frame = av_frame_alloc();
+	const df::scope_exit free_frame([&frame] { av_frame_free(&frame); });
+	assert_equal(true, frame != nullptr, "a frame");
+	if (!frame) return;
+
+	frame->format = AV_PIX_FMT_YUV420P;
+	frame->width = 64;
+	frame->height = 48;
+	assert_equal(true, av_frame_get_buffer(frame, 0) == 0, "with planes");
+
+	for (auto plane = 0; plane < 3; ++plane)
+	{
+		const auto rows = plane == 0 ? frame->height : frame->height / 2;
+		memset(frame->data[plane], 128, static_cast<size_t>(frame->linesize[plane]) * rows);
+	}
+
+	av_scaler scaler;
+	auto first = scaler.presentable_surface(*frame, 1.0, ui::orientation::top_left);
+	assert_equal(true, first != nullptr, "a picture is prepared");
+	if (!first) return;
+
+	const auto* const first_surface = first.get();
+	const auto* const first_pixels = first->pixels();
+
+	const auto held = scaler.presentable_surface(*frame, 2.0, ui::orientation::top_left);
+	assert_equal(true, held && held.get() != first_surface, "one still held is not written over");
+
+	first.reset();
+	const auto again = scaler.presentable_surface(*frame, 3.0, ui::orientation::top_left);
+	assert_equal(true, again.get() == first_surface, "one let go is");
+	assert_equal(true, again && again->pixels() == first_pixels, "in the block it had");
+	assert_equal(3.0, again ? again->time() : 0.0, "as the new picture");
 }
 
 // A decoded picture is converted on the decode thread, so presenting it is an upload. The planes have
@@ -2087,6 +2307,32 @@ static void should_not_read_streams_nothing_decodes()
 	}
 
 	assert_equal(true, picture_after_walk, "and leaves the picture readable once it is done");
+}
+
+// A drag posts a seek for every step it lands on, and the read thread makes only the latest of those still
+// waiting. Each costs a demuxer seek and a decoder flush, so on slow media working through the stale ones in
+// turn left the picture trailing the pointer.
+static void should_make_only_the_latest_of_the_waiting_seeks()
+{
+	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto player = make_test_player();
+	const auto ses = make_test_session();
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false, false, false),
+	             "the video opens");
+	const df::scope_exit close([ses] { ses->close(false); });
+
+	const auto before = ses->seek_generation();
+	player->seek(ses, 1.0, false);
+	player->seek(ses, 2.0, false);
+	player->seek(ses, 3.0, false);
+	assert_equal(true, player->run_queued_commands(), "the read thread's queue runs");
+
+	assert_equal(before + 1, ses->seek_generation(), "one seek is made");
+	assert_equal(3.0, ses->pos(df::now()), "to where the pointer stopped");
+
+	player->seek(ses, 1.0, false);
+	assert_equal(true, player->run_queued_commands(), "and a seek on its own");
+	assert_equal(before + 2, ses->seek_generation(), "is made as before");
 }
 
 // MEDIA-004 - a scrub drag can report the same whole-second target repeatedly after the previous
@@ -3051,6 +3297,883 @@ static void should_keep_resampled_audio_continuous()
 	}
 }
 
+//
+// SID tunes
+//
+
+static df::file_path write_test_sid_tune(const std::vector<uint8_t>& tune)
+{
+	const auto path = _temps.next_path(".sid");
+	assert_equal(true, df::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
+	return path;
+}
+
+static std::vector<uint8_t> read_whole_stream(const platform::file_ptr& stream, uint64_t& largest_read)
+{
+	std::vector<uint8_t> bytes;
+	std::vector<uint8_t> chunk(256 * 1024);
+	largest_read = 0;
+
+	for (;;)
+	{
+		const auto n = stream->read(chunk.data(), chunk.size());
+		if (n == 0) break;
+		largest_read = std::max(largest_read, n);
+		bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + static_cast<ptrdiff_t>(n));
+	}
+
+	return bytes;
+}
+
+static int16_t wav_sample(const std::vector<uint8_t>& wav, const size_t i)
+{
+	return static_cast<int16_t>(wav[44 + i * 2] | (wav[45 + i * 2] << 8));
+}
+
+static int peak_of(const std::vector<uint8_t>& wav, const size_t first, const size_t last)
+{
+	int peak = 0;
+	for (auto i = first; i < last; ++i) peak = std::max(peak, std::abs(static_cast<int>(wav_sample(wav, i))));
+	return peak;
+}
+
+static void should_play_a_sid_tune_through_its_wav_stream()
+{
+	const auto path = write_test_sid_tune(make_test_sid_tune());
+	const auto render = std::make_shared<sid_tune_render>(path, 0, 2.0);
+	const auto stream = open_sid_stream(render);
+
+	assert_equal(true, is_sid_stream(stream), "the stream is a SID stream");
+	constexpr size_t samples = 2 * sid_sample_rate;
+	assert_equal(uint64_t{44 + samples * 2}, stream->size(), "the WAV holds the tune's span as 16-bit mono");
+
+	const auto details = render->details();
+	assert_equal("Diffractor Test Tune", details.title, "the tune's title");
+	assert_equal("Test Author", details.author, "its author");
+	assert_equal(2, details.song, "the tune the file starts on plays");
+	assert_equal(3, details.songs, "the file's tunes");
+
+	uint64_t largest_read = 0;
+	const auto wav = read_whole_stream(stream, largest_read);
+	assert_equal(stream->size(), static_cast<uint64_t>(wav.size()), "the stream reads to its declared size");
+	assert_equal(true, largest_read <= 8192, "a read hands the demuxer only a moment of audio");
+	assert_equal("RIFF", std::string_view(reinterpret_cast<const char*>(wav.data()), 4), "RIFF form");
+	assert_equal("WAVE", std::string_view(reinterpret_cast<const char*>(wav.data()) + 8, 4), "WAVE form");
+	assert_equal("data", std::string_view(reinterpret_cast<const char*>(wav.data()) + 36, 4), "data chunk");
+
+	const auto peak = peak_of(wav, sid_sample_rate / 2, sid_sample_rate);
+	assert_equal(true, peak > 1000, "the tune sounds");
+	assert_equal(true, peak_of(wav, samples - 100, samples) * 20 < peak, "the tune fades out at its end");
+
+	// Going back is a copy of what was rendered, byte for byte, and another render of the same tune
+	// renders the same sound.
+	stream->seek(1001, platform::file::whence::begin);
+	std::vector<uint8_t> again(4000);
+	assert_equal(uint64_t{4000}, stream->read(again.data(), again.size()), "a read after seeking back");
+	assert_equal(true, std::equal(again.begin(), again.end(), wav.begin() + 1001), "reads what was read before");
+
+	uint64_t ignored = 0;
+	const auto second = read_whole_stream(open_sid_stream(std::make_shared<sid_tune_render>(path, 0, 2.0)), ignored);
+	assert_equal(true, second == wav, "a tune renders the same every time");
+
+	sid_frame_state frame;
+	assert_equal(true, render->frame_at(1.0, frame), "a rendered frame has the chip's state");
+	assert_equal(0x0F, frame.regs[0x18] & 0x0F, "the volume the tune set");
+	assert_equal(0x21, static_cast<int>(frame.regs[0x04]), "voice 1 saws with its gate on");
+	assert_equal(true, frame.writes[0] >= 1, "the play routine writes the frequency every frame");
+	assert_equal(true, frame.envelope[0] > 0, "voice 1 is sounding");
+	assert_equal(false, render->frame_at(5.0, frame), "nothing past the end");
+
+	int16_t scope[512];
+	assert_equal(512, static_cast<int>(render->samples_before(1.0, scope, std::size(scope))),
+	             "the samples behind a playback position");
+	auto matching = 0_z;
+	for (auto i = 0_z; i < std::size(scope); ++i)
+	{
+		if (scope[i] == wav_sample(wav, sid_sample_rate - std::size(scope) + i)) ++matching;
+	}
+	assert_equal(true, matching == std::size(scope), "are the samples that play up to it");
+}
+
+static void should_silence_a_muted_sid_voice()
+{
+	const auto path = write_test_sid_tune(make_test_sid_tune());
+	const auto render_with = [&path](const sid_voice_mix& mix)
+	{
+		const auto render = std::make_shared<sid_tune_render>(path, 0, 1.0);
+		render->mix(mix);
+		uint64_t ignored = 0;
+		const auto wav = read_whole_stream(open_sid_stream(render), ignored);
+		return peak_of(wav, sid_sample_rate / 4, sid_sample_rate / 2);
+	};
+
+	const auto sounding = render_with({});
+
+	sid_voice_mix muted;
+	muted.muted[0] = true;
+	sid_voice_mix solo_other;
+	solo_other.solo = 1;
+	sid_voice_mix solo_own;
+	solo_own.solo = 0;
+	solo_own.muted[0] = true;
+
+	assert_equal(true, sounding > 1000, "the tune's one voice sounds");
+	assert_equal(true, render_with(muted) * 20 < sounding, "muting the voice silences it");
+	assert_equal(true, render_with(solo_other) * 20 < sounding, "a solo of another voice silences it");
+	assert_equal(true, render_with(solo_own) > sounding / 2, "a voice's own solo wins over its mute");
+	assert_equal(static_cast<int>(0b110), static_cast<int>(solo_own.silent_mask()), "a solo silences the rest");
+}
+
+static void should_decode_a_sid_stream_with_ffmpeg()
+{
+	const auto path = write_test_sid_tune(make_test_sid_tune());
+	const auto render = std::make_shared<sid_tune_render>(path, 0, 1.5);
+	const auto stream = open_sid_stream(render);
+
+	av_format_decoder decoder;
+	assert_equal(true, decoder.open(stream, path, media_intent::playback), "FFmpeg opens the tune's stream");
+	decoder.init_streams(-1, -1, false, false, false);
+	assert_equal(true, decoder.has_audio(), "as sound");
+	assert_equal(false, decoder.has_video(), "with no picture");
+	assert_equal(true, std::abs(decoder.end_time() - 1.5) < 0.05, "lasting the tune's span");
+
+	// The panel describes the tune rather than the WAV it is played as.
+	auto info = decoder.info();
+	assert_equal(true, info.bitrate > 0, "FFmpeg gives the WAV a bit rate");
+	render->describe(info);
+	assert_equal("MOS 6581"sv, info.audio_codec.sv(), "the codec is the chip");
+	assert_equal(0, static_cast<int>(info.bitrate), "a tune has no bit rate");
+	assert_equal(true, std::ranges::any_of(info.streams, [](const av_stream_info& st)
+	{
+		return st.type == av_stream_type::audio && st.codec == "MOS 6581";
+	}), "nor does its stream play PCM");
+
+	const auto has_value = [&info](const metadata_standard standard, const std::string_view value)
+	{
+		return std::ranges::any_of(info.metadata, [&](const metadata_block& block)
+		{
+			return block.standard == standard && std::ranges::any_of(block.values, [&](const metadata_kv& kv)
+			{
+				return kv.value == value;
+			});
+		});
+	};
+
+	assert_equal(true, has_value(metadata_standard::media, "Diffractor Test Tune"), "the tags are the tune's");
+	assert_equal(true, has_value(metadata_standard::structure, "PSID version 2"), "and so is the layout");
+}
+
+static void should_name_sid_notes_and_waveforms()
+{
+	// The test tune's A4: the register advances a 24-bit accumulator each cycle of the PAL clock.
+	assert_equal("A4", sid_note_name(0x1D45, 985248), "A above middle C");
+	assert_equal("C4", sid_note_name(0x1167, 985248), "middle C");
+	assert_equal("", sid_note_name(0, 985248), "a stopped oscillator plays no note");
+	assert_equal("TRI", sid_waveform_name(0x11), "triangle");
+	assert_equal("SAW+PULSE", sid_waveform_name(0x61), "combined waveforms");
+	assert_equal("NOISE", sid_waveform_name(0x80), "noise");
+	assert_equal("OFF", sid_waveform_name(0x08), "test bit alone");
+}
+
+//
+// Subtitles
+//
+
+static void should_read_ass_script_headers()
+{
+	const auto script = parse_ass_header(
+		"[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n[V4+ Styles]\n"
+		"Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
+		"Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, "
+		"MarginR, MarginV, Encoding\n"
+		"Style: Default,Verdana,60,&H0000FFFF,&H000000FF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,8,20,30,40,1\n"
+		"Style: Sign,Arial,40,&H80FFFFFF,&H000000FF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,2,0,5,10,10,10,1\n");
+
+	assert_equal(1920, script.play_res_x, "canvas width");
+	assert_equal(1080, script.play_res_y, "canvas height");
+	assert_equal(2_z, script.styles.size(), "both styles");
+
+	const auto& d = script.style("Default");
+	assert_equal("Verdana", d.font, "font");
+	assert_equal(true, df::equiv(60.0, d.size), "size");
+	assert_equal(0xFF00FFFFu, d.primary, "yellow, where ASS's alpha 00 is opaque");
+	assert_equal(0xFF101010u, d.outline_color, "outline colour");
+	assert_equal(true, d.bold, "-1 is true");
+	assert_equal(8, d.alignment, "top centre");
+	assert_equal(20, d.margin_l, "left margin");
+	assert_equal(30, d.margin_r, "right margin");
+	assert_equal(40, d.margin_v, "vertical margin");
+
+	const auto& sign = script.style("sign");
+	assert_equal(0x7FFFFFFFu, sign.primary, "half transparent");
+	assert_equal(true, sign.italic, "italic");
+	assert_equal(5, sign.alignment, "middle centre");
+	assert_equal("Verdana", script.style("Missing").font, "a missing style falls back to Default");
+
+	const auto legacy = parse_ass_header(
+		"[V4 Styles]\nFormat: Name, Fontname, Fontsize, Alignment\nStyle: Default,Arial,20,6\nStyle: Mid,Arial,20,10\n");
+	assert_equal(8, legacy.style("Default").alignment, "SSA's 6 is the top centre");
+	assert_equal(5, legacy.style("Mid").alignment, "SSA's 10 is the middle centre");
+	assert_equal(384, legacy.play_res_x, "the default canvas");
+}
+
+static void should_style_ass_dialogue()
+{
+	const subtitle_style style;
+	const auto text = parse_ass_dialogue("{\\b1}Bold{\\b0} plain\\N{\\i1}italic{\\i0}{\\c&H0000FF&}red", style);
+
+	assert_equal(4_z, text.runs.size(), "four runs");
+	assert_equal("Bold plain\nitalicred", text.plain_text(), "text and line break");
+	assert_equal(true, text.runs[0].bold, "bold");
+	assert_equal(false, text.runs[1].bold, "bold ends");
+	assert_equal(true, text.runs[2].italic, "italic");
+	assert_equal(0xFF0000FFu, text.runs[3].color, "red, as 0xAABBGGRR");
+	assert_equal(2, text.alignment, "the style's alignment");
+
+	const auto sign = parse_ass_dialogue("{\\an8\\pos(320,40)\\fad(200,200)}Sign{\\alpha&H80&} faded", style);
+	assert_equal(8, sign.alignment, "\\an");
+	assert_equal(true, sign.position.has_value() && df::equiv(sign.position->X, 320.0) &&
+	             df::equiv(sign.position->Y, 40.0), "\\pos");
+	assert_equal(0x7Fu, sign.runs.back().color >> 24, "\\alpha");
+	assert_equal("Sign faded", sign.plain_text(), "overrides it does not draw are dropped");
+
+	assert_equal("Text", parse_ass_dialogue("{\\p1}m 0 0 l 100 0 100 100{\\p0}Text", style).plain_text(),
+	             "drawing mode draws nothing");
+	assert_equal("Line", parse_ass_dialogue("Line\\N", style).plain_text(), "no empty line under the dialogue");
+	assert_equal("a\xC2\xA0" "b", parse_ass_dialogue("a\\hb", style).plain_text(), "a hard space");
+	assert_equal(9, parse_ass_dialogue("{\\a7}x", style).alignment, "SSA's \\a7 is the top right");
+
+	const auto fields = split_ass_event("3,0,Sign,,0010,0020,0030,,Hello, world");
+	assert_equal("Sign", fields.style, "style");
+	assert_equal(10, fields.margin_l, "left margin");
+	assert_equal(20, fields.margin_r, "right margin");
+	assert_equal(30, fields.margin_v, "vertical margin");
+	assert_equal("Hello, world", fields.text, "the text keeps its commas");
+}
+
+static void should_place_subtitles_on_the_picture()
+{
+	const sizei video{1920, 1080};
+	const sizei canvas{384, 288};
+	const sized block{400, 100};
+
+	const auto expect = [](const rectd r, const double x, const double y, const std::string_view what)
+	{
+		assert_equal(true, df::equiv(r.X, x, 0.01) && df::equiv(r.Y, y, 0.01),
+		             std::format("{} at {:.1f},{:.1f}", what, r.X, r.Y));
+	};
+
+	expect(place_subtitle(video, canvas, block, 2, 10, 10, 10, {}), 760, 942.5, "bottom centre, margins scaled");
+	expect(place_subtitle(video, canvas, block, 7, 10, 10, 10, {}), 50, 37.5, "top left");
+	expect(place_subtitle(video, canvas, block, 9, 10, 10, 10, {}), 1470, 37.5, "top right");
+	expect(place_subtitle(video, canvas, block, 5, 10, 10, 10, {}), 760, 490, "middle centre");
+	expect(place_subtitle(video, canvas, block, 5, 10, 10, 10, pointd(192, 144)), 760, 490,
+	       "a position names the block's centre for 5");
+	expect(place_subtitle(video, canvas, block, 2, 10, 10, 10, pointd(192, 288)), 760, 980,
+	       "and its bottom centre for 2");
+	expect(place_subtitle(video, canvas, {2000, 100}, 2, 10, 10, 10, {}), 0, 942.5,
+	       "a block wider than the picture keeps its left edge");
+	expect(place_subtitle(video, canvas, block, 2, 10, 10, 10, pointd(192, 400)), 760, 980,
+	       "and one placed below it is kept on it");
+}
+
+static void should_lay_subtitles_out_on_the_picture()
+{
+	const auto surface = std::make_shared<ui::surface>();
+	surface->alloc(4, 4, ui::texture_format::ARGB, ui::orientation::top_left);
+
+	const auto line = [&surface](const uint64_t id, const rectd bounds)
+	{
+		subtitle_event e;
+		e.id = id;
+		e.bitmaps.push_back({surface, bounds});
+		return e;
+	};
+
+	const auto top_of = [](const std::vector<subtitle_placement>& placed, const size_t i)
+	{
+		return i < placed.size() ? placed[i].bounds.top : -1;
+	};
+
+	// The picture is the video at half size, 100 across and 50 down the view.
+	const sizei video{1920, 1080};
+	const recti picture{100, 50, 1060, 590};
+	const std::vector bottom = {line(1, {760, 940, 400, 100})};
+
+	const auto placed = place_subtitles_on_picture(bottom, video, picture, 0, 0.0, 8);
+	assert_equal(1_z, placed.size(), "one line");
+	assert_equal(true, !placed.empty() && placed[0].bounds == recti(480, 520, 680, 570), "scaled onto the picture");
+
+	const std::vector two = {line(1, {760, 940, 400, 100}), line(2, {760, 940, 400, 100})};
+	assert_equal(470, top_of(place_subtitles_on_picture(two, video, picture, 0, 0.0, 8), 1),
+	             "a second line at the bottom goes above the first");
+
+	const std::vector two_top = {line(1, {760, 40, 400, 100}), line(2, {760, 40, 400, 100})};
+	assert_equal(120, top_of(place_subtitles_on_picture(two_top, video, picture, 0, 0.0, 8), 1),
+	             "and one at the top below it");
+
+	assert_equal(482, top_of(place_subtitles_on_picture(bottom, video, picture, 540, 1.0, 8), 0),
+	             "a line rises clear of the controls");
+	assert_equal(501, top_of(place_subtitles_on_picture(bottom, video, picture, 540, 0.5, 8), 0),
+	             "halfway as they fade in");
+	assert_equal(520, top_of(place_subtitles_on_picture(bottom, video, picture, 600, 1.0, 8), 0),
+	             "and not at all for controls below it");
+
+	const std::vector top = {line(1, {760, 40, 400, 100})};
+	assert_equal(70, top_of(place_subtitles_on_picture(top, video, picture, 540, 1.0, 8), 0),
+	             "a line at the top stays put");
+	assert_equal(true, place_subtitles_on_picture(bottom, video, {}, 0, 0.0, 8).empty(), "no picture, no lines");
+}
+
+static subtitle_event test_image_event(const double start, const double end, const int gen)
+{
+	subtitle_image image;
+	image.rect = recti(10, 20, 14, 22);
+	image.indices = {0, 1, 1, 0, 1, 1, 1, 1};
+	// 0xAARRGGBB: clear, and opaque red.
+	image.palette = {0x00000000u, 0xFFFF0000u};
+
+	subtitle_event e;
+	e.start = start;
+	e.end = end;
+	e.gen = gen;
+	e.canvas = {100, 50};
+	e.images.push_back(std::move(image));
+	return e;
+}
+
+static void should_keep_subtitle_events_by_playhead()
+{
+	const auto surface = subtitle_image_surface(test_image_event(0, 1, 1).images.front());
+	assert_equal(true, surface != nullptr && surface->width() == 4 && surface->height() == 2, "a picture of 4x2");
+	if (!surface) return;
+	const auto* const red = surface->pixels_line(0) + 4;
+	assert_equal(true, red[0] == 0 && red[1] == 0 && red[2] == 0xFF && red[3] == 0xFF, "red as BGRA");
+	assert_equal(0, static_cast<int>(surface->pixels_line(0)[3]), "the clear index is transparent");
+
+	subtitle_events events;
+	events.reset({}, {200, 100});
+	events.add(test_image_event(1.0, 3.0, 1));
+	events.add(test_image_event(5.0, 7.0, 1));
+	events.add(test_image_event(1.0, 3.0, 1));
+	assert_equal(2_z, events.size(), "a packet read twice is kept once");
+
+	assert_equal(0_z, events.at(2.0, 1, false).size(), "nothing shows before it is rasterised");
+	events.prepare(2.0);
+
+	const auto shown = events.at(2.0, 1, false);
+	assert_equal(1_z, shown.size(), "the line on show");
+	assert_equal(1_z, shown.empty() ? 0_z : shown.front().bitmaps.size(), "as one picture");
+
+	if (!shown.empty() && !shown.front().bitmaps.empty())
+	{
+		const auto b = shown.front().bitmaps.front().bounds;
+		assert_equal(true, df::equiv(b.X, 20.0) && df::equiv(b.Y, 40.0) && df::equiv(b.Width, 8.0) &&
+		             df::equiv(b.Height, 4.0), "scaled from its canvas to the video");
+	}
+
+	assert_equal(0_z, events.at(4.0, 1, false).size(), "nothing between lines");
+	assert_equal(1_z, events.at(6.0, 1, false).size(), "the next line was rasterised ahead");
+	assert_equal(0_z, events.at(2.0, 2, false).size(), "a stream's line is not shown after a seek");
+
+	const auto key = events.shown_key(2.0, 1, false);
+	assert_equal(true, key != 0, "a line on show has a key");
+	assert_equal(subtitle_shown_key(events.at(2.0, 1, false)), key, "the key names what at() gives");
+	assert_equal(true, key != events.shown_key(6.0, 1, false), "another line, another key");
+	assert_equal(uint64_t{0}, events.shown_key(4.0, 1, false), "nothing on show");
+
+	events.drop_older_than(2);
+	assert_equal(0_z, events.size(), "a seek drops the stream's earlier lines");
+
+	events.add_all({test_image_event(1.0, 3.0, 0)});
+	events.drop_older_than(5);
+	assert_equal(1_z, events.size(), "a sidecar's lines stay");
+	events.prepare(2.0);
+	assert_equal(1_z, events.at(2.0, 5, false).size(), "and show in any generation");
+	events.prepare(100.0);
+	assert_equal(0_z, events.at(2.0, 5, false).size(), "pictures are released once far behind");
+	assert_equal(1_z, events.size(), "but a sidecar's lines are kept");
+
+	events.reset({}, {200, 100});
+	events.add(test_image_event(1.0, 3601.0, 1));
+	events.end_open(4.0);
+	events.prepare(5.0);
+	assert_equal(0_z, events.at(5.0, 1, false).size(), "a clear ends the picture on show");
+	assert_equal(1_z, events.at(3.5, 1, false).size(), "which showed until then");
+
+	auto forced = test_image_event(10.0, 12.0, 1);
+	forced.forced = true;
+	events.add(std::move(forced));
+	events.prepare(11.0);
+	assert_equal(1_z, events.at(11.0, 1, true).size(), "a forced line shows when only forced lines do");
+	events.prepare(3.5);
+	assert_equal(0_z, events.at(3.5, 1, true).size(), "and another does not");
+
+	events.add(test_image_event(100.0, 101.0, 1));
+	events.prepare(200.0);
+	assert_equal(0_z, events.size(), "a stream's lines long past are dropped, not only their pictures");
+}
+
+// An image stream shows one picture at a time. PGS states no end for a picture, and DVB a timeout that outlasts
+// the next page, so each picture ends the one before it, as a clear does, in whatever order the two are read.
+static void should_show_one_picture_subtitle_at_a_time()
+{
+	subtitle_events events;
+	events.reset({}, {200, 100});
+	events.add(test_image_event(1.0, 3601.0, 1));
+	events.add(test_image_event(2.0, 3602.0, 1));
+	events.prepare(2.5);
+	assert_equal(1_z, events.at(2.5, 1, false).size(), "the next picture replaces the one on show");
+	events.prepare(1.5);
+	assert_equal(1_z, events.at(1.5, 1, false).size(), "which showed until then");
+
+	events.add(test_image_event(5.0, 3605.0, 1));
+	events.add(test_image_event(4.0, 3604.0, 1));
+	events.prepare(4.5);
+	const auto late = events.at(4.5, 1, false);
+	assert_equal(1_z, late.size(), "a picture read after the one that replaced it");
+	assert_equal(true, !late.empty() && df::equiv(late.front().end, 5.0), "ends where that one starts");
+
+	subtitle_event clear;
+	clear.start = 3.0;
+	clear.end = 3.0;
+	std::vector file = {
+		test_image_event(2.0, 3602.0, 0), clear, test_image_event(1.0, 3601.0, 0), test_image_event(4.0, 6.0, 0)
+	};
+	end_replaced_pictures(file);
+	assert_equal(3_z, file.size(), "a file's clears are dropped once they have ended a picture");
+
+	if (file.size() == 3)
+	{
+		assert_equal(true, df::equiv(file[0].start, 1.0) && df::equiv(file[0].end, 2.0), "the next picture ends the first");
+		assert_equal(true, df::equiv(file[1].end, 3.0), "the clear ends the second");
+		assert_equal(true, df::equiv(file[2].end, 6.0), "and the last keeps the end it states");
+	}
+}
+
+// A phone records its video turned, so the picture shown upright is the stored height wide. Lines are laid out
+// for the picture as it is drawn, and laid out again when that changes, rather than squeezed into it.
+static void should_lay_subtitles_out_for_the_picture_shape()
+{
+	subtitle_events events;
+	events.reset({}, {200, 100});
+	events.add(test_image_event(1.0, 3.0, 1));
+	events.prepare(2.0);
+	assert_equal(1_z, events.at(2.0, 1, false).size(), "laid out for the stored shape");
+
+	events.layout({100, 200});
+	assert_equal(true, events.layout() == sizei(100, 200), "the shape the picture is drawn in");
+	assert_equal(0_z, events.at(2.0, 1, false).size(), "a new shape drops what was laid out for the old");
+
+	events.prepare(2.0);
+	const auto shown = events.at(2.0, 1, false);
+	assert_equal(1_z, shown.size(), "and lays it out again");
+
+	if (!shown.empty() && !shown.front().bitmaps.empty())
+	{
+		const auto b = shown.front().bitmaps.front().bounds;
+		assert_equal(true, df::equiv(b.X, 10.0) && df::equiv(b.Y, 80.0) && df::equiv(b.Width, 4.0) &&
+		             df::equiv(b.Height, 8.0), "on that shape");
+	}
+
+	events.layout({100, 200});
+	assert_equal(1_z, events.at(2.0, 1, false).size(), "the same shape keeps what is laid out");
+}
+
+static void should_choose_subtitles_by_language_and_mode()
+{
+	const auto offer = [](const int stream, const std::string_view language, const bool forced)
+	{
+		subtitle_offer o;
+		o.choice.stream = stream;
+		o.language = language;
+		o.forced = forced;
+		return o;
+	};
+
+	subtitle_offer german;
+	german.choice.sidecar = df::file_path(R"(C:\films\Movie.de.srt)");
+	german.language = "de";
+
+	const std::vector offers = {offer(2, "eng", false), offer(3, "eng", true), offer(4, "fre", false), german};
+
+	assert_equal(2, choose_subtitles(offers, subtitle_mode::always, "en", "en").stream, "always: the full track");
+	assert_equal(2, choose_subtitles(offers, subtitle_mode::foreign, "en", "fre").stream,
+	             "foreign speech: the full track");
+	assert_equal(3, choose_subtitles(offers, subtitle_mode::foreign, "en", "eng").stream,
+	             "speech the viewer understands: only what is forced");
+	assert_equal(3, choose_subtitles(offers, subtitle_mode::off, "en", "fre").stream, "off still shows what is forced");
+	assert_equal(true, choose_subtitles(offers, subtitle_mode::always, "de", "en").sidecar == german.choice.sidecar,
+	             "a sidecar in the language");
+	assert_equal(true, choose_subtitles(offers, subtitle_mode::always, "es", "en").is_none(), "no Spanish to show");
+	assert_equal(true, choose_subtitles(offers, subtitle_mode::foreign, "en", "").stream == 3,
+	             "speech of no stated language is not taken as foreign");
+	assert_equal(true, choose_subtitles({offer(2, "eng", false)}, subtitle_mode::off, "en", "fre").is_none(),
+	             "off shows nothing else");
+	assert_equal(5, choose_subtitles({offer(5, "", false)}, subtitle_mode::always, "en", "en").stream,
+	             "a lone track of no stated language");
+
+	assert_equal(true, same_language("en", "eng") && same_language("English", "en-GB") && same_language("pt-BR", "por"),
+	             "codes and names of one language");
+	assert_equal(false, same_language("en", "de"), "two languages");
+	assert_equal(false, same_language("", "en"), "no language is none");
+
+	const auto read = read_sidecar_subtitle_name("Movie.2019.en.forced.srt", "Movie.2019.mkv");
+	assert_equal("en", read.language, "language after the video's name");
+	assert_equal(true, read.forced, "forced");
+	assert_equal("German", read_sidecar_subtitle_name("Movie German.srt", "Movie.mkv").language, "a language's name");
+	assert_equal("", read_sidecar_subtitle_name("Movie.srt", "Movie.mkv").language, "no language");
+	assert_equal("en", read_sidecar_subtitle_name("Movie.en.sdh.srt", "Movie.mkv").language, "the first language");
+	assert_equal("", read_sidecar_subtitle_name("It.2017.srt", "It.2017.mkv").language,
+	             "the video's own title names none");
+	assert_equal("en", read_sidecar_subtitle_name("The.French.Dispatch.en.srt", "The.French.Dispatch.mkv").language,
+	             "only the words after it count");
+	assert_equal("", read_sidecar_subtitle_name("English.srt", "Movie.mkv").language, "nor does a file of another name");
+
+	const auto video = df::file_path(R"(C:\films\Movie.mkv)");
+	const auto sidecars = sidecar_subtitle_offers(video, R"(Movie.en.srt Movie.nfo Movie.idx Movie.sub "Movie.de forced.ass" Other.sub)");
+	assert_equal(4_z, sidecars.size(), "every subtitle but the .sub read through its .idx");
+
+	if (sidecars.size() == 4)
+	{
+		assert_equal(true, sidecars[0].choice.sidecar == df::file_path(R"(C:\films\Movie.en.srt)"), "beside the video");
+		assert_equal("en", sidecars[0].language, "its language");
+		assert_equal("Movie.idx", sidecars[1].title, "a VobSub by its .idx");
+		assert_equal(true, sidecars[2].forced && sidecars[2].language == "de", "a quoted name");
+		assert_equal("Other.sub", sidecars[3].title, "a .sub that is no VobSub");
+	}
+
+	subtitle_offer named;
+	named.language = "eng";
+	named.forced = true;
+	assert_equal("English - forced", format_subtitle_name(named, 1), "language and forced");
+	assert_equal("Subtitles 2", format_subtitle_name({}, 2), "numbered fallback");
+}
+
+static void should_read_subtitle_text_in_a_legacy_code_page()
+{
+	assert_equal("caf\xC3\xA9", subtitle_text_as_utf8("caf\xE9"), "Windows-1252");
+	assert_equal("\xE2\x82\xAC 5", subtitle_text_as_utf8("\x80 5"), "the euro sign");
+	assert_equal("caf\xC3\xA9", subtitle_text_as_utf8("caf\xC3\xA9"), "UTF-8 is left alone");
+	assert_equal("plain", subtitle_text_as_utf8("plain"), "and so is ASCII");
+}
+
+static void should_decode_subtitle_sidecars()
+{
+	const auto folder = _temps.next_folder("subtitles");
+
+	const auto srt = folder.combine_file("Movie.srt");
+	write_test_file(srt, "1\r\n00:00:01,000 --> 00:00:02,500\r\nHello <i>world</i>\r\n\r\n"
+	                "2\r\n00:00:03,000 --> 00:00:04,000\r\nSecond line\r\ncaf\xE9\r\n\r\n");
+
+	const auto from_srt = decode_subtitle_file(srt);
+	assert_equal(2_z, from_srt.events.size(), "two SRT cues");
+
+	if (from_srt.events.size() == 2)
+	{
+		const auto& first = from_srt.events[0];
+		assert_equal(true, df::equiv(first.start, 1.0, 0.001) && df::equiv(first.end, 2.5, 0.001), "timed");
+		assert_equal(true, first.text.has_value(), "text");
+		assert_equal("Hello world", first.text ? first.text->plain_text() : "", "its tags read as styles");
+		assert_equal(true, first.text && first.text->runs.back().italic, "italic");
+		assert_equal(0, first.gen, "a sidecar's lines belong to no seek");
+		assert_equal("Second line\ncaf\xC3\xA9", from_srt.events[1].text ? from_srt.events[1].text->plain_text() : "",
+		             "two lines, in Windows-1252");
+	}
+
+	const auto vtt = folder.combine_file("Movie.vtt");
+	write_test_file(vtt, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello from WebVTT\n\n");
+	const auto from_vtt = decode_subtitle_file(vtt);
+	assert_equal(1_z, from_vtt.events.size(), "a WebVTT cue");
+	assert_equal("Hello from WebVTT", from_vtt.events.empty() || !from_vtt.events[0].text
+		                                  ? ""
+		                                  : from_vtt.events[0].text->plain_text(), "WebVTT text");
+
+	const auto ass = folder.combine_file("Movie.ass");
+	write_test_file(ass, "[Script Info]\nScriptType: v4.00+\nPlayResX: 640\nPlayResY: 360\n\n[V4+ Styles]\n"
+	                "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
+	                "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+	                "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+	                "Style: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n"
+	                "Style: Top,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,8,10,10,10,1\n\n"
+	                "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+	                "Dialogue: 0,0:00:01.00,0:00:03.00,Top,,0,0,0,,{\\b1}Sign{\\b0} text\n");
+	const auto from_ass = decode_subtitle_file(ass);
+	assert_equal(640, from_ass.script.play_res_x, "the script's canvas");
+	assert_equal(1_z, from_ass.events.size(), "an ASS line");
+
+	if (from_ass.events.size() == 1 && from_ass.events[0].text)
+	{
+		const auto& line = *from_ass.events[0].text;
+		assert_equal(8, line.alignment, "its style's alignment");
+		assert_equal("Sign text", line.plain_text(), "its text");
+		assert_equal(true, line.runs.front().bold, "and overrides");
+		assert_equal(true, df::equiv(from_ass.events[0].end, 3.0, 0.001), "its end");
+	}
+
+	assert_equal(0_z, decode_subtitle_file(folder.combine_file("missing.srt")).events.size(), "no file, no lines");
+}
+
+static std::string be16(const int v)
+{
+	return {static_cast<char>(v >> 8 & 0xFF), static_cast<char>(v & 0xFF)};
+}
+
+// One PGS segment as a .sup file holds it: "PG", its presentation time in 90 kHz ticks, a decoding time of
+// none, then its type, size and data.
+static std::string pgs_segment(const uint32_t pts, const char type, const std::string_view data)
+{
+	std::string s = "PG";
+	for (auto shift = 24; shift >= 0; shift -= 8) s += static_cast<char>(pts >> shift & 0xFF);
+	s.append(4, '\0');
+	s += type;
+	s += be16(static_cast<int>(data.size()));
+	s.append(data);
+	return s;
+}
+
+// A PGS display set: a 4x2 picture in one colour at `at` on a canvas, or a clear when there is no picture.
+static std::string pgs_display_set(const double seconds, const int composition, const sizei canvas,
+                                   const std::optional<pointi> at)
+{
+	const auto pts = static_cast<uint32_t>(std::lround(seconds * 90000));
+
+	// The presentation: the canvas, then the composition - an epoch start for a picture, which releases the
+	// last one's palette and object - and where its object goes.
+	auto pcs = be16(canvas.cx) + be16(canvas.cy);
+	pcs += '\x10';
+	pcs += be16(composition);
+	pcs += at ? '\x80' : '\x00';
+	pcs += '\x00';
+	pcs += '\x00';
+	pcs += at ? '\x01' : '\x00';
+	if (at) pcs += be16(0) + std::string(2, '\0') + be16(at->x) + be16(at->y);
+
+	auto result = pgs_segment(pts, '\x16', pcs);
+
+	if (at)
+	{
+		// Colour 1 is opaque white. Each line is one run of four pixels of it, then the end of the line.
+		result += pgs_segment(pts, '\x14', std::string("\x00\x00\x01\xEB\x80\x80\xFF", 7));
+		const auto line = std::string("\x00\x84\x01\x00\x00", 5);
+		const auto rle = line + line;
+		const auto length = static_cast<int>(rle.size()) + 4;
+		auto ods = be16(0) + std::string("\x00\xC0", 2);
+		ods += static_cast<char>(length >> 16 & 0xFF);
+		ods += be16(length & 0xFFFF) + be16(4) + be16(2) + rle;
+		result += pgs_segment(pts, '\x15', ods);
+	}
+
+	return result + pgs_segment(pts, '\x80', {});
+}
+
+// A Blu-ray's subtitles as a .sup file: PGS pictures with no end of their own, each on the canvas its own
+// presentation states - which a decoder knows only once the picture decodes, and which can change.
+static void should_read_picture_subtitles_from_a_sup_file()
+{
+	const auto path = _temps.next_path(".sup");
+	const auto bytes = pgs_display_set(1.0, 0, {720, 480}, pointi(100, 400)) +
+		pgs_display_set(2.0, 1, {1920, 1080}, pointi(900, 1000)) + pgs_display_set(3.0, 2, {1920, 1080}, {});
+	assert_equal(true, df::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
+	             "the file is written");
+
+	const auto file = decode_subtitle_file(path);
+	assert_equal(2_z, file.events.size(), "two pictures, and a clear that ends the second");
+	if (file.events.size() != 2) return;
+
+	const auto& first = file.events[0];
+	const auto& second = file.events[1];
+	assert_equal(true, df::equiv(first.start, 1.0, 0.001) && df::equiv(first.end, 2.0, 0.001),
+	             "the next picture ends the first");
+	assert_equal(true, df::equiv(second.start, 2.0, 0.001) && df::equiv(second.end, 3.0, 0.001),
+	             "and the clear the second");
+	assert_equal(true, first.canvas == sizei(720, 480), "each on the canvas its presentation states");
+	assert_equal(true, second.canvas == sizei(1920, 1080), "which can change");
+	assert_equal(true, first.images.size() == 1 && first.images.front().rect.left == 100 &&
+	             first.images.front().rect.top == 400 && first.images.front().rect.width() == 4 &&
+	             first.images.front().rect.height() == 2, "placed on it");
+}
+
+static std::string mkv_element(const std::string_view id, const std::string_view body)
+{
+	std::string result(id);
+	// Every size in eight bytes, which a reader must accept: simpler than the shortest form. Widened first, as
+	// a 32-bit size_t shifted by 32 or more is undefined.
+	result += '\x01';
+	const auto size = static_cast<uint64_t>(body.size());
+	for (auto shift = 48; shift >= 0; shift -= 8) result += static_cast<char>(size >> shift & 0xFF);
+	result.append(body);
+	return result;
+}
+
+static std::string mkv_uint(const std::string_view id, const uint64_t value)
+{
+	std::string body;
+	for (auto shift = 56; shift >= 0; shift -= 8) body += static_cast<char>(value >> shift & 0xFF);
+	return mkv_element(id, body);
+}
+
+static std::string mkv_text_block(const int time_ms, const int duration_ms, const std::string_view text)
+{
+	std::string block;
+	block += '\x81';
+	block += static_cast<char>(time_ms >> 8 & 0xFF);
+	block += static_cast<char>(time_ms & 0xFF);
+	block += '\0';
+	block.append(text);
+	return mkv_element("\xA0", mkv_element("\xA1", block) + mkv_uint("\x9B", duration_ms));
+}
+
+// A Matroska file of one S_TEXT/UTF8 track, as a muxer writes it: the build has no muxer to make one.
+static std::string make_subtitle_mkv()
+{
+	const auto header = mkv_element("\x1A\x45\xDF\xA3",
+	                                mkv_uint("\x42\x86", 1) + mkv_uint("\x42\xF7", 1) + mkv_uint("\x42\xF2", 4) +
+	                                mkv_uint("\x42\xF3", 8) + mkv_element("\x42\x82", "matroska") +
+	                                mkv_uint("\x42\x87", 4) + mkv_uint("\x42\x85", 2));
+	const auto info = mkv_element("\x15\x49\xA9\x66", mkv_uint("\x2A\xD7\xB1", 1000000) +
+	                              mkv_element("\x4D\x80", "test") + mkv_element("\x57\x41", "test"));
+	const auto track = mkv_uint("\xD7", 1) + mkv_uint("\x73\xC5", 1) + mkv_uint("\x83", 0x11) +
+		mkv_element("\x86", "S_TEXT/UTF8") + mkv_element("\x22\xB5\x9C", "eng") + mkv_uint("\x55\xAA", 1);
+	const auto tracks = mkv_element("\x16\x54\xAE\x6B", mkv_element("\xAE", track));
+	const auto cluster = mkv_element("\x1F\x43\xB6\x75", mkv_uint("\xE7", 0) +
+	                                 mkv_text_block(1000, 1500, "Hello <i>there</i>") +
+	                                 mkv_text_block(3000, 1000, "Second line"));
+
+	return header + mkv_element("\x18\x53\x80\x67", info + tracks + cluster);
+}
+
+static void should_decode_an_embedded_subtitle_track()
+{
+	const auto path = _temps.next_path(".mkv");
+	const auto bytes = make_subtitle_mkv();
+	assert_equal(true, df::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
+	             "the file is written");
+
+	av_format_decoder dec;
+	assert_equal(true, dec.open(path, media_intent::playback), "it opens");
+	dec.init_streams(-1, -1, false, false, false);
+
+	const auto info = dec.info();
+	const auto stream = std::ranges::find(info.streams, av_stream_type::subtitle, &av_stream_info::type);
+	assert_equal(true, stream != info.streams.end(), "it lists the subtitle stream");
+	if (stream == info.streams.end()) return;
+
+	assert_equal(true, stream->is_forced, "forced, as its track says");
+	assert_equal(true, dec.open_subtitle_stream(stream->index), "the stream opens");
+
+	std::vector<subtitle_event> events;
+
+	for (auto i = 0; i < 100; ++i)
+	{
+		const auto packet = dec.read_packet();
+		if (!packet || av_packet_is_eof(packet)) break;
+		for (auto& e : dec.decode_subtitle(packet, 7)) events.push_back(std::move(e));
+	}
+
+	assert_equal(2_z, events.size(), "both lines");
+	if (events.size() != 2) return;
+
+	assert_equal(true, df::equiv(events[0].start, 1.0, 0.001), "the first starts at its block");
+	assert_equal(true, df::equiv(events[0].end, 2.5, 0.001), "and ends after its duration");
+	assert_equal("Hello there", events[0].text ? events[0].text->plain_text() : "", "its text");
+	assert_equal(true, events[0].text && events[0].text->runs.back().italic, "its tags read as styles");
+	assert_equal(true, events[0].forced, "forced");
+	assert_equal(7, events[0].gen, "decoded in the session's seek generation");
+	assert_equal(true, df::equiv(events[1].start, 3.0, 0.001), "the second");
+}
+
+static void should_open_a_video_with_its_sidecar_subtitles()
+{
+	const auto folder = _temps.next_folder("sidecar-subtitles");
+	const auto video = folder.combine_file("Clip.mp4");
+	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), video, false, false);
+	write_test_file(folder.combine_file("Clip.en.srt"), "1\n00:00:00,000 --> 00:00:30,000\nA line\n\n");
+
+	subtitle_request request;
+	request.sidecars = sidecar_subtitle_offers(video, "Clip.en.srt Clip.xmp");
+	request.mode = subtitle_mode::always;
+	request.language = "en";
+
+	const auto ses = make_test_session();
+	assert_equal(true, ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
+	                             false, {}, request), "the video opens");
+
+	const auto state = ses->subtitle_info();
+	assert_equal(true, state != nullptr, "the session says what it offers");
+
+	if (state)
+	{
+		assert_equal(true, state->choice.sidecar == folder.combine_file("Clip.en.srt"), "the English sidecar is shown");
+		assert_equal(true, std::ranges::any_of(state->offers, [](const subtitle_offer& o) { return !o.choice.sidecar.is_empty(); }),
+		             "and offered");
+	}
+
+	const platform::thread_event video_event(false, false);
+	const platform::thread_event audio_event(false, false);
+	ses->process_io(video_event, audio_event);
+
+#ifdef _WIN32
+	// Only Windows rasterises text; Linux has no text renderer for subtitles yet.
+	const auto now = df::now();
+	assert_equal(1_z, ses->subtitles(now).size(), "the line is on show from the start");
+	assert_equal(true, ses->subtitles_key(now) != 0, "with a key");
+#endif
+
+	ses->close(false);
+
+	subtitle_request none = request;
+	none.chosen = subtitle_choice{};
+	const auto off = make_test_session();
+	assert_equal(true, off->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
+	                             false, {}, none), "the video opens again");
+	assert_equal(true, off->subtitle_info() && off->subtitle_info()->choice.is_none(), "with subtitles turned off");
+	off->close(false);
+}
+
+// The lines on show are recorded into the scene, so a change to them is a rebuild rather than a replay: a
+// replay presented the lines it was recorded with, and a new line waited for whatever next repainted the
+// view. The rebuild is asked for once per change, since a view that does not draw the picture never records
+// what was asked for and must not be repainted on every tick for it.
+static void should_rebuild_the_scene_once_for_each_subtitle_change()
+{
+	const auto folder = _temps.next_folder("subtitle-repaint");
+	const auto video = folder.combine_file("Clip.mp4");
+	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), video, false, false);
+	write_test_file(folder.combine_file("Clip.en.srt"), "1\n00:00:00,000 --> 00:00:30,000\nA line\n\n");
+
+	subtitle_request request;
+	request.sidecars = sidecar_subtitle_offers(video, "Clip.en.srt");
+	request.mode = subtitle_mode::always;
+	request.language = "en";
+
+	const auto ses = make_test_session();
+	assert_equal(true, ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
+	                             false, {}, request), "the video opens");
+	const df::scope_exit close([ses] { ses->close(false); });
+
+	null_async_strategy as;
+	common_display_state_t common;
+	const auto display = std::make_shared<display_state_t>(as, common);
+	display->update_av_session(ses);
+
+	const platform::thread_event video_event(false, false);
+	const platform::thread_event audio_event(false, false);
+	ses->process_io(video_event, audio_event);
+
+	const auto now = df::now();
+
+#ifdef _WIN32
+	// Only Windows rasterises text; Linux has no text renderer for subtitles yet.
+	assert_equal(true, ses->subtitles_key(now) != 0, "a line is on show");
+	assert_equal(true, display->update_for_present(now) == render_valid::invalid,
+	             "a line nothing has drawn yet rebuilds the scene");
+#endif
+
+	assert_equal(true, display->update_for_present(now) == render_valid::valid,
+	             "and asks once: a view that does not draw the picture is not repainted on every tick");
+}
+
 void register_av_tests(view_state& state, test_registry& tests)
 
 {
@@ -3080,6 +4203,33 @@ void register_av_tests(view_state& state, test_registry& tests)
 	          should_share_one_immutable_visualizer_frequency_table);
 	tests.add("Should keep visualizer frequency bins stable across sessions"s,
 	          should_keep_visualizer_frequency_bins_stable_across_sessions);
+
+	//
+	// SID tunes
+	//
+	tests.add("Should play a SID tune through its WAV stream"s, should_play_a_sid_tune_through_its_wav_stream);
+	tests.add("Should silence a muted SID voice"s, should_silence_a_muted_sid_voice);
+	tests.add("Should decode a SID stream with FFmpeg"s, should_decode_a_sid_stream_with_ffmpeg);
+	tests.add("Should name SID notes and waveforms"s, should_name_sid_notes_and_waveforms);
+
+	//
+	// Subtitles
+	//
+	tests.add("Should read ASS script headers"s, should_read_ass_script_headers);
+	tests.add("Should style ASS dialogue"s, should_style_ass_dialogue);
+	tests.add("Should place subtitles on the picture"s, should_place_subtitles_on_the_picture);
+	tests.add("Should lay subtitles out on the picture"s, should_lay_subtitles_out_on_the_picture);
+	tests.add("Should keep subtitle events by playhead"s, should_keep_subtitle_events_by_playhead);
+	tests.add("Should show one picture subtitle at a time"s, should_show_one_picture_subtitle_at_a_time);
+	tests.add("Should lay subtitles out for the picture shape"s, should_lay_subtitles_out_for_the_picture_shape);
+	tests.add("Should choose subtitles by language and mode"s, should_choose_subtitles_by_language_and_mode);
+	tests.add("Should read subtitle text in a legacy code page"s, should_read_subtitle_text_in_a_legacy_code_page);
+	tests.add("Should decode subtitle sidecars"s, should_decode_subtitle_sidecars);
+	tests.add("Should read picture subtitles from a sup file"s, should_read_picture_subtitles_from_a_sup_file);
+	tests.add("Should decode an embedded subtitle track"s, should_decode_an_embedded_subtitle_track);
+	tests.add("Should open a video with its sidecar subtitles"s, should_open_a_video_with_its_sidecar_subtitles);
+	tests.add("Should rebuild the scene once for each subtitle change"s,
+	          should_rebuild_the_scene_once_for_each_subtitle_change);
 
 	//
 	// Probe
@@ -3127,6 +4277,12 @@ void register_av_tests(view_state& state, test_registry& tests)
 	//
 	tests.add("Should end a silent clip at the stream end"s, should_end_a_silent_clip_at_the_stream_end);
 	tests.add("Should open a session without its audio"s, should_open_a_session_without_its_audio);
+	tests.add("Should wake the decoder when the presenter takes a frame"s,
+	          should_wake_the_decoder_when_the_presenter_takes_a_frame);
+	tests.add("Should decode queued packets without waiting on the reader"s,
+	          should_decode_queued_packets_without_waiting_on_the_reader);
+	tests.add("Should present the nearest frame when the clock passes several"s,
+	          should_present_the_nearest_frame_when_the_clock_passes_several);
 	// MEDIA-003 - selected audio must not back-pressure video when no endpoint is available.
 	tests.add("Should keep video moving when audio output is unavailable"s,
 	          should_keep_video_moving_when_audio_output_is_unavailable);
@@ -3145,7 +4301,10 @@ void register_av_tests(view_state& state, test_registry& tests)
 	          should_seek_to_the_same_position_after_playback_has_advanced);
 	// A paused seek moved the frame and bar while the cached elapsed label stayed behind.
 	tests.add("Should refresh paused media time after seeking"s, should_refresh_paused_media_time_after_seeking);
+	tests.add("Should repaint the scrubber only while the controls show"s,
+	          should_repaint_the_scrubber_only_while_the_controls_show);
 	tests.add("Should coalesce repeated scrub seeks"s, should_coalesce_repeated_scrub_seeks);
+	tests.add("Should make only the latest of the waiting seeks"s, should_make_only_the_latest_of_the_waiting_seeks);
 	tests.add("Should decide which streams can decode in hardware"s,
 	          should_decide_which_streams_can_decode_in_hardware);
 	tests.add("Should bound video decode threads"s, should_bound_video_decode_threads);
@@ -3156,6 +4315,7 @@ void register_av_tests(view_state& state, test_registry& tests)
 	tests.add("Should describe a video stream profile depth and transfer"s,
 	          should_describe_a_video_stream_profile_depth_and_transfer);
 	tests.add("Should prepare decoded pictures for upload"s, should_prepare_decoded_pictures_for_upload);
+	tests.add("Should reuse a prepared picture once it is let go"s, should_reuse_a_prepared_picture_once_it_is_let_go);
 	tests.add("Should thumbnail a clip whose only picture comes at the end"s,
 	          should_thumbnail_a_clip_whose_only_picture_comes_at_the_end);
 	tests.add("Should not read streams nothing decodes"s, should_not_read_streams_nothing_decodes);

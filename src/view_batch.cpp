@@ -18,7 +18,15 @@ static std::string convert_extension()
 {
 	if (setting.convert.to_png) return ".png";
 	if (setting.convert.to_webp) return ".webp";
+	if (setting.convert.to_jxl) return ".jxl";
 	return ".jpg";
+}
+
+int convert_max_side(const sizei dimensions, const int max_side)
+{
+	if (max_side <= 0) return 0;
+	const auto known = dimensions.cx > 0 && dimensions.cy > 0;
+	return known && std::max(dimensions.cx, dimensions.cy) <= max_side ? 0 : max_side;
 }
 
 struct agreed_date_row
@@ -115,6 +123,13 @@ std::string_view batch_tool_view::title()
 		                  : tt.command_adjust_date.sv();
 	_title = std::format("{}: {}", s_app_name, text);
 	return _title;
+}
+
+// Refresh comes first: it re-plans from what is on disk, and it is the only way back to a review
+// once a run has left its results.
+view_bars batch_tool_view::bars() const
+{
+	return task_view_bars({commands::tool_refresh, commands::tool_run});
 }
 
 // Toolbar text, so it names the operation without the dialog-button accelerator marker.
@@ -603,7 +618,10 @@ void batch_tool_view::run_convert()
 		// What the review saw at that destination. Replace was agreed to for that file, not for one
 		// edited or swapped in since.
 		platform::file_attributes_t destination_fi;
+		// The longest side this row is written at, or 0 to keep its size.
+		int max_side = 0;
 	};
+	const auto max_side = setting.convert.limit_dimension ? setting.convert.max_side : 0;
 	std::vector<convert_request> requests;
 	requests.reserve(_convert_plan.size());
 	std::vector<item_status> statuses(_convert_plan.size(), item_status::ignore);
@@ -616,14 +634,16 @@ void batch_tool_view::run_convert()
 		// Nothing has been attempted yet, so a row the run never reaches reports itself as not run.
 		statuses[index] = item_status::cancel;
 		requests.emplace_back(index, entry.source.path, entry.destination, entry.source.xmp,
-		                      entry.collides && !entry.renamed_to_avoid_collision, entry.destination_fi);
+		                      entry.collides && !entry.renamed_to_avoid_collision, entry.destination_fi,
+		                      convert_max_side(entry.source.dimensions, max_side));
 	}
 	const auto title = std::string(tt.command_convert_or_resize.sv());
-	const auto max_side = setting.convert.limit_dimension ? setting.convert.max_side : 0;
 	record_feature_use(max_side > 0 ? features::convert | features::resize : features::convert);
 	const auto jpeg_quality = setting.convert.jpeg_quality;
 	const auto webp_quality = setting.convert.webp_quality;
 	const auto webp_lossless = setting.convert.webp_lossless;
+	const auto jxl_quality = setting.convert.jxl_quality;
+	const auto jxl_lossless = setting.convert.jxl_lossless;
 	const auto write_folder = df::folder_path(setting.write_folder);
 	// Releasing the displayed file's handles can pump messages, and a Close handled in there leaves
 	// this view. A run started after that would write files with nothing on screen to show it.
@@ -637,8 +657,9 @@ void batch_tool_view::run_convert()
 	_status = std::string(tt.processing.sv());
 	_state.queue_async(async_queue::work,
 	                   [&s = _state, view = shared_from_this(), requests = std::move(requests),
-		                   statuses = std::move(statuses), cancel_source, cancel_version, generation, max_side,
-		                   jpeg_quality, webp_quality, webp_lossless, write_folder, detach, title]() mutable
+		                   statuses = std::move(statuses), cancel_source, cancel_version, generation,
+		                   jpeg_quality, webp_quality, webp_lossless, jxl_quality, jxl_lossless, write_folder, detach,
+		                   title]() mutable
 	                   {
 		                   std::string fatal;
 		                   std::string first_error;
@@ -669,6 +690,11 @@ void batch_tool_view::run_convert()
 					                   params.jpeg_save_quality = jpeg_quality;
 					                   params.webp_quality = webp_quality;
 					                   params.webp_lossless = webp_lossless;
+					                   params.jxl_quality = jxl_quality;
+					                   params.jxl_lossless = jxl_lossless;
+					                   // Converting asks for these settings, so a source already in the format
+					                   // is encoded with them rather than copied as it was.
+					                   params.reencode = true;
 
 					                   // The review is a snapshot, and the write itself cannot refuse an existing
 					                   // file. A destination that filled up in between belongs to something the user
@@ -692,8 +718,8 @@ void batch_tool_view::run_convert()
 					                   publish.destination_attributes = request.destination_fi;
 
 					                   const auto result = ff.update(request.source, request.destination, {},
-					                                                 max_side > 0
-						                                                 ? image_edits(max_side)
+					                                                 request.max_side > 0
+						                                                 ? image_edits(request.max_side)
 						                                                 : image_edits(), params, false, request.xmp,
 					                                                 {}, {}, publish);
 
@@ -926,8 +952,9 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		auto jpeg = std::make_shared<ui::check_control>(frame, tt.platform_text.jpeg_best, setting.convert.to_jpeg, true, false,
 		                                                [this](const bool checked)
 		                                                {
-			                                                if (checked) setting.convert.to_png = setting.convert.
-				                                                to_webp = false;
+			                                                if (checked)
+				                                                setting.convert.to_png = setting.convert.to_webp =
+					                                                setting.convert.to_jxl = false;
 			                                                refresh();
 		                                                },
 		                                                ui::radio_group_format);
@@ -942,16 +969,18 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		                                                          false,
 		                                                          [this](const bool checked)
 		                                                          {
-			                                                          if (checked) setting.convert.to_jpeg = setting.
-				                                                          convert.to_webp = false;
+			                                                          if (checked)
+				                                                          setting.convert.to_jpeg = setting.convert.
+					                                                          to_webp = setting.convert.to_jxl = false;
 			                                                          refresh();
 		                                                          },
 		                                                          ui::radio_group_format));
 		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp, true, false,
 		                                                [this](const bool checked)
 		                                                {
-			                                                if (checked) setting.convert.to_jpeg = setting.convert.
-				                                                to_png = false;
+			                                                if (checked)
+				                                                setting.convert.to_jpeg = setting.convert.to_png =
+					                                                setting.convert.to_jxl = false;
 			                                                refresh();
 		                                                },
 		                                                ui::radio_group_format);
@@ -966,6 +995,26 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		                                                      }));
 		webp->child(webp_options);
 		controls.emplace_back(webp);
+		auto jxl = std::make_shared<ui::check_control>(frame, tt.platform_text.jxl_best, setting.convert.to_jxl, true, false,
+		                                               [this](const bool checked)
+		                                               {
+			                                               if (checked)
+				                                               setting.convert.to_jpeg = setting.convert.to_png =
+					                                               setting.convert.to_webp = false;
+			                                               refresh();
+		                                               },
+		                                               ui::radio_group_format);
+		const auto jxl_options = std::make_shared<ui::group_control>();
+		jxl_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jxl_quality,
+		                                                      1,
+		                                                      100, [this] { refresh_encode_settings(); }));
+		jxl_options->add(std::make_shared<ui::check_control>(frame, tt.lossless_compression,
+		                                                     setting.convert.jxl_lossless, false, false, [this](bool)
+		                                                     {
+			                                                     refresh_encode_settings();
+		                                                     }));
+		jxl->child(jxl_options);
+		controls.emplace_back(jxl);
 		controls.emplace_back(std::make_shared<divider_element>());
 		auto dimension = std::make_shared<ui::check_control>(frame, tt.limit_output_dimensions,
 		                                                     setting.convert.limit_dimension, false, false, [this](bool)

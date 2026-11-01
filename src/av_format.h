@@ -7,11 +7,13 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: FFmpeg-based media format decoder. Handles video/audio stream parsing, codec management,
-// frame extraction, seeking, and format conversion using libavformat and libavcodec.
+// frame extraction, seeking, and format conversion using libavformat and libavcodec, and decodes the
+// subtitles of a stream or of a sidecar file.
 
 #pragma once
 
 #include "av_sound.h"
+#include "av_subtitle.h"
 
 
 struct SwsContext;
@@ -114,9 +116,11 @@ bool av_platform_hw_decode_supported(AVBufferRef* device, AVCodecID codec, int b
 // replaced rather than handed to the next session.
 bool av_platform_hw_device_usable(AVBufferRef* device);
 
-// Makes the hardware decode device, on the GPU the renderer draws with where there is one: a decoder
-// on another GPU cannot share its pictures with the renderer, so each would be copied through system
-// memory. Null when no device can be made, and the stream then decodes in software.
+// Makes the hardware decode device: the render device itself where it carries the video interfaces, so a
+// picture is copied once on one device into the texture the renderer draws; otherwise a device of its own on
+// the GPU the renderer draws with, since a decoder on another GPU cannot share its pictures with the renderer
+// and each would be copied through system memory. Null when no device can be made, and the stream then
+// decodes in software.
 AVBufferRef* av_platform_create_hw_device(int device_type);
 
 
@@ -228,9 +232,10 @@ ui::const_surface_ptr av_frame_surface(const av_frame_ptr& f);
 // holds one converts it here.
 ui::video_frame_ptr av_video_frame(const av_frame_ptr& f);
 
-// Asked by a renderer that cannot share the decoder's hardware surfaces, so from then on the decode
-// thread downloads and converts them rather than the thread that presents them.
-void av_request_cpu_video_frames();
+// Asked by a renderer that cannot share the decoder's hardware surfaces of this layout - the AVPixelFormat
+// the hardware frames hold - so from then on the decode thread downloads and converts those rather than the
+// thread that presents them. Surfaces of other layouts are still shared.
+void av_request_cpu_video_frames(int surface_format);
 // Playing time covered by an audio frame's samples; 0 when the frame is not audio.
 double av_audio_frame_duration(const av_frame_ptr& f);
 bool av_is_frame_empty(const av_frame_ptr& f);
@@ -323,6 +328,13 @@ class av_scaler final : public ui::surface_scaler, df::no_copy
 	// A download that fails fails for every later frame too, so the report is made once rather than
 	// once a frame.
 	bool _hw_download_failure_logged = false;
+	// The pictures presentable_surface made, written over once the queue, the presenter and the renderer
+	// have let them go: at a video frame's size a fresh block is fresh pages to fault in and clear, every
+	// frame. Only the thread presentable_surface runs on touches it.
+	std::vector<ui::surface_ptr> _presentation_surfaces;
+
+	// A surface for the next prepared picture: one held here alone when there is one, else a new one.
+	ui::surface_ptr reusable_surface();
 
 	// Rows of three 16-bit samples a pixel for a picture of this extent, in _hdr_signal.
 	uint16_t* hdr_signal_rows(sizei extent);
@@ -487,6 +499,8 @@ struct av_stream_info
 	prop::audio_sample_t audio_sample_type = prop::audio_sample_t::none;
 	bool is_commentary = false;
 	bool is_audio_description = false;
+	// A subtitle stream that translates only foreign speech, and shows even when subtitles are off.
+	bool is_forced = false;
 	int rotation = 0;
 
 	metadata_kv_list metadata;
@@ -616,6 +630,26 @@ public:
 	int64_t bitrate() const;
 
 	const ui::image_ptr& cover_art() const { return _cover_art; }
+
+	// Opens one of the file's subtitle streams beside the playing ones, after init_streams, so the demuxer
+	// reads it rather than skipping it. False when the stream is no subtitle or no decoder will take it.
+	bool open_subtitle_stream(int stream_index);
+	int subtitle_stream_id() const { return _subtitle_stream_index; }
+	const subtitle_script& subtitle_script_info() const { return _subtitle_script; }
+	// One packet of the subtitle stream as events on the presentation timeline. An event with neither
+	// text nor pictures marks the moment an image subtitle is cleared.
+	std::vector<subtitle_event> decode_subtitle(const av_packet_ptr& packet, int gen);
+	void flush_subtitles();
+
+private:
+	AVCodecContext* _subtitle_context = nullptr;
+	int _subtitle_stream_index = -1;
+	av_rational _subtitle_base;
+	subtitle_script _subtitle_script;
+	sizei _subtitle_canvas;
+	bool _subtitle_forced = false;
+
+public:
 
 private:
 	mutable std::unique_ptr<av_scaler> _scaler;
@@ -784,3 +818,19 @@ public:
 	double end_time() const { return _end_time; }
 	double to_video_seconds(int64_t vt) const;
 };
+
+// Every event in a subtitle file - a sidecar beside its video - with its script and canvas, timed from the
+// start of the file. Read whole into memory, so only files up to a size a subtitle file has; run on a
+// worker. Empty when the file holds no subtitle FFmpeg can decode.
+struct subtitle_file
+{
+	subtitle_script script;
+	sizei canvas;
+	std::vector<subtitle_event> events;
+};
+
+subtitle_file decode_subtitle_file(df::file_path path);
+
+// A subtitle file's text in UTF-8: one already in it, or with a byte-order mark FFmpeg reads, is left alone;
+// any other is read as Windows-1252, which most older SRT files were saved in.
+std::string subtitle_text_as_utf8(std::string_view bytes);

@@ -4,7 +4,7 @@
 !define PRODUCT32_EXE "diffractor32.exe"
 !define PRODUCT64_EXE "diffractor64.exe"
 !define PRODUCT_PUBLISHER "Diffractor"
-!define BUILD_NUM "1313"
+!define BUILD_NUM "1314"
 !define PRODUCT_VERSION "127.3"
 !define FILE_VERSION "1.27.3.${BUILD_NUM}"
 !define PRODUCT_WEB_SITE "http://www.Diffractor.com/"
@@ -306,7 +306,11 @@ Section "Diffractor"
 		StrCpy $PRODUCT_EXE "${PRODUCT32_EXE}"
 	${EndIf}  
 
+	; The running window is found by its class: DIFF_MAIN up to 1.27.2, LIBDESKTOP_MAIN since the
+	; window layer moved into libdesktop. Missing either leaves that build running, and its exe locked.
 	Push "DIFF_MAIN"
+	Call .CloseProgram
+	Push "LIBDESKTOP_MAIN"
 	Call .CloseProgram
     
 	; Everything installed here is application data, never user data, and each release
@@ -421,7 +425,10 @@ Section "Uninstall"
 
 	; ExecWait '"taskkill" /f /IM diffractor.exe' $0
 
+	; Both window classes, as the install section closes them.
 	Push "DIFF_MAIN"
+	Call un.CloseProgram
+	Push "LIBDESKTOP_MAIN"
 	Call un.CloseProgram
 
 	; remove registry keys

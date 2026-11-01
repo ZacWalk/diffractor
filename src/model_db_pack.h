@@ -259,6 +259,24 @@ public:
 		_pos += ser_len;
 	}
 
+	// A value now held in a wider type than some rows stored it in: a season was one byte until seasons went
+	// past 255. Unsigned and little-endian, so the stored bytes are the low ones.
+	template <typename T>
+	void read_val_widening(T& v)
+	{
+		static_assert(std::is_unsigned_v<T>);
+		const auto ser_len = read_len();
+
+		if (ser_len <= sizeof(T) && remaining() >= ser_len)
+		{
+			T value = 0;
+			std::memcpy(&value, _data.data + _pos, ser_len);
+			v = value;
+		}
+
+		_pos += ser_len;
+	}
+
 	// Consume the value of a record this build does not understand.
 	void skip_val()
 	{

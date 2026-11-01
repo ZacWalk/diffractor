@@ -6,8 +6,10 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Tests for application coordination (app*, view_* task views): command registration
-// and input dispatch, settings persistence, headless Movie batches, and rename, import, sync and convert planning.
+// Purpose: Tests for application coordination (app*, view_* task views): command registration, what
+// each view declares for the frame's bars and how a bar is arranged, input dispatch, settings
+// persistence and the Options view that edits them, headless Movie batches, and rename, import, sync and
+// convert planning.
 
 #include "pch.h"
 #include "files.h"
@@ -31,8 +33,11 @@
 #include "view_movie.h"
 #include "view_rename.h"
 #include "view_batch.h"
+#include "view_import.h"
+#include "view_sync.h"
 #include "view_tags.h"
 #include "view_items.h"
+#include "view_options.h"
 
 extern std::function<void()> test_during_detach_file_handles;
 
@@ -337,6 +342,34 @@ static void should_format_rename()
 	assert_equal("trip-0001", format_sequence("original", "trip-####", 1), "four digit sequence");
 	assert_equal("riginal", format_sequence("original", "???????", 0), "question mark substitution");
 	assert_equal("al-file", format_sequence("original", "?\?-file", 0), "mixed question mark substitution");
+	// Typed below zero, a start number has no digits to give: each one taken from it was a byte from
+	// before the digit table.
+	assert_equal("photo-000", format_sequence("original", "photo-###", -3), "a negative start counts from zero");
+}
+
+// The TV template renders as release names and media servers write them: two-digit seasons and episodes, and
+// E00 for a special. It used to render Chernobyl.S1EUnknown.
+static void should_rename_episodes_with_padded_numbers()
+{
+	const auto episode = std::make_shared<prop::item_metadata>();
+	episode->show = str::cache("Chernobyl");
+	episode->title = str::cache("Please Remain Calm");
+	episode->season = 1;
+	episode->episode = prop::number_pair(5, 0);
+	assert_equal("Chernobyl.S01E05.Please Remain Calm",
+	             prop::replace_tokens("{show}.S{season}E{episode}.{title}", episode, "original", {}), "an episode");
+
+	const auto special = std::make_shared<prop::item_metadata>(*episode);
+	special->season = 3;
+	special->episode = {0, 0};
+	special->is_special = true;
+	assert_equal("Chernobyl.S03E00.Please Remain Calm",
+	             prop::replace_tokens("{show}.S{season}E{episode}.{title}", special, "original", {}), "a special");
+
+	const auto film = std::make_shared<prop::item_metadata>();
+	film->title = str::cache("Dont Look Up");
+	film->year = 2021;
+	assert_equal("Dont Look Up (2021)", prop::replace_tokens("{title} ({year})", film, "original", {}), "a film");
 }
 
 static void should_rename_name_token_without_extension()
@@ -529,6 +562,81 @@ static void should_group_rename_sidecar_collisions()
 	platform::delete_items({}, {root}, false);
 }
 
+// A video's subtitles name their language, and whether they are forced, after its name. Moved with it, each keeps
+// what it adds, so two subtitles with one extension never meet on one name; and a new name with a dot keeps all of it.
+static void should_rename_subtitles_with_their_language()
+{
+	const auto root = _temps.folder().combine(std::format("rename-subtitles-{}", platform::tick_count()));
+	platform::create_folder(root);
+	const df::blob contents = {1};
+	const auto video = root.combine_file("Movie.mkv");
+	const auto english = root.combine_file("Movie.en.srt");
+	const auto forced = root.combine_file("Movie.English.forced.srt");
+	for (const auto& f : {video, english, forced}) df::blob_save_to_file(contents, f);
+
+	rename_source item;
+	item.source = video;
+	item.original_name = "Movie";
+	item.sidecars = {english, forced};
+
+	const auto plan = calc_item_renames(std::vector{item}, "Film", 1, collision_policy::block_run);
+	assert_equal(true, can_rename_items(plan), "the subtitles do not meet on one name");
+	assert_equal(2_z, plan.empty() ? 0_z : plan.front().sidecars.size(), "both move with the video");
+
+	if (!plan.empty() && plan.front().sidecars.size() == 2)
+	{
+		assert_equal("Film.en.srt"sv, plan.front().sidecars[0].second.name().sv(), "each keeps its language");
+		assert_equal("Film.English.forced.srt"sv, plan.front().sidecars[1].second.name().sv(), "and that it is forced");
+	}
+
+	assert_equal("The.Film.en.srt"sv, moved_sidecar_path(video, root.combine_file("The.Film.mkv"), english).name().sv(),
+	             "a new name with a dot keeps all of it");
+	assert_equal("New.xmp"sv, moved_sidecar_path(root.combine_file("IMG_1.CR2"), root.combine_file("New.CR2"),
+	                                              root.combine_file("Other.xmp")).name().sv(),
+	             "a sidecar named for another file keeps only its extension");
+	platform::delete_items({}, {root}, false);
+}
+
+// A RAW and the camera's JPEG share a sidecar by name, and both rows moved it: the second move failed
+// its row, or with the JPEG first the RAW's metadata went to the JPEG's new name.
+static void should_rename_a_shared_sidecar_with_the_raw_that_reads_it()
+{
+	const auto root = _temps.folder().combine(std::format("rename-shared-sidecar-{}", platform::tick_count()));
+	platform::create_folder(root);
+	const auto sidecar = root.combine_file("IMG_1.xmp");
+	const df::blob contents = {1};
+	df::blob_save_to_file(contents, root.combine_file("IMG_1.CR2"));
+	df::blob_save_to_file(contents, root.combine_file("IMG_1.JPG"));
+	df::blob_save_to_file(contents, sidecar);
+
+	rename_source raw;
+	raw.source = root.combine_file("IMG_1.CR2");
+	raw.original_name = "IMG_1";
+	raw.sidecars.emplace_back(sidecar);
+	auto jpeg = raw;
+	jpeg.source = root.combine_file("IMG_1.JPG");
+
+	for (const auto& order : {std::vector{raw, jpeg}, std::vector{jpeg, raw}})
+	{
+		const auto plan = calc_item_renames(order, "Trip ###", 1, collision_policy::block_run);
+		assert_equal(2_z, plan.size(), "both files are planned");
+		assert_equal(1, static_cast<int>(std::ranges::count_if(plan, [](const rename_item& r) { return !r.sidecars.empty(); })),
+		             "the shared sidecar moves once");
+
+		for (const auto& r : plan)
+		{
+			if (r.sidecars.empty()) continue;
+			assert_equal(".CR2"s, std::string(r.source.extension()), "with the RAW, which reads it");
+			assert_equal(std::string(r.destination.file_name_without_extension()) + ".xmp",
+			             std::string(r.sidecars.front().second.name().sv()), "under the RAW's new name");
+		}
+
+		assert_equal(true, can_rename_items(plan), "and the pair is renamed together");
+	}
+
+	platform::delete_items({}, {root}, false);
+}
+
 static void should_plan_unique_convert_outputs()
 {
 	std::vector<convert_source> sources;
@@ -541,6 +649,18 @@ static void should_plan_unique_convert_outputs()
 	assert_equal("photo.webp", plan[0].destination.name(), "first conversion keeps basename");
 	assert_equal("photo (2).webp", plan[1].destination.name(), "duplicate conversion basename is suffixed");
 	assert_equal(false, plan[0].destination == plan[1].destination, "conversion outputs are unique");
+}
+
+// "Limit output dimensions" is a ceiling. The review shows an image within it at its own size, and the
+// run wrote it enlarged to the limit - over the original, with Replace and an in-place destination.
+static void should_limit_only_converted_images_over_the_limit()
+{
+	assert_equal(0, convert_max_side({1000, 800}, 2000), "an image within the limit keeps its size");
+	assert_equal(0, convert_max_side({2000, 1500}, 2000), "and one exactly at it");
+	assert_equal(2000, convert_max_side({4000, 3000}, 2000), "a larger one is reduced");
+	assert_equal(2000, convert_max_side({1000, 4000}, 2000), "whichever side is longer");
+	assert_equal(2000, convert_max_side({}, 2000), "one whose size is not known yet takes the limit");
+	assert_equal(0, convert_max_side({4000, 3000}, 0), "no limit, no resize");
 }
 
 // A destination that names another row's source is a file this run reads. Writing it destroyed an
@@ -599,6 +719,18 @@ static void should_prepare_shared_copies_under_their_own_names()
 	outgoing_options convert;
 	convert.convert_to_jpeg = true;
 
+	// Whether a share left a file is asked of the folder's listing, which is what the clear reads. On a
+	// network share, which `dd bean` stages on, the client answers an existence check from its cache
+	// for some seconds after a delete, while the listing is current.
+	const auto staged = [&staging](const df::file_path path)
+	{
+		const auto listing = platform::iterate_file_items(staging, true).files;
+		return std::ranges::any_of(listing, [&path](const platform::file_info& f)
+		{
+			return str::icmp(f.name.sv(), path.name()) == 0;
+		});
+	};
+
 	const auto converted = prepare_outgoing_files(sources, convert, staging, status);
 	assert_equal(true, converted.success, "the conversion is prepared");
 	assert_equal(3_z, converted.paths.size(), "one outgoing file per source");
@@ -606,7 +738,7 @@ static void should_prepare_shared_copies_under_their_own_names()
 	assert_equal(staging.combine_file("photo (2).jpg").str(), converted.paths[1].str(),
 	             "a second photo of that name does not overwrite the first");
 	assert_equal(jpeg.str(), converted.paths[2].str(), "a JPEG with nothing to convert goes as itself");
-	assert_equal(false, stale.exists(), "what the previous share staged is cleared");
+	assert_equal(false, staged(stale), "what the previous share staged is cleared");
 	assert_equal(true, df::blob_from_file(sources[0]) == source_bytes, "the source is unchanged");
 
 	const auto copy_bytes = df::blob_from_file(converted.paths[1]);
@@ -623,13 +755,13 @@ static void should_prepare_shared_copies_under_their_own_names()
 	assert_equal(3_z, entries.size(), "holding every source");
 	assert_equal("photo.png", entries[0].filename, "an entry keeps its name");
 	assert_equal("photo (2).png", entries[1].filename, "a second file of that name does not replace it on extraction");
-	assert_equal(false, converted.paths[0].exists(), "the earlier share's copies are cleared");
+	assert_equal(false, staged(converted.paths[0]), "the earlier share's copies are cleared");
 
 	const auto unchanged = prepare_outgoing_files(sources, {}, staging, status);
 	assert_equal(true, unchanged.success, "nothing to prepare still succeeds");
 	assert_equal(sources.size(), unchanged.paths.size(), "every source goes");
 	assert_equal(sources[1].str(), unchanged.paths[1].str(), "as itself");
-	assert_equal(true, zipped.paths.front().exists(), "and nothing staged is cleared when nothing is written");
+	assert_equal(true, staged(zipped.paths.front()), "and nothing staged is cleared when nothing is written");
 
 	// The fixture is 256 pixels square. A limit above that must not enlarge it, which is what the
 	// scale edit does unless the size is checked first.
@@ -2278,6 +2410,56 @@ static void should_only_seed_favorite_tags_on_first_run()
 // looks like, without needing a third crash before it helps.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+// A command that rewrites pixels - Rotate, the wallpaper, a shared copy - encodes with the user's save
+// settings, as the editor does. Rotate re-encoded a lossless WebP original at quality 70 whatever was set.
+static void should_encode_commands_with_the_save_settings()
+{
+	const auto saved = std::tuple(setting.jpeg_save_quality, setting.webp_quality, setting.webp_lossless,
+	                              setting.jxl_quality, setting.jxl_lossless);
+	setting.jpeg_save_quality = 77;
+	setting.webp_quality = 33;
+	setting.webp_lossless = true;
+	setting.jxl_quality = 55;
+	setting.jxl_lossless = true;
+
+	const auto params = make_file_encode_params();
+	std::tie(setting.jpeg_save_quality, setting.webp_quality, setting.webp_lossless, setting.jxl_quality,
+	         setting.jxl_lossless) = saved;
+
+	assert_equal(77, params.jpeg_save_quality, "JPEG quality");
+	assert_equal(33, params.webp_quality, "WebP quality");
+	assert_equal(true, params.webp_lossless, "WebP lossless");
+	assert_equal(55, params.jxl_quality, "JPEG XL quality");
+	assert_equal(true, params.jxl_lossless, "JPEG XL lossless");
+}
+
+// Edit description opens the metadata task with the description alone ticked. A field the task last had
+// ticked - a capture date, a rating - would otherwise be written by the same run: the date as today, the
+// rating as none.
+static void should_select_only_the_description_for_edit_description()
+{
+	settings_t s;
+	s.set_title = s.set_comment = s.set_synopsis = s.set_rating = s.set_year = true;
+	s.set_original = s.set_created = true;
+	s.set_episode = s.set_season = s.set_track = s.set_disk = true;
+	s.set_artist = s.set_album = s.set_album_artist = s.set_genre = s.set_tv_show = true;
+	s.set_copyright_notice = s.set_copyright_creator = s.set_copyright_source = s.set_copyright_credit =
+		s.set_copyright_url = true;
+	s.set_caption = false;
+
+	s.select_only_description();
+
+	const bool others[] = {
+		s.set_title, s.set_comment, s.set_synopsis, s.set_rating, s.set_year, s.set_original, s.set_created,
+		s.set_episode, s.set_season, s.set_track, s.set_disk, s.set_artist, s.set_album, s.set_album_artist,
+		s.set_genre, s.set_tv_show, s.set_copyright_notice, s.set_copyright_creator, s.set_copyright_source,
+		s.set_copyright_credit, s.set_copyright_url,
+	};
+
+	assert_equal(true, s.set_caption, "the description is ticked");
+	assert_equal(0, static_cast<int>(std::ranges::count(others, true)), "no other field is");
+}
+
 static void should_start_safe_only_after_repeated_failures()
 {
 	assert_equal(false, should_start_safe(0), "a clean history starts normally");
@@ -2719,6 +2901,15 @@ static void should_enable_based_on_selection()
 	const auto zip_result = s.selection_process_result(df::process_items_type::can_save_metadata);
 	assert_equal(true, zip_result.fail(), "zip cannot save metadata");
 	assert_equal(".zip", std::string(zip_result.first_file_extension), "reason names the extension");
+
+	// A JPEG XL takes metadata edits, but never one to its picture: Convert and Save As write one, while
+	// turning one in place is not offered.
+	s.select(view, "zoltan-tasi.jxl", false);
+	s.update_selection();
+
+	assert_equal(1_z, s.selected_count(), "zoltan-tasi.jxl");
+	assert_can_process(s, true, false, true, true, true, "jxl selected");
+	assert_equal(false, s.selected_items().items().front()->file_type()->can_edit_photo(), "no photo edit of a JPEG XL");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2840,14 +3031,14 @@ static void should_toggle_collection_entry(shared_test_context& stc)
 	assert_equal({}, settings.more_folders);
 }
 
-// Collection options keeps the other folders one per line, and an INI line cannot hold a line break:
+// Options keeps the collection's other folders one per line, and an INI line cannot hold a line break:
 // after a restart only the first folder was left. On 1.27.2 an apostrophe also opened a quote, which
 // cost the reported folder its last letter.
 static void should_keep_collection_folders_across_a_restart()
 {
 	const auto settings_folder = _temps.next_folder("ini-collection-folders");
 
-	// As Collection options writes them, each quoted where it needs it, and then a line
+	// As Options writes them, each quoted where it needs it, and then a line
 	// toggle_collection_entry appends: unquoted, after \r\n.
 	const auto more_folders = "\"C:\\Photos\"\n\"C:\\Foto's\"\r\nD:\\Raw"s;
 	assert_equal(true, platform::create_ini_file_settings(settings_folder)->write("index", "more", more_folders),
@@ -4123,6 +4314,61 @@ static void should_bind_every_advertised_command()
 	assert_equal(std::string{}, str::combine(unbound, ", "), "commands without an action or submenu");
 }
 
+// The Options page was reached through three commands, one per section, and the sections are now headers on
+// the one page: one command opens it, with the cog and F6, and the Options menu lists it once. The sidebar's
+// link to its own section is in no menu and has no key.
+static void should_offer_options_as_one_command()
+{
+	const auto app = std::make_shared<app_frame>(nullptr);
+	app->initialise_commands();
+
+	const auto options = app->find_command(commands::options);
+	assert_equal(true, options != nullptr, "Options is a command");
+	assert_equal(true, options->icon == icon_index::settings, "with the cog");
+	assert_equal(tt.options_title.sv(), options->text, "named Options");
+
+	const auto menu = app->find_command(commands::menu_options)->menu();
+	assert_equal(1, static_cast<int>(std::ranges::count(menu, options)), "the Options menu lists it once");
+	assert_equal(true, std::ranges::find(menu, app->find_command(commands::options_sidebar)) == menu.end(),
+	             "but not the sidebar's link to its own section");
+
+	std::vector<keyboard_accelerator_t> bound;
+	for (const auto& [id, key] : default_keyboard_accelerators())
+	{
+		if (id == commands::options || id == commands::options_sidebar) bound.emplace_back(key);
+	}
+
+	assert_equal(1, static_cast<int>(bound.size()), "one key opens the page");
+	assert_equal(true, bound.front().key == keys::F6 && bound.front().key_state == 0, "and it is F6");
+}
+
+// Items starts its status bar with one toolbar: Options, Tools, Playback options and Open. All but Open
+// are icons alone. Open is labelled with what is selected and opens the same menu as the panel's Open,
+// which keeps its own name.
+static void should_start_the_items_status_bar_with_one_toolbar()
+{
+	const auto app = std::make_shared<app_frame>(nullptr);
+	app->initialise_commands();
+
+	for (const auto id : {commands::options, commands::menu_tools, commands::playback_menu})
+	{
+		const auto command = app->find_command(id);
+		assert_equal(true, command != nullptr && command->icon != icon_index::none, "an icon");
+		assert_equal(std::string{}, command->toolbar_text, "shown alone");
+	}
+
+	assert_equal(true, static_cast<bool>(app->find_command(commands::menu_tools)->menu), "Tools drops down");
+	assert_equal(true, static_cast<bool>(app->find_command(commands::playback_menu)->menu), "so does Playback");
+
+	const auto open = app->find_command(commands::menu_open);
+	const auto open_status = app->find_command(commands::menu_open_status);
+	assert_equal(true, open_status->icon == open->icon, "Open in the status bar looks like Open");
+	assert_equal(true, open_status->menu && open_status->menu.target_type() == open->menu.target_type(),
+	             "and opens the Open menu");
+	assert_equal(true, open_status->text_can_change, "its label follows the selection");
+	assert_equal(tt.command_open.sv(), open->toolbar_text, "while the panel's Open keeps its name");
+}
+
 static void should_invoke_link_commands_and_selection_shortcuts()
 {
 	const auto saved_favorite_tags_only = setting.sidebar.show_favorite_tags_only;
@@ -4313,7 +4559,7 @@ static void should_record_a_bit_for_every_view()
 
 	uint64_t seen = 0;
 
-	for (auto v = static_cast<int>(view_type::items); v <= static_cast<int>(view_type::tags); ++v)
+	for (auto v = static_cast<int>(view_type::items); v <= static_cast<int>(view_type::options); ++v)
 	{
 		const auto bit = features::view_bit(static_cast<view_type>(v));
 		assert_equal(1, std::popcount(bit), std::format("view {} records one bit", v));
@@ -4362,84 +4608,453 @@ static void should_label_grouping_and_sorting()
 	assert_equal(true, both.length() > same.length(), "a shared name is not repeated");
 }
 
-// Hands out real command objects so the menu built from them can be compared by identity. A menu
-// that invented its own copies would look right and drift the moment either changed.
-class command_state_strategy final : public null_state_strategy
-{
-public:
-	mutable df::hash_map<commands, ui::command_ptr> commands_by_id;
-
-	ui::command_ptr find_command(const commands cmd) const override
-	{
-		auto& found = commands_by_id[cmd];
-		if (!found) found = std::make_shared<ui::command>();
-		return found;
-	}
-};
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// Discussion #251 - the filter toolbar scrolls away, so changing a filter over a long listing meant
-// scrolling to the top first. The control in the scroller track is always on screen and now carries
-// those settings. Its click opens the menu in every scroll position: opening a menu when at the top
-// and scrolling when not would be a context-dependent surprise.
+// Discussion #251 - the filter toolbar scrolled away with the list, so changing a filter over a long
+// listing meant scrolling to the top first. The list's controls are declared for the frame's status
+// bar instead, which does not scroll: everything the list owns is there, and it carries everything
+// the scroll-track menu that stood in for it used to offer.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-static void should_offer_the_items_menu_at_every_scroll_position()
+static void should_keep_the_items_controls_in_the_status_bar()
 {
-	command_state_strategy ss;
+	null_state_strategy ss;
 	null_async_strategy as;
-	location_cache locations;
+	const location_cache locations;
 	index_state index(as, locations);
 	view_state state(ss, as, index, make_test_player());
 
-	// The toolbar's grouping button carries the Group by / Sort by list, so the menu must take it
-	// from there rather than list the same commands again.
-	const auto group = ss.find_command(commands::menu_group_toolbar);
-	group->menu = [&ss] { return std::vector{ss.find_command(commands::group_folder)}; };
+	const items_view items(state, nullptr);
+	const auto declared = items.bars();
 
-	auto scrolled = 0;
-	const auto scroll = [&scrolled] { ++scrolled; };
+	assert_equal(true, declared.navigation, "Items keeps the navigation bar as its title bar");
+	assert_equal(true, declared.top.empty(), "and adds nothing to it");
 
-	for (const auto at_top : {true, false})
+	const auto declares = [&declared](const bar_entry& entry)
 	{
-		const auto menu = items_scroll_menu(state, at_top, scroll);
+		return std::ranges::find(declared.bottom, entry) != declared.bottom.end();
+	};
 
-		assert_equal(true, menu.size() > 1, "the menu is offered whatever the scroll position");
-		assert_equal(true, menu.back() != nullptr, "and it closes with an entry of its own");
-		assert_equal(std::string(tt.tooltip_scroll_to_top.sv()), std::string(menu.back()->text),
-		             "scroll to top comes last, below the settings the menu exists for");
-		assert_equal(true, menu[menu.size() - 2] != nullptr, "directly below them, with no separator between");
-		assert_equal(!at_top, menu.back()->enable, "and it says whether it has anything to do");
+	assert_equal(true, declares(bar_control::item_filter), "the filter box is in the status bar");
+	assert_equal(true, declares(bar_control::item_size), "so is the thumbnail size");
+	assert_equal(true, declares(bar_control::item_totals), "and the totals");
+	assert_equal(true, declares(commands::filter_photos), "the media type filter is there");
+	assert_equal(true, declares(commands::filter_videos), "every part of it");
+	assert_equal(true, declares(commands::filter_audio), "every part of it");
+	assert_equal(true, declares(commands::browse_recursive), "and Show items in subfolders");
+	assert_equal(true, declares(commands::menu_group_toolbar), "and the grouping and sorting");
 
-		const auto offers = [&menu](const ui::command_ptr& c)
-		{
-			return std::ranges::find(menu, c) != menu.end();
-		};
+	// locations.md: the totals are their own affordance beside the grouping, not part of its button.
+	const auto totals = std::ranges::find(declared.bottom, bar_entry{bar_control::item_totals});
+	assert_equal(true, totals != declared.bottom.end() && std::next(totals) != declared.bottom.end() &&
+	             *std::next(totals) == bar_entry{commands::menu_group_toolbar},
+	             "the totals stand directly beside the grouping");
 
-		assert_equal(true, offers(ss.find_command(commands::group_folder)), "the toolbar's grouping list is carried");
-		assert_equal(true, offers(ss.find_command(commands::filter_photos)), "so is the media type filter");
-		assert_equal(true, offers(ss.find_command(commands::filter_videos)), "every part of it");
-		assert_equal(true, offers(ss.find_command(commands::filter_audio)), "every part of it");
-		assert_equal(true, offers(ss.find_command(commands::browse_recursive)),
-		             "and Show items in subfolders, which was on no toolbar at all");
+	// The bar starts under the sidebar with one toolbar: the Options cog, beside the overview of the
+	// collection Options opens on; Tools and Playback options; then Open, labelled with what is selected, as
+	// a file browser's status bar says it. Commands alone, so the frame builds them as a single toolbar.
+	const std::vector<bar_entry> leading = {
+		commands::options, commands::menu_tools, commands::playback_menu, commands::menu_open_status,
+	};
+	assert_equal(true, declared.bottom_leading == leading, "the status bar starts with Options, Tools, Playback, Open");
+
+	for (const auto& entry : leading)
+	{
+		assert_equal(false, declares(entry), "none is repeated at the trailing end");
+	}
+}
+
+// A file browser's status bar says what is selected: how many, and how big, which is how Open in Items'
+// status bar is labelled. With nothing selected it says nothing, and Open shows its own name instead; a
+// count with no size to tell stands alone.
+static void should_summarise_the_selection_for_the_status_bar()
+{
+	assert_equal(std::string{}, format_selection_summary({}), "nothing selected says nothing");
+
+	const auto make_item = [](const std::string_view name, const uint64_t size)
+	{
+		df::index_file_item indexed;
+		indexed.name = str::cache(name);
+		indexed.ft = files::file_type_from_name(name);
+		indexed.size = df::file_size(size);
+		return std::make_shared<df::item_element>(df::file_path(df::folder_path("c:\\selection"), name), indexed);
+	};
+
+	df::item_set two;
+	make_item("selection-1.jpg", 1500)->add_to(two);
+	make_item("selection-2.mp4", 2500)->add_to(two);
+	assert_equal(std::format("{} \u00B7 {}", format_plural_text(tt.title_item_count_fmt, 2),
+	                         df::format_size(df::file_size(uint64_t{4000}))),
+	             format_selection_summary(two), "two files read as their count and their total size");
+
+	df::item_set sizeless;
+	make_item("selection-empty.jpg", 0)->add_to(sizeless);
+	assert_equal(format_plural_text(tt.title_item_count_fmt, 1), format_selection_summary(sizeless),
+	             "with no size to tell, the count stands alone");
+}
+
+// A task view's commands are its own, so they sit at the end of the status bar under the controls
+// they act on; the title bar keeps what leaves the view. A Run left at the top would be the one
+// command not where the others are.
+static void should_put_task_commands_in_the_status_bar()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+
+	struct task
+	{
+		std::shared_ptr<view_base> view;
+		commands run;
+	};
+
+	const std::vector<task> tasks = {
+		{std::make_shared<rename_view>(state, nullptr), commands::tool_run},
+		{std::make_shared<batch_tool_view>(state, nullptr), commands::tool_run},
+		{std::make_shared<import_view>(state, nullptr), commands::import_run},
+		{std::make_shared<sync_view>(state, nullptr), commands::sync_run},
+		{std::make_shared<tags_view>(state, nullptr), commands::tags_run},
+	};
+
+	const auto contains = [](const std::vector<bar_entry>& entries, const commands id)
+	{
+		return std::ranges::find(entries, bar_entry{id}) != entries.end();
+	};
+
+	for (const auto& [view, run] : tasks)
+	{
+		const auto declared = view->bars();
+		assert_equal(false, declared.navigation, "a task view has no address box");
+		assert_equal(true, contains(declared.top, commands::view_close), "Close leaves the view from the title bar");
+		assert_equal(false, contains(declared.top, run), "the task's run command is not in the title bar");
+		assert_equal(true, contains(declared.bottom, run), "it ends the status bar");
+		assert_equal(false, contains(declared.bottom, commands::view_close), "where Close is not");
 	}
 
-	// Invoking the last entry is what scrolls. A menu entry performs its command whether or not it
-	// is enabled - dimming is what the user is shown, not a second gate - so the scroll runs here
-	// even though this menu was built at the top.
-	const auto at_top_menu = items_scroll_menu(state, true, scroll);
-	at_top_menu.back()->invoke();
-	assert_equal(1, scrolled, "the entry performs the scroll the click used to");
+	// A run in progress replaces the view's commands with the one that stops it, so nothing else can
+	// be started under it and no view has to declare Cancel beside commands it would dim.
+	const auto& running = app_frame::running_task_bar();
+	assert_equal(1_z, running.size(), "a running task's status bar offers one command");
+	assert_equal(true, running.front() == bar_entry{commands::view_cancel}, "and that command is Cancel");
 
-	// A separator is only ever between two entries: a double rule, or a rule under the last entry,
-	// is what an unresolved command silently turns into.
-	assert_equal(false, at_top_menu.front() == nullptr, "the menu does not open on a separator");
-	assert_equal(false, at_top_menu.back() == nullptr, "and does not end on one");
-
-	for (auto i = 1u; i < at_top_menu.size(); ++i)
+	for (const auto& t : tasks)
 	{
-		assert_equal(false, at_top_menu[i] == nullptr && at_top_menu[i - 1] == nullptr,
-		             "no two separators are adjacent");
+		assert_equal(false, contains(t.view->bars().bottom, commands::view_cancel),
+		             "no view declares Cancel among its own commands");
 	}
+}
+
+// The Options view is a page of settings, not a task: its status bar offers Help, then Cancel, then Save
+// options and close, which ends it as a task's Run does. Close stays in the title bar.
+static void should_end_the_options_view_with_save()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+
+	const options_view options(state, nullptr, {});
+	const auto declared = options.bars();
+	const std::vector<bar_entry> expected = {commands::options_help, commands::options_cancel, commands::options_save};
+
+	assert_equal(false, declared.navigation, "Options has no address box");
+	assert_equal(true, declared.bottom == expected, "Help, Cancel, then Save options and close");
+	assert_equal(true, std::ranges::find(declared.top, bar_entry{commands::view_close}) != declared.top.end(),
+	             "Close is in the title bar");
+	assert_equal(false, options._show_render_window, "the page fills the window, with no view beside it");
+}
+
+// Saving the page copies what it edits and nothing else. What the app changed while it was open - the
+// thumbnail size, a task's remembered fields, the version on offer - is newer than the page's copy.
+static void should_save_only_what_the_options_view_edits()
+{
+	settings_t edited;
+	settings_t current;
+
+	edited.show_hidden = !current.show_hidden;
+	edited.subtitles = subtitle_mode::always;
+	edited.subtitle_language = "de";
+	edited.language = "fr";
+	edited.collection.more_folders = R"(D:\Films)";
+	edited.collection.library_types = "films_tv\tD:\\Films";
+	edited.sidebar.show_world_map = !current.sidebar.show_world_map;
+	edited.search.title[2] = "Holidays";
+	edited.favorite_tags = "beach family";
+	edited.jpeg_save_quality = 55;
+	edited.slideshow_delay = 1000;
+
+	edited.item_scale = 1;
+	edited.write_folder = R"(C:\stale)";
+	edited.available_version = "stale";
+	edited.copyright_notice = "stale";
+	current.item_scale = 6;
+	current.write_folder = R"(C:\newer)";
+	current.available_version = "newer";
+	current.copyright_notice = "newer";
+
+	apply_edited_options(edited, current);
+
+	assert_equal(edited.show_hidden, current.show_hidden, "an application option");
+	assert_equal(true, current.subtitles == subtitle_mode::always && current.subtitle_language == "de", "subtitles");
+	assert_equal("fr", current.language, "the language");
+	assert_equal(R"(D:\Films)", current.collection.more_folders, "the collection's folders");
+	assert_equal("films_tv\tD:\\Films", current.collection.library_types, "and what they hold");
+	assert_equal(edited.sidebar.show_world_map, current.sidebar.show_world_map, "the sidebar");
+	assert_equal("Holidays", current.search.title[2], "a favourite search");
+	assert_equal("beach family", current.favorite_tags, "the favourite tags");
+	assert_equal(55, current.jpeg_save_quality, "a saving option");
+	assert_equal(settings_t::max_slideshow_delay, current.slideshow_delay, "a delay kept in range");
+
+	assert_equal(6, current.item_scale, "the thumbnail size is not the page's");
+	assert_equal(R"(C:\newer)", current.write_folder, "nor a task's folder");
+	assert_equal("newer", current.available_version, "nor what the app learnt while the page was open");
+	assert_equal("newer", current.copyright_notice, "nor what a metadata task remembers");
+}
+
+// The page pauses what is playing while it shows, as the dialogs it replaced did, and resumes it however it is
+// left. Opened again while showing - a key pressed before its command is disabled - it keeps the copy its
+// controls edit and the pause it took: a second pause would find nothing playing and lose the first.
+static void should_pause_media_while_the_options_view_shows()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+
+	struct release_counter
+	{
+		int& releases;
+		explicit release_counter(int& r) : releases(r) {}
+		~release_counter() { ++releases; }
+		release_counter(const release_counter&) = delete;
+		release_counter& operator=(const release_counter&) = delete;
+	};
+
+	auto pauses = 0;
+	auto resumes = 0;
+	options_view_actions actions;
+	actions.pause_media = [&]
+	{
+		++pauses;
+		return std::static_pointer_cast<void>(std::make_shared<release_counter>(resumes));
+	};
+
+	const auto options = std::make_shared<options_view>(state, nullptr, actions);
+
+	options->open(options_section::top);
+	assert_equal(true, state.view_mode() == view_type::options, "the page shows");
+	assert_equal(1, pauses, "what is playing pauses as the page opens");
+
+	options->open(options_section::sidebar);
+	assert_equal(1, pauses, "opened again, it takes no second pause");
+	assert_equal(0, resumes, "and keeps the first");
+
+	options->deactivate();
+	assert_equal(1, resumes, "leaving the page, by any route, resumes what it paused");
+
+	options->cancel();
+	assert_equal(true, state.view_mode() == view_type::items, "Cancel returns to Items");
+	assert_equal(1, resumes, "once");
+}
+
+// Leaving the page by Close or Escape, or closing Diffractor, with changes it has not saved asks first: save
+// them, close without them, or stay. With nothing changed - a change put back, or stored text the page writes
+// back in another form - it closes without asking, and Cancel, which says it discards, is never asked.
+static void should_ask_before_leaving_options_with_changes()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+
+	const auto saved_settings = setting;
+	const df::scope_exit restore([saved_settings] { setting = saved_settings; });
+	const auto original = setting.show_hidden;
+	// As toggle_collection_entry and older builds wrote it, which the page writes back another way.
+	setting.collection.more_folders = "D:\\Films\r\nE:\\Music\r\n";
+
+	auto asked = 0;
+	auto answer = options_leave_choice::stay;
+	options_view_actions actions;
+	actions.ask_to_save = [&]
+	{
+		++asked;
+		return answer;
+	};
+
+	const auto options = std::make_shared<options_view>(state, nullptr, actions);
+	const auto change = [&options, original] { options->editing()->settings.show_hidden = !original; };
+
+	options->open(options_section::top);
+	assert_equal(false, options->has_changes(), "a page just opened holds no changes");
+	options->exit();
+	assert_equal(0, asked, "so Close does not ask");
+	assert_equal(true, state.view_mode() == view_type::items, "it just closes");
+
+	options->open(options_section::top);
+	change();
+	assert_equal(true, options->has_changes(), "a changed option is a change");
+	options->editing()->settings.show_hidden = original;
+	assert_equal(false, options->has_changes(), "put back, it is none");
+
+	change();
+	options->exit();
+	assert_equal(1, asked, "with a change, Close asks");
+	assert_equal(true, state.view_mode() == view_type::options, "staying keeps the page");
+	assert_equal(true, options->has_changes(), "and the change");
+	assert_equal(true, options->escape(), "Escape is the page's to answer");
+	assert_equal(2, asked, "and asks as Close does");
+
+	answer = options_leave_choice::discard;
+	options->exit();
+	assert_equal(true, state.view_mode() == view_type::items, "closing without saving leaves the page");
+	assert_equal(original, setting.show_hidden, "and the option as it was");
+
+	options->open(options_section::top);
+	change();
+	answer = options_leave_choice::save;
+	options->exit();
+	assert_equal(true, state.view_mode() == view_type::items, "saving leaves the page");
+	assert_equal(!original, setting.show_hidden, "with the change made");
+	setting.show_hidden = original;
+
+	options->open(options_section::top);
+	change();
+	const auto asked_before_cancel = asked;
+	options->cancel();
+	assert_equal(asked_before_cancel, asked, "Cancel is not asked");
+	assert_equal(original, setting.show_hidden, "and discards");
+
+	options->open(options_section::top);
+	assert_equal(true, options->confirm_exit(), "with nothing changed Diffractor closes without asking");
+	change();
+	answer = options_leave_choice::stay;
+	assert_equal(false, options->confirm_exit(), "with a change, staying keeps Diffractor open");
+	answer = options_leave_choice::discard;
+	assert_equal(true, options->confirm_exit(), "closing without saving lets it close");
+	assert_equal(original, setting.show_hidden, "without the change");
+
+	// A change is in what the page edits, its nested and listed settings too, and in nothing else.
+	const settings_t before;
+	auto after = before;
+	after.item_scale = before.item_scale + 1;
+	assert_equal(false, edited_options_differ(before, after), "a setting the page does not edit is no change");
+	after.search.title[3] = "Holidays";
+	assert_equal(true, edited_options_differ(before, after), "a favourite search is one");
+	after = before;
+	after.collection.library_types = "films_tv\tD:\\Films";
+	assert_equal(true, edited_options_differ(before, after), "and so is what a folder holds");
+}
+
+// A library type belongs to a folder of the collection: a ticked local folder, another folder named by its
+// path, or one given a type before. Exclusions and device labels name no one folder.
+static void should_offer_library_types_for_collection_folders()
+{
+	// Each platform's own paths: a share is a UNC path on Windows and a mount elsewhere.
+	const auto windows = df::windows_path_semantics;
+	const auto pictures = windows ? R"(C:\Users\me\Pictures)"s : "/home/me/Pictures"s;
+	const auto videos = windows ? R"(C:\Users\me\Videos)"s : "/home/me/Videos"s;
+	const auto share = windows ? R"(\\nas\video)"s : "/mnt/nas/video"s;
+	const auto family = windows ? R"(\\nas\video\Family)"s : "/mnt/nas/video/Family"s;
+	const auto excluded = windows ? R"(-c:\secret)"s : "-/secret"s;
+
+	local_folders_result local;
+	local.pictures = df::folder_path(pictures);
+	local.video = df::folder_path(videos);
+	local.music = df::folder_path(windows ? R"(C:\Users\me\Music)" : "/home/me/Music");
+
+	settings_t::index_t collection;
+	collection.pictures = true;
+	collection.video = true;
+	collection.more_folders = std::format("{}\n{}\n-proxy*\nMyPassport\n{}\n", share, excluded, videos);
+	collection.library_types = std::format("personal\t{}\nfilms_tv\t{}", family, share);
+
+	const auto folders = library_type_folders(collection, local);
+	const std::vector<df::folder_path> expected = {
+		df::folder_path(pictures), df::folder_path(videos), df::folder_path(share), df::folder_path(family)
+	};
+
+	assert_equal(expected.size(), folders.size(), "ticked, named and typed folders, each once");
+
+	for (auto i = 0_z; i < std::min(expected.size(), folders.size()); ++i)
+	{
+		assert_equal(expected[i].text().sv(), folders[i].text().sv(), std::format("folder {}", i));
+	}
+}
+
+// The bars right-align their parts and give what is left to the title or the status. Short of room,
+// a bar gives up what is optional, then narrows what can narrow, and then drops whole parts from the
+// leading end - the trailing end, where the commands are, is the last to go, and the last part
+// standing is clipped rather than lost.
+static void should_arrange_a_bar_from_its_trailing_end()
+{
+	constexpr recti bounds(10, 0, 410, 40);
+	constexpr auto gap = 4;
+	const std::vector<bar_slot> slots = {
+		{{100, 20}, 0, true}, // optional, like the thumbnail size
+		{{150, 30}, 80}, // narrows, like the filter box
+		{{120, 36}}, // fixed, like a toolbar
+	};
+
+	const auto roomy = arrange_bar(bounds, slots, gap);
+	assert_equal(true, roomy.slots[2] == recti(290, 2, 410, 38), "the last slot ends the bar, centred in it");
+	assert_equal(true, roomy.slots[1] == recti(136, 5, 286, 35), "the one before it sits a gap to its left");
+	assert_equal(true, roomy.slots[0] == recti(32, 10, 132, 30), "and so on, in declared order");
+	assert_equal(true, roomy.remainder == recti(10, 0, 28, 40), "the leading end keeps what is left");
+
+	const auto tight = arrange_bar(recti(10, 0, 310, 40), slots, gap);
+	assert_equal(true, tight.slots[0].is_empty(), "an optional slot is the first given up");
+	assert_equal(150, tight.slots[1].width(), "while the others still fit at their size");
+	assert_equal(true, tight.slots[2] == recti(190, 2, 310, 38), "and the trailing slot has not moved");
+
+	const auto tighter = arrange_bar(recti(10, 0, 220, 40), slots, gap);
+	assert_equal(true, tighter.slots[0].is_empty(), "the optional slot stays given up");
+	assert_equal(86, tighter.slots[1].width(), "a narrowing slot gives up width next");
+	assert_equal(120, tighter.slots[2].width(), "before the trailing slot loses any");
+	assert_equal(0, tighter.remainder.width(), "nothing is left for the status");
+
+	const auto cramped = arrange_bar(recti(10, 0, 150, 40), slots, gap);
+	assert_equal(true, cramped.slots[1].is_empty(), "past its minimum a leading slot goes whole");
+	assert_equal(true, cramped.slots[2] == recti(30, 2, 150, 38), "so the trailing slot still fits whole");
+
+	const auto clipped = arrange_bar(recti(10, 0, 70, 40), slots, gap);
+	assert_equal(60, clipped.slots[2].width(), "a lone slot wider than the bar is cut to the bar");
+	assert_equal(true, clipped.slots[2].right == 70, "from its leading end");
+
+	const auto empty = arrange_bar(bounds, {}, gap);
+	assert_equal(true, empty.remainder == bounds, "a bar with nothing declared is all remainder");
+}
+
+// The status bar starts from both ends. What a view starts it with is arranged from the leading end,
+// in the room its trailing controls leave, by the same rules mirrored: short of room, the part
+// furthest from the end it starts from goes first. A part with nothing to show takes no room, not
+// even the gap beside it.
+static void should_arrange_a_bar_from_its_leading_end()
+{
+	constexpr recti bounds(10, 0, 410, 40);
+	constexpr auto gap = 4;
+	const std::vector<bar_slot> slots = {
+		{{120, 36}}, // a toolbar, like the one Items starts its status bar with
+		{{0, 0}}, // nothing to show
+		{{150, 30}}, // text, like the totals
+	};
+
+	const auto roomy = arrange_bar(bounds, slots, gap, bar_alignment::leading);
+	assert_equal(true, roomy.slots[0] == recti(10, 2, 130, 38), "the first slot starts the bar, centred in it");
+	assert_equal(true, roomy.slots[1].is_empty(), "a slot with nothing to show is not placed");
+	assert_equal(true, roomy.slots[2] == recti(134, 5, 284, 35), "so the next sits one gap after the first");
+	assert_equal(true, roomy.remainder == recti(288, 0, 410, 40), "and the trailing end keeps what is left");
+
+	const auto cramped = arrange_bar(recti(10, 0, 200, 40), slots, gap, bar_alignment::leading);
+	assert_equal(true, cramped.slots[2].is_empty(), "short of room the slot furthest from the start goes");
+	assert_equal(true, cramped.slots[0] == recti(10, 2, 130, 38), "while the first keeps its place");
+
+	const auto trailing = arrange_bar(bounds, slots, gap);
+	assert_equal(true, trailing.slots[1].is_empty(), "nor is one at the trailing end");
+	assert_equal(true, trailing.slots[0] == recti(136, 2, 256, 38), "which leaves no gap for it either");
 }
 
 // design.md "Navigation and search" specifies the address box as an editing session with a
@@ -4933,11 +5548,15 @@ static void should_skip_stable_progress_repaints_when_animations_are_disabled()
 	const df::scope_exit restore_scope([restore_animations] { ui::animations_enabled = restore_animations; });
 
 	ui::animations_enabled = false;
-	assert_equal(false, status_needs_animation(true, 0, false), "stable disabled progress does not animate status");
-	assert_equal(true, status_needs_animation(true, 0, true), "debug status keeps its live repaint");
+	assert_equal(false, status_repaints(true, 0, false).status_bar,
+	             "stable disabled progress does not repaint the status bar");
+	assert_equal(false, status_repaints(true, 0, false).view, "nor the view");
+	assert_equal(true, status_repaints(true, 0, true).view, "debug overlays keep their live repaint");
 
 	ui::animations_enabled = true;
-	assert_equal(true, status_needs_animation(true, 0, false), "enabled indeterminate progress still animates");
+	assert_equal(true, status_repaints(true, 0, false).status_bar, "enabled indeterminate progress still pulses");
+	assert_equal(false, status_repaints(true, 0, false).view, "in the status bar, not over the view");
+	assert_equal(false, status_repaints(true, 12, false).status_bar, "counted progress repaints only as it counts");
 }
 
 static void run_destination_completion_worker(deferred_async_strategy& as)
@@ -5342,6 +5961,8 @@ static void should_draw_the_logo()
 void register_app_tests(view_state& state, test_registry& tests)
 {
 	tests.add("Should bind every advertised command"s, should_bind_every_advertised_command);
+	tests.add("Should offer Options as one command"s, should_offer_options_as_one_command);
+	tests.add("Should start the items status bar with one toolbar"s, should_start_the_items_status_bar_with_one_toolbar);
 	tests.add("Should draw the chrome with the app's glyphs"s, should_draw_the_chrome_with_the_app_glyphs);
 	tests.add("Should embed the app's assets"s, should_embed_the_app_assets);
 	tests.add("Should draw the logo"s, should_draw_the_logo);
@@ -5373,6 +5994,9 @@ void register_app_tests(view_state& state, test_registry& tests)
 	tests.add("Should reject duplicate rename targets"s, should_reject_duplicate_rename_targets);
 	tests.add("Should reject unusable rename targets"s, should_reject_unusable_rename_targets);
 	tests.add("Should group Rename sidecar collisions"s, should_group_rename_sidecar_collisions);
+	tests.add("Should rename subtitles with their language"s, should_rename_subtitles_with_their_language);
+	tests.add("Should rename a shared sidecar with the RAW that reads it"s,
+	          should_rename_a_shared_sidecar_with_the_raw_that_reads_it);
 	tests.add("Should plan the default rename template"s, should_plan_the_default_rename_template);
 	tests.add("Should rename a set onto names it is vacating"s, should_rename_a_set_onto_names_it_is_vacating);
 	tests.add("Should cascade skipped rename rows"s, should_cascade_skipped_rename_rows);
@@ -5388,6 +6012,31 @@ void register_app_tests(view_state& state, test_registry& tests)
 	          should_not_run_a_rename_closed_while_releasing_handles);
 	tests.add("Should conclude a run with what it did and why"s, should_conclude_a_run_with_what_it_did_and_why);
 	tests.add("Should keep completed run results on source refresh"s, should_keep_completed_run_results_on_source_refresh);
+	// Adjust Date planned the tag each row shifts but drew only three of its four columns.
+	tests.add("Should show every column a batch tool names"s, []
+	{
+		browsing_fixture fixture;
+		const auto tool = std::make_shared<batch_tool_view>(fixture.state, nullptr);
+		tool->mode(batch_tool_mode::adjust_date);
+		assert_equal(4, tool->column_count(), "Adjust Date shows the source of each date");
+		assert_equal(false, tool->col_titles()[3].sv().empty(), "under a title of its own");
+		tool->mode(batch_tool_mode::convert);
+		assert_equal(3, tool->column_count(), "Convert shows three");
+		tool->mode(batch_tool_mode::metadata);
+		assert_equal(3, tool->column_count(), "and so does Edit metadata");
+	});
+	// Rename skipped the list's activation, so a playing video ran on behind it and column widths
+	// dragged in one use were still there in the next.
+	tests.add("Should start each Rename from columns that fit"s, []
+	{
+		browsing_fixture fixture;
+		const auto rename = std::make_shared<rename_view>(fixture.state, nullptr);
+		rename->restore_column_sizes({{120.0, 0.0, 0.0, 0.0}});
+		assert_equal(true, rename->is_user_sized(0), "a dragged column is user sized");
+		rename->deactivate();
+		rename->activate({400, 300});
+		assert_equal(false, rename->is_user_sized(0), "the next use starts from columns that fit");
+	});
 	tests.add("Should not convert over a destination changed since review"s,
 	          should_not_convert_over_a_destination_changed_since_review);
 	tests.add("Should refuse Convert destination claimed during staged publication"s,
@@ -5413,7 +6062,9 @@ void register_app_tests(view_state& state, test_registry& tests)
 	tests.add("Should run a case only rename"s, should_run_a_case_only_rename);
 	tests.add("Should run a singleton folder case only rename"s, should_run_a_singleton_folder_case_only_rename);
 	tests.add("Should format rename"s, should_format_rename);
+	tests.add("Should rename episodes with padded numbers"s, should_rename_episodes_with_padded_numbers);
 	tests.add("Should plan unique convert outputs"s, should_plan_unique_convert_outputs);
+	tests.add("Should limit only converted images over the limit"s, should_limit_only_converted_images_over_the_limit);
 	tests.add("Should not plan a convert output over a source"s, should_not_plan_a_convert_output_over_a_source);
 	tests.add("Should prepare shared copies under their own names"s, should_prepare_shared_copies_under_their_own_names);
 	tests.add("Should adjust item dates from snapshot"s, should_adjust_item_dates_from_snapshot);
@@ -5487,6 +6138,42 @@ void register_app_tests(view_state& state, test_registry& tests)
 	tests.add("Should only seed favorite tags on first run"s, should_only_seed_favorite_tags_on_first_run);
 
 	tests.add("Should start safe only after repeated failures"s, should_start_safe_only_after_repeated_failures);
+	tests.add("Should select only the description for Edit description"s,
+	          should_select_only_the_description_for_edit_description);
+	tests.add("Should stop the thumbnail size at either end unless cycling"s, []
+	{
+		settings_t s;
+		s.set_item_scale_position(settings_t::item_scale_position_max);
+		s.step_item_scale(1);
+		assert_equal(settings_t::item_scale_position_max, s.item_scale_slider_position(),
+		             "a wheel step past the largest size keeps it");
+
+		s.set_item_scale_position(0);
+		s.step_item_scale(-1);
+		assert_equal(0, s.item_scale_slider_position(), "and past the smallest keeps that");
+
+		s.step_item_scale(1);
+		assert_equal(true, s.item_scale_slider_position() > 0, "a step between the ends still moves");
+
+		s.set_item_scale_position(settings_t::item_scale_position_max);
+		s.step_item_scale(1, true);
+		assert_equal(0, s.item_scale_slider_position(), "the toggle button cycles back to the smallest");
+	});
+	// Today and Yesterday were the UTC day, a day out for hours every day away from Europe.
+	tests.add("Should group a day as Today or Yesterday against the local day"s, []
+	{
+		const auto today = df::date_t(2026, 11, 2).to_days();
+		assert_equal(0, date_group_key(df::date_t(2026, 11, 2, 7, 30), today).order1, "this morning is Today");
+		assert_equal(1, date_group_key(df::date_t(2026, 11, 1, 22, 0), today).order1, "last night is Yesterday");
+
+		const auto older = date_group_key(df::date_t(2026, 10, 31, 12, 0), today);
+		assert_equal(3000 - 2026, older.order1, "an older day groups by its year");
+		assert_equal(100 - 10, older.order2, "and its month");
+
+		assert_equal(0, date_group_key(platform::now().system_to_local(), local_today_days()).order1,
+		             "the local time now is Today");
+	});
+	tests.add("Should encode commands with the save settings"s, should_encode_commands_with_the_save_settings);
 	tests.add("Should not count concurrent starts"s, should_not_count_concurrent_starts);
 	tests.add("Should hand the renderer its YUV latch"s, should_hand_the_renderer_its_yuv_latch);
 	tests.add("Should restore history selection"s, should_restore_history_selection);
@@ -5507,9 +6194,17 @@ void register_app_tests(view_state& state, test_registry& tests)
 	tests.add("Should spell keyboard accelerators"s, should_spell_keyboard_accelerators);
 	tests.add("Should record a bit for every view"s, should_record_a_bit_for_every_view);
 	tests.add("Should label grouping and sorting"s, should_label_grouping_and_sorting);
-	// Discussion #251 - the filter toolbar scrolls away
-	tests.add("Should offer the items menu at every scroll position"s,
-	          should_offer_the_items_menu_at_every_scroll_position);
+	// Discussion #251 - the filter toolbar scrolled away
+	tests.add("Should keep the items controls in the status bar"s, should_keep_the_items_controls_in_the_status_bar);
+	tests.add("Should put task commands in the status bar"s, should_put_task_commands_in_the_status_bar);
+	tests.add("Should end the options view with save"s, should_end_the_options_view_with_save);
+	tests.add("Should save only what the options view edits"s, should_save_only_what_the_options_view_edits);
+	tests.add("Should pause media while the options view shows"s, should_pause_media_while_the_options_view_shows);
+	tests.add("Should ask before leaving options with changes"s, should_ask_before_leaving_options_with_changes);
+	tests.add("Should offer library types for collection folders"s, should_offer_library_types_for_collection_folders);
+	tests.add("Should arrange a bar from its trailing end"s, should_arrange_a_bar_from_its_trailing_end);
+	tests.add("Should arrange a bar from its leading end"s, should_arrange_a_bar_from_its_leading_end);
+	tests.add("Should summarise the selection for the status bar"s, should_summarise_the_selection_for_the_status_bar);
 
 	//
 	// Address box editing session

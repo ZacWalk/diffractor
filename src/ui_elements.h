@@ -408,6 +408,13 @@ public:
 	{
 	}
 
+	// Not a visit: an element may own controls it does not offer at the moment - the options of an
+	// unticked choice - and keeps those disabled whatever it is asked. A container passes the call on.
+	virtual void enable_controls(const bool enable)
+	{
+		visit_controls([enable](const ui::control_base_ptr& c) { c->enable(enable); });
+	}
+
 	virtual view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 	                                                     hit_test_context& ctx);
 
@@ -590,6 +597,14 @@ public:
 		for (const auto& c : _children)
 		{
 			c->visit_controls(handler);
+		}
+	}
+
+	void enable_controls(const bool enable) override
+	{
+		for (const auto& c : _children)
+		{
+			c->enable_controls(enable);
 		}
 	}
 

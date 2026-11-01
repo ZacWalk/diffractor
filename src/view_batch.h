@@ -20,6 +20,11 @@ enum class batch_tool_mode
 	adjust_date,
 };
 
+// The longest side Convert writes a row at, or 0 to keep its size. An image already within the limit
+// keeps its own size, as the review shows it, rather than being enlarged to the limit; one whose size is
+// not known yet takes the limit, so a large one is still reduced.
+int convert_max_side(sizei dimensions, int max_side);
+
 class batch_tool_view final : public list_view, public std::enable_shared_from_this<batch_tool_view>
 {
 	batch_tool_mode _mode = batch_tool_mode::convert;
@@ -66,7 +71,12 @@ class batch_tool_view final : public list_view, public std::enable_shared_from_t
 public:
 	batch_tool_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 3; }
 
-	void mode(const batch_tool_mode value) { _mode = value; }
+	void mode(const batch_tool_mode value)
+	{
+		_mode = value;
+		// Adjust Date adds the tag each row shifts, which can differ from row to row.
+		col_count = value == batch_tool_mode::adjust_date ? 4 : 3;
+	}
 	batch_tool_mode mode() const { return _mode; }
 	void run();
 	text_t run_text() const;
@@ -85,6 +95,7 @@ public:
 	bool can_refresh() const { return !progress().active && showing_results(); }
 	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
 	std::string_view title() override;
+	view_bars bars() const override;
 	text_t empty_message() override { return tt.no_items_selected_message; }
 	std::array<text_t, max_col_count> col_titles() override;
 	std::string_view operation_name() const override;

@@ -201,9 +201,6 @@ msgstr "фильтр"
 msgid "Close"
 msgstr "Закрыть"
 
-msgid "Collection options"
-msgstr "Параметры коллекции"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "Добавьте '-' перед записью, чтобы исключить её. Полный путь, например -c:\\photos\\secret, исключает одну папку. Имя, например -secret, или шаблон, например -proxy*, исключает подходящие папки в любом месте вашей коллекции."
 
@@ -471,9 +468,6 @@ msgstr "Открыть в Google Maps"
 msgid "Open with"
 msgstr "Открыть с помощью"
 
-msgid "General options"
-msgstr "Общие параметры"
-
 msgid "Pin or hold item"
 msgstr "Закрепить или удерживать элемент"
 
@@ -623,9 +617,6 @@ msgstr "Переключить размер миниатюр"
 
 msgid "Change thumbnail size"
 msgstr "Изменить размер миниатюр"
-
-msgid "Back to the top of the list"
-msgstr "Вернуться к началу списка"
 
 msgid "Tools"
 msgstr "Инструменты"
@@ -1815,6 +1806,9 @@ msgstr "Файлы разные."
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG — лучшее сжатие фотографий."
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL — самые маленькие файлы фотографий"
+
 msgid "Keyboard"
 msgstr "Клавиатура"
 
@@ -2212,6 +2206,9 @@ msgstr "Качество сохранения JPEG"
 
 msgid "WEBP save quality"
 msgstr "Качество сохранения WEBP"
+
+msgid "JPEG XL save quality"
+msgstr "Качество сохранения JPEG XL"
 
 msgid "When saving"
 msgstr "При сохранении"
@@ -3653,8 +3650,8 @@ msgstr "Перемещение на строку элементов вверх �
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "Увеличивает или уменьшает отображаемое изображение. Нажмите 0, чтобы вписать его в окно."
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "Добавить папки в коллекцию (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "Добавить папки в коллекцию (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "Выберите хотя бы один критерий поиска."
@@ -3860,3 +3857,114 @@ msgstr[0] "1 клип переподключён."
 msgstr[1] "{count} клипа переподключены."
 msgstr[2] "{count} клипов переподключено."
 
+
+msgid "SID monitor"
+msgstr "Монитор SID"
+
+msgid "Voice {}"
+msgstr "Голос {}"
+
+msgid "Output"
+msgstr "Выход"
+
+msgid "Filter"
+msgstr "Фильтр"
+
+msgid "Volume"
+msgstr "Громкость"
+
+msgid "Register writes"
+msgstr "Запись в регистры"
+
+msgid "Solo"
+msgstr "Соло"
+
+msgid "Same film"
+msgstr "Тот же фильм"
+
+msgid "Viewing and playback"
+msgstr "Просмотр и воспроизведение"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "Как показываются и воспроизводятся фотографии, видео и музыка."
+
+msgid "Shown in the sidebar"
+msgstr "Показывается на боковой панели"
+
+msgid "Editing and saving"
+msgstr "Редактирование и сохранение"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "Спрашивает ли Diffractor перед изменением ваших файлов и с каким качеством их сохраняет."
+
+msgid "Confirmations"
+msgstr "Подтверждения"
+
+msgid "General"
+msgstr "Общие"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "Язык интерфейса Diffractor, его справка и то, как он работает."
+
+msgid "Save options and close"
+msgstr "Сохранить параметры и закрыть"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "Вы изменили некоторые параметры. Сохранить их перед закрытием?"
+
+msgid "Viewing"
+msgstr "Просмотр"
+
+msgid "What each folder holds"
+msgstr "Что содержит каждая папка"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "Фильмы и сериалы получают названия, номера и даты по именам файлов. Личные записи и музыка остаются как есть. Режим «По имени каждого файла» считает файл фильмом или эпизодом, если его имя похоже на имя релиза."
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "Выберите выше папки коллекции и сохраните, чтобы указать, что содержит каждая."
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "Папка, добавленная выше, появится здесь после сохранения параметров."
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Читать названия, сюжеты, сезоны, эпизоды и даты из файлов .nfo, которые Kodi, Jellyfin и Emby хранят рядом с видео. При изменении этого параметра коллекция будет прочитана заново."
+
+msgid "Decided by each file's name"
+msgstr "По имени каждого файла"
+
+msgid "Personal recordings"
+msgstr "Личные записи"
+
+msgid "Films and TV shows"
+msgstr "Фильмы и сериалы"
+
+msgid "Music"
+msgstr "Музыка"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "Выключены, кроме субтитров, обязательных для фильма"
+
+msgid "Always"
+msgstr "Всегда"
+
+msgid "When the speech is in another language"
+msgstr "Когда речь на другом языке"
+
+msgid "Show subtitles in"
+msgstr "Показывать субтитры на языке"
+
+msgid "The language Diffractor is shown in"
+msgstr "Язык интерфейса Diffractor"
+
+msgid "The system's default"
+msgstr "Системное по умолчанию"
+
+msgid "forced"
+msgstr "принудительные"
+
+msgid "Subtitles {}"
+msgstr "Субтитры {}"
+
+msgid "Subtitles"
+msgstr "Субтитры"

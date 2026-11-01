@@ -20,6 +20,7 @@ static constexpr auto s_limit = "limit";
 static constexpr auto s_jpg = "jpg";
 static constexpr auto s_png = "png";
 static constexpr auto s_webp = "webp";
+static constexpr auto s_jxl = "jxl";
 static constexpr auto s_limit_dimension = "limit_dimension";
 static constexpr auto s_max = "max";
 static constexpr auto s_start = "start";
@@ -45,6 +46,7 @@ static constexpr auto s_drop_box = "dropbox";
 static constexpr auto s_title = "title";
 static constexpr auto s_path = "path";
 static constexpr auto s_more = "more";
+static constexpr auto s_library_types = "library_types";
 static constexpr auto s_convert = "convert";
 static constexpr auto s_available_version = "available_version";
 static constexpr auto s_available_test_version = "available_test_version";
@@ -53,6 +55,8 @@ static constexpr auto s_first_time = "first";
 static constexpr auto s_quality = "quality";
 static constexpr auto s_webp_quality = "webp_quality";
 static constexpr auto s_webp_lossless = "webp_lossless";
+static constexpr auto s_jxl_quality = "jxl_quality";
+static constexpr auto s_jxl_lossless = "jxl_lossless";
 static constexpr auto s_slideshow_delay = "slideshow_delay";
 static constexpr auto s_copyright = "copyright";
 static constexpr auto s_creator = "creator";
@@ -69,6 +73,9 @@ static constexpr auto s_view_splitters = "view_splitters";
 static constexpr auto s_auto_play = "auto_play";
 static constexpr auto s_auto_advance = "auto_advance";
 static constexpr auto s_zoom_navigator = "zoom_navigator";
+static constexpr auto s_subtitles = "subtitles";
+static constexpr auto s_subtitle_language = "subtitle_language";
+static constexpr auto s_read_nfo = "read_nfo";
 static constexpr auto s_scale_up = "scale_up";
 static constexpr auto s_features = "features";
 static constexpr auto s_update_min = "update_min";
@@ -251,12 +258,29 @@ static int item_scale_snap_position(const int index)
 		settings_t::item_scale_position_max / std::max(1, dimension_range));
 }
 
+int settings_t::item_scale_slider_position() const
+{
+	return item_scale_position < 0
+		       ? item_scale_snap_position(item_scale)
+		       : std::clamp(item_scale_position, 0, item_scale_position_max);
+}
+
+void settings_t::select_only_description()
+{
+	set_title = set_comment = set_synopsis = set_rating = set_year = false;
+	set_original = set_created = false;
+	set_episode = set_season = set_track = set_disk = false;
+	set_artist = set_album = set_album_artist = set_genre = set_tv_show = false;
+	set_copyright_notice = set_copyright_creator = set_copyright_source = set_copyright_credit = set_copyright_url =
+		false;
+	set_caption = true;
+}
+
 int settings_t::item_scale_dimension() const
 {
 	const auto min_dimension = item_scale_snaps[0];
 	const auto dimension_range = item_scale_snaps[item_scale_count - 1] - min_dimension;
-	const auto position = item_scale_position < 0 ? item_scale_snap_position(item_scale) : item_scale_position;
-	return min_dimension + df::round(static_cast<double>(std::clamp(position, 0, item_scale_position_max)) *
+	return min_dimension + df::round(static_cast<double>(item_scale_slider_position()) *
 		dimension_range / item_scale_position_max);
 }
 
@@ -274,7 +298,7 @@ void settings_t::set_item_scale_position(const int position)
 	}
 }
 
-void settings_t::step_item_scale(const int direction)
+void settings_t::step_item_scale(const int direction, const bool wrap)
 {
 	if (direction == 0) return;
 	const auto current = item_scale_position < 0 ? item_scale_snap_position(item_scale) : item_scale_position;
@@ -290,6 +314,8 @@ void settings_t::step_item_scale(const int direction)
 				return;
 			}
 		}
+		// A wheel or a pinch past the largest size stays there; only the toggle button cycles.
+		if (!wrap) return;
 		item_scale = 0;
 	}
 	else
@@ -304,6 +330,7 @@ void settings_t::step_item_scale(const int direction)
 				return;
 			}
 		}
+		if (!wrap) return;
 		item_scale = item_scale_count - 1;
 	}
 
@@ -367,6 +394,9 @@ settings_t::settings_t()
 	first_run_today = true;
 	first_run_ever = true;
 	repeat = repeat_mode::repeat_none;
+	subtitles = subtitle_mode::foreign;
+	subtitle_language.clear();
+	read_nfo = false;
 	auto_play = true;
 	auto_advance = true;
 	scale_up = false;
@@ -392,6 +422,8 @@ settings_t::settings_t()
 	jpeg_save_quality = 90;
 	webp_quality = 70;
 	webp_lossless = false;
+	jxl_quality = 90;
+	jxl_lossless = false;
 	slideshow_delay = 3;
 	item_splitter_pos = item_splitter_max / 2;
 
@@ -429,11 +461,14 @@ settings_t::settings_t()
 	convert.to_jpeg = true;
 	convert.to_png = false;
 	convert.to_webp = false;
+	convert.to_jxl = false;
 	convert.limit_dimension = false;
 	convert.max_side = 1024;
 	convert.jpeg_quality = 90;
 	convert.webp_quality = 70;
 	convert.webp_lossless = false;
+	convert.jxl_quality = 90;
+	convert.jxl_lossless = false;
 
 	sidebar.show_total_items = true;
 	sidebar.show_history = true;
@@ -604,6 +639,19 @@ public:
 	}
 
 	bool write(const std::string_view section, const std::string_view name, const zoom_navigator_mode v) const
+	{
+		return _file->write(section, name, static_cast<uint32_t>(v));
+	}
+
+	bool read(const std::string_view section, const std::string_view name, subtitle_mode& v) const
+	{
+		uint32_t value{};
+		if (!_file->read(section, name, value) || !is_valid_subtitle_mode(value)) return false;
+		v = static_cast<subtitle_mode>(value);
+		return true;
+	}
+
+	bool write(const std::string_view section, const std::string_view name, const subtitle_mode v) const
 	{
 		return _file->write(section, name, static_cast<uint32_t>(v));
 	}
@@ -792,6 +840,9 @@ void settings_t::read()
 	store.read({}, s_confirm_rotate, confirm_rotations);
 	store.read({}, s_repeat, repeat);
 	store.read({}, s_zoom_navigator, zoom_navigator);
+	store.read({}, s_subtitles, subtitles);
+	store.read({}, s_subtitle_language, subtitle_language);
+	store.read({}, s_read_nfo, read_nfo);
 	store.read({}, s_auto_play, auto_play);
 	store.read({}, s_auto_advance, auto_advance);
 	store.read({}, s_scale_up, scale_up);
@@ -803,6 +854,8 @@ void settings_t::read()
 	store.read({}, s_quality, jpeg_save_quality);
 	store.read({}, s_webp_quality, webp_quality);
 	store.read({}, s_webp_lossless, webp_lossless);
+	store.read({}, s_jxl_quality, jxl_quality);
+	store.read({}, s_jxl_lossless, jxl_lossless);
 	store.read({}, s_slideshow_delay, slideshow_delay);
 	slideshow_delay = std::clamp(slideshow_delay, min_slideshow_delay, max_slideshow_delay);
 	store.read({}, s_items_scale, item_scale);
@@ -919,11 +972,14 @@ void settings_t::read()
 	store.read(s_convert, s_jpg, convert.to_jpeg);
 	store.read(s_convert, s_png, convert.to_png);
 	store.read(s_convert, s_webp, convert.to_webp);
+	store.read(s_convert, s_jxl, convert.to_jxl);
 	store.read(s_convert, s_limit_dimension, convert.limit_dimension);
 	store.read(s_convert, s_max, convert.max_side);
 	store.read(s_convert, s_quality, convert.jpeg_quality);
 	store.read(s_convert, s_webp_quality, convert.webp_quality);
 	store.read(s_convert, s_webp_lossless, convert.webp_lossless);
+	store.read(s_convert, s_jxl_quality, convert.jxl_quality);
+	store.read(s_convert, s_jxl_lossless, convert.jxl_lossless);
 	store.read(s_convert, s_collision, convert.collision);
 
 	store.read(s_email, s_to, email.to);
@@ -947,6 +1003,7 @@ void settings_t::read()
 	store.read(s_index, s_onedrive_video, collection.onedrive_video);
 	store.read(s_index, s_onedrive_music, collection.onedrive_music);
 	store.read(s_index, s_more, collection.more_folders);
+	store.read(s_index, s_library_types, collection.library_types);
 
 
 	store.read(s_favorite_search, s_title, search.title, search.count);
@@ -988,6 +1045,9 @@ void settings_t::write() const
 	store.write({}, s_confirm_rotate, confirm_rotations);
 	store.write({}, s_repeat, static_cast<int>(repeat));
 	store.write({}, s_zoom_navigator, zoom_navigator);
+	store.write({}, s_subtitles, subtitles);
+	store.write({}, s_subtitle_language, subtitle_language);
+	store.write({}, s_read_nfo, read_nfo);
 	store.write({}, s_auto_play, auto_play);
 	store.write({}, s_auto_advance, auto_advance);
 	store.write({}, s_scale_up, scale_up);
@@ -999,6 +1059,8 @@ void settings_t::write() const
 	store.write({}, s_quality, jpeg_save_quality);
 	store.write({}, s_webp_quality, webp_quality);
 	store.write({}, s_webp_lossless, webp_lossless);
+	store.write({}, s_jxl_quality, jxl_quality);
+	store.write({}, s_jxl_lossless, jxl_lossless);
 	store.write({}, s_slideshow_delay, slideshow_delay);
 	store.write({}, s_items_scale, item_scale);
 	store.write({}, s_items_scale_position, item_scale_position);
@@ -1098,11 +1160,14 @@ void settings_t::write() const
 	store.write(s_convert, s_jpg, convert.to_jpeg);
 	store.write(s_convert, s_png, convert.to_png);
 	store.write(s_convert, s_webp, convert.to_webp);
+	store.write(s_convert, s_jxl, convert.to_jxl);
 	store.write(s_convert, s_limit_dimension, convert.limit_dimension);
 	store.write(s_convert, s_max, convert.max_side);
 	store.write(s_convert, s_quality, convert.jpeg_quality);
 	store.write(s_convert, s_webp_quality, convert.webp_quality);
 	store.write(s_convert, s_webp_lossless, convert.webp_lossless);
+	store.write(s_convert, s_jxl_quality, convert.jxl_quality);
+	store.write(s_convert, s_jxl_lossless, convert.jxl_lossless);
 	store.write(s_convert, s_collision, convert.collision);
 
 	store.write(s_email, s_to, email.to);
@@ -1126,6 +1191,7 @@ void settings_t::write() const
 	store.write(s_index, s_onedrive_video, collection.onedrive_video);
 	store.write(s_index, s_onedrive_music, collection.onedrive_music);
 	store.write(s_index, s_more, collection.more_folders);
+	store.write(s_index, s_library_types, collection.library_types);
 
 
 	store.write(s_favorite_search, s_title, search.title, search.count);
@@ -1147,4 +1213,63 @@ void settings_t::write() const
 std::vector<std::string_view> split_collection_folders(const std::string_view text)
 {
 	return str::split(text, true, [](const char c) { return c == '\n' || c == '\r'; });
+}
+
+std::string_view library_kind_key(const prop::library_kind kind)
+{
+	switch (kind)
+	{
+	case prop::library_kind::personal: return "personal";
+	case prop::library_kind::films_tv: return "films_tv";
+	case prop::library_kind::music: return "music";
+	case prop::library_kind::automatic: break;
+	}
+
+	return "automatic";
+}
+
+std::vector<std::pair<df::folder_path, prop::library_kind>> parse_library_types(const std::string_view text)
+{
+	std::vector<std::pair<df::folder_path, prop::library_kind>> result;
+
+	for (const auto line : str::split(text, false, [](const char c) { return c == '\n' || c == '\r'; }))
+	{
+		const auto tab = line.find('\t');
+		if (tab == std::string_view::npos) continue;
+
+		const auto key = str::trim(line.substr(0, tab));
+		const auto folder = str::trim(line.substr(tab + 1));
+		if (folder.empty()) continue;
+
+		constexpr prop::library_kind kinds[] = {
+			prop::library_kind::personal, prop::library_kind::films_tv, prop::library_kind::music
+		};
+
+		for (const auto kind : kinds)
+		{
+			if (str::icmp(key, library_kind_key(kind)) == 0)
+			{
+				result.emplace_back(df::folder_path(folder), kind);
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+std::string format_library_types(const std::vector<std::pair<df::folder_path, prop::library_kind>>& kinds)
+{
+	std::string result;
+
+	for (const auto& [folder, kind] : kinds)
+	{
+		if (kind == prop::library_kind::automatic || folder.is_empty()) continue;
+		if (!result.empty()) result += '\n';
+		result += library_kind_key(kind);
+		result += '\t';
+		result += folder.text().sv();
+	}
+
+	return result;
 }

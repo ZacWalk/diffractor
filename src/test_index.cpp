@@ -491,7 +491,7 @@ static void should_keep_answering_while_upgrading_to_the_date_pack()
 	assert_equal("test", item_md->album.sv(), "the rest of the cached metadata is untouched");
 }
 
-// Versions 3 and 4 both changed only what an audio or video scan records, so either upgrade asks those
+// Versions 3, 4 and 5 each changed only what an audio or video scan records, so each upgrade asks those
 // items alone to be re-scanned, and every row keeps answering meanwhile.
 static void should_keep_answering_while_upgrading_audio_metadata(const int stored_version)
 {
@@ -639,7 +639,7 @@ static void should_reclaim_a_cache_written_by_a_newer_build()
 		}
 	}
 
-	assert_equal(5, stamped, "the stamp comes back down to what this build writes");
+	assert_equal(6, stamped, "the stamp comes back down to what this build writes");
 }
 
 // A cache file this build cannot read must be replaced, not refused. Everything it holds can be
@@ -1545,6 +1545,139 @@ static void should_report_incomplete_collection_discovery()
 	assert_equal(1_z, paused.all_indexed_items().size(), "normal discovery still enumerates the collection");
 }
 
+// A folder made inside the collection after the walk - created, copied in or renamed - got a node
+// that was not a member, and is_in_collection trusted that node over its parent, so the folder stayed
+// out of every collection search, count and duplicate set until the next walk.
+static void should_admit_a_folder_made_inside_the_collection_after_the_walk()
+{
+	const df::file_path source(test_files_folder, "Test.jpg");
+	const auto root = _temps.next_folder("late-folder");
+	const auto year = root.combine("2026");
+	platform::create_folder(year);
+	assert_equal(true, platform::copy_file(source, year.combine_file("before.jpg"), false, false).success(),
+	             "copy the walked photo");
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+	assert_equal(1, count_search_results(index, "@photo"), "the walk indexed the photo it found");
+
+	// Two levels below the root, so the root shortcut in is_in_collection cannot answer for them.
+	const auto trip = year.combine("trip");
+	const auto day = trip.combine("day1");
+	platform::create_folder(day);
+	assert_equal(true, platform::copy_file(source, trip.combine_file("trip.jpg"), false, false).success(), "copy trip");
+	assert_equal(true, platform::copy_file(source, day.combine_file("day.jpg"), false, false).success(), "copy day");
+
+	// What the folder watcher does for the folder on screen, then what opening the new folder does.
+	index.validate_folder(year, true, platform::now());
+	index.validate_folder(trip, true, platform::now());
+	assert_equal(true, index.is_in_collection(trip), "a folder made after the walk is a member");
+
+	// What an in-app copy into it does. The null strategy runs the subfolder scans inline.
+	index.scan_folder(trip, index.is_in_collection(trip), platform::now());
+	assert_equal(true, index.is_in_collection(day), "and so is its subfolder");
+	assert_equal(3, count_search_results(index, "@photo"), "their photos are found collection-wide");
+
+	const auto renamed = year.combine("italy");
+	assert_equal(true, platform::move_file(trip, renamed).success(), "rename the folder");
+	index.validate_folder(year, true, platform::now());
+	index.validate_folder(renamed, true, platform::now());
+	assert_equal(true, index.is_in_collection(renamed), "a renamed folder stays a member");
+	assert_equal(2, count_search_results(index, "@photo"), "and its photo is still found");
+}
+
+// A re-walk - Refresh, a device change, resume, a collection or import change - cleared every folder's
+// membership before earning it back folder by folder, and restarted the totals from zero, so whatever
+// read the index while it ran saw part of the collection: searches and counts came back short, and a
+// duplicate or summary pass that landed in the window published a partial answer.
+static void should_keep_collection_membership_during_a_re_walk()
+{
+	const auto root = _temps.next_folder("re-walk-membership");
+
+	for (const auto name : {"a"sv, "b"sv})
+	{
+		const auto folder = root.combine(name);
+		platform::create_folder(folder);
+		assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"),
+		                                       folder.combine_file("photo.jpg"), false, false).success(),
+		             "copy fixture");
+	}
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+	assert_equal(2, count_search_results(index, "@photo"), "both photos are members");
+
+	auto found_during = -1;
+	auto total_during = -1;
+	const df::scope_exit clear_hook([] { test_after_validate_folder_snapshot = {}; });
+	test_after_validate_folder_snapshot = [&](const df::folder_path folder, const int attempt)
+	{
+		// The walk has been through the root, and not yet through the folders that hold the photos.
+		if (found_during >= 0 || folder == root || attempt != 0) return;
+		found_during = count_search_results(index, "@photo");
+		total_during = static_cast<int>(index.file_types().total_items().count);
+	};
+
+	index.index_roots(roots);
+	index.index_folders(test_token);
+
+	assert_equal(2, found_during, "a search during a re-walk finds the members it has not reached yet");
+	assert_equal(2, total_during, "and the collection totals do not restart from zero");
+	assert_equal(2, count_search_results(index, "@photo"), "the walk ends with both members");
+}
+
+// A re-walk found every collection folder unchanged and added each one to the other-folders
+// completion set, copying the whole set once per folder - quadratic in the folders - though
+// completion already offers them as collection folders, and then listed each one twice.
+static void should_not_offer_a_collection_folder_twice_after_a_re_walk()
+{
+	const auto root = _temps.next_folder("re-walk-completion");
+	const auto first = root.combine("alpha-one");
+	const auto second = root.combine("alpha-two");
+
+	for (const auto& folder : {first, second})
+	{
+		platform::create_folder(folder);
+		// A file, so the first walk publishes the folder instead of finding its placeholder unchanged.
+		assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"),
+		                                       folder.combine_file("photo.jpg"), false, false).success(),
+		             "copy fixture");
+	}
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+
+	// Completion asserts it is off the UI thread.
+	std::vector<index_state::auto_complete_folder> found;
+	std::thread worker([&] { found = index.auto_complete_folders("alpha-one", 32); });
+	worker.join();
+
+	assert_equal(1, static_cast<int>(std::ranges::count(found, first, &index_state::auto_complete_folder::path)),
+	             "a re-walk does not offer a collection folder a second time");
+}
+
 static void should_invalidate_metadata_when_sidecar_identity_changes()
 {
 	const auto temp_folder = _temps.next_folder("sidecar-identity");
@@ -2263,6 +2396,179 @@ static void should_require_equal_size_for_duplicate_crc()
 	assert_equal(false, is_dup_match(&first, &second), "same CRC with different sizes");
 	second.size = first.size;
 	assert_equal(true, is_dup_match(&first, &second), "same CRC and size");
+}
+
+// Issue #8 - copies on a network share carried the duplicate badge, but the list the badge opens was
+// empty. `dd bean` puts the scratch folder on a NAS, so this makes a collection folder of
+// byte-identical copies there and asks for them every way the user can: the badge's count,
+// @duplicates, and the related search a click on the badge opens.
+static void should_list_duplicates_wherever_the_collection_is()
+{
+	const auto root = _temps.next_folder("listed-duplicates");
+	const auto first = root.combine_file("first.jpg");
+	const auto second = root.combine_file("second.jpg");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), first, false, false).success(),
+	             "the first copy is made");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), second, false, false).success(),
+	             "and the second");
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+	index.update_predictions();
+
+	assert_equal(2u, index.find_item(first).duplicates.load().count, "the copies are badged as a pair");
+	assert_equal(2, count_search_results(index, "@duplicates"), "@duplicates lists them both");
+
+	const auto first_item = std::make_shared<df::item_element>(first, index.find_item(first));
+	df::related_info related;
+	related.load(first_item);
+	auto other_copy_listed = false;
+
+	index.query_items(df::search_t().related(related), [&other_copy_listed, &second](
+		                  const index_state::query_item_results& items, bool)
+	                  {
+		                  for (const auto& i : items)
+		                  {
+			                  if (i.path == second && df::related_axis_of(i.match.type) == df::related_axis::duplicate)
+			                  {
+				                  other_copy_listed = true;
+			                  }
+		                  }
+	                  }, test_token);
+
+	assert_equal(true, other_copy_listed, "and the search the badge opens lists the other copy as a duplicate");
+}
+
+// Deleting one copy of a pair re-queried the listing but never asked for duplicates or the summary
+// again, so the survivor stayed listed and badged as a duplicate, and every total still counted the
+// deleted file, until something unrelated asked for a pass.
+static void should_recount_duplicates_when_a_copy_is_deleted()
+{
+	struct recording_async_strategy final : null_async_strategy
+	{
+		view_invalid invalids = view_invalid::none;
+
+		void invalidate_view(const view_invalid invalid) override
+		{
+			invalids |= invalid;
+		}
+	};
+
+	const auto root = _temps.next_folder("deleted-copy");
+	const auto first = root.combine_file("first.jpg");
+	const auto second = root.combine_file("second.jpg");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), first, false, false).success(),
+	             "the first copy is made");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), second, false, false).success(),
+	             "and the second");
+
+	recording_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+	index.update_predictions();
+	assert_equal(2u, index.find_item(first).duplicates.load().count, "the copies are a pair");
+
+	assert_equal(true, platform::delete_items({second}, {}, false).success(), "delete one copy");
+	as.invalids = view_invalid::none;
+	index.queue_validate_changed_folders(df::unique_folders{root});
+
+	assert_equal(true, (as.invalids & view_invalid::refresh_items) != view_invalid::none, "the listing is re-queried");
+	assert_equal(true, (as.invalids & view_invalid::index_summary) != view_invalid::none,
+	             "and duplicates and the summary are asked for again");
+
+	// What the application does with that request.
+	as.invalids = view_invalid::none;
+	index.update_predictions();
+	assert_equal(1u, index.find_item(first).duplicates.load().count, "the survivor is no longer a duplicate");
+	assert_equal(0, count_search_results(index, "@duplicates"), "and @duplicates no longer lists it");
+	assert_equal(true, (as.invalids & view_invalid::presence) != view_invalid::none,
+	             "and the items on screen are handed the new count");
+}
+
+// Every pass gave every set a new id, so the id an item had already taken - the one its title tooltip
+// lists copies by - matched nothing after the next pass, and every grouped record was rewritten.
+static void should_keep_duplicate_group_ids_across_passes()
+{
+	const auto root = _temps.next_folder("stable-duplicate-ids");
+	const auto first = root.combine_file("first.jpg");
+	const auto second = root.combine_file("second.jpg");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), first, false, false).success(),
+	             "the first copy is made");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), second, false, false).success(),
+	             "and the second");
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+	index.update_predictions();
+
+	const auto group = index.find_item(first).duplicates.load().group;
+	const auto exact_group = index.find_item(first).exact_duplicate_group.load();
+	assert_equal(true, group != 0 && exact_group != 0, "the copies form a set");
+
+	index.update_predictions();
+	assert_equal(group, index.find_item(first).duplicates.load().group, "an unchanged set keeps its id");
+	assert_equal(exact_group, index.find_item(first).exact_duplicate_group.load(),
+	             "and so does its exact subgroup");
+	assert_equal(2_z, index.duplicate_list(group).size(), "an id taken before the pass still lists the set");
+}
+
+// The title tooltip asks duplicate_list for an item's copies on the UI thread, and it cleared the
+// exact duplicate id of every file outside the collection on the way - an index write that
+// update_predictions already makes.
+static void should_list_duplicates_without_rewriting_the_index()
+{
+	const auto first_root = _temps.next_folder("listing-first");
+	const auto second_root = _temps.next_folder("listing-second");
+	const auto first_a = first_root.combine_file("first-a.jpg");
+	const auto first_b = first_root.combine_file("first-b.jpg");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), first_a, false, false).success(),
+	             "the first copy is made");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Test.jpg"), first_b, false, false).success(),
+	             "and the second");
+	assert_equal(true, platform::copy_file(test_files_folder.combine_file("Small.jpg"),
+	                                       second_root.combine_file("other.jpg"), false, false).success(),
+	             "and a photo for the second collection");
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+
+	df::index_roots first_roots;
+	first_roots.folders.emplace(first_root);
+	index.index_roots(first_roots);
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+	index.update_predictions();
+
+	// The pair leaves the collection, and no predictions pass has run since.
+	df::index_roots second_roots;
+	second_roots.folders.emplace(second_root);
+	index.index_roots(second_roots);
+	index.index_folders(test_token);
+
+	const auto exact_group = index.find_item(first_a).exact_duplicate_group.load();
+	assert_equal(true, exact_group != 0, "the pair still carries the id it was given as members");
+
+	(void)index.duplicate_list(index.find_item(first_a).duplicates.load().group);
+	assert_equal(exact_group, index.find_item(first_a).exact_duplicate_group.load(),
+	             "listing duplicates leaves the index as it found it");
 }
 
 static void should_bound_weak_duplicate_buckets()
@@ -3885,6 +4191,151 @@ static void should_reuse_cached_thumbnail_surface()
 	             "cached thumbnail surface should not be staged again");
 }
 
+// Values read from a name are derived on every load, so the index stores only those the file holds. A number with
+// no total - track 3, episode 5 - is still a number, and is stored.
+static void should_store_only_values_a_file_holds()
+{
+	const auto md = std::make_shared<prop::item_metadata>();
+	md->title = str::cache("From the name");
+	md->show = str::cache("Show");
+	md->year = 2021;
+	md->season = 2;
+	md->episode = prop::number_pair(5, 0);
+	md->from_name = prop::from_name::title | prop::from_name::year | prop::from_name::episode;
+	md->track = prop::number_pair(3, 0);
+	md->dates.add(prop::date_source::file_name, df::date_t(2021, 1, 1, 0, 0, 0));
+	md->dates.add_utc(prop::date_source::container_created, df::date_t(2023, 4, 5, 6, 0, 0));
+
+	metadata_packer packer;
+	packer.pack(md);
+	const auto unpacked = std::make_shared<prop::item_metadata>();
+	metadata_unpacker unpacker(packer.cdata());
+	unpacker.unpack(unpacked);
+
+	assert_equal(true, is_empty(unpacked->title), "a title read from the name is not stored");
+	assert_equal(0, static_cast<int>(unpacked->year), "nor a year");
+	assert_equal(true, prop::is_null(unpacked->episode), "nor an episode");
+	assert_equal("Show"sv, unpacked->show.sv(), "the file's own show is stored");
+	assert_equal(2, static_cast<int>(unpacked->season), "and its season");
+	assert_equal(3, static_cast<int>(unpacked->track.x), "a track with no total is stored");
+	assert_equal(false, unpacked->dates.has_source(prop::date_source::file_name), "a date read from the name is not");
+	assert_equal(true, unpacked->dates.has_source(prop::date_source::container_created), "the file's own dates are");
+
+	// A season past 255 takes two bytes; one that fits keeps the single byte every older build reads.
+	const auto wide = std::make_shared<prop::item_metadata>();
+	wide->season = 2023;
+	wide->episode = prop::number_pair(1001, 0);
+	metadata_packer wide_packer;
+	wide_packer.pack(wide);
+	const auto wide_unpacked = std::make_shared<prop::item_metadata>();
+	metadata_unpacker wide_reader(wide_packer.cdata());
+	wide_reader.unpack(wide_unpacked);
+	assert_equal(2023, static_cast<int>(wide_unpacked->season), "a wide season round trips");
+	assert_equal(1001, static_cast<int>(wide_unpacked->episode.x), "an episode past 255 round trips");
+
+	metadata_packer one_byte;
+	one_byte.write(prop::season.id, static_cast<uint8_t>(7));
+	const auto from_one_byte = std::make_shared<prop::item_metadata>();
+	metadata_unpacker one_byte_reader(one_byte.cdata());
+	one_byte_reader.unpack(from_one_byte);
+	assert_equal(7, static_cast<int>(from_one_byte->season), "a season stored in one byte still reads");
+}
+
+// A row's name is read as it loads, so a junk container title gives way to the name and a release is a film; and
+// when its folder is set to hold the user's own recordings, the loaded item is read again with no rescan.
+static void should_derive_names_as_rows_load()
+{
+	const auto root = _temps.next_folder("names-on-load");
+	const auto name = "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG.mp4"sv;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+
+	db_items_t cached;
+	db_item_t film;
+	film.path = str::cache(name);
+	film.metadata = std::make_shared<prop::item_metadata>();
+	film.metadata->file_name = film.path;
+	film.metadata->title = str::cache("GalaxyRG - Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG");
+	film.metadata->dates.add_utc(prop::date_source::file_created, df::date_t(2023, 5, 1, 10, 0, 0));
+	film.metadata_scanned = platform::now();
+	cached.emplace_back(std::move(film));
+	index.merge_folder(root, cached);
+
+	const auto path = root.combine_file(name);
+	const auto md = index.find_item(path).metadata.load();
+	assert_equal(true, md != nullptr, "the row loaded");
+	assert_equal("Dont Look Up"sv, md->title.sv(), "a release name in the container title gives way to the name");
+	assert_equal(true, md->kind == prop::media_kind::film, "a release name is a film");
+	assert_equal(2021, static_cast<int>(md->created().year()), "filed under its release year");
+
+	assert_equal(true, index.library_kinds({{root, prop::library_kind::personal}}), "the folder's kind changed");
+	assert_equal(true, index.rederive_name_values(test_token), "the loaded item is read again");
+	const auto personal = index.find_item(path).metadata.load();
+	assert_equal(true, personal->kind == prop::media_kind::none, "nothing in a personal folder is a film");
+	assert_equal(2023, static_cast<int>(personal->created().year()), "so it files under its own date again");
+	assert_equal("Dont Look Up"sv, personal->title.sv(), "and keeps the title its name gives");
+
+	// A pass another index update cuts short is made again by the next, not lost.
+	assert_equal(true, index.library_kinds({}), "the folder holds what its names say again");
+	std::atomic_int version = 1;
+	const df::cancel_token cut_short(version);
+	const df::cancel_token next(version);
+	assert_equal(false, index.rederive_name_values(cut_short), "a pass cut short changes nothing");
+	assert_equal(true, index.rederive_name_values(next), "the next update makes it");
+	assert_equal(true, index.find_item(path).metadata.load()->kind == prop::media_kind::film, "a film again");
+	assert_equal(false, index.rederive_name_values(next), "and a pass made is not made again");
+}
+
+// Movie.en.srt and Movie.English.forced.srt are the video's subtitles: a language, and whether it is forced,
+// follow the video's name. An ASS subtitle is a sidecar too, never a video of its own. Only a language or a flag
+// is read that way: another film's subtitle is never this one's, so deleting a film never takes another's with it.
+static void should_pair_subtitles_named_by_language()
+{
+	const auto root = _temps.next_folder("subtitle-sidecars");
+	write_test_file(root.combine_file("Movie.mkv"), "video");
+	write_test_file(root.combine_file("Movie.en.srt"), "1");
+	write_test_file(root.combine_file("Movie.English.forced.srt"), "1");
+	write_test_file(root.combine_file("Movie.ass"), "1");
+	write_test_file(root.combine_file("Other.srt"), "1");
+	write_test_file(root.combine_file("Alien.mkv"), "video");
+	write_test_file(root.combine_file("Alien.Resurrection.srt"), "1");
+	write_test_file(root.combine_file("Johnny.mkv"), "video");
+	write_test_file(root.combine_file("Johnny.English.mkv"), "video");
+	write_test_file(root.combine_file("Johnny.English.srt"), "1");
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+
+	const auto md = index.find_item(root.combine_file("Movie.mkv")).metadata.load();
+	assert_equal(true, md != nullptr, "the video records its sidecars");
+	const auto sidecars = md->sidecars.sv();
+	assert_equal(true, str::contains(sidecars, "Movie.en.srt"), "a subtitle named by language is the video's");
+	assert_equal(true, str::contains(sidecars, "Movie.English.forced.srt"), "so is a forced one");
+	assert_equal(true, str::contains(sidecars, "Movie.ass"), "an ASS subtitle is a sidecar");
+	assert_equal(false, str::contains(sidecars, "Other.srt"), "another video's subtitle is not");
+	assert_equal(true, index.find_item(root.combine_file("Movie.en.srt")).flags && df::index_item_flags::is_sidecar,
+	             "and travels with it");
+	assert_equal(true, files::file_type_from_name("Movie.ass") != files::file_type_from_name("Movie.mkv"),
+	             "an ASS file is no video");
+
+	const auto alien = index.find_item(root.combine_file("Alien.mkv")).metadata.load();
+	assert_equal(false, alien && str::contains(alien->sidecars.sv(), "Alien.Resurrection.srt"),
+	             "a word of another film's title is no language");
+
+	const auto johnny = index.find_item(root.combine_file("Johnny.mkv")).metadata.load();
+	const auto johnny_english = index.find_item(root.combine_file("Johnny.English.mkv")).metadata.load();
+	assert_equal(false, johnny && str::contains(johnny->sidecars.sv(), "Johnny.English.srt"),
+	             "a subtitle named for a video is not another's in a language");
+	assert_equal(true, johnny_english && str::contains(johnny_english->sidecars.sv(), "Johnny.English.srt"),
+	             "it is that video's");
+}
+
 static void should_not_rescan_unchanged_sidecars_after_reload()
 {
 	const auto db_path = _temps.next_path();
@@ -4793,6 +5244,8 @@ void register_index_tests(view_state& state, test_registry& tests)
 	          [] { should_keep_answering_while_upgrading_audio_metadata(3); });
 	tests.add("Should keep answering while upgrading to libfiles media scans"s,
 	          [] { should_keep_answering_while_upgrading_audio_metadata(4); });
+	tests.add("Should keep answering while upgrading to names read on load"s,
+	          [] { should_keep_answering_while_upgrading_audio_metadata(5); });
 	tests.add("Should reclaim a cache written by a newer build"s,
 	          should_reclaim_a_cache_written_by_a_newer_build);
 	tests.add("Should replace an unreadable database"s, should_replace_an_unreadable_database);
@@ -4826,6 +5279,15 @@ void register_index_tests(view_state& state, test_registry& tests)
 	          should_request_a_re_query_only_when_a_folder_changed);
 	tests.add("Should require equal size for duplicate CRC"s, should_require_equal_size_for_duplicate_crc);
 	tests.add("Should bound weak duplicate buckets"s, should_bound_weak_duplicate_buckets);
+	// Issue #8 - duplicates on a network share were badged but not listed; `dd bean` runs this on a NAS
+	tests.add("Should list duplicates wherever the collection is"s, should_list_duplicates_wherever_the_collection_is);
+	// Index review #56 - a deleted copy left its partner a duplicate until an unrelated pass.
+	tests.add("Should recount duplicates when a copy is deleted"s, should_recount_duplicates_when_a_copy_is_deleted);
+	// Index review #60 - set ids were renumbered every pass, emptying the copies tooltip.
+	tests.add("Should keep duplicate group ids across passes"s, should_keep_duplicate_group_ids_across_passes);
+	// Index review #61 - the copies tooltip rewrote exact ids from the UI thread.
+	tests.add("Should list duplicates without rewriting the index"s,
+	          should_list_duplicates_without_rewriting_the_index);
 	// Issue #137 - the presence badge said "1" on files with no duplicate
 	tests.add("Should badge only a duplicated item"s, should_badge_only_a_duplicated_item);
 	tests.add("Should report a re-encoded copy to presence"s, should_report_a_re_encoded_copy_to_presence);
@@ -4866,6 +5328,15 @@ void register_index_tests(view_state& state, test_registry& tests)
 	          should_drop_deleted_declared_root_cache);
 	tests.add("Should report incomplete collection discovery"s,
 	          should_report_incomplete_collection_discovery);
+	// Index review #55 - folders made after the walk stayed outside the collection until the next walk.
+	tests.add("Should admit a folder made inside the collection after the walk"s,
+	          should_admit_a_folder_made_inside_the_collection_after_the_walk);
+	// Index review #57 - a re-walk hid the collection from everything that read it while it ran.
+	tests.add("Should keep collection membership during a re-walk"s,
+	          should_keep_collection_membership_during_a_re_walk);
+	// Index review #59 - a re-walk copied the completion set once per folder.
+	tests.add("Should not offer a collection folder twice after a re-walk"s,
+	          should_not_offer_a_collection_folder_twice_after_a_re_walk);
 	tests.add("Should not cancel replacement collection walk when scan starts"s,
 	          should_not_cancel_replacement_collection_walk_when_scan_starts);
 	// SRC-047 - changing the selected sidecar set invalidates effective metadata.
@@ -4874,6 +5345,9 @@ void register_index_tests(view_state& state, test_registry& tests)
 	// G07a review - unchanged sidecar associations loaded from the database must stay cache-current.
 	tests.add("Should not rescan unchanged sidecars after reload"s,
 	          should_not_rescan_unchanged_sidecars_after_reload);
+	tests.add("Should store only values a file holds"s, should_store_only_values_a_file_holds);
+	tests.add("Should derive names as rows load"s, should_derive_names_as_rows_load);
+	tests.add("Should pair subtitles named by language"s, should_pair_subtitles_named_by_language);
 	tests.add("Should index concurrently"s, should_index_concurrently);
 	tests.add("Should not publish a stale folder rebuild"s, should_not_publish_a_stale_folder_rebuild);
 	// SRC-048 - in-place scan publications must make older folder rebuild snapshots stale.

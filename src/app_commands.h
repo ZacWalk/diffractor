@@ -101,6 +101,8 @@ enum class commands
 	menu_main,
 	menu_navigate,
 	menu_open,
+	// Open as Items' status bar shows it: the same menu, labelled with what is selected.
+	menu_open_status,
 	menu_options,
 	menu_playback,
 	menu_rate_or_label,
@@ -112,8 +114,12 @@ enum class commands
 	option_show_rotated,
 	option_toggle_details,
 	option_toggle_item_size,
-	options_collection,
-	options_general,
+	// Options opens the Options view at its top. Sidebar opens it at its Sidebar section, for the sidebar's own
+	// Customise sidebar link, and is in no menu. Cancel, help and save are the commands in its status bar.
+	options,
+	options_cancel,
+	options_help,
+	options_save,
 	options_sidebar,
 	pin_item,
 	play,

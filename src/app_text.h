@@ -12,9 +12,12 @@
 #pragma once
 
 struct av_stream_info;
+struct subtitle_offer;
 
 std::string language_name(std::string_view code);
 std::string format_audio_stream_name(const av_stream_info& stream, int audio_track_number);
+// A subtitle in the playback menu: its title, language and whether it is forced, or its number in the list.
+std::string format_subtitle_name(const subtitle_offer& offer, int subtitle_number);
 
 
 using text_mapping = df::hash_map<std::string_view, std::reference_wrapper<text_t>>;
@@ -208,9 +211,7 @@ struct app_text_t
 	text_t share_preparing = "Preparing files to share...";
 	text_t command_desktop_background = "Desktop background";
 	text_t command_select_nothing = "Select none";
-	text_t command_options = "General options";
 	text_t command_customise = "Customise sidebar";
-	text_t command_collection_options = "Collection options";
 	text_t command_view_items = "Show items";
 	text_t command_flatten = "Show items in subfolders";
 	text_t command_refresh = "Refresh";
@@ -229,6 +230,10 @@ struct app_text_t
 	text_t audio_output_title = "Audio output";
 	text_t audio_role_commentary = "commentary";
 	text_t audio_role_description = "audio description";
+	text_t subtitles_title = "Subtitles";
+	text_t subtitles_off = "Off";
+	text_t subtitle_track_fmt = "Subtitles {}";
+	text_t subtitle_forced = "forced";
 	text_t command_repeat_one = "Repeat play one item";
 	text_t command_repeat_all = "Repeat play all media items";
 	text_t command_repeat_none = "Don't repeat";
@@ -241,6 +246,7 @@ struct app_text_t
 		"Show the items in the collection most closely related to this one: possible copies, then the same album, the same series, the closest capture times, and the closest capture places.";
 	text_t related_group_duplicates = "This item and possible copies";
 	text_t related_group_album = "Same album";
+	text_t related_group_film = "Same film";
 	text_t related_group_series = "Same series";
 	text_t related_group_time = "Taken at the same time";
 	text_t related_group_location = "Taken in the same place";
@@ -249,7 +255,6 @@ struct app_text_t
 		"Pinned items stay selected. Use this when you want to quickly compare an item to other items.";
 	text_t command_toggle_item_size = "Toggle thumbnail size";
 	text_t tooltip_thumbnail_size = "Change thumbnail size";
-	text_t tooltip_scroll_to_top = "Back to the top of the list";
 	text_t command_convert_or_resize = "Convert or Resize";
 	text_t command_convert = "Convert";
 	text_t convert_preparing = "Preparing to convert files...";
@@ -555,7 +560,7 @@ struct app_text_t
 	text_t image_display_failed = "This image could not be displayed";
 	text_t nothing_found1 = "Nothing found.";
 	text_t nothing_found2 = "Search only covers folders in your collection.";
-	text_t nothing_found_add_folders = "Add folders to your collection (Ctrl+F6)";
+	text_t nothing_found_add_folders = "Add folders to your collection (F6)";
 	text_t empty_folder = "Empty Folder";
 	text_t button_save = "&Save";
 	text_t button_dont_save = "&Don't Save";
@@ -568,6 +573,7 @@ struct app_text_t
 	text_t options_backup_copy = "When overwriting a photo with irreversible changes make an original backup copy";
 	text_t options_jpeg_quality = "JPEG save quality";
 	text_t options_webp_quality = "WEBP save quality";
+	text_t options_jxl_quality = "JPEG XL save quality";
 	text_t help_tag1 = "Separate each tag with a space: Australia holiday camping.";
 	text_t help_tag2 = "Join 2 words together in one tag using quotes: \"national park\".";
 	text_t help_artist = "Separate each artist with a comma ',' or slash '/'";
@@ -830,14 +836,12 @@ struct app_text_t
 	text_t resetting = "Cleaning...";
 	text_t options_app_options = "Application options";
 	text_t options_save_options = "When saving";
-	text_t options_updates = "Updates";
 	text_t options_advanced = "Advanced";
 	text_t index_maintenance_title = "Maintenance";
 	text_t options_show_rotated = "Show photos rotated based on recorded camera orientation";
 	text_t options_show_hidden = "Show hidden files";
 	text_t options_confirm_del = "Confirm when deleting items. Deleted items are moved to the recycle bin.";
 	text_t options_confirm_rotate = "Confirm when rotating one item. Rotating several items is always confirmed.";
-	text_t option_slideshow_title = "Slideshow";
 	text_t option_slideshow_delay = "Delay before showing the next item (in seconds)";
 	text_t options_check_for_update = "Check for updates by connecting to the internet";
 	text_t options_use_gpu = "Use hardware acceleration to draw the Diffractor user interface (requires restart)";
@@ -848,6 +852,37 @@ struct app_text_t
 	text_t options_show_shadow = "Show an inset shadow surrounding the image view panel.";
 	text_t options_last_played_pos = "Resume playing media from the last position played.";
 	text_t options_show_help_tooltips = "Show tooltips with help on buttons and links.";
+	text_t command_options_save = "Save options and close";
+	text_t command_options_help = "Help";
+	text_t options_unsaved_prompt = "You changed some options. Save them before closing?";
+	text_t options_section_viewing = "Viewing and playback";
+	text_t options_section_viewing_info = "How photos, videos and music are shown and played.";
+	text_t options_sidebar_shown_title = "Shown in the sidebar";
+	text_t options_section_editing = "Editing and saving";
+	text_t options_section_editing_info =
+		"Whether Diffractor asks before it changes your files, and the quality it saves them at.";
+	text_t options_confirmations_title = "Confirmations";
+	text_t options_section_general = "General";
+	text_t options_section_general_info = "The language Diffractor is shown in, its help, and how it runs.";
+	text_t options_viewing_title = "Viewing";
+	text_t options_playback_title = "Playback";
+	text_t options_library_types_title = "What each folder holds";
+	text_t options_library_types_help =
+		"Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release.";
+	text_t options_library_types_none = "Choose collection folders above, and save, to say what each holds.";
+	text_t options_library_types_added = "A folder added above is listed here once the options are saved.";
+	text_t options_read_nfo =
+		"Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes.";
+	text_t library_kind_automatic = "Decided by each file's name";
+	text_t library_kind_personal = "Personal recordings";
+	text_t library_kind_films_tv = "Films and TV shows";
+	text_t library_kind_music = "Music";
+	text_t subtitle_mode_off = "Off, apart from subtitles a film forces";
+	text_t subtitle_mode_always = "Always";
+	text_t subtitle_mode_foreign = "When the speech is in another language";
+	text_t subtitle_language_label = "Show subtitles in";
+	text_t subtitle_language_app = "The language Diffractor is shown in";
+	text_t audio_device_default = "The system's default";
 	text_t index_maintenance_help =
 		"Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files.";
 	text_t index_maintenance_reset_recommended =
@@ -1175,6 +1210,15 @@ struct app_text_t
 	text_t archives = "archives";
 	text_t retro = "retro";
 	text_t retro_title = "Retro";
+	// The SID monitor's headings and buttons. The chip's own abbreviations - FREQ, ENV, GATE, LP, the
+	// register names - are drawn as the data sheet prints them and are not translated.
+	text_t sid_monitor = "SID monitor";
+	text_t sid_voice_fmt = "Voice {}";
+	text_t sid_output = "Output";
+	text_t sid_filter = "Filter";
+	text_t sid_volume = "Volume";
+	text_t sid_register_writes = "Register writes";
+	text_t sid_solo = "Solo";
 	text_t other = "other";
 	text_t others = "others";
 	text_t truncated_at_one_mb = "Truncated at 1MB";
@@ -1248,7 +1292,7 @@ struct app_text_t
 	text_t movie_relink_none = "No missing clip was found in that folder.";
 	text_t movie_unsaved_prompt =
 		"This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it.";
-	text_t movie_discard = "Close without saving";
+	text_t close_without_saving = "Close without saving";
 	text_t command_movie = "Movie mixer";
 	text_t tooltip_movie = "Assemble the selected photos and videos into one video.";
 	text_t command_movie_render = "Render";

@@ -81,11 +81,12 @@ Visit derivation feeds location summaries; it does not make the database authori
 write an album into media. The presentation uses only nodes the model has produced and may omit the
 strip when the result set does not support a useful summary.
 
-## The Items Control Bar
+## Items Totals And The Places Row
 
-The totals control reports item count and total size; grouping and sorting remain a separate user
-choice. For a location search or drill-down that is not already grouped by location, Items may show
-a breakdown row of the strongest effective places in the current results. Each entry includes a
+The totals in the status bar report item count and total size; grouping and sorting remain a
+separate user choice beside them. For a location search or drill-down that is not already grouped by
+location, Items may head its results with a breakdown row of the strongest effective places in the
+current results. Each entry includes a
 count and opens the same level-scoped search used to compute that count. Partial place identities
 that would overlap the same items are merged into a deterministic non-overlapping predicate before
 the row is ranked, so the chip count and the query it runs remain the same promise. When no common

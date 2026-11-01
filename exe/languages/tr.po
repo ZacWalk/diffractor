@@ -200,9 +200,6 @@ msgstr "filtre"
 msgid "Close"
 msgstr "Kapat"
 
-msgid "Collection options"
-msgstr "Koleksiyon seçenekleri"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "Bir girdiyi hariç tutmak için başına '-' ekleyin. -c:\\photos\\secret gibi tam bir yol tek bir klasörü hariç tutar. -secret gibi bir ad veya -proxy* gibi bir joker karakter, koleksiyonunuzdaki eşleşen klasörleri nerede olurlarsa olsunlar hariç tutar."
 
@@ -470,9 +467,6 @@ msgstr "Google haritalarda aç"
 msgid "Open with"
 msgstr "Şununla aç"
 
-msgid "General options"
-msgstr "Genel seçenekler"
-
 msgid "Pin or hold item"
 msgstr "Öğeyi sabitleyin veya tutun"
 
@@ -622,9 +616,6 @@ msgstr "Küçük resim boyutunu değiştir"
 
 msgid "Change thumbnail size"
 msgstr "Küçük resim boyutunu ayarla"
-
-msgid "Back to the top of the list"
-msgstr "Listenin başına dön"
 
 msgid "Tools"
 msgstr "Araçlar"
@@ -1814,6 +1805,9 @@ msgstr "Dosyalar farklı."
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG - Fotoğraflar için en iyi sıkıştırma"
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL - Fotoğraflar için en küçük dosyalar"
+
 msgid "Keyboard"
 msgstr "Klavye"
 
@@ -2211,6 +2205,9 @@ msgstr "JPEG kayıt kalitesi"
 
 msgid "WEBP save quality"
 msgstr "WEBP kayıt kalitesi"
+
+msgid "JPEG XL save quality"
+msgstr "JPEG XL kayıt kalitesi"
 
 msgid "When saving"
 msgstr "Kaydederken"
@@ -3616,8 +3613,8 @@ msgstr "Öğelerde bir satır yukarı veya aşağı gider. Yakınlaştırılmı�
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "Görüntülenen resmi yakınlaştırır veya uzaklaştırır. Pencereye sığdırmak için 0 tuşuna basın."
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "Koleksiyonunuza klasör ekleyin (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "Koleksiyonunuza klasör ekleyin (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "En az bir arama ölçütü seçin."
@@ -3820,3 +3817,114 @@ msgid_plural "{count} clips were relinked."
 msgstr[0] "1 klip yeniden bağlandı."
 msgstr[1] "{count} klip yeniden bağlandı."
 
+
+msgid "SID monitor"
+msgstr "SID izleyici"
+
+msgid "Voice {}"
+msgstr "Ses {}"
+
+msgid "Output"
+msgstr "Çıkış"
+
+msgid "Filter"
+msgstr "Filtre"
+
+msgid "Volume"
+msgstr "Ses düzeyi"
+
+msgid "Register writes"
+msgstr "Yazmaç yazmaları"
+
+msgid "Solo"
+msgstr "Solo"
+
+msgid "Same film"
+msgstr "Aynı film"
+
+msgid "Viewing and playback"
+msgstr "Görünüm ve oynatma"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "Fotoğrafların, videoların ve müziğin nasıl gösterildiği ve oynatıldığı."
+
+msgid "Shown in the sidebar"
+msgstr "Kenar çubuğunda gösterilenler"
+
+msgid "Editing and saving"
+msgstr "Düzenleme ve kaydetme"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "Diffractor'ın dosyalarınızı değiştirmeden önce sorup sormadığı ve onları hangi kalitede kaydettiği."
+
+msgid "Confirmations"
+msgstr "Onaylar"
+
+msgid "General"
+msgstr "Genel"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "Diffractor'ın gösterildiği dil, yardımı ve nasıl çalıştığı."
+
+msgid "Save options and close"
+msgstr "Seçenekleri kaydet ve kapat"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "Bazı seçenekleri değiştirdiniz. Kapatmadan önce kaydedilsin mi?"
+
+msgid "Viewing"
+msgstr "Görünüm"
+
+msgid "What each folder holds"
+msgstr "Her klasörün içeriği"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "Filmler ve diziler dosya adlarından adlandırılır, numaralandırılır ve tarihlenir. Kişisel kayıtlar ve müzik olduğu gibi bırakılır. “Her dosyanın adına göre” seçeneği, adı bir yayına benzeyen dosyayı film veya bölüm olarak ele alır."
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "Her birinin neyi içerdiğini belirtmek için yukarıdan koleksiyon klasörlerini seçip kaydedin."
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "Yukarıda eklenen bir klasör, seçenekler kaydedildikten sonra burada listelenir."
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Kodi, Jellyfin ve Emby'nin videoların yanında tuttuğu .nfo dosyalarından başlıkları, konuları, sezonları, bölümleri ve tarihleri oku. Bu değiştiğinde koleksiyon yeniden okunur."
+
+msgid "Decided by each file's name"
+msgstr "Her dosyanın adına göre"
+
+msgid "Personal recordings"
+msgstr "Kişisel kayıtlar"
+
+msgid "Films and TV shows"
+msgstr "Filmler ve diziler"
+
+msgid "Music"
+msgstr "Müzik"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "Kapalı, bir filmin zorunlu altyazıları hariç"
+
+msgid "Always"
+msgstr "Her zaman"
+
+msgid "When the speech is in another language"
+msgstr "Konuşma başka bir dilde olduğunda"
+
+msgid "Show subtitles in"
+msgstr "Altyazıları şu dilde göster"
+
+msgid "The language Diffractor is shown in"
+msgstr "Diffractor'ın gösterildiği dil"
+
+msgid "The system's default"
+msgstr "Sistem varsayılanı"
+
+msgid "forced"
+msgstr "zorunlu"
+
+msgid "Subtitles {}"
+msgstr "Altyazı {}"
+
+msgid "Subtitles"
+msgstr "Altyazılar"

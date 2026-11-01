@@ -200,9 +200,6 @@ msgstr "фільтр"
 msgid "Close"
 msgstr "Закрити"
 
-msgid "Collection options"
-msgstr "Параметри колекції"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "Додайте '-' перед записом, щоб виключити його. Повний шлях, наприклад -c:\\photos\\secret, виключає одну папку. Ім'я, наприклад -secret, або шаблон, наприклад -proxy*, виключає відповідні папки будь-де у вашій колекції."
 
@@ -470,9 +467,6 @@ msgstr "Відкрити в картах Google"
 msgid "Open with"
 msgstr "Відкрити за допомогою"
 
-msgid "General options"
-msgstr "Загальні параметри"
-
 msgid "Pin or hold item"
 msgstr "Закріпити або утримати елемент"
 
@@ -622,9 +616,6 @@ msgstr "Змінити розмір мініатюри"
 
 msgid "Change thumbnail size"
 msgstr "Змінити розмір мініатюр"
-
-msgid "Back to the top of the list"
-msgstr "Повернутися на початок списку"
 
 msgid "Tools"
 msgstr "Інструменти"
@@ -1814,6 +1805,9 @@ msgstr "Файли різні."
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG - Найкраще стиснення для фотографій"
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL - Найменші файли для фотографій"
+
 msgid "Keyboard"
 msgstr "Клавіатура"
 
@@ -2211,6 +2205,9 @@ msgstr "Якість збереження JPEG"
 
 msgid "WEBP save quality"
 msgstr "Якість збереження WEBP"
+
+msgid "JPEG XL save quality"
+msgstr "Якість збереження JPEG XL"
 
 msgid "When saving"
 msgstr "При збереженні"
@@ -3680,8 +3677,8 @@ msgstr "Переміщення на рядок елементів вгору а�
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "Збільшує або зменшує відображуване зображення. Натисніть 0, щоб вписати його у вікно."
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "Додати папки до колекції (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "Додати папки до колекції (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "Виберіть принаймні один критерій пошуку."
@@ -3887,3 +3884,114 @@ msgstr[0] "1 кліп перепризначено."
 msgstr[1] "{count} кліпи перепризначено."
 msgstr[2] "{count} кліпів перепризначено."
 
+
+msgid "SID monitor"
+msgstr "Монітор SID"
+
+msgid "Voice {}"
+msgstr "Голос {}"
+
+msgid "Output"
+msgstr "Вихід"
+
+msgid "Filter"
+msgstr "Фільтр"
+
+msgid "Volume"
+msgstr "Гучність"
+
+msgid "Register writes"
+msgstr "Запис у регістри"
+
+msgid "Solo"
+msgstr "Соло"
+
+msgid "Same film"
+msgstr "Той самий фільм"
+
+msgid "Viewing and playback"
+msgstr "Перегляд і відтворення"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "Як показуються та відтворюються фотографії, відео й музика."
+
+msgid "Shown in the sidebar"
+msgstr "Показується на бічній панелі"
+
+msgid "Editing and saving"
+msgstr "Редагування та збереження"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "Чи питає Diffractor перед зміною ваших файлів і з якою якістю їх зберігає."
+
+msgid "Confirmations"
+msgstr "Підтвердження"
+
+msgid "General"
+msgstr "Загальні"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "Мова інтерфейсу Diffractor, його довідка та те, як він працює."
+
+msgid "Save options and close"
+msgstr "Зберегти параметри й закрити"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "Ви змінили деякі параметри. Зберегти їх перед закриттям?"
+
+msgid "Viewing"
+msgstr "Перегляд"
+
+msgid "What each folder holds"
+msgstr "Що містить кожна папка"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "Фільми та серіали отримують назви, номери й дати за іменами файлів. Особисті записи й музика залишаються як є. Режим «За іменем кожного файлу» вважає файл фільмом або епізодом, якщо його ім'я схоже на ім'я релізу."
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "Виберіть вище папки колекції та збережіть, щоб указати, що містить кожна."
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "Папку, додану вище, буде показано тут після збереження параметрів."
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Читати назви, сюжети, сезони, епізоди й дати з файлів .nfo, які Kodi, Jellyfin і Emby зберігають поруч із відео. Після зміни цього параметра колекцію буде прочитано знову."
+
+msgid "Decided by each file's name"
+msgstr "За іменем кожного файлу"
+
+msgid "Personal recordings"
+msgstr "Особисті записи"
+
+msgid "Films and TV shows"
+msgstr "Фільми та серіали"
+
+msgid "Music"
+msgstr "Музика"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "Вимкнено, крім субтитрів, обов'язкових для фільму"
+
+msgid "Always"
+msgstr "Завжди"
+
+msgid "When the speech is in another language"
+msgstr "Коли мовлення іншою мовою"
+
+msgid "Show subtitles in"
+msgstr "Показувати субтитри мовою"
+
+msgid "The language Diffractor is shown in"
+msgstr "Мова інтерфейсу Diffractor"
+
+msgid "The system's default"
+msgstr "Системне за замовчуванням"
+
+msgid "forced"
+msgstr "примусові"
+
+msgid "Subtitles {}"
+msgstr "Субтитри {}"
+
+msgid "Subtitles"
+msgstr "Субтитри"

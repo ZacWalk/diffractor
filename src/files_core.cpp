@@ -7,7 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Core file handling operations. Manages file loading, saving, and format detection
-// for images and media files. Coordinates metadata extraction across different file types.
+// for images and media files. Coordinates metadata extraction across different file types, with the
+// art and the media manager's .nfo kept beside music and films, and names each type's sidecars.
 
 #include "pch.h"
 
@@ -136,9 +137,39 @@ file_group file_group::folder("folder", "folders", 0x18A59C, icon_index::folder,
                               file_traits::no_metadata_grouping, group_key_type::folder, {});
 file_group file_group::photo("photo", "photos", 0x18A549, icon_index::photo, photo_traits,
                              group_key_type::photo, {"xmp"});
+// Subtitles travel with the video they belong to, as its sidecars: text (srt, vtt, ass, ssa, smi, mpl2) and
+// images (sub with its idx, sup); so does the .nfo a media manager or a release keeps about it.
 file_group file_group::video("video", "videos", 0xA55018, icon_index::video, video_traits,
                              group_key_type::video,
-                             {"srt", "smi", "vtt", "mpl2", "thm", "xmp"});
+                             {"srt", "smi", "vtt", "ass", "ssa", "sub", "idx", "sup", "mpl2", "thm", "xmp", "nfo"});
+
+bool is_subtitle_extension(std::string_view ext)
+{
+	if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+
+	static const df::hash_set<std::string_view, df::ihash, df::ieq> extensions{
+		"srt", "vtt", "ass", "ssa", "smi", "sub", "idx", "sup", "mpl2"
+	};
+
+	return extensions.contains(ext);
+}
+
+bool is_subtitle_suffix(const std::string_view word)
+{
+	static const df::hash_set<std::string_view, df::ihash, df::ieq> flags{"forced", "sdh", "cc"};
+	return flags.contains(word) || is_language_word(word);
+}
+
+df::file_path moved_sidecar_path(const df::file_path primary, const df::file_path destination, const df::file_path sidecar)
+{
+	const auto stem = primary.file_name_without_extension();
+	const auto name = sidecar.name().sv();
+	// A sidecar named for another file - the RAW an XMP describes - keeps only its extension, as it always has.
+	const auto after_stem = name.size() > stem.size() && name[stem.size()] == '.' &&
+		str::icmp(name.substr(0, stem.size()), stem) == 0;
+	const auto tail = after_stem ? name.substr(stem.size()) : sidecar.extension();
+	return destination.folder().combine_file(std::string(destination.file_name_without_extension()).append(tail));
+}
 file_group file_group::audio("audio", {}, 0xA5184B, icon_index::audio, audio_traits, group_key_type::audio, {});
 
 file_group file_group::archive("archive", "archives", 0x5588DD, icon_index::archive, archive_traits,
@@ -203,7 +234,6 @@ void load_file_types()
 			file_group::video, "asf", "Windows Media",
 			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
-		{file_group::video, "ass", {}, {}},
 		{file_group::video, "ast", "Audio Stream", {}},
 		{
 			file_group::video, "avi", "Audio Visual Interleave",
@@ -468,6 +498,7 @@ void load_file_types()
 		{file_group::audio, "sfx2", {}, {}},
 		{file_group::photo, "sgi", "Silicon Graphics Image", {}},
 		{file_group::video, "shn", "Shorten (SHN)", {}},
+		{file_group::audio, "sid", "Commodore 64 SID tune", file_traits::sid_tune},
 		{file_group::video, "son", {}, {}},
 		{file_group::video, "sox", {}, {}},
 		{file_group::video, "spdif", {}, {}},
@@ -475,15 +506,12 @@ void load_file_types()
 		{file_group::audio, "spx", "Speex low bitrate audio", {}},
 		{file_group::photo, "srw", "Samsung raw", file_traits::raw | file_traits::edit},
 		{file_group::video, "ss2", {}, {}},
-		{file_group::video, "ssa", {}, {}},
 		{file_group::audio, "st26", {}, {}},
 		{file_group::audio, "stk", {}, {}},
 		{file_group::video, "stl", {}, {}},
 		{file_group::audio, "stm", {}, {}},
 		{file_group::audio, "stp", {}, {}},
 		{file_group::video, "str", {}, {}},
-		{file_group::video, "sub", {}, {}},
-		{file_group::video, "sup", {}, {}},
 		{file_group::video, "ag", {}, {}},
 		{file_group::video, "swf", "Macromedia Flash", file_traits::embedded_xmp},
 		{file_group::video, "tak", "Tom's Lossless Audio Kompressor", {}},
@@ -1321,11 +1349,13 @@ bool files::can_save_extension(const std::string_view ext)
 		{".jpe"},
 		{".png"},
 		{".webp"},
+		{".jxl"},
 		{"jpg"},
 		{"jpeg"},
 		{"jpe"},
 		{"png"},
 		{"webp"},
+		{"jxl"},
 	};
 
 	return save_extensions.contains(ext);
@@ -1402,6 +1432,10 @@ ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface
 		else if (format == ui::image_format::WEBP)
 		{
 			result = save_webp(surface_in, metadata, params);
+		}
+		else if (format == ui::image_format::JXL)
+		{
+			result = save_jxl(surface_in, metadata, params);
 		}
 		else
 		{
@@ -1767,6 +1801,16 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 				catch (std::exception& e)
 				{
 					df::log(__FUNCTION__, e.what());
+				}
+			}
+			else if (format == ui::image_format::JXL)
+			{
+				mem_read_stream stream(image->data());
+				auto loaded = load_jxl(stream);
+
+				if (is_valid(loaded))
+				{
+					surface_result = fit_within(std::move(loaded), target_extent);
 				}
 			}
 		}
@@ -2150,10 +2194,95 @@ bool files::save(const df::file_path path, const file_load_result& loaded)
 		encode_params.jpeg_save_quality = setting.convert.jpeg_quality;
 		encode_params.webp_quality = setting.convert.webp_quality;
 		encode_params.webp_lossless = setting.convert.webp_lossless;
+		encode_params.jxl_quality = setting.convert.jxl_quality;
+		encode_params.jxl_lossless = setting.convert.jxl_lossless;
 		saved = surface_to_image(loaded.to_surface(), {}, encode_params, save_format);
 	}
 
 	return is_valid(saved) && blob_save_to_file(saved->data(), path);
+}
+
+// The most folder art read from one file before it is passed over: art kept beside music is bounded as the art
+// embedded in it is.
+constexpr uint64_t max_folder_art_bytes = 16ull * 1024ull * 1024ull;
+
+static ui::image_ptr read_folder_art_file(const df::file_path path)
+{
+	if (!platform::exists(path)) return nullptr;
+
+	const auto f = platform::open_file(path, platform::file_open_mode::read);
+	if (!f) return nullptr;
+
+	const auto len = f->size();
+	if (len < 16 || len > max_folder_art_bytes) return nullptr;
+
+	df::blob data(static_cast<size_t>(len));
+	if (f->read(data.data(), len) != len) return nullptr;
+
+	auto image = load_image_file(data);
+	return is_valid(image) ? image : nullptr;
+}
+
+// What a folder keeps beside its music or its film, for a file with no art of its own: an album's Folder.jpg,
+// cover.jpg or front.jpg; a video's poster named for it (Movie-poster.jpg); and a film's folder art (poster.jpg)
+// when the folder holds that film alone, named for it. Elsewhere - home videos beside Explorer's folder.jpg, a
+// folder of many films, a season of episodes - folder art would make every video look the same. The folder's own
+// art is remembered briefly, so an album read track by track reads it once.
+static ui::image_ptr load_folder_art(const df::file_path path, const file_type_ref ft)
+{
+	static platform::mutex cache_mutex;
+	static df::folder_path cached_folder;
+	static bool cached_is_audio = false;
+	static ui::image_ptr cached_art;
+	static int64_t cached_ms = 0;
+	constexpr int64_t cache_ms = 60 * 1000;
+
+	const auto folder = path.folder();
+	const auto stem = path.file_name_without_extension();
+	const auto is_audio = ft->has_trait(file_traits::visualize_audio);
+
+	if (!is_audio)
+	{
+		for (const auto suffix : {"-poster.jpg", "-poster.png", "-thumb.jpg", "-thumb.png"})
+		{
+			if (auto art = read_folder_art_file(folder.combine_file(std::string(stem) + suffix))) return art;
+		}
+
+		if (!is_named_for_its_folder(stem, folder.name())) return nullptr;
+	}
+
+	const auto now = df::now_ms();
+
+	{
+		platform::exclusive_lock lock(cache_mutex);
+		if (cached_folder == folder && cached_is_audio == is_audio && now - cached_ms < cache_ms) return cached_art;
+	}
+
+	static constexpr std::string_view album_names[] = {
+		"Folder.jpg", "folder.jpg", "Folder.png", "cover.jpg", "Cover.jpg", "cover.png", "front.jpg", "Front.jpg",
+		"AlbumArt.jpg",
+	};
+	static constexpr std::string_view film_names[] = {
+		"poster.jpg", "Poster.jpg", "poster.png", "folder.jpg", "Folder.jpg", "cover.jpg", "movie.jpg",
+	};
+
+	ui::image_ptr art;
+
+	for (const auto name : is_audio ? std::span<const std::string_view>(album_names) : std::span<const std::string_view>(film_names))
+	{
+		art = read_folder_art_file(folder.combine_file(name));
+		if (art) break;
+	}
+
+	{
+		platform::exclusive_lock lock(cache_mutex);
+		cached_folder = folder;
+		cached_is_audio = is_audio;
+		cached_art = art;
+		cached_ms = now;
+	}
+
+	return art;
 }
 
 file_scan_result files::scan_file(const df::file_path path, const bool load_thumb, const file_type_ref ft,
@@ -2267,6 +2396,12 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 					}
 				}
 			}
+			else if (ft->has_trait(file_traits::sid_tune))
+			{
+				// A tune is a C64 program, not a container FFmpeg or libfiles can read: its header is all
+				// there is to describe it, and the whole file is a few kilobytes.
+				result = scan_sid(data);
+			}
 			else if (ft->has_trait(file_traits::av))
 			{
 				// libfiles reads the container. FFmpeg is opened only to decode a thumbnail, or to describe
@@ -2327,6 +2462,20 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 				{
 					result.metadata.xmp = blob_from_file(path.folder().combine_file(xmp_sidecar));
 				}
+
+				// What a media manager's .nfo says of a video, when the user asks for those to be read.
+				if (setting.read_nfo && ft->has_trait(file_traits::video_metadata))
+				{
+					auto nfo = read_video_nfo(path);
+					if (!nfo.is_empty()) result.nfo = std::make_shared<const nfo_details>(std::move(nfo));
+				}
+
+				// Music and films with no art of their own take the art kept beside them. Looked for only
+				// when a thumbnail is wanted: indexing does not need it.
+				if (load_thumb && !result.cover_art)
+				{
+					if (auto art = load_folder_art(path, ft)) result.cover_art = std::move(art);
+				}
 			}
 
 			if (!data.empty())
@@ -2385,91 +2534,103 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 	const auto* const mt = file_type_from_name(path);
 	record_file_op(mt, file_op_stat::read);
 
-	if (mt->has_trait(file_traits::bitmap))
+	// Every caller waits on the answer - the display and the editor each hold a load in flight until it
+	// arrives - so a decoder's throw, a PSD cut short or memory a decode could not have, is answered as
+	// a file that cannot be read rather than escaping to the queue, which would only log it.
+	try
 	{
-		if (mt->has_trait(file_traits::raw))
+		if (mt->has_trait(file_traits::bitmap))
 		{
-			result = load_raw(path, can_load_preview);
-		}
-		else
-		{
-			// Larger than this can hold at once. Reading a prefix would decode a frame whose tail is
-			// whatever the codec fills missing rows with, and the edit path would re-encode that over
-			// the original. Named as a property of the file, so it is not retried.
-			const auto attributes = platform::file_attributes(path);
-
-			if (attributes.size > static_cast<uint64_t>(df::max_blob_size))
+			if (mt->has_trait(file_traits::raw))
 			{
-				df::log(__FUNCTION__, std::format("{} is too large to load ({})", path.name(),
-				                                  df::file_size(attributes.size).str()));
-				result.reason = file_load_result::failure::too_large;
-				return result;
+				result = load_raw(path, can_load_preview);
 			}
-
-			const auto file = blob_from_file(path);
-
-			if (!file.empty())
+			else
 			{
-				mem_read_stream stream(file);
+				// Larger than this can hold at once. Reading a prefix would decode a frame whose tail is
+				// whatever the codec fills missing rows with, and the edit path would re-encode that over
+				// the original. Named as a property of the file, so it is not retried.
+				const auto attributes = platform::file_attributes(path);
 
-				if (stream.size() > 16)
+				if (attributes.size > static_cast<uint64_t>(df::max_blob_size))
 				{
-					const auto detected = detect_format(stream.peek128(0));
-					const auto* const still = find_still_format(detected);
+					df::log(__FUNCTION__, std::format("{} is too large to load ({})", path.name(),
+					                                  df::file_size(attributes.size).str()));
+					result.reason = file_load_result::failure::too_large;
+					return result;
+				}
 
-					if (is_image_format(detected))
-					{
-						result.i = load_image_file(file);
-						result.success = is_valid(result.i);
-					}
-					else
-					{
-						// These codecs build the whole frame before anything can be scaled down, so
-						// each refuses an oversized source at the point it reads the header and says
-						// so here rather than looking like a corrupt file.
-						load_diagnostic diagnostic;
+				const auto file = blob_from_file(path);
 
-						if (still && still->load)
+				if (!file.empty())
+				{
+					mem_read_stream stream(file);
+
+					if (stream.size() > 16)
+					{
+						const auto detected = detect_format(stream.peek128(0));
+						const auto* const still = find_still_format(detected);
+
+						if (is_image_format(detected))
 						{
-							result.s = still->load(stream, &diagnostic);
+							result.i = load_image_file(file);
+							result.success = is_valid(result.i);
 						}
 						else
 						{
-							// GIF, BMP and TIFF, plus the bitmap types we recognise by extension but
-							// not by signature (TGA, SGI, PPM, DPX), are decoded by ffmpeg. scan_photo
-							// reads the geometry from the header without decoding - but only for the
-							// formats it has a branch for, so a refusal here is the one that can name the
-							// size in the diagnostic, not the one that makes the budget safe. That gate is
-							// inside av_decode_still, which sees every source this reaches.
-							const auto scanned = scan_photo(stream);
-							const sizei scanned_dimensions{
-								static_cast<int>(scanned.width), static_cast<int>(scanned.height)
-							};
+							// These codecs build the whole frame before anything can be scaled down, so
+							// each refuses an oversized source at the point it reads the header and says
+							// so here rather than looking like a corrupt file.
+							load_diagnostic diagnostic;
 
-							if (scanned_dimensions.is_empty() ||
-								!reject_over_budget_source(&diagnostic, scanned_dimensions, "image"))
+							if (still && still->load)
 							{
-								result.s = av_decode_still(file, {}, path.extension(), &diagnostic);
+								result.s = still->load(stream, &diagnostic);
 							}
-						}
+							else
+							{
+								// GIF, BMP and TIFF, plus the bitmap types we recognise by extension but
+								// not by signature (TGA, SGI, PPM, DPX), are decoded by ffmpeg. scan_photo
+								// reads the geometry from the header without decoding - but only for the
+								// formats it has a branch for, so a refusal here is the one that can name the
+								// size in the diagnostic, not the one that makes the budget safe. That gate is
+								// inside av_decode_still, which sees every source this reaches.
+								const auto scanned = scan_photo(stream);
+								const sizei scanned_dimensions{
+									static_cast<int>(scanned.width), static_cast<int>(scanned.height)
+								};
 
-						result.success = is_valid(result.s);
+								if (scanned_dimensions.is_empty() ||
+									!reject_over_budget_source(&diagnostic, scanned_dimensions, "image"))
+								{
+									result.s = av_decode_still(file, {}, path.extension(), &diagnostic);
+								}
+							}
 
-						if (!result.success)
-						{
-							result.source_dimensions = diagnostic.source_dimensions;
-							result.reason = diagnostic.over_budget
-								                ? file_load_result::failure::too_large
-								                : file_load_result::failure::unreadable;
+							result.success = is_valid(result.s);
+
+							if (!result.success)
+							{
+								result.source_dimensions = diagnostic.source_dimensions;
+								result.reason = diagnostic.over_budget
+									                ? file_load_result::failure::too_large
+									                : file_load_result::failure::unreadable;
+							}
 						}
 					}
 				}
 			}
 		}
+		else if (mt->has_trait(file_traits::av))
+		{
+			// Not supported
+		}
 	}
-	else if (mt->has_trait(file_traits::av))
+	catch (const std::exception& e)
 	{
-		// Not supported
+		df::log(__FUNCTION__, std::format("{}: {}", path.name(), e.what()));
+		result = {};
+		result.reason = file_load_result::failure::unreadable;
 	}
 
 	return result;
@@ -2505,11 +2666,13 @@ ui::image_format extension_to_format(const std::string_view ext)
 		{".jpe", ui::image_format::JPEG},
 		{".png", ui::image_format::PNG},
 		{".webp", ui::image_format::WEBP},
+		{".jxl", ui::image_format::JXL},
 		{"jpg", ui::image_format::JPEG},
 		{"jpeg", ui::image_format::JPEG},
 		{"jpe", ui::image_format::JPEG},
 		{"png", ui::image_format::PNG},
 		{"webp", ui::image_format::WEBP},
+		{"jxl", ui::image_format::JXL},
 	};
 
 	const auto found = extensions.find(ext);
@@ -2537,6 +2700,10 @@ ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surfa
 	{
 		return save_webp(surface, metadata, params);
 	}
+	if (format == ui::image_format::JXL)
+	{
+		return save_jxl(surface, metadata, params);
+	}
 
 	return {};
 }
@@ -2558,6 +2725,27 @@ static metadata_parts upright_save_metadata(const metadata_parts& source, const 
 
 	result.exif = metadata_exif::fix_dims({exif.data(), exif.size()}, dimensions.cx, dimensions.cy);
 	return result;
+}
+
+// Which way the pixels a re-encode wrote stand, for a JPEG XL, whose readers take it from the codestream
+// rather than the EXIF. An edited surface does not say reliably - a resize draws onto a fresh canvas -
+// so it is the orientation the file ends with: the edit's, else the EXIF's carried over, which is where
+// the other formats keep it, else the surface's, which they write when there is no EXIF.
+static ui::orientation written_orientation(const metadata_edits& edits, const metadata_parts& metadata,
+                                           const ui::const_surface_ptr& surface)
+{
+	if (edits.orientation.has_value() && *edits.orientation != ui::orientation::none) return *edits.orientation;
+
+	if (!metadata.exif.empty())
+	{
+		const auto skip = is_exif_signature(metadata.exif) ? exif_signature.size() : 0u;
+		const auto summary = libfiles::summarize_exif({metadata.exif.data() + skip, metadata.exif.size() - skip});
+		return summary.orientation && *summary.orientation >= 1 && *summary.orientation <= 8
+			       ? static_cast<ui::orientation>(*summary.orientation)
+			       : ui::orientation::top_left;
+	}
+
+	return surface->orientation();
 }
 
 
@@ -2601,20 +2789,21 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 		const auto* const mt = file_type_from_name(path_src);
 		const auto extension_change = str::icmp(path_dst.extension(), path_src.extension()) != 0;
 		const auto path_change = path_dst != path_src;
+		const auto reencode = params.reencode && path_change;
 
 		file_scan_result scan_result;
 
 		// The scan only ever sizes a crop and carries the source metadata into a re-encode, so it is
 		// worth its read - a full parse plus the embedded thumbnail - only where the pixels may be
 		// rewritten. A metadata-only write never rewrites them.
-		if (mt->has_trait(file_traits::bitmap) && (extension_change || !photo_edits.is_empty()))
+		if (mt->has_trait(file_traits::bitmap) && (extension_change || reencode || !photo_edits.is_empty()))
 		{
 			file_read_stream stream;
 
 			if (stream.open(path_src))
 			{
 				scan_result = scan_photo(stream);
-				has_photo_edits = photo_edits.has_changes(scan_result.dimensions()) || extension_change;
+				has_photo_edits = photo_edits.has_changes(scan_result.dimensions()) || extension_change || reencode;
 			}
 			else
 			{
@@ -2632,12 +2821,16 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			return result;
 		}
 
+		// Where the file's metadata lives: in its own packet, or in a sidecar - the one a raw needs, or
+		// the one a DNG has beside it.
+		const auto in_sidecar = metadata_xmp::sidecar_holds_metadata(path_src, src_xmp_name);
+
 		// A metadata-only edit that fits the space the LIVE file holds is patched where it lies:
 		// nothing the file holds moves, and libfiles orders the writes so that an interruption leaves
 		// a file that reads whole, each field old or new. An edit that does not fit is
 		// staged below. A save-as or a pixel edit has to produce a second file, and a backup needs the
 		// prior bytes, so none of them is a patch.
-		const auto may_patch = !path_change && !has_photo_edits && !create_original &&
+		const auto may_patch = !path_change && !has_photo_edits && !create_original && !in_sidecar &&
 			mt->has_trait(file_traits::in_place_metadata);
 
 		if (may_patch)
@@ -2681,12 +2874,11 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			}
 		}
 
-		// A container with no embedded XMP keeps its metadata in the sidecar, so the media file's
+		// A file whose metadata lives in its sidecar has only the sidecar written, so the media file's
 		// bytes never change. Staging and swapping it would copy the whole file - a 60 MB raw for a
 		// one-star rating - only to write back what was already there. A backup still stages,
 		// because the prior bytes have to be kept before anything is replaced.
-		const auto sidecar_only = !path_change && !has_photo_edits && !create_original &&
-			!mt->has_trait(file_traits::embedded_xmp);
+		const auto sidecar_only = !path_change && !has_photo_edits && !create_original && in_sidecar;
 
 		if (sidecar_only)
 		{
@@ -2703,9 +2895,10 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			});
 
 			// Staged like every other write: the live sidecar is replaced only once the new one is
-			// complete on disk.
+			// complete on disk. Told where the metadata lives, so a sidecar removed since it was asked
+			// cannot send the edit into the live file.
 			const auto staged = metadata_xmp::update(path_dst, path_src, metadata_edits, src_xmp_name,
-			                                         path_temp_xmp);
+			                                         path_temp_xmp, in_sidecar);
 			result = platform::replace_file(path_dst_xmp, staged.xmp_path, false);
 			committed = result.success();
 
@@ -2719,6 +2912,12 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 
 		// Set when the stage was written with the metadata edit already in it.
 		auto staged_with_edit = false;
+
+		// A JPEG XL copied unchanged to another path keeps its boxes as they are. Writing the same packet
+		// would only uncompress it, or be refused in one whose JPEG it keeps has no room for the packet as
+		// it is written now.
+		const auto copied_as_is = !has_photo_edits && !metadata_edits.has_changes() &&
+			extension_to_format(path_dst.extension()) == ui::image_format::JXL;
 
 		if (has_photo_edits)
 		{
@@ -2739,7 +2938,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 				df::blob transformed;
 				auto rotate_over_budget = false;
 
-				if (jpeg_to_jpeg && photo_edits.is_no_loss(dimensions_in) && params.jpeg_save_quality >= 75)
+				if (jpeg_to_jpeg && !reencode && photo_edits.is_no_loss(dimensions_in) && params.jpeg_save_quality >= 75)
 				{
 					// Empty when the rotation would not be lossless, which the re-encode below handles.
 					transformed = _jpeg_transformer.transform(loaded.i->data(), _jpeg_encoder,
@@ -2783,8 +2982,9 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 						auto encode_params = params;
 
 						// Re-encoding against the source's own tables costs one generation at its
-						// fidelity rather than re-quantizing to the quality slider.
-						if (jpeg_to_jpeg) encode_params.jpeg_source = loaded.i->data();
+						// fidelity rather than re-quantizing to the quality slider - unless the
+						// slider is what a conversion asks for.
+						if (jpeg_to_jpeg && !reencode) encode_params.jpeg_source = loaded.i->data();
 
 						metadata_parts save_meta;
 						const auto& source_meta = scan_result.save_metadata(save_meta);
@@ -2796,9 +2996,31 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 							upright_meta = upright_save_metadata(source_meta, temp_surface->dimensions());
 						}
 
-						const auto saved = save_surface(extension_to_format(path_temp.extension()), temp_surface,
-						                                reset_orientation ? upright_meta : source_meta,
-						                                encode_params);
+						const auto save_format = extension_to_format(path_temp.extension());
+						const auto& encode_meta = reset_orientation ? upright_meta : source_meta;
+
+						// A JPEG XL is encoded with its packet - the edit, and what a conversion carries
+						// over - rather than encoded bare and then updated: libjxl writes the boxes in
+						// the one pass, and the metadata update below is skipped.
+						metadata_parts packet_meta;
+						const auto encodes_packet = save_format == ui::image_format::JXL;
+
+						if (encodes_packet)
+						{
+							// Claimed first: the packet is read before the encode, and a test seam
+							// can fail it having left a byte at the stage.
+							temp_file_created = true;
+							packet_meta.exif = encode_meta.exif.clone();
+							packet_meta.icc = encode_meta.icc.clone();
+							packet_meta.xmp = metadata_xmp::encoded_packet(path_src, path_temp, metadata_edits,
+							                                               src_xmp_name);
+							staged_with_edit = true;
+						}
+
+						const auto saved = encodes_packet
+							                   ? save_jxl(temp_surface, packet_meta, encode_params,
+							                              written_orientation(metadata_edits, encode_meta, temp_surface))
+							                   : save_surface(save_format, temp_surface, encode_meta, encode_params);
 
 						if (is_empty(saved))
 						{
@@ -2831,7 +3053,11 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			// A packet libfiles writes is staged with the edit already in it - in one pass from the
 			// source when the edit moves what the file holds, where a copy would then be rewritten in
 			// full. Anything else is copied, and updated below.
-			if (const auto staged = metadata_xmp::stage_update(path_temp, path_src, metadata_edits, src_xmp_name))
+			const auto staged = copied_as_is
+				                    ? std::nullopt
+				                    : metadata_xmp::stage_update(path_temp, path_src, metadata_edits, src_xmp_name);
+
+			if (staged)
 			{
 				xmp_result = *staged;
 				staged_with_edit = true;
@@ -2839,6 +3065,8 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			else
 			{
 				result = platform::copy_file(path_src, path_temp, true, false);
+				// The copy of a read-only source is read-only too, and the update below has to write it.
+				if (result.success()) platform::make_file_writable(path_temp);
 			}
 		}
 
@@ -2846,7 +3074,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 		{
 			const auto has_metadata_changes = metadata_edits.has_changes();
 
-			if (has_metadata_changes || path_change || has_photo_edits)
+			if ((has_metadata_changes || path_change || has_photo_edits) && !copied_as_is)
 			{
 				// Both destinations are staged; neither the live media file nor the live sidecar
 				// is touched until the swap below.
@@ -2942,7 +3170,11 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 
 	if (result.failed())
 	{
-		if (temp_file_created) platform::delete_file(path_temp);
+		if (temp_file_created)
+		{
+			platform::make_file_writable(path_temp);
+			platform::delete_file(path_temp);
+		}
 		// The staged sidecar is cleaned up by its own path rather than the returned one: a throw out
 		// of metadata_xmp::update leaves the result unassigned, and the file it had already created
 		// would then survive. Only ever a staged copy; the live sidecar is never the cleanup target.
@@ -3146,6 +3378,21 @@ static bool comment_key_matches_ui_language(const std::string_view key, const st
 	return language_matches_ui(key.substr(prefix.size()), ui_lang);
 }
 
+// Matroska names a tag in a language other than its default "<key>-<lang>" and nothing else, and MOV
+// adds such a copy beside the plain key (#238). Splits a key that ends in "-" and a three-letter ISO
+// 639-2 code into the two; any other key comes back whole, with no language.
+static std::pair<std::string_view, std::string_view> split_language_suffix(const std::string_view key)
+{
+	constexpr auto code_size = 3_z;
+	if (key.size() <= code_size + 1 || key[key.size() - code_size - 1] != '-') return {key, {}};
+
+	const auto code = key.substr(key.size() - code_size);
+	const auto is_letter = [](const char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+	if (!std::ranges::all_of(code, is_letter)) return {key, {}};
+
+	return {key.substr(0, key.size() - code_size - 1), code};
+}
+
 void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) const
 {
 	// FFmpeg surfaces id3v2 COMM/USLT frames with a language/descriptor suffix
@@ -3156,14 +3403,61 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 	const auto ui_lang = setting.language;
 	int comment_priority = 0; // 0 none, 1 other language, 2 UI language, 3 plain/untagged
 
+	// The text fields a container can carry in several languages take the same order as the comment:
+	// the plain key, then the UI language, then any other, whichever arrives first. A field two keys
+	// name shares its priority through the first of them.
+	struct text_key
+	{
+		std::string_view key;
+		str::cached prop::item_metadata::* field;
+	};
+
+	static constexpr text_key text_keys[] = {
+		{"album", &prop::item_metadata::album},
+		{"album_artist", &prop::item_metadata::album_artist},
+		{"artist", &prop::item_metadata::artist},
+		{"composer", &prop::item_metadata::composer},
+		{"copyright", &prop::item_metadata::copyright_notice},
+		{"description", &prop::item_metadata::description},
+		{"encoder", &prop::item_metadata::encoder},
+		{"encoded_by", &prop::item_metadata::encoder},
+		{"game", &prop::item_metadata::game},
+		{"genre", &prop::item_metadata::genre},
+		{"performer", &prop::item_metadata::performer},
+		{"publisher", &prop::item_metadata::publisher},
+		{"show", &prop::item_metadata::show},
+		{"programme", &prop::item_metadata::show},
+		{"synopsis", &prop::item_metadata::synopsis},
+		{"system", &prop::item_metadata::system},
+		{"title", &prop::item_metadata::title},
+	};
+
+	int text_priority[std::size(text_keys)] = {};
+
 	for (const auto& kv : ffmpeg_metadata)
 	{
-		if (is_key(kv.key, "album")) result.album = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "show")) result.show = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "programme")) result.show = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "album_artist")) result.album_artist = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "artist")) result.artist = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "comment") || str::starts(kv.key, "comment-"))
+		const auto [base_key, language] = split_language_suffix(kv.key);
+		const auto text = std::ranges::find_if(text_keys, [base_key](const text_key& t)
+		{
+			return is_key(base_key, t.key);
+		});
+
+		if (text != std::ranges::end(text_keys))
+		{
+			const auto first_naming = std::ranges::find(text_keys, text->field, &text_key::field);
+			auto& best = text_priority[first_naming - std::ranges::begin(text_keys)];
+			const auto priority = language.empty() ? 3 : language_matches_ui(language, ui_lang) ? 2 : 1;
+
+			if (priority >= best)
+			{
+				best = priority;
+				result.*(text->field) = str::strip_and_cache(kv.value);
+			}
+
+			continue;
+		}
+
+		if (is_key(kv.key, "comment") || str::starts(kv.key, "comment-") || is_key(base_key, "comment"))
 		{
 			// Pick the best single comment: plain/untagged > current UI language > any other.
 			const auto priority = is_key(kv.key, "comment")
@@ -3178,9 +3472,6 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 				result.comment = str::strip_and_cache(kv.value);
 			}
 		}
-		else if (is_key(kv.key, "description")) result.description = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "composer")) result.composer = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "copyright")) result.copyright_notice = str::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "creation_time") || is_key(kv.key, "date") || is_key(
 			kv.key, "com.apple.quicktime.creationdate"))
 		{
@@ -3233,13 +3524,6 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 				                                                df::date_t(year, 1, 1, 0, 0, 0));
 			}
 		}
-		else if (is_key(kv.key, "encoder") || is_key(kv.key, "encoded_by"))
-			result.encoder =
-				str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "genre")) result.genre = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "publisher")) result.publisher = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "synopsis")) result.synopsis = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "title")) result.title = str::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "maker") || is_key(kv.key, "make") || is_key(kv.key, "com.apple.quicktime.make"))
 		{
 			// AVI normalises to "maker", MP4/MOV to "make"; both mean camera manufacturer.
@@ -3250,15 +3534,12 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		{
 			result.camera_model = str::strip_and_cache(kv.value);
 		}
-		else if (is_key(kv.key, "performer")) result.performer = str::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "year")) result.year = str::to_int(kv.value);
 		else if (is_key(kv.key, "disk") || is_key(kv.key, "disc")) result.disk = df::xy8::parse(kv.value);
 		else if (is_key(kv.key, "track")) result.track = df::xy8::parse(kv.value);
 		else if (is_key(kv.key, "variant_bitrate")) result.bitrate = str::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "episode_sort")) result.episode = df::xy8::parse(kv.value);
 		else if (is_key(kv.key, "season_number")) result.season = str::to_int(kv.value);
-		else if (is_key(kv.key, "system")) result.system = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "game")) result.game = str::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "song") && prop::is_null(result.title))
 			result.title =
 				str::strip_and_cache(kv.value);
@@ -3354,6 +3635,12 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	if (media)
 	{
 		parse_media_properties(*result);
+	}
+
+	// A media manager's details over the container's tags, and under the file's XMP: the user's own edits.
+	if (nfo)
+	{
+		apply_nfo(*result, *nfo);
 	}
 
 	if (!metadata.xmp.empty())

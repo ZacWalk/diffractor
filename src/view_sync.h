@@ -84,5 +84,7 @@ public:
 		return _title;
 	}
 
+	view_bars bars() const override;
+
 	void update_rows(const sync_analysis_result& analysis_result);
 };

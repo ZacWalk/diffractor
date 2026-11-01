@@ -16,6 +16,11 @@
 
 enum class group_key_type : uint32_t;
 
+namespace prop
+{
+	enum class library_kind : uint8_t;
+}
+
 constexpr auto default_custom_folder_structure = "{year}\\{created}";
 
 // Volume boost above 100%. The device volume caps at 100%, so the 100%..200%
@@ -34,6 +39,20 @@ enum class zoom_navigator_mode : uint32_t
 constexpr bool is_valid_zoom_navigator_mode(const uint32_t value) noexcept
 {
 	return value <= static_cast<uint32_t>(zoom_navigator_mode::off);
+}
+
+// When subtitles show by themselves.
+enum class subtitle_mode : uint32_t
+{
+	off,
+	always,
+	// When the speech is not in the viewer's language, as most players offer.
+	foreign,
+};
+
+constexpr bool is_valid_subtitle_mode(const uint32_t value) noexcept
+{
+	return value <= static_cast<uint32_t>(subtitle_mode::foreign);
 }
 
 namespace features
@@ -89,6 +108,7 @@ namespace features
 	// The tool bits above ran out at the view bits, so later tools continue here. Email keeps its bit
 	// for the draft that Share falls back to where the system has no share sheet.
 	constexpr uint64_t share = 1ull << 58;
+	constexpr uint64_t view_options = 1ull << 59;
 
 	constexpr uint64_t view_bit(const view_type v)
 	{
@@ -104,6 +124,7 @@ namespace features
 		case view_type::sync: return view_sync;
 		case view_type::locate: return view_locate;
 		case view_type::tags: return view_tags;
+		case view_type::options: return view_options;
 		case view_type::none: break;
 		}
 		return 0;
@@ -113,8 +134,8 @@ namespace features
 // Feature use accumulates from several threads: the UI thread (views, display, slideshow),
 // the query worker (search terms) and file workers (burn), while the web worker reads and
 // clears it after a successful report. It is therefore a single process-wide atomic rather
-// than a settings_t member - settings_t is value-copied by the options dialog, which would
-// otherwise silently roll the mask back to whatever it was when the dialog opened.
+// than a settings_t member - settings_t is value-copied by the Options view, which would
+// otherwise silently roll the mask back to whatever it was when the view opened.
 void record_feature_use(uint64_t f);
 uint64_t features_used_since_last_report();
 void load_feature_use(uint64_t f);
@@ -186,8 +207,13 @@ public:
 	static constexpr int item_scale_position_max = 100;
 	static int item_scale_snaps[item_scale_count];
 	int item_scale_dimension() const;
+	// Where the size slider stands: the stored position, or the snap the stored size names when the
+	// slider has never been moved.
+	int item_scale_slider_position() const;
 	void set_item_scale_position(int position);
-	void step_item_scale(int direction);
+	// Steps to the next snap in the direction given. Past the last one it stays put, unless wrap asks
+	// for the cycle the toggle button makes.
+	void step_item_scale(int direction, bool wrap = false);
 
 	// Width of a tool view's controls panel, as a share of the resizable width in
 	// view_splitter_max units. Each view keeps its own position; zero means never dragged, so
@@ -213,6 +239,8 @@ public:
 	int jpeg_save_quality = 0;
 	int webp_quality = 0;
 	bool webp_lossless = false;
+	int jxl_quality = 0;
+	bool jxl_lossless = false;
 	uint32_t instantiations = 0;
 
 	std::string write_folder;
@@ -262,6 +290,11 @@ public:
 	bool set_track = false;
 	bool set_disk = false;
 
+	// Edit description's selection: the description alone. Every other field the metadata task last had
+	// ticked is cleared, or a run meant for the description would also write those - a capture date of
+	// today, a rating of none.
+	void select_only_description();
+
 	bool show_hidden = false;
 	bool show_debug_info = false;
 	bool confirm_deletions = false;
@@ -278,6 +311,11 @@ public:
 #endif
 	repeat_mode repeat = repeat_mode::repeat_none;
 	zoom_navigator_mode zoom_navigator = zoom_navigator_mode::auto_hide;
+	// Which subtitles a video opens with, and in what language: empty means the language the app is shown in.
+	subtitle_mode subtitles = subtitle_mode::foreign;
+	std::string subtitle_language;
+	// Whether a video's details are read from the .nfo a media manager keeps beside it. Opt-in.
+	bool read_nfo = false;
 	bool auto_play = false;
 	bool auto_advance = false;
 	bool scale_up = false;
@@ -373,9 +411,12 @@ public:
 		bool to_jpeg = false;
 		bool to_png = false;
 		bool to_webp = false;
+		bool to_jxl = false;
 		int jpeg_quality = 0;
 		int webp_quality = 0;
 		bool webp_lossless = false;
+		int jxl_quality = 0;
+		bool jxl_lossless = false;
 		bool limit_dimension = false;
 		int max_side = 0;
 		collision_policy collision = collision_policy::block_run;
@@ -399,6 +440,11 @@ public:
 		bool onedrive_music = false;
 
 		std::string more_folders;
+		// What each collection folder holds, one per line as "kind<TAB>folder": personal, films_tv or music.
+		// A folder not listed is automatic - its names decide.
+		std::string library_types;
+
+		bool operator==(const index_t&) const = default;
 	} collection;
 
 	struct search_t
@@ -407,6 +453,8 @@ public:
 
 		std::string title[count];
 		std::string path[count];
+
+		bool operator==(const search_t&) const = default;
 	} search;
 
 	gps_coordinate default_location;
@@ -427,3 +475,8 @@ std::vector<std::string_view> split_collection_folders(std::string_view text);
 // The collection roots the settings name, includes and excludes alike. Defined with the index
 // workers that start from it; the Movie command line reads the same roots to search the collection.
 df::index_roots index_folders(const settings_t::index_t& collection);
+
+// The library kind of each folder the collection settings give one, and the text that stores them.
+std::vector<std::pair<df::folder_path, prop::library_kind>> parse_library_types(std::string_view text);
+std::string format_library_types(const std::vector<std::pair<df::folder_path, prop::library_kind>>& kinds);
+std::string_view library_kind_key(prop::library_kind kind);

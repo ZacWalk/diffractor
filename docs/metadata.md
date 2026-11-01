@@ -14,6 +14,7 @@ Media files remain authoritative. The index stores derived property snapshots fo
 | JPEG, TIFF | EXIF, IPTC, XMP | XMP reconciled to EXIF/IPTC where supported |
 | PNG, WebP | EXIF/XMP where present | XMP |
 | RAW photos | EXIF and embedded/sidecar XMP | Sidecar XMP |
+| DNG | EXIF and XMP, or its sidecar's XMP when it has one | Its sidecar when it has one, otherwise the DNG |
 | JPX, WBMP | Sidecar XMP | Sidecar XMP |
 | MP4, MOV, M4A | QuickTime/iTunes tags and XMP | XMP, Windows tags and rating, movie header dates, ISO copyright |
 | MP3, MP2, MPA | ID3v2 and XMP | XMP reconciled to ID3v2 |
@@ -21,6 +22,7 @@ Media files remain authoritative. The index stores derived property snapshots fo
 | ASF, WMV, WMA | Windows Media attributes and XMP | XMP reconciled to Windows Media attributes |
 | FLV | `onMetaData` and XMP | XMP |
 | HEIC, AVIF | EXIF and XMP | Not editable |
+| JPEG XL | EXIF and XMP boxes | XMP, and the EXIF it holds; a converted or saved file is encoded with its EXIF and XMP |
 | MKV, WebM | Matroska tags | Not editable |
 
 Read and write support are intentionally asymmetric. libfiles reads more container tags than the
@@ -134,8 +136,10 @@ properties by the names FFmpeg's demuxers give them, so a recording files where 
 tags and ratings libfiles writes (MP4's Xtra box, ASF's WM/Category and WM/SharedUserRating, MP3's
 POPM) read back from where they were written. A file libfiles cannot describe whole has its streams
 described by FFmpeg, and its tags too when libfiles could not read them at all. Language-tagged
-comments are selected by an untagged value, then the UI language, then any available value; the info
-panel lists every tag under the name the container stores it by, beside the container's structure.
+comments are selected by an untagged value, then the UI language, then any available value; where
+FFmpeg reads the tags, every text field is chosen the same way, so a tag a Matroska file states only
+in a language other than its default, which FFmpeg names "TITLE-ger" and the like, is still read. The
+info panel lists every tag under the name the container stores it by, beside the container's structure.
 A date keeps the zone the file states: a creation date with its offset, as Apple's cameras write it,
 is the time the camera's clock showed, as a photo's EXIF time with its offset is; a UTC instant, as an
 MP4 movie header holds, is converted for display; and a date alone, as an MP3's ID3 date often is, is
@@ -158,9 +162,51 @@ Writes reconcile a bounded legacy subset. In particular, MP4/MOV writes do not r
 full iTunes atom set, so software that ignores XMP may continue to show an older atom value.
 Matroska metadata is read-only.
 
+## Films, Episodes And Music
+
+A video's name says what most downloads are: a film's title and year (`Dune.2021.2160p.WEB-DL`), an
+episode's show, season and number (`Show.S01E02`, `1x02`, `S01E01E02`, a special as `S03E00`, a dated
+episode as `Show.2024.01.07`), and the release tags around them. These are read as the item loads and
+fill only what the video's own tags leave out; a container title or comment that is only a release
+name, a website or the file's own name counts as absent. An episode whose name leaves out its show
+takes it from its folders: `Show/Season 2/S02E05.mkv`. Values read from names are marked and never
+stored, so a better reading of names needs no rescan.
+
+What a collection folder holds, chosen in [Options](design.md#options), decides what its videos are:
+
+| Folder holds | A video is |
+| --- | --- |
+| Decided by each file's name (default) | An episode when its name numbers one; a film when its name carries a release tag and a year |
+| Films and TV shows | An episode when its name numbers one; otherwise a film |
+| Personal recordings, Music | Never a film or an episode, whatever its name |
+
+A film files under its release year and an episode under the day it aired, read from the name, when the
+file's own dates name another year or day, so a download does not file under the day it was copied.
+Such a date shows as "File name" among the item's dates. A tag giving only a year (`©day` 1998, `TYER`)
+dates its track or film to that year.
+
+An MP4 marked a film (`stik` 9) is never an episode, whatever its `tvsn` and `tves` say. Matroska tags
+that name their level give a show, season and episode: `COLLECTION/TITLE`, `SEASON/PART_NUMBER` and
+`EPISODE/PART_NUMBER`.
+
+With Options' .nfo setting on, the `.nfo` a media manager - Kodi, Jellyfin, Emby - keeps beside a video
+gives its title, plot, genres, studio, year, show, season, episode and premiere or air date. That is its
+own `Movie.nfo`, or a film folder's `movie.nfo` when the film is named for its folder, with the show from
+the `tvshow.nfo` in a season's folder or the one above. Its values are set over the container's tags and
+under the file's XMP, a date read from one shows as "Media manager .nfo", and a film it describes is a
+film whatever its name. A release group's text `.nfo` is not XML and reads as nothing. `.nfo` files,
+like subtitles, travel with their video as sidecars.
+
+A track or film with no art of its own takes the art kept beside it: an album's `Folder.jpg`,
+`cover.jpg` or `front.jpg`, and a video's `Movie-poster.jpg`. A folder's own `poster.jpg` or `folder.jpg` is
+a film's only when the folder holds that film alone, named for it as media managers lay films out
+(`Dune (2021)/Dune (2021).mkv`): beside home videos, many films, or a season's episodes, folder art would
+make every video look the same.
+
 ## Current Limitations
 
-- HEIC, AVIF, JXL, MKV, and WebM do not expose editable metadata traits.
+- HEIC, AVIF, MKV, and WebM do not expose editable metadata traits. A JPEG XL's metadata is editable,
+  but its picture is not.
 - MP4/MOV legacy iTunes atoms are broader on read than on write.
 - A POPM rating is read from Windows Media Player's frame, or failing that the first one; other
   players' scales are read as Windows Media Player's.
@@ -205,6 +251,10 @@ read on its own, never combined with an incomplete embedded declaration.
   supplied.
 - [files_scan_media.cpp](../src/files_scan_media.cpp): an audio or video file as libfiles' media scan
   reads it - its streams, properties, cover art and info panel blocks, in Diffractor's own terms.
+- [model_index.cpp](../src/model_index.cpp): films, episodes and shows read from file and folder names
+  (`scan_info_from_title`, `derive_name_values`), and what each collection folder holds;
+  [files_nfo.cpp](../src/files_nfo.cpp): media managers' `.nfo` files; [files_core.cpp](../src/files_core.cpp):
+  the art kept beside music and films.
 - [av_format.cpp](../src/av_format.cpp): what FFmpeg describes of a file libfiles cannot describe
   whole, mapped onto the same terms.
 - [model_property.cpp](../src/model_property.cpp): shared property identity and formatting.
@@ -214,4 +264,5 @@ read on its own, never combined with an incomplete embedded declaration.
   format dispatch and scan publication. Every still - JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and
   AVIF, and JPEG XL - is scanned by [libfiles](https://github.com/ZacWalk/libfiles), whose result
   `files_scan_photo.cpp` maps onto a `file_scan_result`; libfiles decodes a HEIF thumbnail item a scan
-  wants, and [files_jxl.cpp](../src/files_jxl.cpp) supplies the Brotli a JPEG XL's compressed boxes need.
+  wants, and [files_jxl.cpp](../src/files_jxl.cpp) supplies the Brotli a JPEG XL's compressed boxes need,
+  to its scans, packet reads and updates.

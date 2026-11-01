@@ -50,6 +50,7 @@ class files;
 class av_media_info;
 class av_scaler;
 class file_scan_result;
+struct nfo_details;
 class file_group;
 struct file_tool;
 
@@ -65,6 +66,15 @@ struct media_name_props
 	int episode = 0;
 	int episode_of = 0;
 	int year = 0;
+
+	// An episode marker was found, so an episode of 0 is a special (S03E00) rather than no episode.
+	bool has_episode = false;
+	// The name carries a release tag - a resolution, codec, disc or broadcast source, or a frame size - so it
+	// names a download rather than a recording of the user's own.
+	bool is_release = false;
+	// A dated episode (Show.2024.01.07) aired on this day of `year`.
+	int aired_month = 0;
+	int aired_day = 0;
 };
 
 using file_group_by_name = df::hash_map<std::string_view, file_group_ref, df::ihash, df::ieq>;
@@ -91,16 +101,20 @@ enum class file_traits : uint32_t
 	zoom = 1 << 9,
 	hide_overlays = 1 << 12,
 	thumbnail = 1 << 13,
-	file_name_metadata = 1 << 14,
 	music_metadata = 1 << 15,
 	video_metadata = 1 << 16,
 	photo_metadata = 1 << 17,
 	edit = 1 << 18,
+	// Its metadata is edited but never its picture: the edit view and turning one in place would re-encode
+	// a JPEG XL, losing what it was encoded with - the JPEG one made from a JPEG can give back.
+	no_photo_edit = 1 << 19,
 
 	av = 1 << 20,
 	bitmap = 1 << 21,
 	archive = 1 << 22,
 	commodore = 1 << 23,
+	// A tune lib8bit plays: the player reads it through av_sid's WAV stream rather than opening the file.
+	sid_tune = 1 << 24,
 };
 
 
@@ -259,7 +273,7 @@ public:
 	// and save-and-next navigation cannot drift apart.
 	bool can_edit_photo() const
 	{
-		return has_trait(file_traits::bitmap) && can_edit();
+		return has_trait(file_traits::bitmap) && can_edit() && !has_trait(file_traits::no_photo_edit);
 	}
 
 	std::string display_name(const bool is_plural) const { return group->display_name(is_plural); }
@@ -431,6 +445,8 @@ public:
 	// An audio or video file as libfiles read it: its properties and tags stand in for FFmpeg's metadata,
 	// and the info panel shows its tags and structure.
 	std::shared_ptr<const libfiles::media_scan_result> media;
+	// What a media manager's .nfo beside a video says of it, when the user asks for those to be read.
+	std::shared_ptr<const nfo_details> nfo;
 
 	// How the file itself is assembled, as read by the format scanner rather than a metadata parser.
 	metadata_kv_list structure_metadata;
@@ -567,11 +583,18 @@ struct file_encode_params
 	bool webp_lossy_alpha = false;
 	// Trades a few percent of size for a several-times cheaper encode, for output nothing reads back.
 	bool webp_fast = false;
+	bool jxl_lossless = false;
+	// libjxl's own default, which it calls visually lossless.
+	int jxl_quality = 90;
 
 	// The JPEG an edit is being written back over, when there is one. Encoding against its own
 	// quantization tables and chroma sampling leaves an untouched block quantizing to itself,
 	// where the quality slider's tables would re-quantize the whole image.
 	df::cspan jpeg_source;
+	// A conversion: the pixels are encoded afresh with these settings wherever the result goes to a
+	// new path, even into the source's own format - not copied, transformed losslessly, or encoded
+	// against the source's tables. A write over the source itself is never re-encoded for it.
+	bool reencode = false;
 };
 
 // What the caller will do with the result. Indexing and thumbnailing want the cheapest read that
@@ -651,6 +674,67 @@ void add_structure_section(metadata_kv_list& kv, std::string_view key, std::stri
 void finish_structure_sections(metadata_kv_list& kv);
 
 media_name_props scan_info_from_title(std::string_view name);
+// A subtitle sidecar's extension, with or without its dot: srt, vtt, ass, ssa, smi, sub, idx, sup or mpl2.
+bool is_subtitle_extension(std::string_view ext);
+// A word a subtitle's file name adds after its video's: a language (en, eng, English, pt-BR) or a flag (forced,
+// sdh, cc), as in Movie.en.forced.srt. No other word is one: Alien.Resurrection.srt is another film's.
+bool is_subtitle_suffix(std::string_view word);
+// Where a sidecar of `primary` goes when that file is renamed, moved or copied to `destination`: the new name,
+// then whatever the sidecar's own name carries after the old one's. Movie.en.forced.srt beside Movie.mkv becomes
+// New.en.forced.srt, so two sidecars that share an extension never land on one name.
+df::file_path moved_sidecar_path(df::file_path primary, df::file_path destination, df::file_path sidecar);
+// The name's reading, with the show and season an episode's folders give when its name leaves them out:
+// Show/Season 2/S02E05.mkv, or Show.Name.S01.1080p/E05.mkv. Folder names, not paths.
+media_name_props scan_info_from_path(std::string_view name, std::string_view folder, std::string_view parent_folder);
+// Fills what a video's tags leave out from its name and folders, marking each value so none is stored, and
+// replacing what an earlier call filled - so it runs on every load and scan, and a better reading of names needs
+// no rescan. A container title or comment that is only a release name, a website or the file's name counts as
+// absent. The library type decides whether the item is a film or an episode; one that is files under its release
+// year or air date when its own dates name another.
+void derive_name_values(prop::item_metadata& md, std::string_view name, std::string_view folder,
+                        std::string_view parent_folder, prop::library_kind library);
+
+// What a media manager - Kodi, Jellyfin, Emby - keeps about a film or an episode in the .nfo beside it. A scene
+// release's .nfo shares the extension but is a text file, not XML, so it reads as nothing.
+struct nfo_details
+{
+	enum class kind
+	{
+		none,
+		film,
+		episode,
+		show,
+		music_video,
+	};
+
+	kind type = kind::none;
+	std::string title;
+	// The show an episode belongs to; a show's own .nfo names it as its title.
+	std::string show;
+	std::string plot;
+	std::string genre;
+	std::string studio;
+	int year = 0;
+	// -1 when the .nfo does not say: season 0 holds a show's specials.
+	int season = -1;
+	int episode = -1;
+	// A film's premiere or an episode's air date, at the precision the .nfo gives.
+	df::date_t released;
+
+	bool is_empty() const { return type == kind::none; }
+};
+
+// The first film, episode, show or music video an .nfo document describes.
+nfo_details parse_nfo(std::string_view text);
+// Whether a film is kept in a folder of its own name, as media managers lay films out: Dune (2021)/Dune.2021.mkv.
+// What such a folder keeps beside the film - its movie.nfo, its poster - is the film's.
+bool is_named_for_its_folder(std::string_view stem, std::string_view folder);
+// What the .nfo files about a video say: its own (Movie.nfo, or a film folder's movie.nfo when the film is named
+// for its folder), with the show its tvshow.nfo names, in its folder or the one above. Reads the file system.
+nfo_details read_video_nfo(df::file_path video);
+// Sets what an .nfo says over what the container's tags said: a media manager's details are chosen by the user,
+// where a container's are often a release group's. A file's XMP is applied after, so the user's own edits win.
+void apply_nfo(prop::item_metadata& md, const nfo_details& nfo);
 
 // What a loader read from the header before it committed to decoding. Lets a caller tell "too big
 // for this machine" apart from "broken", and report the size either way.
@@ -682,6 +766,11 @@ ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const metadata_
                         const file_encode_params& params);
 ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const metadata_parts& metadata,
                         const file_encode_params& encoder_params);
+// The pixels' orientation goes in the codestream, and the metadata in boxes, so the packet given is the
+// one the file is written with. An orientation given overrides the surface's, which an edited surface
+// does not hold reliably.
+ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const metadata_parts& metadata,
+                       const file_encode_params& params, std::optional<ui::orientation> orientation = {});
 ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surface_ptr& surface,
                            const metadata_parts& metadata, const file_encode_params& params);
 ui::image_format extension_to_format(std::string_view ext);
@@ -1407,6 +1496,10 @@ file_scan_result scan_still_libfiles(read_stream& s, scan_intent intent, bool wa
 // that wants one, and the Brotli a JPEG XL's compressed boxes need is supplied here.
 file_scan_result scan_heif_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder);
 file_scan_result scan_jxl_libfiles(read_stream& s, scan_intent intent, bool want_thumbnail, files* decoder);
+// Decompresses a JPEG XL's Brotli-compressed metadata box into at most max_size bytes, or answers nothing:
+// the Brotli libfiles asks for to scan one, read its packet or update it.
+std::optional<std::vector<uint8_t>> decompress_jxl_box(std::span<const uint8_t> compressed, std::string_view box_type,
+                                                       size_t max_size);
 
 // An audio or video file as libfiles reads it, with its cover art's encoded bytes when asked for.
 struct media_scan_read
@@ -1532,6 +1625,7 @@ public:
 		case ui::image_format::JPEG: return "JPEG";
 		case ui::image_format::PNG: return "PNG";
 		case ui::image_format::WEBP: return "WEBP";
+		case ui::image_format::JXL: return "JXL";
 		case ui::image_format::Unknown: break;
 		default: ;
 		}
@@ -1551,6 +1645,8 @@ public:
 	static bool has_media_header_rule(std::string_view extension);
 	static bool media_header_matches(std::string_view extension, df::cspan header);
 
+	// Whether pixels can be written to a file of this extension: JPEG, PNG, WebP and JPEG XL. A file
+	// is rewritten in place only where its format is also one Diffractor edits.
 	static bool can_save(df::file_path path);
 	static bool can_save_extension(std::string_view ext);
 	static bool is_jpeg(df::file_path path);
@@ -1593,4 +1689,6 @@ public:
 	// pixels a character, the glyphs in fg on bg; null when there is nothing to draw. The caller scales
 	// the texture to fit the space it has.
 	static ui::const_surface_ptr c64_listing_surface(const libfiles::c64_listing& listing, uint32_t fg, uint32_t bg);
+	// A .sid tune's header as its properties: title, author, release, tunes and chip.
+	static file_scan_result scan_sid(df::cspan data);
 };

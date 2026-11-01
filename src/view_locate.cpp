@@ -21,6 +21,7 @@
 #include "view_locate.h"
 #include "view_list.h"
 #include "app_command_status.h"
+#include "app_commands.h"
 
 
 // -------------------------------------------------------------------
@@ -698,6 +699,12 @@ void locate_view::run_and_next(const bool forward)
 		detach.keep_display_closed();
 		_state.select(_host, item, false, false, false);
 	}
+}
+
+// Back and next run the same placement as Run and then step, so a list can be walked from the bar.
+view_bars locate_view::bars() const
+{
+	return task_view_bars({commands::edit_item_save_and_prev, commands::edit_item_save_and_next, commands::locate_run});
 }
 
 

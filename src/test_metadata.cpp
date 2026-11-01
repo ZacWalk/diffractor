@@ -585,6 +585,8 @@ static void should_scan_mp3()
 	expected.audio_codec = "mp3"_c;
 	expected.track.x = 7;
 	expected.year = 1999;
+	// Its tag gives only the year, which dates the track rather than leaving it to the day it was copied.
+	expected.dates.add(prop::date_source::container_created, df::date_t(1999, 1, 1, 0, 0, 0));
 
 	assert_metadata(expected, *actual.to_props(), "Colorblind.mp3");
 
@@ -604,6 +606,7 @@ static void should_scan_mp3()
 	expected2.disk.x = 1;
 	expected2.encoder = "Lavf51.12.1"_c;
 	expected2.audio_codec = "mp3"_c;
+	expected2.dates.add(prop::date_source::container_created, df::date_t(2003, 1, 1, 0, 0, 0));
 
 	assert_metadata(expected2, *actual2.to_props(), "Games Without Frontiers.mp3");
 
@@ -780,6 +783,45 @@ static void should_apply_property_level_windows_metadata_precedence()
 	const auto cleared_metadata = cleared.to_props();
 	assert_equal(true, cleared_metadata->tags.is_empty(), "cleared xmp tags suppress stale windows tags");
 	assert_equal(0, cleared_metadata->rating, "cleared xmp rating suppresses stale windows rating");
+}
+
+// Issue #238 - FFmpeg names a Matroska tag in a language other than its default "<key>-<lang>", with no
+// plain key beside it, so where FFmpeg reads a file's tags - libfiles could not - a field tagged only
+// that way was dropped. A field named in several languages reads the plain key first, then the UI
+// language, then any other, whatever order they come in; the suffixed model and comment keys keep
+// their own meanings, and a sort key is not a language.
+static void should_read_language_suffixed_container_tags()
+{
+	const auto ui_language = setting.language;
+	const df::scope_exit restore([ui_language] { setting.language = ui_language; });
+	setting.language = "de";
+
+	file_scan_result only_suffixed;
+	only_suffixed.ffmpeg_metadata.emplace_back(str::cache("TITLE-eng"), "English title");
+	only_suffixed.ffmpeg_metadata.emplace_back(str::cache("ARTIST-fra"), "Artiste");
+	const auto suffixed = only_suffixed.to_props();
+	assert_equal("English title"_c, suffixed->title, "a title tagged only in a language is read");
+	assert_equal("Artiste"_c, suffixed->artist, "and so is an artist");
+
+	file_scan_result several;
+	several.ffmpeg_metadata.emplace_back(str::cache("TITLE-eng"), "English title");
+	several.ffmpeg_metadata.emplace_back(str::cache("TITLE-ger"), "Deutscher Titel");
+	several.ffmpeg_metadata.emplace_back(str::cache("TITLE-fra"), "Titre");
+	several.ffmpeg_metadata.emplace_back(str::cache("ALBUM-deu"), "Album auf Deutsch");
+	several.ffmpeg_metadata.emplace_back(str::cache("ALBUM"), "Plain album");
+	several.ffmpeg_metadata.emplace_back(str::cache("ALBUM-fra"), "Album en francais");
+	const auto languages = several.to_props();
+	assert_equal("Deutscher Titel"_c, languages->title, "the UI language is read before the others");
+	assert_equal("Plain album"_c, languages->album, "and the plain key before any language, whatever the order");
+
+	file_scan_result special;
+	special.ffmpeg_metadata.emplace_back(str::cache("model-eng"), "Camera");
+	special.ffmpeg_metadata.emplace_back(str::cache("COMMENT-deu"), "Kommentar");
+	special.ffmpeg_metadata.emplace_back(str::cache("title-sort"), "Sort title");
+	const auto kept = special.to_props();
+	assert_equal("Camera"_c, kept->camera_model, "a suffixed model is still the camera model");
+	assert_equal("Kommentar"_c, kept->comment, "a Matroska comment in a language is read as the comment");
+	assert_equal(true, prop::is_null(kept->title), "and a sort key is not mistaken for a language");
 }
 
 // Matroska stores metadata as EBML SimpleTags, which FFmpeg surfaces verbatim - so the
@@ -2227,29 +2269,224 @@ static void should_scan_info_from_title()
 		assert_equal(expected.episode, actual.episode, "episode", name);
 		assert_equal(expected.episode_of, actual.episode_of, "episode_of", name);
 		assert_equal(expected.year, actual.year, "year", name);
+		assert_equal(expected.has_episode, actual.has_episode, "has_episode", name);
+		assert_equal(expected.aired_month, actual.aired_month, "aired_month", name);
+		assert_equal(expected.aired_day, actual.aired_day, "aired_day", name);
 	};
 
 	assert_name("Game.of.Thrones.S02E06.HDTV.x264 - 2HD.mp4",
-	            {.show = "Game of Thrones", .season = 2, .episode = 6});
+	            {.show = "Game of Thrones", .season = 2, .episode = 6, .has_episode = true});
 	assert_name("It's.a.Wonderful.Life.1946.720p.BluRay.x264.YIFY.mp4",
 	            {.title = "It's a Wonderful Life", .year = 1946});
 	assert_name("The.Show.S01E02.The.Beginning.2160p.WEB-DL.HEVC.HDR",
-	            {.show = "The Show", .title = "The Beginning", .season = 1, .episode = 2});
+	            {.show = "The Show", .title = "The Beginning", .season = 1, .episode = 2, .has_episode = true});
 	assert_name("The.Show.S01E02.The.Beginning.DV.HEVC",
-	            {.show = "The Show", .title = "The Beginning", .season = 1, .episode = 2});
-	assert_name("Show_Name_S02E06_1080p", {.show = "Show Name", .season = 2, .episode = 6});
-	assert_name("Show.Name.1x02.720p", {.show = "Show Name", .season = 1, .episode = 2});
-	assert_name("Documentary.Part.02of10.1080p", {.show = "Documentary Part", .episode = 2, .episode_of = 10});
+	            {.show = "The Show", .title = "The Beginning", .season = 1, .episode = 2, .has_episode = true});
+	assert_name("Show_Name_S02E06_1080p", {.show = "Show Name", .season = 2, .episode = 6, .has_episode = true});
+	assert_name("Show.Name.1x02.720p", {.show = "Show Name", .season = 1, .episode = 2, .has_episode = true});
+	assert_name("Documentary.Part.02of10.1080p",
+	            {.show = "Documentary Part", .episode = 2, .episode_of = 10, .has_episode = true});
 	assert_name("Holiday.Video.1920x1080", {.title = "Holiday Video"});
 	assert_name("Movie.Title.2024", {.title = "Movie Title", .year = 2024});
 	assert_name("Movie.Title.(2024).2160p", {.title = "Movie Title", .year = 2024});
 	assert_name("The.Show.(2020).S01E02.1080p",
-	            {.show = "The Show", .season = 1, .episode = 2, .year = 2020});
+	            {.show = "The Show", .season = 1, .episode = 2, .year = 2020, .has_episode = true});
 	assert_name("The.Show.S01E02.[GROUP].Episode.Title.1080p",
-	            {.show = "The Show", .title = "Episode Title", .season = 1, .episode = 2});
+	            {.show = "The Show", .title = "Episode Title", .season = 1, .episode = 2, .has_episode = true});
 	assert_name("Show.S999999999999E1.1080p", {.title = "Show S999999999999E1"});
 	assert_name("Series.10of02.1080p", {.title = "Series 10of02"});
 	assert_name("Family.Holiday.Video", {});
+
+	// Release tags after the episode marker or year end a title; before it they are words.
+	assert_name("Show.S01E01.GERMAN.DL.1080p.WEB.x264-GRP", {.show = "Show", .season = 1, .episode = 1, .has_episode = true});
+	assert_name("Movie.2023.GERMAN.DL.1080p.WEB.x264-GRP", {.title = "Movie", .year = 2023});
+	assert_name("Movie.1991.DC.1080p.BluRay.x264-GRP", {.title = "Movie", .year = 1991});
+	assert_name("Ex.On.The.Beach.Double.Dutch.S09E10.DUTCH.1080p.WEB.h264-GRP",
+	            {.show = "Ex On The Beach Double Dutch", .season = 9, .episode = 10, .has_episode = true});
+	// A film's title runs to its release year, even past words that are also tags.
+	assert_name("Madame.Web.2024.2160p.WEB-DL.DDP5.1.Atmos.H.265-GRP", {.title = "Madame Web", .year = 2024});
+	assert_name("Theater Camp (2023) (2160p MA WEB-DL H265 SDR DDP 5.1 English - HONE)", {.title = "Theater Camp", .year = 2023});
+	// A year before the episode marker is the show's.
+	assert_name("Found.2023.S01E05.1080p.WEB.h264-GRP", {.show = "Found", .season = 1, .episode = 5, .year = 2023, .has_episode = true});
+	// The rest of a file's range of episodes belongs to the marker, not the title; a title starting with a number
+	// keeps it.
+	assert_name("Show.S01E01-E02.Title.720p.HDTV.x264-GRP",
+	            {.show = "Show", .title = "Title", .season = 1, .episode = 1, .has_episode = true});
+	assert_name("Show - S01E01-02 - Title",
+	            {.show = "Show", .title = "Title", .season = 1, .episode = 1, .has_episode = true});
+	assert_name("Show - S01E01 - S01E02 - Title",
+	            {.show = "Show", .title = "Title", .season = 1, .episode = 1, .has_episode = true});
+	assert_name("Show - S01E05 - 22 Minutes",
+	            {.show = "Show", .title = "22 Minutes", .season = 1, .episode = 5, .has_episode = true});
+	// Brackets after a show hold its year, or are part of its name.
+	assert_name("The Office (US) - S01E01 - Pilot",
+	            {.show = "The Office (US)", .title = "Pilot", .season = 1, .episode = 1, .has_episode = true});
+	assert_name("Show (2019) - S01E01 - Pilot",
+	            {.show = "Show", .title = "Pilot", .season = 1, .episode = 1, .year = 2019, .has_episode = true});
+	// Specials, double episodes, wide numbers and episodes numbered without a season.
+	assert_name("Show.S03E00.Special.720p.HDTV.x264-GRP",
+	            {.show = "Show", .title = "Special", .season = 3, .episode = 0, .has_episode = true});
+	assert_name("Show.S10E21E22.720p.HDTV.x264-GRP", {.show = "Show", .season = 10, .episode = 21, .has_episode = true});
+	assert_name("Show.S235E09.720p.HDTV.x264-GRP", {.show = "Show", .season = 235, .episode = 9, .has_episode = true});
+	assert_name("One.Piece.E1001.1080p.WEB.x264-GRP", {.show = "One Piece", .episode = 1001, .has_episode = true});
+	assert_name("Naruto.Shippuden.E426.German.Dubbed.WEB.x264-GRP", {.show = "Naruto Shippuden", .episode = 426, .has_episode = true});
+	// The release group after the last hyphen is never an episode.
+	assert_name("Some.Movie.2019.1080p.WEB.x264-E5150", {.title = "Some Movie", .year = 2019});
+	// Dated episodes, as the scene and German broadcasters write them.
+	assert_name("NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP",
+	            {.show = "NFL", .title = "Bears vs Packers", .year = 2024, .has_episode = true, .aired_month = 1, .aired_day = 7});
+	assert_name("WWE.NXT.2023-11-09.German.720p.WEB.h264-GRP",
+	            {.show = "WWE NXT", .year = 2023, .has_episode = true, .aired_month = 11, .aired_day = 9});
+	// Dotted abbreviations and hyphenated words stay whole.
+	assert_name("Chicago.P.D.S10E01.1080p.WEB.H264-GRP", {.show = "Chicago P.D", .season = 10, .episode = 1, .has_episode = true});
+	assert_name("X-Men.2000.1080p.BluRay.x264-GRP", {.title = "X-Men", .year = 2000});
+	// An episode named only by its marker leaves the show to its folders.
+	assert_name("S01E05.Pilot.720p.HDTV.x264-GRP", {.title = "Pilot", .season = 1, .episode = 5, .has_episode = true});
+
+	// Personal names with no release tag read as they always have.
+	assert_name("German holiday 2019", {.title = "German holiday", .year = 2019});
+	assert_name("Polish wedding 2010", {.title = "Polish wedding", .year = 2010});
+	assert_name("Limited edition 2001", {.title = "Limited edition", .year = 2001});
+	assert_name("The German Doctor", {});
+	assert_name("Four men 1906-03-28", {});
+	assert_name("Birthday party 2019 with Grandma", {});
+	assert_name("", {});
+	assert_name("....", {});
+	assert_name(" - ", {});
+
+	assert_equal(true, scan_info_from_title("Movie.2023.1080p.WEB.x264-GRP").is_release, "a resolution marks a release");
+	assert_equal(false, scan_info_from_title("German holiday 2019").is_release, "a personal name is no release");
+}
+
+static void should_read_show_and_season_from_folders()
+{
+	const auto assert_path = [](const std::string_view name, const std::string_view folder, const std::string_view parent,
+	                            const media_name_props& expected)
+	{
+		const auto actual = scan_info_from_path(name, folder, parent);
+		assert_equal(expected.show, actual.show, "show", name);
+		assert_equal(expected.title, actual.title, "title", name);
+		assert_equal(expected.season, actual.season, "season", name);
+		assert_equal(expected.episode, actual.episode, "episode", name);
+		assert_equal(expected.year, actual.year, "year", name);
+	};
+
+	assert_path("S01E05.Pilot", "Season 1", "Masterclass", {.show = "Masterclass", .title = "Pilot", .season = 1, .episode = 5});
+	assert_path("S02E03", "Smiley's People", "TV", {.show = "Smiley's People", .season = 2, .episode = 3});
+	assert_path("E05", "Season 2", "Time Team (1994)", {.show = "Time Team", .season = 2, .episode = 5, .year = 1994});
+	assert_path("E07.Title", "Show.Name.S03.1080p.WEB-DL-GRP", "TV", {.show = "Show Name", .title = "Title", .season = 3, .episode = 7});
+	assert_path("S00E01.Christmas.Special", "Specials", "Doctor Who (2005)",
+	            {.show = "Doctor Who", .title = "Christmas Special", .season = 0, .episode = 1, .year = 2005});
+	// A name that gives its show keeps it, and a name that is no episode ignores its folders.
+	assert_path("Show.Name.S01E01.720p", "Other Folder", "Parent", {.show = "Show Name", .season = 1, .episode = 1});
+	assert_path("Holiday 2019", "Season 1", "Family", {.title = "Holiday", .year = 2019});
+}
+
+// What a video's tags leave out is read from its name, marked so it is never stored, and replaced whenever it is
+// read again. Whether it is a film or an episode - and so whether it files under its release date - is what its
+// folder's library kind allows.
+static void should_derive_values_from_names()
+{
+	constexpr auto automatic = prop::library_kind::automatic;
+	const auto copied = df::date_t(2023, 5, 1, 10, 0, 0);
+
+	prop::item_metadata film;
+	film.dates.add_utc(prop::date_source::file_created, copied);
+	derive_name_values(film, "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG", "Films", "Video", automatic);
+	assert_equal("Dont Look Up"sv, film.title.sv(), "the title comes from the name");
+	assert_equal(2021, static_cast<int>(film.year), "and the year");
+	assert_equal(true, (film.from_name & prop::from_name::title) != 0, "marked as read from the name");
+	assert_equal(true, film.kind == prop::media_kind::film, "a release name is a film");
+	assert_equal(2021, static_cast<int>(film.created().year()), "which files under its release year");
+
+	derive_name_values(film, "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG", "Films", "Video",
+	                   prop::library_kind::personal);
+	assert_equal(true, film.kind == prop::media_kind::none, "nothing in a personal folder is a film");
+	assert_equal(2023, static_cast<int>(film.created().year()), "so it files under its own date again");
+	assert_equal("Dont Look Up"sv, film.title.sv(), "and its title still comes from its name");
+
+	// A clean name is a film only where the folder says it holds films.
+	prop::item_metadata clean;
+	derive_name_values(clean, "Dont Look Up (2021)", "Films", "Video", automatic);
+	assert_equal(true, clean.kind == prop::media_kind::none, "a clean name alone could be anyone's video");
+	derive_name_values(clean, "Dont Look Up (2021)", "Films", "Video", prop::library_kind::films_tv);
+	assert_equal(true, clean.kind == prop::media_kind::film, "in a films folder it is a film");
+	assert_equal("Dont Look Up"sv, clean.title.sv(), "titled from its name");
+
+	// A container title or comment that is no title at all gives way to the name.
+	const auto title_after = [](const std::string_view title, const std::string_view name)
+	{
+		prop::item_metadata md;
+		md.title = str::cache(title);
+		derive_name_values(md, name, "Films", "Video", prop::library_kind::automatic);
+		return std::string(md.title.sv());
+	};
+
+	assert_equal("Dont Look Up"s, title_after("GalaxyRG - Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG",
+	                                          "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG"), "a release name");
+	assert_equal("Captain America Civil War"s, title_after("MkvCage.com", "Captain.America.Civil.War.2016.720p.HDTC.MkvCage"),
+	             "a website");
+	assert_equal("Equilibrium"s, title_after("Equilibrium - YIFY", "Equilibrium.2002.720p.BrRip.x264.YIFY"),
+	             "a title signed by the release group");
+	assert_equal("The Occupation"s, title_after("Star.Wars.Rebels.4x05.The.Occupation", "Star.Wars.Rebels.S04E05.The.Occupation"),
+	             "a scene name");
+	assert_equal("The Proper Way"s, title_after("The Proper Way", "The.Proper.Way.2019.1080p.WEB.x264-GRP"),
+	             "a real title that holds a tag word stays");
+	assert_equal("S.W.A.T."s, title_after("S.W.A.T.", "SWAT.S01E01.720p.HDTV.x264-GRP"), "as does an abbreviation");
+	assert_equal("Birthday party"s, title_after("Birthday party", "Birthday party"),
+	             "a title repeating a plain name is the only one there is, and stays");
+	assert_equal("Dont Look Up"s, title_after("Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG",
+	                                          "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG"),
+	             "one repeating a release name gives way to what the name says");
+
+	prop::item_metadata comment;
+	comment.comment = str::cache("https://www.yts.mx");
+	derive_name_values(comment, "Movie.2019.1080p.WEB.x264-GRP", "Films", "Video", automatic);
+	assert_equal(true, is_empty(comment.comment), "a website is no comment");
+
+	// Episodes: numbered, a special, and dated by the day they aired.
+	prop::item_metadata episode;
+	derive_name_values(episode, "The.Queens.Gambit.S01E03.720p.NF.WEBRip.x264-GalaxyTV", "The Queens Gambit", "TV",
+	                   automatic);
+	assert_equal("The Queens Gambit"sv, episode.show.sv(), "the show comes from the name");
+	assert_equal(1, static_cast<int>(episode.season), "and the season");
+	assert_equal(3, static_cast<int>(episode.episode.x), "and the episode");
+	assert_equal(true, episode.kind == prop::media_kind::episode, "it is an episode");
+
+	prop::item_metadata special;
+	derive_name_values(special, "Show.S03E00.Special.720p.HDTV.x264-GRP", "Show", "TV", automatic);
+	assert_equal(true, special.is_special, "S03E00 is a special");
+	assert_equal(3, static_cast<int>(special.season), "of season 3");
+
+	prop::item_metadata dated;
+	dated.dates.add_utc(prop::date_source::file_created, copied);
+	derive_name_values(dated, "NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP", "NFL", "TV", automatic);
+	assert_equal(true, dated.kind == prop::media_kind::episode, "a dated release is an episode");
+	assert_equal(df::date_t(2024, 1, 7, 0, 0, 0), dated.created(), "filed under the day it aired");
+	assert_equal("2024-01-07"sv, prop::episode_label(dated).sv(), "and labelled by it");
+
+	// A recording dated the day it aired names the day itself, so its name adds no date and the label reads its own.
+	prop::item_metadata recorded;
+	recorded.dates.add_utc(prop::date_source::file_created, df::date_t(2024, 1, 7, 12, 0, 0));
+	derive_name_values(recorded, "NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP", "NFL", "TV", automatic);
+	assert_equal("2024-01-07"sv, prop::episode_label(recorded).sv(), "a recording is labelled by the day it aired");
+
+	// The file's own tags win over its name, and are never marked as read from it.
+	prop::item_metadata tagged;
+	tagged.title = str::cache("The Real Title");
+	tagged.show = str::cache("The Real Show");
+	derive_name_values(tagged, "Other.Show.S02E04.Other.Title.720p.HDTV.x264-GRP", "TV", "Video", automatic);
+	assert_equal("The Real Title"sv, tagged.title.sv(), "a tagged title stays");
+	assert_equal("The Real Show"sv, tagged.show.sv(), "and a tagged show");
+	assert_equal(0, (tagged.from_name & (prop::from_name::title | prop::from_name::show)), "neither is marked");
+
+	// A personal name is read as it always was, and is no film.
+	prop::item_metadata personal;
+	personal.dates.add_utc(prop::date_source::file_created, copied);
+	derive_name_values(personal, "German holiday 2019", "Holidays", "Video", automatic);
+	assert_equal("German holiday"sv, personal.title.sv(), "titled as before");
+	assert_equal(true, personal.kind == prop::media_kind::none, "but no film");
+	assert_equal(2023, static_cast<int>(personal.created().year()), "and dated by the file");
 }
 
 static void should_parse_exif_tags()
@@ -3725,6 +3962,8 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should read back every xmp packet libfiles writes"s, should_read_back_every_xmp_packet_libfiles_writes);
 	tests.add("Should collect descriptive fields"s, should_collect_descriptive_fields);
 	tests.add("Should scan info from title"s, should_scan_info_from_title);
+	tests.add("Should read show and season from folders"s, should_read_show_and_season_from_folders);
+	tests.add("Should derive values from names"s, should_derive_values_from_names);
 	tests.add("Should combine and deduplicate tag sets"s, should_combine_and_deduplicate_tag_sets);
 	tests.add("Should copy preserve properties"s, should_copy_preserve_properties);
 	tests.add("Should replace item metadata without resetting playback position"s,
@@ -3798,6 +4037,8 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should not resurrect container tags"s, should_not_resurrect_container_tags);
 	tests.add("Should apply property level Windows metadata precedence"s,
 	          should_apply_property_level_windows_metadata_precedence);
+	// Issue #238 - a Matroska tag in a non-default language was dropped
+	tests.add("Should read language suffixed container tags"s, should_read_language_suffixed_container_tags);
 	tests.add("Should scan raw metadata"s, should_scan_raw);
 	// SRC-022 - RAW GPS preserves valid coordinates on a zero-valued axis.
 	tests.add("Should scan mod metadata"s, should_scan_mod);

@@ -36,6 +36,7 @@
 #include "view_import.h"
 
 #include "app_command_status.h"
+#include "app_commands.h"
 #include "app_util.h"
 #include "ui_dialog.h"
 
@@ -63,6 +64,11 @@ void import_view::invalidate_analysis()
 	_status.clear();
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
 		view_invalid::command_state);
+}
+
+view_bars import_view::bars() const
+{
+	return task_view_bars({commands::import_analyze, commands::import_run});
 }
 
 

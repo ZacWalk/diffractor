@@ -58,8 +58,9 @@ public:
 	// What would make a dimmed Run work again, empty when nothing is wrong.
 	std::string run_blocked_reason() const;
 
-	void activate(sizei extent) override
+	void activate(const sizei extent) override
 	{
+		list_view::activate(extent);
 		refresh();
 	}
 
@@ -78,6 +79,8 @@ public:
 		_title = std::format("{}: {}", s_app_name, tt.command_rename);
 		return _title;
 	}
+
+	view_bars bars() const override;
 
 	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
 };

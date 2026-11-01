@@ -55,6 +55,10 @@ Browsing an external folder makes Diffractor aware of it, and that awareness is 
 
 This separation is what keeps the collection meaningful. If browsing joined, the collection would drift into "everywhere I have ever looked", which answers no question at all.
 
+### 3.5 What a folder holds
+
+A collection folder can also say what it holds, in [Options](design.md#options): films and TV shows, personal recordings, music, or — the default — whatever each file's name says. The type reaches every folder beneath the one it is set on, unless a deeper folder is given its own. It changes how a video is read — whether it is a film or an episode, and so which date it files under ([metadata.md](metadata.md#films-episodes-and-music)) — and never membership: a folder holds the same files whatever its type.
+
 ## 4. Changing a collection
 
 Changing the declaration changes what is known. It never moves, copies, renames, deletes, or writes to a file. Adding a folder makes its contents findable; removing one makes them unfindable from collection scope while leaving them exactly where they are and still reachable by browsing.
@@ -166,7 +170,7 @@ Presence wording and confidence values belong to [design.md](design.md#collectio
 
 | Collection subject | Source |
 |---|---|
-| The declared collection folders, includes and excludes | [app_settings.h](../src/app_settings.h), [app_settings.cpp](../src/app_settings.cpp) |
+| The declared collection folders, includes and excludes, and what each folder holds | [app_settings.h](../src/app_settings.h), [app_settings.cpp](../src/app_settings.cpp); [view_options.cpp](../src/view_options.cpp) edits them |
 | Membership resolution, folder roots, the collection edge | [model_index.cpp](../src/model_index.cpp), [model_index.h](../src/model_index.h) — `index_state` |
 | The indexed record a member earns | [model_index.h](../src/model_index.h) — `df::index_file_item`, `df::index_folder_item` |
 | Duplicate grouping and the perceptual-hash stage | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::update_predictions`; [app_dup_report.cpp](../src/app_dup_report.cpp) measures it over a real library |

@@ -181,6 +181,9 @@ diffractor_dependency(ffmpeg NO_SYSTEM VENDORED_MODULE vendored/FFmpeg)
 # cmake/DiffractorLibdesktop.cmake.
 include(DiffractorLibdesktop)
 
+# The Commodore 64 that plays SID tunes, fetched from lib8bit: see cmake/DiffractorLib8bit.cmake.
+include(DiffractorLib8bit)
+
 # Codecs and utilities that gate a translation unit of their own.
 
 # libheif decodes HEVC through FFmpeg, its FFmpeg decoder plugin built here from libfiles' libheif -
@@ -218,6 +221,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/files_commodore.cpp
         src/files_core.cpp
         src/files_formats.cpp
+        src/files_nfo.cpp
         src/files_psd.cpp
         src/files_scan_photo.cpp
         src/files_scan_media.cpp
@@ -228,6 +232,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/metadata_exif.cpp
         src/model.cpp
         src/model_db.cpp
+        src/model_document.cpp
         src/model_index.cpp
         src/model_index_duplicates.cpp
         src/model_index_summary.cpp
@@ -240,6 +245,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/render_panorama.cpp
         src/ui_elements.cpp
         src/ui_controls.cpp
+        src/ui_document.cpp
         src/ui_flex.cpp
         src/app_commands.cpp
         src/app_dialogs.cpp
@@ -255,17 +261,21 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/view_items.cpp
         src/view_locate.cpp
         src/view_movie.cpp
+        src/view_options.cpp
         src/view_rename.cpp
         src/view_selector.cpp
         src/view_sync.cpp
         src/view_tags.cpp
 )
 
-# Unconditional: FFmpeg and libfiles are required dependencies, so configuration has already failed
-# above if either is absent.
+# Unconditional: FFmpeg, libfiles and lib8bit are required dependencies, so configuration has already
+# failed above if any is absent.
 list(APPEND DIFFRACTOR_PORTABLE_SOURCES
         src/av_format.cpp
+        src/av_sid.cpp
+        src/av_subtitle.cpp
         src/metadata_xmp.cpp
+        src/ui_sid.cpp
 )
 
 # Tools rather than tests: neither has a library dependency, so neither is conditional.
@@ -413,7 +423,7 @@ endforeach ()
 # naming them here is what puts them inside the rescan group below.
 get_property(_grouped_archives GLOBAL PROPERTY DIFFRACTOR_GROUPED_ARCHIVES)
 list(APPEND DIFFRACTOR_LINK_DEPENDENCIES ${_grouped_archives})
-list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::render)
+list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::render libdesktop::text lib8bit::lib8bit)
 
 if (MSVC)
     target_link_libraries(diffractor PRIVATE ${DIFFRACTOR_LINK_DEPENDENCIES})

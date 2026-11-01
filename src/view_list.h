@@ -7,10 +7,10 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: The row list the task views share (Rename, Import, Sync, Convert/Metadata/Date, Tags).
-// list_view lays out the column header and rows and tracks a run's progress and results;
-// view_command_status is the status a run reports through; view_controls_host pairs the list with
-// its controls panel; and the CollisionPolicy control is defined once here for every operation
-// that writes to a destination.
+// list_view lays out the column header and rows, whose columns fit their content and are resized by
+// dragging the divider after them, and tracks a run's progress and results; view_command_status is
+// the status a run reports through; view_controls_host pairs the list with its controls panel; and
+// the CollisionPolicy control is defined once here for every operation that writes to a destination.
 
 #pragma once
 
@@ -113,7 +113,8 @@ protected:
 	size_t _processing_generation = 0;
 	std::shared_ptr<std::atomic_int> _processing_cancel;
 
-	// The line under the rows: what the plan would do while it is reviewed, what the run did after.
+	// The status line the frame's status bar shows: what the plan would do while it is reviewed, what
+	// the run did after.
 	std::string _status;
 
 	static constexpr int max_col_count = 4;
@@ -127,23 +128,31 @@ protected:
 	bool _header_tracking = false;
 	int _header_active_num = 0;
 
-	// The column headers are painted over the top of the scroller and the status band over its base,
-	// so the rows they cover are inside the scroller but not visible. Text metrics are only available
-	// during layout, so the band height is held here for the scroll that has to clear them.
+	// A divider resizes the column before it, as in a file browser's details view. A column dragged
+	// to a width keeps it, in unscaled units so a change of DPI does too, until the view is opened
+	// again; zero is a column that sizes to its content. The last column has no divider after it: it
+	// takes whatever width the others leave.
+	double _user_col_widths[max_col_count] = {0, 0, 0, 0};
+	// What each column's content asks for before any shrinking to fit, which is what a double-click
+	// on the divider after it fits the column to.
+	int _content_col_widths[max_col_count] = {0, 0, 0, 0};
+	// Where the divider after each column but the last can be grabbed: across the header band.
+	recti _col_divider_bounds[max_col_count - 1];
+	int _min_col_width = 0;
+	int _cx_col_avail = 0;
+	double _scale_factor = 1.0;
+	int _divider_active = -1;
+
+	// The column headers are painted over the top of the scroller, so the rows they cover are inside
+	// the scroller but not visible. Text metrics are only available during layout, so the header
+	// height is held here for the scroll that has to clear it.
 	int _band_height = 0;
 	int _band_margin = 0;
-
-	// Mirrors view_frame::draw_view_status: an indeterminate run draws a centred pill rather than the
-	// band across the base of the view. Asked at the moment it matters, because a run raises the status
-	// without resizing the view, so a layout need not have followed it.
-	bool shows_status_band()
-	{
-		return !status().empty() && !(_progress.active && _progress.total == 0);
-	}
 
 	friend class scroll_controller;
 	friend class clickable_controller;
 	friend class header_controller;
+	friend class column_divider_controller;
 
 public:
 	struct row_element final : std::enable_shared_from_this<row_element>, view_element
@@ -310,18 +319,16 @@ public:
 
 		const auto client_height = _scroller.client_bounds().height();
 		auto reserve_top = _band_height + _band_margin;
-		auto reserve_bottom = shows_status_band() ? _band_height + _band_margin : 0;
 
-		// A view too short to hold the row and both reserves has no range left to place it in, so it
+		// A view too short to hold the row below the headers has no range left to place it in, so it
 		// falls back to the whole client rather than refusing to move.
-		if (reserve_top + reserve_bottom + row->bounds.height() > client_height)
+		if (reserve_top + row->bounds.height() > client_height)
 		{
 			reserve_top = 0;
-			reserve_bottom = 0;
 		}
 
 		const auto visible_top = _scroller.scroll_offset().y + reserve_top;
-		const auto visible_bottom = _scroller.scroll_offset().y + client_height - reserve_bottom;
+		const auto visible_bottom = _scroller.scroll_offset().y + client_height;
 
 		if (row->bounds.top < visible_top)
 		{
@@ -329,7 +336,7 @@ public:
 		}
 		else if (row->bounds.bottom > visible_bottom)
 		{
-			_scroller.scroll_offset(_host, 0, row->bounds.bottom + reserve_bottom - client_height);
+			_scroller.scroll_offset(_host, 0, row->bounds.bottom - client_height);
 		}
 
 		_state.invalidate_view(view_invalid::view_redraw | view_invalid::status);
@@ -533,6 +540,9 @@ public:
 	{
 		_extent = extent;
 		_state.stop();
+
+		// Each use of the task starts from columns that fit what it lists.
+		std::ranges::fill(_user_col_widths, 0.0);
 	}
 
 	void sort(int col_num)
@@ -596,58 +606,156 @@ public:
 				odd_row = !odd_row;
 			}
 
-			// The last row has to be able to clear the status band and the margin held below it, so the
-			// scrollable height carries both rather than ending at the final row.
 			y_max = y + mc.padding2;
-			if (shows_status_band()) y_max += _band_height + _band_margin;
 		}
 
-		auto x_max = 0;
+		auto total = 0;
 		auto shrink_col_total = 0;
+		_scale_factor = mc.scale_factor;
+		_min_col_width = std::max(mc.icon_cxy + mc.padding2, df::round(32 * mc.scale_factor));
+		// The table starts a margin in from the view's left edge however little it holds - never centred in
+		// the view - so its text does not run up against the window's frame, and runs to the right edge half a
+		// gap in, with a gap between each column and the next.
+		coll_offset = mc.padding2 * 2;
+		_cx_col_avail = std::max(0, client_bounds.width() - coll_offset - (col_count - 1) * mc.padding2 -
+		                         mc.padding2 / 2);
 
 		for (int i = 0; i < col_count; i++)
 		{
-			col_widths[i] = mc.measure_text(longest_text[i], ui::style::font_face::dialog,
-			                                ui::style::text_style::single_line, client_bounds.width()).cx + mc.padding2;
-			if (has_icon[i]) col_widths[i] = std::max(col_widths[i], mc.icon_cxy + mc.padding2);
-			x_max += col_widths[i] + mc.padding2;
-			if (i > 0) shrink_col_total += col_widths[i];
+			auto content_width = mc.measure_text(longest_text[i], ui::style::font_face::dialog,
+			                                     ui::style::text_style::single_line, client_bounds.width()).cx +
+				mc.padding2;
+			if (has_icon[i]) content_width = std::max(content_width, mc.icon_cxy + mc.padding2);
+			_content_col_widths[i] = content_width;
+			col_widths[i] = is_user_sized(i) ? df::round(_user_col_widths[i] * mc.scale_factor) : content_width;
+			total += col_widths[i];
+			if (i > 0 && !is_user_sized(i)) shrink_col_total += col_widths[i];
 		}
 
-		// Shrink if too large
-		if (x_max > client_bounds.width())
+		// Shrink if too large. The columns that size to their content give way, all but the first, which
+		// keeps its width. A column the user sized keeps its width while they can, and only when they
+		// cannot does every column give way in proportion.
+		if (total > _cx_col_avail)
 		{
-			const auto cx_avail = std::max(0, client_bounds.width() - (col_count + 1) * mc.padding2);
-			const auto fixed_width = col_widths[0];
+			const auto cx_avail = _cx_col_avail;
+			auto fixed_width = 0;
+
+			for (int i = 0; i < col_count; i++)
+			{
+				if (i == 0 || is_user_sized(i)) fixed_width += col_widths[i];
+			}
+
 			if (fixed_width < cx_avail && shrink_col_total > 0)
 			{
 				const auto shrink_avail = cx_avail - fixed_width;
 				for (int i = 1; i < col_count; i++)
 				{
-					col_widths[i] = df::mul_div(shrink_avail, col_widths[i], shrink_col_total);
+					if (!is_user_sized(i)) col_widths[i] = df::mul_div(shrink_avail, col_widths[i], shrink_col_total);
 				}
 			}
-			else if (x_max > 0)
+			else
 			{
-				const auto total_width = x_max - col_count * mc.padding2;
+				const auto unshrunk = total;
 				for (int i = 0; i < col_count; i++)
 				{
-					col_widths[i] = total_width > 0 ? df::mul_div(cx_avail, col_widths[i], total_width) : 0;
+					col_widths[i] = df::mul_div(cx_avail, col_widths[i], unshrunk);
 				}
-			}
-
-			x_max = 0;
-
-			for (int i = 0; i < col_count; i++)
-			{
-				x_max += col_widths[i] + mc.padding2;
 			}
 		}
 
-		coll_offset = std::max(0, client_bounds.width() - x_max) / 2;
+		// The last column takes whatever the others leave, so the table always reaches the view's right
+		// edge: a narrower column gives its room to the last, and a wider one takes it from there.
+		if (col_count > 0)
+		{
+			auto others = 0;
+			for (int i = 0; i < col_count - 1; i++) others += col_widths[i];
+			col_widths[col_count - 1] = std::max(0, _cx_col_avail - others);
+		}
+
+		// Each divider sits in the middle of the gap between two columns, a grip either side of it.
+		const auto grip = std::max(mc.padding2 / 2, df::round(4 * mc.scale_factor));
+		auto column_x = coll_offset;
+
+		for (int i = 0; i < max_col_count - 1; i++)
+		{
+			_col_divider_bounds[i] = {};
+			if (i >= col_count - 1) continue;
+
+			column_x += col_widths[i] + mc.padding2;
+			const auto divider_x = column_x - mc.padding2 / 2;
+			_col_divider_bounds[i] = recti(divider_x - grip, 0, divider_x + grip, _band_height);
+		}
 
 		_scroller.layout({client_bounds.width(), y_max}, client_bounds, scroll_bounds);
 		_host->frame()->invalidate();
+	}
+
+	bool is_user_sized(const int col) const
+	{
+		return _user_col_widths[col] > 0.0;
+	}
+
+	// How many of the titled columns the list lays out and draws.
+	int column_count() const
+	{
+		return col_count;
+	}
+
+	// What a resize can be taken back to: every column's width.
+	struct column_sizes
+	{
+		std::array<double, max_col_count> widths{};
+	};
+
+	column_sizes current_column_sizes() const
+	{
+		column_sizes result;
+		std::ranges::copy(_user_col_widths, result.widths.begin());
+		return result;
+	}
+
+	void restore_column_sizes(const column_sizes& sizes)
+	{
+		std::ranges::copy(sizes.widths, _user_col_widths);
+		_state.invalidate_view(view_invalid::view_layout);
+	}
+
+	// The widest a column can be: the room the columns have, less the columns before it and those
+	// after it the user sized, less the narrowest the others after it shrink to.
+	int max_col_width(const int col) const
+	{
+		auto taken = 0;
+
+		for (int i = 0; i < col_count; i++)
+		{
+			if (i == col) continue;
+			taken += i < col || is_user_sized(i) ? col_widths[i] : std::min(col_widths[i], _min_col_width);
+		}
+
+		return std::max(_min_col_width, _cx_col_avail - taken);
+	}
+
+	// Sizes one column, as a drag on the divider after it asks. Every column before this one is held as
+	// it is on screen, shrunk to fit or not, so the divider stays under the pointer, and this one goes no
+	// narrower than a column can and no wider than the columns after it leave room for. The last column
+	// takes up what it gives back, and makes the room it takes.
+	void resize_column(const int col, const int width)
+	{
+		if (col < 0 || col >= col_count - 1) return;
+
+		for (int i = 0; i < col; i++)
+		{
+			if (!is_user_sized(i)) _user_col_widths[i] = col_widths[i] / _scale_factor;
+		}
+
+		_user_col_widths[col] = std::clamp(width, _min_col_width, max_col_width(col)) / _scale_factor;
+		_state.invalidate_view(view_invalid::view_layout);
+	}
+
+	// Fits a column to its content, as far as the columns after it can make room.
+	void fit_column(const int col)
+	{
+		if (col >= 0 && col < col_count - 1) resize_column(col, _content_col_widths[col]);
 	}
 
 	void deactivate() override
@@ -731,6 +839,21 @@ public:
 			_col_header_bounds[i] = col_header_bounds;
 			x += cx + dc.padding2;
 		}
+
+		// The dividers are drawn so the columns read as resizable: faintly, and plainly under the pointer.
+		const auto line_width = std::max(1, df::round(dc.scale_factor));
+
+		for (int i = 0; i < col_count - 1; ++i)
+		{
+			const auto& divider = _col_divider_bounds[i];
+			if (divider.is_empty()) continue;
+
+			const auto active = _divider_active == i;
+			const auto width = active ? line_width * 2 : line_width;
+			const auto mid = (divider.left + divider.right) / 2;
+			const recti line(mid - width / 2, y + dc.padding1, mid - width / 2 + width, y + cy - dc.padding1);
+			dc.draw_rect(line, ui::color(dc.colors.foreground, dc.colors.alpha * (active ? 0.9f : 0.3f)));
+		}
 	}
 
 	void render(ui::draw_context& rc, view_controller_ptr controller) override
@@ -749,16 +872,16 @@ public:
 		}
 		else
 		{
-			if (!(_progress.active && _progress.total == 0))
-			{
-				const auto message = empty_message();
+			// An open-ended run has no rows to show yet, so the work area says what it is doing rather
+			// than standing blank or claiming to be empty; the status bar says it as well.
+			const auto running = _progress.active && _progress.total == 0;
+			const std::string_view message = running ? status() : empty_message().sv();
 
-				if (!message.sv().empty())
-				{
-					const auto text_color = ui::color(rc.colors.foreground, rc.colors.alpha);
-					rc.draw_text(message.sv(), recti(_extent), ui::style::font_face::dialog,
-					             ui::style::text_style::single_line_center, text_color, {});
-				}
+			if (!message.empty())
+			{
+				const auto text_color = ui::color(rc.colors.foreground, rc.colors.alpha);
+				rc.draw_text(message, recti(_extent), ui::style::font_face::dialog,
+				             ui::style::text_style::single_line_center, text_color, {});
 			}
 		}
 	}
@@ -1208,10 +1331,90 @@ public:
 	}
 };
 
+// Drags a column divider, which resizes the column before it as in a file browser's details view: the
+// columns before it stay put and the divider stays under the pointer, while the last column takes up the
+// room it gives back or makes the room it takes. Only a drag that moves sizes anything, Escape takes the
+// drag back, and a double-click fits the column to its content.
+class column_divider_controller final : public view_controller
+{
+	list_view& _parent;
+	int _col = 0;
+	bool _tracking = false;
+	bool _moved = false;
+	int _start_x = 0;
+	int _start_width = 0;
+	list_view::column_sizes _before;
+
+public:
+	column_divider_controller(const view_host_ptr& host, list_view& parent, const recti bounds, const int col) :
+		view_controller(host, bounds), _parent(parent), _col(col)
+	{
+		_parent._divider_active = _col;
+		_host->frame()->invalidate();
+	}
+
+	~column_divider_controller() override
+	{
+		if (_tracking) escape();
+		_parent._divider_active = -1;
+		_host->frame()->invalidate();
+	}
+
+	ui::style::cursor cursor() const override
+	{
+		return ui::style::cursor::left_right;
+	}
+
+	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	{
+		_tracking = true;
+		_moved = false;
+		_start_x = loc.x;
+		_start_width = _parent.col_widths[_col];
+		_before = _parent.current_column_sizes();
+	}
+
+	void on_mouse_move(const pointi loc) override
+	{
+		if (!_tracking || (!_moved && loc.x == _start_x)) return;
+		_moved = true;
+		_parent.resize_column(_col, _start_width + loc.x - _start_x);
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	{
+		on_mouse_move(loc);
+		_tracking = false;
+	}
+
+	void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
+	{
+		_tracking = false;
+		_parent.fit_column(_col);
+	}
+
+	bool escape() override
+	{
+		if (!_tracking) return false;
+		_tracking = false;
+		_parent.restore_column_sizes(_before);
+		return true;
+	}
+};
+
 inline view_controller_ptr list_view::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                               hit_test_context& ctx)
 {
 	if (_progress.active) return nullptr;
+
+	// A divider sits over the edges of the headers either side of it, so it is found first.
+	for (int i = 0; i < col_count - 1 && !_rows.empty(); ++i)
+	{
+		if (ctx.occluded(_col_divider_bounds[i]))
+		{
+			return std::make_shared<column_divider_controller>(host, *this, _col_divider_bounds[i], i);
+		}
+	}
 
 	for (int i = 0; i < col_count; ++i)
 	{

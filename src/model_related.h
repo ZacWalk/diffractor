@@ -18,6 +18,9 @@ namespace df
 	enum class related_axis : uint8_t
 	{
 		duplicate,
+		// The same film in another file - another release, or one copy in two folders - by its title and year.
+		// Evidence shown beside the item, with each file's resolution and size; nothing is chosen to keep.
+		film,
 		album,
 		series,
 		time,

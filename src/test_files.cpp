@@ -6,7 +6,7 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Tests for the file layer (files*) -- format detection, codec decode and encode, container listing, and the write path: staging, replacement, originals, collisions, flush failure and temp cleanup.
+// Purpose: Tests for the file layer (files*) -- format detection, codec decode and encode, container listing, the art and media managers' .nfo files kept beside media, and the write path: staging, replacement, originals, collisions, flush failure and temp cleanup.
 
 #include "pch.h"
 #include "files.h"
@@ -760,6 +760,35 @@ static void should_cleanup_failed_update_temps()
 			str::starts(file.name, "diffractor_");
 	});
 	assert_equal(false, leaked, "failed update removes temporary files");
+}
+
+// A read-only source written to another path was staged as a read-only copy: the write to it was
+// refused, and so was the cleanup, which left a full copy behind in the destination folder.
+static void should_write_a_read_only_source_to_another_path()
+{
+	const auto scratch = _temps.next_folder("read-only-source");
+	const auto source = df::file_path(scratch, "source.jpg");
+	const auto destination = df::file_path(scratch, "copy.jpg");
+	platform::copy_file(df::file_path(test_files_folder, "Test.jpg"), source, false, false);
+	std::filesystem::permissions(platform::to_stream_path(source),
+	                             std::filesystem::perms::owner_write | std::filesystem::perms::group_write |
+	                             std::filesystem::perms::others_write, std::filesystem::perm_options::remove);
+	const df::scope_exit restore([source] { platform::make_file_writable(source); });
+	assert_equal(true, platform::file_attributes(source).is_readonly, "the source is read-only");
+
+	metadata_edits edits;
+	edits.rating = 3;
+	files ff;
+	const auto result = ff.update(source, destination, edits, {}, {}, false, {});
+	assert_equal(true, result.success(), "a read-only source is written to another path");
+
+	const auto contents = platform::iterate_file_items(scratch, false);
+	const auto stage_left = std::ranges::any_of(contents.files, [](const platform::file_info& file)
+	{
+		return str::starts(file.name, "diffractor_");
+	});
+	assert_equal(false, stage_left, "and no staged copy is left behind");
+	assert_equal(true, platform::exists(destination), "the copy is written");
 }
 #endif
 
@@ -2002,6 +2031,40 @@ static void should_reuse_source_jpeg_tables()
 	unmatched.jpeg_save_quality = 95;
 	const auto control = ff.surface_to_image(surface, {}, unmatched, ui::image_format::JPEG);
 	assert_equal(false, first_dqt(control->data()) == source_dqt, "quality still applies without a source");
+}
+
+// Converting JPEGs to JPEG copied them, transformed them losslessly or adopted their own tables, so
+// the quality asked for never applied and the run reported success. A conversion encodes afresh, but
+// never over its source, which Convert keeps.
+static void should_convert_a_jpeg_at_the_quality_asked()
+{
+	files ff;
+	const auto surface = make_gradient_surface(64, 64);
+
+	file_encode_params fine;
+	fine.jpeg_save_quality = 95;
+	const auto source_image = ff.surface_to_image(surface, {}, fine, ui::image_format::JPEG);
+	const auto scratch = _temps.next_folder("convert-quality");
+	const auto source = df::file_path(scratch, "source.jpg");
+	assert_equal(true, df::blob_save_to_file(source_image->data(), source), "the source is written");
+
+	file_encode_params convert;
+	convert.jpeg_save_quality = 30;
+	convert.reencode = true;
+	const auto expected = first_dqt(ff.surface_to_image(surface, {}, convert, ui::image_format::JPEG)->data());
+
+	const auto unresized = df::file_path(scratch, "unresized.jpg");
+	assert_equal(true, ff.update(source, unresized, {}, {}, convert, false, {}).success(), "an unresized conversion");
+	assert_equal(true, first_dqt(df::blob_from_file(unresized)) == expected, "is encoded at the quality asked");
+
+	const auto resized = df::file_path(scratch, "resized.jpg");
+	assert_equal(true, ff.update(source, resized, {}, image_edits(32), convert, false, {}).success(),
+	             "a resized one");
+	assert_equal(true, first_dqt(df::blob_from_file(resized)) == expected, "too, not with the source's tables");
+
+	const auto before = df::blob_from_file(source);
+	assert_equal(true, ff.update(source, source, {}, {}, convert, false, {}).success(), "a conversion over itself");
+	assert_equal(true, df::blob_from_file(source) == before, "leaves the source as it was");
 }
 
 // A source libjpeg fails on - one that is not a JPEG, or a lossless one, whose tables it will not copy -
@@ -3429,6 +3492,132 @@ static void should_save(const std::string_view ext, const bool should_support_me
 	}
 }
 
+// A PSD cut short throws out of its loader, so a damaged one is never offered to ffmpeg. The load answers
+// it as unreadable instead of letting the throw past the display and the editor, which each hold a load
+// in flight until its answer arrives and were left waiting for good.
+static void should_answer_a_psd_cut_short_as_unreadable()
+{
+	const auto whole = df::blob_from_file(test_files_folder.combine_file("cherrys.psd"));
+	const auto path = _temps.next_path(".psd");
+	assert_equal(true, df::blob_save_to_file({whole.data(), whole.size() / 2}, path), "cut short");
+
+	files ff;
+	file_load_result loaded;
+	auto threw = false;
+
+	try
+	{
+		loaded = ff.load(path, false);
+	}
+	catch (const std::exception&)
+	{
+		threw = true;
+	}
+
+	assert_equal(false, threw, "the load answers");
+	assert_equal(false, loaded.success, "nothing loaded");
+	assert_equal(true, loaded.reason == file_load_result::failure::unreadable, "named unreadable");
+}
+
+// A JPEG XL's readers take its orientation from the codestream, where JPEG, PNG and WebP keep it in
+// their EXIF. A photo stored turned is written as stored and turned the same way - after a resize too,
+// whose fresh canvas carries no orientation of its own - and its EXIF agrees.
+static void should_save_a_turned_photo_as_a_turned_jxl()
+{
+	const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
+
+	files ff;
+	const auto source = ff_scan_file(ff, load_path);
+	assert_equal(true, source.orientation != ui::orientation::top_left, "the fixture is stored turned");
+
+	for (const auto max_side : {0, 160})
+	{
+		const auto save_path = _temps.next_path(".jxl");
+		const auto edits = max_side > 0 ? image_edits(max_side) : image_edits();
+		const auto result = ff.update(load_path, save_path, {}, edits, {}, false, {});
+		const auto what = max_side > 0 ? "resized"s : "converted"s;
+		assert_equal(true, result.success(), std::format("{} ({})", what, result.format_error()));
+
+		const auto saved = ff_scan_file(ff, save_path);
+		assert_equal(true, saved.format == detected_format::JXL, what + " written as JPEG XL");
+		assert_equal(static_cast<int>(source.orientation), static_cast<int>(saved.orientation), what + " orientation");
+
+		const auto loaded = ff.load(save_path, false);
+		assert_equal(true, loaded.success, what + " decoded");
+		assert_equal(static_cast<int>(source.orientation), static_cast<int>(loaded.orientation()),
+		             what + " decoded orientation");
+
+		// Stored as the source stores it: landscape pixels for a portrait photo.
+		const auto source_landscape = source.width > source.height;
+		assert_equal(source_landscape, saved.width > saved.height, what + " stored as the source is");
+	}
+}
+
+// Convert to JPEG XL without a size limit moves a JPEG XL as it is: there is no metadata to write, and
+// writing its packet again would only uncompress its boxes.
+static void should_copy_an_unchanged_jxl_as_it_is()
+{
+	const auto source = _temps.next_path(".jxl");
+	platform::copy_file(test_files_folder.combine_file("zoltan-tasi.jxl"), source, false, false);
+	const auto destination = _temps.next_path(".jxl");
+
+	files ff;
+	const auto result = ff.update(source, destination, {}, {}, {}, false, {});
+	assert_equal(true, result.success(), std::format("copied ({})", result.format_error()));
+
+	const auto before = df::blob_from_file(source);
+	const auto after = df::blob_from_file(destination);
+	assert_equal(true, std::ranges::equal(before, after), "bytes unchanged");
+}
+
+// The editor and Convert map the user's JPEG XL settings onto file_encode_params: lossless keeps every
+// pixel, and the quality decides the size.
+static void should_honor_jxl_save_settings()
+{
+	files ff;
+	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto source = ff.load(load_path, false);
+	assert_equal(false, source.is_empty(), "source loaded");
+
+	const auto save = [&](const bool lossless, const int quality)
+	{
+		const auto path = _temps.next_path(".jxl");
+		file_encode_params params;
+		params.jxl_lossless = lossless;
+		params.jxl_quality = quality;
+		const auto result = ff.update(load_path, path, {}, {}, params, false, {});
+		assert_equal(true, result.success(), std::format("saved ({})", result.format_error()));
+		return path;
+	};
+
+	const auto lossless_path = save(true, 90);
+	const auto low_path = save(false, 10);
+	const auto high_path = save(false, 95);
+
+	const auto low_size = platform::file_attributes(low_path).size;
+	const auto high_size = platform::file_attributes(high_path).size;
+	const auto lossless_size = platform::file_attributes(lossless_path).size;
+	assert_equal(true, low_size > 0 && high_size > low_size, "a higher quality keeps more");
+	assert_equal(true, lossless_size > high_size, "lossless keeps the most");
+
+	const auto expected = source.to_surface();
+	const auto lossless = ff.load(lossless_path, false).to_surface();
+	assert_equal(true, is_valid(expected) && is_valid(lossless), "both decoded");
+	assert_equal(true, expected->dimensions() == lossless->dimensions(), "lossless dimensions");
+
+	auto differing = 0;
+	for (auto y = 0u; y < expected->height() && differing == 0; ++y)
+	{
+		const auto* const a = expected->pixels_line(y);
+		const auto* const b = lossless->pixels_line(y);
+		for (auto x = 0u; x < expected->width() * 4u; x += 4u)
+		{
+			if (a[x] != b[x] || a[x + 1] != b[x + 1] || a[x + 2] != b[x + 2]) ++differing;
+		}
+	}
+	assert_equal(0, differing, "lossless pixels match the source's decode");
+}
+
 static void should_not_rewrite_unchanged_file()
 {
 	const auto path = _temps.next_path(".jpg");
@@ -4032,6 +4221,279 @@ static void should_scan_stills_alike_from_memory_and_streams()
 // opens FFmpeg for it, and what libfiles reads of its streams is what FFmpeg makes of them in
 // Diffractor's terms. Cut short and corrupted, each still scans without a fault, and a scan reads the
 // headers it needs rather than the media.
+// A tag that gives only a year dates its track or film to that year, rather than leaving it to the day the file was
+// copied; and a track or episode number has no ceiling at 255.
+static void should_date_media_by_a_year_only_tag()
+{
+	const auto props_of = [](libfiles::properties p)
+	{
+		libfiles::media_scan_result scan;
+		scan.success = true;
+		scan.properties = std::move(p);
+		file_scan_result result;
+		media_scan_read read;
+		read.scan = std::make_shared<libfiles::media_scan_result>(std::move(scan));
+		apply_media_scan(result, std::move(read), false);
+		return result.to_props();
+	};
+
+	libfiles::properties year_tag;
+	year_tag.year = 1998;
+	year_tag.episode = 1001;
+	year_tag.track = 300;
+	const auto from_year = props_of(year_tag);
+	assert_equal(1998, static_cast<int>(from_year->created().year()), "a year tag dates the file");
+	assert_equal(1001, static_cast<int>(from_year->episode.x), "an episode past 255 is kept whole");
+	assert_equal(300, static_cast<int>(from_year->track.x), "and a track");
+
+	libfiles::properties year_date;
+	year_date.created.year = 2004;
+	const auto from_date = props_of(year_date);
+	assert_equal(2004, static_cast<int>(from_date->created().year()), "a date that gives only its year dates it too");
+
+	libfiles::properties full_date;
+	full_date.created = {.year = 2019, .month = 6, .day = 3};
+	full_date.year = 2019;
+	const auto from_full = props_of(full_date);
+	assert_equal(df::date_t(2019, 6, 3, 0, 0, 0), from_full->created(), "a full date is not displaced by its year");
+
+	// An iTunes film (stik 9) left with tvsn and tves is still no episode.
+	libfiles::properties film;
+	film.season = 1;
+	film.episode = 1;
+	film.media_kind = 9;
+	const auto from_film = props_of(film);
+	assert_equal(true, prop::is_null(from_film->episode), "a film's junk episode is ignored");
+	assert_equal(0, static_cast<int>(from_film->season), "and its season");
+}
+
+// An album with no art of its own takes the Folder.jpg kept beside it; a film its poster; and an episode only a
+// poster named for it, or every episode of a season would look the same.
+static void should_use_folder_art_for_media_without_its_own()
+{
+	files ff;
+	const auto scan_art = [&ff](const df::file_path path)
+	{
+		return ff.scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, scan_intent::index,
+		                    false).cover_art;
+	};
+
+	const auto bare = _temps.next_folder("no-folder-art");
+	const auto bare_track = bare.combine_file("Track.mp3");
+	platform::copy_file(test_files_folder.combine_file("Games Without Frontiers.mp3"), bare_track, false, false);
+	assert_equal(true, scan_art(bare_track) == nullptr, "the fixture carries no art of its own");
+
+	const auto album = _temps.next_folder("folder-art");
+	const auto track = album.combine_file("Track.mp3");
+	platform::copy_file(test_files_folder.combine_file("Games Without Frontiers.mp3"), track, false, false);
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), album.combine_file("Folder.jpg"), false, false);
+	assert_equal(true, scan_art(track) != nullptr, "a track takes its album's folder art");
+
+	// A folder's own art is a film's only in a folder named for that film. Beside home videos, Explorer's folder.jpg
+	// would make every one of them look the same.
+	const auto home = _temps.next_folder("home-videos");
+	const auto clip = home.combine_file("Birthday party.mp4");
+	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), clip, false, false);
+	assert_equal(true, scan_art(clip) == nullptr, "the video fixture carries no art of its own");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), home.combine_file("folder.jpg"), false, false);
+	assert_equal(true, scan_art(clip) == nullptr, "a home video does not take its folder's art");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), home.combine_file("Birthday party-poster.jpg"),
+	                    false, false);
+	assert_equal(true, scan_art(clip) != nullptr, "but does take a poster named for it");
+
+	const auto film_folder = _temps.next_folder("film-art").combine("Dune (2021)");
+	platform::create_folder(film_folder);
+	const auto film = film_folder.combine_file("Dune.2021.mp4");
+	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), film, false, false);
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), film_folder.combine_file("poster.jpg"), false, false);
+	assert_equal(true, scan_art(film) != nullptr, "a film takes the poster of a folder named for it");
+}
+
+static void should_read_media_manager_nfo_files()
+{
+	const auto film = parse_nfo(
+		"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n"
+		"<!-- written by Kodi -->\n"
+		"<movie>\n"
+		"  <title>Fast &amp; Furious</title>\n"
+		"  <originaltitle>Fast &amp; Furious</originaltitle>\n"
+		"  <plot><![CDATA[Brian & Dom <return>.]]></plot>\n"
+		"  <genre>Action</genre>\n"
+		"  <genre>Crime</genre>\n"
+		"  <studio>Universal</studio>\n"
+		"  <year>2009</year>\n"
+		"  <premiered>2009-04-03</premiered>\n"
+		"  <uniqueid type=\"imdb\" default=\"true\">tt1013752</uniqueid>\n"
+		"  <thumb aspect=\"poster\"/>\n"
+		"  <actor><name>Vin Diesel</name><role>Dom</role></actor>\n"
+		"  <ratings><rating name=\"imdb\"><value>6.5</value></rating></ratings>\n"
+		"</movie>\n");
+
+	assert_equal(true, film.type == nfo_details::kind::film, "a film");
+	assert_equal("Fast & Furious", film.title, "its title, references decoded");
+	assert_equal("Brian & Dom <return>.", film.plot, "a plot kept as character data");
+	assert_equal("Action, Crime", film.genre, "every genre");
+	assert_equal("Universal", film.studio, "the studio");
+	assert_equal(2009, film.year, "the year");
+	assert_equal(true, film.released == df::date_t(2009, 4, 3, 0, 0, 0), "the premiere");
+	assert_equal(-1, film.episode, "an actor's or a rating's fields are not the film's");
+
+	const auto episode = parse_nfo(
+		"<episodedetails><title>The Christmas Special</title><showtitle>Time Team</showtitle>"
+		"<season>0</season><episode>3</episode><aired>2006-12-25</aired><outline>A short one</outline>"
+		"</episodedetails>"
+		"<episodedetails><title>Second of two</title><season>1</season><episode>4</episode></episodedetails>");
+
+	assert_equal(true, episode.type == nfo_details::kind::episode, "an episode");
+	assert_equal("The Christmas Special", episode.title, "the first of a file's episodes");
+	assert_equal("Time Team", episode.show, "its show");
+	assert_equal(0, episode.season, "season 0 holds the specials");
+	assert_equal(3, episode.episode, "its number");
+	assert_equal("A short one", episode.plot, "an outline when there is no plot");
+	assert_equal(2006, episode.year, "the year it aired");
+
+	const auto show = parse_nfo("<tvshow><title>Severance</title><year>2022</year></tvshow>");
+	assert_equal(true, show.type == nfo_details::kind::show && show.show == "Severance", "a show names itself");
+
+	const auto scene = parse_nfo("   <<< GROUP PRESENTS >>>\r\n\r\n  Movie.2019.1080p.BluRay.x264\r\n  Size....: 8 GB\r\n");
+	assert_equal(true, scene.is_empty(), "a release's own .nfo is no media manager's");
+	assert_equal(true, parse_nfo("").is_empty(), "nothing");
+	assert_equal(true, parse_nfo("<movie><title>Unclosed").type == nfo_details::kind::film, "a document cut short");
+}
+
+static void should_set_nfo_details_over_container_tags()
+{
+	prop::item_metadata md;
+	md.title = str::cache("Dune.2021.1080p.WEBRip.x264-GRP");
+	md.genre = str::cache("Other");
+
+	nfo_details film;
+	film.type = nfo_details::kind::film;
+	film.title = "Dune";
+	film.year = 2021;
+	film.released = df::date_t(2021, 10, 22, 0, 0, 0);
+	film.plot = "A desert planet.";
+	film.genre = "Science Fiction";
+	apply_nfo(md, film);
+
+	assert_equal("Dune", md.title.sv(), "the .nfo's title over the container's");
+	assert_equal("Science Fiction", md.genre.sv(), "and its genre");
+	assert_equal("A desert planet.", md.synopsis.sv(), "its plot as the synopsis");
+	assert_equal(true, md.dates.has_source(prop::date_source::media_manager), "its premiere as a date");
+
+	derive_name_values(md, "Dune", "Films", "Video", prop::library_kind::automatic);
+	assert_equal(true, md.kind == prop::media_kind::film, "a film the .nfo describes, though its name is clean");
+	assert_equal(false, md.dates.has_source(prop::date_source::file_name), "dated by its premiere, not its name");
+	assert_equal(2021, static_cast<int>(md.dates.resolve(prop::date_concept::original).year()), "in 2021");
+
+	prop::item_metadata personal;
+	personal.dates = md.dates;
+	derive_name_values(personal, "Dune", "Holidays", "Video", prop::library_kind::personal);
+	assert_equal(true, personal.kind == prop::media_kind::none, "a personal folder holds no films");
+
+	prop::item_metadata ep;
+	nfo_details episode;
+	episode.type = nfo_details::kind::episode;
+	episode.show = "Severance";
+	episode.season = 1;
+	episode.episode = 2;
+	episode.title = "Half Loop";
+	apply_nfo(ep, episode);
+	derive_name_values(ep, "sev-102", "Season 1", "Severance", prop::library_kind::automatic);
+
+	assert_equal("Severance", ep.show.sv(), "the show");
+	assert_equal(true, ep.season == 1 && ep.episode.x == 2, "season and episode");
+	assert_equal(true, ep.kind == prop::media_kind::episode, "an episode, whatever its name");
+	assert_equal(0, static_cast<int>(ep.from_name), "nothing taken from the name");
+
+	prop::item_metadata clip;
+	nfo_details music_video;
+	music_video.type = nfo_details::kind::music_video;
+	music_video.title = "Song";
+	music_video.year = 1985;
+	apply_nfo(clip, music_video);
+	derive_name_values(clip, "Song", "Clips", "Video", prop::library_kind::automatic);
+	assert_equal(true, clip.kind != prop::media_kind::film, "a music video is no film");
+}
+
+static void should_find_the_nfo_files_about_a_video()
+{
+	const auto root = _temps.next_folder("nfo");
+	const auto write = [](const df::folder_path folder, const std::string_view name, const std::string_view text)
+	{
+		for (const auto f : {folder.parent().parent(), folder.parent(), folder})
+		{
+			if (!f.exists()) platform::create_folder(f);
+		}
+
+		write_test_file(folder.combine_file(name), text);
+	};
+
+	const auto dune = root.combine("Films").combine("Dune (2021)");
+	write(dune, "Dune.2021.2160p.WEB-DL.mkv", "video");
+	write(dune, "movie.nfo", "<movie><title>Dune</title><year>2021</year></movie>");
+	assert_equal("Dune", read_video_nfo(dune.combine_file("Dune.2021.2160p.WEB-DL.mkv")).title,
+	             "a film named for its folder takes the folder's movie.nfo");
+
+	const auto clips = root.combine("Clips");
+	write(clips, "Party.mkv", "video");
+	write(clips, "movie.nfo", "<movie><title>Not this</title></movie>");
+	assert_equal(true, read_video_nfo(clips.combine_file("Party.mkv")).is_empty(),
+	             "a folder of other videos lends none of them its movie.nfo");
+
+	write(clips, "Talk.mkv", "video");
+	write(clips, "Talk.nfo", "<movie><title>The Talk</title></movie>");
+	assert_equal("The Talk", read_video_nfo(clips.combine_file("Talk.mkv")).title, "a video's own .nfo");
+
+	const auto show = root.combine("Shows").combine("Severance");
+	const auto season = show.combine("Season 1");
+	write(show, "tvshow.nfo", "<tvshow><title>Severance</title></tvshow>");
+	write(season, "sev.s01e01.mkv", "video");
+	write(season, "sev.s01e02.mkv", "video");
+	write(season, "sev.s01e02.nfo", "<episodedetails><title>Half Loop</title><season>1</season><episode>2</episode></episodedetails>");
+
+	const auto first = read_video_nfo(season.combine_file("sev.s01e01.mkv"));
+	assert_equal(true, first.type == nfo_details::kind::episode, "an episode with no .nfo of its own");
+	assert_equal("Severance", first.show, "takes its show from the show's");
+
+	const auto second = read_video_nfo(season.combine_file("sev.s01e02.mkv"));
+	assert_equal("Half Loop", second.title, "an episode's own .nfo");
+	assert_equal("Severance", second.show, "and the show's for what it leaves out");
+
+	write(clips, "Holiday.mkv", "video");
+	assert_equal(true, read_video_nfo(clips.combine_file("Holiday.mkv")).is_empty(), "nothing to read");
+}
+
+static void should_read_nfo_files_only_when_asked()
+{
+	const auto saved = setting.read_nfo;
+	const df::scope_exit restore([saved] { setting.read_nfo = saved; });
+
+	const auto folder = _temps.next_folder("nfo-scan");
+	const auto video = folder.combine_file("clip.mp4");
+	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), video, false, false);
+	write_test_file(folder.combine_file("clip.nfo"),
+	                "<movie><title>The Gizmo</title><plot>A test.</plot><premiered>1999-12-31</premiered></movie>");
+
+	files ff;
+	const auto scan = [&ff, video]
+	{
+		return ff.scan_file(video, false, files::file_type_from_name(video), {}, {}, scan_intent::index, false).to_props();
+	};
+
+	setting.read_nfo = false;
+	const auto unread = scan();
+	assert_equal(false, unread->dates.has_source(prop::date_source::media_manager), "not read unless asked");
+	assert_equal(false, str::icmp(unread->synopsis.sv(), "A test.") == 0, "nothing of it");
+
+	setting.read_nfo = true;
+	const auto md = scan();
+	assert_equal("A test.", md->synopsis.sv(), "its plot");
+	assert_equal(true, md->dates.has_source(prop::date_source::media_manager), "its premiere");
+	// The fixture's own XMP names it "Title xxx": what the user wrote into the file wins over a media manager.
+	assert_equal(unread->title.sv(), md->title.sv(), "the file's own XMP keeps its title");
+}
+
 static void should_read_media_with_libfiles()
 {
 	std::vector<df::file_path> corpus;
@@ -5362,6 +5824,49 @@ static void should_list_commodore_media_as_list_disk_did()
 	assert_equal(10762, recorded_outcomes, "the sweep is the one the record was taken over");
 	assert_equal(std::format("{:08x}", 0xedcf99f2u), std::format("{:08x}", checksum),
 	             "every listing is the one list_disk made before it moved to libfiles");
+}
+
+// A .sid file is described by its header alone: lib8bit reads it, and the properties land where every
+// other audio file's do, so a collection can be browsed by composer, year and publisher.
+static void should_scan_a_sid_tune_header()
+{
+	const auto tune = make_test_sid_tune();
+	const auto path = _temps.next_path(".sid");
+	assert_equal(true, df::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
+
+	const auto* const ft = files::file_type_from_name(path);
+	assert_equal(true, ft->has_trait(file_traits::sid_tune), "a .sid file is a SID tune");
+	assert_equal(true, ft->is_playable(), "and plays");
+
+	files ff;
+	const auto result = ff.scan_file(path, false, ft);
+	assert_equal(true, result.success, "the header is read");
+
+	const auto md = result.to_props();
+	assert_equal("Diffractor Test Tune", md->title.sv(), "title");
+	assert_equal("Test Author", md->artist.sv(), "the composer as the artist");
+	assert_equal("1987 Test Publisher", md->copyright_notice.sv(), "the release field, as the copyright it was");
+	assert_equal(1987, static_cast<int>(md->year), "the release's year");
+	assert_equal("Test Publisher", md->publisher.sv(), "and its publisher");
+	assert_equal(df::xy8{2, 3}, md->track, "the tune it starts on, of the tunes it holds");
+	assert_equal("Commodore 64", md->system.sv(), "the machine");
+	assert_equal("MOS 6581", md->audio_codec.sv(), "the chip");
+	assert_equal(180, static_cast<int>(md->duration), "the span each tune plays for");
+
+	auto broken = tune;
+	broken[0] = 'X';
+	const auto broken_path = _temps.next_path(".sid");
+	df::blob_save_to_file({broken.data(), broken.size()}, broken_path);
+	assert_equal(false, ff.scan_file(broken_path, false, ft).success, "a damaged header is not read as a tune");
+
+	// The header's text is ISO-8859-1, and a composer's name keeps its accent.
+	auto accented = tune;
+	constexpr uint8_t hulsbeck[] = {'C', 'h', 'r', 'i', 's', ' ', 'H', 0xFC, 'l', 's', 'b', 'e', 'c', 'k', 0, 0};
+	std::ranges::copy(hulsbeck, accented.begin() + 0x36);
+	const auto accented_path = _temps.next_path(".sid");
+	df::blob_save_to_file({accented.data(), accented.size()}, accented_path);
+	assert_equal("Chris H\xC3\xBClsbeck", ff.scan_file(accented_path, false, ft).to_props()->artist.sv(),
+	             "a Latin-1 name reads as UTF-8");
 }
 
 // Diffractor's PNG loader moved to libfiles. Before the switch both decoded every PNG in the fixtures
@@ -7726,6 +8231,12 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should convert archive Unix timestamps"s, should_convert_archive_unix_timestamps);
 	tests.add("Should scan stills alike from memory and streams"s, should_scan_stills_alike_from_memory_and_streams);
 	tests.add("Should read media with libfiles"s, should_read_media_with_libfiles);
+	tests.add("Should date media by a year only tag"s, should_date_media_by_a_year_only_tag);
+	tests.add("Should use folder art for media without its own"s, should_use_folder_art_for_media_without_its_own);
+	tests.add("Should read media manager nfo files"s, should_read_media_manager_nfo_files);
+	tests.add("Should set nfo details over container tags"s, should_set_nfo_details_over_container_tags);
+	tests.add("Should find the nfo files about a video"s, should_find_the_nfo_files_about_a_video);
+	tests.add("Should read nfo files only when asked"s, should_read_nfo_files_only_when_asked);
 	tests.add("Should decode PSDs as load_psd did"s, should_decode_psds_as_load_psd_did);
 	tests.add("Should decode JPEGs as jpeg_decoder_x did"s, should_decode_jpegs_as_jpeg_decoder_x_did);
 	tests.add("Should read EXIF as Diffractor's parser did"s, should_read_exif_as_diffractors_parser_did);
@@ -7733,6 +8244,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should turn EXIF without rewriting it"s, should_turn_exif_without_rewriting_it);
 	tests.add("Should list EXIF as libexif did"s, should_list_exif_as_libexif_did);
 	tests.add("Should list Commodore media as list_disk did"s, should_list_commodore_media_as_list_disk_did);
+	tests.add("Should scan a SID tune header"s, should_scan_a_sid_tune_header);
 	tests.add("Should decode PNGs as load_png did"s, should_decode_pngs_as_load_png_did);
 	tests.add("Should decode WebPs as load_webp did"s, should_decode_webps_as_load_webp_did);
 	tests.add("Should decode HEIFs as load_heif did"s, should_decode_heifs_as_load_heif_did);
@@ -7797,6 +8309,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should fail replace when flush fails"s, should_fail_replace_when_flush_fails);
 #ifdef _WIN32
 	tests.add("Should cleanup failed update temps"s, should_cleanup_failed_update_temps);
+	tests.add("Should write a read-only source to another path"s, should_write_a_read_only_source_to_another_path);
 #endif
 	tests.add("Should not rewrite unchanged file"s, should_not_rewrite_unchanged_file);
 	tests.add("Should return written image"s, should_return_written_image);
@@ -7804,6 +8317,11 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should save .png"s, [] { should_save(".png", true); });
 	tests.add("Should save .jpg"s, [] { should_save(".jpg", true); });
 	tests.add("Should save .webp"s, [] { should_save(".webp", true); });
+	tests.add("Should save .jxl"s, [] { should_save(".jxl", true); });
+	tests.add("Should save a turned photo as a turned JPEG XL"s, should_save_a_turned_photo_as_a_turned_jxl);
+	tests.add("Should copy an unchanged JPEG XL as it is"s, should_copy_an_unchanged_jxl_as_it_is);
+	tests.add("Should honor JPEG XL save settings"s, should_honor_jxl_save_settings);
+	tests.add("Should answer a PSD cut short as unreadable"s, should_answer_a_psd_cut_short_as_unreadable);
 
 	constexpr std::string_view read_only_formats[] = {
 		"gradient.bmp", "gradient.tga", "gradient.sgi", "gradient.pcx", "gradient.ppm", "gradient.pgm"
@@ -7878,6 +8396,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should prefer primary tiff orientation over the thumbnail ifd"s,
 	          should_prefer_primary_tiff_orientation_over_the_thumbnail_ifd);
 	tests.add("Should reuse source jpeg tables"s, should_reuse_source_jpeg_tables);
+	tests.add("Should convert a JPEG at the quality asked"s, should_convert_a_jpeg_at_the_quality_asked);
 	tests.add("Should save over a source JPEG libjpeg fails on"s, should_save_over_a_source_jpeg_libjpeg_fails_on);
 	tests.add("Should refuse imperfect lossless rotate"s, should_refuse_imperfect_lossless_rotate);
 	tests.add("Should survive truncated lossless rotate"s, should_survive_truncated_lossless_rotate);

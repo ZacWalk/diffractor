@@ -354,6 +354,14 @@ inline double rewound_movie_clip_playhead(const movie_clip* const clip)
 	return clip ? clip->start : 0.0;
 }
 
+// The movie frame a playhead is on, at the movie's own frame rate. A playing preview's picture is composed
+// at these frames, as the render composes them, so it changes only when this does: the display's ticks
+// between them would only draw the same picture again.
+inline int64_t movie_frame_at(const double playhead, const int frame_rate)
+{
+	return static_cast<int64_t>(std::floor(std::max(0.0, playhead) * std::max(1, frame_rate)));
+}
+
 // The clip Previous and Next count from. Stopped, that is the focus: stepping moves it. While the
 // movie plays they are the transport's skip, and playback does not move the focus, so they count
 // from the clip the playhead is in -- otherwise Next during clip 6 with clip 0 focused went back to
@@ -603,7 +611,10 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	int64_t _preview_audio_priming_since = 0;
 
 	std::string _title;
-	int64_t _last_tick = 0;
+	// The high-resolution clock at the last tick, in seconds; zero when playback has just started.
+	double _last_tick = 0.0;
+	// The movie frame the preview was last repainted for, and the clip player's; -1 when none.
+	int64_t _painted_frame = -1;
 
 	// The clip player's session. Borrowed: it takes the application player's single session slot,
 	// which it can only do because it never runs at the same time as the movie preview. docs/movie.md
@@ -660,7 +671,8 @@ public:
 	std::string_view operation_name() const override;
 	std::string_view status() override;
 	progress_state progress() const override;
-	void tick();
+	// Moves a playing movie or clip on, and repaints what it changed. True when the view was repainted.
+	bool tick();
 
 	// Document edits. Each one re-reads what the panel shows, so the controls cannot describe a
 	// clip that is no longer current.
@@ -759,6 +771,7 @@ public:
 	void broadcast_event(const view_element_event& event) const override;
 
 	std::string_view title() override;
+	view_bars bars() const override;
 
 	void options_changed() const
 	{

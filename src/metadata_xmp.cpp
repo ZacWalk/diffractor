@@ -873,6 +873,14 @@ df::file_path probe_xmp_path(const df::file_path src_path, const std::string_vie
 	return src_path.extension(".xmp");
 }
 
+bool metadata_xmp::sidecar_holds_metadata(const df::file_path path, const std::string_view xmp_name)
+{
+	const auto* const ft = files::file_type_from_name(path);
+	if (!ft->has_trait(file_traits::embedded_xmp)) return true;
+	if (!ft->has_trait(file_traits::raw)) return false;
+	return !platform::file_attributes(probe_xmp_path(path, xmp_name)).confirmed_missing();
+}
+
 static std::optional<libfiles::packet_reading> read_file_packet(df::file_path path);
 
 // GPano writes these as plain integers. A property the file omits leaves its member zero, which
@@ -910,8 +918,8 @@ prop::panorama_geometry metadata_xmp::panorama(const df::file_path path)
 			}
 			else
 			{
-				// HEIF and JPEG XL are read-only here. The scan also supplies Brotli for compressed
-				// JPEG XL boxes, just as read_embedded_source does when converting either format.
+				// A HEIF, which libfiles does not update: its packet is the one its scan finds, as
+				// read_embedded_source takes it when converting one.
 				files ff;
 				const auto scanned = ff.scan_file(path, false, ft);
 				if (!scanned.success) record_xmp_error(__FUNCTION__, "the panorama metadata could not be read");
@@ -967,8 +975,8 @@ static void require_updatable(const df::file_path path)
 	if (!libfiles::can_update(libfiles_update_format(path))) throw app_exception("this file format cannot store the metadata");
 }
 
-// The packet a file holds, where libfiles reads and writes it. Nothing when libfiles does not read the
-// format or the file cannot be opened.
+// The packet a file holds, where libfiles reads and writes it - a JPEG XL's with the Brotli its scan is
+// given. Nothing when libfiles does not read the format or the file cannot be opened.
 static std::optional<libfiles::packet_reading> read_file_packet(const df::file_path path)
 {
 	const auto f = open_file(path, platform::file_open_mode::read);
@@ -978,7 +986,7 @@ static std::optional<libfiles::packet_reading> read_file_packet(const df::file_p
 	libfiles::reader r(stream);
 	if (r.size() < 16 || !libfiles::can_update(libfiles_update_format(r))) return {};
 
-	return libfiles::read_packet(r);
+	return libfiles::read_packet(r, decompress_jxl_box);
 }
 
 // What the item shows, written into the packet wherever the packet lacks it.
@@ -1089,6 +1097,16 @@ static libfiles::legacy_edits legacy_edits_of(const metadata_edits& edits, const
 	return legacy;
 }
 
+// What an edit writes: the packet, the fields it sets wherever the format keeps them besides, and the
+// Brotli a JPEG XL's compressed boxes are read with, so the update reads the file as its scan did.
+static libfiles::metadata_update update_of(const libfiles::xmp::meta& xmp, const metadata_edits& edits)
+{
+	libfiles::metadata_update update{&xmp};
+	update.legacy = legacy_edits_of(edits, xmp);
+	update.brotli = decompress_jxl_box;
+	return update;
+}
+
 // Patches the file where it lies when nothing it holds has to move - anything new is appended and only
 // then referred to, so an interruption leaves a file that reads whole - otherwise writes the updated
 // file beside it in one pass and swaps it in, so the file is never left half rewritten.
@@ -1138,7 +1156,7 @@ static void write_with_libfiles(const df::file_path path, const libfiles::metada
 }
 
 // The edit starts from the packet the file holds. libfiles reads it where it writes it; a format libfiles
-// does not read - a HEIF or JPEG XL being converted - gives the packet diffractor's scan finds.
+// does not read - a HEIF being converted - gives the packet diffractor's scan finds.
 static void read_embedded_source(const df::file_path src_path, const file_type_ref src_ft, const bool converting,
                                  const metadata_edits& edits, libfiles::xmp::meta& xmp)
 {
@@ -1205,13 +1223,14 @@ static void run_test_update_failure(const df::file_path update_path)
 	throw app_exception("test metadata update failure");
 }
 
-// The packet an edit starts from, with the edit applied: the one the source holds, its sidecar's, or,
-// for a raw file without a sidecar, the one its scan finds.
+// The packet an edit starts from, with the edit applied: the one the source holds, its sidecar's - a
+// DNG's too, when it has one - or, for a raw file without a sidecar, the one its scan finds. Where the
+// metadata lives is the caller's answer, so the file read is the one the caller decided to write.
 static void read_edit_source(const df::file_path src_path, const file_type_ref src_ft, const bool converting,
                              const metadata_edits& edits, const std::string_view src_xmp_name,
-                             libfiles::xmp::meta& xmp)
+                             const bool in_sidecar, libfiles::xmp::meta& xmp)
 {
-	if (src_ft->has_trait(file_traits::embedded_xmp))
+	if (!in_sidecar)
 	{
 		read_embedded_source(src_path, src_ft, converting, edits, xmp);
 	}
@@ -1278,7 +1297,7 @@ static app_exception file_failure(const std::exception& e, const df::file_path f
 
 xmp_update_result metadata_xmp::update(const df::file_path update_path, const df::file_path src_path,
                                        const metadata_edits& edits, const std::string_view src_xmp_name,
-                                       const df::file_path dst_xmp_path)
+                                       const df::file_path dst_xmp_path, const std::optional<bool> src_in_sidecar)
 {
 	xmp_update_result result;
 
@@ -1292,23 +1311,24 @@ xmp_update_result metadata_xmp::update(const df::file_path update_path, const df
 		const auto* const src_ft = files::file_type_from_name(src_path);
 		const auto* const dst_ft = files::file_type_from_name(update_path);
 		const auto is_embedded_src = src_ft->has_trait(file_traits::embedded_xmp);
-		const auto is_embedded_dst = dst_ft->has_trait(file_traits::embedded_xmp);
+		const auto in_sidecar = src_in_sidecar ? *src_in_sidecar : sidecar_holds_metadata(src_path, src_xmp_name);
+		// A raw is written where its source keeps its metadata. The source is asked, because a copy being
+		// staged has no sidecar of its own yet.
+		const auto is_embedded_dst = dst_ft->has_trait(file_traits::embedded_xmp) &&
+			!(dst_ft->has_trait(file_traits::raw) && in_sidecar);
 
 		const auto converting = is_embedded_src && is_embedded_dst &&
 			libfiles_update_format(src_path) != libfiles_update_format(update_path);
 
 		libfiles::xmp::meta xmp;
-		read_edit_source(src_path, src_ft, converting, edits, src_xmp_name, xmp);
+		read_edit_source(src_path, src_ft, converting, edits, src_xmp_name, in_sidecar, xmp);
 
 		failing_path = update_path;
 
 		if (is_embedded_dst)
 		{
 			require_updatable(update_path);
-
-			libfiles::metadata_update update{&xmp};
-			update.legacy = legacy_edits_of(edits, xmp);
-			write_with_libfiles(update_path, update);
+			write_with_libfiles(update_path, update_of(xmp, edits));
 			result.success = true;
 		}
 		else
@@ -1362,6 +1382,40 @@ xmp_update_result metadata_xmp::update(const df::file_path update_path, const df
 	return result;
 }
 
+df::blob metadata_xmp::encoded_packet(const df::file_path src_path, const df::file_path dst_path,
+                                      const metadata_edits& edits, const std::string_view src_xmp_name)
+{
+	run_test_update_failure(dst_path);
+
+	try
+	{
+		const auto* const src_ft = files::file_type_from_name(src_path);
+		// The destination is not written yet, so its format is the one its name gives.
+		const auto dst_format = libfiles::info(libfiles::file_type_from_extension(dst_path.extension())).update_format;
+		const auto converting = src_ft->has_trait(file_traits::embedded_xmp) &&
+			libfiles_update_format(src_path) != dst_format;
+
+		libfiles::xmp::meta xmp;
+		read_edit_source(src_path, src_ft, converting, edits, src_xmp_name,
+		                 sidecar_holds_metadata(src_path, src_xmp_name), xmp);
+		if (xmp.empty()) return {};
+
+		const auto packet = xmp.serialize();
+		const auto* const bytes = std::bit_cast<const uint8_t*>(packet.data());
+		return df::blob(bytes, bytes + packet.size());
+	}
+	catch (const libfiles::xmp::error& e)
+	{
+		df::log(__FUNCTION__, e.what());
+		throw app_exception(e.what());
+	}
+	catch (const libfiles::read_error& e)
+	{
+		df::log(__FUNCTION__, e.what());
+		throw file_failure(e, src_path);
+	}
+}
+
 std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path stage_path,
                                                             const df::file_path src_path,
                                                             const metadata_edits& edits,
@@ -1369,6 +1423,7 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 {
 	const auto* const src_ft = files::file_type_from_name(src_path);
 	if (!files::file_type_from_name(stage_path)->has_trait(file_traits::embedded_xmp)) return {};
+	if (sidecar_holds_metadata(src_path, src_xmp_name)) return {};
 
 	// Held until the stage is written. Windows lets no one write the file meanwhile, so the plan made
 	// from it describes the bytes the stage is made from.
@@ -1387,10 +1442,9 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 	try
 	{
 		libfiles::xmp::meta xmp;
-		read_edit_source(src_path, src_ft, false, edits, src_xmp_name, xmp);
+		read_edit_source(src_path, src_ft, false, edits, src_xmp_name, false, xmp);
 
-		libfiles::metadata_update update{&xmp};
-		update.legacy = legacy_edits_of(edits, xmp);
+		const auto update = update_of(xmp, edits);
 
 		const auto plan = libfiles::plan_update(r, update);
 		if (!plan.ok()) throw app_exception(plan.error);
@@ -1403,6 +1457,9 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 			// block clone on ReFS - so a copy patched where it lies costs least.
 			const auto copied = platform::copy_file(src_path, stage_path, true, false);
 			if (copied.failed()) throw app_exception(copied.format_error());
+			// A copy keeps a read-only source's attribute, which would refuse the write it is made for
+			// and then the cleanup of what was left.
+			platform::make_file_writable(stage_path);
 
 			write_with_libfiles(stage_path, update);
 		}
@@ -1439,6 +1496,9 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 
 bool metadata_xmp::patch(const df::file_path path, const metadata_edits& edits, const std::string_view src_xmp_name)
 {
+	// The file's own packet is not the one in use, so there is nothing to patch into it.
+	if (sidecar_holds_metadata(path, src_xmp_name)) return false;
+
 	run_test_update_failure(path);
 
 	try
@@ -1446,10 +1506,9 @@ bool metadata_xmp::patch(const df::file_path path, const metadata_edits& edits, 
 		require_updatable(path);
 
 		libfiles::xmp::meta xmp;
-		read_edit_source(path, files::file_type_from_name(path), false, edits, src_xmp_name, xmp);
+		read_edit_source(path, files::file_type_from_name(path), false, edits, src_xmp_name, false, xmp);
 
-		libfiles::metadata_update update{&xmp};
-		update.legacy = legacy_edits_of(edits, xmp);
+		const auto update = update_of(xmp, edits);
 
 		// One handle no one else may open meanwhile, for the plan and the patch: the bytes planned from
 		// are the bytes patched.

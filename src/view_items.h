@@ -10,8 +10,8 @@
 // disjoint regions (sidebar, chrome, splitters, scroll bars, media, items) that render,
 // hit testing and wheel routing all share. The media column's arrangement is a free function so
 // its stability contract can be tested without a window. The commands that decide what the list
-// contains are drawn at the head of the list as a command_bar_element rather than in a fixed
-// status band.
+// contains - the filter box, thumbnail size, type filters, totals and grouping - are declared for the
+// frame's status bar, which keeps them on screen however far the list scrolls.
 
 #pragma once
 
@@ -61,12 +61,6 @@ struct item_and_group
 	friend auto operator<=>(const item_and_group&, const item_and_group&) = default;
 };
 
-// Discussion #251: the menu opened by the always-visible control in the scroller track. Only
-// "Scroll to top" belongs to that control; every other entry is the toolbar's own command object,
-// so the two copies cannot disagree about availability.
-std::vector<ui::command_ptr> items_scroll_menu(const view_state& state, bool at_top,
-                                               std::function<void()> scroll_to_top);
-
 class items_view final : public view_base
 {
 public:
@@ -105,10 +99,6 @@ public:
 	int _sidebar_splitter_width = 0;
 	double _scale_factor = 1.0;
 
-	// The address and filter boxes are the same control with different callbacks; sharing one
-	// element keeps their keyboard, mouse and caret behavior identical.
-	edit_element_ptr _filter_edit = std::make_shared<edit_element>();
-
 	// locations.md 7.3: an optional control row that can shrink to a one-line header when the
 	// control area would otherwise bury the items the user came to see.
 	struct control_row
@@ -143,9 +133,6 @@ public:
 	view_element_ptr build_related_header_row() const;
 	void apply_control_row_budget(ui::measure_context& mc, int width, int budget);
 
-	view_element_ptr _items_scroll_top;
-	recti _items_scroll_top_bounds;
-
 	// Every interactive area of the view is a rectangle in this set. update_regions() is the only
 	// writer and runs during layout; render, hit testing, wheel routing and context menus all read
 	// it, so what is drawn, what is clicked and what is scrolled can never disagree. Regions are
@@ -156,7 +143,6 @@ public:
 		recti sidebar;
 		recti splitter;
 		recti items_scroll;
-		recti items_scroll_top;
 		recti media_scroll;
 		recti media;
 		recti items;
@@ -171,7 +157,6 @@ public:
 		sidebar,
 		splitter,
 		items_scroll,
-		items_scroll_top,
 		media_scroll,
 		media,
 		items
@@ -203,6 +188,9 @@ public:
 	void render(ui::draw_context& dc, view_controller_ptr controller) override;
 
 	menu_type context_menu(pointi loc) override;
+	// A press anywhere but on the panel's document gives Copy and Select all back to the items.
+	void mouse_down(pointi loc) override;
+	void release_document() const;
 
 	void update_visible_items_list();
 	void stage_visible_thumbnails();
@@ -212,17 +200,9 @@ public:
 	bool media_wheel(pointi loc, ui::wheel_notch notch);
 	bool step_zoom(pointi loc, int steps);
 	bool pinch(pointi loc, int steps) override;
-	void mouse_down(pointi loc) override;
-	void focus(bool has_focus) override;
-	bool key_down(char32_t key, ui::key_state keys) override;
-	bool text_input(std::string_view text) override;
-
-	ui::focus_mode focus_mode() const override
-	{
-		return _filter_edit->focused() ? ui::focus_mode::text_edit : ui::focus_mode::view;
-	}
 
 	bool is_caption_area(pointi loc) const override;
+	view_bars bars() const override;
 
 	void items_scroll_popup(view_hover_element& hover, pointi loc) const;
 	group_and_item scroll_loc_to_item(pointi loc) const;
@@ -233,10 +213,10 @@ public:
 		return !r.is_empty() && r.contains(loc);
 	}
 
-	// Deliberately the loose test rather than region_at: the scroll bar and the scroll control are
-	// drawn inside the grid's rectangle, and a file dropped on either is meant for the folder the grid
-	// is showing. The strict answer belongs to hit testing and the context menu, which have to tell the
-	// scroll furniture apart from the items under it.
+	// Deliberately the loose test rather than region_at: the scroll bar is drawn inside the grid's
+	// rectangle, and a file dropped on it is meant for the folder the grid is showing. The strict
+	// answer belongs to hit testing and the context menu, which have to tell the scroll bar apart from
+	// the items under it.
 	bool is_over_items(const pointi loc) const override
 	{
 		return region_hit(_regions.items, loc);
@@ -320,15 +300,6 @@ public:
 		return _regions.media;
 	}
 
-	// The filter box lives in the list control bar, so its device bounds follow the item scroll.
-	recti rendered_filter_bounds() const;
-	void apply_rendered_filter();
-	void focus_rendered_filter();
-	void blur_rendered_filter();
-	void blur_rendered_filter_if_scrolled_away();
-
-	void layout_chrome(ui::measure_context& mc);
-	void update_edit_caret();
 	recti calc_spliter_bounds() const { return _regions.splitter; }
 	void update_regions();
 	recti region_bounds(view_region region) const;

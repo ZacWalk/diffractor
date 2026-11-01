@@ -52,14 +52,14 @@ df::xy8 df::xy8::parse(const std::string_view r)
 {
 	if (str::is_num(r))
 	{
-		return make(str::to_int(r), 0);
+		return prop::number_pair(str::to_int(r), 0);
 	}
 
 	int x, y;
 
 	if (_snscanf_s(std::bit_cast<const char*>(r.data()), r.size(), "%d/%d", &x, &y) == 2)
 	{
-		return make(x, y);
+		return prop::number_pair(x, y);
 	}
 
 	return {0, 0};
@@ -1131,7 +1131,18 @@ std::string prop::replace_tokens(const std::string_view name_template, const ite
 					md->album_artist.is_empty() ? md->artist.sv() : md->album_artist.sv(), tt.unknown);
 			else if (token == "album") result << text_or_default(md->album, tt.unknown);
 			else if (token == "show") result << text_or_default(md->show, tt.unknown);
-			else if (token == "season") result << text_or_default(str::to_string(md->season), tt.unknown);
+			// Two digits, as release names and media servers write them: S01E05, and E00 for a special.
+			else if (token == "season")
+			{
+				if (md->season != 0 || !prop::is_null(md->episode) || md->is_special) result << std::format("{:02}", md->season);
+				else result << tt.unknown.sv();
+			}
+			else if (token == "episode")
+			{
+				if (!prop::is_null(md->episode)) result << std::format("{:02}", md->episode.x);
+				else if (md->is_special) result << "00";
+				else result << tt.unknown.sv();
+			}
 			else if (token == "country") result << text_or_default(md->location_country, tt.unknown);
 			else
 			{
@@ -1145,6 +1156,58 @@ std::string prop::replace_tokens(const std::string_view name_template, const ite
 	};
 
 	return str::replace_tokens(name_template, substitute);
+}
+
+str::cached prop::episode_label(const item_metadata& md)
+{
+	if (md.is_special) return str::cache(std::format("S{:02}E00", md.season));
+
+	if (!is_null(md.episode))
+	{
+		if (md.season != 0) return str::cache(std::format("S{:02}E{:02}", md.season, md.episode.x));
+		if (md.episode.y != 0) return str::cache(std::format("{} / {}", md.episode.x, md.episode.y));
+		return str::cache(std::format("E{:02}", md.episode.x));
+	}
+
+	if (md.kind == media_kind::episode)
+	{
+		// A dated episode is named by the day it aired: the day its name gives or, when the file's own date is that
+		// day, as a recording's is, that date.
+		for (auto i = 0; i < md.dates.group_count(); ++i)
+		{
+			if (md.dates.group_sources(i) && date_source::file_name)
+			{
+				const auto d = md.dates.group_value(i).date();
+				return str::cache(std::format("{:04}-{:02}-{:02}", d.year, d.month, d.day));
+			}
+		}
+
+		if (const auto best = md.dates.best(); best.is_valid())
+		{
+			const auto d = best.date();
+			return str::cache(std::format("{:04}-{:02}-{:02}", d.year, d.month, d.day));
+		}
+	}
+
+	return {};
+}
+
+str::cached prop::library_caption(const item_metadata& md)
+{
+	if (md.kind == media_kind::episode)
+	{
+		const auto label = episode_label(md);
+		if (label.is_empty()) return md.title;
+		if (md.title.is_empty()) return label;
+		return str::cache(std::format("{} \xC2\xB7 {}", label.sv(), md.title.sv()));
+	}
+
+	if (md.kind == media_kind::film && md.year != 0 && !md.title.is_empty())
+	{
+		return str::cache(std::format("{} ({})", md.title.sv(), md.year));
+	}
+
+	return md.title;
 }
 
 std::string prop::format_pixels(const sizei v, const file_type_ref ft)

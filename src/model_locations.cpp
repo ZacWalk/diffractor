@@ -234,25 +234,39 @@ double gps_coordinate::dms_to_decimal(const double deg, const double min, const 
 	return deg + min / 60.0 + sec / 3600.0;
 }
 
+// A sign then a digit or a point: how each number of an ISO 6709 location begins.
+static bool starts_signed_number(const std::string_view text)
+{
+	return text.size() >= 2 && (text[0] == '+' || text[0] == '-') &&
+		((text[1] >= '0' && text[1] <= '9') || text[1] == '.');
+}
+
 split_location_result split_location(const std::string_view text)
 {
 	constexpr auto delims = "+-";
 	split_location_result result;
 
-	const auto c1 = text.find_first_of(delims);
+	// Signed numbers from the start, as ISO 6709 writes them - "+47.6-122.3+56/" - and a coordinate
+	// search is typed. A place with two hyphens in its name, Stratford-upon-Avon, is not one: read as
+	// numbers, its words made a coordinate of 0, 0.
+	const auto trimmed = str::trim(text);
+	const auto c2 = trimmed.find_first_of(delims, 1);
 
-	if (c1 != std::string_view::npos)
+	if (starts_signed_number(trimmed) && c2 != std::string_view::npos)
 	{
-		const auto c2 = text.find_first_of(delims, c1 + 1);
+		const auto c3 = trimmed.find_first_of(delims, c2 + 1);
 
-		if (c2 != std::string_view::npos)
+		const auto lat = trimmed.substr(0, c2);
+		const auto lng = trimmed.substr(c2, c3 != std::string_view::npos ? c3 - c2 : std::string_view::npos);
+		const auto alt = c3 != std::string_view::npos ? trimmed.substr(c3) : std::string_view{};
+
+		const auto lat_is_number = std::ranges::all_of(lat.substr(1), [](const char c)
 		{
-			const auto c3 = text.find_first_of(delims, c2 + 1);
+			return (c >= '0' && c <= '9') || c == '.';
+		});
 
-			const auto lat = text.substr(c1, c2 - c1);
-			const auto lng = text.substr(c2, c3 != std::string_view::npos ? c3 - c2 : std::string_view::npos);
-			const auto alt = c3 != std::string_view::npos ? text.substr(c3) : std::string_view{};
-
+		if (lat_is_number && starts_signed_number(lng) && (alt.empty() || starts_signed_number(alt)))
+		{
 			result.x = str::to_double(lat);
 			result.y = str::to_double(lng);
 			result.z = str::to_double(alt);

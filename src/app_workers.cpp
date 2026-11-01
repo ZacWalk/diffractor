@@ -214,7 +214,7 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 
 	// Copied here, on the thread that owns the settings, and read from the copy on the worker. The
 	// collection settings are ordinary mutable globals: reading more_folders on a worker while the
-	// options dialog assigns it is a data race on a std::string, and the folder set the worker acts
+	// Options view assigns it is a data race on a std::string, and the folder set the worker acts
 	// on should in any case be the one the user just applied.
 	const auto collection = setting.collection;
 
@@ -233,8 +233,13 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 		}
 
 		_state.item_index.index_roots(index_folders(collection));
+		_state.item_index.library_kinds(parse_library_types(collection.library_types));
 		_state.item_index.index_folders(token);
 		invalidate_view(view_invalid::sidebar | view_invalid::presence);
+
+		// A folder's library kind decides what its videos are; the items already loaded read their names again,
+		// on this update or, when another cut it short, the next.
+		_state.item_index.rederive_name_values(token);
 
 		_state.item_index.scan_uncached(token);
 		invalidate_view(view_invalid::sidebar | view_invalid::item_scan | view_invalid::presence |
@@ -929,6 +934,9 @@ void app_frame::start_workers()
 			start_index_workers();
 		}
 	};
+
+	// Before the cache loads, because each row's name is read with its folder's library kind as it loads.
+	_state.item_index.library_kinds(parse_library_types(setting.collection.library_types));
 
 	_threads.start_if_running([&db = _db, &q = database_task_queue, &async, app, index_loaded_func]
 	{

@@ -13,6 +13,7 @@
 #include "pch.h"
 #include "view_movie.h"
 
+#include "app_commands.h"
 #include "app_text.h"
 #include "av_format.h"
 #include "files.h"
@@ -2260,6 +2261,15 @@ std::string_view movie_view::title()
 	return _title;
 }
 
+view_bars movie_view::bars() const
+{
+	return task_view_bars({
+		commands::tool_movie_render, commands::tool_movie_add, commands::tool_movie_remove,
+		commands::tool_movie_relink, commands::tool_movie_open, commands::tool_movie_save,
+		commands::tool_movie_import
+	});
+}
+
 double movie_view::duration() const
 {
 	return _movie_state.project.timing().duration;
@@ -2588,8 +2598,8 @@ bool movie_view::escape()
 
 bool movie_view::can_exit()
 {
-	// A render reads the timeline's sources and reports into this view's status band, so navigating
-	// away while it runs is refused rather than silently detaching it.
+	// A render reads the timeline's sources and reports into this view's status, so navigating away
+	// while it runs is refused rather than silently detaching it.
 	return !_progress.active;
 }
 
@@ -2623,16 +2633,20 @@ void movie_view::exit()
 	_state.view_mode(view_type::items);
 }
 
-void movie_view::tick()
+bool movie_view::tick()
 {
 	// A block held against an end of the strip keeps carrying it while the pointer rests there.
 	if (_timeline && _timeline->is_dragging()) _timeline->edge_scroll();
 
-	if (!_movie_state.is_playing()) return;
+	if (!_movie_state.is_playing()) return false;
 
-	const auto now = platform::tick_count();
-	const auto elapsed = _last_tick == 0 ? 0.0 : (now - _last_tick) / 1000.0;
+	// The high-resolution clock: GetTickCount's 16 ms steps moved the playhead unevenly.
+	const auto now = df::now();
+	const auto elapsed = _last_tick == 0.0 ? 0.0 : std::max(0.0, now - _last_tick);
 	_last_tick = now;
+
+	const auto frame_rate = _movie_state.project.output().frame_rate;
+	auto repaint = false;
 
 	if (_movie_state.playing == movie_view_state::playing_t::movie)
 	{
@@ -2647,11 +2661,18 @@ void movie_view::tick()
 			_movie_state.playhead = total;
 			_movie_state.playing = movie_view_state::playing_t::nothing;
 			stop_preview_audio();
+			repaint = true;
 		}
 		else
 		{
 			pump_preview_audio();
 		}
+
+		// The preview is composed at the movie's frames, as the render composes it, so the view repaints
+		// when the playhead reaches another one rather than on every display tick.
+		const auto frame = movie_frame_at(_movie_state.playhead, frame_rate);
+		repaint |= frame != _painted_frame;
+		_painted_frame = frame;
 	}
 	else
 	{
@@ -2663,13 +2684,14 @@ void movie_view::tick()
 		{
 			_movie_state.playing = movie_view_state::playing_t::nothing;
 			close_clip_session();
+			repaint = true;
 		}
 		else if (_clip_session)
 		{
 			// The session's clock, not the wall clock: the audio device drives it, and that is what
 			// puts a cut where the user heard it rather than near it.
 			const auto media_now = df::now();
-			_clip_session->update_for_present(media_now);
+			repaint |= _clip_session->update_for_present(media_now);
 			_movie_state.clip_playhead = std::clamp(_clip_session->pos(media_now), clip->start, clip->end);
 
 			if (_movie_state.clip_playhead >= clip->end - 0.001 || _clip_session->has_ended(media_now))
@@ -2677,14 +2699,21 @@ void movie_view::tick()
 				_movie_state.clip_playhead = clip->end;
 				_movie_state.playing = movie_view_state::playing_t::nothing;
 				close_clip_session();
+				repaint = true;
 			}
 		}
 
+		// A new picture from the clip, or its playhead on another frame of the movie.
+		const auto frame = movie_frame_at(_movie_state.clip_playhead, frame_rate);
+		repaint |= frame != _painted_frame;
+		_painted_frame = frame;
+
 		// The clip plays in the panel, not in the view, so the panel is what has to repaint.
-		invalidate_controls();
+		if (repaint) invalidate_controls();
 	}
 
-	_state.invalidate_view(view_invalid::view_redraw);
+	if (repaint) _state.invalidate_view(view_invalid::view_redraw);
+	return repaint;
 }
 
 void movie_view::toggle_play()
@@ -2695,7 +2724,8 @@ void movie_view::toggle_play()
 	_movie_state.playing = was_playing_movie
 		                       ? movie_view_state::playing_t::nothing
 		                       : movie_view_state::playing_t::movie;
-	_last_tick = platform::tick_count();
+	_last_tick = df::now();
+	_painted_frame = -1;
 
 	// Playing is the user saying where to look, so the preview stops answering for the focused clip.
 	_show_focus_frame = false;
@@ -2739,7 +2769,8 @@ void movie_view::toggle_play_clip()
 		open_clip_session(clip->path, _movie_state.clip_playhead);
 	}
 
-	_last_tick = platform::tick_count();
+	_last_tick = df::now();
+	_painted_frame = -1;
 	_state.invalidate_view(view_invalid::view_redraw | view_invalid::command_state | view_invalid::animations);
 }
 
@@ -4991,7 +5022,7 @@ bool movie_view::confirm_save_or_discard(std::function<void()> after_save)
 			                                     *answer = exit_choice::save;
 			                                     frame->close(false);
 		                                     }),
-		std::make_shared<ui::button_control>(frame, icon_index::del, tt.movie_discard, std::string_view{},
+		std::make_shared<ui::button_control>(frame, icon_index::del, tt.close_without_saving, std::string_view{},
 		                                     [answer, frame]
 		                                     {
 			                                     *answer = exit_choice::discard;

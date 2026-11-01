@@ -6,10 +6,10 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: The application frame. Startup and shutdown, settings load and save, the frame layout,
-// draining view invalidation in dependency order, keyboard routing, switching views, update checks
-// and crash reporting. Command behavior, toolbars, workers and the address box live in
-// app_commands.cpp, app_toolbar.cpp, app_workers.cpp and app_search.cpp.
+// Purpose: The application frame. Startup and shutdown, settings load and save, the frame layout and
+// the status bar it paints, draining view invalidation in dependency order, keyboard routing,
+// switching views, update checks and crash reporting. Command behavior, toolbars, workers and the
+// address box live in app_commands.cpp, app_toolbar.cpp, app_workers.cpp and app_search.cpp.
 
 #include "pch.h"
 
@@ -31,6 +31,7 @@
 #include "view_edit.h"
 #include "view_movie.h"
 #include "view_media.h"
+#include "ui_sid.h"
 #include "view_selector.h"
 #include "view_import.h"
 #include "view_locate.h"
@@ -38,9 +39,11 @@
 #include "view_batch.h"
 #include "view_sync.h"
 #include "view_tags.h"
+#include "view_options.h"
 
 #include "app_sidebar.h"
 #include "app_commands.h"
+#include "app_dialogs.h"
 #include "app_command_line.h"
 #include "app.h"
 
@@ -52,7 +55,7 @@
 
 const std::string_view s_app_name = "Diffractor";
 const std::string_view s_app_version = "127.3";
-const std::string_view g_app_build = "1313";
+const std::string_view g_app_build = "1314";
 
 const ui::chrome_icon_set ui::chrome_icons = {
 	.check = icon_index::check,
@@ -358,6 +361,10 @@ void media_view::update_media_elements()
 			{
 				media_element = std::make_shared<photo_control>(_state, display, _host);
 			}
+			else if (file_type->has_trait(file_traits::sid_tune) && !media_unavailable)
+			{
+				media_element = std::make_shared<sid_monitor_control>(_state, display, _host);
+			}
 			else if (file_type->has_trait(file_traits::visualize_audio) && !media_unavailable)
 			{
 				media_element = std::make_shared<audio_control>(_state, display, _host, true);
@@ -553,37 +560,6 @@ void view_frame::clear_status()
 	update_status({}, {});
 }
 
-void view_frame::draw_view_status(ui::draw_context& dc) const
-{
-	const std::string_view status = _view->status();
-	const auto progress = _view->progress();
-	if (status.empty()) return;
-
-	if (progress.active && progress.total == 0)
-	{
-		const auto alpha = command_progress_alpha(progress.active, progress.total, platform::tick_count());
-		const auto text_extent = dc.measure_text(status, ui::style::font_face::dialog,
-		                                         ui::style::text_style::single_line, _extent.cx);
-		const auto bounds = center_rect(text_extent, recti(_extent)).inflate(dc.padding2, dc.padding1);
-		dc.draw_rounded_rect(bounds, ui::color(ui::style::color::important_background, dc.colors.alpha * alpha),
-		                     dc.padding1);
-		dc.draw_text(status, bounds, ui::style::font_face::dialog, ui::style::text_style::single_line_center,
-		             ui::color(dc.colors.foreground, dc.colors.alpha), {});
-		return;
-	}
-
-	const auto height = dc.text_line_height(ui::style::font_face::dialog) + dc.padding2 * 2;
-	const recti bounds(0, std::max(0, _extent.cy - height), _extent.cx, _extent.cy);
-	dc.draw_rect(bounds, ui::color(ui::style::color::group_background, dc.colors.alpha * 0.94f));
-
-	const auto text = progress.active && progress.total > 0
-		                  ? std::format("{}  {} / {}", status,
-		                                std::clamp(progress.position, int64_t{}, progress.total), progress.total)
-		                  : std::string(status);
-	dc.draw_text(text, bounds.inflate(-dc.padding2, 0), ui::style::font_face::dialog,
-	             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, dc.colors.alpha), {});
-}
-
 void view_frame::draw_status(ui::draw_context& dc) const
 {
 	if (!_status_title.empty() || !_status_text.empty())
@@ -646,6 +622,16 @@ app_frame::app_frame(ui::plat_app_ptr pa) :
 	_selector_frame = std::make_shared<view_frame>(_state);
 	_view_sync = std::make_shared<sync_view>(_state, _view_frame);
 	_view_tags = std::make_shared<tags_view>(_state, _view_frame);
+	_view_options = std::make_shared<options_view>(_state, _view_frame, options_view_actions{
+		                                               [this](const std::string_view code) { select_language(code); },
+		                                               [this] { index_maintenance_invoke(_state, _app_frame); },
+		                                               [this]
+		                                               {
+			                                               return std::static_pointer_cast<void>(
+				                                               std::make_shared<pause_media>(_state));
+		                                               },
+		                                               [this] { return ask_to_save_options(_app_frame); }
+	                                               });
 	_view_import = std::make_shared<import_view>(_state, _view_frame);
 	_view_locate = std::make_shared<locate_view>(_state, _view_frame);
 	_view_rename = std::make_shared<rename_view>(_state, _view_frame);
@@ -776,13 +762,12 @@ void app_frame::prepare_frame()
 			frame_delay = std::min(frame_delay, 1000 / plasma::frames_per_second);
 		}
 
-		// A playing movie composes a new frame per refresh, so it needs the cadence video playback
-		// gets. Left on the idle timer the preview advanced five times a second, which reads as the
-		// picture stepping rather than playing.
+		// A playing movie needs the cadence video playback gets: left on the idle timer the preview
+		// advanced five times a second, which reads as the picture stepping rather than playing. The view
+		// repaints itself only when its picture can have changed - a frame of the movie, not of the display.
 		if (_state.view_mode() == view_type::movie && _view_movie && _view_movie->is_playing())
 		{
 			_view_movie->tick();
-			vf->frame()->invalidate();
 			frame_delay = std::min(frame_delay, animation_delay_ms);
 		}
 
@@ -870,15 +855,19 @@ void app_frame::tick()
 		// The sidebar is embedded in the items view and shares its frame, so nothing else ticks it.
 		if (_view_items->sidebar_visible()) _view_items->sidebar()->tick();
 		_view_frame->tick();
-		_view_items->update_edit_caret();
 		_selector_frame->tick();
 
 		if (_state.view_mode() == view_type::movie) _view_movie->tick();
 
 		const auto progress = _view->progress();
-		const auto animate_status = status_needs_animation(progress.active, progress.total, setting.show_debug_info);
+		const auto repaint = status_repaints(progress.active, progress.total, setting.show_debug_info);
 
-		if (animate_status && _view_frame)
+		if (repaint.status_bar && !_status_bar_bounds.is_empty())
+		{
+			_app_frame->invalidate(_status_bar_bounds);
+		}
+
+		if (repaint.view && _view_frame)
 		{
 			_view_frame->frame()->invalidate();
 		}
@@ -948,7 +937,16 @@ void app_frame::tick_screenshot()
 
 	if (_screenshot_stage == 0)
 	{
-		if (!_state.has_display_items()) return;
+		const auto scene = std::string_view(command_line.screenshot_scene);
+		const auto options_command = str::icmp(scene, "options") == 0
+			                             ? commands::options
+			                             : str::icmp(scene, "options-sidebar") == 0
+			                             ? commands::options_sidebar
+			                             : commands::none;
+		const auto is_options = options_command != commands::none;
+
+		// The Options view shows no items, so it need not wait for any.
+		if (!is_options && !_state.has_display_items()) return;
 
 		_pa->sys_command(ui::sys_command_type::RESTORE);
 		auto window_bounds = _app_frame->window_bounds();
@@ -956,8 +954,11 @@ void app_frame::tick_screenshot()
 		window_bounds.bottom = window_bounds.top + 1000;
 		_app_frame->window_bounds(window_bounds, true);
 
-		const auto scene = std::string_view(command_line.screenshot_scene);
-		if (str::icmp(scene, "items") == 0)
+		if (is_options)
+		{
+			invoke(options_command);
+		}
+		else if (str::icmp(scene, "items") == 0)
 		{
 			if (!_state.has_selection()) _state.select_next(_view_frame, true, false, false);
 			_state.view_mode(view_type::items);
@@ -1201,16 +1202,21 @@ static int clamp_pane_width(const int width, const int available, const int min_
 
 void app_frame::layout(ui::measure_context& mc)
 {
-	if (!df::is_closing && _app_frame && _view && _navigate1 && _search_edit && _navigate2 && _navigate3 && !_extent.
-		is_empty())
+	if (!df::is_closing && _app_frame && _view && _navigate1 && _search_edit && _navigate2 && _navigate3 &&
+		_filter_edit && _item_size && !_extent.is_empty())
 	{
 		update_button_state(true);
 
 		const auto view_mode = _state.view_mode();
-		const auto view_processing = _view && _view->progress().active;
+		const auto view_processing = _view->progress().active;
 		const auto display = _state.display_state();
-		const auto show_top_bar = !_state.is_full_screen && (!display || !display->is_zoom_mode());
-		const auto show_items_controls = show_top_bar && view_mode == view_type::items;
+		// Fullscreen and zoom mode give the whole window to the picture, so the title bar and the
+		// status bar come and go together. Zoom is the picture's only in the views that show it: a task
+		// opened while a photo was zoomed keeps its bars, and with them its Save, Run and Cancel.
+		const auto picture_zoomed = _state.is_items_or_media_view() && display && display->is_zoom_mode();
+		const auto show_bars = !_state.is_full_screen && !picture_zoomed;
+		const auto declared = _view->bars();
+		const auto show_navigation = show_bars && declared.navigation;
 		const auto can_show_view_controls = view_mode == view_type::edit ||
 			view_mode == view_type::movie ||
 			view_mode == view_type::rename ||
@@ -1218,7 +1224,10 @@ void app_frame::layout(ui::measure_context& mc)
 			view_mode == view_type::sync ||
 			view_mode == view_type::import ||
 			view_mode == view_type::locate ||
-			view_mode == view_type::tags;
+			view_mode == view_type::tags ||
+			view_mode == view_type::options;
+		// Options has nothing beside its controls, so they take the whole body and there is no splitter.
+		const auto view_controls_fill = view_mode == view_type::options;
 		const auto show_selector = selector_strip_for_view(view_mode) != selector_strip::none;
 
 		const auto scale_factor = mc.scale_factor;
@@ -1231,31 +1240,55 @@ void app_frame::layout(ui::measure_context& mc)
 		const auto navigate1_extent = _navigate1->measure_toolbar(_extent.cx);
 		const auto navigate2_extent = _navigate2->measure_toolbar(_extent.cx);
 		const auto navigate3_extent = _navigate3->measure_toolbar(_extent.cx);
-		const auto media_edit_commands_extent = _media_edit_commands->measure_toolbar(_extent.cx);
-		const auto tool_commands_extent = _tool_commands->measure_toolbar(_extent.cx);
-		const auto import_commands_extent = _import_commands->measure_toolbar(_extent.cx);
-		const auto locate_commands_extent = _locate_commands->measure_toolbar(_extent.cx);
-		const auto sync_commands_extent = _sync_commands->measure_toolbar(_extent.cx);
-		const auto tags_commands_extent = _tags_commands->measure_toolbar(_extent.cx);
-		const auto movie_commands_extent = _movie_commands->measure_toolbar(_extent.cx);
-		const auto busy_commands_extent = _busy_commands->measure_toolbar(_extent.cx);
 
-		const auto cy_address = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
+		// Bound to lvalues, not a temporary: each bar lives in _bars, but a reference returned from a
+		// call that was handed a temporary reads as dangling to GCC.
+		static const std::vector<bar_entry> no_entries;
+		const auto& top_entries = declared.navigation ? no_entries : declared.top;
+		const auto& top_bar = bar(top_entries);
+		const auto& bottom_bar = bar(view_processing ? running_task_bar() : declared.bottom);
+		const auto& leading_bar = bar(view_processing ? no_entries : declared.bottom_leading);
+
+		const auto line_height = mc.text_line_height(ui::style::font_face::dialog);
+		const auto cy_address = line_height + mc.padding2 * 2;
+		const auto cy_control = line_height + mc.padding2;
+		const auto top_slots = measure_bar(mc, top_bar, cy_control);
+		const auto bottom_slots = measure_bar(mc, bottom_bar, cy_control);
+		const auto leading_slots = measure_bar(mc, leading_bar, cy_control);
+
+		// Every bar's toolbars share one style, so measuring all of them gives both bars a height that
+		// stays put as views come and go.
+		auto toolbar_cy = 0;
+
+		for (const auto& [entries, parts] : _bars)
+		{
+			for (const auto& part : parts)
+			{
+				if (part.toolbar) toolbar_cy = std::max(toolbar_cy, part.toolbar->measure_toolbar(_extent.cx).cy);
+			}
+		}
+
 		const auto top_content_height = std::max({
-			navigate1_extent.cy, navigate2_extent.cy, navigate3_extent.cy, cy_address,
-			media_edit_commands_extent.cy, tool_commands_extent.cy, import_commands_extent.cy,
-			sync_commands_extent.cy, locate_commands_extent.cy, tags_commands_extent.cy,
-			movie_commands_extent.cy, busy_commands_extent.cy
+			navigate1_extent.cy, navigate2_extent.cy, navigate3_extent.cy, cy_address, toolbar_cy
 		}) + mc.padding2;
 		const auto top_height = df::mul_div(top_content_height, 6, 5);
+		const auto status_height = std::max(toolbar_cy, cy_control) + mc.padding2;
 
 		const auto client_bounds = recti(_extent).inflate(_state.is_full_screen ? 0 : -scale1);
-		const auto body_top = show_top_bar ? client_bounds.top + top_height : client_bounds.top;
-		_top_bar_bounds = show_top_bar
+		const auto body_top = show_bars ? client_bounds.top + top_height : client_bounds.top;
+		const auto body_bottom = show_bars
+			                         ? std::max(body_top, client_bounds.bottom - status_height)
+			                         : client_bounds.bottom;
+		_top_bar_bounds = show_bars
 			                  ? recti(client_bounds.left, client_bounds.top, client_bounds.right, body_top)
 			                  : recti{};
+		_status_bar_bounds = show_bars
+			                     ? recti(client_bounds.left, body_bottom, client_bounds.right, client_bounds.bottom)
+			                     : recti{};
 		const auto selector_height = show_selector ? std::min(scale150, client_bounds.height() / 3) : 0;
-		const auto splitter_width = can_show_view_controls ? df::mul_div(mc.scroll_width, 3, 5) : 0;
+		const auto splitter_width = can_show_view_controls && !view_controls_fill
+			                            ? df::mul_div(mc.scroll_width, 3, 5)
+			                            : 0;
 		const auto splitter_min_pane = df::round(200 * scale_factor);
 		const auto splitter_available = std::max(0, client_bounds.width() - splitter_width);
 		const auto stored_splitter = setting.view_splitter(view_mode);
@@ -1263,7 +1296,9 @@ void app_frame::layout(ui::measure_context& mc)
 			                                     ? df::mul_div(splitter_available, stored_splitter,
 			                                                   settings_t::view_splitter_max)
 			                                     : std::max(client_bounds.width() / 4, scale400);
-		const auto cx_view_controls = can_show_view_controls
+		const auto cx_view_controls = view_controls_fill
+			                              ? client_bounds.width()
+			                              : can_show_view_controls
 			                              ? clamp_pane_width(preferred_view_controls, splitter_available,
 			                                                 splitter_min_pane)
 			                              : 0;
@@ -1294,85 +1329,50 @@ void app_frame::layout(ui::measure_context& mc)
 		const auto address_y = center_y(cy_address);
 		const recti search_bounds(address_left, address_y, address_right, address_y + cy_address);
 
-		_app_logo->text(view_mode == view_type::items ? s_app_name : _view->title());
+		_app_logo->text(declared.navigation ? s_app_name : _view->title());
 		const auto title_left = client_bounds.left + mc.padding1;
-		// Outside the items view the address bar is not shown, so nav1 is no bound at all and a long
-		// view title would run into the command bar, which command_bounds then clips against the
-		// window edge. The commands are the view's primary affordance, so the title yields to them.
-		const auto active_commands_extent =
-			view_processing
-				? busy_commands_extent
-				: view_mode == view_type::edit
-				? media_edit_commands_extent
-				: view_mode == view_type::rename || view_mode == view_type::batch
-				? tool_commands_extent
-				: view_mode == view_type::import
-				? import_commands_extent
-				: view_mode == view_type::locate
-				? locate_commands_extent
-				: view_mode == view_type::sync
-				? sync_commands_extent
-				: view_mode == view_type::tags
-				? tags_commands_extent
-				: view_mode == view_type::movie
-				? movie_commands_extent
-				: sizei{};
-		const auto title_limit = show_items_controls
-			                         ? nav1_bounds.left
-			                         : client_bounds.right - mc.padding2 - active_commands_extent.cx;
-		const auto title_available_right = std::max(title_left, title_limit - mc.padding1);
+		// A task view's own title-bar commands are placed first and the title takes what they leave, so
+		// a long title yields to Close rather than pushing it off the window. Items' title stops at its
+		// navigation buttons.
+		const auto top_arrangement = arrange_bar(
+			recti(title_left, client_bounds.top, client_bounds.right - mc.padding2, body_top), top_slots,
+			mc.padding1);
+		const auto title_limit = declared.navigation
+			                         ? nav1_bounds.left - mc.padding1
+			                         : top_arrangement.remainder.right;
+		const auto title_available_right = std::max(title_left, title_limit);
 		const auto title_extent = _app_logo->measure(mc, title_available_right - title_left);
 		const auto title_top = center_y(title_extent.cy);
-		_title_bounds = show_top_bar
+		_title_bounds = show_bars
 			                ? recti(title_left, title_top, title_left + title_extent.cx, title_top + title_extent.cy)
 			                : recti{};
 		_app_logo->bounds = _title_bounds;
 
-		const auto command_bounds = [&](const sizei extent)
-		{
-			const auto available_left = _title_bounds.right + mc.padding1;
-			const auto available_right = client_bounds.right - mc.padding2;
-			const auto available_width = std::max(0, available_right - available_left);
-			const auto width = std::min(extent.cx, available_width);
-			const auto x = available_right - width;
-			const auto y = center_y(extent.cy);
-			return recti(x, y, x + width, y + extent.cy);
-		};
-		const auto media_edit_bounds = command_bounds(media_edit_commands_extent);
-		const auto tool_commands_bounds = command_bounds(tool_commands_extent);
-		const auto import_commands_bounds = command_bounds(import_commands_extent);
-		const auto locate_commands_bounds = command_bounds(locate_commands_extent);
-		const auto sync_commands_bounds = command_bounds(sync_commands_extent);
-		const auto tags_commands_bounds = command_bounds(tags_commands_extent);
-		const auto movie_commands_bounds = command_bounds(movie_commands_extent);
-		const auto busy_commands_bounds = command_bounds(busy_commands_extent);
+		// The status bar: the view's own controls at the trailing end, kept clear of the corner the
+		// window is resized by, then whatever the view starts the bar with at the leading end; the
+		// view's status takes the room between them. The trailing controls are placed first, so a
+		// short bar gives up the leading ones before them.
+		const recti status_inner(client_bounds.left + mc.padding2, body_bottom,
+		                         client_bounds.right - mc.padding1 - mc.handle_cxy, client_bounds.bottom);
+		const auto bottom_arrangement = arrange_bar(status_inner, bottom_slots, mc.padding1);
+		const auto leading_arrangement = arrange_bar(bottom_arrangement.remainder, leading_slots, mc.padding1,
+		                                             bar_alignment::leading);
+		_status_text_bounds = show_bars ? leading_arrangement.remainder : recti{};
 
-		const auto show_media_edit_commands = !view_processing && view_mode == view_type::edit;
-		const auto show_tool_commands = !view_processing &&
-			(view_mode == view_type::rename || view_mode == view_type::batch);
-		const auto show_import_commands = !view_processing && view_mode == view_type::import;
-		const auto show_locate_commands = !view_processing && view_mode == view_type::locate;
-		const auto show_sync_commands = !view_processing && view_mode == view_type::sync;
-		const auto show_tags_commands = !view_processing && view_mode == view_type::tags;
-		const auto show_movie_commands = !view_processing && view_mode == view_type::movie;
-		const auto show_busy_commands = view_processing && can_show_view_controls;
-
-		const auto selector_top = client_bounds.bottom - selector_height;
+		const auto selector_top = body_bottom - selector_height;
 		const recti view_bounds(client_bounds.left, body_top, content_right, selector_top);
-		const recti selector_bounds(client_bounds.left, selector_top, content_right, client_bounds.bottom);
-		const recti view_controls_bounds(content_right + splitter_width, body_top, client_bounds.right,
-		                                 client_bounds.bottom);
+		const recti selector_bounds(client_bounds.left, selector_top, content_right, body_bottom);
+		const recti view_controls_bounds(content_right + splitter_width, body_top, client_bounds.right, body_bottom);
 
-		_controls_splitter.bounds = can_show_view_controls
-			                            ? recti(content_right, body_top, content_right + splitter_width,
-			                                    client_bounds.bottom)
+		_controls_splitter.bounds = can_show_view_controls && !view_controls_fill
+			                            ? recti(content_right, body_top, content_right + splitter_width, body_bottom)
 			                            : recti{};
 		_controls_splitter.client_left = client_bounds.left;
 		_controls_splitter.client_right = client_bounds.right;
 		_controls_splitter.width = splitter_width;
 		_controls_splitter.min_pane = splitter_min_pane;
 
-		if (!can_show_view_controls)
+		if (!can_show_view_controls || view_controls_fill)
 		{
 			_controls_splitter.hover = false;
 			_controls_splitter.tracking = false;
@@ -1380,22 +1380,65 @@ void app_frame::layout(ui::measure_context& mc)
 
 		ui::control_layouts positions;
 		positions.emplace_back(_navigate1, nav1_bounds,
-		                       show_items_controls && nav1_bounds.left > client_bounds.left);
+		                       show_navigation && nav1_bounds.left > client_bounds.left);
 		positions.emplace_back(_search_edit, search_bounds,
-		                       show_items_controls && search_bounds.right < nav3_bounds.left);
+		                       show_navigation && search_bounds.right < nav3_bounds.left);
 		positions.emplace_back(_navigate2, nav2_bounds,
-		                       show_items_controls && nav2_bounds.right < nav3_bounds.left);
-		positions.emplace_back(_navigate3, nav3_bounds, show_items_controls);
+		                       show_navigation && nav2_bounds.right < nav3_bounds.left);
+		positions.emplace_back(_navigate3, nav3_bounds, show_navigation);
 		positions.emplace_back(_view_frame->frame(), view_bounds, _view->_show_render_window);
 		positions.emplace_back(_selector_frame->frame(), selector_bounds, show_selector);
-		positions.emplace_back(_media_edit_commands, media_edit_bounds, show_media_edit_commands);
-		positions.emplace_back(_tool_commands, tool_commands_bounds, show_tool_commands);
-		positions.emplace_back(_import_commands, import_commands_bounds, show_import_commands);
-		positions.emplace_back(_locate_commands, locate_commands_bounds, show_locate_commands);
-		positions.emplace_back(_sync_commands, sync_commands_bounds, show_sync_commands);
-		positions.emplace_back(_tags_commands, tags_commands_bounds, show_tags_commands);
-		positions.emplace_back(_movie_commands, movie_commands_bounds, show_movie_commands);
-		positions.emplace_back(_busy_commands, busy_commands_bounds, show_busy_commands);
+
+		// Each part of the two bars goes where its arrangement put it. Every other bar control is
+		// hidden, so a view switch never leaves the previous view's commands on screen.
+		std::map<const ui::control_base*, recti> placed;
+		_totals_bounds = {};
+
+		const auto place = [this, &placed](const frame_bar& b, const bar_arrangement& a)
+		{
+			for (auto i = 0u; i < b.size(); ++i)
+			{
+				const auto bounds = a.slots[i];
+				if (bounds.is_empty()) continue;
+
+				if (b[i].toolbar) placed[b[i].toolbar.get()] = bounds;
+				else if (b[i].control == bar_control::item_filter) placed[_filter_edit.get()] = bounds;
+				else if (b[i].control == bar_control::item_size) placed[_item_size.get()] = bounds;
+				else _totals_bounds = bounds;
+			}
+		};
+
+		if (show_bars)
+		{
+			place(top_bar, top_arrangement);
+			place(bottom_bar, bottom_arrangement);
+			place(leading_bar, leading_arrangement);
+		}
+
+		const auto position = [&positions, &placed](const ui::control_base_ptr& control)
+		{
+			const auto found = placed.find(control.get());
+			const auto is_placed = found != placed.end();
+			positions.emplace_back(control, is_placed ? found->second : recti{}, is_placed);
+		};
+
+		for (const auto& [entries, parts] : _bars)
+		{
+			for (const auto& part : parts)
+			{
+				if (part.toolbar) position(part.toolbar);
+			}
+		}
+
+		position(_filter_edit);
+		position(_item_size);
+
+		// Focus left in a box the bar no longer shows would route every key somewhere the user cannot
+		// see, so the keyboard goes back to the view.
+		if (_filter_has_focus && !placed.contains(_filter_edit.get()))
+		{
+			queue_ui([this] { focus_view(); });
+		}
 
 		if (_view_controls && _view_controls->_dlg)
 		{
@@ -1413,6 +1456,10 @@ void app_frame::layout(ui::measure_context& mc)
 
 		_view_bounds = view_bounds;
 		_app_frame->apply_layout(positions, {0, 0});
+
+		// The frame paints the status and the totals itself, so their band repaints with every layout
+		// that may have moved them.
+		if (!_status_bar_bounds.is_empty()) _app_frame->invalidate(_status_bar_bounds);
 	}
 }
 
@@ -1575,6 +1622,9 @@ void app_frame::complete_pending_events()
 
 			if (pop_invalid_flag(_invalids, view_invalid::status))
 			{
+				// The status is painted in the frame's status bar, and an open-ended run with no rows yet
+				// also says it across the empty list.
+				if (!_status_bar_bounds.is_empty()) _app_frame->invalidate(_status_bar_bounds);
 				_view_frame->frame()->invalidate();
 
 				// The task view on screen reports under one key, so switching to a view that is not
@@ -1592,6 +1642,9 @@ void app_frame::complete_pending_events()
 			if (pop_invalid_flag(_invalids, view_invalid::options_save))
 			{
 				update_command_text();
+				// That resets labels the command state derives - Run's names the task - so the state is
+				// derived again later in this pass, before anything paints.
+				invalidate_view(view_invalid::command_state);
 				save_options();
 
 				_view_frame->frame()->options_changed();
@@ -1602,13 +1655,16 @@ void app_frame::complete_pending_events()
 				_search_edit->options_changed();
 				_navigate2->options_changed();
 				_navigate3->options_changed();
-				_media_edit_commands->options_changed();
-				_import_commands->options_changed();
-				_locate_commands->options_changed();
-				_tool_commands->options_changed();
-				_sync_commands->options_changed();
-				_tags_commands->options_changed();
-				_movie_commands->options_changed();
+				_filter_edit->options_changed();
+				_item_size->options_changed();
+
+				for (const auto& [entries, parts] : _bars)
+				{
+					for (const auto& part : parts)
+					{
+						if (part.toolbar) part.toolbar->options_changed();
+					}
+				}
 
 				_state.update_search_is_favorite_or_collection_root();
 
@@ -1771,6 +1827,9 @@ void app_frame::complete_pending_events()
 					_view_frame->layout();
 					_selector_frame->layout();
 				}
+
+				// Every change of thumbnail size relays the view out, whichever control made it.
+				update_item_size_slider();
 			}
 
 			{
@@ -1869,6 +1928,10 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 	if (df::command_active == 0)
 	{
+		// The filter box is a native edit, so it reaches here first only for the keys an edit hands
+		// up; the rest it handles itself.
+		if (_filter_has_focus && filter_key_down(key, keys)) return true;
+
 		// Step the prediction list without committing. The address bar is drawn by the items view,
 		// so the arrow and tab keys have to be claimed before the view sees them as text input.
 		const auto step_predictions = [this](const int delta)
@@ -2072,7 +2135,8 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 		const auto normalized_key = keys::normalize_numpad(key);
 		const auto display = _state.display_state();
-		const auto zoom_mode = display && display->is_zoom_mode();
+		// As for the bars: a task view opened over a zoomed photo keeps its own shortcuts.
+		const auto zoom_mode = _state.is_items_or_media_view() && display && display->is_zoom_mode();
 
 		if (zoom_mode && !keys.control && !keys.alt)
 		{
@@ -2133,7 +2197,7 @@ bool app_frame::text_input(const std::string_view text)
 
 ui::focus_mode app_frame::focus_mode() const
 {
-	if (_search_has_focus) return ui::focus_mode::text_edit;
+	if (_search_has_focus || _filter_has_focus) return ui::focus_mode::text_edit;
 	if (_view_has_focus && _view) return _view->focus_mode();
 	return ui::focus_mode::none;
 }
@@ -2179,10 +2243,9 @@ void app_frame::toggle_full_screen()
 		}
 	}
 
-	// Full screen swaps to the media view, so release text focus before hiding the windowed chrome.
-	if (_search_has_focus)
+	// Full screen swaps to the media view and hides both bars, so release text focus first.
+	if (_search_has_focus || _filter_has_focus)
 	{
-		_view_items->blur_rendered_filter();
 		focus_view();
 	}
 
@@ -2266,6 +2329,10 @@ void app_frame::focus_changed(const bool has_focus, const ui::control_base_ptr& 
 	if (child == _search_edit)
 	{
 		focus_search(has_focus);
+	}
+	else if (child == _filter_edit)
+	{
+		focus_filter(has_focus);
 	}
 
 	_view_has_focus = _view_frame->frame()->has_focus();
@@ -2487,6 +2554,8 @@ void app_frame::view_changed(const view_type m)
 	case view_type::tags: v = _view_tags;
 		vc = _view_tags->controls(_app_frame);
 		break;
+	case view_type::options: v = _view_options;
+		vc = _view_options->controls(_app_frame);
 		break;
 	default:
 		break;
@@ -2547,6 +2616,25 @@ void app_frame::language_changed(const std::string_view lang_code)
 	// Explicit, because visual_options no longer carries the sidebar: every sidebar label is translated,
 	// so a language change is one of the few option changes that really does rebuild it.
 	invalidate_view(view_invalid::visual_options | view_invalid::sidebar);
+}
+
+void app_frame::select_language(const std::string_view lang_code)
+{
+	setting.language = lang_code;
+
+	if (str::icmp(lang_code, "en") == 0)
+	{
+		tt.clear();
+	}
+	else
+	{
+		const auto lang_folder = known_path(platform::known_folder::running_app_folder).combine("languages");
+		const auto lang_path = lang_folder.combine_file_ext(lang_code, ".po");
+		tt.load_lang(lang_path.name(), load_po(lang_path));
+		register_file_group_spellings();
+	}
+
+	language_changed(lang_code);
 }
 
 void app_frame::invoke(const command_info_ptr& command)
@@ -2702,6 +2790,8 @@ void app_frame::on_window_paint(ui::draw_context& dc)
 		_app_logo->render(dc, {});
 	}
 
+	draw_status_bar(dc);
+
 	if (!_controls_splitter.bounds.is_empty())
 	{
 		// The app frame clears to toolbar_background, so the strip is repainted to match the
@@ -2721,6 +2811,76 @@ void app_frame::on_window_paint(ui::draw_context& dc)
 	const auto clr = ui::style::color::view_background;
 	const auto border_clr = ui::color(clr, dc.colors.alpha);
 	dc.draw_border(border_outside.inflate(-scale1), border_outside, border_clr, border_clr);
+}
+
+// The frame paints the parts of the status bar that are not controls: the totals among them, and the
+// view's status in the room they leave, which says what the view is doing. A run shows it in a pill: one
+// that fills as the count rises, or that pulses while the run cannot yet say how much is left.
+void app_frame::draw_status_bar(ui::draw_context& dc)
+{
+	_status_text_clipped = false;
+	if (_status_bar_bounds.is_empty() || !_view) return;
+
+	constexpr auto font = ui::style::font_face::dialog;
+	const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
+
+	if (!_totals_bounds.is_empty())
+	{
+		dc.draw_text(_totals_text, _totals_bounds, font, ui::style::text_style::single_line_center, text_color, {});
+	}
+
+	const auto status = _view->status();
+	const auto progress = _view->progress();
+	const auto counted = progress.active && progress.total > 0;
+	const auto position = std::clamp(progress.position, int64_t{}, std::max(progress.total, int64_t{}));
+
+	std::string text(status);
+	if (counted) text = std::format("{}{}{} / {}", status, status.empty() ? "" : "  ", position, progress.total);
+	if (text.empty() || _status_text_bounds.is_empty()) return;
+
+	auto text_bounds = _status_text_bounds;
+
+	if (progress.active)
+	{
+		// Measured at the final count, so the pill does not twitch every time a digit is added.
+		const auto widest = counted
+			                    ? std::format("{}{}{} / {}", status, status.empty() ? "" : "  ", progress.total,
+			                                  progress.total)
+			                    : text;
+		const auto extent = dc.measure_text(widest, font, ui::style::text_style::single_line,
+		                                    _status_text_bounds.width());
+		const auto height = std::min(_status_text_bounds.height(), extent.cy + dc.padding1 * 2);
+		const auto top = _status_text_bounds.top + (_status_text_bounds.height() - height) / 2;
+		const recti pill(_status_text_bounds.left, top,
+		                 std::min(_status_text_bounds.right, _status_text_bounds.left + extent.cx + dc.padding2 * 2),
+		                 top + height);
+
+		if (counted)
+		{
+			dc.draw_rounded_rect(pill, ui::color(ui::style::color::important_background, dc.colors.alpha * 0.3f),
+			                     dc.padding1);
+			auto done = pill;
+			done.right = pill.left + df::mul_div(pill.width(), static_cast<int>(std::min<int64_t>(position, INT_MAX)),
+			                                     static_cast<int>(std::min<int64_t>(progress.total, INT_MAX)));
+			if (!done.is_empty())
+			{
+				dc.draw_rounded_rect(done, ui::color(ui::style::color::important_background, dc.colors.alpha),
+				                     dc.padding1);
+			}
+		}
+		else
+		{
+			const auto alpha = command_progress_alpha(progress.active, progress.total, platform::tick_count());
+			dc.draw_rounded_rect(pill, ui::color(ui::style::color::important_background, dc.colors.alpha * alpha),
+			                     dc.padding1);
+		}
+
+		text_bounds = pill.inflate(-dc.padding2, 0);
+	}
+
+	const auto extent = dc.measure_text(text, font, ui::style::text_style::single_line, 100000);
+	_status_text_clipped = extent.cx > text_bounds.width();
+	dc.draw_text(text, text_bounds, font, ui::style::text_style::single_line, text_color, {});
 }
 
 void app_frame::update_controls_splitter_hover(const bool hover)
@@ -2761,6 +2921,7 @@ void app_frame::on_mouse_move(const pointi loc, const bool is_tracking)
 
 	update_controls_splitter_hover(!_controls_splitter.bounds.is_empty() &&
 		_controls_splitter.bounds.contains(loc));
+	update_status_hover(loc);
 
 	if (_app_logo)
 	{
@@ -2794,6 +2955,7 @@ void app_frame::on_mouse_move(const pointi loc, const bool is_tracking)
 void app_frame::on_mouse_leave(const pointi loc)
 {
 	update_controls_splitter_hover(false);
+	update_status_hover({-1, -1});
 
 	if (_app_logo_hover)
 	{
@@ -3337,8 +3499,7 @@ static constexpr commands s_menu_frame[] = {
 	commands::refresh,
 	commands::tool_eject,
 	commands::none,
-	commands::options_collection,
-	commands::options_sidebar,
+	commands::options,
 	commands::favorite_tags,
 	commands::none,
 	commands::view_show_sidebar,
@@ -3689,6 +3850,8 @@ void app_frame::free_graphics_resources(const bool items_only, const bool offscr
 			// ever rebuilt when null, so leaving the stale buffer here leaves the visualizer blank
 			// for the rest of the session after a device loss or a hardware/software downgrade.
 			d->_audio_verts.reset();
+			// So do the SID monitor's, which it makes again when it next draws.
+			d->_sid_motion.reset();
 
 			if (d->_session)
 			{

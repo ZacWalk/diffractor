@@ -9,11 +9,14 @@
 // Purpose: FFmpeg media decoder implementation. Provides video/audio decoding, frame scaling,
 // audio resampling, metadata extraction for the files libfiles cannot describe, hardware acceleration
 // support, decode-thread preparation of pictures for upload, and the HDR-to-SDR tone mapping cube.
-// A played file's streams and tags are described by libfiles' reading of its container.
+// A played file's streams and tags are described by libfiles' reading of its container. Subtitles are
+// decoded here, a stream's as the read thread meets its packets and a sidecar's whole, into av_subtitle's
+// events.
 
 #include "pch.h"
 #include "av_format.h"
 #include "av_player.h"
+#include "av_sid.h"
 #include "metadata_xmp.h"
 #include "files.h"
 #include "libfiles/media.h"
@@ -733,6 +736,15 @@ int try_avcodec_send_packet(AVCodecContext* avctx, const AVPacket* avpkt)
 // (playback plus any preview) keep it set for as long as any hardware decode is in progress.
 static std::atomic<int> g_hw_decode_sessions{0};
 
+// The layout of a hardware frame's surfaces; AV_PIX_FMT_NONE for a frame in system memory.
+static int hw_surface_format(const AVFrame& frame)
+{
+	const auto* const frames = frame.hw_frames_ctx
+		                           ? std::bit_cast<const AVHWFramesContext*>(frame.hw_frames_ctx->data)
+		                           : nullptr;
+	return frames ? frames->sw_format : AV_PIX_FMT_NONE;
+}
+
 ////////////////////////////////////////////////
 ////////////////////////////////////////////////
 ////////////////////////////////////////////////
@@ -822,7 +834,7 @@ public:
 
 	void request_cpu_frames() const override
 	{
-		av_request_cpu_video_frames();
+		av_request_cpu_video_frames(hw_surface_format(*frm));
 	}
 
 private:
@@ -1521,6 +1533,12 @@ void av_format_decoder::close()
 	// draining them first - and draining a hardware decoder is far from free.
 	avcodec_free_context(&_video_context);
 	avcodec_free_context(&_audio_context);
+	avcodec_free_context(&_subtitle_context);
+	_subtitle_stream_index = -1;
+	_subtitle_base = {};
+	_subtitle_script = {};
+	_subtitle_canvas = {};
+	_subtitle_forced = false;
 	av_buffer_unref(&_hw_device_ctx);
 
 	// Release this decoder's hold on the hardware-decode crash guard. Clearing on the
@@ -1579,6 +1597,328 @@ void av_format_decoder::close()
 	_video_start_time = 0;
 	_audio_start_time = 0;
 	_time_origin = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Subtitles: one of the file's own streams, decoded as its packets are read, or a sidecar, decoded whole.
+
+// The script a decoder's text is styled by: FFmpeg gives every text subtitle decoder an ASS header, so SRT and
+// WebVTT read through the same styles as ASS.
+static subtitle_script script_of(const AVCodecContext* const c)
+{
+	if (c && c->subtitle_header && c->subtitle_header_size > 0)
+	{
+		return parse_ass_header({reinterpret_cast<const char*>(c->subtitle_header),
+		                         static_cast<size_t>(c->subtitle_header_size)});
+	}
+
+	return {};
+}
+
+static AVCodecContext* open_subtitle_decoder(const AVStream* const stream)
+{
+	if (!stream || !stream->codecpar || stream->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE) return nullptr;
+
+	const auto* const codec = avcodec_find_decoder(stream->codecpar->codec_id);
+	if (!codec) return nullptr;
+
+	auto* c = avcodec_alloc_context3(codec);
+	if (!c) return nullptr;
+
+	if (avcodec_parameters_to_context(c, stream->codecpar) < 0)
+	{
+		avcodec_free_context(&c);
+		return nullptr;
+	}
+
+	c->pkt_timebase = stream->time_base;
+	// Older subtitle files are often in a legacy code page, which FFmpeg would refuse whole as invalid UTF-8.
+	// Its text is taken as it is and converted after decoding, by subtitle_text_as_utf8.
+	c->sub_charenc_mode = FF_SUB_CHARENC_MODE_IGNORE;
+
+	if (avcodec_open2(c, codec, nullptr) != 0)
+	{
+		avcodec_free_context(&c);
+		return nullptr;
+	}
+
+	return c;
+}
+
+static bool is_valid_utf8(const std::string_view s)
+{
+	for (size_t i = 0; i < s.size();)
+	{
+		const auto c = static_cast<uint8_t>(s[i]);
+		const auto length = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 0;
+		if (length == 0 || (length > 1 && c < 0xC2) || i + length > s.size()) return false;
+
+		for (auto k = 1; k < length; ++k)
+		{
+			if ((static_cast<uint8_t>(s[i + k]) & 0xC0) != 0x80) return false;
+		}
+
+		i += length;
+	}
+
+	return true;
+}
+
+std::string subtitle_text_as_utf8(const std::string_view bytes)
+{
+	const auto has_bom = bytes.starts_with("\xEF\xBB\xBF") || bytes.starts_with("\xFF\xFE") ||
+		bytes.starts_with("\xFE\xFF");
+	if (has_bom || is_valid_utf8(bytes)) return std::string(bytes);
+
+	// Windows-1252's 0x80-0x9F; the rest of its upper half is Latin-1.
+	static constexpr char16_t high[32] = {
+		0x20AC, 0x81, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x8D,
+		0x017D, 0x8F, 0x90, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A,
+		0x0153, 0x9D, 0x017E, 0x0178,
+	};
+
+	std::string result;
+	result.reserve(bytes.size() + bytes.size() / 8);
+
+	for (const auto ch : bytes)
+	{
+		const auto c = static_cast<uint8_t>(ch);
+		const char32_t cp = c < 0x80 ? c : c < 0xA0 ? high[c - 0x80] : c;
+		str::char32_to_utf8(std::back_inserter(result), static_cast<uint32_t>(cp));
+	}
+
+	return result;
+}
+
+// One decoded subtitle as events: text with the styles its script names, or pictures with their palettes.
+// Times are seconds from `origin`, in AV_TIME_BASE units, as the presentation's are. An event with neither
+// text nor pictures marks the moment an image subtitle is cleared.
+static std::vector<subtitle_event> to_subtitle_events(const AVSubtitle& sub, const int64_t packet_pts,
+                                                      const double packet_duration, const int64_t origin,
+                                                      const subtitle_script& script, const sizei canvas,
+                                                      const bool forced_stream, const int gen)
+{
+	std::vector<subtitle_event> result;
+	const auto pts = sub.pts != AV_NOPTS_VALUE ? sub.pts : packet_pts;
+	if (pts == AV_NOPTS_VALUE) return result;
+
+	const auto base = static_cast<double>(pts - origin) / AV_TIME_BASE;
+	const auto start = base + sub.start_display_time / 1000.0;
+	auto end = sub.end_display_time != 0 && sub.end_display_time != UINT32_MAX ? base + sub.end_display_time / 1000.0 : 0.0;
+	if (end <= start && packet_duration > 0) end = base + packet_duration;
+
+	if (sub.num_rects == 0)
+	{
+		subtitle_event clear;
+		clear.start = start;
+		clear.end = start;
+		clear.gen = gen;
+		result.push_back(std::move(clear));
+		return result;
+	}
+
+	subtitle_event pictures;
+
+	for (unsigned i = 0; i < sub.num_rects; ++i)
+	{
+		const auto* const rect = sub.rects[i];
+		if (!rect) continue;
+
+		const auto forced = forced_stream || (rect->flags & AV_SUBTITLE_FLAG_FORCED) != 0;
+
+		if (rect->type == SUBTITLE_BITMAP && rect->w > 0 && rect->h > 0 && rect->w <= 8192 && rect->h <= 8192 &&
+			rect->data[0] && rect->data[1] && rect->linesize[0] >= rect->w)
+		{
+			subtitle_image image;
+			image.rect = recti(rect->x, rect->y, rect->x + rect->w, rect->y + rect->h);
+			image.indices.resize(static_cast<size_t>(rect->w) * rect->h);
+
+			for (auto y = 0; y < rect->h; ++y)
+			{
+				std::memcpy(image.indices.data() + static_cast<size_t>(y) * rect->w,
+				            rect->data[0] + static_cast<ptrdiff_t>(y) * rect->linesize[0], rect->w);
+			}
+
+			const auto* const palette = reinterpret_cast<const uint32_t*>(rect->data[1]);
+			image.palette.assign(palette, palette + std::clamp(rect->nb_colors, 0, 256));
+			pictures.images.push_back(std::move(image));
+			pictures.forced = pictures.forced || forced;
+		}
+		else if ((rect->type == SUBTITLE_ASS && rect->ass) || (rect->type == SUBTITLE_TEXT && rect->text))
+		{
+			subtitle_text text;
+
+			if (rect->type == SUBTITLE_ASS)
+			{
+				const auto fields = split_ass_event(rect->ass);
+				text = parse_ass_dialogue(fields.text, script.style(fields.style));
+				// An event's own margins replace its style's when it states them.
+				if (fields.margin_l > 0) text.margin_l = fields.margin_l;
+				if (fields.margin_r > 0) text.margin_r = fields.margin_r;
+				if (fields.margin_v > 0) text.margin_v = fields.margin_v;
+			}
+			else
+			{
+				text = parse_ass_dialogue({}, script.style({}));
+				platform::text_run run;
+				run.text = rect->text;
+				text.runs.push_back(std::move(run));
+			}
+
+			for (auto& run : text.runs) run.text = subtitle_text_as_utf8(run.text);
+			if (text.runs.empty()) continue;
+
+			subtitle_event e;
+			e.start = start;
+			e.end = end > start ? end : start + 5.0;
+			e.gen = gen;
+			e.forced = forced;
+			e.text = std::move(text);
+			result.push_back(std::move(e));
+		}
+	}
+
+	if (!pictures.images.empty())
+	{
+		// A picture stays until the stream clears it, when it does not say for how long.
+		pictures.start = start;
+		pictures.end = end > start ? end : start + 3600.0;
+		pictures.gen = gen;
+		pictures.canvas = canvas;
+		result.push_back(std::move(pictures));
+	}
+
+	return result;
+}
+
+bool av_format_decoder::open_subtitle_stream(const int stream_index)
+{
+	avcodec_free_context(&_subtitle_context);
+	_subtitle_stream_index = -1;
+
+	auto* const fc = _format_context;
+	if (!fc || stream_index < 0 || stream_index >= static_cast<int>(fc->nb_streams)) return false;
+
+	auto* const stream = fc->streams[stream_index];
+	_subtitle_context = open_subtitle_decoder(stream);
+	if (!_subtitle_context) return false;
+
+	_subtitle_stream_index = stream_index;
+	_subtitle_base = {stream->time_base.num, stream->time_base.den};
+	_subtitle_script = script_of(_subtitle_context);
+	_subtitle_canvas = {_subtitle_context->width, _subtitle_context->height};
+	_subtitle_forced = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
+	stream->discard = AVDISCARD_DEFAULT;
+
+	for (auto& st : _streams)
+	{
+		if (st.index == stream_index) st.is_playing = true;
+	}
+
+	return true;
+}
+
+std::vector<subtitle_event> av_format_decoder::decode_subtitle(const av_packet_ptr& packet, const int gen)
+{
+	if (!_subtitle_context || !packet || !packet->pkt || packet->pkt->stream_index != _subtitle_stream_index) return {};
+
+	AVSubtitle sub{};
+	auto got = 0;
+	if (avcodec_decode_subtitle2(_subtitle_context, &sub, &got, packet->pkt) < 0 || !got) return {};
+
+	// A picture stream's canvas is often unknown as it opens - PGS states it in each picture, which Matroska does
+	// not record - so it is taken from the decoder as each picture decodes.
+	if (_subtitle_context->width > 0 && _subtitle_context->height > 0)
+	{
+		_subtitle_canvas = {_subtitle_context->width, _subtitle_context->height};
+	}
+
+	const AVRational time_base{_subtitle_base.num, _subtitle_base.den};
+	const auto pts = packet->pkt->pts != AV_NOPTS_VALUE && time_base.den != 0
+		                 ? av_rescale_q(packet->pkt->pts, time_base, AV_TIME_BASE_Q)
+		                 : AV_NOPTS_VALUE;
+	const auto duration = packet->pkt->duration > 0 && time_base.den != 0 ? packet->pkt->duration * av_q2d(time_base) : 0.0;
+
+	auto result = to_subtitle_events(sub, pts, duration, _time_origin, _subtitle_script, _subtitle_canvas,
+	                                 _subtitle_forced, gen);
+	avsubtitle_free(&sub);
+	return result;
+}
+
+void av_format_decoder::flush_subtitles()
+{
+	if (_subtitle_context) avcodec_flush_buffers(_subtitle_context);
+}
+
+subtitle_file decode_subtitle_file(const df::file_path path)
+{
+	subtitle_file result;
+
+	// A sidecar holds a film's subtitles at most; a Blu-ray's PGS for one runs to a few tens of megabytes.
+	constexpr int64_t max_bytes = 128ll * 1024 * 1024;
+	const auto file = open_file(path, platform::file_open_mode::read);
+	if (!file || file->size() == 0 || file->size() > max_bytes) return result;
+
+	AVFormatContext* fc = nullptr;
+	const auto url = path.str();
+
+	if (avformat_open_input(&fc, url.c_str(), nullptr, nullptr) < 0) return result;
+
+	const df::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+
+	if (avformat_find_stream_info(fc, nullptr) < 0) return result;
+
+	const auto index = av_find_best_stream(fc, AVMEDIA_TYPE_SUBTITLE, -1, -1, nullptr, 0);
+	if (index < 0) return result;
+
+	auto* context = open_subtitle_decoder(fc->streams[index]);
+	if (!context) return result;
+
+	const df::scope_exit free_context([&context] { avcodec_free_context(&context); });
+
+	result.script = script_of(context);
+	sizei canvas{context->width, context->height};
+
+	const auto* const stream = fc->streams[index];
+	const auto forced = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
+	auto* packet = av_packet_alloc();
+	const df::scope_exit free_packet([&packet] { av_packet_free(&packet); });
+
+	// Enough for any film's dialogue; a file claiming more is not one.
+	constexpr size_t max_events = 100000;
+
+	while (packet && av_read_frame(fc, packet) >= 0 && result.events.size() < max_events)
+	{
+		if (packet->stream_index == index)
+		{
+			AVSubtitle sub{};
+			auto got = 0;
+
+			if (avcodec_decode_subtitle2(context, &sub, &got, packet) >= 0 && got)
+			{
+				// As in a stream, a picture's canvas can be stated only as it decodes.
+				if (context->width > 0 && context->height > 0) canvas = {context->width, context->height};
+
+				const auto pts = packet->pts != AV_NOPTS_VALUE
+					                 ? av_rescale_q(packet->pts, stream->time_base, AV_TIME_BASE_Q)
+					                 : AV_NOPTS_VALUE;
+				const auto duration = packet->duration > 0 ? packet->duration * av_q2d(stream->time_base) : 0.0;
+
+				for (auto& e : to_subtitle_events(sub, pts, duration, 0, result.script, canvas, forced, 0))
+				{
+					result.events.emplace_back(std::move(e));
+				}
+
+				avsubtitle_free(&sub);
+			}
+		}
+
+		av_packet_unref(packet);
+	}
+
+	end_replaced_pictures(result.events);
+	result.canvas = canvas;
+	return result;
 }
 
 
@@ -1707,7 +2047,8 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 	// Played media is described by libfiles' reading of the container; FFmpeg only decodes it. Read
 	// first, since FFmpeg's I/O reads the handle from where it stands, and scan_media_file leaves it at 0.
-	if (intent == media_intent::playback)
+	// A SID tune's WAV is made as it is read and describes nothing; its render describes the tune.
+	if (intent == media_intent::playback && !is_sid_stream(file))
 	{
 		_media_scan = scan_media_file(file, scan_intent::inspect, false).scan;
 		if (_media_scan && !_media_scan->success) _media_scan.reset();
@@ -1739,6 +2080,10 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 	AVDictionary* opts = nullptr;
 	av_dict_set_int(&opts, "export_xmp", 1, 0);
+
+	// A SID stream is rendered as it is read. Small packets keep only a moment of it queued ahead of the
+	// listener, so a voice silenced in the SID monitor is heard to go quiet promptly.
+	if (is_sid_stream(file)) av_dict_set_int(&opts, "max_size", sid_stream_packet_bytes, 0);
 
 	if (avformat_open_input(&fc, str::utf8_to_a(path.str()).c_str(), nullptr, &opts) != 0)
 	{
@@ -1837,6 +2182,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 			s.is_commentary = (stream->disposition & AV_DISPOSITION_COMMENT) != 0;
 			s.is_audio_description = (stream->disposition & AV_DISPOSITION_VISUAL_IMPAIRED) != 0;
+			s.is_forced = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
 			s.rotation = df::round(get_display_turn(stream).rotation);
 
 			if ((stream->disposition & AV_DISPOSITION_ATTACHED_PIC) && !_cover_art)
@@ -1967,12 +2313,13 @@ static const AVCodecHWConfig* find_hw_config(const AVCodec* codec, const av_hw_d
 	}
 }
 
-// One decode device for the process. A device per video cost its creation on every open, and the
-// renderer's cross-device handoff is keyed on the decode device, so each clip also rebuilt the shared
-// texture chain. FFmpeg serialises decoders on the device's own lock, and only the playing session
-// decodes in hardware. A device the driver has removed is replaced rather than handed out. The
-// platform makes it on the renderer's GPU, which is what lets the handoff share pictures at all. It
-// lives for the process: nothing else releases a GPU device at exit, and the system reclaims it.
+// One decode device for the process. A device per video cost its creation on every open, and where the
+// device is not the renderer's own the cross-device handoff is keyed on it, so each clip also rebuilt the
+// shared texture chain. FFmpeg serialises decoders on the device's own lock, and only the playing session
+// decodes in hardware. A device the driver has removed is replaced rather than handed out. The platform
+// makes it the render device where it can, else a device on the renderer's GPU, which is what lets the
+// pictures reach the renderer at all. It lives for the process: nothing else releases a GPU device at exit,
+// and the system reclaims it.
 static AVBufferRef* acquire_hw_decode_device(const int device_type)
 {
 	static platform::mutex mutex;
@@ -4317,12 +4664,12 @@ bool av_scaler::scale_surface(const ui::video_frame& source, const ui::surface_p
 }
 
 // NV12 and P010 are one allocation: the full-height luma plane, then the half-height interleaved
-// chroma plane at stride * height. These copy a decoder's 4:2:0 planes into that layout.
+// chroma plane at stride * height. These copy a decoder's 4:2:0 planes into that layout, in the surface
+// they are given.
 static ui::surface_ptr copy_to_nv12(const AVFrame& frame, const ui::color_space cs, const double time,
-                                    const ui::orientation orientation)
+                                    const ui::orientation orientation, ui::surface_ptr result)
 {
-	auto result = std::make_shared<ui::surface>();
-	if (!result->alloc(frame.width, frame.height, ui::texture_format::NV12, orientation, time)) return {};
+	if (!result || !result->alloc(frame.width, frame.height, ui::texture_format::NV12, orientation, time)) return {};
 	result->color_space(cs);
 
 	const auto width = static_cast<size_t>(frame.width);
@@ -4361,10 +4708,9 @@ static ui::surface_ptr copy_to_nv12(const AVFrame& frame, const ui::color_space 
 // P010 keeps its 10 bits at the top of each 16-bit sample, where a decoder's planar 10-bit output
 // keeps them at the bottom.
 static ui::surface_ptr copy_to_p010(const AVFrame& frame, const ui::color_space cs, const double time,
-                                    const ui::orientation orientation)
+                                    const ui::orientation orientation, ui::surface_ptr result)
 {
-	auto result = std::make_shared<ui::surface>();
-	if (!result->alloc(frame.width, frame.height, ui::texture_format::P010, orientation, time)) return {};
+	if (!result || !result->alloc(frame.width, frame.height, ui::texture_format::P010, orientation, time)) return {};
 	result->color_space(cs);
 
 	const auto width = static_cast<size_t>(frame.width);
@@ -4435,7 +4781,7 @@ ui::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const do
 
 		if (format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P || format == AV_PIX_FMT_NV12)
 		{
-			if (!hdr) planes = copy_to_nv12(*frame, cs, time, orientation);
+			if (!hdr) planes = copy_to_nv12(*frame, cs, time, orientation, reusable_surface());
 		}
 		else if ((format == AV_PIX_FMT_YUV420P10LE || format == AV_PIX_FMT_P010LE) && ui::p010_textures_enabled)
 		{
@@ -4443,7 +4789,7 @@ ui::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const do
 
 			if (!hdr || lut)
 			{
-				planes = copy_to_p010(*frame, cs, time, orientation);
+				planes = copy_to_p010(*frame, cs, time, orientation, reusable_surface());
 				if (planes) planes->tone_map(lut);
 			}
 		}
@@ -4451,8 +4797,31 @@ ui::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const do
 		if (planes) return planes;
 	}
 
-	auto result = std::make_shared<ui::surface>();
+	auto result = reusable_surface();
 	return convert_frame(*frame, cs, result, time, orientation) ? result : nullptr;
+}
+
+ui::surface_ptr av_scaler::reusable_surface()
+{
+	for (const auto& s : _presentation_surfaces)
+	{
+		// Held here alone: nothing else can reach it again. The fence orders the writes about to be made after
+		// the reads of whichever thread let it go last.
+		if (s.use_count() == 1)
+		{
+			std::atomic_thread_fence(std::memory_order_acquire);
+			// Written over as a new one would be; alloc resets the rest.
+			s->color_space(ui::color_space::rec601_limited);
+			return s;
+		}
+	}
+
+	auto result = std::make_shared<ui::surface>();
+
+	// As many as the read-ahead queue can hold, the picture on screen and the one being made. Past that a
+	// picture is allocated as before and freed once it is done with.
+	if (_presentation_surfaces.size() < av_read_ahead_max_frames + 2) _presentation_surfaces.push_back(result);
+	return result;
 }
 
 bool av_scaler::scale_frame(const AVFrame& frame, ui::surface_ptr& surface, const sizei max_dim, const double time,
@@ -4535,7 +4904,11 @@ void av_session::process_io(const platform::thread_event& video_event, const pla
 	const auto has_video = _has_video.load();
 	const auto video_stream = _video_stream_id.load();
 	const auto audio_stream = _audio_stream_id.load();
+	const auto subtitle_stream = _subtitle_stream_id.load();
 	auto loop_iteration = 0;
+
+	// Lines near the playhead are rasterised here, on the read thread, so the UI thread only uploads them.
+	const df::scope_exit prepare_subtitles([this] { _subtitles.prepare(pos(df::now())); });
 
 	while ((has_audio && _audio_packets.should_receive()) || (has_video && _video_packets.should_receive()))
 	{
@@ -4590,6 +4963,15 @@ void av_session::process_io(const platform::thread_event& video_event, const pla
 				_audio_packets.push(packet);
 				audio_event.set();
 			}
+			else if (subtitle_stream >= 0 && packet->pkt->stream_index == subtitle_stream)
+			{
+				// Cheap enough to decode as it is read; only its rasterising waits for the playhead.
+				for (auto& e : _decoder.decode_subtitle(packet, _seek_gen))
+				{
+					if (!e.text && e.images.empty()) _subtitles.end_open(e.start);
+					else _subtitles.add(std::move(e));
+				}
+			}
 		}
 		else
 		{
@@ -4634,15 +5016,24 @@ void av_format_decoder::receive_available_frames(AVCodecContext* const ctx, av_p
 	}
 }
 
-// Set once a renderer has found it cannot share the decoder's hardware surfaces. The driver does not
-// change its mind within a run, so neither does this.
-static std::atomic<bool> g_cpu_video_frames{false};
+// The hardware surface layouts a renderer has found it cannot share - an unsampled P010, a layout the shaders
+// do not sample, a share the driver refuses - indexed by AVPixelFormat, with the last slot for a layout no
+// frame names. Kept per layout, so one such stream does not send every later video through system memory.
+// The driver does not change its mind within a run, so neither does this.
+static std::array<std::atomic<bool>, AV_PIX_FMT_NB + 1> g_cpu_video_formats{};
 
-void av_request_cpu_video_frames()
+static std::atomic<bool>& cpu_video_format(const int surface_format)
 {
-	if (!g_cpu_video_frames.exchange(true))
+	return g_cpu_video_formats[surface_format >= 0 && surface_format < AV_PIX_FMT_NB ? surface_format : AV_PIX_FMT_NB];
+}
+
+void av_request_cpu_video_frames(const int surface_format)
+{
+	if (!cpu_video_format(surface_format).exchange(true))
 	{
-		df::log(__FUNCTION__, "hardware frames will be downloaded on the decode thread");
+		const auto* const name = av_get_pix_fmt_name(static_cast<AVPixelFormat>(surface_format));
+		df::log(__FUNCTION__, std::format("{} hardware frames will be downloaded on the decode thread",
+		                                  name ? name : "unnamed"));
 	}
 }
 
@@ -4658,7 +5049,7 @@ ui::video_frame_ptr av_video_frame(const av_frame_ptr& f)
 
 void av_format_decoder::prepare_for_presentation(av_frame& frame)
 {
-	if (frame.frm->hw_frames_ctx && !g_cpu_video_frames)
+	if (frame.frm->hw_frames_ctx && !cpu_video_format(hw_surface_format(*frame.frm)))
 	{
 		// Shared with the renderer as it is, so only its tone mapping is made here.
 		if (is_hdr(*frame.frm)) frame.tone_map = tone_map_lut_for(*frame.frm);
@@ -4816,6 +5207,9 @@ void av_session::seek(const double pos, const bool scrubbing, const bool force)
 			}
 
 			_seek_gen += 1;
+			// The stream's lines are read again from the new position; a sidecar's are all still here.
+			_decoder.flush_subtitles();
+			_subtitles.drop_older_than(_seek_gen);
 			// Published before _pending_time_sync, which is what tells pos() to use it.
 			_last_seek = pos;
 			_pending_time_sync = true;

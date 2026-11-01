@@ -514,8 +514,15 @@ static void should_create_the_decode_device_on_the_render_adapter()
 	if (video == adapters.rend()) return;
 
 	const auto previous = render_adapter();
-	const df::scope_exit restore([previous] { publish_render_adapter(previous); });
+	const auto previous_device = render_device();
+	const df::scope_exit restore([previous, previous_device]
+	{
+		publish_render_adapter(previous);
+		publish_render_device(previous_device);
+	});
 	publish_render_adapter(video->luid);
+	// Without a render device to decode on, the decoder is given a device of its own on that adapter.
+	publish_render_device(nullptr);
 
 	auto* device = av_platform_create_hw_device(AV_HWDEVICE_TYPE_D3D11VA);
 	const df::scope_exit release([&device] { av_buffer_unref(&device); });
@@ -525,6 +532,48 @@ static void should_create_the_decode_device_on_the_render_adapter()
 
 	assert_equal(true, same_adapter(video->luid, adapter_of(device)), "on the adapter the renderer draws with");
 	assert_equal(true, av_platform_hw_device_usable(device), "and FFmpeg can decode on it");
+}
+
+// Decoding on the render device copies each picture once, on one device, into the texture the renderer
+// draws, where a device of its own costs two copies a frame through a texture shared between the devices.
+// So a render device that carries the video interfaces is the decode device.
+static void should_decode_on_the_render_device_when_it_carries_video()
+{
+	const auto adapters = list_adapters();
+	assert_equal(true, !adapters.empty(), "an adapter is listed");
+
+	const auto video = std::ranges::find_if(adapters, [](const listed_adapter& a) { return a.makes_video_devices; });
+	if (video == adapters.end()) return;
+
+	const auto adapter = find_adapter_by_luid(video->luid);
+	ComPtr<ID3D11Device> render;
+	assert_equal(true, adapter && SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+		                                                      D3D11_CREATE_DEVICE_BGRA_SUPPORT |
+		                                                      D3D11_CREATE_DEVICE_VIDEO_SUPPORT, nullptr, 0,
+		                                                      D3D11_SDK_VERSION, &render, nullptr, nullptr)),
+	             "a render device with the video interfaces");
+	if (!render) return;
+
+	const auto previous = render_adapter();
+	const auto previous_device = render_device();
+	const df::scope_exit restore([previous, previous_device]
+	{
+		publish_render_adapter(previous);
+		publish_render_device(previous_device);
+	});
+	publish_render_adapter(video->luid);
+	publish_render_device(render);
+
+	auto* device = av_platform_create_hw_device(AV_HWDEVICE_TYPE_D3D11VA);
+	const df::scope_exit release([&device] { av_buffer_unref(&device); });
+
+	assert_equal(true, device != nullptr, "a decode device is made");
+	if (!device) return;
+
+	const auto* const ctx = reinterpret_cast<const AVHWDeviceContext*>(device->data);
+	const auto* const hwctx = static_cast<const AVD3D11VADeviceContext*>(ctx->hwctx);
+	assert_equal(true, hwctx->device == render.Get(), "and it is the render device itself");
+	assert_equal(true, av_platform_hw_device_usable(device), "which FFmpeg can decode on");
 }
 
 // The renderer copies a hardware picture out of the decoder's surface under the lock the decoder takes
@@ -1729,6 +1778,8 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	tests.add("Should count shared memory for an integrated GPU"s, should_count_shared_memory_for_an_integrated_gpu);
 	tests.add("Should create the decode device on the render adapter"s,
 	          should_create_the_decode_device_on_the_render_adapter);
+	tests.add("Should decode on the render device when it carries video"s,
+	          should_decode_on_the_render_device_when_it_carries_video);
 	tests.add("Should lend the renderer the decode device's lock"s, should_lend_the_renderer_the_decode_device_lock);
 	tests.add("Should describe a WASAPI mix format"s, should_describe_a_wasapi_mix_format);
 	tests.add("Should recycle a texture only when nothing draws it"s, should_recycle_a_texture_only_when_nothing_draws_it);

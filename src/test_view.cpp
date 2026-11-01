@@ -8,8 +8,8 @@
 
 // Purpose: View-geometry tests. Covers the zoom model (fit, stepping, anchoring, panning and the
 // navigator), the item selector / view scroller widgets, the hosts' pointer gestures - the items
-// view's drag among them - and the Movie view's pure decisions (clip stepping, session retirement,
-// stale completions).
+// view's drag and the task lists' column dividers among them - and the Movie view's pure decisions
+// (clip stepping, session retirement, stale completions).
 
 #include "pch.h"
 #include "test_fixtures.h"
@@ -17,6 +17,8 @@
 #include "files.h"
 #include "model_zoom.h"
 #include "ui_elements.h"
+#include "ui_document.h"
+#include "model_document.h"
 #include "ui_dialog.h"
 #include "ui_panorama.h"
 #include "ui_text_edit.h"
@@ -31,6 +33,9 @@
 #include "view_selector.h"
 #include "view_sync.h"
 #include "view_tags.h"
+#include "ui_sid.h"
+#include "app_commands.h"
+#include "libdesktop/render_software.h"
 
 extern std::function<void()> test_during_detach_file_handles;
 
@@ -59,6 +64,27 @@ static void should_decide_when_movie_clip_sessions_are_retired()
 	clip.start = 12.0;
 	assert_equal(12.0, rewound_movie_clip_playhead(&clip), "rewind parks at the focused clip's in point");
 	assert_equal(0.0, rewound_movie_clip_playhead(nullptr), "an empty timeline rewinds to zero");
+}
+
+// A playing movie's preview is composed at the movie's frames, as the render composes them, so its view is
+// repainted when the playhead reaches another one rather than on every tick of the display.
+static void should_repaint_a_playing_movie_once_a_movie_frame()
+{
+	auto repaints = 0;
+	int64_t painted = -1;
+
+	for (auto tick = 0; tick < 60; ++tick)
+	{
+		const auto frame = movie_frame_at(tick / 60.0, 30);
+		if (frame != painted) ++repaints;
+		painted = frame;
+	}
+
+	assert_equal(30, repaints, "a second of a 60 Hz display repaints a 30 fps movie thirty times");
+	assert_equal(true, movie_frame_at(1.0 / 30.0 * 0.999, 30) == 0, "a playhead short of the next frame is on this one");
+	assert_equal(true, movie_frame_at(1.0 / 30.0 * 1.001, 30) == 1, "and past it is on the next");
+	assert_equal(true, movie_frame_at(-1.0, 30) == 0, "a playhead before the start is on the first frame");
+	assert_equal(true, movie_frame_at(2.5, 0) == 2, "and a rate the project never set counts whole seconds");
 }
 
 static void should_step_movie_clips_from_the_playhead_while_playing()
@@ -416,6 +442,36 @@ static void should_turn_movie_frames_upright()
 	assert_equal(true, upright_movie_frame(upright) == ui::const_surface_ptr(upright),
 	             "an upright frame is used as it is");
 
+	// The mirrored orientations were left as stored: unmirrored, and sideways for 5 and 7, though the
+	// extent measured them upright. Each displayed corner against the stored pixel EXIF puts there.
+	struct mirrored
+	{
+		ui::orientation orientation;
+		sizei extent;
+		pointi top_left, top_right, bottom_left;
+	};
+
+	for (const auto& m : {
+		     mirrored{ui::orientation::top_right, {3, 2}, {2, 0}, {0, 0}, {2, 1}},
+		     mirrored{ui::orientation::bottom_left, {3, 2}, {0, 1}, {2, 1}, {0, 0}},
+		     mirrored{ui::orientation::left_top, {2, 3}, {0, 0}, {0, 1}, {2, 0}},
+		     mirrored{ui::orientation::right_bottom, {2, 3}, {2, 1}, {2, 0}, {0, 1}}
+	     })
+	{
+		const auto name = std::format("orientation {}", static_cast<int>(m.orientation));
+		source->orientation(m.orientation);
+		const auto shown = upright_movie_frame(source);
+		assert_equal(true, m.extent == shown->dimensions(), name + " is measured upright");
+		assert_equal(true, m.extent == upright_movie_extent({3, 2}, m.orientation), name + " as the extent says");
+		assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(shown->orientation()),
+		             name + " is no longer to be turned");
+		assert_equal(source->get_pixel(m.top_left.x, m.top_left.y), shown->get_pixel(0, 0), name + " top left");
+		assert_equal(source->get_pixel(m.top_right.x, m.top_right.y), shown->get_pixel(m.extent.cx - 1, 0),
+		             name + " top right");
+		assert_equal(source->get_pixel(m.bottom_left.x, m.bottom_left.y), shown->get_pixel(0, m.extent.cy - 1),
+		             name + " bottom left");
+	}
+
 	const auto target = recti(0, 0, 20, 30);
 	assert_equal(true, upright_movie_destination(target, ui::orientation::top_left) == quadd(target),
 	             "an upright texture draws into its target unchanged");
@@ -679,6 +735,25 @@ static void should_select_settled_zoom_sampler()
 	             ui::texture_sampler::bilinear, "interactive magnification uses fast sampler");
 	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, ui::orientation::top_left, true) ==
 	             ui::texture_sampler::point, "interactive magnification above three times keeps source pixels exact");
+}
+
+// A video frame is drawn at the size it was decoded, so a picture smaller than it is minified by the sampler
+// on every frame, where Catmull-Rom aliases as bilinear does at five times the texture reads. The picture's
+// own extent decides, not the pane it is fitted into.
+static void should_select_video_sampler_by_picture_size()
+{
+	assert_equal(true, calc_video_sampler({960, 540}, {3840, 2160}, ui::orientation::top_left) ==
+	             ui::texture_sampler::bilinear, "a 4K frame drawn at a quarter of its size is bilinear");
+	assert_equal(true, calc_video_sampler({1400, 787}, {1920, 1080}, ui::orientation::top_left) ==
+	             ui::texture_sampler::bilinear, "below three quarters is bilinear");
+	assert_equal(true, calc_video_sampler({1500, 844}, {1920, 1080}, ui::orientation::top_left) ==
+	             ui::texture_sampler::bicubic, "just below one-to-one keeps its edges");
+	assert_equal(true, calc_video_sampler({1920, 1080}, {1920, 1080}, ui::orientation::top_left) ==
+	             ui::texture_sampler::point, "a picture at its decoded size is exact, whatever pane it is fitted into");
+	assert_equal(true, calc_video_sampler({2880, 1620}, {1920, 1080}, ui::orientation::top_left) ==
+	             ui::texture_sampler::bicubic, "a magnified picture is smooth");
+	assert_equal(true, calc_video_sampler({2880, 1620}, {1920, 1080}, ui::orientation::top_left, true) ==
+	             ui::texture_sampler::bilinear, "and fast while interacting");
 }
 
 static void should_accumulate_precision_wheel_deltas()
@@ -2125,22 +2200,17 @@ static void should_preserve_view_scroller_anchor_across_layout()
 	assert_equal(0, scroller.anchor_offset(top_anchor, true), "top remains top after layout");
 }
 
-static void should_reserve_view_scroller_footer()
+static void should_map_the_view_scroller_track_to_the_list()
 {
 	view_scroller scroller;
 	constexpr recti client_bounds(0, 0, 100, 200);
-	constexpr recti full_scroll_bounds(90, 0, 100, 200);
-	const auto footer = scroller.layout_with_footer(
-		{100, 1000}, client_bounds, full_scroll_bounds, 10, 2);
-
-	assert_equal(true, footer == recti(90, 190, 100, 200), "scroll footer occupies requested base");
-	assert_equal(true, scroller.scroll_bounds() == recti(90, 0, 100, 188),
-	             "scroll track ends before footer");
+	constexpr recti scroll_bounds(90, 0, 100, 200);
+	scroller.layout({100, 1000}, client_bounds, scroll_bounds);
 
 	// The section bands are placed with logical_to_scrollbar_pos, so it must land on the track the
-	// thumb actually travels rather than on the client height the footer no longer covers.
+	// thumb actually travels rather than on the client height.
 	const auto track = scroller.track_bounds();
-	assert_equal(true, track == recti(90, 2, 100, 186), "scroll track excludes its own edge inset");
+	assert_equal(true, track == recti(90, 2, 100, 198), "scroll track excludes its own edge inset");
 	assert_equal(track.height(), scroller.logical_to_scrollbar_pos(1000), "list end maps to track end");
 	assert_equal(1000, scroller.scrollbar_pos_to_logical(track.bottom), "track end maps to list end");
 	assert_equal(0, scroller.scrollbar_pos_to_logical(track.top), "track start maps to list start");
@@ -3191,6 +3261,66 @@ static void should_preview_rotation_with_inverse_destination_transform()
 	             "anticlockwise source edit previews with the inverse destination transform");
 }
 
+// Issue #260 - on 1.27.2 the anticlockwise preview turned the picture clockwise. The preview must draw
+// what the rotation writes, so both are made here from one picture with its top-left quarter marked,
+// and the quarter the mark lands in is compared.
+static void should_preview_a_rotation_as_it_is_written()
+{
+	constexpr sizei extent(20, 10);
+	constexpr sizei rotated(10, 20);
+	const auto source = std::make_shared<ui::surface>();
+	source->alloc(extent.cx, extent.cy, ui::texture_format::RGB);
+
+	for (auto y = 0; y < extent.cy; ++y)
+	{
+		for (auto x = 0; x < extent.cx; ++x)
+		{
+			const auto marked = x < extent.cx / 2 && y < extent.cy / 2;
+			source->set_pixel(x, y, marked ? ui::rgba(255, 255, 255) : ui::rgba(0, 0, 0));
+		}
+	}
+
+	for (const auto t : {simple_transform::rot_90, simple_transform::rot_270})
+	{
+		const auto direction = t == simple_transform::rot_90 ? "clockwise"s : "anticlockwise"s;
+
+		image_edits edits;
+		edits.crop_bounds(rotate_command_crop_bounds(extent, ui::orientation::top_left, t, true));
+		const auto written = apply_image_edits(source, edits);
+		assert_equal(true, ui::is_valid(written) && written->dimensions() == rotated,
+		             "the rotation writes the picture on its side", direction);
+
+		std::vector<uint8_t> bits(static_cast<size_t>(rotated.cx) * rotated.cy * 4);
+		ui::software_canvas canvas;
+		canvas._bits = bits.data();
+		canvas._stride = rotated.cx * 4;
+		canvas._buffer_extent = rotated;
+		canvas._origin = {0, 0};
+		canvas._clip = recti({}, rotated);
+		const auto destination = quadd(recti({}, rotated)).transform(
+			ui::before_after_control::preview_destination_transform(t));
+		canvas.blit_quad(*source, recti({}, extent), destination, 1.0f, ui::texture_sampler::point, false);
+
+		// Turned clockwise the top-left quarter goes to the top right; anticlockwise, to the bottom left.
+		const auto expected_qx = t == simple_transform::rot_90 ? 1 : 0;
+		const auto expected_qy = t == simple_transform::rot_90 ? 0 : 1;
+
+		for (auto qy = 0; qy < 2; ++qy)
+		{
+			for (auto qx = 0; qx < 2; ++qx)
+			{
+				const auto x = rotated.cx / 4 + qx * rotated.cx / 2;
+				const auto y = rotated.cy / 4 + qy * rotated.cy / 2;
+				const auto expected = qx == expected_qx && qy == expected_qy;
+				assert_equal(expected, ui::get_g(written->get_pixel(x, y)) > 128,
+				             "the rotation puts the mark in the quarter its direction turns it to", direction);
+				assert_equal(expected, canvas.pixel(x, y)[1] > 128,
+				             "and the preview shows it in the same quarter", direction);
+			}
+		}
+	}
+}
+
 static void should_rearm_selector_decode_after_resource_event()
 {
 	null_state_strategy ss;
@@ -3360,6 +3490,8 @@ public:
 	std::vector<draw_call> draws;
 	std::vector<recti> text_bounds;
 	std::vector<std::string> text_values;
+	std::vector<recti> highlighted_text_bounds;
+	recti clip;
 	int created = 0;
 
 	explicit slot_test_draw_context(std::vector<bool> fail_uploads_in) : fail_uploads(std::move(fail_uploads_in))
@@ -3376,8 +3508,11 @@ public:
 		text_bounds.emplace_back(bounds);
 		text_values.emplace_back(text);
 	}
-	void draw_text(std::string_view, const std::vector<ui::text_highlight_t>&, recti, ui::style::font_face,
-	               ui::style::text_style, ui::color, ui::color) override {}
+	void draw_text(std::string_view, const std::vector<ui::text_highlight_t>&, const recti bounds, ui::style::font_face,
+	               ui::style::text_style, ui::color, ui::color) override
+	{
+		highlighted_text_bounds.emplace_back(bounds);
+	}
 	void draw_text(const ui::text_layout_ptr&, recti, ui::color, ui::color) override {}
 	void draw_border(recti, recti, ui::color, ui::color) override {}
 	void draw_texture(const ui::texture_ptr& t, recti dst, float, ui::texture_sampler) override
@@ -3416,10 +3551,542 @@ public:
 	}
 	ui::vertices_ptr create_vertices() override { return {}; }
 	ui::text_layout_ptr create_text_layout(ui::style::font_face) override { return {}; }
-	recti clip_bounds() const override { return {}; }
+	recti clip_bounds() const override { return clip; }
 	void clip_bounds(recti) override {}
 	void restore_clip() override {}
 };
+
+// A hex dump draws only the rows that meet the clip. One wholly below the clip once drew a row named
+// by a negative index, read from before its data.
+static void should_draw_only_hex_rows_inside_the_clip()
+{
+	std::vector<uint8_t> bytes(256);
+	for (auto i = 0_z; i < bytes.size(); ++i) bytes[i] = static_cast<uint8_t>(i);
+
+	const auto hex = std::make_shared<document_control>(bytes, flex_item::center);
+	slot_test_draw_context dc({});
+	hex->measure(dc, 2000);
+	ui::control_layouts positions;
+	const recti bounds{0, 400, 2000, 800};
+	hex->layout(dc, bounds, positions);
+
+	dc.clip = {0, 0, 2000, 300};
+	hex->render(dc, {});
+	assert_equal(true, dc.highlighted_text_bounds.empty(), "nothing is drawn for a dump below the clip");
+
+	dc.clip = bounds;
+	hex->render(dc, {});
+	assert_equal(false, dc.highlighted_text_bounds.empty(), "a dump inside the clip is drawn");
+
+	for (const auto& row : dc.highlighted_text_bounds)
+	{
+		assert_equal(true, row.top >= bounds.top, "every row is the dump's own");
+	}
+}
+
+
+// Records what a document draws: each row's text and highlights, and the rectangles filled behind it.
+class document_test_draw_context final : public ui::draw_context
+{
+public:
+	struct text_call
+	{
+		std::string text;
+		std::vector<ui::text_highlight_t> highlights;
+		recti bounds;
+	};
+
+	std::vector<text_call> texts;
+	std::vector<std::pair<recti, ui::color>> rects;
+	recti clip{0, 0, 4000, 4000};
+
+	document_test_draw_context()
+	{
+		colors.alpha = 1.0f;
+	}
+
+	void clear(ui::color) override {}
+	void draw_rounded_rect(recti, ui::color, int) override {}
+	void draw_rect(const recti bounds, const ui::color c) override { rects.emplace_back(bounds, c); }
+	void draw_text(std::string_view, recti, ui::style::font_face, ui::style::text_style, ui::color, ui::color) override {}
+	void draw_text(const std::string_view text, const std::vector<ui::text_highlight_t>& highlights, const recti bounds,
+	               ui::style::font_face, ui::style::text_style, ui::color, ui::color) override
+	{
+		texts.push_back({std::string(text), highlights, bounds});
+	}
+	void draw_text(const ui::text_layout_ptr&, recti, ui::color, ui::color) override {}
+	void draw_border(recti, recti, ui::color, ui::color) override {}
+	void draw_texture(const ui::texture_ptr&, recti, float, ui::texture_sampler) override {}
+	void draw_texture(const ui::texture_ptr&, recti, recti, float, ui::texture_sampler, float) override {}
+	void draw_texture(const ui::texture_ptr&, const quadd&, recti, float, ui::texture_sampler) override {}
+	void draw_texture(const ui::texture_ptr&, const quadd&, recti, float, ui::texture_sampler,
+	                  const ui::texture_transform&) override {}
+	void draw_vertices(const ui::vertices_ptr&) override {}
+	sizei measure_text(const std::string_view text, ui::style::font_face, ui::style::text_style, const int width,
+	                   int = 0) override
+	{
+		return {std::min(width, static_cast<int>(text.size()) * 8), 20};
+	}
+	int text_line_height(ui::style::font_face) override { return 20; }
+	ui::texture_ptr create_texture() override { return {}; }
+	ui::vertices_ptr create_vertices() override { return {}; }
+	ui::text_layout_ptr create_text_layout(ui::style::font_face) override { return {}; }
+	recti clip_bounds() const override { return clip; }
+	void clip_bounds(recti) override {}
+	void restore_clip() override {}
+};
+
+// The panel's document for a display whose bytes are given, decoded as the load decodes them.
+struct document_test_display
+{
+	deferred_async_strategy async;
+	common_display_state_t common;
+	display_state_ptr display;
+
+	explicit document_test_display(const std::string_view bytes, const std::string_view extension = ".txt")
+	{
+		display = std::make_shared<display_state_t>(async, common);
+		display->_selected_item_data = df::blob(bytes.begin(), bytes.end());
+		display->_document = std::make_shared<document_state>(
+			decode_document(display->_selected_item_data, extension, true));
+	}
+};
+
+static df::cspan document_test_bytes(const std::string_view s)
+{
+	return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
+}
+
+static std::string document_test_lines(const document_text& text)
+{
+	std::string result;
+
+	for (auto i = 0_z; i < text.lines.size(); ++i)
+	{
+		if (i > 0) result += '|';
+		result += text.line(i);
+	}
+
+	return result;
+}
+
+// The head of a file reads as text in the encoding its bytes name: a byte order mark first, then
+// UTF-8 where the bytes are valid as such, and Windows-1252 where they are not. Every kind of line
+// break ends a line, and a character the end of the head cut short is left out rather than garbled.
+static void should_read_a_document_in_its_encoding()
+{
+	const auto utf8 = decode_document(document_test_bytes("one\r\ntwo\nthree\rfour"), ".txt", true);
+	assert_equal(true, utf8.encoding == document_encoding::utf8, "plain UTF-8");
+	assert_equal("one|two|three|four", document_test_lines(utf8), "CRLF, LF and CR each end a line");
+
+	const auto marked = decode_document(document_test_bytes("\xEF\xBB\xBF" "caf\xC3\xA9\n"), ".txt", true);
+	assert_equal(true, marked.encoding == document_encoding::utf8, "UTF-8 with its byte order mark");
+	assert_equal("caf\xC3\xA9|", document_test_lines(marked), "the mark is not text; a final break leaves an empty line");
+
+	const auto cut = decode_document(document_test_bytes("price \xE2\x82"), ".txt", true);
+	assert_equal(true, cut.encoding == document_encoding::utf8, "a sequence the end cuts short is still UTF-8");
+	assert_equal("price ", document_test_lines(cut), "and is left out");
+
+	const auto ansi = decode_document(document_test_bytes("caf\xE9 \x80 \x93quoted\x94"), ".txt", true);
+	assert_equal(true, ansi.encoding == document_encoding::windows_1252, "bytes that are not UTF-8");
+	assert_equal("caf\xC3\xA9 \xE2\x82\xAC \xE2\x80\x9Cquoted\xE2\x80\x9D", document_test_lines(ansi),
+	             "Windows-1252's euro and quotation marks");
+
+	// "hi", a break and U+1F600, which UTF-16 spells as a surrogate pair.
+	const auto le = decode_document(document_test_bytes(std::string_view("\xFF\xFEh\0i\0\n\0\x3D\xD8\x00\xDE", 12)),
+	                                ".txt", true);
+	assert_equal(true, le.encoding == document_encoding::utf16le, "little-endian UTF-16");
+	assert_equal("hi|\xF0\x9F\x98\x80", document_test_lines(le), "a surrogate pair is one character");
+
+	const auto be = decode_document(document_test_bytes(std::string_view("\xFE\xFF\0h\0i\xD8\x3D\xDE\x00", 10)),
+	                                ".txt", true);
+	assert_equal(true, be.encoding == document_encoding::utf16be, "big-endian UTF-16");
+	assert_equal("hi\xF0\x9F\x98\x80", document_test_lines(be), "read high byte first");
+
+	const auto split = decode_document(document_test_bytes(std::string_view("\xFF\xFEh\0\x3D\xD8", 6)), ".txt", true);
+	assert_equal("h", document_test_lines(split), "a lead surrogate the end separated from its trail is dropped");
+
+	assert_equal(true, decode_document(document_test_bytes("caf\xC0\x80"), ".txt", true).encoding ==
+	             document_encoding::windows_1252, "an overlong form is not UTF-8");
+}
+
+// Bytes that are not text stay the dump they always were: a NUL is enough without a byte order mark,
+// and so are control characters past one byte in a hundred. Tabs, form feeds and the escapes of a
+// coloured log are text.
+static void should_show_bytes_that_are_not_text_as_a_dump()
+{
+	assert_equal(false, decode_document(document_test_bytes(std::string_view("text\0more", 9)), ".txt", true).is_text(),
+	             "a NUL");
+
+	std::string controls(200, 'a');
+	controls[10] = '\x01';
+	controls[20] = '\x02';
+	assert_equal(true, decode_document(document_test_bytes(controls), ".txt", true).is_text(),
+	             "one control byte in a hundred");
+	controls[30] = '\x03';
+	assert_equal(false, decode_document(document_test_bytes(controls), ".txt", true).is_text(), "more than that");
+
+	assert_equal(true, decode_document(document_test_bytes("\x1b[31mred\x1b[0m\tx\f\v\b\n"), ".log", true).is_text(),
+	             "a log's colour escapes and the other controls text holds");
+	assert_equal(false, decode_document(document_test_bytes(std::string_view("\xFF\xFE\x01\0\x02\0\x03\0", 8)), ".txt",
+	                                    true).is_text(), "UTF-16 that decodes to control characters");
+	assert_equal(false, decode_document(document_test_bytes(std::string_view("\xFF\xFE\0\0a\0\0\0", 8)), ".txt",
+	                                    true).is_text(), "UTF-32, whose mark UTF-16 shares, is a dump");
+	assert_equal(false, decode_document(document_test_bytes("plain words"), ".prg", false).is_text(),
+	             "a program shown as a listing is never text");
+
+	// With a byte order mark a NUL is one more control, so a log padded with a few is still read.
+	std::string padded = "\xEF\xBB\xBF" + std::string(200, 'a');
+	padded += '\0';
+	assert_equal(true, decode_document(document_test_bytes(padded), ".log", true).is_text(),
+	             "a marked file with a NUL among two hundred characters");
+	assert_equal(false, decode_document(document_test_bytes(std::string_view(padded).substr(3)), ".log", true)
+	             .is_text(), "is a dump without its mark");
+}
+
+// Text wraps after the last space that fits, so a row ends with a whole word; a word wider than the
+// row breaks where it must. Tabs reach the next stop of four, wide characters take two columns, and
+// spaces at the edge hang past it rather than starting the next row.
+static void should_wrap_document_text_at_word_boundaries()
+{
+	document_state doc(decode_document(document_test_bytes(
+		"the quick brown fox\n\nabcdefghijkl\naaaa bbbbb    cc\n\tx\n\xE4\xB8\xAD\xE6\x96\x87\xE5\xAD\x97"), ".txt", true));
+
+	const auto rows = [&doc]
+	{
+		std::string result;
+		for (auto i = 0_z; i < doc.row_count(); ++i)
+		{
+			if (i > 0) result += '|';
+			result += doc.row_text(i, {}).display;
+		}
+		return result;
+	};
+
+	doc.layout(10, 0);
+	assert_equal("the quick |brown fox||abcdefghij|kl|aaaa bbbbb    |cc|    x|\xE4\xB8\xAD\xE6\x96\x87\xE5\xAD\x97", rows(),
+	             "ten columns");
+	assert_equal(2, doc.row_line(4), "a wrapped row belongs to its line");
+	assert_equal(1, static_cast<int>(doc.row_of({0, 10})), "a position at a wrap starts the next row");
+	assert_equal(0, static_cast<int>(doc.row_of({0, 9})), "and one before it ends the row");
+
+	doc.layout(5, 0);
+	assert_equal(true, rows().ends_with("|\xE4\xB8\xAD\xE6\x96\x87|\xE5\xAD\x97"), "two wide characters fill five columns");
+
+	// The word that reaches the edge moves to the next row whole, and a tab reaches the next stop of
+	// four from wherever it starts.
+	document_state words(decode_document(document_test_bytes("one two three\nab\tc"), ".txt", true));
+	words.layout(10, 0);
+	assert_equal("one two ", words.row_text(0, {}).display, "the row ends after the last whole word");
+	assert_equal("three", words.row_text(1, {}).display, "and the next starts with the word that did not fit");
+	assert_equal("ab  c", words.row_text(2, {}).display, "a tab after two characters takes two columns");
+
+	// A column maps to the nearer side of the character it lands on; a tab and a wide character are
+	// each one character however many columns they take.
+	document_state tabs(decode_document(document_test_bytes("\tab\xE4\xB8\xADz"), ".txt", true));
+	tabs.layout(40, 0);
+	assert_equal(0, tabs.position_at(0, 1.9, {}).offset, "inside the tab, nearer its start");
+	assert_equal(1, tabs.position_at(0, 2.1, {}).offset, "inside the tab, nearer its end");
+	assert_equal(3, tabs.position_at(0, 6.4, {}).offset, "on the first half of the wide character");
+	assert_equal(6, tabs.position_at(0, 7.5, {}).offset, "on its second half");
+	assert_equal(7, tabs.position_at(0, 100.0, {}).offset, "past the end of the line");
+
+	// A double click wants the character under the pointer instead: the right half of a character is
+	// still that character, and past the end of the row is its last one.
+	assert_equal(0, tabs.character_at(0, 2.1, {}).offset, "on the tab, past its middle");
+	assert_equal(3, tabs.character_at(0, 7.5, {}).offset, "on the second half of the wide character");
+	assert_equal(6, tabs.character_at(0, 100.0, {}).offset, "past the end of the line, its last character");
+
+	// Spaces past the edge hang no further than a row holds, and characters that take no column still
+	// make rows of a bounded length: a line of either was one row of any size, drawn and hit tested
+	// whole on every paint.
+	document_state spaces(decode_document(document_test_bytes(std::string(100, ' ') + "x"), ".txt", true));
+	spaces.layout(10, 0);
+	auto widest = 0_z;
+	for (auto i = 0_z; i < spaces.row_count(); ++i) widest = std::max(widest, spaces.row_text(i, {}).display.size());
+	assert_equal(20, static_cast<int>(widest), "a run of spaces hangs a row's width past the edge at most");
+	assert_equal("x", spaces.row_text(spaces.row_count() - 1, {}).display, "and the text after it follows");
+
+	std::string joiners;
+	for (auto i = 0; i < 1000; ++i) joiners += "\xE2\x80\x8B";
+	document_state zero_width(decode_document(document_test_bytes(joiners), ".txt", true));
+	zero_width.layout(10, 0);
+	auto longest = 0_z;
+	for (auto i = 0_z; i < zero_width.row_count(); ++i)
+	{
+		longest = std::max(longest, zero_width.row_text(i, {}).cells.size() - 1);
+	}
+	assert_equal(true, zero_width.row_count() > 1, "characters that take no column still wrap");
+	assert_equal(104, static_cast<int>(longest), "at four characters a column, and a few more");
+}
+
+// A copy takes the source text between the ends of the selection - tabs as tabs, not the spaces they
+// are drawn as - with Windows line breaks between its lines, however the lines wrap.
+static void should_copy_a_document_selection_as_its_source_text()
+{
+	document_state doc(decode_document(document_test_bytes("first\tline\nsecond line\n\nlast"), ".txt", true));
+	doc.layout(8, 0);
+
+	doc.select({0, 3}, {1, 6});
+	assert_equal("st\tline\r\nsecond", doc.selected_text({}), "across a line break, keeping the tab");
+
+	doc.select({3, 2}, {0, 6});
+	assert_equal("line\r\nsecond line\r\n\r\nla", doc.selected_text({}), "a selection made backwards");
+
+	doc.select_all({});
+	assert_equal("first\tline\r\nsecond line\r\n\r\nlast", doc.selected_text({}), "everything");
+
+	doc.select_word({1, 9}, {});
+	assert_equal("line", doc.selected_text({}), "a word");
+
+	doc.select_word({0, 5}, {});
+	assert_equal("\t", doc.selected_text({}), "a character that is not part of a word");
+
+	document_state accented(decode_document(document_test_bytes("say na\xC3\xAFve_x2 now"), ".txt", true));
+	accented.layout(40, 0);
+	accented.select_word({0, 6}, {});
+	assert_equal("na\xC3\xAFve_x2", accented.selected_text({}), "a word holds underscores, digits and accented letters");
+
+	doc.clear_selection();
+	assert_equal("", doc.selected_text({}), "nothing selected copies nothing");
+}
+
+// A dump's selection copies its rows as they are drawn, without the padding that lines them up. Laid
+// out at a new width, the dump's columns name other bytes, so the selection goes.
+static void should_copy_a_dump_selection_as_its_rows()
+{
+	const std::vector<uint8_t> bytes = {'H', 'i', 0x00, 0xFF, 'a', 'b'};
+	const df::cspan span{bytes.data(), bytes.size()};
+	document_state doc;
+	doc.layout(4, bytes.size());
+	assert_equal(2, static_cast<int>(doc.row_count()), "two rows of four bytes");
+
+	doc.select_all(span);
+	assert_equal("00000000  48 69 00 FF Hi..\r\n00000004  61 62       ab", doc.selected_text(span), "every row");
+
+	doc.select({0, 10}, {0, 21});
+	assert_equal("48 69 00 FF", doc.selected_text(span), "the hex of the first row");
+
+	doc.select_word({1, 14}, span);
+	assert_equal("62", doc.selected_text(span), "a double click takes the run of characters it lands in");
+
+	doc.layout(8, bytes.size());
+	assert_equal(false, doc.has_selection(), "a new width clears the selection");
+
+	// A selection of nothing but the padding that lines the rows up has nothing to copy, and Copy then
+	// leaves the clipboard alone rather than emptying it.
+	doc.layout(4, bytes.size());
+	doc.select({1, 16}, {1, 21});
+	assert_equal(true, doc.has_selection() && doc.selected_text(span).empty(), "padding alone copies nothing");
+}
+
+// A block comment opened on one line colours the lines it runs on, so the state each line starts in is
+// recorded once, as the document is read: drawing any row then needs only its own line.
+static void should_record_the_state_each_document_line_starts_in()
+{
+	const auto cpp = decode_document(document_test_bytes("int a; /* open\nstill comment\nclosed */ int b;\nint c;"),
+	                                 ".cpp", true);
+	assert_equal(true, cpp.language == pf::ui::syntax::language::cpp, "C++ by its extension");
+	assert_equal(4, static_cast<int>(cpp.cookies.size()), "a state for every line");
+	assert_equal(true, cpp.cookies[0] == 0 && cpp.cookies[1] != 0 && cpp.cookies[2] != 0 && cpp.cookies[3] == 0,
+	             "inside the comment and out of it");
+
+	const auto md = decode_document(document_test_bytes("# Title\n- item"), ".MD", true);
+	assert_equal(true, md.language == pf::ui::syntax::language::markdown, "Markdown by its extension, in any case");
+	assert_equal(true, md.cookies.empty(), "Markdown carries nothing from line to line");
+
+	const auto plain = decode_document(document_test_bytes("/* not code */"), ".txt", true);
+	assert_equal(true, plain.language == pf::ui::syntax::language::plain && plain.cookies.empty(),
+	             "plain text is not coloured");
+}
+
+// Pressing on the panel's document and dragging selects its text from the press to the pointer; a
+// double click selects a word and Shift extends what is selected. A drag that leaves the document
+// selects to the edge it left by, and Escape ends the drag without dropping what it selected.
+static void should_select_document_text_by_dragging()
+{
+	document_test_display test("alpha beta\ngamma");
+	const auto control = std::make_shared<document_control>(test.display, flex_item::center);
+	document_test_draw_context dc;
+	assert_equal(48, control->measure(dc, 400).cy, "two rows of 20 pixels and their padding");
+	ui::control_layouts positions;
+	control->layout(dc, recti(0, 100, 400, 148), positions);
+
+	const auto host = std::make_shared<detached_test_host>();
+	host->_extent = {400, 400};
+	hit_test_context ctx({8, 110}, recti(0, 0, 400, 400));
+	const auto controller = control->controller_from_location(host, {8, 110}, {}, ctx);
+	assert_equal(true, controller != nullptr, "the document takes a press");
+	assert_equal(true, controller->cursor() == ui::style::cursor::text_select, "under a text cursor");
+
+	const auto& doc = *test.display->_document;
+	const auto& bytes = test.display->_selected_item_data;
+
+	controller->on_mouse_left_button_down({8, 110}, {});
+	controller->on_mouse_move({24, 130});
+	controller->on_mouse_left_button_up({24, 130}, {});
+	assert_equal("lpha beta\r\ngam", doc.selected_text(bytes), "from the press to the release");
+	assert_equal(true, doc.focused, "the press gives the document the keyboard");
+
+	controller->on_mouse_left_button_double_click({56, 110}, {});
+	assert_equal("beta", doc.selected_text(bytes), "a double click selects a word");
+
+	// The word of the character under the pointer: the right half of a word's last letter is nearer the
+	// space after it, and past the end of a line is its last word.
+	controller->on_mouse_left_button_double_click({38, 110}, {});
+	assert_equal("alpha", doc.selected_text(bytes), "a double click on the right half of a word's last letter");
+	controller->on_mouse_left_button_double_click({300, 110}, {});
+	assert_equal("beta", doc.selected_text(bytes), "and past the end of the line");
+
+	ui::key_state shift;
+	shift.shift = true;
+	controller->on_mouse_left_button_down({40, 130}, shift);
+	controller->on_mouse_left_button_up({40, 130}, shift);
+	assert_equal("beta\r\ngamma", doc.selected_text(bytes), "Shift extends from the anchor");
+
+	controller->on_mouse_left_button_down({0, 110}, {});
+	controller->on_mouse_move({200, 1000});
+	assert_equal(true, controller->escape(), "Escape ends a drag in progress");
+	controller->on_mouse_left_button_up({200, 1000}, {});
+	assert_equal("alpha beta\r\ngamma", doc.selected_text(bytes), "a drag below the document selects to its end");
+	assert_equal(false, controller->escape(), "with no drag there is nothing to end");
+	assert_equal(true, host->invalidations > 0, "each change repaints");
+
+	// The wheel turns the pane under a drag, and the selection follows the text under the pointer, not
+	// where that text was when the press landed.
+	controller->on_mouse_left_button_down({0, 110}, {});
+	test.display->media_offset = {0, -24};
+	controller->on_mouse_move({40, 110});
+	controller->on_mouse_left_button_up({40, 110}, {});
+	assert_equal("alpha beta\r\ngamma", doc.selected_text(bytes), "a drag continues over the scrolled text");
+	test.display->media_offset = {};
+
+	// A metadata block's dump is rebuilt with the panel, so it offers no selection to lose.
+	const auto dump = std::make_shared<document_control>(std::vector<uint8_t>{1, 2, 3}, flex_item::center);
+	dump->measure(dc, 400);
+	dump->layout(dc, recti(0, 0, 400, 24), positions);
+	hit_test_context dump_ctx({8, 8}, recti(0, 0, 400, 400));
+	assert_equal(true, dump->controller_from_location(host, {8, 8}, {}, dump_ctx) == nullptr,
+	             "a dump of its own bytes is not selected");
+
+	control->measure(dc, 0);
+	assert_equal(8, test.display->_document->columns(), "a pane with no width yet still wraps at eight characters");
+}
+
+// A press anywhere in the view takes the keyboard from the panel's document before any controller sees
+// it - a press on the document gives it back - and Escape clears a selection the document holds while
+// it has the keyboard, before anything else unwinds.
+static void should_release_the_document_on_a_press_elsewhere()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	items_view items(state, nullptr);
+
+	common_display_state_t common;
+	items._display = std::make_shared<display_state_t>(as, common);
+	items._display->_document = std::make_shared<document_state>(
+		decode_document(document_test_bytes("some text"), ".txt", true));
+	auto& doc = *items._display->_document;
+	doc.layout(40, 0);
+	doc.select({0, 0}, {0, 4});
+	doc.focused = true;
+
+	assert_equal(true, items.escape(), "Escape clears the document's selection");
+	assert_equal(false, doc.has_selection(), "which is gone");
+	assert_equal(false, items.escape(), "and then has nothing of the document's to clear");
+
+	doc.select({0, 0}, {0, 4});
+	items.mouse_down({10, 10});
+	assert_equal(false, doc.focused, "a press gives the keyboard back to the items");
+	assert_equal(true, doc.has_selection(), "and leaves the selection to be seen");
+	assert_equal(false, items.escape(), "a selection without the keyboard is not Escape's to clear");
+
+	// A menu opened on the media pane may copy the document's text; one opened on the items is about
+	// them, and so is whatever view replaces this one.
+	items._regions.media = {0, 0, 500, 400};
+	items._regions.items = {500, 0, 1000, 400};
+	doc.focused = true;
+	items.context_menu({100, 100});
+	assert_equal(true, doc.focused, "a menu on the media pane leaves the document the keyboard");
+	items.context_menu({700, 100});
+	assert_equal(false, doc.focused, "a menu on the items takes it back");
+
+	doc.focused = true;
+	items.deactivate();
+	assert_equal(false, doc.focused, "and so does leaving the view");
+}
+
+// The selection is drawn behind its text, a column wider at the end of a line whose break it takes,
+// and the text it covers loses its syntax colour so that it reads on the selection.
+static void should_draw_the_document_selection_behind_its_text()
+{
+	document_test_display test("int a;\nint b;", ".cpp");
+	const auto control = std::make_shared<document_control>(test.display, flex_item::center);
+	document_test_draw_context dc;
+	control->measure(dc, 400);
+	ui::control_layouts positions;
+	control->layout(dc, recti(0, 100, 400, 148), positions);
+
+	control->render(dc, {});
+	assert_equal(true, dc.rects.empty(), "nothing selected, nothing filled");
+	assert_equal(2, static_cast<int>(dc.texts.size()), "a call a row");
+	assert_equal(true, !dc.texts[1].highlights.empty() && dc.texts[1].highlights.front().offset == 0 &&
+	             dc.texts[1].highlights.front().length == 3, "the keyword is coloured");
+
+	test.display->_document->select({0, 4}, {1, 3});
+	dc.texts.clear();
+	control->render(dc, {});
+	assert_equal(2, static_cast<int>(dc.rects.size()), "a rectangle on each row");
+	assert_equal(true, dc.rects[0].first == recti(32, 100, 56, 124), "to the end of the first line, and its break");
+	assert_equal(true, dc.rects[1].first == recti(0, 124, 24, 148), "from the start of the second");
+	assert_equal(true, dc.texts[1].highlights.empty(), "the selected keyword is drawn in the text colour");
+
+	// No font draws a control character, so one is shown as a middle dot in the control colour.
+	document_test_display escapes("a\x1b[1mb");
+	const auto escaped = std::make_shared<document_control>(escapes.display, flex_item::center);
+	escaped->measure(dc, 400);
+	escaped->layout(dc, recti(0, 0, 400, 24), positions);
+	dc.texts.clear();
+	escaped->render(dc, {});
+	assert_equal("a\xC2\xB7[1mb", dc.texts[0].text, "a control character is drawn as a middle dot");
+	assert_equal(true, dc.texts[0].highlights.size() == 1 && dc.texts[0].highlights[0].offset == 1 &&
+	             dc.texts[0].highlights[0].length == 2, "in the control colour");
+}
+
+// A dump colours a control byte apart from a byte past ASCII, in both of its columns. The hex view read
+// each byte as a signed char, so every byte past 0x7F took the control colour and only 0x7F its own.
+static void should_colour_a_dump_by_byte_class()
+{
+	const auto control = std::make_shared<document_control>(std::vector<uint8_t>{'A', 0x01, 0xC8, 0x7F},
+	                                                        flex_item::center);
+	document_test_draw_context dc;
+	control->measure(dc, 2000);
+	ui::control_layouts positions;
+	control->layout(dc, recti(0, 0, 2000, 24), positions);
+	control->render(dc, {});
+	assert_equal(1, static_cast<int>(dc.texts.size()), "one row");
+
+	const auto& highlights = dc.texts[0].highlights;
+	const auto color_at = [&highlights](const uint32_t offset) -> std::optional<ui::color>
+	{
+		for (const auto& h : highlights)
+		{
+			if (offset >= h.offset && offset < h.offset + h.length) return h.clr;
+		}
+		return std::nullopt;
+	};
+
+	// Four bytes a row: their hex at columns 10, 13, 16 and 19, their characters from column 22.
+	assert_equal(true, color_at(0).has_value(), "the offset is dimmed");
+	assert_equal(false, color_at(10).has_value() || color_at(22).has_value(), "a printable byte is in the text colour");
+	assert_equal(true, color_at(13).has_value() && color_at(23).has_value(), "a control byte is coloured in both columns");
+	assert_equal(true, color_at(16).has_value() && color_at(24).has_value(), "and so is a byte past ASCII");
+	assert_equal(false, *color_at(13) == *color_at(16), "in different colours");
+	assert_equal(true, *color_at(16) == *color_at(19) && *color_at(16) == *color_at(25), "0x7F is coloured as the bytes past it");
+}
 
 
 static void should_draw_image_errors_without_source_dimensions()
@@ -3507,10 +4174,181 @@ public:	std::string _text;
 	int active_device_bottom() const { return _active_row->bounds.bottom - _scroller.scroll_offset().y; }
 };
 
+// A four-column review list, as Import and Sync show: a narrow first column, a long name, an arrow,
+// and another long name.
+class columns_test_view final : public list_view
+{
+public:
+	columns_test_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host))
+	{
+	}
+
+	void refresh() override
+	{
+	}
+
+	void add_row(const std::string_view old_name, const std::string_view new_name)
+	{
+		auto row = std::make_shared<row_element>(*this);
+		row->_text[1] = old_name;
+		row->_icons[2] = icon_index::next;
+		row->_text[3] = new_name;
+		row->_order = static_cast<int>(_rows.size());
+		_rows.emplace_back(std::move(row));
+	}
+
+	int width(const int col) const { return col_widths[col]; }
+	int content_width(const int col) const { return _content_col_widths[col]; }
+	int narrowest() const { return _min_col_width; }
+	int table_left() const { return coll_offset; }
+	recti divider(const int col) const { return _col_divider_bounds[col]; }
+
+	// Where the last column ends: the table's left, every column's width and the gap between each two.
+	int table_right(const int gap) const
+	{
+		auto x = coll_offset;
+		for (int i = 0; i < col_count; i++) x += col_widths[i] + (i + 1 < col_count ? gap : 0);
+		return x;
+	}
+};
+
+// The task views size their columns to their content and shrink them to fit the view, which cuts a
+// long name short. The divider after a column resizes it, as in a file browser's details view: the
+// columns before it stay put and the divider stays under the pointer, the columns after it give up
+// the room, Escape takes a drag back, a double-click fits the column to its content, and opening the
+// view again starts from columns that fit.
+static void should_resize_list_columns_by_their_dividers()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto view = std::make_shared<columns_test_view>(s, host);
+	view->add_row(std::string(60, 'o'), std::string(60, 'n'));
+
+	constexpr sizei extent{800, 300};
+	list_test_measure_context mc;
+	view->layout(mc, extent);
+
+	const auto shrunk = view->width(1);
+	assert_equal(true, shrunk < view->content_width(1), "a long old name is cut short to fit the view");
+
+	const auto grab = view->divider(1).center();
+	hit_test_context ctx{grab, recti(extent)};
+	const auto controller = view->controller_from_location(host, grab, ctx);
+	assert_equal(true, std::dynamic_pointer_cast<column_divider_controller>(controller) != nullptr,
+	             "the divider after the old names can be grabbed");
+
+	const auto status_width = view->width(0);
+	const auto left = view->table_left();
+	const auto new_names = view->width(3);
+
+	controller->on_mouse_left_button_down(grab, {});
+	controller->on_mouse_left_button_up(grab, {});
+	view->layout(mc, extent);
+	assert_equal(shrunk, view->width(1), "a press that does not move sizes nothing");
+	assert_equal(false, view->is_user_sized(1), "and leaves the column sizing to its content");
+
+	controller->on_mouse_left_button_down(grab, {});
+	controller->on_mouse_move({grab.x + 100, grab.y});
+	view->layout(mc, extent);
+	assert_equal(shrunk + 100, view->width(1), "dragging the divider widens the column before it");
+	assert_equal(grab.x + 100, view->divider(1).center().x, "and the divider stays under the pointer");
+	assert_equal(status_width, view->width(0), "the columns before it stay as they were");
+	assert_equal(left, view->table_left(), "and where they were");
+	assert_equal(true, view->width(3) < new_names, "the column after it gives up the room");
+	controller->on_mouse_left_button_up({grab.x + 100, grab.y}, {});
+
+	const auto dragged = view->width(1);
+	const auto moved = view->divider(1).center();
+	controller->on_mouse_left_button_down(moved, {});
+	controller->on_mouse_move({moved.x - 60, moved.y});
+	assert_equal(true, controller->escape(), "Escape takes a drag back");
+	view->layout(mc, extent);
+	assert_equal(dragged, view->width(1), "to the width the column had before it");
+
+	controller->on_mouse_left_button_double_click(moved, {});
+	view->layout(mc, extent);
+	assert_equal(view->content_width(1), view->width(1), "a double-click fits the column to its old names");
+
+	view->activate(extent);
+	view->layout(mc, extent);
+	assert_equal(shrunk, view->width(1), "and the next use of the view starts from columns that fit");
+}
+
+// A table starts a margin in from the view's left edge however little it holds, and its last column takes
+// the rest of the width: a short table centred in the view left margins either side of it that read as part
+// of it. A divider narrows the column before it only as far as a column can go, the last column takes up
+// the room it gives back and makes the room it takes, and the next use of the view starts again from
+// columns that fit.
+static void should_run_a_table_from_edge_to_edge()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto view = std::make_shared<columns_test_view>(s, host);
+	view->add_row("abcdefghij", "klmnopqrst");
+
+	constexpr sizei extent{800, 300};
+	list_test_measure_context mc;
+	view->layout(mc, extent);
+
+	// The text keeps clear of the window's frame on the left, and the last column runs to the right edge.
+	const auto margin = mc.padding2 * 2;
+	const auto right_edge = extent.cx - mc.scroll_width - mc.padding2 / 2;
+	assert_equal(margin, view->table_left(), "a short table starts at its margin");
+	assert_equal(right_edge, view->table_right(mc.padding2), "and its last column runs to the right edge");
+	assert_equal(true, view->width(3) > view->content_width(3), "wider than its names need");
+
+	for (int i = 0; i < 3; i++)
+	{
+		assert_equal(view->content_width(i), view->width(i), "the other columns fit their content");
+	}
+
+	const auto grab = view->divider(1).center();
+	hit_test_context ctx{grab, recti(extent)};
+	const auto controller = view->controller_from_location(host, grab, ctx);
+	assert_equal(true, std::dynamic_pointer_cast<column_divider_controller>(controller) != nullptr,
+	             "the divider after the first name column can be grabbed");
+
+	const auto first_width = view->width(0);
+	const auto start_width = view->width(1);
+	const auto last_width = view->width(3);
+
+	controller->on_mouse_left_button_down(grab, {});
+	controller->on_mouse_move({grab.x - 200, grab.y});
+	view->layout(mc, extent);
+	assert_equal(view->narrowest(), view->width(1), "the column narrows only as far as a column can");
+	assert_equal(margin, view->table_left(), "the table stays at its margin");
+	assert_equal(first_width, view->width(0), "the column before it stays as it was");
+	assert_equal(last_width + start_width - view->narrowest(), view->width(3), "the last column takes the room");
+	assert_equal(right_edge, view->table_right(mc.padding2), "and the table still reaches the right edge");
+
+	controller->on_mouse_move({grab.x + 50, grab.y});
+	view->layout(mc, extent);
+	assert_equal(start_width + 50, view->width(1), "dragged the other way the column widens");
+	assert_equal(grab.x + 50, view->divider(1).center().x, "with the divider under the pointer");
+	assert_equal(last_width - 50, view->width(3), "and the last column makes the room");
+	assert_equal(right_edge, view->table_right(mc.padding2), "the table ending where it did");
+	controller->on_mouse_left_button_up({grab.x + 50, grab.y}, {});
+
+	view->activate(extent);
+	view->layout(mc, extent);
+	assert_equal(start_width, view->width(1), "the next use of the view starts from columns that fit");
+	assert_equal(last_width, view->width(3), "the last column filling the view again");
+}
+
 // A run keeps the row it is working on visible, and visible means clear of the chrome painted over
 // the list rather than merely inside the scrolling area: the column headers are drawn across the top
-// of it and view_frame::draw_view_status paints the status band across its base. Scrolling the row to
-// the very edge left the highlight under one or the other for the whole of a long run.
+// of it. The run's status is in the frame's status bar below the view, so the base of the list is the
+// row's to use, and nothing is held back there.
 static void should_keep_the_processing_row_clear_of_the_view_chrome()
 {
 	null_state_strategy ss;
@@ -3532,15 +4370,14 @@ static void should_keep_the_processing_row_clear_of_the_view_chrome()
 	view->begin_processing(100);
 	view->layout(mc, extent);
 
-	// Far enough down that the list has to scroll to reach it, which is where the row used to come to
-	// rest against the bottom edge with the status band drawn over it.
+	// Far enough down that the list has to scroll to reach it.
 	view->processing_work_item(60);
 
-	assert_equal(true, view->active_device_bottom() <= extent.cy - band - margin,
-	             "the row stops clear of the status band");
+	assert_equal(extent.cy, view->active_device_bottom(),
+	             "the row comes to rest at the base of the view, which nothing is painted over");
 	assert_equal(true, view->active_device_top() >= 0, "and is still inside the view");
 
-	// Back up the list: the same rule applies to the column headers above it.
+	// Back up the list: the column headers above it are still painted over the rows.
 	view->processing_work_item(5);
 
 	assert_equal(true, view->active_device_top() >= band + margin,
@@ -3706,6 +4543,55 @@ static void should_forward_checkbox_hits_to_visible_checked_child()
 	hit_test_context collapsed_ctx{{15, 25}, recti(0, 0, 200, 100)};
 	assert_equal(true, checkbox->controller_from_location(host, {15, 25}, {}, collapsed_ctx) == nullptr,
 	             "collapsed child receives no controller lookup");
+}
+
+class enable_recording_element final : public view_element
+{
+public:
+	std::optional<bool> enabled;
+
+	void enable_controls(const bool enable) override { enabled = enable; }
+};
+
+// Every layout of a task view enabled every control in its panel, so the options of a format not
+// chosen came back live: Convert's JPEG quality slider while JPEG XL was the format.
+static void should_keep_the_options_of_an_unchosen_format_disabled()
+{
+	auto jpeg = false;
+	auto jxl = true;
+	const auto jpeg_check = std::make_shared<ui::check_control>(ui::no_control_frame(), "JPEG", jpeg, true);
+	const auto jxl_check = std::make_shared<ui::check_control>(ui::no_control_frame(), "JPEG XL", jxl, true);
+	const auto jpeg_options = std::make_shared<enable_recording_element>();
+	const auto jxl_options = std::make_shared<enable_recording_element>();
+	jpeg_check->child(jpeg_options);
+	jxl_check->child(jxl_options);
+
+	const auto panel = std::make_shared<ui::group_control>();
+	panel->add(jpeg_check);
+	panel->add(jxl_check);
+
+	ui::enable_element(panel, false);
+	assert_equal(false, jpeg_options->enabled.value_or(true), "a running task disables every option");
+	assert_equal(false, jxl_options->enabled.value_or(true), "the chosen format's included");
+
+	ui::enable_element(panel, true);
+	assert_equal(true, jxl_options->enabled.value_or(false), "the chosen format's options come back");
+	assert_equal(false, jpeg_options->enabled.value_or(true), "an unchosen format's stay disabled");
+
+	jxl_check->checked(false);
+	jpeg_check->checked(true);
+	ui::enable_element(panel, true);
+	assert_equal(true, jpeg_options->enabled.value_or(false), "choosing JPEG brings its options back");
+	assert_equal(false, jxl_options->enabled.value_or(true), "and leaves those of JPEG XL disabled");
+}
+
+// The selection placed after appended text counted bytes, where an edit control counts UTF-16 units.
+static void should_measure_edit_offsets_in_utf16_units()
+{
+	assert_equal(4, ui::edit_offset("caf\xc3\xa9"), "an accented letter is one unit");
+	assert_equal(5, ui::edit_offset("D:\\\xe5\x86\x99\xe7\x9c\x9f"), "each CJK character is one");
+	assert_equal(2, ui::edit_offset("\xf0\x9f\x98\x80"), "a character beyond the basic plane is two");
+	assert_equal(0, ui::edit_offset({}), "nothing is nothing");
 }
 
 static void should_reject_failed_dialog_thumbnail_decodes()
@@ -4043,6 +4929,21 @@ static void should_keep_narrow_slider_rows_usable()
 			}
 		}
 	}
+}
+
+// A number typed into a slider's box is held to the slider's range, as the slider itself is. What it is
+// bound to takes nothing else: a WebP quality typed as 150 failed every save that used it.
+static void should_hold_a_typed_slider_value_to_its_range()
+{
+	auto value = 70;
+	ui::slider_control slider(ui::no_control_frame(), {}, value, 1, 100);
+
+	slider.edit_change("150");
+	assert_equal(100, value, "above the range");
+	slider.edit_change("-5");
+	assert_equal(1, value, "below it");
+	slider.edit_change("42");
+	assert_equal(42, value, "within it");
 }
 
 static void should_map_slider_input_to_the_drawn_track()
@@ -4613,6 +5514,112 @@ static void should_not_justify_a_tile_shaped_by_a_thumbnail()
 // A tile fills its cell by cropping, so every difference between the cell's shape and the image's
 // shape is hidden pixels. The row solves one height and takes each width from it, which is what stops
 // a row holding one or two portraits from cutting the top and bottom off them.
+// A show plays in season and episode order, a special ahead of its season's first episode; an album in disc and
+// track order - whatever the files are named. Unnumbered items follow by name.
+static void should_order_shows_and_albums_by_number()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto make_item = [](const std::string& name, const std::function<void(prop::item_metadata&)>& fill)
+	{
+		df::index_file_item indexed;
+		indexed.name = str::cache(name);
+		indexed.ft = files::file_type_from_name(indexed.name);
+		const auto md = std::make_shared<prop::item_metadata>();
+		fill(*md);
+		indexed.metadata.store(md);
+		return std::make_shared<df::item_element>(df::file_path("c:\\" + name), indexed);
+	};
+
+	const auto episode = [](const int season, const int number, const bool special)
+	{
+		return [=](prop::item_metadata& md)
+		{
+			md.show = str::cache("Show");
+			md.season = static_cast<uint16_t>(season);
+			md.episode = prop::number_pair(number, 0);
+			md.is_special = special;
+			md.kind = prop::media_kind::episode;
+		};
+	};
+
+	const auto track = [](const int disc, const int number)
+	{
+		return [=](prop::item_metadata& md)
+		{
+			md.album = str::cache("Album");
+			md.disk = prop::number_pair(disc, 0);
+			md.track = prop::number_pair(number, 0);
+		};
+	};
+
+	const auto order_of = [&s](df::item_elements items)
+	{
+		const auto group = std::make_shared<df::item_group>(s, std::move(items), df::item_group_display::icons,
+		                                                    df::group_key{});
+		group->sort(group_by::album_show, sort_by::def, false);
+		std::vector<std::string> names;
+		for (const auto& i : group->items()) names.emplace_back(i->name());
+		return str::combine(names, ",", false);
+	};
+
+	assert_equal("z.mkv,a.mkv,m.mkv,b.mkv,c.mkv"s,
+	             order_of({
+		             make_item("c.mkv", [](prop::item_metadata& md) { md.show = str::cache("Show"); }),
+		             make_item("b.mkv", episode(2, 1, false)),
+		             make_item("a.mkv", episode(1, 2, false)),
+		             make_item("m.mkv", episode(2, 0, true)),
+		             make_item("z.mkv", episode(1, 1, false)),
+	             }), "episodes in season order, the special first");
+
+	assert_equal("Wind.mp3,Rain.mp3,Sun.mp3"s,
+	             order_of({
+		             make_item("Sun.mp3", track(2, 1)),
+		             make_item("Rain.mp3", track(1, 2)),
+		             make_item("Wind.mp3", track(1, 1)),
+	             }), "tracks in disc order");
+}
+
+// Play goes on to the show's next episode by season and number: not to another copy of the one that ended, as the
+// 1080p file kept beside the 720p one is.
+static void should_play_on_to_the_next_episode()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+	const view_host_base_ptr view;
+
+	const auto make_episode = [](const std::string& name, const int number, const df::date_t created)
+	{
+		df::index_file_item indexed;
+		indexed.name = str::cache(name);
+		indexed.ft = files::file_type_from_name(indexed.name);
+		const auto md = std::make_shared<prop::item_metadata>();
+		md->show = str::cache("Show");
+		md->season = 1;
+		md->episode = prop::number_pair(number, 0);
+		md->kind = prop::media_kind::episode;
+		md->dates.add_utc(prop::date_source::file_created, created);
+		indexed.metadata.store(md);
+		return std::make_shared<df::item_element>(df::file_path("c:\\" + name), indexed);
+	};
+
+	const auto sd = make_episode("Show.S01E05.720p.mkv", 5, df::date_t(2020, 1, 1, 0, 0, 0));
+	const auto hd = make_episode("Show.S01E05.1080p.mkv", 5, df::date_t(2021, 1, 1, 0, 0, 0));
+	const auto six = make_episode("Show.S01E06.720p.mkv", 6, df::date_t(2019, 1, 1, 0, 0, 0));
+	s.append_items(view, df::item_set(df::item_elements{sd, hd, six}), {}, true, true);
+
+	assert_equal(true, s.next_episode(sd) == six, "the next episode, not another copy of this one");
+	assert_equal(true, s.next_episode(hd) == six, "from either copy");
+	assert_equal(true, s.next_episode(six) == nullptr, "and none after the last");
+}
+
 static void should_keep_tile_aspect_when_laying_out_a_row()
 {
 	null_state_strategy ss;
@@ -4753,13 +5760,344 @@ static void should_track_the_active_row_across_a_reorder()
 	assert_equal(0, static_cast<int>(highlighted()), "no row stays marked once the run ends");
 }
 
+// The SID monitor's parts, as its clicks find them: inside its panel, the voices side by side when there is
+// room and stacked when not, and a tune chip for each tune until there are too many to show.
+static void should_lay_out_the_sid_monitor()
+{
+	const auto inside = [](const recti inner, const recti outer)
+	{
+		return inner.left >= outer.left && inner.right <= outer.right && inner.top >= outer.top &&
+			inner.bottom <= outer.bottom;
+	};
+
+	const auto wide = layout_sid_monitor(recti(0, 0, 1200, 0), 1.0, 3, 16);
+	assert_equal(980, wide.panel.width(), "the panel keeps turbo8bit's width");
+	assert_equal(110, wide.panel.left, "centred in the space it is given");
+	assert_equal(wide.voices[0].top, wide.voices[2].top, "three voices side by side");
+	assert_equal(3, static_cast<int>(wide.tune_chips.size()), "a chip for each tune");
+	assert_equal(true, wide.height > 0 && wide.panel.bottom == wide.height, "the height is the panel's");
+
+	for (int v = 0; v < 3; ++v)
+	{
+		assert_equal(true, inside(wide.voices[v], wide.panel), "a voice sits in the panel");
+		assert_equal(true, inside(wide.mute[v], wide.voices[v]) && inside(wide.solo[v], wide.voices[v]),
+		             "its buttons sit in it");
+		assert_equal(true, wide.mute[v].right <= wide.solo[v].left, "mute and solo do not overlap");
+	}
+
+	assert_equal(true, wide.output.top >= wide.voices[0].bottom && wide.filter.top >= wide.output.bottom &&
+	             wide.registers.top >= wide.filter.bottom && inside(wide.registers, wide.panel),
+	             "the output, filter and registers follow, in order");
+
+	const auto narrow = layout_sid_monitor(recti(0, 0, 360, 0), 1.0, 1, 16);
+	assert_equal(true, narrow.voices[1].top > narrow.voices[0].bottom, "voices stack in a narrow column");
+	assert_equal(true, narrow.tunes.is_empty() && narrow.tune_chips.empty(), "one tune needs no selector");
+	assert_equal(true, narrow.height > wide.height, "and the column grows to hold them");
+	assert_equal(true, narrow.filter_wraps && !wide.filter_wraps, "the filter's badges wrap only when narrow");
+
+	const auto many = layout_sid_monitor(recti(0, 0, 600, 0), 1.0, 200, 16);
+	assert_equal(true, many.tune_chips.empty(), "too many tunes for chips");
+	assert_equal(true, !many.previous_tune.is_empty() && !many.next_tune.is_empty(), "are stepped through");
+
+	// Less room, fewer parts: the register grid goes first, the heading and the ADSR row last.
+	const auto no_registers = layout_sid_monitor(recti(0, 0, 1200, 0), 1.0, 3, 16, 3);
+	assert_equal(true, no_registers.registers.is_empty() && !no_registers.filter.is_empty(), "registers go first");
+	const auto no_filter = layout_sid_monitor(recti(0, 0, 1200, 0), 1.0, 3, 16, 2);
+	assert_equal(true, no_filter.filter.is_empty() && !no_filter.output.is_empty(), "then the filter");
+	const auto voices_only = layout_sid_monitor(recti(0, 0, 1200, 0), 1.0, 3, 16, 1);
+	assert_equal(true, voices_only.output.is_empty() && !voices_only.heading.is_empty() && !voices_only.compact,
+	             "then the output");
+	const auto compact = layout_sid_monitor(recti(0, 0, 1200, 0), 1.0, 3, 16, 0);
+	assert_equal(true, compact.compact && compact.heading.is_empty(), "compact drops the heading");
+	assert_equal(true, compact.voices[0].height() < voices_only.voices[0].height(), "and the ADSR row");
+	assert_equal(3, static_cast<int>(compact.tune_chips.size()), "but keeps the tunes");
+	assert_equal(true, compact.height < voices_only.height && voices_only.height < no_filter.height &&
+	             no_filter.height < no_registers.height && no_registers.height < wide.height,
+	             "each step is shorter than the one before");
+
+	// Long button labels in a narrow column take a row of their own, shared, and stay in the voice.
+	const auto wrapped = layout_sid_monitor(recti(0, 0, 200, 0), 1.0, 1, 16, 0, 90);
+	assert_equal(true, wrapped.buttons_wrap && !wide.buttons_wrap, "mute and solo wrap only when narrow");
+
+	for (int v = 0; v < 3; ++v)
+	{
+		assert_equal(true, inside(wrapped.mute[v], wrapped.voices[v]) && inside(wrapped.solo[v], wrapped.voices[v]),
+		             "wrapped buttons sit in the voice");
+		assert_equal(true, wrapped.mute[v].right <= wrapped.solo[v].left && wrapped.mute[v].top ==
+		             wrapped.solo[v].top, "side by side, without overlapping");
+	}
+}
+
+// The monitor is drawn as large as its space allows, down to three quarters of its size, before it gives up a
+// part, and is centred in that space. Text keeps its size as the rest shrinks, so a single step in proportion
+// to the shortfall still overflowed: a space a little short of the whole monitor lost its register grid, and
+// one a little short of that its filter, each leaving the gap of what went between the monitor and the
+// controls below it.
+static void should_fit_the_sid_monitor_to_its_space()
+{
+	constexpr auto line_height = 16;
+	constexpr auto top = 100;
+	const auto space = [](const int height) { return recti(0, top, 700, top + height); };
+	const auto height_of = [&](const double scale, const int detail)
+	{
+		return layout_sid_monitor(space(0), scale, 1, line_height, detail).height;
+	};
+	const auto detail_of = [](const sid_monitor_layout& l)
+	{
+		if (l.compact) return 0;
+		if (!l.registers.is_empty()) return 4;
+		if (!l.filter.is_empty()) return 3;
+		return l.output.is_empty() ? 1 : 2;
+	};
+
+	auto scale = 0.0;
+	const auto roomy = space(height_of(1.0, 4) + 100);
+	const auto whole = fit_sid_monitor(roomy, 1.0, 1, line_height, 0, scale);
+	assert_equal(1.0, scale, "with room to spare it is drawn at full size");
+	assert_equal(4, detail_of(whole), "whole");
+	assert_equal(top + 50, whole.panel.top, "centred in the space it is given");
+	assert_equal(roomy.bottom - 50, whole.panel.bottom, "with the space shared above and below");
+
+	auto previous_detail = 4;
+
+	for (auto height = height_of(1.0, 4); height >= 40; height -= 3)
+	{
+		const auto r = space(height);
+		const auto l = fit_sid_monitor(r, 1.0, 1, line_height, 0, scale);
+		const auto detail = detail_of(l);
+		const auto at = std::format("in {} pixels", height);
+
+		assert_equal(true, detail <= previous_detail, at, "a part never comes back as the space shrinks");
+		previous_detail = detail;
+
+		if (detail < 4)
+		{
+			assert_equal(true, height_of(0.75, detail + 1) > height, at,
+			             "a part goes only when three quarters of the monitor with it does not fit");
+		}
+
+		if (l.height <= height)
+		{
+			const auto above = l.panel.top - r.top;
+			const auto below = r.bottom - l.panel.bottom;
+			assert_equal(true, std::abs(above - below) <= 1, at, "centred");
+			assert_equal(true, scale >= 0.75 && scale <= 1.0, at, "at no less than three quarters");
+			if (scale < 1.0)
+			{
+				assert_equal(true, height_of(std::min(1.0, scale + 0.001), detail) > height, at,
+				             "drawn smaller only as far as it must be");
+			}
+		}
+		else
+		{
+			assert_equal(true, detail == 0 && scale == 0.75, at, "only the smallest compact monitor overflows");
+			assert_equal(top, l.panel.top, at, "and it starts at the top, for the clip to cut off its foot");
+		}
+	}
+
+	assert_equal(0, previous_detail, "a space too short for any of it leaves the compact monitor");
+}
+
+static void should_fade_sid_register_activity()
+{
+	sid_frame_state frames[4];
+	frames[1].regs[0] = 1; // changed two frames before the one shown, and unchanged since
+	frames[2].regs[0] = 1;
+	frames[3].regs[0] = 1;
+	frames[3].regs[4] = 0x21; // changed in the frame shown
+
+	const auto activity = sid_register_activity(frames, std::size(frames));
+	assert_equal(true, activity[4] > 0.99f, "a register written with a new value glows");
+	assert_equal(true, activity[0] > 0.0f && activity[0] < activity[4], "and fades in the frames after");
+	assert_equal(true, activity[1] == 0.0f, "a register that never changed stays dark");
+	assert_equal(true, sid_register_activity(frames, 1)[4] == 0.0f, "one frame alone shows no change");
+}
+
+// Keeps what it was last given, as a renderer's vertices do.
+class recording_vertices final : public ui::vertices
+{
+public:
+	int updates = 0;
+	std::vector<ui::vertex_rect> rects;
+
+	void update(recti[], ui::color[], int) override
+	{
+	}
+
+	void update_rects(const std::span<const ui::vertex_rect> r) override
+	{
+		++updates;
+		rects.assign(r.begin(), r.end());
+	}
+};
+
+// The monitor's moving parts are what the vertex buffer draws: each in its place, following the tune from
+// present to present without the monitor drawing again, and asking for the scene to be rebuilt only when the
+// text beside them has fallen behind or the tune has changed - and for nothing once the monitor is off screen.
+static void should_move_the_sid_monitor_with_the_tune()
+{
+	const auto path = _temps.next_path(".sid");
+	const auto tune = make_test_sid_tune();
+	assert_equal(true, df::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
+
+	const auto render = std::make_shared<sid_tune_render>(path, 0, 1.0);
+	assert_equal(true, render->load(), "the tune loads");
+	std::vector<int16_t> pcm(sid_sample_rate / 2);
+	assert_equal(pcm.size(), render->read(0, pcm.data(), pcm.size()), "and plays");
+
+	sid_monitor_motion::parts parts;
+
+	for (int v = 0; v < 3; ++v)
+	{
+		const auto left = v * 220;
+		parts.voices[v] = {
+			recti(left, 0, left + 200, 36), recti(left, 50, left + 200, 62), recti(left, 70, left + 200, 82),
+			recti(left, 90, left + 40, 106)
+		};
+	}
+
+	parts.scope = recti(0, 120, 640, 210);
+	for (auto i = 0; i < 15; ++i) parts.volume[i] = recti(i * 20, 220, i * 20 + 16, 240);
+	for (auto i = 0; i < sid_register_count; ++i) parts.registers[i] = recti(i * 30, 250, i * 30 + 26, 280);
+
+	const auto verts = std::make_shared<recording_vertices>();
+	const auto drawn_in = [&verts](const recti area)
+	{
+		return std::ranges::count_if(verts->rects, [area](const ui::vertex_rect& r)
+		{
+			return area.contains(r.bounds.top_left()) && r.bounds.right <= area.right + 1;
+		});
+	};
+	const auto lit = [&verts](const recti badge)
+	{
+		return std::ranges::any_of(verts->rects, [badge](const ui::vertex_rect& r) { return r.bounds == badge.inflate(-1); });
+	};
+
+	sid_monitor_motion motion;
+	motion._verts = verts;
+
+	constexpr double position = 0.25;
+	sid_frame_state state;
+	assert_equal(true, render->frame_at(position, state), "the frame shown has been played");
+	motion.place(parts, render, {}, 1.0f, position, state, 10.0);
+	assert_equal(1, verts->updates, "placing the parts draws them");
+
+	// Voice 1 holds a sawtooth with its gate open, at full volume; the play routine changes its frequency
+	// every frame.
+	assert_equal(true, drawn_in(parts.voices[0].shape) > 100, "its waveform is traced where its shape goes");
+	assert_equal(true, lit(parts.voices[0].gate), "its gate is lit");
+	assert_equal(false, lit(parts.voices[1].gate), "and the others' are not");
+	assert_equal(true, std::ranges::any_of(verts->rects, [&parts, &state](const ui::vertex_rect& r)
+	{
+		const auto track = parts.voices[0].frequency.inflate(-1);
+		const auto frequency = state.regs[0] | (state.regs[1] << 8);
+		return r.bounds.left == track.left && r.bounds.top == track.top &&
+			r.bounds.width() == df::round(track.width() * (frequency / 65535.0));
+	}), "its frequency meter is filled as far as its frequency goes");
+	assert_equal(true, drawn_in(parts.scope) > 100, "the output is traced");
+	assert_equal(true, std::ranges::all_of(parts.volume, lit), "all fifteen volume steps are lit");
+	assert_equal(true, lit(parts.registers[0]), "the register the tune writes every frame glows");
+	assert_equal(false, lit(parts.registers[1]), "one it set once and left does not");
+
+	// Between the monitor's draws, a present follows the tune through the vertex buffer.
+	assert_equal(true, motion.update(render, position, 10.01) == render_valid::valid,
+	             "nothing to do at the same position");
+	assert_equal(1, verts->updates, "so nothing is drawn again");
+	assert_equal(true, motion.update(render, position + 0.02, 10.02) == render_valid::present,
+	             "a later position moves the parts");
+	assert_equal(2, verts->updates, "by drawing them again");
+
+	// The values beside them are text, so the scene is rebuilt for them - once they have been up a while.
+	assert_equal(true, motion.update(render, position + 0.2, 10.15) == render_valid::invalid,
+	             "values out of date for a tenth of a second rebuild the scene");
+	assert_equal(true, motion.update(std::make_shared<sid_tune_render>(path, 2, 1.0), position, 10.16) ==
+	             render_valid::invalid, "so does another tune, whose parts only the monitor can place");
+	assert_equal(true, motion.update(render, position + 0.3, 13.0) == render_valid::valid,
+	             "a monitor not drawn for seconds is off screen, and asks for nothing");
+
+	// A silenced voice fades, as the monitor draws it.
+	sid_voice_mix solo;
+	solo.solo = 1;
+	motion.place(parts, render, solo, 1.0f, position, state, 20.0);
+	assert_equal(true, std::ranges::all_of(verts->rects, [&parts](const ui::vertex_rect& r)
+	{
+		return !parts.voices[0].shape.contains(r.bounds.top_left()) || r.fill.a < 0.5f;
+	}), "a voice the solo silences is drawn faded");
+}
+
+// Mute and Solo act on release, and the panel can be rebuilt while the button is held - the tune ends, the
+// folder refreshes - destroying the monitor the press was made on. The monitor here lives in storage that is
+// cleared as it goes, so an action still holding the monitor finds a null display and faults at the release,
+// rather than reading what a freed block usually still holds and passing. Capturing `this` again fails so.
+static void should_toggle_a_sid_voice_after_its_monitor_is_rebuilt()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+	common_display_state_t common;
+	s._display = std::make_shared<display_state_t>(as, common);
+
+	const auto host = std::make_shared<detached_test_host>();
+	alignas(sid_monitor_control) std::byte storage[sizeof(sid_monitor_control)] = {};
+	auto destroyed = false;
+	std::shared_ptr<sid_monitor_control> monitor(
+		std::construct_at(reinterpret_cast<sid_monitor_control*>(storage), s, s._display, host),
+		[&storage, &destroyed](sid_monitor_control* m)
+		{
+			std::destroy_at(m);
+			std::ranges::fill(storage, std::byte{});
+			destroyed = true;
+		});
+	monitor->bounds = recti(0, 0, 1200, 900);
+
+	// The monitor finds its buttons where it last drew them, laid out from the same inputs as here.
+	document_test_draw_context dc;
+	monitor->render(dc, {});
+	const auto button_text = std::max(
+		dc.measure_text(tt.command_volume0, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx,
+		dc.measure_text(tt.sid_solo, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx);
+	auto scale = dc.scale_factor;
+	const auto l = fit_sid_monitor(monitor->bounds, dc.scale_factor, 1,
+	                               dc.text_line_height(ui::style::font_face::code), button_text, scale);
+
+	const auto press = [&monitor, &host](const recti button)
+	{
+		hit_test_context ctx{button.center(), monitor->bounds};
+		return monitor->controller_from_location(host, button.center(), {}, ctx);
+	};
+
+	const auto mute = press(l.mute[1]);
+	const auto solo = press(l.solo[2]);
+	assert_equal(true, mute != nullptr && solo != nullptr, "the buttons are found where they were drawn");
+
+	monitor.reset();
+	assert_equal(true, destroyed, "the rebuild destroyed the monitor the presses were made on");
+
+	mute->on_mouse_left_button_up(l.mute[1].center(), {});
+	solo->on_mouse_left_button_up(l.solo[2].center(), {});
+	const auto& mix = s._display->_sid_mix;
+	assert_equal(true, mix.muted[1] && !mix.muted[0] && !mix.muted[2], "a release still mutes its voice alone");
+	assert_equal(2, mix.solo, "and the other solos its voice");
+}
+
+
 void register_view_tests(view_state& state, test_registry& tests)
 {
+	tests.add("Should lay out the SID monitor"s, should_lay_out_the_sid_monitor);
+	tests.add("Should fit the SID monitor to its space"s, should_fit_the_sid_monitor_to_its_space);
+	tests.add("Should fade SID register activity"s, should_fade_sid_register_activity);
+	tests.add("Should move the SID monitor with the tune"s, should_move_the_sid_monitor_with_the_tune);
+	// Release review - Mute and Solo read a monitor a rebuild had already destroyed.
+	tests.add("Should toggle a SID voice after its monitor is rebuilt"s,
+	          should_toggle_a_sid_voice_after_its_monitor_is_rebuilt);
 	// VIEW-012 - Movie clip sessions are retired before playback/focus no longer owns them.
 	tests.add("Should decide when Movie clip sessions are retired"s,
 	          should_decide_when_movie_clip_sessions_are_retired);
 	tests.add("Should step Movie clips from the playhead while playing"s,
 	          should_step_movie_clips_from_the_playhead_while_playing);
+	tests.add("Should repaint a playing Movie once a movie frame"s, should_repaint_a_playing_movie_once_a_movie_frame);
 	// VIEW-013 - stale Movie cache completions must not mutate current request state.
 	tests.add("Should reject stale Movie cache completions before state changes"s,
 	          should_reject_stale_movie_cache_completions_before_state_changes);
@@ -4789,6 +6127,28 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// Edit preview stuck on Loading - the decode fits within its request rather than matching it.
 	tests.add("Should draw Edit preview decoded short of its request"s,
 	          should_draw_edit_preview_decoded_short_of_its_request);
+	tests.add("Should show an Edit adjustment that rounds to zero without a sign"s, []
+	{
+		assert_equal("0.00"s, format_edit_adjustment(-0.0), "a perspective a quarter turn negated");
+		assert_equal("0.00"s, format_edit_adjustment(-0.004), "a negative value that rounds to zero");
+		assert_equal("-0.01"s, format_edit_adjustment(-0.006), "a negative value that does not");
+		assert_equal("0.25"s, format_edit_adjustment(0.25), "a positive value");
+	});
+	// Saving an edited RAW suggested the same name as JPEG - the camera's own JPEG beside it - and a
+	// second Save As checked the RAW's extension for a free name, then offered a JPEG already there.
+	tests.add("Should suggest an edit a name of its own beside its source"s, []
+	{
+		const auto at = [](const std::string_view name) { return df::file_path(test_files_folder, name); };
+		const auto taken = [&at](const df::file_path p) { return p == at("IMG_1.jpg") || p == at("IMG_1-edit.jpg"); };
+		const auto none = [](const df::file_path) { return false; };
+
+		assert_equal("IMG_1-edit 2.jpg"s, std::string(edit_save_suggestion(at("IMG_1.CR2"), taken).name().sv()),
+		             "a RAW is saved as a JPEG of its own, past the edits already there");
+		assert_equal("IMG_1-edit.jpg"s, std::string(edit_save_suggestion(at("IMG_1.CR2"), none).name().sv()),
+		             "never as the camera's JPEG beside it");
+		assert_equal("a-edit.png"s, std::string(edit_save_suggestion(at("a.png"), none).name().sv()),
+		             "a format Diffractor writes keeps its own");
+	});
 	// Edit stuck on Loading - a file whose header loads but whose pixels do not decode.
 	tests.add("Should report Edit preview that cannot decode as a load failure"s,
 	          should_report_edit_preview_that_cannot_decode_as_a_load_failure);
@@ -4811,6 +6171,7 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should track the active row across a reorder"s, should_track_the_active_row_across_a_reorder);
 	tests.add("Should resolve list rows by work index"s, should_resolve_list_rows_by_work_index);
 	tests.add("Should select settled zoom sampler"s, should_select_settled_zoom_sampler);
+	tests.add("Should select video sampler by picture size"s, should_select_video_sampler_by_picture_size);
 	// MOD-016 - same-path source versions can move backward or change without increasing a maximum.
 	tests.add("Should reload displayed photo when source version moves backward"s,
 	          should_reload_displayed_photo_when_source_version_moves_backward);
@@ -4876,6 +6237,11 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should not keep selection strip frame alive"s, should_not_keep_selection_strip_frame_alive);
 	tests.add("Should preview rotation with inverse destination transform"s,
 	          should_preview_rotation_with_inverse_destination_transform);
+	// Issue #260 - the anticlockwise preview turned the picture clockwise.
+	tests.add("Should preview a rotation as it is written"s, should_preview_a_rotation_as_it_is_written);
+	// The task views' columns are resized by their dividers.
+	tests.add("Should resize list columns by their dividers"s, should_resize_list_columns_by_their_dividers);
+	tests.add("Should run a table from edge to edge"s, should_run_a_table_from_edge_to_edge);
 	tests.add("Should stage neighbour stand ins"s, should_stage_neighbour_stand_ins);
 	// Issue #78 - anamorphic video fills its box at the declared aspect
 	tests.add("Should shape video by its display dimensions"s, should_shape_video_by_its_display_dimensions);
@@ -4894,7 +6260,7 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should leave full screen for task views"s, should_leave_full_screen_for_task_views);
 	tests.add("Should preserve view scroller anchor across layout"s,
 	          should_preserve_view_scroller_anchor_across_layout);
-	tests.add("Should reserve view scroller footer"s, should_reserve_view_scroller_footer);
+	tests.add("Should map the view scroller track to the list"s, should_map_the_view_scroller_track_to_the_list);
 	tests.add("Should drag view scroller thumb from grab point"s,
 	          should_drag_view_scroller_thumb_from_grab_point);
 	tests.add("Should close view scroller bands over track"s, should_close_view_scroller_bands_over_track);
@@ -4925,6 +6291,9 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// G13 UI-001 - checkbox composites forward hit testing to the rendered child only while active.
 	tests.add("Should forward checkbox hits to visible checked child"s,
 	          should_forward_checkbox_hits_to_visible_checked_child);
+	tests.add("Should keep the options of an unchosen format disabled"s,
+	          should_keep_the_options_of_an_unchosen_format_disabled);
+	tests.add("Should measure edit offsets in UTF-16 units"s, should_measure_edit_offsets_in_utf16_units);
 	// G13 UI-002 - failed decoded dialog thumbnails do not enter the surface collection or cap.
 	tests.add("Should reject failed dialog thumbnail decodes"s, should_reject_failed_dialog_thumbnail_decodes);
 	// G13 UI-003 - search controls expose the list frame through the non-null accessor.
@@ -4939,10 +6308,22 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should accumulate RTL text widths in logical order"s,
 	          should_accumulate_rtl_text_widths_in_logical_order);
 	tests.add("Should map slider input to the drawn track"s, should_map_slider_input_to_the_drawn_track);
+	tests.add("Should hold a typed slider value to its range"s, should_hold_a_typed_slider_value_to_its_range);
 	// Shared labels and numeric fields consumed the entire track in a narrow controls pane.
 	tests.add("Should keep narrow slider rows usable"s, should_keep_narrow_slider_rows_usable);
 	// A failed image without dimensions collapsed its destination rectangle and hid the error.
 	tests.add("Should draw image errors without source dimensions"s, should_draw_image_errors_without_source_dimensions);
+	tests.add("Should draw only hex rows inside the clip"s, should_draw_only_hex_rows_inside_the_clip);
+	tests.add("Should read a document in its encoding"s, should_read_a_document_in_its_encoding);
+	tests.add("Should show bytes that are not text as a dump"s, should_show_bytes_that_are_not_text_as_a_dump);
+	tests.add("Should wrap document text at word boundaries"s, should_wrap_document_text_at_word_boundaries);
+	tests.add("Should copy a document selection as its source text"s, should_copy_a_document_selection_as_its_source_text);
+	tests.add("Should copy a dump selection as its rows"s, should_copy_a_dump_selection_as_its_rows);
+	tests.add("Should record the state each document line starts in"s, should_record_the_state_each_document_line_starts_in);
+	tests.add("Should select document text by dragging"s, should_select_document_text_by_dragging);
+	tests.add("Should release the document on a press elsewhere"s, should_release_the_document_on_a_press_elsewhere);
+	tests.add("Should draw the document selection behind its text"s, should_draw_the_document_selection_behind_its_text);
+	tests.add("Should colour a dump by byte class"s, should_colour_a_dump_by_byte_class);
 	tests.add("Should merge control colours as straight alpha"s, should_merge_control_colours_as_straight_alpha);
 	tests.add("Should hit test comparison divider in device coordinates"s,
 	          should_hit_test_comparison_divider_in_device_coordinates);
@@ -4962,4 +6343,6 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should shape the tile by what it draws"s, should_shape_the_tile_by_what_it_draws);
 	tests.add("Should not justify a tile shaped by a thumbnail"s, should_not_justify_a_tile_shaped_by_a_thumbnail);
 	tests.add("Should keep tile aspect when laying out a row"s, should_keep_tile_aspect_when_laying_out_a_row);
+	tests.add("Should order shows and albums by number"s, should_order_shows_and_albums_by_number);
+	tests.add("Should play on to the next episode"s, should_play_on_to_the_next_episode);
 }

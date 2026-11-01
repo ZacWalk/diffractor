@@ -7,8 +7,9 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: FFmpeg's D3D11VA hardware decoding on Windows, the application's side of it: the one decoder
-// whose pictures the renderer can present, whether the driver decodes a stream, and the decode device,
-// made on the GPU the renderer draws with.
+// whose pictures the renderer can present, whether the driver decodes a stream, and the decode device -
+// the render device itself where it carries the video interfaces, else one made on the GPU the renderer
+// draws with.
 
 #include "pch.h"
 
@@ -127,13 +128,49 @@ bool av_platform_hw_device_usable(AVBufferRef* device)
 	return hwctx && hwctx->device && hwctx->device->GetDeviceRemovedReason() == S_OK;
 }
 
-// Left to itself FFmpeg makes the device on whichever adapter is the default when the first video
-// opens. That need not be the renderer's - docking, or an external display becoming the primary one,
-// moves the default - and the shared-texture bridge cannot cross adapters, so every frame was then
-// downloaded and uploaded again.
+// FFmpeg's D3D11VA context around a device, protected the way FFmpeg protects the devices it makes: the
+// decode thread and the UI thread's copy out of its surfaces share it. Null when FFmpeg refuses it.
+static AVBufferRef* wrap_decode_device(ComPtr<ID3D11Device> device)
+{
+	ComPtr<ID3D10Multithread> multithread;
+	if (SUCCEEDED(device.As(&multithread))) multithread->SetMultithreadProtected(TRUE);
+
+	auto* ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA);
+	if (!ref) return nullptr;
+
+	// The context owns the device from here, and releases it on a failed init as well as with its last
+	// reference. Init fills in the contexts, the video interfaces and the lock.
+	auto* const device_ctx = std::bit_cast<AVHWDeviceContext*>(ref->data);
+	static_cast<AVD3D11VADeviceContext*>(device_ctx->hwctx)->device = device.Detach();
+
+	if (av_hwdevice_ctx_init(ref) == 0) return ref;
+
+	av_buffer_unref(&ref);
+	return nullptr;
+}
+
+// The render device itself where it carries the video interfaces: its pictures are then copied once, on one
+// device, into the texture the renderer draws. A device of its own costs two copies a frame, through a texture
+// shared between the devices, with a keyed mutex and a flush each time.
+//
+// Otherwise a device of its own on the render adapter. Left to itself FFmpeg makes the device on whichever
+// adapter is the default when the first video opens. That need not be the renderer's - docking, or an
+// external display becoming the primary one, moves the default - and the shared-texture bridge cannot cross
+// adapters, so every frame was then downloaded and uploaded again.
 AVBufferRef* av_platform_create_hw_device(const int device_type)
 {
 	if (device_type != AV_HWDEVICE_TYPE_D3D11VA) return nullptr;
+
+	if (const auto device = render_device())
+	{
+		if (auto* const ref = wrap_decode_device(device))
+		{
+			df::log(__FUNCTION__, "hardware decode on the render device");
+			return ref;
+		}
+
+		df::log(__FUNCTION__, "the render device has no video interfaces - decoding on a device of its own");
+	}
 
 	if (const auto adapter = find_adapter_by_luid(render_adapter()))
 	{
@@ -149,27 +186,10 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 
 		if (SUCCEEDED(hr))
 		{
-			// Decode threads and the UI thread's copy out of the decoder's surfaces share the device, so
-			// it is protected the way FFmpeg protects the ones it makes.
-			ComPtr<ID3D10Multithread> multithread;
-			if (SUCCEEDED(device.As(&multithread))) multithread->SetMultithreadProtected(TRUE);
-
-			auto* ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA);
-
-			if (ref)
+			if (auto* const ref = wrap_decode_device(device))
 			{
-				// The context owns the device from here, and releases it on a failed init as well as with
-				// its last reference. Init fills in the contexts, the video interfaces and the lock.
-				auto* const device_ctx = std::bit_cast<AVHWDeviceContext*>(ref->data);
-				static_cast<AVD3D11VADeviceContext*>(device_ctx->hwctx)->device = device.Detach();
-
-				if (av_hwdevice_ctx_init(ref) == 0)
-				{
-					df::log(__FUNCTION__, "hardware decode device on " + name);
-					return ref;
-				}
-
-				av_buffer_unref(&ref);
+				df::log(__FUNCTION__, "hardware decode device on " + name);
+				return ref;
 			}
 
 			df::log(__FUNCTION__, std::format("FFmpeg refused the decode device on {} - using the default adapter",

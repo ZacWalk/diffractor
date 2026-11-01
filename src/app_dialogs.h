@@ -7,8 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: The dialogs commands open that are features in their own right - advanced search, the
-// update offer, the keyboard reference, About, settings, collection settings and maintenance, sidebar
-// customisation and sharing. app_commands.cpp registers the commands that open them.
+// update offer, the keyboard reference, About, index maintenance and sharing. app_commands.cpp registers
+// the commands that open them; the settings themselves are the Options view's (view_options.h).
 
 #pragma once
 
@@ -20,9 +20,10 @@ void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent);
 #endif
 void show_keyboard_reference(view_state& s, const ui::control_frame_ptr& parent, const commands_map& commands);
 void about_invoke(view_state& s, const ui::control_frame_ptr& parent, commands_map& commands);
-void settings_invoke(view_state& s, const ui::control_frame_ptr& parent);
-void index_settings_invoke(view_state& s, const ui::control_frame_ptr& parent, settings_t::index_t collection_settings);
-void customise_invoke(view_state& s, const ui::control_frame_ptr& parent);
+// Checks the index, then offers to defragment or reset it, each behind its own dialog.
+void index_maintenance_invoke(const view_state& s, const ui::control_frame_ptr& parent);
+// How large the index is and how many items it describes.
+std::string format_index_text(const view_state& s);
 void share_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view);
 
 // A command that acts on the selection first asks whether it can. When it cannot it says why, under

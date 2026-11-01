@@ -63,7 +63,7 @@ namespace
 			.format = detected_format::JXL,
 			.extensions = "jxl",
 			.description = "JPEG XL",
-			.traits = file_traits::embedded_xmp,
+			.traits = xmp_edit | file_traits::no_photo_edit,
 			.scan = scan_jxl_libfiles,
 			.load = [](read_stream& s, load_diagnostic* const d) { return load_jxl(s, d); },
 			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)

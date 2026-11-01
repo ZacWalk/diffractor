@@ -116,7 +116,7 @@ struct pie_chart_scene
 	std::array<pie_chart_wedge, pie_chart_segment_count> wedges{};
 
 	// The well's floor. Always opaque: a transparent floor would let the sidebar show through a
-	// solid object, and would leave the centre - which opens collection options - with no pixels
+	// solid object, and would leave the centre - which opens Options - with no pixels
 	// of its own to be pointed at.
 	ui::color32 hole_color = 0;
 	uint16_t hole_id = pie_chart_hole_id;

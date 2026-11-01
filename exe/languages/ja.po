@@ -200,9 +200,6 @@ msgstr "フィルター"
 msgid "Close"
 msgstr "閉じる"
 
-msgid "Collection options"
-msgstr "コレクションオプション"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "除外するには先頭に '-' を付けます。-c:\\photos\\secret のような完全パスは 1 つのフォルダーを除外します。-secret のような名前や -proxy* のようなワイルドカードは、コレクション内のどこにあっても一致するフォルダーを除外します。"
 
@@ -470,9 +467,6 @@ msgstr "Googleマップで開く"
 msgid "Open with"
 msgstr "別のプログラムで開く"
 
-msgid "General options"
-msgstr "全般オプション"
-
 msgid "Pin or hold item"
 msgstr "アイテムをピン留め/固定"
 
@@ -622,9 +616,6 @@ msgstr "サムネイルサイズの切り替え"
 
 msgid "Change thumbnail size"
 msgstr "サムネイルサイズを変更"
-
-msgid "Back to the top of the list"
-msgstr "リストの先頭に戻る"
 
 msgid "Tools"
 msgstr "ツール"
@@ -1814,6 +1805,9 @@ msgstr "ファイルが異なります。"
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG - 写真に最適な圧縮"
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL - 写真のファイルを最小に"
+
 msgid "Keyboard"
 msgstr "キーボード"
 
@@ -2209,6 +2203,9 @@ msgstr "JPEGの保存品質"
 
 msgid "WEBP save quality"
 msgstr "WEBPの保存品質"
+
+msgid "JPEG XL save quality"
+msgstr "JPEG XLの保存品質"
 
 msgid "When saving"
 msgstr "保存時"
@@ -3616,8 +3613,8 @@ msgstr "項目を 1 行上または下へ移動します。拡大表示中の画
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "表示中の画像を拡大または縮小します。0 キーでウィンドウに合わせます。"
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "コレクションにフォルダーを追加 (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "コレクションにフォルダーを追加 (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "検索条件を 1 つ以上選択してください。"
@@ -3820,3 +3817,114 @@ msgid_plural "{count} clips were relinked."
 msgstr[0] "1 個のクリップを再リンクしました。"
 msgstr[1] "{count} 個のクリップを再リンクしました。"
 
+
+msgid "SID monitor"
+msgstr "SID モニター"
+
+msgid "Voice {}"
+msgstr "ボイス {}"
+
+msgid "Output"
+msgstr "出力"
+
+msgid "Filter"
+msgstr "フィルター"
+
+msgid "Volume"
+msgstr "音量"
+
+msgid "Register writes"
+msgstr "レジスター書き込み"
+
+msgid "Solo"
+msgstr "ソロ"
+
+msgid "Same film"
+msgstr "同じ映画"
+
+msgid "Viewing and playback"
+msgstr "表示と再生"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "写真、ビデオ、音楽の表示と再生の方法です。"
+
+msgid "Shown in the sidebar"
+msgstr "サイドバーに表示する項目"
+
+msgid "Editing and saving"
+msgstr "編集と保存"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "ファイルを変更する前に Diffractor が確認するかどうかと、保存するときの品質です。"
+
+msgid "Confirmations"
+msgstr "確認"
+
+msgid "General"
+msgstr "全般"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "Diffractor の表示言語、ヘルプ、動作です。"
+
+msgid "Save options and close"
+msgstr "オプションを保存して閉じる"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "一部のオプションを変更しました。閉じる前に保存しますか？"
+
+msgid "Viewing"
+msgstr "表示"
+
+msgid "What each folder holds"
+msgstr "各フォルダーの内容"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "映画とテレビ番組は、ファイル名から名前、番号、日付が付けられます。個人の録画と音楽はそのままです。「各ファイルの名前で判断」は、名前がリリース名のように見えるファイルを映画またはエピソードとして扱います。"
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "上でコレクションのフォルダーを選んで保存すると、それぞれの内容を指定できます。"
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "上で追加したフォルダーは、オプションを保存するとここに表示されます。"
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Kodi、Jellyfin、Emby が動画の横に保存する .nfo ファイルから、タイトル、あらすじ、シーズン、エピソード、日付を読み取ります。これを変更すると、コレクションが読み直されます。"
+
+msgid "Decided by each file's name"
+msgstr "各ファイルの名前で判断"
+
+msgid "Personal recordings"
+msgstr "個人の録画"
+
+msgid "Films and TV shows"
+msgstr "映画とテレビ番組"
+
+msgid "Music"
+msgstr "音楽"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "オフ (映画が強制する字幕を除く)"
+
+msgid "Always"
+msgstr "常に"
+
+msgid "When the speech is in another language"
+msgstr "音声が別の言語のとき"
+
+msgid "Show subtitles in"
+msgstr "字幕の言語"
+
+msgid "The language Diffractor is shown in"
+msgstr "Diffractor の表示言語"
+
+msgid "The system's default"
+msgstr "システムの既定"
+
+msgid "forced"
+msgstr "強制"
+
+msgid "Subtitles {}"
+msgstr "字幕 {}"
+
+msgid "Subtitles"
+msgstr "字幕"

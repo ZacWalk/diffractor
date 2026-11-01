@@ -37,7 +37,7 @@ The Linux implementation currently provides:
 | Files, mapping, enumeration, paths | libdesktop's `platform_linux_files.cpp` |
 | Copy, move, delete, and shell stand-ins | libdesktop's `platform_linux_desktop.cpp` |
 | INI settings | libdesktop's `platform_linux_settings.cpp` |
-| The desktop UI's stand-ins: theme colours, key codes, UI-thread identity, icon glyphs, movie writing and audio output | libdesktop's `platform_linux_ui.cpp` |
+| The desktop UI's stand-ins: theme colours, key codes, UI-thread identity, icon glyphs, styled text, movie writing and audio output | libdesktop's `platform_linux_ui.cpp` |
 | Entry point, the absent hardware video decode, and the empty platform test registration | `platform_linux_app.cpp` |
 
 Path identity follows the filesystem: case-insensitive on Windows and case-sensitive on Linux.

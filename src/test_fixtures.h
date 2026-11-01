@@ -486,6 +486,52 @@ extern std::atomic_int test_version;
 extern df::cancel_token test_token;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+// Shared fixtures built in memory
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+// A SID tune small enough to write out in full. Its init routine sets voice 1 sawing at 440Hz at full
+// volume, and its play routine nudges that voice's frequency every frame, so the tune sounds, and its
+// registers change, from the first frame. It holds three tunes and starts on the second, so selecting
+// one has something to choose from.
+inline std::vector<uint8_t> make_test_sid_tune()
+{
+	std::vector<uint8_t> t(0x7C, 0);
+	const auto text = [&t](const size_t at, const std::string_view s) { std::ranges::copy(s, t.begin() + at); };
+
+	text(0x00, "PSID");
+	t[0x05] = 2; // version
+	t[0x07] = 0x7C; // data offset; the load address is the data's first two bytes
+	t[0x0A] = 0x10; // init at $1000
+	t[0x0C] = 0x10;
+	t[0x0D] = 0x20; // play at $1020
+	t[0x0F] = 3; // tunes
+	t[0x11] = 2; // the tune it starts on
+	text(0x16, "Diffractor Test Tune");
+	text(0x36, "Test Author");
+	text(0x56, "1987 Test Publisher");
+	t[0x77] = 0x14; // a 6581, PAL
+
+	const uint8_t program[] = {
+		0x00, 0x10, // loads at $1000
+		0xA9, 0x0F, 0x8D, 0x18, 0xD4, // LDA #$0F, STA $D418: full volume
+		0xA9, 0x45, 0x8D, 0x00, 0xD4, // voice 1 frequency $1D45: A4 on a PAL machine
+		0xA9, 0x1D, 0x8D, 0x01, 0xD4,
+		0xA9, 0x09, 0x8D, 0x05, 0xD4, // attack 0, decay 9
+		0xA9, 0xF0, 0x8D, 0x06, 0xD4, // sustain 15, release 0
+		0xA9, 0x21, 0x8D, 0x04, 0xD4, // sawtooth, gate on
+		0x60, // RTS
+		0xEA, // NOP, up to $1020
+		0xE6, 0xFB, // INC $FB
+		0xA5, 0xFB, // LDA $FB
+		0x8D, 0x00, 0xD4, // STA $D400
+		0x60, // RTS
+	};
+
+	t.insert(t.end(), std::begin(program), std::end(program));
+	return t;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 // Shared test context
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -535,6 +581,8 @@ std::shared_ptr<av_player> make_test_player();
 // Never opened, so it holds no file and no decoder threads; only its identity is of interest.
 std::shared_ptr<av_session> make_test_session();
 std::shared_ptr<av_session> make_test_session(std::function<void(df::file_path, double)> save_position);
+// A session as a player makes one: the presenter sets decode_wake when it takes frames from the queue.
+std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<const platform::thread_event> decode_wake);
 
 // The gazetteer costs seconds to load, so every test that needs real place data shares one
 // loaded instance. A test that mutates it (set_display_language) must restore it before returning.
@@ -680,6 +728,18 @@ public:
 	prop_test& media_type(const std::string_view name)
 	{
 		_f.ft = files::file_type_from_name(name);
+		return *this;
+	}
+
+	prop_test& kind(const prop::media_kind k)
+	{
+		_f.safe_ps()->kind = k;
+		return *this;
+	}
+
+	prop_test& media_position(const double seconds)
+	{
+		_f.safe_ps()->media_position = seconds;
 		return *this;
 	}
 

@@ -200,9 +200,6 @@ msgstr "filtro"
 msgid "Close"
 msgstr "Chiudi"
 
-msgid "Collection options"
-msgstr "Opzioni della collezione"
-
 msgid "Prefix an entry with '-' to exclude it. A full path such as -c:\\photos\\secret excludes one folder. A name such as -secret, or a wildcard such as -proxy*, excludes matching folders anywhere in your collection."
 msgstr "Anteponi '-' a una voce per escluderla. Un percorso completo come -c:\\photos\\secret esclude una sola cartella. Un nome come -secret, o un carattere jolly come -proxy*, esclude le cartelle corrispondenti ovunque nella tua collezione."
 
@@ -470,9 +467,6 @@ msgstr "Apri in Google Maps"
 msgid "Open with"
 msgstr "Apri con"
 
-msgid "General options"
-msgstr "Opzioni generali"
-
 msgid "Pin or hold item"
 msgstr "Fissa o mantieni elemento"
 
@@ -622,9 +616,6 @@ msgstr "Alterna dimensione miniature"
 
 msgid "Change thumbnail size"
 msgstr "Cambia dimensione miniature"
-
-msgid "Back to the top of the list"
-msgstr "Torna all'inizio dell'elenco"
 
 msgid "Tools"
 msgstr "Strumenti"
@@ -1814,6 +1805,9 @@ msgstr "I file sono diversi."
 msgid "JPEG - Best compression for photos"
 msgstr "JPEG - Migliore compressione per le foto"
 
+msgid "JPEG XL - Smallest files for photos"
+msgstr "JPEG XL - File più piccoli per le foto"
+
 msgid "Keyboard"
 msgstr "Tastiera"
 
@@ -2211,6 +2205,9 @@ msgstr "Qualità salvataggio JPEG"
 
 msgid "WEBP save quality"
 msgstr "Qualità salvataggio WEBP"
+
+msgid "JPEG XL save quality"
+msgstr "Qualità salvataggio JPEG XL"
 
 msgid "When saving"
 msgstr "Durante il salvataggio"
@@ -3620,8 +3617,8 @@ msgstr "Sposta di una riga di elementi in su o in giù. Sposta un'immagine ingra
 msgid "Zoom a displayed image in or out. Press 0 to fit it to the window."
 msgstr "Ingrandisce o riduce l'immagine visualizzata. Premi 0 per adattarla alla finestra."
 
-msgid "Add folders to your collection (Ctrl+F6)"
-msgstr "Aggiungi cartelle alla tua collezione (Ctrl+F6)"
+msgid "Add folders to your collection (F6)"
+msgstr "Aggiungi cartelle alla tua collezione (F6)"
 
 msgid "Select at least one search criterion."
 msgstr "Seleziona almeno un criterio di ricerca."
@@ -3824,3 +3821,114 @@ msgid_plural "{count} clips were relinked."
 msgstr[0] "1 clip è stato ricollegato."
 msgstr[1] "{count} clip sono stati ricollegati."
 
+
+msgid "SID monitor"
+msgstr "Monitor SID"
+
+msgid "Voice {}"
+msgstr "Voce {}"
+
+msgid "Output"
+msgstr "Uscita"
+
+msgid "Filter"
+msgstr "Filtro"
+
+msgid "Volume"
+msgstr "Volume"
+
+msgid "Register writes"
+msgstr "Scritture nei registri"
+
+msgid "Solo"
+msgstr "Solo"
+
+msgid "Same film"
+msgstr "Stesso film"
+
+msgid "Viewing and playback"
+msgstr "Visualizzazione e riproduzione"
+
+msgid "How photos, videos and music are shown and played."
+msgstr "Come vengono mostrati e riprodotti foto, video e musica."
+
+msgid "Shown in the sidebar"
+msgstr "Mostrato nella barra laterale"
+
+msgid "Editing and saving"
+msgstr "Modifica e salvataggio"
+
+msgid "Whether Diffractor asks before it changes your files, and the quality it saves them at."
+msgstr "Se Diffractor chiede prima di modificare i tuoi file e la qualità con cui li salva."
+
+msgid "Confirmations"
+msgstr "Conferme"
+
+msgid "General"
+msgstr "Generale"
+
+msgid "The language Diffractor is shown in, its help, and how it runs."
+msgstr "La lingua in cui viene mostrato Diffractor, la sua guida e come funziona."
+
+msgid "Save options and close"
+msgstr "Salva opzioni e chiudi"
+
+msgid "You changed some options. Save them before closing?"
+msgstr "Hai modificato alcune opzioni. Salvarle prima di chiudere?"
+
+msgid "Viewing"
+msgstr "Visualizzazione"
+
+msgid "What each folder holds"
+msgstr "Cosa contiene ogni cartella"
+
+msgid "Films and TV shows are named, numbered and dated from their file names. Personal recordings and music are left as they are. Decided by each file's name treats a file as a film or an episode when its name reads like a release."
+msgstr "Film e serie TV vengono nominati, numerati e datati in base al nome del file. Le registrazioni personali e la musica restano come sono. «In base al nome di ogni file» tratta un file come film o episodio quando il nome sembra quello di una release."
+
+msgid "Choose collection folders above, and save, to say what each holds."
+msgstr "Scegli sopra le cartelle della collezione e salva per indicare cosa contiene ciascuna."
+
+msgid "A folder added above is listed here once the options are saved."
+msgstr "Una cartella aggiunta sopra comparirà qui dopo aver salvato le opzioni."
+
+msgid "Read titles, plots, seasons, episodes and dates from the .nfo files Kodi, Jellyfin and Emby keep beside videos. The collection is read again when this changes."
+msgstr "Leggi titoli, trame, stagioni, episodi e date dai file .nfo che Kodi, Jellyfin ed Emby tengono accanto ai video. La collezione viene riletta quando questa opzione cambia."
+
+msgid "Decided by each file's name"
+msgstr "In base al nome di ogni file"
+
+msgid "Personal recordings"
+msgstr "Registrazioni personali"
+
+msgid "Films and TV shows"
+msgstr "Film e serie TV"
+
+msgid "Music"
+msgstr "Musica"
+
+msgid "Off, apart from subtitles a film forces"
+msgstr "Disattivati, tranne i sottotitoli forzati di un film"
+
+msgid "Always"
+msgstr "Sempre"
+
+msgid "When the speech is in another language"
+msgstr "Quando si parla in un'altra lingua"
+
+msgid "Show subtitles in"
+msgstr "Mostra sottotitoli in"
+
+msgid "The language Diffractor is shown in"
+msgstr "La lingua in cui è mostrato Diffractor"
+
+msgid "The system's default"
+msgstr "Predefinito di sistema"
+
+msgid "forced"
+msgstr "forzati"
+
+msgid "Subtitles {}"
+msgstr "Sottotitoli {}"
+
+msgid "Subtitles"
+msgstr "Sottotitoli"

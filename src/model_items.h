@@ -288,6 +288,12 @@ namespace df
 
 		str::cached name = {};
 		str::cached title = {};
+		// What a tile is titled: the title, or for a film or an episode the title as a library names it -
+		// "S01E02 · Pilot", "Dont Look Up (2021)".
+		str::cached caption = {};
+		// An episode's place in its show - S01E02, S03E00, E426, the day it aired - and a film's year: the
+		// columns a detail row adds beside disc and track.
+		str::cached episode = {};
 		str::cached folder = {};
 		str::cached label = {};
 
@@ -298,8 +304,11 @@ namespace df
 		int sidecars = 0;
 		int disk = 0;
 		int track = 0;
+		int year = 0;
 		int duration = 0;
 		int items = 0;
+		// How far through the recording its saved playback position stands, 0 to 1.
+		double progress = 0.0;
 
 		str::cached bitrate = {};
 		str::cached pixel_format = {};
@@ -2206,6 +2215,8 @@ namespace df
 		item_draw_info icon;
 		item_draw_info disk;
 		item_draw_info track;
+		item_draw_info episode;
+		item_draw_info year;
 		item_draw_info title;
 		item_draw_info flag;
 		item_draw_info presence;
@@ -2226,6 +2237,8 @@ namespace df
 			icon.clear_for_layout();
 			disk.clear_for_layout();
 			track.clear_for_layout();
+			episode.clear_for_layout();
+			year.clear_for_layout();
 			title.clear_for_layout();
 			flag.clear_for_layout();
 			presence.clear_for_layout();
@@ -2248,6 +2261,8 @@ namespace df
 			if (icon.width > 0) result += icon.width + text_padding;
 			if (disk.width > 0) result += disk.width + text_padding;
 			if (track.width > 0) result += track.width + text_padding;
+			if (episode.width > 0) result += episode.width + text_padding;
+			if (year.width > 0) result += year.width + text_padding;
 			if (title.width > 0) result += title.width + text_padding;
 			if (flag.width > 0) result += flag.width + text_padding;
 			if (presence.width > 0) result += presence.width + text_padding;
@@ -2404,3 +2419,12 @@ namespace df
 std::string format_items_totals(const df::file_group_histogram& summary, bool is_init_complete);
 std::string format_items_summary(group_by grouping, sort_by order, const df::file_group_histogram& summary,
                                  bool is_init_complete);
+// The selection's count and the size of its files, read where the status bar starts; empty with
+// nothing selected.
+std::string format_selection_summary(const df::item_set& selected);
+
+// Today's day number in local time, which is what an item's grouping dates are: EXIF times carry no
+// zone, and file times are converted to local before they are grouped.
+uint32_t local_today_days();
+// The date group a day falls in: Today (order 0), Yesterday (order 1), or its month.
+df::group_key date_group_key(df::date_t when, uint32_t today);

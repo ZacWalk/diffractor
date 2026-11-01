@@ -423,6 +423,11 @@ void rename_view::run()
 	});
 }
 
+view_bars rename_view::bars() const
+{
+	return task_view_bars({commands::tool_run});
+}
+
 std::string rename_view::run_blocked_reason() const
 {
 	// While a run is in flight, or before there is a plan to judge, the toolbar and the status
@@ -456,7 +461,9 @@ void rename_view::refresh()
 	const auto& items = _state.selected_items();
 	const auto sources = snapshot_rename_sources(items);
 	const auto name_template = setting.rename.name_template;
-	const auto start_seq = str::to_int(setting.rename.start_seq);
+	// Held to what numbering can count from: below zero has no digits, and near the top of an int the
+	// count would overflow before the last item.
+	const auto start_seq = std::clamp(str::to_int(setting.rename.start_seq), 0, 999'999'999);
 	const auto policy = setting.rename.collision;
 	const auto completion_status = format_plural_text(tt.rename_fmt, items);
 	const auto generation = ++_analysis_generation;
@@ -538,6 +545,7 @@ view_controls_host_ptr rename_view::controls(const ui::control_frame_ptr& owner)
 		"travel-{country}-###"s,
 		"{artist}-{album}-{title}"s,
 		"{show}.S{season}E{episode}.{title}"s,
+		"{title} ({year})"s,
 	};
 
 	std::sort(folder_structure_completes.begin(), folder_structure_completes.end()); // Sort

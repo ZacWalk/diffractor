@@ -66,6 +66,13 @@ file_load_result edit_load_without_preview(const file_load_result& loaded, file_
 std::optional<quadd> edit_pending_crop_for_loaded_photo(std::optional<rectd> pending_crop,
                                                         const file_load_result& loaded, bool show_rotated);
 bool edit_pixel_controls_visible(bool is_bitmap, bool can_edit_pixels);
+// An adjustment as its entry box shows it, to two places. A quarter turn negates an unset perspective,
+// so a value that rounds to zero is shown unsigned rather than as a -0.00 the user never set.
+std::string format_edit_adjustment(double value);
+// Where an edited photo is offered to be saved beside its source: "<name>-edit", numbered past names
+// taken, in the source's format when Diffractor can write it and as JPEG otherwise - never the name of
+// a file already there, such as the camera's own JPEG beside a RAW.
+df::file_path edit_save_suggestion(df::file_path source, const std::function<bool(df::file_path)>& exists);
 
 struct edit_preview_render_decision
 {
@@ -116,6 +123,8 @@ public:
 	std::shared_ptr<ui::slider_control> _jpeg_quality_slider;
 	std::shared_ptr<ui::slider_control> _webp_quality_slider;
 	std::shared_ptr<ui::check_control> _webp_lossless_check;
+	std::shared_ptr<ui::slider_control> _jxl_quality_slider;
+	std::shared_ptr<ui::check_control> _jxl_lossless_check;
 
 	edit_view_controls(view_state& s, edit_view_state& es) : view_controls_host(s), _edit_state(es)
 	{
@@ -321,6 +330,8 @@ public:
 
 		return _title;
 	}
+
+	view_bars bars() const override;
 
 	void options_changed() const
 	{

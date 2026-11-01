@@ -9,7 +9,7 @@ Free, high-performance photo and video organizer for Windows. Optimized for spee
 
 | Category | Capabilities |
 |----------|-------------|
-| **Viewing** | Unified photo/video/audio playback; native support for most formats including RAW |
+| **Viewing** | Unified photo/video/audio playback; native support for most formats including RAW; Commodore 64 SID tunes, with a voice-by-voice SID monitor |
 | **Zoom** | One scale-and-center model across mouse, keyboard, wheel, and touch; hold to inspect, an overview navigator, and linked side-by-side magnification |
 | **Search** | Instant metadata-based search (tags, location, camera data) via local indexing |
 | **Places** | Photos and videos are placed from GPS alone, searchable by place, city, state, country, or distance, with map and visit-derived grouping |

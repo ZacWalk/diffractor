@@ -34,6 +34,14 @@ playback, and active view. `app_frame` coordinates windows, commands, workers, a
 Items is the windowed browser; fullscreen reuses the persistent media renderer without replacing the
 logical browsing state.
 
+Each view declares what the frame's title bar and status bar carry for it (`view_base::bars`): command
+identifiers, and the few bar controls that are not buttons, for the title bar and for each end of the
+status bar. `app_frame` builds one set of native controls per distinct declaration before the first
+layout, updates them with the rest of command state, and lays out only the active view's sets, the
+status bar's trailing set first so a short bar gives up its leading one; the status text and totals
+are painted by the frame itself from in-memory state, and the selection summary is the label of Items'
+Open button. A view therefore never creates, positions or updates a toolbar.
+
 Views, controls, hosts, controllers, and `item_element` are UI-owned. A host may outlive its native
 window; `view_host::frame()` therefore returns `ui::no_frame()` when unattached. Visibility gates
 painting, not attachment or model updates.
@@ -168,6 +176,33 @@ completion path; publication and texture staging use separate generations.
 mapping. [Rendering](rendering.md) owns draw backends and device lifetime. FFmpeg sessions decode off
 the UI thread and publish generation-checked frames; graphics upload remains UI-owned.
 
+A SID tune reaches the player as a WAV file that is never written: [av_sid.cpp](../src/av_sid.cpp)
+runs the tune in lib8bit's Commodore 64 as the decoder's read thread asks for samples, so the
+session's clock, seeking, pausing and end are the ordinary ones. The render keeps each PAL frame's SID
+registers beside its samples for the SID monitor ([ui_sid.cpp](../src/ui_sid.cpp)) to read on the UI
+thread. Reads are kept short and the WAV demuxer is asked for small packets, so a muted voice is heard
+to stop within half a second. The session's own info describes the WAV, so the display swaps in the
+tune's (`sid_tune_render::describe`). For other audio the visualizer marks the presented position; for
+a SID tune, which has no visualizer, `update_for_present` marks it (`av_session::mark_presented`).
+
+The monitor is drawn as the audio visualizer is, so a playing tune does not rebuild the view's scene for
+every frame. Its waveforms, meters, lamps and the register grid's highlight are flat rectangles in a
+`ui::vertices` the scene draws by reference: the monitor places them when it draws (`sid_monitor_motion`),
+and `update_for_present` brings them up to the session's position, after which the frame presents the
+scene again. The values, notes and register contents beside them are text, which only rebuilding the
+scene redraws, so they are redrawn ten times a second while they change - and not at all once the monitor
+has not been drawn for two seconds, as when the view showing it has gone.
+
+Subtitles ride the playing session ([av_subtitle.cpp](../src/av_subtitle.cpp)). The read thread decodes
+the chosen embedded stream's packets as it demuxes them, or a sidecar whole when the session opens, into
+events on the presentation timeline. It rasterises the lines near the playhead - text through
+libdesktop's styled-text renderer, pictures through their palettes - and releases them once behind, so
+memory follows the playhead rather than the film. The UI thread only uploads finished bitmaps and draws
+them over the picture, scaled from the video's pixels; `update_for_present` rebuilds the scene once when
+what is on show changes, with or without a new frame, since a replay would present the lines it was
+recorded with. A seek drops the stream's earlier events by generation; a
+sidecar's are kept. The choice of track belongs to the display, so a change of audio track keeps it.
+
 Long operations execute immutable reviewed plans. Each item records success, failure, skip, or
 cancellation. Cancellation stops future work and does not claim to undo completed effects.
 
@@ -204,7 +239,8 @@ repository lint, build, embedded tests, and translation validation. Focused test
 ## Where this lives
 
 - [app.cpp](../src/app.cpp), [app.h](../src/app.h), and [app_workers.cpp](../src/app_workers.cpp):
-  process, frame, queues, and invalidation.
+  process, frame, queues, and invalidation; [app_toolbar.cpp](../src/app_toolbar.cpp): the bars built
+  from each view's declaration and how they are arranged.
 - [model.cpp](../src/model.cpp), [model.h](../src/model.h),
   [model_items.cpp](../src/model_items.cpp), and [model_items.h](../src/model_items.h): view and item
   state.
@@ -217,6 +253,10 @@ repository lint, build, embedded tests, and translation validation. Focused test
 - [model_tile_cache.cpp](../src/model_tile_cache.cpp): separately owned map tile database.
 - libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): operating-system abstraction;
   libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h): the platform services the window layer implements.
+- [av_sid.cpp](../src/av_sid.cpp) and [ui_sid.cpp](../src/ui_sid.cpp): SID tunes played through
+  lib8bit, and the SID monitor.
+- [av_subtitle.cpp](../src/av_subtitle.cpp): subtitles - styling, placement, the events a session
+  keeps, and the choice of track.
 - [ui_view.h](../src/ui_view.h), [ui_elements.h](../src/ui_elements.h), and
   [ui_controllers.h](../src/ui_controllers.h): view framework.
 - [util_crash_files_db.h](../src/util_crash_files_db.h): media crash-loop protection.

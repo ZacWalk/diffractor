@@ -30,6 +30,7 @@ class sync_view;
 class tags_view;
 class import_view;
 class locate_view;
+class options_view;
 class view_controls_host;
 
 using view_controls_host_ptr = std::shared_ptr<view_controls_host>;
@@ -56,10 +57,53 @@ inline bool command_progress_needs_animation(const bool active, const int64_t to
 	return ui::animations_enabled && active && total == 0;
 }
 
-inline bool status_needs_animation(const bool progress_active, const int64_t progress_total, const bool show_debug_info)
+// What each tick repaints on the status's behalf: the status bar while an open-ended run pulses in it,
+// and the view while debug overlays are drawn over it.
+struct status_repaint
 {
-	return command_progress_needs_animation(progress_active, progress_total) || show_debug_info;
+	bool status_bar = false;
+	bool view = false;
+};
+
+inline status_repaint status_repaints(const bool progress_active, const int64_t progress_total,
+                                      const bool show_debug_info)
+{
+	return {command_progress_needs_animation(progress_active, progress_total), show_debug_info};
 }
+
+// One part of a bar as arrange_bar sees it.
+struct bar_slot
+{
+	sizei extent;
+	// The narrowest the part stays useful at; zero when it cannot narrow at all.
+	int min_width = 0;
+	// The first thing given up when the bar is short of room.
+	bool optional = false;
+};
+
+struct bar_arrangement
+{
+	// One per slot, in the same order; empty for a slot given up.
+	std::vector<recti> slots;
+	// What is left once the slots and the gap beside them are placed: the title in the title bar, the
+	// status in the status bar. At the leading end for a trailing arrangement, and the other way round.
+	recti remainder;
+};
+
+enum class bar_alignment
+{
+	leading,
+	trailing,
+};
+
+// Aligns the slots to one end of `bounds`, each centred vertically, the right end unless asked
+// otherwise. When they do not fit, optional slots are given up first, then narrowing slots shrink
+// towards their minimum, and only then are whole slots dropped from the end furthest from the one
+// they are aligned to: for a trailing bar, where its commands sit, the trailing end is the last to
+// go, and the last slot standing is clipped to the bar rather than dropped. A slot with no width
+// takes no room, not even a gap.
+bar_arrangement arrange_bar(recti bounds, const std::vector<bar_slot>& slots, int gap,
+                            bar_alignment alignment = bar_alignment::trailing);
 
 // Defined in app.cpp so callers do not need the whole sidebar header for the logo lockup.
 view_element_ptr create_app_logo_element(view_state& s, ui::style::font_face font, bool interactive,
@@ -205,8 +249,6 @@ public:
 			_active_controller->draw(dc);
 		}
 
-		const auto display = _state.display_state();
-		if (!display || !display->is_zoom_mode()) draw_view_status(dc);
 		draw_status(dc);
 
 		if (setting.show_debug_info && _active_controller)
@@ -351,7 +393,6 @@ public:
 
 	void update_status(std::string_view title, std::string_view text, int padding = 8);
 	void clear_status();
-	void draw_view_status(ui::draw_context& dc) const;
 	void draw_status(ui::draw_context& dc) const;
 	void redraw_now() const { frame()->redraw_now(); }
 
@@ -594,14 +635,30 @@ public:
 	ui::toolbar_ptr _navigate2;
 	ui::toolbar_ptr _navigate3;
 
-	ui::toolbar_ptr _media_edit_commands;
-	ui::toolbar_ptr _tool_commands;
-	ui::toolbar_ptr _import_commands;
-	ui::toolbar_ptr _locate_commands;
-	ui::toolbar_ptr _sync_commands;
-	ui::toolbar_ptr _tags_commands;
-	ui::toolbar_ptr _movie_commands;
-	ui::toolbar_ptr _busy_commands;
+	// One part of a bar as the frame builds it from a view's declaration: a toolbar for each run of
+	// commands, or, where `toolbar` is null, the frame's own control named by `control`.
+	struct frame_bar_part
+	{
+		ui::toolbar_ptr toolbar;
+		bar_control control = bar_control::item_filter;
+	};
+
+	using frame_bar = std::vector<frame_bar_part>;
+
+	// Keyed by the declared entries, so views that declare the same set - every task view's title bar
+	// - share one set of controls. Built before the first layout and never rebuilt: the commands they
+	// show update in place, and a view switch only shows and hides what already exists.
+	std::map<std::vector<bar_entry>, frame_bar> _bars;
+
+	// The bar controls that are not toolbar buttons, one of each whichever views declare them.
+	ui::edit_ptr _filter_edit;
+	ui::trackbar_ptr _item_size;
+	std::string _totals_text;
+	// The filter as it stood when its box took focus, which Escape puts back.
+	std::string _filter_edit_original;
+	bool _filter_has_focus = false;
+	bool _filter_setting_text = false;
+	bool _item_size_dragging = false;
 
 	std::shared_ptr<ui::complete_strategy_t> _search_completes;
 	ui::list_window_ptr _search_predictions_frame;
@@ -626,6 +683,7 @@ public:
 	std::shared_ptr<locate_view> _view_locate;
 	std::shared_ptr<sync_view> _view_sync;
 	std::shared_ptr<tags_view> _view_tags;
+	std::shared_ptr<options_view> _view_options;
 
 	std::shared_ptr<items_view> _view_items;
 	std::shared_ptr<selector_view> _view_selector;
@@ -648,7 +706,23 @@ public:
 	recti _view_bounds;
 	recti _top_bar_bounds;
 	recti _title_bounds;
+	// The status bar along the base of the window, and the parts of it the frame paints itself: the
+	// view's status, and the item totals among the bar's controls.
+	recti _status_bar_bounds;
+	recti _status_text_bounds;
+	recti _totals_bounds;
 	std::optional<recti> _last_texture_eviction_bounds;
+
+	enum class status_part
+	{
+		none,
+		status,
+		totals
+	};
+
+	status_part _status_hover = status_part::none;
+	// Whether the last paint had to cut the status short, which is when hovering it says the rest.
+	bool _status_text_clipped = false;
 
 	// Written only by layout so the drag can map a pointer position straight back to a stored
 	// proportion, and read only on the UI thread by paint and the mouse handlers.
@@ -730,6 +804,23 @@ public:
 	bool text_input(std::string_view text) override;
 	ui::focus_mode focus_mode() const override;
 	void create_toolbars();
+
+	// The bar the frame shows for a view's declared entries, built on first use.
+	const frame_bar& bar(const std::vector<bar_entry>& entries);
+	// What a running task's status bar offers in place of its view's own commands.
+	static const std::vector<bar_entry>& running_task_bar();
+	std::vector<bar_slot> measure_bar(ui::measure_context& mc, const frame_bar& b, int control_height) const;
+	void draw_status_bar(ui::draw_context& dc);
+	void status_tooltip(view_hover_element& hover) const;
+	void update_status_hover(pointi loc);
+	bool filter_key_down(char32_t key, ui::key_state keys);
+	void filter_text_changed(std::string_view text);
+	void set_filter_edit_text(std::string_view text);
+	void focus_filter(bool has_focus);
+	void focus_filter_edit();
+	void cancel_filter_edit();
+	void item_size_changed(int pos, bool tracking);
+	void update_item_size_slider() const;
 	void crash(df::file_path dump_file_path) override;
 	std::string restart_cmd_line() override;
 	void save_recovery_state() override;
@@ -806,6 +897,8 @@ public:
 	void def_command(commands id, command_group group, icon_index icon, std::string_view text,
 	                 std::string_view tooltip = {});
 	void language_changed(std::string_view lang_code);
+	// Shows the app in a language: English, or a translation installed beside the app.
+	void select_language(std::string_view lang_code);
 	void update_command_text();
 	void initialise_commands();
 	command_info_ptr find_or_create_command_info(commands id);

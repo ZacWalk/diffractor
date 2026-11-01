@@ -340,10 +340,47 @@ std::vector<rename_source> snapshot_rename_sources(const df::item_set& items)
 	return result;
 }
 
-std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& items,
+// A RAW and the camera's JPEG beside it share a sidecar by name, and both rows listed it, so a rename
+// moved it twice: the second move failed that row or, with the JPEG first, carried the RAW's ratings
+// and develop settings off to the JPEG's new name. The sidecar stays with one row - the first whose
+// file keeps no packet of its own, which is the file that reads it, or else the first.
+static void assign_shared_rename_sidecars(std::vector<rename_source>& sources)
+{
+	df::hash_map<df::file_path, size_t, df::ihash, df::ieq> owner;
+	const auto reads_sidecar = [&sources](const size_t row)
+	{
+		const auto* const ft = files::file_type_from_name(sources[row].source);
+		return ft && !ft->has_trait(file_traits::embedded_xmp);
+	};
+
+	for (size_t row = 0; row < sources.size(); ++row)
+	{
+		for (const auto& sidecar : sources[row].sidecars)
+		{
+			const auto [found, added] = owner.try_emplace(sidecar, row);
+			if (!added && found->second != row && !reads_sidecar(found->second) && reads_sidecar(row))
+			{
+				found->second = row;
+			}
+		}
+	}
+
+	for (size_t row = 0; row < sources.size(); ++row)
+	{
+		std::erase_if(sources[row].sidecars, [&owner, row](const df::file_path& sidecar)
+		{
+			return owner.at(sidecar) != row;
+		});
+	}
+}
+
+std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& sources,
                                            const std::string_view template_name,
                                            const int start, const collision_policy policy)
 {
+	auto items = sources;
+	assign_shared_rename_sidecars(items);
+
 	std::vector<rename_item> results;
 	results.reserve(items.size());
 	std::vector<char> name_is_usable;
@@ -364,9 +401,7 @@ std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& ite
 
 		for (const auto sidecar_source : i.sidecars)
 		{
-			const auto sidecar_destination =
-				primary.folder().combine_file(primary.file_name_without_extension()).extension(
-					sidecar_source.extension());
+			const auto sidecar_destination = moved_sidecar_path(i.source, primary, sidecar_source);
 			const auto destination_attributes = platform::file_attributes(sidecar_destination);
 			rename.sidecar_destinations_exist.emplace_back(destination_attributes.exists());
 			rename.sidecar_source_attributes.emplace_back(platform::file_attributes(sidecar_source));
@@ -603,7 +638,9 @@ std::string format_sequence(const std::string_view original_name, const std::str
 		const auto reverse_name = std::string(original_name.rbegin(), original_name.rend());
 
 		const auto org_len = reverse_name.size();
-		auto i_div = seq;
+		// A start typed below zero has no digits to write: each one taken from it was a character from
+		// before the digit table.
+		auto i_div = std::max(seq, 0);
 		auto original_index = 0u;
 		const auto sequence_digits = static_cast<int>(
 			std::count(reverse_template.begin(), reverse_template.end(), '#'));
@@ -702,9 +739,9 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 			}
 		}
 
-		auto sidecar_destination = [](const df::file_path primary, const df::file_path sidecar)
+		auto sidecar_destination = [&path_in](const df::file_path primary, const df::file_path sidecar)
 		{
-			return primary.folder().combine_file(primary.file_name_without_extension()).extension(sidecar.extension());
+			return moved_sidecar_path(path_in, primary, sidecar);
 		};
 		auto group_exists = [&](const df::file_path primary)
 		{

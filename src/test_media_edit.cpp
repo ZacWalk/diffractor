@@ -634,6 +634,123 @@ static void should_carry_shown_metadata_into_a_converted_file()
 	assert_equal(3, props->rating, "the edit applied");
 }
 
+// libfiles writes no packet into a JPEG XL, so a conversion into one puts what the source shows - here
+// an IPTC title and keywords, which a JPEG XL has nowhere else to keep - and the edit into the packet it
+// is encoded with, beside the source's EXIF.
+static void should_carry_shown_metadata_into_a_jxl()
+{
+	const auto source = _temps.next_path(".jpg");
+
+	{
+		const auto fixture = df::blob_from_file(test_files_folder.combine_file("IMG_9340.JPG"));
+		const std::vector<uint8_t> bytes(fixture.begin(), fixture.end());
+		libfiles::reader r(bytes);
+
+		libfiles::metadata_update iptc_only;
+		iptc_only.legacy.title = "Converted title";
+		iptc_only.legacy.keywords = std::vector<std::string>{"alpha", "beta"};
+		const auto plan = libfiles::plan_update(r, iptc_only);
+		assert_equal(true, plan.ok(), "source planned");
+
+		libfiles::memory_stream out;
+		libfiles::write_updated(r, plan, out);
+		const auto& written = out.bytes();
+		assert_equal(true, df::blob_save_to_file({written.data(), written.size()}, source), "source stored");
+	}
+
+	files ff;
+	const auto before = ff_scan_file(ff, source);
+	assert_equal(true, before.metadata.xmp.empty(), "source holds no packet");
+
+	const auto destination = _temps.next_path(".jxl");
+	metadata_edits edits;
+	edits.rating = 3;
+	const auto result = ff.update(source, destination, edits, {}, {}, false, {});
+	assert_equal(true, result.success(), std::format("converted ({})", result.format_error()));
+	assert_equal(false, destination.extension(".xmp").exists(), "no sidecar beside a JPEG XL");
+
+	const auto after = ff_scan_file(ff, destination);
+	assert_equal(false, after.metadata.xmp.empty(), "the packet is boxed");
+	assert_equal(false, after.metadata.exif.empty(), "the EXIF is boxed");
+
+	const auto props = after.to_props();
+	const auto shown = before.to_props();
+	assert_equal("Converted title"_c, props->title, "title carried into the packet");
+	const auto tags = props->tags.sv();
+	assert_equal(true, str::contains(tags, "alpha") && str::contains(tags, "beta"), "tags carried");
+	assert_equal(3, props->rating, "the edit applied");
+	assert_equal(shown->camera_model, props->camera_model, "camera carried in the EXIF");
+	assert_equal(shown->dates.original(), props->dates.original(), "capture date carried");
+}
+
+// A JPEG XL takes a metadata edit where it keeps its packet. The fixture is libjxl's, its EXIF and packet
+// Brotli-compressed between the two parts of its codestream: read with Diffractor's own Brotli, the first
+// edit writes them plain where they stood, and the next, which fits, is patched. The picture never changes.
+static void should_rate_and_tag_a_jxl()
+{
+	const auto path = _temps.next_path(".jxl");
+	platform::copy_file(test_files_folder.combine_file("zoltan-tasi.jxl"), path, false, false);
+
+	files ff;
+	const auto before = ff_scan_file(ff, path);
+	const auto pixels_before = ff.load(path, false);
+	assert_equal(true, before.success && pixels_before.success, "the fixture reads");
+
+	metadata_edits first;
+	first.rating = 4;
+	first.add_tags = tag_set("harbour");
+	const auto rated = ff.update(path, first, {}, {}, false, {});
+	assert_equal(true, rated.success(), std::format("rated ({})", rated.format_error()));
+	assert_equal(false, path.extension(".xmp").exists(), "no sidecar beside a JPEG XL");
+
+	const auto after = ff_scan_file(ff, path);
+	const auto props = after.to_props();
+	assert_equal(4, props->rating, "the rating reads back");
+	assert_equal(true, str::contains(props->tags.sv(), "harbour"), "the tag reads back");
+	assert_equal(before.width, after.width, "the size is the codestream's still");
+	assert_equal(before.to_props()->camera_model, props->camera_model, "the EXIF is kept");
+
+	metadata_edits second;
+	second.rating = 2;
+	const auto again = ff.update(path, second, {}, {}, false, {});
+	assert_equal(true, again.success(), std::format("rated again ({})", again.format_error()));
+	assert_equal(false, again.staged, "an edit that fits is patched where it lies");
+	assert_equal(2, ff_scan_file(ff, path).to_props()->rating, "the second rating reads back");
+
+	const auto pixels_after = ff.load(path, false);
+	assert_equal(true, pixels_after.success, "the picture reads");
+	assert_equal(true, pixels_before.to_surface()->pixel_difference(pixels_after.to_surface()) == ui::pixel_difference_result::equal,
+	             "the picture is unchanged");
+}
+
+// A JPEG XL with no metadata is a bare codestream, as Diffractor writes one; its first packet puts it in a
+// container, the codestream inside it unchanged.
+static void should_rate_a_bare_jxl()
+{
+	files ff;
+	const auto source = ff.load(test_files_folder.combine_file("Test.jpg"), false);
+	const auto image = save_jxl(source.to_surface(), {}, {});
+	assert_equal(true, image != nullptr, "encoded");
+
+	const auto path = _temps.next_path(".jxl");
+	assert_equal(true, df::blob_save_to_file(image->data(), path), "stored");
+	const auto bare = df::blob_from_file(path);
+	assert_equal(true, bare.size() > 2 && bare[0] == 0xFF && bare[1] == 0x0A, "written bare");
+
+	metadata_edits edits;
+	edits.rating = 5;
+	const auto result = ff.update(path, edits, {}, {}, false, {});
+	assert_equal(true, result.success(), std::format("rated ({})", result.format_error()));
+
+	const auto boxed = df::blob_from_file(path);
+	assert_equal(true, boxed.size() > 12 && boxed[3] == 0x0C && boxed[4] == 'J', "now a container");
+	assert_equal(true, boxed.size() > bare.size() &&
+	             std::ranges::equal(std::span(bare.data(), bare.size()),
+	                                std::span(boxed.data() + (boxed.size() - bare.size()), bare.size())),
+	             "the codestream is kept whole");
+	assert_equal(5, ff_scan_file(ff, path).to_props()->rating, "the rating reads back");
+}
+
 // JPX and WBMP have nowhere Diffractor writes metadata, so an edit goes to a sidecar, as a raw file's
 // does, and the image is left exactly as it was.
 static void should_write_a_sidecar_for_an_image_without_a_writer(const std::string_view ext)
@@ -1916,6 +2033,129 @@ static void should_save_as_with_distinct_xmp_sidecar()
 	assert_equal("Saved as copy", destination_xmp.title, "destination sidecar metadata");
 }
 
+// The rating in the packet a file keeps in itself, read where libfiles writes it.
+static int own_packet_rating(const df::file_path path)
+{
+	const auto file = df::blob_from_file(path);
+	const std::vector<uint8_t> bytes(file.begin(), file.end());
+	libfiles::reader r(bytes);
+	const auto packet = libfiles::read_packet(r).packet;
+
+	prop::item_metadata md;
+	metadata_xmp::parse(md, df::cspan(std::bit_cast<const uint8_t*>(packet.data()), packet.size()));
+	return md.rating;
+}
+
+// A DNG holds a packet of its own, but one with a sidecar beside it - darktable writes one for every
+// image, under either name, and Camera Raw keeps a DNG's settings in one that is there - is read from the
+// sidecar, so an edit is written there too. Written into the DNG it was read straight back from the
+// sidecar and looked lost. The DNG is a TIFF here: Diffractor knows a DNG by its name, and libfiles
+// writes one by what it holds, which for a DNG is a TIFF.
+static void should_write_a_dng_sidecar_when_it_has_one()
+{
+	for (const auto darktable_name : {false, true})
+	{
+		const auto path = _temps.next_path(".dng");
+		platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+		const auto path_xmp = darktable_name
+			                      ? path.folder().combine_file(std::format("{}.xmp", path.name().sv()))
+			                      : path.extension(".xmp");
+		write_xmp_packet(path_xmp, "<xmp:Rating>1</xmp:Rating>"
+		                 "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Sidecar title</rdf:li></rdf:Alt></dc:title>");
+
+		const auto dng_before = df::blob_from_file(path);
+		const auto modified_before = platform::file_attributes(path).modified;
+		const auto what = darktable_name ? " (darktable's name)"s : " (Adobe's name)"s;
+
+		metadata_edits edits;
+		edits.rating = 4;
+		files ff;
+		const auto result = ff.update(path, edits, {}, {}, false, path_xmp.name());
+
+		assert_equal(true, result.success(), std::format("rating saved ({}){}", result.format_error(), what));
+		assert_equal(false, result.staged, "the DNG is not staged and swapped" + what);
+		assert_equal(true, dng_before == df::blob_from_file(path), "the DNG is untouched" + what);
+		assert_equal(modified_before, platform::file_attributes(path).modified, "and keeps its time" + what);
+
+		prop::item_metadata sidecar;
+		metadata_xmp::parse(sidecar, path_xmp);
+		assert_equal(4, sidecar.rating, "the rating is in the sidecar" + what);
+		assert_equal("Sidecar title", sidecar.title, "beside what the sidecar held" + what);
+		if (darktable_name) assert_equal(false, path.extension(".xmp").exists(), "no second sidecar is made");
+
+		// Converted, the DNG gives what it shows: its sidecar's.
+		const auto converted = _temps.next_path(".jpg");
+		platform::copy_file(test_files_folder.combine_file("Test.jpg"), converted, false, false);
+		assert_equal(true, metadata_xmp::update(converted, path, {}, path_xmp.name(), {}).success,
+		             "a conversion is written" + what);
+		assert_equal(4, own_packet_rating(converted), "and carries the sidecar's rating" + what);
+	}
+}
+
+// A DNG with no sidecar keeps its metadata in itself, as Lightroom always writes one, and none is made.
+static void should_write_a_dng_itself_without_a_sidecar()
+{
+	const auto path = _temps.next_path(".dng");
+	platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+
+	metadata_edits edits;
+	edits.rating = 3;
+	files ff;
+	const auto result = ff.update(path, edits, {}, {}, false, {});
+
+	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
+	assert_equal(false, path.extension(".xmp").exists(), "no sidecar is made");
+	assert_equal(3, own_packet_rating(path), "the rating is in the DNG");
+}
+
+// A backup stages the DNG rather than writing the sidecar alone, and the stage's metadata still goes to
+// the sidecar: the DNG put back is the one that was there.
+static void should_write_a_dng_sidecar_when_backing_up()
+{
+	const auto path = _temps.next_path(".dng");
+	const auto path_xmp = path.extension(".xmp");
+	platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+	write_xmp_packet(path_xmp, "<xmp:Rating>1</xmp:Rating>");
+	const auto dng_before = df::blob_from_file(path);
+
+	metadata_edits edits;
+	edits.rating = 5;
+	files ff;
+	const auto result = ff.update(path, edits, {}, {}, true, path_xmp.name());
+
+	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
+	assert_equal(true, dng_before == df::blob_from_file(path), "the DNG holds what it did");
+
+	prop::item_metadata sidecar;
+	metadata_xmp::parse(sidecar, path_xmp);
+	assert_equal(5, sidecar.rating, "the rating is in the sidecar");
+}
+
+// Where a DNG's metadata lives is decided once, before a sidecar-only edit. Asked again while another
+// application removed the sidecar - darktable, or a sync client, between two file system queries - the
+// update wrote the edit straight into the live DNG, unstaged, then reported a failure. Told the
+// decision, it writes the stage the caller swaps in, from the DNG's own packet, and the DNG keeps every
+// byte.
+static void should_keep_a_dng_unchanged_when_its_sidecar_vanishes()
+{
+	const auto path = _temps.next_path(".dng");
+	platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+	const auto dng_before = df::blob_from_file(path);
+	const auto staged = _temps.next_path(".xmp");
+
+	metadata_edits edits;
+	edits.rating = 2;
+	const auto result = metadata_xmp::update(path, path, edits, {}, staged, true);
+
+	assert_equal(true, result.success, "the edit is written");
+	assert_equal(true, dng_before == df::blob_from_file(path), "the DNG holds what it did");
+	assert_equal(true, result.xmp_path == staged, "to the staged sidecar");
+
+	prop::item_metadata sidecar;
+	metadata_xmp::parse(sidecar, staged);
+	assert_equal(2, sidecar.rating, "the rating is in the sidecar");
+}
+
 static void should_preserve_orientation()
 {
 	const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
@@ -2116,6 +2356,9 @@ void register_media_edit_tests(view_state& state, test_registry& tests)
 	}
 	tests.add("Should round-trip Xmp disc metadata Byzantium.avi"s, should_roundtrip_xmp_disc_metadata);
 	tests.add("Should carry shown metadata into a converted file"s, should_carry_shown_metadata_into_a_converted_file);
+	tests.add("Should carry shown metadata into a JPEG XL"s, should_carry_shown_metadata_into_a_jxl);
+	tests.add("Should rate and tag a JPEG XL"s, should_rate_and_tag_a_jxl);
+	tests.add("Should rate a bare JPEG XL"s, should_rate_a_bare_jxl);
 	for (const auto ext : {".jpx"sv, ".wbmp"sv})
 	{
 		tests.add(std::format("Should write a sidecar for an image without a writer {}", ext),
@@ -2183,6 +2426,10 @@ void register_media_edit_tests(view_state& state, test_registry& tests)
 #endif
 	tests.add("Should refuse to write an unreadable sidecar"s, should_refuse_to_write_an_unreadable_sidecar);
 	tests.add("Should save as with distinct xmp sidecar"s, should_save_as_with_distinct_xmp_sidecar);
+	tests.add("Should write a DNG sidecar when it has one"s, should_write_a_dng_sidecar_when_it_has_one);
+	tests.add("Should write a DNG itself without a sidecar"s, should_write_a_dng_itself_without_a_sidecar);
+	tests.add("Should write a DNG sidecar when backing up"s, should_write_a_dng_sidecar_when_backing_up);
+	tests.add("Should keep a DNG unchanged when its sidecar vanishes"s, should_keep_a_dng_unchanged_when_its_sidecar_vanishes);
 	tests.add("Should update exif rating"s, should_update_exif_rating);
 	tests.add("Should write an edited original date"s, should_write_an_edited_original_date);
 	tests.add("Should write an edited created date"s, should_write_an_edited_created_date);

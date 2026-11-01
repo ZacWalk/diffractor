@@ -426,7 +426,11 @@ static std::string load_create_sql()
 // 5: audio and video are read by libfiles in Diffractor's own terms - short codec names, a pixel format
 // as chroma and depth, the coded sample type - and FFmpeg only where libfiles cannot. Rows written
 // before still answer meanwhile, so audio and video items are only asked to be re-scanned, as for 4.
-constexpr int db_metadata_version = 5;
+// 6: values read from a video's name - show, title, season, episode, year - are derived as each row loads
+// and never stored, and a track, disc or episode number with no total is stored. Older rows hold the old
+// name reading as though the file carried it, and lack those numbers, so audio and video items are asked
+// to be re-scanned, as for 5; they still answer meanwhile.
+constexpr int db_metadata_version = 6;
 
 // Only the metadata is dropped. Thumbnails, hashes, playback positions, and import history
 // stay, so the re-index re-reads files but never re-encodes a thumbnail.
@@ -522,7 +526,7 @@ void database::upgrade_cached_metadata()
 	// those rows would leave every one of them dateless until a scan happened to reach it.
 	const auto upgraded = stored_version == 1
 		                      ? request_date_pack_rescan()
-		                      : stored_version == 3 || stored_version == 4
+		                      : stored_version >= 3 && stored_version <= 5
 		                      ? request_audio_metadata_rescan()
 		                      : invalidate_cached_metadata();
 
@@ -1032,6 +1036,9 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 {
 	reset_to_header();
 
+	// Values read from the name are derived again whenever the item loads, so only the file's own are stored.
+	const auto stored = [&md](const uint8_t name_bit) { return (md->from_name & name_bit) == 0; };
+
 	if (!prop::is_null(md->album)) write(prop::album.id, md->album);
 	if (!prop::is_null(md->album_artist)) write(prop::album_artist.id, md->album_artist);
 	if (!prop::is_null(md->artist)) write(prop::artist.id, md->artist);
@@ -1053,14 +1060,14 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 	if (!prop::is_null(md->genre)) write(prop::genre.id, md->genre);
 	if (!prop::is_null(md->lens)) write(prop::lens.id, md->lens);
 	if (!prop::is_null(md->pixel_format)) write(prop::pixel_format.id, md->pixel_format);
-	if (!prop::is_null(md->show)) write(prop::show.id, md->show);
+	if (!prop::is_null(md->show) && stored(prop::from_name::show)) write(prop::show.id, md->show);
 	if (!prop::is_null(md->location_state)) write(prop::location_state.id, md->location_state);
 	if (!prop::is_null(md->synopsis)) write(prop::synopsis.id, md->synopsis);
 	if (!prop::is_null(md->composer)) write(prop::composer.id, md->composer);
 	if (!prop::is_null(md->encoder)) write(prop::encoder.id, md->encoder);
 	if (!prop::is_null(md->publisher)) write(prop::publisher.id, md->publisher);
 	if (!prop::is_null(md->performer)) write(prop::performer.id, md->performer);
-	if (!prop::is_null(md->title)) write(prop::title.id, md->title);
+	if (!prop::is_null(md->title) && stored(prop::from_name::title)) write(prop::title.id, md->title);
 	if (!prop::is_null(md->tags)) write(prop::tag.id, md->tags);
 	if (!prop::is_null(md->video_codec)) write(prop::video_codec.id, md->video_codec);
 	if (!prop::is_null(md->game)) write(prop::game.id, md->game);
@@ -1082,15 +1089,20 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 		      static_cast<uint16_t>(std::min<uint32_t>(md->audio_sample_rate, UINT16_MAX)));
 	if (!prop::is_null(md->audio_channels)) write(prop::audio_channels.id, md->audio_channels);
 	if (!prop::is_null(md->audio_sample_type)) write(prop::audio_sample_type.id, md->audio_sample_type);
-	if (!prop::is_null(md->season)) write(prop::season.id, md->season);
+	if (!prop::is_null(md->season) && stored(prop::from_name::season))
+	{
+		// One byte, as every build before seasons went past 255 reads it; two only for a season that needs them.
+		if (md->season <= UINT8_MAX) write(prop::season.id, static_cast<uint8_t>(md->season));
+		else write(prop::season.id, md->season);
+	}
 	if (!prop::is_null(md->track)) write(prop::track_num.id, md->track);
 	if (!prop::is_null(md->disk)) write(prop::disk_num.id, md->disk);
 	if (!prop::is_null(md->duration)) write(prop::duration.id, md->duration);
-	if (!prop::is_null(md->episode)) write(prop::episode.id, md->episode);
+	if (!prop::is_null(md->episode) && stored(prop::from_name::episode)) write(prop::episode.id, md->episode);
 	if (!prop::is_null(md->exposure_time)) write(prop::exposure_time.id, md->exposure_time);
 	if (!prop::is_null(md->f_number)) write(prop::f_number.id, md->f_number);
 
-	if (!prop::is_null(md->year)) write(prop::year.id, md->year);
+	if (!prop::is_null(md->year) && stored(prop::from_name::year)) write(prop::year.id, md->year);
 
 	if (md->coordinate.is_valid())
 	{
@@ -1110,12 +1122,14 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 	// an earlier Diffractor with every date read from the filesystem and nothing that would ever
 	// repair it. These must stay ahead of the post-1.26.4 tail below: that release stops at the first
 	// id it does not know, so anything written after `altitude` never reaches it.
-	if (const auto legacy_original = md->dates.original(); legacy_original.is_valid())
+	const auto dates = md->dates.without(prop::date_source::file_name);
+
+	if (const auto legacy_original = dates.original(); legacy_original.is_valid())
 	{
 		write(prop::created_exif.id, legacy_original.to_int64());
 	}
 
-	if (const auto legacy_created = md->dates.created_as_utc_instant(); legacy_created.is_valid())
+	if (const auto legacy_created = dates.created_as_utc_instant(); legacy_created.is_valid())
 	{
 		write(prop::created_utc.id, legacy_created.to_int64());
 	}
@@ -1126,7 +1140,7 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 	if (!prop::is_null(md->altitude)) write(prop::altitude.id, md->altitude);
 	if (!prop::is_null(md->gps_speed)) write(prop::gps_speed.id, md->gps_speed);
 
-	if (!md->dates.is_empty()) write_date_pack(prop::dates_packed.id, md->dates);
+	if (!dates.is_empty()) write_date_pack(prop::dates_packed.id, dates);
 
 	if (md->is_panorama())
 	{
@@ -1228,7 +1242,7 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 		else if (t == prop::audio_sample_rate_full) read_val(md->audio_sample_rate);
 		else if (t == prop::audio_sample_type) read_val(md->audio_sample_type);
 		else if (t == prop::audio_channels) read_val(md->audio_channels);
-		else if (t == prop::season) read_val(md->season);
+		else if (t == prop::season) read_val_widening(md->season);
 		else if (t == prop::episode) read_val(md->episode);
 		else if (t == prop::disk_num) read_val(md->disk);
 		else if (t == prop::track_num) read_val(md->track);

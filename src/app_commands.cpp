@@ -16,6 +16,7 @@
 #include "model.h"
 #include "model_index.h"
 #include "model_db.h"
+#include "model_document.h"
 #include "model_tokenizer.h"
 #include "ui_controls.h"
 #include "ui_dialog.h"
@@ -34,6 +35,7 @@
 #include "view_batch.h"
 #include "view_sync.h"
 #include "view_tags.h"
+#include "view_options.h"
 #include "app_dialogs.h"
 
 extern bool toggle_details_state;
@@ -268,6 +270,23 @@ static void rename_invoke(view_state& s, const ui::control_frame_ptr& parent, co
 				if (result.failed())
 				{
 					dlg->show_message(icon_index::error, title, result.format_error(tt.error_rename_failed, {}));
+				}
+				else
+				{
+					// The index learns of a rename from the folders it touched. Left to the folder
+					// watcher, which covers only the folders shown, a folder renamed from a search kept
+					// its old name in the index - its photos out of searches - until the next walk.
+					df::unique_folders changed;
+					if (i->is_folder())
+					{
+						changed.emplace(i->folder().parent());
+						changed.emplace(i->folder());
+					}
+					else
+					{
+						changed.emplace(i->path().folder());
+					}
+					s.item_index.queue_validate_changed_folders(std::move(changed));
 				}
 			}
 		}
@@ -797,6 +816,29 @@ static void cut_copy_invoke(const view_state& s, const ui::control_frame_ptr& pa
 	}
 }
 
+// The selection panel's document has the keyboard from a press on it until a press lands anywhere
+// else. Meanwhile Copy takes the text selected in it and Select all selects all of it, and Cut does
+// nothing: text that cannot change has nothing to give up, and the file being read must not be cut in
+// its place. Without a selection, Copy and Cut act on the items as they always have.
+static std::shared_ptr<document_state> document_with_keyboard(const view_state& s)
+{
+	const auto display = s.display_state();
+	if (!display || !display->_document || !display->_document->focused) return nullptr;
+	return display->_document;
+}
+
+static bool copy_document_selection(const view_state& s)
+{
+	const auto document = document_with_keyboard(s);
+	if (!document || !document->has_selection()) return false;
+
+	// A selection of nothing but a dump's padding is still nothing to copy, and copying it would empty
+	// whatever the user had put on the clipboard - which they cannot get back.
+	const auto text = document->selected_text(s.display_state()->_selected_item_data);
+	if (!text.empty()) platform::set_clipboard(text);
+	return true;
+}
+
 static void copy_item_path_invoke(const view_state& s)
 {
 	const auto items = s.selected_items().items();
@@ -1236,7 +1278,7 @@ static void font_invoke(const view_state& s, const ui::control_frame_ptr& parent
 
 static void toggle_layout_scale_invoke(view_state& s, const ui::control_frame_ptr& parent)
 {
-	setting.step_item_scale(1);
+	setting.step_item_scale(1, true);
 }
 
 static void toggle_details_invoke(const view_state& s, const bool only_toggle_selected)
@@ -1711,7 +1753,7 @@ static void favorite_invoke(view_state& state, const ui::control_frame_ptr& pare
 		{
 			if (str::is_empty(setting.search.path[i])) continue;
 
-			if (search == df::search_t::parse(setting.search.path[i]))
+			if (search.can_be_read_from(setting.search.path[i]))
 			{
 				setting.search.path[i].clear();
 				setting.search.title[i].clear();
@@ -1811,6 +1853,8 @@ void app_frame::initialise_commands()
 	_commands[commands::filter_videos]->text_can_change = true;
 	_commands[commands::filter_audio]->text_can_change = true;
 	_commands[commands::menu_group_toolbar]->text_can_change = true;
+	// Labelled with what is selected, which changes with every click in the list.
+	_commands[commands::menu_open_status]->text_can_change = true;
 	// These toolbars are shared by several views, so their run buttons are renamed per view.
 	// Without this the button keeps the text it was defined with and promises the wrong operation.
 	_commands[commands::tool_run]->text_can_change = true;
@@ -1848,17 +1892,7 @@ void app_frame::initialise_commands()
 	});
 	add_command_invoke(commands::tool_edit_description, [this]
 	{
-		setting.set_artist = false;
-		setting.set_caption = true;
-		setting.set_album = false;
-		setting.set_album_artist = false;
-		setting.set_genre = false;
-		setting.set_tv_show = false;
-		setting.set_copyright_notice = false;
-		setting.set_copyright_creator = false;
-		setting.set_copyright_source = false;
-		setting.set_copyright_credit = false;
-		setting.set_copyright_url = false;
+		setting.select_only_description();
 		setting.caption.clear();
 		const auto display = _state.display_state();
 		if (_state.selected_items().size() == 1 && display && display->is_one())
@@ -1956,9 +1990,16 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::tool_movie_import, [this] { _view_movie->import_project(); });
 	add_command_invoke(commands::tool_movie_relink, [this] { _view_movie->relink_missing(); });
 	add_command_invoke(commands::tool_movie_render, [this] { _view_movie->render_movie(); });
-	add_command_invoke(commands::edit_copy, [this] { cut_copy_invoke(_state, _app_frame, _view_frame, false); });
+	add_command_invoke(commands::edit_copy, [this]
+	{
+		if (!copy_document_selection(_state)) cut_copy_invoke(_state, _app_frame, _view_frame, false);
+	});
 	add_command_invoke(commands::edit_copy_item_path, [this] { copy_item_path_invoke(_state); });
-	add_command_invoke(commands::edit_cut, [this] { cut_copy_invoke(_state, _app_frame, _view_frame, true); });
+	add_command_invoke(commands::edit_cut, [this]
+	{
+		const auto document = document_with_keyboard(_state);
+		if (!document || !document->has_selection()) cut_copy_invoke(_state, _app_frame, _view_frame, true);
+	});
 	add_command_invoke(commands::edit_paste, [this] { edit_paste_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::tool_eject, [this]
 	{
@@ -1967,8 +2008,19 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::tool_file_properties,
 	                   [this] { file_properties_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::browse_search, [this] { _search_edit->focus(); });
-	add_command_invoke(commands::filter_items, [this] { _view_items->focus_rendered_filter(); });
-	add_command_invoke(commands::select_all, [this] { _state.select_all(_view_frame); });
+	add_command_invoke(commands::filter_items, [this] { focus_filter_edit(); });
+	add_command_invoke(commands::select_all, [this]
+	{
+		if (const auto document = document_with_keyboard(_state))
+		{
+			document->select_all(_state.display_state()->_selected_item_data);
+			invalidate_view(view_invalid::view_redraw);
+		}
+		else
+		{
+			_state.select_all(_view_frame);
+		}
+	});
 	add_command_invoke(commands::browse_recursive, [this] { show_flatten_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::view_fullscreen, [this] { toggle_full_screen(); });
 	add_command_invoke(commands::option_highlight_large_items, [this]
@@ -1986,10 +2038,10 @@ void app_frame::initialise_commands()
 	{
 		setting_invoke(_state, setting.sort_dates_descending, false);
 	});
-	add_command_invoke(commands::options_collection, [this]
-	{
-		index_settings_invoke(_state, _app_frame, setting.collection);
-	});
+	add_command_invoke(commands::options, [this] { _view_options->open(options_section::top); });
+	add_command_invoke(commands::options_save, [this] { _view_options->save(); });
+	add_command_invoke(commands::options_cancel, [this] { _view_options->cancel(); });
+	add_command_invoke(commands::options_help, [] { options_view::help(); });
 	add_command_invoke(commands::keyboard, [this] { show_keyboard_reference(_state, _app_frame, _commands); });
 	add_command_invoke(commands::tool_locate, [this]
 	{
@@ -2023,7 +2075,6 @@ void app_frame::initialise_commands()
 	{
 		open_with_invoke(_state, _app_frame, _view_frame, _commands);
 	});
-	add_command_invoke(commands::options_general, [this] { settings_invoke(_state, _app_frame); });
 	add_command_invoke(commands::pin_item, [this] { pin_invoke(_state); });
 	add_command_invoke(commands::play, [this] { _state.play(_view_frame); });
 	add_command_invoke(commands::slideshow, [this] { _state.toggle_slideshow(_view_frame); });
@@ -2085,7 +2136,7 @@ void app_frame::initialise_commands()
 		_state.invalidate_view(view_invalid::sidebar);
 	});
 	add_command_invoke(commands::tool_scan, [this] { scan_invoke(_state, _app_frame, _view_frame); });
-	add_command_invoke(commands::options_sidebar, [this] { customise_invoke(_state, _app_frame); });
+	add_command_invoke(commands::options_sidebar, [this] { _view_options->open(options_section::sidebar); });
 	add_command_invoke(commands::select_invert, [this] { _state.select_inverse(_view_frame); });
 	add_command_invoke(commands::select_nothing, [this] { _state.select_nothing(_view_frame); });
 	add_command_invoke(commands::tool_share, [this] { share_invoke(_state, _app_frame, _view_frame); });
@@ -2209,12 +2260,7 @@ void app_frame::initialise_commands()
 	// Cancel stops the running task and leaves the view open; Close always exits the view.
 	add_command_invoke(commands::view_cancel, [this] { if (_view) _view->cancel_operation(); });
 
-	add_command_invoke(commands::english, [this]
-	{
-		setting.language = "en";
-		tt.clear();
-		language_changed("en");
-	});
+	add_command_invoke(commands::english, [this] { select_language("en"); });
 
 	_commands[commands::menu_main]->menu = [this]
 	{
@@ -2255,9 +2301,7 @@ void app_frame::initialise_commands()
 	_commands[commands::menu_options]->menu = [this]
 	{
 		std::vector<ui::command_ptr> result = {
-			find_command(commands::options_general),
-			find_command(commands::options_collection),
-			find_command(commands::options_sidebar),
+			find_command(commands::options),
 			find_command(commands::favorite_tags),
 			nullptr,
 			find_command(commands::menu_display_options),
@@ -2364,6 +2408,7 @@ void app_frame::initialise_commands()
 		result.emplace_back(find_command(commands::tool_file_properties));
 		return result;
 	};
+	_commands[commands::menu_open_status]->menu = _commands[commands::menu_open]->menu;
 	_commands[commands::menu_language]->menu = [this]
 	{
 		const auto lang_folder = known_path(platform::known_folder::running_app_folder).combine("languages");
@@ -2385,15 +2430,7 @@ void app_frame::initialise_commands()
 				auto command = std::make_shared<ui::command>();
 				command->text = language_name(lang_code);
 				command->checked = setting.language == lang_code;
-				command->invoke = [this, lang_path, lang_code]
-				{
-					setting.language = lang_code;
-
-					const auto po_entries = load_po(lang_path);
-					tt.load_lang(lang_path.name(), po_entries);
-					register_file_group_spellings();
-					language_changed(lang_code);
-				};
+				command->invoke = [this, lang_code = std::string(lang_code)] { select_language(lang_code); };
 
 				result.emplace_back(command);
 			}
@@ -2662,6 +2699,36 @@ void app_frame::initialise_commands()
 
 					result.emplace_back(command);
 				}
+			}
+		}
+
+		const auto subtitles = display && display->is_one() && display->_session
+			                       ? display->_session->subtitle_info()
+			                       : nullptr;
+
+		if (subtitles && !subtitles->offers.empty())
+		{
+			result.emplace_back(nullptr);
+			auto heading = std::make_shared<ui::command>();
+			heading->text = tt.subtitles_title;
+			heading->enable = false;
+			result.emplace_back(std::move(heading));
+
+			auto off = std::make_shared<ui::command>();
+			off->text = tt.subtitles_off;
+			off->checked = subtitles->choice.is_none();
+			off->invoke = [this] { _state.change_subtitles({}); };
+			result.emplace_back(std::move(off));
+
+			auto subtitle_number = 0;
+
+			for (const auto& offer : subtitles->offers)
+			{
+				auto command = std::make_shared<ui::command>();
+				command->text = format_subtitle_name(offer, ++subtitle_number);
+				command->checked = offer.choice == subtitles->choice;
+				command->invoke = [this, choice = offer.choice] { _state.change_subtitles(choice); };
+				result.emplace_back(std::move(command));
 			}
 		}
 

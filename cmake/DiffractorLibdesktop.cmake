@@ -1,8 +1,9 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Bring in libdesktop's system and render modules - the foundation (df::, str::), the OS
-# services (platform::) and the desktop UI (ui::) Diffractor is written in - at its pinned commit. A sibling checkout at ../libdesktop
+# Purpose: Bring in libdesktop's system, render and text modules - the foundation (df::, str::), the
+# OS services (platform::), the desktop UI (ui::) Diffractor is written in, and the syntax highlighters
+# the panel's document colours text with - at its pinned commit. A sibling checkout at ../libdesktop
 # is used instead when one exists, so a libdesktop change can be built and tested here before it is
 # committed there - but then this tree builds whatever that checkout holds, not the pin. CI and a
 # fresh clone always build the pin.
@@ -10,7 +11,7 @@
 include_guard(GLOBAL)
 include(FetchContent)
 
-set(DIFFRACTOR_LIBDESKTOP_REVISION 3d3b61378fc79444ba297abbb0b860793c72b2d3)
+set(DIFFRACTOR_LIBDESKTOP_REVISION f8edf617246d48e4d30c7b123e1e559f07febab9)
 
 if (NOT DEFINED FETCHCONTENT_SOURCE_DIR_LIBDESKTOP AND EXISTS "${CMAKE_SOURCE_DIR}/../libdesktop/CMakeLists.txt")
     set(FETCHCONTENT_SOURCE_DIR_LIBDESKTOP "${CMAKE_SOURCE_DIR}/../libdesktop" CACHE PATH
@@ -23,8 +24,8 @@ if (FETCHCONTENT_SOURCE_DIR_RAPIDJSON STREQUAL "${CMAKE_SOURCE_DIR}/third-party/
     unset(FETCHCONTENT_SOURCE_DIR_RAPIDJSON CACHE)
 endif ()
 
-# The system and render modules only: libdesktop-core's window model is not Diffractor's, so nothing
-# else in libdesktop is built.
+# The system, render and text modules only: libdesktop-core's window model is not Diffractor's, so
+# nothing else in libdesktop is built. libdesktop-text is standard C++ and always defined.
 set(LIBDESKTOP_SYSTEM ON)
 set(LIBDESKTOP_RENDER ON)
 set(LIBDESKTOP_STORE_PACKAGE ${DIFFRACTOR_WINSTORE})

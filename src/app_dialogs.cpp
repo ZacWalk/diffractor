@@ -7,8 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: The dialogs commands open that are features in their own right - advanced search, the
-// update offer, the keyboard reference, About, settings, collection settings and maintenance, sidebar
-// customisation and sharing. app_commands.cpp registers the commands that open them.
+// update offer, the keyboard reference, About, index maintenance and sharing. app_commands.cpp registers
+// the commands that open them; the settings themselves are the Options view's (view_options.cpp).
 
 #include "pch.h"
 
@@ -724,8 +724,11 @@ void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent)
 
 	auto found_version = std::make_shared<std::string>();
 	auto check_failed = std::make_shared<bool>(false);
+	// The tasks hold the dialog weakly: a dialog released last on the web thread would destroy its
+	// window there, and one closed early would linger until the request ended.
+	const std::weak_ptr weak_dlg = dlg;
 
-	s.queue_async(async_queue::web, [&s, dlg, found_version, check_failed]
+	s.queue_async(async_queue::web, [&s, weak_dlg, found_version, check_failed]
 	{
 		platform::web_request req;
 		req.path = "/ver";
@@ -749,11 +752,11 @@ void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent)
 
 		const auto failed = version.empty();
 
-		s.queue_ui([dlg, found_version, check_failed, version, failed]
+		s.queue_ui([weak_dlg, found_version, check_failed, version, failed]
 		{
 			*found_version = version;
 			*check_failed = failed;
-			dlg->close(false);
+			if (const auto d = weak_dlg.lock()) d->close(false);
 		});
 	});
 
@@ -829,15 +832,15 @@ void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent)
 		};
 
 		auto state = std::make_shared<download_state>();
-		auto download_complete = [&s, dlg, state](const df::file_path download_path)
+		auto download_complete = [&s, weak_dlg, state](const df::file_path download_path)
 		{
-			s.queue_ui([dlg, state, download_path]
+			s.queue_ui([weak_dlg, state, download_path]
 			{
 				if (state->active)
 				{
 					state->completed = true;
 					state->path = download_path;
-					dlg->close(state->path.is_empty());
+					if (const auto d = weak_dlg.lock()) d->close(state->path.is_empty());
 				}
 			});
 		};
@@ -1328,88 +1331,8 @@ void about_invoke(view_state& s, const ui::control_frame_ptr& parent, commands_m
 	dlg->show_modal(controls, {55});
 };
 
-void settings_invoke(view_state& s, const ui::control_frame_ptr& parent)
-{
-	const auto dlg = make_dlg(parent);
 
-	// Edit a copy so Cancel discards and OK commits, like every other dialog.
-	settings_t edited = setting;
-
-	std::shared_ptr<text_element> custom_index_locations_label;
-
-	std::vector<view_element_ptr> controls;
-
-	const auto settings = std::make_shared<ui::group_control>();
-	const auto settings2 = std::make_shared<ui::group_control>();
-	const auto advanced = std::make_shared<ui::group_control>();
-
-	settings->add(std::make_shared<ui::title_control>(tt.options_app_options));
-	settings->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_show_rotated, edited.show_rotated));
-	settings->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_show_hidden, edited.show_hidden));
-	settings->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_confirm_del, edited.confirm_deletions));
-	settings->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.options_confirm_rotate, edited.confirm_rotations));
-	settings->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_show_shadow, edited.show_shadow));
-	settings->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.options_last_played_pos, edited.last_played_pos));
-
-	settings->add(std::make_shared<ui::title_control>(tt.option_slideshow_title));
-	settings->add(std::make_shared<text_element>(tt.option_slideshow_delay));
-	settings->add(std::make_shared<ui::slider_control>(dlg->_frame, std::string_view{}, edited.slideshow_delay,
-	                                                   settings_t::min_slideshow_delay,
-	                                                   settings_t::max_slideshow_delay));
-
-	settings2->add(std::make_shared<ui::title_control>(tt.options_save_options));
-	settings2->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_backup_copy, edited.create_originals));
-	settings2->add(std::make_shared<text_element>(tt.options_jpeg_quality));
-	settings2->add(std::make_shared<ui::slider_control>(dlg->_frame, std::string_view{}, edited.jpeg_save_quality, 0,
-	                                                    100));
-	settings2->add(std::make_shared<text_element>(tt.options_webp_quality));
-	settings2->add(std::make_shared<ui::slider_control>(dlg->_frame, std::string_view{}, edited.webp_quality, 1, 100));
-	settings2->add(std::make_shared<ui::check_control>(dlg->_frame, tt.lossless_compression, edited.webp_lossless));
-
-#ifndef WINSTORE
-	settings2->add(std::make_shared<ui::title_control>(tt.options_updates));
-	settings2->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.options_check_for_update, edited.check_for_updates));
-#endif
-
-	advanced->add(std::make_shared<ui::title_control>(tt.options_advanced));
-	advanced->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.options_show_help_tooltips, edited.show_help_tooltips));
-	advanced->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_use_gpu, edited.use_gpu));
-	advanced->add(std::make_shared<ui::check_control>(dlg->_frame, tt.options_use_gpu_video, edited.use_d3d11va));
-#ifndef WINSTORE
-	advanced->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.options_send_crash_reports, edited.send_crash_dumps));
-#endif
-	advanced->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.options_show_debug_info, edited.show_debug_info));
-
-	auto cols = std::make_shared<ui::col_control>();
-	cols->add(set_margin(settings));
-	cols->add(set_margin(settings2));
-	cols->add(set_margin(advanced));
-
-	controls.emplace_back(set_margin(
-		std::make_shared<ui::title_control2>(dlg->_frame, icon_index::settings, tt.command_options,
-		                                     std::string_view{})));
-	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(cols);
-	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(std::make_shared<ui::ok_cancel_control>(dlg->_frame));
-
-	pause_media pause(s);
-
-	if (dlg->show_modal(controls, {111}) == ui::close_result::ok)
-	{
-		setting = edited;
-		s.invalidate_view(view_invalid::options);
-	}
-}
-
-
-static std::string format_index_text(const view_state& s)
+std::string format_index_text(const view_state& s)
 {
 	const auto file_types = s.item_index.file_types();
 	const auto total = file_types.total_items();
@@ -1478,7 +1401,7 @@ public:
 	}
 };
 
-static void index_maintenance(const ui::control_frame_ptr& parent, const view_state& s)
+void index_maintenance_invoke(const view_state& s, const ui::control_frame_ptr& parent)
 {
 	const auto dlg = make_dlg(parent);
 	const auto title = tt.index_maintenance_title;
@@ -1604,175 +1527,6 @@ static void index_maintenance(const ui::control_frame_ptr& parent, const view_st
 	}
 };
 
-
-void index_settings_invoke(view_state& s, const ui::control_frame_ptr& parent,
-                                  settings_t::index_t collection_settings)
-{
-	const auto dlg = make_dlg(parent);
-
-	std::vector<view_element_ptr> controls;
-	std::shared_ptr<ui::folder_picker_control> more_custom_index_paths;
-
-	auto dlg_parent = dlg->_frame;
-	const auto local_index = std::make_shared<ui::group_control>();
-	const auto custom_index = std::make_shared<ui::group_control>();
-
-	auto index_text = format_index_text(s);
-
-	// Maintenance is immediate and irreversible, so it must not run while this dialog can
-	// still be cancelled. The link closes the dialog as OK - committing the folder choices
-	// the user can see - and maintenance starts once that has happened.
-	const auto run_maintenance = std::make_shared<bool>(false);
-
-	local_index->add(std::make_shared<text_element>(tt.collection_info));
-	local_index->add(std::make_shared<link_element>(tt.more_collection_options_information,
-	                                                [] { platform::open(docs_url); }));
-
-	const auto local_folders = platform::local_folders();
-
-	local_index->add(std::make_shared<ui::title_control>(tt.collection_options_local_folders_title));
-	local_index->add(
-		std::make_shared<ui::check_control>(dlg_parent, local_folders.pictures.text(), collection_settings.pictures));
-	local_index->add(
-		std::make_shared<ui::check_control>(dlg_parent, local_folders.video.text(), collection_settings.video));
-	local_index->add(
-		std::make_shared<ui::check_control>(dlg_parent, local_folders.music.text(), collection_settings.music));
-
-	if (local_folders.onedrive_pictures.exists())
-		local_index->add(
-			std::make_shared<ui::check_control>(dlg_parent, local_folders.onedrive_pictures.text(),
-			                                    collection_settings.onedrive_pictures));
-	if (local_folders.onedrive_video.exists())
-		local_index->add(
-			std::make_shared<ui::check_control>(dlg_parent, local_folders.onedrive_video.text(),
-			                                    collection_settings.onedrive_video));
-	if (local_folders.onedrive_music.exists())
-		local_index->add(
-			std::make_shared<ui::check_control>(dlg_parent, local_folders.onedrive_music.text(),
-			                                    collection_settings.onedrive_music));
-	if (local_folders.dropbox_photos.exists())
-		local_index->add(
-			std::make_shared<ui::check_control>(dlg_parent, local_folders.dropbox_photos.text(),
-			                                    collection_settings.drop_box));
-
-	local_index->add(std::make_shared<ui::title_control>(tt.index_maintenance_title));
-	local_index->add(std::make_shared<text_element>(tt.indexing_message));
-	local_index->add(std::make_shared<text_element>(index_text));
-	local_index->add(std::make_shared<link_element>(tt.defragment_and_compact, [run_maintenance, dlg_parent]
-	{
-		*run_maintenance = true;
-		dlg_parent->close(false);
-	}));
-
-	custom_index->add(std::make_shared<ui::title_control>(tt.collection_options_custom_folders_title));
-	custom_index->add(std::make_shared<text_element>(tt.collection_options_more_folders));
-
-	auto more_folders_parts = str::split(collection_settings.more_folders, true,
-	                                     [](const char c) { return c == '\n' || c == '\r'; });
-	auto more_folders_text = str::combine(more_folders_parts, "\r\n", false);
-
-	custom_index->add(
-		more_custom_index_paths = std::make_shared<ui::folder_picker_control>(dlg_parent, more_folders_text, true));
-	custom_index->add(std::make_shared<text_element>(tt.collection_options_custom_locations_help));
-	custom_index->add(std::make_shared<text_element>(tt.collection_options_custom_folders_help));
-
-
-	auto cols = std::make_shared<ui::col_control>();
-	cols->add(set_margin(local_index));
-	cols->add(set_margin(custom_index));
-
-	controls.emplace_back(set_margin(
-		std::make_shared<ui::title_control2>(dlg->_frame, icon_index::set, tt.command_collection_options,
-		                                     tt.collection_options_info)));
-	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(cols);
-	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(std::make_shared<ui::ok_cancel_control>(dlg->_frame));
-
-	pause_media pause(s);
-
-	if (ui::close_result::ok == dlg->show_modal(controls, {99}))
-	{
-		// apply changes
-		more_folders_parts = str::split(more_folders_text, false,
-		                                [](const char c) { return c == '\n' || c == '\r'; });
-		collection_settings.more_folders = str::combine(more_folders_parts, "\n", true);
-		setting.collection = collection_settings;
-	}
-
-	dlg->_frame->destroy();
-	s.invalidate_view(view_invalid::index | view_invalid::options);
-
-	if (*run_maintenance)
-	{
-		index_maintenance(parent, s);
-	}
-}
-
-void customise_invoke(view_state& s, const ui::control_frame_ptr& parent)
-{
-	const auto dlg = make_dlg(parent);
-	// Edit copies so Cancel discards and OK commits, like every other dialog.
-	auto search = setting.search;
-	auto sidebar_settings = setting.sidebar;
-
-	auto dlg_parent = dlg->_frame;
-	const auto searches = std::make_shared<ui::group_control>();
-	const auto sidebar = std::make_shared<ui::group_control>();
-
-	searches->add(std::make_shared<ui::title_control>(tt.customise_searches_title));
-	searches->add(
-		std::make_shared<ui::two_col_table_control>(dlg_parent, search.title, search.path,
-		                                            search.count));
-
-	sidebar->add(std::make_shared<ui::title_control>(tt.customise_sidebar_title));
-	sidebar->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.customize_show_total, sidebar_settings.show_total_items));
-	sidebar->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.customize_show_history, sidebar_settings.show_history));
-	sidebar->add(std::make_shared<ui::check_control>(dlg->_frame, tt.customize_show_world_map,
-	                                                 sidebar_settings.show_world_map));
-	sidebar->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.customize_show_drives, sidebar_settings.show_drives));
-	sidebar->add(std::make_shared<ui::check_control>(dlg->_frame, tt.customize_show_searches,
-	                                                 sidebar_settings.show_favorite_searches));
-	sidebar->add(
-		std::make_shared<ui::check_control>(dlg->_frame, tt.customize_show_tags, sidebar_settings.show_tags));
-	sidebar->add(std::make_shared<ui::check_control>(dlg->_frame, tt.option_favorite_tags,
-	                                                 sidebar_settings.show_favorite_tags_only));
-	sidebar->add(std::make_shared<ui::check_control>(dlg->_frame, tt.customize_ratings,
-	                                                 sidebar_settings.show_ratings));
-	sidebar->add(std::make_shared<ui::check_control>(dlg->_frame, tt.customize_labels,
-	                                                 sidebar_settings.show_labels));
-	sidebar->add(set_margin(std::make_shared<text_element>(tt.customize_history_start_year)));
-	sidebar->add(std::make_shared<ui::num_control>(dlg->_frame, std::string_view{},
-	                                               sidebar_settings.history_start_year, true));
-
-	auto cols = std::make_shared<ui::col_control>();
-	cols->add(set_margin(searches));
-	cols->add(set_margin(sidebar));
-
-	std::vector<view_element_ptr> controls;
-	controls.emplace_back(set_margin(
-		std::make_shared<ui::title_control2>(dlg->_frame, icon_index::settings, tt.command_customise,
-		                                     tt.customise_sidebar_desc)));
-	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(cols);
-	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(std::make_shared<ui::ok_cancel_control>(dlg->_frame));
-
-	pause_media pause(s);
-
-	if (dlg->show_modal(controls, {111}) == ui::close_result::ok)
-	{
-		setting.search = search;
-		setting.sidebar = sidebar_settings;
-
-		s.invalidate_view(view_invalid::sidebar | view_invalid::options_save | view_invalid::command_state |
-			view_invalid::tooltip | view_invalid::app_layout);
-	}
-};
-
 // The share sheet needs a title. One file is named; several are counted.
 static std::string share_sheet_title(const std::vector<df::file_path>& paths)
 {
@@ -1860,7 +1614,7 @@ void share_invoke(view_state& s, const ui::control_frame_ptr& parent, const view
 		const auto& items = s.selected_items();
 
 		// Share and Email each keep their own choices. Edit a copy so Cancel discards and OK
-		// commits, matching every other options dialog.
+		// commits, as the Options view does.
 		settings_t::outgoing_choices_t& saved_choices = use_sheet ? setting.share : setting.email;
 		auto choices = saved_choices;
 		std::string validation_error;

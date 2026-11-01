@@ -99,7 +99,10 @@ Undo, Open or a change of focus.
 Playing preview video uses two persistent frame sessions, bound to clip identity and opened ahead of a
 crossfade. Photo and parked frames come from the bounded frame cache, and each preview slot keeps the
 frame it is showing, so the two photos of a crossfade stay drawn however large the preview. A parked
-frame is the source frame at the playhead, to half a frame of the clip's own. Preview audio is decoded
+frame is the source frame at the playhead, to half a frame of the clip's own. The playing preview is
+composed at the movie's own frames, as the render composes them, so the view repaints when the playhead
+reaches another one rather than on every tick of the display; the clip player repaints when its session
+presents a new frame. Preview audio is decoded
 off the UI thread in bounded windows of each contributing clip's retained interval, held by source
 window so a crossfade's incoming clip keeps its sound, and read ahead of the playhead. It is mixed at
 the endpoint rate and the user's media volume into an endpoint ring long enough to outlast the UI tick

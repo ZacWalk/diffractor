@@ -79,6 +79,15 @@ make without moving the bytes, and any other is written to the stage in one pass
 rather than copied and then rewritten. Other formats are copied, then updated. If a sidecar must also change, a rollback copy protects the media/sidecar pair across the two
 replacements. Temporary paths are cleaned on every bounded failure path.
 
+A JPEG XL's metadata is updated by libfiles like any other format's, its compressed boxes read with
+Diffractor's Brotli; one made from a JPEG keeps the boxes it gives that JPEG back from at their size.
+Its picture is never rewritten in place: rotating or editing one is not offered, since a re-encode would
+lose what it was encoded with. A pixel write that produces one - Convert, Save As, a shared copy -
+reads the packet as an update would, applies the edit and, from another format, what the source shows
+that its packet lacks, and encodes it into the file's own boxes beside the source's EXIF; no update
+follows. The codestream holds the orientation the file ends with, which the EXIF is made to agree with.
+A JPEG XL moved unchanged is copied as it is.
+
 Pasted clipboard bitmaps follow the same publication rule: the encoder writes an owned temporary
 file off the UI thread, then publishes it to the chosen auto-numbered destination only after the
 stream and encoder commit successfully.
@@ -91,15 +100,15 @@ Metadata commands do not imply a backup: callers request one explicitly.
 ## In-Place Metadata
 
 In-place writing is allowed only when there is no path or pixel change and no backup request, for
-every format libfiles writes, which carries the in-place trait: JPEG, PNG, GIF, WebP, TIFF and DNG,
-PSD, the MP4 and ASF families, WAV, AVI, MP3 and FLV. libfiles plans the edit against the live file
-through one handle no one else may open meanwhile. An edit that fits the space the file holds - a
-packet that keeps its length, EXIF values of the same size, ID3 padding, the JUNK after a RIFF chunk,
-or what is new appended at the end, as a TIFF's directories and an MP4's boxes are - is patched where
-the file lies: nothing the file holds moves, the writes go in flushed steps ordered so that an
-interruption leaves a file that reads whole with each field old or new, and a rewrite that keeps its
-length writes only the span it changes. The patched file keeps its identity, named streams and
-attributes. An edit that does not fit is staged, as above.
+every format libfiles writes, which carries the in-place trait: JPEG, PNG, GIF, WebP, TIFF and DNG -
+one with no sidecar - JPEG XL, PSD, the MP4 and ASF families, WAV, AVI, MP3 and FLV. libfiles plans
+the edit against the live file through one handle no one else may open meanwhile. An edit that fits
+the space the file holds - a packet that keeps its length, EXIF values of the same size, ID3 padding,
+the JUNK after a RIFF chunk, or what is new appended at the end, as a TIFF's directories and an MP4's
+boxes are - is patched where the file lies: nothing the file holds moves, the writes go in flushed
+steps ordered so that an interruption leaves a file that reads whole with each field old or new, and a
+rewrite that keeps its length writes only the span it changes. The patched file keeps its identity,
+named streams and attributes. An edit that does not fit is staged, as above.
 
 An in-place write that loses a sharing race waits for an unlock and retries once. Other errors fail
 immediately. Because no complete prior copy exists, the app cannot promise byte-for-byte rollback if
@@ -107,13 +116,16 @@ the admitted handler fails after changing the live file.
 
 ## Sidecars
 
-Formats without embedded-XMP support use `<name>.xmp`. A metadata-only RAW edit changes only the
-staged sidecar; the media bytes remain untouched. When creating the first RAW sidecar, the update
-starts from the effective source packet so embedded XMP is not shadowed by an otherwise default
-sidecar. An existing sidecar, including an explicitly empty one, remains the higher-priority source;
-an unreadable sidecar fails rather than being replaced. For a combined media and sidecar update, the
-media replacement completes first and is rolled back if the sidecar replacement fails where the
-platform supports that recovery.
+Formats without embedded-XMP support use `<name>.xmp`. A DNG holds a packet of its own, but one with a
+sidecar beside it - either name - is read from that sidecar, so its edits are written there too: Camera
+Raw's rule for a DNG unless told to ignore sidecars. A DNG without one is written itself, as Lightroom
+always writes one; only a sidecar known not to exist sends an edit into the DNG. A metadata-only edit
+to a raw's sidecar changes only the staged sidecar; the media bytes remain untouched. When creating the
+first RAW sidecar, the update starts from the effective source packet so embedded XMP is not shadowed
+by an otherwise default sidecar. An existing sidecar, including an explicitly empty one, remains the
+higher-priority source; an unreadable sidecar fails rather than being replaced. For a combined media
+and sidecar update, the media replacement completes first and is rolled back if the sidecar
+replacement fails where the platform supports that recovery.
 
 Import treats automatic sidecars as companions, not additional rows. When collision resolution sends
 two primaries sharing one sidecar to different basenames or folders, each destination receives the

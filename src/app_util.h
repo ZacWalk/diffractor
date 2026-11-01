@@ -19,11 +19,15 @@ struct folder_scan_item;
 
 static constexpr auto doc_template_url = "https://www.diffractor.com/docs/template";
 
-// The encoding a command that rewrites pixels uses: the user's JPEG quality.
+// The encoding a command that rewrites pixels uses: the user's save settings, as the editor uses them.
 inline file_encode_params make_file_encode_params()
 {
 	file_encode_params result;
 	result.jpeg_save_quality = setting.jpeg_save_quality;
+	result.webp_quality = setting.webp_quality;
+	result.webp_lossless = setting.webp_lossless;
+	result.jxl_quality = setting.jxl_quality;
+	result.jxl_lossless = setting.jxl_lossless;
 	return result;
 }
 

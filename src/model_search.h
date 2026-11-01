@@ -42,6 +42,7 @@ namespace df
 		related_series,
 		related_time,
 		related_location,
+		related_film,
 	};
 
 	// `similar` carries the duplicate axis because it already means "a possible copy" everywhere else.
@@ -49,6 +50,7 @@ namespace df
 	{
 		switch (axis)
 		{
+		case related_axis::film: return search_result_type::related_film;
 		case related_axis::album: return search_result_type::related_album;
 		case related_axis::series: return search_result_type::related_series;
 		case related_axis::time: return search_result_type::related_time;
@@ -61,6 +63,7 @@ namespace df
 	{
 		switch (type)
 		{
+		case search_result_type::related_film: return related_axis::film;
 		case search_result_type::related_album: return related_axis::album;
 		case search_result_type::related_series: return related_axis::series;
 		case search_result_type::related_time: return related_axis::time;
@@ -87,6 +90,11 @@ namespace df
 		volume,
 		// The file's own panorama declaration, spelled `@panorama` and taking no argument.
 		panorama,
+		// What a library of films and television says an item is, spelled `@movie` and `@episode`.
+		film,
+		episode,
+		// A recording started and not finished, spelled `@inprogress`.
+		in_progress,
 	};
 
 	// Specificity a location term is constrained to; `any` matches place, region or country.
@@ -586,7 +594,10 @@ namespace df
 				type == search_term_type::remote ||
 				type == search_term_type::area ||
 				type == search_term_type::duplicate ||
-				type == search_term_type::panorama;
+				type == search_term_type::panorama ||
+				type == search_term_type::film ||
+				type == search_term_type::episode ||
+				type == search_term_type::in_progress;
 		}
 
 		friend bool operator==(const search_term& lhs, const search_term& rhs)
@@ -708,6 +719,9 @@ namespace df
 		str::cached album = {};
 		str::cached album_artist = {};
 		str::cached show = {};
+		str::cached title = {};
+		uint16_t year = 0;
+		prop::media_kind kind = prop::media_kind::none;
 		uint32_t crc32c = 0;
 		file_size size = {};
 		file_type_ref ft = nullptr;
@@ -717,7 +731,7 @@ namespace df
 		bool duplicate_crowded = false;
 		crypto::phash_rotations phash{};
 		sizei dimensions;
-		uint8_t season = 0;
+		uint16_t season = 0;
 		xy8 episode = {0, 0};
 		xy8 disk = {0, 0};
 		xy8 track = {0, 0};
@@ -742,7 +756,7 @@ namespace df
 
 		int64_t episode_ordinal() const
 		{
-			return static_cast<int64_t>(season) * 1000 + episode.x;
+			return static_cast<int64_t>(season) * 100000 + episode.x;
 		}
 
 		related_info() noexcept = default;
@@ -1353,6 +1367,13 @@ namespace df
 		search_t parse_from_input(std::string_view text) const;
 		static search_t parse_path(std::string_view text);
 		static search_t parse(std::string_view text);
+
+		// Whether text can be read as this search without asking the file system. Parsing asks it
+		// whether "C:\Pics 2019" is one folder or a folder and a year, and whether a path names a file;
+		// this accepts any of those readings, so a search can be compared with saved text without
+		// waiting on a share that is away. Compared with the place in view - which is there - it gives
+		// the answer parsing would.
+		bool can_be_read_from(std::string_view text) const;
 
 		void raw_text(const std::string_view raw) { _raw = raw; };
 		const std::string& raw_text() const { return _raw; };

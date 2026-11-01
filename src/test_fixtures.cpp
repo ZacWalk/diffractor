@@ -326,3 +326,9 @@ std::shared_ptr<av_session> make_test_session(std::function<void(df::file_path, 
 	static null_av_host navh;
 	return std::make_shared<av_session>(navh, std::move(save_position));
 }
+
+std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<const platform::thread_event> decode_wake)
+{
+	static null_av_host navh;
+	return std::make_shared<av_session>(navh, nullptr, std::move(decode_wake));
+}

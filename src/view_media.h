@@ -177,6 +177,17 @@ public:
 
 		if (_media_element)
 		{
+			// Subtitles rise over the controls only where the controls float over the picture.
+			const auto controls_float = _display && !_display->is_zoom_mode() && !_display->comparing() &&
+				_controls_element && !_controls_element->bounds.is_empty();
+			if (_display)
+			{
+				_display->_overlay_top = controls_float
+					                         ? _controls_element->bounds.top - (_controls_element->padding * dc.scale_factor).cy
+					                         : 0;
+			}
+			const df::scope_exit clear_overlay_top([this] { if (_display) _display->_overlay_top = 0; });
+
 			_media_element->render(dc, {0, 0});
 		}
 

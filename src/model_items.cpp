@@ -208,6 +208,7 @@ static std::string_view related_axis_text(const df::related_axis axis)
 {
 	switch (axis)
 	{
+	case df::related_axis::film: return tt.related_group_film;
 	case df::related_axis::album: return tt.related_group_album;
 	case df::related_axis::series: return tt.related_group_series;
 	case df::related_axis::time: return tt.related_group_time;
@@ -220,6 +221,7 @@ static icon_index related_axis_icon(const df::related_axis axis)
 {
 	switch (axis)
 	{
+	case df::related_axis::film: return icon_index::video;
 	case df::related_axis::album: return icon_index::audio;
 	case df::related_axis::series: return icon_index::video;
 	case df::related_axis::time: return icon_index::time;
@@ -287,22 +289,25 @@ static df::group_key rating_key(const df::item_element_ptr& i)
 	return result;
 }
 
-static df::group_key date_key(const df::date_t when, const df::item_element_ptr& i)
+uint32_t local_today_days()
+{
+	return platform::now().system_to_local().to_days();
+}
+
+df::group_key date_group_key(const df::date_t when, const uint32_t today)
 {
 	df::group_key result;
-	if (i->is_folder()) return {group_key_type::folder};
 	result.type = group_key_type::grouped_value;
 
 	if (when.is_valid())
 	{
 		const auto day = when.to_days();
-		const auto today = platform::now().to_days();
 
 		if (day == today)
 		{
 			result.order1 = 0;
 		}
-		else if (day == today - 1)
+		else if (day + 1 == today)
 		{
 			result.order1 = 1;
 		}
@@ -315,6 +320,12 @@ static df::group_key date_key(const df::date_t when, const df::item_element_ptr&
 	}
 
 	return result;
+}
+
+static df::group_key date_key(const df::date_t when, const df::item_element_ptr& i, const uint32_t today)
+{
+	if (i->is_folder()) return {group_key_type::folder};
+	return date_group_key(when, today);
 }
 
 static df::group_key resolution_key(const df::item_element_ptr& i)
@@ -579,6 +590,33 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 		return str::icmp_natural(l->name(), r->name()) < 0;
 	};
 
+	// A show plays in season and episode order, a special ahead of its season's first episode and a dated
+	// episode by the day it aired; an album plays in disc and track order. Anything numbered by neither
+	// follows, by name - as do files whose names alone would have put 07x01 after S01E01.
+	constexpr auto sequence_key = [](const df::item_element_ptr& i) -> std::tuple<int, int, int, int64_t>
+	{
+		const auto md = i->metadata();
+		if (!md) return {1, 0, 0, 0};
+
+		if (!is_empty(md->show))
+		{
+			if (!prop::is_null(md->episode) || md->is_special) return {0, md->season, md->episode.x, 0};
+			if (md->kind == prop::media_kind::episode) return {0, md->season, 0, md->created().to_int64()};
+			return {1, 0, 0, 0};
+		}
+
+		if (!prop::is_null(md->track)) return {0, md->disk.x, md->track.x, 0};
+		return {1, 0, 0, 0};
+	};
+
+	constexpr auto sequence_sorter = [sequence_key](const df::item_element_ptr& l, const df::item_element_ptr& r)
+	{
+		const auto ll = sequence_key(l);
+		const auto rr = sequence_key(r);
+		if (ll != rr) return ll < rr;
+		return str::icmp_natural(l->name(), r->name()) < 0;
+	};
+
 	const auto sorts_by_date = group_mode != group_by::related &&
 		(sort_order == sort_by::date_created || sort_order == sort_by::date_modified ||
 			sort_order == sort_by::date_original ||
@@ -667,6 +705,10 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 	else if (group_mode == group_by::folder)
 	{
 		apply(name_sorter);
+	}
+	else if (group_mode == group_by::album_show)
+	{
+		apply(sequence_sorter);
 	}
 	else if (group_by_dups)
 	{
@@ -1110,13 +1152,13 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 
 			if (key.order1 == 0)
 			{
-				const auto today = platform::now().date();
+				const auto today = df::date_t::from_days(local_today_days()).date();
 				add_title_link(tt.group_title_today,
 				               search_t(current_search).day(today.day, today.month, today.year, target));
 			}
 			else if (key.order1 == 1)
 			{
-				const auto yesterday = platform::now().previous_day().date();
+				const auto yesterday = df::date_t::from_days(local_today_days()).previous_day().date();
 				add_title_link(tt.group_title_yesterday,
 				               search_t(current_search).day(yesterday.day, yesterday.month, yesterday.year, target));
 			}
@@ -1391,6 +1433,9 @@ void view_state::update_item_groups()
 		++_resolved_places_generation;
 	}
 
+	// Item dates are local wall-clock times, so today is the local day, read once for the whole pass.
+	const auto today = local_today_days();
+
 	for (const auto& i : _search_items._items)
 	{
 		if (_filter.match(i))
@@ -1410,15 +1455,15 @@ void view_state::update_item_groups()
 					break;
 
 				case group_by::date_created:
-					groups[date_key(i->file_or_metadata_created(), i)].emplace_back(i);
+					groups[date_key(i->file_or_metadata_created(), i, today)].emplace_back(i);
 					break;
 
 				case group_by::date_original:
-					groups[date_key(i->media_created(), i)].emplace_back(i);
+					groups[date_key(i->media_created(), i, today)].emplace_back(i);
 					break;
 
 				case group_by::date_modified:
-					groups[date_key(i->file_modified().system_to_local(), i)].emplace_back(i);
+					groups[date_key(i->file_modified().system_to_local(), i, today)].emplace_back(i);
 					break;
 
 				case group_by::shuffle:
@@ -1455,15 +1500,15 @@ void view_state::update_item_groups()
 					break;
 
 				case group_by::date_created:
-					groups[date_key(i->file_or_metadata_created(), i)].emplace_back(i);
+					groups[date_key(i->file_or_metadata_created(), i, today)].emplace_back(i);
 					break;
 
 				case group_by::date_original:
-					groups[date_key(i->media_created(), i)].emplace_back(i);
+					groups[date_key(i->media_created(), i, today)].emplace_back(i);
 					break;
 
 				case group_by::date_modified:
-					groups[date_key(i->file_modified().system_to_local(), i)].emplace_back(i);
+					groups[date_key(i->file_modified().system_to_local(), i, today)].emplace_back(i);
 					break;
 
 				case group_by::resolution:
@@ -1948,6 +1993,8 @@ void df::item_group::update_row_layout(const ui::measure_context& mc) const
 	_row_draw_info.icon.width = _row_draw_info.icon.extent;
 	_row_draw_info.disk.width = _row_draw_info.disk.val_max > 1 ? _row_draw_info.disk.extent : 0;
 	_row_draw_info.track.width = _row_draw_info.track.extent;
+	_row_draw_info.episode.width = _row_draw_info.episode.extent;
+	_row_draw_info.year.width = _row_draw_info.year.extent;
 	_row_draw_info.title.width = _row_draw_info.title.extent;
 	_row_draw_info.flag.width = _row_draw_info.flag.extent;
 	_row_draw_info.presence.width = _row_draw_info.presence.extent;
@@ -1975,6 +2022,7 @@ void df::item_group::update_row_layout(const ui::measure_context& mc) const
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.file_size.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.duration.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.track.width = 0;
+	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.year.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.audio_sample_rate.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.bitrate.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.dimensions.width = 0;
@@ -1986,6 +2034,7 @@ void df::item_group::update_row_layout(const ui::measure_context& mc) const
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.sidecars.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.presence.width = 0;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.flag.width = 0;
+	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.episode.width = 0;
 
 	if (_row_draw_info.total(text_padding) < width_avail)
 	{
@@ -2008,6 +2057,16 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 	if (info.track != 0)
 	{
 		_row_draw_info.track.update_extent(dc, str::to_string(info.track), info.track);
+	}
+
+	if (!info.episode.is_empty())
+	{
+		_row_draw_info.episode.update_extent(dc, info.episode.sv());
+	}
+
+	if (info.year != 0)
+	{
+		_row_draw_info.year.update_extent(dc, str::to_string(info.year));
 	}
 
 	_row_draw_info.title.update_extent(dc, combine2(info.title, info.name));
@@ -2385,6 +2444,27 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				text_x += widths.track.width + text_padding;
 			}
 
+			if (widths.episode.width > 0)
+			{
+				if (!info.episode.is_empty())
+				{
+					const auto bb = widths.episode.calc_bounds(text_rect, text_x, text_y, text_padding);
+					widths.episode.draw(dc, info.episode.sv(), ui::color{}, bb, text_font, text_style, text_color);
+				}
+				text_x += widths.episode.width + text_padding;
+			}
+
+			if (widths.year.width > 0)
+			{
+				if (info.year != 0)
+				{
+					const auto bb = widths.year.calc_bounds(text_rect, text_x, text_y, text_padding);
+					widths.year.draw(dc, str::to_string(info.year), ui::color{}, bb, text_font, text_style_far,
+					                 text_color);
+				}
+				text_x += widths.year.width + text_padding;
+			}
+
 			if (widths.title.width > 0)
 			{
 				auto title_rect = text_rect;
@@ -2609,16 +2689,16 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto thumb_padding = round(item_draw_info::_thumb_padding * dc.scale_factor);
 		auto title_style = ui::style::text_style::single_line_center;
 		auto title_line_height2 = dc.text_line_height(info.title_font);
-		auto title_line_height1 = is_empty(info.title) ? 0 : title_line_height2;
+		auto title_line_height1 = is_empty(info.caption) ? 0 : title_line_height2;
 		auto title_text_extra_width = 0;
 
 		if (is_focus || is_hover)
 		{
 			title_style = ui::style::text_style::multiline_center;
 			auto avail_width = is_hover ? mul_div(bg_bounds.width(), 7, 4) : bg_bounds.width();
-			const auto title_extent1 = is_empty(info.title)
+			const auto title_extent1 = is_empty(info.caption)
 				                           ? sizei{}
-				                           : dc.measure_text(info.title, info.title_font, title_style, avail_width);
+				                           : dc.measure_text(info.caption, info.title_font, title_style, avail_width);
 			const auto title_extent2 = dc.measure_text(info.name, info.title_font, title_style, avail_width);
 			const auto extra1 = title_extent1.cx > bg_bounds.width() ? title_extent1.cx - device_bounds.width() : 0;
 			const auto extra2 = title_extent2.cx > bg_bounds.width() ? title_extent2.cx - device_bounds.width() : 0;
@@ -2626,9 +2706,9 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 			const auto render_padding = title_text_extra_width / 2 + (is_hover ? text_padding : 0);
 			const auto render_width = device_bounds.width() + render_padding * 2;
-			title_line_height1 = is_empty(info.title)
+			title_line_height1 = is_empty(info.caption)
 				                     ? 0
-				                     : dc.measure_text(info.title, info.title_font, title_style, render_width).cy;
+				                     : dc.measure_text(info.caption, info.title_font, title_style, render_width).cy;
 			title_line_height2 = dc.measure_text(info.name, info.title_font, title_style, render_width).cy;
 		}
 
@@ -2802,6 +2882,17 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 			draw_placeholder(dc.colors.alpha);
 		}
 
+		// A recording started and not finished shows how far it got, along the foot of its tile.
+		if (info.progress > 0.0 && !is_folder)
+		{
+			const auto bar_height = std::max(2, round(3 * dc.scale_factor));
+			auto bar = icon_rect;
+			bar.top = bar.bottom - bar_height;
+			dc.draw_rect(bar, ui::color(ui::style::color::view_background, dc.colors.alpha * 0.75f));
+			bar.right = bar.left + static_cast<int>(std::lround(bar.width() * info.progress));
+			dc.draw_rect(bar, ui::color(ui::style::color::view_selected_background, dc.colors.alpha));
+		}
+
 		auto y = text_rect.top;
 
 		if (show_text)
@@ -2815,11 +2906,11 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 			recti title_rect(text_rect.left, y, text_rect.right, y + title_line_height1 + title_line_height2);
 
-			if (!is_empty(info.title))
+			if (!is_empty(info.caption))
 			{
 				auto bounds = title_rect;
 				bounds.bottom = title_rect.top + title_line_height1;
-				dc.draw_text(info.title, bounds, info.title_font, title_style, group_text_color, {});
+				dc.draw_text(info.caption, bounds, info.title_font, title_style, group_text_color, {});
 				y += title_line_height1;
 			}
 
@@ -3262,8 +3353,9 @@ df::process_result df::item_set::can_process(const process_items_type file_types
 			{
 				result.record_error(i, process_result_code::read_only, mark_errors, view);
 			}
-			else if (!files::can_save(i->path()))
+			else if (!files::can_save(i->path()) || !ft->can_edit_photo())
 			{
+				// A JPEG XL's metadata is edited but never its picture, so turning one in place is not offered.
 				result.record_error(i, process_result_code::cannot_save_pixels, mark_errors, view);
 			}
 		}
@@ -3318,6 +3410,7 @@ df::item_display_info df::item_element::populate_info() const
 		result.title_font = ui::style::font_face::title;
 
 		result.title = _info->volume;
+		result.caption = result.title;
 		result.items = static_cast<int>(_total_count);
 		result.size = _size;
 		result.modified = _modified.system_to_local();
@@ -3343,6 +3436,11 @@ df::item_display_info df::item_element::populate_info() const
 			if (md)
 			{
 				result.title = md->title;
+				result.caption = prop::library_caption(*md);
+				result.episode = prop::episode_label(*md);
+				if (md->kind == prop::media_kind::film) result.year = md->year;
+				if (prop::is_in_progress(_media_position, md->duration))
+					result.progress = prop::playback_progress(_media_position, md->duration);
 				result.track = md->track.x;
 				result.disk = md->disk.x;
 				result.duration = md->duration;
@@ -3620,7 +3718,7 @@ platform::file_op_result df::item_element::rename(index_state& index, const std:
 	{
 		const auto folder_path = path_src.folder();
 		const auto sidecar_path_src = folder_path.combine_file(file_name);
-		const auto sidecar_path_dst = folder_path.combine_file(new_name).extension(sidecar_path_src.extension());
+		const auto sidecar_path_dst = moved_sidecar_path(path_src, path_dst, sidecar_path_src);
 		auto result = rename_file(sidecar_path_src, sidecar_path_dst);
 
 		if (result.failed())

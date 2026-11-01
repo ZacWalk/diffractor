@@ -49,7 +49,9 @@ enum class view_type
 	import,
 	sync,
 	locate,
-	tags
+	tags,
+	// Every setting, on one page; not a task, and not reached from one.
+	options
 };
 
 enum class repeat_mode

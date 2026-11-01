@@ -19,6 +19,13 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+std::string format_edit_adjustment(const double value)
+{
+	auto text = std::format("{:.2f}", value);
+	if (text == "-0.00") text.erase(0, 1);
+	return text;
+}
+
 class log_slider_control final : public view_element, public std::enable_shared_from_this<log_slider_control>
 {
 	ui::trackbar_ptr _slider;
@@ -111,7 +118,7 @@ public:
 	void update_edit() const
 	{
 		const auto actual = _edit->window_text();
-		const auto expected = std::format("{:.2f}", _val);
+		const auto expected = format_edit_adjustment(_val);
 
 		if (actual.empty() || actual != expected)
 		{
@@ -1688,11 +1695,28 @@ view_controller_ptr edit_view::controller_from_location(const view_host_ptr& hos
 	return nullptr;
 }
 
+df::file_path edit_save_suggestion(const df::file_path source, const std::function<bool(df::file_path)>& exists)
+{
+	const auto extension = files::can_save(source) ? std::string(source.extension()) : ".jpg"s;
+	const auto name = std::string(source.file_name_without_extension()) + "-edit"s;
+	auto path = df::file_path(source.folder(), name, extension);
+
+	// Number repeats rather than stacking suffixes, so a third edit is "photo-edit 3", not "photo-edit-edit-edit".
+	for (auto n = 2; exists(path); ++n)
+	{
+		path = df::file_path(source.folder(), name + " "s + std::to_string(n), extension);
+	}
+
+	return path;
+}
+
 bool select_path(df::file_path& path)
 {
+	// A format Diffractor cannot write is saved as JPEG under a name of its own: the same name with
+	// .jpg is, beside a RAW, the camera's own JPEG.
 	if (!files::can_save(path))
 	{
-		path = path.extension(".jpg");
+		path = edit_save_suggestion(path, [](const df::file_path p) { return p.exists(); });
 	}
 
 	return platform::prompt_for_save_path(path);
@@ -1744,6 +1768,14 @@ bool edit_view::check_path(df::file_path& path, const ui::control_frame_ptr& own
 
 
 	return true;
+}
+
+view_bars edit_view::bars() const
+{
+	return task_view_bars({
+		commands::edit_item_preview, commands::edit_item_save_and_prev, commands::edit_item_save_and_next,
+		commands::edit_item_save_as, commands::edit_item_save
+	});
 }
 
 bool edit_view::can_exit()
@@ -1905,10 +1937,13 @@ void edit_view::save(const df::file_path src_path, const df::file_path dst_path,
 			                   encode_params.jpeg_save_quality = setting.jpeg_save_quality;
 			                   encode_params.webp_lossless = setting.webp_lossless;
 			                   encode_params.webp_quality = setting.webp_quality;
+			                   encode_params.jxl_lossless = setting.jxl_lossless;
+			                   encode_params.jxl_quality = setting.jxl_quality;
 
 			                   const auto is_in_place = src_path == dst_path;
-			                   const auto create_original = is_in_place && setting.create_originals &&
-				                   pe.has_changes(dimensions);
+			                   // Whatever file the save replaces gets its backup: the source in place, or
+			                   // one whose overwrite was confirmed - beside a RAW, the camera's own JPEG.
+			                   const auto create_original = setting.create_originals && pe.has_changes(dimensions);
 			                   *update_result = ff.update(src_path, dst_path, me, pe, encode_params, create_original,
 			                                              xmp_name, {},
 			                                              is_in_place
@@ -2021,17 +2056,8 @@ void edit_view::save_as()
 {
 	if (!can_edit_pixels()) return;
 
-	auto path = _path;
+	auto path = edit_save_suggestion(_path, [](const df::file_path p) { return p.exists(); });
 	const auto xmp_name = _xmp_name;
-
-	const auto name = std::string(path.file_name_without_extension()) + "-edit"s;
-	path = df::file_path(path.folder(), name, path.extension());
-
-	// Number repeats rather than stacking suffixes, so a third edit is "photo-edit 3", not "photo-edit-edit-edit".
-	for (auto n = 2; path.exists(); ++n)
-	{
-		path = df::file_path(path.folder(), name + " "s + std::to_string(n), path.extension());
-	}
 
 	const auto owner = _host->owner();
 
@@ -2584,6 +2610,7 @@ void edit_view_controls::options_changed()
 		_save_title->text(tt.options_save_options);
 		_jpeg_quality_slider->label(tt.options_jpeg_quality);
 		_webp_quality_slider->label(tt.options_webp_quality);
+		_jxl_quality_slider->label(tt.options_jxl_quality);
 	}
 }
 
@@ -2649,6 +2676,9 @@ void edit_view_controls::create_controls()
 	_webp_quality_slider = std::make_shared<ui::slider_control>(_dlg, tt.options_webp_quality, setting.webp_quality, 1,
 	                                                            100);
 	_webp_lossless_check = std::make_shared<ui::check_control>(_dlg, tt.lossless_compression, setting.webp_lossless);
+	_jxl_quality_slider = std::make_shared<ui::slider_control>(_dlg, tt.options_jxl_quality, setting.jxl_quality, 1,
+	                                                           100);
+	_jxl_lossless_check = std::make_shared<ui::check_control>(_dlg, tt.lossless_compression, setting.jxl_lossless);
 	_controls = {
 		_info,
 		_straighten_title,
@@ -2674,6 +2704,8 @@ void edit_view_controls::create_controls()
 		_jpeg_quality_slider,
 		_webp_quality_slider,
 		_webp_lossless_check,
+		_jxl_quality_slider,
+		_jxl_lossless_check,
 	};
 
 	_clr = ui::color(ui::style::color::dialog_text);

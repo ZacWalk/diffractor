@@ -6,10 +6,11 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Toolbars and how commands present. Builds the toolbars, decides each command's enabled,
-// checked and visible state and its disabled reason, sets command text and icons, owns the default
-// keyboard accelerators, and shows command tooltips. What a command does is registered in
-// app_commands.cpp.
+// Purpose: Toolbars and how commands present. Builds the title bar and status bar each view declares
+// - toolbars for its commands, the item filter box and size slider - and arranges them, decides each
+// command's enabled, checked and visible state and its disabled reason, sets command text and icons,
+// owns the default keyboard accelerators, and shows command and status-bar tooltips. What a command
+// does is registered in app_commands.cpp.
 
 #include "pch.h"
 
@@ -30,6 +31,7 @@
 #include "view_locate.h"
 #include "view_movie.h"
 #include "view_edit.h"
+#include "view_media.h"
 
 #include "app_sidebar.h"
 #include "app_commands.h"
@@ -70,10 +72,11 @@ void app_frame::create_toolbars()
 		find_command(commands::refresh),
 	};
 
+	// Options is not here: its cog starts the status bar, under the sidebar that shows the collection it sets up
+	// first, and it is in the Options menu.
 	const std::vector<ui::command_ptr> tbButtonsNav2 =
 	{
 		find_command(commands::favorite),
-		find_command(commands::options_collection),
 		find_command(commands::browse_previous_folder),
 		find_command(commands::browse_next_folder),
 		find_command(commands::advanced_search),
@@ -86,94 +89,6 @@ void app_frame::create_toolbars()
 		find_command(commands::view_maximize),
 		find_command(commands::view_restore),
 		find_command(commands::exit),
-	};
-
-	const std::vector<ui::command_ptr> media_edit_commands =
-	{
-		find_command(commands::edit_item_preview),
-		find_command(commands::edit_item_save_and_prev),
-		find_command(commands::edit_item_save_and_next),
-		find_command(commands::edit_item_save_as),
-		find_command(commands::edit_item_save),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
-	};
-
-	const std::vector<ui::command_ptr> sync_commands =
-	{
-		find_command(commands::sync_analyze),
-		find_command(commands::sync_run),
-		find_command(commands::view_cancel),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
-	};
-
-	const std::vector<ui::command_ptr> tool_commands =
-	{
-		find_command(commands::tool_refresh),
-		find_command(commands::tool_run),
-		find_command(commands::view_cancel),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
-	};
-
-	const std::vector<ui::command_ptr> import_commands =
-	{
-		find_command(commands::import_analyze),
-		find_command(commands::import_run),
-		find_command(commands::view_cancel),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
-	};
-
-	const std::vector<ui::command_ptr> tags_commands =
-	{
-		find_command(commands::tags_run),
-		find_command(commands::view_cancel),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
-	};
-
-	const std::vector<ui::command_ptr> busy_commands =
-	{
-		find_command(commands::view_cancel),
-	};
-
-	const std::vector<ui::command_ptr> locate_commands =
-	{
-		find_command(commands::edit_item_save_and_prev),
-		find_command(commands::edit_item_save_and_next),
-		find_command(commands::locate_run),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
-	};
-
-	const std::vector<ui::command_ptr> movie_commands =
-	{
-		find_command(commands::tool_movie_render),
-		find_command(commands::tool_movie_add),
-		find_command(commands::tool_movie_remove),
-		find_command(commands::tool_movie_relink),
-		find_command(commands::tool_movie_open),
-		find_command(commands::tool_movie_save),
-		find_command(commands::tool_movie_import),
-		find_command(commands::view_cancel),
-		nullptr,
-		find_command(commands::view_maximize),
-		find_command(commands::view_restore),
-		find_command(commands::view_close),
 	};
 
 	ui::toolbar_styles tb_styles;
@@ -218,17 +133,321 @@ void app_frame::create_toolbars()
 		search_text_changed(text);
 	});
 
-	tb_styles.xTBSTYLE_LIST = true;
-	tb_styles.button_extent = {0, 0};
+	// The filter box is the address box's sibling at the other end of the window: the same native
+	// edit, so the two read, select and edit alike.
+	ui::edit_styles filter_styles;
+	filter_styles.horizontal_scroll = true;
+	filter_styles.rounded_corners = true;
+	filter_styles.select_all_on_focus = true;
+	filter_styles.bg_clr = ui::style::color::toolbar_background;
+	filter_styles.cue = tt.filter.sv();
+	filter_styles.capture_key_down = [this](const int key_code, const ui::key_state keys)
+	{
+		return filter_key_down(static_cast<char32_t>(key_code), keys);
+	};
+	_filter_edit = _app_frame->create_edit(filter_styles, _state.filter().text(), [this](const std::string_view text)
+	{
+		if (!_filter_setting_text) filter_text_changed(text);
+	});
 
-	_media_edit_commands = _app_frame->create_toolbar(tb_styles, media_edit_commands);
-	_tool_commands = _app_frame->create_toolbar(tb_styles, tool_commands);
-	_import_commands = _app_frame->create_toolbar(tb_styles, import_commands);
-	_locate_commands = _app_frame->create_toolbar(tb_styles, locate_commands);
-	_sync_commands = _app_frame->create_toolbar(tb_styles, sync_commands);
-	_tags_commands = _app_frame->create_toolbar(tb_styles, tags_commands);
-	_movie_commands = _app_frame->create_toolbar(tb_styles, movie_commands);
-	_busy_commands = _app_frame->create_toolbar(tb_styles, busy_commands);
+	_item_size = _app_frame->create_slider(0, settings_t::item_scale_position_max,
+	                                       [this](const int pos, const bool tracking)
+	                                       {
+		                                       item_size_changed(pos, tracking);
+	                                       });
+	update_item_size_slider();
+
+	// Every bar a view can declare is built now, before the first layout, so switching views only
+	// shows and hides controls that already exist.
+	const std::shared_ptr<view_base> views[] = {
+		_view_items, _view_media, _view_edit, _view_movie, _view_rename, _view_batch, _view_import, _view_sync,
+		_view_locate, _view_tags
+	};
+
+	for (const auto& v : views)
+	{
+		const auto declared = v->bars();
+		if (!declared.navigation) bar(declared.top);
+		bar(declared.bottom);
+		bar(declared.bottom_leading);
+	}
+
+	bar(running_task_bar());
+}
+
+const std::vector<bar_entry>& app_frame::running_task_bar()
+{
+	// Nothing else a task view offers may start under a run that is still going, so its commands give
+	// way to the one that stops it.
+	static const std::vector<bar_entry> entries = {commands::view_cancel};
+	return entries;
+}
+
+const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries)
+{
+	if (const auto found = _bars.find(entries); found != _bars.end()) return found->second;
+
+	ui::toolbar_styles styles;
+	styles.xTBSTYLE_LIST = true;
+	styles.button_extent = {0, 0};
+
+	frame_bar result;
+	std::vector<ui::command_ptr> run;
+
+	const auto close_run = [this, &result, &run, &styles]
+	{
+		if (run.empty()) return;
+		result.push_back({_app_frame->create_toolbar(styles, run)});
+		run.clear();
+	};
+
+	for (const auto& entry : entries)
+	{
+		if (const auto* const id = std::get_if<commands>(&entry))
+		{
+			// A null button is a separator, so an unresolved command is dropped rather than turned
+			// into a divider nobody declared.
+			if (auto command = find_command(*id)) run.emplace_back(std::move(command));
+		}
+		else
+		{
+			close_run();
+			result.push_back({nullptr, std::get<bar_control>(entry)});
+		}
+	}
+
+	close_run();
+	return _bars.emplace(entries, std::move(result)).first->second;
+}
+
+std::vector<bar_slot> app_frame::measure_bar(ui::measure_context& mc, const frame_bar& b,
+                                             const int control_height) const
+{
+	std::vector<bar_slot> result;
+	result.reserve(b.size());
+
+	for (const auto& part : b)
+	{
+		if (part.toolbar)
+		{
+			result.push_back({part.toolbar->measure_toolbar(_extent.cx)});
+			continue;
+		}
+
+		switch (part.control)
+		{
+		case bar_control::item_filter:
+			// Narrows before anything is cut, but not past what still shows a typed word.
+			result.push_back({
+				{df::round(150 * mc.scale_factor), control_height}, df::round(80 * mc.scale_factor)
+			});
+			break;
+		case bar_control::item_size:
+			// The wheel and the display menu also size thumbnails, so the slider is the first to go.
+			result.push_back({{df::round(100 * mc.scale_factor), control_height}, 0, true});
+			break;
+		case bar_control::item_totals:
+			result.push_back({
+				{
+					mc.measure_text(_totals_text, ui::style::font_face::dialog, ui::style::text_style::single_line,
+					                _extent.cx).cx + mc.padding2 * 2,
+					mc.text_line_height(ui::style::font_face::dialog)
+				}
+			});
+			break;
+		}
+	}
+
+	return result;
+}
+
+bar_arrangement arrange_bar(const recti bounds, const std::vector<bar_slot>& slots, const int gap,
+                            const bar_alignment alignment)
+{
+	// A leading bar is a trailing one seen in a mirror: its slots in reverse, arranged from the right
+	// and reflected back, so both ends give way by the same rules.
+	if (alignment == bar_alignment::leading)
+	{
+		const std::vector<bar_slot> reversed(slots.rbegin(), slots.rend());
+		const auto mirrored = arrange_bar(bounds, reversed, gap, bar_alignment::trailing);
+		const auto reflect = [&bounds](const recti r)
+		{
+			return recti(bounds.left + bounds.right - r.right, r.top, bounds.left + bounds.right - r.left, r.bottom);
+		};
+
+		bar_arrangement result;
+		result.slots.resize(slots.size());
+
+		for (auto i = 0u; i < slots.size(); ++i)
+		{
+			const auto placed = mirrored.slots[slots.size() - 1 - i];
+			if (!placed.is_empty()) result.slots[i] = reflect(placed);
+		}
+
+		result.remainder = reflect(mirrored.remainder);
+		return result;
+	}
+
+	const auto count = slots.size();
+	std::vector<int> widths(count);
+	std::vector<bool> shown(count, true);
+
+	for (auto i = 0u; i < count; ++i)
+	{
+		widths[i] = std::max(0, slots[i].extent.cx);
+		shown[i] = widths[i] > 0;
+	}
+
+	const auto total = [&]
+	{
+		auto sum = 0;
+		auto visible = 0;
+
+		for (auto i = 0u; i < count; ++i)
+		{
+			if (!shown[i]) continue;
+			sum += widths[i];
+			++visible;
+		}
+
+		return sum + std::max(0, visible - 1) * gap;
+	};
+
+	const auto available = std::max(0, bounds.width());
+
+	for (auto i = 0u; i < count && total() > available; ++i)
+	{
+		if (slots[i].optional) shown[i] = false;
+	}
+
+	for (auto i = 0u; i < count && total() > available; ++i)
+	{
+		if (!shown[i] || slots[i].min_width <= 0 || slots[i].min_width >= widths[i]) continue;
+		widths[i] -= std::min(total() - available, widths[i] - slots[i].min_width);
+	}
+
+	// Cut from the leading end. A part past its minimum is no use at any width, so parts go whole,
+	// and only the last one standing is clipped to the bar.
+	for (auto i = 0u; i < count && total() > available; ++i)
+	{
+		if (!shown[i]) continue;
+
+		if (std::count(shown.begin() + i + 1, shown.end(), true) > 0)
+		{
+			shown[i] = false;
+		}
+		else
+		{
+			widths[i] = std::max(0, widths[i] - (total() - available));
+		}
+	}
+
+	bar_arrangement result;
+	result.slots.resize(count);
+
+	auto x = bounds.right;
+	auto leading = bounds.right;
+
+	for (auto i = count; i-- > 0;)
+	{
+		if (!shown[i]) continue;
+
+		const auto height = std::min(slots[i].extent.cy, bounds.height());
+		const auto top = bounds.top + (bounds.height() - height) / 2;
+		result.slots[i] = recti(x - widths[i], top, x, top + height);
+		leading = x - widths[i];
+		x = leading - gap;
+	}
+
+	const auto remainder_right = leading == bounds.right ? bounds.right : leading - gap;
+	result.remainder = recti(bounds.left, bounds.top, std::max(bounds.left, remainder_right), bounds.bottom);
+	return result;
+}
+
+bool app_frame::filter_key_down(const char32_t key, const ui::key_state keys)
+{
+	if (key == keys::ESCAPE)
+	{
+		cancel_filter_edit();
+		return true;
+	}
+
+	// The filter applies as it is typed, so Enter and Tab have nothing left to commit: both hand the
+	// keyboard back to the list it filtered.
+	if ((key == keys::RETURN || key == keys::TAB) && !keys.control && !keys.alt)
+	{
+		focus_view();
+		return true;
+	}
+
+	return false;
+}
+
+void app_frame::filter_text_changed(const std::string_view text)
+{
+	_state.filter().wildcard(text);
+	invalidate_view(view_invalid::group_layout | view_invalid::view_redraw);
+}
+
+void app_frame::set_filter_edit_text(const std::string_view text)
+{
+	_filter_setting_text = true;
+	_filter_edit->window_text(text);
+	_filter_setting_text = false;
+}
+
+void app_frame::focus_filter(const bool has_focus)
+{
+	if (_filter_has_focus == has_focus) return;
+	_filter_has_focus = has_focus;
+	if (has_focus) _filter_edit_original = _state.filter().text();
+}
+
+void app_frame::focus_filter_edit()
+{
+	// A box the status bar is not showing - Fullscreen, zoom mode - cannot take the keyboard, or
+	// typing would go somewhere the user cannot see.
+	if (_filter_edit && _filter_edit->is_visible()) _filter_edit->focus();
+}
+
+// Escape abandons the edit: the filter goes back to what it was when the box took focus.
+void app_frame::cancel_filter_edit()
+{
+	if (_state.filter().text() != _filter_edit_original)
+	{
+		set_filter_edit_text(_filter_edit_original);
+		filter_text_changed(_filter_edit_original);
+	}
+
+	focus_view();
+}
+
+void app_frame::item_size_changed(const int pos, const bool tracking)
+{
+	setting.set_item_scale_position(pos);
+	invalidate_view(view_invalid::view_layout);
+
+	if (tracking)
+	{
+		_item_size_dragging = true;
+	}
+	else if (std::exchange(_item_size_dragging, false))
+	{
+		// A drag is pointer work, and the keyboard still belongs to the list it resized. Left on the
+		// slider, the arrow keys would go on resizing thumbnails instead of moving through them.
+		queue_ui([this] { focus_view(); });
+	}
+}
+
+void app_frame::update_item_size_slider() const
+{
+	// Ctrl+wheel, a pinch and the display menu change the size as well, so the slider follows the
+	// setting whenever it is not the one being dragged.
+	if (_item_size && !_item_size_dragging)
+	{
+		const auto pos = setting.item_scale_slider_position();
+		if (_item_size->get_pos() != pos) _item_size->SetPos(pos);
+	}
 }
 
 // locations.md 7.1, baseline defect 5: this button now reads only what the grouping and sorting
@@ -327,6 +546,17 @@ std::string format_items_totals(const df::file_group_histogram& summary, const b
 	}
 
 	return std::string(is_init_complete ? tt.empty : tt.loading);
+}
+
+std::string format_selection_summary(const df::item_set& selected)
+{
+	if (selected.empty()) return {};
+
+	const auto summary = selected.summary();
+	const auto files = summary.total_items();
+	const auto count = format_plural_text(tt.title_item_count_fmt,
+	                                      static_cast<int64_t>(files.count + summary.total_folders().count));
+	return files.size.is_empty() ? count : std::format("{} \u00B7 {}", count, df::format_size(files.size));
 }
 
 icon_index volumes_icons[5] = {
@@ -580,6 +810,7 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::menu_main]->enable = true;
 	_commands[commands::menu_navigate]->enable = true;
 	_commands[commands::menu_open]->enable = has_selection;
+	_commands[commands::menu_open_status]->enable = has_selection;
 	_commands[commands::menu_options]->enable = true;
 	_commands[commands::menu_playback]->enable = is_media_or_items_view;
 	auto playback_toolbar_text = std::string(tt.command_playback_toolbar.sv());
@@ -613,9 +844,11 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::option_show_rotated]->enable = is_media_or_items_view;
 	_commands[commands::option_toggle_details]->enable = is_items_view;
 	_commands[commands::option_toggle_item_size]->enable = is_items_view;
-	_commands[commands::options_collection]->enable = is_media_or_items_view;
-	_commands[commands::options_general]->enable = is_media_or_items_view;
+	_commands[commands::options]->enable = is_media_or_items_view;
 	_commands[commands::options_sidebar]->enable = is_media_or_items_view;
+	_commands[commands::options_save]->enable = view_mode == view_type::options;
+	_commands[commands::options_cancel]->enable = view_mode == view_type::options;
+	_commands[commands::options_help]->enable = view_mode == view_type::options;
 	_commands[commands::favorite_tags]->enable = is_media_or_items_view || view_mode == view_type::tags;
 	_commands[commands::pin_item]->enable = is_media_or_items_view && (_state.has_pin() || _state.focus_item() !=
 		nullptr);
@@ -906,7 +1139,6 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::playback_volume_toggle]->icon = sound_icon();
 	_commands[commands::repeat_toggle]->icon = repeat_toggle_icon();
 	_commands[commands::favorite]->icon = _state.search_is_favorite() ? icon_index::star_solid : icon_index::star;
-	_commands[commands::options_collection]->icon = icon_index::media_options;
 
 
 	const auto summary_text = format_items_summary(_state.effective_group_order(), _state.sort_order(),
@@ -918,18 +1150,54 @@ void app_frame::update_button_state(const bool resize)
 	update_toolbar_text(commands::filter_videos, str::format_count(_state.count_total(file_group::video), true));
 	update_toolbar_text(commands::filter_audio, str::format_count(_state.count_total(file_group::audio), true));
 
+	// Only Items starts its status bar with Open, so no other view pays for summing the selection. Open is
+	// labelled with what it would open, and with its own name when nothing is selected: a toolbar keeps the
+	// text it last had rather than taking an empty one.
+	if (view_mode == view_type::items)
+	{
+		auto open_text = format_selection_summary(_state.selected_items());
+		if (open_text.empty()) open_text = tt.command_open.sv();
+		auto& open_status_text = _commands[commands::menu_open_status]->toolbar_text;
+
+		if (open_text != open_status_text)
+		{
+			open_status_text = std::move(open_text);
+			// No view shows this command, so only the frame lays out again: a view relayout on every click
+			// in the list would cost the list its speed.
+			invalidate_view(view_invalid::app_layout);
+		}
+	}
+
 	_navigate1->update_button_state(resize, false);
 	_navigate2->update_button_state(resize, false);
 	_navigate3->update_button_state(resize, false);
 	_search_edit->set_icon(address_icon(_state.search()));
 
-	_media_edit_commands->update_button_state(resize, close_text_changed);
-	_import_commands->update_button_state(resize, close_text_changed);
-	_locate_commands->update_button_state(resize, close_text_changed);
-	_tool_commands->update_button_state(resize, close_text_changed);
-	_sync_commands->update_button_state(resize, close_text_changed);
-	_tags_commands->update_button_state(resize, close_text_changed);
-	_movie_commands->update_button_state(resize, close_text_changed);
+	for (const auto& [entries, parts] : _bars)
+	{
+		for (const auto& part : parts)
+		{
+			if (part.toolbar) part.toolbar->update_button_state(resize, close_text_changed);
+		}
+	}
+
+	// The filter also changes from elsewhere - the list's own action that shows what it hid clears
+	// it - so the box follows the state unless the user is typing in it.
+	if (!_filter_has_focus)
+	{
+		const auto filter_text = _state.filter().text();
+		if (_filter_edit->window_text() != filter_text) set_filter_edit_text(filter_text);
+	}
+
+	update_item_size_slider();
+
+	// Measured by the bar it sits in, so a count that changes width moves the controls beside it.
+	auto totals_text = format_items_totals(_state.summary_shown(), _state.item_index.is_init_complete());
+	if (totals_text != _totals_text)
+	{
+		_totals_text = std::move(totals_text);
+		invalidate_view(view_invalid::app_layout);
+	}
 
 	const view_element_event e{view_element_event_type::update_command_state, _view_frame};
 	_view->broadcast_event(e);
@@ -1005,9 +1273,7 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::view_show_sidebar, {keys::F4}},
 		{commands::view_show_sidebar, {keys::BROWSER_FAVORITES}},
 		{commands::refresh, {keys::F5}},
-		{commands::options_general, {keys::F6}},
-		{commands::options_sidebar, {keys::F6, shift | control}},
-		{commands::options_collection, {keys::F6, control}},
+		{commands::options, {keys::F6}},
 		{commands::playback_auto_play, {keys::F7, control}},
 		{commands::playback_volume_toggle, {keys::F7}},
 		{commands::tool_convert, {keys::F8}},
@@ -1121,7 +1387,6 @@ void app_frame::update_command_text()
 	            tt.command_highlight_large_items);
 	def_command(commands::tool_import, command_group::tools, icon_index::import, tt.command_import);
 	def_command(commands::tool_sync, command_group::tools, icon_index::sync, tt.command_sync);
-	def_command(commands::options_collection, command_group::options, icon_index::set, tt.command_collection_options);
 	def_command(commands::keyboard, command_group::help, icon_index::keyboard, tt.command_keyboard);
 	def_command(commands::tool_locate, command_group::tools, icon_index::location, tt.command_locate);
 	def_command(commands::view_maximize, command_group::help, icon_index::maximize, tt.command_maximize);
@@ -1139,13 +1404,18 @@ void app_frame::update_command_text()
 	            tt.command_check_for_updates);
 #endif
 	def_command(commands::menu_open, command_group::none, icon_index::open_one, tt.command_open, tt.tooltip_open);
+	def_command(commands::menu_open_status, command_group::none, icon_index::open_one, tt.command_open,
+	            tt.tooltip_open);
 	def_command(commands::browse_open_containingfolder, command_group::navigation, icon_index::none,
 	            tt.command_show_in_folder);
 	def_command(commands::browse_open_googlemap, command_group::open, icon_index::location, tt.command_open_google_map);
 	def_command(commands::browse_open_in_file_browser, command_group::open, icon_index::none,
 	            tt.command_show_in_file_browser);
 	def_command(commands::tool_open_with, command_group::open, icon_index::open_one, tt.command_open_with);
-	def_command(commands::options_general, command_group::options, icon_index::settings, tt.command_options);
+	def_command(commands::options, command_group::options, icon_index::settings, tt.options_title);
+	def_command(commands::options_save, command_group::none, icon_index::save, tt.command_options_save);
+	def_command(commands::options_cancel, command_group::none, icon_index::cancel, tt.command_cancel_operation);
+	def_command(commands::options_help, command_group::none, icon_index::question, tt.command_options_help);
 	def_command(commands::pin_item, command_group::selection, icon_index::pin, tt.command_pin, tt.tooltip_pin);
 	def_command(commands::play, command_group::media_playback, icon_index::play, tt.command_play, tt.tooltip_play);
 	def_command(commands::slideshow, command_group::media_playback, icon_index::slideshow, tt.command_slideshow,
@@ -1328,7 +1598,8 @@ void app_frame::update_command_text()
 	_commands[commands::browse_next_item]->keyboard_accelerator_text = tt.keyboard_right;
 
 	for (const auto id : {
-		     commands::menu_open, commands::menu_tools_toolbar, commands::menu_playback, commands::view_close,
+		     commands::menu_open, commands::menu_open_status, commands::menu_tools_toolbar, commands::menu_playback,
+		     commands::view_close,
 		     commands::sync_analyze, commands::sync_run, commands::tool_run, commands::import_analyze,
 		     commands::import_run, commands::locate_run, commands::tags_run, commands::view_cancel,
 		     commands::tool_refresh,
@@ -1338,7 +1609,8 @@ void app_frame::update_command_text()
 		     commands::tool_movie_save, commands::tool_movie_import,
 		     commands::tool_movie_render, commands::tool_movie_relink,
 		     commands::menu_group_toolbar, commands::filter_photos, commands::filter_videos,
-		     commands::filter_audio
+		     commands::filter_audio, commands::options_save, commands::options_cancel,
+		     commands::options_help
 	     })
 	{
 		_commands[id]->toolbar_text = _commands[id]->text;
@@ -1513,7 +1785,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 			                                                   flex_item::new_line));
 		}
 	}
-	else if (id == commands::options_collection)
+	else if (id == commands::options)
 	{
 		const auto search = _state.search();
 
@@ -1528,6 +1800,19 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 			hover.elements->add(std::make_shared<text_element>(tt.collection_info, ui::style::font_face::dialog,
 			                                                   ui::style::text_style::multiline,
 			                                                   flex_item::new_line));
+		}
+	}
+	else if (id == commands::menu_open_status)
+	{
+		// What Open would open: the selection, broken down by type as the totals are.
+		const auto& selected = _state.selected_items();
+
+		if (!selected.empty())
+		{
+			hover.elements->add(std::make_shared<text_element>(
+				str_format(tt.selected_items_fmt.sv(), format_plural_text(tt.title_item_count_fmt, selected)),
+				ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::line_break));
+			hover.elements->add(std::make_shared<summary_control>(selected.summary(), flex_item::line_break));
 		}
 	}
 #ifndef WINSTORE
@@ -1575,6 +1860,49 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		hover.elements->add(std::make_shared<action_element>(keyboard_accelerator));
 	}
 }
+// locations.md: the totals read as totals and nothing else, and hovering them shows the breakdown by
+// type; the selection's count, on the Open button, breaks down the same way in its tooltip. The status
+// says the rest of itself when the bar had to cut it short.
+void app_frame::status_tooltip(view_hover_element& hover) const
+{
+	const auto origin = _app_frame->window_bounds().top_left();
+
+	if (_status_hover == status_part::totals)
+	{
+		hover.elements->add(std::make_shared<text_element>(_totals_text, ui::style::font_face::dialog,
+		                                                   ui::style::text_style::single_line,
+		                                                   flex_item::line_break));
+		hover.elements->add(std::make_shared<summary_control>(_state.summary_shown(), flex_item::line_break));
+		hover.active_bounds = hover.window_bounds = _totals_bounds.offset(origin);
+	}
+	else if (_status_hover == status_part::status && _view)
+	{
+		hover.elements->add(std::make_shared<text_element>(_view->status(), ui::style::font_face::dialog,
+		                                                   ui::style::text_style::multiline,
+		                                                   flex_item::line_break));
+		hover.active_bounds = hover.window_bounds = _status_text_bounds.offset(origin);
+	}
+}
+
+void app_frame::update_status_hover(const pointi loc)
+{
+	auto part = status_part::none;
+
+	if (!_totals_bounds.is_empty() && _totals_bounds.contains(loc))
+	{
+		part = status_part::totals;
+	}
+	else if (_status_text_clipped && !_status_text_bounds.is_empty() && _status_text_bounds.contains(loc))
+	{
+		part = status_part::status;
+	}
+
+	if (_status_hover != part)
+	{
+		_status_hover = part;
+		invalidate_view(view_invalid::tooltip);
+	}
+}
 
 void app_frame::update_tooltip()
 {
@@ -1585,6 +1913,10 @@ void app_frame::update_tooltip()
 		if (setting.show_help_tooltips && _app_logo_hover)
 		{
 			_app_logo->tooltip(_hover, {}, _app_frame->window_bounds().top_left());
+		}
+		else if (setting.show_help_tooltips && _status_hover != status_part::none)
+		{
+			status_tooltip(_hover);
 		}
 		else
 		{

@@ -104,6 +104,8 @@ public:
 		return _title;
 	}
 
+	view_bars bars() const override;
+
 	const std::shared_ptr<selected_location_t>& location() const { return _location; }
 	void update_location(const location_t& loc);
 

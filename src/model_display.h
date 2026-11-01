@@ -7,8 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: What one opened display shows: the item or items on screen, their textures and decoders,
-// the player session, zoom and panorama views, comparison, and the media controls drawn over them.
-// Split from model.h so the many files that only need view_state do not compile the audio and
+// the player session, zoom and panorama views, comparison, and the subtitles and media controls drawn
+// over them. Split from model.h so the many files that only need view_state do not compile the audio and
 // video headers this depends on.
 
 #pragma once
@@ -16,6 +16,10 @@
 #include "model.h"
 #include "av_format.h"
 #include "av_player.h"
+#include "av_sid.h"
+
+class document_state;
+class sid_monitor_motion;
 
 class display_state_t final : public std::enable_shared_from_this<display_state_t>
 {
@@ -32,6 +36,9 @@ public:
 	uint32_t _av_generation = 0;
 
 	df::blob _selected_item_data;
+	// The panel's document of a file with no viewer: _selected_item_data decoded as text, or a dump of
+	// it. Set with the bytes, and keeps its selection while the panel is rebuilt.
+	std::shared_ptr<document_state> _document;
 	std::vector<archive_item> _archive_items;
 	av_media_info _player_media_info;
 	// Set once the full-file metadata scan (or player open) has completed for this display item.
@@ -72,6 +79,30 @@ public:
 	mutable pointi _audio_element_offset;
 	mutable recti _audio_element_bounds;
 	mutable float _audio_element_alpha = 1.0f;
+
+	// The SID tune playing here: the session reads its samples through a WAV stream, and the SID monitor
+	// reads the chip's state beside them. The tune and the voices the user silenced are this display's
+	// choice, so they survive reopening the session for another tune. UI thread only.
+	std::shared_ptr<sid_tune_render> _sid;
+	int _sid_song = 0;
+	sid_voice_mix _sid_mix;
+	// What of the SID monitor moves with the music, as the monitor last placed it, so each present can bring
+	// it up to the session's position without the scene being rebuilt. UI thread only.
+	mutable std::shared_ptr<sid_monitor_motion> _sid_motion;
+
+	// The subtitles the user picked from the menu for this item; empty while the settings choose. Kept
+	// across a reopen for another track. UI thread only.
+	std::optional<subtitle_choice> _subtitle_choice;
+	// The textures of the subtitle bitmaps on show, keyed by the surface each was uploaded from, so a line
+	// is uploaded once however many frames it stays up. UI thread only.
+	mutable std::vector<std::pair<ui::const_surface_ptr, ui::texture_ptr>> _subtitle_textures;
+	// What draw_subtitles last drew, as subtitle_events::shown_key names it, and the key a repaint has been
+	// asked for since then - each change is asked for once.
+	mutable uint64_t _subtitles_drawn_key = 0;
+	mutable uint64_t _subtitles_requested_key = 0;
+	// The top of the media controls floating over the picture while the media view draws it, in the
+	// view's pixels; zero when none float there.
+	int _overlay_top = 0;
 
 	int _compare_hover_loc = 0;
 	int _compare_video_pos = 0;
@@ -150,6 +181,9 @@ public:
 	}
 
 	render_valid update_for_present(double time_now) const;
+	// Draws the subtitles on show over the video frame last drawn, scaled from the video's pixels to the
+	// picture. Lines at the bottom rise clear of the media controls while those show.
+	void draw_subtitles(ui::draw_context& dc) const;
 
 	double media_pos() const
 	{
@@ -882,7 +916,9 @@ public:
 		                   std::max(1, setting.slideshow_delay) * ui::default_ticks_per_second);
 	}
 
-	void update_scrubber()
+	// Brings the scrubber's position and time text up to the session. Repaints only while the media controls
+	// are shown: hidden, they draw at alpha 0, and the fade that brings them back repaints them current.
+	void update_scrubber(const bool controls_shown = true)
 	{
 		const auto& info = _player_media_info;
 
@@ -916,7 +952,7 @@ public:
 				invalid = true;
 			}
 
-			if (invalid)
+			if (invalid && controls_shown)
 			{
 				_async.invalidate_view(view_invalid::view_redraw);
 			}
@@ -949,7 +985,8 @@ public:
 
 	void update_av_session(const std::shared_ptr<av_session>& ses);
 
-	// Reads the head of the display item into _selected_item_data for the hex view.
+	// Reads the head of the display item into _selected_item_data, and decodes it into _document, off
+	// the UI thread.
 	void load_selected_item_data();
 	// False when a teardown or a newer open has taken the display since; the caller then owns closing
 	// the session it was handed.

@@ -7,7 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: View framework and element hosting. Defines view_element base class,
-// view_controller for interactions, hit_test_context, and view hosting infrastructure.
+// view_controller for interactions, hit_test_context, view hosting infrastructure, and what a view
+// declares for the frame's title bar and status bar.
 
 #pragma once
 
@@ -552,6 +553,37 @@ public:
 	}
 };
 
+// The controls a bar can carry that are not toolbar buttons. The frame owns one of each.
+enum class bar_control
+{
+	item_filter, // the box that filters the items by name
+	item_size, // the thumbnail size slider
+	item_totals, // the item count and size; hovering shows the breakdown by type
+};
+
+// A command, shown as a toolbar button, or one of the frame's own bar controls.
+using bar_entry = std::variant<commands, bar_control>;
+
+// What a view shows in the frame's two bars. A view only names the entries; the frame builds the
+// controls once, keeps them current and lays them out. `top` and `bottom` are right-aligned: the top
+// set beside the title, the bottom set at the end of the status bar. `bottom_leading` starts the status
+// bar from its other end, and the view's status takes the room between the two. A running task's
+// status bar offers Cancel alone, whatever its view declares.
+struct view_bars
+{
+	// Items is the browser, so its title bar is the navigation bar - the address box between the
+	// history and folder buttons, then the window buttons - and `top` is not consulted.
+	bool navigation = false;
+	std::vector<bar_entry> top;
+	std::vector<bar_entry> bottom;
+	// Given way to first when the status bar is short: the view's own commands at the trailing end
+	// keep their room.
+	std::vector<bar_entry> bottom_leading;
+};
+
+// The bars every task view shows: the window buttons and Close above, the task's own commands below.
+view_bars task_view_bars(std::vector<bar_entry> bottom);
+
 class view_base : public df::no_copy
 {
 public:
@@ -752,6 +784,11 @@ public:
 	{
 		return {};
 	}
+
+	virtual view_bars bars() const
+	{
+		return {};
+	}
 };
 
 struct view_scroller_section
@@ -777,9 +814,6 @@ public:
 	sizei _scroll_extent;
 	recti _client_bounds;
 	recti _scroll_bounds;
-	// The base of the column handed to an action by layout_with_footer. Held here so a scroll
-	// repaints the whole column, including an action whose appearance depends on the position.
-	recti _footer_bounds;
 	std::vector<view_scroller_section> _sections;
 	std::function<void(view_hover_element&, pointi)> popup_func;
 	std::function<void()> changed_func;
@@ -794,8 +828,7 @@ public:
 	}
 
 	// The painted track. Every mapping between list position and scrollbar position goes through
-	// it, so the thumb, the section bands and the hit tests cannot disagree -- in particular once
-	// layout_with_footer has given the base of the column away.
+	// it, so the thumb, the section bands and the hit tests cannot disagree.
 	recti track_bounds() const
 	{
 		constexpr auto inset = 2;
@@ -897,9 +930,7 @@ public:
 				host->frame()->scroll(0, delta, _client_bounds, _scroll_child_controls);
 			}
 
-			host->frame()->invalidate(_footer_bounds.is_empty()
-				                          ? _scroll_bounds
-				                          : _scroll_bounds.make_union(_footer_bounds));
+			host->frame()->invalidate(_scroll_bounds);
 
 			if (changed_func)
 			{
@@ -920,9 +951,6 @@ public:
 		_offset.x = cx > 0 ? std::clamp(_offset.x, 0, cx) : 0;
 		_offset.y = cy > 0 ? std::clamp(_offset.y, 0, cy) : 0;
 	}
-
-	recti layout_with_footer(sizei scroll_extent, recti client_bounds, recti scroll_bounds,
-	                         int footer_extent, int gap);
 
 	void sections(std::vector<view_scroller_section> section_offsets)
 	{
@@ -950,7 +978,7 @@ public:
 	}
 
 	// Centres the thumb on a device y. Takes a device y so the caller never has to know where the
-	// track begins or how much of the column an action at its base has taken.
+	// track begins.
 	void scrollbar_to(const view_host_ptr& host, const int device_y)
 	{
 		const auto track = track_bounds();
@@ -1007,7 +1035,6 @@ public:
 		_scroll_extent = {};
 		_client_bounds.clear();
 		_scroll_bounds.clear();
-		_footer_bounds.clear();
 		_sections.clear();
 		popup_func = {};
 	}

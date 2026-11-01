@@ -7,8 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Out-of-line implementations of the view elements and the media controls: the collage
-// layout, the compare, preview and zoom controllers and the zoom overlay, links, ratings, previews and
-// the scroller.
+// layout, the compare, preview and zoom controllers and the zoom overlay, links, ratings, previews,
+// the scroller, and the bars every task view declares.
 
 #include "pch.h"
 #include "libdesktop/util_geometry.h"
@@ -2181,23 +2181,12 @@ view_scroll_anchor view_scroller::capture_anchor(const view_element_ptr& element
 	return result;
 }
 
-recti view_scroller::layout_with_footer(const sizei scroll_extent, const recti client_bounds,
-                                        recti scroll_bounds, const int footer_extent, const int gap)
+view_bars task_view_bars(std::vector<bar_entry> bottom)
 {
-	recti footer_bounds;
-	if (footer_extent > 0 && !scroll_bounds.is_empty())
-	{
-		const auto height = std::min(footer_extent, scroll_bounds.height());
-		footer_bounds = {
-			scroll_bounds.left, scroll_bounds.bottom - height,
-			scroll_bounds.right, scroll_bounds.bottom
-		};
-		scroll_bounds.bottom = std::max(scroll_bounds.top, footer_bounds.top - std::max(0, gap));
-	}
-
-	layout(scroll_extent, client_bounds, scroll_bounds);
-	_footer_bounds = footer_bounds;
-	return footer_bounds;
+	return {
+		.top = {commands::view_maximize, commands::view_restore, commands::view_close},
+		.bottom = std::move(bottom),
+	};
 }
 
 int view_scroller::anchor_offset(const view_scroll_anchor& anchor, const bool element_is_current) const
