@@ -13,7 +13,6 @@
 
 #include "pch.h"
 #include "files.h"
-#include "files_jpeg.h"
 #include "libfiles/encode.h"
 
 #include <brotli/decode.h>
@@ -57,15 +56,15 @@ std::optional<std::vector<uint8_t>> decompress_jxl_box(const std::span<const uin
 	}
 }
 
-file_scan_result scan_jxl_libfiles(read_stream& s, scan_intent, const bool want_thumbnail, files* const decoder)
+file_scan_result scan_jxl_libfiles(read_stream& s, libfiles::scan_intent, const bool want_thumbnail, files* const decoder)
 {
 	still_scan_extras extras;
 	extras.brotli = decompress_jxl_box;
 
 	// Scanned for indexing whatever the intent: libjxl's scan gave JPEG XL no structure report.
-	auto result = scan_still_libfiles(s, scan_intent::index, want_thumbnail, decoder, extras);
+	auto result = scan_still_libfiles(s, libfiles::scan_intent::index, want_thumbnail, decoder, extras);
 	// The format the signature named, whatever the scan made of the rest.
-	result.format = detected_format::JXL;
+	result.format = libfiles::image_format::jxl;
 	return result;
 }
 
@@ -127,7 +126,7 @@ ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 
 // Packed pixels only: a planar surface - a video frame - is converted to packed by its caller first.
 // The orientation, when given, is which way the pixels stand in place of the surface's own.
-ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const metadata_parts& metadata,
+ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
                        const file_encode_params& params, const std::optional<ui::orientation> orientation)
 {
 	if (!is_valid(surface_in)) return {};
@@ -157,7 +156,7 @@ ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const metadata_p
 	options.lossless = params.jxl_lossless;
 	options.quality = params.jxl_quality;
 
-	const auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), embedded_metadata_of(metadata),
+	const auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), metadata,
 	                                          options);
 	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};

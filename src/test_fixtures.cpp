@@ -15,9 +15,7 @@
 #include "model_db.h"
 #include "model_index.h"
 #include "test_fixtures.h"
-#include "metadata_exif.h"
-#include "metadata_iptc.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Shared helper function definitions
@@ -26,7 +24,7 @@
 file_scan_result ff_scan_file(files& ff, const df::file_path path, const std::string_view xmp_sidecar)
 {
 	const auto* const ft = files::file_type_from_name(path);
-	return ff.scan_file(path, false, ft, xmp_sidecar, {}, scan_intent::inspect);
+	return ff.scan_file(path, false, ft, xmp_sidecar, {}, libfiles::scan_intent::inspect);
 }
 
 rescan_spec ff_inspect_rescan(const df::file_path path)
@@ -34,7 +32,7 @@ rescan_spec ff_inspect_rescan(const df::file_path path)
 	rescan_spec spec;
 	spec.wanted = true;
 	spec.file_type = files::file_type_from_name(path);
-	spec.intent = scan_intent::inspect;
+	spec.intent = libfiles::scan_intent::inspect;
 	return spec;
 }
 
@@ -47,7 +45,7 @@ file_scan_result ff_scan_after_update(files& ff, file_update_result& result, con
 	}
 
 	const auto* const ft = files::file_type_from_name(path);
-	return ff.scan_file(path, false, ft, xmp_sidecar, {}, scan_intent::inspect);
+	return ff.scan_file(path, false, ft, xmp_sidecar, {}, libfiles::scan_intent::inspect);
 }
 
 file_scan_result ff_scan_and_load_thumb(files& ff, const df::file_path path,
@@ -140,19 +138,24 @@ prop::item_metadata_ptr extract_properties(const df::file_path path, const uint3
 		{
 			const auto info = scan_photo(stream);
 
+			// The blocks the flags name, reconciled as to_props reconciles them.
+			libfiles::properties blocks;
+
 			if (t & metadata_type::EXIF && !info.metadata.exif.empty())
 			{
-				metadata_exif::parse(*result, info.metadata.exif);
+				libfiles::overlay(blocks, libfiles::properties_from_exif(libfiles::read_exif(info.metadata.exif)));
 			}
 
 			if (t & metadata_type::IPTC && !info.metadata.iptc.empty())
 			{
-				metadata_iptc::parse(*result, info.metadata.iptc);
+				libfiles::overlay(blocks, libfiles::properties_from_iptc(libfiles::read_iptc(info.metadata.iptc)));
 			}
+
+			apply_properties(*result, blocks);
 
 			if (t & metadata_type::XMP && !info.metadata.xmp.empty())
 			{
-				metadata_xmp::parse(*result, info.metadata.xmp);
+				apply_properties(*result, libfiles::properties_from_xmp(info.metadata.xmp));
 			}
 
 			if (t == metadata_type::ALL)

@@ -19,9 +19,7 @@
 #include "test.h"
 #include "util_zip.h"
 #include "av_format.h"
-#include "metadata_exif.h"
-#include "metadata_iptc.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "app_util.h"
@@ -835,7 +833,7 @@ static void should_settle_transport_stream_extension_by_header()
 	             "an extension with no rule always matches");
 }
 
-static df::blob make_test_xmp_packet(const std::string_view body)
+static std::vector<uint8_t> make_test_xmp_packet(const std::string_view body)
 {
 	const auto xml = std::format(
 		"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
@@ -857,7 +855,7 @@ static void should_fail_webp_save_when_metadata_chunk_insertion_fails()
 	file_encode_params params;
 	params.webp_lossless = true;
 
-	const auto assert_failed_chunk = [&](const std::string_view fourcc, const metadata_parts& metadata,
+	const auto assert_failed_chunk = [&](const std::string_view fourcc, const libfiles::metadata_blocks& metadata,
 	                                     const ui::const_surface_ptr& source)
 	{
 		files_test_hooks::fail_next_webp_chunk(fourcc);
@@ -865,21 +863,21 @@ static void should_fail_webp_save_when_metadata_chunk_insertion_fails()
 		assert_equal(false, is_valid(saved), std::format("{} insertion failure fails the save", fourcc));
 	};
 
-	metadata_parts icc;
+	libfiles::metadata_blocks icc;
 	icc.icc = {1, 2, 3, 4};
 	assert_failed_chunk("ICCP", icc, surface);
 
-	metadata_parts exif;
+	libfiles::metadata_blocks exif;
 	exif.exif = {'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 0x2a, 0};
 	assert_failed_chunk("EXIF", exif, surface);
 
-	metadata_parts orientation_metadata;
+	libfiles::metadata_blocks orientation_metadata;
 	const auto rotated = std::make_shared<ui::surface>();
 	rotated->copy(*surface, surface->dimensions());
 	rotated->orientation(ui::orientation::right_top);
 	assert_failed_chunk("EXIF", orientation_metadata, rotated);
 
-	metadata_parts xmp;
+	libfiles::metadata_blocks xmp;
 	xmp.xmp = make_test_xmp_packet(
 		"<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">webp</rdf:li></rdf:Alt></dc:title>");
 	assert_failed_chunk("XMP ", xmp, surface);
@@ -915,33 +913,33 @@ static void should_detect_tiff_by_version()
 	constexpr uint8_t big_endian_43[] = {'M', 'M', 0, 43, 0, 8, 0, 0};
 	constexpr uint8_t not_tiff[] = {'I', 'I', 'B', 'M', 0, 0, 0, 0};
 
-	assert_equal(true, files::detect_format({little_endian_42, std::size(little_endian_42)}) ==
-	             detected_format::TIFF, "little endian tiff");
-	assert_equal(true, files::detect_format({big_endian_42, std::size(big_endian_42)}) ==
-	             detected_format::TIFF, "big endian tiff");
-	assert_equal(true, files::detect_format({big_endian_43, std::size(big_endian_43)}) ==
-	             detected_format::TIFF, "big endian bigtiff");
-	assert_equal(true, files::detect_format({not_tiff, std::size(not_tiff)}) ==
-	             detected_format::Unknown, "not tiff");
+	assert_equal(true, libfiles::detect_image_format({little_endian_42, std::size(little_endian_42)}) ==
+	             libfiles::image_format::tiff, "little endian tiff");
+	assert_equal(true, libfiles::detect_image_format({big_endian_42, std::size(big_endian_42)}) ==
+	             libfiles::image_format::tiff, "big endian tiff");
+	assert_equal(true, libfiles::detect_image_format({big_endian_43, std::size(big_endian_43)}) ==
+	             libfiles::image_format::tiff, "big endian bigtiff");
+	assert_equal(true, libfiles::detect_image_format({not_tiff, std::size(not_tiff)}) ==
+	             libfiles::image_format::unknown, "not tiff");
 }
 
-// Each still format is one entry in files_formats.cpp. Its file type still has to take its place in
-// the extension table, and libfiles has to name it from its signature - a format added to one and not
-// the others is what this exists to catch.
+// Each still format is one entry in files.cpp's s_still_formats. Its file type still has to take its
+// place in the extension table, and libfiles has to name it from its signature - a format added to one
+// and not the others is what this exists to catch.
 static void should_register_every_still_format()
 {
-	const std::map<detected_format, std::vector<uint8_t>> signatures = {
-		{detected_format::PSD, {'8', 'B', 'P', 'S'}},
-		{detected_format::GIF, {'G', 'I', 'F', '8', '9', 'a'}},
-		{detected_format::JXL, {0xFF, 0x0A, 0x00, 0x00}},
-		{detected_format::WEBP, {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'}},
-		{detected_format::JPEG, {0xFF, 0xD8, 0xFF, 0xE0}},
-		{detected_format::BMP, {'B', 'M', 0, 0}},
-		{detected_format::PNG, {0x89, 'P', 'N', 'G'}},
-		{detected_format::TIFF, {'I', 'I', 42, 0}},
-		{detected_format::HEIF, {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c'}},
+	const std::map<libfiles::image_format, std::vector<uint8_t>> signatures = {
+		{libfiles::image_format::psd, {'8', 'B', 'P', 'S'}},
+		{libfiles::image_format::gif, {'G', 'I', 'F', '8', '9', 'a'}},
+		{libfiles::image_format::jxl, {0xFF, 0x0A, 0x00, 0x00}},
+		{libfiles::image_format::webp, {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'}},
+		{libfiles::image_format::jpeg, {0xFF, 0xD8, 0xFF, 0xE0}},
+		{libfiles::image_format::bmp, {'B', 'M', 0, 0}},
+		{libfiles::image_format::png, {0x89, 'P', 'N', 'G'}},
+		{libfiles::image_format::tiff, {'I', 'I', 42, 0}},
+		{libfiles::image_format::heif, {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c'}},
 	};
-	std::set<detected_format> seen;
+	std::set<libfiles::image_format> seen;
 
 	for (const auto& still : still_formats())
 	{
@@ -949,7 +947,7 @@ static void should_register_every_still_format()
 		assert_equal(true, seen.insert(still.format).second, std::format("{} has one entry", name));
 		const auto signature = signatures.find(still.format);
 		assert_equal(true, signature != signatures.end() &&
-		             files::detect_format({signature->second.data(), signature->second.size()}) == still.format,
+		             libfiles::detect_image_format({signature->second.data(), signature->second.size()}) == still.format,
 		             std::format("{} is detected", name));
 		assert_equal(true, still.scan != nullptr, std::format("{} is scanned", name));
 		assert_equal(true, still.encoded == ui::image_format::Unknown || still.decode != nullptr,
@@ -963,7 +961,7 @@ static void should_register_every_still_format()
 		}
 	}
 
-	assert_equal(true, find_still_format(detected_format::Unknown) == nullptr, "unknown is not a format");
+	assert_equal(true, find_still_format(libfiles::image_format::unknown) == nullptr, "unknown is not a format");
 }
 
 static void should_scan_and_load_bitmap_psd()
@@ -1031,7 +1029,7 @@ static void append_be32(std::vector<uint8_t>& b, const uint32_t v)
 }
 
 static void append_photoshop_resource(std::vector<uint8_t>& out, uint16_t id, std::string_view name,
-                                      df::cspan payload);
+                                      std::span<const uint8_t> payload);
 
 static df::blob make_lab_psd(const std::vector<uint8_t>& l, const std::vector<uint8_t>& a,
                              const std::vector<uint8_t>& b)
@@ -1178,7 +1176,7 @@ static void should_read_small_psd_metadata_after_large_unused_resource()
 	const auto scanned = scan_photo(stream);
 
 	assert_equal(true, scanned.success, "large unused resource section scans");
-	assert_equal(true, scanned.metadata.exif == exif, "small EXIF resource is still read");
+	assert_equal(true, std::ranges::equal(scanned.metadata.exif, exif), "small EXIF resource is still read");
 	assert_equal(true, stream.max_read < df::two_fifty_six_k, "unused large resource is skipped");
 }
 
@@ -1484,7 +1482,7 @@ static void should_read_one_exif_orientation_everywhere()
 	const auto check = [&](const df::blob& exif, const ui::orientation expected, const std::string_view what)
 	{
 		prop::item_metadata md;
-		metadata_exif::parse(md, {exif.data(), exif.size()});
+		apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif({exif.data(), exif.size()})));
 		assert_equal(expected, md.orientation, std::format("{}: the item", what));
 		assert_equal(expected, metadata_exif::orientation({exif.data(), exif.size()}),
 		             std::format("{}: the HEIF, PNG and WebP decoders", what));
@@ -1512,9 +1510,9 @@ static void should_read_one_exif_orientation_everywhere()
 	check(block({}, 6, 8), ui::orientation::left_bottom, "only IFD1 says");
 }
 
-static df::blob make_iptc_caption(const std::string_view caption)
+static std::vector<uint8_t> make_iptc_caption(const std::string_view caption)
 {
-	df::blob result;
+	std::vector<uint8_t> result;
 	result.push_back(0x1c);
 	result.push_back(0x02);
 	result.push_back(120);
@@ -1525,16 +1523,16 @@ static df::blob make_iptc_caption(const std::string_view caption)
 }
 
 static void append_photoshop_resource(std::vector<uint8_t>& out, const uint16_t id, const std::string_view name,
-                                      const df::cspan payload)
+                                      const std::span<const uint8_t> payload)
 {
 	out.insert(out.end(), {'8', 'B', 'I', 'M'});
 	append_be16(out, id);
 	out.push_back(static_cast<uint8_t>(name.size()));
 	out.insert(out.end(), name.begin(), name.end());
 	if ((name.size() & 1u) == 0) out.push_back(0);
-	append_be32(out, static_cast<uint32_t>(payload.size));
+	append_be32(out, static_cast<uint32_t>(payload.size()));
 	out.insert(out.end(), payload.begin(), payload.end());
-	if (payload.size & 1u) out.push_back(0);
+	if (payload.size() & 1u) out.push_back(0);
 }
 
 static df::blob jpeg_with_app13_resources(const ui::const_image_ptr& jpeg, const df::blob& resources)
@@ -1589,13 +1587,13 @@ static void should_parse_jpeg_photoshop_iptc_resources()
 	mem_read_stream stream(wrapped);
 	const auto scanned = scan_photo(stream);
 	prop::item_metadata md;
-	metadata_iptc::parse(md, scanned.metadata.iptc);
+	apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(scanned.metadata.iptc)));
 
 	assert_equal("resource caption", md.description, "named IPTC resource parsed");
 
 	// The resource the encoder writes the IPTC in reads back as it went in, its odd length padded.
-	metadata_parts written;
-	written.iptc = iptc.clone();
+	libfiles::metadata_blocks written;
+	written.iptc = iptc;
 	const auto encoded = ff.surface_to_image(make_gradient_surface(8, 8), written, {}, ui::image_format::JPEG);
 	mem_read_stream encoded_stream(encoded->data());
 	const auto rescanned = scan_photo(encoded_stream);
@@ -1609,11 +1607,11 @@ static void should_keep_app13_from_overriding_jpeg_app1_and_app2_metadata()
 	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, ui::image_format::JPEG);
 	assert_equal(true, is_valid(jpeg), "jpeg encoded");
 
-	const df::blob app1_xmp = {'a', 'p', 'p', '1', '-', 'x', 'm', 'p'};
+	const std::vector<uint8_t> app1_xmp = {'a', 'p', 'p', '1', '-', 'x', 'm', 'p'};
 	const df::blob app13_xmp = {'a', 'p', 'p', '1', '3', '-', 'x', 'm', 'p'};
-	const df::blob app1_exif = {'I', 'I', 0x2a, 0, 8, 0, 0, 0};
+	const std::vector<uint8_t> app1_exif = {'I', 'I', 0x2a, 0, 8, 0, 0, 0};
 	const df::blob app13_exif = {'M', 'M', 0, 0x2a};
-	const df::blob app2_icc = {'i', 'c', 'c', '-', 'a', 'p', 'p', '2'};
+	const std::vector<uint8_t> app2_icc = {'i', 'c', 'c', '-', 'a', 'p', 'p', '2'};
 	const df::blob app13_icc = {'i', 'c', 'c', '-', 'a', 'p', 'p', '1', '3'};
 
 	std::vector<uint8_t> app13;
@@ -1672,7 +1670,7 @@ static void should_preserve_non_iptc_jpeg_photoshop_resources()
 	const auto rescanned = scan_photo(out_stream);
 	std::vector<uint8_t> expected;
 	append_photoshop_resource(expected, 0x03ed, "keep", other);
-	assert_equal(true, rescanned.metadata.photoshop_resources == df::blob{expected.begin(), expected.end()},
+	assert_equal(true, rescanned.metadata.photoshop == expected,
 	             "non-IPTC Photoshop resource survives re-encode");
 }
 
@@ -1702,14 +1700,14 @@ static void should_roundtrip_split_jpeg_photoshop_resources()
 	std::vector<uint8_t> expected;
 	append_photoshop_resource(expected, 0x03ed, "first", first_payload);
 	append_photoshop_resource(expected, 0x03ee, "second", second_payload);
-	assert_equal(true, scanned.metadata.photoshop_resources == df::blob{expected.begin(), expected.end()},
+	assert_equal(true, scanned.metadata.photoshop == expected,
 	             "split APP13 resources are joined in order");
 
 	const auto encoded = save_jpeg(make_gradient_surface(8, 8), scanned.metadata, {});
 	assert_equal(true, is_valid(encoded), "split APP13 resources re-encode");
 	mem_read_stream out_stream(encoded->data());
 	const auto rescanned = scan_photo(out_stream);
-	assert_equal(true, rescanned.metadata.photoshop_resources == df::blob{expected.begin(), expected.end()},
+	assert_equal(true, rescanned.metadata.photoshop == expected,
 	             "split APP13 resources survive re-encode");
 }
 
@@ -1743,7 +1741,7 @@ static void should_join_straddled_jpeg_photoshop_resources()
 	const auto wrapped = split_app13_payload(joined, 65519);
 	mem_read_stream stream(wrapped);
 	const auto scanned = scan_photo(stream);
-	assert_equal(true, scanned.metadata.photoshop_resources == df::blob{joined.begin(), joined.end()},
+	assert_equal(true, scanned.metadata.photoshop == joined,
 	             "straddled APP13 record survives the byte-level join");
 }
 
@@ -1763,7 +1761,7 @@ static void should_cap_joined_jpeg_photoshop_resources()
 
 	std::vector<uint8_t> expected;
 	append_photoshop_resource(expected, 0x03ed, "first", payload);
-	assert_equal(true, scanned.metadata.photoshop_resources == df::blob{expected.begin(), expected.end()},
+	assert_equal(true, scanned.metadata.photoshop == expected,
 	             "joined APP13 payload is capped at a complete resource");
 }
 
@@ -2151,16 +2149,17 @@ static void should_refuse_imperfect_lossless_rotate()
 	const auto aligned = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, ui::image_format::JPEG);
 	const auto unaligned = ff.surface_to_image(make_gradient_surface(32, 20), {}, {}, ui::image_format::JPEG);
 
-	jpeg_encoder aligned_encoder;
-	const jpeg_transformer aligned_transformer;
+	libfiles::jpeg_encoder aligned_encoder;
+	const libfiles::jpeg_transformer aligned_transformer;
 	assert_equal(false,
-	             aligned_transformer.transform(aligned->data(), aligned_encoder, simple_transform::rot_90).empty(),
+	             turn_jpeg_losslessly(aligned_transformer, aligned_encoder, aligned->data(), simple_transform::rot_90).empty(),
 	             "aligned rotate stays lossless");
 
-	jpeg_encoder unaligned_encoder;
-	const jpeg_transformer unaligned_transformer;
+	libfiles::jpeg_encoder unaligned_encoder;
+	const libfiles::jpeg_transformer unaligned_transformer;
 	assert_equal(true,
-	             unaligned_transformer.transform(unaligned->data(), unaligned_encoder, simple_transform::rot_90).empty(),
+	             turn_jpeg_losslessly(unaligned_transformer, unaligned_encoder, unaligned->data(),
+	                                  simple_transform::rot_90).empty(),
 	             "unaligned rotate refuses rather than trimming");
 }
 
@@ -2170,16 +2169,15 @@ static void should_refuse_imperfect_lossless_rotate()
 // "Improper call to JPEG library" for the rest of the session.
 static void should_reuse_jpeg_encoder_after_abandoned_encode()
 {
-	jpeg_encoder encoder;
+	libfiles::jpeg_encoder encoder;
 	const auto surface = make_gradient_surface(32, 32);
 	const auto dimensions = surface->dimensions();
 
 	// start() leaves the encoder mid-compress, which is the state a throw out of jpeg_write_scanlines
 	// or a marker write hands back.
-	encoder.start(dimensions.cx, dimensions.cy, ui::orientation::top_left, {}, {});
+	encoder.start(dimensions.cx, dimensions.cy, 1, {}, {});
 
-	const auto encoded = encoder.encode(dimensions.cx, dimensions.cy, surface->pixels(),
-	                                    static_cast<uint32_t>(surface->stride()), ui::orientation::top_left, {}, {});
+	const auto encoded = encoder.encode(dimensions.cx, dimensions.cy, surface->pixels(), surface->stride(), 1, {}, {});
 
 	assert_equal(false, encoded.empty(), "encoder still usable after an abandoned encode");
 }
@@ -2222,14 +2220,15 @@ static void should_survive_truncated_lossless_rotate()
 
 	const std::vector<uint8_t> truncated(data.data(), data.data() + sos + 64);
 
-	jpeg_encoder encoder;
-	const jpeg_transformer transformer;
+	libfiles::jpeg_encoder encoder;
+	const libfiles::jpeg_transformer transformer;
 
 	assert_equal(true,
-	             transformer.transform({truncated.data(), truncated.size()}, encoder, simple_transform::rot_90).empty(),
+	             turn_jpeg_losslessly(transformer, encoder, {truncated.data(), truncated.size()},
+	                                  simple_transform::rot_90).empty(),
 	             "truncated rotate refuses");
 
-	assert_equal(false, transformer.transform(data, encoder, simple_transform::rot_90).empty(),
+	assert_equal(false, turn_jpeg_losslessly(transformer, encoder, data, simple_transform::rot_90).empty(),
 	             "transformer and encoder stay usable after the refusal");
 }
 
@@ -2243,8 +2242,8 @@ static void should_refuse_an_over_budget_lossless_rotate()
 	files ff;
 	const auto image = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, ui::image_format::JPEG);
 
-	jpeg_encoder encoder;
-	jpeg_transformer transformer;
+	libfiles::jpeg_encoder encoder;
+	libfiles::jpeg_transformer transformer;
 
 	assert_equal(true, transformer.read_header(image->data()), "header read");
 	assert_equal(static_cast<uint64_t>(0), jpeg_frame(image->data()).working_bytes,
@@ -2260,12 +2259,14 @@ static void should_refuse_an_over_budget_lossless_rotate()
 
 	df::max_decode_bytes = expected * 2 - 1;
 	auto over_budget = false;
-	assert_equal(true, transformer.transform(image->data(), encoder, simple_transform::rot_90, &over_budget).empty(),
+	assert_equal(true,
+	             turn_jpeg_losslessly(transformer, encoder, image->data(), simple_transform::rot_90, &over_budget).empty(),
 	             "a rotate one byte over its workspace refuses");
 	assert_equal(true, over_budget, "and says the budget is why, which is not an imperfect rotate");
 
 	df::max_decode_bytes = expected * 2;
-	assert_equal(false, transformer.transform(image->data(), encoder, simple_transform::rot_90, &over_budget).empty(),
+	assert_equal(false,
+	             turn_jpeg_losslessly(transformer, encoder, image->data(), simple_transform::rot_90, &over_budget).empty(),
 	             "the same rotate is taken when source and workspace both fit");
 	assert_equal(false, over_budget, "and is not reported as over budget");
 }
@@ -2280,9 +2281,9 @@ static void should_not_re_encode_a_rotate_refused_for_its_budget()
 	const auto save_path = _temps.next_path();
 	const auto source = df::blob_from_file(load_path);
 
-	jpeg_transformer transformer;
+	libfiles::jpeg_transformer transformer;
 	assert_equal(true, transformer.read_header({source.data(), source.size()}), "header read");
-	const auto dimensions = transformer.dimensions();
+	const sizei dimensions{static_cast<int>(transformer.width()), static_cast<int>(transformer.height())};
 	const auto rotate_bytes = transformer.coefficient_bytes() * 2;
 
 	const auto restore_budget = df::max_decode_bytes;
@@ -2363,19 +2364,18 @@ static void should_rotate_lossless_exif_dimensions()
 	const auto surface = std::make_shared<ui::surface>();
 	assert_equal(true, surface->alloc(32, 16, ui::texture_format::RGB) != nullptr, "rotation fixture allocated");
 	surface->make_blank();
-	metadata_parts metadata;
+	libfiles::metadata_blocks metadata;
 	metadata.exif = {
 		'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0,
 		1, 0, 0x69, 0x87, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0,
 		2, 0, 2, 0xa0, 4, 0, 1, 0, 0, 0, 32, 0, 0, 0,
 		3, 0xa0, 4, 0, 1, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0
 	};
-	jpeg_encoder encoder;
-	const auto source = encoder.encode(32, 16, surface->pixels(), static_cast<uint32_t>(surface->stride()),
-	                                   ui::orientation::top_left, metadata, {});
-	jpeg_transformer transformer;
-	jpeg_encoder rotated_encoder;
-	const auto rotated = transformer.transform(source, rotated_encoder, simple_transform::rot_90);
+	libfiles::jpeg_encoder encoder;
+	const auto source = encoder.encode(32, 16, surface->pixels(), surface->stride(), 1, metadata, {});
+	libfiles::jpeg_transformer transformer;
+	libfiles::jpeg_encoder rotated_encoder;
+	const auto rotated = turn_jpeg_losslessly(transformer, rotated_encoder, source, simple_transform::rot_90);
 	assert_equal(false, rotated.empty(), "aligned JPEG rotated losslessly");
 	const auto path = _temps.next_path(".jpg");
 	assert_equal(true, df::blob_save_to_file(rotated, path), "rotated fixture saved");
@@ -3539,7 +3539,7 @@ static void should_save_a_turned_photo_as_a_turned_jxl()
 		assert_equal(true, result.success(), std::format("{} ({})", what, result.format_error()));
 
 		const auto saved = ff_scan_file(ff, save_path);
-		assert_equal(true, saved.format == detected_format::JXL, what + " written as JPEG XL");
+		assert_equal(true, saved.format == libfiles::image_format::jxl, what + " written as JPEG XL");
 		assert_equal(static_cast<int>(source.orientation), static_cast<int>(saved.orientation), what + " orientation");
 
 		const auto loaded = ff.load(save_path, false);
@@ -3859,9 +3859,10 @@ static void should_not_crash(const std::string_view name)
 		mem_read_stream stream(blob);
 		const auto info = scan_photo(stream);
 
-		metadata_exif::parse(md, info.metadata.exif);
-		metadata_iptc::parse(md, info.metadata.iptc);
-		metadata_xmp::parse(md, info.metadata.xmp);
+		auto blocks = libfiles::properties_from_exif(libfiles::read_exif(info.metadata.exif));
+		libfiles::overlay(blocks, libfiles::properties_from_iptc(libfiles::read_iptc(info.metadata.iptc)));
+		libfiles::overlay(blocks, libfiles::properties_from_xmp(info.metadata.xmp));
+		apply_properties(md, blocks);
 
 		data[i] = v;
 		++corrupted;
@@ -3910,7 +3911,7 @@ namespace scan_parity
 		                     static_cast<int>(r.format), r.success, r.width, r.height, r.pixel_format.sv(),
 		                     static_cast<int>(r.orientation));
 
-		const auto block = [&s](const std::string_view name, const df::blob& b)
+		const auto block = [&s](const std::string_view name, const std::span<const uint8_t> b)
 		{
 			s += std::format("{} {} bytes {:08x}\n", name, b.size(), df::crc32c(b.data(), b.size()));
 		};
@@ -3919,7 +3920,7 @@ namespace scan_parity
 		block("exif", r.metadata.exif);
 		block("iptc", r.metadata.iptc);
 		block("icc", r.metadata.icc);
-		block("photoshop", r.metadata.photoshop_resources);
+		block("photoshop", r.metadata.photoshop);
 		s += std::format("gps {} {:.9f} {:.9f}\n", r.gps.is_valid(), r.gps.latitude(), r.gps.longitude());
 
 		if (r.thumbnail_image)
@@ -3979,19 +3980,19 @@ namespace scan_parity
 		return "same";
 	}
 
-	bool is_libfiles_format(const detected_format format)
+	bool is_libfiles_format(const libfiles::image_format format)
 	{
 		switch (format)
 		{
-		case detected_format::JPEG:
-		case detected_format::PNG:
-		case detected_format::WEBP:
-		case detected_format::GIF:
-		case detected_format::PSD:
-		case detected_format::BMP:
-		case detected_format::TIFF:
-		case detected_format::HEIF:
-		case detected_format::JXL:
+		case libfiles::image_format::jpeg:
+		case libfiles::image_format::png:
+		case libfiles::image_format::webp:
+		case libfiles::image_format::gif:
+		case libfiles::image_format::psd:
+		case libfiles::image_format::bmp:
+		case libfiles::image_format::tiff:
+		case libfiles::image_format::heif:
+		case libfiles::image_format::jxl:
 			return true;
 		default:
 			return false;
@@ -4123,7 +4124,7 @@ static void should_scan_stills_alike_from_memory_and_streams()
 	std::vector<std::string> differences;
 
 	const auto compare = [&](const std::string& label, read_stream& resident, read_stream& streamed,
-	                         const scan_intent intent, const bool thumbnail)
+	                         const libfiles::scan_intent intent, const bool thumbnail)
 	{
 		const auto expected = scan_parity::describe(scan_photo(resident, intent, thumbnail));
 		const auto actual = scan_parity::describe(scan_photo(streamed, intent, thumbnail));
@@ -4132,7 +4133,7 @@ static void should_scan_stills_alike_from_memory_and_streams()
 		if (expected != actual)
 		{
 			differences.push_back(std::format("{} ({}{}): {}", label,
-			                                  intent == scan_intent::inspect ? "inspect" : "index",
+			                                  intent == libfiles::scan_intent::inspect ? "inspect" : "index",
 			                                  thumbnail ? ", thumbnail" : "",
 			                                  scan_parity::first_difference(expected, actual)));
 		}
@@ -4140,9 +4141,9 @@ static void should_scan_stills_alike_from_memory_and_streams()
 
 	const auto compare_bytes = [&](const std::string& label, const df::cspan data, const bool thumbnails)
 	{
-		if (data.size < sizeof(pack128) || !scan_parity::is_libfiles_format(files::detect_format(data))) return;
+		if (data.size < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(data))) return;
 
-		for (const auto intent : {scan_intent::index, scan_intent::inspect})
+		for (const auto intent : {libfiles::scan_intent::index, libfiles::scan_intent::inspect})
 		{
 			for (const auto thumbnail : {false, true})
 			{
@@ -4157,14 +4158,14 @@ static void should_scan_stills_alike_from_memory_and_streams()
 	for (const auto& path : corpus)
 	{
 		auto bytes = df::blob_from_file(path);
-		if (bytes.size() < sizeof(pack128) || !scan_parity::is_libfiles_format(files::detect_format(bytes))) continue;
+		if (bytes.size() < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(bytes))) continue;
 
 		++files_scanned;
 		const auto name = path.str();
 
 		compare_bytes(name, bytes, true);
 
-		for (const auto intent : {scan_intent::index, scan_intent::inspect})
+		for (const auto intent : {libfiles::scan_intent::index, libfiles::scan_intent::inspect})
 		{
 			mem_read_stream resident(bytes);
 			file_read_stream from_disk;
@@ -4274,7 +4275,7 @@ static void should_use_folder_art_for_media_without_its_own()
 	files ff;
 	const auto scan_art = [&ff](const df::file_path path)
 	{
-		return ff.scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, scan_intent::index,
+		return ff.scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, libfiles::scan_intent::index,
 		                    false).cover_art;
 	};
 
@@ -4478,7 +4479,7 @@ static void should_read_nfo_files_only_when_asked()
 	files ff;
 	const auto scan = [&ff, video]
 	{
-		return ff.scan_file(video, false, files::file_type_from_name(video), {}, {}, scan_intent::index, false).to_props();
+		return ff.scan_file(video, false, files::file_type_from_name(video), {}, {}, libfiles::scan_intent::index, false).to_props();
 	};
 
 	setting.read_nfo = false;
@@ -4763,7 +4764,7 @@ static void should_decode_psds_as_load_psd_did()
 	for (size_t i = 0; i < files.size(); ++i)
 	{
 		auto bytes = df::blob_from_file(files[i]);
-		if (bytes.size() >= 26 && files::detect_format(bytes) == detected_format::PSD)
+		if (bytes.size() >= 26 && libfiles::detect_image_format(bytes) == libfiles::image_format::psd)
 			corpus.push_back({std::string(files[i].name()), std::move(bytes), i < fixtures});
 	}
 
@@ -4949,7 +4950,7 @@ static void should_decode_jpegs_as_jpeg_decoder_x_did()
 	for (size_t i = 0; i < files_found.size(); ++i)
 	{
 		auto bytes = df::blob_from_file(files_found[i]);
-		if (bytes.size() >= 64 && files::detect_format(bytes) == detected_format::JPEG)
+		if (bytes.size() >= 64 && libfiles::detect_image_format(bytes) == libfiles::image_format::jpeg)
 			corpus.push_back({std::string(files_found[i].name()), std::move(bytes), i < fixtures});
 	}
 
@@ -5041,6 +5042,15 @@ namespace exif_sweep
 		return std::format("{:016x}", std::bit_cast<uint64_t>(value));
 	}
 
+	// The tags as to_props leaves an item's: split, sorted and made unique.
+	std::string settled_tags(const std::string_view tags)
+	{
+		auto parts = str::split(tags, true);
+		std::ranges::sort(parts, str::iless());
+		parts.erase(std::ranges::unique(parts, df::ieq()).begin(), parts.end());
+		return str::combine(parts);
+	}
+
 	std::string describe(const prop::item_metadata& md, const libfiles::exif_metadata& exif)
 	{
 		auto s = std::format("orientation {} make '{}' model '{}' lens '{}' encoder '{}' artist '{}' copyright '{}' "
@@ -5048,7 +5058,7 @@ namespace exif_sweep
 		                     "iso {} rating {} altitude {} speed {} coordinate {} {} {}",
 		                     static_cast<int>(md.orientation), md.camera_manufacturer.sv(), md.camera_model.sv(),
 		                     md.lens.sv(), md.encoder.sv(), md.artist.sv(), md.copyright_notice.sv(),
-		                     md.description.sv(), md.comment.sv(), md.title.sv(), md.tags.sv(), bits(md.f_number),
+		                     md.description.sv(), md.comment.sv(), md.title.sv(), settled_tags(md.tags), bits(md.f_number),
 		                     bits(md.exposure_time), bits(md.focal_length), md.focal_length_35mm_equivalent,
 		                     md.iso_speed, md.rating, bits(md.altitude), bits(md.gps_speed),
 		                     md.coordinate.is_valid(), bits(md.coordinate.latitude()),
@@ -5101,7 +5111,8 @@ static void should_read_exif_as_diffractors_parser_did()
 	{
 		auto info = ff_scan_file(ff, found[i]);
 		if (info.metadata.exif.size() > 16)
-			blocks.push_back({std::string(found[i].name()), std::move(info.metadata.exif), i < fixtures});
+			blocks.push_back({std::string(found[i].name()), df::blob(info.metadata.exif.begin(), info.metadata.exif.end()),
+			                  i < fixtures});
 	}
 
 	auto readings = 0;
@@ -5113,7 +5124,7 @@ static void should_read_exif_as_diffractors_parser_did()
 	{
 		++readings;
 		prop::item_metadata md;
-		metadata_exif::parse(md, bytes);
+		apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(bytes)));
 
 		if (recorded)
 		{
@@ -5161,6 +5172,12 @@ static void should_read_exif_as_diffractors_parser_did()
 	df::log(__FUNCTION__, std::format("{} blocks ({} recorded), {} readings; record {:08x} over {} outcomes",
 	                                  blocks.size(), recorded_blocks, readings, checksum, recorded_outcomes));
 
+	// A difference is found by diffing the readings this writes against a run of the code the record was taken from.
+	if (const auto dump = scan_parity::environment_variable("DIFFRACTOR_EXIF_RECORD"); !dump.empty())
+	{
+		df::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, df::file_path(dump));
+	}
+
 	assert_equal(true, recorded_blocks >= 10, "the fixtures carry EXIF");
 	assert_equal(154036, recorded_outcomes, "the sweep is the one the record was taken over");
 	// The reading Diffractor's parser made, eb1315fe, but for the ISO speed in 227 of the readings: libfiles
@@ -5171,8 +5188,11 @@ static void should_read_exif_as_diffractors_parser_did()
 	// damaged: libfiles reads a percent as Windows does - 1 to 12 is one star, 13 to 37 two, 38 to 62 three,
 	// 63 to 87 four, and 88 and above five - so that 13 is two stars, and a percent past 100 five, where the
 	// parser took its fifths rounded up, and past 100 took them twice: 306 was one star. That moved the
-	// record from 48e303bb.
-	assert_equal(std::format("{:08x}", 0x719bdff7u), std::format("{:08x}", checksum),
+	// record from 48e303bb, to 719bdff7. The tags are recorded as to_props settles them - split, sorted and
+	// made unique - rather than as the block's text, so that the record held libfiles' one table, which gives
+	// XPKeywords as keywords, to what Diffractor's parser filed; taken over the parser, that is 667b2c1b, and
+	// libfiles' table reads every one of the 154,036 the same.
+	assert_equal(std::format("{:08x}", 0x667b2c1bu), std::format("{:08x}", checksum),
 	             "every reading is the one Diffractor's parser made before it moved to libfiles");
 }
 
@@ -5414,7 +5434,8 @@ static void should_list_exif_as_libexif_did()
 		if (info.metadata.exif.size() <= 16) continue;
 		++blocks;
 
-		exif_listing_sweep::for_each_variant(info.metadata.exif, [&](const df::cspan bytes)
+		df::blob exif(info.metadata.exif.begin(), info.metadata.exif.end());
+		exif_listing_sweep::for_each_variant(exif, [&](const df::cspan bytes)
 		{
 			const auto listing = metadata_exif::to_info(bytes);
 			const auto text = exif_listing_sweep::describe(listing);
@@ -6231,7 +6252,7 @@ namespace png_sweep
 		for (size_t i = 0; i < found.size(); ++i)
 		{
 			auto bytes = df::blob_from_file(found[i]);
-			if (bytes.size() >= 16 && files::detect_format(bytes) == detected_format::PNG)
+			if (bytes.size() >= 16 && libfiles::detect_image_format(bytes) == libfiles::image_format::png)
 				result.push_back({std::string(found[i].name()), std::move(bytes), i < fixtures});
 		}
 
@@ -6569,7 +6590,7 @@ namespace webp_sweep
 				continue;
 			}
 
-			if (bytes.size() >= 16 && files::detect_format(bytes) == detected_format::WEBP)
+			if (bytes.size() >= 16 && libfiles::detect_image_format(bytes) == libfiles::image_format::webp)
 				result.push_back({std::string(found[i].name()), std::move(bytes), i < fixtures});
 		}
 
@@ -6715,7 +6736,7 @@ namespace heif_sweep
 		{
 			files ff;
 			mem_read_stream stream(bytes);
-			const auto scanned = scan(stream, scan_intent::index, true, &ff);
+			const auto scanned = scan(stream, libfiles::scan_intent::index, true, &ff);
 			capture(scanned.thumbnail_surface, o.thumbnail);
 			// The flag says something only of a thumbnail that was decoded.
 			o.thumbnail_orientation_applied = scanned.thumbnail_surface && scanned.thumbnail_orientation_applied;
@@ -6959,7 +6980,7 @@ namespace heif_sweep
 				continue;
 			}
 
-			if (bytes.size() >= 16 && files::detect_format(bytes) == detected_format::HEIF)
+			if (bytes.size() >= 16 && libfiles::detect_image_format(bytes) == libfiles::image_format::heif)
 				result.push_back({std::string(found[i].name()), std::move(bytes), i < fixtures});
 		}
 
@@ -7145,7 +7166,7 @@ namespace jxl_sweep
 		for (size_t i = 0; i < found.size(); ++i)
 		{
 			auto bytes = df::blob_from_file(found[i]);
-			if (bytes.size() >= 16 && files::detect_format(bytes) == detected_format::JXL)
+			if (bytes.size() >= 16 && libfiles::detect_image_format(bytes) == libfiles::image_format::jxl)
 				result.push_back({std::string(found[i].name()), std::move(bytes), i >= fixtures});
 		}
 
@@ -7449,7 +7470,7 @@ static void should_turn_a_raw_preview_as_its_raw_data()
 	// A scan's thumbnail is the same preview, decoded smaller, and turned the same way.
 	files ff;
 	const auto scanned = ff.scan_file(path, true, files::file_type_from_name(path), {}, {320, 320},
-	                                  scan_intent::index, false);
+	                                  libfiles::scan_intent::index, false);
 	assert_equal(true, is_valid(scanned.thumbnail_surface), "the scan's thumbnail is decoded");
 	assert_equal(true, scanned.thumbnail_surface->dimensions().cx > scanned.thumbnail_surface->dimensions().cy,
 	             "the scan's thumbnail is stored unturned");
@@ -7527,7 +7548,7 @@ namespace raw_scan_sweep
 		{
 			files ff;
 			const auto ft = files::file_type_from_name(path);
-			const auto r = ff.scan_file(path, m.thumbnail, ft, {}, m.max, m.inspect ? scan_intent::inspect : scan_intent::index, false);
+			const auto r = ff.scan_file(path, m.thumbnail, ft, {}, m.max, m.inspect ? libfiles::scan_intent::inspect : libfiles::scan_intent::index, false);
 			return describe(r);
 		}
 		catch (const std::exception&)
@@ -7711,7 +7732,7 @@ namespace encode_sweep
 		                   df::crc32c(data.data(), data.size()));
 	}
 
-	std::string describe(const df::blob& data)
+	std::string describe(const std::span<const uint8_t> data)
 	{
 		return std::format("{} bytes {:08x}", data.size(), df::crc32c(data.data(), data.size()));
 	}
@@ -7749,9 +7770,9 @@ namespace encode_sweep
 
 	// An ICC profile libpng takes for an RGB image - a header naming RGB data and the XYZ connection
 	// space, and an empty tag table - size bytes long, patterned past the header unless zeros.
-	df::blob icc_profile(const size_t size, const bool zeros = false)
+	std::vector<uint8_t> icc_profile(const size_t size, const bool zeros = false)
 	{
-		df::blob icc(size, 0);
+		std::vector<uint8_t> icc(size, 0);
 		for (size_t i = 132; !zeros && i < size; ++i) icc[i] = static_cast<uint8_t>(i * 31 + (i >> 9));
 
 		icc[0] = static_cast<uint8_t>(size >> 24);
@@ -7771,7 +7792,7 @@ namespace encode_sweep
 	}
 
 	// 8BIM records with payloads of these sizes, named when odd.
-	df::blob photoshop_resources(const std::vector<size_t>& payload_sizes)
+	std::vector<uint8_t> photoshop_resources(const std::vector<size_t>& payload_sizes)
 	{
 		std::vector<uint8_t> out;
 		uint16_t id = 0x0BB8;
@@ -7780,10 +7801,10 @@ namespace encode_sweep
 		{
 			std::vector<uint8_t> payload(size);
 			for (size_t i = 0; i < size; ++i) payload[i] = static_cast<uint8_t>(i * 7 + size);
-			append_photoshop_resource(out, id++, size % 2 ? "odd" : "", {payload.data(), payload.size()});
+			append_photoshop_resource(out, id++, size % 2 ? "odd" : "", payload);
 		}
 
-		return df::blob(out.begin(), out.end());
+		return out;
 	}
 
 	constexpr std::string_view xmp_packet =
@@ -7794,16 +7815,16 @@ namespace encode_sweep
 		R"(</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>)";
 
 	// The packet, padded with spaces to size bytes as XMP is.
-	df::blob xmp(const size_t size = xmp_packet.size())
+	std::vector<uint8_t> xmp(const size_t size = xmp_packet.size())
 	{
-		df::blob result(xmp_packet.begin(), xmp_packet.end());
+		std::vector<uint8_t> result(xmp_packet.begin(), xmp_packet.end());
 		result.resize(std::max(size, xmp_packet.size()), ' ');
 		return result;
 	}
 
-	df::blob padded(const df::blob& b, const size_t size)
+	std::vector<uint8_t> padded(const std::span<const uint8_t> b, const size_t size)
 	{
-		auto result = b.clone();
+		std::vector<uint8_t> result(b.begin(), b.end());
 		result.resize(size, 0x5A);
 		return result;
 	}
@@ -7811,7 +7832,7 @@ namespace encode_sweep
 	struct metadata_case
 	{
 		std::string name;
-		std::function<metadata_parts()> make;
+		std::function<libfiles::metadata_blocks()> make;
 	};
 
 	struct webp_case
@@ -7867,19 +7888,19 @@ static void should_encode_as_diffractors_encoders_did()
 
 	const auto everything = [&]
 	{
-		metadata_parts m;
-		m.exif = camera_exif.clone();
+		libfiles::metadata_blocks m;
+		m.exif.assign(camera_exif.begin(), camera_exif.end());
 		m.xmp = encode_sweep::xmp();
 		m.iptc = make_iptc_caption("Encoded by the sweep");
-		m.photoshop_resources = encode_sweep::photoshop_resources({16, 13});
+		m.photoshop = encode_sweep::photoshop_resources({16, 13});
 		m.icc = encode_sweep::icc_profile(132);
 		return m;
 	};
 
-	const auto exif_only = [](df::blob exif)
+	const auto exif_only = [](const std::span<const uint8_t> exif)
 	{
-		metadata_parts m;
-		m.exif = std::move(exif);
+		libfiles::metadata_blocks m;
+		m.exif.assign(exif.begin(), exif.end());
 		return m;
 	};
 
@@ -7887,41 +7908,41 @@ static void should_encode_as_diffractors_encoders_did()
 	constexpr size_t icc_segment = 65519;
 
 	const std::vector<metadata_case> metadata = {
-		{"none", [] { return metadata_parts{}; }},
+		{"none", [] { return libfiles::metadata_blocks{}; }},
 		{"bare exif", [&] { return exif_only(bare_exif.clone()); }},
 		{"signed exif", [&] { return exif_only(signed_exif.clone()); }},
 		{"camera exif", [&] { return exif_only(camera_exif.clone()); }},
 		{"camera exif unsigned", [&] { return exif_only(df::blob(camera_exif.begin() + 6, camera_exif.end())); }},
-		{"xmp", [] { metadata_parts m; m.xmp = encode_sweep::xmp(); return m; }},
-		{"iptc", [] { metadata_parts m; m.iptc = make_iptc_caption("Encoded by the sweep"); return m; }},
-		{"photoshop", [] { metadata_parts m; m.photoshop_resources = encode_sweep::photoshop_resources({16, 13}); return m; }},
+		{"xmp", [] { libfiles::metadata_blocks m; m.xmp = encode_sweep::xmp(); return m; }},
+		{"iptc", [] { libfiles::metadata_blocks m; m.iptc = make_iptc_caption("Encoded by the sweep"); return m; }},
+		{"photoshop", [] { libfiles::metadata_blocks m; m.photoshop = encode_sweep::photoshop_resources({16, 13}); return m; }},
 		{"iptc and photoshop over three markers", [] {
-			metadata_parts m;
+			libfiles::metadata_blocks m;
 			m.iptc = make_iptc_caption("Encoded by the sweep");
-			m.photoshop_resources = encode_sweep::photoshop_resources({30000, 30001, 30000});
+			m.photoshop = encode_sweep::photoshop_resources({30000, 30001, 30000});
 			return m;
 		}},
 		{"photoshop cut short", [] {
-			metadata_parts m;
+			libfiles::metadata_blocks m;
 			const auto r = encode_sweep::photoshop_resources({16, 13});
-			m.photoshop_resources = df::blob(r.begin(), r.end() - 3);
+			m.photoshop.assign(r.begin(), r.end() - 3);
 			return m;
 		}},
-		{"icc", [] { metadata_parts m; m.icc = encode_sweep::icc_profile(132); return m; }},
-		{"icc over two segments", [] { metadata_parts m; m.icc = encode_sweep::icc_profile(100000); return m; }},
-		{"icc libpng refuses", [] { metadata_parts m; m.icc = encode_sweep::padded(df::blob{1, 2, 3}, 40); return m; }},
+		{"icc", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(132); return m; }},
+		{"icc over two segments", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(100000); return m; }},
+		{"icc libpng refuses", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::padded(df::blob{1, 2, 3}, 40); return m; }},
 		{"everything", everything},
 		{"exif at the marker limit", [&] { return exif_only(encode_sweep::padded(bare_exif, 65527)); }},
 		{"exif a byte over", [&] { return exif_only(encode_sweep::padded(bare_exif, 65528)); }},
 		{"signed exif a byte over", [&] { return exif_only(encode_sweep::padded(signed_exif, 65534)); }},
-		{"xmp at the marker limit", [] { metadata_parts m; m.xmp = encode_sweep::xmp(65504); return m; }},
-		{"xmp a byte over", [] { metadata_parts m; m.xmp = encode_sweep::xmp(65505); return m; }},
-		{"iptc at the marker limit", [] { metadata_parts m; m.iptc = encode_sweep::padded(make_iptc_caption("x"), 65506); return m; }},
-		{"iptc a byte over", [] { metadata_parts m; m.iptc = encode_sweep::padded(make_iptc_caption("x"), 65507); return m; }},
-		{"photoshop record at the marker limit", [] { metadata_parts m; m.photoshop_resources = encode_sweep::photoshop_resources({65506}); return m; }},
-		{"photoshop record over the limit", [] { metadata_parts m; m.photoshop_resources = encode_sweep::photoshop_resources({65508, 16}); return m; }},
-		{"icc in 255 segments", [] { metadata_parts m; m.icc = encode_sweep::icc_profile(255 * icc_segment, true); return m; }},
-		{"icc needing 256", [] { metadata_parts m; m.icc = encode_sweep::icc_profile(255 * icc_segment + 1, true); return m; }},
+		{"xmp at the marker limit", [] { libfiles::metadata_blocks m; m.xmp = encode_sweep::xmp(65504); return m; }},
+		{"xmp a byte over", [] { libfiles::metadata_blocks m; m.xmp = encode_sweep::xmp(65505); return m; }},
+		{"iptc at the marker limit", [] { libfiles::metadata_blocks m; m.iptc = encode_sweep::padded(make_iptc_caption("x"), 65506); return m; }},
+		{"iptc a byte over", [] { libfiles::metadata_blocks m; m.iptc = encode_sweep::padded(make_iptc_caption("x"), 65507); return m; }},
+		{"photoshop record at the marker limit", [] { libfiles::metadata_blocks m; m.photoshop = encode_sweep::photoshop_resources({65506}); return m; }},
+		{"photoshop record over the limit", [] { libfiles::metadata_blocks m; m.photoshop = encode_sweep::photoshop_resources({65508, 16}); return m; }},
+		{"icc in 255 segments", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(255 * icc_segment, true); return m; }},
+		{"icc needing 256", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(255 * icc_segment + 1, true); return m; }},
 	};
 
 	const std::vector<encode_sweep::webp_case> webp_cases = {
@@ -8062,8 +8083,8 @@ static void should_encode_as_diffractors_encoders_did()
 
 	// The turns. One encoder writes them and, between them, pictures of its own, as the encoder files
 	// holds does; and the budget is fixed, so the record does not depend on the machine's memory.
-	jpeg_encoder encoder;
-	jpeg_transformer transformer;
+	libfiles::jpeg_encoder encoder;
+	libfiles::jpeg_transformer transformer;
 	const auto restore_budget = df::max_decode_bytes;
 	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
 	constexpr int64_t budget = 256ll * 1024 * 1024;
@@ -8072,8 +8093,8 @@ static void should_encode_as_diffractors_encoders_did()
 	const auto between = make_surface(16, 16, texture_format::RGB, ui::orientation::bottom_right);
 	const auto encode_between = [&]
 	{
-		return encoder.encode(16, 16, between->pixels(), static_cast<uint32_t>(between->stride()),
-		                      ui::orientation::bottom_right, {}, {});
+		return encoder.encode(16, 16, between->pixels(), between->stride(),
+		                      static_cast<uint16_t>(ui::orientation::bottom_right), {}, {});
 	};
 
 	// An encode started and abandoned, as a throw part way leaves one, and one refused for its metadata.
@@ -8081,25 +8102,26 @@ static void should_encode_as_diffractors_encoders_did()
 		const auto surface = make_surface(32, 32, texture_format::RGB);
 		const auto abandoned = attempt([&]
 		{
-			encoder.start(32, 32, ui::orientation::right_top, everything(), {});
+			encoder.start(32, 32, static_cast<uint16_t>(ui::orientation::right_top), everything(), {});
 			return df::blob{};
 		});
 		note("started and abandoned", abandoned);
 		note("then encodes", attempt(encode_between));
 		note("refused", attempt([&]
 		{
-			return encoder.encode(32, 32, surface->pixels(), static_cast<uint32_t>(surface->stride()),
-			                      ui::orientation::top_left, exif_only(encode_sweep::padded(bare_exif, 65528)), {});
+			return encoder.encode(32, 32, surface->pixels(), surface->stride(),
+			                      static_cast<uint16_t>(ui::orientation::top_left),
+			                      exif_only(encode_sweep::padded(bare_exif, 65528)), {});
 		}));
 		note("then encodes", attempt(encode_between));
 	}
 
-	const auto turned = [&](const df::cspan jpeg, const simple_transform t) -> std::string
+	const auto turned = [&](const std::span<const uint8_t> jpeg, const simple_transform t) -> std::string
 	{
 		try
 		{
 			auto over_budget = false;
-			const auto data = transformer.transform(jpeg, encoder, t, &over_budget);
+			const auto data = turn_jpeg_losslessly(transformer, encoder, jpeg, t, &over_budget);
 			return std::format("{} over budget {}", encode_sweep::describe(data), over_budget);
 		}
 		catch (const std::exception& e)
@@ -8108,14 +8130,16 @@ static void should_encode_as_diffractors_encoders_did()
 		}
 	};
 
-	const auto turn = [&](const std::string& name, const df::cspan jpeg, const bool thorough)
+	const auto turn = [&](const std::string& name, const std::span<const uint8_t> jpeg, const bool thorough)
 	{
 		int64_t coefficients = 0;
 
 		try
 		{
 			const auto ok = transformer.read_header(jpeg);
-			const auto d = ok ? transformer.dimensions() : sizei{};
+			const auto d = ok
+				               ? sizei{static_cast<int>(transformer.width()), static_cast<int>(transformer.height())}
+				               : sizei{};
 			coefficients = ok ? transformer.coefficient_bytes() : 0;
 			note(name + " header", std::format("{} {}x{} coefficients {}", ok, d.cx, d.cy, coefficients));
 		}
@@ -8143,9 +8167,9 @@ static void should_encode_as_diffractors_encoders_did()
 
 		if (thorough)
 		{
-			for (const auto cut : scan_parity::cut_points(jpeg.size))
+			for (const auto cut : scan_parity::cut_points(jpeg.size()))
 			{
-				note(std::format("{} cut at {} transposed", name, cut), turned({jpeg.data, cut}, simple_transform::transpose));
+				note(std::format("{} cut at {} transposed", name, cut), turned(jpeg.first(cut), simple_transform::transpose));
 			}
 
 			df::blob copy(jpeg.begin(), jpeg.end());
@@ -8164,12 +8188,12 @@ static void should_encode_as_diffractors_encoders_did()
 	};
 
 	{
-		const auto made = [&](const int cx, const int cy, const texture_format format, const metadata_parts& m,
+		const auto made = [&](const int cx, const int cy, const texture_format format, const libfiles::metadata_blocks& m,
 		                      const int quality)
 		{
 			const auto surface = make_surface(cx, cy, format);
-			return encoder.encode(cx, cy, surface->pixels(), static_cast<uint32_t>(surface->stride()),
-			                      ui::orientation::top_left, m, encode_sweep::jpeg_params(quality));
+			return encoder.encode(cx, cy, surface->pixels(), surface->stride(),
+			                      static_cast<uint16_t>(ui::orientation::top_left), m, {.quality = quality});
 		};
 
 		turn("made 32x32 camera exif", made(32, 32, texture_format::RGB, exif_only(camera_exif.clone()), 85), true);
@@ -8177,7 +8201,7 @@ static void should_encode_as_diffractors_encoders_did()
 		turn("made 48x48 signed exif q100", made(48, 48, texture_format::RGB, exif_only(signed_exif.clone()), 100), false);
 		turn("made 33x17 everything", made(33, 17, texture_format::RGB, everything(), 85), false);
 
-		metadata_parts icc_and_xmp;
+		libfiles::metadata_blocks icc_and_xmp;
 		icc_and_xmp.icc = encode_sweep::icc_profile(100000);
 		icc_and_xmp.xmp = encode_sweep::xmp();
 		turn("made 64x48 icc and xmp", made(64, 48, texture_format::ARGB, icc_and_xmp, 85), false);
@@ -8202,7 +8226,7 @@ static void should_encode_as_diffractors_encoders_did()
 	for (const auto& path : found)
 	{
 		auto bytes = df::blob_from_file(path);
-		if (bytes.size() >= 64 && bytes.size() <= 300 * 1024 && files::detect_format(bytes) == detected_format::JPEG)
+		if (bytes.size() >= 64 && bytes.size() <= 300 * 1024 && libfiles::detect_image_format(bytes) == libfiles::image_format::jpeg)
 			fixtures.emplace_back(std::string(path.name()), std::move(bytes));
 	}
 

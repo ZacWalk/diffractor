@@ -560,8 +560,8 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 		const auto* const ft = files::file_type_from_name(path);
 
 		files ff;
-		const auto inspected = ff.scan_file(path, false, ft, {}, {}, scan_intent::inspect);
-		const auto indexed = ff.scan_file(path, false, ft, {}, {}, scan_intent::index);
+		const auto inspected = ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::inspect);
+		const auto indexed = ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::index);
 
 		// The player's summary comes from a playback open, which lays libfiles' reading of the container
 		// over FFmpeg's streams.
@@ -812,8 +812,8 @@ static void should_reject_a_non_media_file()
 	assert_equal(false, decoder.open(path, media_intent::metadata), "decoder rejects the file");
 
 	files ff;
-	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, scan_intent::inspect).success, "inspect scan fails");
-	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, scan_intent::index).success, "index scan fails");
+	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::inspect).success, "inspect scan fails");
+	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::index).success, "index scan fails");
 }
 
 // Issue #78 - Some videos ignore aspect ratio.

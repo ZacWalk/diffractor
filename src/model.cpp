@@ -20,7 +20,7 @@
 #include "model_items.h"
 #include "av_visualizer.h"
 #include "av_format.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
 #include "ui_sid.h"
@@ -4056,7 +4056,7 @@ void view_state::load_display_state()
 					                   files ff;
 					                   const auto scan_result = ff.scan_file(
 						                   display_path, false, display_file_type, display_xmp, {},
-						                   scan_intent::inspect);
+						                   libfiles::scan_intent::inspect);
 					                   auto mi = scan_result.to_info();
 
 					                   new_display->_async.queue_ui([new_display, mi]

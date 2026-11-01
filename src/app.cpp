@@ -24,7 +24,6 @@
 #include "ui_dialog.h"
 #include "util_crash_files_db.h"
 #include "libdesktop/util_log.h"
-#include "metadata_xmp.h"
 #include "files.h"
 #include "av_format.h"
 #include "view_items.h"
@@ -1013,7 +1012,7 @@ void app_frame::tick_screenshot()
 		const auto surface = captured ? ff.fit_within(captured, {800, 500}) : ui::surface_ptr{};
 		const auto format = extension_to_format(output.extension());
 		const auto image = surface
-			                   ? ff.surface_to_image(surface, metadata_parts{}, file_encode_params{}, format)
+			                   ? ff.surface_to_image(surface, libfiles::metadata_blocks{}, file_encode_params{}, format)
 			                   : ui::const_image_ptr{};
 		const auto file = image ? platform::open_file(output, platform::file_open_mode::create) : platform::file_ptr{};
 		const auto saved = file && file->write(image->data().data(), image->data().size()) == image->data().size();
@@ -3295,7 +3294,6 @@ bool app_frame::init(const std::string_view command_line_text)
 
 	command_line.parse(command_line_text);
 	load_file_types();
-	metadata_xmp::initialise();
 	_item_index.init_item_index();
 
 	const auto& store = _settings;

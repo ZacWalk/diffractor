@@ -24,10 +24,10 @@ movie writing, audio output and the rendering probes. Operating-system headers, 
 remain in libdesktop and in the application's own `platform*` files - its side of FFmpeg's hardware
 decoding and its entry points. Repository lint enforces the parts
 of this boundary visible from source text. It allows OS headers in any `platform*` file, though
-only `platform_win_av.cpp` and the Windows platform tests still need them. XMP rationals, property
-ratios and search terms are still read with `_snscanf_s` (in `metadata_xmp.cpp`,
-`model_property.cpp` and `model_search.cpp`), which libdesktop shims on Linux and which can read
-damaged text differently there; dates already parse by one rule on both platforms.
+only `platform_win_av.cpp` and the Windows platform tests still need them. Property ratios and search
+terms are still read with `_snscanf_s` (in `model_property.cpp` and `model_search.cpp`), which
+libdesktop shims on Linux and which can read damaged text differently there; dates, and the numbers in a
+photo's metadata, already parse by one rule on both platforms - libdesktop's and libfiles'.
 
 The Linux implementation currently provides:
 

@@ -216,20 +216,9 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/model_tags.cpp
         src/model_visits.cpp
         src/model_locations.cpp
-        src/metadata_icc.cpp
-        src/metadata_iptc.cpp
-        src/files_commodore.cpp
-        src/files_core.cpp
-        src/files_formats.cpp
-        src/files_nfo.cpp
-        src/files_psd.cpp
-        src/files_scan_photo.cpp
-        src/files_scan_media.cpp
-        src/files_jpeg.cpp
-        src/files_png.cpp
-        src/files_webp.cpp
+        src/metadata.cpp
+        src/files.cpp
         src/media_edit.cpp
-        src/metadata_exif.cpp
         src/model.cpp
         src/model_db.cpp
         src/model_document.cpp
@@ -274,7 +263,6 @@ list(APPEND DIFFRACTOR_PORTABLE_SOURCES
         src/av_format.cpp
         src/av_sid.cpp
         src/av_subtitle.cpp
-        src/metadata_xmp.cpp
         src/ui_sid.cpp
 )
 

@@ -12,7 +12,7 @@
 
 #include "pch.h"
 #include "test_fixtures.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "view_edit.h"
 #include "app_util.h"
 #include "app_commands.h"
@@ -2042,7 +2042,7 @@ static int own_packet_rating(const df::file_path path)
 	const auto packet = libfiles::read_packet(r).packet;
 
 	prop::item_metadata md;
-	metadata_xmp::parse(md, df::cspan(std::bit_cast<const uint8_t*>(packet.data()), packet.size()));
+	apply_properties(md, libfiles::properties_from_xmp(std::span(std::bit_cast<const uint8_t*>(packet.data()), packet.size())));
 	return md.rating;
 }
 
@@ -2193,7 +2193,7 @@ static void should_roundtrip_small_icc()
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
-	metadata_parts metadata;
+	libfiles::metadata_blocks metadata;
 	metadata.icc.resize(3u * 1024u);
 	for (size_t i = 0; i < metadata.icc.size(); ++i)
 	{
@@ -2220,7 +2220,7 @@ static void should_roundtrip_large_icc()
 	const auto surface = loaded.to_surface();
 
 	// 200 KB => 4 APP2 segments (each holds ~65519 profile bytes).
-	metadata_parts metadata;
+	libfiles::metadata_blocks metadata;
 	metadata.icc.resize(200u * 1024u);
 	for (size_t i = 0; i < metadata.icc.size(); ++i)
 	{
@@ -2238,7 +2238,7 @@ static void should_roundtrip_large_icc()
 
 // An XMP packet carrying a long description, padded so its total size is exact and the JPEG
 // marker boundary can be hit rather than approached.
-static df::blob make_xmp_packet(const size_t total_size)
+static std::vector<uint8_t> make_xmp_packet(const size_t total_size)
 {
 	const std::string prefix =
 		R"(<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:description><rdf:Alt><rdf:li xml:lang="x-default">)";
@@ -2261,7 +2261,7 @@ static void should_roundtrip_largest_xmp()
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
-	metadata_parts metadata;
+	libfiles::metadata_blocks metadata;
 	metadata.xmp = make_xmp_packet(65533u - xmp_signature_len);
 
 	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
@@ -2283,7 +2283,7 @@ static void should_report_oversized_xmp()
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
-	metadata_parts oversized;
+	libfiles::metadata_blocks oversized;
 	oversized.xmp = make_xmp_packet(65534u - xmp_signature_len);
 
 	auto reported = false;
@@ -2299,7 +2299,7 @@ static void should_report_oversized_xmp()
 
 	assert_equal(true, reported, "oversized xmp is reported rather than dropped");
 
-	metadata_parts writable;
+	libfiles::metadata_blocks writable;
 	writable.xmp = make_xmp_packet(1024u);
 
 	const auto encoded = ff.surface_to_image(surface, writable, {}, ui::image_format::JPEG);

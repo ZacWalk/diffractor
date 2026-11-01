@@ -17,7 +17,7 @@
 #include "av_format.h"
 #include "av_player.h"
 #include "av_sid.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "files.h"
 #include "libfiles/media.h"
 
@@ -137,7 +137,7 @@ static int hex_char_to_int(const char byte)
 	return 0;
 }
 
-static df::blob unescape_xmp(const char* sz)
+static std::vector<uint8_t> unescape_xmp(const char* sz)
 {
 	std::string result;
 
@@ -2050,7 +2050,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 	// A SID tune's WAV is made as it is read and describes nothing; its render describes the tune.
 	if (intent == media_intent::playback && !is_sid_stream(file))
 	{
-		_media_scan = scan_media_file(file, scan_intent::inspect, false).scan;
+		_media_scan = scan_media_file(file, libfiles::scan_intent::inspect, false).scan;
 		if (_media_scan && !_media_scan->success) _media_scan.reset();
 	}
 

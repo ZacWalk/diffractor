@@ -49,7 +49,7 @@ branch or the API version left in its headers.
 | FFmpeg | `a3c5339578cb1d54322e06b6bd1c8852fc6abc29`, upstream `master` of 2026-10-30 | Fetched | Upstream commit archive by SHA-256 | [FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [FFmpeg.cmake](../cmake/vendored/FFmpeg.cmake) drives its configure and make on Linux, and [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) builds it on Windows with the configuration its configure generated, kept in `cmake/vendored/ffmpeg-windows/` |
 | Highway | 1.4.0 | Fetched by libfiles | Release archive by SHA-256 | [google/highway releases](https://github.com/google/highway/releases). libfiles pins the archive and builds it with the source list this tree's vendored copy used, as `libfiles::highway`, which libjxl alone uses |
 | Hunspell | 1.7.6 | Fetched | Release archive by SHA-256 | [Hunspell releases](https://github.com/hunspell/hunspell/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [hunspell.cmake](../cmake/vendored/hunspell.cmake) builds its `src/hunspell/` unchanged, the version and visibility headers included |
-| lib8bit | `DIFFRACTOR_LIB8BIT_REVISION` in [DiffractorLib8bit.cmake](../cmake/DiffractorLib8bit.cmake) | Fetched by CMake | Shared library, MIT | [ZacWalk/lib8bit](https://github.com/ZacWalk/lib8bit), its emulator library only; a `../lib8bit` checkout is built instead when present. Its Commodore 64 plays SID tunes for [av_sid.cpp](../src/av_sid.cpp), which also shows the chip's registers in the SID monitor, and checks a tune's header for [files_commodore.cpp](../src/files_commodore.cpp). A tune drives the chip with its own code, so no ROM is needed |
+| lib8bit | `DIFFRACTOR_LIB8BIT_REVISION` in [DiffractorLib8bit.cmake](../cmake/DiffractorLib8bit.cmake) | Fetched by CMake | Shared library, MIT | [ZacWalk/lib8bit](https://github.com/ZacWalk/lib8bit), its emulator library only; a `../lib8bit` checkout is built instead when present. Its Commodore 64 plays SID tunes for [av_sid.cpp](../src/av_sid.cpp), which also shows the chip's registers in the SID monitor, and checks a tune's header for [files.cpp](../src/files.cpp). A tune drives the chip with its own code, so no ROM is needed |
 | libarchive | 3.8.11 | Fetched | Release archive by SHA-256 | [libarchive releases](https://github.com/libarchive/libarchive/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [archive.cmake](../cmake/vendored/archive.cmake) builds it unchanged, including its CRC32 and umask helpers, with the configuration its configure produced for Windows and for Linux kept in `cmake/vendored/archive-windows/` and `archive-linux/` |
 | libde265 | 1.1.3 | Fetched by libfiles | Release archive by SHA-256 | [strukturag/libde265 releases](https://github.com/strukturag/libde265/releases). libfiles pins the archive and builds it with the source list and generated `config.h` and `de265-version.h` this tree's vendored copy used, as `libfiles::de265`, libheif's HEVC decoder where FFmpeg's is not named |
 | libdesktop | `DIFFRACTOR_LIBDESKTOP_REVISION` in [DiffractorLibdesktop.cmake](../cmake/DiffractorLibdesktop.cmake) | Fetched by CMake | Shared library, LGPL-2.1-or-later | [ZacWalk/libdesktop](https://github.com/ZacWalk/libdesktop), its system, render and text modules only; a `../libdesktop` checkout is built instead when present. Owns the foundation (`df::`, `str::`), the OS services (`platform.h`) and the desktop UI (`ui.h`, the window layer and the renderers) Diffractor is written in, with their Windows and Linux backends, and the syntax highlighters (`ui/syntax.h`) the selection panel's document colours text with |
@@ -289,10 +289,11 @@ packaged data, not source dependencies, but the same redistribution rule applies
 - [DiffractorDependency.cmake](../cmake/DiffractorDependency.cmake) and
   [DiffractorCompilerPolicy.cmake](../cmake/DiffractorCompilerPolicy.cmake): common dependency and
   compiler policy.
-- [files_core.cpp](../src/files_core.cpp), the `files_*` decoders,
-  [av_format.cpp](../src/av_format.cpp), [metadata_xmp.cpp](../src/metadata_xmp.cpp),
-  [util_spell.cpp](../src/util_spell.cpp), and [util_zip.cpp](../src/util_zip.cpp): application-owned
-  wrappers.
+- [files.cpp](../src/files.cpp), the decoders gated on their libraries
+  ([files_heif.cpp](../src/files_heif.cpp), [files_jxl.cpp](../src/files_jxl.cpp) and
+  [files_raw.cpp](../src/files_raw.cpp)), [av_format.cpp](../src/av_format.cpp),
+  [metadata.cpp](../src/metadata.cpp), [util_spell.cpp](../src/util_spell.cpp), and
+  [util_zip.cpp](../src/util_zip.cpp): application-owned wrappers.
 - `tools/compare_ffmpeg_config.py` and `tools/fluent_icons.py`:
   reproducible integration checks and generators.
 - [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) and

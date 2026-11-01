@@ -10,8 +10,9 @@ Ask which dependency and which target version if not already stated.
 
 1. **Never patch a fetched dependency.** Everything Diffractor owns about one is its pin in
    `cmake/dd-dependencies.json`, `cmake/vendored`, the CMake dependency and policy files, or the
-   owned wrapper — the `files_*` decoder, [av_format.cpp](../../src/av_format.cpp),
-   [metadata_xmp.cpp](../../src/metadata_xmp.cpp), [util_spell.cpp](../../src/util_spell.cpp) or
+   owned wrapper — [files.cpp](../../src/files.cpp) or a `files_*` decoder,
+   [av_format.cpp](../../src/av_format.cpp), [metadata.cpp](../../src/metadata.cpp),
+   [util_spell.cpp](../../src/util_spell.cpp) or
    [util_zip.cpp](../../src/util_zip.cpp). If a fix seems to require editing the library's source, it
    belongs in the wrapper or the build configuration, or upstream: Diffractor keeps no fork.
 

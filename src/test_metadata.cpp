@@ -12,10 +12,7 @@
 
 #include "pch.h"
 
-#include "metadata_xmp.h"
-#include "metadata_exif.h"
-#include "metadata_icc.h"
-#include "metadata_iptc.h"
+#include "metadata.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "av_format.h"
@@ -401,7 +398,7 @@ static void should_scan_tiff_camera_metadata()
 	assert_equal(2, dimensions, "the TIFF fixture declares width and height");
 
 	mem_read_stream stream({bytes.data(), bytes.size()});
-	auto scanned = scan_photo(stream, scan_intent::index, false);
+	auto scanned = scan_photo(stream, libfiles::scan_intent::index, false);
 	assert_equal(true, scanned.success, "TIFF metadata is scanned without decoding pixels");
 	assert_equal(true, scanned.metadata.exif.empty(), "the image is not copied into an EXIF block");
 	const auto md = scanned.to_props();
@@ -1026,7 +1023,7 @@ static void should_not_double_apply_heif_rotation()
 	// orientation is resolved from its own properties. The upright image is portrait, so the
 	// thumbnail must also be portrait once its own orientation is applied.
 	const auto* const ft = files::file_type_from_name(load_path);
-	const auto with_thumb = ff.scan_file(load_path, true, ft, {}, {}, scan_intent::index);
+	const auto with_thumb = ff.scan_file(load_path, true, ft, {}, {}, libfiles::scan_intent::index);
 	assert_equal(true, ui::is_valid(with_thumb.thumbnail_surface), "thumbnail", file_name);
 
 	const auto thumb_extent = with_thumb.thumbnail_surface->dimensions();
@@ -1170,7 +1167,7 @@ static void should_read_png_metadata_after_idat()
 	const auto before_path = [&]
 	{
 		files ff;
-		metadata_parts metadata;
+		libfiles::metadata_blocks metadata;
 		const auto xmp = png_test_xmp(3);
 		metadata.xmp.assign(xmp.begin(), xmp.end());
 		const auto image = ff.surface_to_image(make_png_metadata_surface(), metadata, {}, ui::image_format::PNG);
@@ -2606,12 +2603,14 @@ static void should_parse_exif_tags()
 	}
 
 	prop::item_metadata md;
-	metadata_exif::parse(md, df::cspan{buf.data(), buf.size()});
+	apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{buf.data(), buf.size()})));
 
 	assert_equal("DiffractorApp", md.encoder, "Software -> encoder");
 	assert_equal("Ansel Adams", md.artist, "Artist -> artist (XPAuthor must not override)");
 	assert_equal("Winter", md.title, "XPTitle -> title");
-	assert_equal("alpha beta", md.tags, "XPKeywords -> tags");
+	// XPKeywords separates keywords with semicolons, so this is one keyword of two words, which an item's
+	// tags hold quoted.
+	assert_equal("\"alpha beta\"", md.tags, "XPKeywords -> tags");
 	assert_equal("A subject", md.description, "XPSubject -> description");
 	assert_equal(prop::format_f_num(4.0f), prop::format_f_num(md.f_number), "MaxApertureValue -> f_number");
 	assert_equal(prop::format_exposure(1.0f / 64.0f), prop::format_exposure(md.exposure_time),
@@ -2674,10 +2673,10 @@ static void should_read_windows_xp_tags_as_written()
 	for (const auto& entry : entries) buf.insert(buf.end(), entry.second.begin(), entry.second.end());
 
 	prop::item_metadata md;
-	metadata_exif::parse(md, df::cspan{buf.data(), buf.size()});
+	apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{buf.data(), buf.size()})));
 
 	assert_equal("Winter", md.title, "XPTitle -> title");
-	assert_equal("alpha;beta", md.tags, "XPKeywords -> tags");
+	assert_equal("alpha beta", md.tags, "XPKeywords -> tags, one for each keyword");
 	assert_equal("A subj\xc3\xa9" "ct", md.description, "XPSubject -> description");
 }
 
@@ -2791,7 +2790,7 @@ static void should_parse_exif_gps_height()
 		{0x000c, FMT_STRING, 2, {'K', 0}},
 		{0x000d, FMT_URATIONAL, 1, urational(900, 1)},
 	});
-	metadata_exif::parse(cruising, df::cspan{cruising_exif.data(), cruising_exif.size()});
+	apply_properties(cruising, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{cruising_exif.data(), cruising_exif.size()})));
 	assert_equal(10668.0f, cruising.altitude, "GPSAltitude -> altitude");
 	assert_equal(900.0f, cruising.gps_speed, "GPSSpeed in km/h -> gps_speed");
 
@@ -2801,7 +2800,7 @@ static void should_parse_exif_gps_height()
 		{0x0005, FMT_BYTE, 1, {1}},
 		{0x0006, FMT_URATIONAL, 1, urational(180, 10)},
 	});
-	metadata_exif::parse(dive, df::cspan{dive_exif.data(), dive_exif.size()});
+	apply_properties(dive, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{dive_exif.data(), dive_exif.size()})));
 	assert_equal(-18.0f, dive.altitude, "below-sea-level reference negates the altitude");
 
 	// Knots are the other common speed reference.
@@ -2810,7 +2809,7 @@ static void should_parse_exif_gps_height()
 		{0x000c, FMT_STRING, 2, {'N', 0}},
 		{0x000d, FMT_URATIONAL, 1, urational(100, 1)},
 	});
-	metadata_exif::parse(knots, df::cspan{knots_exif.data(), knots_exif.size()});
+	apply_properties(knots, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{knots_exif.data(), knots_exif.size()})));
 	assert_equal(185.2f, knots.gps_speed, "GPSSpeed in knots -> km/h");
 }
 
@@ -2844,7 +2843,7 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(37, 4, 0)},
 	});
-	metadata_exif::parse(equator, df::cspan{equator_exif.data(), equator_exif.size()});
+	apply_properties(equator, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{equator_exif.data(), equator_exif.size()})));
 	assert_equal(true, equator.coordinate.is_valid(), "a latitude of zero is a position, not an absence");
 	assert_equal(true, std::abs(equator.coordinate.longitude() - 37.0667) < 0.001, "and it keeps its longitude");
 
@@ -2856,7 +2855,7 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(0, 0, 0)},
 	});
-	metadata_exif::parse(meridian, df::cspan{meridian_exif.data(), meridian_exif.size()});
+	apply_properties(meridian, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{meridian_exif.data(), meridian_exif.size()})));
 	assert_equal(true, meridian.coordinate.is_valid(), "a longitude of zero is a position too");
 	assert_equal(true, std::abs(meridian.coordinate.latitude() - 51.4778) < 0.001, "and it keeps its latitude");
 
@@ -2868,13 +2867,13 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(0, 0, 0)},
 	});
-	metadata_exif::parse(no_fix, df::cspan{no_fix_exif.data(), no_fix_exif.size()});
+	apply_properties(no_fix, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{no_fix_exif.data(), no_fix_exif.size()})));
 	assert_equal(false, no_fix.coordinate.is_valid(), "but a zero pair is a receiver with no fix");
 
 	// And a file carrying no coordinate at all still has none.
 	prop::item_metadata none;
 	const auto none_exif = build_gps_exif({{0x0005, FMT_BYTE, 1, {0}}});
-	metadata_exif::parse(none, df::cspan{none_exif.data(), none_exif.size()});
+	apply_properties(none, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{none_exif.data(), none_exif.size()})));
 	assert_equal(false, none.coordinate.is_valid(), "and an absent coordinate stays absent");
 }
 
@@ -2924,7 +2923,7 @@ static void should_parse_an_extended_length_iptc_dataset()
 		block.insert(block.end(), b.begin(), b.end());
 
 		prop::item_metadata md;
-		metadata_iptc::parse(md, df::cspan{block.data(), block.size()});
+		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(df::cspan{block.data(), block.size()})));
 		assert_equal("Lisbon", md.title, "a two-octet size still reads");
 		assert_equal("Ada Lovelace", md.copyright_notice, "and the dataset after it is still found");
 	}
@@ -2938,7 +2937,7 @@ static void should_parse_an_extended_length_iptc_dataset()
 		block.insert(block.end(), b.begin(), b.end());
 
 		prop::item_metadata md;
-		metadata_iptc::parse(md, df::cspan{block.data(), block.size()});
+		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(df::cspan{block.data(), block.size()})));
 		assert_equal("Lisbon", md.title, "an extended size reads its own payload");
 		assert_equal("Ada Lovelace", md.copyright_notice, "and the walk stays aligned for what follows");
 	}
@@ -3004,7 +3003,7 @@ static void should_drop_binary_exif_comment()
 	};
 	prop::item_metadata md_junk;
 	const auto exif_junk = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, junk);
-	metadata_exif::parse(md_junk, df::cspan{exif_junk.data(), exif_junk.size()});
+	apply_properties(md_junk, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_junk.data(), exif_junk.size()})));
 	assert_equal(true, prop::is_null(md_junk.comment), "binary Samsung comment dropped");
 
 	// SM-G900F hides its blob behind a valid "ASCII\0\0\0" character code, so the marker
@@ -3014,7 +3013,7 @@ static void should_drop_binary_exif_comment()
 	for (const uint8_t c : {0x27, 0x03, 0xab, 0x5c, 0x46, 0x0b, 0x01, 0x00}) samsung.push_back(c);
 	prop::item_metadata md_samsung;
 	const auto exif_samsung = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, samsung);
-	metadata_exif::parse(md_samsung, df::cspan{exif_samsung.data(), exif_samsung.size()});
+	apply_properties(md_samsung, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_samsung.data(), exif_samsung.size()})));
 	assert_equal(true, prop::is_null(md_samsung.comment), "ASCII-prefixed binary comment dropped");
 
 	// Control: a well-formed ASCII UserComment ("ASCII\0\0\0" prefix) is preserved.
@@ -3023,7 +3022,7 @@ static void should_drop_binary_exif_comment()
 	};
 	prop::item_metadata md_good;
 	const auto exif_good = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, good);
-	metadata_exif::parse(md_good, df::cspan{exif_good.data(), exif_good.size()});
+	apply_properties(md_good, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_good.data(), exif_good.size()})));
 	assert_equal("Hello", md_good.comment, "valid ASCII comment preserved");
 
 	// Control: multi-line text with trailing nul padding survives the binary scan.
@@ -3032,7 +3031,7 @@ static void should_drop_binary_exif_comment()
 	};
 	prop::item_metadata md_padded;
 	const auto exif_padded = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, padded);
-	metadata_exif::parse(md_padded, df::cspan{exif_padded.data(), exif_padded.size()});
+	apply_properties(md_padded, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_padded.data(), exif_padded.size()})));
 	assert_equal("Line\n2", md_padded.comment, "multi-line padded comment preserved");
 }
 
@@ -3866,6 +3865,239 @@ static void should_parse_every_xmp_packet_whole_and_cut_short()
 	assert_equal(0, static_cast<int>(failures.size()), std::format("libfiles parses or refuses every packet{}", report));
 }
 
+// What an item takes from a photo's own blocks - its EXIF, the IPTC over it and the packet over both - as
+// to_props reads them, every field and every date with its source and zone. The fixtures' blocks whole, their
+// IPTC cut short and damaged, and every packet of the XMP corpus whole and cut short, alone and over a
+// fixture's EXIF and IPTC. Taken over Diffractor's own EXIF, IPTC and XMP tables before libfiles' one table
+// replaced them, so the move holds every reading to what those tables made of it.
+namespace property_sweep
+{
+	std::string bits(const float value)
+	{
+		return std::format("{:08x}", std::bit_cast<uint32_t>(value));
+	}
+
+	std::string bits(const double value)
+	{
+		return std::format("{:016x}", std::bit_cast<uint64_t>(value));
+	}
+
+	std::string describe(const prop::item_metadata& md)
+	{
+		auto s = std::format(
+			"title '{}' description '{}' comment '{}' synopsis '{}' artist '{}' album '{}' album_artist '{}' "
+			"composer '{}' performer '{}' genre '{}' publisher '{}' show '{}' encoder '{}' make '{}' model '{}' "
+			"lens '{}' creator '{}' credit '{}' url '{}' notice '{}' source '{}' place '{}' state '{}' country '{}' "
+			"label '{}' raw '{}' tags '{}'",
+			md.title.sv(), md.description.sv(), md.comment.sv(), md.synopsis.sv(), md.artist.sv(), md.album.sv(),
+			md.album_artist.sv(), md.composer.sv(), md.performer.sv(), md.genre.sv(), md.publisher.sv(), md.show.sv(),
+			md.encoder.sv(), md.camera_manufacturer.sv(), md.camera_model.sv(), md.lens.sv(), md.copyright_creator.sv(),
+			md.copyright_credit.sv(), md.copyright_url.sv(), md.copyright_notice.sv(), md.copyright_source.sv(),
+			md.location_place.sv(), md.location_state.sv(), md.location_country.sv(), md.label.sv(),
+			md.raw_file_name.sv(), md.tags.sv());
+
+		s += std::format(
+			" f {} exposure {} focal {} focal35 {} iso {} rating {} orientation {} altitude {} speed {} coordinate {} {} {}"
+			" year {} season {} track {}/{} disc {}/{} episode {}/{} panorama {}",
+			bits(md.f_number), bits(md.exposure_time), bits(md.focal_length), md.focal_length_35mm_equivalent,
+			md.iso_speed, md.rating, static_cast<int>(md.orientation), bits(md.altitude), bits(md.gps_speed),
+			md.coordinate.is_valid(), bits(md.coordinate.latitude()), bits(md.coordinate.longitude()), md.year,
+			md.season, md.track.x, md.track.y, md.disk.x, md.disk.y, md.episode.x, md.episode.y,
+			static_cast<int>(md.panorama));
+
+		// By source rather than in the pack's order: a UTC instant - a GPS stamp - is placed by the machine's
+		// wall clock, and the record must not depend on the zone it is taken in.
+		std::vector<std::string> dates;
+
+		for (auto i = 0; i < md.dates.group_count(); ++i)
+		{
+			dates.push_back(std::format(" date {:016x} {} {}", static_cast<uint64_t>(md.dates.group_sources(i)),
+			                            md.dates.group_value(i).to_int64(), md.dates.group_offset(i)));
+		}
+
+		std::ranges::sort(dates);
+		for (const auto& d : dates) s += d;
+
+		s += std::format(" overflow {:x}", static_cast<uint64_t>(md.dates.overflow()));
+		return s;
+	}
+
+	struct blocks
+	{
+		std::string name;
+		std::vector<uint8_t> exif;
+		std::vector<uint8_t> iptc;
+		std::vector<uint8_t> xmp;
+		std::optional<libfiles::exif_metadata> tiff;
+	};
+
+	std::string read(const blocks& b, const std::span<const uint8_t> iptc, const std::span<const uint8_t> xmp)
+	{
+		file_scan_result r;
+		r.metadata.exif = b.exif;
+		r.metadata.iptc.assign(iptc.begin(), iptc.end());
+		r.metadata.xmp.assign(xmp.begin(), xmp.end());
+		r.tiff_metadata = b.tiff;
+		return describe(*r.to_props());
+	}
+}
+
+static void should_read_photo_properties_as_diffractors_readers_did()
+{
+	using property_sweep::read;
+
+	// The fixtures alone: an extra corpus named by DIFFRACTOR_XMP_CORPUS is no part of the record.
+	std::vector<df::file_path> paths;
+	xmp_corpus::add_folder(test_files_folder, paths);
+	xmp_corpus::add_folder(test_formats_folder, paths);
+
+	std::vector<property_sweep::blocks> fixtures;
+	std::vector<xmp_corpus::labelled_packet> packets;
+	files ff;
+
+	for (const auto& path : paths)
+	{
+		if (str::icmp(path.extension(), ".xmp"sv) == 0)
+		{
+			const auto bytes = df::blob_from_file(path);
+			packets.push_back({std::string(path.name()) + " (sidecar)", std::string(bytes.begin(), bytes.end())});
+			continue;
+		}
+
+		const auto scanned = ff.scan_file(path, false, files::file_type_from_name(path));
+		if (scanned.metadata.exif.empty() && scanned.metadata.iptc.empty() && scanned.metadata.xmp.empty() &&
+			!scanned.tiff_metadata)
+			continue;
+
+		fixtures.push_back({std::string(path.name()), scanned.metadata.exif, scanned.metadata.iptc,
+		                    scanned.metadata.xmp, scanned.tiff_metadata});
+	}
+
+	std::ranges::sort(fixtures, [](const auto& a, const auto& b)
+	{
+		return a.name != b.name ? a.name < b.name : a.xmp.size() < b.xmp.size();
+	});
+
+	std::ranges::sort(packets, [](const auto& a, const auto& b)
+	{
+		return a.label != b.label ? a.label < b.label : a.packet < b.packet;
+	});
+
+	for (const auto& f : fixtures)
+	{
+		if (!f.xmp.empty()) packets.push_back({f.name + " (scanned)", std::string(f.xmp.begin(), f.xmp.end())});
+	}
+
+	for (auto& p : xmp_corpus::synthetic_packets()) packets.push_back(std::move(p));
+
+	std::string record;
+	auto readings = 0;
+
+	const auto note = [&](const std::string& what, std::string outcome)
+	{
+		record += what + ": " + outcome + "\n";
+		++readings;
+	};
+
+	// Each fixture whole; then its IPTC cut short and damaged under its own packet.
+	for (const auto& f : fixtures)
+	{
+		note(f.name, read(f, f.iptc, f.xmp));
+
+		for (size_t i = 1; i < 8 && !f.iptc.empty(); ++i)
+		{
+			note(std::format("{} iptc cut {}", f.name, i), read(f, std::span(f.iptc).first(f.iptc.size() * i / 8), f.xmp));
+		}
+
+		auto damaged = f.iptc;
+
+		for (size_t at = 0; at < std::min<size_t>(damaged.size(), 24); ++at)
+		{
+			const auto original = damaged[at];
+			damaged[at] = static_cast<uint8_t>(original ^ 0xFF);
+			note(std::format("{} iptc damaged at {}", f.name, at), read(f, damaged, f.xmp));
+			damaged[at] = original;
+		}
+	}
+
+	// Every packet, whole and cut short: alone, and over the first fixture holding EXIF and IPTC.
+	const auto base = std::ranges::find_if(fixtures, [](const auto& f) { return !f.exif.empty() && !f.iptc.empty(); });
+	assert_equal(true, base != fixtures.end(), "a fixture holds both EXIF and IPTC");
+	const property_sweep::blocks none;
+
+	for (const auto& p : packets)
+	{
+		constexpr auto cuts = 24;
+		const auto bytes = std::span(std::bit_cast<const uint8_t*>(p.packet.data()), p.packet.size());
+
+		for (auto i = cuts; i > 0; --i)
+		{
+			const auto cut = bytes.first(bytes.size() * i / cuts);
+			note(std::format("{} cut {}", p.label, i), read(none, {}, cut));
+			if (base != fixtures.end()) note(std::format("{} over {} cut {}", p.label, base->name, i), read(*base, base->iptc, cut));
+		}
+	}
+
+	const auto checksum = df::crc32c(record.data(), record.size());
+	df::log(__FUNCTION__, std::format("{} fixtures, {} packets, {} readings; record {:08x}", fixtures.size(),
+	                                  packets.size(), readings, checksum));
+
+	// A difference is found by diffing the readings this writes against a run of the code the record was taken from.
+	if (const auto dump = xmp_corpus::environment_variable("DIFFRACTOR_PROPERTY_RECORD"); !dump.empty())
+	{
+		df::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, df::file_path(dump));
+	}
+
+	assert_equal(true, fixtures.size() > 20, std::format("the fixtures carry metadata blocks ({})", fixtures.size()));
+	assert_equal(2869, readings, "the sweep is the one the record was taken over");
+	// The reading Diffractor's tables made, 4055c52e, but for 12 readings of two synthetic packets that give
+	// an alias in another form than its schema - tiff:Copyright and xmp:Title as simple values where dc:rights
+	// and dc:title are alt-text. Diffractor's reader threw at that property and read none of the packet after
+	// it; libfiles reads that property as none and the rest of the packet still, so packet 2's dc:description
+	// "Quay" and packet 5's dc:subject "a" now read, over the fixture's own where it lies under them. No other
+	// reading moved: the fixtures hold no XPKeywords of more than one word, nor by-lines beside an EXIF
+	// Artist, which libfiles reads whole where Diffractor split them at spaces (should_read_keywords_and_
+	// bylines_whole).
+	assert_equal(std::format("{:08x}", 0x00d90804u), std::format("{:08x}", checksum),
+	             "every reading is the one Diffractor's EXIF, IPTC and XMP tables made");
+}
+
+// Windows' XPKeywords separates keywords with semicolons, and IPTC's by-lines are names. Diffractor's own
+// readers split both at spaces too: "New York;Paris" was the tags New, York and Paris, and an EXIF Artist
+// beside by-lines became its words, joined to the by-lines with spaces, which the artist search does not
+// split at. libfiles' table reads each whole, and joins names with "; ", which it does.
+static void should_read_keywords_and_bylines_whole()
+{
+	const auto dataset = [](std::vector<uint8_t>& block, const uint8_t id, const std::string_view value)
+	{
+		block.insert(block.end(), {0x1C, 2, id, static_cast<uint8_t>(value.size() >> 8), static_cast<uint8_t>(value.size())});
+		block.insert(block.end(), value.begin(), value.end());
+	};
+
+	std::vector<uint8_t> iptc;
+	dataset(iptc, 25, "Holiday"); // Keywords
+	dataset(iptc, 80, "John Smith"); // By-line
+	dataset(iptc, 80, "jane doe");
+
+	libfiles::exif_metadata exif;
+	exif.keywords = "New York;Paris";
+	exif.artist = "Jane Doe";
+
+	file_scan_result scanned;
+	scanned.tiff_metadata = exif;
+	scanned.metadata.iptc = iptc;
+	const auto md = scanned.to_props();
+
+	assert_equal("Holiday \"New York\" Paris", md->tags, "each keyword whole, a two-word one quoted");
+	assert_equal("Jane Doe; John Smith", md->artist, "each name whole and once, the by-lines after the EXIF Artist");
+
+	std::vector<std::string> names;
+	str::split2(md->artist, true, [&names](const std::string_view part) { names.emplace_back(str::trim(part)); },
+	            str::is_artist_separator);
+	assert_equal(2, static_cast<int>(names.size()), "the artist search splits the names apart");
+	assert_equal("John Smith", names[1], "and finds each whole");
+}
+
 // Each serialization libfiles writes reads back as the tree it was written from - in the same order,
 // unless the form is compact - and an exact-length packet is exactly as long as asked. The fixtures'
 // packets only: the synthetic ones exercise repairs, such as aliases and xmpDM:copyright, that a first
@@ -3959,6 +4191,9 @@ static void should_read_back_every_xmp_packet_libfiles_writes()
 void register_metadata_tests(view_state& state, test_registry& tests)
 {
 	tests.add("Should parse every xmp packet whole and cut short"s, should_parse_every_xmp_packet_whole_and_cut_short);
+	tests.add("Should read photo properties as Diffractor's readers did"s,
+	          should_read_photo_properties_as_diffractors_readers_did);
+	tests.add("Should read keywords and bylines whole"s, should_read_keywords_and_bylines_whole);
 	tests.add("Should read back every xmp packet libfiles writes"s, should_read_back_every_xmp_packet_libfiles_writes);
 	tests.add("Should collect descriptive fields"s, should_collect_descriptive_fields);
 	tests.add("Should scan info from title"s, should_scan_info_from_title);

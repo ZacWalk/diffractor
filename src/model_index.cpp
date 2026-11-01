@@ -19,7 +19,7 @@
 #include "model_locations.h"
 #include "model_property.h"
 #include "model.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "util_crash_files_db.h"
 #include "util_text.h"
 

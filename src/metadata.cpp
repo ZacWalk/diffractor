@@ -6,24 +6,423 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: XMP (Extensible Metadata Platform) support. Maps Diffractor's properties to and from XMP
-// packets, whose data model is libfiles', and reads and writes the packets in files with libfiles.
+// Purpose: The metadata blocks a file carries - EXIF, IPTC, XMP and ICC profiles - which libfiles reads,
+// writes and lists: the EXIF written with a re-encoded or turned image, the edits Diffractor makes
+// written into XMP packets in files and sidecars, and each block listed for the verbose pane. What an
+// item takes from a block is libfiles' one table, which apply_properties maps onto the item.
 
 #include "pch.h"
 
-#include "model_property.h"
-#include "model_location.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "files.h"
+#include "model_location.h"
+#include "model_property.h"
 
+#include "libfiles/exif.h"
+#include "libfiles/exif_listing.h"
+#include "libfiles/icc.h"
 #include "libfiles/identify.h"
+#include "libfiles/iptc.h"
+#include "libfiles/scan.h"
 #include "libfiles/write.h"
 #include "libfiles/xmp.h"
 
-namespace xmp_ns = libfiles::xmp::ns;
+#include <utility>
 
-// ReSharper disable CppUnusedIncludeDirective
-#include "metadata_exif.h"
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// EXIF metadata, which libfiles reads, writes and lists: the verbose pane's listing, which presents the
+// maker note as its own directory and derives the facts the camera implied but did not record; and the
+// EXIF written with a re-encoded or turned image. What an item takes from a block is libfiles' table,
+// which apply_properties maps onto the item.
+
+df_assert_pod(metadata_exif::urational32_t);
+df_assert_pod(metadata_exif::srational32_t);
+
+static bool is_junk(const uint8_t* p, const uint32_t s)
+{
+	static constexpr uint8_t junk_marker[] = {0x12, 0xf8, 0x0f, 0x3b,};
+	return s >= 4 && memcmp(p, junk_marker, 4) == 0;
+}
+
+// Vendors (e.g. Samsung SM-G900F) pack binary blobs into text tags such as UserComment,
+// sometimes behind a valid "ASCII\0\0\0" character code. Control characters other than
+// tab, newline and return prove the payload is not readable text.
+static bool is_binary_text(const std::string_view text)
+{
+	for (const auto c : text)
+	{
+		const auto u = static_cast<uint8_t>(c);
+		if (u < 0x20 && u != '\t' && u != '\n' && u != '\r') return true;
+		if (u == 0x7f) return true;
+	}
+
+	return false;
+}
+
+// Samsung ISP writes a "JKJK" scene/exposure block map plus "FAFA" focus records into text tags.
+// Naming the block is more use in the verbose listing than an empty or truncated value.
+static std::string_view vendor_blob_name(const uint8_t* p, const uint32_t len)
+{
+	if (!p) return {};
+	const std::string_view sv{std::bit_cast<const char*>(p), len};
+	if (sv.find("JKJK") != std::string_view::npos) return "Samsung camera debug data";
+	return {};
+}
+
+ui::orientation metadata_exif::orientation(const std::span<const uint8_t> cs)
+{
+	const auto stored = libfiles::summarize_exif(cs).orientation;
+	return stored ? static_cast<ui::orientation>(*stored) : ui::orientation::top_left;
+}
+
+// A lossless turn changes the pixels' orientation and dimensions and nothing else, so the block is
+// patched where those numbers stand: upright in IFD0 and IFD1, the turned size in the Exif and
+// Interoperability directories. Nothing else in it changes or moves, so a maker note keeps the
+// absolute offsets it relies on. libexif rewrote the whole block, which emptied five of the fixtures'
+// Canon maker notes and re-encoded five others.
+df::blob metadata_exif::fix_dims(const df::span cs, const int image_width, const int image_height)
+{
+	df::assert_true(is_exif_signature({cs.data, cs.size}));
+
+	df::blob result(cs.data, cs.data + cs.size);
+	if (result.size() <= exif_signature.size()) return result;
+
+	const auto width = static_cast<uint32_t>(image_width);
+	const auto height = static_cast<uint32_t>(image_height);
+
+	using libfiles::exif_directory;
+	const libfiles::exif_number numbers[] = {
+		{exif_directory::primary, 0x0112, 1}, // Orientation
+		{exif_directory::thumbnail, 0x0112, 1},
+		{exif_directory::exif, 0xa002, width}, // PixelXDimension
+		{exif_directory::exif, 0xa003, height}, // PixelYDimension
+		{exif_directory::interoperability, 0x1001, width}, // RelatedImageWidth
+		{exif_directory::interoperability, 0x1002, height}, // RelatedImageLength
+	};
+
+	libfiles::set_exif_numbers({result.data() + exif_signature.size(), result.size() - exif_signature.size()}, numbers);
+	return result;
+}
+
+static std::string exif_date_text(const df::date_t date)
+{
+	const auto d = date.date();
+	return std::format("{:04}:{:02}:{:02} {:02}:{:02}:{:02}", d.year, d.month, d.day, d.hour, d.minute, d.second);
+}
+
+df::blob metadata_exif::make_exif(const prop::item_metadata_ptr& md)
+{
+	libfiles::exif_fields f;
+
+	if (md->orientation != ui::orientation::none) f.orientation = static_cast<uint16_t>(md->orientation);
+	if (!prop::is_null(md->f_number)) f.f_number = md->f_number;
+	if (!prop::is_null(md->exposure_time)) f.exposure_time = md->exposure_time;
+	if (!prop::is_null(md->iso_speed)) f.iso_speed = md->iso_speed;
+	if (!prop::is_null(md->focal_length)) f.focal_length = md->focal_length;
+	if (!prop::is_null(md->focal_length_35mm_equivalent)) f.focal_length_35mm = md->focal_length_35mm_equivalent;
+	if (!prop::is_null(md->camera_manufacturer)) f.camera_make = md->camera_manufacturer.sv();
+	if (!prop::is_null(md->camera_model)) f.camera_model = md->camera_model.sv();
+	if (!prop::is_null(md->artist)) f.artist = md->artist.sv();
+	if (!prop::is_null(md->lens)) f.lens = md->lens.sv();
+	if (!prop::is_null(md->copyright_notice)) f.copyright = md->copyright_notice.sv();
+	if (!prop::is_null(md->description)) f.description = md->description.sv();
+	if (!prop::is_null(md->comment)) f.comment = md->comment.sv();
+
+	// Never the resolved date: writing that into DateTimeOriginal would forge a capture time for any
+	// file whose Original was inferred from a lower-authority source (#184, #192).
+	if (const auto original = md->dates.original(); original.is_valid()) f.original = exif_date_text(original);
+	if (const auto modified = md->dates.modified(); modified.is_valid()) f.modified = exif_date_text(modified);
+	if (const auto created = md->dates.created(); created.is_valid()) f.digitized = exif_date_text(created);
+
+	const auto tiff = libfiles::make_exif(f);
+	df::blob result(exif_signature.begin(), exif_signature.end());
+	result.insert(result.end(), tiff.begin(), tiff.end());
+	return result;
+}
+
+static std::string_view directory_title(const int ifd)
+{
+	switch (ifd)
+	{
+	case 0: return "Main image (IFD0)";
+	case 1: return "Thumbnail (IFD1)";
+	case 2: return "Exif";
+	case 3: return "GPS";
+	case 4: return "Interoperability";
+	default: return "Other";
+	}
+}
+
+// One numeric tag from the Exif directory: the same quantity is a rational in one tag and a short in
+// another, so the caller asks for a number and not for a storage format.
+static bool read_listed_number(const libfiles::exif_listing& listing, const uint16_t tag, double& out)
+{
+	for (const auto& directory : listing.directories)
+	{
+		if (directory.directory != libfiles::exif_directory::exif) continue;
+
+		for (const auto& e : directory.entries)
+		{
+			if (e.tag != tag) continue;
+			if (e.bytes.empty() || e.count == 0) return false;
+
+			const auto* const p = e.bytes.data();
+			const auto little = listing.little_endian;
+			const auto u16 = [&](const uint8_t* q) { return static_cast<uint16_t>(little ? q[0] | q[1] << 8 : q[0] << 8 | q[1]); };
+			const auto u32 = [&](const uint8_t* q)
+			{
+				return little
+					       ? static_cast<uint32_t>(q[0]) | static_cast<uint32_t>(q[1]) << 8 | static_cast<uint32_t>(q[2]) << 16 |
+					       static_cast<uint32_t>(q[3]) << 24
+					       : static_cast<uint32_t>(q[0]) << 24 | static_cast<uint32_t>(q[1]) << 16 |
+					       static_cast<uint32_t>(q[2]) << 8 | static_cast<uint32_t>(q[3]);
+			};
+
+			size_t size = 0;
+			switch (e.type)
+			{
+			case 3: case 8: size = 2;
+				break;
+			case 4: case 9: size = 4;
+				break;
+			case 5: case 10: size = 8;
+				break;
+			default: return false;
+			}
+
+			if (e.bytes.size() < size) return false;
+
+			switch (e.type)
+			{
+			case 3: out = u16(p);
+				return true;
+			case 8: out = static_cast<int16_t>(u16(p));
+				return true;
+			case 4: out = u32(p);
+				return true;
+			case 9: out = static_cast<int32_t>(u32(p));
+				return true;
+			case 5:
+				if (u32(p + 4) == 0) return false;
+				out = static_cast<double>(u32(p)) / u32(p + 4);
+				return true;
+			default:
+				if (static_cast<int32_t>(u32(p + 4)) == 0) return false;
+				out = static_cast<double>(static_cast<int32_t>(u32(p))) / static_cast<int32_t>(u32(p + 4));
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	return false;
+}
+
+metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
+{
+	metadata_kv_list result;
+	const auto listing = libfiles::list_exif(data);
+
+	// Exif is a set of image file directories, and which directory a tag lives in is part of what the
+	// block contains, so each is listed as its own section rather than flattened together.
+	for (const auto& directory : listing.directories)
+	{
+		const auto ifd_index = static_cast<int>(directory.directory);
+		auto& section = result.emplace_back(std::format("{} ({})", directory_title(ifd_index), directory.entries.size()),
+		                                    std::string{});
+		section.container = true;
+		section.id = std::format("exif.ifd.{}", ifd_index);
+		// The Exif directory holds the capture settings most readers came for, so it opens however many
+		// tags the camera wrote.
+		section.open_by_default = directory.directory == libfiles::exif_directory::exif;
+
+		for (const auto& e : directory.entries)
+		{
+			const std::string_view rendered = e.value;
+			const auto len = rendered.size();
+			const auto vendor = vendor_blob_name(e.bytes.data(), static_cast<uint32_t>(e.bytes.size()));
+			// An empty render over a payload of real size means the value stopped at a nul inside a binary
+			// blob, so report the size rather than a blank value.
+			const auto readable = vendor.empty() && (!rendered.empty() || e.bytes.size() <= 4) &&
+				!is_junk(std::bit_cast<const uint8_t*>(rendered.data()), static_cast<uint32_t>(len)) &&
+				!is_binary_text(rendered);
+
+			auto& row = result.emplace_back(
+				e.name ? *e.name : std::format("Tag 0x{:04x}", e.tag),
+				readable
+					? std::string(str::utf8_cast(rendered))
+					: std::format("{}, {} bytes", vendor.empty() ? std::string_view{"binary"} : vendor, e.bytes.size()));
+
+			row.depth = 1;
+			row.shape = std::format("{} x{}, 0x{:04x}", libfiles::exif_type_name(e.type), e.count, e.tag);
+			row.id = std::format("exif.{}.{:04x}", ifd_index, e.tag);
+
+			// The bytes stay reachable whether or not they render; the hex listing is built only when the
+			// row is opened.
+			if (!e.bytes.empty())
+			{
+				const auto kept = std::min<size_t>(e.bytes.size(), str::max_hex_dump_bytes);
+				row.detail = metadata_binary_detail{std::vector<uint8_t>(e.bytes.begin(), e.bytes.begin() + kept)};
+			}
+		}
+	}
+
+	// The maker note is a vendor's own directory carried inside Exif, so it is listed as its own section
+	// rather than left as the binary blob the Exif entry reports. libfiles decodes the makes libexif did -
+	// Canon, Nikon, Fuji, Olympus, Sanyo, Epson, Pentax and Casio - and anything else keeps only that row.
+	if (!listing.maker_note.empty())
+	{
+		std::string title = "MakerNote";
+
+		// The decoder does not say which vendor it recognised, so the camera's own Make names the section.
+		for (const auto& directory : listing.directories)
+		{
+			const auto make = std::ranges::find(directory.entries, uint16_t{0x010f}, &libfiles::exif_listing_entry::tag);
+			if (make == directory.entries.end()) continue;
+
+			const auto trimmed = str::trim(std::string_view{make->value});
+			if (!trimmed.empty() && !is_binary_text(trimmed)) title = std::format("MakerNote ({})", str::utf8_cast(trimmed));
+			break;
+		}
+
+		auto& section = result.emplace_back(std::format("{} ({})", title, listing.maker_note.size()), std::string{});
+		section.container = true;
+		section.id = "exif.mnote";
+
+		for (const auto& v : listing.maker_note)
+		{
+			const std::string_view rendered = v.value;
+			const auto readable = !rendered.empty() &&
+				!is_junk(std::bit_cast<const uint8_t*>(rendered.data()), static_cast<uint32_t>(rendered.size())) &&
+				!is_binary_text(rendered);
+
+			auto& row = result.emplace_back(v.name ? *v.name : std::format("Tag 0x{:04x}", v.id),
+			                                readable ? std::string(str::utf8_cast(rendered)) : std::string{"binary"});
+
+			row.depth = 1;
+			row.shape = std::format("0x{:04x}", v.id);
+			row.id = std::format("exif.mnote.{:04x}", v.id);
+		}
+	}
+
+	// Facts the camera implied but did not record: arithmetic over the tags listed above.
+	{
+		metadata_kv_list rows;
+
+		double focal_length = 0.0;
+		double focal_35 = 0.0;
+		double f_number = 0.0;
+		double exposure = 0.0;
+		double pixel_x = 0.0;
+		double pixel_y = 0.0;
+
+		const auto has_focal = read_listed_number(listing, 0x920a, focal_length) && focal_length > 0.0;
+		const auto has_focal_35 = read_listed_number(listing, 0xa405, focal_35) && focal_35 > 0.0;
+		const auto has_f_number = read_listed_number(listing, 0x829d, f_number) && f_number > 0.0;
+		const auto has_exposure = read_listed_number(listing, 0x829a, exposure) && exposure > 0.0;
+		const auto has_pixels = read_listed_number(listing, 0xa002, pixel_x) &&
+			read_listed_number(listing, 0xa003, pixel_y) && pixel_x > 0.0 && pixel_y > 0.0;
+
+		const auto crop = (has_focal && has_focal_35) ? focal_35 / focal_length : 0.0;
+
+		if (crop > 0.0)
+		{
+			auto& row = rows.emplace_back("Crop factor"s, std::format("{:.2f}x", crop));
+			row.shape = "focal.35 / focal";
+		}
+
+		if (has_focal_35)
+		{
+			const auto fov = to_degrees(2.0 * std::atan(36.0 / (2.0 * focal_35)));
+			auto& row = rows.emplace_back("Field of view"s, std::format("{:.1f}\u00b0 horizontal", fov));
+			row.shape = "36mm / focal.35";
+		}
+
+		const auto coc = crop > 0.0 ? 0.03 / crop : 0.0;
+
+		if (coc > 0.0)
+		{
+			auto& row = rows.emplace_back("Circle of confusion"s, std::format("{:.3f} mm", coc));
+			row.shape = "0.03mm / crop";
+		}
+
+		if (coc > 0.0 && has_f_number)
+		{
+			const auto hyperfocal = (focal_length * focal_length) / (f_number * coc) + focal_length;
+			auto& row = rows.emplace_back("Hyperfocal distance"s, std::format("{:.2f} m", hyperfocal / 1000.0));
+			row.shape = "focal2 / (fnumber x coc)";
+		}
+
+		if (has_f_number && has_exposure)
+		{
+			const auto light_value = 2.0 * std::log2(f_number) - std::log2(exposure);
+			auto& row = rows.emplace_back("Light value"s, std::format("{:.1f} EV", light_value));
+			row.shape = "aperture + shutter, ISO 100";
+		}
+
+		if (has_pixels)
+		{
+			const auto megapixels = (pixel_x * pixel_y) / 1'000'000.0;
+			auto& row = rows.emplace_back("Megapixels"s, std::format("{:.1f} MP", megapixels));
+			row.shape = "width x height";
+		}
+
+		if (!rows.empty())
+		{
+			auto& section = result.emplace_back(std::format("Derived ({})", rows.size()), std::string{});
+			section.container = true;
+			section.id = "exif.derived";
+
+			auto index = 0;
+
+			for (auto& row : rows)
+			{
+				row.depth = 1;
+				row.id = std::format("exif.derived.{}", index++);
+				result.emplace_back(std::move(row));
+			}
+		}
+	}
+
+	if (!listing.thumbnail.empty())
+	{
+		auto& row = result.emplace_back("Embedded thumbnail"_c, std::format("{} bytes", listing.thumbnail.size()));
+		row.id = "exif.thumbnail";
+		row.shape = "binary"_c;
+		// The whole payload is kept rather than a hex-sized prefix: a truncated image cannot decode.
+		constexpr size_t max_embedded_image_bytes = 8_z * 1024_z * 1024_z;
+		const auto kept = std::min<size_t>(listing.thumbnail.size(), max_embedded_image_bytes);
+		row.detail = metadata_binary_detail{
+			std::vector<uint8_t>(listing.thumbnail.begin(), listing.thumbnail.begin() + kept), true
+		};
+	}
+
+	return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// IPTC metadata. libfiles reads the datasets, and its one table maps captions, keywords, by-lines,
+// copyright, places and dates onto an item's properties; this lists the datasets for display.
+
+metadata_kv_list metadata_iptc::to_info(const std::span<const uint8_t> cs)
+{
+	metadata_kv_list result;
+
+	for (auto& entry : libfiles::list_iptc(cs))
+	{
+		result.emplace_back(std::move(entry.title), std::move(entry.value));
+	}
+
+	return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// XMP (Extensible Metadata Platform) support. Maps Diffractor's edits into XMP packets, whose data model
+// is libfiles', and reads and writes the packets in files with libfiles. What an item takes from a packet
+// is libfiles' one table.
+
+namespace xmp_ns = libfiles::xmp::ns;
 
 static df::file_path s_test_raw_source_xmp_path;
 static df::blob s_test_raw_source_xmp;
@@ -47,493 +446,6 @@ static void record_xmp_error(const std::string_view context, const std::string_v
 {
 	df::bump(df::file_perf.metadata_errors);
 	df::log_once(context, message);
-}
-
-static df::date_t xmp_parse_date(const std::string_view str)
-{
-	if (!str.empty())
-	{
-		df::date_t ft;
-		ft.parse_xml_date(str);
-
-		if (ft.is_valid())
-		{
-			return ft;
-		}
-	}
-
-	return {};
-}
-
-// parse_xml_date reads the digits and drops the zone, so the caller has to recover it. Without
-// this an XMP date ending in Z is filed as a local reading and lands an hour or more away from the
-// container date it is meant to agree with, which then reads as two dates instead of one.
-static int16_t xmp_date_offset(const std::string_view str)
-{
-	return prop::parse_utc_offset(str);
-}
-
-static bool xmp_parse_coordinate_part(const std::string_view text, double& result)
-{
-	if (text.empty()) return false;
-	const auto* const begin = text.data();
-	const auto* const end = begin + text.size();
-	const auto parsed = std::from_chars(begin, end, result);
-	return parsed.ec == std::errc{} && parsed.ptr == end && result >= 0.0;
-}
-
-static bool xmp_decode_gps_coordinate(const std::string_view str, const bool is_latitude, double& result)
-{
-	const auto text = str::trim(str);
-	const auto len = text.size();
-	if (len < 4) return false;
-
-	// DDD,MM,SSk
-	// DDD,MM.mmk
-
-	// Key:
-	// DDD = number of degrees
-	// MM = number of minutes
-	// SS = number of seconds
-	// mm = fraction of minutes
-	// k = {N/S/E/W}
-
-	const auto hemisphere = text[len - 1];
-	const auto north = hemisphere == 'N' || hemisphere == 'n';
-	const auto south = hemisphere == 'S' || hemisphere == 's';
-	const auto east = hemisphere == 'E' || hemisphere == 'e';
-	const auto west = hemisphere == 'W' || hemisphere == 'w';
-
-	if (is_latitude ? !(north || south) : !(east || west)) return false;
-
-	const auto body = text.substr(0, len - 1);
-	const auto first_comma = body.find(',');
-	if (first_comma == std::string_view::npos) return false;
-
-	const auto second_comma = body.find(',', first_comma + 1);
-	if (second_comma != std::string_view::npos && body.find(',', second_comma + 1) != std::string_view::npos)
-		return false;
-
-	double degrees = 0.0;
-	double minutes = 0.0;
-	double seconds = 0.0;
-
-	if (!xmp_parse_coordinate_part(body.substr(0, first_comma), degrees)) return false;
-
-	if (second_comma == std::string_view::npos)
-	{
-		if (!xmp_parse_coordinate_part(body.substr(first_comma + 1), minutes)) return false;
-	}
-	else
-	{
-		if (!xmp_parse_coordinate_part(body.substr(first_comma + 1, second_comma - first_comma - 1), minutes))
-			return false;
-		if (!xmp_parse_coordinate_part(body.substr(second_comma + 1), seconds)) return false;
-	}
-
-	if (minutes >= 60.0 || seconds >= 60.0) return false;
-
-	const auto coordinate = gps_coordinate::dms_to_decimal(degrees, minutes, seconds);
-	const auto signed_coordinate = (south || west) ? -coordinate : coordinate;
-	const auto candidate = is_latitude ? gps_coordinate(signed_coordinate, 0.0) : gps_coordinate(0.0, signed_coordinate);
-
-	if (!candidate.is_valid()) return false;
-	result = signed_coordinate;
-	return true;
-}
-
-static bool xmp_decode_rational(const std::string_view text, metadata_exif::urational32_t& result)
-{
-	const auto len = text.size();
-	unsigned long locNum = 0, locDenom = 0;
-	char nextChar = 0; // Used to make sure sscanf consumes all of the string.
-	const auto* const sz = std::bit_cast<const char*>(text.data());
-
-	const int items = _snscanf_s(sz, len, "%lu/%lu%c", &locNum, &locDenom, &nextChar, 1);
-	// AUDIT: This is safe, check the calls.
-
-	if (items != 2)
-	{
-		if (items != 1) return false;
-		locDenom = 1; // The XMP was just an integer, assume a denominator of 1.
-	}
-
-	// Protect against division by zero
-	if (locDenom == 0)
-	{
-		return false;
-	}
-
-	result.numerator = locNum;
-	result.denominator = locDenom;
-	return true;
-}
-
-std::string microsoft_photo_prefix;
-
-// xmp:Rating is -1 (rejected) through 5. Anything else came from a broken writer.
-static int xmp_safe_rating(const int r)
-{
-	return std::clamp(r, -1, 5);
-}
-
-static str::cached xmp_load_array(const libfiles::xmp::meta& xmp, const std::string_view schema_ns,
-                                  const std::string_view array_name)
-{
-	str::cached result = {};
-	const auto count = xmp.count_array_items(schema_ns, array_name);
-
-	if (count > 0)
-	{
-		std::vector<std::string> parts;
-		parts.reserve(count);
-
-		for (auto i = 0; i < count; i++)
-		{
-			std::string str;
-
-			if (xmp.get_array_item(schema_ns, array_name, i + 1, &str))
-			{
-				parts.emplace_back(str::utf8_cast(str));
-			}
-		}
-
-		if (!parts.empty())
-		{
-			result = str::cache(str::combine(parts));
-		}
-	}
-
-	return result;
-}
-
-// Google's photo sphere namespace, which is what a phone panorama mode and most stitchers write.
-// It is not one the toolkit knows, so it is registered at startup before any file is parsed.
-constexpr auto ns_gpano = "http://ns.google.com/photos/1.0/panorama/";
-
-// Records what the file itself declares, never what its shape suggests. `UsePanoramaViewer` and the
-// cropped-area properties are read only to answer "is this a panorama" for a writer that omitted
-// ProjectionType; a file carrying none of them is not one.
-static void read_panorama_projection(const libfiles::xmp::meta& xmp, prop::item_metadata& md)
-{
-	std::string utf8;
-
-	if (xmp.get_property(ns_gpano, "ProjectionType", &utf8))
-	{
-		const auto text = str::trim(str::utf8_cast(utf8));
-
-		if (str::icmp(text, "equirectangular") == 0)
-		{
-			md.panorama = prop::panorama_projection::equirectangular;
-			return;
-		}
-
-		if (str::icmp(text, "cylindrical") == 0)
-		{
-			md.panorama = prop::panorama_projection::cylindrical;
-			return;
-		}
-
-		if (!text.empty())
-		{
-			md.panorama = prop::panorama_projection::unspecified;
-			return;
-		}
-	}
-
-	for (const auto* const declares_panorama : {
-		     "UsePanoramaViewer", "FullPanoWidthPixels", "CroppedAreaImageWidthPixels"
-	     })
-	{
-		if (xmp.get_property(ns_gpano, declares_panorama, &utf8))
-		{
-			md.panorama = prop::panorama_projection::unspecified;
-			return;
-		}
-	}
-}
-
-static void parse_xmp(const libfiles::xmp::meta& xmp, prop::item_metadata& md)
-{
-	std::string utf8;
-
-	if (xmp.get_property(xmp_ns::photoshop, "DateCreated", &utf8))
-	{
-		const auto text = str::utf8_cast(utf8);
-		const auto d = xmp_parse_date(text);
-		if (d.is_valid()) md.dates.add(prop::date_source::photoshop_created, d, xmp_date_offset(text));
-	}
-
-	if (xmp.get_property(xmp_ns::xmp, "CreateDate", &utf8))
-	{
-		const auto text = str::utf8_cast(utf8);
-		const auto d = xmp_parse_date(text);
-
-		if (d.is_valid())
-		{
-			md.dates.add(prop::date_source::xmp_create, d, xmp_date_offset(text));
-		}
-		else if (str::is_num(text))
-		{
-			md.year = str::to_int(text);
-		}
-	}
-
-	if (xmp.get_property(xmp_ns::xmp, "ModifyDate", &utf8))
-	{
-		const auto text = str::utf8_cast(utf8);
-		const auto d = xmp_parse_date(text);
-		if (d.is_valid()) md.dates.add(prop::date_source::xmp_modify, d, xmp_date_offset(text));
-	}
-
-	if (xmp.get_property(xmp_ns::exif, "DateTimeDigitized", &utf8))
-	{
-		const auto text = str::utf8_cast(utf8);
-		const auto d = xmp_parse_date(text);
-		if (d.is_valid()) md.dates.add(prop::date_source::xmp_exif_digitized, d, xmp_date_offset(text));
-	}
-
-	if (xmp.get_property(xmp_ns::exif, "DateTimeOriginal", &utf8))
-	{
-		const auto text = str::utf8_cast(utf8);
-		const auto d = xmp_parse_date(text);
-		if (d.is_valid()) md.dates.add(prop::date_source::xmp_exif_original, d, xmp_date_offset(text));
-	}
-
-	// A coordinate that failed to decode must not be applied - a zeroed half pins the item to the
-	// Gulf of Guinea instead of leaving the location unknown. Applied as a pair for the same reason:
-	// a file carrying only one XMP component would otherwise keep the other from EXIF, pinning the
-	// item to a coordinate neither source states.
-	{
-		double latitude = 0;
-		double longitude = 0;
-
-		const auto has_latitude = xmp.get_property(xmp_ns::exif, "GPSLatitude", &utf8) &&
-			xmp_decode_gps_coordinate(str::utf8_cast(utf8), true, latitude);
-		const auto has_longitude = xmp.get_property(xmp_ns::exif, "GPSLongitude", &utf8) &&
-			xmp_decode_gps_coordinate(str::utf8_cast(utf8), false, longitude);
-
-		if (has_latitude && has_longitude)
-		{
-			const gps_coordinate candidate(latitude, longitude);
-			if (candidate.is_valid()) md.coordinate = candidate;
-		}
-	}
-
-	if (xmp.get_property(xmp_ns::photoshop, "City", &utf8))
-	{
-		md.location_place = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::photoshop, "State", &utf8))
-	{
-		md.location_state = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::photoshop, "Country", &utf8))
-	{
-		md.location_country = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::photoshop, "Credit", &utf8))
-	{
-		md.copyright_credit = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::xmp_rights, "WebStatement", &utf8))
-	{
-		md.copyright_url = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::photoshop, "Source", &utf8))
-	{
-		md.copyright_source = str::strip_and_cache(utf8);
-	}
-
-	// Xmp is parsed last, so an absent array must not erase what Exif or Iptc supplied.
-	if (const auto creator = xmp_load_array(xmp, xmp_ns::dc, "creator"); !str::is_empty(creator))
-	{
-		md.copyright_creator = creator;
-	}
-
-	if (xmp.get_localized_text(xmp_ns::dc, "rights", "", "x-default", nullptr, &utf8))
-	{
-		md.copyright_notice = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_localized_text(xmp_ns::dc, "title", "", "x-default", nullptr, &utf8))
-	{
-		md.title = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_localized_text(xmp_ns::exif, "UserComment", "", "x-default", nullptr, &utf8))
-	{
-		md.comment = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "logComment", &utf8))
-	{
-		md.comment = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "synopsis", &utf8))
-	{
-		md.synopsis = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_localized_text(xmp_ns::dc, "description", "", "x-default", nullptr, &utf8))
-	{
-		md.description = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::xmp, "Rating", &utf8))
-	{
-		md.rating = xmp_safe_rating(str::to_int(str::utf8_cast(utf8)));
-	}
-	else if (xmp.get_property(xmp_ns::microsoft_photo, "Rating", &utf8))
-	{
-		//MicrosoftPhoto:Rating
-		md.rating = xmp_safe_rating(df::round_up(str::to_int(str::utf8_cast(utf8)), 20));
-	}
-
-	if (xmp.get_property(xmp_ns::xmp, "Label", &utf8))
-	{
-		md.label = str::strip_and_cache(utf8);
-	}
-
-	// Xmp is parsed last, so an array that is simply absent must not erase what Exif or Iptc
-	// supplied. An array that is present and empty is different: that is the file stating it has no
-	// tags, and the writer above emits exactly that for cleared tags rather than deleting the
-	// property. Reading only the non-empty case threw that statement away, so clearing every tag
-	// and rescanning brought the legacy Iptc keywords straight back.
-	if (xmp.exists(xmp_ns::dc, "subject"))
-	{
-		md.tags = xmp_load_array(xmp, xmp_ns::dc, "subject");
-	}
-
-	if (xmp.get_property(xmp_ns::tiff, "Make", &utf8))
-	{
-		md.camera_manufacturer = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::tiff, "Model", &utf8))
-	{
-		md.camera_model = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "album", &utf8))
-	{
-		md.album = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "albumArtist", &utf8))
-	{
-		md.album_artist = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "artist", &utf8))
-	{
-		md.artist = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "genre", &utf8))
-	{
-		md.genre = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "show", &utf8))
-	{
-		md.show = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "trackNumber", &utf8))
-	{
-		md.track = df::xy8::parse(str::utf8_cast(utf8));
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "discNumber", &utf8))
-	{
-		md.disk = df::xy8::parse(str::utf8_cast(utf8));
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "episode", &utf8))
-	{
-		md.episode = df::xy8::parse(str::utf8_cast(utf8));
-	}
-
-	if (xmp.get_property(xmp_ns::dm, "season", &utf8))
-	{
-		md.season = str::to_int(str::utf8_cast(utf8));
-	}
-
-	// <exif:FNumber>33/10</exif:FNumber>
-	// <exif:FocalLength>600/10</exif:FocalLength>
-	// <exif:ExposureTime>10/100</exif:ExposureTime>
-
-	if (xmp.get_property(xmp_ns::exif, "FocalLengthIn35mmFilm", &utf8))
-	{
-		metadata_exif::urational32_t r;
-
-		if (xmp_decode_rational(str::utf8_cast(utf8), r))
-		{
-			md.focal_length_35mm_equivalent = r.round();
-		}
-	}
-
-	if (xmp.get_property(xmp_ns::exif, "FNumber", &utf8))
-	{
-		metadata_exif::urational32_t r;
-
-		if (xmp_decode_rational(str::utf8_cast(utf8), r))
-		{
-			md.f_number = static_cast<float>(r.to_real());
-		}
-	}
-
-	if (xmp.get_property(xmp_ns::exif, "FocalLength", &utf8))
-	{
-		metadata_exif::urational32_t r;
-
-		if (xmp_decode_rational(str::utf8_cast(utf8), r))
-		{
-			md.focal_length = static_cast<float>(r.to_real());
-		}
-	}
-
-	if (xmp.get_property(xmp_ns::exif, "ExposureTime", &utf8))
-	{
-		metadata_exif::urational32_t r;
-
-		if (xmp_decode_rational(str::utf8_cast(utf8), r))
-		{
-			md.exposure_time = static_cast<float>(r.to_real());
-		}
-	}
-
-	if (xmp.get_property(xmp_ns::tiff, "Orientation", &utf8))
-	{
-		// An out of range value would index the rotation tables with an undefined enumerator.
-		const auto o = str::to_int(str::utf8_cast(utf8));
-		if (o >= 1 && o <= 8) md.orientation = static_cast<ui::orientation>(o);
-	}
-
-	if (xmp.get_property(xmp_ns::exif_aux, "Lens", &utf8))
-	{
-		md.lens = str::strip_and_cache(utf8);
-	}
-
-	if (xmp.get_property(xmp_ns::camera_raw, "RawFileName", &utf8))
-	{
-		md.raw_file_name = str::strip_and_cache(utf8);
-	}
-
-	read_panorama_projection(xmp, md);
-}
-
-
-void metadata_xmp::initialise()
-{
-	libfiles::xmp::register_namespace(ns_gpano, "GPano");
 }
 
 void metadata_edits::apply(libfiles::xmp::meta& meta) const
@@ -796,71 +708,17 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 // A packet from a JPEG APP1 segment still starts with its signature, which already ends in the NUL
 // that terminates the segment header.
-static std::string_view packet_text(const df::cspan xmp)
+static std::string_view packet_text(const std::span<const uint8_t> xmp)
 {
-	std::string_view text(std::bit_cast<const char*>(xmp.data), xmp.size);
+	std::string_view text(std::bit_cast<const char*>(xmp.data()), xmp.size());
 	if (text.size() > xmp_signature.size() && text.starts_with(xmp_signature)) text.remove_prefix(xmp_signature.size());
 	return text;
 }
 
-metadata_xmp::property_presence metadata_xmp::properties(const df::cspan xmp)
-{
-	property_presence result;
-
-	try
-	{
-		if (xmp.size == 0) return result;
-
-		libfiles::xmp::meta meta;
-		meta.parse(packet_text(xmp));
-
-		result.tags = meta.exists(xmp_ns::dc, "subject");
-		result.rating = meta.exists(xmp_ns::xmp, "Rating") ||
-			meta.exists(xmp_ns::microsoft_photo, "Rating");
-	}
-	catch (const std::exception& e)
-	{
-		record_xmp_error(__FUNCTION__, e.what());
-	}
-
-	return result;
-}
-
-void metadata_xmp::parse(prop::item_metadata& pd, const df::cspan xmp)
-{
-	try
-	{
-		if (xmp.size > 0)
-		{
-			libfiles::xmp::meta meta;
-			meta.parse(packet_text(xmp));
-			parse_xmp(meta, pd);
-		}
-	}
-	catch (const std::exception& e)
-	{
-		record_xmp_error(__FUNCTION__, e.what());
-	}
-}
-
-
 void metadata_xmp::parse(prop::item_metadata& pd, const df::file_path path)
 {
-	try
-	{
-		libfiles::xmp::meta xmp;
-		auto f = blob_from_file(path);
-
-		if (!f.empty())
-		{
-			xmp.parse(std::string_view(std::bit_cast<const char*>(f.data()), f.size()));
-			parse_xmp(xmp, pd);
-		}
-	}
-	catch (const std::exception& e)
-	{
-		record_xmp_error(__FUNCTION__, e.what());
-	}
+	const auto f = blob_from_file(path);
+	apply_properties(pd, libfiles::properties_from_xmp(std::span<const uint8_t>(f.data(), f.size())));
 }
 
 df::file_path probe_xmp_path(const df::file_path src_path, const std::string_view xmp_name)
@@ -890,7 +748,7 @@ static void read_panorama_geometry(const libfiles::xmp::meta& xmp, prop::panoram
 	const auto read = [&xmp](const char* const name, int& out)
 	{
 		std::int32_t value = 0;
-		if (xmp.get_property_int(ns_gpano, name, &value)) out = value;
+		if (xmp.get_property_int(xmp_ns::gpano, name, &value)) out = value;
 	};
 
 	read("FullPanoWidthPixels", g.full_width);
@@ -1617,13 +1475,13 @@ static std::string xmp_shape(const libfiles::xmp::option_bits options, const int
 	return result;
 }
 
-metadata_kv_list metadata_xmp::to_info(const df::cspan xmp)
+metadata_kv_list metadata_xmp::to_info(const std::span<const uint8_t> xmp)
 {
 	bool parsed = false;
 	return to_info(xmp, parsed);
 }
 
-metadata_kv_list metadata_xmp::to_info(const df::cspan xmp, bool& parsed)
+metadata_kv_list metadata_xmp::to_info(const std::span<const uint8_t> xmp, bool& parsed)
 {
 	metadata_kv_list result;
 	parsed = false;
@@ -1690,4 +1548,14 @@ metadata_kv_list metadata_xmp::to_info(const df::cspan xmp, bool& parsed)
 	}
 
 	return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// ICC colour profiles, which libfiles lists - the summary, header and tag directory the info pane shows -
+// as an item's metadata rows.
+
+metadata_kv_list metadata_icc::to_info(const std::span<const uint8_t> data)
+{
+	auto rows = libfiles::list_icc(data);
+	return to_metadata_kv(rows);
 }

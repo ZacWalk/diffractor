@@ -108,14 +108,12 @@ file_load_result load_raw(const df::file_path path, const bool can_load_preview)
 }
 
 file_scan_result files::scan_raw(const df::file_path path, const std::string_view xmp_sidecar, const bool load_thumb,
-                                 const sizei max, const scan_intent intent)
+                                 const sizei max, const libfiles::scan_intent intent)
 {
 	file_scan_result result;
 	raw_surface_sink sink(path);
-	auto scanned = libfiles::scan_raw(std::filesystem::path(libraw_path(path)),
-	                                  intent == scan_intent::inspect
-		                                  ? libfiles::scan_intent::inspect
-		                                  : libfiles::scan_intent::index, load_thumb ? &sink : nullptr);
+	auto scanned = libfiles::scan_raw(std::filesystem::path(libraw_path(path)), intent,
+	                                  load_thumb ? &sink : nullptr);
 
 	if (scanned.success)
 	{
@@ -152,7 +150,7 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 			result.gps._longitude = scanned.gps->longitude;
 		}
 
-		if (intent == scan_intent::inspect) result.libraw_metadata = to_metadata_kv(scanned.listing);
+		if (intent == libfiles::scan_intent::inspect) result.libraw_metadata = to_metadata_kv(scanned.listing);
 		result.success = true;
 	}
 
@@ -178,7 +176,8 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 
 	if (!str::is_empty(xmp_sidecar))
 	{
-		result.metadata.xmp = blob_from_file(path.folder().combine_file(xmp_sidecar));
+		const auto sidecar = blob_from_file(path.folder().combine_file(xmp_sidecar));
+		result.metadata.xmp.assign(sidecar.begin(), sidecar.end());
 	}
 
 	return result;

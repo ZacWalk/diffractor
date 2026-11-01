@@ -16,7 +16,6 @@
 #include "app_command_line.h"
 #include "crypto.h"
 #include "files.h"
-#include "metadata_xmp.h"
 #include "libdesktop/platform.h"
 
 #include <cstdio>
@@ -249,7 +248,6 @@ duplicate_report_anchor_stats calc_duplicate_report_anchor_stats_for_tests(
 int run_duplicate_report(const std::string_view folder_text, const std::string_view output_text)
 {
 	load_file_types();
-	metadata_xmp::initialise();
 
 	const auto folder = df::folder_path(folder_text);
 

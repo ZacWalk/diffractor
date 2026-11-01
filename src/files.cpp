@@ -6,20 +6,28 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Core file handling operations. Manages file loading, saving, and format detection
-// for images and media files. Coordinates metadata extraction across different file types, with the
-// art and the media manager's .nfo kept beside music and films, and names each type's sidecars.
+// Purpose: Diffractor's file handling over libfiles: loading, saving and format detection for images and
+// media files; the still formats libfiles names from their signatures; scanning stills, audio and video
+// onto an item, with the art and the media manager's .nfo kept beside music and films; the JPEG, PNG,
+// WebP and PSD codecs held to Diffractor's surfaces, settings and decode budget; and Commodore 64 images
+// and SID tunes. HEIF, JPEG XL and camera raw, each built only with its library, are files_heif.cpp,
+// files_jxl.cpp and files_raw.cpp.
 
 #include "pch.h"
 
-#include "app_text.h"
 #include "files.h"
-#include "metadata_exif.h"
-#include "metadata_xmp.h"
+#include "app_text.h"
 #include "av_format.h"
-#include "metadata_icc.h"
-#include "metadata_iptc.h"
+#include "av_sid.h"
+#include "metadata.h"
+#include "util_text.h"
+
+#include "libfiles/decode.h"
+#include "libfiles/encode.h"
 #include "libfiles/media.h"
+#include "libfiles/scan.h"
+
+#include "machine.h"
 
 #define LIBARCHIVE_STATIC
 #include <archive.h>
@@ -31,9 +39,13 @@
 #undef min
 #undef max
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Core file handling operations. Manages file loading, saving, and format detection for images and media
+// files. Coordinates metadata extraction across different file types, with the art and the media
+// manager's .nfo kept beside music and films, and names each type's sidecars.
 
 df_assert_move_only(file_scan_result);
-df_assert_move_only(metadata_parts);
+df_assert_move_only(libfiles::metadata_blocks);
 df_assert_movable(metadata_kv_list);
 df_assert_movable(file_load_result);
 
@@ -244,7 +256,7 @@ void load_file_types()
 		{file_group::video, "avs2", {}, {}},
 		{file_group::video, "bcstm", {}, {}},
 		{file_group::video, "bfstm", {}, {}},
-		still_file_type(detected_format::BMP),
+		still_file_type(libfiles::image_format::bmp),
 		{file_group::video, "bmv", {}, {}},
 		{file_group::video, "brstm", "Binary Revolution Stream", {}},
 		{file_group::video, "caf", {}, {}},
@@ -304,7 +316,7 @@ void load_file_types()
 		{file_group::video, "g729", {}, {}},
 		{file_group::audio, "gdm", {}, {}},
 		{file_group::video, "genh", {}, {}},
-		still_file_type(detected_format::GIF),
+		still_file_type(libfiles::image_format::gif),
 		{file_group::video, "gsm", "GSM Full Rate", {}},
 		{file_group::video, "gxf", {}, {}},
 		{file_group::video, "h261", "H.261 video", {}},
@@ -336,11 +348,11 @@ void load_file_types()
 		{file_group::photo, "jif", {}, {}},
 		{file_group::video, "jls", {}, {}},
 		{file_group::photo, "jp2", "JPEG2000", {}},
-		still_file_type(detected_format::JPEG),
+		still_file_type(libfiles::image_format::jpeg),
 		// Its metadata goes to a sidecar: nothing Diffractor uses writes a JPEG 2000 packet, and its own
 		// scan would not read one back.
 		{file_group::photo, "jpx", "Jpeg 2000", file_traits::edit},
-		still_file_type(detected_format::JXL),
+		still_file_type(libfiles::image_format::jxl),
 		{file_group::video, "jss", {}, {}},
 		{file_group::photo, "koa", {}, {}},
 		{file_group::video, "kux", {}, {}},
@@ -413,7 +425,7 @@ void load_file_types()
 			file_group::audio, "mpa,m2a", "MPEG",
 			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
 		},
-		still_file_type(detected_format::HEIF),
+		still_file_type(libfiles::image_format::heif),
 		{file_group::video, "avc1", "Advanced Video Coding", {}},
 		{file_group::audio, "mptm", {}, {}},
 		{file_group::video, "msbc", {}, {}},
@@ -459,9 +471,9 @@ void load_file_types()
 		{file_group::photo, "pict", "Apple Macintosh PICT image", {}},
 		{file_group::video, "pjs", {}, {}},
 		{file_group::audio, "plm", {}, {}},
-		still_file_type(detected_format::PNG),
+		still_file_type(libfiles::image_format::png),
 		{file_group::photo, "ppm", "Portable Pixmap", {}},
-		still_file_type(detected_format::PSD),
+		still_file_type(libfiles::image_format::psd),
 		{file_group::audio, "psm", {}, {}},
 		{file_group::video, "psp", "Paint Shop Pro image", {}},
 		{file_group::audio, "pt36", {}, {}},
@@ -518,7 +530,7 @@ void load_file_types()
 		{file_group::photo, "tga,targa", "Truevision TGA (Targa) image", {}},
 		{file_group::video, "tco", {}, {}},
 		{file_group::video, "thd", {}, {}},
-		still_file_type(detected_format::TIFF),
+		still_file_type(libfiles::image_format::tiff),
 		{file_group::photo, "cin", "Kodak Cineon Image", {}},
 		{file_group::photo, "dpx", "Digital Picture Exchange", {}},
 		{file_group::video, "tod", {}, {}},
@@ -549,7 +561,7 @@ void load_file_types()
 		{file_group::photo, "wbmp", {}, file_traits::edit},
 		{file_group::video, "web", {}, {}},
 		{file_group::video, "webm", "WebM video", {}},
-		still_file_type(detected_format::WEBP),
+		still_file_type(libfiles::image_format::webp),
 		{
 			file_group::audio, "wma", "Windows Media Audio 9",
 			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
@@ -1385,23 +1397,6 @@ bool files::is_jpeg(const std::string_view name)
 	return str::icmp(ext, ".jpg") == 0 || str::icmp(ext, ".jpeg") == 0 || str::icmp(ext, ".jpe") == 0;
 }
 
-detected_format files::detect_format(const df::cspan image_buffer_in)
-{
-	switch (libfiles::detect_image_format({image_buffer_in.data, image_buffer_in.size}))
-	{
-	case libfiles::image_format::jpeg: return detected_format::JPEG;
-	case libfiles::image_format::png: return detected_format::PNG;
-	case libfiles::image_format::webp: return detected_format::WEBP;
-	case libfiles::image_format::gif: return detected_format::GIF;
-	case libfiles::image_format::psd: return detected_format::PSD;
-	case libfiles::image_format::bmp: return detected_format::BMP;
-	case libfiles::image_format::tiff: return detected_format::TIFF;
-	case libfiles::image_format::heif: return detected_format::HEIF;
-	case libfiles::image_format::jxl: return detected_format::JXL;
-	default: return detected_format::Unknown;
-	}
-}
-
 files::files()
 {
 }
@@ -1411,7 +1406,7 @@ files::~files()
 	_scaler.reset();
 }
 
-ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface_in, const metadata_parts& metadata,
+ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
                                             const file_encode_params& params, const ui::image_format format)
 {
 	ui::const_image_ptr result;
@@ -1420,9 +1415,7 @@ ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface
 	// be written out as its luma plane read as BGRX - grey and tiled rather than a visible failure.
 	if (is_valid(surface_in) && ui::is_packed(surface_in->format()))
 	{
-		const auto dimensions = surface_in->dimensions();
 		const auto has_alpha = surface_in->format() == ui::texture_format::ARGB;
-		const auto orientation = surface_in->orientation();
 
 		if (format == ui::image_format::PNG ||
 			(format == ui::image_format::Unknown && has_alpha))
@@ -1439,10 +1432,7 @@ ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface
 		}
 		else
 		{
-			result = std::make_shared<ui::image>(
-				_jpeg_encoder.encode(dimensions.cx, dimensions.cy, surface_in->pixels(),
-				                     static_cast<uint32_t>(surface_in->stride()),
-				                     orientation, metadata, params), dimensions, ui::image_format::JPEG, orientation);
+			result = save_jpeg(surface_in, metadata, params, &_jpeg_encoder);
 		}
 	}
 
@@ -1832,7 +1822,7 @@ ui::surface_ptr files::image_to_surface(const df::cspan image_buffer_in, const s
 	{
 		if (!image_buffer_in.empty())
 		{
-			const auto* const still = find_still_format(detect_format(image_buffer_in));
+			const auto* const still = find_still_format(libfiles::detect_image_format(image_buffer_in));
 
 			if (still && still->decode)
 			{
@@ -2287,7 +2277,7 @@ static ui::image_ptr load_folder_art(const df::file_path path, const file_type_r
 
 file_scan_result files::scan_file(const df::file_path path, const bool load_thumb, const file_type_ref ft,
                                   const std::string_view xmp_sidecar, const sizei max_thumb_size,
-                                  const scan_intent intent, const bool want_image)
+                                  const libfiles::scan_intent intent, const bool want_image)
 {
 	// RAW goes through LibRaw, which opens by path itself, so a handle opened here would be a second
 	// open per file that nothing reads.
@@ -2305,7 +2295,7 @@ file_scan_result files::scan_file(const df::file_path path, const bool load_thum
 // null for RAW.
 file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path, const bool load_thumb,
                                   const file_type_ref ft, const std::string_view xmp_sidecar,
-                                  const sizei max_thumb_size, const scan_intent intent, const bool want_image)
+                                  const sizei max_thumb_size, const libfiles::scan_intent intent, const bool want_image)
 {
 	file_scan_result result;
 	df::bump(df::file_perf.scans);
@@ -2350,7 +2340,7 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 					// load_image_file re-parses the file and copies it, so it is worth it only to something
 					// that will draw or store the result.
 					if ((load_thumb || want_image) &&
-						data.size() >= sizeof(pack128) && is_image_format(detect_format(stream.peek128(0))))
+						data.size() >= sizeof(pack128) && is_image_format(libfiles::detect_image_format(stream.peek128(0))))
 					{
 						result.thumbnail_image = load_image_file(data);
 						// The same object: these bytes are the whole file, so a display that wants the
@@ -2420,7 +2410,7 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 					// An inspect scan reports the file's structure, so it is never held to the metadata budget.
 					const auto open_intent = load_thumb
 						                         ? media_intent::thumbnail
-						                         : (intent == scan_intent::index
+						                         : (intent == libfiles::scan_intent::index
 							                            ? media_intent::metadata
 							                            : media_intent::playback);
 
@@ -2460,7 +2450,8 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 				// tags/ratings/labels are shown and indexed. (#230)
 				if (result.metadata.xmp.empty() && !str::is_empty(xmp_sidecar))
 				{
-					result.metadata.xmp = blob_from_file(path.folder().combine_file(xmp_sidecar));
+					const auto sidecar = blob_from_file(path.folder().combine_file(xmp_sidecar));
+					result.metadata.xmp.assign(sidecar.begin(), sidecar.end());
 				}
 
 				// What a media manager's .nfo says of a video, when the user asks for those to be read.
@@ -2499,7 +2490,7 @@ ui::image_ptr load_image_file(df::cspan file)
 
 	if (stream.size() > 16)
 	{
-		const auto detected = files::detect_format(stream.peek128(0));
+		const auto detected = libfiles::detect_image_format(stream.peek128(0));
 
 		if (is_image_format(detected))
 		{
@@ -2512,7 +2503,7 @@ ui::image_ptr load_image_file(df::cspan file)
 
 			result = std::make_shared<ui::image>(file, info.dimensions(), format, info.orientation);
 		}
-		else if (detected != detected_format::Unknown)
+		else if (detected != libfiles::image_format::unknown)
 		{
 			files ff;
 			const auto surface = ff.image_to_surface(file, {});
@@ -2568,7 +2559,7 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 
 					if (stream.size() > 16)
 					{
-						const auto detected = detect_format(stream.peek128(0));
+						const auto detected = libfiles::detect_image_format(stream.peek128(0));
 						const auto* const still = find_still_format(detected);
 
 						if (is_image_format(detected))
@@ -2686,7 +2677,7 @@ ui::image_format extension_to_format(const std::string_view ext)
 }
 
 ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surface_ptr& surface,
-                           const metadata_parts& metadata, const file_encode_params& params)
+                           const libfiles::metadata_blocks& metadata, const file_encode_params& params)
 {
 	if (format == ui::image_format::JPEG)
 	{
@@ -2711,19 +2702,20 @@ ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surfa
 // A re-encode copies the source's Exif into the new file. An orientation reset otherwise reaches only
 // the XMP, which PNG and WebP do not mirror into the Exif they write, so the copied tag would turn the
 // upright pixels a second time. The pixel dimensions move with them.
-static metadata_parts upright_save_metadata(const metadata_parts& source, const sizei dimensions)
+static libfiles::metadata_blocks upright_save_metadata(const libfiles::metadata_blocks& source, const sizei dimensions)
 {
-	metadata_parts result;
-	result.xmp = source.xmp.clone();
-	result.iptc = source.iptc.clone();
-	result.icc = source.icc.clone();
-	result.photoshop_resources = source.photoshop_resources.clone();
+	libfiles::metadata_blocks result;
+	result.xmp = source.xmp;
+	result.iptc = source.iptc;
+	result.icc = source.icc;
+	result.photoshop = source.photoshop;
 
 	df::blob exif;
 	if (!is_exif_signature(source.exif)) exif.assign(exif_signature.begin(), exif_signature.end());
 	exif.insert(exif.end(), source.exif.begin(), source.exif.end());
 
-	result.exif = metadata_exif::fix_dims({exif.data(), exif.size()}, dimensions.cx, dimensions.cy);
+	const auto fixed = metadata_exif::fix_dims({exif.data(), exif.size()}, dimensions.cx, dimensions.cy);
+	result.exif.assign(fixed.begin(), fixed.end());
 	return result;
 }
 
@@ -2731,7 +2723,7 @@ static metadata_parts upright_save_metadata(const metadata_parts& source, const 
 // rather than the EXIF. An edited surface does not say reliably - a resize draws onto a fresh canvas -
 // so it is the orientation the file ends with: the edit's, else the EXIF's carried over, which is where
 // the other formats keep it, else the surface's, which they write when there is no EXIF.
-static ui::orientation written_orientation(const metadata_edits& edits, const metadata_parts& metadata,
+static ui::orientation written_orientation(const metadata_edits& edits, const libfiles::metadata_blocks& metadata,
                                            const ui::const_surface_ptr& surface)
 {
 	if (edits.orientation.has_value() && *edits.orientation != ui::orientation::none) return *edits.orientation;
@@ -2941,10 +2933,9 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 				if (jpeg_to_jpeg && !reencode && photo_edits.is_no_loss(dimensions_in) && params.jpeg_save_quality >= 75)
 				{
 					// Empty when the rotation would not be lossless, which the re-encode below handles.
-					transformed = _jpeg_transformer.transform(loaded.i->data(), _jpeg_encoder,
-					                                      angle_to_transform(
-						                                      df::round(photo_edits.rotation_angle())),
-					                                      &rotate_over_budget);
+					transformed = turn_jpeg_losslessly(_jpeg_transformer, _jpeg_encoder, loaded.i->data(),
+					                                   angle_to_transform(df::round(photo_edits.rotation_angle())),
+					                                   &rotate_over_budget);
 				}
 
 				if (rotate_over_budget)
@@ -2986,9 +2977,9 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 						// slider is what a conversion asks for.
 						if (jpeg_to_jpeg && !reencode) encode_params.jpeg_source = loaded.i->data();
 
-						metadata_parts save_meta;
+						libfiles::metadata_blocks save_meta;
 						const auto& source_meta = scan_result.save_metadata(save_meta);
-						metadata_parts upright_meta;
+						libfiles::metadata_blocks upright_meta;
 						const auto reset_orientation = metadata_edits.orientation.has_value() &&
 							*metadata_edits.orientation == ui::orientation::top_left && !source_meta.exif.empty();
 						if (reset_orientation)
@@ -3002,7 +2993,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 						// A JPEG XL is encoded with its packet - the edit, and what a conversion carries
 						// over - rather than encoded bare and then updated: libjxl writes the boxes in
 						// the one pass, and the metadata update below is skipped.
-						metadata_parts packet_meta;
+						libfiles::metadata_blocks packet_meta;
 						const auto encodes_packet = save_format == ui::image_format::JXL;
 
 						if (encodes_packet)
@@ -3010,10 +3001,11 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 							// Claimed first: the packet is read before the encode, and a test seam
 							// can fail it having left a byte at the stage.
 							temp_file_created = true;
-							packet_meta.exif = encode_meta.exif.clone();
-							packet_meta.icc = encode_meta.icc.clone();
-							packet_meta.xmp = metadata_xmp::encoded_packet(path_src, path_temp, metadata_edits,
-							                                               src_xmp_name);
+							packet_meta.exif = encode_meta.exif;
+							packet_meta.icc = encode_meta.icc;
+							const auto packet = metadata_xmp::encoded_packet(path_src, path_temp, metadata_edits,
+							                                                 src_xmp_name);
+							packet_meta.xmp.assign(packet.begin(), packet.end());
 							staged_with_edit = true;
 						}
 
@@ -3593,39 +3585,148 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 	}
 }
 
-const metadata_parts& file_scan_result::save_metadata(metadata_parts& fallback) const
+const libfiles::metadata_blocks& file_scan_result::save_metadata(libfiles::metadata_blocks& fallback) const
 {
 	if (metadata.exif.empty() &&
 		metadata.iptc.empty() &&
 		metadata.xmp.empty())
 	{
-		fallback.exif = metadata_exif::make_exif(to_props());
+		const auto exif = metadata_exif::make_exif(to_props());
+		fallback.exif.assign(exif.begin(), exif.end());
 		// An image whose only metadata is a colour profile still has to keep it, or a crop or
 		// resize silently reinterprets a wide gamut image as sRGB.
-		fallback.icc = metadata.icc.clone();
+		fallback.icc = metadata.icc;
 		return fallback;
 	}
 
 	return metadata;
 }
 
+static prop::date_source date_source_of(const libfiles::date_source source)
+{
+	switch (source)
+	{
+	case libfiles::date_source::exif_original: return prop::date_source::exif_original;
+	case libfiles::date_source::exif_digitized: return prop::date_source::exif_digitized;
+	case libfiles::date_source::exif_modified: return prop::date_source::exif_datetime;
+	case libfiles::date_source::exif_gps: return prop::date_source::gps_stamp;
+	case libfiles::date_source::iptc_created: return prop::date_source::iptc_created;
+	case libfiles::date_source::iptc_digitized: return prop::date_source::iptc_digital_created;
+	case libfiles::date_source::xmp_photoshop_created: return prop::date_source::photoshop_created;
+	case libfiles::date_source::xmp_create: return prop::date_source::xmp_create;
+	case libfiles::date_source::xmp_modify: return prop::date_source::xmp_modify;
+	case libfiles::date_source::xmp_exif_digitized: return prop::date_source::xmp_exif_digitized;
+	case libfiles::date_source::xmp_exif_original: return prop::date_source::xmp_exif_original;
+	}
+
+	return prop::date_source::none;
+}
+
+static prop::panorama_projection panorama_of(const libfiles::panorama_projection projection)
+{
+	switch (projection)
+	{
+	case libfiles::panorama_projection::unspecified: return prop::panorama_projection::unspecified;
+	case libfiles::panorama_projection::equirectangular: return prop::panorama_projection::equirectangular;
+	case libfiles::panorama_projection::cylindrical: return prop::panorama_projection::cylindrical;
+	case libfiles::panorama_projection::none: break;
+	}
+
+	return prop::panorama_projection::none;
+}
+
+// A date as the pack holds it: the wall clock to the 100 ns, and its zone - a UTC instant, an offset, or
+// none. One the calendar or the pack does not take is left out.
+static void add_dated(prop::item_metadata& md, const libfiles::dated& d)
+{
+	const auto& w = d.when;
+	df::date_t value;
+	if (!value.date(df::day_t{w.year, w.month, w.day, w.hour, w.minute, w.second})) return;
+	if (w.nanoseconds != 0) value = df::date_t(value.to_int64() + static_cast<uint64_t>(w.nanoseconds / 100));
+
+	const auto offset = w.zone == libfiles::date::time_zone::utc
+		                    ? prop::date_pack::utc_instant
+		                    : w.zone == libfiles::date::time_zone::offset
+		                    ? static_cast<int16_t>(w.offset_minutes)
+		                    : prop::date_pack::no_offset;
+	md.dates.add(date_source_of(d.source), value, offset);
+}
+
+void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
+{
+	using libfiles::property;
+
+	const auto text = [&p](str::cached& field, const std::string& value, const property id)
+	{
+		if (p.states(id)) field = str::cache(value);
+	};
+
+	text(md.title, p.title, property::title);
+	text(md.artist, p.artist, property::artist);
+	text(md.album, p.album, property::album);
+	text(md.album_artist, p.album_artist, property::album_artist);
+	text(md.composer, p.composer, property::composer);
+	text(md.performer, p.performer, property::performer);
+	text(md.genre, p.genre, property::genre);
+	text(md.publisher, p.publisher, property::publisher);
+	text(md.copyright_notice, p.copyright, property::copyright);
+	text(md.description, p.description, property::description);
+	text(md.synopsis, p.synopsis, property::synopsis);
+	text(md.show, p.show, property::show);
+	text(md.encoder, p.encoder, property::encoder);
+	text(md.camera_manufacturer, p.camera_make, property::camera_make);
+	text(md.camera_model, p.camera_model, property::camera_model);
+	text(md.lens, p.lens, property::lens);
+	text(md.location_place, p.city, property::city);
+	text(md.location_state, p.state, property::state);
+	text(md.location_country, p.country, property::country);
+	text(md.copyright_credit, p.credit, property::credit);
+	text(md.copyright_source, p.source, property::source);
+	text(md.copyright_url, p.copyright_url, property::copyright_url);
+	text(md.label, p.label, property::label);
+	text(md.raw_file_name, p.raw_file_name, property::raw_file_name);
+
+	if (p.states(property::comments)) md.comment = p.comments.empty() ? str::cached{} : str::cache(p.comments.front().text);
+	if (p.states(property::creators)) md.copyright_creator = str::cache(str::combine(p.creators));
+	// A tag of more than one word is quoted, so the item's tags split back into what the file named.
+	if (p.states(property::keywords)) md.tags = str::cache(str::combine(p.keywords));
+	if (p.states(property::rating) && p.rating) md.rating = static_cast<int16_t>(*p.rating);
+	if (p.states(property::year)) md.year = static_cast<uint16_t>(p.year);
+	if (p.states(property::track)) md.track = prop::number_pair(p.track, p.track_count);
+	if (p.states(property::disc)) md.disk = prop::number_pair(p.disc, p.disc_count);
+	if (p.states(property::episode)) md.episode = prop::number_pair(p.episode, p.episode_count);
+	if (p.states(property::season)) md.season = static_cast<uint16_t>(p.season);
+	if (p.states(property::f_number)) md.f_number = static_cast<float>(p.f_number);
+	if (p.states(property::exposure_time)) md.exposure_time = static_cast<float>(p.exposure_time);
+	if (p.states(property::focal_length)) md.focal_length = static_cast<float>(p.focal_length);
+	if (p.states(property::focal_length_35mm))
+		md.focal_length_35mm_equivalent = static_cast<uint16_t>(p.focal_length_35mm);
+	if (p.states(property::iso_speed)) md.iso_speed = static_cast<uint16_t>(p.iso_speed);
+	if (p.states(property::altitude) && p.altitude) md.altitude = static_cast<float>(*p.altitude);
+	if (p.states(property::speed)) md.gps_speed = static_cast<float>(p.speed);
+	if (p.states(property::orientation) && p.orientation) md.orientation = static_cast<ui::orientation>(*p.orientation);
+	if (p.states(property::panorama)) md.panorama = panorama_of(p.panorama);
+
+	// A position the index cannot hold pins the item nowhere rather than somewhere wrong.
+	if (p.states(property::location) && p.location)
+	{
+		const gps_coordinate coordinate(p.location->latitude, p.location->longitude);
+		if (coordinate.is_valid()) md.coordinate = coordinate;
+	}
+
+	for (const auto& d : p.dates) add_dated(md, d);
+}
+
 prop::item_metadata_ptr file_scan_result::to_props() const
 {
 	auto result = std::make_shared<prop::item_metadata>();
 
-	if (tiff_metadata)
-	{
-		metadata_exif::parse(*result, *tiff_metadata);
-	}
-	else if (!metadata.exif.empty())
-	{
-		metadata_exif::parse(*result, metadata.exif);
-	}
-
-	if (!metadata.iptc.empty())
-	{
-		metadata_iptc::parse(*result, metadata.iptc);
-	}
+	// A still's EXIF, then its IPTC over it, reconciled by libfiles' rule.
+	libfiles::properties blocks;
+	if (tiff_metadata) blocks = libfiles::properties_from_exif(*tiff_metadata);
+	else if (!metadata.exif.empty()) blocks = libfiles::properties_from_exif(libfiles::read_exif(metadata.exif));
+	if (!metadata.iptc.empty()) libfiles::overlay(blocks, libfiles::properties_from_iptc(libfiles::read_iptc(metadata.iptc)));
+	apply_properties(*result, blocks);
 
 	if (!ffmpeg_metadata.empty())
 	{
@@ -3643,10 +3744,8 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 		apply_nfo(*result, *nfo);
 	}
 
-	if (!metadata.xmp.empty())
-	{
-		metadata_xmp::parse(*result, metadata.xmp);
-	}
+	const auto packet = libfiles::properties_from_xmp(metadata.xmp);
+	apply_properties(*result, packet);
 
 	// Most legacy fields are 16 bit in the metadata record. High ISO and a stitched panorama past
 	// 65535 pixels exceed that, so saturate - wrapping would report a 70000 pixel stitch as 4464,
@@ -3681,17 +3780,19 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 		result->coordinate = gps;
 	}
 
-	const auto xmp_properties = metadata_xmp::properties(metadata.xmp);
-	if (!result->tags.is_empty() || (!keywords.empty() && !xmp_properties.tags) ||
-		(!windows_categories.empty() && !xmp_properties.tags))
+	// Native container keywords join the tags only where the packet does not state its own: an unrelated
+	// packet says nothing about tags, while an empty dc:subject is authoritative and must not resurrect
+	// stale native tags.
+	const auto packet_states_tags = packet.states(libfiles::property::keywords);
+	if (!result->tags.is_empty() || (!keywords.empty() && !packet_states_tags) ||
+		(!windows_categories.empty() && !packet_states_tags))
 	{
 		auto tags = split(result->tags, true);
 
 		// Native container keywords (the MP4 'KEYW' atom, or Windows Explorer /
 		// Media Player tags from the 'Xtra' atom / ASF 'WM/Category') are only merged when
-		// XMP has no dc:subject. An unrelated XMP packet says nothing about tags, while an
-		// empty dc:subject is authoritative and must not resurrect stale native tags.
-		if (!xmp_properties.tags)
+		// XMP has no dc:subject.
+		if (!packet_states_tags)
 		{
 			tags.insert(tags.end(), keywords.begin(), keywords.end());
 			tags.insert(tags.end(), windows_categories.begin(), windows_categories.end());
@@ -3876,5 +3977,1600 @@ av_media_info file_scan_result::to_info() const
 		decode_embedded_images(block.values);
 	}
 
+	return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// The still image formats libfiles names from their signatures, one entry each: the file type it
+// registers, how its header is scanned without decoding, how a file of it loads, and how in-memory bytes
+// of it decode. Scanning, loading and decoding all dispatch through this table.
+
+namespace
+{
+	ui::surface_ptr fitted(files& ff, ui::surface_ptr loaded, const still_decode_request& request)
+	{
+		return is_valid(loaded) ? ff.fit_within(std::move(loaded), request.target_extent) : ui::surface_ptr{};
+	}
+
+	// These decoders report a malformed file by throwing. The failure is logged and answered with
+	// nothing, so the caller still offers the bytes to ffmpeg.
+	template <typename Decode>
+	ui::surface_ptr decode_or_log(Decode&& decode)
+	{
+		try
+		{
+			return decode();
+		}
+		catch (const std::exception& e)
+		{
+			df::log("files::image_to_surface", e.what());
+			return {};
+		}
+	}
+
+	constexpr auto xmp_edit = file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata;
+
+	constexpr still_format s_still_formats[] = {
+		{
+			.format = libfiles::image_format::psd,
+			.extensions = "psd",
+			.description = "Adobe Photoshop Drawing",
+			.traits = xmp_edit,
+			.scan = scan_photo_libfiles,
+			.load = [](read_stream& s, load_diagnostic* const d) { return load_psd(s, d); },
+			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			{
+				mem_read_stream stream(data);
+				return fitted(ff, load_psd(stream), r);
+			},
+		},
+		{
+			.format = libfiles::image_format::gif,
+			.extensions = "gif,giff",
+			.description = "CompuServe's Graphics Interchange Format",
+			.traits = xmp_edit,
+			.scan = scan_photo_libfiles,
+		},
+		{
+			.format = libfiles::image_format::jxl,
+			.extensions = "jxl",
+			.description = "JPEG XL",
+			.traits = xmp_edit | file_traits::no_photo_edit,
+			.scan = scan_jxl_libfiles,
+			.load = [](read_stream& s, load_diagnostic* const d) { return load_jxl(s, d); },
+			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			{
+				return decode_or_log([&ff, data, &r]
+				{
+					mem_read_stream stream(data);
+					return fitted(ff, load_jxl(stream), r);
+				});
+			},
+		},
+		{
+			.format = libfiles::image_format::webp,
+			.extensions = "webp",
+			.traits = xmp_edit,
+			.encoded = ui::image_format::WEBP,
+			.scan = scan_photo_libfiles,
+			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			{
+				return decode_or_log([&ff, data, &r]
+				{
+					return fitted(ff, load_webp(data, r.can_use_yuv, r.target_extent), r);
+				});
+			},
+		},
+		{
+			.format = libfiles::image_format::jpeg,
+			.extensions = "jpeg,jpg,jpe,jfif",
+			.description = "Joint Photographic Experts Group",
+			.traits = xmp_edit,
+			.encoded = ui::image_format::JPEG,
+			.scan = scan_photo_libfiles,
+			.decode = decode_still_jpeg,
+		},
+		{
+			.format = libfiles::image_format::bmp,
+			.extensions = "bmp",
+			.description = "Microsoft Windows Bitmap",
+			.scan = scan_photo_libfiles,
+		},
+		{
+			.format = libfiles::image_format::png,
+			.extensions = "png",
+			.description = "Portable Network Graphic",
+			.traits = xmp_edit,
+			.encoded = ui::image_format::PNG,
+			.scan = scan_photo_libfiles,
+			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			{
+				return decode_or_log([&ff, data, &r] { return fitted(ff, load_png(data), r); });
+			},
+		},
+		{
+			.format = libfiles::image_format::tiff,
+			.extensions = "tiff, tif",
+			.description = "Tagged Image File Format",
+			.traits = xmp_edit,
+			.scan = scan_photo_libfiles,
+		},
+		{
+			.format = libfiles::image_format::heif,
+			.extensions = "heif, heifs, heic, heics, avci, avcs, avif, avifs",
+			.description = "High Efficiency Image File Format",
+			.traits = file_traits::embedded_xmp,
+			.scan = scan_heif_libfiles,
+			.load = [](read_stream& s, load_diagnostic* const d) { return load_heif(s, d); },
+			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			{
+				return decode_or_log([&ff, data, &r]
+				{
+					mem_read_stream stream(data);
+					return fitted(ff, load_heif(stream), r);
+				});
+			},
+		},
+	};
+}
+
+// A JPEG decodes at a reduced scale already. Planar YUV for display goes to the sampler as it is,
+// which resizes at draw time; a thumbnail is about to be encoded, so it is reduced here - and stays
+// planar, because that is the form VP8 wants.
+ui::surface_ptr decode_still_jpeg(files& ff, const df::cspan data, const still_decode_request& request)
+{
+	bool is_yuv = false;
+	auto decoded = ff.decode_jpeg(data, request.target_extent, request.can_use_yuv, {}, is_yuv, {}, request.intent);
+
+	if (!is_valid(decoded)) return {};
+
+	return is_yuv && request.intent != decode_intent::thumbnail
+		       ? std::move(decoded)
+		       : ff.fit_within(std::move(decoded), request.target_extent);
+}
+
+std::span<const still_format> still_formats()
+{
+	return s_still_formats;
+}
+
+const still_format* find_still_format(const libfiles::image_format format)
+{
+	for (const auto& f : s_still_formats)
+	{
+		if (f.format == format) return &f;
+	}
+
+	return nullptr;
+}
+
+// Every still format is a photo.
+file_type still_file_type(const libfiles::image_format format)
+{
+	const auto* const f = find_still_format(format);
+	df::assert_true(f != nullptr);
+	return f ? file_type(file_group::photo, f->extensions, f->description, f->traits) : file_type::other;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Still-image scanning. Every still format - JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and AVIF, and
+// JPEG XL - is read by libfiles, whose result is mapped onto file_scan_result here; a format adds what
+// libfiles leaves to its caller, decoding a HEIF thumbnail item or JPEG XL's Brotli. Embedded thumbnails
+// are read and decoded only for a caller that wants one.
+
+// Reached only for an embedded thumbnail whose format load_image_file cannot wrap, which needs a
+// files instance to decode. Borrows the caller's rather than building a second libjpeg context.
+static ui::surface_ptr decode_thumbnail(files* const decoder, const df::cspan data)
+{
+	if (decoder) return decoder->image_to_surface(data, {}, false, decode_intent::thumbnail);
+	files ff;
+	return ff.image_to_surface(data, {}, false, decode_intent::thumbnail);
+}
+
+metadata_kv_list to_metadata_kv(std::vector<libfiles::structure_row>& rows)
+{
+	metadata_kv_list result;
+	result.reserve(rows.size());
+
+	for (auto& row : rows)
+	{
+		auto& kv = result.emplace_back(std::move(row.key), std::move(row.value));
+		kv.shape = std::move(row.shape);
+		kv.id = std::move(row.id);
+		kv.depth = row.depth;
+		kv.container = row.container;
+		kv.open_by_default = row.open_by_default;
+
+		if (auto* const text = std::get_if<std::string>(&row.detail))
+		{
+			kv.detail = metadata_text_detail{std::move(*text)};
+		}
+		else if (auto* const bytes = std::get_if<std::vector<uint8_t>>(&row.detail))
+		{
+			kv.detail = metadata_binary_detail{std::move(*bytes)};
+		}
+		else if (auto* const table = std::get_if<libfiles::structure_table>(&row.detail))
+		{
+			kv.detail = metadata_numeric_detail{std::move(table->values), table->columns};
+		}
+	}
+
+	return result;
+}
+
+namespace
+{
+
+	// An embedded thumbnail: JPEG, PNG and WebP stay encoded, anything else recognisable is decoded.
+	void load_thumbnail(file_scan_result& result, const df::cspan data, files* const decoder)
+	{
+		const auto detected = libfiles::detect_image_format(data);
+		if (detected == libfiles::image_format::unknown) return;
+
+		if (is_image_format(detected)) result.thumbnail_image = load_image_file(data);
+		else result.thumbnail_surface = decode_thumbnail(decoder, data);
+	}
+
+	// The Exif thumbnail, when wanted, and the orientation every thumbnail takes: an Exif thumbnail is
+	// stored unrotated whatever the container did, and a decoded one needs it only where the decoder
+	// did not already apply that item's own transform.
+	void finish_with_exif(file_scan_result& result, const libfiles::byte_range thumbnail, const bool want_thumbnail,
+	                      files* const decoder)
+	{
+		if (want_thumbnail && !thumbnail.empty())
+		{
+			load_thumbnail(result, {
+				               result.metadata.exif.data() + thumbnail.offset, static_cast<size_t>(thumbnail.size)
+			               }, decoder);
+		}
+
+		if (result.thumbnail_image) result.thumbnail_image->orientation(result.orientation);
+
+		if (result.thumbnail_surface && !result.thumbnail_orientation_applied)
+		{
+			result.thumbnail_surface->orientation(result.orientation);
+		}
+
+		// The decoder already turned the pixels for a transform the container stored.
+		if (result.orientation_applied)
+		{
+			result.orientation = ui::orientation::top_left;
+		}
+	}
+}
+
+file_scan_result scan_still_libfiles(read_stream& s, const libfiles::scan_intent intent, const bool want_thumbnail,
+                                     files* const decoder, const still_scan_extras& extras)
+{
+	file_scan_result result;
+
+	if (s.size() < sizeof(pack128)) return result;
+
+	try
+	{
+		read_stream_source source(s);
+		const auto resident = s.view();
+		std::optional<libfiles::reader> r;
+
+		if (resident.empty()) r.emplace(source);
+		else r.emplace(std::span(resident.data, resident.size));
+
+		libfiles::scan_limits limits;
+		limits.jpeg_photoshop_resources = files_test_hooks::jpeg_photoshop_resource_cap();
+		limits.brotli = extras.brotli;
+
+		auto scanned = libfiles::scan(*r, intent, limits);
+
+		if (!scanned.error.empty())
+		{
+			// A fault discards the whole scan, as a throw from a scanner always has.
+			df::log(__FUNCTION__, scanned.error);
+			return result;
+		}
+
+		result.format = scanned.format;
+
+		// BMP alone names its format only once its header has been read.
+		if (scanned.format == libfiles::image_format::bmp && !scanned.success) result.format = libfiles::image_format::unknown;
+
+		result.width = scanned.width;
+		result.height = scanned.height;
+		if (!scanned.pixel_format.empty()) result.pixel_format = str::cache(scanned.pixel_format);
+		if (scanned.orientation) result.orientation = static_cast<ui::orientation>(*scanned.orientation);
+
+		result.metadata = std::move(scanned.metadata);
+		result.tiff_metadata = std::move(scanned.tiff_metadata);
+		result.structure_metadata = to_metadata_kv(scanned.structure);
+
+		// A TIFF file's own GPS position, read as an EXIF block's is.
+		if (scanned.gps)
+		{
+			const gps_coordinate coordinate(scanned.gps->latitude, scanned.gps->longitude);
+			if (coordinate.is_valid()) result.gps = coordinate;
+		}
+
+		result.success = scanned.success;
+		// A HEIF item's own rotation or mirror, which its decoder applies.
+		result.orientation_applied = scanned.container_transform;
+
+		// A thumbnail costs a read and a copy, so it is read only for a caller that wants one. The JFIF
+		// extension thumbnail stands only where the Exif one does not.
+		if (want_thumbnail)
+		{
+			if (extras.container_thumbnail) extras.container_thumbnail(s, result);
+
+			if (!scanned.jfif_thumbnail.empty())
+			{
+				const auto bytes = r->read(scanned.jfif_thumbnail.offset, static_cast<size_t>(scanned.jfif_thumbnail.size));
+				result.thumbnail_image = load_image_file({bytes.data(), bytes.size()});
+			}
+
+			if (!scanned.tiff_thumbnail.empty())
+			{
+				const auto bytes = r->read(scanned.tiff_thumbnail.offset, static_cast<size_t>(scanned.tiff_thumbnail.size));
+				if (bytes.size() > 16) load_thumbnail(result, {bytes.data(), bytes.size()}, decoder);
+			}
+		}
+
+		if (!result.metadata.exif.empty())
+		{
+			finish_with_exif(result, scanned.exif_thumbnail, want_thumbnail, decoder);
+		}
+	}
+	catch (std::exception& e)
+	{
+		df::log(__FUNCTION__, e.what());
+	}
+
+	return result;
+}
+
+file_scan_result scan_photo_libfiles(read_stream& s, const libfiles::scan_intent intent, const bool want_thumbnail,
+                                     files* const decoder)
+{
+	return scan_still_libfiles(s, intent, want_thumbnail, decoder, {});
+}
+
+file_scan_result scan_photo(read_stream& s, const libfiles::scan_intent intent, const bool want_thumbnail,
+                            files* const decoder)
+{
+	file_scan_result result;
+
+	// Empty or too small to contain a recognisable image signature.
+	if (s.size() < sizeof(pack128)) return result;
+
+	try
+	{
+		const auto* const still = find_still_format(libfiles::detect_image_format(s.peek128(0)));
+
+		if (still && still->scan)
+		{
+			result = still->scan(s, intent, want_thumbnail, decoder);
+		}
+	}
+	catch (std::exception& e)
+	{
+		df::log(__FUNCTION__, e.what());
+	}
+
+	return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Audio and video scanning. libfiles reads the container - its streams, duration, tags, XMP packet and
+// cover art - and its result is mapped here onto file_scan_result, the item's properties and the info
+// panel, in Diffractor's own terms: short codec names, a pixel format as chroma and bit depth, and the
+// audio sample type as coded. FFmpeg is opened only to decode, and to describe the streams of a file
+// libfiles cannot describe whole.
+
+namespace
+{
+	// The most cover art a scan reads into memory, as FFmpeg's attached picture was bounded by the file.
+	constexpr uint64_t max_cover_art_bytes = 16ull * 1024ull * 1024ull;
+
+	const libfiles::media_stream* first_stream(const libfiles::media_scan_result& scan,
+	                                           const libfiles::media_stream_kind kind)
+	{
+		const auto found = std::ranges::find(scan.streams, kind, &libfiles::media_stream::kind);
+		return found == scan.streams.end() ? nullptr : &*found;
+	}
+
+	// The front cover when there is one, else the first picture.
+	const libfiles::media_picture* cover_picture(const libfiles::media_scan_result& scan)
+	{
+		if (scan.pictures.empty()) return nullptr;
+		const auto front = std::ranges::find(scan.pictures, 3, &libfiles::media_picture::type);
+		return front == scan.pictures.end() ? &scan.pictures.front() : &*front;
+	}
+
+	// The container's turn and mirror, numbered as EXIF numbers an orientation, as the player reads them from
+	// FFmpeg's display matrix.
+	ui::orientation orientation_of(const libfiles::video_format& v)
+	{
+		return static_cast<ui::orientation>(v.orientation());
+	}
+
+	// The height a non-square pixel displays at, as the FFmpeg path computes it for anamorphic video.
+	uint32_t display_height(const libfiles::video_format& v)
+	{
+		const auto num = v.pixel_aspect_width;
+		const auto den = v.pixel_aspect_height;
+		if (num == 0 || den == 0 || num == den || v.width == 0 || v.height == 0) return v.height;
+		return static_cast<uint32_t>(df::mul_div(static_cast<int64_t>(v.height), static_cast<int64_t>(den),
+		                                         static_cast<int64_t>(num)));
+	}
+
+	df::date_t to_date(const libfiles::media_date& d)
+	{
+		if (!d.valid() || d.month == 0) return {};
+		return {d.year, d.month, d.day == 0 ? 1 : d.day, d.hour, d.minute, d.second};
+	}
+
+	// A date as the pack records it: an instant, a wall-clock reading at a stated offset, or one in a
+	// zone the file does not name.
+	void add_date(prop::item_metadata& result, const prop::date_source source, const libfiles::media_date& d)
+	{
+		const auto date = to_date(d);
+		if (!date.is_valid()) return;
+
+		switch (d.zone)
+		{
+		case libfiles::media_date::time_zone::utc:
+			result.dates.add_utc(source, date);
+			break;
+		case libfiles::media_date::time_zone::offset:
+			result.dates.add(source, date, static_cast<int16_t>(d.offset_minutes));
+			break;
+		case libfiles::media_date::time_zone::unstated:
+			result.dates.add(source, date);
+			break;
+		}
+	}
+
+	std::string tag_key(const libfiles::media_tag& tag)
+	{
+		if (tag.language.empty()) return tag.key;
+		return std::format("{} ({})", tag.key, tag.language);
+	}
+
+	av_stream_type to_stream_type(const libfiles::media_stream_kind kind)
+	{
+		switch (kind)
+		{
+		case libfiles::media_stream_kind::video: return av_stream_type::video;
+		case libfiles::media_stream_kind::audio: return av_stream_type::audio;
+		case libfiles::media_stream_kind::subtitle: return av_stream_type::subtitle;
+		case libfiles::media_stream_kind::data: return av_stream_type::data;
+		}
+
+		return av_stream_type::data;
+	}
+
+	// What libfiles says of a stream, over what the panel's row held.
+	void describe_stream(const libfiles::media_stream& s, av_stream_info& row)
+	{
+		if (!s.codec.empty()) row.codec = s.codec;
+		if (!s.codec_tag.empty()) row.fourcc = s.codec_tag;
+		if (!s.title.empty()) row.title = s.title;
+		if (!s.language.empty()) row.language = s.language;
+		row.is_commentary = s.commentary;
+		row.is_audio_description = s.audio_description;
+
+		if (s.kind == libfiles::media_stream_kind::video)
+		{
+			row.pixel_format = s.video.pixel_format();
+			row.profile = s.video.profile;
+			row.bit_depth = s.video.bit_depth;
+			row.hdr_transfer = std::string(s.video.hdr_transfer());
+			row.rotation = s.video.rotation;
+		}
+		else if (s.kind == libfiles::media_stream_kind::audio)
+		{
+			row.audio_sample_rate = static_cast<int>(s.audio.sample_rate);
+			row.audio_channels = static_cast<int>(s.audio.channels);
+			row.audio_sample_type = coded_sample_type(s.audio.bits_per_sample, s.audio.float_samples);
+			if (!s.audio.profile.empty()) row.profile = s.audio.profile;
+		}
+	}
+}
+
+prop::audio_sample_t coded_sample_type(const unsigned bits_per_sample, const bool float_samples)
+{
+	if (bits_per_sample == 0) return prop::audio_sample_t::none;
+	if (float_samples) return bits_per_sample > 32 ? prop::audio_sample_t::signed_double : prop::audio_sample_t::signed_float;
+	if (bits_per_sample <= 8) return prop::audio_sample_t::unsigned_8bit;
+	if (bits_per_sample <= 16) return prop::audio_sample_t::signed_16bit;
+	if (bits_per_sample <= 24) return prop::audio_sample_t::signed_24bit;
+	if (bits_per_sample <= 32) return prop::audio_sample_t::signed_32bit;
+	return prop::audio_sample_t::signed_64bit;
+}
+
+media_scan_read scan_media_file(const platform::file_ptr& f, const libfiles::scan_intent intent, const bool want_cover_art)
+{
+	media_scan_read result;
+	if (!f) return result;
+
+	try
+	{
+		platform_file_stream stream(f);
+		libfiles::reader r(stream);
+		auto scan = std::make_shared<libfiles::media_scan_result>(libfiles::scan_media(r, intent));
+
+		// A format libfiles does not read is FFmpeg's to describe, which is no fault.
+		if (!scan->error.empty() && scan->format != libfiles::media_format::unknown)
+		{
+			df::log(__FUNCTION__, scan->error);
+		}
+
+		if (want_cover_art && scan->success)
+		{
+			if (const auto* const picture = cover_picture(*scan))
+			{
+				if (!picture->data.empty())
+				{
+					result.cover_art.assign(picture->data.begin(), picture->data.end());
+				}
+				else if (!picture->location.empty() && picture->location.size <= max_cover_art_bytes &&
+					r.contains(picture->location.offset, picture->location.size))
+				{
+					const auto bytes = r.read(picture->location.offset, static_cast<size_t>(picture->location.size));
+					result.cover_art.assign(bytes.begin(), bytes.end());
+				}
+			}
+		}
+
+		result.scan = std::move(scan);
+	}
+	catch (const std::exception& e)
+	{
+		df::log(__FUNCTION__, e.what());
+	}
+
+	// FFmpeg reads the handle from where it stands, so a decoder opened next must find it at the start.
+	f->seek(0, platform::file::whence::begin);
+	return result;
+}
+
+void apply_media_scan(file_scan_result& result, media_scan_read&& read, const bool stream_facts)
+{
+	if (!read.scan || !read.scan->success) return;
+
+	const auto& scan = *read.scan;
+	result.metadata.xmp.assign(scan.xmp.begin(), scan.xmp.end());
+	if (!read.cover_art.empty()) result.cover_art = load_image_file(read.cover_art);
+
+	if (stream_facts)
+	{
+		result.nb_streams = static_cast<uint32_t>(scan.streams.size());
+		result.duration = df::round(scan.duration);
+		if (scan.bit_rate > 0) result.bitrate = str::cache(prop::format_bit_rate(static_cast<int64_t>(scan.bit_rate)));
+
+		if (const auto* const v = first_stream(scan, libfiles::media_stream_kind::video))
+		{
+			if (!v->codec.empty()) result.video_codec = str::cache(v->codec);
+			result.width = v->video.width;
+			result.height = display_height(v->video);
+			if (const auto name = v->video.pixel_format(); !name.empty()) result.pixel_format = str::cache(name);
+			result.orientation = orientation_of(v->video);
+		}
+
+		if (const auto* const a = first_stream(scan, libfiles::media_stream_kind::audio))
+		{
+			if (!a->codec.empty()) result.audio_codec = str::cache(a->codec);
+			result.audio_sample_rate = static_cast<int>(a->audio.sample_rate);
+			result.audio_channels = static_cast<int>(a->audio.channels);
+			result.audio_sample_type = coded_sample_type(a->audio.bits_per_sample, a->audio.float_samples);
+		}
+	}
+
+	result.media = std::move(read.scan);
+}
+
+void file_scan_result::parse_media_properties(prop::item_metadata& result) const
+{
+	const auto& p = media->properties;
+
+	const auto set = [](str::cached& to, const std::string& value)
+	{
+		if (!value.empty()) to = str::strip_and_cache(value);
+	};
+
+	set(result.album, p.album);
+	set(result.show, p.show);
+	set(result.album_artist, p.album_artist);
+	set(result.artist, p.artist);
+	set(result.description, p.description);
+	set(result.composer, p.composer);
+	set(result.copyright_notice, p.copyright);
+	set(result.encoder, p.encoder);
+	set(result.genre, p.genre);
+	set(result.publisher, p.publisher);
+	set(result.synopsis, p.synopsis);
+	set(result.title, p.title);
+	set(result.camera_manufacturer, p.camera_make);
+	set(result.camera_model, p.camera_model);
+	set(result.performer, p.performer);
+
+	// One comment is shown: an untagged one first, then one in the UI language, then any other.
+	// Every comment stays in the info panel's tags.
+	auto comment_priority = 0;
+
+	for (const auto& c : p.comments)
+	{
+		const auto priority = c.language.empty() ? 3 : language_matches_ui(c.language, setting.language) ? 2 : 1;
+
+		if (priority > comment_priority && !str::is_empty(c.text))
+		{
+			comment_priority = priority;
+			result.comment = str::strip_and_cache(c.text);
+		}
+	}
+
+	if (p.year != 0) result.year = p.year;
+	if (p.track != 0) result.track = prop::number_pair(p.track, p.track_count);
+	if (p.disc != 0) result.disk = prop::number_pair(p.disc, p.disc_count);
+
+	// An iTunes film (stik 9) is no episode, whatever tvsn and tves it was left with.
+	if (p.media_kind != 9)
+	{
+		if (p.season != 0) result.season = static_cast<uint16_t>(std::clamp(p.season, 0, 9999));
+		if (p.episode != 0) result.episode = prop::number_pair(p.episode, 0);
+	}
+
+	if (p.rating) result.rating = std::clamp(*p.rating, 0, 5);
+
+	add_date(result, prop::date_source::container_created, p.created);
+	if (p.created.valid() && p.created.year > 1800 && p.created.year < 2100 && prop::is_null(result.year)) result.year = p.created.year;
+
+	// A tag giving only a year - ©day "1998", TYER, WM/Year - dates its track or film to that year, rather than
+	// leaving it to the day the file was copied.
+	const auto year_only = p.created.valid() ? (p.created.month == 0 ? p.created.year : 0) : p.year;
+	if (year_only > 1800 && year_only < 2100) result.dates.add(prop::date_source::container_created, df::date_t(year_only, 1, 1, 0, 0, 0));
+
+	if (p.original_release.valid())
+	{
+		if (p.original_release.month == 0)
+		{
+			if (p.original_release.year > 1800 && p.original_release.year < 2100)
+				result.dates.add(prop::date_source::id3_original_release, df::date_t(p.original_release.year, 1, 1, 0, 0, 0));
+		}
+		else
+		{
+			add_date(result, prop::date_source::id3_original_release, p.original_release);
+		}
+	}
+
+	// A rip tag is a wall-clock reading: nobody wrote a zone for it.
+	for (const auto& tag : media->tags)
+	{
+		if (str::icmp(tag.key, "TXXX:Rip date") == 0)
+		{
+			const auto date = df::date_t::from(tag.value);
+			if (date.is_valid()) result.dates.add(prop::date_source::rip_date, date);
+		}
+	}
+
+	for (const auto& k : p.keywords)
+	{
+		if (!k.empty()) keywords.emplace_back(str::cache(k));
+	}
+
+	if (p.location)
+	{
+		const gps_coordinate coordinate(p.location->latitude, p.location->longitude);
+		if (coordinate.is_valid()) gps = coordinate;
+	}
+}
+
+void add_media_blocks(const libfiles::media_scan_result& scan, av_media_info& info, const bool with_xmp)
+{
+	metadata_kv_list tags;
+
+	for (const auto& tag : scan.tags)
+	{
+		tags.emplace_back(tag_key(tag), tag.value);
+	}
+
+	if (!tags.empty()) info.metadata.emplace_back(metadata_standard::media, std::move(tags));
+
+	if (with_xmp && !scan.xmp.empty())
+	{
+		bool parsed = false;
+		const df::cspan packet{scan.xmp.data(), scan.xmp.size()};
+		auto kv = metadata_xmp::to_info(packet, parsed);
+
+		constexpr size_t max_raw_bytes = 256 * 1024;
+		std::string raw(std::bit_cast<const char*>(scan.xmp.data()), std::min(scan.xmp.size(), max_raw_bytes));
+		info.metadata.emplace_back(metadata_standard::xmp, std::move(kv), scan.xmp.size(), parsed, std::move(raw));
+	}
+
+	if (!scan.structure.empty())
+	{
+		auto rows = scan.structure;
+		info.metadata.emplace_back(metadata_standard::structure, to_metadata_kv(rows));
+	}
+}
+
+void describe_media_streams(const libfiles::media_scan_result& scan, av_media_info& info)
+{
+	info.streams.clear();
+
+	for (size_t i = 0; i < scan.streams.size(); ++i)
+	{
+		const auto& s = scan.streams[i];
+		av_stream_info row;
+		row.index = static_cast<int>(i);
+		row.type = to_stream_type(s.kind);
+		describe_stream(s, row);
+
+		for (const auto& tag : s.tags)
+		{
+			row.metadata.emplace_back(tag_key(tag), tag.value);
+		}
+
+		info.streams.emplace_back(std::move(row));
+	}
+
+	const auto* const v = first_stream(scan, libfiles::media_stream_kind::video);
+	const auto* const a = first_stream(scan, libfiles::media_stream_kind::audio);
+	info.has_video = v != nullptr;
+	info.has_audio = a != nullptr;
+	info.has_multiple_audio_streams = std::ranges::count(scan.streams, libfiles::media_stream_kind::audio,
+	                                                     &libfiles::media_stream::kind) > 1;
+	info.bitrate = static_cast<int64_t>(scan.bit_rate);
+	info.end = scan.duration;
+
+	if (v)
+	{
+		info.video_codec = str::cache(v->codec);
+		info.pixel_format = str::cache(v->video.pixel_format());
+		info.video_frame_rate = v->video.frame_rate;
+		info.render_dimensions = {static_cast<int>(v->video.width), static_cast<int>(v->video.height)};
+		info.display_dimensions = {static_cast<int>(v->video.width), static_cast<int>(display_height(v->video))};
+		info.display_orientation = orientation_of(v->video);
+	}
+
+	if (a)
+	{
+		info.audio_codec = str::cache(a->codec);
+		info.audio_sample_rate = static_cast<int>(a->audio.sample_rate);
+		info.audio_channels = static_cast<int>(a->audio.channels);
+		info.audio_sample_type = coded_sample_type(a->audio.bits_per_sample, a->audio.float_samples);
+	}
+}
+
+void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& info, const std::vector<uint64_t>& stream_ids)
+{
+	if (!scan.success) return;
+
+	// The rows stay FFmpeg's, in its order and with its indexes, since the track menu switches streams by
+	// them; libfiles describes each row it can match. A row is matched by the container's stream number
+	// where FFmpeg's demuxer records one, and otherwise - Matroska's leaves it zero - by its place among
+	// the streams of its kind, which both read in the container's order.
+	std::map<av_stream_type, int> ordinal;
+
+	for (size_t i = 0; i < info.streams.size(); ++i)
+	{
+		auto& row = info.streams[i];
+		const auto kind_index = ordinal[row.type]++;
+		const auto id = i < stream_ids.size() ? stream_ids[i] : 0;
+		const libfiles::media_stream* match = nullptr;
+
+		if (id != 0)
+		{
+			const auto found = std::ranges::find_if(scan.streams, [&](const libfiles::media_stream& s)
+			{
+				return s.id == id && to_stream_type(s.kind) == row.type;
+			});
+			if (found != scan.streams.end()) match = &*found;
+		}
+
+		if (!match)
+		{
+			auto k = 0;
+
+			for (const auto& s : scan.streams)
+			{
+				if (to_stream_type(s.kind) != row.type) continue;
+				if (k++ == kind_index)
+				{
+					match = &s;
+					break;
+				}
+			}
+		}
+
+		if (match) describe_stream(*match, row);
+	}
+
+	if (const auto* const v = first_stream(scan, libfiles::media_stream_kind::video))
+	{
+		if (!v->codec.empty()) info.video_codec = str::cache(v->codec);
+		if (const auto name = v->video.pixel_format(); !name.empty()) info.pixel_format = str::cache(name);
+	}
+
+	if (const auto* const a = first_stream(scan, libfiles::media_stream_kind::audio))
+	{
+		if (!a->codec.empty()) info.audio_codec = str::cache(a->codec);
+		info.audio_sample_type = coded_sample_type(a->audio.bits_per_sample, a->audio.float_samples);
+	}
+
+	// The container's own tags, its packet and its structure replace what FFmpeg's demuxer made of them.
+	std::erase_if(info.metadata, [](const metadata_block& b)
+	{
+		return b.standard == metadata_standard::ffmpeg || b.standard == metadata_standard::media ||
+			b.standard == metadata_standard::xmp || b.standard == metadata_standard::structure;
+	});
+
+	add_media_blocks(scan, info, true);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// The .nfo files media managers - Kodi, Jellyfin, Emby - keep beside films and episodes: finding the ones
+// that describe a video, reading their title, show, season, episode, year, dates, plot, genres and
+// studio, and setting those over a container's tags. Read on the scanning thread, and only when the user
+// asks.
+
+namespace
+{
+	// An .nfo is a page of text at most; a file far larger is something else under the extension.
+	constexpr uint64_t max_nfo_bytes = 1024 * 1024;
+
+	struct nfo_element
+	{
+		std::string_view name;
+		std::string text;
+	};
+
+	std::string element_text(std::string_view content)
+	{
+		content = str::trim(content);
+
+		constexpr std::string_view cdata_open = "<![CDATA[";
+		constexpr std::string_view cdata_close = "]]>";
+
+		if (content.starts_with(cdata_open) && content.ends_with(cdata_close))
+		{
+			return std::string(content.substr(cdata_open.size(), content.size() - cdata_open.size() - cdata_close.size()));
+		}
+
+		return str::decode_xml_entities(content);
+	}
+
+	// The root's name and the text of each element directly inside it, in order. An element holding others - an
+	// actor's name and role, a set of ratings - is passed over whole. Only the first root is read: a file holding
+	// two episodes describes the first.
+	std::pair<std::string_view, std::vector<nfo_element>> read_nfo_elements(const std::string_view text)
+	{
+		std::string_view root;
+		std::vector<nfo_element> children;
+		std::string_view child;
+		auto child_holds_elements = false;
+		size_t content_start = 0;
+		auto depth = 0;
+		size_t i = 0;
+
+		while (i < text.size())
+		{
+			const auto open = text.find('<', i);
+			if (open == std::string_view::npos) break;
+
+			const auto skip_to = [&](const std::string_view end_marker, const size_t from)
+			{
+				const auto end = text.find(end_marker, from);
+				i = end == std::string_view::npos ? text.size() : end + end_marker.size();
+			};
+
+			if (text.substr(open, 9) == "<![CDATA[")
+			{
+				skip_to("]]>", open + 9);
+				continue;
+			}
+
+			if (text.substr(open, 4) == "<!--")
+			{
+				skip_to("-->", open + 4);
+				continue;
+			}
+
+			const auto close = text.find('>', open + 1);
+			if (close == std::string_view::npos) break;
+
+			const auto tag = text.substr(open + 1, close - open - 1);
+			i = close + 1;
+
+			if (tag.empty() || tag.front() == '?' || tag.front() == '!') continue;
+
+			if (tag.front() == '/')
+			{
+				--depth;
+
+				if (depth == 1 && !child.empty())
+				{
+					if (!child_holds_elements) children.push_back({child, element_text(text.substr(content_start, open - content_start))});
+					child = {};
+				}
+
+				if (depth <= 0) break;
+				continue;
+			}
+
+			const auto self_closing = tag.back() == '/';
+			const auto name = tag.substr(0, std::min(tag.find_first_of(" \t\r\n/"), tag.size()));
+			if (name.empty()) continue;
+
+			if (depth == 0)
+			{
+				root = name;
+				if (self_closing) break;
+				depth = 1;
+			}
+			else if (depth == 1)
+			{
+				if (self_closing) continue;
+				child = name;
+				child_holds_elements = false;
+				content_start = i;
+				depth = 2;
+			}
+			else
+			{
+				child_holds_elements = true;
+				if (!self_closing) ++depth;
+			}
+		}
+
+		return {root, std::move(children)};
+	}
+
+	int to_int(const std::string_view s, const int fallback)
+	{
+		const auto trimmed = str::trim(s);
+		auto value = fallback;
+		const auto [ptr, ec] = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), value);
+		return ec == std::errc{} ? value : fallback;
+	}
+
+	// 2019-05-01, as every media manager writes a date; or the year alone.
+	df::date_t nfo_date(const std::string_view s)
+	{
+		const auto parts = str::split(str::trim(s), false, [](const char c) { return c == '-' || c == '/'; });
+		if (parts.empty()) return {};
+
+		const auto year = to_int(parts[0], 0);
+		const auto month = parts.size() > 1 ? to_int(parts[1], 0) : 0;
+		const auto day = parts.size() > 2 ? to_int(parts[2], 0) : 0;
+
+		if (year <= 1800 || year >= 2100) return {};
+		if (month < 1 || month > 12 || day < 1 || day > 31) return df::date_t(year, 1, 1, 0, 0, 0);
+
+		const df::date_t result(year, month, day, 0, 0, 0);
+		return result.is_valid() ? result : df::date_t(year, 1, 1, 0, 0, 0);
+	}
+
+	std::string read_nfo_text(const df::file_path path)
+	{
+		const auto f = platform::open_file(path, platform::file_open_mode::read);
+		if (!f) return {};
+
+		const auto len = f->size();
+		if (len == 0 || len > max_nfo_bytes) return {};
+
+		std::string text(static_cast<size_t>(len), '\0');
+		if (f->read(std::bit_cast<uint8_t*>(text.data()), len) != len) return {};
+
+		if (text.starts_with("\xEF\xBB\xBF")) text.erase(0, 3);
+		// Media managers write UTF-8; an older one, or an .nfo edited by hand, may be in the system's code page.
+		return subtitle_text_as_utf8(text);
+	}
+
+	nfo_details read_nfo_file(const df::file_path path)
+	{
+		if (path.is_empty() || !platform::exists(path)) return {};
+		return parse_nfo(read_nfo_text(path));
+	}
+
+	// The show a season of episodes belongs to, from the tvshow.nfo in its folder or the one above. Remembered
+	// briefly, so a season scanned episode by episode reads it once.
+	std::string show_title(const df::folder_path folder)
+	{
+		static platform::mutex cache_mutex;
+		static df::folder_path cached_folder;
+		static std::string cached_title;
+		static int64_t cached_ms = 0;
+		constexpr int64_t cache_ms = 60 * 1000;
+
+		const auto now = df::now_ms();
+
+		{
+			platform::exclusive_lock lock(cache_mutex);
+			if (cached_folder == folder && now - cached_ms < cache_ms) return cached_title;
+		}
+
+		std::string title;
+
+		for (const auto candidate : {folder, folder.parent()})
+		{
+			if (candidate.is_empty()) continue;
+
+			const auto show = read_nfo_file(candidate.combine_file("tvshow.nfo"));
+
+			if (show.type == nfo_details::kind::show && !show.title.empty())
+			{
+				title = show.title;
+				break;
+			}
+		}
+
+		platform::exclusive_lock lock(cache_mutex);
+		cached_folder = folder;
+		cached_title = title;
+		cached_ms = now;
+		return title;
+	}
+}
+
+bool is_named_for_its_folder(const std::string_view stem, const std::string_view folder)
+{
+	const auto film = scan_info_from_title(stem);
+	const auto named = scan_info_from_title(folder);
+	if (film.title.empty() || str::icmp(film.title, named.title) != 0) return false;
+	return film.year == 0 || named.year == 0 || film.year == named.year;
+}
+
+nfo_details parse_nfo(const std::string_view text)
+{
+	nfo_details result;
+	const auto [root, elements] = read_nfo_elements(text);
+
+	if (str::icmp(root, "movie") == 0) result.type = nfo_details::kind::film;
+	else if (str::icmp(root, "episodedetails") == 0) result.type = nfo_details::kind::episode;
+	else if (str::icmp(root, "tvshow") == 0) result.type = nfo_details::kind::show;
+	else if (str::icmp(root, "musicvideo") == 0) result.type = nfo_details::kind::music_video;
+	else return result;
+
+	std::vector<std::string> genres;
+	std::string outline;
+
+	for (const auto& [name, value] : elements)
+	{
+		if (value.empty()) continue;
+
+		if (str::icmp(name, "title") == 0 && result.title.empty()) result.title = value;
+		else if (str::icmp(name, "showtitle") == 0 && result.show.empty()) result.show = value;
+		else if (str::icmp(name, "plot") == 0 && result.plot.empty()) result.plot = value;
+		else if (str::icmp(name, "outline") == 0 && outline.empty()) outline = value;
+		else if (str::icmp(name, "genre") == 0) genres.emplace_back(value);
+		else if (str::icmp(name, "studio") == 0 && result.studio.empty()) result.studio = value;
+		else if (str::icmp(name, "year") == 0) result.year = std::clamp(to_int(value, 0), 0, 9999);
+		else if (str::icmp(name, "season") == 0) result.season = to_int(value, -1);
+		else if (str::icmp(name, "episode") == 0) result.episode = to_int(value, -1);
+		else if ((str::icmp(name, "premiered") == 0 || str::icmp(name, "aired") == 0) && !result.released.is_valid())
+			result.released = nfo_date(value);
+	}
+
+	if (result.plot.empty()) result.plot = std::move(outline);
+	if (result.year <= 1800 || result.year >= 2100) result.year = result.released.is_valid() ? result.released.year() : 0;
+	if (result.season < 0 || result.season > 9999) result.season = -1;
+	// Episodes are kept in 16 bits.
+	if (result.episode < 0 || result.episode > 32767) result.episode = -1;
+
+	// A show's .nfo names the show as its title.
+	if (result.type == nfo_details::kind::show) result.show = result.title;
+
+	result.genre = str::combine(genres, ", ", false);
+	return result;
+}
+
+nfo_details read_video_nfo(const df::file_path video)
+{
+	const auto folder = video.folder();
+	const auto stem = video.file_name_without_extension();
+
+	auto result = read_nfo_file(folder.combine_file(std::string(stem) + ".nfo"));
+
+	if (result.is_empty() && is_named_for_its_folder(stem, folder.name()))
+	{
+		result = read_nfo_file(folder.combine_file("movie.nfo"));
+		if (result.type != nfo_details::kind::film) result = {};
+	}
+
+	// An episode's own .nfo may leave its show to the show's; an episode with none takes its show from there too.
+	const auto is_episode = result.type == nfo_details::kind::episode ||
+		(result.is_empty() && scan_info_from_title(stem).has_episode);
+
+	if (is_episode && result.show.empty())
+	{
+		auto show = show_title(folder);
+
+		if (!show.empty())
+		{
+			if (result.is_empty()) result.type = nfo_details::kind::episode;
+			result.show = std::move(show);
+		}
+	}
+
+	return result;
+}
+
+void apply_nfo(prop::item_metadata& md, const nfo_details& nfo)
+{
+	if (nfo.is_empty() || nfo.type == nfo_details::kind::show) return;
+
+	if (!nfo.title.empty()) md.title = str::strip_and_cache(nfo.title);
+	if (!nfo.plot.empty()) md.synopsis = str::strip_and_cache(nfo.plot);
+	if (!nfo.genre.empty()) md.genre = str::strip_and_cache(nfo.genre);
+	if (!nfo.studio.empty()) md.publisher = str::strip_and_cache(nfo.studio);
+	if (nfo.year != 0) md.year = static_cast<uint16_t>(nfo.year);
+
+	if (nfo.type == nfo_details::kind::episode)
+	{
+		if (!nfo.show.empty()) md.show = str::strip_and_cache(nfo.show);
+		if (nfo.season >= 0) md.season = static_cast<uint16_t>(nfo.season);
+		if (nfo.episode > 0) md.episode = prop::number_pair(nfo.episode, 0);
+	}
+
+	// A music video keeps its year but adds no date: that date is what marks a film the .nfo described.
+	if (nfo.type == nfo_details::kind::music_video) return;
+
+	if (nfo.released.is_valid()) md.dates.add(prop::date_source::media_manager, nfo.released);
+	else if (nfo.year != 0) md.dates.add(prop::date_source::media_manager, df::date_t(nfo.year, 1, 1, 0, 0, 0));
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// JPEG encoding and lossless turns through libfiles' codecs, held to Diffractor's surfaces, settings,
+// decode budget, log and errors; and the signatures of the metadata a JPEG's markers carry. libfiles also
+// decodes JPEGs and reads their structure.
+
+bool is_exif_signature(const std::span<const uint8_t> block)
+{
+	return block.size() >= exif_signature.size() && memcmp(exif_signature.data(), block.data(), exif_signature.size()) == 0;
+}
+
+static constexpr size_t default_photoshop_resource_cap = 16u * 1024u * 1024u;
+static std::atomic<size_t> s_photoshop_resource_cap{default_photoshop_resource_cap};
+
+void files_test_hooks::set_jpeg_photoshop_resource_cap(const size_t bytes)
+{
+	s_photoshop_resource_cap.store(bytes == 0 ? default_photoshop_resource_cap : bytes, std::memory_order_relaxed);
+}
+
+size_t files_test_hooks::jpeg_photoshop_resource_cap()
+{
+	return s_photoshop_resource_cap.load(std::memory_order_relaxed);
+}
+
+namespace
+{
+	// What libfiles noted - a source whose tables could not be adopted, a Photoshop resource too large for
+	// any marker - goes to the log.
+	void log_notes(const libfiles::jpeg_encoder& encoder)
+	{
+		for (const auto& note : encoder.notes()) df::log("jpeg_encoder", note);
+	}
+
+	[[noreturn]] void fail(const std::string_view where, const libfiles::encode_error& e)
+	{
+		df::log(where, e.what());
+		throw app_exception(e.what());
+	}
+}
+
+df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, libfiles::jpeg_encoder& encoder,
+                              const std::span<const uint8_t> src, const simple_transform transform,
+                              bool* const over_budget)
+{
+	if (over_budget) *over_budget = false;
+
+	try
+	{
+		// simple_transform counts from none at 0, where the EXIF orientation libfiles takes counts from 1.
+		const auto orientation = static_cast<uint16_t>(static_cast<int>(transform) + 1);
+		const auto budget = static_cast<uint64_t>(std::max<int64_t>(df::max_decode_bytes, 0));
+		const auto turned = transformer.turn(src, encoder, orientation, budget);
+
+		if (turned.over_budget)
+		{
+			df::log(__FUNCTION__, std::format("rotate of {} x {} needs {}, over the {} budget", turned.width,
+			                                  turned.height, df::file_size(turned.workspace_bytes).str(),
+			                                  df::file_size(df::max_decode_bytes).str()));
+			if (over_budget) *over_budget = true;
+		}
+
+		return df::blob(turned.data.begin(), turned.data.end());
+	}
+	catch (const libfiles::encode_error& e)
+	{
+		fail(__FUNCTION__, e);
+	}
+}
+
+ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+                        const file_encode_params& encoder_params, libfiles::jpeg_encoder* const encoder)
+{
+	const auto dimensions_in = surface_in->dimensions();
+	const auto orientation_in = surface_in->orientation();
+
+	libfiles::jpeg_options options;
+	options.quality = encoder_params.jpeg_save_quality;
+	options.source = encoder_params.jpeg_source;
+
+	std::optional<libfiles::jpeg_encoder> own;
+	auto& e = encoder ? *encoder : own.emplace();
+
+	try
+	{
+		const auto data = e.encode(dimensions_in.cx, dimensions_in.cy, surface_in->pixels(), surface_in->stride(),
+		                           static_cast<uint16_t>(orientation_in), metadata, options);
+		log_notes(e);
+
+		return std::make_shared<ui::image>(df::blob(data.begin(), data.end()),
+		                                   sizei{static_cast<int>(e.width()), static_cast<int>(e.height())},
+		                                   ui::image_format::JPEG, orientation_in);
+	}
+	catch (const libfiles::encode_error& ex)
+	{
+		log_notes(e);
+		fail(__FUNCTION__, ex);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// PNG files: decoded into a surface and encoded by libfiles, with their ICC profile, EXIF and XMP.
+
+ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata)
+{
+	if (!is_valid(surface_in)) return {};
+
+	const auto dims = surface_in->dimensions();
+
+	libfiles::image_view view;
+	view.pixels = surface_in->pixels();
+	view.stride = surface_in->stride();
+	view.width = static_cast<uint32_t>(dims.cx);
+	view.height = static_cast<uint32_t>(dims.cy);
+	// Anything but RGB is written with its fourth byte as alpha.
+	view.format = surface_in->format() == ui::texture_format::RGB
+		              ? libfiles::pixel_format::bgrx8
+		              : libfiles::pixel_format::bgra8;
+
+	try
+	{
+		auto encoded = libfiles::encode_png(view, static_cast<uint16_t>(surface_in->orientation()),
+		                                    metadata);
+
+		// libpng's warnings go to the quiet debug log rather than the console and the test output.
+		for (const auto& note : encoded.notes) df::log_once("libpng", note);
+
+		return std::make_shared<ui::image>(df::blob(encoded.data.begin(), encoded.data.end()), dims,
+		                                   ui::image_format::PNG, surface_in->orientation());
+	}
+	catch (const libfiles::encode_error& e)
+	{
+		df::log_once(__FUNCTION__, e.what());
+		throw app_exception(e.what());
+	}
+}
+
+namespace
+{
+	// A surface as the memory libfiles decodes a PNG into: every PNG as straight-alpha BGRA. Its size is
+	// judged against the decode budget before any memory is taken, as the loader always judged it.
+	class png_surface_sink final : public libfiles::image_sink
+	{
+	public:
+		ui::surface_ptr surface;
+		bool over_budget = false;
+
+		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
+		{
+			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
+
+			// The cspan decode path carries no budget gate of its own, and IHDR dimensions cost nothing to
+			// declare: a small, highly compressible PNG can otherwise ask for gigabytes.
+			if (reject_over_budget_source(nullptr, dimensions, "PNG"))
+			{
+				over_budget = true;
+				return {};
+			}
+
+			surface = std::make_shared<ui::surface>();
+			auto* const pixels = surface->alloc(dimensions, ui::texture_format::ARGB);
+			if (!pixels) return {};
+			return {pixels, surface->stride()};
+		}
+	};
+}
+
+ui::surface_ptr load_png(const df::cspan data)
+{
+	static constexpr uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+
+	if (data.size < 8 || !std::equal(std::begin(signature), std::end(signature), data.data))
+	{
+		throw app_exception("load_png invalid png header"s);
+	}
+
+	libfiles::reader r(std::span(data.data, data.size));
+	png_surface_sink sink;
+	const auto result = libfiles::decode(r, sink);
+
+	// libpng's warnings - an iTXt with a damaged CRC, say - go to the quiet debug log rather than the
+	// console, where they are still there for diagnosis.
+	for (const auto& warning : result.warnings) df::log_once("libpng", warning);
+
+	if (sink.over_budget) return {};
+
+	if (!result.error.empty())
+	{
+		if (!result.truncated) df::log_once("load_png", result.error);
+		throw app_exception(result.error);
+	}
+
+	// A surface that could not be allocated is returned empty, as it always was.
+	if (sink.surface) sink.surface->orientation(static_cast<ui::orientation>(result.frame.orientation));
+	return sink.surface;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// WebP files: still images decoded into a surface and encoded by libfiles, with their ICC profile, EXIF
+// and XMP.
+
+void files_test_hooks::fail_next_webp_chunk(const std::string_view fourcc)
+{
+	libfiles::test_hooks::fail_next_webp_chunk(fourcc);
+}
+
+namespace
+{
+	// A surface as the memory libfiles decodes a WebP into. Its size is judged against the decode budget
+	// before any memory is taken: the source's, because that is what a hostile file declares, and
+	// libwebp's 16383-pixel edge still permits a ~1 GB surface.
+	class webp_surface_sink final : public libfiles::image_sink
+	{
+	public:
+		ui::surface_ptr surface;
+
+		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
+		{
+			const sizei source{static_cast<int>(frame.source_width), static_cast<int>(frame.source_height)};
+			if (reject_over_budget_source(nullptr, source, "WEBP")) return {};
+
+			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
+			auto s = std::make_shared<ui::surface>();
+			uint8_t* pixels = nullptr;
+
+			if (frame.format == libfiles::pixel_format::nv12)
+			{
+				// libfiles crops an odd edge, as decode_jpeg does, so an odd-sized image still reaches the
+				// GPU as NV12: a 320x213 thumbnail would otherwise cost 4 bytes a pixel rather than 1.5.
+				pixels = s->alloc(dimensions, ui::texture_format::NV12);
+				s->color_space(frame.limited_range ? ui::color_space::rec601_limited : ui::color_space::rec601_full);
+			}
+			else
+			{
+				// Opaque images decode into the ignored X byte, so tag them RGB and let the renderer skip
+				// blending.
+				pixels = s->alloc(dimensions, frame.format == libfiles::pixel_format::bgra8
+					                              ? ui::texture_format::ARGB
+					                              : ui::texture_format::RGB);
+			}
+
+			if (!pixels) return {};
+			surface = std::move(s);
+			return {pixels, surface->stride()};
+		}
+	};
+}
+
+// libwebp rescales inside the decoder, so a reduced decode comes back at the size the caller asked for
+// rather than at the file's size with a downscale still owed: the size ui::scale_dimensions gives, which
+// files::fit_within uses, so it is a drop-in for decode-then-scale. NV12 is the caller's choice, and a
+// reduced decode is packed regardless: NV12 exists to hand the renderer native planes.
+ui::surface_ptr load_webp(const df::cspan data, const bool can_use_yuv, const sizei target_extent)
+{
+	libfiles::reader r(std::span(data.data, data.size));
+	webp_surface_sink sink;
+
+	libfiles::decode_options options;
+	options.target_width = static_cast<uint32_t>(std::max(0, target_extent.cx));
+	options.target_height = static_cast<uint32_t>(std::max(0, target_extent.cy));
+	options.allow_nv12 = can_use_yuv;
+
+	const auto result = libfiles::decode(r, sink, options);
+	if (!result.success) return {};
+
+	sink.surface->orientation(static_cast<ui::orientation>(result.frame.orientation));
+	return sink.surface;
+}
+
+ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+                        const file_encode_params& params)
+{
+	if (!is_valid(surface_in)) return {};
+
+	const auto dimensions = surface_in->dimensions();
+	const auto cs = surface_in->color_space();
+
+	libfiles::image_view view;
+	view.pixels = surface_in->pixels();
+	view.stride = surface_in->stride();
+	view.width = static_cast<uint32_t>(dimensions.cx);
+	view.height = static_cast<uint32_t>(dimensions.cy);
+
+	switch (surface_in->format())
+	{
+	case ui::texture_format::RGB:
+		view.format = libfiles::pixel_format::bgrx8;
+		break;
+	case ui::texture_format::ARGB:
+		view.format = libfiles::pixel_format::bgra8;
+		break;
+	case ui::texture_format::NV12:
+		// Only the matrix VP8 assumes: a rec709 or rec2020 frame would be encoded as if it were 601.
+		if (cs != ui::color_space::rec601_full && cs != ui::color_space::rec601_limited) return {};
+		view.format = libfiles::pixel_format::nv12;
+		view.limited_range = cs == ui::color_space::rec601_limited;
+		break;
+	default:
+		return {};
+	}
+
+	libfiles::webp_options options;
+	options.lossless = params.webp_lossless;
+	options.quality = params.webp_quality;
+	options.lossy_alpha = params.webp_lossy_alpha;
+	options.fast = params.webp_fast;
+
+	const auto encoded = libfiles::encode_webp(view, static_cast<uint16_t>(surface_in->orientation()),
+	                                           metadata, options);
+	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
+	if (encoded.data.empty()) return {};
+
+	return std::make_shared<ui::image>(df::cspan(encoded.data.data(), encoded.data.size()), dimensions,
+	                                   ui::image_format::WEBP, surface_in->orientation());
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Adobe Photoshop (PSD) files: the composite image, decoded by libfiles into a surface.
+
+namespace
+{
+	// A surface as the memory libfiles decodes into, so the image lands in it with nothing copied. Its
+	// size is judged against the decode budget before any memory is taken, as the loaders judge it.
+	class surface_sink final : public libfiles::image_sink
+	{
+		load_diagnostic* const _diagnostic;
+		const std::string_view _format;
+
+	public:
+		ui::surface_ptr surface;
+
+		surface_sink(load_diagnostic* const diagnostic, const std::string_view format) : _diagnostic(diagnostic),
+			_format(format)
+		{
+		}
+
+		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
+		{
+			if (frame.format != libfiles::pixel_format::bgrx8) return {};
+
+			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
+			if (reject_over_budget_source(_diagnostic, dimensions, _format)) return {};
+
+			auto s = std::make_shared<ui::surface>();
+			if (!s->alloc(dimensions, ui::texture_format::RGB)) return {};
+			surface = std::move(s);
+			return {surface->pixels(), surface->stride()};
+		}
+	};
+}
+
+ui::surface_ptr load_psd(read_stream& s, load_diagnostic* const diagnostic)
+{
+	read_stream_source source(s);
+	libfiles::reader r(source);
+	surface_sink sink(diagnostic, "PSD");
+	const auto result = libfiles::decode(r, sink);
+
+	// A file cut short throws, as this loader always has, so a damaged PSD is not offered to ffmpeg.
+	if (result.truncated) throw app_exception(result.error);
+	return result.success ? std::move(sink.surface) : ui::surface_ptr{};
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Commodore 64 disk, tape, cartridge and program images: the listing libfiles makes of one, drawn by
+// libfiles into a surface for the disk control's texture. And SID tunes, whose header lib8bit reads.
+
+namespace
+{
+	// "1987 System 3" and "1987-88 Ocean": a release field usually leads with its year, and the publisher
+	// follows. Anything else - "198? Unknown", "(C) Hewson" - is all publisher.
+	std::pair<int, std::string_view> split_sid_release(const std::string_view released)
+	{
+		if (released.size() >= 4 && str::is_num(released.substr(0, 4)))
+		{
+			const auto year = str::to_int(released.substr(0, 4));
+
+			if (year >= 1980 && year < 2100)
+			{
+				auto rest = released.substr(4);
+				const auto range_end = rest.find_first_not_of("-0123456789");
+				rest = range_end == std::string_view::npos ? std::string_view{} : rest.substr(range_end);
+				return {year, str::trim(rest)};
+			}
+		}
+
+		return {0, str::trim(released)};
+	}
+
+	std::string sid_address(const uint16_t address)
+	{
+		return std::format("${:04X}", address);
+	}
+}
+
+ui::const_surface_ptr files::c64_listing_surface(const libfiles::c64_listing& listing, const uint32_t fg,
+                                                 const uint32_t bg)
+{
+	if (listing.rows.empty() || listing.columns == 0) return {};
+
+	auto surface = std::make_shared<ui::surface>();
+	auto* const pixels = surface->alloc(static_cast<int>(listing.width()), static_cast<int>(listing.height()),
+	                                    ui::texture_format::RGB);
+	if (!pixels) return {};
+
+	// RGB textures upload as B8G8R8X8, the order libfiles draws in, given its colours as 0xRRGGBB. A
+	// listing is a whole number of eight-pixel cells wide, so its rows fill their stride, and no padding
+	// goes to the GPU unwritten.
+	libfiles::draw_c64_listing(listing, {pixels, surface->stride()}, ui::bgr(fg), ui::bgr(bg));
+	return surface;
+}
+
+file_scan_result files::scan_sid(const df::cspan data)
+{
+	file_scan_result result;
+	sid_tune_info info;
+	if (data.empty() || !machine::parse_sid(data.data, data.size, info)) return result;
+
+	const auto texts = read_sid_header_texts(data);
+	const auto& title = texts.title;
+	const auto& author = texts.author;
+	const auto& released = texts.released;
+	const auto [year, publisher] = split_sid_release(released);
+	const auto chip = sid_chip_name(info.chip_8580);
+
+	// Named as FFmpeg names a container's tags, so the properties are read the way every other audio
+	// file's are. The release field was once the copyright field, and its year and publisher are what a
+	// collection is browsed by. The track is the tune the file starts on, out of the tunes it holds.
+	auto& kv = result.ffmpeg_metadata;
+	if (!title.empty()) kv.emplace_back("title", title);
+	if (!author.empty()) kv.emplace_back("artist", author);
+	if (!released.empty()) kv.emplace_back("copyright", released);
+	if (year) kv.emplace_back("year", std::to_string(year));
+	if (!publisher.empty()) kv.emplace_back("publisher", std::string(publisher));
+	kv.emplace_back("track", std::format("{}/{}", info.start_song, info.songs));
+	kv.emplace_back("system", "Commodore 64");
+
+	result.duration = sid_tune_seconds;
+	result.audio_codec = str::cache(chip);
+	result.audio_sample_rate = sid_sample_rate;
+	result.audio_channels = 1;
+	result.audio_sample_type = prop::audio_sample_t::signed_16bit;
+	result.nb_streams = 1;
+
+	auto& rows = result.structure_metadata;
+	add_structure_section(rows, "SID tune", "sid.summary", true);
+	add_structure_row(rows, "Format", std::format("{} version {}", info.rsid ? "RSID" : "PSID", info.version));
+	add_structure_row(rows, "Tunes", std::format("{}, starting with {}", info.songs, info.start_song));
+	add_structure_row(rows, "Chip", std::string(chip));
+	add_structure_row(rows, "Clock", info.ntsc ? "NTSC" : "PAL");
+	add_structure_row(rows, "Load address", sid_address(info.load_address));
+	add_structure_row(rows, "Init address", sid_address(info.init_address));
+	add_structure_row(rows, "Play address",
+	                  info.play_address ? sid_address(info.play_address) : "set by the tune's own interrupt");
+	finish_structure_sections(rows);
+
+	result.success = true;
 	return result;
 }

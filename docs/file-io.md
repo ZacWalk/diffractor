@@ -165,11 +165,11 @@ surviving paths.
 
 ## Where this lives
 
-- [files_core.cpp](../src/files_core.cpp): `files::load`, `files::update`, staging, sidecars, and
+- [files.cpp](../src/files.cpp): `files::load`, `files::update`, staging, sidecars, and
   write result publication, plus archive listing.
 - [util_zip.cpp](../src/util_zip.cpp): ZIP creation, entry names, per-entry ZIP64 headers, and entry
   timestamps.
-- [files_formats.cpp](../src/files_formats.cpp): the still image formats recognised by signature,
+- [files.cpp](../src/files.cpp)'s `s_still_formats`: the still image formats recognised by signature,
   one entry each for detection, header scanning, loading, and decoding.
 - [model.cpp](../src/model.cpp), [model.h](../src/model.h) and [model_display.h](../src/model_display.h):
   `texture_state` and `display_state_t`.
@@ -179,4 +179,4 @@ surviving paths.
 - [app_util.cpp](../src/app_util.cpp): Import planning, shared companions, and write rollback.
 - libdesktop's [platform_win_wic.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_wic.cpp): pasted clipboard bitmap encoding and staged
   publication.
-- [metadata_xmp.cpp](../src/metadata_xmp.cpp): XMP packet and sidecar updates.
+- [metadata.cpp](../src/metadata.cpp): XMP packet and sidecar updates.

@@ -131,7 +131,7 @@ namespace
 	}
 }
 
-file_scan_result scan_heif_libfiles(read_stream& s, const scan_intent intent, const bool want_thumbnail,
+file_scan_result scan_heif_libfiles(read_stream& s, const libfiles::scan_intent intent, const bool want_thumbnail,
                                     files* const decoder)
 {
 	still_scan_extras extras;
@@ -139,7 +139,7 @@ file_scan_result scan_heif_libfiles(read_stream& s, const scan_intent intent, co
 
 	auto result = scan_still_libfiles(s, intent, want_thumbnail, decoder, extras);
 	// The format the signature named, whatever the scan made of the rest.
-	result.format = detected_format::HEIF;
+	result.format = libfiles::image_format::heif;
 	return result;
 }
 

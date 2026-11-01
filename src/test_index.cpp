@@ -22,9 +22,7 @@
 #include "model_postings.h"
 #include "util_crash_files_db.h"
 #include "app_util.h"
-#include "metadata_exif.h"
-#include "metadata_iptc.h"
-#include "metadata_xmp.h"
+#include "metadata.h"
 #include "ui_elements.h"
 #include "ui_map_common.h"
 

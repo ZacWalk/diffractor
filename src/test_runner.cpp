@@ -11,7 +11,6 @@
 
 #include "pch.h"
 
-#include "metadata_xmp.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 
@@ -52,7 +51,6 @@ struct console_test_registry final : test_registry
 int run_console_tests(const std::string_view test_filter)
 {
 	load_file_types();
-	metadata_xmp::initialise();
 
 	null_state_strategy ss;
 	null_async_strategy as;

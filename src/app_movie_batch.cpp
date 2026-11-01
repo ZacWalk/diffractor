@@ -18,7 +18,6 @@
 #include "app_settings.h"
 #include "app_text.h"
 #include "files.h"
-#include "metadata_xmp.h"
 #include "model_movie.h"
 #include "libdesktop/platform.h"
 #include "view_movie.h"
@@ -677,7 +676,6 @@ bool movie_batch_test_seams::project_is_skipped(const df::file_path project, con
 int run_movie_batch(const movie_batch_options& options)
 {
 	load_file_types();
-	metadata_xmp::initialise();
 
 	const auto mode = options.mode;
 	const auto* const tool = mode == movie_batch_mode::import

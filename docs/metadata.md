@@ -240,29 +240,30 @@ read on its own, never combined with an incomplete embedded declaration.
   date-sensitive conversion between UTC and local wall time.
 
 - [model_dates.h](../src/model_dates.h): date sources, retained candidates, and resolution.
-- [metadata_exif.cpp](../src/metadata_exif.cpp), [metadata_iptc.cpp](../src/metadata_iptc.cpp), and
-  [metadata_xmp.cpp](../src/metadata_xmp.cpp): standard-specific mapping and reconciliation. EXIF is
-  read by libfiles' `read_exif`, the one parser the scan and the decoders use too;
-  `metadata_exif.cpp` maps it onto an item, writes EXIF through libfiles - a fresh block with
-  `make_exif`, a turned picture's numbers with `set_exif_numbers` - and lists it with
-  `list_exif`, which reads as libexif's listing did. IPTC is read by libfiles' `read_iptc` and
-  listed by its `list_iptc`; `metadata_iptc.cpp` maps the datasets onto an item after EXIF and
-  before XMP, combining the date and time datasets and merging keywords and bylines with what EXIF
-  supplied.
-- [files_scan_media.cpp](../src/files_scan_media.cpp): an audio or video file as libfiles' media scan
+- [files.cpp](../src/files.cpp)'s `file_scan_result::to_props` and `apply_properties`: what
+  an item takes from a photo's blocks. libfiles reads EXIF, IPTC and XMP by its one table, marking
+  what each states, and reconciles EXIF and IPTC by its one rule - IPTC's keywords and by-lines
+  joining EXIF's, each whole. `to_props` applies them, then the container's and a media manager's
+  details, then the packet over all of them, and `apply_properties` is the one place libfiles'
+  properties meet an item.
+- [metadata.cpp](../src/metadata.cpp): writing and listing. `metadata_exif` writes EXIF
+  through libfiles - a fresh block with `make_exif`, a turned picture's numbers with
+  `set_exif_numbers` - and lists it with `list_exif`, which reads as libexif's listing did;
+  `metadata_iptc` lists IPTC with libfiles' `list_iptc`; and `metadata_xmp` maps
+  Diffractor's edits into the packet and writes it.
+- [files.cpp](../src/files.cpp)'s `scan_media_file`: an audio or video file as libfiles' media scan
   reads it - its streams, properties, cover art and info panel blocks, in Diffractor's own terms.
 - [model_index.cpp](../src/model_index.cpp): films, episodes and shows read from file and folder names
   (`scan_info_from_title`, `derive_name_values`), and what each collection folder holds;
-  [files_nfo.cpp](../src/files_nfo.cpp): media managers' `.nfo` files; [files_core.cpp](../src/files_core.cpp):
-  the art kept beside music and films.
+  [files.cpp](../src/files.cpp): media managers' `.nfo` files, and the art kept beside music and films.
 - [av_format.cpp](../src/av_format.cpp): what FFmpeg describes of a file libfiles cannot describe
   whole, mapped onto the same terms.
 - [model_property.cpp](../src/model_property.cpp): shared property identity and formatting.
 - [model_db_pack.h](../src/model_db_pack.h) and [model_db.cpp](../src/model_db.cpp): cached metadata
   serialization.
-- [files_core.cpp](../src/files_core.cpp) and [files_scan_photo.cpp](../src/files_scan_photo.cpp):
-  format dispatch and scan publication. Every still - JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and
-  AVIF, and JPEG XL - is scanned by [libfiles](https://github.com/ZacWalk/libfiles), whose result
-  `files_scan_photo.cpp` maps onto a `file_scan_result`; libfiles decodes a HEIF thumbnail item a scan
-  wants, and [files_jxl.cpp](../src/files_jxl.cpp) supplies the Brotli a JPEG XL's compressed boxes need,
+- [files.cpp](../src/files.cpp): format dispatch and scan publication. Every still - JPEG, PNG, WebP,
+  GIF, TIFF, PSD, BMP, HEIF and AVIF, and JPEG XL - is scanned by
+  [libfiles](https://github.com/ZacWalk/libfiles), whose result `scan_photo` maps onto a
+  `file_scan_result`; libfiles decodes a HEIF thumbnail item a scan wants, and
+  [files_jxl.cpp](../src/files_jxl.cpp) supplies the Brotli a JPEG XL's compressed boxes need,
   to its scans, packet reads and updates.
