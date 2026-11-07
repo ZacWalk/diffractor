@@ -95,6 +95,12 @@ namespace prop
 	struct item_metadata;
 	class key;
 
+	// Database-only properties, deliberately absent from the public media-property registry.
+	namespace cache
+	{
+		constexpr uint16_t faces = 0xfffe;
+	}
+
 	// The projection a file's own GPano metadata declares. Persisted in the index, so a value's
 	// meaning is fixed once assigned: retire one by leaving its number unused, never by reusing it.
 	// `none` is the answer for a file carrying no panorama projection metadata at all, so anything

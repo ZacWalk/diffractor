@@ -6,11 +6,16 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Metadata serialization for database storage. Packs and unpacks item
-// metadata into compact binary format for efficient SQLite storage.
+// Purpose: Database property serialization: public metadata and opaque, database-only cache values.
 
 #pragma once
 
+
+class metadata_property_error final : public std::runtime_error
+{
+public:
+	using std::runtime_error::runtime_error;
+};
 
 class metadata_packer
 {
@@ -68,6 +73,29 @@ public:
 			_data.push_back(val_len >> 16 & 0xff);
 			_data.push_back(val_len >> 24 & 0xff);
 		}
+	}
+
+	void write_blob(const uint16_t id, df::cspan value)
+	{
+		if (value.size > std::numeric_limits<uint32_t>::max() || (value.size && !value.data))
+			throw metadata_property_error("Invalid binary cache-property value");
+
+		df::blob owned;
+		if (value.size && !_data.empty())
+		{
+			const std::less<const uint8_t*> before;
+			if (!before(value.data, _data.data()) && before(value.data, _data.data() + _data.size()))
+			{
+				const auto offset = static_cast<size_t>(value.data - _data.data());
+				if (value.size > _data.size() - offset)
+					throw metadata_property_error("Binary cache-property value exceeds its buffer");
+				owned.assign(value.data, value.data + value.size);
+				value = owned;
+			}
+		}
+		write_prop_id(id);
+		write_len(value.size);
+		if (value.size) _data.insert(_data.end(), value.data, value.data + value.size);
 	}
 
 	template <typename T>
@@ -168,7 +196,7 @@ class metadata_unpacker
 public:
 	metadata_unpacker(const df::cspan data) : _data(data)
 	{
-		if (_data.size >= 2 && _data.data[0] == 0xFF)
+		if (_data.data && _data.size >= 2 && _data.data[0] == 0xFF)
 		{
 			_version = _data.data[1];
 		}
@@ -187,17 +215,22 @@ public:
 		return (_version == 0 || _version > metadata_packer::version) || remaining() < 2;
 	}
 
-	// The property for the next record, or prop::null when this build does not know the id.
-	prop::key_ref read_type()
+	uint16_t read_id()
 	{
 		if (at_end())
 		{
-			return prop::null;
+			return 0;
 		}
 
 		auto id = static_cast<uint16_t>(_data.data[_pos++]);
 		id |= static_cast<uint16_t>(_data.data[_pos++] << 8);
-		return prop::from_id(id);
+		return id;
+	}
+
+	// The property for the next record, or prop::null when this build does not know the id.
+	prop::key_ref read_type()
+	{
+		return at_end() ? prop::null : prop::from_id(read_id());
 	}
 
 	size_t read_len()
@@ -221,6 +254,34 @@ public:
 		}
 
 		return result;
+	}
+
+	struct property_record
+	{
+		uint16_t id;
+		df::cspan value;
+		df::cspan encoded;
+	};
+
+	// Borrowed views of complete records, for lossless cache-property edits without unpacking metadata.
+	std::optional<property_record> read_record()
+	{
+		if (_data.size == 0) return std::nullopt;
+		if (_version == 0 || _version > metadata_packer::version)
+			throw metadata_property_error("Unsupported cached-property header");
+		if (remaining() == 0) return std::nullopt;
+		if (remaining() < 3) throw metadata_property_error("Truncated cached-property record");
+
+		const auto start = _pos;
+		const auto id = read_id();
+		const auto marker = _data.data[_pos];
+		const auto length_bytes = marker == 0xff ? 3u : marker == 0xfe ? 5u : 1u;
+		if (remaining() < length_bytes) throw metadata_property_error("Truncated cached-property length");
+		const auto length = read_len();
+		if (length > remaining()) throw metadata_property_error("Truncated cached-property value");
+		const df::cspan value{_data.data + _pos, length};
+		_pos += length;
+		return property_record{id, value, {_data.data + start, _pos - start}};
 	}
 
 	template <typename T>
@@ -380,3 +441,49 @@ public:
 
 	void unpack(const prop::item_metadata_ptr& md);
 };
+
+inline std::optional<df::cspan> metadata_find_blob_property(const df::cspan data, const uint16_t id)
+{
+	metadata_unpacker reader(data);
+	std::optional<df::cspan> result;
+	while (const auto record = reader.read_record())
+	{
+		if (record->id == id) result = record->value;
+	}
+	return result;
+}
+
+inline df::blob metadata_replace_blob_property(const df::cspan data, const uint16_t id,
+                                               const std::optional<df::cspan> value)
+{
+	metadata_packer result;
+	metadata_unpacker reader(data);
+	while (const auto record = reader.read_record())
+	{
+		if (record->id != id)
+			result._data.insert(result._data.end(), record->encoded.data,
+			                    record->encoded.data + record->encoded.size);
+	}
+	if (value) result.write_blob(id, *value);
+	return std::move(result._data);
+}
+
+inline void metadata_preserve_unknown_properties(metadata_packer& destination, const df::cspan previous)
+{
+	const auto original_size = destination.size();
+	try
+	{
+		metadata_unpacker reader(previous);
+		while (const auto record = reader.read_record())
+		{
+			if (prop::from_id(record->id) == prop::null)
+				destination._data.insert(destination._data.end(), record->encoded.data,
+				                         record->encoded.data + record->encoded.size);
+		}
+	}
+	catch (const metadata_property_error& error)
+	{
+		destination._data.resize(original_size);
+		df::log(__FUNCTION__, std::format("Invalid cached properties replaced by fresh metadata: {}", error.what()));
+	}
+}

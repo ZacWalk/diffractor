@@ -152,6 +152,13 @@ Startup loads cached records, validates collection roots, scans stale files, que
 and rebuilds summaries, duplicate predictions, presence, and search candidates. Cached results may
 publish before extraction completes.
 
+The existing `item_properties.properties` blob stores versioned binary property records. Private
+cache IDs are separate from the public media-property registry, so opaque values such as the face
+cache never become EXIF/XMP fields or UI metadata. Metadata-only writes preserve unknown records
+from the same item's previous blob; binary-property edits preserve all other records byte for byte.
+No extra table, column, or schema version is needed. The format and private IDs live in
+[model_db_pack.h](../src/model_db_pack.h) and [model_property.h](../src/model_property.h).
+
 Search parses into exact matchers and conservative candidate prefilters. Negation and OR never create
 a prefilter that could omit an exact result. Query generations prevent stale result publication.
 Folder-scoped searches validate their filesystem scope; index-wide searches answer from cached

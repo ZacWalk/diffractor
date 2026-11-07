@@ -208,7 +208,7 @@ public:
 		}
 	}
 
-	bool read() const
+	bool read(const bool checked = false) const
 	{
 		if (_handle != nullptr)
 		{
@@ -222,10 +222,22 @@ public:
 				return false;
 			default:
 				db_trace_error(_db, "sqlite3_step");
+				if (checked)
+					throw app_exception(std::format("Failed to read cached properties: {}",
+					                                str::utf8_cast(sqlite3_errmsg(_db))));
 			}
+		}
+		else if (checked)
+		{
+			throw app_exception("Cached-property query is not prepared"s);
 		}
 
 		return false;
+	}
+
+	bool read_checked() const
+	{
+		return read(true);
 	}
 
 	void exec() const
@@ -286,6 +298,18 @@ public:
 		// The length is read after the value, as sqlite documents: asking first can convert the
 		// column and change what the value call then returns.
 		return {data_ptr, static_cast<size_t>(sqlite3_column_bytes(_handle, i))};
+	}
+
+	df::cspan data_checked(const int i) const
+	{
+		if (!_handle) throw app_exception("Cached-property query is not prepared"s);
+		const auto value = data(i);
+		if (!value.data && sqlite3_errcode(_db) == SQLITE_NOMEM)
+		{
+			db_trace_error(_db, "sqlite3_column_blob");
+			throw app_exception("Failed to read cached-property bytes"s);
+		}
+		return value;
 	}
 
 	// Distinguishes a column an upgrade added but never filled from one holding zero, which the
@@ -1703,6 +1727,8 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 	const db_statement update_metadata_scanned(
 		_db,
 		"update item_properties set last_scanned = ?, last_indexed = ? where folder = ? and name = ?"s);
+	const db_statement previous_properties(
+		_db, "select properties from item_properties where folder=? and name=?"s);
 	const db_statement update_hash(_db, "update item_properties set hash = ? where folder=? and name=?"s);
 	const db_statement update_crc(_db, "update item_properties set crc = ? where folder=? and name=?"s);
 	const db_statement update_phash(
@@ -1734,14 +1760,20 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 		{
 			const auto md = write.md.value();
 
-			// A null metadata pointer means "this item has no properties". The packed payload
-			// must then be an empty record, not whatever the previous item left in the packer.
+			// Reset public metadata even for a null pointer; opaque cache values belong to this item,
+			// not to the metadata snapshot or to the item the packer previously wrote.
 			packer.reset_to_header();
 
 			if (md)
 			{
 				packer.pack(md);
 			}
+
+			previous_properties.bind(1, path.folder().text());
+			previous_properties.bind(2, path.name());
+			if (previous_properties.read_checked())
+				metadata_preserve_unknown_properties(packer, previous_properties.data_checked(0));
+			previous_properties.reset();
 
 			insert_properties.bind(1, path.folder().text());
 			insert_properties.bind(2, path.name());
