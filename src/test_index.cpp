@@ -345,6 +345,166 @@ static void should_store_item_properties()
 // A rescan carries the position the index holds into the database row. A position saved only to the
 // row was written back over by the next rescan of the file, so the next session resumed from wherever
 // the index had been loaded.
+static void should_round_trip_opaque_cache_properties()
+{
+	assert_equal(true, prop::from_id(prop::cache::faces) == prop::null,
+	             "the face cache is not a public media property");
+	const auto md = std::make_shared<prop::item_metadata>();
+	md->album = "public metadata"_c;
+	for (const auto size : {0_z, 253_z, 254_z, 65534_z, 65535_z, 65536_z})
+	{
+		df::blob payload(size);
+		for (auto i = 0_z; i < size; ++i) payload[i] = static_cast<uint8_t>(i * 17);
+		metadata_packer metadata;
+		metadata.pack(md);
+		metadata_packer packer;
+		packer.write_blob(prop::cache::faces, payload);
+		packer._data.insert(packer._data.end(), metadata._data.begin() + 2, metadata._data.end());
+		const auto found = metadata_find_blob_property(packer.cdata(), prop::cache::faces);
+		assert_equal(true, found.has_value(), "an empty value differs from an absent property");
+		assert_equal(size, found->size, "binary lengths round trip at both framing boundaries");
+		assert_equal(true, size == 0 || memcmp(found->data, payload.data(), size) == 0, "binary bytes round trip");
+		const auto loaded = std::make_shared<prop::item_metadata>();
+		metadata_unpacker reader(packer.cdata());
+		reader.unpack(loaded);
+		assert_equal(md->album, loaded->album, "unknown binary values do not hide following metadata");
+
+		const auto stripped = metadata_replace_blob_property(packer.cdata(), prop::cache::faces, std::nullopt);
+		assert_equal(false, metadata_find_blob_property(stripped, prop::cache::faces).has_value(),
+		             "removal leaves no cache value");
+		metadata_packer expected;
+		expected.pack(md);
+		assert_equal(true, stripped == expected._data, "removal preserves every other property byte");
+	}
+	metadata_packer alias;
+	const auto original = alias._data.clone();
+	alias.write_blob(prop::cache::faces, alias.cdata());
+	const auto found = metadata_find_blob_property(alias.cdata(), prop::cache::faces);
+	assert_equal(true, found && found->size == original.size() &&
+	             memcmp(found->data, original.data(), original.size()) == 0,
+	             "a borrowed value may refer to the packer's own buffer");
+
+	for (const auto& invalid : {df::blob{0xff}, df::blob{0xff, 1, 1},
+	                          df::blob{0xff, 1, 1, 0, 0xfe, 1},
+	                          df::blob{0xff, 1, 1, 0, 4, 0}})
+	{
+		auto rejected = false;
+		try
+		{
+			metadata_replace_blob_property(invalid, prop::cache::faces, std::nullopt);
+		}
+		catch (const metadata_property_error&)
+		{
+			rejected = true;
+		}
+		assert_equal(true, rejected, "malformed property storage is not rewritten as success");
+	}
+}
+
+static df::blob read_test_cached_properties(sqlite3* db, const df::file_path path)
+{
+	sqlite3_stmt* handle = nullptr;
+	const auto prepared = sqlite3_prepare_v2(db,
+		"select properties from item_properties where folder=? and name=?", -1, &handle, nullptr);
+	const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(handle, sqlite3_finalize);
+	const auto folder = path.folder().text();
+	const auto name = std::string(path.name());
+	if (prepared != SQLITE_OK ||
+		sqlite3_bind_text(handle, 1, folder.sz(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+		sqlite3_bind_text(handle, 2, name.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+		sqlite3_step(handle) != SQLITE_ROW)
+		throw test_assert_exception(std::format("Cannot read test cache: {}", sqlite3_errmsg(db)));
+	const auto size = sqlite3_column_bytes(handle, 0);
+	const auto* bytes = static_cast<const uint8_t*>(sqlite3_column_blob(handle, 0));
+	if (size && !bytes) throw test_assert_exception("Cannot read cached-property bytes");
+	return size ? df::blob(bytes, bytes + size) : df::blob{};
+}
+
+// A metadata-only rescan used to erase opaque cache records. Exercise the actual database writer.
+static void should_preserve_opaque_properties_when_metadata_is_rewritten()
+{
+	const auto index_path = _temps.next_path();
+	const auto db_path = df::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
+	const auto path = test_files_folder.combine_file("Test.jpg");
+	null_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+	database db(index);
+	db.open(index_path.folder(), index_path.file_name_without_extension());
+	auto md = std::make_shared<prop::item_metadata>();
+	md->album = "before"_c;
+	const auto save = [&db](item_db_write write)
+	{
+		std::deque<item_db_write> writes;
+		writes.emplace_back(std::move(write));
+		db.perform_writes(std::move(writes));
+	};
+	item_db_write initial;
+	initial.path = path;
+	initial.md = md;
+	initial.crc32c = 0x1234u;
+	initial.media_position = 17.0;
+	initial.phash = crypto::phash_rotations{11, 22, 33, 44};
+	save(std::move(initial));
+
+	sqlite3* handle = nullptr;
+	const auto opened = sqlite3_open(db_path.str().c_str(), &handle);
+	const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
+	if (opened != SQLITE_OK) throw test_assert_exception("Cannot open test property cache");
+	const df::blob payload(65536, 0x5a);
+	const df::blob other{1, 2, 3};
+	auto stored = metadata_replace_blob_property(read_test_cached_properties(handle, path),
+	                                            prop::cache::faces, df::cspan(payload));
+	stored = metadata_replace_blob_property(stored, 0xfffd, df::cspan(other));
+	{
+		sqlite3_stmt* update_handle = nullptr;
+		const auto prepared = sqlite3_prepare_v2(handle,
+			"update item_properties set properties=? where folder=? and name=?", -1,
+		                                         &update_handle, nullptr);
+		const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> update(update_handle, sqlite3_finalize);
+		const auto folder = path.folder().text();
+		const auto name = std::string(path.name());
+		if (prepared != SQLITE_OK ||
+			sqlite3_bind_blob(update_handle, 1, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT) != SQLITE_OK ||
+			sqlite3_bind_text(update_handle, 2, folder.sz(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+			sqlite3_bind_text(update_handle, 3, name.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+			sqlite3_step(update_handle) != SQLITE_DONE)
+			throw test_assert_exception("Cannot seed test cache properties");
+	}
+	auto changed = std::make_shared<prop::item_metadata>(*md);
+	changed->album = "after"_c;
+	item_db_write write;
+	write.path = path;
+	write.md = changed;
+	save(std::move(write));
+	const auto reloaded = read_test_cached_properties(handle, path);
+	const auto found = metadata_find_blob_property(reloaded, prop::cache::faces);
+	assert_equal(true, found && found->size == payload.size() &&
+	             memcmp(found->data, payload.data(), payload.size()) == 0,
+	             "ordinary metadata writes preserve the opaque face-cache value");
+	const auto retained = metadata_find_blob_property(reloaded, 0xfffd);
+	assert_equal(true, retained && retained->size == other.size() &&
+	             memcmp(retained->data, other.data(), other.size()) == 0,
+	             "other unknown properties survive too");
+	db.load_index_values();
+	const auto item = index.find_item(path);
+	const auto loaded_md = item.metadata.load();
+	assert_equal(changed->album, loaded_md->album, "known metadata still changes");
+	assert_equal(0x1234u, item.crc32c.load(), "CRC is retained");
+	assert_equal(17, static_cast<int>(loaded_md->media_position), "playback state is retained");
+	const auto hashes = item.phash.load();
+	assert_equal(true, hashes && hashes->rotations[0] == 11, "perceptual hashes are retained");
+
+	const auto empty_path = test_files_folder.combine_file("empty-cache.jpg");
+	item_db_write empty;
+	empty.path = empty_path;
+	empty.md = prop::item_metadata_ptr{};
+	save(std::move(empty));
+	const auto empty_properties = read_test_cached_properties(handle, empty_path);
+	assert_equal(false, metadata_find_blob_property(empty_properties, prop::cache::faces).has_value(),
+	             "a cache value never leaks from the previous item");
+}
+
 static void should_hold_a_saved_playback_position_in_the_index()
 {
 	const auto root = _temps.next_folder("saved-playback-position");
@@ -5699,6 +5859,9 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should reuse cached thumbnail surface"s, should_reuse_cached_thumbnail_surface);
 	tests.add("Should index"s, should_index);
 	tests.add("Should create database schema"s, should_create_database_schema);
+	tests.add("Should round trip opaque cache properties"s, should_round_trip_opaque_cache_properties);
+	tests.add("Should preserve opaque properties when metadata is rewritten"s,
+	          should_preserve_opaque_properties_when_metadata_is_rewritten);
 	// SRC-036 - rollback fallback must survive schema creation.
 	tests.add("Should keep database rollback journal schema initialization"s,
 	          should_keep_rollback_journal_schema_initialization);
