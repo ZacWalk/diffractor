@@ -833,8 +833,8 @@ static void require_updatable(const df::file_path path)
 	if (!libfiles::can_update(libfiles_update_format(path))) throw app_exception("this file format cannot store the metadata");
 }
 
-// The packet a file holds, where libfiles reads and writes it - a JPEG XL's with the Brotli its scan is
-// given. Nothing when libfiles does not read the format or the file cannot be opened.
+// The packet a file holds, where libfiles reads and writes it, including compressed JPEG XL boxes.
+// Nothing when libfiles does not read the format or the file cannot be opened.
 static std::optional<libfiles::packet_reading> read_file_packet(const df::file_path path)
 {
 	const auto f = open_file(path, platform::file_open_mode::read);
@@ -844,7 +844,7 @@ static std::optional<libfiles::packet_reading> read_file_packet(const df::file_p
 	libfiles::reader r(stream);
 	if (r.size() < 16 || !libfiles::can_update(libfiles_update_format(r))) return {};
 
-	return libfiles::read_packet(r, decompress_jxl_box);
+	return libfiles::read_packet(r);
 }
 
 // What the item shows, written into the packet wherever the packet lacks it.
@@ -955,13 +955,12 @@ static libfiles::legacy_edits legacy_edits_of(const metadata_edits& edits, const
 	return legacy;
 }
 
-// What an edit writes: the packet, the fields it sets wherever the format keeps them besides, and the
-// Brotli a JPEG XL's compressed boxes are read with, so the update reads the file as its scan did.
+// What an edit writes: the packet and the fields it sets wherever the format keeps them besides.
+// libfiles reads compressed metadata with the same decoder as its scan.
 static libfiles::metadata_update update_of(const libfiles::xmp::meta& xmp, const metadata_edits& edits)
 {
 	libfiles::metadata_update update{&xmp};
 	update.legacy = legacy_edits_of(edits, xmp);
-	update.brotli = decompress_jxl_box;
 	return update;
 }
 

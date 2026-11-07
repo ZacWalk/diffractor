@@ -1485,15 +1485,9 @@ struct still_scan_extras
 
 file_scan_result scan_still_libfiles(read_stream& s, libfiles::scan_intent intent, bool want_thumbnail, files* decoder,
                                      const still_scan_extras& extras);
-// HEIF/AVIF and JPEG XL through libfiles. libfiles' decoder decodes a HEIF thumbnail item for a caller
-// that wants one, and the Brotli a JPEG XL's compressed boxes need is supplied here.
+// HEIF/AVIF and JPEG XL through libfiles, including a HEIF thumbnail item and compressed JPEG XL boxes.
 file_scan_result scan_heif_libfiles(read_stream& s, libfiles::scan_intent intent, bool want_thumbnail, files* decoder);
 file_scan_result scan_jxl_libfiles(read_stream& s, libfiles::scan_intent intent, bool want_thumbnail, files* decoder);
-// Decompresses a JPEG XL's Brotli-compressed metadata box into at most max_size bytes, or answers nothing:
-// the Brotli libfiles asks for to scan one, read its packet or update it.
-std::optional<std::vector<uint8_t>> decompress_jxl_box(std::span<const uint8_t> compressed, std::string_view box_type,
-                                                       size_t max_size);
-
 // An audio or video file as libfiles reads it, with its cover art's encoded bytes when asked for.
 struct media_scan_read
 {

@@ -310,6 +310,18 @@ df::search_t df::search_t::parse(const std::string_view text)
 	return result;
 }
 
+df::search_t df::search_t::parse_without_probing(const std::string_view text)
+{
+	if (unc_root_of(str::trim(text)) == unc_root::nothing)
+	{
+		search_t result;
+		result.raw_text(text);
+		return result;
+	}
+
+	return parse_parts(text, false);
+}
+
 bool df::search_t::can_be_read_from(const std::string_view text) const
 {
 	const auto trimmed = str::trim(text);
@@ -1948,107 +1960,206 @@ inline bool same_term(const std::string_view text, const df::search_term& term)
 	return str::same(t, q);
 }
 
-df::search_result compare_text(const df::search_term& term, const df::index_file_item& file)
+static uint64_t pack_dimensions(const prop::item_metadata& md)
+{
+	return static_cast<uint64_t>(md.width) << 16 | md.height;
+}
+
+// The metadata text fields a free-text term searches inside, in the order compare_text reports them.
+static const df::text_contains_field text_contains_table[] = {
+	{&prop::item_metadata::album, &prop::album},
+	{&prop::item_metadata::audio_codec, &prop::audio_codec},
+	{&prop::item_metadata::bitrate, &prop::bitrate},
+	{&prop::item_metadata::camera_manufacturer, &prop::camera_manufacturer},
+	{&prop::item_metadata::camera_model, &prop::camera_model},
+	{&prop::item_metadata::comment, &prop::comment},
+	{&prop::item_metadata::composer, &prop::composer},
+	{&prop::item_metadata::copyright_creator, &prop::copyright_creator},
+	{&prop::item_metadata::copyright_credit, &prop::copyright_credit},
+	{&prop::item_metadata::copyright_notice, &prop::copyright_notice},
+	{&prop::item_metadata::copyright_source, &prop::copyright_source},
+	{&prop::item_metadata::copyright_url, &prop::copyright_url},
+	{&prop::item_metadata::description, &prop::description},
+	{&prop::item_metadata::encoder, &prop::encoder},
+	{&prop::item_metadata::file_name, &prop::file_name},
+	{&prop::item_metadata::genre, &prop::genre},
+	{&prop::item_metadata::lens, &prop::lens},
+	{&prop::item_metadata::location_place, &prop::location_place},
+	{&prop::item_metadata::location_country, &prop::location_country},
+	{&prop::item_metadata::location_state, &prop::location_state},
+	{&prop::item_metadata::performer, &prop::performer},
+	{&prop::item_metadata::pixel_format, &prop::pixel_format},
+	{&prop::item_metadata::publisher, &prop::publisher},
+	{&prop::item_metadata::show, &prop::show},
+	{&prop::item_metadata::synopsis, &prop::synopsis},
+	{&prop::item_metadata::title, &prop::title},
+	{&prop::item_metadata::label, &prop::label},
+	{&prop::item_metadata::video_codec, &prop::video_codec},
+	{&prop::item_metadata::raw_file_name, &prop::raw_file_name},
+};
+
+// The numbers a free-text term matches whole, as they are displayed, in the order compare_text reports them.
+static const df::text_format_field text_format_table[] = {
+	{
+		&prop::dimensions,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_dimensions(md.dimensions()); },
+		[](const prop::item_metadata& md, file_type_ref) { return pack_dimensions(md); }
+	},
+	{
+		&prop::dimensions,
+		[](const prop::item_metadata& md, const file_type_ref ft) { return prop::format_pixels(md.dimensions(), ft); },
+		[](const prop::item_metadata& md, const file_type_ref ft)
+		{
+			return pack_dimensions(md) |
+				static_cast<uint64_t>(ft->has_trait(file_traits::av)) << 32 |
+				static_cast<uint64_t>(ft->has_trait(file_traits::bitmap)) << 33;
+		}
+	},
+	{
+		&prop::exposure_time,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_exposure(md.exposure_time); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{std::bit_cast<uint32_t>(md.exposure_time)}; }
+	},
+	{
+		&prop::f_number,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_f_num(md.f_number); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{std::bit_cast<uint32_t>(md.f_number)}; }
+	},
+	{
+		&prop::focal_length,
+		[](const prop::item_metadata& md, file_type_ref)
+		{
+			return prop::format_focal_length(md.focal_length, md.focal_length_35mm_equivalent);
+		},
+		[](const prop::item_metadata& md, file_type_ref)
+		{
+			return uint64_t{std::bit_cast<uint32_t>(md.focal_length)} |
+				static_cast<uint64_t>(md.focal_length_35mm_equivalent) << 32;
+		}
+	},
+	{
+		&prop::duration,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_duration(md.duration); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.duration}; }
+	},
+	{
+		&prop::iso_speed,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_iso(md.iso_speed); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.iso_speed}; }
+	},
+	{
+		&prop::audio_channels,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_audio_channels(md.audio_channels); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.audio_channels}; }
+	},
+	{
+		&prop::audio_sample_rate,
+		[](const prop::item_metadata& md, file_type_ref) { return prop::format_audio_sample_rate(md.audio_sample_rate); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.audio_sample_rate}; }
+	},
+	{
+		&prop::audio_sample_type,
+		[](const prop::item_metadata& md, file_type_ref)
+		{
+			return prop::format_audio_sample_type(static_cast<prop::audio_sample_t>(md.audio_sample_type));
+		},
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.audio_sample_type}; }
+	},
+	{
+		&prop::year,
+		[](const prop::item_metadata& md, file_type_ref) { return str::to_string(md.year); },
+		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.year}; }
+	},
+};
+
+static bool split_on_separator(const char c)
+{
+	return str::is_separator(c);
+}
+
+static bool split_on_artist_separator(const char c)
+{
+	return str::is_artist_separator(c);
+}
+
+// The lists a free-text term matches one entry of exactly, in the order compare_text reports them.
+static const df::text_split_field text_split_table[] = {
+	{&prop::item_metadata::tags, &prop::tag, split_on_separator},
+	{&prop::item_metadata::artist, &prop::artist, split_on_artist_separator},
+	{&prop::item_metadata::album_artist, &prop::album_artist, split_on_artist_separator},
+};
+
+std::span<const df::text_contains_field> df::text_contains_fields()
+{
+	return text_contains_table;
+}
+
+std::span<const df::text_format_field> df::text_format_fields()
+{
+	return text_format_table;
+}
+
+std::span<const df::text_split_field> df::text_split_fields()
+{
+	return text_split_table;
+}
+
+bool df::text_term_contains(const search_term& term, const std::string_view value)
+{
+	return contains_term(value, term);
+}
+
+bool df::text_term_same(const search_term& term, const std::string_view value)
+{
+	return same_term(value, term);
+}
+
+bool df::text_term_equals_part(const search_term& term, const std::string_view part)
+{
+	return compare_term(term, part).match;
+}
+
+std::string df::search_fold_key(const std::string_view text)
+{
+	std::string buf;
+	const auto normalized = nfc_view(text, buf);
+	std::string result;
+	result.reserve(normalized.size() * 4);
+
+	auto p = normalized.begin();
+	const auto end = normalized.end();
+
+	while (p < end)
+	{
+		const auto c = static_cast<uint32_t>(str::to_lower(str::pop_utf8_char(p, end)));
+		result.push_back(static_cast<char>(c & 0xff));
+		result.push_back(static_cast<char>(c >> 8 & 0xff));
+		result.push_back(static_cast<char>(c >> 16 & 0xff));
+		result.push_back(static_cast<char>(c >> 24 & 0xff));
+	}
+
+	return result;
+}
+
+df::search_result compare_text(const df::search_term& term, const df::index_file_item& file,
+                               const prop::item_metadata* const md)
 {
 	if (contains_term(file.name, term)) return {df::search_result_type::match_prop, prop::file_name};
 	if (same_term(df::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
 
-	const auto md = file.metadata.load();
-
 	if (md)
 	{
-		if (contains_term(md->album, term)) return {df::search_result_type::match_prop, prop::album};
-		if (contains_term(md->audio_codec, term)) return {df::search_result_type::match_prop, prop::audio_codec};
-		if (contains_term(md->bitrate, term)) return {df::search_result_type::match_prop, prop::bitrate};
-		if (contains_term(md->camera_manufacturer, term))
-			return {
-				df::search_result_type::match_prop, prop::camera_manufacturer
-			};
-		if (contains_term(md->camera_model, term)) return {df::search_result_type::match_prop, prop::camera_model};
-		if (contains_term(md->comment, term)) return {df::search_result_type::match_prop, prop::comment};
-		if (contains_term(md->composer, term)) return {df::search_result_type::match_prop, prop::composer};
-		if (contains_term(md->copyright_creator, term))
-			return {
-				df::search_result_type::match_prop, prop::copyright_creator
-			};
-		if (contains_term(md->copyright_credit, term))
-			return {
-				df::search_result_type::match_prop, prop::copyright_credit
-			};
-		if (contains_term(md->copyright_notice, term))
-			return {
-				df::search_result_type::match_prop, prop::copyright_notice
-			};
-		if (contains_term(md->copyright_source, term))
-			return {
-				df::search_result_type::match_prop, prop::copyright_source
-			};
-		if (contains_term(md->copyright_url, term)) return {df::search_result_type::match_prop, prop::copyright_url};
-		if (contains_term(md->description, term)) return {df::search_result_type::match_prop, prop::description};
-		if (contains_term(md->encoder, term)) return {df::search_result_type::match_prop, prop::encoder};
-		if (contains_term(md->file_name, term)) return {df::search_result_type::match_prop, prop::file_name};
-		if (contains_term(md->genre, term)) return {df::search_result_type::match_prop, prop::genre};
-		if (contains_term(md->lens, term)) return {df::search_result_type::match_prop, prop::lens};
-		if (contains_term(md->location_place, term)) return {df::search_result_type::match_prop, prop::location_place};
-		if (contains_term(md->location_country, term))
-			return {
-				df::search_result_type::match_prop, prop::location_country
-			};
-		if (contains_term(md->location_state, term)) return {df::search_result_type::match_prop, prop::location_state};
-		if (contains_term(md->performer, term)) return {df::search_result_type::match_prop, prop::performer};
-		if (contains_term(md->pixel_format, term)) return {df::search_result_type::match_prop, prop::pixel_format};
-		if (contains_term(md->publisher, term)) return {df::search_result_type::match_prop, prop::publisher};
-		if (contains_term(md->show, term)) return {df::search_result_type::match_prop, prop::show};
-		if (contains_term(md->synopsis, term)) return {df::search_result_type::match_prop, prop::synopsis};
-		if (contains_term(md->title, term)) return {df::search_result_type::match_prop, prop::title};
-		if (contains_term(md->label, term)) return {df::search_result_type::match_prop, prop::label};
-		if (contains_term(md->video_codec, term)) return {df::search_result_type::match_prop, prop::video_codec};
-		if (contains_term(md->raw_file_name, term)) return {df::search_result_type::match_prop, prop::raw_file_name};
+		for (const auto& field : text_contains_table)
+		{
+			if (contains_term(md->*field.member, term)) return {df::search_result_type::match_prop, field.key};
+		}
 
-		if (same_term(prop::format_dimensions(md->dimensions()), term))
-			return {
-				df::search_result_type::match_prop, prop::dimensions
-			};
-		if (same_term(prop::format_pixels(md->dimensions(), file.ft), term))
-			return {
-				df::search_result_type::match_prop, prop::dimensions
-			};
-		if (same_term(prop::format_exposure(md->exposure_time), term))
-			return {
-				df::search_result_type::match_prop, prop::exposure_time
-			};
-		if (same_term(prop::format_f_num(md->f_number), term))
-			return {
-				df::search_result_type::match_prop, prop::f_number
-			};
-		if (same_term(prop::format_focal_length(md->focal_length, md->focal_length_35mm_equivalent), term))
-			return {
-				df::search_result_type::match_prop, prop::focal_length
-			};
-
-		if (same_term(prop::format_duration(md->duration), term))
-			return {
-				df::search_result_type::match_prop, prop::duration
-			};
-		if (same_term(prop::format_iso(md->iso_speed), term))
-			return {
-				df::search_result_type::match_prop, prop::iso_speed
-			};
-		if (same_term(prop::format_audio_channels(md->audio_channels), term))
-			return {
-				df::search_result_type::match_prop, prop::audio_channels
-			};
-		if (same_term(prop::format_audio_sample_rate(md->audio_sample_rate), term))
-			return {
-				df::search_result_type::match_prop, prop::audio_sample_rate
-			};
-		if (same_term(format_audio_sample_type(static_cast<prop::audio_sample_t>(md->audio_sample_type)), term))
-			return
-				{df::search_result_type::match_prop, prop::audio_sample_type};
-		if (same_term(str::to_string(md->year), term)) return {df::search_result_type::match_prop, prop::year};
+		for (const auto& field : text_format_table)
+		{
+			if (same_term(field.format(*md, file.ft), term)) return {df::search_result_type::match_prop, field.key};
+		}
 
 		compare_result comp_result;
-		prop::key_ref key = prop::null;
 
 		auto cmp = [&comp_result, &term](const std::string_view part)
 		{
@@ -2058,48 +2169,28 @@ df::search_result compare_text(const df::search_term& term, const df::index_file
 			}
 		};
 
-		if (!is_empty(md->tags)) split2(md->tags, true, cmp);
-
-		if (comp_result.match)
+		for (const auto& field : text_split_table)
 		{
-			key = prop::tag;
-		}
-		else
-		{
-			if (!is_empty(md->artist)) split2(md->artist, true, cmp, str::is_artist_separator);
+			const auto value = md->*field.member;
+			if (!is_empty(value)) split2(value, true, cmp, field.separator);
 
 			if (comp_result.match)
 			{
-				key = prop::artist;
+				return {df::search_result_type::match_prop, field.key, comp_result.val_matched};
 			}
-			else
-			{
-				if (!is_empty(md->album_artist)) split2(md->album_artist, true, cmp, str::is_artist_separator);
-
-				if (comp_result.match)
-				{
-					key = prop::album_artist;
-				}
-			}
-		}
-
-		if (comp_result.match)
-		{
-			return {df::search_result_type::match_prop, key, comp_result.val_matched};
 		}
 	}
 
 	return {df::search_result_type::no_match};
 }
 
-static compare_result compare_val(const df::search_term& term, const df::index_file_item& file)
+static compare_result compare_val(const df::search_term& term, const df::index_file_item& file,
+                                  const prop::item_metadata* const md)
 {
 	auto&& t = term.key;
 
 	if (t == prop::modified && !prop::is_null(file.file_modified)) return compare_term(term, file.file_modified);
 	if (t == prop::file_size && !file.size.is_empty()) return compare_file_size(term, file.size.to_int64());
-
-	const auto md = file.metadata.load();
 
 	if (md)
 	{
@@ -2215,12 +2306,10 @@ static compare_result compare_val(const df::search_term& term, const df::index_f
 	return {};
 }
 
-bool has_type(const prop::key_ref t, const df::index_file_item& file)
+static bool has_type(const prop::key_ref t, const df::index_file_item& file, const prop::item_metadata* const md)
 {
 	if (t == prop::modified) return !prop::is_null(file.file_modified);
 	if (t == prop::file_size) return !file.size.is_empty();
-
-	const auto md = file.metadata.load();
 
 	if (md)
 	{
@@ -2355,59 +2444,56 @@ static bool is_date_match(const df::date_parts& term, const df::date_t d, const 
 	return false;
 }
 
-static bool is_date_match(const df::search_term& term, const df::index_file_item& file, const uint32_t now_days)
+// A header is only clickable if the matcher answers the key it was drawn from, so each key is reproduced
+// here whole - mirroring one rung of one of them is #184 again on whichever order the missing rung belongs
+// to. Each stamp is converted the way the group key converts it; a UTC stamp against a local key misses
+// by a day.
+df::date_term_keys df::date_term_keys_of(const date_parts_prop target, const index_file_item& file,
+                                         const prop::item_metadata* const md)
 {
-	const bool is_any = term.date_val.target == df::date_parts_prop::any;
-	const auto target = term.date_val.target;
+	date_term_keys result;
+	const bool is_any = target == date_parts_prop::any;
 
-	if (target == df::date_parts_prop::original || target == df::date_parts_prop::created || is_any)
+	if (target == date_parts_prop::original || target == date_parts_prop::created || is_any)
 	{
-		const auto md = file.metadata.load();
-
-		// A header is only clickable if the matcher answers the key it was drawn from, so each key
-		// is reproduced here whole - mirroring one rung of one of them is #184 again on whichever
-		// order the missing rung belongs to. The stamp is converted the way the group key converts
-		// it; a UTC stamp against a local key misses by a day.
 		const auto file_stamp = file.file_created.system_to_local();
-		auto original_key = df::date_t::null;
 
-		if (target == df::date_parts_prop::original || is_any)
+		if (target == date_parts_prop::original || is_any)
 		{
-			const auto resolved = md ? md->created() : df::date_t::null;
-			original_key = resolved.is_valid() ? resolved : file_stamp;
-
-			if (original_key.is_valid() &&
-				is_date_match(term.date_val, original_key, term.modifiers, now_days))
-			{
-				return true;
-			}
+			const auto resolved = md ? md->created() : date_t::null;
+			result.original = resolved.is_valid() ? resolved : file_stamp;
 		}
 
-		if (target == df::date_parts_prop::created || is_any)
+		if (target == date_parts_prop::created || is_any)
 		{
-			const auto created = md ? md->dates.created() : df::date_t::null;
-			const auto created_key = created.is_valid() ? created : file_stamp;
-
-			// On the `any` path the two keys usually agree, and the first has already answered.
-			if (created_key.is_valid() && created_key != original_key &&
-				is_date_match(term.date_val, created_key, term.modifiers, now_days))
-			{
-				return true;
-			}
+			const auto created = md ? md->dates.created() : date_t::null;
+			result.created = created.is_valid() ? created : file_stamp;
 		}
 	}
 
-	if (target == df::date_parts_prop::modified || is_any)
+	if (target == date_parts_prop::modified || is_any)
 	{
-		// Same rule as the created axis: Group by Modified keys on the local stamp, so the term has
-		// to compare against the local stamp or the header it drew answers with nothing.
-		if (is_date_match(term.date_val, file.file_modified.load().system_to_local(), term.modifiers, now_days))
-		{
-			return true;
-		}
+		result.modified = file.file_modified.load().system_to_local();
 	}
 
-	return false;
+	return result;
+}
+
+static bool is_date_match(const df::search_term& term, const df::index_file_item& file,
+                          const prop::item_metadata* const md, const uint32_t now_days)
+{
+	const auto target = term.date_val.target;
+	const auto keys = df::date_term_keys_of(target, file, md);
+
+	return df::date_term_found(target, keys.original, keys.created, keys.modified, [&term, now_days](const df::date_t key)
+	{
+		return is_date_match(term.date_val, key, term.modifiers, now_days);
+	});
+}
+
+bool df::search_matcher::date_key_matches(const search_term& term, const date_t key) const
+{
+	return is_date_match(term.date_val, key, term.modifiers, _now_days);
 }
 
 
@@ -2529,6 +2615,20 @@ bool df::match_volume_label(const std::string_view folder_name, const hash_map<c
 df::search_result df::search_matcher::match_term(const str::cached folder_name, const index_file_item& file,
                                                  const search_term& term) const
 {
+	const auto md = file.metadata.load();
+	return match_term(folder_name, file, md.get(), term);
+}
+
+bool df::search_matcher::text_term_matches_folder(const search_term& term, const str::cached folder_name) const
+{
+	return can_match_folder &&
+		str::contains(term.text, "**") &&
+		str::wildcard_icmp(folder_name.sv(), term.text);
+}
+
+df::search_result df::search_matcher::match_term(const str::cached folder_name, const index_file_item& file,
+                                                 const prop::item_metadata* const md, const search_term& term) const
+{
 	search_result result;
 
 	if (term.type == search_term_type::media_type)
@@ -2563,7 +2663,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.type == search_term_type::area)
 	{
-		const auto md = file.metadata.load();
 		const auto match_area = term.location_cell_span > 0 && md && md->has_gps() && map_location_area{
 			.cell = term.location_cell, .cell_span = term.location_cell_span
 		}.contains(location_heat_map::calc_map_loc(md->coordinate));
@@ -2577,7 +2676,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	{
 		// locations.md 3.6: no location can be determined at all, which is distinct
 		// from `without:place` asking whether the stored field is populated.
-		const auto md = file.metadata.load();
 		const bool has_location = md && (md->coordinate.is_valid() ||
 			!str::is_empty(md->location_place) ||
 			!str::is_empty(md->location_state) ||
@@ -2590,7 +2688,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.type == search_term_type::location)
 	{
-		const auto md = file.metadata.load();
 		auto match_location = false;
 		if (term.coord_val.is_valid())
 		{
@@ -2681,7 +2778,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	{
 		// locations.md 2.5 step 5: nothing significant enough is close enough to name. A stored
 		// place name is the user's own answer, so an item that carries one is never remote.
-		const auto md = file.metadata.load();
 		const bool is_remote = _locations && md && md->coordinate.is_valid() &&
 			str::is_empty(md->location_place) &&
 			str::is_empty(md->location_state) &&
@@ -2696,7 +2792,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	{
 		// The file's own declaration. An image merely shaped like a panorama does not match, so a
 		// wide crop of a landscape is not swept in with the photo spheres.
-		const auto md = file.metadata.load();
 		const bool is_panorama = md && md->is_panorama();
 
 		if (is_panorama == term.modifiers.positive)
@@ -2707,7 +2802,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	else if (term.type == search_term_type::film || term.type == search_term_type::episode)
 	{
 		// What the item's name, tags and folder's library kind make it; never a guess from its length.
-		const auto md = file.metadata.load();
 		const auto wanted = term.type == search_term_type::film ? prop::media_kind::film : prop::media_kind::episode;
 		const bool is_kind = md && md->kind == wanted;
 
@@ -2718,7 +2812,6 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.type == search_term_type::in_progress)
 	{
-		const auto md = file.metadata.load();
 		const bool started = md && md->is_in_progress();
 
 		if (started == term.modifiers.positive)
@@ -2728,9 +2821,7 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.type == search_term_type::text)
 	{
-		const auto match_folder = can_match_folder &&
-			str::contains(term.text, "**") &&
-			str::wildcard_icmp(folder_name.sv(), term.text);
+		const auto match_folder = text_term_matches_folder(term, folder_name);
 
 		// special case - exclusions can match folder name
 		if (!term.modifiers.positive)
@@ -2745,7 +2836,7 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 		}
 		else
 		{
-			const auto match_text = compare_text(term, file);
+			const auto match_text = compare_text(term, file, md);
 
 			if (match_text.is_match() && term.modifiers.positive)
 			{
@@ -2761,7 +2852,7 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.is_date())
 	{
-		const bool match_date = is_date_match(term, file, _now_days);
+		const bool match_date = is_date_match(term, file, md, _now_days);
 
 		if (match_date == term.modifiers.positive)
 		{
@@ -2772,7 +2863,7 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	{
 		if (file.ft != file_type::folder)
 		{
-			const bool match_has_type = has_type(term.key, file);
+			const bool match_has_type = has_type(term.key, file, md);
 
 			if (match_has_type == term.modifiers.positive)
 			{
@@ -2782,7 +2873,7 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 	}
 	else if (term.type == search_term_type::value)
 	{
-		const auto cmp = compare_val(term, file);
+		const auto cmp = compare_val(term, file, md);
 		const bool match_value = modifier_match(cmp, term.modifiers);
 
 		if (match_value == term.modifiers.positive)
@@ -2952,90 +3043,27 @@ df::search_result df::search_matcher::match_item(const file_path path, const ind
 
 df::search_result df::search_matcher::match_all_terms(const str::cached folder_name, const index_file_item& file) const
 {
+	const auto md = file.metadata.load();
+	return match_all_terms(folder_name, file, md.get());
+}
+
+df::search_result df::search_matcher::match_all_terms(const str::cached folder_name, const index_file_item& file,
+                                                      const prop::item_metadata* const md) const
+{
 	if (_search._terms.size() == 1)
 	{
 		// optimisation for single term
-		return match_term(folder_name, file, _search._terms[0]);
+		return match_term(folder_name, file, md, _search._terms[0]);
 	}
 
-	struct level
-	{
-		bool logical_and = true;
-		bool state = true;
-		// A level starts with no value rather than with an operator's identity. `true` is the
-		// identity for AND but the annihilator for OR, so an OR level seeded with it stays true
-		// whatever it later receives - which is what made a nested group after OR match everything.
-		bool has_value = false;
-	};
+	const auto matched = combine_search_terms<bool>(
+		_search._terms,
+		[&](const search_term& term) { return match_term(folder_name, file, md, term).is_match(); },
+		[](bool& state, const bool value) { state = state && value; },
+		[](bool& state, const bool value) { state = state || value; },
+		[] { return true; });
 
-	constexpr auto max_levels = 32;
-	level level_results[max_levels];
-	auto current_level = 0;
-
-	const auto contribute = [](level& target, const bool value, const bool logical_and)
-	{
-		if (!target.has_value)
-		{
-			target.state = value;
-			target.has_value = true;
-		}
-		else if (logical_and)
-		{
-			target.state &= value;
-		}
-		else
-		{
-			target.state |= value;
-		}
-	};
-
-	const auto fold_level = [&contribute](level* levels, int& depth)
-	{
-		if (depth > 0)
-		{
-			contribute(levels[depth - 1], levels[depth].state, levels[depth].logical_and);
-			depth -= 1;
-		}
-	};
-
-	for (const auto& term : _search._terms)
-	{
-		const auto is_match = match_term(folder_name, file, term).is_match();
-
-		auto opened = 0;
-
-		for (auto i = 0; i < term.modifiers.begin_group; i++)
-		{
-			if (current_level < max_levels - 1)
-			{
-				current_level += 1;
-				level_results[current_level].logical_and = term.modifiers.logical_op !=
-					search_term_modifier_bool::m_or;
-				level_results[current_level].state = true;
-				level_results[current_level].has_value = false;
-				opened += 1;
-			}
-		}
-
-		// combine into whichever level the term now sits in, so a '(' beyond max_levels still
-		// contributes its match rather than being discarded
-		contribute(level_results[current_level], is_match,
-		           opened > 0 || term.modifiers.logical_op != search_term_modifier_bool::m_or);
-
-		for (auto i = 0; i < term.modifiers.end_group; i++)
-		{
-			fold_level(level_results, current_level);
-		}
-	}
-
-	// an unclosed '(' must still resolve into level 0; otherwise level 0 keeps its initial
-	// 'true' and the query matches every item
-	while (current_level > 0)
-	{
-		fold_level(level_results, current_level);
-	}
-
-	return {level_results[0].state ? search_result_type::match_multiple : search_result_type::no_match};
+	return {matched ? search_result_type::match_multiple : search_result_type::no_match};
 }
 
 df::search_result df::search_matcher::match_folder(const str::cached folder_name, const str::cached name) const

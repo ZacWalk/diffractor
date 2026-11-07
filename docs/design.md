@@ -164,6 +164,12 @@ Address editing keeps a committed value, a typed draft, and an optional completi
 preview completions without replacing the draft. Tab accepts into the draft; Enter commits; Escape
 first restores the draft from a preview, then restores the address captured when editing began.
 
+Each prediction shows how many items choosing it lists, and of two suggestions of one kind, the one
+that finds more ranks higher. A suggestion drawn from the collection's own words, tags, places, or
+properties is not offered when it would find nothing. What was typed is always offered first, and
+recent searches keep their order. A count of none, or one not ready in time, shows nothing; the list
+never waits for a count.
+
 History entries retain query and selection. Back and Forward restore rather than rewrite them, and
 move the history position only after the target navigation is accepted; a refused or unavailable
 target leaves the current entry and the next Back/Forward target unchanged. Navigating after Back
@@ -173,6 +179,12 @@ at the same level and are unavailable at their ends.
 Navigation from a map, chart, breakdown, summary, or group header changes the query only. Grouping,
 sorting, and filters remain user-owned. Filtering removes hidden items from selection; removing the
 filter does not reselect them.
+
+A sidebar row's total is the number of items clicking it lists. Hovering a row also says how many of
+the items shown it holds, when the index can say. A tag or label row that would list nothing is not
+shown; rating rows always are, because together they are one scale. Predictions and sidebar rows
+have no item target, as the owner decided: they navigate, and their counts describe what navigating
+lists.
 
 ## Selection And Viewing
 

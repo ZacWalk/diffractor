@@ -290,6 +290,11 @@ void shared_test_context::lazy_load_index()
 
 		assert_equal(expected_cached_item_count, test_index.stats.media_item_count, "cached item count");
 		assert_equal(0, empty_index.stats.media_item_count, "cached item count");
+
+		// Collection-wide searches are then answered by the search index while it is current, which holds
+		// it to the counts each test was verified against when only the scan answered.
+		test_index.update_search_index();
+		assert_equal(true, test_index.search_index() != nullptr, "the shared index reads a search index");
 		loaded = true;
 	}
 }

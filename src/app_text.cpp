@@ -1936,6 +1936,7 @@ void app_text_t::calc_text_mapping()
 		movie_ignored_fmt,
 		movie_missing_fmt,
 		movie_relink_fmt,
+		sidebar_kept_fmt,
 	};
 
 	text_mapping mapping;

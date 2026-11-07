@@ -6,10 +6,11 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Compressed posting lists for the search inverted index. Encodes a strictly
-// increasing list of document (item) ids as delta + variable-byte (VByte) bytes. The
-// trigram index built on top of it accelerates substring prediction in the address box;
-// the boolean set operations and the inverted index above them are implemented and tested
+// Purpose: Compressed posting lists and the trigram index. Encodes a strictly increasing list of
+// document (item) ids as delta + variable-byte (VByte) bytes; the trigram index built on top of it
+// narrows a substring to the few values that could contain it, for prediction in the address box and
+// for the search index's free-text terms (model_search_index.h); the boolean set operations and the
+// term inverted index above them are implemented and tested
 
 #pragma once
 
@@ -129,17 +130,12 @@ namespace df
 		}
 	};
 
-	// Boolean composition over sorted id lists. These map directly onto Diffractor's query
-	// semantics: AND of terms (intersect), OR / "with:" (union), and negation / "without:"
-	// (difference). Inputs must be sorted ascending; outputs are sorted ascending.
+	// Boolean composition over sorted id lists: AND of terms (intersect), OR / "with:" (union), and
+	// negation / "without:" (difference). Inputs must be sorted ascending; outputs are sorted ascending.
 	//
-	// NOTE on what is live vs. foundation: `postings_intersect` is used in production by the
-	// trigram substring-prediction path. `postings_union` and `postings_difference` are NOT yet
-	// wired into production - they are the retained, unit-tested foundation for the deferred
-	// term->items search-matching reverse index. Live search *matching* still uses the existing
-	// folder/item presence-mask prefilter, so composing OR/AND-NOT over item postings is not
-	// needed until (and if) that matcher is profiled against real libraries and migrated. They
-	// are kept (rather than removed and re-added) so the composition stays complete and tested.
+	// `postings_intersect` is used by the trigram index's substring candidates. Live search combines
+	// whole sets of items as bitsets instead (df::doc_set, model_search_index.h), which suits sets that
+	// cover much of the collection; these are kept, tested, for the term inverted index below.
 	inline std::vector<uint32_t> postings_intersect(const std::vector<uint32_t>& a, const std::vector<uint32_t>& b)
 	{
 		std::vector<uint32_t> result;
@@ -168,16 +164,10 @@ namespace df
 	// contain that term. Documents must be added in ascending id order so each term's postings
 	// stay sorted. Term lookup is case-insensitive (matching search semantics).
 	//
-	// STATUS: foundation, not yet wired into production. This is the *exact*-term reverse index
-	// intended for a future term->items search-matching path. It is deliberately retained and
-	// unit-tested (see should_query_inverted_index) but is NOT used by live search, which keeps
-	// its folder/item presence-mask prefilter. Two reasons it is not wired yet:
-	//   1. The live text matcher is substring + wildcard across many fields (see compare_text),
-	//      which an exact-token index cannot reproduce - substring acceleration is instead done
-	//      by trigram_index (below), which IS live for typeahead prediction.
-	//   2. Flipping item matching onto an inverted index is a core-search rewrite that overlaps
-	//      the existing presence-mask prefilter and should be justified by profiling on a real library.
-	// It is kept as a validated building block so that migration is a small, guarded step.
+	// Not what live search uses: an exact-token index cannot answer the free-text matcher, which looks
+	// for a term inside any of many fields (see compare_text). The search index answers that by asking
+	// each distinct field value once and mapping the values that match to their items. This class is
+	// kept, tested (see should_query_inverted_index), as the building block for whole-word terms.
 	class inverted_index
 	{
 		df::hash_map<std::string, posting_list, df::ihash, df::ieq> _terms;
@@ -358,6 +348,13 @@ namespace df
 			// repeated trigrams need no dedup here - freeze() drops an id it has just emitted
 			for_each_trigram(text, [this, id](const uint64_t key) { _pending.emplace_back(key, id); });
 			_doc_count = std::max(_doc_count, id == UINT32_MAX ? id : id + 1);
+		}
+
+		// What the index holds, for sizing and diagnostics.
+		size_t byte_size() const
+		{
+			return _pending.capacity() * sizeof(pending_t) + _grams.capacity() * sizeof(gram_entry) +
+				_postings.capacity();
 		}
 
 		// Collapse everything added so far into the queryable form. Call once, after the last add().

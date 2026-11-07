@@ -7,7 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Auto-complete matching logic for search. Implements folder and text matching
-// with highlight support for the search box dropdown suggestions.
+// with highlight support for the search box dropdown suggestions, and draws the count of
+// items each suggestion finds.
 
 #pragma once
 #include "ui_controllers.h"
@@ -99,6 +100,22 @@ static std::string auto_complete_lead(std::string lead)
 	return lead;
 }
 
+// The count a prediction carries, right-aligned and quieter than its text. Answers the width it took so
+// the text stops short of it. None is drawn as nothing, as the sidebar draws it.
+static int draw_match_count(ui::draw_context& dc, const std::optional<uint64_t>& count, const recti bounds)
+{
+	if (!count || *count == 0) return 0;
+
+	const auto text = str::format_count(*count);
+	const auto extent = dc.measure_text(text, ui::style::font_face::dialog, ui::style::text_style::single_line,
+	                                    bounds.width());
+	auto count_bounds = bounds;
+	count_bounds.left = std::max(bounds.left, bounds.right - extent.cx);
+	dc.draw_text(text, {}, count_bounds, ui::style::font_face::dialog, ui::style::text_style::single_line,
+	             ui::color(dc.colors.foreground, dc.colors.alpha * 0.6f), {});
+	return extent.cx + dc.padding2;
+}
+
 static icon_index search_icon(const std::string_view text)
 {
 	if (df::is_path(str::trim(text))) return icon_index::folder;
@@ -180,6 +197,7 @@ public:
 		icon_bounds.right = icon_bounds.left + icon_width;
 		xdraw_icon(dc, icon_index::folder, icon_bounds, clr, {});
 		rr.left = icon_bounds.right + dc.padding2;
+		rr.right -= draw_match_count(dc, count, rr);
 
 		if (!str::is_empty(lead))
 		{
@@ -260,6 +278,7 @@ public:
 		icon_bounds.right = icon_bounds.left + icon_width;
 		xdraw_icon(dc, icon, icon_bounds, clr, {});
 		rr.left = icon_bounds.right + dc.padding2;
+		rr.right -= draw_match_count(dc, count, rr);
 
 		if (!str::is_empty(lead))
 		{

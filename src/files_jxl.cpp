@@ -8,58 +8,15 @@
 
 // Purpose: JPEG XL decoding and encoding through libfiles: decoding into a surface judged against the
 // decode budget first, and encoding a surface with its metadata for a save. libfiles scans these files
-// too; this supplies the Brotli decoder its scan asks for when a container keeps its metadata boxes
-// compressed.
+// too, including Brotli-compressed metadata boxes through its own decoder.
 
 #include "pch.h"
 #include "files.h"
 #include "libfiles/encode.h"
 
-#include <brotli/decode.h>
-
-// The first buffer a compressed metadata box is decompressed into, grown as far as libfiles allows.
-constexpr size_t box_chunk = 64u * 1024u;
-
-// What libfiles asks for when a JPEG XL keeps a metadata box compressed ('brob'): the box's one whole
-// Brotli stream, decompressed into at most max_size bytes. A stream that would need more is abandoned
-// there rather than decompressed to the end.
-std::optional<std::vector<uint8_t>> decompress_jxl_box(const std::span<const uint8_t> compressed, std::string_view,
-                                                       const size_t max_size)
-{
-	const df::releaser<BrotliDecoderState> dec(BrotliDecoderCreateInstance(nullptr, nullptr, nullptr),
-	                                           [](auto* d) { BrotliDecoderDestroyInstance(d); });
-	if (!dec.get()) return {};
-
-	std::vector<uint8_t> out(std::min(max_size, box_chunk));
-	auto available_in = compressed.size();
-	const auto* next_in = compressed.data();
-	size_t produced = 0;
-
-	for (;;)
-	{
-		auto available_out = out.size() - produced;
-		auto* next_out = out.data() + produced;
-		const auto status = BrotliDecoderDecompressStream(dec.get(), &available_in, &next_in, &available_out,
-		                                                  &next_out, nullptr);
-		produced = out.size() - available_out;
-
-		if (status == BROTLI_DECODER_RESULT_SUCCESS)
-		{
-			// One whole stream and nothing after it, as libjxl requires of a 'brob' box.
-			if (available_in != 0) return {};
-			out.resize(produced);
-			return out;
-		}
-
-		if (status != BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT || out.size() >= max_size) return {};
-		out.resize(std::min(max_size, out.size() * 2u));
-	}
-}
-
 file_scan_result scan_jxl_libfiles(read_stream& s, libfiles::scan_intent, const bool want_thumbnail, files* const decoder)
 {
 	still_scan_extras extras;
-	extras.brotli = decompress_jxl_box;
 
 	// Scanned for indexing whatever the intent: libjxl's scan gave JPEG XL no structure report.
 	auto result = scan_still_libfiles(s, libfiles::scan_intent::index, want_thumbnail, decoder, extras);
@@ -156,11 +113,11 @@ ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const libfiles::
 	options.lossless = params.jxl_lossless;
 	options.quality = params.jxl_quality;
 
-	const auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), metadata,
+	auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), metadata,
 	                                          options);
 	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};
 
-	return std::make_shared<ui::image>(df::cspan(encoded.data.data(), encoded.data.size()), dimensions,
+	return std::make_shared<ui::image>(df::blob(std::move(encoded.data)), dimensions,
 	                                   ui::image_format::JXL, turn);
 }

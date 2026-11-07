@@ -467,6 +467,10 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 	case async_queue::index_presence_single:
 		presence_task_queue.reset_and_enqueue(std::move(f));
 		break;
+	case async_queue::index_search_single:
+		ensure_worker(_search_index_worker_started, search_index_task_queue, "search_index");
+		search_index_task_queue.reset_and_enqueue(std::move(f));
+		break;
 	case async_queue::auto_complete:
 		ensure_worker(_auto_complete_worker_started, auto_complete_task_queue, "auto_complete");
 		auto_complete_task_queue.reset_and_enqueue(std::move(f));
@@ -514,6 +518,10 @@ void app_frame::queue_async_after(const async_queue q, const uint32_t delay_ms, 
 		break;
 	case async_queue::index_summary_single:
 		summary_task_queue.enqueue_after(delay_ms, std::move(f));
+		break;
+	case async_queue::index_search_single:
+		ensure_worker(_search_index_worker_started, search_index_task_queue, "search_index");
+		search_index_task_queue.enqueue_after(delay_ms, std::move(f));
 		break;
 	default:
 		df::assert_true(false);

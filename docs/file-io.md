@@ -80,13 +80,16 @@ rather than copied and then rewritten. Other formats are copied, then updated. I
 replacements. Temporary paths are cleaned on every bounded failure path.
 
 A JPEG XL's metadata is updated by libfiles like any other format's, its compressed boxes read with
-Diffractor's Brotli; one made from a JPEG keeps the boxes it gives that JPEG back from at their size.
+libfiles' bounded Brotli decoder; one made from a JPEG keeps the boxes it gives that JPEG back from at their size.
 Its picture is never rewritten in place: rotating or editing one is not offered, since a re-encode would
 lose what it was encoded with. A pixel write that produces one - Convert, Save As, a shared copy -
 reads the packet as an update would, applies the edit and, from another format, what the source shows
 that its packet lacks, and encodes it into the file's own boxes beside the source's EXIF; no update
 follows. The codestream holds the orientation the file ends with, which the EXIF is made to agree with.
 A JPEG XL moved unchanged is copied as it is.
+
+Encoded JPEG, PNG, WebP and JPEG XL buffers transfer ownership from libfiles
+into the displayed image's blob without a second encoded-buffer copy.
 
 Pasted clipboard bitmaps follow the same publication rule: the encoder writes an owned temporary
 file off the UI thread, then publishes it to the chosen auto-numbered destination only after the

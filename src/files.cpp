@@ -5167,7 +5167,7 @@ df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, lib
 		// simple_transform counts from none at 0, where the EXIF orientation libfiles takes counts from 1.
 		const auto orientation = static_cast<uint16_t>(static_cast<int>(transform) + 1);
 		const auto budget = static_cast<uint64_t>(std::max<int64_t>(df::max_decode_bytes, 0));
-		const auto turned = transformer.turn(src, encoder, orientation, budget);
+		auto turned = transformer.turn(src, encoder, orientation, budget);
 
 		if (turned.over_budget)
 		{
@@ -5177,7 +5177,7 @@ df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, lib
 			if (over_budget) *over_budget = true;
 		}
 
-		return df::blob(turned.data.begin(), turned.data.end());
+		return df::blob(std::move(turned.data));
 	}
 	catch (const libfiles::encode_error& e)
 	{
@@ -5200,11 +5200,11 @@ ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const libfiles:
 
 	try
 	{
-		const auto data = e.encode(dimensions_in.cx, dimensions_in.cy, surface_in->pixels(), surface_in->stride(),
+		auto data = e.encode(dimensions_in.cx, dimensions_in.cy, surface_in->pixels(), surface_in->stride(),
 		                           static_cast<uint16_t>(orientation_in), metadata, options);
 		log_notes(e);
 
-		return std::make_shared<ui::image>(df::blob(data.begin(), data.end()),
+		return std::make_shared<ui::image>(df::blob(std::move(data)),
 		                                   sizei{static_cast<int>(e.width()), static_cast<int>(e.height())},
 		                                   ui::image_format::JPEG, orientation_in);
 	}
@@ -5242,7 +5242,7 @@ ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const libfiles::
 		// libpng's warnings go to the quiet debug log rather than the console and the test output.
 		for (const auto& note : encoded.notes) df::log_once("libpng", note);
 
-		return std::make_shared<ui::image>(df::blob(encoded.data.begin(), encoded.data.end()), dims,
+		return std::make_shared<ui::image>(df::blob(std::move(encoded.data)), dims,
 		                                   ui::image_format::PNG, surface_in->orientation());
 	}
 	catch (const libfiles::encode_error& e)
@@ -5422,12 +5422,12 @@ ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const libfiles:
 	options.lossy_alpha = params.webp_lossy_alpha;
 	options.fast = params.webp_fast;
 
-	const auto encoded = libfiles::encode_webp(view, static_cast<uint16_t>(surface_in->orientation()),
+	auto encoded = libfiles::encode_webp(view, static_cast<uint16_t>(surface_in->orientation()),
 	                                           metadata, options);
 	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};
 
-	return std::make_shared<ui::image>(df::cspan(encoded.data.data(), encoded.data.size()), dimensions,
+	return std::make_shared<ui::image>(df::blob(std::move(encoded.data)), dimensions,
 	                                   ui::image_format::WEBP, surface_in->orientation());
 }
 

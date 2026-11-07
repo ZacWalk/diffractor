@@ -3968,3 +3968,9 @@ msgstr "Субтитры {}"
 
 msgid "Subtitles"
 msgstr "Субтитры"
+
+msgid "1 of the items shown"
+msgid_plural "{count} of the items shown"
+msgstr[0] "1 из показанных элементов"
+msgstr[1] "{count} из показанных элементов"
+msgstr[2] "{count} из показанных элементов"

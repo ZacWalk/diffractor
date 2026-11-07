@@ -7,9 +7,11 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: File indexing engine. Scans folders, extracts metadata, keeps the in-memory item
-// collection and answers queries over it. Reads films, episodes and shows from file and folder names,
-// and fills what a video's tags leave out from them as items load. Duplicate prediction and presence live
-// in model_index_duplicates.cpp; the summary and its vocabulary in model_index_summary.cpp.
+// collection and answers queries over it - from the search index (model_search_index.cpp) where it is
+// current, scanning only folders changed since it was read - and reads that index on its own queue.
+// Reads films, episodes and shows from file and folder names, and fills what a video's tags leave out
+// from them as items load. Duplicate prediction and presence live in model_index_duplicates.cpp; the
+// summary and its vocabulary in model_index_summary.cpp.
 
 #include "pch.h"
 
@@ -73,6 +75,9 @@ std::function<void(df::folder_path folder, int attempt)> test_after_validate_fol
 
 struct query_items_result
 {
+	// Folders whose names match are listed beside the items.
+	static constexpr bool lists_folders = true;
+
 	index_state::query_item_results results;
 
 	void match_item(const df::file_path id, const df::index_file_item& file, const df::search_result& match)
@@ -84,10 +89,31 @@ struct query_items_result
 	{
 		results.push_back({index_state::query_item_kind::folder, {}, {}, folder_path, folder, {}});
 	}
+
+	// A document the search index matched. One term answers with what it matched in, as the matcher does;
+	// several answer as their combination, which is all the matcher says of them either.
+	void match_doc(const df::search_index& index, const uint32_t doc, const df::search_matcher& matcher)
+	{
+		const auto& file = index.file(doc);
+		const auto& folder = index.folders()[index.doc_folder(doc)];
+		const auto& terms = matcher.search().terms();
+		const auto match = terms.size() == 1
+			                   ? matcher.match_term(folder.path.text(), file, index.metadata(doc), terms.front())
+			                   : df::search_result{df::search_result_type::match_multiple};
+
+		df::assert_true(match.is_match());
+
+		if (match.is_match())
+		{
+			results.push_back({index_state::query_item_kind::file, folder.path.combine_file(file.name), file, {}, {}, match});
+		}
+	}
 };
 
 struct count_items_result
 {
+	static constexpr bool lists_folders = false;
+
 	df::file_group_histogram summary;
 
 	void match_item(const df::file_path id, const df::index_file_item& file, const df::search_result& match)
@@ -97,6 +123,34 @@ struct count_items_result
 
 	static void match_folder(const df::folder_path folder_path, const df::index_folder_item_ptr& folder)
 	{
+	}
+
+	void match_doc(const df::search_index& index, const uint32_t doc, const df::search_matcher&)
+	{
+		const auto& file = index.file(doc);
+		summary.record(file, index.path(doc), df::thumbnail_representative_rank(file, index.metadata(doc)));
+	}
+};
+
+// How many, and nothing more: no sizes, no representative picture.
+struct tally_items_result
+{
+	static constexpr bool lists_folders = false;
+
+	df::file_group_histogram summary;
+
+	void match_item(const df::file_path, const df::index_file_item& file, const df::search_result&)
+	{
+		summary.record(file);
+	}
+
+	static void match_folder(const df::folder_path, const df::index_folder_item_ptr&)
+	{
+	}
+
+	void match_doc(const df::search_index& index, const uint32_t doc, const df::search_matcher&)
+	{
+		summary.record(index.file(doc));
 	}
 };
 
@@ -195,7 +249,8 @@ static void iterate_items(const df::search_t& search_in,
                           df::cancel_token token,
                           index_items& index,
                           bool refresh_from_file_system,
-                          bool show_sidecars)
+                          bool show_sidecars,
+                          index_state::search_context* context = nullptr)
 {
 	df::search_t resolved_related;
 	const auto& search = resolve_related(search_in, state, resolved_related);
@@ -363,43 +418,86 @@ static void iterate_items(const df::search_t& search_in,
 	}
 	else
 	{
-		const auto folders = index.all_folders();
+		index_folders_t listed;
+		const auto& folders = context ? context->folders : (listed = index.all_folders());
+		auto* const evaluator = context && context->evaluator && !has_related ? &*context->evaluator : nullptr;
 
-		for (const auto& folder_node : folders)
+		// Asks a folder's items one by one, as every folder was asked before there was a search index.
+		// Folder masks are an early rejection only; each surviving item is checked against its own mask
+		// and then by the authoritative exact matcher.
+		const auto scan_folder = [&](const index_folders_t::value_type& folder_node)
 		{
-			if (token.is_cancelled()) break;
-
-			if (folder_node.second->is_in_collection)
+			if (!has_related && !matcher.can_match_folder &&
+				!matcher.can_contain(folder_node.second->search_presence_summary))
 			{
-				// Folder masks are an early rejection only; each surviving item is checked
-				// against its own mask and then by the authoritative exact matcher.
-				if (has_related ||
-					matcher.can_match_folder ||
-					matcher.can_contain(folder_node.second->search_presence_summary))
+				return;
+			}
+
+			for (const auto& file_node : folder_node.second->files)
+			{
+				if (token.is_cancelled()) break;
+
+				if (!(file_node.flags && df::index_item_flags::is_sidecar) || show_sidecars)
 				{
-					for (const auto& file_node : folder_node.second->files)
+					const auto path = folder_node.first.combine_file(file_node.name);
+					const auto match = matcher.match_item(path, file_node);
+
+					if (match.is_match())
 					{
-						if (token.is_cancelled()) break;
-
-						if (!(file_node.flags && df::index_item_flags::is_sidecar) || show_sidecars)
-						{
-							const auto path = folder_node.first.combine_file(file_node.name);
-							const auto match = matcher.match_item(path, file_node);
-
-							if (match.is_match())
-							{
-								report(path, file_node, match);
-							}
-						}
+						report(path, file_node, match);
 					}
 				}
+			}
+		};
 
-				const auto match = matcher.match_folder(folder_node.first.text(), folder_node.first.name());
+		if (evaluator)
+		{
+			// The search index answers below for every folder it read and has not seen change; only the
+			// rest are asked item by item.
+			for (const auto position : evaluator->view().unclean_folders())
+			{
+				if (token.is_cancelled()) break;
 
-				if (match.is_match())
+				const auto& folder_node = folders[position];
+				if (!folder_node.second->is_in_collection) continue;
+
+				df::bump(df::query_perf.index_scanned_folders);
+				scan_folder(folder_node);
+			}
+		}
+
+		// A count asks for items alone, so only results that list folders read every folder's name.
+		if (!evaluator || T::lists_folders)
+		{
+			for (const auto& folder_node : folders)
+			{
+				if (token.is_cancelled()) break;
+				if (!folder_node.second->is_in_collection) continue;
+
+				if (!evaluator) scan_folder(folder_node);
+
+				if constexpr (T::lists_folders)
 				{
-					results.match_folder(folder_node.first, folder_node.second);
+					if (matcher.match_folder(folder_node.first.text(), folder_node.first.name()).is_match())
+					{
+						results.match_folder(folder_node.first, folder_node.second);
+					}
 				}
+			}
+		}
+
+		if (evaluator && matcher.has_terms && !token.is_cancelled())
+		{
+			df::bump(df::query_perf.index_answers);
+			const auto docs = evaluator->evaluate(matcher, token);
+
+			if (!token.is_cancelled())
+			{
+				const auto& snapshot = evaluator->index();
+				docs.for_each([&results, &snapshot, &matcher](const uint32_t doc)
+				{
+					results.match_doc(snapshot, doc, matcher);
+				});
 			}
 		}
 	}
@@ -415,7 +513,8 @@ static void iterate_items(const df::search_t& search_in,
 
 void index_state::query_items(const df::search_t& search,
                               const std::function<void(query_item_results, bool)>& found_callback,
-                              const df::cancel_token& token)
+                              const df::cancel_token& token,
+                              const search_execution execution)
 {
 	df::scope_locked_inc l(searching);
 
@@ -452,7 +551,9 @@ void index_state::query_items(const df::search_t& search,
 	{
 		df::bump(df::query_perf.queries);
 		df::perf_timer timer(df::query_perf.query_us, &df::query_perf.query_max_us);
-		iterate_items(search, results, *this, token, _items, true, search.has_related());
+		std::optional<search_context> context;
+		if (!has_selector && !search.has_related()) context = make_search_context(execution);
+		iterate_items(search, results, *this, token, _items, true, search.has_related(), context ? &*context : nullptr);
 	}
 
 	df::bump(df::query_perf.query_items, results.results.size());
@@ -538,7 +639,8 @@ df::item_set index_state::materialize_query_items(query_item_results items, cons
 	return results;
 }
 
-df::file_group_histogram index_state::count_matches(const df::search_t& search, const df::cancel_token& token)
+df::file_group_histogram index_state::count_matches(const df::search_t& search, const df::cancel_token& token,
+                                                   const search_execution execution)
 {
 	count_items_result result;
 
@@ -547,10 +649,289 @@ df::file_group_histogram index_state::count_matches(const df::search_t& search, 
 		df::measure_ms ms(stats.count_matches_ms);
 		df::bump(df::query_perf.counts);
 		df::perf_timer timer(df::query_perf.count_us);
-		iterate_items(search, result, *this, token, _items, false, search.has_related());
+		std::optional<search_context> context;
+		if (!search.has_selector() && !search.has_related()) context = make_search_context(execution);
+		iterate_items(search, result, *this, token, _items, false, search.has_related(), context ? &*context : nullptr);
 	}
 
 	return result.summary;
+}
+
+index_state::search_context index_state::make_search_context(const search_execution execution) const
+{
+	search_context result;
+	result.folders = _items.all_folders();
+
+	if (execution == search_execution::automatic)
+	{
+		if (auto snapshot = search_index())
+		{
+			result.evaluator.emplace(std::move(snapshot), result.folders);
+			if (!result.evaluator->is_useful()) result.evaluator.reset();
+		}
+	}
+
+	return result;
+}
+
+bool index_state::matches_collection_search(const df::search_matcher& matcher, const df::file_path path) const
+{
+	const auto folder = _items.find(path.folder());
+	if (!folder || !folder->is_in_collection) return false;
+	if (!matcher.can_match_folder && !matcher.can_contain(folder->search_presence_summary)) return false;
+
+	const auto found = std::lower_bound(folder->files.begin(), folder->files.end(), path.name());
+	if (found == folder->files.end() || icmp(found->name, path.name()) != 0) return false;
+	if (found->flags && df::index_item_flags::is_sidecar) return false;
+
+	return matcher.match_item(path, *found).is_match();
+}
+
+// Up to this many changed items, scanning them on top of the search index costs a query less than
+// reading the collection again costs.
+static uint64_t search_index_stale_tolerance(const uint64_t docs)
+{
+	return 1024 + docs / 32;
+}
+
+// Far beyond what any real collection needs, so it only stops a pathological one from holding memory
+// that scanning does without.
+constexpr size_t max_search_index_bytes = size_t{1} << 30;
+// The least a document costs, so a collection certain to pass the ceiling is not read to find out.
+constexpr size_t min_search_index_bytes_per_doc = 48;
+// A burst of index changes settles before the collection is read again.
+constexpr uint32_t search_index_debounce_ms = 1000;
+// A prediction's count scans this many changed items at most on top of the search index.
+constexpr uint64_t max_predicted_stale_docs = 20000;
+// A pass counting hundreds of searches - a sidebar's rows - scans this many changed items at most per
+// search; past it the pass counts as it did without the index.
+constexpr uint64_t max_counted_stale_docs = 4096;
+
+void index_state::publish_search_index(std::shared_ptr<const df::search_index> index)
+{
+	std::shared_ptr<const df::search_index> previous;
+	const auto publishing = index != nullptr;
+
+	{
+		platform::exclusive_lock lock(_summary_rw);
+		previous = std::move(_summary._search_index);
+		_summary._search_index = std::move(index);
+	}
+
+	// The sidebar may have counted without this snapshot - from summaries before any was read, or by
+	// scanning while the last was too stale to use - so it counts again from this one. Only counts: a
+	// snapshot changes no row.
+	if (publishing) _async.invalidate_view(view_invalid::sidebar_counts);
+
+	// The snapshot replaced here, with the folder nodes and metadata it held, is released after the lock.
+}
+
+void index_state::update_search_index()
+{
+	if (df::is_closing || !is_init_complete()) return;
+
+	// Indexing rewrites folders faster than a snapshot could follow and needs the CPU a build would take.
+	// Searches scan meanwhile, as they always did, and the pass that ends indexing asks again.
+	const auto indexing_active = [this]
+	{
+		return df::is_closing || indexing.load() > 0 || scanning_items.load() > 0;
+	};
+
+	const auto folders = _items.all_folders();
+
+	if (const auto current = search_index())
+	{
+		const df::search_index_view view(*current, folders);
+		// Date terms are answered from the snapshot only on the day it was read, so the first pass of a new
+		// day reads the collection again.
+		const auto formats_current = current->format_signature() == df::search_index::current_format_signature() &&
+			current->date_day() == platform::now().to_days();
+
+		// A small collection's tolerance can pass the point where no search would use the snapshot, so one
+		// no search would use is read again however few items changed.
+		if (formats_current && view.is_useful() &&
+			view.stale_doc_count(*current) <= search_index_stale_tolerance(view.collection_doc_count()))
+		{
+			return;
+		}
+
+		if (indexing_active())
+		{
+			// Past use to any search, while still holding the nodes and metadata indexing has replaced.
+			if (!view.is_useful()) publish_search_index(nullptr);
+			return;
+		}
+	}
+	else if (indexing_active())
+	{
+		return;
+	}
+
+	size_t docs = 0;
+
+	for (const auto& folder : folders)
+	{
+		if (folder.second && folder.second->is_in_collection) docs += folder.second->files.size();
+	}
+
+	if (docs * min_search_index_bytes_per_doc > max_search_index_bytes)
+	{
+		publish_search_index(nullptr);
+		return;
+	}
+
+	const auto start_us = df::now_us();
+	auto built = df::search_index::build(folders, ++_search_index_generation, indexing_active);
+	if (!built) return;
+
+	if (built->byte_size() > max_search_index_bytes)
+	{
+		publish_search_index(nullptr);
+		return;
+	}
+
+	const auto elapsed_us = static_cast<uint64_t>(df::now_us() - start_us);
+	stats.search_index_docs = static_cast<int>(built->doc_count());
+	stats.search_index_bytes = built->byte_size();
+	stats.search_index_build_ms = static_cast<int>(elapsed_us / 1000);
+	df::bump(df::index_perf.search_index_builds);
+	df::bump(df::index_perf.search_index_build_us, elapsed_us);
+	df::record_peak(df::index_perf.search_index_build_max_us,
+	                static_cast<uint32_t>(std::min<uint64_t>(elapsed_us, UINT32_MAX)));
+	df::index_perf.search_index_docs.store(built->doc_count(), std::memory_order_relaxed);
+	df::index_perf.search_index_bytes.store(built->byte_size(), std::memory_order_relaxed);
+
+	df::trace(std::format("Search index read {} items in {} ms, {}", built->doc_count(), elapsed_us / 1000,
+	                      df::file_size(static_cast<uint64_t>(built->byte_size())).str()));
+
+	publish_search_index(std::move(built));
+}
+
+void index_state::queue_update_search_index()
+{
+	_async.queue_async_after(async_queue::index_search_single, search_index_debounce_ms, [this]
+	{
+		if (df::is_closing) return;
+		update_search_index();
+	});
+}
+
+index_state::search_context& search_counter::context()
+{
+	if (!_context) _context = _index.make_search_context();
+	return *_context;
+}
+
+bool search_counter::is_indexed()
+{
+	const auto& ctx = context();
+	return ctx.evaluator && ctx.evaluator->view().stale_doc_count(ctx.evaluator->index()) <= max_counted_stale_docs;
+}
+
+df::file_group_histogram search_counter::count(const df::search_t& search, const df::cancel_token& token)
+{
+	if (search.has_selector() || search.has_related()) return _index.count_matches(search, token);
+
+	count_items_result result;
+	df::bump(df::query_perf.counts);
+	df::perf_timer timer(df::query_perf.count_us);
+	iterate_items(search, result, _index, token, _index._items, false, false, &context());
+	return result.summary;
+}
+
+std::optional<uint64_t> search_counter::try_count_items(const df::search_t& search, const df::cancel_token& token)
+{
+	if (search.is_empty() || search.has_related()) return std::nullopt;
+
+	if (search.has_selector())
+	{
+		// One folder the index holds is read without asking the file system; a tree may be the whole
+		// collection, and a folder it does not hold would be enumerated. A term needing metadata would
+		// have each item of the folder not yet read opened and read here, keystroke after keystroke.
+		const auto& selectors = search.selectors();
+		if (selectors.size() != 1 || selectors.front().is_recursive() || !_index.is_collection_search(search)) return std::nullopt;
+		if (search.needs_metadata() || !_index._items.find(selectors.front().folder())) return std::nullopt;
+
+		tally_items_result result;
+		iterate_items(search, result, _index, token, _index._items, false, false, nullptr);
+		if (token.is_cancelled()) return std::nullopt;
+		return result.summary.total_items().count;
+	}
+
+	auto& ctx = context();
+	if (!ctx.evaluator) return std::nullopt;
+
+	// Every changed folder is scanned on top of the index, so only a nearly current one answers here.
+	if (ctx.evaluator->view().stale_doc_count(ctx.evaluator->index()) > max_predicted_stale_docs) return std::nullopt;
+
+	tally_items_result result;
+	iterate_items(search, result, _index, token, _index._items, false, false, &ctx);
+	if (token.is_cancelled()) return std::nullopt;
+	return result.summary.total_items().count;
+}
+
+search_kept_items search_counter::make_kept_items(const std::vector<df::file_path>& paths)
+{
+	search_kept_items result;
+
+	auto& ctx = context();
+	const auto* const evaluator = ctx.evaluator ? &*ctx.evaluator : nullptr;
+	if (evaluator) result.docs = df::doc_set(evaluator->index().doc_count());
+
+	// A view lists a folder's items together more often than not, so a folder is looked up once a run.
+	df::folder_path last_folder;
+	std::optional<uint32_t> last_entry;
+
+	for (const auto& path : paths)
+	{
+		if (evaluator)
+		{
+			const auto& snapshot = evaluator->index();
+
+			if (path.folder() != last_folder || last_folder.is_empty())
+			{
+				last_folder = path.folder();
+				last_entry = snapshot.find_folder(last_folder);
+				if (last_entry && !evaluator->view().is_clean_entry(*last_entry)) last_entry.reset();
+			}
+
+			if (last_entry)
+			{
+				if (const auto doc = snapshot.find_doc(*last_entry, path.name()))
+				{
+					result.docs.set(*doc);
+					continue;
+				}
+			}
+		}
+
+		result.loose.emplace_back(path);
+	}
+
+	return result;
+}
+
+std::optional<uint64_t> search_counter::count_kept(const df::search_t& search, const search_kept_items& items,
+                                                   const df::cancel_token& token)
+{
+	auto& ctx = context();
+	if (search.has_selector() || search.has_related() || !ctx.evaluator) return std::nullopt;
+
+	const df::search_matcher matcher(search, platform::now().to_days(), &_index.locations());
+	const auto docs = ctx.evaluator->evaluate(matcher, token);
+
+	// Documents prepared against another snapshot number other items.
+	if (items.docs.size() != docs.size()) return std::nullopt;
+
+	auto result = docs.count_and(items.docs);
+
+	for (const auto& path : items.loose)
+	{
+		if (token.is_cancelled()) break;
+		if (_index.matches_collection_search(matcher, path)) ++result;
+	}
+
+	return result;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -2285,7 +2666,7 @@ df::index_file_item index_state::find_item(const df::file_path id) const
 }
 
 
-inline bool index_state::is_collection_search(const df::search_t& search) const
+bool index_state::is_collection_search(const df::search_t& search) const
 {
 	for (const auto& sel : search.selectors())
 	{
@@ -2351,7 +2732,7 @@ void index_state::save_crc(const df::file_path id, const index_file_revision rev
 			file.calc_search_presence();
 			folder->update_search_presence(file);
 			return true;
-		});
+		}, index_items::file_change::derived);
 		if (!published) return;
 
 		item_db_write write;
@@ -2391,7 +2772,7 @@ void index_state::save_phashes(std::vector<phash_result> hashes, const bool cont
 				// orientations filled in.
 				file.phash = picture_hashes;
 				return true;
-			});
+			}, index_items::file_change::derived);
 
 			if (found)
 			{
@@ -4629,6 +5010,9 @@ void index_state::queue_update_predictions()
 		// only: nothing about which rows exist has changed, so rebuilding them would discard every
 		// sidebar text layout to publish a number.
 		_async.invalidate_view(view_invalid::sidebar_counts);
+		// Hashes saved since the last pass changed folders the search index read; it decides on its own
+		// queue whether that is worth reading the collection again.
+		queue_update_search_index();
 	});
 }
 
@@ -4656,6 +5040,7 @@ void index_state::queue_update_summary()
 		// update_summary already asked for the rebuild its new vocabulary needs; this only has to
 		// re-earn the counts that vocabulary changed.
 		_async.invalidate_view(view_invalid::sidebar_counts);
+		queue_update_search_index();
 	});
 }
 

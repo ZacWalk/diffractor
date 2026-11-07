@@ -723,14 +723,33 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 
 	// Prefix matches first: a binary search over the sorted snapshot (O(log N + k)) rather
 	// than a full scan of the vocabulary. Prefix hits are the strongest predictions and are
-	// returned ahead of interior substring matches.
+	// returned ahead of interior substring matches. The range is in alphabetical order, so the
+	// words the collection uses most are taken from all of it rather than the first few.
 	const auto [prefix_first, prefix_last] = word_prefix_range(summary->_sorted_words, query);
 
-	for (auto it = prefix_first; it != prefix_last && result.size() < max_results; ++it)
+	std::vector<std::pair<std::string_view, int>> prefix_words;
+	prefix_words.reserve(static_cast<size_t>(std::distance(prefix_first, prefix_last)));
+
+	for (auto it = prefix_first; it != prefix_last; ++it)
 	{
 		const auto count = summary->_distinct_words.find(*it);
-		result.emplace_back(std::string(*it), std::vector<str::part_t>{{0, str::matched_text_byte_length(*it, 0, query)}},
-		                    count == summary->_distinct_words.end() ? 0 : count->second.i);
+		prefix_words.emplace_back(*it, count == summary->_distinct_words.end() ? 0 : count->second.i);
+	}
+
+	const auto prefix_taken = std::min(prefix_words.size(), max_results);
+	std::ranges::partial_sort(prefix_words, prefix_words.begin() + static_cast<std::ptrdiff_t>(prefix_taken),
+	                          [](const auto& left, const auto& right)
+	                          {
+		                          return left.second != right.second
+			                                 ? left.second > right.second
+			                                 : str::icmp(left.first, right.first) < 0;
+	                          });
+
+	for (size_t i = 0; i < prefix_taken; ++i)
+	{
+		const auto word = prefix_words[i].first;
+		result.emplace_back(std::string(word), std::vector<str::part_t>{{0, str::matched_text_byte_length(word, 0, query)}},
+		                    prefix_words[i].second);
 	}
 
 	// For longer queries, top up with interior substring matches the prefix pass cannot find,

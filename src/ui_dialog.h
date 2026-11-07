@@ -89,6 +89,11 @@ namespace ui
 	{
 	public:
 		int weight = 0;
+		// How many items choosing this finds, when that could be said cheaply; drawn beside it.
+		std::optional<uint64_t> count;
+		// Drawn from the collection's own words, tags and places, so a count of none means it leads
+		// nowhere and it is not offered.
+		bool drop_when_empty = false;
 
 		auto_complete_match() noexcept = default;
 

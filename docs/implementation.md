@@ -112,7 +112,11 @@ through `index_items`, scan/database workers update per-file atomics in place, a
 lets folder replacement reject a node built before an in-place update. The revision protects the
 folder contents as a set of per-file metadata/search-presence/cache fields; immutable replacement
 alone is insufficient because scanning a whole folder for each individual metadata update would
-clone large folder vectors and move file scanning back under publication contention.
+clone large folder vectors and move file scanning back under publication contention. A second
+counter, the search revision, rises with every in-place update except those to what is derived from an
+item's bytes - duplicates, checksums and picture hashes - so the search index can tell a folder whose
+captured contents changed from one that only gained a derived value it reads live; one counter cannot
+serve both, because replacement must still reject a node built before a derived update.
 Indexing progress is an immutable snapshot owned by the index worker and atomically published for
 UI/sidebar readers; paired total/remaining counters must be read together, and handing every paint
 call through the index queue or posting a UI callback for each scanned file would either block Paint
@@ -120,7 +124,15 @@ on Source work or create unbounded invalidation traffic.
 `view_state` owns the visit timeline on the UI thread, while `_visits_generation` is atomic only so
 the location worker can observe superseded visit derivations through `df::cancel_token`; the worker
 still publishes a complete detached `visit_timeline` back to the UI thread before the UI-owned value
-is replaced.
+is replaced. The address box's `_count_version` is atomic for the same reason: each keystroke raises
+it on the UI thread, and the auto-complete worker observes it through `df::cancel_token` to stop
+counting a superseded pass, which then publishes nothing.
+
+The search index is an index cache published as one immutable snapshot. Its own queue builds it with
+no lock held, `index_state` swaps the pointer under the summary lock, and readers copy the pointer
+under the same lock and evaluate with none held. An index updated in place would need a lock across
+every evaluation that indexing writers then wait on; a snapshot plus the per-folder revisions it
+records keeps readers and indexing apart.
 
 Three process-wide values are also published to every thread. A translation - and the extra plural
 forms of a plural text - is an atomic pointer into storage `app_text_t` only ever appends to: the UI
@@ -143,8 +155,8 @@ publish before extraction completes.
 Search parses into exact matchers and conservative candidate prefilters. Negation and OR never create
 a prefilter that could omit an exact result. Query generations prevent stale result publication.
 Folder-scoped searches validate their filesystem scope; index-wide searches answer from cached
-records. In-app file operations report every changed source and destination folder so search refresh
-does not depend on a live watcher.
+records, through the [search index](#search-index) where it is current. In-app file operations report
+every changed source and destination folder so search refresh does not depend on a live watcher.
 
 The summary keeps authoritative tag histograms and word counts for every indexed tag. Tag-companion
 recommendations are auxiliary typeahead hints and are bounded per pathological item: when one item
@@ -159,6 +171,50 @@ items, and presence consume the same duplicate relation so they cannot disagree 
 
 Related-item collection scores the index against one anchor and keeps bounded best results per
 relation. Counting and display share the same collector and stable path tie-breaks.
+
+### Search Index
+
+The search index is an immutable in-memory reverse index of the collection, read from the cached
+records rather than the database, so it needs no schema change and no re-index. Items are numbered in
+path order. Each distinct name, free-text value, formatted value, split part, and tag part maps to the
+items holding it, and a trigram index over the distinct text values suggests which of them hold a
+free-text term. A search's terms become item sets combined by `combine_search_terms`, the steps the
+matcher applies to one item. The matcher's own predicate confirms every suggestion. Rating and label
+terms read nothing of an item but that property, so items are grouped by its value and `match_term`
+answers once per group. Date terms compare only the day each of an item's date keys falls on, so
+`date_term_keys_of` and `date_term_found`, which the matcher uses too, decide them with each day
+compared once. A term no table can answer, such as a size comparison, is answered by `match_term` over
+each item's captured metadata. An answer from the index is therefore the answer a scan gives, and the
+index tests compare the two over about 130 searches.
+
+Each folder entry keeps the folder node and search revision it was read from. A folder changed since
+is scanned on top of the snapshot. Duplicates, checksums, picture hashes and presence are always read
+live, so recording them leaves a folder current. A search uses the snapshot while at least half the
+collection is unchanged and otherwise scans, as it would without one. Formatted values depend on the
+language and number format, and date keys on the time zone and, through what counts as a valid date,
+the day; when one changes, those terms are answered item by item until the next read, and maintenance
+reads the collection again on a new day.
+
+Reading never delays indexing or a search. It runs on its own `search_index` queue, never
+`index_compute`, a debounced second after the summary and duplicate-prediction passes, and only once
+changes since the last read pass a tolerance that grows with the collection, or leave the snapshot one
+no search would use. It does not start while indexing or scanning runs and abandons when either
+starts; a snapshot too stale to use is then dropped so it stops holding replaced records. Nothing is
+locked while reading or evaluating: publication swaps a pointer under the summary lock and releases the
+old snapshot after it. A collection whose snapshot would pass a 1 GiB ceiling keeps none and scans.
+Each snapshot published asks the sidebar to count again, since it may have counted by scanning. The
+performance report's Search index rows show how many searches it answered and how long reads took and
+how much memory they hold.
+
+Sidebar rows and address-box predictions are counted through `search_counter`, which lists the
+collection once for a whole pass. Its evaluator keeps each term's items and the items through each
+presence requirement for the pass, so the searches of a pass share them, and a count reads only the
+folders the snapshot cannot answer for. A sidebar pass counts from the snapshot only while few items
+have changed since it was read, since every row would read each of them; past that it counts as it did
+without one. Prediction counts are budgeted per keystroke and stopped by the next one. When the
+snapshot cannot answer cheaply - there is none yet, too many items changed, the search walks a folder
+tree, or it is a related search - the count is left out rather than scanned, and a folder search with a
+term is never counted, since that would read the folder's unread files on every keystroke.
 
 ### Thumbnail Pipeline
 
@@ -246,7 +302,8 @@ repository lint, build, embedded tests, and translation validation. Focused test
   state.
 - [model_index.cpp](../src/model_index.cpp), [model_search.cpp](../src/model_search.cpp),
   [model_postings.h](../src/model_postings.h), and [model_db.cpp](../src/model_db.cpp): index, search,
-  candidate sets, and persistence.
+  candidate sets, and persistence; [model_search_index.cpp](../src/model_search_index.cpp): the
+  search index snapshot and its evaluation.
 - [model_index_duplicates.cpp](../src/model_index_duplicates.cpp): duplicate prediction and presence;
   [model_index_summary.cpp](../src/model_index_summary.cpp): the summary, its vocabulary, and
   auto-complete.

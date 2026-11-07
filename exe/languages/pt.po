@@ -3927,3 +3927,8 @@ msgstr "Legendas {}"
 
 msgid "Subtitles"
 msgstr "Legendas"
+
+msgid "1 of the items shown"
+msgid_plural "{count} of the items shown"
+msgstr[0] "1 dos itens mostrados"
+msgstr[1] "{count} dos itens mostrados"

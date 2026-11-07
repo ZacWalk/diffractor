@@ -164,6 +164,9 @@ enum class async_queue
 	index_predictions_single,
 	index_summary_single,
 	index_presence_single,
+	// Reads the collection into the search index. Its own thread, so a build never waits behind, or
+	// holds up, the indexing, search, sidebar and summary queues.
+	index_search_single,
 	web,
 	map_tile,
 };

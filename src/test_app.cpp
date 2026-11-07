@@ -5493,6 +5493,83 @@ static void should_discard_a_superseded_completion()
 	assert_equal(1, second_delivered, "the newest pass is the one that lands");
 }
 
+// design.md: each prediction says how many items it finds, and a suggestion that finds more ranks above
+// one of its kind that finds fewer. The number shown is the number running the search lists, and one
+// drawn from the collection's own words, tags and places that would find nothing is not offered.
+static void should_count_address_completions(shared_test_context& stc)
+{
+	stc.lazy_load_index();
+	stc.test_index.update_summary();
+	// As every summary pass does, so the snapshot holds what earlier tests changed in the shared index.
+	stc.test_index.update_search_index();
+
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	view_state s(ss, as, stc.test_index, make_test_player());
+	s.view_mode(view_type::items);
+
+	const auto completes = make_search_auto_complete(s, [](std::string) {});
+	completes->initialise([](const ui::auto_complete_results&) {});
+
+	ui::auto_complete_results results;
+
+	const auto run = [&](const std::string& query)
+	{
+		results.clear();
+		completes->search(query, [&results](const ui::auto_complete_results& r) { results = r; });
+		run_completion_worker(as);
+		as.drain_ui();
+	};
+
+	const auto found_by = [&stc](const std::string& text)
+	{
+		return stc.test_index.count_matches(df::search_t::parse(text), test_token,
+		                                    index_state::search_execution::scan).total_items().count;
+	};
+
+	run("key");
+	assert_equal(true, !results.empty(), "a query produces completions");
+	assert_equal(true, results.front()->count.has_value(), "what was typed is counted too");
+
+	auto counted = 0;
+
+	for (const auto& r : results)
+	{
+		const auto text = r->edit_text();
+		assert_equal(false, r->drop_when_empty && r->count == 0u, std::format("'{}' leads somewhere", text));
+
+		if (r->count && !df::is_path(str::trim(text)))
+		{
+			++counted;
+			assert_equal(found_by(text), *r->count, std::format("'{}' says how many it finds", text));
+		}
+	}
+
+	assert_equal(true, counted > 1, "completions are counted");
+
+	run("#key");
+
+	std::vector<uint64_t> tag_counts;
+
+	for (const auto& r : results)
+	{
+		if (r->drop_when_empty && str::starts(r->edit_text(), "#") && r->count) tag_counts.emplace_back(*r->count);
+	}
+
+	assert_equal(true, !tag_counts.empty(), "tags are suggested and counted");
+	assert_equal(true, std::ranges::is_sorted(tag_counts, std::greater<>()), "a tag that finds more ranks higher");
+
+	// Nothing in the collection holds zzzqqq, so nothing completed after it finds anything.
+	run("zzzqqq ke");
+	assert_equal(true, !results.empty(), "what was typed is still offered");
+	assert_equal("zzzqqq ke", results.front()->edit_text(), "and offered first");
+
+	for (const auto& r : results)
+	{
+		assert_equal(false, r->drop_when_empty, std::format("'{}' would find nothing", r->edit_text()));
+	}
+}
+
 static void should_gate_application_alpha_effects()
 {
 	const auto restore_animations = ui::animations_enabled;
@@ -5788,6 +5865,60 @@ static void should_keep_sidebar_rebuild_packets_current()
 	             "an obsolete sidebar structural packet cannot publish");
 	assert_equal(true, should_publish_sidebar_structural_request(2, 2),
 	             "the current sidebar structural packet can publish");
+}
+
+// Every sidebar row is counted by the search index, so its total is what clicking it finds, down to the
+// sizes and the picture chosen to show it. A tag or label row that would find nothing is not shown;
+// rating rows always are, because together they are one scale.
+static void should_count_sidebar_rows_from_the_search_index(shared_test_context& stc)
+{
+	stc.lazy_load_index();
+	stc.test_index.update_summary();
+	// As every summary pass does, so the snapshot holds what earlier tests changed in the shared index.
+	stc.test_index.update_search_index();
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	view_state s(ss, as, stc.test_index, make_test_player());
+
+	search_item_factory::sidebar_config_snapshot config;
+	config.favorite_tags = "key1 zz_tag_on_nothing";
+
+	constexpr search_item_factory factory;
+	search_counter counter(stc.test_index);
+	assert_equal(true, counter.is_indexed(), "the sidebar counts from the search index");
+
+	const auto tags = search_item_factory::count_rows(s, counter, factory.create_tags(s, {}, config), true);
+	const auto labels = search_item_factory::count_rows(s, counter, factory.create_labels(s, {}), true);
+	const auto ratings = search_item_factory::count_rows(s, counter, factory.create_ratings(s, {}), false);
+
+	const auto has_row = [](const std::vector<search_item_ptr>& rows, const std::string_view key)
+	{
+		return std::ranges::any_of(rows, [key](const search_item_ptr& row) { return row->key == key; });
+	};
+
+	assert_equal(true, has_row(tags, "t:key1"), "a tag that finds items is shown");
+	assert_equal(false, has_row(tags, "t:zz_tag_on_nothing"), "a favorite tag that finds nothing is not shown");
+	assert_equal(6_z, ratings.size(), "every rating row is shown, empty or not");
+
+	for (const auto* const rows : {&tags, &labels, &ratings})
+	{
+		for (const auto& row : *rows)
+		{
+			assert_equal(true, row->summary_known, std::format("'{}' arrives counted", row->key));
+
+			const auto expected = stc.test_index.count_matches(row->search, test_token,
+			                                                   index_state::search_execution::scan);
+			assert_equal(expected.total_items().count, row->summary.total_items().count,
+			             std::format("'{}' counts what clicking it finds", row->key));
+			assert_equal(true, row->summary == expected, std::format("'{}' counts sizes and picture alike", row->key));
+		}
+	}
+
+	for (const auto& row : labels)
+	{
+		assert_equal(true, row->summary.total_items().count > 0, std::format("'{}' finds items", row->key));
+	}
 }
 
 static void should_consume_cancelled_globe_release()
@@ -6219,6 +6350,7 @@ void register_app_tests(view_state& state, test_registry& tests)
 	tests.add("Should offer recent searches for an empty address"s,
 	          should_offer_recent_searches_for_an_empty_address);
 	tests.add("Should discard a superseded completion"s, should_discard_a_superseded_completion);
+	tests.add("Should count address completions"s, should_count_address_completions);
 	// APP-007 - application-local fades must honor the shared alpha-animation gate.
 	tests.add("Should gate application alpha effects"s, should_gate_application_alpha_effects);
 	tests.add("Should snap app logo hover when animations are disabled"s,
@@ -6238,6 +6370,7 @@ void register_app_tests(view_state& state, test_registry& tests)
 	          should_hand_the_last_ui_owned_reference_back_to_the_ui_thread);
 	// APP-008 - sidebar structural rebuild packets carry settings snapshots and request identity.
 	tests.add("Should keep sidebar rebuild packets current"s, should_keep_sidebar_rebuild_packets_current);
+	tests.add("Should count sidebar rows from the search index"s, should_count_sidebar_rows_from_the_search_index);
 	// APP-011 - cancelling a globe drag consumes its release.
 	tests.add("Should consume cancelled globe release"s, should_consume_cancelled_globe_release);
 

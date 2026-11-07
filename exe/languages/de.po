@@ -3932,3 +3932,8 @@ msgstr "Untertitel {}"
 
 msgid "Subtitles"
 msgstr "Untertitel"
+
+msgid "1 of the items shown"
+msgid_plural "{count} of the items shown"
+msgstr[0] "1 der angezeigten Elemente"
+msgstr[1] "{count} der angezeigten Elemente"

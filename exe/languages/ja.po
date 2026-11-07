@@ -3928,3 +3928,8 @@ msgstr "字幕 {}"
 
 msgid "Subtitles"
 msgstr "字幕"
+
+msgid "1 of the items shown"
+msgid_plural "{count} of the items shown"
+msgstr[0] "表示中の項目のうち 1 件"
+msgstr[1] "表示中の項目のうち {count} 件"

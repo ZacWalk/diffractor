@@ -4090,3 +4090,9 @@ msgstr "Titulky {}"
 
 msgid "Subtitles"
 msgstr "Titulky"
+
+msgid "1 of the items shown"
+msgid_plural "{count} of the items shown"
+msgstr[0] "1 ze zobrazených položek"
+msgstr[1] "{count} ze zobrazených položek"
+msgstr[2] "{count} ze zobrazených položek"

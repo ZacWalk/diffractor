@@ -20,7 +20,8 @@
 //                                 searches, the tag vocabulary or the sidebar's own settings.
 //   sidebar_file_types_and_dates  projection - the type and history charts, read straight from the
 //                                 index histograms. No queries, no element churn.
-//   sidebar_counts                the per-row sums. One index query per row, so it never rides
+//   sidebar_counts                the per-row sums. Read from the search index in one pass when it
+//                                 can answer, otherwise one index query per row, so it never rides
 //                                 along with a structural rebuild it did not need.
 //   sidebar_drives                volume enumeration, which blocks on unreachable network mappings.
 //
@@ -174,6 +175,11 @@ public:
 	df::file_group_histogram summary;
 	// Distinguishes "not counted yet" from "counted, and the answer is none" - both render blank.
 	bool summary_known = false;
+	// calc_sum reads a summary the index already holds rather than searching, so a structural rebuild
+	// may ask it when the search index cannot answer.
+	bool sum_is_cheap = false;
+	// How many of the items the view shows this row's search keeps, when the search index could say.
+	std::optional<uint64_t> scoped_count;
 	ui::color32 clr = 0;
 	int icon_repeat = 1;
 	mutable sidebar_tooltip_thumbnail _tooltip_thumbnail;
@@ -303,6 +309,15 @@ public:
 		}
 
 		result.elements->add(std::make_shared<summary_control>(summary, flex_item::new_line));
+
+		if (scoped_count)
+		{
+			result.elements->add(std::make_shared<text_element>(format_plural_text(tt.sidebar_kept_fmt, static_cast<int64_t>(*scoped_count)),
+			                                                    ui::style::font_face::dialog,
+			                                                    ui::style::text_style::multiline,
+			                                                    flex_item::new_line));
+		}
+
 		result.active_bounds = result.window_bounds = bounds.offset(element_offset);
 		result.horizontal = true;
 	}
@@ -611,6 +626,7 @@ public:
 				{
 					return s.item_index.tag_summary(tag);
 				};
+				i->sum_is_cheap = true;
 				i->summary = t.second;
 				results.emplace_back(i);
 			}
@@ -630,6 +646,7 @@ public:
 		{
 			return s.item_index.rating_summary(rating);
 		};
+		i->sum_is_cheap = true;
 		i->summary = s.item_index.rating_summary(rating);
 		return i;
 	}
@@ -697,6 +714,7 @@ public:
 				{
 					return s.item_index.label_summary(label);
 				};
+				i->sum_is_cheap = true;
 				i->summary = lab.second;
 				results.emplace_back(i);
 			}
@@ -720,6 +738,45 @@ public:
 		}
 
 		return result;
+	}
+
+	// Rows arrive counted, so a rebuild never shows them loading once the index can answer: from the
+	// search index, which makes every total what clicking its row finds, or - until the index has been
+	// read - from the summaries the cheap rows already hold. A tag or label row that finds nothing leads
+	// nowhere and is left out, but only once counts can be trusted.
+	static std::vector<search_item_ptr> count_rows(view_state& s, search_counter& counter,
+	                                               std::vector<search_item_ptr> rows, const bool hide_empty)
+	{
+		if (!s.item_index.is_init_complete()) return rows;
+
+		const df::cancel_token token;
+		const auto indexed = counter.is_indexed();
+
+		for (const auto& row : rows)
+		{
+			// A favorite scoped to a folder is answered by walking that tree, which waits for the counts pass
+			// that follows rather than holding up the rows.
+			if (indexed && !row->search.has_selector() && !row->search.has_related())
+			{
+				row->summary = counter.count(row->search, token);
+				row->summary_known = true;
+			}
+			else if (!indexed && row->sum_is_cheap && row->calc_sum)
+			{
+				row->summary = row->calc_sum(s, token);
+				row->summary_known = true;
+			}
+		}
+
+		if (hide_empty)
+		{
+			std::erase_if(rows, [](const search_item_ptr& row)
+			{
+				return row->summary_known && row->summary.total_items().count == 0;
+			});
+		}
+
+		return rows;
 	}
 };
 
@@ -3045,6 +3102,8 @@ public:
 			                   drive_info = _drive_info, config, request_id]
 		                   {
 			                   constexpr search_item_factory f;
+			                   // One listing of the index answers every row of this rebuild.
+			                   search_counter counter(s.item_index);
 			                   std::vector<search_item_ptr> items;
 			                   std::vector<drive_item_ptr> drives;
 			                   std::vector<view_element_ptr> item_elements;
@@ -3070,7 +3129,8 @@ public:
 
 			                   if (config.sidebar.show_favorite_searches)
 			                   {
-				                   add_elements(f.create_search_items(s, existing, config));
+				                   add_elements(search_item_factory::count_rows(
+					                   s, counter, f.create_search_items(s, existing, config), false));
 			                   }
 
 			                   if (config.sidebar.show_drives)
@@ -3084,17 +3144,18 @@ public:
 
 			                   if (config.sidebar.show_ratings)
 			                   {
-				                   add_elements(f.create_ratings(s, existing));
+				                   add_elements(search_item_factory::count_rows(s, counter, f.create_ratings(s, existing), false));
 			                   }
 
 			                   if (config.sidebar.show_labels)
 			                   {
-				                   add_elements(f.create_labels(s, existing));
+				                   add_elements(search_item_factory::count_rows(s, counter, f.create_labels(s, existing), true));
 			                   }
 
 			                   if (config.sidebar.show_tags)
 			                   {
-				                   add_elements(f.create_tags(s, existing, config));
+				                   add_elements(search_item_factory::count_rows(s, counter, f.create_tags(s, existing, config),
+				                                                                true));
 			                   }
 
 
@@ -3222,42 +3283,107 @@ public:
 		// calc_sum only queries item_index, which is synchronized, so it is safe off the UI thread. The
 		// elements themselves are not: they own text layouts, so the list is guarded rather than copied
 		// loose into the worker, and the view is reached through a weak reference locked on the UI thread.
+		// A row's search is set when the row is made and never changes, so the worker reads it as safely.
 		auto elements = ui_owned(_state._async, std::make_shared<std::vector<search_item_ptr>>(_items));
 
-		_state.queue_async(async_queue::sidebar, [weak = weak_from_this(), &s = _state, elements, token]
+		// What the view shows, by path, so each row can say how many of those items it keeps. Folders are
+		// left out: no row counts them.
+		auto shown = std::make_shared<std::vector<df::file_path>>();
+		shown->reserve(_state.display_items().size());
+
+		for (const auto& i : _state.display_items()._items)
 		{
-			df::scope_locked_inc slc(df::jobs_running);
+			if (!i->is_folder()) shown->emplace_back(i->path());
+		}
 
-			int update_count = 0;
+		_state.queue_async(async_queue::sidebar, [weak = weak_from_this(), &s = _state, elements, token, shown,
+				                   current_search = _state.search()]
+		                   {
+			                   df::scope_locked_inc slc(df::jobs_running);
+			                   search_counter counter(s.item_index);
 
-			for (const auto& i : *elements)
-			{
-				if (i->calc_sum)
-				{
-					const auto sum = i->calc_sum(s, token);
+			                   if (counter.is_indexed())
+			                   {
+				                   // Every row from the search index, so each total is what clicking the row finds,
+				                   // published together because together they take a few milliseconds.
+				                   struct row_count
+				                   {
+					                   search_item_ptr row;
+					                   df::file_group_histogram sum;
+					                   std::optional<uint64_t> kept;
+				                   };
 
-					if (!token.is_cancelled())
-					{
-						update_count += 1;
+				                   std::vector<row_count> counts;
+				                   counts.reserve(elements->size());
+				                   const auto kept_items = shown->empty()
+					                                           ? search_kept_items{}
+					                                           : counter.make_kept_items(*shown);
 
-						//if (i->summary != sum)
-						{
-							s.queue_ui([weak, i, sum, token]
-							{
-								if (token.is_cancelled()) return;
-								const auto t = weak.lock();
-								if (!t) return;
-								i->summary_known = true;
-								i->summary = sum;
-								t->invalidate();
-							});
-						}
-					}
-				}
-			}
+				                   for (const auto& i : *elements)
+				                   {
+					                   if (token.is_cancelled()) return;
 
-			df::trace(std::format("Sidebar update {} predictions", update_count));
-		});
+					                   auto& c = counts.emplace_back();
+					                   c.row = i;
+					                   c.sum = counter.count(i->search, token);
+
+					                   // The row the view shows keeps everything it shows, which is not worth saying.
+					                   if (!shown->empty() && i->search != current_search)
+					                   {
+						                   c.kept = counter.count_kept(i->search, kept_items, token);
+					                   }
+				                   }
+
+				                   if (token.is_cancelled()) return;
+
+				                   s.queue_ui([weak, counts = std::move(counts), token]
+				                   {
+					                   if (token.is_cancelled()) return;
+					                   const auto t = weak.lock();
+					                   if (!t) return;
+
+					                   for (const auto& c : counts)
+					                   {
+						                   c.row->summary_known = true;
+						                   c.row->summary = c.sum;
+						                   c.row->scoped_count = c.kept;
+					                   }
+
+					                   t->invalidate();
+				                   });
+
+				                   df::trace(std::format("Sidebar update {} predictions from the search index", counts.size()));
+				                   return;
+			                   }
+
+			                   int update_count = 0;
+
+			                   for (const auto& i : *elements)
+			                   {
+				                   if (i->calc_sum)
+				                   {
+					                   const auto sum = i->calc_sum(s, token);
+
+					                   if (!token.is_cancelled())
+					                   {
+						                   update_count += 1;
+
+						                   s.queue_ui([weak, i, sum, token]
+						                   {
+							                   if (token.is_cancelled()) return;
+							                   const auto t = weak.lock();
+							                   if (!t) return;
+							                   i->summary_known = true;
+							                   i->summary = sum;
+							                   i->scoped_count.reset();
+							                   t->invalidate();
+						                   });
+					                   }
+				                   }
+			                   }
+
+			                   df::trace(std::format("Sidebar update {} predictions", update_count));
+		                   });
 	}
 
 	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
