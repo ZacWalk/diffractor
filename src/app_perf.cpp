@@ -252,6 +252,22 @@ void df::log_perf_summary()
 		                format_average(load(q.count_us), load(q.counts)), "-");
 	}
 
+	if (load(q.index_answers) != 0)
+	{
+		append_perf_row(report, "Query", "Search index", format_count(load(q.index_answers)), "-", "-", "-",
+		                std::format("changed-folders-scanned={}", format_count(load(q.index_scanned_folders))));
+	}
+
+	if (load(x.search_index_builds) != 0)
+	{
+		append_perf_row(report, "Index", "Search index build", format_count(load(x.search_index_builds)),
+		                format_us(load(x.search_index_build_us)),
+		                format_average(load(x.search_index_build_us), load(x.search_index_builds)),
+		                format_us(load(x.search_index_build_max_us)),
+		                std::format("items={}; memory={}", format_count(load(x.search_index_docs)),
+		                            file_size(load(x.search_index_bytes)).str()));
+	}
+
 	if (load(f.scans) != 0)
 	{
 		append_perf_row(report, "Files", "Scan", format_count(load(f.scans)), format_us(load(f.scan_us)),

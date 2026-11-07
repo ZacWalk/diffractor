@@ -7,12 +7,14 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: File indexing engine and duplicate detection. Scans folders, maintains item index,
-// calculates summaries, and identifies duplicate files by name, date, and CRC.
+// calculates summaries, and identifies duplicate files by name, date, and CRC. search_counter counts
+// many searches - sidebar rows, address-box predictions - against one listing of the index.
 
 #pragma once
 
 #include "model_items.h"
 #include "model_postings.h"
+#include "model_search_index.h"
 
 struct search_part;
 class location_cache;
@@ -166,6 +168,11 @@ struct index_statistic
 	int predictions_ms = 0;
 	int count_matches_ms = 0;
 
+	// The search index as last published: what it holds and what reading it cost.
+	int search_index_docs = 0;
+	int search_index_build_ms = 0;
+	size_t search_index_bytes = 0;
+
 	int scan_items_ms = 0;
 	int update_presence_ms = 0;
 
@@ -210,6 +217,15 @@ class index_items
 	};
 
 public:
+	// What an in-place update changes. Either kind stops a folder rebuilt from an older copy replacing the
+	// node; only a searchable change stales the search index's read of the folder, which reads what is
+	// derived from an item's bytes - its duplicates, checksum and picture hashes - live.
+	enum class file_change
+	{
+		searchable,
+		derived
+	};
+
 	index_folder_snapshot find_snapshot(const df::folder_path folder) const
 	{
 		platform::shared_lock lock(_rw);
@@ -299,7 +315,7 @@ public:
 	}
 
 	template <typename Func>
-	bool update_file(const df::file_path path, Func func) const
+	bool update_file(const df::file_path path, Func func, const file_change change = file_change::searchable) const
 	{
 		platform::shared_lock lock(_rw);
 		const auto found_folder = _index.find(path.folder());
@@ -312,7 +328,7 @@ public:
 		if (found_file == folder->files.end()) return false;
 		if (icmp(found_file->name, path.name()) != 0) return false;
 		if (!func(folder, *found_file)) return false;
-		folder->mark_content_changed();
+		folder->mark_content_changed(change == file_change::searchable);
 		return true;
 	}
 
@@ -742,6 +758,8 @@ struct index_summary
 	std::shared_ptr<const df::unique_folders> _distinct_prime_folders = std::make_shared<df::unique_folders>();
 	index_metadata_summary_const_ptr _metadata = std::make_shared<index_metadata_summary>();
 	index_histograms_const_ptr _histograms = std::make_shared<index_histograms>();
+	// Null until the collection has been read once, and while indexing has left it too stale to help.
+	std::shared_ptr<const df::search_index> _search_index;
 };
 
 enum class location_matrix_projection
@@ -908,6 +926,8 @@ struct folder_scan_item
 
 class index_state final : public df::no_copy
 {
+	friend class search_counter;
+
 	async_strategy& _async;
 
 	platform::mutex _summary_rw;
@@ -916,6 +936,9 @@ class index_state final : public df::no_copy
 	_Guarded_by_(_summary_rw) index_summary _summary;
 	_Guarded_by_(_summary_rw) uint64_t _summary_generation = 0;
 	std::atomic_uint64_t _predictions_generation = 0;
+	// Numbers each published search index. Written only by update_search_index, which runs on the
+	// search index queue alone.
+	uint64_t _search_index_generation = 0;
 	// Written only on the UI thread by queue_scan_offline_thumbnails, read by the cloud worker so a
 	// batch queued for a screenful that has since scrolled away can stop issuing network thumbnail
 	// fetches. Atomic because the two contexts are unavoidably different: the worker cannot read the
@@ -955,11 +978,47 @@ class index_state final : public df::no_copy
 	void add_distinct_other_folders(df::unique_folders folders);
 	void enqueue_db_write(item_db_write write);
 	void enqueue_db_writes(std::vector<item_db_write> writes);
-	bool is_collection_search(const df::search_t& search) const;
 	bool is_excluded_from_collection(df::folder_path folder) const;
 	void queue_deferred_validation(df::folder_path folder_path, bool rescan);
+	void publish_search_index(std::shared_ptr<const df::search_index> index);
 
 public:
+	bool is_collection_search(const df::search_t& search) const;
+
+	// How a search is answered. A scan asks every item; automatic answers a selector-free search from the
+	// search index where it is current and scans only what changed since. Both find the same items.
+	enum class search_execution
+	{
+		automatic,
+		scan,
+	};
+
+	// One listing of the index, and the search index evaluator classified against it when the index
+	// answers. Built once and reused, so many searches share the listing and each other's terms.
+	struct search_context
+	{
+		index_folders_t folders;
+		std::optional<df::search_index_evaluator> evaluator;
+	};
+
+	search_context make_search_context(search_execution execution = search_execution::automatic) const;
+
+	std::shared_ptr<const df::search_index> search_index() const
+	{
+		platform::shared_lock lock(_summary_rw);
+		return _summary._search_index;
+	}
+
+	// Reads the collection into a new search index when the published one has gone stale, drops it when
+	// indexing has left it too stale to help, and does nothing while indexing is running. Runs on the
+	// search index queue, never on a queue that indexing, searching or the sidebar waits for.
+	void update_search_index();
+	void queue_update_search_index();
+
+	// Whether one item, by path, is among the results of a selector-free collection search: what the
+	// scan of its folder would answer for it.
+	bool matches_collection_search(const df::search_matcher& matcher, df::file_path path) const;
+
 	enum class query_item_kind
 	{
 		file,
@@ -1069,7 +1128,8 @@ public:
 
 	df::index_file_item find_item(df::file_path id) const;
 
-	df::file_group_histogram count_matches(const df::search_t& a, const df::cancel_token& token);
+	df::file_group_histogram count_matches(const df::search_t& a, const df::cancel_token& token,
+	                                       search_execution execution = search_execution::automatic);
 
 	df::file_group_histogram label_summary(const std::string_view label) const
 	{
@@ -1116,7 +1176,8 @@ public:
 
 	void query_items(const df::search_t& search,
 	                 const std::function<void(query_item_results, bool)>& found_callback,
-	                 const df::cancel_token& token);
+	                 const df::cancel_token& token,
+	                 search_execution execution = search_execution::automatic);
 	df::item_set materialize_query_items(query_item_results items, const df::unique_items& existing) const;
 
 	struct validate_folder_result
@@ -1422,4 +1483,49 @@ public:
 	std::vector<auto_complete_folder> auto_complete_folders(std::string_view query, size_t max_results) const;
 	bool rebuild_sorted_words(index_metadata_summary& summary, uint64_t generation = 0) const;
 	std::vector<std::string> auto_complete_text(prop::key_ref key);
+};
+
+// Items from a current result set, held the way the search index can intersect them: the documents of
+// those it read and has not seen change, and the paths of the rest.
+struct search_kept_items
+{
+	df::doc_set docs;
+	std::vector<df::file_path> loose;
+};
+
+// Counts many searches against one listing of the index, so a sidebar's rows or one keystroke's
+// predictions share the listing and the answers to the terms they have in common. Used by one worker at
+// a time; reads the index as any search does and holds no lock between calls.
+class search_counter final : public df::no_copy
+{
+	index_state& _index;
+	std::optional<index_state::search_context> _context;
+
+	index_state::search_context& context();
+
+public:
+	explicit search_counter(index_state& index) : _index(index)
+	{
+	}
+
+	// Whether selector-free searches are answered by the search index rather than by a scan. Every answer
+	// also asks each item the index has not read since it changed, so a pass counting many searches - a
+	// sidebar's rows - uses the index only while those are few, and otherwise counts as it did without one.
+	bool is_indexed();
+
+	// What count_matches answers.
+	df::file_group_histogram count(const df::search_t& search, const df::cancel_token& token);
+
+	// The number of items a search finds, or nothing when only scanning many folders, or reading files,
+	// could say: a prediction's count must never cost what running the search costs.
+	std::optional<uint64_t> try_count_items(const df::search_t& search, const df::cancel_token& token);
+
+	// Prepares a current result set for count_kept. Folders are skipped: no search's count holds them.
+	search_kept_items make_kept_items(const std::vector<df::file_path>& paths);
+
+	// How many of `items` the search finds, when the search index can say. A search scoped to folders or
+	// related to an item has no answer here: only walking those folders, and reading what has not been
+	// read, could give one.
+	std::optional<uint64_t> count_kept(const df::search_t& search, const search_kept_items& items,
+	                                   const df::cancel_token& token);
 };

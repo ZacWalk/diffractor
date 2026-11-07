@@ -3947,6 +3947,469 @@ static void should_query_trigram_index()
 	assert_equal(false, index.candidates("do").has_value(), "short query requires a scan");
 }
 
+static void should_hold_document_sets()
+{
+	df::doc_set docs(130);
+	docs.set_range(60, 10);
+	assert_equal(uint64_t{10}, docs.count(), "a range across a word boundary");
+	assert_equal(true, docs.test(60) && docs.test(69) && !docs.test(59) && !docs.test(70), "the range's ends");
+
+	docs.reset_range(62, 3);
+	assert_equal(uint64_t{7}, docs.count(), "a range cleared inside one");
+
+	auto inverted = docs;
+	inverted.invert();
+	assert_equal(uint64_t{123}, inverted.count(), "inverting stays within the set's size");
+	assert_equal(uint64_t{0}, docs.count_and(inverted), "a set and its inverse share nothing");
+	assert_equal(uint64_t{130}, df::doc_set(130, true).count(), "a full set holds its size exactly");
+
+	std::vector<uint32_t> visited;
+	docs.for_each([&visited](const uint32_t doc) { visited.emplace_back(doc); });
+	assert_equal(true, visited == std::vector<uint32_t>{60, 61, 65, 66, 67, 68, 69}, "documents are visited ascending");
+}
+
+// The search index folds whole sets through the steps the matcher folds one item's answers through.
+// Each assignment of answers to the terms is one item here, so a set that disagreed with the matcher
+// about any item - any parse of AND, OR and parentheses - would fail.
+static void should_combine_sets_as_the_matcher_combines_answers()
+{
+	for (const auto query : {
+		     "a b c", "a or b c", "(a or b) c", "a or (b c)", "((a b) or c", "a (b or (c d))", "-a or b",
+		     "a or b or c or d", "(a or b) (c or d)", "a b)", "(((a b", "a or b) or c"
+	     })
+	{
+		const auto search = df::search_t::parse(query);
+		const auto& terms = search.terms();
+		const auto items = 1u << terms.size();
+
+		const auto sets = df::combine_search_terms<df::doc_set>(
+			terms,
+			[&terms, items](const df::search_term& term)
+			{
+				const auto bit = static_cast<uint32_t>(&term - terms.data());
+				df::doc_set answers(items);
+				for (uint32_t item = 0; item < items; ++item) if ((item >> bit & 1) != 0) answers.set(item);
+				return answers;
+			},
+			[](df::doc_set& state, const df::doc_set& value) { state.intersect(value); },
+			[](df::doc_set& state, const df::doc_set& value) { state.unite(value); },
+			[items] { return df::doc_set(items, true); });
+
+		for (uint32_t item = 0; item < items; ++item)
+		{
+			const auto expected = df::combine_search_terms<bool>(
+				terms,
+				[&terms, item](const df::search_term& term)
+				{
+					return (item >> static_cast<uint32_t>(&term - terms.data()) & 1) != 0;
+				},
+				[](bool& state, const bool value) { state = state && value; },
+				[](bool& state, const bool value) { state = state || value; },
+				[] { return true; });
+
+			assert_equal(expected, sets.test(item), std::format("'{}' answers {:b}", query, item));
+		}
+	}
+}
+
+static std::string describe_query_items(index_state& index, const df::search_t& search,
+                                        const index_state::search_execution execution)
+{
+	std::vector<std::string> lines;
+
+	index.query_items(search, [&lines](const index_state::query_item_results& items, bool)
+	{
+		for (const auto& item : items)
+		{
+			if (item.kind == index_state::query_item_kind::folder)
+			{
+				lines.emplace_back(std::format("folder {}", item.folder_path.text().sv()));
+			}
+			else
+			{
+				lines.emplace_back(std::format("{} {} {} {}", item.path.str(), static_cast<int>(item.match.type),
+				                               item.match.key ? item.match.key->id : 0, item.match.text.sv()));
+			}
+		}
+	}, test_token, execution);
+
+	std::ranges::sort(lines);
+
+	std::string result;
+	for (const auto& line : lines) result += line + "\n";
+	return result;
+}
+
+// Every collection-wide search the search index answers must find what a scan of every item finds -
+// the same items, matched the same way - and count what the scan counts, down to the sizes and the
+// picture chosen to represent them. The queries cover each kind of term, negation, OR, grouping,
+// wildcards, the folder rules of free text, formatted numbers and text that needs NFC.
+static void should_answer_searches_from_the_search_index_as_a_scan_does(shared_test_context& stc)
+{
+	stc.lazy_load_index();
+	auto& index = stc.test_index;
+	assert_equal(true, index.search_index() != nullptr, "the shared index has a search index");
+
+	const auto answers_before = df::query_perf.index_answers.load();
+	auto found_something = 0;
+
+	for (const auto query : {
+		     "2012-09-14", "Created:2012-09-14", "2009-11-15", "2014 or 2015", "(2014 or 2015) (May or June)",
+		     "dec-25", "modified:2020-aug", "@video", "@audio", "@commodore", "@archive", "@photo", "key1",
+		     "Tag:key1", "#key1", "Tag:dog Tag:london", "not_exist", "Tag:not_exist", "#ke*", "ke*", "KEY1",
+		     "Megapixels:1.6 dog", "Megapixels:1.6", "(< Megapixels:1.0 > Megapixels:0.5)", "Megapixels:2", "dog",
+		     "-dog", "dog cat", "dog or cat", "dog -cat", "(dog or cat) @photo", "-(dog or cat)", "@photo -@video",
+		     "@photo or @video", "@duplicates", "@photo @duplicates", "@photo -@duplicates", "with:tag",
+		     "without:tag", "with:location", "without:location", "ext:jpg", "-ext:jpg", "jpg", "test", "-test",
+		     "Test", "es", "e", "1/250s", "f/2.8", "ISO100", "stereo", "mono", "44.1kHz", "16bit", "2019",
+		     "rating:5", "> rating:3", "rating:-1", "label:select", "Jana or Alfie", "Jana -Alfie",
+		     "-rating:5", "< rating:2", "rating:0", "label:sel*", "-label:select", "label:approved",
+		     "label:\"to do\"", "rating:5 label:select", "rating:4 or label:review", "dog -rating:1",
+		     "original:2012-09-14", "original:2012", "created:2012", "-2012", "> 2013", "< 2013",
+		     "< created:2014", "> modified:2019", "-dec-25", "@photo 2012", "dec-25 -@video", "-(2014 or 2015)",
+		     "age:30", "age:5000", "-age:5000", "modified:2020", "original:dec-25",
+		     "Bertie or ((Jana or Alfie) or Amalka)", "genre: Rock", "-artist: \"Counting Crows\"",
+		     "artist:\"Counting Crows\"", "@remote", "@panorama", "@movie", "@episode", "@inprogress",
+		     "size:1mb", "> size:1mb", "loc:London", "place:London", "country:\"United Kingdom\"",
+		     "#\"tag with space\"", "\"tag with space\"", "camera:canon", "Canon", "london", "**test**",
+		     "caf\xc3\xa9", "\xed\x95\x9c\xea\xb5\xad", "-\xed\x95\x9c\xea\xb5\xad", "with:tag or @video"
+	     })
+	{
+		const auto search = df::search_t::parse(query);
+		const auto scanned = describe_query_items(index, search, index_state::search_execution::scan);
+		const auto indexed = describe_query_items(index, search, index_state::search_execution::automatic);
+		assert_equal(scanned, indexed, std::format("what '{}' finds", query));
+
+		const auto scan_counts = index.count_matches(search, test_token, index_state::search_execution::scan);
+		const auto index_counts = index.count_matches(search, test_token);
+		assert_equal(scan_counts.total_items().count, index_counts.total_items().count,
+		             std::format("how many '{}' finds", query));
+		assert_equal(true, scan_counts == index_counts, std::format("what '{}' counts", query));
+
+		if (!scanned.empty()) ++found_something;
+	}
+
+	// The comparison only means something if the index answered and the searches found things.
+	assert_equal(true, df::query_perf.index_answers.load() > answers_before, "the search index answered");
+	assert_equal(true, found_something > 40, "most of the searches find items");
+
+	// A folder whose name a search matches is listed beside the items, through the search index too.
+	const auto retro = describe_query_items(index, df::search_t::parse("retro"), index_state::search_execution::automatic);
+	assert_equal(true, retro.find("folder ") != std::string::npos && retro.find("retro") != std::string::npos,
+	             "a folder the search names is listed");
+}
+
+static void make_search_index_collection(const df::folder_path folder, index_state& index)
+{
+	df::index_roots roots;
+	roots.folders.emplace(folder);
+	index.index_roots(roots);
+	// No database: nothing more is coming from a cache, as on a first run.
+	index.cache_load_complete();
+	index.index_folders(test_token);
+	index.scan_uncached(test_token);
+}
+
+static uint64_t count_found(index_state& index, const std::string_view query)
+{
+	return index.count_matches(df::search_t::parse(query), test_token).total_items().count;
+}
+
+// The trigram index only suggests which values may hold a term. Every three letters of "ananan" are in
+// "banana", which does not hold it, so a suggestion the matcher's own predicate does not confirm would
+// be found by the search index and not by a scan.
+static void should_confirm_what_the_trigram_index_suggests()
+{
+	const auto folder = _temps.next_folder("search-index-trigrams");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), folder.combine_file("banana.jpg"), false, true);
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+	index.update_search_index();
+	assert_equal(true, index.search_index() != nullptr, "the collection was read into a search index");
+
+	const auto count = [&index](const std::string_view query, const index_state::search_execution execution)
+	{
+		return index.count_matches(df::search_t::parse(query), test_token, execution).total_items().count;
+	};
+
+	const auto answers_before = df::query_perf.index_answers.load();
+	assert_equal(uint64_t{1}, count("anana", index_state::search_execution::automatic), "what the name holds is found");
+	assert_equal(uint64_t{0}, count("ananan", index_state::search_execution::scan), "a scan finds no item holding the term");
+	assert_equal(uint64_t{0}, count("ananan", index_state::search_execution::automatic),
+	             "nor does the search index, though the name holds each of the term's trigrams");
+	assert_equal(true, df::query_perf.index_answers.load() > answers_before, "the search index answered");
+}
+
+// A folder that changed after the search index read it is asked item by item, so a search answers with
+// what the folder holds now, without the collection being read again for a change this small.
+static void should_scan_folders_changed_since_the_search_index_was_read()
+{
+	const auto folder = _temps.next_folder("search-index-changed");
+	const auto settled = folder.combine("settled");
+	const auto changed = folder.combine("changed");
+	platform::create_folder(settled);
+	platform::create_folder(changed);
+
+	for (const auto name : {"alpha.jpg", "charlie.jpg", "delta.jpg"})
+	{
+		platform::copy_file(test_files_folder.combine_file("Test.jpg"), settled.combine_file(name), false, true);
+	}
+
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), changed.combine_file("echo.jpg"), false, true);
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+	index.update_search_index();
+
+	const auto read = index.search_index();
+	assert_equal(true, read != nullptr, "the collection was read into a search index");
+	assert_equal(uint64_t{1}, count_found(index, "alpha"), "a file the index read is found");
+	assert_equal(uint64_t{0}, count_found(index, "bravo"), "a file not copied yet is not");
+
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), changed.combine_file("bravo.jpg"), false, true);
+	index.validate_folder(changed, true, platform::now());
+	index.update_search_index();
+
+	const auto answers_before = df::query_perf.index_answers.load();
+	assert_equal(true, index.search_index() == read, "so small a change is not worth reading the collection again");
+	assert_equal(uint64_t{1}, count_found(index, "bravo"), "a file added since is found in its changed folder");
+	assert_equal(uint64_t{1}, count_found(index, "echo"), "and the file already there still is");
+	assert_equal(uint64_t{1}, count_found(index, "alpha"), "as is one in a folder that did not change");
+	assert_equal(uint64_t{5}, count_found(index, "@photo"), "a changed folder is counted once");
+	assert_equal(true, df::query_perf.index_answers.load() > answers_before, "the search index answered");
+
+	const auto search = df::search_t::parse("@photo");
+	assert_equal(describe_query_items(index, search, index_state::search_execution::scan),
+	             describe_query_items(index, search, index_state::search_execution::automatic),
+	             "what a changed folder holds is found as a scan finds it");
+}
+
+// The tolerance for change grows with the collection, and in a small one can pass the point where most
+// of it has changed. A snapshot no search would use is read again however few items changed, or the
+// counts the sidebar and the address box take from it would be gone until the next restart.
+static void should_read_the_search_index_again_once_no_search_would_use_it()
+{
+	const auto folder = _temps.next_folder("search-index-reread");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), folder.combine_file("alpha.jpg"), false, true);
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+	index.update_search_index();
+
+	const auto read = index.search_index();
+	assert_equal(true, read != nullptr, "the collection was read into a search index");
+
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), folder.combine_file("bravo.jpg"), false, true);
+	index.validate_folder(folder, true, platform::now());
+	assert_equal(false, search_counter(index).is_indexed(), "no search uses a snapshot of a collection that mostly changed");
+
+	index.update_search_index();
+	assert_equal(true, index.search_index() != read, "so the collection is read again, though only one item changed");
+	assert_equal(true, search_counter(index).is_indexed(), "and searches are answered from the index again");
+	assert_equal(uint64_t{2}, count_found(index, "@photo"), "with what the collection holds now");
+}
+
+// Recording a checksum, a picture hash or a duplicate set changes what is derived from an item's bytes,
+// which the search index reads live, so the startup pass that finds every set leaves the collection's
+// read current; the folders it touched were being read again after every pass. A change to what an item
+// is still makes its folder one the index cannot answer for.
+static void should_keep_the_search_index_current_through_derived_changes()
+{
+	const auto folder = _temps.next_folder("search-index-derived");
+	const auto first = folder.combine_file("first.jpg");
+	const auto second = folder.combine_file("second.jpg");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), first, false, true);
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), second, false, true);
+
+	// Deferred, so the passes indexing queues run after the collection is read, as they do at startup.
+	deferred_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+	index.update_search_index();
+	assert_equal(true, search_counter(index).is_indexed(), "the collection was read into a search index");
+	assert_equal(0u, index.find_item(first).duplicates.load().group, "and its copies are not a set yet");
+
+	index.update_predictions();
+	assert_equal(true, index.find_item(first).duplicates.load().group != 0, "the copies form a set");
+	assert_equal(true, search_counter(index).is_indexed(), "finding the set leaves the read current");
+	assert_equal(uint64_t{2}, count_found(index, "@duplicates"), "and the set is found through it");
+
+	index.save_crc(first, revision_of(index.find_item(first)), 0x1234u);
+	index.save_phash(first, revision_of(index.find_item(first)), crypto::phash_rotations{crypto::phash_declined, 0, 0, 0});
+	while (as.run_next(async_queue::work))
+	{
+	}
+	assert_equal(0x1234u, index.find_item(first).crc32c.load(), "the checksum is recorded");
+	assert_equal(true, search_counter(index).is_indexed(), "so does recording a checksum or a picture hash");
+
+	index.save_media_position(first, 12.5);
+	assert_equal(false, search_counter(index).is_indexed(), "a change to an item's metadata does not");
+}
+
+// Indexing changes folders faster than a snapshot could follow and needs the CPU a build would take, so
+// nothing is read while it runs; searches scan meanwhile, as they always have.
+static void should_not_read_the_search_index_while_indexing()
+{
+	const auto folder = _temps.next_folder("search-index-indexing");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), folder.combine_file("alpha.jpg"), false, true);
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+
+	index.indexing = 1;
+	index.update_search_index();
+	assert_equal(true, index.search_index() == nullptr, "nothing is read while indexing runs");
+	assert_equal(uint64_t{1}, count_found(index, "alpha"), "searches scan meanwhile");
+
+	index.indexing = 0;
+	index.update_search_index();
+	const auto read = index.search_index();
+	assert_equal(true, read != nullptr, "the collection is read once indexing stops");
+
+	index.update_search_index();
+	assert_equal(true, index.search_index() == read, "an unchanged collection is not read again");
+}
+
+// Until the collection is read into a search index the sidebar counts from summaries, and while a read is
+// too stale to use it counts by scanning, so every snapshot published asks it to count again and make
+// each total what clicking its row finds. Only the counts: a snapshot changes no row, and rebuilding the
+// rows would discard every text layout to publish numbers.
+static void should_recount_the_sidebar_when_the_search_index_is_read()
+{
+	class recording_async_strategy final : public null_async_strategy
+	{
+	public:
+		view_invalid invalids = view_invalid::none;
+
+		void invalidate_view(const view_invalid invalid) override
+		{
+			invalids |= invalid;
+		}
+	};
+
+	const auto folder = _temps.next_folder("search-index-recount");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), folder.combine_file("alpha.jpg"), false, true);
+
+	recording_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+	assert_equal(true, index.search_index() == nullptr, "the collection has not been read yet");
+
+	as.invalids = view_invalid::none;
+	index.update_search_index();
+	assert_equal(true, index.search_index() != nullptr, "the collection was read into a search index");
+	assert_equal(true, (as.invalids & view_invalid::sidebar_counts) != view_invalid::none,
+	             "the sidebar counts again from the search index");
+	assert_equal(true, (as.invalids & view_invalid::sidebar) == view_invalid::none, "its rows are not rebuilt");
+
+	as.invalids = view_invalid::none;
+	index.update_search_index();
+	assert_equal(true, as.invalids == view_invalid::none, "an unchanged collection asks for nothing");
+
+	// One item of two changed, so no search uses the read until the collection is read again.
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), folder.combine_file("bravo.jpg"), false, true);
+	index.validate_folder(folder, true, platform::now());
+	as.invalids = view_invalid::none;
+	index.update_search_index();
+	assert_equal(true, (as.invalids & view_invalid::sidebar_counts) != view_invalid::none,
+	             "a collection read again asks the sidebar to count again");
+}
+
+// The sidebar and the address box count many searches at once through one counter, which must count
+// what count_matches counts, never scan a tree to predict, and say how many of a current result set
+// each search keeps.
+static void should_count_searches_with_a_search_counter(shared_test_context& stc)
+{
+	stc.lazy_load_index();
+	auto& index = stc.test_index;
+
+	search_counter counter(index);
+	assert_equal(true, counter.is_indexed(), "the counter answers from the search index");
+
+	for (const auto query : {"@photo", "key1", "#key1", "dog or cat", "-@video", "2012-09-14", "rating:-1"})
+	{
+		const auto search = df::search_t::parse(query);
+		const auto expected = index.count_matches(search, test_token, index_state::search_execution::scan);
+		assert_equal(true, counter.count(search, test_token) == expected, std::format("'{}' counted", query));
+
+		const auto items = counter.try_count_items(search, test_token);
+		assert_equal(true, items.has_value(), std::format("'{}' predicted", query));
+		assert_equal(expected.total_items().count, items.value_or(0), std::format("'{}' predicted count", query));
+	}
+
+	const auto tree = df::search_t().add_selector(df::item_selector(test_files_folder, true));
+	assert_equal(false, counter.try_count_items(tree, test_token).has_value(), "a tree is never scanned to predict");
+
+	// One counter answers its searches through one evaluator, which keeps what they share - a term's
+	// documents, the documents through a presence requirement - so a search must count what a scan counts
+	// whatever was asked before it. The second pass answers from what the first kept.
+	for (auto pass = 0; pass < 2; ++pass)
+	{
+		for (const auto query : {
+			     "@duplicates", "@photo", "@video", "test", "**test**", "-test", "dog", "dog cat", "-dog",
+			     "dog or cat", "Tag:dog", "#dog", "rating:5", "-rating:5", "label:select", "rating:5 label:select",
+			     "2012", "-2012", "dec-25", "Created:2012-09-14", "with:tag", "without:tag", "@photo dog"
+		     })
+		{
+			const auto search = df::search_t::parse(query);
+			const auto expected = index.count_matches(search, test_token, index_state::search_execution::scan);
+			assert_equal(true, counter.count(search, test_token) == expected,
+			             std::format("'{}' counted after the searches before it, pass {}", query, pass));
+		}
+	}
+
+	std::vector<df::file_path> photos;
+	index.query_items(df::search_t::parse("@photo"), [&photos](const index_state::query_item_results& items, bool)
+	{
+		for (const auto& item : items) if (item.kind == index_state::query_item_kind::file) photos.emplace_back(item.path);
+	}, test_token);
+
+	const auto kept = counter.make_kept_items(photos);
+
+	const auto count_in_photos = [&index, &photos](const df::search_t& search)
+	{
+		df::unique_paths found;
+		index.query_items(search, [&found](const index_state::query_item_results& items, bool)
+		{
+			for (const auto& item : items) if (item.kind == index_state::query_item_kind::file) found.emplace(item.path);
+		}, test_token, index_state::search_execution::scan);
+
+		return static_cast<uint64_t>(std::ranges::count_if(photos, [&found](const df::file_path& path)
+		{
+			return found.contains(path);
+		}));
+	};
+
+	for (const auto query : {"key1", "dog", "@video", "-dog", "@photo"})
+	{
+		const auto search = df::search_t::parse(query);
+		assert_equal(count_in_photos(search), counter.count_kept(search, kept, test_token).value_or(UINT64_MAX),
+		             std::format("photos '{}' keeps", query));
+	}
+
+	// Only walking a folder, reading what of it has not been read, could say what a folder search keeps
+	// or how many of a folder's items a term finds, so neither is answered while counting.
+	const auto folder = df::search_t().add_selector(df::item_selector(test_files_folder, false));
+	assert_equal(false, counter.count_kept(folder, kept, test_token).has_value(), "a folder search has no kept count");
+	assert_equal(true, counter.try_count_items(folder, test_token).has_value(), "a folder is predicted from the index");
+
+	auto folder_and_term = folder;
+	folder_and_term.with(prop::tag, "dog");
+	assert_equal(false, counter.try_count_items(folder_and_term, test_token).has_value(),
+	             "a folder and a term is not, for it would read the folder's unread files");
+}
+
 static void should_materialize_detached_query_item()
 {
 	null_async_strategy async;
@@ -5206,6 +5669,21 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should encode postings"s, should_encode_postings);
 	tests.add("Should query inverted index"s, should_query_inverted_index);
 	tests.add("Should query trigram index"s, should_query_trigram_index);
+	tests.add("Should hold document sets"s, should_hold_document_sets);
+	tests.add("Should combine sets as the matcher combines answers"s, should_combine_sets_as_the_matcher_combines_answers);
+	tests.add("Should answer searches from the search index as a scan does"s,
+	          should_answer_searches_from_the_search_index_as_a_scan_does);
+	tests.add("Should confirm what the trigram index suggests"s, should_confirm_what_the_trigram_index_suggests);
+	tests.add("Should scan folders changed since the search index was read"s,
+	          should_scan_folders_changed_since_the_search_index_was_read);
+	tests.add("Should read the search index again once no search would use it"s,
+	          should_read_the_search_index_again_once_no_search_would_use_it);
+	tests.add("Should not read the search index while indexing"s, should_not_read_the_search_index_while_indexing);
+	tests.add("Should keep the search index current through derived changes"s,
+	          should_keep_the_search_index_current_through_derived_changes);
+	tests.add("Should recount the sidebar when the search index is read"s,
+	          should_recount_the_sidebar_when_the_search_index_is_read);
+	tests.add("Should count searches with a search counter"s, should_count_searches_with_a_search_counter);
 	tests.add("Should materialize detached query item"s, should_materialize_detached_query_item);
 	tests.add("Should batch thumbnail publication"s, should_batch_thumbnail_publication);
 	// SRC-039 - folder-thumbnail traversal must charge every admitted child against the budget.

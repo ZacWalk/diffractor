@@ -1555,6 +1555,8 @@ struct app_text_t
 		"1 clip cannot find its source file.", "{count} clips cannot find their source files."
 	};
 	plural_text movie_relink_fmt = {"1 clip was relinked.", "{count} clips were relinked."};
+	// A sidebar row's tooltip: how many of the items the view shows the row's search would keep.
+	plural_text sidebar_kept_fmt = {"1 of the items shown", "{count} of the items shown"};
 };
 
 extern app_text_t tt;

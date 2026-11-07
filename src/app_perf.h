@@ -62,6 +62,10 @@ namespace df
 		std::atomic_uint64_t materialize_items = 0;
 		std::atomic_uint64_t counts = 0;
 		std::atomic_uint64_t count_us = 0;
+		// Searches and counts the search index answered, and the folders changed since it was read that
+		// they scanned on top of it - which is what the index costs to keep current between rebuilds.
+		std::atomic_uint64_t index_answers = 0;
+		std::atomic_uint64_t index_scanned_folders = 0;
 	};
 
 	struct file_counters
@@ -123,6 +127,13 @@ namespace df
 		std::atomic_uint32_t pass_aspect_solo = 0;
 		std::atomic_uint32_t pass_aspect_solo_swap = 0;
 		std::atomic_uint32_t pass_matched_cross_aspect = 0;
+
+		// Reading the collection into the search index. The gauges hold what the latest one holds.
+		std::atomic_uint64_t search_index_builds = 0;
+		std::atomic_uint64_t search_index_build_us = 0;
+		std::atomic_uint32_t search_index_build_max_us = 0;
+		std::atomic_uint64_t search_index_docs = 0;
+		std::atomic_uint64_t search_index_bytes = 0;
 	};
 
 	// One slot per worker queue, claimed once by its worker thread at startup so the dispatch loop

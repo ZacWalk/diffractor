@@ -1626,6 +1626,13 @@ void view_state::update_item_groups()
 		invalidate_view(view_invalid::app_layout);
 	}
 
+	// Each sidebar row's tooltip says how many of the items shown it keeps, so a different set is
+	// counted again. Regrouping or resorting the same items rebuilds this without changing it.
+	if (_display_items != new_display_items)
+	{
+		invalidate_view(view_invalid::sidebar_counts);
+	}
+
 	_display_items = std::move(new_display_items);
 	_item_groups = std::move(new_item_groups);
 

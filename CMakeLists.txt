@@ -228,6 +228,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/model_items.cpp
         src/model_movie.cpp
         src/model_search.cpp
+        src/model_search_index.cpp
         src/model_tile_cache.cpp
         src/render_charts.cpp
         src/render_globe.cpp

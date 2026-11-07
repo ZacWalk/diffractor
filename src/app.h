@@ -599,6 +599,7 @@ public:
 	platform::task_queue predictions_task_queue;
 	platform::task_queue summary_task_queue;
 	platform::task_queue presence_task_queue;
+	platform::task_queue search_index_task_queue;
 	platform::task_queue auto_complete_task_queue;
 	platform::task_queue query_task_queue;
 	platform::task_queue render_task_queue;
@@ -622,6 +623,7 @@ public:
 	std::atomic_bool _web_worker_started = false;
 	std::atomic_bool _cloud_worker_started = false;
 	std::atomic_bool _auto_complete_worker_started = false;
+	std::atomic_bool _search_index_worker_started = false;
 	std::atomic_bool _map_tile_workers_started = false;
 	std::atomic_bool _tile_db_worker_started = false;
 	std::atomic_bool _media_preview_worker_started = false;

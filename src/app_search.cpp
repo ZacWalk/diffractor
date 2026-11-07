@@ -8,7 +8,8 @@
 
 // Purpose: The address box. Search editing, focus, Enter, Cancel and accepting a prediction, and
 // the auto-complete that ranks history, recent folders, tags, index vocabulary and scoped values
-// (tag:, with:, ...) on the auto-complete worker before publishing them to the prediction list.
+// (tag:, with:, ...) on the auto-complete worker, counting what each finds through the search index,
+// before publishing them to the prediction list.
 
 #include "pch.h"
 
@@ -38,6 +39,12 @@ class search_auto_complete final : public std::enable_shared_from_this<search_au
 	df::string_counts _known;
 	ui::auto_complete_match_ptr _selected;
 	std::atomic_uint64_t _search_generation = 0;
+	// Raised by each keystroke on the UI thread, which stops the counting a superseded pass is doing.
+	std::atomic_int _count_version = 0;
+
+	// Long enough for the search index to count a keystroke's predictions, short enough that a
+	// collection it cannot answer never holds up the list.
+	static constexpr int64_t prediction_count_budget_us = 40'000;
 
 public:
 	std::string no_results_message() override
@@ -96,6 +103,86 @@ public:
 		return result;
 	}
 
+	// A suggestion drawn from the collection's own words, tags, places and properties, offered only
+	// when it finds something.
+	std::shared_ptr<text_match> vocabulary_match(std::string text, std::string lead, ui::match_highlights highlights,
+	                                             const int weight, const icon_index icon)
+	{
+		auto result = std::make_shared<text_match>(*this, std::move(text), std::move(lead), std::move(highlights),
+		                                           weight, icon);
+		result->drop_when_empty = true;
+		return result;
+	}
+
+	// What choosing a prediction searches for. Read without asking the file system, because a path
+	// on a share that has gone away would hold the list until the network gave up.
+	static std::optional<df::search_t> prediction_search(const ui::auto_complete_match& match)
+	{
+		if (const auto* const folder = dynamic_cast<const folder_match*>(&match); folder && str::is_empty(folder->lead))
+		{
+			df::search_t result;
+			result.add_selector(df::item_selector(folder->folder));
+			return result;
+		}
+
+		const auto result = df::search_t::parse_without_probing(match.edit_text());
+		if (result.is_empty()) return std::nullopt;
+		return result;
+	}
+
+	// Ten times as many items is worth the same step in rank wherever it starts.
+	static int count_rank(const uint64_t count)
+	{
+		return static_cast<int>(std::lround(8.0 * std::log10(1.0 + static_cast<double>(count))));
+	}
+
+	// Each prediction says how many items it finds. One that finds more ranks above one of its kind that
+	// finds fewer, and one drawn from the collection's vocabulary that finds nothing is left out. Only
+	// the search index is asked, within a budget, and a newer keystroke stops the pass, so a prediction
+	// left uncounted keeps its place rather than waiting on a scan. Answers false for a superseded pass.
+	bool count_predictions(ui::auto_complete_results& found, const uint64_t search_generation, const bool rank,
+	                       const df::cancel_token& token)
+	{
+		// Likeliest first, so the budget is spent where it decides the most, and each text counted once.
+		std::ranges::stable_sort(found, [](const auto& a, const auto& b) { return a->weight > b->weight; });
+
+		df::hash_set<std::string, df::ihash, df::ieq> seen;
+		std::erase_if(found, [&seen](const auto& candidate)
+		{
+			return !seen.emplace(candidate->edit_text()).second;
+		});
+
+		search_counter counter(_state.item_index);
+		const auto deadline = df::now_us() + prediction_count_budget_us;
+
+		for (const auto& match : found)
+		{
+			if (_search_generation != search_generation || token.is_cancelled()) return false;
+			if (df::now_us() > deadline) break;
+
+			if (const auto search = prediction_search(*match))
+			{
+				match->count = counter.try_count_items(*search, token);
+			}
+		}
+
+		if (_search_generation != search_generation || token.is_cancelled()) return false;
+
+		std::erase_if(found, [](const auto& match) { return match->drop_when_empty && match->count == 0u; });
+
+		if (rank)
+		{
+			for (const auto& match : found)
+			{
+				if (match->count) match->weight += count_rank(*match->count);
+			}
+
+			std::ranges::stable_sort(found, [](const auto& a, const auto& b) { return a->weight > b->weight; });
+		}
+
+		return true;
+	}
+
 	// Issue #157: complete the value part of a scoped token (tag: / # / @ / with: / without:)
 	// from the matching vocabulary, so e.g. "tag:do" suggests tags starting with "do" and
 	// "with:ex" suggests property scopes. Runs on the auto_complete worker thread. Returns
@@ -119,9 +206,8 @@ public:
 			for (const auto& word : _state.item_index.auto_complete_tag_companions(context_tags, scope.value,
 				     max_predictions))
 			{
-				found.emplace_back(std::make_shared<text_match>(*this, word.text, scope.lead, word.highlights,
-				                                                scope_weight + std::min(word.occurrences, 20),
-				                                                icon_index::tag));
+				found.emplace_back(vocabulary_match(word.text, scope.lead, word.highlights,
+				                                    scope_weight + std::min(word.occurrences, 20), icon_index::tag));
 			}
 		}
 
@@ -133,9 +219,8 @@ public:
 				if (found.size() >= max_predictions) break;
 				if (scope.value.empty() || str::starts(ks.scope, scope.value))
 				{
-					found.emplace_back(std::make_shared<text_match>(*this, scope.format(ks.scope), scope.lead,
-					                                                ui::match_highlights{}, scope_weight,
-					                                                search_icon(scope.format(ks.scope))));
+					found.emplace_back(vocabulary_match(scope.format(ks.scope), scope.lead, ui::match_highlights{},
+					                                    scope_weight, search_icon(scope.format(ks.scope))));
 				}
 			}
 		}
@@ -147,10 +232,9 @@ public:
 			                                                                 scope.level))
 			{
 				if (found.size() >= max_predictions) break;
-				found.emplace_back(std::make_shared<text_match>(*this, scope.format(loc.text), scope.lead,
-				                                                loc.highlights,
-				                                                scope_weight + std::min(loc.occurrences, 20),
-				                                                icon_index::location));
+				found.emplace_back(vocabulary_match(scope.format(loc.text), scope.lead, loc.highlights,
+				                                    scope_weight + std::min(loc.occurrences, 20),
+				                                    icon_index::location));
 			}
 		}
 		else
@@ -159,11 +243,10 @@ public:
 			for (const auto& w : _state.item_index.auto_complete_words(scope.vocab_query(), max_predictions))
 			{
 				if (found.size() >= max_predictions) break;
-				found.emplace_back(std::make_shared<text_match>(*this, scope.format(w.text), scope.lead, w.highlights,
-				                                                scope_weight,
-				                                                scope.kind == df::search_scope_kind::tag
-					                                                ? icon_index::tag
-					                                                : search_icon(scope.format(w.text))));
+				found.emplace_back(vocabulary_match(scope.format(w.text), scope.lead, w.highlights, scope_weight,
+				                                    scope.kind == df::search_scope_kind::tag
+					                                    ? icon_index::tag
+					                                    : search_icon(scope.format(w.text))));
 			}
 		}
 
@@ -174,6 +257,8 @@ public:
 	{
 		const auto search_generation = ++_search_generation;
 		const auto known = std::make_shared<const df::string_counts>(_known);
+		// Taken here, on the UI thread, so this keystroke stops any counting the last one is still doing.
+		const df::cancel_token count_token(_count_version);
 
 		// The active search and the recent-search list are UI-thread owned and are mutated by
 		// view_state::open while a prediction is still running, so snapshot them here.
@@ -184,7 +269,7 @@ public:
 
 		_state._async.queue_async(async_queue::auto_complete,
 		                          [this, keep_alive = shared_from_this(), known, recents, current_search_text, query,
-			                          complete, search_generation]
+			                          complete, search_generation, count_token]
 		                          {
 			                          ui::auto_complete_results found;
 
@@ -270,14 +355,14 @@ public:
 
 				                          if (!scoped && found.size() < max_predictions)
 				                          {
-					                          const auto found_words = _state.item_index.auto_complete_words(query, 8);
+					                          // More than are shown: counting ranks them, and drops those that lead nowhere.
+					                          const auto found_words = _state.item_index.auto_complete_words(query, 12);
 
 					                          for (const auto& word : found_words)
 					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, word.text, std::string{},
-							                          word.highlights,
-							                          calc_auto_complete_word_weight(word, *known)));
+						                          found.emplace_back(vocabulary_match(
+							                          word.text, std::string{}, word.highlights,
+							                          calc_auto_complete_word_weight(word, *known), icon_index::search));
 					                          }
 				                          }
 
@@ -285,11 +370,10 @@ public:
 					                          trimmed_query.front() != '#' && trimmed_query.front() != '@')
 				                          {
 					                          for (const auto& word : _state.item_index.auto_complete_words(
-						                               std::format("#{}", trimmed_query), 5))
+						                               std::format("#{}", trimmed_query), 8))
 					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, word.text, std::string{},
-							                          word.highlights,
+						                          found.emplace_back(vocabulary_match(
+							                          word.text, std::string{}, word.highlights,
 							                          15 + std::min(word.occurrences, 10), icon_index::tag));
 					                          }
 				                          }
@@ -306,11 +390,9 @@ public:
 					                          for (const auto& location : _state.item_index.auto_complete_locations(
 						                               trimmed_query, 5))
 					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, location.text, std::string{},
-							                          location.highlights,
-							                          12 + std::min(location.occurrences, 10),
-							                          icon_index::location));
+						                          found.emplace_back(vocabulary_match(
+							                          location.text, std::string{}, location.highlights,
+							                          12 + std::min(location.occurrences, 10), icon_index::location));
 					                          }
 				                          }
 			                          }
@@ -322,11 +404,13 @@ public:
 				                          const auto found_words = _state.item_index.auto_complete_words(
 					                          query_back, max_predictions);
 
+				                          // Counted with the terms before them, so a word that finds nothing alongside them
+				                          // is not offered whatever it finds alone.
 				                          for (const auto& word : found_words)
 				                          {
-					                          found.emplace_back(std::make_shared<text_match>(
-						                          *this, word.text, lead_text, word.highlights,
-						                          calc_auto_complete_word_weight(word, *known)));
+					                          found.emplace_back(vocabulary_match(
+						                          word.text, lead_text, word.highlights,
+						                          calc_auto_complete_word_weight(word, *known), icon_index::search));
 				                          }
 
 				                          if (found.size() < max_predictions)
@@ -356,8 +440,8 @@ public:
 				                          for (const auto& word : _state.item_index.auto_complete_tag_companions(
 					                               context_tags, {}, 8))
 				                          {
-					                          found.emplace_back(std::make_shared<text_match>(
-						                          *this, word.text, query, word.highlights,
+					                          found.emplace_back(vocabulary_match(
+						                          word.text, query, word.highlights,
 						                          30 + std::min(word.occurrences, 20), icon_index::tag));
 				                          }
 
@@ -378,9 +462,9 @@ public:
 
 					                          for (const auto& word : found_groups)
 					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, word.text, query, word.highlights,
-							                          calc_auto_complete_word_weight(word, *known)));
+						                          found.emplace_back(vocabulary_match(
+							                          word.text, query, word.highlights,
+							                          calc_auto_complete_word_weight(word, *known), icon_index::search));
 					                          }
 				                          }
 
@@ -391,9 +475,9 @@ public:
 
 					                          for (const auto& word : found_tags)
 					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, word.text, query, word.highlights,
-							                          calc_auto_complete_word_weight(word, *known)));
+						                          found.emplace_back(vocabulary_match(
+							                          word.text, query, word.highlights,
+							                          calc_auto_complete_word_weight(word, *known), icon_index::tag));
 					                          }
 				                          }
 			                          }
@@ -412,18 +496,16 @@ public:
 				                          }
 			                          }
 
-			                          // Rank higher-weight suggestions first (literal query, contextual/scoped values, exact/recent matches)
-			                          // while preserving discovery order for equal weights.
-			                          std::ranges::stable_sort(found, [](const auto& a, const auto& b)
-			                          {
-				                          return a->weight > b->weight;
-			                          });
+			                          // Rank higher-weight suggestions first (literal query, contextual/scoped values, exact/recent
+			                          // matches), then by how many items each finds, preserving discovery order for equal weights.
+			                          // Recent searches keep their order: how recent a search is, is why it is offered.
+			                          const auto showing_recents = query_parts.empty() ||
+				                          str::icmp(query, current_search_text) == 0;
 
-			                          df::hash_set<std::string, df::ihash, df::ieq> seen;
-			                          std::erase_if(found, [&seen](const auto& candidate)
+			                          if (!count_predictions(found, search_generation, !showing_recents, count_token))
 			                          {
-				                          return !seen.emplace(candidate->edit_text()).second;
-			                          });
+				                          return;
+			                          }
 
 			                          if (found.size() > max_predictions) found.resize(max_predictions);
 			                          _state.queue_ui([keep_alive, complete, found, search_generation]

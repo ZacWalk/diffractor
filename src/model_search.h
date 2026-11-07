@@ -8,7 +8,8 @@
 
 // Purpose: Search query parsing and matching. Parses search expressions into terms,
 // handles property filters, date ranges, location queries, duplicate and related-item
-// matching, and the scope-aware autocompletion classifier.
+// matching, and the scope-aware autocompletion classifier. The text predicates, the date keys and the way
+// term answers combine are shared with the search index (model_search_index.h), so the two cannot disagree.
 
 #pragma once
 #include "model_property.h"
@@ -1367,6 +1368,9 @@ namespace df
 		search_t parse_from_input(std::string_view text) const;
 		static search_t parse_path(std::string_view text);
 		static search_t parse(std::string_view text);
+		// Reads text as parse does without asking the file system whether a path exists: a path is taken
+		// as written. For a worker that must never wait on a share, such as one counting predictions.
+		static search_t parse_without_probing(std::string_view text);
 
 		// Whether text can be read as this search without asking the file system. Parsing asks it
 		// whether "C:\Pics 2019" is one folder or a folder and a year, and whether a path names a file;
@@ -1420,6 +1424,173 @@ namespace df
 		std::string name;
 		paths selection;
 	};
+
+	// How a search's terms combine: AND by default, OR where written, nested by parentheses. Generic in
+	// what is combined, so the matcher folds one item's answers and the search index folds whole sets of
+	// items through exactly the same steps - which is what makes the two agree item for item.
+	template <typename Value, typename Leaf, typename And, typename Or, typename Identity>
+	Value combine_search_terms(const std::vector<search_term>& terms, Leaf&& leaf, And&& and_into, Or&& or_into,
+	                           Identity&& identity)
+	{
+		if (terms.size() == 1) return leaf(terms.front());
+
+		struct level
+		{
+			bool logical_and = true;
+			// A level starts with no value rather than with an operator's identity. `true` is the
+			// identity for AND but the annihilator for OR, so an OR level seeded with it stays true
+			// whatever it later receives - which is what made a nested group after OR match everything.
+			bool has_value = false;
+			Value state{};
+		};
+
+		constexpr auto max_levels = 32;
+		std::array<level, max_levels> levels{};
+		auto current = 0;
+
+		const auto contribute = [&and_into, &or_into](level& target, Value value, const bool logical_and)
+		{
+			if (!target.has_value)
+			{
+				target.state = std::move(value);
+				target.has_value = true;
+			}
+			else if (logical_and)
+			{
+				and_into(target.state, value);
+			}
+			else
+			{
+				or_into(target.state, value);
+			}
+		};
+
+		const auto fold = [&levels, &current, &contribute, &identity]
+		{
+			if (current > 0)
+			{
+				auto& child = levels[current];
+				contribute(levels[current - 1], child.has_value ? std::move(child.state) : identity(),
+				           child.logical_and);
+				current -= 1;
+			}
+		};
+
+		for (const auto& term : terms)
+		{
+			auto value = leaf(term);
+			auto opened = 0;
+
+			for (auto i = 0; i < term.modifiers.begin_group; i++)
+			{
+				if (current < max_levels - 1)
+				{
+					current += 1;
+					levels[current].logical_and = term.modifiers.logical_op != search_term_modifier_bool::m_or;
+					levels[current].has_value = false;
+					levels[current].state = Value{};
+					opened += 1;
+				}
+			}
+
+			// combine into whichever level the term now sits in, so a '(' beyond max_levels still
+			// contributes its match rather than being discarded
+			contribute(levels[current], std::move(value),
+			           opened > 0 || term.modifiers.logical_op != search_term_modifier_bool::m_or);
+
+			for (auto i = 0; i < term.modifiers.end_group; i++)
+			{
+				fold();
+			}
+		}
+
+		// an unclosed '(' must still resolve into level 0; otherwise level 0 keeps its identity and the
+		// query matches every item
+		while (current > 0)
+		{
+			fold();
+		}
+
+		return levels[0].has_value ? std::move(levels[0].state) : identity();
+	}
+
+	// The fields a free-text term reads, in the order compare_text reports the one that matched. The
+	// search index builds from the same tables, so what it finds cannot drift from what matches.
+	struct text_contains_field
+	{
+		str::cached prop::item_metadata::* member;
+		prop::key_ref key;
+	};
+
+	struct text_format_field
+	{
+		prop::key_ref key;
+		std::string (*format)(const prop::item_metadata& md, file_type_ref ft);
+		// Every input format reads, packed, so two items with one key always format alike.
+		uint64_t (*inputs)(const prop::item_metadata& md, file_type_ref ft);
+	};
+
+	struct text_split_field
+	{
+		str::cached prop::item_metadata::* member;
+		prop::key_ref key;
+		bool (*separator)(char);
+	};
+
+	// Searched inside by contains_term, after the file name.
+	std::span<const text_contains_field> text_contains_fields();
+	// Formatted for display and compared whole by same_term, after the file size.
+	std::span<const text_format_field> text_format_fields();
+	// Split into entries, one of which compare_term must equal.
+	std::span<const text_split_field> text_split_fields();
+
+	// Whether a free-text term matches this one value: found in it, equal to it as formatted, or equal
+	// to it as one entry of a split field. They read nothing but the value, so the search index asks
+	// once per distinct value what the matcher asks once per item.
+	bool text_term_contains(const search_term& term, std::string_view value);
+	bool text_term_same(const search_term& term, std::string_view value);
+	bool text_term_equals_part(const search_term& term, std::string_view part);
+
+	// The form two texts share exactly when term matching calls them equal - NFC normalised, then each
+	// code point lower-cased as str::icmp compares it - written four bytes a code point so that no two
+	// different sequences can share one.
+	std::string search_fold_key(std::string_view text);
+
+	// The dates a date term compares an item by, as Group by and the history chart key it: the original
+	// date (the metadata's capture date, else the file's creation stamp), the created date (the
+	// metadata's, else the same stamp) and the modified stamp, the stamps in local time. Only the keys
+	// `target` compares are filled; `any` fills all three.
+	struct date_term_keys
+	{
+		date_t original;
+		date_t created;
+		date_t modified;
+	};
+
+	date_term_keys date_term_keys_of(date_parts_prop target, const index_file_item& file,
+	                                 const prop::item_metadata* md);
+
+	// Whether a date term finds an item, given the keys it compares the item by and `matches`, which
+	// decides one key and answers false for one that is not a valid date. On the `any` path the original
+	// and created keys usually agree, and when they do the first has already answered. The search index
+	// asks this with its own keys, so it tests the same keys in the same order as the matcher.
+	template <typename Key, typename Matches>
+	bool date_term_found(const date_parts_prop target, const Key& original, const Key& created, const Key& modified,
+	                     Matches&& matches)
+	{
+		const bool is_any = target == date_parts_prop::any;
+		const bool by_original = target == date_parts_prop::original || is_any;
+
+		if (by_original && matches(original)) return true;
+
+		if ((target == date_parts_prop::created || is_any) && !(by_original && created == original) &&
+			matches(created))
+		{
+			return true;
+		}
+
+		return (target == date_parts_prop::modified || is_any) && matches(modified);
+	}
 
 	class search_matcher
 	{
@@ -1512,8 +1683,30 @@ namespace df
 		const bool has_related = false;
 
 		bool can_contain(const search_presence_mask& available_presence) const;
+
+		// The presence bits every match must carry, or none when the search cannot promise any.
+		const search_presence_mask& required_presence() const
+		{
+			return _required_presence;
+		}
+
 		search_result match_term(str::cached folder_name, const index_file_item& file, const search_term& term) const;
+		// The same answers for an item whose metadata the caller already holds, null when it has none, so
+		// a search reads each item's metadata once rather than once per term.
+		search_result match_term(str::cached folder_name, const index_file_item& file, const prop::item_metadata* md,
+		                         const search_term& term) const;
 		search_result match_all_terms(str::cached folder_name, const index_file_item& file) const;
+		search_result match_all_terms(str::cached folder_name, const index_file_item& file,
+		                              const prop::item_metadata* md) const;
+		// A positive free-text term holding `**` matches every item in a folder its path matches.
+		bool text_term_matches_folder(const search_term& term, str::cached folder_name) const;
+		// Whether a date term's date compares true against one date key, today being the matcher's today.
+		bool date_key_matches(const search_term& term, date_t key) const;
+
+		const search_t& search() const
+		{
+			return _search;
+		}
 
 		// The strongest relation this item has to the item the search started at, or nothing when it
 		// has none. Axis priority resolves an item that qualifies several ways, so it appears once.

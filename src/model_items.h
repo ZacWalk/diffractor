@@ -658,6 +658,10 @@ namespace df
 		// extra stale bits are safe because item masks and exact matching follow.
 		std::atomic<search_presence_mask> search_presence_summary;
 		std::atomic_uint64_t content_revision = 0;
+		// Raised with content_revision by every in-place change except to what is derived from an item's
+		// bytes - its duplicates, checksum and picture hashes - which the search index reads live, so a
+		// snapshot of the folder stays current through them.
+		std::atomic_uint64_t search_revision = 0;
 
 		// is_in_collection / is_excluded are flipped by the indexing thread (index_folders)
 		// while UI and database threads read them through shared node pointers. They are
@@ -691,8 +695,14 @@ namespace df
 			return content_revision.load(std::memory_order_acquire);
 		}
 
-		void mark_content_changed()
+		uint64_t search_revision_snapshot() const
 		{
+			return search_revision.load(std::memory_order_acquire);
+		}
+
+		void mark_content_changed(const bool searchable = true)
+		{
+			if (searchable) search_revision.fetch_add(1, std::memory_order_release);
 			content_revision.fetch_add(1, std::memory_order_release);
 		}
 
@@ -781,13 +791,20 @@ namespace df
 		int created = 0;
 	};
 
-	inline uint8_t thumbnail_representative_rank(const index_file_item& file)
+	// The metadata already read for this file, null when it has none, so a caller holding it does not read
+	// the file's published pointer again.
+	inline uint8_t thumbnail_representative_rank(const index_file_item& file, const prop::item_metadata* metadata)
 	{
-		const auto metadata = file.metadata.load();
 		const auto visual_media = file.ft &&
 			(file.ft->has_trait(file_traits::bitmap) || file.ft->has_trait(file_traits::video_metadata));
 		if (!visual_media || !file.ft->has_trait(file_traits::thumbnail)) return 0;
 		return metadata && metadata->rating >= 4 ? 2 : 1;
+	}
+
+	inline uint8_t thumbnail_representative_rank(const index_file_item& file)
+	{
+		const auto metadata = file.metadata.load();
+		return thumbnail_representative_rank(file, metadata.get());
 	}
 
 	inline bool should_replace_thumbnail_representative(const file_path& candidate, const uint8_t candidate_rank,
@@ -913,8 +930,12 @@ namespace df
 
 		void record(const index_file_item& info, const file_path& path)
 		{
+			record(info, path, thumbnail_representative_rank(info));
+		}
+
+		void record(const index_file_item& info, const file_path& path, const uint8_t rank)
+		{
 			record(info);
-			const auto rank = thumbnail_representative_rank(info);
 			if (should_replace_thumbnail_representative(path, rank, representative_path, _representative_rank))
 			{
 				representative_path = path;

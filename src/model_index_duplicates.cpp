@@ -214,7 +214,7 @@ void index_state::update_predictions()
 					if (current_file.exact_duplicate_group.load() == 0) return false;
 					current_file.exact_duplicate_group = 0;
 					return true;
-				});
+				}, index_items::file_change::derived);
 			}
 		}
 	}
@@ -311,7 +311,7 @@ void index_state::update_predictions()
 			if (file.exact_duplicate_group.load() == group) return false;
 			file.exact_duplicate_group = group;
 			return true;
-		});
+		}, index_items::file_change::derived);
 	}
 
 	std::vector<uint8_t> crowded(files.size(), 0);
@@ -596,7 +596,7 @@ void index_state::update_predictions()
 			}
 			file.update_duplicates(folder, dup_info);
 			return true;
-		});
+		}, index_items::file_change::derived);
 	}
 
 	stats.indexed_dup_folder_count = static_cast<int>(component_groups.size());

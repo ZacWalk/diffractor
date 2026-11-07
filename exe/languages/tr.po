@@ -3928,3 +3928,8 @@ msgstr "Altyazı {}"
 
 msgid "Subtitles"
 msgstr "Altyazılar"
+
+msgid "1 of the items shown"
+msgid_plural "{count} of the items shown"
+msgstr[0] "Gösterilen öğelerden 1"
+msgstr[1] "Gösterilen öğelerden {count}"
