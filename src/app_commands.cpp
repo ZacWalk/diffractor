@@ -1844,6 +1844,14 @@ void app_frame::run_test_action(const std::string_view action)
 }
 #endif
 
+// docs/faces.md owns the face view. The settings and the explanation moved into its controls panel,
+// beside the list of every group they govern: a setting that changes what the list holds belongs
+// next to the list, not behind a modal that hides it.
+void faces_options_invoke(view_state& s, const ui::control_frame_ptr& parent)
+{
+	s.view_mode(view_type::faces);
+}
+
 
 void app_frame::initialise_commands()
 {
@@ -2042,6 +2050,7 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::options_save, [this] { _view_options->save(); });
 	add_command_invoke(commands::options_cancel, [this] { _view_options->cancel(); });
 	add_command_invoke(commands::options_help, [] { options_view::help(); });
+	add_command_invoke(commands::options_faces, [this] { faces_options_invoke(_state, _app_frame); });
 	add_command_invoke(commands::keyboard, [this] { show_keyboard_reference(_state, _app_frame, _commands); });
 	add_command_invoke(commands::tool_locate, [this]
 	{
@@ -2302,6 +2311,7 @@ void app_frame::initialise_commands()
 	{
 		std::vector<ui::command_ptr> result = {
 			find_command(commands::options),
+			find_command(commands::options_faces),
 			find_command(commands::favorite_tags),
 			nullptr,
 			find_command(commands::menu_display_options),

@@ -93,7 +93,6 @@ IDI_APP_ICON            ICON                    "res\\app.ico"
 
 IDF_ICONS               BINARY                 "Res\\FluentSystemIcons-Resizable.ttf"
 
-
 /////////////////////////////////////////////////////////////////////////////
 //
 // RT_MANIFEST
@@ -141,4 +140,3 @@ END
 
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////
-

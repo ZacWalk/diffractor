@@ -31,6 +31,7 @@ constexpr static auto sv_panorama = "panorama";
 constexpr static auto sv_movie = "movie";
 constexpr static auto sv_episode = "episode";
 constexpr static auto sv_in_progress = "inprogress";
+constexpr static auto sv_face = "face";
 
 void df::search_t::clear_date_properties()
 {
@@ -407,6 +408,25 @@ static std::string term_quote(const std::string_view term_text)
 	return has_special_char ? quote_term_value(term_text) : std::string(term_text);
 }
 
+std::string df::format_face_term(const std::string_view argument)
+{
+	if (argument.empty()) return "@face";
+
+	// A face term spells a file name and a position, so the colon between them is part of the value
+	// and the tokenizer already reads it that way once a scope is set. Quoting it back would make
+	// every face term arrive wrapped in punctuation the user then has to read past.
+	//
+	// Everything else the tokenizer acts on must still be quoted, and a file name is far more likely
+	// to carry it than a word was: `Party (1).jpg` and `Holiday,2019.jpg` are ordinary names, and
+	// unquoted they would end the term at the bracket or the comma and turn the rest into a second
+	// term - a search that quietly answers something else. The set is the tokenizer's own delimiters
+	// plus the characters it reads as modifiers, and the decision is made HERE rather than deferred
+	// to term_quote, whose own rule would let a comma through.
+	constexpr std::string_view must_quote = " \t\'\"!-#@,;|()";
+	const auto needs_quotes = argument.find_first_of(must_quote) != std::string_view::npos;
+	return std::format("@face:{}", needs_quotes ? quote_term_value(argument) : std::string(argument));
+}
+
 // A search term has to read back as itself, so numbers are trimmed rather than rounded away.
 static std::string trim_trailing_zeros(std::string v)
 {
@@ -717,6 +737,10 @@ std::string df::format_term(const search_term& term)
 			result << "@";
 			result << sv_in_progress;
 		}
+		else if (term.type == search_term_type::face)
+		{
+			result << format_face_term(term.text);
+		}
 	}
 
 	return result.str();
@@ -968,6 +992,11 @@ search_presence_mask df::search_t::calc_required_presence() const
 			break;
 		case search_term_type::panorama:
 			result.types |= search_presence_mask::panorama;
+			break;
+		case search_term_type::face:
+			// Both forms need a face on the file. Which face it is stays for the matcher: the
+			// prefilter's job is only to reject items that cannot possibly match.
+			result.types |= search_presence_mask::faces;
 			break;
 		case search_term_type::media_type:
 			result.types |= v.fg_val->search_presence_bit();
@@ -1224,6 +1253,29 @@ void df::search_t::parse_part(const search_part& part)
 		{
 			result = search_term(found_flag->second, part.modifier);
 		}
+		else
+		{
+			// `@face:alice`. The tokenizer has already taken `@` as the scope, so a later colon rides
+			// in the term and is split here rather than by teaching it a second scope form.
+			const std::string_view whole(part.term);
+			const auto colon = whole.find(':');
+			const auto flag = colon == std::string_view::npos ? whole : whole.substr(0, colon);
+
+			if (str::icmp(flag, sv_face) == 0 || str::icmp(flag, tt.query_face) == 0)
+			{
+				const auto name = colon == std::string_view::npos
+					                  ? std::string_view{}
+					                  : str::trim(whole.substr(colon + 1));
+
+				result = search_term(search_term_type::face, name, part.modifier);
+			}
+		}
+	}
+	else if (str::icmp(part.scope, sv_face) == 0 || str::icmp(part.scope, tt.query_face) == 0)
+	{
+		// `face:alice`, the same guessable spelling `loc:` already accepts. It canonicalizes to the
+		// `@` form, so there is still only one vocabulary to learn.
+		result = search_term(search_term_type::face, str::trim(part.term), part.modifier);
 	}
 	else if (const auto* const location = find_location_scope(part.scope); location && location->takes_centre)
 	{
@@ -2818,6 +2870,29 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 		{
 			result.type = search_result_type::match_flag;
 		}
+	}
+	else if (term.type == search_term_type::face)
+	{
+		const auto fs = file.faces.load();
+		auto matched = false;
+		if (_faces && _faces->enabled && fs && !fs->faces.empty())
+		{
+			if (term.text.empty())
+			{
+				matched = true;
+			}
+			else if (const auto anchors = face_anchors(term.text); !anchors.empty())
+			{
+				matched = std::ranges::any_of(fs->faces, [&anchors](const stored_face& f)
+				{
+					return std::ranges::any_of(anchors, [&f](const faces::face_vector& anchor)
+					{
+						return faces::similarity(f.vec, anchor) >= faces::defaults().similar;
+					});
+				});
+			}
+		}
+		if (matched == term.modifiers.positive) result.type = search_result_type::match_flag;
 	}
 	else if (term.type == search_term_type::text)
 	{

@@ -2310,6 +2310,39 @@ public:
 	mutable recti _region_zoom_bounds;
 	mutable recti _region_crop_bounds;
 
+	// faces.md: where each detected face lands on screen, and which face it is.
+	struct drawn_face
+	{
+		recti bounds;
+		int index = 0;
+	};
+
+	// The hovered face's buttons.
+	enum class face_command
+	{
+		zoom,
+		crop,
+		search
+	};
+
+	// Captured wherever a measure context exists, because the face geometry below is computed on
+	// demand rather than left over from the last paint, and the hit test has no context of its own.
+	mutable int _face_icon_cxy = 18;
+	mutable int _face_gap = 4;
+	mutable int _face_border = 2;
+
+	// The strip fades in under the pointer rather than appearing on a click. Owned by this control,
+	// which is rebuilt when the picture changes - and so is the hover it belongs to.
+	mutable ui::animate_alpha _face_button_alpha{0.0f};
+	mutable int _face_button_owner = -1;
+
+	void capture_face_metrics(ui::measure_context& mc) const
+	{
+		_face_icon_cxy = mc.icon_cxy;
+		_face_gap = mc.padding1;
+		_face_border = df::round(2 * mc.scale_factor);
+	}
+
 	df::file_path region_item() const
 	{
 		// _display is non-null for this control's whole lifetime - the constructor reads it - so the
@@ -2362,6 +2395,160 @@ public:
 	{
 		if (!has_region()) return {};
 		return df::source_rect_to_client(region(), image_bounds(element_offset), source_extent()).round();
+	}
+
+	// faces.md: face boxes are drawn only where a face means something to point at - one picture,
+	// laid out in its own space. A projected panorama is not that, nor is a comparison, and nor is
+	// zoom, where the picture is being examined rather than surveyed.
+	bool faces_available() const
+	{
+		return setting.faces.enabled && _display->is_one() && !_display->is_panorama_projected() &&
+			!_display->comparing() && !_display->is_zoom_mode();
+	}
+
+	// Stored face geometry is upright and so is what is on screen, so this is a scale and an offset
+	// with no orientation term - which is the whole reason the geometry is stored that way.
+	recti face_bounds(const rectd source_bounds, const sizei face_space, const pointi element_offset) const
+	{
+		const auto normalized = faces::normalized_face_locator(source_bounds, face_space);
+		if (normalized.is_empty()) return {};
+
+		const auto extent = source_extent();
+		const rectd in_source{
+			normalized.X * extent.Width, normalized.Y * extent.Height,
+			normalized.Width * extent.Width, normalized.Height * extent.Height
+		};
+
+		return df::source_rect_to_client(in_source, image_bounds(element_offset), extent).round();
+	}
+
+	// Where every face lands on screen, computed from the published face set. Paint used to record
+	// this for the hit test to read, which meant the hit test could not answer for a picture whose
+	// faces arrived after the last paint, or for buttons the last paint had not drawn yet - and
+	// nothing repaints between a click and the controller re-test that follows it.
+	std::vector<drawn_face> layout_faces(const pointi element_offset) const
+	{
+		std::vector<drawn_face> result;
+		if (!faces_available()) return result;
+
+		const auto found = _state.displayed_faces(region_item());
+		if (!found || found->faces.empty() || found->source_extent.is_empty()) return result;
+
+		const auto image = image_bounds(element_offset).round();
+		if (image.is_empty()) return result;
+
+		result.reserve(found->faces.size());
+
+		for (auto i = 0u; i < found->faces.size(); ++i)
+		{
+			const auto box = face_bounds(found->faces[i].bounds, found->source_extent, element_offset);
+
+			// A box smaller than the border that would draw it is not something anyone can aim at.
+			if (box.width() <= _face_border * 2 || box.height() <= _face_border * 2) continue;
+			if (!box.intersects(image)) continue;
+
+			result.emplace_back(drawn_face{box, static_cast<int>(i)});
+		}
+
+		return result;
+	}
+
+	// The hovered face's button strip, or nothing when no face is hovered. A drawn region takes the
+	// picture's clicks, so the strip is not offered under one.
+	std::vector<std::pair<recti, face_command>> layout_face_buttons(const pointi element_offset,
+	                                                                const std::vector<drawn_face>& faces) const
+	{
+		std::vector<std::pair<recti, face_command>> result;
+		if (has_region()) return result;
+
+		const auto hovered = active_face();
+		const auto found = std::ranges::find_if(faces, [hovered](const drawn_face& f) { return f.index == hovered; });
+		if (found == faces.end()) return result;
+
+		result.emplace_back(recti{}, face_command::zoom);
+		result.emplace_back(recti{}, face_command::crop);
+		result.emplace_back(recti{}, face_command::search);
+
+		const auto count = static_cast<int>(result.size());
+		const auto strip_width = _face_icon_cxy * count + _face_gap * (count - 1);
+
+		// Under the face when there is room below it and above it otherwise, and clamped into the
+		// element either way: a strip outside the clip is hit-tested where nothing routes, which is a
+		// face the pointer can neither act on nor put away.
+		const auto face_box = found->bounds;
+		const auto limit = bounds.offset(element_offset);
+		const auto left = std::clamp(face_box.left + (face_box.width() - strip_width) / 2,
+		                             limit.left, std::max(limit.left, limit.right - strip_width));
+		const auto below = face_box.bottom + _face_gap * 2;
+		const auto top = std::clamp(below + _face_icon_cxy <= limit.bottom
+			                            ? below
+			                            : face_box.top - _face_gap * 2 - _face_icon_cxy,
+		                            limit.top, std::max(limit.top, limit.bottom - _face_icon_cxy));
+
+		auto x = left;
+
+		for (auto& [button_bounds, command] : result)
+		{
+			button_bounds = recti(x, top, x + _face_icon_cxy, top + _face_icon_cxy);
+			x += _face_icon_cxy + _face_gap;
+		}
+
+		return result;
+	}
+
+	// The face under the pointer, or nothing. Topmost-last so a small face drawn over a large one
+	// wins, which is what happens when someone is held up in front of a crowd.
+	static const drawn_face* face_at(const std::vector<drawn_face>& faces, const pointi loc)
+	{
+		for (auto i = faces.size(); i > 0; --i)
+		{
+			if (faces[i - 1].bounds.contains(loc)) return &faces[i - 1];
+		}
+
+		return nullptr;
+	}
+
+	// Where the pointer may be and still be on this face: its box, its strip, and the gap between,
+	// so moving from one to the other does not pass through nothing and put the strip away.
+	static recti face_hover_envelope(const recti face_box,
+	                                 const std::vector<std::pair<recti, face_command>>& buttons)
+	{
+		auto result = face_box;
+
+		for (const auto& [button_bounds, command] : buttons)
+		{
+			result = {
+				std::min(result.left, button_bounds.left), std::min(result.top, button_bounds.top),
+				std::max(result.right, button_bounds.right), std::max(result.bottom, button_bounds.bottom)
+			};
+		}
+
+		return result;
+	}
+
+	// The hovered face lives on the view state keyed by picture, for the same reason the drawn region
+	// does: this control is rebuilt for anything raising view_invalid::media_elements, and leaving
+	// the picture is what should put the buttons away - not a sidecar arriving.
+	int active_face() const
+	{
+		return _state.active_face(region_item());
+	}
+
+	// Set from the hit test, which is the only thing that knows where the pointer is. It asks for a
+	// repaint and not for another hit test: it is already inside one.
+	void active_face(const int index) const
+	{
+		_state.active_face(region_item(), index);
+		_host->invalidate_view(view_invalid::view_redraw);
+	}
+
+	// The face in the picture's own normalized space, which is what a crop and a zoom each need and
+	// neither can take back out of a screen rectangle.
+	rectd face_locator(const int index) const
+	{
+		const auto found = _state.displayed_faces(region_item());
+		if (!found || index < 0 || index >= static_cast<int>(found->faces.size())) return {};
+		return faces::normalized_face_locator(found->faces[index].bounds, found->source_extent);
 	}
 
 	// A drag replaces whatever was there: two rectangles at once would be two answers to a question
@@ -2463,6 +2650,7 @@ public:
 
 			// The zoom chrome is drawn after the region for the same reason it is hit-tested before it:
 			// a rectangle drawn across the navigator must not hide it and must not claim its clicks.
+			render_faces(dc, element_offset);
 			render_region(dc, element_offset);
 			if (_display->zoom()) render_zoom_thumb(dc, element_offset);
 			if (_display->is_zoom_mode() && !_display->is_temporary_zoom() && _zoom_grading_element &&
@@ -2482,12 +2670,24 @@ public:
 		{
 			// Nothing was painted, so the region's three buttons are not on screen. Their rectangles are
 			// read by the hit test, and leaving the last frame's behind would route a click to a control
-			// that is not there.
+			// that is not there. The face boxes need no equivalent - they are computed on demand, and
+			// with no texture image_bounds is empty, so nothing is offered.
 			_region_close_bounds.clear();
 			_region_zoom_bounds.clear();
 			_region_crop_bounds.clear();
 		}
 	}
+
+	// Asks the index for this picture's faces, and draws the ones already on hand. Both live in ui.cpp:
+	// the lookup needs the complete index_state, and drawing is allowed to REQUEST source work but
+	// never to do it, so the lookup runs on a worker and its answer lands on the view state.
+	void request_faces(df::file_path path, uint64_t revision) const;
+	void render_faces(ui::draw_context& dc, pointi element_offset) const;
+	void render_face_buttons(ui::draw_context& dc, const std::vector<std::pair<recti, face_command>>& buttons,
+	                         int owner, float overlay) const;
+	// Searches for one of this picture's faces, by the sample of the group it belongs to - the same
+	// term the palette spells for that group, so the results are the count the caption quoted.
+	void search_for_face(const view_host_ptr& host, int index) const;
 
 	void render_region(ui::draw_context& dc, const pointi element_offset) const
 	{
@@ -2562,6 +2762,7 @@ public:
 
 	void layout(ui::measure_context& mc, ui::control_layouts& positions)
 	{
+		capture_face_metrics(mc);
 		if (_zoom_grading_element) _zoom_grading_element->bounds.clear();
 		if (_display->_selected_texture1)
 		{

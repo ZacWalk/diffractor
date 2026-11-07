@@ -6,7 +6,7 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: Sidebar navigation panel. Contains collection overview charts, folder list,
+// Purpose: Sidebar navigation panel. Contains collection overview charts, face search, folder list,
 // favorite searches, tags, ratings, labels, and drive information displays. Also holds the
 // application logo lockup shared by the top bar and the About box.
 //
@@ -850,6 +850,332 @@ public:
 };
 
 constexpr int sidebar_visualization_size = 220;
+
+//
+// Faces. docs/faces.md owns the row and the palette. They are constructed once
+// and only composed conditionally: binding a control's existence to whether it currently has
+// content is the mistake AGENTS.md records under "existence is not visibility".
+//
+
+static int calc_face_perc(const index_state& index)
+{
+	const auto total = index.faces_total.load();
+	if (total <= 0) return 1;
+	const auto processed = total - index.faces_remaining.load();
+	return std::clamp(df::mul_div(std::clamp(processed, 0, total), 100, total), 1, 100);
+}
+
+// Whether the face pass has work in front of it, which is what the row below reports.
+static bool is_finding_faces(const index_state& index)
+{
+	return setting.faces.enabled && (index.face_scanning > 0 || index.faces_remaining > 0);
+}
+
+// The stable entry to face search, and its progress while a pass runs. One row rather than two: a
+// separate progress row said "Finding faces 42%" directly under a row that said "Face search", which
+// is two lines of chrome to carry one fact, and the percentage is the more useful of the two. The
+// row does not come and go - it is the entry point, so a feature the user cannot discover or inspect
+// is a feature that does not exist - only what it says changes.
+class sidebar_face_search_element final : public view_element,
+                                          public std::enable_shared_from_this<sidebar_face_search_element>
+{
+	view_state& _s;
+
+public:
+	sidebar_face_search_element(view_state& s, const view_element_options& style_in) noexcept :
+		view_element(style_in | view_element_style::can_invoke | view_element_style::has_tooltip), _s(s)
+	{
+		update_background_color();
+	}
+
+	// While the pass runs the row IS the progress report; the rest of the time it is the way in.
+	// Faces do not borrow the indexing percentage: the two passes have different totals, different
+	// costs and different completion times, and one bar reporting both would be wrong for the whole
+	// of the longer one.
+	std::string format_text() const
+	{
+		if (is_finding_faces(_s.item_index))
+		{
+			return std::format("{} {}%", tt.faces_finding, calc_face_perc(_s.item_index));
+		}
+
+		return std::string(tt.face_search.sv());
+	}
+
+	void render(ui::draw_context& dc, const pointi element_offset) const override
+	{
+		const auto logical_bounds = bounds.offset(element_offset);
+		render_background(dc, element_offset);
+		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		dc.draw_text(format_text(), logical_bounds, ui::style::font_face::dialog,
+		             ui::style::text_style::single_line, clr, {});
+	}
+
+	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	{
+		const auto extent = mc.measure_text(format_text(), ui::style::font_face::dialog,
+		                                    ui::style::text_style::single_line, width_limit);
+		return {width_limit, extent.cy};
+	}
+
+	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	{
+		hover.elements->add(std::make_shared<text_element>(tt.face_search_tooltip, ui::style::font_face::dialog,
+		                                                   ui::style::text_style::multiline,
+		                                                   flex_item::line_break));
+
+		// Said where it is relevant rather than in a row of its own: a percentage that is moving is
+		// the thing that raises "is this going to take all day", and this is the answer to it.
+		if (is_finding_faces(_s.item_index))
+		{
+			hover.elements->add(std::make_shared<text_element>(tt.faces_finding_tooltip,
+			                                                   ui::style::font_face::dialog,
+			                                                   ui::style::text_style::multiline,
+			                                                   flex_item::line_break));
+		}
+
+		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
+		hover.horizontal = true;
+	}
+
+	void dispatch_event(const view_element_event& event) override
+	{
+		if (event.type == view_element_event_type::invoke)
+		{
+			event.host->invoke(commands::options_faces);
+		}
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                             const pointi element_offset,
+	                                             hit_test_context& ctx) override
+	{
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
+	}
+};
+
+// The sidebar's shortlist of distinct face appearances: a grid of sample faces and nothing else.
+// How far the pass has got is the row above, and the groups that did not fit are the face view,
+// which that row opens - so the tiles carry no count, no prose and no page control of their own.
+// The pixels are cut from the cached thumbnail on a worker and handed here as finished surfaces,
+// because paint never touches the filesystem or the database.
+class face_palette_element final : public view_element,
+                                   public std::enable_shared_from_this<face_palette_element>
+{
+public:
+	struct tile
+	{
+		faces::palette_entry entry;
+		ui::const_surface_ptr face;
+		mutable ui::texture_ptr tex;
+	};
+
+private:
+	view_state& _s;
+	std::vector<tile> _tiles;
+
+	static constexpr int tile_extent = 56;
+	static constexpr int tile_gap = 4;
+
+	int per_row(const int width_limit) const
+	{
+		return std::max(1, (width_limit + tile_gap) / (tile_extent + tile_gap));
+	}
+
+	int rows(const int width_limit) const
+	{
+		const auto columns = per_row(width_limit);
+		return static_cast<int>((_tiles.size() + columns - 1) / columns);
+	}
+
+	recti tile_bounds(const int i, const recti area) const
+	{
+		const auto columns = per_row(area.width());
+		const auto x = i % columns;
+		const auto y = i / columns;
+		return {
+			area.left + (x * (tile_extent + tile_gap)),
+			area.top + (y * (tile_extent + tile_gap)),
+			area.left + (x * (tile_extent + tile_gap)) + tile_extent,
+			area.top + (y * (tile_extent + tile_gap)) + tile_extent
+		};
+	}
+
+	int tile_at(const pointi loc, const recti area) const
+	{
+		for (auto i = 0; i < static_cast<int>(_tiles.size()); ++i)
+		{
+			if (tile_bounds(i, area).contains(loc)) return i;
+		}
+
+		return -1;
+	}
+
+public:
+	face_palette_element(view_state& s, const view_element_options& style_in) noexcept :
+		view_element(style_in | view_element_style::can_invoke | view_element_style::has_tooltip), _s(s)
+	{
+		update_background_color();
+	}
+
+	void update(std::vector<faces::palette_entry> entries, std::vector<ui::const_surface_ptr> surfaces)
+	{
+		df::assert_true(ui::is_ui_thread());
+
+		_tiles.clear();
+		_tiles.reserve(entries.size());
+
+		for (auto i = 0u; i < entries.size(); ++i)
+		{
+			tile t;
+			t.entry = std::move(entries[i]);
+			if (i < surfaces.size()) t.face = std::move(surfaces[i]);
+			_tiles.emplace_back(std::move(t));
+		}
+	}
+
+	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	{
+		return {width_limit, rows(width_limit) * (tile_extent + tile_gap)};
+	}
+
+	void render(ui::draw_context& dc, const pointi element_offset) const override
+	{
+		const auto logical_bounds = bounds.offset(element_offset);
+		render_background(dc, element_offset);
+
+		for (auto i = 0; i < static_cast<int>(_tiles.size()); ++i)
+		{
+			const auto& t = _tiles[i];
+			const auto r = tile_bounds(i, logical_bounds);
+
+			if (ui::is_valid(t.face))
+			{
+				if (!t.tex)
+				{
+					t.tex = dc.create_texture();
+					if (t.tex) t.tex->update(t.face);
+				}
+
+				if (t.tex)
+				{
+					dc.draw_texture(t.tex, r, dc.colors.alpha);
+					continue;
+				}
+			}
+
+			// The sample face has no cached thumbnail yet. The same loading affordance the rest of
+			// the sidebar uses, and the thumbnail has already been asked for through the normal path.
+			dc.draw_rect(r, ui::color(dc.colors.background, dc.colors.alpha * 0.5f));
+		}
+	}
+
+	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	{
+		const auto i = tile_at(loc, bounds.offset(element_offset));
+		if (i < 0) return;
+
+		const auto& e = _tiles[i].entry;
+
+		// A group has no name, so the tooltip says the two things that are true about it: which face
+		// it is - the picture it was found in - and how much of the collection it accounts for.
+		hover.elements->add(std::make_shared<text_element>(
+			tt.faces_similar.sv(),
+			ui::style::font_face::title, ui::style::text_style::single_line, flex_item::line_break));
+		hover.elements->add(std::make_shared<text_element>(
+			format_plural_text(tt.title_item_count_fmt, static_cast<uint32_t>(e.file_count)),
+			ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::line_break));
+		if (!e.term.empty())
+		{
+			hover.elements->add(std::make_shared<text_element>(
+				e.term, ui::style::font_face::dialog, ui::style::text_style::single_line,
+				flex_item::line_break));
+		}
+
+		hover.active_bounds = hover.window_bounds = tile_bounds(i, bounds.offset(element_offset));
+		hover.horizontal = true;
+	}
+
+	// A search for one palette entry. The entry travels with the controller: the palette is rebuilt
+	// whenever face content changes - which is continuously while the pass runs - so an index
+	// recorded during the hit test names a different face, or nothing at all, by the time the click
+	// arrives.
+	void search_for(const view_host_ptr& host, const faces::palette_entry& e) const
+	{
+		// A group IS its sample face, so the term is the sample. A tile with no resolved sample
+		// behind it is not offered as a search of its own.
+		if (e.term.empty()) return;
+		_s.open(host, df::search_t::parse(df::format_face_term(e.term)), {});
+	}
+
+	void dispatch_event(const view_element_event& event) override
+	{
+		if (event.type == view_element_event_type::free_graphics_resources)
+		{
+			for (const auto& t : _tiles) t.tex.reset();
+		}
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                             const pointi element_offset,
+	                                             hit_test_context& ctx) override;
+};
+
+// One face in the palette. Holds the entry by value for the reason above, and performs the search
+// itself rather than routing it back through an index the palette may have rebuilt.
+class face_tile_controller final : public view_controller
+{
+	std::shared_ptr<face_palette_element> _palette;
+	faces::palette_entry _entry;
+	bool _tracking = false;
+
+public:
+	face_tile_controller(const view_host_ptr& host, std::shared_ptr<face_palette_element> palette,
+	                     const recti bounds, faces::palette_entry entry) :
+		view_controller(host, bounds), _palette(std::move(palette)), _entry(std::move(entry))
+	{
+	}
+
+	ui::style::cursor cursor() const override
+	{
+		return ui::style::cursor::link;
+	}
+
+	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	{
+		_tracking = true;
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	{
+		const auto invoke = _tracking && _bounds.contains(loc);
+		_tracking = false;
+		if (invoke) _palette->search_for(_host, _entry);
+	}
+
+	bool escape() override
+	{
+		if (!_tracking) return false;
+		_tracking = false;
+		return true;
+	}
+};
+
+inline view_controller_ptr face_palette_element::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                                         const pointi element_offset,
+                                                                         hit_test_context&)
+{
+	const auto area = bounds.offset(element_offset);
+	const auto i = tile_at(loc, area);
+
+	// Only a face is a target here. The groups that did not fit are reached through the row above,
+	// which opens the face view, so the grid needs no affordance of its own for them.
+	if (i < 0) return nullptr;
+
+	// Bounded to the tile rather than to the whole grid, so the controller the host caches is
+	// replaced as soon as the pointer moves to the next face.
+	return std::make_shared<face_tile_controller>(host, shared_from_this(), tile_bounds(i, area), _tiles[i].entry);
+}
 
 // Vertical breathing room around each of the three lit visuals, so the gaps between them are equal
 // by construction rather than by three separate guesses.
@@ -2920,12 +3246,20 @@ public:
 	bool _show_indexing_control = false;
 	bool _is_detecting = false;
 	int _last_indexing_perc = -1;
+	int _last_face_perc = -1;
 
 
 	std::shared_ptr<sidebar_indexing_element> _indexing_elements;
 	std::shared_ptr<sidebar_file_type_element> _type_chart;
 	std::shared_ptr<sidebar_history_element> _history_chart;
 	std::shared_ptr<sidebar_map_element> _map;
+	std::shared_ptr<sidebar_face_search_element> _face_search;
+	std::shared_ptr<face_palette_element> _face_palette;
+	df::hash_set<df::file_path, df::ihash, df::ieq> _face_thumbnail_requests;
+	uint64_t _face_palette_request = 0;
+	// One projection at a time; another request while one runs is remembered rather than queued.
+	bool _face_palette_in_flight = false;
+	bool _face_palette_again = false;
 	std::vector<search_item_ptr> _items;
 	std::vector<drive_item_ptr> _drives;
 	// Enumerating volumes calls GetVolumeInformation and GetDiskFreeSpaceEx per drive, either of which
@@ -2948,6 +3282,13 @@ public:
 
 		_type_chart = std::make_shared<sidebar_file_type_element>(s);
 		_history_chart = std::make_shared<sidebar_history_element>(s);
+
+		// Created unconditionally and for the whole session. compose_elements only decides which are
+		// drawn: binding a control's existence to whether it currently has content is the defect
+		// AGENTS.md records under "existence is not visibility".
+		_face_search = std::make_shared<sidebar_face_search_element>(s, flex_item::stretch);
+		_face_search->padding(8);
+		_face_palette = std::make_shared<face_palette_element>(s, flex_item::stretch);
 
 		files ff;
 		const auto surface = ff.image_to_surface(load_app_resource(app_resource::map_png));
@@ -3036,6 +3377,12 @@ public:
 		if (setting.sidebar.show_world_map) _elements.emplace_back(_map);
 		if (setting.sidebar.show_history) _elements.emplace_back(_history_chart);
 
+		// The faces section is here whenever the sidebar is. Its entry row remains visible so an empty
+		// or partial palette never becomes the only indication that face search is on, and that row
+		// carries the pass's percentage while one runs rather than a second row appearing to say it.
+		_elements.emplace_back(_face_search);
+		if (setting.faces.enabled) _elements.emplace_back(_face_palette);
+
 		_elements.insert(_elements.end(), _item_elements.begin(), _item_elements.end());
 	}
 
@@ -3072,6 +3419,136 @@ public:
 				                   t->populate();
 			                   });
 		                   });
+	}
+
+	// The fourth sidebar tier. A change to face data refreshes the palette and nothing else, and a
+	// change to the collection roots does not reach it unless the groups actually moved.
+	//
+	// The pixels are cut from the CACHED THUMBNAIL, never from the original file: the palette is
+	// drawn during paint, and paint does not touch the filesystem or the database, directly or
+	// indirectly. Like the counts, it is not populated before the index reports itself ready.
+	void populate_face_palette()
+	{
+		df::assert_true(ui::is_ui_thread());
+
+		if (!setting.faces.enabled)
+		{
+			++_face_palette_request;
+			_face_palette_in_flight = false;
+			_face_palette_again = false;
+			_face_thumbnail_requests.clear();
+			_face_palette->update({}, {});
+			compose_elements();
+			layout();
+			return;
+		}
+
+		// Like the counts, the palette is not built before the index reports its initialisation
+		// complete. Asking earlier returns nothing and spends the time contending with the thread
+		// still building the index.
+		if (!_state.item_index.is_init_complete()) return;
+
+		// One projection in flight, and at most one waiting. Detection publishes every few files and
+		// each publish asks for a refresh, so without this the whole chain - a walk of every group, a
+		// database read and a crop per tile - runs hundreds of times a session for one visible answer.
+		if (_face_palette_in_flight)
+		{
+			_face_palette_again = true;
+			return;
+		}
+
+		_face_palette_in_flight = true;
+		_face_palette_again = false;
+
+		const auto request = ++_face_palette_request;
+		const auto generation = _state.item_index.face_generation();
+
+		_state.queue_async(async_queue::sidebar,
+		                   [t = ui_owned(_state._async, shared_from_this()), &s = _state, request, generation]
+		{
+			auto palette = s.item_index.face_palette();
+
+			std::vector<df::file_path> paths;
+			paths.reserve(palette.size());
+			for (const auto& e : palette) paths.emplace_back(e.sample.path.sv());
+
+			s._async.queue_database(
+				[t, &s, palette = std::move(palette), paths = std::move(paths), request, generation](const database& db) mutable
+				{
+					// The database thread reads the stored blobs and nothing more; decoding and
+					// cropping happen back on the sidebar worker below.
+					std::vector<ui::const_image_ptr> encoded;
+					std::vector<df::file_path> missing;
+					encoded.reserve(paths.size());
+
+					for (const auto& p : paths)
+					{
+						auto thumbnail = db.load_thumbnail(p).thumb;
+						if (!ui::is_valid(thumbnail)) missing.emplace_back(p);
+						encoded.emplace_back(std::move(thumbnail));
+					}
+
+					s.queue_async(async_queue::sidebar,
+					              [t, &s, palette = std::move(palette), encoded = std::move(encoded),
+						              missing = std::move(missing), request, generation]() mutable
+					              {
+						              files ff;
+						              std::vector<ui::const_surface_ptr> surfaces;
+						              surfaces.reserve(palette.size());
+
+						              for (auto i = 0u; i < palette.size(); ++i)
+						              {
+							              surfaces.emplace_back(
+								              i < encoded.size()
+									              ? crop_face_thumbnail(ff, encoded[i], palette[i])
+									              : ui::const_surface_ptr{});
+						              }
+
+						              s.queue_ui(
+							              [t, &s, palette = std::move(palette), surfaces = std::move(surfaces),
+								              missing = std::move(missing), request, generation]() mutable
+							              {
+								              const df::scope_exit release([&t]
+								              {
+									              t->_face_palette_in_flight = false;
+									              if (t->_face_palette_again) t->populate_face_palette();
+								              });
+
+								              if (t->_face_palette_request != request ||
+									              !s.item_index.face_search_enabled() ||
+									              s.item_index.face_generation() != generation)
+								              {
+									              return;
+								              }
+
+								              df::hash_set<df::file_path, df::ihash, df::ieq> current;
+								              for (const auto& entry : palette)
+									              current.emplace(entry.sample.path.sv());
+								              std::erase_if(t->_face_thumbnail_requests,
+								                            [&current](const df::file_path& path)
+								                            {
+									                            return !current.contains(path);
+								                            });
+
+								              t->_face_palette->update(std::move(palette), std::move(surfaces));
+								              t->compose_elements();
+								              t->layout();
+
+								              for (const auto& path : missing)
+								              {
+									              if (!t->_face_thumbnail_requests.emplace(path).second) continue;
+									              const auto indexed = s.item_index.find_item(path);
+									              if (indexed.ft)
+									              {
+										              s.item_index.queue_load_thumbnail(
+											              std::make_shared<df::item_element>(path, indexed),
+											              view_invalid::sidebar_faces);
+									              }
+								              }
+							              });
+					              });
+				});
+		});
 	}
 
 	// The structural tier: every element is recreated, which discards the text layout each one owns,
@@ -3522,6 +3999,20 @@ public:
 			{
 				_last_indexing_perc = -1;
 			}
+
+			// The face row reports the pass in place rather than a second row appearing beneath it, so
+			// a pass starting or finishing is a repaint of one row and never a re-layout of the rows
+			// below it. -1 stands for "not running", so one comparison covers starting and finishing
+			// as well as every step in between.
+			const auto face_perc = is_finding_faces(_state.item_index)
+				                       ? calc_face_perc(_state.item_index)
+				                       : -1;
+
+			if (_last_face_perc != face_perc)
+			{
+				_last_face_perc = face_perc;
+				invalidate();
+			}
 		}
 	}
 
@@ -3595,6 +4086,8 @@ public:
 		if (_type_chart) _type_chart->dispatch_event(event);
 		if (_map) _map->dispatch_event(event);
 		if (_history_chart) _history_chart->dispatch_event(event);
+		// The palette caches one texture per face, so it is on this list for the same reason.
+		if (_face_palette) _face_palette->dispatch_event(event);
 
 		for (const auto& e : _item_elements)
 		{

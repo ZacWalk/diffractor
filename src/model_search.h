@@ -15,6 +15,7 @@
 #include "model_property.h"
 #include "model_location.h"
 #include "model_related.h"
+#include "model_faces.h"
 #include "files.h"
 
 struct search_part;
@@ -96,6 +97,11 @@ namespace df
 		episode,
 		// A recording started and not finished, spelled `@inprogress`.
 		in_progress,
+		// `@face` is "has any face"; `@face:IMG_1234.jpg:2` is "has a face resembling the second face
+		// in IMG_1234.jpg". `face:...` is accepted for the same thing and canonicalizes to the `@`
+		// form. The argument names a file and a position in its stable face order, which is what a
+		// group's sample face is spelled as. See docs/faces.md.
+		face,
 	};
 
 	// Specificity a location term is constrained to; `any` matches place, region or country.
@@ -228,10 +234,13 @@ namespace df
 		none,
 		tag,
 		group,
+		face,
 		with,
 		without,
 		location,
 	};
+
+	std::string format_face_term(std::string_view argument);
 
 	struct search_scope_completion
 	{
@@ -275,6 +284,8 @@ namespace df
 			case search_scope_kind::location:
 			default:
 				return std::string(candidate);
+			case search_scope_kind::face:
+				return format_face_term(candidate);
 			}
 		}
 	};
@@ -316,6 +327,16 @@ namespace df
 		{
 			result.kind = search_scope_kind::tag;
 			result.value = std::string(token.substr(1));
+		}
+		else if (str::starts(token, "@face:"))
+		{
+			result.kind = search_scope_kind::face;
+			result.value = std::string(token.substr(6));
+		}
+		else if (str::starts(token, "face:"))
+		{
+			result.kind = search_scope_kind::face;
+			result.value = std::string(token.substr(5));
 		}
 		else if (token.front() == '@')
 		{
@@ -598,7 +619,8 @@ namespace df
 				type == search_term_type::panorama ||
 				type == search_term_type::film ||
 				type == search_term_type::episode ||
-				type == search_term_type::in_progress;
+				type == search_term_type::in_progress ||
+				type == search_term_type::face;
 		}
 
 		friend bool operator==(const search_term& lhs, const search_term& rhs)
@@ -1339,6 +1361,7 @@ namespace df
 		bool has_media_type() const { return has_term_type(search_term_type::media_type); }
 
 		bool is_duplicates() const { return has_term_type(search_term_type::duplicate); }
+		bool has_face_term() const { return has_term_type(search_term_type::face); }
 
 		void clear_date_properties();
 
@@ -1599,6 +1622,13 @@ namespace df
 		const uint32_t _now_days = 0;
 		const location_cache* _locations = nullptr;
 		hash_map<char, str::cached> _drive_labels;
+		// The vectors each face term in this search resolves to, found once here rather than per item.
+		// A term whose file is gone, or has no face in that position, resolves to nothing and the term
+		// then matches nothing - which is the honest answer for a face the collection no longer holds.
+		// Several vectors may answer one term: a file name two files share spells one term, and both
+		// faces answer it rather than one of them answering by accident of enumeration order.
+		hash_map<std::string, std::vector<faces::face_vector>, ihash, ieq> _face_anchors;
+		const faces::query_context* _faces = nullptr;
 
 		struct resolved_place
 		{
@@ -1629,11 +1659,13 @@ namespace df
 
 	public:
 		search_matcher(const search_t& s, const uint32_t now_days = platform::now().to_days(),
-		               const location_cache* locations = nullptr) :
+		               const location_cache* locations = nullptr,
+		               const faces::query_context* faces_context = nullptr) :
 			_search(s),
 			_required_presence(s.calc_required_presence()),
 			_now_days(now_days),
 			_locations(locations),
+			_faces(faces_context),
 			has_terms(s.has_terms()),
 			need_metadata(s.needs_metadata()),
 			can_match_folder(_search.can_match_folder()),
@@ -1657,6 +1689,32 @@ namespace df
 			{
 				resolve_location_centres();
 			}
+
+			if (faces_context && s.has_face_term())
+			{
+				for (const auto& term : s.terms())
+				{
+					if (term.type != search_term_type::face || term.text.empty()) continue;
+
+					for (const auto& anchor : faces_context->anchors)
+					{
+						// A term IS a face, so matching against the vector it resolves to is exactly
+						// the rule the group behind it was built with. There is no membership list in
+						// between, and nothing that a later grouping pass could move.
+						if (str::icmp(anchor.term, term.text) != 0) continue;
+						if (std::ranges::any_of(anchor.vec, [](const float v) { return v != 0.0f; }))
+						{
+							_face_anchors[term.text].emplace_back(anchor.vec);
+						}
+					}
+				}
+			}
+		}
+
+		std::span<const faces::face_vector> face_anchors(const std::string& term) const
+		{
+			const auto found = _face_anchors.find(term);
+			return found == _face_anchors.end() ? std::span<const faces::face_vector>{} : found->second;
 		}
 
 		void resolve_location_centres();

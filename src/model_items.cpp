@@ -2328,6 +2328,13 @@ void df::index_file_item::calc_search_presence() const
 		updated.types |= search_presence_mask::duplicates;
 	}
 
+	// Only whether the file carries a face. Which person is a decision the matcher makes against the
+	// assignments, so the prefilter must not try to answer it.
+	if (const auto fs = faces.load(); fs && !fs->faces.empty())
+	{
+		updated.types |= search_presence_mask::faces;
+	}
+
 	search_presence = updated;
 	fold_duplicates_bit(search_presence, duplicates);
 }

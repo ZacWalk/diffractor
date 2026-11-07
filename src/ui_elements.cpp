@@ -1100,6 +1100,165 @@ public:
 	}
 };
 
+// faces.md: one face on the picture it was found in. Pointing at it brings up its buttons; clicking
+// it searches for it, which is the one action worth having without aiming at a button.
+class face_controller final : public view_controller
+{
+	std::shared_ptr<photo_control> _parent;
+	view_state& _state;
+	int _index = 0;
+	bool _tracking = false;
+
+public:
+	face_controller(const view_host_ptr& host, std::shared_ptr<photo_control> parent, view_state& state,
+	                const recti bounds, const int index) :
+		view_controller(host, bounds), _parent(std::move(parent)), _state(state), _index(index)
+	{
+	}
+
+	ui::style::cursor cursor() const override
+	{
+		return ui::style::cursor::link;
+	}
+
+	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	{
+		_tracking = true;
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	{
+		const auto invoke = _tracking && _bounds.contains(loc);
+		_tracking = false;
+		if (!invoke) return;
+
+		_parent->search_for_face(_host, _index);
+	}
+
+	bool escape() override
+	{
+		if (!_tracking) return false;
+		_tracking = false;
+		return true;
+	}
+
+	void popup_from_location(view_hover_element& hover) override
+	{
+		// A group has no name, so the popup says the two things that are true: that this face has
+		// lookalikes in the collection, and how many pictures they account for - which is what says
+		// whether searching for it is worth doing.
+		const auto summary = _state.displayed_face_summary(_index);
+		if (summary.term.empty()) return;
+
+		hover.elements->add(std::make_shared<text_element>(tt.faces_similar.sv(), ui::style::font_face::title,
+		                                                   ui::style::text_style::single_line,
+		                                                   flex_item::line_break));
+		hover.elements->add(std::make_shared<text_element>(
+			format_plural_text(tt.title_item_count_fmt, static_cast<uint32_t>(summary.file_count)),
+			ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::line_break));
+
+		hover.active_bounds = hover.window_bounds = _bounds;
+		hover.horizontal = true;
+	}
+};
+
+// One of the hovered face's buttons. None of these reads or writes a media file.
+class face_command_controller final : public view_controller
+{
+	std::shared_ptr<photo_control> _parent;
+	view_state& _state;
+	pointi _element_offset;
+	recti _face_box;
+	int _index = 0;
+	photo_control::face_command _command;
+	bool _tracking = false;
+
+	std::string_view label() const
+	{
+		switch (_command)
+		{
+		case photo_control::face_command::zoom: return tt.face_zoom_to.sv();
+		case photo_control::face_command::crop: return tt.face_crop_to.sv();
+		default: break;
+		}
+
+		return tt.face_search_this.sv();
+	}
+
+public:
+	face_command_controller(const view_host_ptr& host, std::shared_ptr<photo_control> parent, view_state& state,
+	                        const recti bounds, const pointi element_offset, const recti face_box, const int index,
+	                        const photo_control::face_command command) :
+		view_controller(host, bounds), _parent(std::move(parent)), _state(state), _element_offset(element_offset),
+		_face_box(face_box), _index(index), _command(command)
+	{
+	}
+
+	ui::style::cursor cursor() const override
+	{
+		return ui::style::cursor::link;
+	}
+
+	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	{
+		_tracking = true;
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	{
+		const auto invoke = _tracking && _bounds.contains(loc);
+		_tracking = false;
+		if (!invoke) return;
+
+		const auto item = _parent->_display->_item1;
+		if (!item) return;
+
+		switch (_command)
+		{
+		case photo_control::face_command::zoom:
+		{
+			// The same region-to-viewport primitive the drawn region uses, in the viewport
+			// coordinates the zoom model takes.
+			const auto viewport = _parent->bounds.offset(_element_offset);
+			_parent->_display->zoom_region(rectd(_face_box.offset(-viewport.top_left())));
+			return;
+		}
+
+		case photo_control::face_command::crop:
+		{
+			// Handed on as fractions of the picture, which is what the stored face locator already
+			// is: what is on screen may be a stand-in, and Edit reads the file for itself.
+			const auto locator = _parent->face_locator(_index);
+			if (locator.is_empty()) return;
+
+			const auto command = _state.find_command(commands::tool_edit);
+			if (!command || !command->enable) return;
+
+			_state._pending_edit_crop = view_state::pending_edit_crop_t{item->path(), locator};
+			_host->invoke(commands::tool_edit);
+			return;
+		}
+
+		case photo_control::face_command::search:
+			_parent->search_for_face(_host, _index);
+			return;
+		}
+	}
+
+	bool escape() override
+	{
+		if (!_tracking) return false;
+		_tracking = false;
+		return true;
+	}
+
+	void popup_from_location(view_hover_element& hover) override
+	{
+		hover.elements->add(std::make_shared<action_element>(label()));
+		hover.active_bounds = hover.window_bounds = _bounds;
+	}
+};
+
 class pan_controller final : public view_controller, public std::enable_shared_from_this<pan_controller>
 {
 public:
@@ -1326,6 +1485,176 @@ view_controller_ptr view_elements::controller_from_location(const view_host_ptr&
 }
 
 
+// faces.md: drawing may REQUEST source work and may never do it. The lookup takes the index's own
+// lock, so it runs on a worker; its answer is applied to the view state on the UI thread and Paint
+// only ever reads what has already landed.
+void photo_control::request_faces(const df::file_path path, const uint64_t revision) const
+{
+	const auto weak = weak_from_this();
+	auto& state = _state;
+	const auto search = _state.search();
+
+	_state.queue_async(async_queue::query, [&state, weak, path, revision, search]
+	{
+		auto faces = state.item_index.faces_for(path);
+
+		// The picture the user opened is worth answering for now rather than whenever the collection
+		// pass reaches it. This no-ops when its row is already current, and publishing bumps the face
+		// revision, which is what brings the answer back here.
+		state.item_index.queue_scan_faces_for(path);
+
+		// Which of them the query is asking for, and what each of them is called and accounts for -
+		// resolved here rather than on the UI thread: both compare vectors and read the face library
+		// under its lock.
+		auto matches = faces ? state.item_index.face_search_matches(*faces, search) : std::vector<uint8_t>{};
+		auto summaries = faces
+			                 ? state.item_index.face_summaries(path, *faces)
+			                 : std::vector<faces::face_summary>{};
+
+		state.queue_ui([&state, weak, path, revision, search, faces = std::move(faces),
+			summaries = std::move(summaries), matches = std::move(matches)]() mutable
+		{
+			state.displayed_faces(path, std::move(faces), revision, std::move(summaries), std::move(matches), search);
+			if (const auto self = weak.lock()) self->_host->invalidate_view(view_invalid::view_redraw);
+		});
+	});
+}
+
+// faces.md: a face on a picture is searched for by the sample of the group it belongs to, which is
+// a term the user can see, save and type back. A face no pass has grouped yet belongs to no group,
+// so there is nothing to search for until the next pass settles one.
+void photo_control::search_for_face(const view_host_ptr& host, const int index) const
+{
+	const auto term = _state.displayed_face_summary(index).term;
+	if (term.empty()) return;
+
+	_state.open(host, df::search_t::parse(df::format_face_term(term)), {});
+}
+
+void photo_control::render_faces(ui::draw_context& dc, const pointi element_offset) const
+{
+	if (!faces_available()) return;
+
+
+	capture_face_metrics(dc);
+
+	const auto path = region_item();
+	if (path.is_empty()) return;
+
+	const auto revision = _state.item_index.face_content_revision();
+	if (_state.needs_displayed_faces(path, revision, _state.search())) request_faces(path, revision);
+
+	// The boxes are chrome over the picture, so they go when the rest of it goes: the media view
+	// fades this to nothing once the pointer stops moving, and a picture nobody is pointing at should
+	// be the picture and nothing else.
+	const auto overlay = dc.colors.alpha * dc.colors.overlay_alpha;
+	if (overlay <= 0.004f) return;
+
+	const auto found = _state.displayed_faces(path);
+	if (!found || found->faces.empty() || found->source_extent.is_empty()) return;
+
+	const auto image = image_bounds(element_offset).round();
+	if (image.is_empty()) return;
+
+	// Orange is the face the query is asking for and blue is everybody else, so a result says which
+	// face made it a result rather than leaving the user to guess among the boxes.
+	const auto faces = layout_faces(element_offset);
+	const auto hovered = active_face();
+
+	for (const auto& drawn : faces)
+	{
+		// Half visible until pointed at, so a crowded photograph is still a photograph. The one
+		// under the pointer comes fully up, which is what says the buttons below belong to it.
+		const auto is_hovered = drawn.index == hovered;
+		const auto clr = ui::color(_state.displayed_face_matches_search(drawn.index)
+			                           ? ui::style::color::important_background
+			                           : ui::style::color::view_selected_background,
+		                           overlay * (is_hovered ? 1.0f : 0.5f));
+
+		dc.draw_border(drawn.bounds, drawn.bounds.inflate(_face_border), clr, clr);
+
+		// How much of the collection this face accounts for is the point of the caption, so it is
+		// drawn where the box is rather than in a panel somewhere else - and only for the face being
+		// pointed at, because a caption under every stranger is noise.
+		if (!is_hovered) continue;
+
+		const auto summary = _state.displayed_face_summary(drawn.index);
+		if (summary.term.empty()) continue;
+
+		const auto caption_text = format_plural_text(tt.title_item_count_fmt,
+		                                             static_cast<uint32_t>(summary.file_count));
+
+		const auto line = dc.text_line_height(ui::style::font_face::dialog);
+		const auto box = drawn.bounds;
+		recti caption{box.left, box.bottom + _face_border, box.right, box.bottom + _face_border + line};
+
+		// Under the box normally, inside it when the picture runs out below: a caption drawn off the
+		// bottom of the window says nothing to anybody.
+		if (caption.bottom > image.bottom) caption = {box.left, box.top, box.right, box.top + line};
+
+		dc.draw_rect(caption, ui::color(0, overlay * 0.5f));
+		dc.draw_text(caption_text, caption, ui::style::font_face::dialog, ui::style::text_style::single_line_center,
+		             ui::color(ui::style::color::view_text, overlay), {});
+	}
+
+	render_face_buttons(dc, layout_face_buttons(element_offset, faces), hovered, overlay);
+}
+
+// faces.md: what can be done with the face under the pointer, drawn where that face is. They fade in
+// on hover rather than waiting for a click, because a click is one of the things they offer.
+void photo_control::render_face_buttons(ui::draw_context& dc,
+                                        const std::vector<std::pair<recti, face_command>>& buttons,
+                                        const int owner, const float overlay) const
+{
+	// A strip that belongs to another face starts from nothing rather than sliding across the
+	// picture from wherever the last one was.
+	if (owner != _face_button_owner)
+	{
+		_face_button_owner = owner;
+		_face_button_alpha.reset(0.0f, 0.0f);
+	}
+
+	_face_button_alpha.target(buttons.empty() ? 0.0f : 1.0f);
+
+	if (_face_button_alpha.step())
+	{
+		const auto weak = weak_from_this();
+		ui::animations[&_face_button_alpha] = [weak]
+		{
+			const auto element = weak.lock();
+			if (!element) return false;
+			element->_host->invalidate_view(view_invalid::view_redraw);
+			return element->_face_button_alpha.val() != element->_face_button_alpha.target();
+		};
+		_host->invalidate_view(view_invalid::animations);
+	}
+
+	const auto alpha = overlay * _face_button_alpha.val();
+	if (buttons.empty() || alpha <= 0.004f) return;
+
+	const recti strip{
+		buttons.front().first.left, buttons.front().first.top,
+		buttons.back().first.right, buttons.back().first.bottom
+	};
+
+	dc.draw_rounded_rect(strip.inflate(_face_gap), ui::color(0, alpha * 0.8f), dc.padding1);
+
+	const auto clr = ui::color(dc.colors.foreground, alpha);
+
+	for (const auto& [button, command] : buttons)
+	{
+		switch (command)
+		{
+		case face_command::zoom: xdraw_icon(dc, icon_index::zoom_in, button, clr, {});
+			break;
+		case face_command::crop: xdraw_icon(dc, icon_index::crop, button, clr, {});
+			break;
+		case face_command::search: xdraw_icon(dc, icon_index::search, button, clr, {});
+			break;
+		}
+	}
+}
+
 view_controller_ptr photo_control::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                             const pointi element_offset,
                                                             hit_test_context& ctx)
@@ -1403,6 +1732,66 @@ view_controller_ptr photo_control::controller_from_location(const view_host_ptr&
 		{
 			return std::make_shared<region_controller>(host, shared_from_this(), region, element_offset, true);
 		}
+	}
+
+	// faces.md: a face box sits under the region and the zoom chrome and over the picture. It is a
+	// small target on top of a large one, so it is tested before the zoom and pan tools that would
+	// otherwise swallow every click on the picture - and after the region, whose buttons a face
+	// happening to sit beneath must not steal.
+	//
+	// The geometry is computed here rather than read back from the last paint: a picture whose faces
+	// arrived since then, or a strip that paint has not drawn yet, would otherwise have nothing to
+	// answer with, and nothing repaints between a click and the controller re-test that follows it.
+	const auto faces = has_region() ? std::vector<drawn_face>{} : layout_faces(element_offset);
+	const auto* const face = face_at(faces, loc);
+	const auto was_hovered = active_face();
+
+	// Pointing at a face is what offers its buttons, so the hit test is where the hover is decided.
+	// The strip sits outside the box, so the pointer stays on the face while it is anywhere in the
+	// envelope the two share - otherwise reaching for a button would put it away.
+	const auto previous_buttons = layout_face_buttons(element_offset, faces);
+	const auto previous = std::ranges::find_if(faces, [was_hovered](const drawn_face& f)
+	{
+		return f.index == was_hovered;
+	});
+	const auto envelope = previous == faces.end()
+		                      ? recti{}
+		                      : face_hover_envelope(previous->bounds, previous_buttons);
+
+	const auto hovered = face ? face->index : (envelope.contains(loc) ? was_hovered : -1);
+
+	if (hovered != was_hovered) active_face(hovered);
+
+	// Recomputed for the face now hovered, because the strip that answers belongs to it rather than
+	// to whatever the pointer was on a moment ago.
+	const auto face_buttons = hovered == was_hovered
+		                          ? previous_buttons
+		                          : layout_face_buttons(element_offset, faces);
+
+	// The buttons go first among the faces: they are drawn over the boxes, including over the box
+	// they belong to, so testing the boxes first would make part of the strip unclickable.
+	const auto owner = std::ranges::find_if(faces, [hovered](const drawn_face& f) { return f.index == hovered; });
+
+	if (owner != faces.end())
+	{
+		for (const auto& [button_bounds, command] : face_buttons)
+		{
+			if (!ctx.occluded(button_bounds)) continue;
+
+			return std::make_shared<face_command_controller>(host, shared_from_this(), _state, button_bounds,
+			                                                 element_offset, owner->bounds, hovered, command);
+		}
+	}
+
+	// Recorded whether or not one was hit, and the envelope with them: the zoom and pan tools below
+	// cover all of it, so each is a place their answer stops being the right one - including the gap
+	// between a box and its strip, which is where the hover would otherwise be lost.
+	for (const auto& drawn : faces) ctx.passed_over(drawn.bounds);
+	if (owner != faces.end()) ctx.passed_over(face_hover_envelope(owner->bounds, face_buttons));
+
+	if (face)
+	{
+		return std::make_shared<face_controller>(host, shared_from_this(), _state, face->bounds, face->index);
 	}
 
 	if (!_display->zoom() && !image_bounds.is_empty() && image_bounds.contains(loc) &&

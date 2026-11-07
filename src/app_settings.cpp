@@ -39,6 +39,8 @@ static constexpr auto s_check_for_updates = "check_for_updates";
 static constexpr auto s_last_run = "last_run";
 static constexpr auto s_pictures = "pictures";
 static constexpr auto s_index = "index";
+static constexpr auto s_faces = "faces";
+static constexpr auto s_faces_enabled = "enabled";
 static constexpr auto s_favorite_search = "favorite_search";
 static constexpr auto s_video = "video";
 static constexpr auto s_music = "music";
@@ -1005,6 +1007,7 @@ void settings_t::read()
 	store.read(s_index, s_more, collection.more_folders);
 	store.read(s_index, s_library_types, collection.library_types);
 
+	store.read(s_faces, s_faces_enabled, faces.enabled);
 
 	store.read(s_favorite_search, s_title, search.title, search.count);
 	store.read(s_favorite_search, s_path, search.path, search.count);
@@ -1193,6 +1196,7 @@ void settings_t::write() const
 	store.write(s_index, s_more, collection.more_folders);
 	store.write(s_index, s_library_types, collection.library_types);
 
+	store.write(s_faces, s_faces_enabled, faces.enabled);
 
 	store.write(s_favorite_search, s_title, search.title, search.count);
 	store.write(s_favorite_search, s_path, search.path, search.count);

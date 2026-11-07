@@ -58,6 +58,25 @@ static void should_parse_searches()
 	assert_equal(false, matcher.match_item({}, info).is_match(), "date");
 }
 
+static void should_hide_face_matches_without_consent()
+{
+	df::index_file_item info;
+	info.ft = files::file_type_from_name("test.jpg");
+	auto face_set = std::make_shared<df::face_set>();
+	face_set->faces.emplace_back();
+	info.faces.store(face_set);
+	info.calc_search_presence();
+
+	const auto search = df::search_t::parse("@face");
+	faces::query_context context;
+	assert_equal(false, df::search_matcher(search, platform::now().to_days(), nullptr, &context)
+	             .match_item({}, info).is_match(), "a stored detection is absent while face search is disabled");
+
+	context.enabled = true;
+	assert_equal(true, df::search_matcher(search, platform::now().to_days(), nullptr, &context)
+	             .match_item({}, info).is_match(), "the same detection is searchable after consent");
+}
+
 // Group by Date Original keys on the capture-first ladder and Group by Date Created keys on the
 // Created concept, so each header has to be answered by its own key and by nothing else: answered by
 // the wrong one, a header lists items the cell never counted; answered by neither, it opens empty.
@@ -539,6 +558,18 @@ static void should_classify_search_scope()
 		assert_equal(true, s.kind == k::group, "@ is a group scope");
 		assert_equal("@vi"s, s.vocab_query(), "@ vocabulary query");
 		assert_equal("@video"s, s.format("@video"), "@ keeps the group form");
+	}
+
+	// Faces have their own vocabulary rather than falling through to media groups.
+	{
+		const auto s = df::classify_search_scope("trip @face:IM");
+		assert_equal(true, s.kind == k::face, "@face: is a face scope"sv);
+		assert_equal("IM"s, s.value, "face argument fragment"sv);
+		assert_equal("trip "s, s.lead, "face scope keeps the preceding query"sv);
+		assert_equal("@face:IMG_1234.jpg:2"s, s.format("IMG_1234.jpg:2"),
+		             "face completion formats the sample it offers"sv);
+		assert_equal("@face:\"summer party.jpg\""s, s.format("summer party.jpg"),
+		             "face completion quotes a file name with a space"sv);
 	}
 
 	// with: / without: complete from property scope names (no vocabulary query).
@@ -2675,6 +2706,7 @@ static void should_broaden_one_narrowing_at_a_time()
 
 void register_search_tests(view_state& state, test_registry& tests)
 {
+	tests.add("Should hide face matches without consent"s, should_hide_face_matches_without_consent);
 	//
 	// Search parsing
 	//

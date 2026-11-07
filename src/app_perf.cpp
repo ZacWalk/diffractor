@@ -340,6 +340,40 @@ void df::log_perf_summary()
 		                            format_count(load(x.pass_dims_unknown))));
 	}
 
+	if (load(x.face_detects) != 0 || load(x.face_groupings) != 0)
+	{
+		append_perf_row(report, "Faces", "Detect", format_count(load(x.face_detects)),
+		                format_us(load(x.face_detect_us)),
+		                format_average(load(x.face_detect_us), load(x.face_detects)),
+		                format_us(load(x.face_detect_max_us)),
+		                std::format("faces={}", format_count(load(x.face_found))));
+
+		// Locate is per file and identify is per face, so their averages are not comparable: the
+		// totals are what say which stage the worker is actually spending the session in.
+		append_perf_row(report, "Faces", "Locate", format_count(load(x.face_detects)),
+		                format_us(load(x.face_locate_us)),
+		                format_average(load(x.face_locate_us), load(x.face_detects)),
+		                format_us(load(x.face_locate_max_us)),
+		                std::format("read={} ({}); decode={}", format_us(load(x.face_read_us)),
+		                            file_size(load(x.face_read_bytes)).str(), format_us(load(x.face_decode_us))));
+
+		append_perf_row(report, "Faces", "Identify", format_count(load(x.face_identifies)),
+		                format_us(load(x.face_identify_us)),
+		                format_average(load(x.face_identify_us), load(x.face_identifies)),
+		                format_us(load(x.face_identify_max_us)), "-");
+
+		// Grouping reads every vector in the collection, so its cost is the collection rather than a
+		// batch. Discarded passes are the ones detection invalidated while they ran.
+		append_perf_row(report, "Faces", "Group", format_count(load(x.face_groupings)),
+		                format_us(load(x.face_group_us)),
+		                format_average(load(x.face_group_us), load(x.face_groupings)),
+		                format_us(load(x.face_group_max_us)),
+		                std::format("discarded={}; last pass: faces={}; groups={}",
+		                            format_count(load(x.face_groupings_discarded)),
+		                            format_count(load(x.pass_face_candidates)),
+		                            format_count(load(x.pass_face_groups))));
+	}
+
 	const auto thumbs_requested = load(t.scan_thumbs_requested);
 	const auto thumbs_scanned = load(t.scan_thumbs_scanned);
 	const auto decodes = load(t.stage_decodes);

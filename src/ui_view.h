@@ -53,6 +53,11 @@ enum class view_invalid
 {
 	none = 0,
 
+	// Re-read the face view's rows and nothing else. The view asks for one thumbnail per group -
+	// thousands of them while a collection is being indexed - and each answer lands after the view may
+	// already have been left, so this must never be refresh_items: that re-queries the collection once
+	// per arriving thumbnail.
+	faces_view = 1 << 0,
 	view_layout = 1 << 1,
 	// The selector strip's membership rule changed, so rebuild the strip without re-grouping.
 	selector_filter = 1 << 2,
@@ -88,6 +93,10 @@ enum class view_invalid
 	// Re-enumerate volumes and rebuild with the result. Only a drive event earns this: the scan blocks
 	// on unreachable network mappings, so it must not ride along with every index invalidation.
 	sidebar_drives = 1 << 29,
+	// Rebuild the face palette and nothing else. A fourth sidebar tier, for the same reason as the
+	// counts tier: a change to face data must not discard every other element and its text layout,
+	// and a change to the collection roots must not rebuild the palette unless the groups moved.
+	sidebar_faces = 1 << 30,
 
 	// No sidebar flag: these change how the sidebar is drawn, not what it says. font_size already
 	// re-measures it, and a recount here would query the index once per row for an unchanged answer.

@@ -28,6 +28,7 @@ class rename_view;
 class batch_tool_view;
 class sync_view;
 class tags_view;
+class faces_view;
 class import_view;
 class locate_view;
 class options_view;
@@ -610,6 +611,8 @@ public:
 	platform::task_queue scan_modified_items_task_queue;
 	platform::task_queue scan_displayed_items_task_queue;
 	platform::task_queue crc_task_queue;
+	platform::task_queue faces_task_queue;
+	platform::task_queue face_groups_task_queue;
 	platform::task_queue work_task_queue;
 	platform::threads _threads;
 
@@ -627,6 +630,9 @@ public:
 	std::atomic_bool _map_tile_workers_started = false;
 	std::atomic_bool _tile_db_worker_started = false;
 	std::atomic_bool _media_preview_worker_started = false;
+	// Face search is opt-in, so a user who never turns it on never pays for this thread either.
+	std::atomic_bool _faces_worker_started = false;
+	std::atomic_bool _face_groups_worker_started = false;
 
 	ui::control_frame_ptr _app_frame;
 	std::shared_ptr<app_logo_element> _app_logo;
@@ -686,6 +692,7 @@ public:
 	std::shared_ptr<sync_view> _view_sync;
 	std::shared_ptr<tags_view> _view_tags;
 	std::shared_ptr<options_view> _view_options;
+	std::shared_ptr<faces_view> _view_faces;
 
 	std::shared_ptr<items_view> _view_items;
 	std::shared_ptr<selector_view> _view_selector;

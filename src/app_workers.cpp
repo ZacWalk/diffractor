@@ -168,6 +168,8 @@ void app_frame::start_index_workers()
 			{
 				_state.item_index.scan_uncached(token);
 
+				if (_state.item_index.face_search_enabled()) _state.item_index.queue_scan_faces();
+
 				invalidate_view(view_invalid::sidebar |
 					view_invalid::command_state |
 					view_invalid::item_scan |
@@ -242,6 +244,7 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 		_state.item_index.rederive_name_values(token);
 
 		_state.item_index.scan_uncached(token);
+		if (_state.item_index.face_search_enabled()) _state.item_index.queue_scan_faces();
 		invalidate_view(view_invalid::sidebar | view_invalid::item_scan | view_invalid::presence |
 			view_invalid::refresh_items);
 
@@ -470,6 +473,14 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 	case async_queue::index_search_single:
 		ensure_worker(_search_index_worker_started, search_index_task_queue, "search_index");
 		search_index_task_queue.reset_and_enqueue(std::move(f));
+		break;
+	case async_queue::index_faces:
+		ensure_worker(_faces_worker_started, faces_task_queue, "faces");
+		faces_task_queue.enqueue(std::move(f));
+		break;
+	case async_queue::index_face_groups:
+		ensure_worker(_face_groups_worker_started, face_groups_task_queue, "face_groups");
+		face_groups_task_queue.enqueue(std::move(f));
 		break;
 	case async_queue::auto_complete:
 		ensure_worker(_auto_complete_worker_started, auto_complete_task_queue, "auto_complete");

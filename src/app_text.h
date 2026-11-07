@@ -614,7 +614,33 @@ struct app_text_t
 	text_t query_duplicates = "duplicates";
 	text_t query_duplicates_alt1 = "dups";
 	text_t query_duplicates_alt2 = "duplicate";
+	text_t query_face = "face";
 
+	//
+	// Faces. docs/faces.md owns the behaviour these describe.
+	//
+	text_t faces_title = "Faces";
+	text_t face_search = "Face search";
+	text_t face_search_tooltip = "Group the faces in your pictures so you can search for the ones that look alike.";
+	text_t face_search_what =
+		"Find pictures with similar faces. Matches can include different people or miss the same person.";
+	text_t face_search_cost =
+		"Every picture in the collection is read again. This takes a while, runs in the background, and can be stopped at any time.";
+	text_t face_search_scope = "Faces are found in the indexed collection only. To include a folder, add it to your collection.";
+	text_t face_search_privacy = "Everything stays on this machine, in the index database, and is never sent anywhere.";
+	text_t face_search_undo =
+		"Turning face search off discards every face and group. Turning it back on finds them again by reading your pictures.";
+	text_t face_search_enable = "Find faces in my pictures";
+	plural_text face_search_pictures_fmt = {"{count} picture to read", "{count} pictures to read"};
+	text_t faces_finding = "Finding faces";
+	text_t faces_finding_tooltip = "Reading the pictures in your collection to find faces. This runs in the background.";
+	text_t faces_partial = "Still looking - this is not the whole collection yet.";
+	text_t faces_unavailable = "Face search is not available in this build.";
+	text_t faces_similar = "Similar faces";
+	text_t face_zoom_to = "Zoom to this face";
+	text_t face_crop_to = "Crop to this face";
+	text_t face_search_this = "Search for this face";
+	text_t faces_none = "No faces found yet.";
 	text_t pixels_title = "Pixels";
 	text_t pixels_icon = "icon";
 	text_t pixels_small = "small";

@@ -2,7 +2,7 @@
 
 This document owns architecture, execution ownership, invalidation, index/search/database flow, and
 recovery boundaries. [Design](design.md) owns observable behavior; specialized documents own file I/O,
-metadata, rendering, locations, zoom, and selection controls. Source owns exact APIs and enums.
+metadata, rendering, locations, faces, zoom, and selection controls. Source owns exact APIs and enums.
 
 ## System Shape
 
@@ -16,7 +16,7 @@ platform modules contain operating-system integration.
 | Prefix | Responsibility |
 | --- | --- |
 | `app*` | Process coordination, commands, settings, workers, text, sidebar, toolbar |
-| `model*` | State, items, index, search, database, properties, locations, movie model |
+| `model*` | State, items, index, search, database, properties, locations, faces, movie model |
 | `view*`, `ui*` | Views, controls, layout, input, and backend-neutral drawing |
 | `files*`, `metadata*` | Format dispatch, decode/encode, scanning, EXIF/IPTC/XMP/ICC |
 | `av*`, `render*` | Audio/video sessions, surfaces, color, transforms, software rendering |
@@ -142,6 +142,15 @@ each worker a snapshot. The file-group spellings `parse_file_group` accepts are 
 that a language switch copies, extends and swaps whole, for the same readers. `df::last_loaded_path`
 is a lock-free atomic value that decoding workers write and the crash handler reads, because a
 handler that waited on a lock held by the faulting thread would hang the report it exists to make.
+
+`index_state` owns face consent, the face content revision, and the immutable face snapshot.
+Detection owns its engine on one worker; a separate grouping worker builds detached snapshots and
+swaps the published pointer under the face lock. Groups are derived and never persisted, so a
+discarded pass leaves nothing to reconcile. Consent changes cancel analysis. Content may advance
+during a grouping snapshot: obsolete source rows are removed before publication and a final
+catch-up replaces the partial projection. Picture captions additionally check the source face-set
+identity. The lock protects publication and feature transitions, not clustering, projection,
+sorting, or database access.
 
 Adding synchronization requires naming every owning context, the protected invariant, and why moved
 results or immutable publication are insufficient.

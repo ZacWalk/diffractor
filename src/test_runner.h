@@ -16,6 +16,7 @@
 // documented in docs/testing.md; a test whose subject moves moves file with it.
 void register_app_tests(view_state& state, test_registry& tests);
 void register_av_tests(view_state& state, test_registry& tests);
+void register_faces_tests(view_state& state, test_registry& tests);
 void register_files_tests(view_state& state, test_registry& tests);
 void register_index_tests(view_state& state, test_registry& tests);
 void register_location_tests(view_state& state, test_registry& tests);
@@ -39,6 +40,7 @@ inline void register_tests(view_state& state, test_registry& registry)
 	register_media_edit_tests(state, registry);
 	register_av_tests(state, registry);
 	register_index_tests(state, registry);
+	register_faces_tests(state, registry);
 	register_search_tests(state, registry);
 	register_location_tests(state, registry);
 	register_movie_tests(state, registry);

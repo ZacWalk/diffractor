@@ -28,6 +28,7 @@
 #include "view_edit.h"
 #include "view_list.h"
 #include "view_locate.h"
+#include "view_faces.h"
 #include "view_media.h"
 #include "view_movie.h"
 #include "view_selector.h"
@@ -4145,6 +4146,270 @@ static void should_draw_image_errors_without_source_dimensions()
 	}
 }
 
+// The regression: the face boxes and the hovered face's buttons were recorded during PAINT and read
+// back by the hit test. A picture whose faces arrived since the last paint had nothing to answer
+// with, and nothing repaints between a pointer move and the controller test that follows it - so a
+// face stayed unclickable until the pointer left the picture entirely. Nothing here paints.
+static void should_hit_test_faces_with_no_paint()
+{
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = true;
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	const view_host_base_ptr view;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+	s.view_mode(view_type::items);
+	s.open(view, df::search_t().add_selector(test_files_folder), {});
+	s.update_item_groups();
+	s.update_selection();
+
+	df::item_element_ptr photo;
+
+	for (const auto& group : s.groups())
+	{
+		for (const auto& i : group->items())
+		{
+			if (!i->is_folder() && i->file_type()->has_trait(file_traits::bitmap)) photo = i;
+			if (photo) break;
+		}
+		if (photo) break;
+	}
+
+	assert_equal(true, photo != nullptr, "the test folder has a photograph"sv);
+
+	index.scan_item(photo, true, false);
+	s.select(view, photo, false, false, false);
+	s.update_selection();
+
+	const auto display = s.display_state();
+	assert_equal(true, display && display->_selected_texture1 != nullptr, "selecting built a display texture"sv);
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto control = std::make_shared<photo_control>(s, display, host);
+
+	list_test_measure_context mc;
+	ui::control_layouts positions;
+	constexpr recti viewport(0, 0, 400, 400);
+	control->layout(mc, viewport, positions);
+
+	assert_equal(false, control->image_bounds({}).is_empty(), "the picture has somewhere to be"sv);
+
+	// One face, mid-picture, published exactly as the index publishes them.
+	auto fs = std::make_shared<df::face_set>();
+	fs->model_version = faces::model_version;
+	fs->scanned = platform::now();
+	fs->source_extent = {100, 100};
+	df::stored_face face;
+	face.bounds = rectd{40.0, 40.0, 20.0, 20.0};
+	fs->faces.emplace_back(face);
+
+	const auto path = photo->path();
+	s.displayed_faces(path, fs, index.face_content_revision(), {}, {}, s.search());
+
+	const auto box = control->face_bounds(face.bounds, fs->source_extent, {});
+	assert_equal(false, box.is_empty(), "the face lands on the picture"sv);
+
+	const pointi centre{(box.left + box.right) / 2, (box.top + box.bottom) / 2};
+	hit_test_context ctx{centre, viewport};
+	const auto on_face = control->controller_from_location(host, centre, {}, ctx);
+
+	assert_equal(true, on_face != nullptr, "the face answers the hit test"sv);
+	assert_equal(box.width(), on_face->bounds().width(),
+	             "and it answers as the face rather than as the whole picture"sv);
+
+	// Pointing at it is what offers the buttons - no click, and no repaint in between.
+	assert_equal(0, s.active_face(path), "the face under the pointer is the hovered one"sv);
+
+	const auto buttons = control->layout_face_buttons({}, control->layout_faces({}));
+	assert_equal(3, static_cast<int>(buttons.size()), "a face is offered zoom, crop and search"sv);
+
+	const auto& first = buttons.front().first;
+	const pointi on_button{(first.left + first.right) / 2, (first.top + first.bottom) / 2};
+	hit_test_context button_ctx{on_button, viewport};
+	const auto button_controller = control->controller_from_location(host, on_button, {}, button_ctx);
+
+	assert_equal(true, button_controller != nullptr, "the button answers the hit test"sv);
+	assert_equal(first.width(), button_controller->bounds().width(),
+	             "and it answers as the button rather than as the face or the picture"sv);
+	assert_equal(0, s.active_face(path),
+	             "a pointer on the buttons is still on the face they belong to"sv);
+
+	// The gap between the box and its strip is part of the face, or reaching for a button would put
+	// the buttons away before the pointer arrived.
+	const pointi in_gap{on_button.x, (box.bottom + first.top) / 2};
+	hit_test_context gap_ctx{in_gap, viewport};
+	control->controller_from_location(host, in_gap, {}, gap_ctx);
+	assert_equal(0, s.active_face(path), "the gap between a face and its strip belongs to the face"sv);
+
+	// Away from all of it, the hover goes and the buttons with it.
+	const pointi away{box.left / 2, box.top / 2};
+	hit_test_context away_ctx{away, viewport};
+	control->controller_from_location(host, away, {}, away_ctx);
+	assert_equal(-1, s.active_face(path), "the hover goes when the pointer leaves"sv);
+	assert_equal(true, control->layout_face_buttons({}, control->layout_faces({})).empty(),
+	             "and the strip goes with it"sv);
+}
+
+// The regression: the palette recorded which tile the hit test found and read it back when the click
+// arrived. It is rebuilt on every face-content change - continuously while the pass runs - and the
+// rebuild cleared that index, so roughly every other click on a face did nothing at all.
+static void should_click_the_face_the_pointer_was_on()
+{
+	const auto make_entry = [](const int count, const std::string_view path)
+	{
+		faces::palette_entry e;
+		e.sample = {str::cache(path), 0};
+		e.term = faces::format_face_token(path, 0);
+		e.file_count = count;
+		return e;
+	};
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto palette = std::make_shared<face_palette_element>(s, view_element_style::none);
+	palette->bounds = recti(0, 0, 200, 200);
+
+	std::vector<faces::palette_entry> p;
+	p.emplace_back(make_entry(9, "alice.jpg"sv));
+	p.emplace_back(make_entry(4, "bob.jpg"sv));
+	palette->update(p, {});
+
+	hit_test_context ctx{{20, 20}, recti(0, 0, 200, 200)};
+	const auto controller = palette->controller_from_location(host, {20, 20}, {}, ctx);
+	assert_equal(true, controller != nullptr, "the first face answers the hit test"sv);
+
+	// A face-content change between pointing and clicking. Under the old code this was what emptied
+	// the click.
+	std::vector<faces::palette_entry> rebuilt;
+	rebuilt.emplace_back(make_entry(40, "bob.jpg"sv));
+	rebuilt.emplace_back(make_entry(9, "alice.jpg"sv));
+	palette->update(rebuilt, {});
+
+	controller->on_mouse_left_button_down({20, 20}, {});
+	controller->on_mouse_left_button_up({20, 20}, {});
+
+	assert_equal(df::format_face_term("alice.jpg"sv), s.search().format_terms(),
+	             "the click searched for the face the pointer was on"sv);
+}
+
+// faces.md: the sidebar says the face pass is running ONCE, in the entry row and as a percentage.
+// There were two other places it leaked into - a progress row of its own, and a sentence under the
+// tiles that ran together with the hidden-group count into "3 more Still looking - this is not the
+// whole collection yet.". The row is now the only one that reports it, and the only one that can.
+static void should_say_the_face_pass_is_running_once()
+{
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = true;
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto row = std::make_shared<sidebar_face_search_element>(s, view_element_style::none);
+
+	// A quarter of the collection read.
+	index.faces_total = 100;
+	index.faces_remaining = 75;
+
+	const auto running_text = row->format_text();
+	assert_equal(true, running_text.find("25%") != std::string::npos,
+	             "the entry row reports the pass as a percentage"sv);
+	assert_equal(true, running_text.find(tt.faces_partial.sv()) == std::string::npos,
+	             "and says it once rather than also in prose"sv);
+
+	// Finished: the row goes back to being the way in, without anything having to be composed in or
+	// out of the sidebar around it.
+	index.faces_remaining = 0;
+	assert_equal(std::string(tt.face_search.sv()), row->format_text(),
+	             "a finished pass leaves the row as the way in"sv);
+
+	// The row is the entry point whether or not the feature is on, so it never goes blank - and it is
+	// the only route to the groups the shortlist below it leaves out.
+	setting.faces.enabled = false;
+	assert_equal(std::string(tt.face_search.sv()), row->format_text(),
+	             "the row is still the way in while face search is off"sv);
+}
+
+// The tiles show faces and nothing else: no count of what was left out, and no prose. The shortlist
+// is still a strict subset of the projection, so the groups it omits are reached through the row
+// above rather than through an affordance of the grid's own.
+static void should_show_only_faces_in_the_sidebar_palette()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto palette = std::make_shared<face_palette_element>(s, view_element_style::none);
+	palette->bounds = recti(0, 0, 200, 200);
+
+	const auto entry = [](const std::string_view path)
+	{
+		faces::palette_entry e;
+		e.sample = {str::cache(path), 0};
+		e.term = faces::format_face_token(path, 0);
+		e.file_count = 3;
+		return e;
+	};
+
+	std::vector<faces::palette_entry> entries;
+	entries.emplace_back(entry("alice.jpg"sv));
+	palette->update(entries, {});
+
+	// One tile, one row of tiles, and no room reserved under them for anything else.
+	flex_test_measure_context mc;
+	const auto measured = palette->measure(mc, 200);
+	assert_equal(60, measured.cy, "the palette is exactly its rows of tiles"sv);
+
+	// Below the tiles is not a target, so nothing there can be pointed at or clicked.
+	hit_test_context below{{100, 150}, recti(0, 0, 200, 200)};
+	assert_equal(true, palette->controller_from_location(host, {100, 150}, {}, below) == nullptr,
+	             "there is nothing under the tiles to click"sv);
+
+	// An empty palette draws nothing and claims nothing, whatever the pass is doing.
+	palette->update({}, {});
+	assert_equal(0, palette->measure(mc, 200).cy, "an empty palette takes no room"sv);
+}
+
+static void should_request_face_groups_when_the_view_opens_during_a_scan()
+{
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = true;
+
+	null_state_strategy state_strategy;
+	deferred_async_strategy async;
+	index_state index(async, test_locations());
+	view_state state(state_strategy, async, index, make_test_player());
+
+	index.face_rows_loaded(index.face_generation());
+	assert_equal(true, async.run_next(async_queue::index_face_groups), "the initial grouping pass settles"sv);
+	assert_equal(0, static_cast<int>(async.pending_worker_count(async_queue::index_face_groups)),
+	             "no grouping pass remains queued"sv);
+
+	index.faces_remaining = 1;
+	const auto host = std::make_shared<detached_test_host>();
+	const auto view = std::make_shared<faces_view>(state, host);
+	view->activate({800, 600});
+
+	assert_equal(1, static_cast<int>(async.pending_worker_count(async_queue::index_face_groups)),
+	             "opening Groups requests one partial grouping pass"sv);
+}
+
 class processing_test_view final : public list_view
 {
 public:	std::string _text;
@@ -6278,6 +6543,12 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should keep a partly covered control clickable"s, should_keep_a_partly_covered_control_clickable);
 	tests.add("Should not invoke an escaped click"s, should_not_invoke_an_escaped_click);
 	tests.add("Should separate hit test occlusion from exclusion"s, should_separate_occlusion_from_exclusion);
+	tests.add("Should hit test faces with no paint"s, should_hit_test_faces_with_no_paint);
+	tests.add("Should click the face the pointer was on"s, should_click_the_face_the_pointer_was_on);
+	tests.add("Should say the face pass is running once"s, should_say_the_face_pass_is_running_once);
+	tests.add("Should show only faces in the sidebar palette"s, should_show_only_faces_in_the_sidebar_palette);
+	tests.add("Should request face groups when the view opens during a scan"s,
+	          should_request_face_groups_when_the_view_opens_during_a_scan);
 	tests.add("Should keep the processing row clear of the view chrome"s,
 	          should_keep_the_processing_row_clear_of_the_view_chrome);
 	// Concurrency review #1 - Refresh restarted Analyze without stopping the scan it replaced.

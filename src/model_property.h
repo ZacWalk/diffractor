@@ -56,6 +56,9 @@ struct search_presence_mask
 	static constexpr uint32_t year = 1 << 25u;
 	static constexpr uint32_t doc_id = 1 << 26u;
 	static constexpr uint32_t panorama = 1 << 27u;
+	// Set when the file has at least one detected face. Answers `@face` without a second lookup;
+	// a named person still has to be decided by the matcher.
+	static constexpr uint32_t faces = 1 << 28u;
 
 	uint32_t types = 0;
 

@@ -57,6 +57,12 @@ inline item_status apply_batch_update_result(FolderSet& written, const df::folde
 
 class command_status;
 
+// Decodes a cached thumbnail and cuts the face out of it. Shared by the sidebar palette and the face
+// view: the crop is stored in the coordinates of the decode the detector ran over, and a thumbnail
+// is whatever size it happens to be, so faces::crop_in scales between them.
+ui::const_surface_ptr crop_face_thumbnail(files& ff, const ui::const_image_ptr& encoded,
+                                          const faces::palette_entry& entry);
+
 using item_results_ptr = std::shared_ptr<command_status>;
 using item_import_set = df::hash_set<item_import, item_import_hash, item_import_eq>;
 

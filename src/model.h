@@ -1370,6 +1370,111 @@ public:
 		return _drawn_region.restore;
 	}
 
+	// faces.md: the faces found in the picture on screen, so they can be drawn on it. Held here for
+	// the same reason the drawn region is - photo_control is rebuilt for anything raising
+	// view_invalid::media_elements - and requested off the UI thread, so Paint only ever reads an
+	// already-detached value. The revision is the index's face content revision the answer was taken
+	// at; a newer one is what makes the control ask again.
+	struct displayed_faces_t
+	{
+		df::file_path path;
+		df::face_set_ptr faces;
+		uint64_t revision = 0;
+		// One flag per face: whether the search that was current when the answer was taken is asking
+		// for that face. Part of the key as well as the value - a highlight computed for one query
+		// means nothing under the next one.
+		std::vector<uint8_t> matches;
+		df::search_t search;
+		// What is in flight, kept apart from what has arrived so one frame asks once and a reply for
+		// a picture the user has already left is recognisable.
+		df::file_path requested_path;
+		uint64_t requested_revision = 0;
+		df::search_t requested_search;
+		bool requested = false;
+	};
+
+	displayed_faces_t _displayed_faces;
+	// What to call each face and how much of the collection it accounts for, so drawing and the
+	// popup do not look either up per box.
+	std::vector<faces::face_summary> _displayed_face_summaries;
+
+	df::face_set_ptr displayed_faces(const df::file_path path) const
+	{
+		if (path.is_empty() || _displayed_faces.path != path) return {};
+		return _displayed_faces.faces;
+	}
+
+	void displayed_faces(const df::file_path path, df::face_set_ptr faces, const uint64_t revision,
+	                     std::vector<faces::face_summary> summaries, std::vector<uint8_t> matches,
+	                     df::search_t search)
+	{
+		if (path.is_empty()) return;
+		_displayed_faces.path = path;
+		_displayed_faces.faces = std::move(faces);
+		_displayed_faces.revision = revision;
+		_displayed_faces.matches = std::move(matches);
+		_displayed_faces.search = std::move(search);
+		_displayed_faces.requested = false;
+		_displayed_face_summaries = std::move(summaries);
+	}
+
+	// faces.md: the face the current search is asking for is drawn in the highlight colour and every
+	// other face in the ordinary one.
+	bool displayed_face_matches_search(const int index) const
+	{
+		return index >= 0 && index < static_cast<int>(_displayed_faces.matches.size()) &&
+			_displayed_faces.matches[index] != 0;
+	}
+
+	faces::face_summary displayed_face_summary(const int index) const
+	{
+		return index >= 0 && index < static_cast<int>(_displayed_face_summaries.size())
+			       ? _displayed_face_summaries[index]
+			       : faces::face_summary{};
+	}
+
+	// True when what is on hand describes another picture, an older state of the face data or another
+	// query, and nothing has been asked for since. Records the request, so a redraw does not queue
+	// one per frame.
+	bool needs_displayed_faces(const df::file_path path, const uint64_t revision, const df::search_t& search)
+	{
+		if (path.is_empty()) return false;
+		if (_displayed_faces.path == path && _displayed_faces.revision == revision &&
+			_displayed_faces.search == search)
+		{
+			return false;
+		}
+		if (_displayed_faces.requested && _displayed_faces.requested_path == path &&
+			_displayed_faces.requested_revision == revision && _displayed_faces.requested_search == search)
+		{
+			return false;
+		}
+
+		_displayed_faces.requested = true;
+		_displayed_faces.requested_path = path;
+		_displayed_faces.requested_revision = revision;
+		_displayed_faces.requested_search = search;
+		return true;
+	}
+
+	// The face the pointer is on, or on whose buttons it is. Keyed by picture, so leaving the picture
+	// puts the buttons away, and set by the hit test rather than by a click: hovering is what offers
+	// them.
+	df::file_path _active_face_path;
+	int _active_face_index = -1;
+
+	int active_face(const df::file_path path) const
+	{
+		return !path.is_empty() && _active_face_path == path ? _active_face_index : -1;
+	}
+
+	void active_face(const df::file_path path, const int index)
+	{
+		_active_face_path = path;
+		_active_face_index = index;
+	}
+
+
 	view_state(state_strategy& ev, async_strategy& ac, index_state& item_index, std::shared_ptr<av_player> player);
 	~view_state();
 

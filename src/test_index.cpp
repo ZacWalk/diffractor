@@ -29,6 +29,17 @@
 extern std::function<void(df::folder_path folder, int attempt)> test_after_validate_folder_snapshot;
 extern std::function<void(const df::index_file_item& anchor)> test_after_duplicate_anchor;
 
+static std::string read_test_query_text(sqlite3* db, const std::string_view sql)
+{
+	sqlite3_stmt* handle = nullptr;
+	const auto prepared = sqlite3_prepare_v2(db, sql.data(), static_cast<int>(sql.size()), &handle, nullptr);
+	const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(handle, sqlite3_finalize);
+	if (prepared != SQLITE_OK || sqlite3_step(handle) != SQLITE_ROW)
+		throw test_assert_exception(std::format("Failed schema query '{}': {}", sql, sqlite3_errmsg(db)));
+	const auto* text = sqlite3_column_text(handle, 0);
+	return text ? std::string(reinterpret_cast<const char*>(text)) : std::string{};
+}
+
 static void should_create_database_schema()
 {
 	sqlite3_initialize();
@@ -54,19 +65,7 @@ static void should_create_database_schema()
 
 	const auto query_text = [&raw_db](const std::string_view sql)
 	{
-		sqlite3_stmt* statement_handle = nullptr;
-		const auto prepare_result = sqlite3_prepare_v2(raw_db.get(), sql.data(), static_cast<int>(sql.size()),
-		                                               &statement_handle, nullptr);
-		const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(statement_handle, sqlite3_finalize);
-
-		if (prepare_result != SQLITE_OK || sqlite3_step(statement.get()) != SQLITE_ROW)
-		{
-			throw test_assert_exception(
-				std::format("Failed schema query '{}': {}", sql, sqlite3_errmsg(raw_db.get())));
-		}
-
-		const auto* text = sqlite3_column_text(statement.get(), 0);
-		return text == nullptr ? std::string{} : std::string(reinterpret_cast<const char*>(text));
+		return read_test_query_text(raw_db.get(), sql);
 	};
 
 	const auto raw_journal_mode = query_text("PRAGMA journal_mode");
@@ -254,6 +253,66 @@ static void should_classify_schema_check_failures_before_replacement()
 	             "corrupt bytes are replaceable");
 	assert_equal(true, database_test_seams::schema_failure_allows_replacement(SQLITE_NOTADB),
 	             "non-database bytes are replaceable");
+}
+
+// A group is a resemblance the pass proposes, so the per-face assignments an earlier build recorded
+// mean nothing now. Opening a database that still has the table must remove it rather than carry
+// rows nothing reads.
+static void should_leave_legacy_face_tables_unchanged()
+{
+	const auto index_path = _temps.next_path();
+	const auto db_path = df::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
+	null_async_strategy async;
+	const location_cache locations;
+
+	{
+		index_state index(async, locations);
+		database db(index);
+		db.open(index_path.folder(), index_path.file_name_without_extension());
+		db.close();
+	}
+
+	sqlite3* handle = nullptr;
+	if (sqlite3_open(db_path.str().c_str(), &handle) != SQLITE_OK)
+		throw test_assert_exception("Failed to open legacy face database"s);
+	{
+		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
+		const auto sql = "CREATE TABLE face_assignments (group_id INTEGER NOT NULL, folder TEXT NOT NULL, "
+		                 "name TEXT NOT NULL, face INTEGER NOT NULL, "
+		                 "PRIMARY KEY (group_id, folder, name, face)); "
+		                 "INSERT INTO face_assignments VALUES (1, 'c:\\pics', 'a.jpg', 0); "
+		                 "CREATE TABLE face_groups (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL, "
+		                 "created INTEGER64 NOT NULL, anchor BLOB NULL, user_named INTEGER NULL); "
+		                 "INSERT INTO face_groups VALUES (1, 'Alice', 0, NULL, 1);";
+		if (sqlite3_exec(raw.get(), sql, nullptr, nullptr, nullptr) != SQLITE_OK)
+			throw test_assert_exception("Failed to create legacy face tables"s);
+	}
+
+	{
+		index_state index(async, locations);
+		database db(index);
+		db.open(index_path.folder(), index_path.file_name_without_extension());
+		db.close();
+	}
+
+	handle = nullptr;
+	if (sqlite3_open(db_path.str().c_str(), &handle) != SQLITE_OK)
+		throw test_assert_exception("Failed to reopen upgraded face database"s);
+	const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
+
+	const auto missing = [&raw](const std::string_view sql)
+	{
+		sqlite3_stmt* statement_handle = nullptr;
+		const auto prepare = sqlite3_prepare_v2(raw.get(), sql.data(), static_cast<int>(sql.size()),
+		                                        &statement_handle, nullptr);
+		if (statement_handle) sqlite3_finalize(statement_handle);
+		return prepare != SQLITE_OK;
+	};
+
+	assert_equal(false, missing("select group_id from face_assignments"sv),
+	             "opening the branch does not alter a legacy experiment's schema"sv);
+	assert_equal(false, missing("select id from face_groups"sv),
+	             "legacy group tables are neither used nor dropped"sv);
 }
 
 static void should_store_thumbnails()
@@ -503,6 +562,138 @@ static void should_preserve_opaque_properties_when_metadata_is_rewritten()
 	const auto empty_properties = read_test_cached_properties(handle, empty_path);
 	assert_equal(false, metadata_find_blob_property(empty_properties, prop::cache::faces).has_value(),
 	             "a cache value never leaks from the previous item");
+}
+
+static void should_store_faces_without_changing_the_schema()
+{
+	const auto enabled_before = setting.faces.enabled;
+	const df::scope_exit restore([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = true;
+	const auto root = _temps.next_folder("face-property-storage");
+	const auto first = root.combine_file("first.jpg");
+	const auto empty = root.combine_file("empty.jpg");
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), first, false, false);
+	platform::copy_file(test_files_folder.combine_file("Test.jpg"), empty, false, false);
+	const auto index_path = _temps.next_path();
+	const auto db_path = df::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
+	null_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+	df::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	database db(index);
+	db.open(index_path.folder(), index_path.file_name_without_extension());
+	sqlite3* handle = nullptr;
+	const auto opened = sqlite3_open(db_path.str().c_str(), &handle);
+	const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
+	if (opened != SQLITE_OK) throw test_assert_exception("Cannot open face property test database");
+	const auto schema = read_test_query_text(handle,
+		"select group_concat(sql, char(10)) from "
+		"(select sql from sqlite_schema where sql is not null and name not like 'sqlite_%' order by type, name)");
+	const auto save = [&db](item_db_write write)
+	{
+		std::deque<item_db_write> writes;
+		writes.emplace_back(std::move(write));
+		db.perform_writes(std::move(writes));
+	};
+	const auto md = std::make_shared<prop::item_metadata>();
+	md->album = "retained metadata"_c;
+	const auto faces = std::make_shared<df::face_set>();
+	faces->model_version = faces::model_version;
+	faces->scanned = platform::now();
+	faces->source_extent = {1000, 1000};
+	df::stored_face face;
+	face.bounds = {50, 60, 80, 90};
+	face.vec[0] = 1.0f;
+	faces->faces.emplace_back(face);
+	const auto none = std::make_shared<df::face_set>();
+	none->model_version = faces::model_version;
+	none->scanned = platform::now();
+	for (const auto& path : {first, empty})
+	{
+		item_db_write write;
+		write.path = path;
+		write.md = md;
+		write.metadata_scanned = platform::now();
+		write.crc32c = 0x1234u;
+		write.media_position = 17.0;
+		write.phash = crypto::phash_rotations{11, 22, 33, 44};
+		write.faces = path == first ? faces : none;
+		save(std::move(write));
+	}
+	const auto original = read_test_cached_properties(handle, first);
+	const auto stored = metadata_find_blob_property(original, prop::cache::faces);
+	const auto encoded = df::encode_faces(*faces);
+	assert_equal(true, stored && stored->size == encoded.size() &&
+	             memcmp(stored->data, encoded.data(), encoded.size()) == 0,
+	             "the existing item blob holds the complete face record");
+	const auto changed = std::make_shared<prop::item_metadata>(*md);
+	changed->album = "updated metadata"_c;
+	item_db_write metadata_write;
+	metadata_write.path = first;
+	metadata_write.md = changed;
+	metadata_write.metadata_scanned = platform::now();
+	save(std::move(metadata_write));
+	const auto after_metadata = read_test_cached_properties(handle, first);
+	const auto retained = metadata_find_blob_property(after_metadata, prop::cache::faces);
+	assert_equal(true, retained && retained->size == encoded.size() &&
+	             memcmp(retained->data, encoded.data(), encoded.size()) == 0,
+	             "metadata refreshes preserve faces byte for byte");
+	db.close();
+
+	index_state reloaded(async, locations);
+	reloaded.index_roots(roots);
+	reloaded.index_folders(test_token);
+	database reopened(reloaded);
+	reopened.open(index_path.folder(), index_path.file_name_without_extension());
+	const auto loaded = reloaded.find_item(first).faces.load();
+	const auto loaded_empty = reloaded.find_item(empty).faces.load();
+	assert_equal(true, loaded && loaded->faces.size() == 1 && loaded->is_current(),
+	             "a face record survives reopening the database");
+	assert_equal(true, loaded_empty && loaded_empty->faces.empty() && loaded_empty->is_current(),
+	             "a completed faceless record survives too");
+
+	// More than one removal batch, without creating or analysing a photograph corpus.
+	std::deque<item_db_write> batch;
+	for (auto i = 0; i < 130; ++i)
+	{
+		item_db_write write;
+		write.path = root.combine_file(std::format("batch-{:03}.jpg", i));
+		write.md = md;
+		write.faces = none;
+		batch.emplace_back(std::move(write));
+	}
+	reopened.perform_writes(std::move(batch));
+	const auto schema_before_drop = read_test_query_text(handle,
+		"select group_concat(sql, char(10)) from "
+		"(select sql from sqlite_schema where sql is not null and name not like 'sqlite_%' order by type, name)");
+	assert_equal(schema, schema_before_drop, "storing faces has no schema footprint");
+	const auto without_faces = metadata_replace_blob_property(
+		read_test_cached_properties(handle, first), prop::cache::faces, std::nullopt);
+	reopened.drop_faces();
+	assert_equal(true, read_test_cached_properties(handle, first) == without_faces,
+	             "disabling removes only face bytes");
+	for (auto i = 0; i < 130; ++i)
+	{
+		const auto row = read_test_cached_properties(handle, root.combine_file(std::format("batch-{:03}.jpg", i)));
+		assert_equal(false, metadata_find_blob_property(row, prop::cache::faces).has_value(),
+		             "all removal batches finish");
+	}
+	reopened.load_index_values();
+	assert_equal("4660", read_test_query_text(handle, "select crc from item_properties where name='first.jpg'"),
+	             "face deletion preserves the stored CRC");
+	const auto item = reloaded.find_item(first);
+	assert_equal(changed->album, item.metadata.load()->album, "public metadata is unchanged by face deletion");
+	assert_equal(0x1234u, item.crc32c.load(), "CRC is unchanged by face deletion");
+	assert_equal(17, static_cast<int>(item.metadata.load()->media_position), "playback state is unchanged");
+	const auto hashes = item.phash.load();
+	assert_equal(true, hashes && hashes->rotations[0] == 11, "picture hashes are unchanged");
+	assert_equal(schema, read_test_query_text(handle,
+		"select group_concat(sql, char(10)) from "
+		"(select sql from sqlite_schema where sql is not null and name not like 'sqlite_%' order by type, name)"),
+	             "removing faces has no schema footprint");
 }
 
 static void should_hold_a_saved_playback_position_in_the_index()
@@ -871,6 +1062,119 @@ static void should_run_without_a_database()
 	assert_equal(true, db.web_service_cache("key").empty(), "no web cache");
 	db.clean({file_path});
 	assert_equal(false, ui::is_valid(db.load_thumbnail(file_path).thumb), "no thumbnail");
+}
+
+static void should_enable_faces_without_a_database()
+{
+	const auto missing_folder = _temps.next_path().folder().combine("missing-face-cache-folder");
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = true;
+
+	null_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+	database db(index);
+	db.open(missing_folder, "diffractor-cache");
+
+	assert_equal(false, db.is_open(), "face database remains unavailable"sv);
+	assert_equal(true, index.are_face_rows_loaded(), "a missing database still finishes the face load"sv);
+}
+
+// The application constructs the index before it reads the settings file, so the constructor only
+// ever sees the compiled default. init_item_index is where the persisted answer arrives.
+static void should_adopt_the_persisted_face_setting_at_init()
+{
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = false;
+
+	null_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+	assert_equal(false, index.face_search_enabled(), "construction takes the setting as it stands"sv);
+
+	setting.faces.enabled = true;
+	index.init_item_index();
+	assert_equal(true, index.face_search_enabled(), "initialisation adopts the persisted setting"sv);
+}
+
+static void should_load_faces_when_enabled_after_startup()
+{
+	class database_async_strategy final : public null_async_strategy
+	{
+	public:
+		database* db = nullptr;
+		int face_tasks = 0;
+
+		void queue_database(const std::function<void(database&)> f) override
+		{
+			if (db) f(*db);
+		}
+
+		void queue_async(const async_queue queue, const std::function<void()> f) override
+		{
+			if (queue == async_queue::index_faces || queue == async_queue::index_face_groups) ++face_tasks;
+		}
+	};
+
+	const auto index_path = _temps.next_path();
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = false;
+
+	database_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+	database db(index);
+	async.db = &db;
+	db.open(index_path.folder(), index_path.file_name_without_extension());
+
+	assert_equal(false, index.are_face_rows_loaded(), "disabled startup does not load face data"sv);
+	index.set_face_search_enabled(true);
+	assert_equal(true, index.are_face_rows_loaded(), "enabling loads the stored face rows"sv);
+	assert_equal(true, async.face_tasks >= 2, "grouping and detection are queued after the load"sv);
+}
+
+static void should_reject_stale_face_results()
+{
+	const auto enabled_before = setting.faces.enabled;
+	const auto restore = df::scope_exit([enabled_before] { setting.faces.enabled = enabled_before; });
+	setting.faces.enabled = true;
+
+	null_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+	df::index_roots roots;
+	roots.folders.emplace(test_files_folder);
+	roots.excludes.emplace(test_files_folder.combine("excluded1"));
+	roots.exclude_wildcards.emplace("exclud*2"_c);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+
+	const auto path = test_files_folder.combine_file("Test.jpg");
+	const auto modified = index.find_item(path).file_modified.load();
+
+	auto faces = std::make_shared<df::face_set>();
+	faces->model_version = faces::model_version;
+	faces->scanned = platform::now();
+	faces->faces.emplace_back();
+	index.save_faces({index_state::face_scan_result{path, modified, faces}}, 0);
+
+	auto published = index.find_item(path).faces.load();
+	assert_equal(true, published != nullptr, "a current face result publishes immediately"sv);
+
+	auto stale = std::make_shared<df::face_set>();
+	stale->model_version = faces::model_version;
+	stale->scanned = platform::now();
+	index.save_faces({index_state::face_scan_result{path, df::date_t{}, stale}}, 0);
+	published = index.find_item(path).faces.load();
+	assert_equal(1, static_cast<int>(published->faces.size()), "a stale source result cannot replace current faces"sv);
+
+	index.set_face_search_enabled(false);
+	index.save_faces({index_state::face_scan_result{path, modified, faces}}, 0);
+	assert_equal(true, index.find_item(path).faces.load() == nullptr,
+	             "a pre-disable generation cannot republish biometric data"sv);
 }
 
 // The scan loops hand their rows to the database in groups. One row at a time found the write queue
@@ -5869,6 +6173,8 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should classify database schema check failures before replacement"s,
 	          should_classify_schema_check_failures_before_replacement);
 	tests.add("Should open database in WAL mode"s, should_open_database_in_wal_mode);
+	tests.add("Should leave legacy face tables unchanged"s, should_leave_legacy_face_tables_unchanged);
+	tests.add("Should store faces without changing the schema"s, should_store_faces_without_changing_the_schema);
 	tests.add("Should store thumbnails"s, should_store_thumbnails);
 	tests.add("Should store cover art"s, should_store_cover_art);
 	tests.add("Should store item properties"s, should_store_item_properties);
@@ -5889,6 +6195,10 @@ void register_index_tests(view_state& state, test_registry& tests)
 	          should_reclaim_a_cache_written_by_a_newer_build);
 	tests.add("Should replace an unreadable database"s, should_replace_an_unreadable_database);
 	tests.add("Should run without a database"s, should_run_without_a_database);
+	tests.add("Should enable faces without a database"s, should_enable_faces_without_a_database);
+	tests.add("Should adopt the persisted face setting at init"s, should_adopt_the_persisted_face_setting_at_init);
+	tests.add("Should load faces when enabled after startup"s, should_load_faces_when_enabled_after_startup);
+	tests.add("Should reject stale face results"s, should_reject_stale_face_results);
 	tests.add("Should hand scan results to the database in groups"s,
 	          should_hand_scan_results_to_the_database_in_groups);
 	// SRC-038/MOD-013/SRC-054 - cache serialization keeps channels, high rates, and bounded ratings.

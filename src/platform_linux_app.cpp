@@ -16,6 +16,7 @@
 #include "files.h"
 #include "model.h"
 #include "test_runner.h"
+#include "app_command_line.h"
 #include "libdesktop/util_base64.h"
 
 #include <pthread.h>
@@ -66,6 +67,9 @@ void register_platform_tests(view_state&, test_registry&)
 // Entry point
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+int run_face_report(std::string_view list_text, std::string_view scan_text, std::string_view scan_variant_text,
+                    std::string_view output_text);
+
 int main(const int argc, const char* const argv[])
 {
 	platform::set_ui_thread();
@@ -78,6 +82,7 @@ int main(const int argc, const char* const argv[])
 
 	// /test[:filter] runs the suite headless. The '-' forms are the Linux spelling; '/test' is
 	// accepted too because it is what the Windows documentation and habits say.
+	command_line_t face_options;
 	for (auto i = 1; i < argc; ++i)
 	{
 		std::string_view arg(argv[i]);
@@ -93,6 +98,20 @@ int main(const int argc, const char* const argv[])
 			load_file_types();
 			return run_console_tests(filter);
 		}
+		if (arg.starts_with("face-report:"))
+		{
+			face_options.face_report = true;
+			face_options.face_report_list = arg.substr(12);
+		}
+		else if (arg.starts_with("face-report-out:")) face_options.face_report_output = arg.substr(16);
+		else if (arg.starts_with("face-report-scan:")) face_options.face_report_scan = arg.substr(17);
+		else if (arg.starts_with("face-report-scan-variant:")) face_options.face_report_scan_variant = arg.substr(25);
+	}
+	if (face_options.face_report)
+	{
+		load_file_types();
+		return run_face_report(face_options.face_report_list, face_options.face_report_scan,
+		                       face_options.face_report_scan_variant, face_options.face_report_output);
 	}
 
 	printf("Diffractor %s (linux stage-one build)\n", df::format_version(false).c_str());

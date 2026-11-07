@@ -800,63 +800,80 @@ void items_view::items_changed(const bool path_changed)
 
 		if (!browsing_folder && !has_filtered_out)
 		{
-			// locations.md 3.7: a location query that finds nothing must explain itself and offer
-			// the next action. That moment is where trust in the search is won or lost.
-			if (const auto* const place_term = _state.search().single_place_term())
+			const auto has_face_term = _state.search().has_face_term();
+			const auto face_disabled = has_face_term &&
+				!_state.item_index.face_search_enabled();
+			if (has_face_term && !_state.item_index.is_face_search_applicable(_state.search()))
 			{
-				const auto typed = place_term->text;
-				const auto km = place_term->float_val;
+				add_status(tt.face_search_scope, ui::style::font_face::dialog);
+			}
 
-				add_status(km > 0.0
-					           ? str_format(tt.nothing_within_fmt.sv(), format_distance_km(km), typed)
-					           : str_format(tt.nothing_at_place_fmt.sv(), typed),
-				           ui::style::font_face::dialog);
-
-				if (km > 0.0)
+			if (face_disabled)
+			{
+				add_status(tt.face_search_tooltip, ui::style::font_face::dialog);
+				add_action(tt.face_search.sv(),
+				           std::function<void()>([this] { _state.invoke(commands::options_faces); }));
+			}
+			else
+			{
+				// locations.md 3.7: a location query that finds nothing must explain itself and offer
+				// the next action. That moment is where trust in the search is won or lost.
+				if (const auto* const place_term = _state.search().single_place_term())
 				{
-					if (const auto wider = location_distance_at_detent(
-						location_nearest_distance_detent(km) + 1); wider > km)
+					const auto typed = place_term->text;
+					const auto km = place_term->float_val;
+
+					add_status(km > 0.0
+						           ? str_format(tt.nothing_within_fmt.sv(), format_distance_km(km), typed)
+						           : str_format(tt.nothing_at_place_fmt.sv(), typed),
+					           ui::style::font_face::dialog);
+
+					if (km > 0.0)
 					{
-						add_action(str_format(tt.widen_to_fmt.sv(), format_distance_km(wider)),
-						           std::function<void()>([this, wider]
+						if (const auto wider = location_distance_at_detent(
+							location_nearest_distance_detent(km) + 1); wider > km)
+						{
+							add_action(str_format(tt.widen_to_fmt.sv(), format_distance_km(wider)),
+							           std::function<void()>([this, wider]
+							           {
+								           auto search = _state.search();
+								           search.set_place_distance(wider);
+								           _state.open(_host, search, {});
+							           }));
+						}
+					}
+
+					// A qualified name that resolved to the wrong namesake -- offer all of them.
+					if (const auto comma = typed.find(','); comma != std::string::npos)
+					{
+						auto bare = typed.substr(0, comma);
+						while (!bare.empty() && bare.back() == ' ') bare.pop_back();
+
+						add_action(str_format(tt.search_all_named_fmt.sv(), bare),
+						           std::function<void()>([this, bare]
 						           {
 							           auto search = _state.search();
-							           search.set_place_distance(wider);
+							           search.set_place_name(bare);
 							           _state.open(_host, search, {});
 						           }));
 					}
-				}
 
-				// A qualified name that resolved to the wrong namesake -- offer all of them.
-				if (const auto comma = typed.find(','); comma != std::string::npos)
-				{
-					auto bare = typed.substr(0, comma);
-					while (!bare.empty() && bare.back() == ' ') bare.pop_back();
-
-					add_action(str_format(tt.search_all_named_fmt.sv(), bare),
-					           std::function<void()>([this, bare]
+					// So a user never mistakes "not placed" for "not present".
+					add_action(tt.show_without_location.sv(),
+					           std::function<void()>([this]
 					           {
 						           auto search = _state.search();
-						           search.set_place_name(bare);
+						           search.clear_terms();
+						           search.without(df::search_term_type::has_location);
 						           _state.open(_host, search, {});
 					           }));
 				}
 
-				// So a user never mistakes "not placed" for "not present".
-				add_action(tt.show_without_location.sv(),
-				           std::function<void()>([this]
-				           {
-					           auto search = _state.search();
-					           search.clear_terms();
-					           search.without(df::search_term_type::has_location);
-					           _state.open(_host, search, {});
-				           }));
+				// State the collection's edge, then offer the one move that widens it.
+				add_status(tt.nothing_found2, ui::style::font_face::dialog);
+				add_action(tt.nothing_found_add_folders.sv(),
+				           std::function<void()>([this] { _state.invoke(commands::options); }));
 			}
-
-			// State the collection's edge, then offer the one move that widens it.
-			add_status(tt.nothing_found2, ui::style::font_face::dialog);
-			add_action(tt.nothing_found_add_folders.sv(),
-			           std::function<void()>([this] { _state.invoke(commands::options); }));
 		}
 	}
 

@@ -105,6 +105,25 @@ namespace df
 		std::atomic_uint64_t phash_us = 0;
 		std::atomic_uint32_t phash_max_us = 0;
 
+		std::atomic_uint64_t face_detects = 0;
+		std::atomic_uint64_t face_detect_us = 0;
+		std::atomic_uint32_t face_detect_max_us = 0;
+		std::atomic_uint64_t face_read_us = 0;
+		std::atomic_uint64_t face_read_bytes = 0;
+		std::atomic_uint64_t face_decode_us = 0;
+		std::atomic_uint64_t face_locate_us = 0;
+		std::atomic_uint32_t face_locate_max_us = 0;
+		std::atomic_uint64_t face_identifies = 0;
+		std::atomic_uint64_t face_identify_us = 0;
+		std::atomic_uint32_t face_identify_max_us = 0;
+		std::atomic_uint64_t face_found = 0;
+		std::atomic_uint64_t face_groupings = 0;
+		std::atomic_uint64_t face_group_us = 0;
+		std::atomic_uint32_t face_group_max_us = 0;
+		std::atomic_uint64_t face_groupings_discarded = 0;
+		std::atomic_uint32_t pass_face_candidates = 0;
+		std::atomic_uint32_t pass_face_groups = 0;
+
 		// Gauges, not totals: each holds what the most recent predictions pass saw. Summing passes
 		// would count one picture once per pass and hide whether the candidate rule is holding.
 		std::atomic_uint32_t pass_files = 0;

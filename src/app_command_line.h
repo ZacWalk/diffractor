@@ -60,6 +60,13 @@ struct command_line_t
 
 	// Runs when `projects` is set.
 	movie_batch_options movie_batch;
+	// Read-only measurement of what the face pipeline embeds for a named list of photographs. Takes a
+	// list file rather than paths so the pictures being measured never enter the repository.
+	bool face_report = false;
+	std::string face_report_list;
+	std::string face_report_scan;
+	std::string face_report_scan_variant;
+	std::string face_report_output;
 
 #ifdef _DEBUG
 	std::string test_action;

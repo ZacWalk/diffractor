@@ -237,6 +237,19 @@ public:
 				                                    icon_index::location));
 			}
 		}
+		else if (scope.kind == df::search_scope_kind::face)
+		{
+			// faces.md: a face term spells a group's sample, so completion offers the samples of the
+			// groups that account for most of the collection - largest first, which is the order the
+			// palette is already in. There are no names to complete from.
+			for (const auto& term : _state.item_index.face_palette_terms(scope.value, max_predictions))
+			{
+				if (found.size() >= max_predictions) break;
+				found.emplace_back(std::make_shared<text_match>(
+					*this, scope.format(term), scope.lead, ui::match_highlights{}, scope_weight,
+					icon_index::person));
+			}
+		}
 		else
 		{
 			// tag: / # -> tag names ("#tag"); @ -> media groups ("@group")

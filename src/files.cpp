@@ -34,7 +34,8 @@
 #include <archive_entry.h>
 
 // windows.h arrives through the vendored headers above and brings the min/max function macros with
-// it, which swallow the std:: calls further down this file. Both go, not just min.
+// it, which swallow the std:: calls further down this file. Both go, not just min: ncnn's headers
+// happened to define NOMINMAX for every translation unit, so max only looked harmless.
 #undef GetObject
 #undef min
 #undef max
@@ -1645,6 +1646,22 @@ ui::surface_ptr files::decode_jpeg(const df::cspan data, const sizei target_exte
 		options.target_height = static_cast<uint32_t>(std::max(0, target_extent.cy));
 		options.allow_nv12 = can_use_yuv;
 		options.smooth_chroma = intent == decode_intent::display;
+
+		if (intent == decode_intent::analysis && std::max(target_extent.cx, target_extent.cy) > 0)
+		{
+			libfiles::reader header_reader(std::span<const uint8_t>(data.data, data.size));
+			const auto header = libfiles::scan(header_reader);
+			if (header.success && header.width > 0 && header.height > 0)
+			{
+				const auto target = static_cast<uint32_t>(std::max(target_extent.cx, target_extent.cy));
+				options.target_width = header.width >= header.height ? target : 1;
+				options.target_height = header.width >= header.height ? 1 : target;
+			}
+			else
+			{
+				df::log(__FUNCTION__, std::format("Analysis header unavailable; using bounded decode: {}", header.error));
+			}
+		}
 
 		const auto result = _decoder.decode(r, sink, options);
 

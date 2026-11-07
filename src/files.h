@@ -482,7 +482,10 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p);
 enum class decode_intent : uint8_t
 {
 	display,
-	thumbnail
+	thumbnail,
+	// Read by code and never drawn, so it takes the planar path on its own terms rather than through
+	// the display's YUV switch.
+	analysis
 };
 
 struct file_load_result

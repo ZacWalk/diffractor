@@ -140,6 +140,11 @@ public:
 	item_import_set load_item_imports() const;
 	void writes_item_imports(const item_import_set& items) const;
 
+	// Read only when face search is on, because docs/faces.md defines off as absent rather than hidden.
+	void load_face_values(uint64_t generation) const;
+	// Turning face search off. Everything face search stores is derived, so this is the whole of it.
+	void drop_faces() const;
+
 	void close();
 
 	void clean(const std::vector<df::file_path>& indexed_items) const;

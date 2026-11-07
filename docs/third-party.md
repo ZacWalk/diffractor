@@ -266,6 +266,26 @@ when no other is on the include path. Do not build player plugins or test progra
 Its FFmpeg demuxer must remain present on both platforms: both FFmpeg recipes name the fetched tree,
 which is why [CMakeLists.txt](../CMakeLists.txt) fetches it before any recipe runs.
 
+## Face Libraries
+
+libfacedetection is vendored as a CPU detector subset. Its generated detector data, Highway paths,
+and license travel together. The face pipeline owns alignment and publication; the library only
+returns detections.
+
+### ncnn
+
+ncnn runs MobileFaceNet inference. Its own CMake build is included because it generates the source
+set and architecture dispatch. Vulkan and OpenMP are disabled: Diffractor owns graphics-device
+lifetime and worker concurrency. Only the x86/ARM paths and layers required directly or indirectly by
+the model are vendored; `tools/prune_ncnn_layers.ps1` reapplies that subset. `NCNN_STATIC_DEFINE`
+must propagate to consumers.
+
+No embedding model weights are distributed in this tree. A licensed MobileFaceNet model pair may
+be supplied from outside the checkout through `DIFFRACTOR_FACE_MODEL_DIR`; CMake embeds it through
+the application's generated resources on both platforms. A model's weights need their own
+redistribution grant: neither ncnn's licence nor the licence on code that loads a model grants
+rights to its weights. See [experiment inputs](faces.md#experiment-inputs).
+
 ## Assets
 
 The Fluent UI icon font and generated code-point table are one versioned asset. Updating the font
@@ -294,7 +314,7 @@ packaged data, not source dependencies, but the same redistribution rule applies
   [files_raw.cpp](../src/files_raw.cpp)), [av_format.cpp](../src/av_format.cpp),
   [metadata.cpp](../src/metadata.cpp), [util_spell.cpp](../src/util_spell.cpp), and
   [util_zip.cpp](../src/util_zip.cpp): application-owned wrappers.
-- `tools/compare_ffmpeg_config.py` and `tools/fluent_icons.py`:
+- `tools/compare_ffmpeg_config.py`, `tools/prune_ncnn_layers.ps1`, and `tools/fluent_icons.py`:
   reproducible integration checks and generators.
 - [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) and
   [ffmpeg_msvc.local.cmake](../cmake/vendored/ffmpeg_msvc.local.cmake): Windows source inventory,

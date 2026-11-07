@@ -447,6 +447,14 @@ public:
 		bool operator==(const index_t&) const = default;
 	} collection;
 
+	// docs/faces.md: off, and absent, until the user turns it on. Off does not mean hidden - with
+	// this clear the application computes no vectors, stores none, and shows no faces anywhere.
+	// There is no quiet pre-computation "so it is ready if they enable it".
+	struct faces_t
+	{
+		bool enabled = false;
+	} faces;
+
 	struct search_t
 	{
 		static constexpr int count = 10;

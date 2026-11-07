@@ -37,6 +37,31 @@ crash_files_db& crash_files()
 	return instance;
 }
 
+ui::const_surface_ptr crop_face_thumbnail(files& ff, const ui::const_image_ptr& encoded,
+                                          const faces::palette_entry& entry)
+{
+	if (!ui::is_valid(encoded) || entry.crop_space.is_empty()) return {};
+
+	const auto source = ff.image_to_surface(encoded);
+	if (!ui::is_valid(source) || !ui::is_packed(source->format())) return {};
+
+	const auto r = faces::crop_in(entry.crop, entry.crop_space, source->dimensions());
+	if (r.is_empty()) return {};
+
+	const sizei extent{r.width(), r.height()};
+	auto result = std::make_shared<ui::surface>();
+
+	if (!result->alloc(extent, source->format(), source->orientation())) return {};
+
+	for (auto y = 0; y < extent.cy; ++y)
+	{
+		memcpy(result->pixels_line(y), source->pixels_line(r.top + y) + (static_cast<size_t>(r.left) * 4),
+		       static_cast<size_t>(extent.cx) * 4);
+	}
+
+	return result;
+}
+
 void flush_open_files_to_crash_files_list()
 {
 	crash_files().flush_open_files();

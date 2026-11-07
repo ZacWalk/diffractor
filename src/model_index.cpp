@@ -255,7 +255,12 @@ static void iterate_items(const df::search_t& search_in,
 	df::search_t resolved_related;
 	const auto& search = resolve_related(search_in, state, resolved_related);
 
-	df::search_matcher matcher(search, platform::now().to_days(), &state.locations());
+	// The face terms this search spells are resolved once here, against the index rather than a
+	// grouping pass, so a term answers before the walk rather than taking the face lock per item.
+	const auto face_context = search.has_face_term()
+		                          ? state.build_face_query_context(search)
+		                          : faces::query_context{};
+	df::search_matcher matcher(search, platform::now().to_days(), &state.locations(), &face_context);
 
 	const auto now = platform::now();
 	const auto& selectors = search.selectors();
@@ -520,6 +525,11 @@ void index_state::query_items(const df::search_t& search,
 
 	_async.invalidate_view(view_invalid::view_layout);
 
+	if (search.has_face_term() && !is_collection_search(search))
+	{
+		found_callback({}, true);
+		return;
+	}
 
 	if (search.has_related())
 	{
@@ -943,6 +953,9 @@ std::optional<uint64_t> search_counter::count_kept(const df::search_t& search, c
 
 index_state::index_state(async_strategy& as, const location_cache& locations) : _async(as), _locations(locations)
 {
+	// Only the compiled default here - the application constructs this before setting.read() runs.
+	// init_item_index adopts the persisted value.
+	_face_search_enabled = setting.faces.enabled;
 }
 
 void index_state::enqueue_db_write(item_db_write write)
@@ -972,8 +985,27 @@ void index_state::enqueue_db_writes(std::vector<item_db_write> writes)
 	}
 }
 
+void index_state::enqueue_face_db_writes(std::vector<item_db_write> writes, const uint64_t generation)
+{
+	if (writes.empty()) return;
+	auto shared_writes = std::make_shared<std::vector<item_db_write>>(std::move(writes));
+
+	_async.queue_database([this, shared_writes, generation](const database& db)
+	{
+		if (!_face_search_enabled.load() || generation != _face_generation.load()) return;
+		std::deque<item_db_write> pending(std::make_move_iterator(shared_writes->begin()),
+		                                 std::make_move_iterator(shared_writes->end()));
+		db.perform_writes(std::move(pending));
+	});
+}
+
 void index_state::init_item_index()
 {
+	// The constructor ran before the settings file was read, so the atomic every worker gates on
+	// still holds the compiled default. Without this the whole face pass stays off for the session
+	// while the sidebar, which reads setting.faces.enabled directly, shows the section as on.
+	_face_search_enabled = setting.faces.enabled;
+
 	auto summary = std::make_shared<index_metadata_summary>();
 
 	for (const auto& f : all_file_groups())
@@ -1503,6 +1535,8 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 						// it is persisted - so a hash left behind here reports an edited file and an
 						// untouched copy as the same picture for every session that follows.
 						forget_hashes(info);
+						if (info.faces.load()) ++_face_content_revision;
+						info.faces = nullptr;
 					}
 
 					const auto was_offline = old_first->flags && df::index_item_flags::is_offline;
@@ -1787,6 +1821,920 @@ index_state::validate_folder_result index_state::validate_folder(const df::folde
 	add_distinct_other_folders({folder_path});
 
 	return {existing_folder, false};
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Faces. docs/faces.md owns every decision here. Nothing below runs while setting.faces.enabled is
+// clear: off means absent, not hidden.
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Detection needs real pixels, not the 256-pixel thumbnail, but it does not need all of them. The
+// detector reduces again internally; this bound is what the alignment warp samples from, so it sets
+// the detail the embedding sees. See docs/faces.md.
+constexpr sizei face_decode_bound{1600, 1600};
+
+// How many places a face group is described by. A face that turns up everywhere is described by
+// where it turns up MOST, not by a list nobody reads.
+constexpr size_t max_face_places = 3;
+
+// One batch, so the pass yields between groups rather than holding the worker for a whole
+// collection, and so a session that ends mid-pass loses at most this much. Detection and the
+// interactive requests share one worker, so the batch is also how long anything else waits: at
+// roughly 100ms a picture, 16 keeps that under two seconds.
+constexpr size_t face_batch_files = 16;
+constexpr size_t face_publish_group = 8;
+
+void index_state::merge_folder_faces(const df::folder_path folder_path,
+	                                 const std::vector<std::pair<str::cached, df::face_set_ptr>>& rows,
+	                                 const uint64_t generation)
+{
+	platform::exclusive_lock lock(_faces_rw);
+	if (!_face_search_enabled.load() || generation != _face_generation.load()) return;
+
+	const auto folder = _items.find(folder_path);
+	if (!folder) return;
+	auto changed = false;
+
+	for (const auto& [name, fs] : rows)
+	{
+		const auto found = find_file(folder->files, name.sv());
+
+		if (found != folder->files.end() && fs->is_current(found->file_modified.load()))
+		{
+			found->faces.store(fs);
+			found->calc_search_presence();
+			changed = true;
+		}
+	}
+	if (changed) ++_face_content_revision;
+}
+
+void index_state::face_rows_loaded(const uint64_t generation)
+{
+	if (!_face_search_enabled.load() || generation != _face_generation.load()) return;
+	_face_rows_loaded = true;
+
+	// The palette reads the candidate list a grouping pass produces, so loading the stored rows is
+	// not by itself enough to draw anything.
+	queue_update_face_groups();
+	invalidate_view(view_invalid::sidebar_faces | view_invalid::refresh_items);
+}
+
+std::shared_ptr<const index_state::face_snapshot> index_state::current_face_snapshot() const
+{
+	platform::shared_lock lock(_faces_rw);
+	return _face_data;
+}
+
+// docs/faces.md: a term names a file and a position in it, so it is resolved against the index
+// itself rather than against a grouping pass. A term saved a year ago therefore answers before this
+// session's first pass has finished, and a face nothing has grouped is still searchable.
+//
+// The folder is deliberately not part of a term, so two files of one name spell the same one. EVERY
+// one of them answers - a superset of either group, never the wrong one - because picking one would
+// make the answer depend on how the index happened to enumerate, and a saved search would quietly
+// mean a different face after a restart. Sample selection prefers an unambiguous file so this stays
+// a corner, and the count is bounded so a repeated name cannot make one term cost the collection.
+//
+// Every term in one walk: the folder snapshot is a copy, so resolving them one at a time would pay
+// for the whole collection once per term.
+std::vector<faces::face_anchor> index_state::resolve_face_anchors(const std::vector<std::string>& terms) const
+{
+	std::vector<faces::face_anchor> result;
+	if (terms.empty()) return result;
+
+	struct pending
+	{
+		std::string term;
+		faces::face_token token;
+		// Kept sorted by path and capped, so this is exactly the first max_term_anchors faces in path
+		// order however the walk reached them.
+		std::vector<std::pair<str::cached, faces::face_vector>> found;
+	};
+
+	std::vector<pending> wanted;
+	wanted.reserve(terms.size());
+
+	for (const auto& term : terms)
+	{
+		faces::face_token token;
+		if (!faces::parse_face_token(term, token)) continue;
+		wanted.emplace_back(pending{term, std::move(token), {}});
+	}
+
+	if (wanted.empty()) return result;
+
+	for (const auto& [folder, folder_item] : _items.all_folders())
+	{
+		if (!folder_item->is_in_collection.load()) continue;
+
+		for (const auto& file : folder_item->files)
+		{
+			for (auto& p : wanted)
+			{
+				if (str::icmp(file.name.sv(), p.token.name) != 0) continue;
+
+				const auto fs = file.faces.load();
+				if (!fs || !fs->is_current(file.file_modified.load())) continue;
+				if (p.token.index < 0 || static_cast<size_t>(p.token.index) >= fs->faces.size()) continue;
+
+				const auto path = str::cache(df::file_path(folder, file.name).pack());
+				const auto at = std::ranges::lower_bound(p.found, path, [](const str::cached left, const str::cached right)
+				{
+					return icmp(left, right) < 0;
+				}, &std::pair<str::cached, faces::face_vector>::first);
+
+				if (p.found.size() >= faces::max_term_anchors && at == p.found.end()) continue;
+
+				p.found.emplace(at, path, fs->faces[p.token.index].vec);
+				if (p.found.size() > faces::max_term_anchors) p.found.pop_back();
+			}
+		}
+	}
+
+	for (auto& p : wanted)
+	{
+		// A term whose file the collection no longer holds, or which has no face in that position,
+		// resolves to nothing and then matches nothing. That is the honest answer, and it is why it
+		// contributes no anchor rather than a zero vector that would resemble nothing.
+		for (auto& [path, vec] : p.found)
+		{
+			result.emplace_back(faces::face_anchor{p.term, vec});
+		}
+	}
+
+	return result;
+}
+
+faces::query_context index_state::build_face_query_context(const df::search_t& search) const
+{
+	faces::query_context result;
+	result.enabled = _face_search_enabled.load();
+	if (!result.enabled) return result;
+
+	std::vector<std::string> terms;
+
+	for (const auto& term : search.terms())
+	{
+		if (term.type != df::search_term_type::face || term.text.empty()) continue;
+
+		const auto already = std::ranges::any_of(terms, [&term](const std::string& seen)
+		{
+			return str::icmp(seen, term.text) == 0;
+		});
+		if (already) continue;
+
+		terms.emplace_back(term.text);
+	}
+
+	result.anchors = resolve_face_anchors(terms);
+	return result;
+}
+// Every face the index currently holds, in the form the grouper takes. Built under no lock beyond
+// the index's own, and handed on as a detached value.
+std::vector<faces::candidate> index_state::collect_face_candidates() const
+{
+	std::vector<faces::candidate> result;
+	// A face term spells a file name, so a name two files share spells one term. Counted here because
+	// sample selection prefers a face that spells only itself and nothing else knows the collection.
+	df::hash_map<str::cached, int, df::ihash, df::ieq> name_counts;
+
+	for (const auto& [folder, folder_item] : _items.all_folders())
+	{
+		if (!folder_item->is_in_collection.load()) continue;
+
+		for (const auto& file : folder_item->files)
+		{
+			const auto fs = file.faces.load();
+			if (!fs || !fs->is_current(file.file_modified.load()) || fs->faces.empty()) continue;
+
+			++name_counts[file.name];
+			const auto path = str::cache(df::file_path(folder, file.name).pack());
+
+			for (auto i = 0u; i < fs->faces.size(); ++i)
+			{
+				const auto& f = fs->faces[i];
+
+				faces::candidate c;
+				c.ref.path = path;
+				c.ref.index = static_cast<int>(i);
+				c.source = fs;
+				c.vec = f.vec;
+				c.crop = f.bounds;
+				c.crop_space = fs->source_extent;
+
+				faces::detection d;
+				d.bounds = f.bounds;
+				d.marks = f.marks;
+				d.confidence = static_cast<int>(f.score);
+				c.rank = faces::candidate_rank(d, fs->source_extent);
+				c.frontality = faces::frontality(f.marks);
+
+				if (const auto md = file.metadata.load())
+				{
+					c.created = md->created();
+					c.place = md->location_place;
+				}
+
+				if (!c.created.is_valid()) c.created = file.file_created;
+
+				result.emplace_back(std::move(c));
+			}
+		}
+	}
+
+	for (auto& c : result)
+	{
+		const df::file_path path(c.ref.path.sv());
+		const auto found = name_counts.find(str::cache(path.name()));
+		c.unique_name = found == name_counts.end() || found->second <= 1;
+	}
+
+	return result;
+}
+
+void index_state::queue_update_face_groups()
+{
+	if (df::is_closing || !_face_search_enabled.load() || !_face_rows_loaded) return;
+	if (_face_groups_pending.exchange(true))
+	{
+		_face_groups_again = true;
+		return;
+	}
+
+	const auto generation = _face_generation.load();
+
+	_async.queue_async(async_queue::index_face_groups, [this, generation]
+	{
+		const df::scope_exit release([this]
+		{
+			_face_groups_pending = false;
+			if (_face_groups_again.exchange(false)) queue_update_face_groups();
+		});
+		const auto cancelled = [this, generation]
+		{
+			return df::is_closing || !_face_search_enabled.load() || generation != _face_generation.load();
+		};
+		if (cancelled()) return;
+		const auto previous = current_face_snapshot();
+		if (previous->grouped && previous->revision == _face_content_revision.load()) return;
+
+		df::perf_timer timer(df::index_perf.face_group_us, &df::index_perf.face_group_max_us);
+		df::bump(df::index_perf.face_groupings);
+
+		auto data = std::make_shared<face_snapshot>();
+		data->revision = _face_content_revision.load();
+		data->candidates = collect_face_candidates();
+		df::set_gauge(df::index_perf.pass_face_candidates, static_cast<uint32_t>(data->candidates.size()));
+		auto grouped = faces::build_groups(data->candidates, faces::defaults(), cancelled);
+		if (grouped.cancelled || cancelled())
+		{
+			df::bump(df::index_perf.face_groupings_discarded);
+			return;
+		}
+
+		std::erase_if(data->candidates, [this](const faces::candidate& candidate)
+		{
+			const df::file_path path(candidate.ref.path.sv());
+			const auto folder = _items.find(path.folder());
+			if (!folder || !folder->is_in_collection.load()) return true;
+			const auto file = find_file(folder->files, path.name());
+			return file == folder->files.end() || file->faces.load() != candidate.source ||
+				!candidate.source->is_current(file->file_modified.load());
+		});
+		for (size_t index = 0; index < data->candidates.size(); ++index)
+			data->candidate_index[data->candidates[index].ref] = index;
+
+		const faces::candidate_lookup lookup = [&data](const faces::face_ref& ref) -> const faces::candidate*
+		{
+			const auto found = data->candidate_index.find(ref);
+			return found == data->candidate_index.end() ? nullptr : &data->candidates[found->second];
+		};
+
+		// Each cluster adopts the face that stands for it and is re-measured against that face's own
+		// vector, so what the palette counts is what a search for the sample returns. A face no sample
+		// reaches anchors a group of its own, so adoption cannot make a face unreachable.
+		if (!faces::adopt_sample_faces(grouped.groups, data->candidates, lookup, faces::defaults(), cancelled))
+		{
+			df::bump(df::index_perf.face_groupings_discarded);
+			return;
+		}
+		data->groups = std::move(grouped.groups);
+		rebuild_face_projection(*data);
+		data->grouped = true;
+		if (cancelled()) return;
+
+		df::set_gauge(df::index_perf.pass_face_groups, static_cast<uint32_t>(data->projection.size()));
+		{
+			platform::exclusive_lock lock(_faces_rw);
+			if (cancelled()) return;
+			_face_data = data;
+		}
+		if (data->revision != _face_content_revision.load() && faces_remaining.load() == 0)
+			_face_groups_again = true;
+
+		invalidate_view(view_invalid::sidebar_faces | view_invalid::faces_view | view_invalid::refresh_items);
+	});
+}
+
+// What the palette draws and what a picture says about its faces, both derived from the groups a
+// pass has just settled on. Built once here rather than per palette refresh and per displayed
+// picture: it walks every group and every member, and those happen hundreds of times a session.
+// Built on a worker before publishing the immutable snapshot.
+void index_state::rebuild_face_projection(face_snapshot& data)
+{
+	const faces::candidate_lookup lookup = [&data](const faces::face_ref& ref) -> const faces::candidate*
+	{
+		const auto found = data.candidate_index.find(ref);
+		return found == data.candidate_index.end() ? nullptr : &data.candidates[found->second];
+	};
+
+	std::vector<faces::palette_entry> entries;
+	entries.reserve(data.groups.size());
+
+	// Which group each face belongs to, keyed by that group's sample so the answer survives the
+	// ordering below without copying every entry to sort it.
+	df::hash_map<faces::face_ref, std::pair<faces::face_ref, float>, faces::face_ref_hash> group_of_face;
+
+	for (const auto& g : data.groups)
+	{
+		if (g.members.empty()) continue;
+
+		const auto* const sample = lookup(g.sample);
+		if (!sample) continue;
+
+		faces::palette_entry e;
+		e.sample = g.sample;
+		e.anchor = g.anchor;
+		e.source = sample->source;
+		e.term = faces::format_face_token(df::file_path(g.sample.path.sv()).name(), g.sample.index);
+
+		// A count of FILES, not of faces, because the user's next action is a search and a search
+		// returns files. Two faces of one group in one photograph count once.
+		df::hash_set<str::cached, df::ihash, df::ieq> distinct_files;
+		df::hash_map<str::cached, int, df::ihash, df::ieq> place_counts;
+
+		for (const auto& m : g.members)
+		{
+			distinct_files.emplace(m.path);
+
+			const auto* const member = lookup(m);
+			if (!member) continue;
+
+			if (member->created.is_valid())
+			{
+				if (!e.first_seen.is_valid() || member->created < e.first_seen) e.first_seen = member->created;
+				if (!e.last_seen.is_valid() || member->created > e.last_seen) e.last_seen = member->created;
+			}
+
+			if (!str::is_empty(member->place)) ++place_counts[member->place];
+		}
+
+		e.file_count = static_cast<int>(distinct_files.size());
+		e.files = std::make_shared<const faces::palette_entry::file_set>(std::move(distinct_files));
+
+		// Most frequent first, then alphabetical, so the list a group is described by does not
+		// reshuffle when two places are equally common.
+		std::vector<std::pair<str::cached, int>> ordered_places(place_counts.begin(), place_counts.end());
+		std::ranges::sort(ordered_places, [](const auto& left, const auto& right)
+		{
+			if (left.second != right.second) return left.second > right.second;
+			return icmp(left.first, right.first) < 0;
+		});
+
+		e.places.reserve(std::min(ordered_places.size(), max_face_places));
+		for (const auto& [place, count] : ordered_places)
+		{
+			if (e.places.size() >= max_face_places) break;
+			e.places.emplace_back(place.sv());
+		}
+
+		e.crop = sample->crop;
+		e.crop_space = sample->crop_space;
+
+		// A face may resemble two samples. The picture says the one it resembles most, because a
+		// caption has room for one answer and that is the one a search for it would fit best.
+		for (const auto& member : g.members)
+		{
+			const auto* candidate = lookup(member);
+			if (!candidate) continue;
+			const auto score = faces::similarity(candidate->vec, g.anchor);
+			const auto found = group_of_face.find(member);
+			if (found == group_of_face.end() || score > found->second.second)
+				group_of_face[member] = {g.sample, score};
+		}
+		entries.emplace_back(std::move(e));
+	}
+
+	faces::order_palette(entries);
+
+	df::hash_map<faces::face_ref, size_t, faces::face_ref_hash> position_of_sample;
+	for (size_t index = 0; index < entries.size(); ++index) position_of_sample[entries[index].sample] = index;
+
+	data.projection_index.clear();
+	data.projection_index.reserve(group_of_face.size());
+
+	for (const auto& [ref, group] : group_of_face)
+	{
+		const auto found = position_of_sample.find(group.first);
+		if (found != position_of_sample.end()) data.projection_index[ref] = found->second;
+	}
+
+	data.sidebar = faces::select_sidebar_palette(entries);
+	data.projection = std::move(entries);
+}
+
+// The sidebar's shortlist of the largest groups. Whether the pass behind it is finished is asked
+// separately, by face_scan_complete, because the row above the tiles reports that and the tiles do
+// not.
+std::vector<faces::palette_entry> index_state::face_palette() const
+{
+	if (!_face_search_enabled.load()) return {};
+
+	return current_face_snapshot()->sidebar;
+}
+
+// A partial answer says it is partial rather than presenting a fraction of the collection as the
+// whole of it. See docs/faces.md.
+bool index_state::face_scan_complete() const
+{
+	return _face_rows_loaded && face_scanning.load() == 0 && faces_remaining.load() == 0 &&
+		!_face_groups_pending.load() && current_face_snapshot()->revision == _face_content_revision.load();
+}
+
+// The whole ordered projection, including groups suppressed by the sidebar shortlist.
+std::vector<faces::palette_entry> index_state::face_palette_entries() const
+{
+	if (!_face_search_enabled.load()) return {};
+
+	return current_face_snapshot()->projection;
+}
+
+// What the address box offers for a `face:` scope: the terms of the largest groups that start with
+// what has been typed. Terms only, filtered here, and bounded by the number of ANSWERS rather than
+// by how far down the list they were found - a prefix must still reach a group ranked below the
+// page. The projection holds one entry per group with a vector, a file set and a source face set
+// apiece, and completion runs on every keystroke, so copying all of that to read a handful of
+// strings off it is a cost nobody asked for.
+std::vector<std::string> index_state::face_palette_terms(const std::string_view prefix,
+                                                         const size_t max_terms) const
+{
+	std::vector<std::string> result;
+
+	if (!_face_search_enabled.load()) return result;
+
+	const auto data = current_face_snapshot();
+	result.reserve(std::min(max_terms, data->projection.size()));
+
+	// Largest first, which is the order the projection is already in, so the groups that account for
+	// most of the collection are the ones offered.
+	for (const auto& entry : data->projection)
+	{
+		if (result.size() >= max_terms) break;
+		if (entry.term.empty()) continue;
+		if (!prefix.empty() &&
+			str::icmp(std::string_view(entry.term).substr(0, std::min(prefix.size(), entry.term.size())),
+			          prefix) != 0)
+		{
+			continue;
+		}
+		result.emplace_back(entry.term);
+	}
+
+	return result;
+}
+
+// faces.md: the picture calls a face what the palette calls it, so the same face is not one thing in
+// the sidebar and another on the photograph.
+std::vector<faces::face_summary> index_state::face_summaries(const df::file_path path, const df::face_set& fs) const
+{
+	std::vector<faces::face_summary> result(fs.faces.size());
+
+	if (!_face_search_enabled.load() || fs.faces.empty()) return result;
+
+	const auto packed = str::cache(path.pack());
+	const auto data = current_face_snapshot();
+
+	for (auto i = 0u; i < fs.faces.size(); ++i)
+	{
+		const faces::face_ref ref{packed, static_cast<int>(i)};
+		const auto candidate = data->candidate_index.find(ref);
+		if (candidate == data->candidate_index.end() || data->candidates[candidate->second].source.get() != &fs) continue;
+		const auto found = data->projection_index.find(ref);
+		if (found == data->projection_index.end() || found->second >= data->projection.size()) continue;
+
+		const auto& e = data->projection[found->second];
+		result[i].term = e.term;
+		result[i].file_count = e.file_count;
+	}
+
+	return result;
+}
+
+df::face_set_ptr index_state::faces_for(const df::file_path path) const
+{
+	if (!_face_search_enabled.load()) return {};
+
+	const auto folder = _items.find(path.folder());
+	if (!folder) return {};
+
+	const auto found = find_file(folder->files, path.name());
+	if (found == folder->files.end()) return {};
+
+	return found->faces.load();
+}
+
+// Answered with exactly the rules model_search applies to the same terms, so the box the picture
+// highlights is the face the search actually matched on rather than a second opinion about it.
+std::vector<uint8_t> index_state::face_search_matches(const df::face_set& fs, const df::search_t& search) const
+{
+	std::vector<uint8_t> result(fs.faces.size(), 0);
+
+	if (!_face_search_enabled.load() || fs.faces.empty() || !search.has_face_term()) return result;
+
+	const auto context = build_face_query_context(search);
+	if (!context.enabled) return result;
+
+	for (const auto& term : search.terms())
+	{
+		// `@face` on its own asks for any face, which highlights nothing: every box would be orange
+		// and the colour would stop meaning "this one". An exclusion names a face the results do not
+		// contain, so it has nothing to point at either.
+		if (term.type != df::search_term_type::face || !term.modifiers.positive || term.text.empty()) continue;
+
+		// A term resolves to the vectors of the faces it names, and a face matches it exactly the way
+		// a group's membership was measured: against those vectors, with no membership list in
+		// between. A term that spells several files answers from all of them.
+		for (const auto& anchor : context.anchors)
+		{
+			if (str::icmp(anchor.term, term.text) != 0) continue;
+
+			for (auto i = 0u; i < fs.faces.size(); ++i)
+			{
+				if (faces::similarity(fs.faces[i].vec, anchor.vec) >= faces::defaults().similar) result[i] = 1;
+			}
+		}
+	}
+
+	return result;
+}
+void index_state::save_faces(std::vector<face_scan_result> results, const uint64_t generation)
+{
+	if (results.empty()) return;
+
+	std::vector<item_db_write> writes;
+	writes.reserve(results.size());
+	auto changed = false;
+
+	{
+		platform::exclusive_lock lock(_faces_rw);
+
+		if (!_face_search_enabled.load() || generation != _face_generation.load()) return;
+
+		for (auto& result : results)
+		{
+			const auto folder = _items.find(result.path.folder());
+			if (!folder || !folder->is_in_collection.load()) continue;
+
+			const auto found = find_file(folder->files, result.path.name());
+			if (found == folder->files.end() || found->file_modified.load() != result.source_modified) continue;
+
+			found->faces.store(result.faces);
+			found->calc_search_presence();
+
+			item_db_write write;
+			write.path = result.path;
+			write.faces = result.faces;
+			writes.emplace_back(std::move(write));
+		}
+
+		changed = !writes.empty();
+		if (changed) ++_face_content_revision;
+	}
+	enqueue_face_db_writes(std::move(writes), generation);
+
+	// The group projection changes only when grouping publishes. Reopening the current search for
+	// every detection batch rebuilt its controllers and restarted hover fades while the scan ran.
+	if (changed)
+	{
+		invalidate_view(view_invalid::view_redraw);
+		if (_face_content_revision.load() % 32 == 0 || current_face_snapshot()->projection.empty())
+			queue_update_face_groups();
+	}
+}
+
+// The face worker owns the engine: one per session, created on the worker that first needs it and
+// never touched from anywhere else. A build without the vendored libraries answers false, which
+// turns the feature off rather than leaving it finding nobody.
+bool index_state::ensure_face_engine(const uint64_t generation)
+{
+	if (_face_engine) return true;
+
+	_face_engine = faces::create_face_engine();
+	if (_face_engine) return true;
+
+	df::log(__FUNCTION__, "Face search is unavailable in this build"sv);
+	faces_remaining = 0;
+	faces_total = 0;
+	_face_engine_failed = true;
+	_async.queue_ui([this, generation]
+	{
+		if (generation != _face_generation.load() || !_face_search_enabled.load()) return;
+		set_face_search_enabled(false);
+		invalidate_view(view_invalid::sidebar_faces | view_invalid::options |
+			view_invalid::command_state | view_invalid::app_layout);
+	});
+
+	return false;
+}
+
+// One file, on the face worker. Always answers a complete set, including for a file that could not
+// be read: without that the next pass asks for the same file again, forever.
+df::face_set_ptr index_state::detect_faces_in(const df::file_path path) const
+{
+	df::perf_timer timer(df::index_perf.face_detect_us, &df::index_perf.face_detect_max_us);
+	df::bump(df::index_perf.face_detects);
+
+	auto fs = std::make_shared<df::face_set>();
+	fs->model_version = faces::model_version;
+	fs->scanned = platform::now();
+
+	const auto& tuning = faces::defaults();
+
+	try
+	{
+		df::scope_locked_inc loading(df::loading_media);
+		file_read_stream stream;
+		df::blob owner;
+
+		if (stream.open(path))
+		{
+			files ff;
+			ui::const_surface_ptr surface;
+			df::cspan data;
+
+			{
+				df::perf_timer reading(df::index_perf.face_read_us);
+				data = stream.view_all(owner);
+			}
+
+			df::index_perf.face_read_bytes += data.size;
+
+			{
+				df::perf_timer decoding(df::index_perf.face_decode_us);
+				// NV12: the detector reads the luma plane as it stands, so this asks for no colour
+				// conversion and no resize, and only the aligned crop is turned into RGB.
+				surface = ff.image_to_surface(data, face_decode_bound, true, decode_intent::analysis);
+			}
+
+			if (ui::is_valid(surface) &&
+				(ui::is_packed(surface->format()) || surface->format() == ui::texture_format::NV12))
+			{
+				const auto extent = surface->dimensions();
+				// The decode still carries the file's own rotation for most formats, so a portrait
+				// photograph detects on a landscape surface. Detection, alignment and embedding all
+				// run on those pixels; only what is stored is turned upright.
+				const auto orientation = surface->orientation();
+
+				// Recorded so the boxes and landmarks below can be mapped back to the picture: the
+				// decode was bounded, so these are not the file's own dimensions.
+				fs->source_extent = faces::upright_extent(extent, orientation);
+
+				std::vector<faces::detection> detections;
+
+				{
+					df::perf_timer locating(df::index_perf.face_locate_us, &df::index_perf.face_locate_max_us);
+					detections = _face_engine->detect(surface, tuning);
+				}
+
+				for (const auto& d : detections)
+				{
+					const auto transform = faces::align_transform(d.marks);
+
+					// A face whose alignment would sample substantially outside the image is dropped
+					// rather than padded.
+					if (faces::alignment_is_clipped(transform, extent, tuning)) continue;
+
+					df::stored_face f;
+					f.score = static_cast<float>(d.confidence);
+					f.bounds = faces::to_upright(d.bounds, extent, orientation);
+
+					for (auto m = 0; m < faces::landmark_count; ++m)
+					{
+						f.marks[m] = faces::to_upright(d.marks[m], extent, orientation);
+					}
+
+					bool embedded = false;
+
+					{
+						df::perf_timer identifying(df::index_perf.face_identify_us,
+						                           &df::index_perf.face_identify_max_us);
+						df::bump(df::index_perf.face_identifies);
+						embedded = _face_engine->embed(surface, transform, f.vec);
+					}
+
+					if (!embedded) continue;
+
+					fs->faces.emplace_back(std::move(f));
+				}
+
+				// Stored in the stable order a term counts, not in the order the detector happened to
+				// scan the frame. See docs/faces.md.
+				faces::order_faces(fs->faces);
+			}
+		}
+	}
+	catch (const std::exception& e)
+	{
+		df::log(__FUNCTION__, e.what());
+	}
+
+	df::bump(df::index_perf.face_found, fs->faces.size());
+	return fs;
+}
+
+// faces.md: the picture the user opened is answered for now rather than whenever the collection pass
+// happens to reach it. Same eligibility as that pass - collection, pictures, not already current -
+// because looking at a picture must not widen what face search reads.
+void index_state::queue_scan_faces_for(const df::file_path path)
+{
+	if (!_face_search_enabled.load()) return;
+
+	_async.queue_async(async_queue::index_faces, [this, path, generation = _face_generation.load()]
+	{
+		if (df::is_closing || !_face_search_enabled.load() || generation != _face_generation.load()) return;
+
+		const auto folder = _items.find(path.folder());
+		if (!folder || !folder->is_in_collection.load()) return;
+
+		const auto found = find_file(folder->files, path.name());
+		if (found == folder->files.end() || !found->ft || !found->ft->has_trait(file_traits::bitmap)) return;
+
+		const auto modified = found->file_modified.load();
+		const auto fs = found->faces.load();
+		if (fs && fs->is_current(modified)) return;
+
+		if (!ensure_face_engine(generation)) return;
+
+		df::scope_locked_inc scanning(face_scanning);
+		save_faces({face_scan_result{path, modified, detect_faces_in(path)}}, generation);
+
+		// No grouping here: it reads every vector in the collection, and browsing an unscanned folder
+		// would pay that once per photograph. The collection pass groups when it drains, and until then
+		// the boxes are drawn from this picture's own row.
+		//
+		// The picture on screen is what asked, so it has to repaint to notice the new revision and ask
+		// again; sidebar_faces alone would leave the boxes absent until something else redrew it.
+		invalidate_view(view_invalid::sidebar_faces | view_invalid::view_redraw);
+	});
+}
+
+void index_state::queue_scan_faces()
+{
+	if (!_face_search_enabled.load() || _face_scan_pending.exchange(true)) return;
+
+	_async.queue_async(async_queue::index_faces, [this, generation = _face_generation.load()]
+	{
+		_face_scan_pending = false;
+		if (df::is_closing || !_face_search_enabled.load() || generation != _face_generation.load()) return;
+
+		struct request
+		{
+			df::file_path path;
+			df::date_t modified;
+		};
+
+		std::vector<request> wanted;
+		auto eligible = 0;
+		auto remaining = 0;
+
+		for (const auto& [folder, folder_item] : _items.all_folders())
+		{
+			if (!folder_item->is_in_collection.load()) continue;
+
+			for (const auto& file : folder_item->files)
+			{
+				// Pictures only in the first release. Video is deferred because "which frame" is a
+				// real question, and answering it badly produces faces nobody can find again.
+				if (!file.ft || !file.ft->has_trait(file_traits::bitmap)) continue;
+
+				++eligible;
+
+				const auto modified = file.file_modified.load();
+				const auto fs = file.faces.load();
+				if (fs && fs->is_current(modified)) continue;
+
+				++remaining;
+				if (wanted.size() < face_batch_files)
+					wanted.emplace_back(request{df::file_path(folder, file.name), modified});
+			}
+		}
+
+		// Both counts describe the whole collection, so the percentage says how far through the
+		// collection the pass is rather than how far through this session's leftovers. A pass that
+		// resumes after a restart therefore reports where it actually is, the way indexing does.
+		faces_remaining = remaining;
+		faces_total = eligible;
+
+		if (wanted.empty())
+		{
+			queue_update_face_groups();
+			return;
+		}
+
+		// Current rows can be counted and regrouped without loading an embedding model.
+		if (!ensure_face_engine(generation)) return;
+
+		// The worker isolates tasks, so an exception that escaped this batch would otherwise skip the
+		// only enqueue of its successor. Keep the incremental pass alive independently of its outcome.
+		const df::scope_exit continue_scan([this]
+		{
+			if (!df::is_closing && _face_search_enabled.load()) queue_scan_faces();
+		});
+
+		df::scope_locked_inc scanning(face_scanning);
+
+		std::vector<face_scan_result> published;
+		published.reserve(face_publish_group);
+
+		for (const auto& request : wanted)
+		{
+			if (df::is_closing || !_face_search_enabled.load() || generation != _face_generation.load()) break;
+
+			published.emplace_back(face_scan_result{request.path, request.modified, detect_faces_in(request.path)});
+
+			if (published.size() >= face_publish_group)
+			{
+				save_faces(std::move(published), generation);
+				published.clear();
+				published.reserve(face_publish_group);
+			}
+		}
+
+		// Published even when shutdown cut the loop short, so the work already done is not repeated.
+		save_faces(std::move(published), generation);
+		invalidate_view(view_invalid::sidebar_faces);
+	});
+}
+
+void index_state::set_face_search_enabled(const bool enabled)
+{
+	{
+		platform::exclusive_lock lock(_faces_rw);
+		setting.faces.enabled = enabled;
+		_face_search_enabled = enabled;
+		_face_rows_loaded = false;
+		++_face_generation;
+	}
+	const auto generation = _face_generation.load();
+
+	if (enabled)
+	{
+		faces_total = 0;
+		_async.queue_database([this, generation](const database& db)
+		{
+			db.load_face_values(generation);
+			if (generation == _face_generation.load()) queue_scan_faces();
+		});
+		return;
+	}
+
+	// Off means absent. Every vector, every group and every face row goes. All of it is derived, so
+	// all of it comes back by reading the collection again and there is nothing here to ask about.
+	faces_total = 0;
+	faces_remaining = 0;
+
+	// Index-wide, so it runs on the face worker: the options dialog does not wait, and an immediate
+	// re-enable queues its load and scan behind this cleanup rather than racing it on another worker.
+	_async.queue_async(async_queue::index_faces, [this, generation]
+	{
+		{
+			platform::exclusive_lock lock(_faces_rw);
+			if (generation == _face_generation.load()) _face_data = std::make_shared<face_snapshot>();
+		}
+		for (const auto& [folder, folder_item] : _items.all_folders())
+		{
+			if (df::is_closing) return;
+
+			for (const auto& file : folder_item->files)
+			{
+				if (file.faces.load())
+				{
+					file.faces.store(nullptr);
+					file.calc_search_presence();
+				}
+			}
+		}
+
+		invalidate_view(view_invalid::sidebar_faces | view_invalid::refresh_items);
+		if (_face_search_enabled.load()) queue_scan_faces();
+	});
+
+	_async.queue_database([](const database& db) { db.drop_faces(); });
+	invalidate_view(view_invalid::sidebar_faces);
 }
 
 
@@ -3131,6 +4079,25 @@ void index_state::index_folders(df::cancel_token token, const bool scan_collecti
 			});
 
 			if (!under_failed_enumeration) stale_cached_folders.emplace_back(cached.first);
+		}
+
+		// Before the erase, so a folder leaving the index still counts as faces removed.
+		auto faces_removed = false;
+		for (const auto& [folder, folder_item] : _items.all_folders())
+		{
+			if (folder_item->is_in_collection.load()) continue;
+			for (const auto& file : folder_item->files)
+			{
+				if (!file.faces.load()) continue;
+				file.faces.store(nullptr);
+				file.calc_search_presence();
+				faces_removed = true;
+			}
+		}
+		if (faces_removed)
+		{
+			++_face_content_revision;
+			if (_face_search_enabled.load()) queue_update_face_groups();
 		}
 
 		_items.erase(stale_cached_folders);
@@ -5070,6 +6037,7 @@ void index_state::queue_validate_changed_folders(df::unique_folders paths)
 			_async.invalidate_view(member_changed
 				                       ? view_invalid::refresh_items | view_invalid::index_summary
 				                       : view_invalid::refresh_items);
+			if (_face_search_enabled.load()) queue_scan_faces();
 		}
 	});
 }

@@ -49,3 +49,9 @@ exe/tiles/*.png
 /search_*.ps1
 *.msixupload
 *.appxsym
+
+# Face experiment inputs and outputs stay outside the checkout.
+/exe/test/excluded1/faces/
+/src/Res/models/
+/face-report*.txt
+/face-report*.json

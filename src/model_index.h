@@ -70,6 +70,9 @@ struct item_db_write
 	// The bytes changed, so the stored checksum and picture hash describe content that is gone. The
 	// optional fields above cannot say this: a write that carries no hash keeps the stored one.
 	bool clear_hashes = false;
+	// A complete face set for this file, or an empty one meaning it was looked at and nobody was
+	// found. Never a partial answer: the row is the whole of what the pass concluded.
+	std::optional<df::face_set_ptr> faces;
 
 	item_db_write() noexcept = default;
 	item_db_write(const item_db_write&) = delete;
@@ -974,13 +977,56 @@ class index_state final : public df::no_copy
 	platform::mutex _deferred_validations_rw;
 	_Guarded_by_(_deferred_validations_rw) df::hash_map<df::folder_path, bool, df::ihash, df::ieq>
 	_deferred_validations;
+	// Workers build detached face snapshots; this lock protects publication and consent transitions.
+	mutable platform::mutex _faces_rw;
+	struct face_snapshot
+	{
+		std::vector<faces::group> groups;
+		std::vector<faces::candidate> candidates;
+		df::hash_map<faces::face_ref, size_t, faces::face_ref_hash> candidate_index;
+		std::vector<faces::palette_entry> projection;
+		std::vector<faces::palette_entry> sidebar;
+		df::hash_map<faces::face_ref, size_t, faces::face_ref_hash> projection_index;
+		uint64_t revision = 0;
+		bool grouped = false;
+	};
+	_Guarded_by_(_faces_rw) std::shared_ptr<const face_snapshot> _face_data = std::make_shared<face_snapshot>();
+	// Owned by whichever worker is running the pass and touched from nowhere else. Created on first
+	// use because loading the model costs several megabytes that a user who never turns face search
+	// on should not pay.
+	faces::face_engine_ptr _face_engine;
+	std::atomic<bool> _face_engine_failed = false;
+	std::atomic<bool> _face_rows_loaded = false;
+	std::atomic<bool> _face_search_enabled = false;
+	// One grouping pass queued at a time: the pass costs the whole collection, so a request per
+	// on-demand scan and per batch would spend that cost over and over.
+	std::atomic<bool> _face_groups_pending = false;
+	std::atomic<bool> _face_groups_again = false;
+	std::atomic<bool> _face_scan_pending = false;
+	std::atomic_uint64_t _face_content_revision = 0;
+	// Consent cancels analysis. Groups are derived, so a cancelled pass leaves nothing behind.
+	std::atomic_uint64_t _face_generation = 0;
 
 	void add_distinct_other_folders(df::unique_folders folders);
 	void enqueue_db_write(item_db_write write);
 	void enqueue_db_writes(std::vector<item_db_write> writes);
+	void enqueue_face_db_writes(std::vector<item_db_write> writes, uint64_t generation);
 	bool is_excluded_from_collection(df::folder_path folder) const;
 	void queue_deferred_validation(df::folder_path folder_path, bool rescan);
 	void publish_search_index(std::shared_ptr<const df::search_index> index);
+
+	// Both run on the face worker, which owns _face_engine.
+	bool ensure_face_engine(uint64_t generation);
+	df::face_set_ptr detect_faces_in(df::file_path path) const;
+
+	std::shared_ptr<const face_snapshot> current_face_snapshot() const;
+	static void rebuild_face_projection(face_snapshot& data);
+	// The vectors each face term names, read from the index rather than from a grouping pass, so a
+	// term saved a year ago answers before the first pass of the session has finished. A term whose
+	// file name two files share resolves to both, in path order and bounded.
+	std::vector<faces::face_anchor> resolve_face_anchors(const std::vector<std::string>& terms) const;
+
+	std::vector<faces::candidate> collect_face_candidates() const;
 
 public:
 	bool is_collection_search(const df::search_t& search) const;
@@ -1088,6 +1134,13 @@ public:
 	std::atomic_int indexing = 0;
 	std::atomic_int searching = 0;
 
+	// The face pass reports its own progress. It is a second, separate row in the sidebar: the two
+	// passes have different totals, different costs and different completion times, and one bar
+	// reporting both would be wrong for the whole of the longer one. See docs/faces.md.
+	std::atomic_int face_scanning = 0;
+	std::atomic_int faces_remaining = 0;
+	std::atomic_int faces_total = 0;
+
 	index_statistic stats;
 	std::atomic<std::shared_ptr<const index_progress_snapshot>> _indexing_progress =
 		std::make_shared<const index_progress_snapshot>();
@@ -1104,7 +1157,71 @@ public:
 	{
 		return _cache_loaded_event;
 	}
+
 	void merge_folder(df::folder_path folder_path, const db_items_t& items);
+
+	//
+	// Faces. docs/faces.md owns the behaviour; everything below is opt-in and does nothing at all
+	// while setting.faces.enabled is clear.
+	//
+
+	// Publication from the database load. Replaces rather than merges, because loading is how the
+	// stored answer arrives.
+	void merge_folder_faces(df::folder_path folder_path,
+	                        const std::vector<std::pair<str::cached, df::face_set_ptr>>& rows,
+	                        uint64_t generation);
+	// The stored face rows have all arrived, so a grouping pass has something whole to run over.
+	void face_rows_loaded(uint64_t generation);
+	bool are_face_rows_loaded() const { return _face_rows_loaded; }
+	bool face_search_enabled() const { return _face_search_enabled.load(); }
+	bool face_engine_available() const { return faces::face_engine_available() && !_face_engine_failed.load(); }
+	bool face_picture_count_complete() const { return _folders_indexed.load(); }
+	uint64_t face_generation() const { return _face_generation.load(); }
+	bool is_face_search_applicable(const df::search_t& search) const { return is_collection_search(search); }
+
+	// Walks the collection for pictures with no current face row and detects them. Incremental and
+	// resumable: progress is recorded per file, so closing mid-pass and reopening resumes.
+	void queue_scan_faces();
+	// One picture, out of turn, because it is the one on screen. No-ops when its row is already
+	// current or when it is not an eligible picture in the collection.
+	void queue_scan_faces_for(df::file_path path);
+	struct face_scan_result
+	{
+		df::file_path path;
+		df::date_t source_modified;
+		df::face_set_ptr faces;
+	};
+	void save_faces(std::vector<face_scan_result> results, uint64_t generation);
+	// Re-groups everything the index currently holds and republishes the palette.
+	void queue_update_face_groups();
+
+	std::vector<faces::palette_entry> face_palette() const;
+	// Every face group in palette order. The sidebar shortlists distinct appearances; Faces lists all.
+	std::vector<faces::palette_entry> face_palette_entries() const;
+	// The terms the largest groups matching this prefix are spelled as, for address-box completion.
+	// Filtered and bounded here, because completion runs on every keystroke.
+	std::vector<std::string> face_palette_terms(std::string_view prefix, size_t max_terms) const;
+	// True once the collection has been read and grouped, so an empty answer means nobody rather than
+	// not yet. docs/faces.md: a partial answer says it is partial.
+	bool face_scan_complete() const;
+	// What searching for each of the displayed picture's faces would ask for, and how much of the
+	// collection that accounts for. Same terms and counts as the palette.
+	std::vector<faces::face_summary> face_summaries(df::file_path path, const df::face_set& fs) const;
+	// Everything a search needs to answer its face terms, resolved once rather than per item.
+	faces::query_context build_face_query_context(const df::search_t& search) const;
+
+	// The faces found in one file, for drawing them on the picture they were found in. Null when face
+	// search has not looked at it; empty when it looked and found nobody.
+	df::face_set_ptr faces_for(df::file_path path) const;
+	// Which of those faces the current search is asking for, so the picture can say which one it
+	// matched on. One flag per face, in face order; all false when the search names no face.
+	std::vector<uint8_t> face_search_matches(const df::face_set& fs, const df::search_t& search) const;
+	// Advances whenever any file's face payload changes, so a cached answer can tell it is stale
+	// without comparing the payload itself.
+	uint64_t face_content_revision() const { return _face_content_revision.load(); }
+
+	// Turning the feature on starts the pass; turning it off stops it and drops every derived row.
+	void set_face_search_enabled(bool enabled);
 
 	void save_media_position(df::file_path id, double media_position);
 	// Each carries the revision its hash was read from; a file whose index entry no longer matches

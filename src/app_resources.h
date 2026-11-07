@@ -6,15 +6,17 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: The application's embedded assets - the index database's schema and the world map - which
-// app_resources.cpp links in from arrays the build generates from src/Res, on every platform.
+// Purpose: The application's embedded schema, world map and optional externally supplied face model,
+// linked from arrays the build generates on every platform.
 
 #pragma once
 
 enum class app_resource
 {
 	sql,
-	map_png
+	map_png,
+	face_model_param,
+	face_model_bin
 };
 
 df::blob load_app_resource(app_resource r);

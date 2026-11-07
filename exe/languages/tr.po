@@ -3933,3 +3933,64 @@ msgid "1 of the items shown"
 msgid_plural "{count} of the items shown"
 msgstr[0] "Gösterilen öğelerden 1"
 msgstr[1] "Gösterilen öğelerden {count}"
+msgid "face"
+msgstr ""
+
+msgid "Faces"
+msgstr ""
+
+msgid "Face search"
+msgstr ""
+
+msgid "Group the faces in your pictures so you can search for the ones that look alike."
+msgstr ""
+
+msgid "Find pictures with similar faces. Matches can include different people or miss the same person."
+msgstr ""
+
+msgid "Every picture in the collection is read again. This takes a while, runs in the background, and can be stopped at any time."
+msgstr ""
+
+msgid "Faces are found in the indexed collection only. To include a folder, add it to your collection."
+msgstr ""
+
+msgid "Everything stays on this machine, in the index database, and is never sent anywhere."
+msgstr ""
+
+msgid "Turning face search off discards every face and group. Turning it back on finds them again by reading your pictures."
+msgstr ""
+
+msgid "Find faces in my pictures"
+msgstr ""
+
+msgid "Finding faces"
+msgstr ""
+
+msgid "Reading the pictures in your collection to find faces. This runs in the background."
+msgstr ""
+
+msgid "Still looking - this is not the whole collection yet."
+msgstr ""
+
+msgid "Face search is not available in this build."
+msgstr ""
+
+msgid "Similar faces"
+msgstr ""
+
+msgid "Zoom to this face"
+msgstr ""
+
+msgid "Crop to this face"
+msgstr ""
+
+msgid "Search for this face"
+msgstr ""
+
+msgid "No faces found yet."
+msgstr ""
+
+msgid "{count} picture to read"
+msgid_plural "{count} pictures to read"
+msgstr[0] ""
+msgstr[1] ""

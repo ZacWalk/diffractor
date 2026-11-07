@@ -6,9 +6,8 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: The application's embedded assets - the index database's schema and the world map - linked
-// in from arrays the build generates from src/Res, the same bytes on every platform, and its mark,
-// drawn at whatever size it is wanted.
+// Purpose: The application's embedded schema, world map and optional externally supplied face model,
+// linked from generated arrays on every platform, and its mark drawn at whatever size it is wanted.
 
 #include "pch.h"
 #include "app_resources.h"
@@ -18,6 +17,12 @@ extern const unsigned char diffractor_resource_sql[];
 extern const unsigned long diffractor_resource_sql_size;
 extern const unsigned char diffractor_resource_map_png[];
 extern const unsigned long diffractor_resource_map_png_size;
+#ifdef DIFFRACTOR_HAS_FACE_MODEL
+extern const unsigned char diffractor_resource_face_model_param[];
+extern const unsigned long diffractor_resource_face_model_param_size;
+extern const unsigned char diffractor_resource_face_model_bin[];
+extern const unsigned long diffractor_resource_face_model_bin_size;
+#endif
 
 df::blob load_app_resource(const app_resource r)
 {
@@ -27,6 +32,20 @@ df::blob load_app_resource(const app_resource r)
 		return {diffractor_resource_sql, diffractor_resource_sql + diffractor_resource_sql_size};
 	case app_resource::map_png:
 		return {diffractor_resource_map_png, diffractor_resource_map_png + diffractor_resource_map_png_size};
+	case app_resource::face_model_param:
+#ifdef DIFFRACTOR_HAS_FACE_MODEL
+		return {diffractor_resource_face_model_param,
+		        diffractor_resource_face_model_param + diffractor_resource_face_model_param_size};
+#else
+		return {};
+#endif
+	case app_resource::face_model_bin:
+#ifdef DIFFRACTOR_HAS_FACE_MODEL
+		return {diffractor_resource_face_model_bin,
+		        diffractor_resource_face_model_bin + diffractor_resource_face_model_bin_size};
+#else
+		return {};
+#endif
 	}
 
 	return {};

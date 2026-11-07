@@ -13,6 +13,7 @@
 
 #include "files.h"
 #include "app_text.h"
+#include "model_faces.h"
 #include "model_search.h"
 #include "ui_elements.h"
 
@@ -465,6 +466,10 @@ namespace df
 		// a set whose first entry is crypto::phash_declined means hashed and refused.
 		mutable prop::item_metadata_aptr metadata;
 		mutable df::picture_hashes_aptr phash;
+		// Every face found in this file, published the same way. Null means face search has not looked
+		// at this file - which is also what it means when face search is off, because off means absent.
+		// An empty set means it looked and found nobody.
+		mutable df::face_set_aptr faces;
 
 		file_type_ref ft = nullptr;
 		file_size size;
@@ -489,6 +494,7 @@ namespace df
 		index_file_item(const index_file_item& other)
 			: metadata(other.metadata.load()),
 			  phash(other.phash.load()),
+			  faces(other.faces.load()),
 			  ft(other.ft),
 			  size(other.size),
 			  file_created(other.file_created),
@@ -506,6 +512,7 @@ namespace df
 		index_file_item(index_file_item&& other) noexcept
 			: metadata(other.metadata.load()),
 			  phash(other.phash.load()),
+			  faces(other.faces.load()),
 			  ft(other.ft),
 			  size(std::move(other.size)),
 			  file_created(std::move(other.file_created)),
@@ -520,6 +527,7 @@ namespace df
 		{
 			other.metadata.store(nullptr);
 			other.phash.store(nullptr);
+			other.faces.store(nullptr);
 		}
 
 		index_file_item& operator=(const index_file_item& other)
@@ -539,6 +547,7 @@ namespace df
 			exact_duplicate_group = other.exact_duplicate_group.load();
 			crc32c = other.crc32c.load();
 			phash = other.phash.load();
+			faces = other.faces.load();
 			return *this;
 		}
 
@@ -561,6 +570,8 @@ namespace df
 			crc32c = other.crc32c.load();
 			phash = other.phash.load();
 			other.phash.store(nullptr);
+			faces = other.faces.load();
+			other.faces.store(nullptr);
 			return *this;
 		}
 
