@@ -14,6 +14,7 @@
     - run        : Run the recently built diffractor64.exe
     - run32      : Run the recently built diffractor32.exe (32-bit)
     - cpu        : Run diffractor64.exe using CPU software rendering
+    - linux      : Build the Linux application in WSL and run it there, shown through WSLg
     - build      : Bump the build number and build Release x64 (diffractor64.exe)
     - test       : Lint the repository, run unit tests and validate translation (.po) files
     - bean       : Run unit tests with the temp folder on the bean NAS (\\bean.local\home\tmp)
@@ -59,7 +60,7 @@
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("desktop", "store", "run", "run32", "cpu", "test", "bean", "build", "bump-build", "bump-ver", "deploy", "release", "loc", "code", "clear-cache", "setup", "configure", "clean", "info", "help", "")]
+    [ValidateSet("desktop", "store", "run", "run32", "cpu", "linux", "test", "bean", "build", "bump-build", "bump-ver", "deploy", "release", "loc", "code", "clear-cache", "setup", "configure", "clean", "info", "help", "")]
     [string]$Command = "",
 
     # Package the version already in the tree, for rebuilding a submission that was never accepted.
@@ -295,6 +296,7 @@ function Show-Usage {
     Write-Host "  configure    Configure the CMake/Ninja build"
     Write-Host "  clean        Remove the CMake build directory"
     Write-Host "  info         Report host, build directory and detected tooling"
+    Write-Host "  linux        Build the Linux application and run it - from Windows in WSL, shown through WSLg"
     Write-Host ""
     Write-Host "  build / test / run use CMake and Ninja on both hosts."
     Write-Host ""
@@ -307,6 +309,7 @@ function Show-Usage {
     Write-Host "  .\dd.ps1 run          Run diffractor64.exe"
     Write-Host "  .\dd.ps1 run32        Run diffractor32.exe"
     Write-Host "  .\dd.ps1 cpu          Run diffractor64.exe using CPU software rendering"
+    Write-Host "  .\dd.ps1 linux        Build and run the Linux build in WSL (Release; --config Debug for Debug)"
     Write-Host "  .\dd.ps1 test         Lint, run unit tests and validate .po files"
     Write-Host ""
 }
@@ -1454,6 +1457,7 @@ switch ($Command) {
     "configure" { Invoke-DdPython -Action "configure" -Arguments $Rest }
     "clean" { Invoke-DdPython -Action "clean" -Arguments $Rest }
     "info" { Invoke-DdPython -Action "info" -Arguments $Rest }
+    "linux" { Invoke-DdPython -Action "linux" -Arguments $Rest }
 
     "build" {
         if ($IsLinuxHost) { Invoke-DdPython -Action "build" -Arguments $Rest }

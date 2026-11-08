@@ -95,6 +95,70 @@ function Get-BlankedSource {
     return $sb.ToString()
 }
 
+$script:blankedSources = @{}
+
+function Get-BlankedFile {
+    <#
+        A source file's text with comments and literals blanked, read and blanked once however many
+        rules ask for it: blanking is most of what the lint costs.
+    #>
+    param([string]$Path)
+
+    if (-not $script:blankedSources.ContainsKey($Path)) {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $script:blankedSources[$Path] = if ($raw) { Get-BlankedSource $raw } else { '' }
+    }
+
+    return $script:blankedSources[$Path]
+}
+
+function Find-ClassDefinitions {
+    <#
+        The classes a file defines at namespace scope outside any anonymous namespace, each as its
+        qualified name and where it is defined. Forward declarations, enum classes and the
+        specializations of another namespace's template (struct std::hash<...>) define no class of
+        the file's own and are passed over; classes nested in classes or functions cannot collide
+        across files and are not counted.
+    #>
+    param([string]$Path)
+
+    $text = Get-BlankedFile $Path
+    if (-not $text) { return }
+
+    $token = [regex]('\bnamespace(?:\s+([A-Za-z_][\w:]*))?\s*\{' +
+        '|(?<!\benum\s+)\b(?:class|struct)\s+([A-Za-z_]\w*)(?!\s*::)\s*(?:final\s*)?(?::(?!:)[^{;()]*)?\{' +
+        '|[{}]')
+    $scopes = [System.Collections.Generic.List[string]]::new()
+    $line = 1
+    $counted = 0
+
+    foreach ($m in $token.Matches($text)) {
+        if ($m.Value -eq '}') {
+            if ($scopes.Count -gt 0) { $scopes.RemoveAt($scopes.Count - 1) }
+        }
+        elseif ($m.Value -eq '{') {
+            $scopes.Add('{')
+        }
+        elseif ($m.Value.StartsWith('namespace')) {
+            $scopes.Add($(if ($m.Groups[1].Success) { "ns:$($m.Groups[1].Value)" } else { 'ns:' }))
+        }
+        else {
+            # Only a class whose every enclosing scope is a named namespace has a name the linker shares.
+            $shared = $true
+            foreach ($s in $scopes) { if ($s -notlike 'ns:?*') { $shared = $false; break } }
+
+            if ($shared) {
+                $line += $text.Substring($counted, $m.Index - $counted).Split("`n").Count - 1
+                $counted = $m.Index
+                $qualified = (@($scopes | ForEach-Object { $_.Substring(3) }) + $m.Groups[2].Value) -join '::'
+                [pscustomobject]@{ Name = $qualified; At = "src/$(Split-Path $Path -Leaf):$line" }
+            }
+
+            $scopes.Add('class')
+        }
+    }
+}
+
 function Find-CaptureAndMove {
     <#
         One call that both captures a variable by copy, for a lambda, and std::move-s that same
@@ -103,9 +167,8 @@ function Find-CaptureAndMove {
     #>
     param([string]$Path)
 
-    $raw = Get-Content -Raw -LiteralPath $Path
-    if (-not $raw) { return }
-    $text = Get-BlankedSource $raw
+    $text = Get-BlankedFile $Path
+    if (-not $text) { return }
     $n = $text.Length
 
     # Requiring a body after the bracket keeps attributes and array subscripts out.
@@ -305,18 +368,28 @@ try {
         }
     }
 
+    $rules['one-definition'] = @{
+        Why   = 'AGENTS.md "One definition": two files defining a class of one name define one class to the linker, whose objects then run each other''s code.'
+        Check = {
+            $sourceFiles | ForEach-Object { Find-ClassDefinitions $_.FullName } |
+                Group-Object Name |
+                Where-Object { @($_.Group | ForEach-Object { ($_.At -split ':')[0] } | Select-Object -Unique).Count -gt 1 } |
+                ForEach-Object {
+                    "$($_.Name) is defined in $(@($_.Group | ForEach-Object { $_.At }) -join ' and ') -- rename one, or put it in an anonymous namespace"
+                }
+        }
+    }
+
     $rules['frame-accessor'] = @{
-        # ui_dialog.h is excluded because it declares both a ui::frame_ptr and a
-        # ui::control_frame_ptr named _frame in different classes, and only the first is
-        # covered by the rule. Text alone cannot tell the two apart.
+        # ui_dialog.h is excluded because it declares two ui::frame_ptr members named _frame in different
+        # classes: a dialog's, never null since the dialog stands ui::no_frame() in when its window could
+        # not be made, and a control's, which can be unset. Only the second is covered by the rule, and
+        # text alone cannot tell the two apart.
         Why   = 'AGENTS.md "Absent handles": a ui::frame_ptr member is reached only through its no_frame() accessor.'
         Check = {
             $sourceFiles |
                 Where-Object { $_.Name -ne 'ui_dialog.h' } |
-                Where-Object {
-                    $t = Get-Content $_.FullName -Raw
-                    $t -match '(?m)^\s*(?:ui::)?frame_ptr\s+_frame\s*;' -and $t -notmatch 'control_frame_ptr\s+_frame'
-                } |
+                Where-Object { (Get-Content $_.FullName -Raw) -match '(?m)^\s*(?:ui::)?frame_ptr\s+_frame\s*;' } |
                 Select-String -Pattern '(?<![A-Za-z0-9_])_frame->' |
                 ForEach-Object { "src/$($_.Filename):$($_.LineNumber): $($_.Line.Trim()) -- use frame() instead" }
         }

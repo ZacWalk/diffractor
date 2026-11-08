@@ -1848,7 +1848,7 @@ public:
 	void modify_items(const df::results_ptr& dlg, icon_index icon, std::string_view title,
 	                  const df::item_elements& items_to_modify, const metadata_edits& edits,
 	                  const view_host_base_ptr& view);
-	void modify_items(const ui::control_frame_ptr& frame, icon_index icon, std::string_view title,
+	void modify_items(const ui::frame_ptr& frame, icon_index icon, std::string_view title,
 	                  const df::item_elements& items_to_modify, const metadata_edits& edits,
 	                  const view_host_base_ptr& view);
 	// One in-place batch write. The caller says what each item's edit is; everything behind the write -

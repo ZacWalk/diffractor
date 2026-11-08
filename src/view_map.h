@@ -188,7 +188,7 @@ inline void map_pan_controller::on_mouse_move(const pointi loc)
 
 		if (_host)
 		{
-			_host->invalidate_view(view_invalid::tooltip | view_invalid::view_redraw);
+			_host->invalidate(ui::host_invalid::tooltip | ui::host_invalid::redraw);
 		}
 	}
 }

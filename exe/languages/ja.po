@@ -971,9 +971,6 @@ msgstr "不明なエラーが発生しました。"
 msgid "Diffractor requires Windows 7 or newer."
 msgstr "DiffractorにはWindows 7以降が必要です。"
 
-msgid "Failed to register windows common control classes."
-msgstr "Windowsコモンコントロールクラスの登録に失敗しました。"
-
 msgid "Failed to initialize Winsock"
 msgstr "Winsockの初期化に失敗しました"
 

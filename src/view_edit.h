@@ -213,7 +213,7 @@ public:
 		return {0, 0, _extent.cx, _extent.cy};
 	}
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 	static ui::const_surface_ptr build_preview_surface(const ui::const_surface_ptr& source, sizei loaded_dimensions,
 	                                                   const image_edits& edits);
 	ui::const_surface_ptr preview_surface() const;
@@ -241,7 +241,7 @@ public:
 	bool escape() override;
 	void save_current();
 	void save(df::file_path src_path, df::file_path dst_path, std::string_view xmp_name,
-	          const ui::control_frame_ptr& owner, std::function<void(bool)> complete) const;
+	          const ui::frame_ptr& owner, std::function<void(bool)> complete) const;
 	bool has_changes() const;
 	void select_item(const df::item_element_ptr& item);
 	void render(ui::draw_context& dc, view_controller_ptr controller) override;
@@ -258,7 +258,7 @@ public:
 
 	static void draw_handle(ui::draw_context& dc, recti handle_bounds2, float alpha);
 
-	bool check_path(df::file_path& path, const ui::control_frame_ptr& owner) const;
+	bool check_path(df::file_path& path, const ui::frame_ptr& owner) const;
 	df::item_element_ptr next_editable_item(bool forward) const;
 	void save_and_next(bool forward);
 	void save_as();

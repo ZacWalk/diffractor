@@ -41,7 +41,8 @@ complete batch target; a displayed or pinned item does not silently enlarge it.
 ### Command Availability
 
 A command is offered when its effect is visible on the current surface and its target qualifies.
-Ineligible target commands retain a concrete disabled reason. A submenu reflects the eligibility of
+Ineligible target commands retain a concrete disabled reason, which a toolbar button's bubble shows
+beside the dimmed command; a menu dims the command without it. A submenu reflects the eligibility of
 its entries. A platform capability that does not exist is absent rather than permanently disabled.
 Configured external tools in the Open menu declare a singular `{item-path}` invocation, so they are
 offered only when exactly one file is selected. Multi-file selections omit those entries; association
@@ -50,7 +51,9 @@ handlers that accept the whole selected set remain available when the selection 
 Commands affecting list contents or presentation belong to Items. Commands affecting rendered media
 belong to Items and Fullscreen. Task commands belong to their task view. Keyboard, toolbar, menu,
 context-menu, and accessibility entry points share the same eligibility, target, confirmation, and
-effect.
+effect. The Items and media context menus open with the commonest commands on their target - Cut,
+Copy, Rename and Delete, and Paste in Items - as a row of buttons, each named under its icon, which
+are not listed again below.
 
 ## Vocabulary
 

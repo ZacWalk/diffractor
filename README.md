@@ -37,6 +37,7 @@ Everything goes through the `dd` gateway, which finds Visual Studio, configures 
 .\dd.ps1 test                                            # build, lint, test, check translations
 python tools/dd.py build --config Release --arch x86     # the 32-bit desktop binary
 python tools/dd.py build --winstore                      # the Store binary
+.\dd.ps1 linux                                           # build the Linux binary in WSL and run it
 ```
 
 Release packaging also requires NSIS, the Windows SDK, and a code-signing certificate; `dd.ps1`

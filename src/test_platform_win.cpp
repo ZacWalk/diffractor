@@ -10,8 +10,7 @@
 // operating system itself -- extended path syntax, DXGI device loss, adapter classification and the
 // texture budget taken from it, the adapter the decode device is made on, texture recycling, the
 // crash-guard recovery session, the system font stack, the registry settings store, time zone
-// conversion, the shell drag
-// data object and the common-control paint contract the flicker-free control buffering depends on.
+// conversion, the shell drag data object and the snap-layouts caption button.
 // Keeping them here is what lets every other test file stay free of system headers.
 
 #include "pch.h"
@@ -940,7 +939,7 @@ static void should_present_a_video_frame_in_software_through_its_interface()
 	const df::scope_exit restore([restore_scaler] { ui::make_surface_scaler = restore_scaler; });
 	ui::make_surface_scaler = make_fake_frame_scaler(frames_converted);
 
-	const auto renderer = create_software_draw_context(nullptr, nullptr, false, normal_font_size);
+	const auto renderer = create_software_draw_context(nullptr, nullptr, false, ui::default_font_size);
 	const auto texture = renderer->create_texture();
 	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == ui::texture_update_result::tex_created,
 	             "a prepared picture is copied");
@@ -1385,11 +1384,6 @@ static void should_publish_pasted_bitmap_after_closing_stage()
 	assert_equal(0, stage_count, "owned stage file was removed or published");
 }
 
-// Native common controls are double buffered (buffered_control_paint) so a resize or splitter drag
-// never composites a control that has been erased but not yet drawn. That only works if the control
-// renders itself into the device context it is handed; a control that ignored the request would
-// blit an empty buffer and appear blank. This test holds comctl32 to that contract for the two
-// classes the app buffers.
 static void should_reject_unusable_file_names()
 {
 	assert_equal(true, platform::is_valid_file_name("holiday 2024.jpg"), "an ordinary name is usable");
@@ -1406,79 +1400,6 @@ static void should_reject_unusable_file_names()
 	assert_equal(false, platform::is_valid_file_name("Lpt9.jpeg"), "device names are case insensitive");
 }
 
-static void should_render_common_controls_into_a_buffer()
-{
-	const auto probe = platform::probe_buffered_control_paint();
-
-	assert_equal(true, probe.trackbar_painted_pixels > 0, "trackbar draws into a supplied dc");
-	assert_equal(true, probe.trackbar_colors > 1, "trackbar draws more than a flat fill");
-	assert_equal(true, probe.toolbar_painted_pixels > 0, "toolbar draws into a supplied dc");
-	assert_equal(true, probe.toolbar_colors > 1, "toolbar draws more than a flat fill");
-	assert_equal(true, probe.button_painted_pixels > 0, "button draws into a supplied dc");
-	assert_equal(true, probe.button_colors > 1, "button draws more than a flat fill");
-}
-
-static void should_replace_the_full_trailing_spelling_word()
-{
-	const auto invalid = [](const std::string_view word)
-	{
-		return word != "teh" && word != "x";
-	};
-
-	const auto replace_first = [](std::wstring text, const std::vector<platform::edit_spelling_range>& ranges)
-	{
-		assert_equal(1_z, ranges.size(), "one misspelling is found");
-		text.replace(static_cast<size_t>(ranges.front().pos_start),
-		             static_cast<size_t>(ranges.front().pos_end - ranges.front().pos_start), L"the");
-		return text;
-	};
-
-	assert_equal(L"the"s, replace_first(L"teh", platform::probe_edit_spelling_ranges(L"teh", invalid)),
-	             "a final word includes its last character");
-	assert_equal(L"prefix the"s, replace_first(L"prefix teh", platform::probe_edit_spelling_ranges(L"prefix teh", invalid)),
-	             "surrounding prefix text is untouched");
-	assert_equal(L"the "s, replace_first(L"teh ", platform::probe_edit_spelling_ranges(L"teh ", invalid)),
-	             "a word followed by whitespace keeps the separator");
-
-	const auto one = platform::probe_edit_spelling_ranges(L"x", invalid);
-	assert_equal(1_z, one.size(), "a one-character final word is found");
-	assert_equal(0, one.front().pos_start, "one-character start");
-	assert_equal(1, one.front().pos_end, "one-character end remains exclusive");
-}
-
-// The control checks words against the dictionary it is given and knows of no other: the application
-// supplies spell checking, and without it nothing is underlined.
-static void should_check_edit_words_against_the_supplied_dictionary()
-{
-	class listed_dictionary final : public ui::spelling_dictionary
-	{
-	public:
-		mutable std::vector<std::string> asked;
-
-		void queue_load() override {}
-
-		bool is_word_valid(const std::string_view word) const override
-		{
-			asked.emplace_back(word);
-			return word != "teh";
-		}
-
-		std::vector<std::string> suggest(std::string_view) const override { return {}; }
-		void add_word(std::string_view, std::function<void()> done) override { if (done) done(); }
-	};
-
-	listed_dictionary dictionary;
-	const auto unknown = platform::probe_edit_unknown_words(L"the teh cat", &dictionary);
-
-	assert_equal(1_z, unknown.size(), "the word the dictionary rejects is underlined");
-	assert_equal("teh"s, unknown.front().word, "which word");
-	assert_equal(4, unknown.front().pos_start, "where it starts");
-	assert_equal(7, unknown.front().pos_end, "where it ends");
-	assert_equal(3_z, dictionary.asked.size(), "every word is asked of the dictionary");
-	assert_equal(true, platform::probe_edit_unknown_words(L"the teh cat", nullptr).empty(),
-	             "without a dictionary nothing is underlined");
-}
-
 // The chrome's embedded PNGs decode with the application's decoder, which it installs before any
 // backend loads one, so both backends draw the same shadow with or without WIC.
 static void should_decode_embedded_chrome_images()
@@ -1488,47 +1409,6 @@ static void should_decode_embedded_chrome_images()
 	const auto shadow = ui::decode_embedded(load_resource(IDB_SHADOW, L"PNG"));
 	assert_equal(true, shadow != nullptr, "the shadow decodes");
 	assert_equal(true, shadow && !shadow->dimensions().is_empty(), "to an image with pixels");
-}
-
-static void should_hit_test_the_last_trailing_spelling_character()
-{
-	const auto point_x = [](const DWORD p) { return static_cast<int>(static_cast<short>(LOWORD(p))); };
-	const auto point_y = [](const DWORD p) { return static_cast<int>(static_cast<short>(HIWORD(p))); };
-
-	const auto parent = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 240, 60, nullptr, nullptr,
-	                                   get_resource_instance, nullptr);
-	assert_equal(true, parent != nullptr, "parent window created");
-	const df::scope_exit destroy_parent([parent] { if (parent) DestroyWindow(parent); });
-
-	const auto edit = CreateWindowExW(0, L"EDIT", L"prefix teh", WS_CHILD | WS_VISIBLE, 0, 0, 220, 30, parent,
-	                                 nullptr, get_resource_instance, nullptr);
-	assert_equal(true, edit != nullptr, "edit control created");
-	const df::scope_exit destroy_edit([edit] { if (edit) DestroyWindow(edit); });
-
-	const auto last_char = static_cast<DWORD>(SendMessageW(edit, EM_POSFROMCHAR, 9, 0));
-	const auto end_pos = static_cast<DWORD>(SendMessageW(edit, EM_POSFROMCHAR, 10, 0));
-	assert_equal(true, point_x(last_char) >= 0, "last character has a native edit position");
-	assert_equal(-1, point_x(end_pos), "exclusive end is past the last native edit character");
-
-	const auto bounds = platform::probe_edit_spelling_bounds(edit, 7, 10);
-	assert_equal(true, !bounds.is_empty(), "the spelling bounds include a trailing word whose end is exclusive");
-	assert_equal(true, bounds.contains({point_x(last_char) + 1, point_y(last_char) + 1}),
-	             "the spelling hit-test reaches the final character");
-}
-
-static void should_delegate_ordinary_edit_context_menus()
-{
-	using route = platform::edit_context_menu_route;
-
-	assert_equal(static_cast<int>(route::native_edit_procedure),
-	             static_cast<int>(platform::probe_edit_context_menu_route(false, false)),
-	             "spelling-disabled or correctly-spelled text is delegated");
-	assert_equal(static_cast<int>(route::native_edit_procedure),
-	             static_cast<int>(platform::probe_edit_context_menu_route(true, false)),
-	             "a failed custom menu creation is delegated");
-	assert_equal(static_cast<int>(route::custom_spelling_menu),
-	             static_cast<int>(platform::probe_edit_context_menu_route(true, true)),
-	             "a real misspelling shows exactly the custom spelling menu");
 }
 
 static void should_offer_the_maximize_caption_button_only_on_a_resizable_frame()
@@ -1558,31 +1438,6 @@ static void should_offer_the_maximize_caption_button_only_on_a_resizable_frame()
 	             "a maximized frame still keeps the top of its frame clear for when it is restored");
 	assert_equal(false, platform::can_present_maximize_caption_button(df::os_release::windows_10, frame),
 	             "Windows 10 frames keep their frame as it was");
-}
-
-static void should_invoke_the_maximize_caption_button_only_on_a_release_over_its_press()
-{
-	platform::caption_button_tracker t;
-
-	assert_equal(true, t.hover(7), "resting on the button lights it");
-	assert_equal(false, t.hover(7), "moving within it changes nothing");
-	assert_equal(0, t.release(7), "a release without a press invokes nothing");
-
-	assert_equal(true, t.press(7), "pressing shows it pressed");
-	assert_equal(7, t.release(7), "a release over the pressed button invokes it");
-	assert_equal(0, t.pressed_id, "the press ends with the release");
-	assert_equal(0, t.hover_id, "invoking forgets the hover, because the frame moves under the pointer");
-
-	t.press(7);
-	assert_equal(true, t.leave(), "leaving puts the light out");
-	assert_equal(0, t.release(7), "a press abandoned by leaving invokes nothing");
-
-	t.press(7);
-	assert_equal(true, t.hover(0), "resting off the button redraws it");
-	assert_equal(0, t.release(7), "a press abandoned by resting elsewhere invokes nothing");
-
-	t.press(7);
-	assert_equal(0, t.release(8), "a release over another button invokes nothing");
 }
 
 static void should_answer_hit_tests_on_the_maximize_toolbar_button_as_the_caption_button()
@@ -1810,22 +1665,10 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	// PLAT-006 - pasted bitmap stages close before publication and cleanup.
 	tests.add("Should publish pasted bitmap after closing stage"s, should_publish_pasted_bitmap_after_closing_stage);
 	tests.add("Should reject unusable file names"s, should_reject_unusable_file_names);
-	tests.add("Should render common controls into a buffer"s, should_render_common_controls_into_a_buffer);
-	// PLAT-011 - trailing spelling correction range.
-	tests.add("Should replace the full trailing spelling word"s, should_replace_the_full_trailing_spelling_word);
-	tests.add("Should check edit words against the supplied dictionary"s,
-	          should_check_edit_words_against_the_supplied_dictionary);
 	tests.add("Should decode embedded chrome images"s, should_decode_embedded_chrome_images);
-	tests.add("Should hit test the last trailing spelling character"s,
-	          should_hit_test_the_last_trailing_spelling_character);
-	// PLAT-012 - native edit context-menu routing.
-	tests.add("Should delegate ordinary common controls edit context menus"s,
-	          should_delegate_ordinary_edit_context_menus);
 	// Windows 11 snap layouts appear over the button a window reports as its maximize caption button.
 	tests.add("Should offer the maximize caption button only on a resizable frame"s,
 	          should_offer_the_maximize_caption_button_only_on_a_resizable_frame);
-	tests.add("Should invoke the maximize caption button only on a release over its press"s,
-	          should_invoke_the_maximize_caption_button_only_on_a_release_over_its_press);
 	tests.add("Should answer hit tests on the maximize toolbar button as the caption button"s,
 	          should_answer_hit_tests_on_the_maximize_toolbar_button_as_the_caption_button);
 	// PLAT-018 - coherent locale-format snapshots.

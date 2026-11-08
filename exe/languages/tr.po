@@ -971,9 +971,6 @@ msgstr "Bilinmeyen bir hata oluştu."
 msgid "Diffractor requires Windows 7 or newer."
 msgstr "Diffractor, Windows 7 veya daha yenisini gerektirir."
 
-msgid "Failed to register windows common control classes."
-msgstr "Windows ortak kontrol sınıfları kaydedilemedi."
-
 msgid "Failed to initialize Winsock"
 msgstr "Winsock başlatılamadı"
 

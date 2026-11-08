@@ -4113,12 +4113,9 @@ static void should_open_a_video_with_its_sidecar_subtitles()
 	const platform::thread_event audio_event(false, false);
 	ses->process_io(video_event, audio_event);
 
-#ifdef _WIN32
-	// Only Windows rasterises text; Linux has no text renderer for subtitles yet.
 	const auto now = df::now();
 	assert_equal(1_z, ses->subtitles(now).size(), "the line is on show from the start");
 	assert_equal(true, ses->subtitles_key(now) != 0, "with a key");
-#endif
 
 	ses->close(false);
 
@@ -4163,12 +4160,9 @@ static void should_rebuild_the_scene_once_for_each_subtitle_change()
 
 	const auto now = df::now();
 
-#ifdef _WIN32
-	// Only Windows rasterises text; Linux has no text renderer for subtitles yet.
 	assert_equal(true, ses->subtitles_key(now) != 0, "a line is on show");
 	assert_equal(true, display->update_for_present(now) == render_valid::invalid,
 	             "a line nothing has drawn yet rebuilds the scene");
-#endif
 
 	assert_equal(true, display->update_for_present(now) == render_valid::valid,
 	             "and asks once: a view that does not draw the picture is not repainted on every tick");

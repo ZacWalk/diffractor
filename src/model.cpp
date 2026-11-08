@@ -95,7 +95,7 @@ void view_state::toggle_rating(const df::results_ptr& results, const df::item_el
 }
 
 
-void view_state::modify_items(const ui::control_frame_ptr& frame, const icon_index icon, const std::string_view title,
+void view_state::modify_items(const ui::frame_ptr& frame, const icon_index icon, const std::string_view title,
                               const df::item_elements& items_to_modify, const metadata_edits& edits,
                               const view_host_base_ptr& view)
 {
@@ -1734,7 +1734,7 @@ static view_element_ptr make_link(view_state& s, std::string_view text, const pr
 
 static uint32_t calc_rank_color()
 {
-	return ui::average(app_colors::rank_background, ui::style::color::view_text);
+	return ui::average(app_colors::rank_background, ui::style::colors.view_text);
 }
 
 static std::vector<view_element_ptr> format_dims(const uint16_t width, const uint16_t height, const file_type_ref ft,
@@ -2309,7 +2309,7 @@ public:
 				for (const auto& part : ordered_unique)
 				{
 					const auto found = std::ranges::find(_sidecar_attributes, part, &sidecar_attribute::name);
-					table->add(part, ui::average(app_colors::sidecar_background, ui::style::color::view_text),
+					table->add(part, ui::average(app_colors::sidecar_background, ui::style::colors.view_text),
 					           found == _sidecar_attributes.end()
 						           ? std::string{}
 						           : platform::format_date(found->modified.system_to_local()),
@@ -2343,7 +2343,7 @@ public:
 						{
 							table->add(item.second.name,
 							           ui::average(app_colors::duplicate_background,
-							                       ui::style::color::view_text),
+							                       ui::style::colors.view_text),
 							           platform::format_date(item.second.file_modified.load().system_to_local()),
 							           df::format_size(item.second.size));
 						}
@@ -4605,7 +4605,7 @@ static void draw_display_problem(ui::draw_context& rc, const recti media_bounds,
 	}
 
 	rc.draw_text(text, media_bounds, ui::style::font_face::dialog, ui::style::text_style::multiline_center,
-	             ui::color(ui::style::color::view_text, alpha), {});
+	             ui::color(ui::style::colors.view_text, alpha), {});
 }
 
 static sizei oriented_dimensions(const file_load_result& loaded)
@@ -4857,7 +4857,7 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 	const auto tex = _vid_tex && _vid_tex->is_valid() ? _vid_tex : _tex;
 	if ((!tex || !tex->is_valid()) && !media_bounds.is_empty())
 	{
-		rc.draw_rect(media_bounds.offset(offset), ui::color(ui::style::color::group_background, alpha));
+		rc.draw_rect(media_bounds.offset(offset), ui::color(ui::style::colors.group_background, alpha));
 		draw_display_problem(rc, media_bounds.offset(offset), _display_problem, calc_display_dimensions(), alpha);
 	}
 
@@ -5060,7 +5060,7 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 
 	// Sphere the file does not hold, and every frame before the first decode arrives, read as the
 	// same empty surround rather than as whatever was drawn there last.
-	rc.draw_rect(media_bounds.offset(offset), ui::color(ui::style::color::group_background, 1.0f));
+	rc.draw_rect(media_bounds.offset(offset), ui::color(ui::style::colors.group_background, 1.0f));
 
 	const auto& source = ui::is_valid(_retained_surface) ? _retained_surface : _loaded.s;
 

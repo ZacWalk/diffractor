@@ -91,7 +91,7 @@ public:
 	void on_marker_hover(view_hover_element& hover, int marker_index, int count, pointi anchor) override;
 	void on_marker_clicked(const gps_coordinate& coordinate, int count) override;
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
 	void exit() override
 	{

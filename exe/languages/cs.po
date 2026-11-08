@@ -1027,9 +1027,6 @@ msgstr "Došlo k neznámé chybě."
 msgid "Diffractor requires Windows 7 or newer."
 msgstr "Diffractor vyžaduje Windows 7 nebo novější."
 
-msgid "Failed to register windows common control classes."
-msgstr "Nepodařilo se zaregistrovat běžné třídy ovládání systému Windows."
-
 msgid "Failed to initialize Winsock"
 msgstr "Inicializace Winsock se nezdařila"
 

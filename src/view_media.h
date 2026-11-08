@@ -230,11 +230,11 @@ public:
 				progress_bounds.top = progress_bounds.bottom - df::round(16 * scale_factor);
 				progress_bounds.right = progress_bounds.left + df::round(64 * scale_factor);
 
-				dc.draw_rect(progress_bounds, ui::color(ui::style::color::group_background, alpha * 0.7f));
+				dc.draw_rect(progress_bounds, ui::color(ui::style::colors.group_background, alpha * 0.7f));
 
 				auto r = progress_bounds.inflate(df::round(-2 * scale_factor));
 				r.right = r.left + df::mul_div(std::min(_display->slideshow_pos(), 1000), r.width(), 1000);
-				dc.draw_rect(r, ui::color(ui::style::color::view_selected_background, alpha * 0.7f));
+				dc.draw_rect(r, ui::color(ui::style::colors.view_selected_background, alpha * 0.7f));
 			}
 		}
 
@@ -245,7 +245,6 @@ public:
 	{
 		_client_extent = extent;
 
-		ui::control_layouts positions;
 		auto avail_bounds = calc_media_bounds();
 		const auto scale_factor = mc.scale_factor;
 
@@ -285,7 +284,7 @@ public:
 				controls_left + controls_width, control_limit.bottom
 			};
 
-			_controls_element->layout(mc, control_bounds, positions);
+			_controls_element->layout(mc, control_bounds);
 
 			// The description takes only the free space between the controls and the right edge, so
 			// showing one never narrows the controls or moves them.
@@ -303,7 +302,7 @@ public:
 					control_limit.right - description_width, control_limit.bottom - description_height,
 					control_limit.right, control_limit.bottom
 				};
-				_description_element->layout(mc, description_bounds, positions);
+				_description_element->layout(mc, description_bounds);
 				panel_height = std::max(panel_height, description_height);
 			}
 
@@ -319,9 +318,9 @@ public:
 		const auto right_top = (avail_bounds.top + avail_bounds.bottom - arrow_cy) / 2;
 
 		_left_arrow_element->layout(
-			mc, recti(avail_bounds.left, left_top, avail_bounds.left + arrow_cx, left_top + arrow_cy), positions);
+			mc, recti(avail_bounds.left, left_top, avail_bounds.left + arrow_cx, left_top + arrow_cy));
 		_right_arrow_element->layout(mc, recti(avail_bounds.right - arrow_cx, right_top, avail_bounds.right,
-		                                       right_top + arrow_cy), positions);
+		                                       right_top + arrow_cy));
 
 		if (!overlay_media_control)
 		{
@@ -350,7 +349,7 @@ public:
 				}
 			}
 
-			_media_element->layout(mc, media_bounds, positions);
+			_media_element->layout(mc, media_bounds);
 		}
 
 		_host->frame()->invalidate();

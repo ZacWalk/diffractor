@@ -107,10 +107,10 @@ view_bars sync_view::bars() const
 	return task_view_bars({commands::sync_analyze, commands::sync_run});
 }
 
-view_controls_host_ptr sync_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
-	auto frame = owner->create_dlg(result, false);
+	const auto& frame = owner;
 
 	std::vector<view_element_ptr> controls;
 
@@ -138,7 +138,7 @@ view_controls_host_ptr sync_view::controls(const ui::control_frame_ptr& owner)
 				setting.sync.sync_collection = true;
 				_select_other_folder = false;
 			}
-		}, ui::radio_group_scope);
+		}, radio_group_scope);
 	controls.emplace_back(collection_check);
 
 	auto other_folder_check = std::make_shared<ui::check_control>(
@@ -151,7 +151,7 @@ view_controls_host_ptr sync_view::controls(const ui::control_frame_ptr& owner)
 				setting.sync.sync_collection = false;
 				_select_other_folder = true;
 			}
-		}, ui::radio_group_scope);
+		}, radio_group_scope);
 	other_folder_check->child(std::make_shared<ui::folder_picker_control>(frame, setting.sync.local_path, false,
 	                                                                      [this](const std::string_view)
 	                                                                      {
@@ -190,16 +190,16 @@ view_controls_host_ptr sync_view::controls(const ui::control_frame_ptr& owner)
 	}
 
 	result->_controls = controls;
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 
 	return result;
 }
 
 void sync_view::update_rows(const sync_analysis_result& analysis_result)
 {
-	const auto blue_text_color = ui::lighten(ui::style::color::dialog_selected_background, 0.55f);
-	const auto gray_text_color = ui::darken(ui::style::color::view_text, 0.22f);
-	const auto orange_text_color = ui::lighten(ui::style::color::important_background, 0.55f);
+	const auto blue_text_color = ui::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+	const auto gray_text_color = ui::darken(ui::style::colors.view_text, 0.22f);
+	const auto orange_text_color = ui::lighten(ui::style::colors.important_background, 0.55f);
 
 	std::vector<row_element_ptr> rows;
 

@@ -236,7 +236,6 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/ui_elements.cpp
         src/ui_controls.cpp
         src/ui_document.cpp
-        src/ui_flex.cpp
         src/app_commands.cpp
         src/app_dialogs.cpp
         src/app.cpp
@@ -363,6 +362,13 @@ else ()
             src/platform_linux_app.cpp
             "${_generated_resources}"
     )
+
+    # The icon font is assembled into the executable from its file, as the Windows resource script
+    # embeds it; the object depends on the file so a new font is not left behind a stale object.
+    set(_icon_font "${CMAKE_SOURCE_DIR}/src/Res/FluentSystemIcons-Resizable.ttf")
+    set_source_files_properties(src/platform_linux_app.cpp PROPERTIES
+            COMPILE_DEFINITIONS "DIFFRACTOR_ICON_FONT=\"${_icon_font}\""
+            OBJECT_DEPENDS "${_icon_font}")
 endif ()
 
 add_executable(diffractor
@@ -426,6 +432,9 @@ else ()
 endif ()
 
 diffractor_apply_app_policy(diffractor)
+
+# The entry point is libdesktop's, linked as an object so that no archive's main can take its place.
+target_link_libraries(diffractor PRIVATE libdesktop::render_main)
 
 find_package(Threads REQUIRED)
 target_link_libraries(diffractor PRIVATE Threads::Threads)

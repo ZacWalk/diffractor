@@ -47,9 +47,72 @@ APT_DEPENDENCIES = [
     "libminizip-dev",  # util_zip.cpp
 ]
 
+# libdesktop-render's window layer: Pango sets text, and SDL3, built from its pin, drives X11 and
+# Wayland through these system libraries. The same list as .github/workflows/linux.yml installs.
+APT_WINDOW_LAYER = [
+    "libpango1.0-dev",
+    "libfontconfig-dev",
+    "libfreetype-dev",
+    "libx11-dev",
+    "libxext-dev",
+    "libxrandr-dev",
+    "libxcursor-dev",
+    "libxfixes-dev",
+    "libxi-dev",
+    "libxss-dev",
+    "libxtst-dev",
+    "libxkbcommon-dev",
+    "libwayland-dev",
+    "wayland-protocols",
+    "libegl-dev",
+    "libgl-dev",
+    "libgles-dev",
+    "libdrm-dev",
+    "libgbm-dev",
+    "libdecor-0-dev",
+    "libdbus-1-dev",
+    "libudev-dev",
+]
+
 
 def is_windows() -> bool:
     return platform.system() == "Windows"
+
+
+def on_windows_drive(path: Path) -> bool:
+    """Whether path lies on a Windows drive that WSL mounted, as /mnt/c is.
+
+    A build tree there is slow, and CMake's FetchContent cannot rename the directories it extracts
+    into it: Windows refuses with "Permission denied" while anything holds a handle in them.
+    """
+    try:
+        mounts = Path("/proc/self/mounts").read_text().splitlines()
+    except OSError:
+        return False
+
+    text = str(path)
+    best, kind = "", ""
+    for line in mounts:
+        fields = line.split()
+        if len(fields) < 3:
+            continue
+        point = fields[1].replace("\\040", " ")
+        inside = text == point or text.startswith(point.rstrip("/") + "/")
+        if inside and len(point) > len(best):
+            best, kind = point, fields[2]
+    return kind in ("9p", "drvfs")
+
+
+def linux_build_dir() -> Path:
+    """Where a Linux build of this checkout goes.
+
+    A Windows checkout built from WSL builds on WSL's own filesystem instead, one tree per checkout.
+    tools/compare_ffmpeg_config.py reads FFmpeg's generated configuration from here too.
+    """
+    if on_windows_drive(REPO_ROOT):
+        cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+        return cache / "diffractor" / str(REPO_ROOT).strip("/").replace("/", "-") / "linux-build"
+    return REPO_ROOT / "tmp" / "linux-build"
 
 
 def build_dir(args: argparse.Namespace) -> Path:
@@ -64,7 +127,7 @@ def build_dir(args: argparse.Namespace) -> Path:
     silently came out without WINSTORE would ship an application-owned updater into the Store.
     """
     if not is_windows():
-        return REPO_ROOT / "tmp" / "linux-build"
+        return linux_build_dir()
 
     name = f"win-build-{getattr(args, 'arch', 'x64')}"
     if getattr(args, "winstore", False):
@@ -230,9 +293,10 @@ def cmd_setup(args: argparse.Namespace) -> None:
     if not shutil.which("apt-get"):
         sys.exit("setup currently understands apt only. Install the equivalents by hand:\n"
                  f"  toolchain:    {' '.join(APT_TOOLCHAIN)}\n"
+                 f"  window layer: {' '.join(APT_WINDOW_LAYER)}\n"
                  f"  dependencies: {' '.join(APT_DEPENDENCIES)}")
 
-    wanted = APT_TOOLCHAIN + APT_DEPENDENCIES
+    wanted = APT_TOOLCHAIN + APT_WINDOW_LAYER + APT_DEPENDENCIES
     missing = missing_apt_packages(wanted)
 
     say("")
@@ -352,11 +416,36 @@ def cmd_run(args: argparse.Namespace) -> None:
     run([str(binary), *args.rest], check=False)
 
 
+def cmd_linux(args: argparse.Namespace) -> None:
+    """Build the Linux application and run it: from Windows inside WSL, whose WSLg shows the window."""
+    if is_windows():
+        if not shutil.which("wsl"):
+            sys.exit("dd linux needs WSL. Install it with 'wsl --install', then run './dd setup' inside it.")
+        forwarded = ["--config", args.config, *args.rest]
+        sys.exit(run(["wsl", "--cd", str(REPO_ROOT), "--exec", "python3", "tools/dd.py", "linux", *forwarded],
+                     check=False))
+
+    # The packages the default build cannot do without; the bring-up conveniences are not needed.
+    if shutil.which("dpkg-query"):
+        missing = missing_apt_packages(APT_TOOLCHAIN + APT_WINDOW_LAYER)
+        if missing:
+            sys.exit(f"Missing {' '.join(missing)}. Run './dd setup' in this Linux shell; it needs sudo.")
+
+    if not os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("DISPLAY"):
+        sys.exit("No display: neither WAYLAND_DISPLAY nor DISPLAY is set. Under WSL, WSLg provides both.")
+
+    cmd_build(args)
+    say("")
+    cmd_run(args)
+
+
 def cmd_test(args: argparse.Namespace) -> None:
     binary = binary_path(args)
     if not binary.exists():
         sys.exit(f"{binary} does not exist. Run 'dd build' first.")
-    sys.exit(run([str(binary), "/test", *args.rest], check=False))
+    # '/' begins a path, not a switch, outside Windows.
+    switch = "/test" if is_windows() else "--test"
+    sys.exit(run([str(binary), switch, *args.rest], check=False))
 
 
 def cmd_clean(args: argparse.Namespace) -> None:
@@ -394,6 +483,7 @@ COMMANDS = {
     "configure": cmd_configure,
     "build": cmd_build,
     "run": cmd_run,
+    "linux": cmd_linux,
     "test": cmd_test,
     "clean": cmd_clean,
     "info": cmd_info,
@@ -403,7 +493,7 @@ COMMANDS = {
 def main() -> None:
     parser = argparse.ArgumentParser(prog="dd", description="Diffractor build backend")
     parser.add_argument("command", choices=sorted(COMMANDS))
-    parser.add_argument("--config", default="Debug", help="CMake build type (default: Debug)")
+    parser.add_argument("--config", help="CMake build type (default: Debug; Release for linux)")
     parser.add_argument("--arch", default="x64", choices=sorted(VCVARS_ARCH),
                         help="Windows target architecture (default: x64)")
     parser.add_argument("--winstore", action="store_true", help="build the Microsoft Store variant")
@@ -415,6 +505,9 @@ def main() -> None:
     # script's own options, so `dd build --config Release` silently built Debug -- which is what
     # the Linux CI matrix was doing on both of its legs.
     args, args.rest = parser.parse_known_args()
+
+    # Running the application to look at it wants the optimised build, as dd.ps1 run does.
+    args.config = args.config or ("Release" if args.command == "linux" else "Debug")
 
     # The Store variant is Release by definition; it is the Release configuration plus a define.
     if args.winstore:

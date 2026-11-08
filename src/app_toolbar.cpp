@@ -93,17 +93,15 @@ void app_frame::create_toolbars()
 
 	ui::toolbar_styles tb_styles;
 	tb_styles.button_extent = {30, 40};
-	_navigate1 = _app_frame->create_toolbar(tb_styles, tbButtonsNav1);
-	_navigate2 = _app_frame->create_toolbar(tb_styles, tbButtonsNav2);
+	_navigate1 = ui::make_toolbar(tb_styles, tbButtonsNav1);
+	_navigate2 = ui::make_toolbar(tb_styles, tbButtonsNav2);
 
 	tb_styles.button_extent = {40, 40};
-	_navigate3 = _app_frame->create_toolbar(tb_styles, tbButtonsNav3);
+	_navigate3 = ui::make_toolbar(tb_styles, tbButtonsNav3);
 
 	ui::edit_styles search_styles;
-	search_styles.horizontal_scroll = true;
 	search_styles.rounded_corners = true;
 	search_styles.select_all_on_focus = true;
-	search_styles.bg_clr = ui::style::color::toolbar_background;
 	search_styles.capture_key_down = [this](const int key_code, const ui::key_state keys)
 	{
 		const auto key = static_cast<char32_t>(key_code);
@@ -128,29 +126,27 @@ void app_frame::create_toolbars()
 		}
 		return key == keys::TAB && !keys.control && !keys.shift && search_accept_selected();
 	};
-	_search_edit = _app_frame->create_edit(search_styles, {}, [this](const std::string_view text)
+	_search_edit = ui::make_edit(search_styles, {}, [this](const std::string_view text)
 	{
 		search_text_changed(text);
 	});
 
-	// The filter box is the address box's sibling at the other end of the window: the same native
-	// edit, so the two read, select and edit alike.
+	// The filter box is the address box's sibling at the other end of the window: the same edit, so
+	// the two read, select and edit alike.
 	ui::edit_styles filter_styles;
-	filter_styles.horizontal_scroll = true;
 	filter_styles.rounded_corners = true;
 	filter_styles.select_all_on_focus = true;
-	filter_styles.bg_clr = ui::style::color::toolbar_background;
 	filter_styles.cue = tt.filter.sv();
 	filter_styles.capture_key_down = [this](const int key_code, const ui::key_state keys)
 	{
 		return filter_key_down(static_cast<char32_t>(key_code), keys);
 	};
-	_filter_edit = _app_frame->create_edit(filter_styles, _state.filter().text(), [this](const std::string_view text)
+	_filter_edit = ui::make_edit(filter_styles, _state.filter().text(), [this](const std::string_view text)
 	{
-		if (!_filter_setting_text) filter_text_changed(text);
+		filter_text_changed(text);
 	});
 
-	_item_size = _app_frame->create_slider(0, settings_t::item_scale_position_max,
+	_item_size = ui::make_slider(0, settings_t::item_scale_position_max,
 	                                       [this](const int pos, const bool tracking)
 	                                       {
 		                                       item_size_changed(pos, tracking);
@@ -188,7 +184,6 @@ const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries
 	if (const auto found = _bars.find(entries); found != _bars.end()) return found->second;
 
 	ui::toolbar_styles styles;
-	styles.xTBSTYLE_LIST = true;
 	styles.button_extent = {0, 0};
 
 	frame_bar result;
@@ -197,7 +192,7 @@ const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries
 	const auto close_run = [this, &result, &run, &styles]
 	{
 		if (run.empty()) return;
-		result.push_back({_app_frame->create_toolbar(styles, run)});
+		result.push_back({ui::make_toolbar(styles, run)});
 		run.clear();
 	};
 
@@ -230,7 +225,7 @@ std::vector<bar_slot> app_frame::measure_bar(ui::measure_context& mc, const fram
 	{
 		if (part.toolbar)
 		{
-			result.push_back({part.toolbar->measure_toolbar(_extent.cx)});
+			result.push_back({part.toolbar->measure_toolbar(mc, _extent.cx)});
 			continue;
 		}
 
@@ -391,9 +386,7 @@ void app_frame::filter_text_changed(const std::string_view text)
 
 void app_frame::set_filter_edit_text(const std::string_view text)
 {
-	_filter_setting_text = true;
 	_filter_edit->window_text(text);
-	_filter_setting_text = false;
 }
 
 void app_frame::focus_filter(const bool has_focus)
@@ -407,7 +400,10 @@ void app_frame::focus_filter_edit()
 {
 	// A box the status bar is not showing - Fullscreen, zoom mode - cannot take the keyboard, or
 	// typing would go somewhere the user cannot see.
-	if (_filter_edit && _filter_edit->is_visible()) _filter_edit->focus();
+	if (_filter_edit && std::ranges::find(_status_bar->_controls, _filter_edit) != _status_bar->_controls.end())
+	{
+		_filter_edit->focus();
+	}
 }
 
 // Escape abandons the edit: the filter goes back to what it was when the box took focus.
@@ -446,7 +442,7 @@ void app_frame::update_item_size_slider() const
 	if (_item_size && !_item_size_dragging)
 	{
 		const auto pos = setting.item_scale_slider_position();
-		if (_item_size->get_pos() != pos) _item_size->SetPos(pos);
+		if (_item_size->get_pos() != pos) _item_size->set_pos(pos);
 	}
 }
 
@@ -1865,7 +1861,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 // says the rest of itself when the bar had to cut it short.
 void app_frame::status_tooltip(view_hover_element& hover) const
 {
-	const auto origin = _app_frame->window_bounds().top_left();
+	const auto origin = _status_bar->frame()->window_bounds().top_left();
 
 	if (_status_hover == status_part::totals)
 	{
@@ -1912,7 +1908,7 @@ void app_frame::update_tooltip()
 	{
 		if (setting.show_help_tooltips && _app_logo_hover)
 		{
-			_app_logo->tooltip(_hover, {}, _app_frame->window_bounds().top_left());
+			_app_logo->tooltip(_hover, {}, _title_bar->frame()->window_bounds().top_left());
 		}
 		else if (setting.show_help_tooltips && _status_hover != status_part::none)
 		{

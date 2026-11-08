@@ -34,12 +34,19 @@ playback, and active view. `app_frame` coordinates windows, commands, workers, a
 Items is the windowed browser; fullscreen reuses the persistent media renderer without replacing the
 logical browsing state.
 
+The window holds three surfaces, each a frame of its own, and draws nothing itself but the line of
+background round them: the title bar and the status bar (`bar_frame`, drawn on the CPU) and between them
+the view frame (`view_frame`, drawn on the GPU where it can). The view frame holds the view, the task
+view's panel beside it - a region of the view frame, whose controls are elements of its tree, drawn,
+hit and focused with it - and the selector strip along its foot, a frame of its own. Full screen and a
+zoomed picture give the view frame the whole window.
+
 Each view declares what the frame's title bar and status bar carry for it (`view_base::bars`): command
 identifiers, and the few bar controls that are not buttons, for the title bar and for each end of the
-status bar. `app_frame` builds one set of native controls per distinct declaration before the first
+status bar. `app_frame` builds one set of toolbar controls per distinct declaration before the first
 layout, updates them with the rest of command state, and lays out only the active view's sets, the
 status bar's trailing set first so a short bar gives up its leading one; the status text and totals
-are painted by the frame itself from in-memory state, and the selection summary is the label of Items'
+are painted by the status bar from in-memory state, and the selection summary is the label of Items'
 Open button. A view therefore never creates, positions or updates a toolbar.
 
 Views, controls, hosts, controllers, and `item_element` are UI-owned. A host may outlive its native
@@ -322,5 +329,6 @@ repository lint, build, embedded tests, and translation validation. Focused test
 - [av_subtitle.cpp](../src/av_subtitle.cpp): subtitles - styling, placement, the events a session
   keeps, and the choice of track.
 - [ui_view.h](../src/ui_view.h), [ui_elements.h](../src/ui_elements.h), and
-  [ui_controllers.h](../src/ui_controllers.h): view framework.
+  [ui_controllers.h](../src/ui_controllers.h): view framework, on libdesktop's element tree
+  ([ui_elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui_elements.h)).
 - [util_crash_files_db.h](../src/util_crash_files_db.h): media crash-loop protection.

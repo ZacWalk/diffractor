@@ -32,9 +32,14 @@ enum class command_group
 	edit_item
 };
 
-// The application's tree of view elements (ui_elements.h), named here for the headers that pass one
-// around. The UI layer knows one only as a bubble's content.
-class view_elements;
+// The tree of view elements, libdesktop-render's (libdesktop/ui_elements.h), named here for the
+// headers that pass one around.
+namespace ui
+{
+	class elements;
+}
+
+using view_elements = ui::elements;
 using view_elements_ptr = std::shared_ptr<view_elements>;
 
 enum class view_type

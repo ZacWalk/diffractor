@@ -971,9 +971,6 @@ msgstr "发生未知错误。"
 msgid "Diffractor requires Windows 7 or newer."
 msgstr "Diffractor 需要 Windows 7 或更高版本。"
 
-msgid "Failed to register windows common control classes."
-msgstr "无法注册 Windows 公共控件类。"
-
 msgid "Failed to initialize Winsock"
 msgstr "初始化 Winsock 失败"
 

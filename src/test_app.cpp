@@ -1,4 +1,4 @@
-// This file is part of the Diffractor photo and video organizer
+﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 // 
 // This program is free software; you can redistribute it and / or modify it
@@ -4342,6 +4342,35 @@ static void should_offer_options_as_one_command()
 	assert_equal(true, bound.front().key == keys::F6 && bound.front().key_state == 0, "and it is F6");
 }
 
+// The items and media views' context menus open with a row of the commonest commands on what they act on
+// as buttons - cut, copy, rename and delete, and paste among items - which are not listed again below.
+static void should_open_the_context_menus_with_a_row_of_buttons()
+{
+	const auto app = std::make_shared<app_frame>(nullptr);
+	app->initialise_commands();
+
+	for (const auto type : {menu_type::items, menu_type::media})
+	{
+		const auto menu = app->context_menu(type);
+		assert_equal(true, menu.size() > 2 && menu[0] && !menu[0]->buttons.empty() && menu[1] == nullptr,
+		             "the menu opens with a row of buttons and a separator");
+
+		for (const auto id : {commands::edit_cut, commands::edit_copy, commands::tool_rename, commands::tool_delete})
+		{
+			const auto command = app->find_command(id);
+			assert_equal(1, static_cast<int>(std::ranges::count(menu[0]->buttons, command)), "each is a button");
+			assert_equal(0, static_cast<int>(std::ranges::count(menu, command)), "and is not listed again");
+		}
+	}
+
+	const auto paste = app->find_command(commands::edit_paste);
+	assert_equal(1, static_cast<int>(std::ranges::count(app->context_menu(menu_type::items)[0]->buttons, paste)),
+	             "paste is among the items' buttons");
+
+	const auto movie = app->context_menu(menu_type::movie);
+	assert_equal(true, !movie.empty() && movie[0] && movie[0]->buttons.empty(), "the movie's menu has no row");
+}
+
 // Items starts its status bar with one toolbar: Options, Tools, Playback options and Open. All but Open
 // are icons alone. Open is labelled with what is selected and opens the same menu as the panel's Open,
 // which keeps its own name.
@@ -5312,8 +5341,8 @@ static void run_completion_worker(deferred_async_strategy& as)
 }
 
 // The order of what the address bar offers is the part a user judges. These rules live in
-// search_auto_complete::search and had no coverage: it is reached only through a native edit
-// control, so the strategy is built here through its factory instead.
+// search_auto_complete::search and had no coverage: it is reached only through the address bar's
+// edit, so the strategy is built here through its factory instead.
 static void should_rank_address_completions(shared_test_context& stc)
 {
 	stc.lazy_load_index();
@@ -5617,6 +5646,37 @@ static void should_snap_app_logo_hover_when_animations_are_disabled()
 	assert_equal(true, logo.hover(false), "hover exits");
 	assert_equal(true, logo.step_background_if_animations_disabled(), "disabled leave snaps background");
 	assert_equal(0.0f, logo._bg_color.a, "hover highlight is hidden immediately");
+}
+
+// Faded, the logo's plasma keeps drifting at an eighth of its busy speed and is redrawn only when that
+// moves the field; where drifting is not wanted it stays still, and work starting brings the colour back.
+// Steps a quarter of a second apart keep the arithmetic exact.
+static void should_keep_the_idle_logo_drifting_slowly()
+{
+	plasma p;
+	auto t = 100.0;
+	const auto step = [&p, &t](const bool busy, const bool drift)
+	{
+		t += 0.25;
+		return p.step(t, busy, drift);
+	};
+
+	p.step(t, false, true);
+	for (auto i = 0; i < 32; ++i) step(false, true);
+	assert_equal(false, p.is_active(), "with no work running the plasma fades to the sidebar tone in 8 seconds");
+
+	p._phase = 0.0;
+	auto redraws = 0;
+	for (auto i = 0; i < 16; ++i) redraws += step(false, true) ? 1 : 0;
+	assert_equal(0.5, p._phase, "faded, four seconds drift the field half a second of its busy speed");
+	assert_equal(10, redraws, "and it is redrawn only for the ten cosine indices that moved");
+
+	for (auto i = 0; i < 16; ++i) redraws += step(false, false) ? 1 : 0;
+	assert_equal(10, redraws, "where drifting is not wanted, a faded step changes nothing");
+	assert_equal(0.5, p._phase, "and the field stays where it was");
+
+	assert_equal(true, step(true, false), "work starting redraws it at once");
+	assert_equal(true, p.is_active(), "fading back to colour at full speed");
 }
 
 static void should_skip_stable_progress_repaints_when_animations_are_disabled()
@@ -6093,6 +6153,7 @@ void register_app_tests(view_state& state, test_registry& tests)
 {
 	tests.add("Should bind every advertised command"s, should_bind_every_advertised_command);
 	tests.add("Should offer Options as one command"s, should_offer_options_as_one_command);
+	tests.add("Should open the context menus with a row of buttons"s, should_open_the_context_menus_with_a_row_of_buttons);
 	tests.add("Should start the items status bar with one toolbar"s, should_start_the_items_status_bar_with_one_toolbar);
 	tests.add("Should draw the chrome with the app's glyphs"s, should_draw_the_chrome_with_the_app_glyphs);
 	tests.add("Should embed the app's assets"s, should_embed_the_app_assets);
@@ -6355,6 +6416,7 @@ void register_app_tests(view_state& state, test_registry& tests)
 	tests.add("Should gate application alpha effects"s, should_gate_application_alpha_effects);
 	tests.add("Should snap app logo hover when animations are disabled"s,
 	          should_snap_app_logo_hover_when_animations_are_disabled);
+	tests.add("Should keep the idle logo drifting slowly"s, should_keep_the_idle_logo_drifting_slowly);
 	tests.add("Should skip stable progress repaints when animations are disabled"s,
 	          should_skip_stable_progress_repaints_when_animations_are_disabled);
 	// APP-005 - destination-folder completion work is asynchronous and latest-wins.

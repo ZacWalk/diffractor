@@ -71,7 +71,7 @@ namespace
 		std::array<ui::color, slot_count> result;
 		result[base] = ui::color(dc.colors.foreground, alpha);
 		result[dim] = ui::color(dc.colors.foreground, alpha * 0.77f);
-		result[control] = ui::color(ui::lighten(ui::style::color::view_selected_background, 0.22f), alpha);
+		result[control] = ui::color(ui::lighten(ui::style::colors.view_selected_background, 0.22f), alpha);
 		result[high_byte] = ui::color(ui::lighten(app_colors::duplicate_background, 0.66f), alpha);
 		result[keyword] = ui::color(ui::bgr(0x569CD6), alpha);
 		result[comment] = ui::color(ui::bgr(0x6A9955), alpha);
@@ -333,7 +333,7 @@ void document_control::render(ui::draw_context& dc, const pointi element_offset)
 	const auto last_row = std::min(rows, first_row + (clip_bounds.height() + _line_height) / _line_height);
 	const auto left = text_left(logical_bounds);
 	const auto palette = make_palette(dc);
-	const auto selection_clr = ui::color(ui::style::color::view_selected_background,
+	const auto selection_clr = ui::color(ui::style::colors.view_selected_background,
 	                                     dc.colors.alpha * (doc.focused ? 0.85f : 0.4f));
 	const auto has_selection = doc.has_selection();
 	const auto [sel_from, sel_to] = doc.selection();

@@ -483,9 +483,9 @@ void rename_view::refresh()
 			                   const auto view = weak_view.lock();
 			                   if (!view || generation != view->_analysis_generation) return;
 
-			                   const auto error_text_color = ui::lighten(ui::style::color::warning_background, 0.55f);
+			                   const auto error_text_color = ui::lighten(ui::style::colors.warning_background, 0.55f);
 			                   const auto rename_text_color = ui::lighten(
-				                   ui::style::color::dialog_selected_background, 0.55f);
+				                   ui::style::colors.dialog_selected_background, 0.55f);
 			                   std::vector<row_element_ptr> rows;
 			                   rows.reserve(renames.size());
 			                   int count = 0;
@@ -529,12 +529,12 @@ void rename_view::refresh()
 	                   });
 }
 
-view_controls_host_ptr rename_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
 
 	const auto& items = _state.selected_items();
-	auto frame = owner->create_dlg(result, false);
+	const auto& frame = owner;
 
 	std::vector<std::string> folder_structure_completes
 	{
@@ -588,7 +588,7 @@ view_controls_host_ptr rename_view::controls(const ui::control_frame_ptr& owner)
 	}
 
 	result->_controls = controls;
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 	// The template is the one thing this view exists to edit, so it opens ready for typing.
 	result->initial_focus = [name_template] { name_template->focus(); };
 

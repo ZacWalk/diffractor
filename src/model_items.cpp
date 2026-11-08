@@ -1952,10 +1952,10 @@ void draw_rate_label_badge(ui::draw_context& dc, const std::string_view label, c
 void draw_pin_badge(ui::draw_context& dc, const recti logical_bounds, const float alpha)
 {
 	xdraw_icon(dc, icon_index::pinned, logical_bounds, ui::color(dc.colors.foreground, alpha),
-	           ui::color(ui::style::color::important_background, alpha));
+	           ui::color(ui::style::colors.important_background, alpha));
 }
 
-void df::item_group::layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions)
+void df::item_group::layout(ui::measure_context& mc, const recti bounds_in)
 {
 	bounds = bounds_in;
 
@@ -1969,7 +1969,7 @@ void df::item_group::layout(ui::measure_context& mc, const recti bounds_in, ui::
 	{
 		for (auto i = 0u; i < _items.size(); ++i)
 		{
-			_items[i]->layout(mc, _layout_bounds[i].offset(bounds.left, bounds.top), positions);
+			_items[i]->layout(mc, _layout_bounds[i].offset(bounds.left, bounds.top));
 		}
 	}
 
@@ -2384,7 +2384,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto text_color = ui::color(dc.colors.foreground, alpha);
 		const auto group_text_color = ui::color(ft->text_color(dc.colors.foreground), alpha).emphasize(
 			background_is_highlighted);
-		const auto bg_disk = ui::color(ui::style::color::view_selected_background, dc.colors.alpha * 0.77f);
+		const auto bg_disk = ui::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.77f);
 		const auto bg_dups = ui::color(app_colors::duplicate_background, dc.colors.alpha * 0.77f);
 		const auto bg_sidecars = ui::color(app_colors::sidecar_background, dc.colors.alpha * 0.77f);
 
@@ -2690,7 +2690,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto fallback_text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
 		const auto group_text_color = ui::color(ft->text_color(dc.colors.foreground), text_alpha).emphasize(
 			background_is_highlighted);
-		const auto bg_disk = ui::color(ui::style::color::view_selected_background, text_alpha * 0.77f);
+		const auto bg_disk = ui::color(ui::style::colors.view_selected_background, text_alpha * 0.77f);
 		const auto bg_dups = ui::color(app_colors::duplicate_background, text_alpha * 0.77f);
 		const auto bg_sidecars = ui::color(app_colors::sidecar_background, text_alpha * 0.77f);
 		const auto thumb_padding = round(item_draw_info::_thumb_padding * dc.scale_factor);
@@ -2785,7 +2785,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 			if (ft->has_trait(file_traits::thumbnail))
 			{
-				dc.draw_rect(icon_rect, ui::color(ui::style::color::group_background, alpha * 0.72f));
+				dc.draw_rect(icon_rect, ui::color(ui::style::colors.group_background, alpha * 0.72f));
 			}
 
 			auto ext = _name.substr(find_ext(_name));
@@ -2895,9 +2895,9 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 			const auto bar_height = std::max(2, round(3 * dc.scale_factor));
 			auto bar = icon_rect;
 			bar.top = bar.bottom - bar_height;
-			dc.draw_rect(bar, ui::color(ui::style::color::view_background, dc.colors.alpha * 0.75f));
+			dc.draw_rect(bar, ui::color(ui::style::colors.view_background, dc.colors.alpha * 0.75f));
 			bar.right = bar.left + static_cast<int>(std::lround(bar.width() * info.progress));
-			dc.draw_rect(bar, ui::color(ui::style::color::view_selected_background, dc.colors.alpha));
+			dc.draw_rect(bar, ui::color(ui::style::colors.view_selected_background, dc.colors.alpha));
 		}
 
 		auto y = text_rect.top;
@@ -2908,7 +2908,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 			text_bg_bounds.left = std::min(bg_bounds.left, text_rect.left);
 			text_bg_bounds.right = std::max(bg_bounds.right, text_rect.right);
 
-			dc.draw_rounded_rect(text_bg_bounds, ui::color(ui::style::color::view_background, text_alpha * 0.888f),
+			dc.draw_rounded_rect(text_bg_bounds, ui::color(ui::style::colors.view_background, text_alpha * 0.888f),
 			                     dc.padding1);
 
 			recti title_rect(text_rect.left, y, text_rect.right, y + title_line_height1 + title_line_height2);
@@ -3196,7 +3196,7 @@ sizei df::item_element::measure(ui::measure_context& mc, const int width_limit) 
 	return {0, 0};
 }
 
-void df::item_element::layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions)
+void df::item_element::layout(ui::measure_context& mc, const recti bounds_in)
 {
 	bounds = bounds_in;
 	_interactive_bounds = bounds_in;

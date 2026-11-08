@@ -72,15 +72,15 @@ view_bars import_view::bars() const
 }
 
 
-view_controls_host_ptr import_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr import_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
-	auto frame = owner->create_dlg(result, false);
+	const auto& frame = owner;
 	result->_controls = {
 		create_view_info_element(tt.import_info),
 		std::make_shared<text_element>(tt.import_preparing)
 	};
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 
 	const std::weak_ptr<import_view> weak_view = shared_from_this();
 	const std::weak_ptr<view_controls_host> weak_controls = result;
@@ -121,7 +121,7 @@ view_controls_host_ptr import_view::controls(const ui::control_frame_ptr& owner)
 	return result;
 }
 
-void import_view::populate_controls(const view_controls_host_ptr& result, const ui::control_frame_ptr& frame)
+void import_view::populate_controls(const view_controls_host_ptr& result, const ui::frame_ptr& frame)
 {
 	std::vector<view_element_ptr> controls;
 	auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
@@ -157,7 +157,7 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 				                                                 if (const auto controls = weak_controls.lock())
 					                                                 controls->scroll_controls();
 			                                                 }
-		                                                 }, ui::radio_group_scope);
+		                                                 }, radio_group_scope);
 		controls.emplace_back(check);
 		is_first_source = false;
 		++source_index;
@@ -183,7 +183,7 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 			                                                 if (const auto controls = weak_controls.lock()) controls->
 				                                                 scroll_controls();
 		                                                 }
-	                                                 }, ui::radio_group_scope);
+	                                                 }, radio_group_scope);
 	limit->child(std::make_shared<ui::folder_picker_control>(frame, setting.import.source_path, false,
 	                                                         [this](const std::string_view)
 	                                                         {
@@ -227,16 +227,16 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 	}
 
 	result->_controls = controls;
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 	result->populate();
 	result->scroll_controls();
 }
 
 void import_view::update_rows(const import_analysis_result& analysis_result, const import_options& options)
 {
-	const auto gray_text_color = ui::darken(ui::style::color::view_text, 0.22f);
-	const auto blue_text_color = ui::lighten(ui::style::color::dialog_selected_background, 0.55f);
-	const auto orange_text_color = ui::lighten(ui::style::color::important_background, 0.55f);
+	const auto gray_text_color = ui::darken(ui::style::colors.view_text, 0.22f);
+	const auto blue_text_color = ui::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+	const auto orange_text_color = ui::lighten(ui::style::colors.important_background, 0.55f);
 
 	std::vector<row_element_ptr> rows;
 	std::vector<std::string> text;

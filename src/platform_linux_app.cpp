@@ -8,7 +8,8 @@
 
 // Purpose: The application's Linux glue: no hardware video decode for FFmpeg to use - the counterpart
 // of platform_win_av.cpp - no platform tests to register, since the Windows-only subject file is not
-// built here, and the entry point, which runs the application's headless suite.
+// built here, and the icon font, compiled into the executable as the Windows build carries it in its
+// resources. The entry point is libdesktop's, which runs the application as wWinMain does on Windows.
 
 #include "pch.h"
 #include "av_format.h"
@@ -16,9 +17,6 @@
 #include "files.h"
 #include "model.h"
 #include "test_runner.h"
-#include "libdesktop/util_base64.h"
-
-#include <pthread.h>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Media
@@ -63,51 +61,23 @@ void register_platform_tests(view_state&, test_registry&)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// Entry point
+// The icon font. The text stack reads it from ui::icon_font_data, set before anything draws.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-int main(const int argc, const char* const argv[])
+__asm__(".section .rodata\n"
+	".global diffractor_icon_font\n"
+	".balign 16\n"
+	"diffractor_icon_font:\n"
+	".incbin \"" DIFFRACTOR_ICON_FONT "\"\n"
+	".global diffractor_icon_font_end\n"
+	"diffractor_icon_font_end:\n"
+	".previous\n");
+
+extern "C" const uint8_t diffractor_icon_font[];
+extern "C" const uint8_t diffractor_icon_font_end[];
+
+static const bool icon_font_installed = []
 {
-	platform::set_ui_thread();
-
-	if (!std::setlocale(LC_CTYPE, "C.UTF-8"))
-	{
-		std::fprintf(stderr, "Cannot initialize the UTF-8 character locale required for filenames.\n");
-		return 1;
-	}
-
-	// /test[:filter] runs the suite headless. The '-' forms are the Linux spelling; '/test' is
-	// accepted too because it is what the Windows documentation and habits say.
-	for (auto i = 1; i < argc; ++i)
-	{
-		std::string_view arg(argv[i]);
-
-		if (arg.starts_with("--")) arg.remove_prefix(2);
-		else if (arg.starts_with('-') || arg.starts_with('/')) arg.remove_prefix(1);
-		else continue;
-
-		if (arg == "test" || arg.starts_with("test:"))
-		{
-			const auto colon = arg.find(':');
-			const auto filter = colon == std::string_view::npos ? "*"sv : arg.substr(colon + 1);
-			load_file_types();
-			return run_console_tests(filter);
-		}
-	}
-
-	printf("Diffractor %s (linux stage-one build)\n", df::format_version(false).c_str());
-
-	// Exercise the portable core so a successful run proves linkage, not only a successful build.
-	const auto sample = "Diffractor"sv;
-	const std::vector<uint8_t> sample_bytes(sample.begin(), sample.end());
-
-	printf("  str::to_lower       %s\n", str::to_lower(sample).c_str());
-	printf("  str::icmp           %d\n", str::icmp(sample, "DIFFRACTOR"sv));
-	printf("  str::fnv1a_i        %u\n", str::fnv1a_i(sample));
-	printf("  base64 round trip   %s\n", base64_decode(base64_encode(sample)) == sample_bytes ? "ok" : "FAILED");
-	printf("  known app_data      %s\n",
-	       std::string(platform::known_path(platform::known_folder::app_data).text()).c_str());
-	printf("\nRun with /test to run the suite.\n");
-
-	return 0;
-}
+	ui::icon_font_data = {diffractor_icon_font, static_cast<size_t>(diffractor_icon_font_end - diffractor_icon_font)};
+	return true;
+}();

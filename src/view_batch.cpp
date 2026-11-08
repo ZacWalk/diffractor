@@ -237,8 +237,8 @@ void batch_tool_view::describe_convert_plan()
 	rows.reserve(_convert_plan.size());
 	_row_names.clear();
 	_row_names.reserve(_convert_plan.size());
-	const auto error_color = ui::lighten(ui::style::color::warning_background, 0.55f);
-	const auto resolved_color = ui::lighten(ui::style::color::important_background, 0.55f);
+	const auto error_color = ui::lighten(ui::style::colors.warning_background, 0.55f);
+	const auto resolved_color = ui::lighten(ui::style::colors.important_background, 0.55f);
 	int order = 0;
 	int collisions = 0;
 	for (const auto& entry : _convert_plan)
@@ -331,7 +331,7 @@ void batch_tool_view::refresh_metadata()
 	std::vector<row_element_ptr> rows;
 	_row_names.clear();
 	_row_names.reserve(items.size());
-	const auto warning_color = ui::lighten(ui::style::color::important_background, 0.55f);
+	const auto warning_color = ui::lighten(ui::style::colors.important_background, 0.55f);
 	int order = 0;
 	for (const auto& item : items.items())
 	{
@@ -473,9 +473,9 @@ void batch_tool_view::refresh_encode_settings()
 // outcome against a different file.
 void batch_tool_view::show_run_results(const std::vector<item_status>& statuses, const std::string_view error)
 {
-	const auto success_color = ui::lighten(ui::style::color::success_background, 0.55f);
-	const auto fail_color = ui::lighten(ui::style::color::warning_background, 0.55f);
-	const auto muted_color = ui::darken(ui::style::color::view_text, 0.22f);
+	const auto success_color = ui::lighten(ui::style::colors.success_background, 0.55f);
+	const auto fail_color = ui::lighten(ui::style::colors.warning_background, 0.55f);
+	const auto muted_color = ui::darken(ui::style::colors.view_text, 0.22f);
 
 	std::vector<view_operation_result> outcomes;
 	outcomes.reserve(_rows.size());
@@ -931,10 +931,10 @@ void batch_tool_view::run_dates()
 	                   });
 }
 
-view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
-	auto frame = owner->create_dlg(result, false);
+	const auto& frame = owner;
 	std::vector<view_element_ptr> controls;
 	const auto& items = _state.selected_items();
 	auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
@@ -957,7 +957,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 					                                                setting.convert.to_jxl = false;
 			                                                refresh();
 		                                                },
-		                                                ui::radio_group_format);
+		                                                radio_group_format);
 		const auto jpeg_options = std::make_shared<ui::group_control>();
 		jpeg_options->add(std::make_shared<text_element>(tt.options_jpeg_quality));
 		jpeg_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jpeg_quality,
@@ -974,7 +974,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 					                                                          to_webp = setting.convert.to_jxl = false;
 			                                                          refresh();
 		                                                          },
-		                                                          ui::radio_group_format));
+		                                                          radio_group_format));
 		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp, true, false,
 		                                                [this](const bool checked)
 		                                                {
@@ -983,7 +983,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 					                                                setting.convert.to_jxl = false;
 			                                                refresh();
 		                                                },
-		                                                ui::radio_group_format);
+		                                                radio_group_format);
 		const auto webp_options = std::make_shared<ui::group_control>();
 		webp_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.webp_quality,
 		                                                       1,
@@ -1003,7 +1003,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 					                                               setting.convert.to_webp = false;
 			                                               refresh();
 		                                               },
-		                                               ui::radio_group_format);
+		                                               radio_group_format);
 		const auto jxl_options = std::make_shared<ui::group_control>();
 		jxl_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jxl_quality,
 		                                                      1,
@@ -1156,6 +1156,6 @@ view_controls_host_ptr batch_tool_view::controls(const ui::control_frame_ptr& ow
 		control->margin.cy = 4;
 	}
 	result->_controls = std::move(controls);
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 	return result;
 }

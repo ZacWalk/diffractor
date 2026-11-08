@@ -32,10 +32,16 @@ jobs:
 
     # The vendored build is the default (DIFFRACTOR_PREFER_SYSTEM is OFF), so these are the
     # toolchain rather than the dependencies. FFmpeg is driven by its own configure and make.
+    # libdesktop-render's window layer sets text with Pango and drives X11 and Wayland through SDL3,
+    # which it builds from its pin, so it needs their development packages.
     - name: Install toolchain
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build pkg-config ccache nasm
+        sudo apt-get install -y build-essential cmake ninja-build pkg-config ccache nasm \
+          libpango1.0-dev libfontconfig-dev libfreetype-dev \
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+          libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgl-dev libgles-dev libdrm-dev \
+          libgbm-dev libdecor-0-dev libdbus-1-dev libudev-dev
 
     # FFmpeg and the 25 vendored CMake modules are most of the build time and change rarely.
     # CCACHE_DIR is set rather than assumed: ccache 4.x defaults to ~/.cache/ccache, not ~/.ccache,

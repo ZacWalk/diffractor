@@ -100,7 +100,7 @@ public:
 
 	view_bars bars() const override;
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
 private:
 	void parse_tags();

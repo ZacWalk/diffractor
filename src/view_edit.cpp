@@ -43,7 +43,7 @@ class log_slider_control final : public view_element, public std::enable_shared_
 	constexpr static int Range = 100;
 
 public:
-	log_slider_control(ui::control_frame_ptr& h, const std::string_view text, double& v, double min, double max,
+	log_slider_control(ui::frame_ptr& h, const std::string_view text, double& v, double min, double max,
 	                   std::function<void()> changed) noexcept :
 		_label(text),
 		_val(v),
@@ -54,8 +54,8 @@ public:
 	{
 		ui::edit_styles style;
 		style.align_center = true;
-		_edit = h->create_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
-		_slider = h->create_slider(-Range, Range,
+		_edit = ui::make_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
+		_slider = ui::make_slider(-Range, Range,
 		                           [this](const int pos, const bool is_tracking) { slider_change(pos, is_tracking); });
 	}
 
@@ -64,10 +64,10 @@ public:
 		_label = label;
 	}
 
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
-		handler(_slider);
-		handler(_edit);
+		visit(_slider);
+		visit(_edit);
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -84,12 +84,12 @@ public:
 		return {width_limit, ui::layout_slider_row(mc, _label, {0, 0, width_limit, 0}).height};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_row = ui::layout_slider_row(mc, _label, bounds);
-		positions.emplace_back(_slider, _row.slider, is_visible());
-		positions.emplace_back(_edit, _row.edit, is_visible());
+		_slider->layout(mc, _row.slider);
+		_edit->layout(mc, _row.edit);
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
@@ -101,6 +101,8 @@ public:
 			             _row.stacked ? ui::style::text_style::multiline : ui::style::text_style::single_line,
 			             text_color, {});
 		}
+
+		render_children(dc, element_offset);
 	}
 
 	int value_to_slider(const double a) const
@@ -130,7 +132,7 @@ public:
 	{
 		if (!df::equiv(_val, slider_to_value(_slider->get_pos())))
 		{
-			_slider->SetPos(value_to_slider(_val));
+			_slider->set_pos(value_to_slider(_val));
 		}
 	}
 
@@ -144,8 +146,10 @@ public:
 	void slider_change(const int pos, const bool is_tracking)
 	{
 		_tracking = is_tracking;
-		_val = slider_to_value(pos);
+		// The value is the one the box shows, to the hundredth, wherever the thumb lands between.
+		_val = std::clamp(str::to_double(format_edit_adjustment(slider_to_value(pos))), _min, _max);
 		update_edit();
+		update_slider();
 		_changed();
 	}
 
@@ -880,9 +884,9 @@ class task_toolbar_control final : public view_element, public std::enable_share
 	ui::toolbar_ptr _tb;
 
 public:
-	task_toolbar_control(const ui::control_frame_ptr& h, const std::vector<ui::command_ptr>& buttons)
+	task_toolbar_control(const ui::frame_ptr& h, const std::vector<ui::command_ptr>& buttons)
 	{
-		_tb = h->create_toolbar({}, buttons);
+		_tb = ui::make_toolbar({}, buttons);
 	}
 
 	sizei measure(ui::measure_context& mc, const int width_limit) const override
@@ -890,17 +894,17 @@ public:
 		return {width_limit, default_control_height(mc)};
 	}
 
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
-		handler(_tb);
+		visit(_tb);
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
-		const auto extent = _tb->measure_toolbar(bounds.width());
+		const auto extent = _tb->measure_toolbar(mc, bounds.width());
 		const auto r = center_rect(extent, bounds);
-		positions.emplace_back(_tb, r, is_visible());
+		_tb->layout(mc, r);
 	}
 };
 
@@ -909,110 +913,38 @@ public:
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-class edit_rating_control final : public std::enable_shared_from_this<edit_rating_control>, public ui::frame_host
+// Five stars, as many filled as the rating; pointing at one shows the rating choosing it would give, and
+// choosing it gives it.
+class star_rating final : public view_element, public std::enable_shared_from_this<star_rating>
 {
 public:
-	bool _hover = false;
 	int _rating = -1;
 	int _hover_rating = -1;
-	ui::edit_ptr _edit;
-	ui::frame_ptr _frame;
-	sizei _extent;
-
 	int _cell_width = 18;
+	std::function<void(int)> _chosen;
 
-	edit_rating_control(ui::edit_ptr edit) : _edit(std::move(edit))
+	explicit star_rating(std::function<void(int)> chosen) : _chosen(std::move(chosen))
 	{
 	}
 
-	void init(const ui::control_frame_ptr& owner)
+	int point_to_stars(const pointi loc) const
 	{
-		_frame = owner->create_frame(weak_from_this(), {});
+		return std::clamp(1 + (loc.x - bounds.left) / std::max(1, _cell_width), 0, 5);
 	}
 
-	// Never null: the rating can be set before init() has given this control a window.
-	const ui::frame_ptr& frame() const
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
-		return _frame ? _frame : ui::no_frame();
-	}
-
-	void on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized) override
-	{
-		_extent = extent;
+		bounds = bounds_in;
 		_cell_width = mc.icon_cxy;
 	}
 
-	void on_mouse_move(const pointi loc, const bool is_tracking) override
+	void render(ui::draw_context& dc, const pointi element_offset) const override
 	{
-		if (!_hover)
-		{
-			_hover = true;
-			frame()->invalidate();
-		}
-
-		const auto hr = point_to_stars(loc);
-
-		if (hr != _hover_rating)
-		{
-			_hover_rating = hr;
-			frame()->invalidate();
-		}
-	}
-
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
-	{
-	}
-
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
-	{
-		const auto star = point_to_stars(loc);
-
-		_rating = star;
-
-		if (_edit)
-		{
-			_edit->window_text(_rating < 1 ? std::string_view{} : str::to_string(_rating));
-		}
-
-		frame()->invalidate();
-	}
-
-	void on_mouse_leave(const pointi loc) override
-	{
-		if (_hover)
-		{
-			_hover = false;
-			_hover_rating = -1;
-			frame()->invalidate();
-		}
-	}
-
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
-	{
-	}
-
-	void tick() override
-	{
-	}
-
-	void activate(bool is_active) override
-	{
-	}
-
-	bool key_down(const int c, const ui::key_state keys) override
-	{
-		return false;
-	}
-
-	void on_window_paint(ui::draw_context& dc) override
-	{
-		dc.clear(ui::color(dc.colors.background, 1.0f));
-
-		const recti logical_bounds = _extent;
-		const auto bg = _hover
-			                ? view_handle_color(false, _hover, false, dc.frame_has_focus, true).aa(dc.colors.alpha)
+		const auto hover = _hover_rating >= 0;
+		const auto bg = hover
+			                ? view_handle_color(false, true, false, dc.frame_has_focus, true).aa(dc.colors.alpha)
 			                : ui::color{};
-		const auto rating = _hover ? _hover_rating : _rating;
+		const auto rating = hover ? _hover_rating : _rating;
 		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
 
 		std::string text;
@@ -1022,44 +954,86 @@ public:
 			text += icon_to_utf8(i < rating ? icon_index::star_solid : icon_index::star);
 		}
 
-		dc.draw_text(text, logical_bounds, ui::style::font_face::icons,
+		dc.draw_text(text, bounds.offset(element_offset), ui::style::font_face::icons,
 		             ui::style::text_style::single_line, clr, bg);
 	}
 
-	void rating(const int stars)
+	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
+	                                             hit_test_context& ctx) override;
+};
+
+class star_rating_controller final : public view_controller
+{
+	std::shared_ptr<star_rating> _stars;
+	pointi _origin;
+
+	void hover_at(const int stars) const
 	{
-		if (_rating != stars)
-		{
-			_rating = stars;
-			frame()->invalidate();
-		}
+		if (_stars->_hover_rating == stars) return;
+		_stars->_hover_rating = stars;
+		_host->invalidate_element(_stars);
 	}
 
-	int point_to_stars(const pointi loc) const
+public:
+	star_rating_controller(const view_host_ptr& host, std::shared_ptr<star_rating> stars, const pointi origin) :
+		view_controller(host, stars->bounds.offset(origin)), _stars(std::move(stars)), _origin(origin)
 	{
-		return std::clamp(1 + loc.x / std::max(1, _cell_width), 0, 5);
+	}
+
+	~star_rating_controller() override
+	{
+		_stars->_hover_rating = -1;
+		_host->invalidate_element(_stars);
+	}
+
+	ui::style::cursor cursor() const override
+	{
+		return ui::style::cursor::link;
+	}
+
+	void on_mouse_move(const pointi loc) override
+	{
+		hover_at(_stars->point_to_stars(loc - _origin));
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	{
+		_stars->_rating = _stars->point_to_stars(loc - _origin);
+		_host->invalidate_element(_stars);
+		if (_stars->_chosen) _stars->_chosen(_stars->_rating);
 	}
 };
 
-using edit_rating_control_ptr = std::shared_ptr<edit_rating_control>;
+view_controller_ptr star_rating::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                          const pointi element_offset, hit_test_context& ctx)
+{
+	if (!bounds.offset(element_offset).contains(loc)) return nullptr;
+	return std::make_shared<star_rating_controller>(host, shared_from_this(), element_offset);
+}
+
+using star_rating_ptr = std::shared_ptr<star_rating>;
 
 class rating_bar_control final : public view_element, public std::enable_shared_from_this<rating_bar_control>
 {
-	edit_rating_control_ptr _stars;
+	star_rating_ptr _stars;
 	ui::edit_ptr _edit;
+	ui::frame_ptr _owner;
 	std::string _label;
 	int& _val;
 
 public:
-	rating_bar_control(const ui::control_frame_ptr& owner, const std::string_view label,
-	                   int& v) : _label(label), _val(v)
+	rating_bar_control(ui::frame_ptr owner, const std::string_view label, int& v) : _owner(std::move(owner)),
+		_label(label), _val(v)
 	{
 		ui::edit_styles style;
 		style.number = true;
 		style.align_center = true;
-		_edit = owner->create_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
-		_stars = std::make_shared<edit_rating_control>(_edit);
-		_stars->init(owner);
+		_edit = ui::make_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
+		_stars = std::make_shared<star_rating>([this](const int stars)
+		{
+			_val = std::clamp(stars, 0, 5);
+			_edit->window_text(_val < 1 ? std::string{} : str::to_string(_val));
+		});
 	}
 
 	void label(const std::string_view label)
@@ -1067,10 +1041,10 @@ public:
 		_label = label;
 	}
 
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
-		handler(_stars->frame());
-		handler(_edit);
+		visit(_edit);
+		visit(_stars);
 	}
 
 	sizei measure(ui::measure_context& mc, const int width_limit) const override
@@ -1085,7 +1059,7 @@ public:
 		return {width_limit, default_control_height(mc)};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		auto rStars = bounds;
@@ -1095,8 +1069,8 @@ public:
 		rEdit.right = std::min(rEdit.left + df::round(50 * mc.scale_factor), bounds.right);
 		rStars.left = std::min(rEdit.right + mc.padding2, bounds.right);
 
-		positions.emplace_back(_edit, rEdit, is_visible());
-		positions.emplace_back(_stars->frame(), rStars, is_visible());
+		_edit->layout(mc, rEdit);
+		_stars->layout(mc, rStars);
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
@@ -1108,6 +1082,14 @@ public:
 			dc.draw_text(_label, r, ui::style::font_face::dialog, ui::style::text_style::single_line,
 			             {dc.colors.foreground, dc.colors.alpha}, {});
 		}
+
+		render_children(dc, element_offset);
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                             const pointi element_offset, hit_test_context& ctx) override
+	{
+		return _stars->controller_from_location(host, loc, element_offset, ctx);
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -1115,14 +1097,19 @@ public:
 		if (event.type == view_element_event_type::populate)
 		{
 			_edit->window_text(str::to_string(_val));
-			_stars->rating(_val);
+			_stars->_rating = _val;
 		}
 	}
 
 	void edit_change(const std::string_view text) const
 	{
 		_val = std::clamp(str::to_int(text), 0, 5);
-		_stars->rating(_val);
+
+		if (_stars->_rating != _val)
+		{
+			_stars->_rating = _val;
+			if (_owner) _owner->invalidate();
+		}
 	}
 };
 
@@ -1138,21 +1125,21 @@ class save_buttons_control final : public view_element, public std::enable_share
 	ui::button_ptr _cancel;
 
 public:
-	save_buttons_control(const ui::control_frame_ptr& h,
+	save_buttons_control(const ui::frame_ptr& h,
 	                     std::function<void()> fn_save,
 	                     std::function<void()> fn_dont,
 	                     std::function<void()> fn_cancel)
 	{
-		_ok = h->create_button(tt.button_save, std::move(fn_save), true);
-		_abort = h->create_button(tt.button_dont_save, std::move(fn_dont));
-		_cancel = h->create_button(tt.button_cancel, std::move(fn_cancel));
+		_ok = ui::make_button(tt.button_save, std::move(fn_save), true);
+		_abort = ui::make_button(tt.button_dont_save, std::move(fn_dont));
+		_cancel = ui::make_button(tt.button_cancel, std::move(fn_cancel));
 	}
 
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
-		handler(_ok);
-		handler(_abort);
-		handler(_cancel);
+		visit(_ok);
+		visit(_abort);
+		visit(_cancel);
 	}
 
 	sizei measure(ui::measure_context& mc, const int width_limit) const override
@@ -1160,7 +1147,7 @@ public:
 		return {width_limit, mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 4};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		const auto width = bounds.width() / 3;
@@ -1172,9 +1159,9 @@ public:
 		rab.left = rok.right = rok.left + width;
 		rab.right = rcan.left = rcan.right - width;
 
-		positions.emplace_back(_ok, rok.inflate(-mc.padding1), is_visible());
-		positions.emplace_back(_abort, rab.inflate(-mc.padding1), is_visible());
-		positions.emplace_back(_cancel, rcan.inflate(-mc.padding1), is_visible());
+		_ok->layout(mc, rok.inflate(-mc.padding1));
+		_abort->layout(mc, rab.inflate(-mc.padding1));
+		_cancel->layout(mc, rcan.inflate(-mc.padding1));
 	}
 };
 
@@ -1189,13 +1176,13 @@ edit_view::edit_view(view_state& s, view_host_ptr host, edit_view_state& evs) :
 {
 }
 
-view_controls_host_ptr edit_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr edit_view::controls(const ui::frame_ptr& owner)
 {
 	if (!_edit_controls)
 	{
 		_edit_controls = std::make_shared<edit_view_controls>(_state, _edit_state);
 		_edit_controls->_view = shared_from_this();
-		_edit_controls->_frame = _edit_controls->_dlg = owner->create_dlg(_edit_controls, false);
+		_edit_controls->_frame = owner;
 	}
 
 	return _edit_controls;
@@ -1277,7 +1264,6 @@ void edit_view::layout(ui::measure_context& mc, const sizei extent)
 
 	if (_media_element && _play_element && _scrubber_element)
 	{
-		ui::control_layouts positions;
 		const auto outer_bounds = recti(extent).inflate(-mc.padding2);
 		const auto play_extent = _play_element->measure(mc, outer_bounds.width());
 		const auto scrubber_extent = _scrubber_element->measure(mc, outer_bounds.width());
@@ -1291,9 +1277,9 @@ void edit_view::layout(ui::measure_context& mc, const sizei extent)
 		const auto media_bounds = recti(outer_bounds.left, outer_bounds.top, outer_bounds.right,
 		                                std::max(outer_bounds.top, controls_bounds.top - mc.padding2));
 
-		_play_element->layout(mc, play_bounds, positions);
-		_scrubber_element->layout(mc, scrubber_bounds, positions);
-		_media_element->layout(mc, media_bounds, positions);
+		_play_element->layout(mc, play_bounds);
+		_scrubber_element->layout(mc, scrubber_bounds);
+		_media_element->layout(mc, media_bounds);
 	}
 }
 
@@ -1495,10 +1481,10 @@ void edit_view::complete_source_load(const source_load_request& request, file_lo
 			                   });
 		}
 
-		if (_edit_controls->_dlg)
+		if (_edit_controls->_frame)
 		{
 			_edit_controls->populate();
-			_edit_controls->_dlg->layout();
+			_edit_controls->_frame->layout();
 		}
 		_state.invalidate_view(view_invalid::command_state | view_invalid::view_redraw | view_invalid::controller);
 		_host->frame()->invalidate();
@@ -1582,10 +1568,10 @@ void edit_view::complete_preview_decode(const preview_decode_request& request, u
 			_loaded = edit_load_without_preview(_loaded, failure);
 			_invalid = true;
 
-			if (_edit_controls->_dlg)
+			if (_edit_controls->_frame)
 			{
 				_edit_controls->populate();
-				_edit_controls->_dlg->layout();
+				_edit_controls->_frame->layout();
 			}
 			_state.invalidate_view(view_invalid::command_state | view_invalid::view_redraw | view_invalid::controller);
 			_host->frame()->invalidate();
@@ -1722,7 +1708,7 @@ bool select_path(df::file_path& path)
 	return platform::prompt_for_save_path(path);
 }
 
-bool edit_view::check_path(df::file_path& path, const ui::control_frame_ptr& owner) const
+bool edit_view::check_path(df::file_path& path, const ui::frame_ptr& owner) const
 {
 	if (!path.is_save_valid())
 	{
@@ -1909,7 +1895,7 @@ bool edit_view::has_changes() const
 }
 
 void edit_view::save(const df::file_path src_path, const df::file_path dst_path, const std::string_view xmp_name,
-                     const ui::control_frame_ptr& owner, std::function<void(bool)> complete) const
+                     const ui::frame_ptr& owner, std::function<void(bool)> complete) const
 {
 	auto update_result = std::make_shared<file_update_result>();
 	const auto dlg = make_dlg(owner);
@@ -2643,42 +2629,42 @@ void edit_view_controls::create_controls()
 
 	_info = create_view_info_element(tt.edit_info);
 	_straighten_title = std::make_shared<ui::title_control>(icon_index::rotate_clockwise, tt.straighten);
-	_straighten_slider = std::make_shared<log_slider_control>(_dlg, std::string_view{}, _edit_state._straighten,
+	_straighten_slider = std::make_shared<log_slider_control>(_frame, std::string_view{}, _edit_state._straighten,
 	                                                          -44.9, 44.9, changed_func);
 	_perspective_horizontal_slider = std::make_shared<log_slider_control>(
-		_dlg, tt.perspective_horizontal, _edit_state._perspective_horizontal, -0.6, 0.6, changed_func);
+		_frame, tt.perspective_horizontal, _edit_state._perspective_horizontal, -0.6, 0.6, changed_func);
 	_perspective_vertical_slider = std::make_shared<log_slider_control>(
-		_dlg, tt.perspective_vertical, _edit_state._perspective_vertical, -0.6, 0.6, changed_func);
-	_rotate_toolbar = std::make_shared<task_toolbar_control>(_dlg, rotate_buttons);
+		_frame, tt.perspective_vertical, _edit_state._perspective_vertical, -0.6, 0.6, changed_func);
+	_rotate_toolbar = std::make_shared<task_toolbar_control>(_frame, rotate_buttons);
 	_color_divider = std::make_shared<divider_element>();
 	_color_title = std::make_shared<ui::title_control>(icon_index::color, tt.color);
-	_vibrance_slider = std::make_shared<log_slider_control>(_dlg, tt.vibrance, _edit_state._vibrance, -1, 1,
+	_vibrance_slider = std::make_shared<log_slider_control>(_frame, tt.vibrance, _edit_state._vibrance, -1, 1,
 	                                                        changed_func);
-	_darks_slider = std::make_shared<log_slider_control>(_dlg, tt.darks, _edit_state._darks, -1, 1, changed_func);
-	_midtones_slider = std::make_shared<log_slider_control>(_dlg, tt.midtones, _edit_state._midtones, -1, 1,
+	_darks_slider = std::make_shared<log_slider_control>(_frame, tt.darks, _edit_state._darks, -1, 1, changed_func);
+	_midtones_slider = std::make_shared<log_slider_control>(_frame, tt.midtones, _edit_state._midtones, -1, 1,
 	                                                        changed_func);
-	_lights_slider = std::make_shared<log_slider_control>(_dlg, tt.lights, _edit_state._lights, -1, 1, changed_func);
-	_contrast_slider = std::make_shared<log_slider_control>(_dlg, tt.contrast, _edit_state._contrast, -1, 1,
+	_lights_slider = std::make_shared<log_slider_control>(_frame, tt.lights, _edit_state._lights, -1, 1, changed_func);
+	_contrast_slider = std::make_shared<log_slider_control>(_frame, tt.contrast, _edit_state._contrast, -1, 1,
 	                                                        changed_func);
-	_brightness_slider = std::make_shared<log_slider_control>(_dlg, tt.brightness, _edit_state._brightness, -1, 1,
+	_brightness_slider = std::make_shared<log_slider_control>(_frame, tt.brightness, _edit_state._brightness, -1, 1,
 	                                                          changed_func);
-	_saturation_slider = std::make_shared<log_slider_control>(_dlg, tt.saturation, _edit_state._saturation, -1, 1,
+	_saturation_slider = std::make_shared<log_slider_control>(_frame, tt.saturation, _edit_state._saturation, -1, 1,
 	                                                          changed_func);
-	_temperature_slider = std::make_shared<log_slider_control>(_dlg, tt.temperature, _edit_state._temperature, -1, 1,
+	_temperature_slider = std::make_shared<log_slider_control>(_frame, tt.temperature, _edit_state._temperature, -1, 1,
 	                                                           changed_func);
-	_tint_slider = std::make_shared<log_slider_control>(_dlg, tt.tint, _edit_state._tint, -1, 1, changed_func);
-	_color_toolbar = std::make_shared<task_toolbar_control>(_dlg, color_buttons);
+	_tint_slider = std::make_shared<log_slider_control>(_frame, tt.tint, _edit_state._tint, -1, 1, changed_func);
+	_color_toolbar = std::make_shared<task_toolbar_control>(_frame, color_buttons);
 	_save_divider = std::make_shared<divider_element>();
 	_save_title = std::make_shared<ui::title_control>(icon_index::save, tt.options_save_options);
-	_backup_check = std::make_shared<ui::check_control>(_dlg, tt.options_backup_copy, setting.create_originals);
-	_jpeg_quality_slider = std::make_shared<ui::slider_control>(_dlg, tt.options_jpeg_quality,
+	_backup_check = std::make_shared<ui::check_control>(_frame, tt.options_backup_copy, setting.create_originals);
+	_jpeg_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_jpeg_quality,
 	                                                            setting.jpeg_save_quality, 0, 100);
-	_webp_quality_slider = std::make_shared<ui::slider_control>(_dlg, tt.options_webp_quality, setting.webp_quality, 1,
+	_webp_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_webp_quality, setting.webp_quality, 1,
 	                                                            100);
-	_webp_lossless_check = std::make_shared<ui::check_control>(_dlg, tt.lossless_compression, setting.webp_lossless);
-	_jxl_quality_slider = std::make_shared<ui::slider_control>(_dlg, tt.options_jxl_quality, setting.jxl_quality, 1,
+	_webp_lossless_check = std::make_shared<ui::check_control>(_frame, tt.lossless_compression, setting.webp_lossless);
+	_jxl_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_jxl_quality, setting.jxl_quality, 1,
 	                                                           100);
-	_jxl_lossless_check = std::make_shared<ui::check_control>(_dlg, tt.lossless_compression, setting.jxl_lossless);
+	_jxl_lossless_check = std::make_shared<ui::check_control>(_frame, tt.lossless_compression, setting.jxl_lossless);
 	_controls = {
 		_info,
 		_straighten_title,
@@ -2708,7 +2694,7 @@ void edit_view_controls::create_controls()
 		_jxl_lossless_check,
 	};
 
-	_clr = ui::color(ui::style::color::dialog_text);
+	_clr = ui::color(ui::style::colors.dialog_text);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2792,10 +2778,10 @@ void edit_view::display_changed()
 
 	_edit_state.reset(safe_metadata(item), _loaded.dimensions(), _loaded.orientation());
 
-	if (_edit_controls->_dlg)
+	if (_edit_controls->_frame)
 	{
 		_edit_controls->populate();
-		_edit_controls->_dlg->layout();
+		_edit_controls->_frame->layout();
 	}
 
 	changed();
@@ -2803,8 +2789,8 @@ void edit_view::display_changed()
 
 void edit_view::draw_handle(ui::draw_context& dc, const recti handle_bounds2, const float alpha)
 {
-	const auto handle_clr = ui::color(ui::style::color::dialog_selected_background, alpha * dc.colors.bg_alpha);
-	const auto handle_bg_clr = ui::color(ui::style::color::dialog_selected_background, alpha * dc.colors.bg_alpha);
+	const auto handle_clr = ui::color(ui::style::colors.dialog_selected_background, alpha * dc.colors.bg_alpha);
+	const auto handle_bg_clr = ui::color(ui::style::colors.dialog_selected_background, alpha * dc.colors.bg_alpha);
 
 	dc.draw_rect(handle_bounds2, handle_clr);
 	dc.draw_border(handle_bounds2.inflate(df::round(-2 * dc.scale_factor)), handle_bounds2, handle_bg_clr,
@@ -3026,7 +3012,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		const auto bounding = crop_bounding.round();
 		auto c1 = ui::color(0, alpha / 2.0f);
 		dc.draw_border(bounding, border, c1, c1);
-		auto c2 = ui::color(ui::style::color::dialog_selected_background, alpha);
+		auto c2 = ui::color(ui::style::colors.dialog_selected_background, alpha);
 		dc.draw_border(bounding, bounding.inflate(pad1), c2, c2);
 
 		const auto grid_alpha = _edit_state.grid_alpha_animation.val();
@@ -3075,7 +3061,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 			dc.draw_text(text_degs, crop_bounding.round().inflate(df::round(100 * dc.scale_factor)),
 			             ui::style::font_face::title,
 			             ui::style::text_style::single_line_center,
-			             ui::color(ui::style::color::warning_background, alpha), {});
+			             ui::color(ui::style::colors.warning_background, alpha), {});
 		}
 	}
 	else if (!_loaded.is_empty())

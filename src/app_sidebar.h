@@ -394,7 +394,7 @@ public:
 		auto graph_bounds = logical_bounds;
 		graph_bounds.top = text_bounds.bottom + dc.padding1;
 
-		dc.draw_rect(graph_bounds, ui::color(ui::style::color::sidebar_background, draw_clr.a).scale(1.22f));
+		dc.draw_rect(graph_bounds, ui::color(ui::style::colors.sidebar_background, draw_clr.a).scale(1.22f));
 
 		// Capacity is zero for a drive with no media inserted; there is no usage to plot.
 		if (!_drive.capacity.is_empty())
@@ -406,7 +406,7 @@ public:
 
 			dc.draw_rect(used_bounds,
 			             ui::color(
-				             ui::average(ui::style::color::sidebar_background, ui::style::color::important_background),
+				             ui::average(ui::style::colors.sidebar_background, ui::style::colors.important_background),
 				             draw_clr.a));
 		}
 
@@ -1046,7 +1046,7 @@ public:
 			for (const auto& f : index_roots)
 			{
 				const auto folder_text = std::make_shared<text_element>(f.folder.text());
-				folder_text->foreground_color(ui::emphasize(ui::style::color::view_text));
+				folder_text->foreground_color(ui::emphasize(ui::style::colors.view_text));
 				const auto count_text = std::make_shared<text_element>(str::format_count(f.count),
 				                                                       ui::style::text_style::single_line_far);
 				const auto size_text = std::make_shared<text_element>(df::format_size(f.size),
@@ -1124,7 +1124,7 @@ public:
 
 		if (changed)
 		{
-			ic.invalidate_view = true;
+			ic.redraw = true;
 			_state.invalidate_view(view_invalid::tooltip);
 		}
 	}
@@ -1198,7 +1198,7 @@ public:
 
 		// The well floor is opaque so the total reads against a surface of its own, and so the
 		// centre has pixels the pointer can claim for Options, which opens on the collection.
-		auto hole_color = ui::darken(ui::style::color::sidebar_background, 0.35f);
+		auto hole_color = ui::darken(ui::style::colors.sidebar_background, 0.35f);
 
 		if (_center_hover)
 		{
@@ -1209,7 +1209,7 @@ public:
 
 		if (_state.item_index.detecting > 0)
 		{
-			hole_color = ui::style::color::important_background;
+			hole_color = ui::style::colors.important_background;
 		}
 
 		const render_key key{extent, hole_color, _generation, focused_group(), _center_hover};
@@ -1225,7 +1225,7 @@ public:
 					const auto& e = _file_type_entries[i];
 					const auto color = e.count > 0
 						                   ? e.group->color
-						                   : ui::lighten(ui::style::color::sidebar_background, 0.25f);
+						                   : ui::lighten(ui::style::colors.sidebar_background, 0.25f);
 
 					scene.wedges[i] = {
 						ui::abgr(e.focus ? ui::lighten(color, 0.14f) : color),
@@ -1270,7 +1270,7 @@ public:
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		if (bounds != bounds_in)
 		{
@@ -1572,7 +1572,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 				height = std::clamp(height, 0, ceiling);
 				previous_top[m] = floor_y - height - _month_style.depth_y;
 
-				auto color = ui::style::color::important_background;
+				auto color = ui::style::colors.important_background;
 
 				if (!hovered)
 				{
@@ -1582,9 +1582,9 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 					// exception - it is warm, so the panel and the listing agree at a glance.
 					const auto tint = future ? 16 : count > 0 ? 55 + df::round(share * 90.0) : 32;
 					color = shown
-						        ? ui::lerp(ui::style::color::sidebar_background,
-						                   ui::style::color::important_background, 200)
-						        : ui::lerp(ui::style::color::sidebar_background, foreground, tint);
+						        ? ui::lerp(ui::style::colors.sidebar_background,
+						                   ui::style::colors.important_background, 200)
+						        : ui::lerp(ui::style::colors.sidebar_background, foreground, tint);
 				}
 
 				cells.emplace_back(cell, height, ui::abgr(color),
@@ -1620,11 +1620,11 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			// The selected span is tinted rather than boxed: a bracket drawn round eight bars is
 			// one more line to read, where a run of warm bars simply is the thing shown above.
 			const auto color = hovered
-				                   ? ui::style::color::important_background
+				                   ? ui::style::colors.important_background
 				                   : selected
-				                   ? ui::lerp(ui::style::color::sidebar_background,
-				                              ui::style::color::important_background, 165)
-				                   : ui::lerp(ui::style::color::sidebar_background, foreground, 50);
+				                   ? ui::lerp(ui::style::colors.sidebar_background,
+				                              ui::style::colors.important_background, 165)
+				                   : ui::lerp(ui::style::colors.sidebar_background, foreground, 50);
 
 			cells.emplace_back(cell, height, ui::abgr(color),
 			                   static_cast<uint16_t>(navigator_id_base + index), hovered);
@@ -1645,7 +1645,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		}
 
 		const render_key key{
-			extent, ui::style::color::sidebar_background, dc.colors.foreground,
+			extent, ui::style::colors.sidebar_background, dc.colors.foreground,
 			_generation, _hover_month, _hover_year, _shown_year, _shown_month, _window_end, row_height,
 			_month_style.depth_x
 		};
@@ -1844,7 +1844,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		{
 			_hover_month = month;
 			_hover_year = year;
-			ic.invalidate_view = true;
+			ic.redraw = true;
 			_state.invalidate_view(view_invalid::tooltip);
 		}
 	}
@@ -1962,7 +1962,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	// Built as a surface so the hardware and software backends draw the same marker.
 	void update_marker(ui::draw_context& dc, const int diameter) const
 	{
-		const auto clr = ui::bgr(ui::style::color::important_background);
+		const auto clr = ui::bgr(ui::style::colors.important_background);
 
 		// Keyed on the colour as well as the size: the accent colour is a theme value, and a key
 		// that omits an input serves one theme's marker under another.
@@ -2334,7 +2334,7 @@ public:
 						return true;
 					}
 
-					const auto heat_color = ui::bgr(ui::style::color::important_background) | 0xFF000000;
+					const auto heat_color = ui::bgr(ui::style::colors.important_background) | 0xFF000000;
 					memset(pixels, 0, surface->stride() * dims.cy);
 
 					for (auto y = 0; y < dims.cy; ++y)
@@ -2483,7 +2483,7 @@ public:
 			{
 				_hover_location = hover_location;
 				if (_hover_location != -1) resolve_area(_locations[_hover_location]);
-				ic.invalidate_view = true;
+				ic.redraw = true;
 				_state.invalidate_view(view_invalid::tooltip);
 			}
 		}
@@ -2703,7 +2703,7 @@ private:
 	{
 		interaction_context ic{loc, _element_offset, _tracking};
 		_element->hover(ic);
-		if (ic.invalidate_view) invalidate();
+		if (ic.redraw) invalidate();
 	}
 
 	void invalidate() const
@@ -2849,9 +2849,10 @@ public:
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	bool step_plasma(const double time_now) const
+	// Background work shows the plasma in colour; faded, it drifts only where drift is wanted.
+	bool step_plasma(const double time_now, const bool drift) const
 	{
-		return logo_plasma.step(time_now);
+		return logo_plasma.step(time_now, df::jobs_running > 0, drift);
 	}
 
 	bool plasma_is_active() const
@@ -2871,7 +2872,7 @@ public:
 		if (value)
 		{
 			_bg_target = view_handle_color(false, true, false, true, true,
-			                               ui::color(ui::style::color::toolbar_background));
+			                               ui::color(ui::style::colors.toolbar_background));
 
 			if (ui::is_alpha_zero(_bg_color.a))
 			{
@@ -2914,7 +2915,7 @@ public:
 	view_state& _state;
 	view_scroller _scroller;
 	ui::frame_ptr _frame;
-	ui::control_frame_ptr _owner;
+	ui::frame_ptr _owner;
 	recti _embedded_bounds;
 	bool _has_focus = false;
 	bool _show_indexing_control = false;
@@ -2969,20 +2970,20 @@ public:
 		_elements.emplace_back(_history_chart);
 	}
 
-	void init(const ui::control_frame_ptr& owner)
+	void init(const ui::frame_ptr& owner)
 	{
 		ui::frame_style fs;
 		fs.can_focus = true;
 		fs.colors = {
-			ui::style::color::sidebar_background, ui::style::color::view_text,
-			ui::style::color::view_selected_background
+			ui::style::colors.sidebar_background, ui::style::colors.view_text,
+			ui::style::colors.view_selected_background
 		};
 		fs.timer_milliseconds = 1000 / 15;
 		_frame = owner->create_frame(weak_from_this(), fs);
 		_owner = owner;
 	}
 
-	void attach_embedded(const ui::frame_ptr& frame, const ui::control_frame_ptr& owner)
+	void attach_embedded(const ui::frame_ptr& frame, const ui::frame_ptr& owner)
 	{
 		_frame = frame;
 		_owner = owner;
@@ -3005,7 +3006,7 @@ public:
 
 	void render_embedded(ui::draw_context& dc)
 	{
-		dc.draw_rect(_embedded_bounds, ui::color(ui::style::color::sidebar_background, dc.colors.alpha));
+		dc.draw_rect(_embedded_bounds, ui::color(ui::style::colors.sidebar_background, dc.colors.alpha));
 		dc.clip_bounds(_embedded_bounds);
 		on_window_paint(dc);
 		dc.restore_clip();
@@ -3422,6 +3423,9 @@ public:
 		}
 	}
 
+	// Its own repaint, beside the host's invalidate(ui::host_invalid), which it would otherwise hide.
+	using view_host::invalidate;
+
 	void invalidate() const
 	{
 		if (is_shown())
@@ -3447,13 +3451,12 @@ public:
 		avail_bounds.left += x_padding; // -(mc.baseline_snap / 2);
 		avail_bounds.right -= scroll_padding; // -(mc.baseline_snap / 2);
 
-		ui::control_layouts positions;
 		flex_container_layout column;
 		column.direction = flex_direction::column;
 		column.wrap = flex_wrap::no_wrap;
 		column.align_items = flex_align::start;
 		column.padding = layout_padding;
-		const auto content_extent = layout_flex_elements(_elements, mc, positions, avail_bounds, column);
+		const auto content_extent = layout_flex_elements(_elements, mc, avail_bounds, column);
 
 		const auto host_bounds = embedded ? _embedded_bounds : recti(_extent);
 		const recti scroll_bounds{
@@ -3476,7 +3479,7 @@ public:
 		return df::mul_div(extent.cx, 5, 2);
 	}
 
-	void focus_changed(const bool has_focus, const ui::control_base_ptr& child) override
+	void focus_changed(const bool has_focus, const ui::control_ptr& child) override
 	{
 		df::trace(std::format("Sidebar navigation_controls::focus {}", has_focus));
 
@@ -3539,7 +3542,7 @@ public:
 		return _frame ? _frame : ui::no_frame();
 	}
 
-	const ui::control_frame_ptr owner() override
+	const ui::frame_ptr owner() override
 	{
 		return _owner;
 	}

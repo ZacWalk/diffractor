@@ -15,7 +15,6 @@
 #include "app_commands.h"
 #include "ui_controllers.h"
 #include "ui_elements.h"
-#include "ui_text_edit.h"
 #include "model_display.h"
 #include "libfiles/commodore.h"
 
@@ -25,158 +24,6 @@ inline recti comparison_divider_device_bounds(const recti logical_bounds, const 
 {
 	return logical_bounds.offset(element_offset);
 }
-
-inline int slider_value_to_track_x(const recti track_bounds, const int value, const int min_value, const int max_value)
-{
-	const auto range = std::max(1, max_value - min_value);
-	const auto clamped = std::clamp(value, min_value, max_value);
-	return track_bounds.left + df::round(static_cast<double>(clamped - min_value) * track_bounds.width() / range);
-}
-
-inline int slider_track_x_to_value(const recti track_bounds, const int x, const int min_value, const int max_value,
-                                   const int current_value)
-{
-	const auto range = std::max(1, max_value - min_value);
-	const auto target = std::clamp(x, track_bounds.left, track_bounds.right);
-	const auto width = std::max(1, track_bounds.width());
-	const auto raw = static_cast<double>(target - track_bounds.left) * range / width;
-	const auto distance_to = [&](const int value)
-	{
-		return std::abs(slider_value_to_track_x(track_bounds, value, min_value, max_value) - target);
-	};
-
-	// Start from the proportional value so both ends stay reachable when several values share a pixel,
-	// and let a neighbour win only when its painted thumb is strictly closer.
-	const auto nearest = std::clamp(min_value + df::round(raw), min_value, max_value);
-	auto best = nearest;
-	auto best_distance = distance_to(nearest);
-
-	for (const auto offset : {-1, 1, -2, 2})
-	{
-		const auto value = nearest + offset;
-		if (value < min_value || value > max_value) continue;
-		const auto distance = distance_to(value);
-		if (distance < best_distance)
-		{
-			best = value;
-			best_distance = distance;
-		}
-	}
-
-	// Pressing the thumb where it is drawn keeps its value.
-	const auto current = std::clamp(current_value, min_value, max_value);
-	if (distance_to(current) <= best_distance) best = current;
-	return best;
-}
-
-class slider_element final : public std::enable_shared_from_this<slider_element>, public view_element
-{
-	std::function<int()> _value;
-	std::function<void(int)> _changed;
-	// Fired once when the drag releases. A caller whose change is expensive settles here instead of
-	// on every pixel of movement.
-	std::function<void()> _committed;
-	int _min = 0;
-	int _max = 0;
-	const text_t& _tooltip;
-	mutable recti _slider_bounds;
-	mutable recti _track_bounds;
-	mutable int _handle_size = 12;
-	mutable int _track_height = 4;
-
-	static recti calc_track_bounds(const recti slider_bounds, const int handle_size, const int track_height)
-	{
-		const auto center_y = slider_bounds.center().y;
-		return {
-			slider_bounds.left + handle_size / 2, center_y - track_height / 2,
-			slider_bounds.right - handle_size / 2, center_y + (track_height + 1) / 2
-		};
-	}
-
-public:
-	slider_element(std::function<int()> value, std::function<void(int)> changed, const int min, const int max,
-	               const text_t& tooltip, std::function<void()> committed = {}) :
-		view_element(view_element_style::can_invoke | view_element_style::has_tooltip), _value(std::move(value)),
-		_changed(std::move(changed)), _committed(std::move(committed)), _min(min), _max(max), _tooltip(tooltip)
-	{
-	}
-
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
-	{
-		_handle_size = std::max(mc.padding2, df::round(12 * mc.scale_factor));
-		_track_height = std::max(2, df::round(4 * mc.scale_factor));
-		return {width_limit, std::max(mc.scroll_width, mc.text_line_height(ui::style::font_face::dialog))};
-	}
-
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
-	{
-		view_element::layout(mc, bounds_in, positions);
-		_handle_size = std::max(mc.padding2, df::round(12 * mc.scale_factor));
-		_track_height = std::max(2, df::round(4 * mc.scale_factor));
-		_slider_bounds = bounds;
-		_track_bounds = calc_track_bounds(_slider_bounds, _handle_size, _track_height);
-	}
-
-	void render(ui::draw_context& dc, const pointi element_offset) const override
-	{
-		const auto logical_bounds = _slider_bounds = bounds.offset(element_offset);
-		_handle_size = std::max(dc.padding2, df::round(12 * dc.scale_factor));
-		_track_height = std::max(2, df::round(4 * dc.scale_factor));
-		const auto center_y = logical_bounds.center().y;
-		_track_bounds = calc_track_bounds(logical_bounds, _handle_size, _track_height);
-
-		const auto value = std::clamp(_value(), _min, _max);
-		const auto handle_x = slider_value_to_track_x(_track_bounds, value, _min, _max);
-		const auto handle_bounds = recti(handle_x - _handle_size / 2, center_y - _handle_size / 2,
-		                                 handle_x + (_handle_size + 1) / 2,
-		                                 center_y + (_handle_size + 1) / 2);
-		const auto is_hover = is_style_bit_set(view_element_style::hover);
-		const auto is_tracking = is_style_bit_set(view_element_style::tracking);
-
-		dc.draw_rounded_rect(_track_bounds, ui::color(0, dc.colors.alpha / 3.33f), dc.padding1);
-		dc.draw_rounded_rect(handle_bounds,
-		                     view_handle_color(false, is_hover, is_tracking, dc.frame_has_focus, true).aa(
-			                     dc.colors.alpha), dc.padding1);
-	}
-
-	void hover(interaction_context& ic) override
-	{
-		const auto was_tracking = is_style_bit_set(view_element_style::tracking);
-		if (was_tracking != ic.tracking) ic.invalidate_view = true;
-
-		// A controller being torn down says the pointer is gone by passing {-1,-1}. That is a
-		// leave, not a drag off the left edge - and clamping it lands on _min, so a slider or a
-		// scrubber jumped to the start as the control that owned it was replaced, taking the
-		// playback position or the setting with it.
-		const auto pointer_left = ic.loc.x < 0 && ic.loc.y < 0;
-
-		if ((was_tracking || ic.tracking) && !pointer_left && !_slider_bounds.is_empty())
-		{
-			const auto slider_bounds = bounds.offset(ic.element_offset);
-			const auto track_bounds = calc_track_bounds(slider_bounds, _handle_size, _track_height);
-			const auto value = slider_track_x_to_value(track_bounds, ic.loc.x, _min, _max, _value());
-			if (value != _value()) _changed(value);
-		}
-
-		set_style_bit(view_element_style::tracking, ic.tracking);
-
-		// Last, because settling may replace the element tree that owns this slider.
-		if (was_tracking && !ic.tracking && _committed) _committed();
-	}
-
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
-	{
-		hover.elements->add(std::make_shared<text_element>(_tooltip));
-		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
-	}
-
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
-	{
-		return default_controller_from_location(*this, host, loc, element_offset, ctx);
-	}
-};
 
 // A toolbar command drawn as a transparent link, matching the icon links already used on group
 // titles. Unlike link_element it follows the command's own visible, enable, checked and toolbar
@@ -250,9 +97,9 @@ public:
 			{
 				auto track = logical_bounds;
 				track.top = track.bottom - df::round(3 * dc.scale_factor);
-				dc.draw_rect(track, ui::color(ui::style::color::group_background, alpha * 0.7f));
+				dc.draw_rect(track, ui::color(ui::style::colors.group_background, alpha * 0.7f));
 				track.right = track.left + df::mul_div(std::min(pos, 1000), track.width(), 1000);
-				dc.draw_rect(track, ui::color(ui::style::color::view_selected_background, alpha));
+				dc.draw_rect(track, ui::color(ui::style::colors.view_selected_background, alpha));
 			}
 		}
 
@@ -293,7 +140,7 @@ public:
 
 			if (event.host && (relayout || previous_icon != _icon || previous_style != style))
 			{
-				event.host->invalidate_view(relayout ? view_invalid::view_layout : view_invalid::view_redraw);
+				event.host->invalidate(relayout ? ui::host_invalid::layout : ui::host_invalid::redraw);
 			}
 		}
 		else if (event.type == view_element_event_type::invoke)
@@ -370,492 +217,6 @@ static std::string_view orientation_to_string(const ui::orientation& o) noexcept
 namespace ui
 {
 	std::vector<recti> layout_collage(recti draw_bounds, const std::vector<sizei>& dimensions);
-}
-
-class edit_element;
-using edit_element_ptr = std::shared_ptr<edit_element>;
-
-// A window-free single line text edit drawn by the view renderer.
-//
-// The element owns the editing model, the caret metrics and the horizontal scroll offset.
-// Metrics are built in the measure/layout phase and rebuilt only when the text or the display
-// scale changes, so hit testing is valid straight after layout() and a repaint normally measures
-// no text at all. Both properties matter: the previous per-frame measurement was quadratic in the
-// length of the text and caret hit testing silently depended on a preceding paint.
-class edit_element final : public view_element, public std::enable_shared_from_this<edit_element>
-{
-public:
-	using changed_fn = std::function<void(std::string_view)>;
-	using action_fn = std::function<void()>;
-	using focus_fn = std::function<void(bool)>;
-
-	ui::single_line_edit_model model;
-
-	// Placeholder drawn while the text is empty.
-	const text_t* cue = nullptr;
-
-	// Optional glyph drawn at the leading edge, e.g. the scope of the current search.
-	icon_index icon = icon_index::none;
-
-	// Overrides the interior fill; empty uses the theme edit background. Owners animate this to
-	// signal state (a running search) without adding a separate control.
-	std::optional<ui::color32> background;
-
-	// Raised whenever the text changes as a result of user input.
-	changed_fn changed;
-	// Raised when the user accepts the text (Enter).
-	action_fn commit;
-	// Raised when the user abandons the edit (Escape); the model is reverted first.
-	action_fn cancel;
-	// Raised when the focused state changes.
-	focus_fn focus_changed;
-	// Asked to give this edit the input focus; the owner decides what else to blur.
-	action_fn request_focus;
-
-	edit_element() noexcept : view_element(view_element_style::can_invoke)
-	{
-	}
-
-	const std::string& text() const noexcept { return model.text(); }
-
-	void text(std::string value)
-	{
-		if (model.text() == value) return;
-		model.text(std::move(value));
-		_metrics_valid = false;
-		_scroll_x = 0;
-	}
-
-	bool focused() const noexcept { return _focused; }
-
-	// Takes focus and selects the whole text, matching the behavior of a freshly focused
-	// Windows edit control. Returns true when the focused state changed.
-	bool focus()
-	{
-		if (_focused) return false;
-		_focused = true;
-		model.begin_edit();
-		model.select_all();
-		reset_caret();
-		if (focus_changed) focus_changed(true);
-		return true;
-	}
-
-	bool blur()
-	{
-		if (!_focused) return false;
-		_focused = false;
-		if (focus_changed) focus_changed(false);
-		return true;
-	}
-
-	void reset_caret()
-	{
-		const auto interval = platform::caret_blink_time();
-		_caret_phase = interval == 0 ? 0 : platform::tick_count() / interval;
-		_caret_visible = true;
-	}
-
-	// Advances the caret blink. Returns true when the edit needs repainting.
-	bool update_caret()
-	{
-		if (!_focused) return false;
-
-		const auto interval = platform::caret_blink_time();
-
-		if (interval == 0)
-		{
-			const auto was_hidden = !_caret_visible;
-			_caret_visible = true;
-			return was_hidden;
-		}
-
-		const auto phase = platform::tick_count() / interval;
-		if (phase == _caret_phase) return false;
-		_caret_phase = phase;
-		_caret_visible = (phase & 1) == 0;
-		return true;
-	}
-
-	// Maps a device x coordinate onto the nearest character boundary.
-	size_t caret_from_x(const int x) const
-	{
-		if (_widths.size() < 2) return model.text().size();
-
-		const auto target = x - _inner.left + _scroll_x;
-		const auto found = std::ranges::lower_bound(_widths, target);
-		if (found == _widths.begin()) return _offsets.front();
-		if (found == _widths.end()) return _offsets.back();
-
-		const auto high = static_cast<size_t>(found - _widths.begin());
-		const auto low = high - 1;
-		return (target - _widths[low] <= _widths[high] - target) ? _offsets[low] : _offsets[high];
-	}
-
-	// Returns true when the key was consumed by the edit.
-	bool key_down(const char32_t key, const ui::key_state keys)
-	{
-		if (!_focused) return false;
-
-		auto text_changed = false;
-
-		if (keys.control && key == 'A') model.select_all();
-		else if (keys.control && key == 'C')
-		{
-			// Nothing selected is nothing to copy. Sending it anyway replaced whatever the user had
-			// put on the clipboard with an empty string, which is a loss they did not ask for and
-			// cannot undo.
-			const auto selected = model.selected_text();
-			if (!selected.empty()) platform::set_clipboard(selected);
-		}
-		else if (keys.control && key == 'X')
-		{
-			const auto selected = model.selected_text();
-			if (!selected.empty())
-			{
-				text_changed = model.cut_to_clipboard([](const std::string_view text)
-				{
-					return platform::set_clipboard(text);
-				});
-			}
-		}
-		else if (keys.control && key == 'V')
-		{
-			text_changed = model.paste_from_clipboard([] { return platform::clipboard_text(); });
-		}
-		else if (keys.control && key == 'Z')
-		{
-			keys.shift ? model.redo() : model.undo();
-			text_changed = true;
-		}
-		else if (keys.control && key == 'Y')
-		{
-			model.redo();
-			text_changed = true;
-		}
-		else if (key == keys::LEFT) keys.control ? model.move_word_left(keys.shift) : model.move_left(keys.shift);
-		else if (key == keys::RIGHT) keys.control ? model.move_word_right(keys.shift) : model.move_right(keys.shift);
-		else if (key == keys::HOME) model.move_home(keys.shift);
-		else if (key == keys::END) model.move_end(keys.shift);
-		else if (key == keys::BACK)
-		{
-			keys.control ? model.backspace_word() : model.backspace();
-			text_changed = true;
-		}
-		else if (key == keys::DEL)
-		{
-			keys.control ? model.delete_word() : model.delete_forward();
-			text_changed = true;
-		}
-		else if (key == keys::ESCAPE)
-		{
-			model.cancel_edit();
-			_metrics_valid = false;
-			notify_changed();
-			blur();
-			if (cancel) cancel();
-			return true;
-		}
-		else if (key == keys::RETURN)
-		{
-			blur();
-			if (commit) commit();
-			return true;
-		}
-		else if (key == keys::TAB)
-		{
-			blur();
-			return true;
-		}
-		else return false;
-
-		if (text_changed)
-		{
-			_metrics_valid = false;
-			notify_changed();
-		}
-
-		reset_caret();
-		return true;
-	}
-
-	bool text_input(const std::string_view input)
-	{
-		if (!_focused) return false;
-		model.insert(input);
-		_metrics_valid = false;
-		reset_caret();
-		notify_changed();
-		return true;
-	}
-
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
-	{
-		return {width_limit, mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2};
-	}
-
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
-	{
-		bounds = bounds_in;
-		update_inner(mc);
-		update_metrics(mc);
-		scroll_caret_into_view();
-	}
-
-	void render(ui::draw_context& dc, const pointi element_offset) const override
-	{
-		update_inner(dc);
-		update_metrics(dc);
-		scroll_caret_into_view();
-
-		const auto draw_bounds = bounds.offset(element_offset);
-		const auto inner = _inner.offset(element_offset);
-		const auto text_color = ui::color(ui::style::color::edit_text, dc.colors.alpha);
-
-		draw_frame(dc, draw_bounds);
-
-		if (icon != icon_index::none)
-		{
-			xdraw_icon(dc, icon, _icon_bounds.offset(element_offset), text_color.aa(0.7f), {});
-		}
-
-		dc.clip_bounds(inner);
-
-		if (model.has_selection())
-		{
-			const recti selection{
-				inner.left + offset_x(model.selection_start()) - _scroll_x, inner.top,
-				inner.left + offset_x(model.selection_end()) - _scroll_x, inner.bottom
-			};
-			dc.draw_rect(selection, ui::color(ui::style::color::dialog_selected_background, dc.colors.alpha));
-		}
-
-		const auto& value = model.text();
-
-		if (value.empty())
-		{
-			if (cue && !cue->sv().empty())
-			{
-				dc.draw_text(cue->sv(), inner, ui::style::font_face::dialog, ui::style::text_style::single_line,
-				             text_color.aa(0.55f), {});
-			}
-		}
-		else
-		{
-			dc.draw_text(value, inner.offset(-_scroll_x, 0), ui::style::font_face::dialog,
-			             ui::style::text_style::single_line, text_color, {});
-		}
-
-		if (_focused && _caret_visible)
-		{
-			const auto caret_x = inner.left + offset_x(model.caret()) - _scroll_x;
-			dc.draw_rect({caret_x, inner.top + dc.padding1, caret_x + 1, inner.bottom - dc.padding1}, text_color);
-		}
-
-		dc.restore_clip();
-	}
-
-	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
-	                                             hit_test_context& ctx) override;
-
-	void dispatch_event(const view_element_event& event) override
-	{
-		if (event.type == view_element_event_type::dpi_changed)
-		{
-			_metrics_valid = false;
-		}
-	}
-
-private:
-	// Caret metrics: _offsets holds every utf-8 character boundary (including 0 and size())
-	// and _widths the matching prefix width. Both are rebuilt only when the text or the
-	// display scale changes.
-	mutable std::vector<size_t> _offsets;
-	mutable std::vector<int> _widths;
-	mutable std::string _metrics_text;
-	mutable double _metrics_scale = 0.0;
-	mutable bool _metrics_valid = false;
-	mutable int _scroll_x = 0;
-	mutable recti _inner;
-	mutable recti _icon_bounds;
-	bool _focused = false;
-	bool _caret_visible = true;
-	uint64_t _caret_phase = 0;
-
-	void notify_changed() const
-	{
-		if (changed) changed(model.text());
-	}
-
-	// The text area excludes the optional leading icon. Recomputed on every layout and paint so a
-	// scope change, which does not resize the edit, cannot leave hit testing on stale metrics.
-	void update_inner(ui::measure_context& mc) const
-	{
-		auto inner = bounds.inflate(-mc.padding2, 0);
-
-		if (icon == icon_index::none)
-		{
-			_icon_bounds = {};
-		}
-		else
-		{
-			const auto icon_width = mc.text_line_height(ui::style::font_face::icons);
-			_icon_bounds = {inner.left, inner.top, inner.left + icon_width, inner.bottom};
-			inner.left = std::min(_icon_bounds.right + mc.padding1, inner.right);
-		}
-
-		_inner = inner;
-	}
-
-	void update_metrics(ui::measure_context& mc) const
-	{
-		const auto& value = model.text();
-
-		if (_metrics_valid && _metrics_scale == mc.scale_factor && _metrics_text == value) return;
-
-		_metrics_valid = true;
-		_metrics_scale = mc.scale_factor;
-		_metrics_text = value;
-
-		_offsets.clear();
-		_offsets.emplace_back(0);
-
-		for (size_t offset = 0; offset < value.size();)
-		{
-			++offset;
-			while (offset < value.size() && (static_cast<unsigned char>(value[offset]) & 0xc0) == 0x80) ++offset;
-			_offsets.emplace_back(offset);
-		}
-
-		_widths.clear();
-		_widths.reserve(_offsets.size());
-
-		auto layout = mc.create_text_layout(ui::style::font_face::dialog);
-		if (layout)
-		{
-			layout->update(value, ui::style::text_style::single_line);
-			_widths = layout->offset_xs(_offsets, 10000);
-			if (_widths.size() == _offsets.size()) return;
-		}
-
-		_widths.clear();
-		for (const auto offset : _offsets)
-			_widths.emplace_back(offset == 0
-				                     ? 0
-				                     : mc.measure_text(std::string_view(value).substr(0, offset),
-				                                       ui::style::font_face::dialog,
-				                                       ui::style::text_style::single_line, 10000).cx);
-	}
-
-	int offset_x(const size_t offset) const
-	{
-		if (_widths.empty()) return 0;
-		const auto found = std::ranges::lower_bound(_offsets, offset);
-		const auto index = found == _offsets.end()
-			                   ? _offsets.size() - 1
-			                   : static_cast<size_t>(found - _offsets.begin());
-		return _widths[index];
-	}
-
-	void scroll_caret_into_view() const
-	{
-		const auto width = std::max(0, _inner.width());
-		const auto caret_x = offset_x(model.caret());
-		const auto text_width = _widths.empty() ? 0 : _widths.back();
-
-		if (caret_x - _scroll_x > width) _scroll_x = caret_x - width;
-		if (caret_x < _scroll_x) _scroll_x = caret_x;
-		_scroll_x = std::clamp(_scroll_x, 0, std::max(0, text_width - width));
-	}
-
-	void draw_frame(ui::draw_context& dc, const recti draw_bounds) const
-	{
-		const auto border_width = _focused ? std::max(2, df::round(2.6 * dc.scale_factor)) : 1;
-		const auto border = _focused
-			                    ? ui::color(ui::style::color::dialog_selected_background, dc.colors.alpha)
-			                    : ui::color(ui::average(ui::style::color::toolbar_background,
-			                                            ui::style::color::edit_text), dc.colors.alpha);
-		dc.draw_rounded_rect(draw_bounds, border, dc.padding1);
-		dc.draw_rounded_rect(draw_bounds.inflate(-border_width),
-		                     ui::color(background.value_or(ui::style::color::edit_background), dc.colors.alpha),
-		                     std::max(1, dc.padding1 - border_width / 2));
-	}
-};
-
-// Mouse interaction for edit_element: click to place the caret, drag or shift-click to extend
-// the selection and double click to select a word. The first click focuses the edit and keeps
-// the select-all made by edit_element::focus().
-class edit_element_controller final : public view_controller
-{
-	edit_element_ptr _edit;
-	size_t _anchor = 0;
-	bool _tracking = false;
-
-public:
-	edit_element_controller(const view_host_ptr& host, edit_element_ptr edit, const recti bounds) :
-		view_controller(host, bounds), _edit(std::move(edit))
-	{
-	}
-
-	ui::style::cursor cursor() const override
-	{
-		return ui::style::cursor::text_select;
-	}
-
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
-	{
-		_tracking = true;
-
-		const auto was_focused = _edit->focused();
-		if (_edit->request_focus) _edit->request_focus();
-
-		if (!was_focused)
-		{
-			_anchor = _edit->model.anchor();
-		}
-		else if (keys.shift)
-		{
-			_anchor = _edit->model.anchor();
-			_edit->model.select(_anchor, _edit->caret_from_x(loc.x));
-		}
-		else
-		{
-			_anchor = _edit->caret_from_x(loc.x);
-			_edit->model.select(_anchor, _anchor);
-		}
-
-		_edit->reset_caret();
-		_host->frame()->invalidate(_bounds);
-	}
-
-	void on_mouse_move(const pointi loc) override
-	{
-		if (!_tracking) return;
-		_edit->model.select(_anchor, _edit->caret_from_x(loc.x));
-		_host->frame()->invalidate(_bounds);
-	}
-
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
-	{
-		_tracking = false;
-	}
-
-	void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
-	{
-		_edit->model.select_word(_edit->caret_from_x(loc.x));
-		_anchor = _edit->model.anchor();
-		_edit->reset_caret();
-		_host->frame()->invalidate(_bounds);
-	}
-};
-
-inline view_controller_ptr edit_element::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                                  const pointi element_offset,
-                                                                  hit_test_context& ctx)
-{
-	const auto draw_bounds = bounds.offset(element_offset);
-	if (!is_visible() || !draw_bounds.contains(loc)) return nullptr;
-	return std::make_shared<edit_element_controller>(host, shared_from_this(), draw_bounds);
 }
 
 class rating_control final : public std::enable_shared_from_this<rating_control>, public view_element
@@ -946,7 +307,7 @@ public:
 		if (_hover_rating != rating)
 		{
 			_hover_rating = rating;
-			ic.invalidate_view = true;
+			ic.redraw = true;
 		}
 
 		last_hover_rating = _hover_rating;
@@ -1045,7 +406,7 @@ public:
 		if (_hover_cell != cell)
 		{
 			_hover_cell = cell;
-			ic.invalidate_view = true;
+			ic.redraw = true;
 		}
 	}
 
@@ -1285,7 +646,7 @@ public:
 
 			if (is_pin)
 			{
-				bg.merge(ui::color(ui::style::color::important_background, dc.colors.alpha));
+				bg.merge(ui::color(ui::style::colors.important_background, dc.colors.alpha));
 			}
 
 			xdraw_icon(dc, icon, logical_bounds, ui::color(dc.colors.foreground, alpha), bg);
@@ -1708,7 +1069,7 @@ public:
 		{
 			const auto is_empty = i.uncompressed_size.is_empty();
 			const auto* const ft = is_empty ? file_type::folder : files::file_type_from_name(i.filename);
-			const auto color = ft->text_color(ui::style::color::view_text);
+			const auto color = ft->text_color(ui::style::colors.view_text);
 			const auto text = i.filename;
 			const auto created = prop::format_date(i.created);
 			const auto compressed_size = is_empty ? std::string{} : df::format_size(i.compressed_size);
@@ -2093,7 +1454,7 @@ public:
 			if (is_tracking && !ic.tracking)
 			{
 				set_style_bit(view_element_style::tracking, false);
-				ic.invalidate_view = true;
+				ic.redraw = true;
 
 				if (_display->_session)
 				{
@@ -2237,7 +1598,7 @@ public:
 		return {width_limit, calc_flex_layout(children(), mc, {width_limit, -1}, row).extent.cy};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2250,7 +1611,7 @@ public:
 			const auto& element = elements[i];
 			const auto child_bounds = calculated.layout_bounds[i].offset(bounds.top_left());
 			element.visible = child_bounds.right <= bounds.right;
-			if (element.visible) element.v->layout(mc, child_bounds, positions);
+			if (element.visible) element.v->layout(mc, child_bounds);
 		}
 	}
 
@@ -2333,7 +1694,7 @@ public:
 	void region(const rectd source_rect)
 	{
 		_state.drawn_region(region_item(), source_rect);
-		_host->invalidate_view(view_invalid::view_redraw | view_invalid::controller);
+		_host->invalidate(ui::host_invalid::redraw | ui::host_invalid::controller);
 	}
 
 	void clear_region()
@@ -2341,7 +1702,7 @@ public:
 		if (!has_region()) return;
 		_state.drawn_region(region_item(), {});
 		_state.end_region_drag();
-		_host->invalidate_view(view_invalid::view_redraw | view_invalid::controller);
+		_host->invalidate(ui::host_invalid::redraw | ui::host_invalid::controller);
 	}
 
 	// Where the whole picture lands on screen at the current scale, which is what the region maps
@@ -2369,7 +1730,7 @@ public:
 	void begin_region_drag()
 	{
 		_state.begin_region_drag(region_item(), true);
-		_host->invalidate_view(view_invalid::view_redraw | view_invalid::controller);
+		_host->invalidate(ui::host_invalid::redraw | ui::host_invalid::controller);
 	}
 
 	// Moving keeps the rectangle; only the buttons go, because the pointer is over them. They are
@@ -2377,7 +1738,7 @@ public:
 	void begin_region_move()
 	{
 		_state.begin_region_drag(region_item(), false);
-		_host->invalidate_view(view_invalid::view_redraw | view_invalid::controller);
+		_host->invalidate(ui::host_invalid::redraw | ui::host_invalid::controller);
 	}
 
 	void release_region_drag()
@@ -2399,7 +1760,7 @@ public:
 		// replaced what was there, so too small puts it back rather than destroying it.
 		const auto drawn = region_bounds(element_offset);
 		if (drawn.width() < 8 || drawn.height() < 8) region(_state.region_drag_restore());
-		else _host->invalidate_view(view_invalid::view_redraw | view_invalid::controller);
+		else _host->invalidate(ui::host_invalid::redraw | ui::host_invalid::controller);
 	}
 
 	void cancel_region_drag()
@@ -2447,10 +1808,10 @@ public:
 				{
 					const auto element = weak.lock();
 					if (!element) return false;
-					element->_host->invalidate_view(view_invalid::view_redraw);
+					element->_host->invalidate(ui::host_invalid::redraw);
 					return element->_display->zoom_interactive(df::now());
 				};
-				_host->invalidate_view(view_invalid::animations);
+				_host->invalidate(ui::host_invalid::animations);
 			}
 			if (const auto request = _display->panorama_draw_request(); request.active)
 			{
@@ -2498,7 +1859,7 @@ public:
 		const auto region = region_bounds(element_offset);
 		if (region.is_empty()) return;
 
-		const auto border_clr = ui::color(ui::style::color::dialog_selected_background, dc.colors.alpha);
+		const auto border_clr = ui::color(ui::style::colors.dialog_selected_background, dc.colors.alpha);
 		dc.draw_border(region, region.inflate(df::round(2 * dc.scale_factor)), border_clr, border_clr);
 
 		// Hidden during a drag: the buttons would sit under the pointer that is still drawing the
@@ -2560,7 +1921,7 @@ public:
 		return {width_limit, tex_extent.cy};
 	}
 
-	void layout(ui::measure_context& mc, ui::control_layouts& positions)
+	void layout(ui::measure_context& mc)
 	{
 		if (_zoom_grading_element) _zoom_grading_element->bounds.clear();
 		if (_display->_selected_texture1)
@@ -2595,15 +1956,15 @@ public:
 					grading_limit.bottom - grading_extent.cy,
 					grading_limit.right, grading_limit.bottom
 				};
-				_zoom_grading_element->layout(mc, grading_bounds, positions);
+				_zoom_grading_element->layout(mc, grading_bounds);
 			}
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
-		layout(mc, positions);
+		layout(mc);
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -2689,7 +2050,7 @@ public:
 		return {width_limit, tex_extent.cy};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts&) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2792,7 +2153,7 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts&) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2969,7 +2330,7 @@ public:
 						{
 							// The active pane is marked under its own letter, so nothing is drawn over the image.
 							dc.draw_rect(recti(marker.left, marker_bottom - underline, marker.right, marker_bottom),
-							             ui::color(ui::style::color::view_selected_background, alpha));
+							             ui::color(ui::style::colors.view_selected_background, alpha));
 						}
 					}
 				}
@@ -3120,7 +2481,7 @@ public:
 		return {};
 	}
 
-	void layout(ui::measure_context& mc, ui::control_layouts& positions) const
+	void layout(ui::measure_context& mc) const
 	{
 		_pane_marker_height = calc_pane_marker_height(mc);
 
@@ -3211,7 +2572,7 @@ public:
 						grading_limit.bottom - grading_extent.cy,
 						grading_limit.right, grading_limit.bottom
 					};
-					grading->layout(mc, grading_bounds, positions);
+					grading->layout(mc, grading_bounds);
 				}
 			}
 
@@ -3229,10 +2590,10 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
-		layout(mc, positions);
+		layout(mc);
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -3326,7 +2687,7 @@ public:
 		return results;
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_panel_bounds = bounds_in.inflate(-mc.padding1);
@@ -3360,7 +2721,7 @@ public:
 	void render(ui::draw_context& dc, const pointi element_offset) const override
 	{
 		dc.draw_rounded_rect(_panel_bounds.offset(element_offset),
-		                     ui::color(ui::style::color::group_background, dc.colors.alpha), dc.padding1);
+		                     ui::color(ui::style::colors.group_background, dc.colors.alpha), dc.padding1);
 
 		// Keyed on the surface count rather than on being non-empty, so a set published after the first
 		// paint is uploaded rather than half-drawn against a cache built for a shorter one.
@@ -3420,7 +2781,7 @@ public:
 				                                       static_cast<int64_t>(_display->_selection_item_count))
 				                  : std::format("+{}", _display->_selection_overflow_count);
 
-			dc.draw_rect(overflow_bounds, ui::color(ui::style::color::group_background, dc.colors.alpha));
+			dc.draw_rect(overflow_bounds, ui::color(ui::style::colors.group_background, dc.colors.alpha));
 			dc.draw_text(text, overflow_bounds, ui::style::font_face::dialog,
 			             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, dc.colors.alpha),
 			             {});
@@ -3515,7 +2876,7 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -3524,7 +2885,7 @@ public:
 
 		_surface_bounds = recti({bounds_in.left, bounds_in.top + surface_cy_extra}, _surface_extent);
 		_child_bounds = recti({bounds_in.left + _surface_extent.cx, bounds_in.top + child_cy_extra}, _child_extent);
-		_child->layout(mc, _child_bounds, positions);
+		_child->layout(mc, _child_bounds);
 	}
 
 	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
@@ -3598,7 +2959,7 @@ public:
 	}
 
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -3606,7 +2967,7 @@ public:
 
 		_child_bounds = recti({bounds_in.left + mc.icon_cxy + _icon_padding, bounds_in.top + child_cy_extra},
 		                      _child_extent);
-		_child->layout(mc, _child_bounds, positions);
+		_child->layout(mc, _child_bounds);
 	}
 
 	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override

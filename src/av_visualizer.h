@@ -385,8 +385,7 @@ public:
 	void render(const ui::vertices_ptr& verts, const recti rect, const pointi offset, const float alpha,
 	            const double time) const
 	{
-		recti rects[num_bars];
-		ui::color colors[num_bars];
+		std::array<ui::vertex_rect, num_bars> bars;
 
 		{
 			platform::shared_lock lock(_mutex);
@@ -415,15 +414,14 @@ public:
 				const auto rr = static_cast<float>((cos(ic) + 1.0) / 2.0);
 				const auto gg = static_cast<float>((cos(ic - 0.125 * pi4) + 1.0) / 2.0);
 				const auto bb = static_cast<float>((cos(ic - 0.25 * pi4) + 1.0) / 2.0);
-				colors[i] = ui::color(rr, gg, bb, static_cast<float>(a));
 
-				recti col(df::round(x - inflate), df::round(y - yl * hh / scaleY), df::round(x + inflate),
-				          df::round(y + yr * hh / scaleY));
-				rects[i] = col.offset(offset);
+				const recti col(df::round(x - inflate), df::round(y - yl * hh / scaleY), df::round(x + inflate),
+				                df::round(y + yr * hh / scaleY));
+				bars[i] = {col.offset(offset), ui::color(rr, gg, bb, static_cast<float>(a))};
 			}
 		}
 
-		verts->update(rects, colors, num_bars);
+		verts->update_bars(bars);
 	}
 
 private:

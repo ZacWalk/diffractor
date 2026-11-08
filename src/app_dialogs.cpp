@@ -42,7 +42,7 @@ bool should_refresh_advanced_search_hover_thumbnail(const bool has_surface, cons
 	return true;
 }
 
-bool ui::browse_for_term(view_state& vs, const control_frame_ptr& parent, std::string& result)
+bool ui::browse_for_term(view_state& vs, const frame_ptr& parent, std::string& result)
 {
 	const auto dlg = make_dlg(parent);
 	auto dlg_parent = dlg->_frame;
@@ -139,7 +139,7 @@ struct advanced_search_location_state
 	int hover_retries = 0;
 };
 
-void advanced_search_invoke(view_state& state, const ui::control_frame_ptr& parent,
+void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
                                    const view_host_base_ptr& view)
 {
 	auto dlg = make_dlg(parent);
@@ -707,7 +707,7 @@ void advanced_search_invoke(view_state& state, const ui::control_frame_ptr& pare
 }
 
 #ifndef WINSTORE
-void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent)
+void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 {
 	const auto title = tt.update_title;
 
@@ -1115,58 +1115,7 @@ static std::string format_keyboard_reference(const std::vector<keyboard_ref_sect
 	return result;
 }
 
-// The dialog stacks its controls in a column, so copy and close need one element to share a row.
-class keyboard_ref_buttons final : public view_element, public std::enable_shared_from_this<keyboard_ref_buttons>
-{
-	ui::button_ptr _copy;
-	ui::button_ptr _close;
-
-	mutable int _copy_width = 100;
-	mutable int _close_width = 100;
-
-public:
-	keyboard_ref_buttons(const ui::control_frame_ptr& h, std::function<void()> copy)
-	{
-		_copy = h->create_button(tt.copy_to_clipboard, std::move(copy));
-		_close = h->create_button(tt.button_close, [h] { h->close(false); }, true);
-	}
-
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
-	{
-		handler(_copy);
-		handler(_close);
-	}
-
-	sizei measure(ui::measure_context& mc, const int cx) const override
-	{
-		const auto copy_extent = _copy->measure(cx);
-		const auto close_extent = _close->measure(cx);
-
-		_copy_width = std::max(cx / 5, copy_extent.cx + mc.padding2);
-		_close_width = std::max(cx / 5, close_extent.cx + mc.padding2);
-
-		return {cx, std::max(copy_extent.cy, close_extent.cy) + mc.padding2};
-	}
-
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
-	{
-		bounds = bounds_in;
-
-		const auto total_button_width = _copy_width + _close_width + mc.padding2;
-		const auto button_rect = center_rect(sizei{total_button_width, bounds.height()}, bounds);
-
-		auto rcopy = button_rect;
-		auto rclose = button_rect;
-
-		rcopy.right = rcopy.left + _copy_width;
-		rclose.left = rclose.right - _close_width;
-
-		positions.emplace_back(_copy, rcopy, is_visible());
-		positions.emplace_back(_close, rclose, is_visible());
-	}
-};
-
-void show_keyboard_reference(view_state& s, const ui::control_frame_ptr& parent, const commands_map& commands)
+void show_keyboard_reference(view_state& s, const ui::frame_ptr& parent, const commands_map& commands)
 {
 	const auto dlg = make_dlg(parent);
 	const auto sections = build_keyboard_reference(commands);
@@ -1196,9 +1145,12 @@ void show_keyboard_reference(view_state& s, const ui::control_frame_ptr& parent,
 	}
 
 	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(std::make_shared<keyboard_ref_buttons>(dlg->_frame, [&sections]
-	{
-		platform::set_clipboard(format_keyboard_reference(sections));
+	controls.emplace_back(std::make_shared<ui::button_row>(std::vector<ui::control_ptr>{
+		ui::make_button(tt.copy_to_clipboard, [&sections]
+		{
+			platform::set_clipboard(format_keyboard_reference(sections));
+		}),
+		ui::make_button(tt.button_close, [h = dlg->_frame] { h->close(false); }, true)
 	}));
 
 	pause_media pause(s);
@@ -1208,7 +1160,7 @@ void show_keyboard_reference(view_state& s, const ui::control_frame_ptr& parent,
 	dlg->show_modal(controls, {88}, {88});
 }
 
-void send_info(const view_state& s, const ui::control_frame_ptr& parent)
+void send_info(const view_state& s, const ui::frame_ptr& parent)
 {
 	const auto title = tt.support;
 	const auto dlg = make_dlg(parent);
@@ -1287,7 +1239,7 @@ void send_info(const view_state& s, const ui::control_frame_ptr& parent)
 	results->wait_for_complete();
 }
 
-void about_invoke(view_state& s, const ui::control_frame_ptr& parent, commands_map& commands)
+void about_invoke(view_state& s, const ui::frame_ptr& parent, commands_map& commands)
 {
 	const auto dlg = make_dlg(parent);
 	auto dlg_parent = dlg->_frame;
@@ -1401,7 +1353,7 @@ public:
 	}
 };
 
-void index_maintenance_invoke(const view_state& s, const ui::control_frame_ptr& parent)
+void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 {
 	const auto dlg = make_dlg(parent);
 	const auto title = tt.index_maintenance_title;
@@ -1599,7 +1551,7 @@ static void email_outgoing_files(view_state& s, const item_results_ptr& results,
 	results->wait_for_complete();
 }
 
-void share_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	// Where the system has no share sheet, the command makes an email draft instead.
 	const auto use_sheet = platform::can_share_files();

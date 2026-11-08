@@ -13,6 +13,7 @@
 
 #include "model_display.h"
 #include "model_tile_cache.h"
+#include "app_commands.h"
 #include "app_search.h"
 
 class sidebar_host;
@@ -116,13 +117,16 @@ class view_frame;
 class shell_file_operation_ui final : df::no_copy
 {
 	view_frame& _view;
-	ui::control_frame_ptr _main_frame;
+	ui::frame_ptr _main_frame;
 
 public:
-	shell_file_operation_ui(view_frame& view, ui::control_frame_ptr main_frame);
+	shell_file_operation_ui(view_frame& view, ui::frame_ptr main_frame);
 	~shell_file_operation_ui() override;
 };
 
+// A region of the window that shows a view: the main view, with the panel of its controls beside it and
+// the strip of thumbnails under it where the view has them, or the strip itself. The panel is drawn here,
+// in this frame's surface; the strip is a frame of its own, which this one places.
 class view_frame final : public std::enable_shared_from_this<view_frame>, public view_host
 {
 public:
@@ -130,11 +134,34 @@ public:
 
 	view_state& _state;
 	ui::frame_ptr _frame;
-	ui::control_frame_ptr _owner;
+	ui::frame_ptr _owner;
 
 	pointi _pan_start_loc;
 
 	std::shared_ptr<view_base> _view;
+	// Where the view is drawn: the frame, less the panel, the splitter and the strip.
+	recti _view_bounds;
+
+	// The panel of the view's controls, and whether it is the whole frame - Options has nothing beside it.
+	view_controls_host_ptr _panel;
+	bool _panel_fills = false;
+
+	// The strip of thumbnails under the view, a frame of its own, shown where wanted.
+	std::shared_ptr<ui::frame_element> _strip = std::make_shared<ui::frame_element>();
+	bool _strip_wanted = false;
+
+	// Told as the keyboard comes to or leaves the view or a control of its panel.
+	std::function<void(bool, const ui::control_ptr&)> focus_listener;
+
+	// The strip between the view and the panel, dragged to share the width between them. Written only by
+	// layout, so a drag can map a pointer back to the proportion stored for the view.
+	struct splitter_t
+	{
+		recti bounds;
+		int width = 0;
+		int min_pane = 0;
+		bool tracking = false;
+	} _splitter;
 
 	bool _control_down = false;
 
@@ -172,12 +199,12 @@ public:
 		return _view->mouse_wheel(loc, notch);
 	}
 
-	void init(const ui::control_frame_ptr& owner)
+	void init(const ui::frame_ptr& owner)
 	{
 		ui::frame_style fs;
 		fs.hardware_accelerated = true;
 		fs.colors = {
-			ui::style::color::view_background, ui::style::color::view_text, ui::style::color::view_selected_background
+			ui::style::colors.view_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
 		};
 		fs.can_focus = true;
 		fs.can_drop = true;
@@ -230,44 +257,28 @@ public:
 	{
 	}
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized) override
+	// Shows a panel of the view's controls beside it, or none.
+	void panel(view_controls_host_ptr panel, bool fills);
+	bool in_panel(pointi loc) const;
+	bool in_view(const pointi loc) const { return _view_bounds.contains(loc); }
+	void drag_splitter(pointi loc);
+
+	// A press on the view gives it the keyboard; one between the panel's controls, or on the splitter beside
+	// them, leaves the keyboard where it was, as it did when the panel was a window of its own.
+	bool takes_keyboard_at(const pointi loc) const override
 	{
-		_extent = extent;
-		_view->layout(mc, extent);
+		return !in_panel(loc) && !_splitter.bounds.contains(loc);
 	}
 
-	void on_window_paint(ui::draw_context& dc) override
-	{
-		dc.time_now = df::now();
-		dc.colors.alpha = 1.0;
-		dc.colors.overlay_alpha = 1.0;
+	void on_window_layout(ui::measure_context& mc, sizei extent, bool is_minimized) override;
+	void on_window_paint(ui::draw_context& dc) override;
 
-		_view->render(dc, _active_controller);
-
-		if (_active_controller)
-		{
-			_active_controller->draw(dc);
-		}
-
-		draw_status(dc);
-
-		if (setting.show_debug_info && _active_controller)
-		{
-			const auto c = ui::color(1.0f, 0.0f, 0.0f, 1.0f);
-			const auto pad = df::round(2 * dc.scale_factor);
-			dc.draw_border(_controller_bounds, _controller_bounds.inflate(pad), c, c);
-		}
-	}
-
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
-	{
-		was_handled = dispatch_wheel(loc, delta, keys, ui::wheel_axis::vertical, _wheel_vertical);
-		update_controller(loc);
-	}
+	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override;
+	void on_mouse_wheel(pointi loc, int delta, ui::key_state keys, bool& was_handled) override;
 
 	void on_mouse_hwheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
 	{
-		was_handled = dispatch_wheel(loc, delta, keys, ui::wheel_axis::horizontal, _wheel_horizontal);
+		if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, ui::wheel_axis::horizontal, _wheel_horizontal);
 		update_controller(loc);
 	}
 
@@ -275,7 +286,7 @@ public:
 	{
 		if (begins) _wheel_pending_pinch = 0.0;
 		const auto steps = ui::accumulate_wheel_steps(_wheel_pending_pinch, delta);
-		if (steps != 0) was_handled = _view->pinch(loc, steps);
+		if (steps != 0 && in_view(loc)) was_handled = _view->pinch(loc, steps);
 		update_controller(loc);
 	}
 
@@ -283,7 +294,7 @@ public:
 	// did not land in. A rendered edit that kept focus would swallow every keyboard command.
 	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
 	{
-		_view->mouse_down(loc);
+		if (in_view(loc)) _view->mouse_down(loc);
 		view_host::on_mouse_left_button_down(loc, keys);
 	}
 
@@ -294,28 +305,28 @@ public:
 
 	bool is_caption_area(const pointi loc) const override
 	{
-		return _view->is_caption_area(loc);
+		return in_view(loc) && _view->is_caption_area(loc);
 	}
 
 	void pan_start(const pointi start_loc) override
 	{
 		_pan_start_loc = start_loc;
-		_view->pan_start(_pan_start_loc);
+		if (in_view(start_loc)) _view->pan_start(_pan_start_loc);
 	}
 
 	void pan(const pointi start_loc, const pointi current_loc) override
 	{
-		_view->pan(_pan_start_loc, current_loc);
+		if (in_view(_pan_start_loc)) _view->pan(_pan_start_loc, current_loc);
 	}
 
 	void pan_end(const pointi start_loc, const pointi final_loc) override
 	{
-		_view->pan_end(_pan_start_loc, final_loc);
+		if (in_view(_pan_start_loc)) _view->pan_end(_pan_start_loc, final_loc);
 	}
 
 	bool touch_double_tap(const pointi location) override
 	{
-		return _view->touch_double_tap(location);
+		return in_view(location) && _view->touch_double_tap(location);
 	}
 
 	void on_mouse_other_button_up(const ui::other_mouse_button& button, const pointi loc,
@@ -334,19 +345,15 @@ public:
 		}
 	}
 
-	void focus_changed(const bool has_focus, const ui::control_base_ptr& child) override
-	{
-		df::trace(std::format("render_window::focus {}", has_focus));
-		_view->focus(has_focus);
-		frame()->invalidate();
-	}
+	// The view has the keyboard while the frame does and none of the panel's controls holds it.
+	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
 
 	const ui::frame_ptr frame() const override
 	{
 		return _frame ? _frame : ui::no_frame();
 	}
 
-	const ui::control_frame_ptr owner() override
+	const ui::frame_ptr owner() override
 	{
 		return _owner;
 	}
@@ -356,10 +363,8 @@ public:
 		_state.invalidate_view(view_invalid::tooltip);
 	}
 
-	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
-	{
-		return _view->controller_from_location(shared_from_this(), loc, ctx);
-	}
+	// The splitter, the panel or the view, whichever holds loc; each answers within its own region.
+	view_controller_ptr controller_from_location(pointi loc, hit_test_context& ctx) override;
 
 	void invoke(const commands cmd) override
 	{
@@ -538,6 +543,51 @@ public:
 	}
 };
 
+class app_frame;
+
+// The window's title bar along its top, or its status bar along its base: a region of the window drawn on
+// the CPU renderer apart from the view, so a bar that changes draws itself alone. The application lays it
+// out, draws it and answers its pointer in the bar's own coordinates; the address box, the filter, the item
+// size and the toolbars the views declare are its controls.
+class bar_frame final : public ui::frame_host, public std::enable_shared_from_this<bar_frame>
+{
+public:
+	enum class kind
+	{
+		title,
+		status
+	};
+
+	app_frame& _app;
+	const kind _kind;
+	ui::frame_ptr _frame;
+	sizei _extent;
+	// What the bar shows now, in the order Tab visits it.
+	std::vector<ui::control_ptr> _controls;
+
+	bar_frame(app_frame& app, const kind k) : _app(app), _kind(k)
+	{
+	}
+
+	void init(const ui::frame_ptr& owner);
+
+	const ui::frame_ptr frame() const
+	{
+		return _frame ? _frame : ui::no_frame();
+	}
+
+	void on_window_layout(ui::measure_context& mc, sizei extent, bool is_minimized) override;
+	void on_window_paint(ui::draw_context& dc) override;
+	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override;
+	bool is_caption_area(pointi loc) const override;
+	void on_mouse_move(pointi loc, bool is_tracking) override;
+	void on_mouse_leave(pointi loc) override;
+	void on_mouse_left_button_up(pointi loc, ui::key_state keys) override;
+	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
+	void command_hover(const ui::command_ptr& c, recti window_bounds) override;
+	std::vector<ui::command_ptr> menu(pointi loc) override;
+};
+
 struct lerp_animate
 {
 	int val = 0;
@@ -628,7 +678,7 @@ public:
 	std::atomic_bool _tile_db_worker_started = false;
 	std::atomic_bool _media_preview_worker_started = false;
 
-	ui::control_frame_ptr _app_frame;
+	ui::frame_ptr _app_frame;
 	std::shared_ptr<app_logo_element> _app_logo;
 
 	// Shared native top-bar controls remain available independently of the primary renderer.
@@ -659,7 +709,6 @@ public:
 	// The filter as it stood when its box took focus, which Escape puts back.
 	std::string _filter_edit_original;
 	bool _filter_has_focus = false;
-	bool _filter_setting_text = false;
 	bool _item_size_dragging = false;
 
 	std::shared_ptr<ui::complete_strategy_t> _search_completes;
@@ -667,7 +716,6 @@ public:
 
 	bool _search_has_focus = false;
 	search_edit_session _search_session;
-	bool _search_setting_text = false;
 	bool _app_logo_hover = false;
 
 	// The item full screen selected on the user's behalf, so leaving full screen can undo it.
@@ -675,9 +723,16 @@ public:
 	bool _view_has_focus = false;
 	bool _view_controls_have_focus = false;
 
-	view_controls_host_ptr _view_controls;
+	// The window is a container of three regions, each with a surface of its own: the title bar, the
+	// view - with its panel and strip - and the status bar.
+	std::shared_ptr<bar_frame> _title_bar;
 	std::shared_ptr<view_frame> _view_frame;
+	std::shared_ptr<bar_frame> _status_bar;
 	std::shared_ptr<view_frame> _selector_frame;
+	std::shared_ptr<ui::elements> _regions;
+	std::shared_ptr<ui::frame_element> _title_region;
+	std::shared_ptr<ui::frame_element> _body_region;
+	std::shared_ptr<ui::frame_element> _status_region;
 
 	std::shared_ptr<rename_view> _view_rename;
 	std::shared_ptr<batch_tool_view> _view_batch;
@@ -705,12 +760,12 @@ public:
 	std::vector<file_group_ref> _starting_media_filter;
 
 	sizei _extent;
-	recti _view_bounds;
-	recti _top_bar_bounds;
+	// Whether the title and status bars show: not in full screen, nor while a picture is zoomed.
+	bool _show_bars = true;
+	// In the title bar's coordinates, the title.
 	recti _title_bounds;
-	// The status bar along the base of the window, and the parts of it the frame paints itself: the
-	// view's status, and the item totals among the bar's controls.
-	recti _status_bar_bounds;
+	// In the status bar's coordinates, the parts of it drawn rather than controls: the view's status,
+	// and the item totals among the bar's controls.
 	recti _status_text_bounds;
 	recti _totals_bounds;
 	std::optional<recti> _last_texture_eviction_bounds;
@@ -726,21 +781,6 @@ public:
 	// Whether the last paint had to cut the status short, which is when hovering it says the rest.
 	bool _status_text_clipped = false;
 
-	// Written only by layout so the drag can map a pointer position straight back to a stored
-	// proportion, and read only on the UI thread by paint and the mouse handlers.
-	struct view_controls_splitter_t
-	{
-		recti bounds;
-		int client_left = 0;
-		int client_right = 0;
-		int width = 0;
-		int min_pane = 0;
-		bool hover = false;
-		bool tracking = false;
-	} _controls_splitter;
-
-	void drag_controls_splitter(pointi loc);
-	void update_controls_splitter_hover(bool hover);
 
 	// Time of the most recent folder-watch notification that has not yet produced a response, and the
 	// folders that signalled during that burst. UI thread only.
@@ -836,7 +876,17 @@ public:
 	void dpi_changed() override;
 	void on_window_layout(ui::measure_context& mc, sizei extent, bool is_minimized) override;
 	void on_window_paint(ui::draw_context& dc) override;
-	bool is_caption_area(pointi loc) const override;
+	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override;
+
+	// The bars, each in its own coordinates.
+	void layout_title_bar(ui::measure_context& mc, sizei extent, std::vector<ui::control_ptr>& shown);
+	void layout_status_bar(ui::measure_context& mc, sizei extent, std::vector<ui::control_ptr>& shown);
+	void paint_title_bar(ui::draw_context& dc);
+	void title_bar_mouse_move(pointi loc);
+	void title_bar_mouse_leave();
+	void title_bar_click(pointi loc);
+	int title_bar_height(ui::measure_context& mc);
+	int status_bar_height(ui::measure_context& mc);
 	void activate(bool is_active) override;
 	void app_fail(std::string_view message, std::string_view more_text) override;
 	void invalidate_status() const;
@@ -935,14 +985,6 @@ public:
 	void cancel_search_edit();
 	bool search_accept_selected();
 
-	void on_mouse_move(pointi loc, bool is_tracking) override;
-
-	void on_mouse_left_button_down(pointi loc, ui::key_state keys) override;
-
-	void on_mouse_left_button_up(pointi loc, ui::key_state keys) override;
-
-	void on_mouse_leave(pointi loc) override;
-
 	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
 	{
 	}
@@ -969,11 +1011,14 @@ public:
 	}
 
 	void focus_search(bool has_focus);
-	void focus_changed(bool has_focus, const ui::control_base_ptr& child) override;
+	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
 	void on_window_destroy() override;
 	void command_hover(const ui::command_ptr& c, recti window_bounds) override;
 
 	std::vector<ui::command_ptr> menu(pointi loc) override;
+
+	// The context menu of a kind of view: a row of the commonest commands as buttons, then the rest.
+	std::vector<ui::command_ptr> context_menu(menu_type type) const;
 };
 
 using app_frame_ptr = std::shared_ptr<app_frame>;

@@ -794,7 +794,7 @@ private:
 			// plus a translucent accent fill, with the aggregated count on top.
 			const recti halo = r.inflate(1);
 			dc.draw_rounded_rect(halo, ui::color(1.0f, 1.0f, 1.0f, 0.35f), radius + 1);
-			dc.draw_rounded_rect(r, ui::color(ui::style::color::dialog_selected_background, 0.5f), radius);
+			dc.draw_rounded_rect(r, ui::color(ui::style::colors.dialog_selected_background, 0.5f), radius);
 
 			if (c.count > 1)
 			{
@@ -838,7 +838,7 @@ private:
 		constexpr int line_width = 3;
 		constexpr int half = line_width / 2;
 
-		const auto crosshair_color = ui::color(ui::style::color::important_background, 0.6f);
+		const auto crosshair_color = ui::color(ui::style::colors.important_background, 0.6f);
 		// A thin lighter underlay keeps the cross readable over both dark and pale tiles.
 		const auto outline_color = ui::color(1.0f, 1.0f, 1.0f, 0.35f);
 

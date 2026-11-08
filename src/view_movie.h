@@ -653,7 +653,7 @@ public:
 	movie_view(view_state& s, view_host_ptr host, movie_view_state& ms);
 	~movie_view() override;
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
 	void activate(sizei extent) override;
 	void deactivate() override;

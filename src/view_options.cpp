@@ -85,18 +85,18 @@ namespace
 	public:
 		sizei measure(ui::measure_context& mc, const int width_limit) const override
 		{
-			return {width_limit, arrange(mc, recti(0, 0, width_limit, 0), nullptr)};
+			return {width_limit, arrange(mc, recti(0, 0, width_limit, 0), false)};
 		}
 
-		void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+		void layout(ui::measure_context& mc, const recti bounds_in) override
 		{
 			update_style_from_children();
 			bounds = bounds_in;
-			arrange(mc, bounds_in, &positions);
+			arrange(mc, bounds_in, true);
 		}
 
 	private:
-		int arrange(ui::measure_context& mc, const recti area, ui::control_layouts* positions) const
+		int arrange(ui::measure_context& mc, const recti area, const bool place) const
 		{
 			const auto gap = mc.padding2 * 4;
 			const auto min_width = df::round(340 * mc.scale_factor);
@@ -114,10 +114,10 @@ namespace
 				const auto left = area.left + column * (width + gap);
 				const auto top = area.top + heights[column];
 
-				if (positions)
+				if (place)
 				{
 					c->layout(mc, recti(left + margin.cx, top + margin.cy, left + width - margin.cx,
-					                    top + margin.cy + extent.cy), *positions);
+					                    top + margin.cy + extent.cy));
 				}
 
 				heights[column] += extent.cy + margin.cy * 2 + gap;
@@ -162,7 +162,7 @@ namespace
 			return {width_limit, _title_extent.cy + info_extent.cy + inset(mc) * 2};
 		}
 
-		void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts&) override
+		void layout(ui::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			measure(mc, bounds_in.width());
@@ -193,7 +193,7 @@ namespace
 	}
 
 	// A choice of one value from a menu, with what is chosen beside the button that opens it.
-	std::shared_ptr<ui::select_control> make_chooser(const ui::control_frame_ptr& frame, std::string& text,
+	std::shared_ptr<ui::select_control> make_chooser(const ui::frame_ptr& frame, std::string& text,
 	                                                 std::function<std::vector<ui::command_ptr>(
 		                                                 const std::shared_ptr<ui::select_control>&)> commands)
 	{
@@ -407,7 +407,7 @@ bool options_view::leave()
 	return true;
 }
 
-options_leave_choice ask_to_save_options(const ui::control_frame_ptr& parent)
+options_leave_choice ask_to_save_options(const ui::frame_ptr& parent)
 {
 	auto answer = std::make_shared<options_leave_choice>(options_leave_choice::stay);
 	const auto dlg = make_dlg(parent);
@@ -492,11 +492,11 @@ view_bars options_view::bars() const
 	return task_view_bars({commands::options_help, commands::options_cancel, commands::options_save});
 }
 
-view_controls_host_ptr options_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
-	const auto frame = owner->create_dlg(result, false);
-	result->_frame = result->_dlg = frame;
+	const auto& frame = owner;
+	result->_frame = frame;
 
 	if (!_edit) return result;
 

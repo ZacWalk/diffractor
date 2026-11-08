@@ -68,7 +68,7 @@ public:
 		_analysis_valid = false;
 	}
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
 	std::string_view operation_name() const override { return tt.command_sync; }
 

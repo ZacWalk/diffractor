@@ -217,8 +217,8 @@ void tags_view::refresh()
 
 	const tag_set add_tags(_adds);
 	const tag_set remove_tags(_removes);
-	const auto unchanged_color = ui::darken(ui::style::color::view_text, 0.22f);
-	const auto changed_color = ui::lighten(ui::style::color::dialog_selected_background, 0.55f);
+	const auto unchanged_color = ui::darken(ui::style::colors.view_text, 0.22f);
+	const auto changed_color = ui::lighten(ui::style::colors.dialog_selected_background, 0.55f);
 
 	std::vector<row_element_ptr> rows;
 	rows.reserve(items.size());
@@ -303,10 +303,10 @@ view_bars tags_view::bars() const
 	return task_view_bars({commands::tags_run});
 }
 
-view_controls_host_ptr tags_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
-	auto frame = owner->create_dlg(result, false);
+	const auto& frame = owner;
 
 	const auto& items = _state.selected_items();
 	auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
@@ -409,7 +409,7 @@ view_controls_host_ptr tags_view::controls(const ui::control_frame_ptr& owner)
 	}
 
 	result->_controls = controls;
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 	// The view exists to have tags typed into it, so it opens ready for typing.
 	result->initial_focus = [edit = _edit] { edit->focus(); };
 	return result;

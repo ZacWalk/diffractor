@@ -50,7 +50,7 @@ struct media_column_inputs
 };
 
 // Returns the scrollable content height.
-int layout_media_column(const media_column_inputs& in, ui::measure_context& mc, ui::control_layouts& positions);
+int layout_media_column(const media_column_inputs& in, ui::measure_context& mc);
 
 
 struct item_and_group
@@ -168,7 +168,7 @@ public:
 
 	std::shared_ptr<sidebar_host> _sidebar;
 
-	friend class splitter_controller;
+	friend class media_splitter_controller;
 	friend class sidebar_splitter_controller;
 
 	std::vector<item_and_group> _visible_items;

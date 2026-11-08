@@ -36,7 +36,7 @@ struct view_operation_result
 // Storage for the radio flags is owned by the callbacks held by the returned element.
 // A prompt raised because collisions were already found offers only the choices that resolve one:
 // Block run would repeat the Cancel button beside it, and Skip is not always expressible.
-inline view_element_ptr create_collision_policy_control(const ui::control_frame_ptr& frame, collision_policy& value,
+inline view_element_ptr create_collision_policy_control(const ui::frame_ptr& frame, collision_policy& value,
                                                         std::function<void()> changed,
                                                         const bool allow_auto_rename = true,
                                                         const bool allow_block_and_skip = true)
@@ -79,20 +79,20 @@ inline view_element_ptr create_collision_policy_control(const ui::control_frame_
 	if (allow_block_and_skip)
 	{
 		group->add(std::make_shared<ui::check_control>(frame, tt.collision_block, flags->block_run, true, false, apply,
-		                                               ui::radio_group_collision));
+		                                               radio_group_collision));
 		group->add(std::make_shared<ui::check_control>(frame, tt.collision_skip, flags->skip, true, false, apply,
-		                                               ui::radio_group_collision));
+		                                               radio_group_collision));
 	}
 
 	if (allow_auto_rename)
 	{
 		group->add(
 			std::make_shared<ui::check_control>(frame, tt.collision_rename, flags->auto_rename, true, false, apply,
-			                                    ui::radio_group_collision));
+			                                    radio_group_collision));
 	}
 
 	group->add(std::make_shared<ui::check_control>(frame, tt.collision_replace, flags->replace, true, false, apply,
-	                                               ui::radio_group_collision));
+	                                               radio_group_collision));
 	return group;
 }
 
@@ -149,8 +149,8 @@ protected:
 	int _band_height = 0;
 	int _band_margin = 0;
 
-	friend class scroll_controller;
-	friend class clickable_controller;
+	friend class ui::scroll_controller;
+	friend class ui::clickable_controller;
 	friend class header_controller;
 	friend class column_divider_controller;
 
@@ -315,7 +315,7 @@ public:
 		const auto& row = _rows[row_index];
 		_active_row = row;
 		_progress.position = static_cast<int64_t>(work_position);
-		row->_bg_color = ui::color(ui::style::color::important_background, 1.0f);
+		row->_bg_color = ui::color(ui::style::colors.important_background, 1.0f);
 
 		const auto client_height = _scroller.client_bounds().height();
 		auto reserve_top = _band_height + _band_margin;
@@ -828,7 +828,7 @@ public:
 			if (_header_active)
 			{
 				const ui::color bg(ui::darken(_header_active_num == i
-					                              ? ui::style::color::dialog_selected_background
+					                              ? ui::style::colors.dialog_selected_background
 					                              : dc.colors.background, 0.33f), bg_alpha);
 				dc.draw_rect(col_header_bounds, bg);
 			}
@@ -1030,64 +1030,112 @@ inline std::shared_ptr<view_command_status> list_view::make_run_status(const std
 		});
 }
 
+// The panel of a task view's controls: a column of elements beside the view, drawn in the view's own frame
+// and scrolled on its own. It is the host its elements answer to - their controllers and their events -
+// while the view's frame lays it out, draws it and hands it the pointer over it.
 class view_controls_host : public view_host, public std::enable_shared_from_this<view_controls_host>
 {
 public:
 	view_state& _state;
 	view_scroller _scroller;
-	ui::control_frame_ptr _dlg;
+	// The view's frame, which the panel is drawn in.
 	ui::frame_ptr _frame;
+	// Where the panel is in that frame. Its elements are laid out in the frame's coordinates, and move
+	// up by its scroll.
+	recti _bounds;
 	std::vector<view_element_ptr> _controls;
-	ui::color _clr = ui::color(ui::style::color::dialog_text);
+	ui::color _clr = ui::color(ui::style::colors.dialog_text);
 	int _layout_height = 0;
 	int _layout_width = 0;
-	ui::coll_widths _label_width;
-	// Set by a view whose panel exists to be typed into. Applied after the first layout because the
-	// child controls are not shown, and so cannot take focus, until their positions are applied.
+	ui::column_widths _label_width;
+	// Set by a view whose panel exists to be typed into. Applied after the first layout, which is when
+	// the panel's frame first finds its controls.
 	std::function<void()> initial_focus;
 
 	view_controls_host(view_state& s) : _state(s)
 	{
-		_scroller._scroll_child_controls = true;
+		// Drawn among the view's frame's other content, so a scroll draws the panel again.
+		_scroller._moves_pixels = false;
 	}
 
 	~view_controls_host() override = default;
 
-	void scroll_controls() override
+	pointi elements_offset() const
 	{
-		frame()->layout();
+		return -_scroller.scroll_offset();
 	}
-
 
 	virtual void layout_controls(ui::measure_context& mc)
 	{
-		// _dlg is released on destroy, and a panel can still be asked to lay out after that.
-		if (!_controls.empty() && _dlg)
+		if (_controls.empty()) return;
+
+		const auto layout_padding = df::round(mc.padding1 / mc.scale_factor);
+		auto avail_bounds = _bounds;
+		avail_bounds.right -= mc.scroll_width + layout_padding;
+
+		mc.col_widths = {};
+		flex_container_layout column;
+		column.direction = flex_direction::column;
+		column.wrap = flex_wrap::no_wrap;
+		column.align_items = flex_align::start;
+		column.padding = {layout_padding, layout_padding};
+		const auto height = layout_flex_elements(_controls, mc, avail_bounds, column).cy;
+
+		_layout_height = height;
+		_layout_width = avail_bounds.width();
+		_label_width = mc.col_widths;
+
+		const recti scroll_bounds{_bounds.right - mc.scroll_width, _bounds.top, _bounds.right, _bounds.bottom};
+		const recti client_bounds{_bounds.left, _bounds.top, _bounds.right - mc.scroll_width, _bounds.bottom};
+		_scroller.layout({_layout_width, _layout_height}, client_bounds, scroll_bounds);
+	}
+
+	// Laid out by the view's frame, in the part of it bounds says.
+	void layout_panel(ui::measure_context& mc, const recti bounds)
+	{
+		_bounds = bounds;
+		layout_controls(mc);
+
+		if (initial_focus && !_controls.empty() && !bounds.is_empty())
 		{
-			const auto layout_padding = df::round(mc.padding1 / mc.scale_factor);
-			auto avail_bounds = recti(_extent);
-			avail_bounds.right -= mc.scroll_width + layout_padding;
-
-			mc.col_widths = {};
-			ui::control_layouts positions;
-			flex_container_layout column;
-			column.direction = flex_direction::column;
-			column.wrap = flex_wrap::no_wrap;
-			column.align_items = flex_align::start;
-			column.padding = {layout_padding, layout_padding};
-			const auto height = layout_flex_elements(_controls, mc, positions, avail_bounds, column).cy;
-
-			_layout_height = height;
-			_layout_width = avail_bounds.width();
-			_label_width = mc.col_widths;
-
-			const recti scroll_bounds{_extent.cx - mc.scroll_width, 0, _extent.cx, _extent.cy};
-			const recti client_bounds{0, 0, _extent.cx - mc.scroll_width, _extent.cy};
-			_scroller.layout({_layout_width, _layout_height}, client_bounds, scroll_bounds);
-
-			_dlg->apply_layout(positions, -_scroller.scroll_offset());
-			_dlg->invalidate();
+			const auto claim = std::move(initial_focus);
+			initial_focus = {};
+			claim();
 		}
+	}
+
+	void render_panel(ui::draw_context& dc) const
+	{
+		if (_bounds.is_empty()) return;
+
+		const auto colors = dc.colors;
+		dc.colors.background = ui::style::colors.dialog_background;
+		dc.colors.foreground = ui::style::colors.dialog_text;
+		dc.colors.selected = ui::style::colors.dialog_selected_background;
+		dc.col_widths = _label_width;
+
+		{
+			ui::scoped_clip clip(dc, _bounds);
+			dc.draw_rect(_bounds, ui::color(dc.colors.background, 1.0f));
+
+			const auto offset = elements_offset();
+
+			for (const auto& c : _controls)
+			{
+				if (c->is_visible()) c->render(dc, offset);
+			}
+
+			_scroller.draw_scroll(dc);
+		}
+
+		dc.colors = colors;
+	}
+
+	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override
+	{
+		const auto offset = elements_offset();
+		const auto controls = _controls;
+		for (const auto& c : controls) visit(c, offset);
 	}
 
 	void populate()
@@ -1100,39 +1148,28 @@ public:
 		}
 	}
 
+	// Every control in the panel takes input, or none does: while the view's task runs.
+	void enable(const bool enable)
+	{
+		auto changed = false;
+
+		for (const auto& c : _controls)
+		{
+			if (c->is_enabled() == enable) continue;
+			c->enable(enable);
+			changed = true;
+		}
+
+		if (changed) frame()->invalidate(_bounds);
+	}
+
+	// Drawn by the view's frame, never laid out or painted as a frame of its own.
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override
 	{
-		_extent = extent;
-		layout_controls(mc);
-
-		if (initial_focus && !is_minimized && !_controls.empty())
-		{
-			const auto claim = std::move(initial_focus);
-			initial_focus = {};
-			claim();
-		}
 	}
 
 	void on_window_paint(ui::draw_context& dc) override
 	{
-		dc.col_widths = _label_width;
-
-		const auto offset = _scroller.scroll_offset();
-
-		for (const auto& c : _controls)
-		{
-			if (c->is_visible())
-			{
-				c->render(dc, -offset);
-			}
-		}
-
-		if (_active_controller)
-		{
-			_active_controller->draw(dc);
-		}
-
-		_scroller.draw_scroll(dc);
 	}
 
 	void tick() override
@@ -1153,9 +1190,9 @@ public:
 		return _frame ? _frame : ui::no_frame();
 	}
 
-	const ui::control_frame_ptr owner() override
+	const ui::frame_ptr owner() override
 	{
-		return _dlg;
+		return frame();
 	}
 
 	void invoke(const commands cmd) override
@@ -1175,7 +1212,7 @@ public:
 
 	void invalidate_element(const view_element_ptr& e) override
 	{
-		frame()->invalidate();
+		frame()->invalidate(_bounds);
 	}
 
 	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
@@ -1185,10 +1222,11 @@ public:
 			return std::make_shared<scroll_controller>(shared_from_this(), _scroller, _scroller.scroll_bounds());
 		}
 
-		const auto offset = -_scroller.scroll_offset();
+		const auto offset = elements_offset();
 
 		for (const auto& e : _controls)
 		{
+			if (!e->is_visible()) continue;
 			auto controller = e->controller_from_location(shared_from_this(), loc, offset, ctx);
 			if (controller) return controller;
 		}
@@ -1196,41 +1234,58 @@ public:
 		return nullptr;
 	}
 
+	// A wheel over something in the panel that scrolls - a list of results - turns that; elsewhere it
+	// scrolls the panel.
 	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
 	{
+		const auto offset = elements_offset();
+
+		for (const auto& c : _controls)
+		{
+			if (c->is_visible() && c->wheel(loc, offset, delta))
+			{
+				was_handled = true;
+				return;
+			}
+		}
+
 		_scroller.offset(shared_from_this(), 0, -(delta / 2));
-		update_controller(loc);
+		was_handled = _scroller.can_scroll();
 	}
 
 	virtual void options_changed()
 	{
-		if (!_controls.empty())
+		for (const auto& c : _controls)
 		{
-			for (const auto& c : _controls)
+			ui::walk_tree(c, {}, true, [](ui::element& e, pointi, bool, bool)
 			{
-				c->visit_controls([](const ui::control_base_ptr& cc) { cc->options_changed(); });
-			}
+				if (e.kind == ui::element_kind::control) static_cast<ui::control&>(e).options_changed();
+			});
 		}
 	}
 
-	void focus_changed(bool has_focus, const ui::control_base_ptr& child) override
+	// A control taking the focus is scrolled into view.
+	void focus_changed(bool has_focus, const ui::control_ptr& child) override
 	{
-		if (child && child->has_focus() && _dlg)
+		if (has_focus && child) scroll_into_view(child->bounds);
+	}
+
+	// Scrolls the panel so what has the focus, at bounds in the panel's content, is in view.
+	void scroll_into_view(const recti bounds)
+	{
+		const auto client = _scroller.client_bounds();
+		auto y = _scroller.scroll_offset().y;
+
+		if (bounds.top - y < client.top)
 		{
-			auto point_offset = _scroller.scroll_offset();
-			const auto rc = child->window_bounds().offset(point_offset - _dlg->window_bounds().top_left());
-
-			if (rc.top < point_offset.y)
-			{
-				point_offset.y = rc.top;
-			}
-			else if (rc.bottom > point_offset.y + _extent.cy)
-			{
-				point_offset.y = rc.bottom - _extent.cy;
-			}
-
-			_scroller.scroll_offset(shared_from_this(), 0, point_offset.y);
+			y = bounds.top - client.top;
 		}
+		else if (bounds.bottom - y > client.bottom)
+		{
+			y = bounds.bottom - client.bottom;
+		}
+
+		_scroller.scroll_offset(shared_from_this(), 0, y);
 	}
 
 	void command_hover(const ui::command_ptr& c, const recti window_bounds) override
@@ -1240,7 +1295,8 @@ public:
 
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override
 	{
-		if (_dlg) _state.track_menu(_dlg, bounds, commands);
+		const auto f = frame();
+		_state.track_menu(f, bounds.offset(f->window_bounds().top_left()), commands);
 	}
 
 	void invalidate_view(const view_invalid invalid) override
@@ -1252,7 +1308,6 @@ public:
 	{
 		_active_controller.reset();
 		_controls.clear();
-		_dlg.reset();
 		_frame.reset();
 	}
 };

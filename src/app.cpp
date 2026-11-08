@@ -53,8 +53,8 @@
 
 
 const std::string_view s_app_name = "Diffractor";
-const std::string_view s_app_version = "127.3";
-const std::string_view g_app_build = "1314";
+const std::string_view s_app_version = "127.4";
+const std::string_view g_app_build = "1315";
 
 const ui::chrome_icon_set ui::chrome_icons = {
 	.check = icon_index::check,
@@ -567,8 +567,8 @@ void view_frame::draw_status(ui::draw_context& dc) const
 		constexpr auto text_font = ui::style::font_face::dialog;
 
 		const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
-		const auto bg_color = ui::color(ui::style::color::important_background, dc.colors.alpha);
-		const sizei avail_extent{_extent.cx / 2, _extent.cy / 2};
+		const auto bg_color = ui::color(ui::style::colors.important_background, dc.colors.alpha);
+		const sizei avail_extent{_view_bounds.width() / 2, _view_bounds.height() / 2};
 
 		const auto title_extent = dc.measure_text(_status_title, title_font, ui::style::text_style::multiline_center,
 		                                          avail_extent.cx);
@@ -578,7 +578,7 @@ void view_frame::draw_status(ui::draw_context& dc) const
 
 		const auto extent = sizei(std::max(title_extent.cx, text_extent.cx),
 		                          title_extent.cy + text_extent.cy + text_spacing);
-		const auto bounds = center_rect(extent, recti(_extent));
+		const auto bounds = center_rect(extent, _view_bounds);
 
 		auto title_bounds = bounds;
 		title_bounds.bottom = title_bounds.top + title_extent.cy;
@@ -591,7 +591,7 @@ void view_frame::draw_status(ui::draw_context& dc) const
 	}
 }
 
-shell_file_operation_ui::shell_file_operation_ui(view_frame& view, ui::control_frame_ptr main_frame) :
+shell_file_operation_ui::shell_file_operation_ui(view_frame& view, ui::frame_ptr main_frame) :
 	_view(view), _main_frame(std::move(main_frame))
 {
 	_view.update_status(tt.processing_files, {}, 20);
@@ -605,6 +605,287 @@ shell_file_operation_ui::~shell_file_operation_ui()
 	_view.clear_status();
 }
 
+// Both panes stay usable, so a splitter drag can never collapse either one out of reach.
+static int clamp_pane_width(const int width, const int available, const int min_pane)
+{
+	const auto lo = std::min(min_pane, available / 2);
+	return std::clamp(width, lo, std::max(lo, available - min_pane));
+}
+
+// The strip between a view and its panel: dragged, it shares the width between them, and the width the
+// panel took is kept for the view. Internal to this file: the Items view has a splitter_controller of its own,
+// and two classes of one name in two files are one class to the linker, which keeps one vtable for both.
+namespace
+{
+	class panel_splitter_controller final : public view_controller
+	{
+		std::shared_ptr<view_frame> _view;
+
+	public:
+		explicit panel_splitter_controller(const std::shared_ptr<view_frame>& view) :
+			view_controller(view, view->_splitter.bounds), _view(view)
+		{
+		}
+
+		~panel_splitter_controller() override
+		{
+			_view->_splitter.tracking = false;
+			_view->frame()->invalidate(_view->_splitter.bounds);
+		}
+
+		ui::style::cursor cursor() const override
+		{
+			return ui::style::cursor::left_right;
+		}
+
+		void draw(ui::draw_context& dc) override
+		{
+			const auto& s = _view->_splitter;
+			draw_splitter_handle(dc, s.bounds, s.width, true, s.tracking);
+		}
+
+		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		{
+			_view->_splitter.tracking = true;
+			_view->drag_splitter(loc);
+		}
+
+		void on_mouse_move(const pointi loc) override
+		{
+			if (_view->_splitter.tracking) _view->drag_splitter(loc);
+		}
+
+		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		{
+			if (!_view->_splitter.tracking) return;
+
+			_view->drag_splitter(loc);
+			_view->_splitter.tracking = false;
+			_view->frame()->invalidate(_view->_splitter.bounds);
+			_view->invalidate_view(view_invalid::options_save);
+		}
+	};
+}
+
+void view_frame::panel(view_controls_host_ptr panel, const bool fills)
+{
+	if (_panel == panel && _panel_fills == fills) return;
+
+	_panel = std::move(panel);
+	_panel_fills = fills;
+	if (_panel) _panel->_frame = frame();
+	_splitter.tracking = false;
+}
+
+bool view_frame::in_panel(const pointi loc) const
+{
+	return _panel && _panel->_bounds.contains(loc);
+}
+
+void view_frame::drag_splitter(const pointi loc)
+{
+	const auto& s = _splitter;
+	const auto available = std::max(0, _extent.cx - s.width);
+	if (available <= 0) return;
+
+	// The pointer holds the middle of the strip, so the grab point does not jump on the first move.
+	const auto panel_width = clamp_pane_width(_extent.cx - loc.x - s.width / 2, available, s.min_pane);
+	const auto pos = std::max(1, df::mul_div(panel_width, settings_t::view_splitter_max, available));
+
+	if (setting.set_view_splitter(_state.view_mode(), pos))
+	{
+		// Direct pointer input, so lay out and repaint inside this message. Deferring to idle would
+		// paint the strip at its new position while the panes are still at the old one. The setting
+		// is written once the drag ends rather than on every move.
+		frame()->layout();
+		frame()->redraw_now();
+	}
+}
+
+// The view takes what the panel, the splitter and the strip leave: the panel the share of the width the
+// view keeps for it - all of it when it is the whole frame - and the strip a band along the base.
+void view_frame::on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized)
+{
+	_extent = extent;
+
+	const auto scale_factor = mc.scale_factor;
+	const auto has_panel = _panel != nullptr;
+	const auto fills = has_panel && _panel_fills;
+	const auto splitter_width = has_panel && !fills ? df::mul_div(mc.scroll_width, 3, 5) : 0;
+	const auto min_pane = df::round(200 * scale_factor);
+	const auto available = std::max(0, extent.cx - splitter_width);
+	const auto stored = setting.view_splitter(_state.view_mode());
+	const auto preferred = stored > 0
+		                       ? df::mul_div(available, stored, settings_t::view_splitter_max)
+		                       : std::max(extent.cx / 4, df::round(400 * scale_factor));
+	const auto panel_width = fills ? extent.cx : has_panel ? clamp_pane_width(preferred, available, min_pane) : 0;
+	const auto content_right = std::max(0, extent.cx - panel_width - splitter_width);
+	const auto strip_height = _strip_wanted ? std::min(df::round(150 * scale_factor), extent.cy / 3) : 0;
+
+	_view_bounds = recti(0, 0, content_right, extent.cy - strip_height);
+	_strip->bounds = recti(0, extent.cy - strip_height, content_right, extent.cy);
+	_strip->is_visible(strip_height > 0 && content_right > 0);
+	_splitter.bounds = splitter_width > 0
+		                   ? recti(content_right, 0, content_right + splitter_width, extent.cy)
+		                   : recti{};
+	_splitter.width = splitter_width;
+	_splitter.min_pane = min_pane;
+
+	_view->layout(mc, _view_bounds.extent());
+	if (_panel) _panel->layout_panel(mc, recti(content_right + splitter_width, 0, extent.cx, extent.cy));
+}
+
+void view_frame::on_window_paint(ui::draw_context& dc)
+{
+	dc.time_now = df::now();
+	dc.colors.alpha = 1.0;
+	dc.colors.overlay_alpha = 1.0;
+
+	if (!_view_bounds.is_empty())
+	{
+		ui::scoped_clip clip(dc, _view_bounds);
+		_view->render(dc, _active_controller);
+	}
+
+	if (_panel) _panel->render_panel(dc);
+
+	if (!_splitter.bounds.is_empty())
+	{
+		// In the panel's colour, so the strip reads as part of it until the user touches it.
+		dc.draw_rect(_splitter.bounds, ui::color(ui::style::colors.dialog_background, dc.colors.alpha));
+	}
+
+	if (_active_controller)
+	{
+		_active_controller->draw(dc);
+	}
+
+	draw_status(dc);
+
+	if (setting.show_debug_info && _active_controller)
+	{
+		const auto c = ui::color(1.0f, 0.0f, 0.0f, 1.0f);
+		const auto pad = df::round(2 * dc.scale_factor);
+		dc.draw_border(_controller_bounds, _controller_bounds.inflate(pad), c, c);
+	}
+}
+
+void view_frame::visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit)
+{
+	visit(_strip, {});
+	if (_panel) _panel->visit_elements(visit);
+}
+
+void view_frame::on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled)
+{
+	if (in_panel(loc)) _panel->on_mouse_wheel(loc, delta, keys, was_handled);
+	else if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, ui::wheel_axis::vertical, _wheel_vertical);
+	update_controller(loc);
+}
+
+void view_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
+{
+	df::trace(std::format("render_window::focus {}", has_focus));
+	_view->focus(has_focus && !child);
+	if (child && _panel) _panel->focus_changed(has_focus, child);
+	if (focus_listener) focus_listener(has_focus, child);
+	frame()->invalidate();
+}
+
+view_controller_ptr view_frame::controller_from_location(const pointi loc, hit_test_context& ctx)
+{
+	if (ctx.occluded(_splitter.bounds))
+	{
+		return std::make_shared<panel_splitter_controller>(shared_from_this());
+	}
+
+	if (in_panel(loc))
+	{
+		ctx.confine(_panel->_bounds);
+		return _panel->controller_from_location(loc, ctx);
+	}
+
+	if (!in_view(loc)) return nullptr;
+	ctx.confine(_view_bounds);
+	return _view->controller_from_location(shared_from_this(), loc, ctx);
+}
+
+void bar_frame::init(const ui::frame_ptr& owner)
+{
+	ui::frame_style fs;
+	fs.colors = {
+		ui::style::colors.toolbar_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
+	};
+	_frame = owner->create_frame(weak_from_this(), fs);
+}
+
+void bar_frame::on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized)
+{
+	if (is_minimized) return;
+	_extent = extent;
+
+	std::vector<ui::control_ptr> shown;
+	if (_kind == kind::title) _app.layout_title_bar(mc, extent, shown);
+	else _app.layout_status_bar(mc, extent, shown);
+	_controls = std::move(shown);
+	frame()->invalidate();
+}
+
+void bar_frame::on_window_paint(ui::draw_context& dc)
+{
+	if (_kind == kind::title) _app.paint_title_bar(dc);
+	else _app.draw_status_bar(dc);
+
+	for (const auto& c : _controls)
+	{
+		if (c->is_visible()) c->render(dc, {});
+	}
+}
+
+void bar_frame::visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit)
+{
+	const auto controls = _controls;
+	for (const auto& c : controls) visit(c, {});
+}
+
+// The title bar moves the window by any part of it that is neither the title nor a control.
+bool bar_frame::is_caption_area(const pointi loc) const
+{
+	return _kind == kind::title && !_app._title_bounds.contains(loc);
+}
+
+void bar_frame::on_mouse_move(const pointi loc, const bool is_tracking)
+{
+	if (_kind == kind::title) _app.title_bar_mouse_move(loc);
+	else _app.update_status_hover(loc);
+}
+
+void bar_frame::on_mouse_leave(const pointi loc)
+{
+	if (_kind == kind::title) _app.title_bar_mouse_leave();
+	else _app.update_status_hover({-1, -1});
+}
+
+void bar_frame::on_mouse_left_button_up(const pointi loc, const ui::key_state keys)
+{
+	if (_kind == kind::title) _app.title_bar_click(loc);
+}
+
+void bar_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
+{
+	_app.focus_changed(has_focus, child);
+}
+
+void bar_frame::command_hover(const ui::command_ptr& c, const recti window_bounds)
+{
+	_app.command_hover(c, window_bounds);
+}
+
+std::vector<ui::command_ptr> bar_frame::menu(const pointi loc)
+{
+	return _app.context_menu(menu_type::sidebar);
+}
+
 app_frame::app_frame(ui::plat_app_ptr pa) :
 	_item_index(*this, _locations),
 	_player(std::make_shared<av_player>(*this, [&index = _item_index](const df::file_path path, const double position)
@@ -616,7 +897,13 @@ app_frame::app_frame(ui::plat_app_ptr pa) :
 	_db(_state.item_index),
 	_pa(std::move(pa))
 {
+	_title_bar = std::make_shared<bar_frame>(*this, bar_frame::kind::title);
 	_view_frame = std::make_shared<view_frame>(_state);
+	_status_bar = std::make_shared<bar_frame>(*this, bar_frame::kind::status);
+	_title_region = std::make_shared<ui::frame_element>();
+	_body_region = std::make_shared<ui::frame_element>();
+	_status_region = std::make_shared<ui::frame_element>();
+	_regions = std::make_shared<ui::elements>(std::vector<view_element_ptr>{_title_region, _body_region, _status_region});
 	_app_logo = std::make_shared<app_logo_element>(_state);
 	_selector_frame = std::make_shared<view_frame>(_state);
 	_view_sync = std::make_shared<sync_view>(_state, _view_frame);
@@ -746,13 +1033,14 @@ void app_frame::prepare_frame()
 
 		const auto progress = _view->progress();
 
-		if (_app_logo && _app_frame && !_title_bounds.is_empty())
+		if (_app_logo && _show_bars && !_title_bounds.is_empty())
 		{
-			// Only the logo changed, so only the logo is invalidated - the frame repaints that
-			// rectangle rather than the whole client.
-			if (_app_logo->step_plasma(time_now) && _app_logo->plasma_is_active())
+			// Only the logo changed, so only the logo is invalidated - the title bar repaints that
+			// rectangle and nothing else does. Faded, it drifts on the idle timer's ticks, and only where
+			// animation is wanted and the window can be seen.
+			if (_app_logo->step_plasma(time_now, ui::animations_enabled && !vf->is_occluded()))
 			{
-				_app_frame->invalidate(_app_logo->invalidate_bounds());
+				_title_bar->frame()->invalidate(_app_logo->invalidate_bounds());
 			}
 		}
 
@@ -861,9 +1149,9 @@ void app_frame::tick()
 		const auto progress = _view->progress();
 		const auto repaint = status_repaints(progress.active, progress.total, setting.show_debug_info);
 
-		if (repaint.status_bar && !_status_bar_bounds.is_empty())
+		if (repaint.status_bar && _show_bars)
 		{
-			_app_frame->invalidate(_status_bar_bounds);
+			_status_bar->frame()->invalidate();
 		}
 
 		if (repaint.view && _view_frame)
@@ -875,8 +1163,8 @@ void app_frame::tick()
 		if (_search_edit && _search_color_lerp.step())
 		{
 			_search_edit->set_background(
-				_search_color_lerp.lerp(ui::style::color::edit_background,
-				                        ui::style::color::important_background));
+				_search_color_lerp.lerp(ui::style::colors.edit_background,
+				                        ui::style::colors.important_background));
 		}
 
 		const auto logical_bounds = _view_items->calc_logical_items_bounds();
@@ -1192,276 +1480,236 @@ void app_frame::search_complete(const df::search_t& search, const bool path_chan
 	}
 }
 
-// Both panes stay usable, so a splitter drag can never collapse either one out of reach.
-static int clamp_pane_width(const int width, const int available, const int min_pane)
+// Every bar's toolbars share one style, so measuring all of them gives both bars a height that stays put
+// as views come and go.
+static int bars_toolbar_height(ui::measure_context& mc,
+                               const std::map<std::vector<bar_entry>, app_frame::frame_bar>& bars, const int cx)
 {
-	const auto lo = std::min(min_pane, available / 2);
-	return std::clamp(width, lo, std::max(lo, available - min_pane));
+	auto result = 0;
+
+	for (const auto& [entries, parts] : bars)
+	{
+		for (const auto& part : parts)
+		{
+			if (part.toolbar) result = std::max(result, part.toolbar->measure_toolbar(mc, cx).cy);
+		}
+	}
+
+	return result;
 }
 
+int app_frame::title_bar_height(ui::measure_context& mc)
+{
+	const auto cy_address = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
+	const auto content_height = std::max({
+		_navigate1->measure_toolbar(mc, _extent.cx).cy, _navigate2->measure_toolbar(mc, _extent.cx).cy,
+		_navigate3->measure_toolbar(mc, _extent.cx).cy, cy_address, bars_toolbar_height(mc, _bars, _extent.cx)
+	}) + mc.padding2;
+	return df::mul_div(content_height, 6, 5);
+}
+
+int app_frame::status_bar_height(ui::measure_context& mc)
+{
+	const auto cy_control = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+	return std::max(bars_toolbar_height(mc, _bars, _extent.cx), cy_control) + mc.padding2;
+}
+
+// The window holds three regions, each with a surface of its own: the title bar, the view - with its panel
+// and strip - and the status bar. Full screen and a zoomed picture give the view the whole window; otherwise
+// a line of the window's background is left round the edge, which is its border.
 void app_frame::layout(ui::measure_context& mc)
 {
-	if (!df::is_closing && _app_frame && _view && _navigate1 && _search_edit && _navigate2 && _navigate3 &&
-		_filter_edit && _item_size && !_extent.is_empty())
+	if (df::is_closing || !_app_frame || !_view || !_navigate1 || !_search_edit || !_navigate2 || !_navigate3 ||
+		!_filter_edit || !_item_size || _extent.is_empty())
 	{
-		update_button_state(true);
+		return;
+	}
 
-		const auto view_mode = _state.view_mode();
-		const auto view_processing = _view->progress().active;
-		const auto display = _state.display_state();
-		// Fullscreen and zoom mode give the whole window to the picture, so the title bar and the
-		// status bar come and go together. Zoom is the picture's only in the views that show it: a task
-		// opened while a photo was zoomed keeps its bars, and with them its Save, Run and Cancel.
-		const auto picture_zoomed = _state.is_items_or_media_view() && display && display->is_zoom_mode();
-		const auto show_bars = !_state.is_full_screen && !picture_zoomed;
-		const auto declared = _view->bars();
-		const auto show_navigation = show_bars && declared.navigation;
-		const auto can_show_view_controls = view_mode == view_type::edit ||
-			view_mode == view_type::movie ||
-			view_mode == view_type::rename ||
-			view_mode == view_type::batch ||
-			view_mode == view_type::sync ||
-			view_mode == view_type::import ||
-			view_mode == view_type::locate ||
-			view_mode == view_type::tags ||
-			view_mode == view_type::options;
-		// Options has nothing beside its controls, so they take the whole body and there is no splitter.
-		const auto view_controls_fill = view_mode == view_type::options;
-		const auto show_selector = selector_strip_for_view(view_mode) != selector_strip::none;
+	update_button_state(true);
 
-		const auto scale_factor = mc.scale_factor;
-		const auto scale1 = df::round(1 * scale_factor);
-		const auto scale150 = df::round(150 * scale_factor);
-		const auto scale300 = df::round(300 * scale_factor);
-		const auto scale400 = df::round(400 * scale_factor);
-		const auto scale1000 = df::round(1000 * scale_factor);
+	// Zoom is the picture's only in the views that show it: a task opened while a photo was zoomed keeps
+	// its bars, and with them its Save, Run and Cancel.
+	const auto display = _state.display_state();
+	const auto picture_zoomed = _state.is_items_or_media_view() && display && display->is_zoom_mode();
+	_show_bars = !_state.is_full_screen && !picture_zoomed;
 
-		const auto navigate1_extent = _navigate1->measure_toolbar(_extent.cx);
-		const auto navigate2_extent = _navigate2->measure_toolbar(_extent.cx);
-		const auto navigate3_extent = _navigate3->measure_toolbar(_extent.cx);
+	const auto scale1 = df::round(1 * mc.scale_factor);
+	const auto client = recti(_extent).inflate(_state.is_full_screen ? 0 : -scale1);
+	const auto body_top = _show_bars ? client.top + title_bar_height(mc) : client.top;
+	const auto body_bottom = _show_bars ? std::max(body_top, client.bottom - status_bar_height(mc)) : client.bottom;
 
-		// Bound to lvalues, not a temporary: each bar lives in _bars, but a reference returned from a
-		// call that was handed a temporary reads as dangling to GCC.
-		static const std::vector<bar_entry> no_entries;
-		const auto& top_entries = declared.navigation ? no_entries : declared.top;
-		const auto& top_bar = bar(top_entries);
-		const auto& bottom_bar = bar(view_processing ? running_task_bar() : declared.bottom);
-		const auto& leading_bar = bar(view_processing ? no_entries : declared.bottom_leading);
+	_title_region->bounds = recti(client.left, client.top, client.right, body_top);
+	_body_region->bounds = recti(client.left, body_top, client.right, body_bottom);
+	_status_region->bounds = recti(client.left, body_bottom, client.right, client.bottom);
+	_title_region->is_visible(_show_bars);
+	_status_region->is_visible(_show_bars);
 
-		const auto line_height = mc.text_line_height(ui::style::font_face::dialog);
-		const auto cy_address = line_height + mc.padding2 * 2;
-		const auto cy_control = line_height + mc.padding2;
-		const auto top_slots = measure_bar(mc, top_bar, cy_control);
-		const auto bottom_slots = measure_bar(mc, bottom_bar, cy_control);
-		const auto leading_slots = measure_bar(mc, leading_bar, cy_control);
+	// A running task's panel takes no input.
+	if (const auto& panel = _view_frame->_panel) panel->enable(!_view->progress().active);
+	_view_frame->_strip_wanted = selector_strip_for_view(_state.view_mode()) != selector_strip::none;
 
-		// Every bar's toolbars share one style, so measuring all of them gives both bars a height that
-		// stays put as views come and go.
-		auto toolbar_cy = 0;
+	// Placing a region lays it out only when its size changes, and what it shows may have changed anyway.
+	_title_bar->frame()->layout();
+	_view_frame->frame()->layout();
+	_status_bar->frame()->layout();
 
-		for (const auto& [entries, parts] : _bars)
-		{
-			for (const auto& part : parts)
-			{
-				if (part.toolbar) toolbar_cy = std::max(toolbar_cy, part.toolbar->measure_toolbar(_extent.cx).cy);
-			}
-		}
-
-		const auto top_content_height = std::max({
-			navigate1_extent.cy, navigate2_extent.cy, navigate3_extent.cy, cy_address, toolbar_cy
-		}) + mc.padding2;
-		const auto top_height = df::mul_div(top_content_height, 6, 5);
-		const auto status_height = std::max(toolbar_cy, cy_control) + mc.padding2;
-
-		const auto client_bounds = recti(_extent).inflate(_state.is_full_screen ? 0 : -scale1);
-		const auto body_top = show_bars ? client_bounds.top + top_height : client_bounds.top;
-		const auto body_bottom = show_bars
-			                         ? std::max(body_top, client_bounds.bottom - status_height)
-			                         : client_bounds.bottom;
-		_top_bar_bounds = show_bars
-			                  ? recti(client_bounds.left, client_bounds.top, client_bounds.right, body_top)
-			                  : recti{};
-		_status_bar_bounds = show_bars
-			                     ? recti(client_bounds.left, body_bottom, client_bounds.right, client_bounds.bottom)
-			                     : recti{};
-		const auto selector_height = show_selector ? std::min(scale150, client_bounds.height() / 3) : 0;
-		const auto splitter_width = can_show_view_controls && !view_controls_fill
-			                            ? df::mul_div(mc.scroll_width, 3, 5)
-			                            : 0;
-		const auto splitter_min_pane = df::round(200 * scale_factor);
-		const auto splitter_available = std::max(0, client_bounds.width() - splitter_width);
-		const auto stored_splitter = setting.view_splitter(view_mode);
-		const auto preferred_view_controls = stored_splitter > 0
-			                                     ? df::mul_div(splitter_available, stored_splitter,
-			                                                   settings_t::view_splitter_max)
-			                                     : std::max(client_bounds.width() / 4, scale400);
-		const auto cx_view_controls = view_controls_fill
-			                              ? client_bounds.width()
-			                              : can_show_view_controls
-			                              ? clamp_pane_width(preferred_view_controls, splitter_available,
-			                                                 splitter_min_pane)
-			                              : 0;
-		const auto content_right = can_show_view_controls
-			                           ? client_bounds.right - cx_view_controls - splitter_width
-			                           : client_bounds.right;
-		const auto toolbar_top = client_bounds.top;
-		const auto center_y = [toolbar_top, top_height](const int height)
-		{
-			return toolbar_top + (top_height - height) / 2;
-		};
-
-		const auto x_nav3 = client_bounds.right - mc.padding1 - navigate3_extent.cx;
-		const auto y_nav3 = center_y(navigate3_extent.cy);
-		const recti nav3_bounds(x_nav3, y_nav3, x_nav3 + navigate3_extent.cx, y_nav3 + navigate3_extent.cy);
-
-		const auto toolbar_widths = navigate1_extent.cx + navigate2_extent.cx + navigate3_extent.cx;
-		const auto address_width = std::clamp((client_bounds.width() - toolbar_widths) / 2, scale300, scale1000);
-		const auto address_center = (client_bounds.left + client_bounds.right) / 2;
-		const auto address_left = address_center - address_width / 2;
-		const auto address_right = address_center + address_width / 2;
-		const auto nav1_x = address_left - mc.padding1 - navigate1_extent.cx;
-		const auto nav1_y = center_y(navigate1_extent.cy);
-		const recti nav1_bounds(nav1_x, nav1_y, nav1_x + navigate1_extent.cx, nav1_y + navigate1_extent.cy);
-		const auto nav2_x = address_right + mc.padding1;
-		const auto nav2_y = center_y(navigate2_extent.cy);
-		const recti nav2_bounds(nav2_x, nav2_y, nav2_x + navigate2_extent.cx, nav2_y + navigate2_extent.cy);
-		const auto address_y = center_y(cy_address);
-		const recti search_bounds(address_left, address_y, address_right, address_y + cy_address);
-
-		_app_logo->text(declared.navigation ? s_app_name : _view->title());
-		const auto title_left = client_bounds.left + mc.padding1;
-		// A task view's own title-bar commands are placed first and the title takes what they leave, so
-		// a long title yields to Close rather than pushing it off the window. Items' title stops at its
-		// navigation buttons.
-		const auto top_arrangement = arrange_bar(
-			recti(title_left, client_bounds.top, client_bounds.right - mc.padding2, body_top), top_slots,
-			mc.padding1);
-		const auto title_limit = declared.navigation
-			                         ? nav1_bounds.left - mc.padding1
-			                         : top_arrangement.remainder.right;
-		const auto title_available_right = std::max(title_left, title_limit);
-		const auto title_extent = _app_logo->measure(mc, title_available_right - title_left);
-		const auto title_top = center_y(title_extent.cy);
-		_title_bounds = show_bars
-			                ? recti(title_left, title_top, title_left + title_extent.cx, title_top + title_extent.cy)
-			                : recti{};
-		_app_logo->bounds = _title_bounds;
-
-		// The status bar: the view's own controls at the trailing end, kept clear of the corner the
-		// window is resized by, then whatever the view starts the bar with at the leading end; the
-		// view's status takes the room between them. The trailing controls are placed first, so a
-		// short bar gives up the leading ones before them.
-		const recti status_inner(client_bounds.left + mc.padding2, body_bottom,
-		                         client_bounds.right - mc.padding1 - mc.handle_cxy, client_bounds.bottom);
-		const auto bottom_arrangement = arrange_bar(status_inner, bottom_slots, mc.padding1);
-		const auto leading_arrangement = arrange_bar(bottom_arrangement.remainder, leading_slots, mc.padding1,
-		                                             bar_alignment::leading);
-		_status_text_bounds = show_bars ? leading_arrangement.remainder : recti{};
-
-		const auto selector_top = body_bottom - selector_height;
-		const recti view_bounds(client_bounds.left, body_top, content_right, selector_top);
-		const recti selector_bounds(client_bounds.left, selector_top, content_right, body_bottom);
-		const recti view_controls_bounds(content_right + splitter_width, body_top, client_bounds.right, body_bottom);
-
-		_controls_splitter.bounds = can_show_view_controls && !view_controls_fill
-			                            ? recti(content_right, body_top, content_right + splitter_width, body_bottom)
-			                            : recti{};
-		_controls_splitter.client_left = client_bounds.left;
-		_controls_splitter.client_right = client_bounds.right;
-		_controls_splitter.width = splitter_width;
-		_controls_splitter.min_pane = splitter_min_pane;
-
-		if (!can_show_view_controls || view_controls_fill)
-		{
-			_controls_splitter.hover = false;
-			_controls_splitter.tracking = false;
-		}
-
-		ui::control_layouts positions;
-		positions.emplace_back(_navigate1, nav1_bounds,
-		                       show_navigation && nav1_bounds.left > client_bounds.left);
-		positions.emplace_back(_search_edit, search_bounds,
-		                       show_navigation && search_bounds.right < nav3_bounds.left);
-		positions.emplace_back(_navigate2, nav2_bounds,
-		                       show_navigation && nav2_bounds.right < nav3_bounds.left);
-		positions.emplace_back(_navigate3, nav3_bounds, show_navigation);
-		positions.emplace_back(_view_frame->frame(), view_bounds, _view->_show_render_window);
-		positions.emplace_back(_selector_frame->frame(), selector_bounds, show_selector);
-
-		// Each part of the two bars goes where its arrangement put it. Every other bar control is
-		// hidden, so a view switch never leaves the previous view's commands on screen.
-		std::map<const ui::control_base*, recti> placed;
-		_totals_bounds = {};
-
-		const auto place = [this, &placed](const frame_bar& b, const bar_arrangement& a)
-		{
-			for (auto i = 0u; i < b.size(); ++i)
-			{
-				const auto bounds = a.slots[i];
-				if (bounds.is_empty()) continue;
-
-				if (b[i].toolbar) placed[b[i].toolbar.get()] = bounds;
-				else if (b[i].control == bar_control::item_filter) placed[_filter_edit.get()] = bounds;
-				else if (b[i].control == bar_control::item_size) placed[_item_size.get()] = bounds;
-				else _totals_bounds = bounds;
-			}
-		};
-
-		if (show_bars)
-		{
-			place(top_bar, top_arrangement);
-			place(bottom_bar, bottom_arrangement);
-			place(leading_bar, leading_arrangement);
-		}
-
-		const auto position = [&positions, &placed](const ui::control_base_ptr& control)
-		{
-			const auto found = placed.find(control.get());
-			const auto is_placed = found != placed.end();
-			positions.emplace_back(control, is_placed ? found->second : recti{}, is_placed);
-		};
-
-		for (const auto& [entries, parts] : _bars)
-		{
-			for (const auto& part : parts)
-			{
-				if (part.toolbar) position(part.toolbar);
-			}
-		}
-
-		position(_filter_edit);
-		position(_item_size);
-
-		// Focus left in a box the bar no longer shows would route every key somewhere the user cannot
-		// see, so the keyboard goes back to the view.
-		if (_filter_has_focus && !placed.contains(_filter_edit.get()))
-		{
-			queue_ui([this] { focus_view(); });
-		}
-
-		if (_view_controls && _view_controls->_dlg)
-		{
-			for (const auto& control : _view_controls->_controls)
-			{
-				ui::enable_element(control, !view_processing);
-			}
-			positions.emplace_back(_view_controls->_dlg, view_controls_bounds, can_show_view_controls);
-		}
-
-		if (_search_predictions_frame && _search_predictions_frame->frame()->is_visible())
-		{
-			_search_predictions_frame->frame()->window_bounds(calc_search_popup_bounds(), true);
-		}
-
-		_view_bounds = view_bounds;
-		_app_frame->apply_layout(positions, {0, 0});
-
-		// The frame paints the status and the totals itself, so their band repaints with every layout
-		// that may have moved them.
-		if (!_status_bar_bounds.is_empty()) _app_frame->invalidate(_status_bar_bounds);
+	if (_search_predictions_frame && _search_predictions_frame->frame()->is_visible())
+	{
+		_search_predictions_frame->frame()->window_bounds(calc_search_popup_bounds(), true);
 	}
 }
 
+void app_frame::visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit)
+{
+	visit(_regions, {});
+}
+
+// The title bar, in its own coordinates: the logo and title at the left; the address box between the history
+// and folder buttons, centred in the window, where the view navigates; or the view's own commands, placed
+// before the title so a long title yields to Close; and the window's buttons at the right.
+void app_frame::layout_title_bar(ui::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
+{
+	if (!_view || !_navigate1) return;
+
+	const auto declared = _view->bars();
+	const auto show_navigation = declared.navigation;
+	const auto scale300 = df::round(300 * mc.scale_factor);
+	const auto scale1000 = df::round(1000 * mc.scale_factor);
+	const auto area = recti(extent);
+
+	const auto navigate1_extent = _navigate1->measure_toolbar(mc, extent.cx);
+	const auto navigate2_extent = _navigate2->measure_toolbar(mc, extent.cx);
+	const auto navigate3_extent = _navigate3->measure_toolbar(mc, extent.cx);
+
+	// Bound to an lvalue, not a temporary: each bar lives in _bars, but a reference returned from a call
+	// that was handed a temporary reads as dangling to GCC.
+	static const std::vector<bar_entry> no_entries;
+	const auto& top_entries = declared.navigation ? no_entries : declared.top;
+	const auto& top_bar = bar(top_entries);
+	const auto cy_address = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
+	const auto cy_control = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+	const auto top_slots = measure_bar(mc, top_bar, cy_control);
+	const auto center_y = [&area](const int height) { return area.top + (area.height() - height) / 2; };
+
+	const auto x_nav3 = area.right - mc.padding1 - navigate3_extent.cx;
+	const auto y_nav3 = center_y(navigate3_extent.cy);
+	const recti nav3_bounds(x_nav3, y_nav3, x_nav3 + navigate3_extent.cx, y_nav3 + navigate3_extent.cy);
+
+	const auto toolbar_widths = navigate1_extent.cx + navigate2_extent.cx + navigate3_extent.cx;
+	const auto address_width = std::clamp((area.width() - toolbar_widths) / 2, scale300, scale1000);
+	const auto address_center = (area.left + area.right) / 2;
+	const auto address_left = address_center - address_width / 2;
+	const auto address_right = address_center + address_width / 2;
+	const auto nav1_x = address_left - mc.padding1 - navigate1_extent.cx;
+	const auto nav1_y = center_y(navigate1_extent.cy);
+	const recti nav1_bounds(nav1_x, nav1_y, nav1_x + navigate1_extent.cx, nav1_y + navigate1_extent.cy);
+	const auto nav2_x = address_right + mc.padding1;
+	const auto nav2_y = center_y(navigate2_extent.cy);
+	const recti nav2_bounds(nav2_x, nav2_y, nav2_x + navigate2_extent.cx, nav2_y + navigate2_extent.cy);
+	const auto address_y = center_y(cy_address);
+	const recti search_bounds(address_left, address_y, address_right, address_y + cy_address);
+
+	_app_logo->text(declared.navigation ? s_app_name : _view->title());
+	const auto title_left = area.left + mc.padding2;
+	const auto top_arrangement = arrange_bar(recti(title_left, area.top, area.right - mc.padding2, area.bottom),
+	                                         top_slots, mc.padding1);
+	const auto title_limit = declared.navigation ? nav1_bounds.left - mc.padding1 : top_arrangement.remainder.right;
+	const auto title_available_right = std::max(title_left, title_limit);
+	const auto title_extent = _app_logo->measure(mc, title_available_right - title_left);
+	const auto title_top = center_y(title_extent.cy);
+	_title_bounds = recti(title_left, title_top, title_left + title_extent.cx, title_top + title_extent.cy);
+	_app_logo->bounds = _title_bounds;
+
+	const auto place = [&mc, &shown](const ui::control_ptr& c, const recti bounds, const bool visible)
+	{
+		if (!visible) return;
+		c->is_visible(true);
+		c->layout(mc, bounds);
+		shown.emplace_back(c);
+	};
+
+	place(_navigate1, nav1_bounds, show_navigation && nav1_bounds.left > area.left);
+	place(_search_edit, search_bounds, show_navigation && search_bounds.right < nav3_bounds.left);
+	place(_navigate2, nav2_bounds, show_navigation && nav2_bounds.right < nav3_bounds.left);
+
+	for (auto i = 0u; i < top_bar.size(); ++i)
+	{
+		if (top_bar[i].toolbar) place(top_bar[i].toolbar, top_arrangement.slots[i], !top_arrangement.slots[i].is_empty());
+	}
+
+	// A task view's own bar carries its window buttons, beside its Close.
+	place(_navigate3, nav3_bounds, show_navigation);
+
+	// Focus left in a box the bar no longer shows would route every key somewhere the user cannot see,
+	// so the keyboard goes back to the view.
+	if (_search_has_focus && std::ranges::find(shown, _search_edit) == shown.end())
+	{
+		queue_ui([this] { focus_view(); });
+	}
+}
+
+// The status bar, in its own coordinates: the view's own controls at the trailing end, kept clear of the
+// corner the window is resized by, then whatever the view starts the bar with at the leading end; the
+// view's status takes the room between them. The trailing controls are placed first, so a short bar gives up
+// the leading ones before them.
+void app_frame::layout_status_bar(ui::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
+{
+	if (!_view || !_filter_edit) return;
+
+	const auto declared = _view->bars();
+	const auto view_processing = _view->progress().active;
+	static const std::vector<bar_entry> no_entries;
+	const auto& bottom_bar = bar(view_processing ? running_task_bar() : declared.bottom);
+	const auto& leading_bar = bar(view_processing ? no_entries : declared.bottom_leading);
+	const auto cy_control = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+	const auto bottom_slots = measure_bar(mc, bottom_bar, cy_control);
+	const auto leading_slots = measure_bar(mc, leading_bar, cy_control);
+
+	const recti inner(mc.padding2, 0, extent.cx - mc.padding1 - mc.handle_cxy, extent.cy);
+	const auto bottom_arrangement = arrange_bar(inner, bottom_slots, mc.padding1);
+	const auto leading_arrangement = arrange_bar(bottom_arrangement.remainder, leading_slots, mc.padding1,
+	                                             bar_alignment::leading);
+	_status_text_bounds = leading_arrangement.remainder;
+	_totals_bounds = {};
+
+	const auto place = [this, &mc, &shown](const frame_bar& b, const bar_arrangement& a)
+	{
+		for (auto i = 0u; i < b.size(); ++i)
+		{
+			const auto bounds = a.slots[i];
+			if (bounds.is_empty()) continue;
+
+			ui::control_ptr c;
+			if (b[i].toolbar) c = b[i].toolbar;
+			else if (b[i].control == bar_control::item_filter) c = _filter_edit;
+			else if (b[i].control == bar_control::item_size) c = _item_size;
+			else _totals_bounds = bounds;
+
+			if (c)
+			{
+				c->is_visible(true);
+				c->layout(mc, bounds);
+				shown.emplace_back(c);
+			}
+		}
+	};
+
+	place(leading_bar, leading_arrangement);
+	place(bottom_bar, bottom_arrangement);
+
+	if (_filter_has_focus && std::ranges::find(shown, _filter_edit) == shown.end())
+	{
+		queue_ui([this] { focus_view(); });
+	}
+}
+
+void app_frame::paint_title_bar(ui::draw_context& dc)
+{
+	if (_show_bars && !_title_bounds.is_empty())
+	{
+		_app_logo->render(dc, {});
+	}
+}
 
 void parse_more_folders(df::index_roots& result, const std::string_view more_folders, const platform::drives& drives)
 {
@@ -1623,7 +1871,7 @@ void app_frame::complete_pending_events()
 			{
 				// The status is painted in the frame's status bar, and an open-ended run with no rows yet
 				// also says it across the empty list.
-				if (!_status_bar_bounds.is_empty()) _app_frame->invalidate(_status_bar_bounds);
+				if (_show_bars) _status_bar->frame()->invalidate();
 				_view_frame->frame()->invalidate();
 
 				// The task view on screen reports under one key, so switching to a view that is not
@@ -1927,8 +2175,8 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 	if (df::command_active == 0)
 	{
-		// The filter box is a native edit, so it reaches here first only for the keys an edit hands
-		// up; the rest it handles itself.
+		// The filter box is an edit, so it reaches here first only for the keys an edit hands up; the
+		// rest it handles itself.
 		if (_filter_has_focus && filter_key_down(key, keys)) return true;
 
 		// Step the prediction list without committing. The address bar is drawn by the items view,
@@ -1986,7 +2234,6 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 		if (key == keys::ESCAPE)
 		{
-			if (_view_controls && _view_controls->escape_controller()) return true;
 			if (_selector_frame->escape_controller()) return true;
 			if (_view_frame->escape_controller()) return true;
 
@@ -2321,7 +2568,7 @@ void app_frame::element_broadcast(const view_element_event& event)
 	_view_tags->broadcast_event(event);
 }
 
-void app_frame::focus_changed(const bool has_focus, const ui::control_base_ptr& child)
+void app_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
 {
 	df::trace(std::format("app_frame::focus {}", has_focus));
 
@@ -2334,8 +2581,10 @@ void app_frame::focus_changed(const bool has_focus, const ui::control_base_ptr& 
 		focus_filter(has_focus);
 	}
 
-	_view_has_focus = _view_frame->frame()->has_focus();
-	_view_controls_have_focus = _view_controls && _view_controls->_dlg && _view_controls->_dlg->has_focus();
+	// The view frame holds the keyboard for the view and for its panel's controls alike.
+	const auto panel_focus = _view_frame->frame()->focused_control();
+	_view_has_focus = _view_frame->frame()->has_focus() && !panel_focus;
+	_view_controls_have_focus = panel_focus != nullptr;
 
 	invalidate_view(view_invalid::view_redraw | view_invalid::command_state);
 }
@@ -2530,50 +2779,42 @@ void app_frame::view_changed(const view_type m)
 	case view_type::media: v = _view_media;
 		break;
 	case view_type::edit: v = _view_edit;
-		vc = _view_edit->controls(_app_frame);
+		vc = _view_edit->controls(_view_frame->frame());
 		break;
 	case view_type::movie: v = _view_movie;
-		vc = _view_movie->controls(_app_frame);
+		vc = _view_movie->controls(_view_frame->frame());
 		break;
 	case view_type::rename: v = _view_rename;
-		vc = _view_rename->controls(_app_frame);
+		vc = _view_rename->controls(_view_frame->frame());
 		break;
 	case view_type::batch: v = _view_batch;
-		vc = _view_batch->controls(_app_frame);
+		vc = _view_batch->controls(_view_frame->frame());
 		break;
 	case view_type::import: v = _view_import;
-		vc = _view_import->controls(_app_frame);
+		vc = _view_import->controls(_view_frame->frame());
 		break;
 	case view_type::sync: v = _view_sync;
-		vc = _view_sync->controls(_app_frame);
+		vc = _view_sync->controls(_view_frame->frame());
 		break;
 	case view_type::locate: v = _view_locate;
-		vc = _view_locate->controls(_app_frame);
+		vc = _view_locate->controls(_view_frame->frame());
 		break;
 	case view_type::tags: v = _view_tags;
-		vc = _view_tags->controls(_app_frame);
+		vc = _view_tags->controls(_view_frame->frame());
 		break;
 	case view_type::options: v = _view_options;
-		vc = _view_options->controls(_app_frame);
+		vc = _view_options->controls(_view_frame->frame());
 		break;
 	default:
 		break;
 	}
 
-	if (vc != _view_controls)
+	if (vc != _view_frame->_panel)
 	{
-		if (_view_controls && _view_controls->_dlg)
-		{
-			_view_controls->_dlg->show(false);
-		}
-
-		// The incoming panel is left hidden for the app layout to reveal, because that shrinks the view
-		// frame and shows the panel in one batch. Shown any earlier it is still covered by the
-		// full-width view frame, and its native controls would paint while clipped to nothing: the
-		// paint is validated and lost, leaving them blank until something dirties them again.
-		// Requested here rather than with the view change below, because a panel is also rebuilt
-		// without the view changing: a new selection in Tags or Batch, or a language change.
-		_view_controls = vc;
+		// The panel is drawn in the view's frame, which the app layout lays out again with it. Asked for
+		// here rather than with the view change below, because a panel is also rebuilt without the view
+		// changing: a new selection in Tags or Batch, or a language change.
+		_view_frame->panel(vc, m == view_type::options);
 		invalidate_view(view_invalid::app_layout);
 	}
 
@@ -2586,7 +2827,7 @@ void app_frame::view_changed(const view_type m)
 
 		_view = v;
 		_view_frame->view(v);
-		_view->activate(_view_bounds.extent());
+		_view->activate(_view_frame->_view_bounds.extent());
 		// Offscreen only. The items the user was just looking at are the ones the media view is about to
 		// step through, and their thumbnail surfaces are what stands in for each image while it loads.
 		free_graphics_resources(true, true);
@@ -2772,44 +3013,9 @@ void app_frame::on_window_layout(ui::measure_context& mc, const sizei extent, co
 	}
 }
 
-bool app_frame::is_caption_area(const pointi loc) const
-{
-	if (_title_bounds.contains(loc)) return false;
-	if (_top_bar_bounds.contains(loc)) return true;
-	if (!_controls_splitter.bounds.is_empty() && _controls_splitter.bounds.contains(loc)) return false;
-	if (!_view || !_view_bounds.contains(loc)) return false;
-
-	return _view->is_caption_area({loc.x - _view_bounds.left, loc.y - _view_bounds.top});
-}
-
+// A container: what it shows is its regions'.
 void app_frame::on_window_paint(ui::draw_context& dc)
 {
-	if (!_state.is_full_screen && !_title_bounds.is_empty())
-	{
-		_app_logo->render(dc, {});
-	}
-
-	draw_status_bar(dc);
-
-	if (!_controls_splitter.bounds.is_empty())
-	{
-		// The app frame clears to toolbar_background, so the strip is repainted to match the
-		// controls panel and read as part of it until the user touches it.
-		dc.draw_rect(_controls_splitter.bounds,
-		             ui::color(ui::style::color::dialog_background, dc.colors.alpha));
-
-		if (_controls_splitter.hover || _controls_splitter.tracking)
-		{
-			draw_splitter_handle(dc, _controls_splitter.bounds, _controls_splitter.width, true,
-			                     _controls_splitter.tracking);
-		}
-	}
-
-	const auto border_outside = recti(_extent);
-	const auto scale1 = df::round(1 * dc.scale_factor);
-	const auto clr = ui::style::color::view_background;
-	const auto border_clr = ui::color(clr, dc.colors.alpha);
-	dc.draw_border(border_outside.inflate(-scale1), border_outside, border_clr, border_clr);
 }
 
 // The frame paints the parts of the status bar that are not controls: the totals among them, and the
@@ -2818,7 +3024,7 @@ void app_frame::on_window_paint(ui::draw_context& dc)
 void app_frame::draw_status_bar(ui::draw_context& dc)
 {
 	_status_text_clipped = false;
-	if (_status_bar_bounds.is_empty() || !_view) return;
+	if (!_show_bars || !_view) return;
 
 	constexpr auto font = ui::style::font_face::dialog;
 	const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
@@ -2856,21 +3062,21 @@ void app_frame::draw_status_bar(ui::draw_context& dc)
 
 		if (counted)
 		{
-			dc.draw_rounded_rect(pill, ui::color(ui::style::color::important_background, dc.colors.alpha * 0.3f),
+			dc.draw_rounded_rect(pill, ui::color(ui::style::colors.important_background, dc.colors.alpha * 0.3f),
 			                     dc.padding1);
 			auto done = pill;
 			done.right = pill.left + df::mul_div(pill.width(), static_cast<int>(std::min<int64_t>(position, INT_MAX)),
 			                                     static_cast<int>(std::min<int64_t>(progress.total, INT_MAX)));
 			if (!done.is_empty())
 			{
-				dc.draw_rounded_rect(done, ui::color(ui::style::color::important_background, dc.colors.alpha),
+				dc.draw_rounded_rect(done, ui::color(ui::style::colors.important_background, dc.colors.alpha),
 				                     dc.padding1);
 			}
 		}
 		else
 		{
 			const auto alpha = command_progress_alpha(progress.active, progress.total, platform::tick_count());
-			dc.draw_rounded_rect(pill, ui::color(ui::style::color::important_background, dc.colors.alpha * alpha),
+			dc.draw_rounded_rect(pill, ui::color(ui::style::colors.important_background, dc.colors.alpha * alpha),
 			                     dc.padding1);
 		}
 
@@ -2882,125 +3088,72 @@ void app_frame::draw_status_bar(ui::draw_context& dc)
 	dc.draw_text(text, text_bounds, font, ui::style::text_style::single_line, text_color, {});
 }
 
-void app_frame::update_controls_splitter_hover(const bool hover)
+void app_frame::title_bar_mouse_move(const pointi loc)
 {
-	if (_controls_splitter.hover == hover) return;
-	_controls_splitter.hover = hover;
-	_app_frame->set_cursor(hover ? ui::style::cursor::left_right : ui::style::cursor::normal);
-	_app_frame->invalidate(_controls_splitter.bounds);
-}
+	if (!_app_logo) return;
 
-void app_frame::drag_controls_splitter(const pointi loc)
-{
-	const auto& s = _controls_splitter;
-	const auto available = std::max(0, s.client_right - s.client_left - s.width);
-	if (available <= 0) return;
+	const auto logo_hover = _title_bounds.contains(loc);
 
-	// The pointer holds the middle of the strip, so the grab point does not jump on the first move.
-	const auto panel = clamp_pane_width(s.client_right - loc.x - s.width / 2, available, s.min_pane);
-	const auto pos = std::max(1, df::mul_div(panel, settings_t::view_splitter_max, available));
-
-	if (setting.set_view_splitter(_state.view_mode(), pos))
+	if (_app_logo->hover(logo_hover))
 	{
-		// Direct pointer input, so lay out and repaint inside this message. Deferring to idle would
-		// paint the strip at its new position while the panes are still at the old one. The setting
-		// is written once the drag ends rather than on every move.
-		_app_frame->layout();
-		_app_frame->redraw_now();
-	}
-}
-
-void app_frame::on_mouse_move(const pointi loc, const bool is_tracking)
-{
-	if (_controls_splitter.tracking)
-	{
-		drag_controls_splitter(loc);
-		return;
-	}
-
-	update_controls_splitter_hover(!_controls_splitter.bounds.is_empty() &&
-		_controls_splitter.bounds.contains(loc));
-	update_status_hover(loc);
-
-	if (_app_logo)
-	{
-		const auto logo_hover = _title_bounds.contains(loc);
-		if (_app_logo->hover(logo_hover))
+		if (ui::animations_enabled)
 		{
-			if (ui::animations_enabled)
+			ui::animations[_app_logo.get()] = [logo = _app_logo, frame = _title_bar->frame()]
 			{
-				ui::animations[_app_logo.get()] = [logo = _app_logo, frame = _app_frame]
-				{
-					const auto animating = logo->step_background();
-					if (animating) frame->invalidate(logo->invalidate_bounds());
-					return animating;
-				};
-				invalidate_view(view_invalid::animations);
-			}
-			else
+				const auto animating = logo->step_background();
+				if (animating) frame->invalidate(logo->invalidate_bounds());
+				return animating;
+			};
+			invalidate_view(view_invalid::animations);
+		}
+		else
+		{
+			if (_app_logo->step_background_if_animations_disabled())
 			{
-				if (_app_logo->step_background_if_animations_disabled()) _app_frame->invalidate(_app_logo->invalidate_bounds());
+				_title_bar->frame()->invalidate(_app_logo->invalidate_bounds());
 			}
 		}
-
-		if (_app_logo_hover != logo_hover)
-		{
-			_app_logo_hover = logo_hover;
-			invalidate_view(view_invalid::tooltip);
-		}
 	}
-}
 
-void app_frame::on_mouse_leave(const pointi loc)
-{
-	update_controls_splitter_hover(false);
-	update_status_hover({-1, -1});
-
-	if (_app_logo_hover)
+	if (_app_logo_hover != logo_hover)
 	{
-		_app_logo_hover = false;
-		if (_app_logo->hover(false))
-		{
-			if (ui::animations_enabled)
-			{
-				ui::animations[_app_logo.get()] = [logo = _app_logo, frame = _app_frame]
-				{
-					const auto animating = logo->step_background();
-					if (animating) frame->invalidate(logo->invalidate_bounds());
-					return animating;
-				};
-				invalidate_view(view_invalid::animations);
-			}
-			else
-			{
-				if (_app_logo->step_background_if_animations_disabled()) _app_frame->invalidate(_app_logo->invalidate_bounds());
-			}
-		}
+		_app_logo_hover = logo_hover;
 		invalidate_view(view_invalid::tooltip);
 	}
 }
 
-void app_frame::on_mouse_left_button_down(const pointi loc, const ui::key_state keys)
+void app_frame::title_bar_mouse_leave()
 {
-	if (!_controls_splitter.bounds.is_empty() && _controls_splitter.bounds.contains(loc))
+	if (!_app_logo_hover) return;
+
+	_app_logo_hover = false;
+
+	if (_app_logo->hover(false))
 	{
-		_controls_splitter.tracking = true;
-		drag_controls_splitter(loc);
+		if (ui::animations_enabled)
+		{
+			ui::animations[_app_logo.get()] = [logo = _app_logo, frame = _title_bar->frame()]
+			{
+				const auto animating = logo->step_background();
+				if (animating) frame->invalidate(logo->invalidate_bounds());
+				return animating;
+			};
+			invalidate_view(view_invalid::animations);
+		}
+		else
+		{
+			if (_app_logo->step_background_if_animations_disabled())
+			{
+				_title_bar->frame()->invalidate(_app_logo->invalidate_bounds());
+			}
+		}
 	}
+
+	invalidate_view(view_invalid::tooltip);
 }
 
-void app_frame::on_mouse_left_button_up(const pointi loc, const ui::key_state keys)
+void app_frame::title_bar_click(const pointi loc)
 {
-	if (_controls_splitter.tracking)
-	{
-		drag_controls_splitter(loc);
-		_controls_splitter.tracking = false;
-		update_controls_splitter_hover(_controls_splitter.bounds.contains(loc));
-		_app_frame->invalidate(_controls_splitter.bounds);
-		invalidate_view(view_invalid::options_save);
-		return;
-	}
-
 	if (_app_logo && _title_bounds.contains(loc))
 	{
 		invoke(commands::view_help);
@@ -3065,7 +3218,7 @@ void app_frame::work_finished(const void* source)
 
 void app_frame::search_text_changed(const std::string_view text)
 {
-	if (!_search_setting_text && _search_predictions_frame && _search_has_focus)
+	if (_search_predictions_frame && _search_has_focus)
 	{
 		_search_session.typed(text);
 		_search_predictions_frame->selected(nullptr, ui::complete_strategy_t::select_type::init);
@@ -3272,9 +3425,12 @@ bool app_frame::wants_gpu() const
 
 void app_frame::update_font_size() const
 {
+	// The Large text option scales the whole interface with it.
+	constexpr int large_font_size = 21;
+
 	if (_pa)
 	{
-		_pa->set_font_base_size(setting.large_font ? large_font_size : normal_font_size);
+		_pa->set_font_base_size(setting.large_font ? large_font_size : ui::default_font_size);
 	}
 }
 
@@ -3328,7 +3484,14 @@ bool app_frame::init(const std::string_view command_line_text)
 
 	initialise_commands();
 
-	_app_frame = _pa->create_app_frame(store, shared_from_this());
+	// The window draws nothing of its own: its regions do, each with a surface of its own, and the line of
+	// its background they leave round the edge is its border.
+	ui::frame_style window_style;
+	window_style.container = true;
+	window_style.colors = {
+		ui::style::colors.view_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
+	};
+	_app_frame = _pa->create_app_frame(store, shared_from_this(), window_style);
 
 	if (!_app_frame)
 	{
@@ -3336,8 +3499,18 @@ bool app_frame::init(const std::string_view command_line_text)
 		return false;
 	}
 
+	_title_bar->init(_app_frame);
 	_view_frame->init(_app_frame);
-	_selector_frame->init(_app_frame);
+	_status_bar->init(_app_frame);
+	_selector_frame->init(_view_frame->frame());
+	_title_region->child = _title_bar->frame();
+	_body_region->child = _view_frame->frame();
+	_status_region->child = _status_bar->frame();
+	_view_frame->_strip->child = _selector_frame->frame();
+	_view_frame->focus_listener = [this](const bool has_focus, const ui::control_ptr& child)
+	{
+		focus_changed(has_focus, child);
+	};
 	create_toolbars();
 
 	init_search();
@@ -3404,8 +3577,9 @@ void app_frame::on_window_destroy()
 	if (_app_logo) _app_logo->free_graphics_resources();
 	_bubble.reset();
 	_search_predictions_frame.reset();
-	_view_controls.reset();
 	_view_frame.reset();
+	_title_bar.reset();
+	_status_bar.reset();
 	_item_index.reset();
 	_state.reset();
 	save_options();
@@ -3431,7 +3605,16 @@ void app_frame::command_hover(const ui::command_ptr& c, const recti window_bound
 }
 
 // Context menu layouts. commands::none marks a separator. Anything with a submenu of its own
-// appears once, at the top level, rather than also being spelled out beside it.
+// appears once, at the top level, rather than also being spelled out beside it. The commonest commands
+// on what a menu acts on open it as a row of buttons, as cut, copy and paste do in a file browser's, and
+// are not listed again below.
+static constexpr commands s_menu_media_row[] = {
+	commands::edit_cut,
+	commands::edit_copy,
+	commands::tool_rename,
+	commands::tool_delete,
+};
+
 static constexpr commands s_menu_media[] = {
 	commands::play,
 	commands::slideshow,
@@ -3449,13 +3632,17 @@ static constexpr commands s_menu_media[] = {
 	commands::playback_menu,
 	commands::menu_display_options,
 	commands::none,
-	commands::tool_delete,
-	commands::tool_rename,
 	commands::tool_copy_to_folder,
 	commands::tool_move_to_folder,
+	commands::edit_copy_item_path,
+};
+
+static constexpr commands s_menu_items_row[] = {
 	commands::edit_cut,
 	commands::edit_copy,
-	commands::edit_copy_item_path,
+	commands::edit_paste,
+	commands::tool_rename,
+	commands::tool_delete,
 };
 
 static constexpr commands s_menu_items[] = {
@@ -3467,14 +3654,9 @@ static constexpr commands s_menu_items[] = {
 	commands::menu_group,
 	commands::menu_display_options,
 	commands::none,
-	commands::tool_delete,
-	commands::tool_rename,
 	commands::tool_copy_to_folder,
 	commands::tool_move_to_folder,
-	commands::edit_cut,
-	commands::edit_copy,
 	commands::edit_copy_item_path,
-	commands::edit_paste,
 	commands::none,
 	commands::refresh,
 	commands::tool_new_folder,
@@ -3506,33 +3688,38 @@ static constexpr commands s_menu_frame[] = {
 	commands::large_font,
 };
 
-std::vector<ui::command_ptr> app_frame::menu(const pointi loc)
+std::vector<ui::command_ptr> app_frame::context_menu(const menu_type type) const
 {
-	update_button_state(false);
+	std::span<const commands> row;
+	std::span<const commands> ids;
 
-	const auto view_window_bounds = _view_frame->frame()->window_bounds();
-	std::span<const commands> ids = s_menu_frame;
-
-	if (view_window_bounds.contains(loc))
+	switch (type)
 	{
-		switch (_view->context_menu(loc - view_window_bounds.top_left()))
-		{
-		case menu_type::sidebar: ids = s_menu_frame;
-			break;
-		case menu_type::media: ids = s_menu_media;
-			break;
-		case menu_type::items: ids = s_menu_items;
-			break;
-		case menu_type::movie: ids = s_menu_movie;
-			break;
-		case menu_type::view:
-		default: ids = s_menu_view;
-			break;
-		}
+	case menu_type::sidebar: ids = s_menu_frame;
+		break;
+	case menu_type::media: row = s_menu_media_row;
+		ids = s_menu_media;
+		break;
+	case menu_type::items: row = s_menu_items_row;
+		ids = s_menu_items;
+		break;
+	case menu_type::movie: ids = s_menu_movie;
+		break;
+	case menu_type::view:
+	default: ids = s_menu_view;
+		break;
 	}
 
 	std::vector<ui::command_ptr> result;
-	result.reserve(ids.size());
+	result.reserve(ids.size() + 2);
+
+	if (!row.empty())
+	{
+		const auto buttons = std::make_shared<ui::command>();
+		for (const auto id : row) buttons->buttons.emplace_back(find_command(id));
+		result.emplace_back(buttons);
+		result.emplace_back(nullptr);
+	}
 
 	for (const auto id : ids)
 	{
@@ -3542,6 +3729,17 @@ std::vector<ui::command_ptr> app_frame::menu(const pointi loc)
 	return result;
 }
 
+std::vector<ui::command_ptr> app_frame::menu(const pointi loc)
+{
+	update_button_state(false);
+
+	// The panel beside the view has no menu; the bars have the frame's own.
+	const auto view_window_bounds = _view_frame->frame()->window_bounds();
+	if (!view_window_bounds.contains(loc)) return context_menu(menu_type::sidebar);
+	const auto view_loc = loc - view_window_bounds.top_left();
+	if (!_view_frame->in_view(view_loc)) return {};
+	return context_menu(_view->context_menu(view_loc));
+}
 void app_frame::exit()
 {
 	log_func lf(__FUNCTION__);

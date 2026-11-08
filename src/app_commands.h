@@ -230,6 +230,9 @@ enum class commands
 	view_zoom_navigator_off,
 };
 
+using command_info_ptr = std::shared_ptr<ui::command>;
+using commands_map = df::hash_map<commands, command_info_ptr>;
+
 struct command_accelerator
 {
 	commands id = commands::none;

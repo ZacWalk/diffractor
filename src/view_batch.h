@@ -93,7 +93,7 @@ public:
 	// Refresh means one thing in every mode: re-plan from what is on disk now. That is worth doing
 	// during review, and it is the only way out of results mode, so it is offered whenever idle.
 	bool can_refresh() const { return !progress().active && showing_results(); }
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 	std::string_view title() override;
 	view_bars bars() const override;
 	text_t empty_message() override { return tt.no_items_selected_message; }

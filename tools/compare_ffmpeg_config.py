@@ -28,6 +28,9 @@ import re
 import sys
 from pathlib import Path
 
+# dd.py, beside this script, decides where a Linux build of this checkout goes.
+from dd import linux_build_dir
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Both platforms split their switches across two generated headers, and the component list -- every
@@ -37,7 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WINDOWS_DIR = REPO_ROOT / "cmake" / "vendored" / "ffmpeg-windows"
 WINDOWS_HEADERS = ("config-x64.h", "config_components.h")
 
-LINUX_DIR = REPO_ROOT / "tmp" / "linux-build" / "third-party" / "ffmpeg" / "src"
+LINUX_DIR = linux_build_dir() / "third-party" / "ffmpeg" / "src"
 LINUX_HEADERS = ("config.h", "config_components.h")
 
 BASELINE = REPO_ROOT / "cmake" / "vendored" / "ffmpeg-config-divergence.txt"

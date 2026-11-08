@@ -520,7 +520,7 @@ void selector_view::render(ui::draw_context& dc, const view_controller_ptr contr
 		if (is_focus)
 		{
 			const auto border = bounds.inflate(-df::round(2 * dc.scale_factor));
-			const auto border_clr = ui::color(ui::style::color::view_selected_background, dc.colors.alpha);
+			const auto border_clr = ui::color(ui::style::colors.view_selected_background, dc.colors.alpha);
 			dc.draw_border(border, border.inflate(df::round(2 * dc.scale_factor)),
 			               border_clr, border_clr);
 		}

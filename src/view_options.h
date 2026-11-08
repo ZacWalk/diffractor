@@ -43,7 +43,7 @@ struct options_view_actions
 };
 
 // The question ask_to_save puts, in a dialog over `parent`.
-options_leave_choice ask_to_save_options(const ui::control_frame_ptr& parent);
+options_leave_choice ask_to_save_options(const ui::frame_ptr& parent);
 
 // The folders whose library type the page offers: the collection's local folders that are ticked, the other
 // folders it names by path, and any folder given a type before. Device labels and exclusions have no type.
@@ -123,7 +123,7 @@ public:
 	// Whether the page holds a change Save would commit.
 	bool has_changes() const;
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
 	void activate(sizei extent) override
 	{

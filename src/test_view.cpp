@@ -21,8 +21,6 @@
 #include "model_document.h"
 #include "ui_dialog.h"
 #include "ui_panorama.h"
-#include "ui_text_edit.h"
-#include "ui_date_edit.h"
 #include "app_sidebar.h"
 #include "view_items.h"
 #include "view_edit.h"
@@ -1886,7 +1884,6 @@ static void should_stage_neighbour_stand_ins()
 static void should_hold_media_column_still_as_detail_arrives()
 {
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
 
 	const auto media = std::make_shared<flex_test_element>(sizei{200, 400});
 	media->flex = media->flex | flex_item::media;
@@ -1899,7 +1896,7 @@ static void should_hold_media_column_still_as_detail_arrives()
 	const auto arrange = [&](const std::vector<view_element_ptr>& detail)
 	{
 		const media_column_inputs in{&priority, &detail, &all, pane, media};
-		return layout_media_column(in, mc, positions);
+		return layout_media_column(in, mc);
 	};
 
 	// Enough detail to take the column past the pane, which is where a late row could have cost the
@@ -1939,7 +1936,6 @@ static void should_hold_media_column_still_as_detail_arrives()
 static void should_fit_the_whole_primary_block_in_the_media_column()
 {
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
 	constexpr recti pane{0, 0, 200, 300};
 	const std::vector<view_element_ptr> no_detail;
 
@@ -1949,7 +1945,7 @@ static void should_fit_the_whole_primary_block_in_the_media_column()
 		media->flex = media->flex | flex_item::media;
 		const std::vector<view_element_ptr> priority{media, std::make_shared<flex_test_element>(sizei{200, 20}), toggle};
 		const media_column_inputs in{&priority, &no_detail, &priority, pane, media};
-		layout_media_column(in, mc, positions);
+		layout_media_column(in, mc);
 		return media;
 	};
 
@@ -1977,7 +1973,7 @@ static void should_fit_the_whole_primary_block_in_the_media_column()
 	const auto big_group = std::make_shared<flex_test_element>(sizei{200, 120});
 	const std::vector<view_element_ptr> cramped{squeezed, big_group};
 	const media_column_inputs cramped_in{&cramped, &no_detail, &cramped, short_pane, squeezed};
-	layout_media_column(cramped_in, mc, positions);
+	layout_media_column(cramped_in, mc);
 
 	assert_equal(true, squeezed->bounds.top >= short_pane.top, "an overflowing block is never clipped off the top");
 }
@@ -1989,7 +1985,6 @@ static void should_fit_the_whole_primary_block_in_the_media_column()
 static void should_follow_a_centred_block_with_its_detail()
 {
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
 	constexpr recti pane{0, 0, 200, 600};
 
 	const auto media = std::make_shared<flex_test_element>(sizei{200, 200});
@@ -2002,7 +1997,7 @@ static void should_follow_a_centred_block_with_its_detail()
 	const std::vector<view_element_ptr> all{media, group, description};
 
 	const media_column_inputs in{&priority, &detail, &all, pane, media};
-	layout_media_column(in, mc, positions);
+	layout_media_column(in, mc);
 
 	assert_equal(group->bounds.bottom, description->bounds.top, "the detail follows the block it belongs to");
 	assert_equal(true, description->bounds.bottom <= pane.bottom, "a short description is read without scrolling");
@@ -2016,7 +2011,6 @@ static void should_follow_a_centred_block_with_its_detail()
 static void should_keep_half_the_pane_for_the_media()
 {
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
 	constexpr recti pane{0, 0, 200, 400};
 
 	const auto media = std::make_shared<flex_test_element>(sizei{200, 400});
@@ -2028,7 +2022,7 @@ static void should_keep_half_the_pane_for_the_media()
 	const std::vector<view_element_ptr> no_detail;
 
 	const media_column_inputs in{&priority, &no_detail, &priority, pane, media};
-	const auto content_height = layout_media_column(in, mc, positions);
+	const auto content_height = layout_media_column(in, mc);
 
 	assert_equal(pane.height() / 2, media->bounds.height(), "the media keeps half the pane");
 	assert_equal(media->bounds.bottom, group->bounds.top, "the information follows it");
@@ -2040,7 +2034,7 @@ static void should_keep_half_the_pane_for_the_media()
 	small->flex = small->flex | flex_item::media;
 	const std::vector<view_element_ptr> small_priority{small, group};
 	const media_column_inputs small_in{&small_priority, &no_detail, &small_priority, pane, small};
-	layout_media_column(small_in, mc, positions);
+	layout_media_column(small_in, mc);
 
 	assert_equal(80, small->bounds.height(), "a picture shorter than the budget is not grown to it");
 }
@@ -2054,7 +2048,6 @@ static void should_keep_half_the_pane_for_the_media()
 static void should_follow_the_primary_block_when_verbose_is_open()
 {
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
 	constexpr recti pane{0, 0, 200, 300};
 
 	const auto media = std::make_shared<flex_test_element>(sizei{200, 100});
@@ -2067,7 +2060,7 @@ static void should_follow_the_primary_block_when_verbose_is_open()
 	const std::vector<view_element_ptr> all{media, group, verbose};
 
 	const media_column_inputs in{&priority, &detail, &all, pane, media};
-	const auto content_height = layout_media_column(in, mc, positions);
+	const auto content_height = layout_media_column(in, mc);
 
 	const auto above = media->bounds.top - pane.top;
 	const auto below = pane.bottom - verbose->bounds.bottom;
@@ -2083,7 +2076,7 @@ static void should_follow_the_primary_block_when_verbose_is_open()
 	const std::vector<view_element_ptr> long_detail{long_verbose};
 	const std::vector<view_element_ptr> long_all{media, group, long_verbose};
 	const media_column_inputs long_in{&priority, &long_detail, &long_all, pane, media};
-	const auto long_height = layout_media_column(long_in, mc, positions);
+	const auto long_height = layout_media_column(long_in, mc);
 
 	assert_equal(pane.top, media->bounds.top, "an overflowing column is aligned to the top");
 	assert_equal(group->bounds.bottom, long_verbose->bounds.top, "and still follows with no gap");
@@ -2095,7 +2088,6 @@ static void should_follow_the_primary_block_when_verbose_is_open()
 static void should_centre_a_media_column_with_no_detail()
 {
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
 	constexpr recti pane{0, 0, 200, 300};
 
 	const auto collage = std::make_shared<flex_test_element>(sizei{200, 100});
@@ -2105,7 +2097,7 @@ static void should_centre_a_media_column_with_no_detail()
 	const std::vector<view_element_ptr> no_detail;
 
 	const media_column_inputs in{&priority, &no_detail, &priority, pane, nullptr};
-	layout_media_column(in, mc, positions);
+	layout_media_column(in, mc);
 
 	const auto above = collage->bounds.top - pane.top;
 	const auto below = pane.bottom - controls->bounds.bottom;
@@ -2220,7 +2212,7 @@ class scroller_test_host final : public std::enable_shared_from_this<scroller_te
 {
 public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
-	const ui::control_frame_ptr owner() override { return nullptr; }
+	const ui::frame_ptr owner() override { return nullptr; }
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
 	void on_window_paint(ui::draw_context& dc) override {}
@@ -2301,7 +2293,7 @@ public:
 
 	// The whole point: no window, ever.
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
-	const ui::control_frame_ptr owner() override { return nullptr; }
+	const ui::frame_ptr owner() override { return nullptr; }
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
 	void on_window_paint(ui::draw_context& dc) override {}
@@ -2391,7 +2383,7 @@ public:
 	std::vector<std::shared_ptr<cancellable_test_controller>> built;
 
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
-	const ui::control_frame_ptr owner() override { return nullptr; }
+	const ui::frame_ptr owner() override { return nullptr; }
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
 	void on_window_paint(ui::draw_context& dc) override {}
@@ -2455,7 +2447,7 @@ public:
 	std::shared_ptr<idle_escape_test_controller> built;
 
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
-	const ui::control_frame_ptr owner() override { return nullptr; }
+	const ui::frame_ptr owner() override { return nullptr; }
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
 	void on_window_paint(ui::draw_context& dc) override {}
@@ -2498,7 +2490,7 @@ public:
 	}
 
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
-	const ui::control_frame_ptr owner() override { return nullptr; }
+	const ui::frame_ptr owner() override { return nullptr; }
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
 	void on_window_paint(ui::draw_context& dc) override {}
@@ -2550,8 +2542,7 @@ static void should_start_one_drag_per_press_on_a_selected_item()
 
 	// The tile under the press. The move below leaves both it and the start area around the press.
 	flex_test_measure_context mc;
-	ui::control_layouts positions;
-	item->layout(mc, recti(0, 0, 100, 100), positions);
+	item->layout(mc, recti(0, 0, 100, 100));
 
 	items_view items(s, nullptr);
 	const df::scope_exit clear_hook([] { test_during_detach_file_handles = {}; });
@@ -2589,7 +2580,7 @@ public:
 	int builds = 0;
 
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
-	const ui::control_frame_ptr owner() override { return nullptr; }
+	const ui::frame_ptr owner() override { return nullptr; }
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
 	void on_window_paint(ui::draw_context& dc) override {}
@@ -2759,57 +2750,6 @@ public:
 
 	int text_line_height(ui::style::font_face font) override { return line_height; }
 	ui::text_layout_ptr create_text_layout(ui::style::font_face font) override { return {}; }
-};
-
-class single_line_test_layout final : public ui::text_layout
-{
-public:
-	std::string text;
-	int* updates = nullptr;
-
-	explicit single_line_test_layout(int& update_count) : updates(&update_count)
-	{
-	}
-
-	void update(const std::string_view text_in, ui::style::text_style style) override
-	{
-		text = text_in;
-		++*updates;
-	}
-
-	sizei measure_text(int cx, int cy) override
-	{
-		return {std::min(cx, static_cast<int>(text.size()) * 8), 20};
-	}
-
-	std::vector<int> offset_xs(const std::vector<size_t>& utf8_offsets, int cx, int cy) override
-	{
-		std::vector<int> result;
-		result.reserve(utf8_offsets.size());
-		for (const auto offset : utf8_offsets) result.emplace_back(static_cast<int>(offset) * 8);
-		return result;
-	}
-};
-
-class edit_test_measure_context final : public ui::measure_context
-{
-public:
-	int layout_updates = 0;
-	int prefix_measures = 0;
-
-	sizei measure_text(const std::string_view text, ui::style::font_face font, ui::style::text_style style,
-	                   const int cx, int cy = 0) override
-	{
-		++prefix_measures;
-		return {std::min(cx, static_cast<int>(text.size()) * 8), 20};
-	}
-
-	int text_line_height(ui::style::font_face font) override { return 20; }
-
-	ui::text_layout_ptr create_text_layout(ui::style::font_face font) override
-	{
-		return std::make_shared<single_line_test_layout>(layout_updates);
-	}
 };
 
 class forwarding_test_controller final : public view_controller
@@ -3201,7 +3141,7 @@ static void should_stage_one_scroll_tooltip_thumbnail()
 static void should_publish_async_selection_thumbnail_strip()
 {
 	deferred_async_strategy as;
-	auto strip = std::make_shared<ui::selection_thumbnails_control>(ui::no_control_frame());
+	auto strip = std::make_shared<ui::selection_thumbnails_control>(ui::no_frame());
 	const std::vector<ui::const_image_ptr> images{make_valid_test_image(), make_valid_test_image()};
 
 	strip->selection_async(images, images.size(), as);
@@ -3219,7 +3159,7 @@ static void should_publish_async_selection_thumbnail_strip()
 static void should_discard_async_selection_strip_after_clear()
 {
 	deferred_async_strategy as;
-	auto strip = std::make_shared<ui::selection_thumbnails_control>(ui::no_control_frame());
+	auto strip = std::make_shared<ui::selection_thumbnails_control>(ui::no_frame());
 	const std::vector<ui::const_image_ptr> images{make_valid_test_image()};
 
 	strip->selection_async(images, images.size(), as);
@@ -3237,8 +3177,8 @@ static void should_discard_async_selection_strip_after_clear()
 static void should_not_keep_selection_strip_frame_alive()
 {
 	deferred_async_strategy as;
-	auto frame = std::make_shared<ui::null_control_frame>();
-	const std::weak_ptr<ui::null_control_frame> weak_frame = frame;
+	auto frame = std::make_shared<ui::null_frame>();
+	const std::weak_ptr<ui::null_frame> weak_frame = frame;
 	const auto strip = std::make_shared<ui::selection_thumbnails_control>(frame);
 	const std::vector<ui::const_image_ptr> images{make_valid_test_image()};
 
@@ -3353,90 +3293,73 @@ public:
 	}
 };
 
-class null_list_frame_control_frame final : public ui::control_frame
+// A frame that cannot make the frames asked of it, as when creating a window fails.
+class null_list_frame_parent final : public ui::null_frame
 {
 public:
-	std::any handle() const override { return {}; }
-	void destroy() override {}
-	void enable(bool) override {}
-	std::string window_text() const override { return {}; }
-	void window_text(std::string_view) override {}
-	void focus() override {}
-	sizei measure(int) const override { return {}; }
-	bool is_visible() const override { return false; }
-	bool has_focus() const override { return false; }
-	recti window_bounds() const override { return {}; }
-	void window_bounds(recti, bool) override {}
-	void show(bool) override {}
-	void options_changed() override {}
-	void invalidate(recti = {}, bool = false) override {}
-	void layout() override {}
-	void redraw() override {}
-	void redraw_now() override {}
-	void scroll(int, int, recti, bool) override {}
-	void track_menu(recti, const std::vector<ui::command_ptr>&) override {}
-	void close(bool = false) override {}
-	bool is_enabled() const override { return false; }
-	bool is_maximized() const override { return false; }
-	bool is_occluded() const override { return true; }
-	void set_cursor(ui::style::cursor) override {}
-	void reset_graphics() override {}
-	pointi cursor_location() override { return {-1, -1}; }
-
-	ui::edit_ptr create_edit(const ui::edit_styles& styles, std::string_view text,
-	                         std::function<void(const std::string&)> changed) override
-	{
-		return ui::no_control_frame()->create_edit(styles, text, std::move(changed));
-	}
-
-	ui::trackbar_ptr create_slider(int min, int max, std::function<void(int, bool)> changed) override
-	{
-		return ui::no_control_frame()->create_slider(min, max, std::move(changed));
-	}
-
-	ui::toolbar_ptr create_toolbar(const ui::toolbar_styles& styles,
-	                               const std::vector<ui::command_ptr>& buttons) override
-	{
-		return ui::no_control_frame()->create_toolbar(styles, buttons);
-	}
-
-	ui::button_ptr create_button(std::string_view text, std::function<void()> invoke, bool default_button) override
-	{
-		return ui::no_control_frame()->create_button(text, std::move(invoke), default_button);
-	}
-
-	ui::button_ptr create_button(icon_index icon, std::string_view title, std::string_view details,
-	                             std::function<void()> invoke, bool default_button) override
-	{
-		return ui::no_control_frame()->create_button(icon, title, details, std::move(invoke), default_button);
-	}
-
-	ui::button_ptr create_check_button(bool val, std::string_view text, bool is_radio,
-	                                  std::function<void(bool)> changed, int radio_group) override
-	{
-		return ui::no_control_frame()->create_check_button(val, text, is_radio, std::move(changed), radio_group);
-	}
-
-	ui::date_time_control_ptr create_date_time_control(df::date_t text, std::function<void(df::date_t)> changed,
-	                                                   bool include_time) override
-	{
-		return ui::no_control_frame()->create_date_time_control(text, std::move(changed), include_time);
-	}
-
-	ui::control_frame_ptr create_dlg(ui::frame_host_weak_ptr host, bool is_popup) override
-	{
-		return ui::no_control_frame()->create_dlg(std::move(host), is_popup);
-	}
-
 	ui::frame_ptr create_frame(ui::frame_host_weak_ptr, const ui::frame_style&) override { return nullptr; }
-	ui::bubble_window_ptr create_bubble() override { return ui::no_control_frame()->create_bubble(); }
-	void apply_layout(const ui::control_layouts&, pointi) override {}
-	ui::close_result wait_for_close(uint32_t) override { return ui::close_result::cancel; }
-	void focus_first() override {}
-	void position(recti) override {}
-	void save_window_position(platform::setting_file_ptr&) override {}
-	bool is_canceled() const override { return true; }
-	double scale_factor() const override { return 1.0; }
+};
+
+// A search whose results are given, which remembers which was picked and how.
+class given_results_strategy final : public ui::complete_strategy_t
+{
+public:
+	ui::auto_complete_results results;
+	ui::auto_complete_match_ptr picked;
+	select_type how = select_type::init;
+
+	given_results_strategy()
+	{
+		auto_select_first = false;
+	}
+
+	std::string no_results_message() override { return {}; }
+
+	void selected(const ui::auto_complete_match_ptr& m, const select_type st) override
+	{
+		picked = m;
+		how = st;
+	}
+
+	ui::auto_complete_match_ptr selected() const override { return picked; }
+
+	void search(const std::string&, std::function<void(const ui::auto_complete_results&)> complete) override
+	{
+		complete(results);
+	}
+
+	void initialise(std::function<void(const ui::auto_complete_results&)> complete) override
+	{
+		complete(results);
+	}
+};
+
+// A result picked with a press, as a folder in Copy/Move's search or a program in Open with's is.
+class pickable_match final : public ui::auto_complete_match, public std::enable_shared_from_this<pickable_match>
+{
+public:
+	ui::complete_strategy_t& _parent;
+
+	explicit pickable_match(ui::complete_strategy_t& parent) :
+		auto_complete_match(view_element_style::can_invoke), _parent(parent)
+	{
+	}
+
+	std::string edit_text() const override { return "result"; }
+
+	void dispatch_event(const view_element_event& event) override
+	{
+		if (event.type == view_element_event_type::click)
+		{
+			_parent.selected(shared_from_this(), ui::complete_strategy_t::select_type::click);
+		}
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                             const pointi element_offset, hit_test_context& ctx) override
+	{
+		return default_controller_from_location(*this, host, loc, element_offset, ctx);
+	}
 };
 
 class slot_test_texture final : public ui::texture
@@ -3566,9 +3489,8 @@ static void should_draw_only_hex_rows_inside_the_clip()
 	const auto hex = std::make_shared<document_control>(bytes, flex_item::center);
 	slot_test_draw_context dc({});
 	hex->measure(dc, 2000);
-	ui::control_layouts positions;
 	const recti bounds{0, 400, 2000, 800};
-	hex->layout(dc, bounds, positions);
+	hex->layout(dc, bounds);
 
 	dc.clip = {0, 0, 2000, 300};
 	hex->render(dc, {});
@@ -3909,8 +3831,7 @@ static void should_select_document_text_by_dragging()
 	const auto control = std::make_shared<document_control>(test.display, flex_item::center);
 	document_test_draw_context dc;
 	assert_equal(48, control->measure(dc, 400).cy, "two rows of 20 pixels and their padding");
-	ui::control_layouts positions;
-	control->layout(dc, recti(0, 100, 400, 148), positions);
+	control->layout(dc, recti(0, 100, 400, 148));
 
 	const auto host = std::make_shared<detached_test_host>();
 	host->_extent = {400, 400};
@@ -3964,7 +3885,7 @@ static void should_select_document_text_by_dragging()
 	// A metadata block's dump is rebuilt with the panel, so it offers no selection to lose.
 	const auto dump = std::make_shared<document_control>(std::vector<uint8_t>{1, 2, 3}, flex_item::center);
 	dump->measure(dc, 400);
-	dump->layout(dc, recti(0, 0, 400, 24), positions);
+	dump->layout(dc, recti(0, 0, 400, 24));
 	hit_test_context dump_ctx({8, 8}, recti(0, 0, 400, 400));
 	assert_equal(true, dump->controller_from_location(host, {8, 8}, {}, dump_ctx) == nullptr,
 	             "a dump of its own bytes is not selected");
@@ -4027,8 +3948,7 @@ static void should_draw_the_document_selection_behind_its_text()
 	const auto control = std::make_shared<document_control>(test.display, flex_item::center);
 	document_test_draw_context dc;
 	control->measure(dc, 400);
-	ui::control_layouts positions;
-	control->layout(dc, recti(0, 100, 400, 148), positions);
+	control->layout(dc, recti(0, 100, 400, 148));
 
 	control->render(dc, {});
 	assert_equal(true, dc.rects.empty(), "nothing selected, nothing filled");
@@ -4048,7 +3968,7 @@ static void should_draw_the_document_selection_behind_its_text()
 	document_test_display escapes("a\x1b[1mb");
 	const auto escaped = std::make_shared<document_control>(escapes.display, flex_item::center);
 	escaped->measure(dc, 400);
-	escaped->layout(dc, recti(0, 0, 400, 24), positions);
+	escaped->layout(dc, recti(0, 0, 400, 24));
 	dc.texts.clear();
 	escaped->render(dc, {});
 	assert_equal("a\xC2\xB7[1mb", dc.texts[0].text, "a control character is drawn as a middle dot");
@@ -4064,8 +3984,7 @@ static void should_colour_a_dump_by_byte_class()
 	                                                        flex_item::center);
 	document_test_draw_context dc;
 	control->measure(dc, 2000);
-	ui::control_layouts positions;
-	control->layout(dc, recti(0, 0, 2000, 24), positions);
+	control->layout(dc, recti(0, 0, 2000, 24));
 	control->render(dc, {});
 	assert_equal(1, static_cast<int>(dc.texts.size()), "one row");
 
@@ -4127,8 +4046,7 @@ static void should_draw_image_errors_without_source_dimensions()
 			else control = std::make_shared<photo_control>(state, display, host);
 			slot_test_draw_context dc({});
 			const auto measured = control->measure(dc, extent.cx);
-			ui::control_layouts positions;
-			control->layout(dc, {10, 20, 10 + extent.cx, 20 + extent.cy}, positions);
+			control->layout(dc, {10, 20, 10 + extent.cx, 20 + extent.cy});
 			control->render(dc, {});
 			const auto errors = std::count(dc.text_values.begin(), dc.text_values.end(), tt.image_display_failed.sv());
 			assert_equal(comparison ? 2 : 1, static_cast<int>(errors),
@@ -4427,7 +4345,7 @@ static void should_not_let_a_late_place_search_override_the_map()
 
 	const auto host = std::make_shared<detached_test_host>();
 	const auto view = std::make_shared<locate_view>(s, host);
-	const auto panel = view->controls(ui::no_control_frame());
+	const auto panel = view->controls(ui::no_frame());
 	const auto search = view->place_search_for_tests();
 	assert_equal(true, search != nullptr, "the panel has a place search");
 
@@ -4499,6 +4417,32 @@ static void should_leave_a_running_sync_alone_on_refresh()
 	assert_equal(false, view->progress().active, "the run reports its end");
 }
 
+// The drawn controls in an element's tree, in its order, as a frame finds them.
+static std::vector<ui::control_ptr> tree_controls(const view_element_ptr& root, const bool with_hidden = false)
+{
+	std::vector<ui::control_ptr> result;
+
+	ui::walk_tree(root, {}, with_hidden, [&result](ui::element& e, pointi, bool, bool)
+	{
+		if (e.kind == ui::element_kind::control) result.push_back(static_cast<ui::control&>(e).shared_from_this());
+	});
+
+	return result;
+}
+
+// Whether a control in root's tree takes input: enabled itself, and under no disabled element.
+static bool takes_input(const view_element_ptr& root, const ui::control_ptr& control)
+{
+	auto result = false;
+
+	ui::walk_tree(root, {}, true, [&result, &control](ui::element& e, pointi, bool, const bool ancestors_enabled)
+	{
+		if (&e == control.get()) result = ancestors_enabled && e.is_enabled();
+	});
+
+	return result;
+}
+
 static void should_answer_a_null_frame_without_side_effects()
 {
 	const auto f = ui::no_frame();
@@ -4520,7 +4464,7 @@ static void should_forward_checkbox_hits_to_visible_checked_child()
 	const auto host = std::make_shared<detached_test_host>();
 	host->_extent = {200, 100};
 	auto checked = true;
-	auto checkbox = std::make_shared<ui::check_control>(ui::no_control_frame(), "Rating", checked);
+	auto checkbox = std::make_shared<ui::check_control>(ui::no_frame(), "Rating", checked);
 	const auto child = std::make_shared<forwarding_child_element>();
 	checkbox->child(child);
 
@@ -4545,24 +4489,17 @@ static void should_forward_checkbox_hits_to_visible_checked_child()
 	             "collapsed child receives no controller lookup");
 }
 
-class enable_recording_element final : public view_element
-{
-public:
-	std::optional<bool> enabled;
-
-	void enable_controls(const bool enable) override { enabled = enable; }
-};
-
 // Every layout of a task view enabled every control in its panel, so the options of a format not
-// chosen came back live: Convert's JPEG quality slider while JPEG XL was the format.
+// chosen came back live: Convert's JPEG quality slider while JPEG XL was the format. A disabled element
+// disables what it holds, so the panel and each unticked box answer for their own.
 static void should_keep_the_options_of_an_unchosen_format_disabled()
 {
 	auto jpeg = false;
 	auto jxl = true;
-	const auto jpeg_check = std::make_shared<ui::check_control>(ui::no_control_frame(), "JPEG", jpeg, true);
-	const auto jxl_check = std::make_shared<ui::check_control>(ui::no_control_frame(), "JPEG XL", jxl, true);
-	const auto jpeg_options = std::make_shared<enable_recording_element>();
-	const auto jxl_options = std::make_shared<enable_recording_element>();
+	const auto jpeg_check = std::make_shared<ui::check_control>(ui::no_frame(), "JPEG", jpeg, true);
+	const auto jxl_check = std::make_shared<ui::check_control>(ui::no_frame(), "JPEG XL", jxl, true);
+	const auto jpeg_options = ui::make_edit({}, "90", {});
+	const auto jxl_options = ui::make_edit({}, "80", {});
 	jpeg_check->child(jpeg_options);
 	jxl_check->child(jxl_options);
 
@@ -4571,27 +4508,17 @@ static void should_keep_the_options_of_an_unchosen_format_disabled()
 	panel->add(jxl_check);
 
 	ui::enable_element(panel, false);
-	assert_equal(false, jpeg_options->enabled.value_or(true), "a running task disables every option");
-	assert_equal(false, jxl_options->enabled.value_or(true), "the chosen format's included");
+	assert_equal(false, takes_input(panel, jpeg_options), "a running task disables every option");
+	assert_equal(false, takes_input(panel, jxl_options), "the chosen format's included");
 
 	ui::enable_element(panel, true);
-	assert_equal(true, jxl_options->enabled.value_or(false), "the chosen format's options come back");
-	assert_equal(false, jpeg_options->enabled.value_or(true), "an unchosen format's stay disabled");
+	assert_equal(true, takes_input(panel, jxl_options), "the chosen format's options come back");
+	assert_equal(false, takes_input(panel, jpeg_options), "an unchosen format's stay disabled");
 
 	jxl_check->checked(false);
 	jpeg_check->checked(true);
-	ui::enable_element(panel, true);
-	assert_equal(true, jpeg_options->enabled.value_or(false), "choosing JPEG brings its options back");
-	assert_equal(false, jxl_options->enabled.value_or(true), "and leaves those of JPEG XL disabled");
-}
-
-// The selection placed after appended text counted bytes, where an edit control counts UTF-16 units.
-static void should_measure_edit_offsets_in_utf16_units()
-{
-	assert_equal(4, ui::edit_offset("caf\xc3\xa9"), "an accented letter is one unit");
-	assert_equal(5, ui::edit_offset("D:\\\xe5\x86\x99\xe7\x9c\x9f"), "each CJK character is one");
-	assert_equal(2, ui::edit_offset("\xf0\x9f\x98\x80"), "a character beyond the basic plane is two");
-	assert_equal(0, ui::edit_offset({}), "nothing is nothing");
+	assert_equal(true, takes_input(panel, jpeg_options), "choosing JPEG brings its options back");
+	assert_equal(false, takes_input(panel, jxl_options), "and leaves those of JPEG XL disabled");
 }
 
 static void should_reject_failed_dialog_thumbnail_decodes()
@@ -4605,45 +4532,126 @@ static void should_reject_failed_dialog_thumbnail_decodes()
 	images.emplace_back(corrupt);
 	for (auto i = 0; i < 7; ++i) images.emplace_back(valid_image);
 
-	ui::title_control2 title(ui::no_control_frame(), icon_index::none, "Title", "Selection", images, images.size());
+	ui::title_control2 title(ui::no_frame(), icon_index::none, "Title", "Selection", images, images.size());
 	const auto dims = title.surface_dims();
 	assert_equal(8u, static_cast<unsigned>(dims.size()), "failed decode did not consume a thumbnail slot");
 
 	list_test_measure_context mc;
-	ui::selection_thumbnails_control strip(ui::no_control_frame());
+	ui::selection_thumbnails_control strip(ui::no_frame());
 	std::vector<ui::const_surface_ptr> surfaces;
 	for (auto i = 0; i < 7; ++i) surfaces.emplace_back(make_test_surface({16, 12}));
 	strip.selection(surfaces, images.size());
 	const auto measured = strip.measure(mc, 700);
 	assert_equal(true, measured.cy > 0, "staged surfaces measure the strip");
 
-	ui::selection_thumbnails_control failed_strip(ui::no_control_frame());
+	ui::selection_thumbnails_control failed_strip(ui::no_frame());
 	failed_strip.selection(std::vector<ui::const_surface_ptr>{}, 2);
 	assert_equal(false, failed_strip.is_visible(), "thumbnail strips without staged surfaces stay hidden");
 }
 
+// A search's results are an element beside its edit, drawn in whatever frame holds the search - even one
+// that cannot make frames - so a frame finds the edit, and lays the list out below it.
 static void should_use_non_null_search_list_frame()
 {
 	auto value = std::string{};
 	auto completes = std::make_shared<absent_frame_complete_strategy>();
-	const auto frame = std::make_shared<null_list_frame_control_frame>();
-	ui::search_control search(frame, value, completes);
+	const auto frame = std::make_shared<null_list_frame_parent>();
+	const auto search = std::make_shared<ui::search_control>(frame, value, completes);
 
-	auto visited = 0;
-	search.visit_controls([&](const ui::control_base_ptr& control)
+	auto children = 0;
+	search->visit_children([&children](const view_element_ptr& e)
 	{
-		++visited;
-		assert_equal(true, control != nullptr, "visitor receives a non-null control");
+		assert_equal(true, e != nullptr, "the visitor receives nothing null");
+		++children;
 	});
-	assert_equal(2, visited, "edit and list frame are visited");
+	assert_equal(2, children, "the edit and the list of results");
+	assert_equal(1_z, tree_controls(search).size(), "of which the edit is the frame's to give the keyboard");
 
 	list_test_measure_context mc;
-	ui::control_layouts positions;
-	search.measure(mc, 200);
-	search.layout(mc, recti(0, 0, 200, 200), positions);
-	assert_equal(2u, static_cast<unsigned>(positions.size()), "edit and list frame are laid out");
-	assert_equal(true, positions[1].control != nullptr, "layout receives the non-null list frame accessor");
-	assert_equal(true, positions[1].control == ui::no_frame(), "absent native list frame uses no_frame");
+	search->measure(mc, 200);
+	search->layout(mc, recti(0, 0, 200, 200));
+	const auto edit = tree_controls(search).front();
+	assert_equal(true, edit->bounds.top == 0 && edit->bounds.bottom < 200, "the edit is laid out at the top");
+}
+
+// The controls an element holds are reached through whatever holds the element, so a dialog's frame finds
+// them, gives them the keyboard and draws them: as a check box's option, and in a table's cell.
+static void should_reach_the_frames_inside_an_option_and_a_table()
+{
+	auto value = std::string{};
+	auto checked = true;
+	const auto completes = std::make_shared<absent_frame_complete_strategy>();
+	const auto frame = std::make_shared<null_list_frame_parent>();
+
+	const auto option = std::make_shared<ui::check_control>(frame, "Search", checked);
+	option->child(std::make_shared<ui::search_control>(frame, value, completes));
+
+	const auto table = std::make_shared<ui::table_element>();
+	table->add(std::make_shared<ui::text_element>("Find"), std::make_shared<ui::search_control>(frame, value, completes));
+
+	for (const auto& [name, container] : {std::pair<std::string_view, view_element_ptr>{"an option", option},
+	                                      std::pair<std::string_view, view_element_ptr>{"a table", table}})
+	{
+		assert_equal(true, !tree_controls(container).empty(), std::format("{} reaches its search's edit", name));
+	}
+}
+
+// A search's results among a dialog's controls - Copy/Move's folders, Open with's programs - are picked with a
+// press and scrolled by the wheel, as they were in a window of their own; and a press on them does not move the
+// dialog, as a press on its ground does.
+static void should_pick_and_scroll_a_search_s_results_in_a_dialog()
+{
+	auto value = std::string{};
+	const auto completes = std::make_shared<given_results_strategy>();
+	for (auto i = 0; i < 40; ++i) completes->results.emplace_back(std::make_shared<pickable_match>(*completes));
+
+	const auto search = std::make_shared<ui::search_control>(ui::no_frame(), value, completes);
+	const auto dlg = make_dlg(ui::no_frame());
+	dlg->_max_width = {44};
+	dlg->_max_height = {88};
+	dlg->initialise({search});
+	list_test_measure_context mc;
+	dlg->layout(mc);
+
+	const auto first = completes->results.front();
+	const auto loc = first->bounds.center();
+
+	hit_test_context ctx{loc, recti(0, 0, 1000, 1000)};
+	const auto controller = dlg->controller_from_location(loc, ctx);
+	assert_equal(true, controller != nullptr, "a result answers a press");
+	controller->on_mouse_left_button_down(loc, {});
+	controller->on_mouse_left_button_up(loc, {});
+	assert_equal(true, completes->picked == first, "and is picked by it");
+	assert_equal(true, completes->how == ui::complete_strategy_t::select_type::click, "with a click");
+	assert_equal(true, dlg->is_control_area(loc), "a press on the results does not move the dialog");
+
+	auto handled = false;
+	dlg->on_mouse_wheel(loc, -120, {}, handled);
+	assert_equal(true, handled, "the wheel over the results is theirs");
+	assert_equal(true, dlg->_scroller.scroll_offset() == pointi{}, "not the dialog's");
+
+	hit_test_context scrolled_ctx{loc, recti(0, 0, 1000, 1000)};
+	const auto scrolled = dlg->controller_from_location(loc, scrolled_ctx);
+	assert_equal(true, scrolled != nullptr, "the list scrolled under the pointer still answers");
+	scrolled->on_mouse_left_button_down(loc, {});
+	scrolled->on_mouse_left_button_up(loc, {});
+	assert_equal(true, completes->picked != first, "with a result further down");
+}
+
+// Advanced Search's term pickers add a term from the collection with a button beside their box, which is in
+// the picker's tree with the box, so its frame draws it and gives it the pointer.
+static void should_reach_a_term_picker_s_add_button(view_state& state)
+{
+	std::string terms;
+	const auto picker = std::make_shared<ui::term_picker_control>(state, ui::no_frame(), "Terms", terms);
+	const auto controls = tree_controls(picker);
+	assert_equal(2_z, controls.size(), "the box and the button that adds a term");
+
+	list_test_measure_context mc;
+	const auto extent = picker->measure(mc, 400);
+	picker->layout(mc, recti(0, 0, 400, extent.cy));
+	assert_equal(true, !controls[1]->bounds.is_empty() && controls[0]->bounds.right <= controls[1]->bounds.left,
+	             "the button is placed after the box");
 }
 
 static void should_preserve_thumbnail_texture_slots_after_upload_failure()
@@ -4652,11 +4660,10 @@ static void should_preserve_thumbnail_texture_slots_after_upload_failure()
 		make_test_surface({80, 40}, ui::orientation::top_left),
 		make_test_surface({30, 90}, ui::orientation::top_left)
 	};
-	ui::title_control2 title(ui::no_control_frame(), icon_index::none, "Title", "Selection", surfaces);
+	ui::title_control2 title(ui::no_frame(), icon_index::none, "Title", "Selection", surfaces);
 	list_test_measure_context mc;
-	ui::control_layouts positions;
 	title.measure(mc, 320);
-	title.layout(mc, recti(0, 0, 320, 100), positions);
+	title.layout(mc, recti(0, 0, 320, 100));
 
 	slot_test_draw_context first_pass({true, false});
 	title.render(first_pass, {});
@@ -4735,115 +4742,14 @@ static void should_layout_selection_thumbnail_collage()
 	             "portrait collage has vertical cells");
 }
 
-static void should_edit_single_line_text()
+// The filter field keeps what was typed, and finds it anywhere in an item's text.
+static void should_keep_the_typed_filter_and_match_text_containing_it()
 {
-	ui::single_line_edit_model edit;
-	edit.text("Hello world");
-	edit.select(6, 11);
-	edit.insert("Diffractor");
-	assert_equal_strict("Hello Diffractor", edit.text(), "replace selection");
-
-	edit.move_left(true);
-	assert_equal(true, edit.has_selection(), "shift-left selects");
-	edit.move_left();
-	assert_equal(false, edit.has_selection(), "left collapses selection");
-	assert_equal(15_z, edit.caret(), "left collapses to selection start");
-
-	edit.text("A\u00e9B");
-	edit.move_left();
-	edit.backspace();
-	assert_equal_strict("AB", edit.text(), "backspace removes one UTF-8 code point");
-	assert_equal(1_z, edit.caret(), "caret remains on UTF-8 boundary");
-
-	edit.select_all();
-	edit.insert("one\r\ntwo\nthree");
-	assert_equal_strict("one two three", edit.text(), "paste is normalized to one line");
-
-	edit.text("keep selection");
-	edit.select(5, 14);
-	assert_equal(false, edit.paste_from_clipboard([]() -> std::optional<std::string> { return std::nullopt; }),
-	             "unavailable clipboard text is not pasted");
-	assert_equal_strict("keep selection", edit.text(), "unavailable paste preserves text");
-	assert_equal(true, edit.has_selection(), "unavailable paste preserves selection");
-	assert_equal(true, edit.paste_from_clipboard([] { return std::optional<std::string>{""}; }),
-	             "valid empty clipboard text is pasteable");
-	assert_equal_strict("keep ", edit.text(), "valid empty paste erases selection");
-	edit.undo();
-	assert_equal_strict("keep selection", edit.text(), "empty paste remains undoable");
-
-	edit.select(5, 14);
-	assert_equal(false, edit.cut_to_clipboard([](std::string_view) { return false; }),
-	             "failed cut publication is reported");
-	assert_equal_strict("keep selection", edit.text(), "failed cut preserves text");
-	assert_equal(true, edit.has_selection(), "failed cut preserves selection");
-	std::string cut_text;
-	assert_equal(true, edit.cut_to_clipboard([&cut_text](const std::string_view value)
-	{
-		cut_text = value;
-		return true;
-	}), "successful cut is reported");
-	assert_equal_strict("selection", cut_text, "cut publishes selection before erasing");
-	assert_equal_strict("keep ", edit.text(), "successful cut erases selection");
-
-	edit.text("one two three");
-	edit.move_word_left();
-	assert_equal(8_z, edit.caret(), "control-left moves to previous word");
-	edit.backspace_word();
-	assert_equal_strict("one three", edit.text(), "control-backspace removes previous word");
-	edit.undo();
-	assert_equal_strict("one two three", edit.text(), "undo restores word deletion");
-	edit.redo();
-	assert_equal_strict("one three", edit.text(), "redo reapplies word deletion");
-
-	edit.text("alpha beta");
-	edit.select_word(7);
-	assert_equal_strict("beta", edit.selected_text(), "double-click model selects a word");
-	edit.erase_selection();
-	assert_equal_strict("alpha ", edit.text(), "cut removes selected word");
-	edit.undo();
-	assert_equal_strict("alpha beta", edit.text(), "undo restores cut text");
-
-	edit.begin_edit();
-	edit.select_all();
-	edit.insert("changed");
-	edit.cancel_edit();
-	assert_equal_strict("alpha beta", edit.text(), "cancel restores edit-start value");
-
 	filter_t filter;
 	filter.wildcard("cat");
 	assert_equal_strict("cat", filter.text(), "filter preserves user input");
 	assert_equal(true, filter.match_text(str::cache("bobcatfish")), "filter applies contains matching");
 }
-
-static void should_shape_edit_text_once_per_change()
-{
-	edit_test_measure_context mc;
-	ui::control_layouts positions;
-	edit_element edit;
-
-	auto text = std::string(2048, 'a');
-	edit.text(text);
-	edit.layout(mc, recti(0, 0, 120, 28), positions);
-	assert_equal(1, mc.layout_updates, "initial text is shaped once");
-	assert_equal(0, mc.prefix_measures, "prefix measuring is not used when shaping succeeds");
-	assert_equal(2048_z, edit.caret_from_x(20000), "hit testing reaches the end of long text");
-
-	edit.layout(mc, recti(0, 0, 120, 28), positions);
-	assert_equal(1, mc.layout_updates, "unchanged layout reuses caret metrics");
-
-	text.assign(4096, 'b');
-	edit.text(text);
-	edit.layout(mc, recti(0, 0, 160, 28), positions);
-	assert_equal(2, mc.layout_updates, "changed text is shaped once more");
-	assert_equal(4096_z, edit.caret_from_x(40000), "larger text keeps bounded shaping");
-
-	edit.text("A\u00e9B");
-	edit.layout(mc, recti(0, 0, 160, 28), positions);
-	assert_equal(3, mc.layout_updates, "utf-8 text is shaped as one layout");
-	assert_equal(1_z, edit.caret_from_x(16), "hit testing still returns a utf-8 boundary");
-	assert_equal(3_z, edit.caret_from_x(32), "multi-byte character boundary is preserved");
-}
-
 static void should_accumulate_rtl_text_widths_in_logical_order()
 {
 	const std::vector<uint32_t> positions{0, 1, 2, 3, 4};
@@ -4895,14 +4801,15 @@ static void should_keep_narrow_slider_rows_usable()
 				mc.col_widths.c1 = df::round(190 * scale);
 				const auto width = df::round(width_dip * scale);
 				auto value = 0;
-				ui::slider_control slider(ui::no_control_frame(), label, value, -100, 100);
+				ui::slider_control slider(ui::no_frame(), label, value, -100, 100);
 				const auto measured = slider.measure(mc, width);
 				const recti bounds{10, 20, 10 + width, 20 + measured.cy};
-				ui::control_layouts positions;
-				slider.layout(mc, bounds, positions);
-				assert_equal(2_z, positions.size(), "a row retains its slider and numeric field");
-				const auto track = positions[0].bounds;
-				const auto edit = positions[1].bounds;
+				slider.layout(mc, bounds);
+				std::vector<recti> placed;
+				slider.visit_children([&placed](const view_element_ptr& e) { placed.push_back(e->bounds); });
+				assert_equal(2_z, placed.size(), "a row retains its slider and numeric field");
+				const auto track = placed[0];
+				const auto edit = placed[1];
 				assert_equal(true, track.width() >= ui::default_control_height(mc) * 2,
 				             "a narrow row retains a usable track");
 				assert_equal(true, track.right <= edit.left && edit.width() > 0,
@@ -4915,10 +4822,14 @@ static void should_keep_narrow_slider_rows_usable()
 				slot_test_draw_context dc({});
 				dc.col_widths = mc.col_widths;
 				slider.render(dc, {});
+				// The row draws its label, then the slider and its box draw themselves - the box its value.
 				if (!label.empty())
 				{
-					assert_equal(1_z, dc.text_bounds.size(), "the label is drawn once");
-					const auto text = dc.text_bounds.front();
+					const std::string label_text(label);
+					assert_equal(1_z, static_cast<size_t>(std::ranges::count(dc.text_values, label_text)),
+					             "the label is drawn once");
+					const auto text = dc.text_bounds[std::ranges::find(dc.text_values, label_text) -
+					                                 dc.text_values.begin()];
 					assert_equal(true, text.right <= track.left || text.bottom <= track.top,
 					             "the label does not cover the slider or numeric field");
 					assert_equal(true, text.left >= bounds.left && text.right <= bounds.right &&
@@ -4931,12 +4842,61 @@ static void should_keep_narrow_slider_rows_usable()
 	}
 }
 
+// The buttons along a dialog's foot are each padding2 larger than they ask and at least a fifth of the
+// dialog's width, padding2 apart and centred together; a lone Close is the same row of one. A frame that
+// does not exist makes them, and they measure as any other button does.
+static void should_lay_out_dialog_buttons_in_a_centred_row()
+{
+	slider_test_measure_context mc;
+	const auto& frame = ui::no_frame();
+
+	const auto ok_cancel = std::make_shared<ui::ok_cancel_control>(frame, "Save", "A much longer cancel");
+	const auto buttons = tree_controls(ok_cancel);
+	assert_equal(2_z, buttons.size(), "both buttons are in the row's tree, which its frame finds them in");
+
+	const auto save = buttons[0]->measure_content(mc, 500);
+	const auto cancel = buttons[1]->measure_content(mc, 500);
+	assert_equal(true, save.cx + 8 < 100 && cancel.cx + 8 > 100, "one name is short and one long");
+
+	const auto height = std::max(save.cy, cancel.cy) + 8;
+	const auto extent = ok_cancel->measure(mc, 500);
+	assert_equal(500, extent.cx, "the row spans the dialog");
+	assert_equal(height, extent.cy, "as tall as its taller button with padding2 added");
+
+	ok_cancel->layout(mc, recti(10, 20, 510, 20 + height));
+
+	const auto cancel_width = cancel.cx + 8;
+	const auto left = 10 + (500 - (100 + 8 + cancel_width)) / 2;
+	assert_equal(true, buttons[0]->bounds == recti(left, 20, left + 100, 20 + height),
+	             "the short one is a fifth of the width");
+	assert_equal(true, buttons[1]->bounds == recti(left + 108, 20, left + 108 + cancel_width, 20 + height),
+	             "the long one its own width with padding2, padding2 after the first");
+
+	// A hidden row hides the buttons it holds, though they are not hidden themselves: its frame does not
+	// find them.
+	ok_cancel->is_visible(false);
+	assert_equal(true, tree_controls(ok_cancel).empty(), "a hidden row keeps its buttons hidden");
+	assert_equal(2_z, tree_controls(ok_cancel, true).size(), "though they are still its own");
+	ok_cancel->is_visible(true);
+
+	const auto close = std::make_shared<ui::close_control>(frame, true, "Close");
+	close->layout(mc, recti(10, 20, 510, 20 + close->measure(mc, 500).cy));
+	const auto lone = tree_controls(close);
+	assert_equal(1_z, lone.size(), "a lone button");
+	assert_equal(true, lone[0]->bounds.left == 210 && lone[0]->bounds.width() == 100,
+	             "is a fifth of the width, centred");
+
+	close->text("Done");
+	const auto done = std::static_pointer_cast<ui::button>(lone[0]);
+	assert_equal("Done"sv, done->window_text(), "and keeps its text to change");
+}
+
 // A number typed into a slider's box is held to the slider's range, as the slider itself is. What it is
 // bound to takes nothing else: a WebP quality typed as 150 failed every save that used it.
 static void should_hold_a_typed_slider_value_to_its_range()
 {
 	auto value = 70;
-	ui::slider_control slider(ui::no_control_frame(), {}, value, 1, 100);
+	ui::slider_control slider(ui::no_frame(), {}, value, 1, 100);
 
 	slider.edit_change("150");
 	assert_equal(100, value, "above the range");
@@ -4944,81 +4904,6 @@ static void should_hold_a_typed_slider_value_to_its_range()
 	assert_equal(1, value, "below it");
 	slider.edit_change("42");
 	assert_equal(42, value, "within it");
-}
-
-static void should_map_slider_input_to_the_drawn_track()
-{
-	list_test_measure_context mc;
-	mc.padding2 = 8;
-	mc.scale_factor = 1.0;
-	ui::control_layouts positions;
-	auto value = 100;
-	auto changes = 0;
-	slider_element slider([&value] { return value; }, [&](const int v)
-	{
-		value = v;
-		++changes;
-	}, 0, 100, tt.tooltip_thumbnail_size);
-	slider.layout(mc, recti(0, 0, 100, 20), positions);
-
-	interaction_context at_max{{94, 10}, {}, true};
-	slider.hover(at_max);
-	assert_equal(100, value, "pressing the maximum thumb stays at maximum");
-	assert_equal(0, changes, "unchanged maximum does not notify");
-
-	value = 0;
-	interaction_context at_min{{6, 10}, {}, true};
-	slider.hover(at_min);
-	assert_equal(0, value, "minimum track endpoint maps to minimum");
-
-	interaction_context at_mid{{50, 10}, {}, true};
-	slider.hover(at_mid);
-	assert_equal(50, value, "track midpoint maps to midpoint");
-
-	slider.layout(mc, recti(20, 0, 120, 20), positions);
-	value = 100;
-	changes = 0;
-	interaction_context at_offset_max{{114, 10}, {}, true};
-	slider.hover(at_offset_max);
-	assert_equal(100, value, "offset maximum endpoint maps to maximum before repaint");
-
-	mc.scale_factor = 2.0;
-	slider.layout(mc, recti(0, 0, 200, 40), positions);
-	value = 0;
-	interaction_context at_scaled_max{{188, 20}, {}, true};
-	slider.hover(at_scaled_max);
-	assert_equal(100, value, "scaled maximum endpoint maps to maximum");
-
-	mc.scale_factor = 1.0;
-	slider.layout(mc, recti(0, 0, 100, 20), positions);
-	const recti track_bounds{6, 8, 94, 12};
-	changes = 0;
-	for (auto expected = 0; expected <= 100; ++expected)
-	{
-		value = expected;
-		const auto thumb_x = slider_value_to_track_x(track_bounds, expected, 0, 100);
-		interaction_context at_thumb{{thumb_x, 10}, {}, true};
-		slider.hover(at_thumb);
-		assert_equal(expected, value, "pressing each painted thumb centre preserves its value");
-	}
-	assert_equal(0, changes, "painted thumb centre presses do not notify");
-
-	// Dense ranges put several values on one pixel; dragging to either end must still reach it.
-	for (const auto& [track_width, max_value] : {std::pair{40, 100}, std::pair{25, 100}, std::pair{100, 1000}})
-	{
-		const recti dense_track{10, 0, 10 + track_width, 4};
-		assert_equal(max_value, slider_track_x_to_value(dense_track, dense_track.right, 0, max_value, 0),
-		             "dragging from the minimum to the right end reaches the maximum");
-		assert_equal(0, slider_track_x_to_value(dense_track, dense_track.left, 0, max_value, max_value),
-		             "dragging from the maximum to the left end reaches the minimum");
-
-		const auto mid_x = dense_track.left + track_width / 2;
-		const auto proportional = df::round(static_cast<double>(track_width / 2) * max_value / track_width);
-		const auto mid_value = slider_track_x_to_value(dense_track, mid_x, 0, max_value, 0);
-		assert_equal(slider_value_to_track_x(dense_track, mid_value, 0, max_value), mid_x,
-		             "a mid-track drag lands on a value painted under the pointer");
-		assert_equal(proportional, mid_value, "a mid-track drag stays proportional");
-	}
 }
 
 static void should_merge_control_colours_as_straight_alpha()
@@ -5066,125 +4951,6 @@ static void should_hit_test_comparison_divider_in_device_coordinates()
 
 	const auto unshifted = comparison_divider_device_bounds(logical_bounds, {});
 	assert_equal(true, unshifted == logical_bounds, "zero offset preserves divider bounds");
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// The Windows date picker is the only platform control left in the UI: it ignores the app's
-// scaling and theme and has no Linux counterpart. Its replacement is a segmented field, and the
-// segments, the typing and the stepping are arithmetic that can be pinned without a window. Only
-// the model ships here - ui::date_control still creates the platform picker, and drawing the field
-// is 1.27.3's - so this pins the arithmetic ahead of the element that will use it.
-///////////////////////////////////////////////////////////////////////////////////////////////////
-static void should_edit_a_segmented_date()
-{
-	using seg = ui::date_segment;
-
-	// Order and separators follow the display locale, so the field is built from it rather than
-	// from one hard-coded arrangement.
-	{
-		const ui::date_edit_model dmy(ui::date_field_order::dmy, false);
-		assert_equal(true, dmy.segments() == std::vector{seg::day, seg::month, seg::year}, "day first");
-
-		const ui::date_edit_model mdy(ui::date_field_order::mdy, false);
-		assert_equal(true, mdy.segments() == std::vector{seg::month, seg::day, seg::year}, "month first");
-
-		const ui::date_edit_model ymd(ui::date_field_order::ymd, true);
-		assert_equal(true, ymd.segments() == std::vector{
-			             seg::year, seg::month, seg::day, seg::hour, seg::minute, seg::second
-		             }, "year first, and a clock is always most significant first");
-	}
-
-	ui::date_edit_model m(ui::date_field_order::dmy, true);
-	m.value(df::date_t(2025, 8, 16, 18, 11, 56));
-
-	// Left and Right walk the segments and stop at the ends, so the arrows stay inside the field and
-	// Tab has a false answer to act on.
-	assert_equal(true, m.active_segment() == seg::day, "the field opens on its first segment");
-	assert_equal(false, m.move(-1), "and there is nothing to the left of it");
-	assert_equal(true, m.move(1), "Right moves on");
-	assert_equal(true, m.active_segment() == seg::month, "to the next segment in locale order");
-	m.active(5);
-	assert_equal(false, m.move(1), "and stops at the last segment rather than wrapping");
-
-	// Every segment is padded to its width, so the field does not change shape as it is edited.
-	assert_equal_strict("16", m.text(0), "day");
-	assert_equal_strict("08", m.text(1), "month is padded");
-	assert_equal_strict("2025", m.text(2), "year is four digits");
-	assert_equal_strict("18", m.text(3), "hour");
-	assert_equal_strict("11", m.text(4), "minute");
-	assert_equal_strict("56", m.text(5), "second");
-
-	// One step is one unit of the active segment applied to the whole date, so a bound rolls into
-	// the neighbour rather than wrapping the segment on its own. That is what a clock does.
-	m.value(df::date_t(2025, 12, 31, 23, 59, 59));
-	m.active(5);
-	m.step(1);
-	assert_equal(df::date_t(2026, 1, 1, 0, 0, 0), m.value(), "a second rolls the whole date over");
-
-	m.value(df::date_t(2025, 12, 31, 0, 0, 0));
-	m.active(1);
-	m.step(1);
-	assert_equal(df::date_t(2026, 1, 31, 0, 0, 0), m.value(), "December rolls into January of the next year");
-
-	m.value(df::date_t(2026, 1, 1, 0, 0, 0));
-	m.active(1);
-	m.step(-1);
-	assert_equal(df::date_t(2025, 12, 1, 0, 0, 0), m.value(), "and back the other way");
-
-	// A month step can land on a day the new month does not have. 31 April is not a date, so the
-	// day is clamped rather than the whole value being refused or silently rolled into May.
-	m.value(df::date_t(2025, 1, 31, 0, 0, 0));
-	m.active(1);
-	m.step(1);
-	assert_equal(df::date_t(2025, 2, 28, 0, 0, 0), m.value(), "31 January steps to the end of February");
-
-	m.value(df::date_t(2024, 1, 31, 0, 0, 0));
-	m.active(1);
-	m.step(1);
-	assert_equal(df::date_t(2024, 2, 29, 0, 0, 0), m.value(), "and a leap year has the extra day");
-
-	// Stepping the year off a leap day does the same.
-	m.value(df::date_t(2024, 2, 29, 0, 0, 0));
-	m.active(2);
-	m.step(1);
-	assert_equal(df::date_t(2025, 2, 28, 0, 0, 0), m.value(), "29 February steps to the 28th");
-
-	// Digits type left to right and the segment advances when it can hold no more, so a date is
-	// typed straight through without reaching for a separator key.
-	m.value(df::date_t(2025, 8, 16, 0, 0, 0));
-	m.active(0);
-	m.type_digit('0');
-	m.type_digit('4');
-	assert_equal(4, m.field(seg::day), "two digits fill the day");
-	assert_equal(true, m.active_segment() == seg::month, "and the field moves on by itself");
-
-	m.type_digit('7');
-	assert_equal(7, m.field(seg::month), "a digit no second digit could follow finishes the segment");
-	assert_equal(true, m.active_segment() == seg::year, "so that one advances too");
-
-	m.type_digit('1');
-	m.type_digit('9');
-	m.type_digit('9');
-	m.type_digit('9');
-	assert_equal(1999, m.field(seg::year), "a year takes four");
-	assert_equal(df::date_t(1999, 7, 4, 0, 0, 0), m.value(), "and the typed date is the value");
-
-	// A value the segment cannot hold starts again from that digit rather than being refused, which
-	// is what a user retyping a wrong month means by it.
-	m.value(df::date_t(2025, 8, 16, 0, 0, 0));
-	m.active(1);
-	m.type_digit('1');
-	assert_equal(1, m.field(seg::month), "1 could still become 10, 11 or 12");
-	m.type_digit('9');
-	assert_equal(9, m.field(seg::month), "19 is not a month, so 9 starts the segment again");
-
-	// Only the month has a name, so it is the only segment worth a drop menu.
-	m.active(1);
-	assert_equal(true, m.active_has_menu(), "the month offers its names");
-	m.active(0);
-	assert_equal(false, m.active_has_menu(), "a day is a number faster to type than to pick");
-	m.active(2);
-	assert_equal(false, m.active_has_menu(), "and so is a year");
 }
 
 static void should_clear_detail_row_layout_metrics()
@@ -5341,8 +5107,7 @@ static void should_layout_flex_elements()
 	assert_equal(58, scaled_padded_column.extent.cy, "scaled flex padding contributes once to intrinsic extent");
 	mc.scale_factor = 1.0;
 
-	ui::control_layouts positions;
-	const auto applied_extent = layout_flex_elements(column_elements, mc, positions, {10, 20, 110, 80}, column);
+	const auto applied_extent = layout_flex_elements(column_elements, mc, {10, 20, 110, 80}, column);
 	assert_equal(15, column_first->bounds.left, "applied flex layout offsets child bounds");
 	assert_equal(padded_column.extent.cy, applied_extent.cy, "applied flex layout returns content extent");
 
@@ -5920,7 +5685,7 @@ public:
 	int updates = 0;
 	std::vector<ui::vertex_rect> rects;
 
-	void update(recti[], ui::color[], int) override
+	void update_bars(std::span<const ui::vertex_rect>) override
 	{
 	}
 
@@ -6293,24 +6058,27 @@ void register_view_tests(view_state& state, test_registry& tests)
 	          should_forward_checkbox_hits_to_visible_checked_child);
 	tests.add("Should keep the options of an unchosen format disabled"s,
 	          should_keep_the_options_of_an_unchosen_format_disabled);
-	tests.add("Should measure edit offsets in UTF-16 units"s, should_measure_edit_offsets_in_utf16_units);
 	// G13 UI-002 - failed decoded dialog thumbnails do not enter the surface collection or cap.
 	tests.add("Should reject failed dialog thumbnail decodes"s, should_reject_failed_dialog_thumbnail_decodes);
 	// G13 UI-003 - search controls expose the list frame through the non-null accessor.
 	tests.add("Should use non-null search list frame"s, should_use_non_null_search_list_frame);
+	tests.add("Should reach the frames inside an option and a table"s, should_reach_the_frames_inside_an_option_and_a_table);
+	tests.add("Should pick and scroll a search's results in a dialog"s,
+	          should_pick_and_scroll_a_search_s_results_in_a_dialog);
+	tests.add("Should reach a term picker's add button"s, [&state] { should_reach_a_term_picker_s_add_button(state); });
 	// G13 UI-012 - failed texture uploads leave a hole rather than compacting later thumbnails.
 	tests.add("Should preserve thumbnail texture slots after upload failure"s,
 	          should_preserve_thumbnail_texture_slots_after_upload_failure);
 	tests.add("Should layout selection thumbnail collage"s, should_layout_selection_thumbnail_collage);
-	// PLAT-005 - clipboard access and publication failures preserve text edits.
-	tests.add("Should edit single-line text"s, should_edit_single_line_text);
-	tests.add("Should shape edit text once per change"s, should_shape_edit_text_once_per_change);
+	// PLAT-005 - clipboard access and publication failures preserve text edits; the edit is libdesktop's.
+	tests.add("Should keep the typed filter and match text containing it"s,
+	          should_keep_the_typed_filter_and_match_text_containing_it);
 	tests.add("Should accumulate RTL text widths in logical order"s,
 	          should_accumulate_rtl_text_widths_in_logical_order);
-	tests.add("Should map slider input to the drawn track"s, should_map_slider_input_to_the_drawn_track);
 	tests.add("Should hold a typed slider value to its range"s, should_hold_a_typed_slider_value_to_its_range);
 	// Shared labels and numeric fields consumed the entire track in a narrow controls pane.
 	tests.add("Should keep narrow slider rows usable"s, should_keep_narrow_slider_rows_usable);
+	tests.add("Should lay out dialog buttons in a centred row"s, should_lay_out_dialog_buttons_in_a_centred_row);
 	// A failed image without dimensions collapsed its destination rectangle and hid the error.
 	tests.add("Should draw image errors without source dimensions"s, should_draw_image_errors_without_source_dimensions);
 	tests.add("Should draw only hex rows inside the clip"s, should_draw_only_hex_rows_inside_the_clip);
@@ -6327,7 +6095,6 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should merge control colours as straight alpha"s, should_merge_control_colours_as_straight_alpha);
 	tests.add("Should hit test comparison divider in device coordinates"s,
 	          should_hit_test_comparison_divider_in_device_coordinates);
-	tests.add("Should edit a segmented date"s, should_edit_a_segmented_date);
 	tests.add("Should clear detail row layout metrics"s, should_clear_detail_row_layout_metrics);
 	tests.add("Should classify aspect ratio groups"s, should_classify_aspect_ratio_groups);
 

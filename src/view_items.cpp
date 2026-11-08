@@ -163,7 +163,7 @@ public:
 			                                .intersection(_scroller.client_bounds());
 			if (!selection.is_empty())
 			{
-				rc.draw_rect(selection, ui::color(ui::style::color::dialog_selected_background, 0.5));
+				rc.draw_rect(selection, ui::color(ui::style::colors.dialog_selected_background, 0.5));
 			}
 		}
 	}
@@ -410,7 +410,7 @@ void items_view::release_document() const
 	if (_display && _display->_document && _display->_document->focused)
 	{
 		_display->_document->focused = false;
-		if (_host) _host->invalidate_view(view_invalid::view_redraw);
+		if (_host) _host->invalidate(ui::host_invalid::redraw);
 	}
 }
 
@@ -918,7 +918,7 @@ void items_view::draw_splitter(ui::draw_context& dc, const recti bounds, const b
 	draw_splitter_handle(dc, bounds, _sidebar_splitter_width, active, tracking);
 }
 
-class splitter_controller final : public view_controller
+class media_splitter_controller final : public view_controller
 {
 public:
 	items_view& _view;
@@ -926,13 +926,13 @@ public:
 	pointi _start_loc;
 	bool _tracking = false;
 
-	splitter_controller(const view_host_ptr& host, items_view& view,
+	media_splitter_controller(const view_host_ptr& host, items_view& view,
 	                    const recti bounds) : view_controller(host, bounds), _view(view)
 	{
 		_view._splitter_active++;
 	}
 
-	~splitter_controller() override
+	~media_splitter_controller() override
 	{
 		if (_tracking)
 		{
@@ -1005,7 +1005,7 @@ bool items_view::escape()
 	if (_display && _display->_document && _display->_document->focused && _display->_document->has_selection())
 	{
 		_display->_document->clear_selection();
-		if (_host) _host->invalidate_view(view_invalid::view_redraw);
+		if (_host) _host->invalidate(ui::host_invalid::redraw);
 		return true;
 	}
 
@@ -1165,7 +1165,7 @@ view_controller_ptr items_view::controller_from_location(const view_host_ptr& ho
 	case view_region::sidebar:
 		return _sidebar->controller_from_location(loc, ctx);
 	case view_region::splitter:
-		return std::make_shared<splitter_controller>(host, *this, _regions.splitter);
+		return std::make_shared<media_splitter_controller>(host, *this, _regions.splitter);
 	case view_region::items_scroll:
 		return std::make_shared<scroll_controller>(host, _items_scroller, _regions.items_scroll);
 	case view_region::media_scroll:
@@ -1798,7 +1798,7 @@ void items_view::update_item_scroller_sections()
 	_items_scroller.sections(std::move(sections));
 }
 
-int layout_media_column(const media_column_inputs& in, ui::measure_context& mc, ui::control_layouts& positions)
+int layout_media_column(const media_column_inputs& in, ui::measure_context& mc)
 {
 	flex_container_layout media_column;
 	media_column.direction = flex_direction::column;
@@ -1816,7 +1816,7 @@ int layout_media_column(const media_column_inputs& in, ui::measure_context& mc, 
 		const recti all_bounds{
 			in.bounds.left, in.bounds.top + top, in.bounds.right, in.bounds.top + top + extent.cy
 		};
-		layout_flex_elements(*in.all, mc, positions, all_bounds, media_column);
+		layout_flex_elements(*in.all, mc, all_bounds, media_column);
 		return top + extent.cy;
 	}
 
@@ -1858,7 +1858,7 @@ int layout_media_column(const media_column_inputs& in, ui::measure_context& mc, 
 
 	for (auto i = 0u; i < in.priority->size(); ++i)
 	{
-		(*in.priority)[i]->layout(mc, block.layout_bounds[i].offset(origin), positions);
+		(*in.priority)[i]->layout(mc, block.layout_bounds[i].offset(origin));
 	}
 
 	// Detail stacks below the block at its natural height, so it scrolls off the bottom.
@@ -1866,7 +1866,7 @@ int layout_media_column(const media_column_inputs& in, ui::measure_context& mc, 
 	const recti detail_bounds{
 		in.bounds.left, in.bounds.top + detail_top, in.bounds.right, in.bounds.top + detail_top + detail_extent.cy
 	};
-	layout_flex_elements(*in.detail, mc, positions, detail_bounds, media_column);
+	layout_flex_elements(*in.detail, mc, detail_bounds, media_column);
 
 	return detail_top + detail_extent.cy;
 }
@@ -1910,7 +1910,6 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 
 	df::assert_true(ui::is_ui_thread());
 
-	ui::control_layouts positions;
 
 	const auto is_zoom = _display && (_display->is_zoom_mode() || _display->comparing());
 	auto avail_media_bounds = calc_media_bounds();
@@ -1919,7 +1918,7 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 	{
 		if (_media_element)
 		{
-			_media_element->layout(mc, avail_media_bounds, positions);
+			_media_element->layout(mc, avail_media_bounds);
 			_media_scroller.layout({}, avail_media_bounds, {});
 		}
 	}
@@ -1929,7 +1928,7 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 			&_media_priority_elements, &_media_detail_elements, &_media_elements,
 			avail_media_bounds, _media_element
 		};
-		const auto media_height = layout_media_column(media_inputs, mc, positions);
+		const auto media_height = layout_media_column(media_inputs, mc);
 
 		const auto split_x = splitter_pos();
 		const auto control_padding = mc.scroll_width / 2;
@@ -1964,7 +1963,7 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 			item_column.align_items = flex_align::start;
 			item_column.padding = {0, df::round(mc.padding2 / mc.scale_factor)};
 			const auto items_height = layout_flex_elements(
-				_item_elements, mc, positions, avail_item_bounds, item_column).cy;
+				_item_elements, mc, avail_item_bounds, item_column).cy;
 
 			const auto item_scroll_bounds = recti{
 				_client_extent.cx - scroll_padding, _top_chrome_height, _client_extent.cx, _client_extent.cy
@@ -2264,13 +2263,13 @@ public:
 		return {cx, cy};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds) override
 	{
-		view_element::layout(mc, bounds, positions);
+		view_element::layout(mc, bounds);
 
 		auto control_bounds = bounds;
 		control_bounds.left += _cx_surface;
-		_controls->layout(mc, control_bounds, positions);
+		_controls->layout(mc, control_bounds);
 	}
 
 	void render(ui::draw_context& dc, const pointi element_offset) const override
@@ -2307,14 +2306,9 @@ public:
 		_controls->render(dc, element_offset);
 	}
 
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
-		_controls->visit_controls(handler);
-	}
-
-	void enable_controls(const bool enable) override
-	{
-		_controls->enable_controls(enable);
+		visit(_controls);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
@@ -2675,7 +2669,7 @@ public:
 			if (static_cast<int>(i) == _hot)
 			{
 				dc.draw_rounded_rect(recti(logical_bounds.left, top, logical_bounds.right, top + _line_height),
-				                     ui::color(ui::style::color::view_selected_background, dc.colors.alpha * 0.25f),
+				                     ui::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.25f),
 				                     dc.padding1);
 			}
 

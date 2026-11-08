@@ -1440,7 +1440,7 @@ namespace df
 		}
 
 		sizei measure(ui::measure_context& mc, int width_limit) const override;
-		void layout(ui::measure_context& mc, recti bounds_in, ui::control_layouts& positions) override;
+		void layout(ui::measure_context& mc, recti bounds_in) override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 		                                             hit_test_context& ctx) override;
 
@@ -2415,7 +2415,7 @@ namespace df
 
 		void render(ui::draw_context& dc, pointi element_offset) const override;
 		sizei measure(ui::measure_context& mc, int width_limit) const override;
-		void layout(ui::measure_context& mc, recti bounds_in, ui::control_layouts& positions) override;
+		void layout(ui::measure_context& mc, recti bounds_in) override;
 		void scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements, async_strategy& async) const;
 		void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,

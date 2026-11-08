@@ -662,7 +662,7 @@ public:
 		};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -688,7 +688,7 @@ public:
 		const auto& project = _view->project();
 		const auto r = bounds.offset(element_offset);
 
-		dc.draw_rect(r, ui::color(ui::style::color::group_background, dc.colors.alpha));
+		dc.draw_rect(r, ui::color(ui::style::colors.group_background, dc.colors.alpha));
 
 		const auto text_cy = dc.text_line_height(ui::style::font_face::dialog);
 		const auto playing_index = clip_at_playhead();
@@ -713,8 +713,8 @@ public:
 				// Selection is the set a command acts on; focus is the one the panel describes. They
 				// are drawn differently because they are different facts.
 				dc.draw_rect(tile, ui::color(is_selected
-					                             ? ui::style::color::dialog_selected_background
-					                             : ui::style::color::dialog_background,
+					                             ? ui::style::colors.dialog_selected_background
+					                             : ui::style::colors.dialog_background,
 				                             dc.colors.alpha * (dragging && is_selected ? 0.5f : 1.0f)));
 
 				draw_thumbnail(dc, clip, i, tile.inflate(-dc.padding1));
@@ -730,7 +730,7 @@ public:
 
 				if (static_cast<int>(i) == playing_index)
 				{
-					const auto play_clr = ui::color(ui::style::color::important_background, dc.colors.alpha);
+					const auto play_clr = ui::color(ui::style::colors.important_background, dc.colors.alpha);
 					const recti bar{tile.left, tile.bottom - dc.padding1, tile.right, tile.bottom};
 					dc.draw_rect(bar, play_clr);
 				}
@@ -1032,7 +1032,7 @@ private:
 		// a clip that is gone.
 		if (clip.is_lost())
 		{
-			const auto clr = ui::color(ui::style::color::warning_background, dc.colors.alpha);
+			const auto clr = ui::color(ui::style::colors.warning_background, dc.colors.alpha);
 			const auto text_cy = dc.text_line_height(ui::style::font_face::dialog);
 			const recti icon{target.left, target.top, target.right, target.bottom - text_cy};
 
@@ -1143,7 +1143,7 @@ public:
 		};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
+	void layout(ui::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_pad = mc.padding1;
@@ -1162,12 +1162,12 @@ public:
 		if (is_photo()) return;
 
 		const auto track = track_bounds(r);
-		dc.draw_rect(track, ui::color(ui::style::color::dialog_background, dc.colors.alpha));
+		dc.draw_rect(track, ui::color(ui::style::colors.dialog_background, dc.colors.alpha));
 
 		if (_limit <= 0) return;
 
 		const recti selected{to_x(track, _start), track.top, to_x(track, _end), track.bottom};
-		dc.draw_rect(selected, ui::color(ui::style::color::dialog_selected_background, dc.colors.alpha));
+		dc.draw_rect(selected, ui::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
 
 		draw_levels(dc, track);
 
@@ -1176,7 +1176,7 @@ public:
 		{
 			const auto x = to_x(track, *_view->clip_position());
 			dc.draw_rect({x, track.top, x + 2, track.bottom},
-			             ui::color(ui::style::color::important_background, dc.colors.alpha));
+			             ui::color(ui::style::colors.important_background, dc.colors.alpha));
 		}
 
 		draw_handle(dc, track, _start, clr);
@@ -1318,7 +1318,7 @@ private:
 	{
 		const auto* const clip = _view->project().current_clip();
 
-		dc.draw_rect(target, ui::color(ui::style::color::group_background, dc.colors.alpha));
+		dc.draw_rect(target, ui::color(ui::style::colors.group_background, dc.colors.alpha));
 
 		if (!clip || clip->is_missing) return;
 
@@ -1867,7 +1867,7 @@ void movie_view_controls::create_controls()
 	_info = create_view_info_element(tt.movie_info);
 
 	_movie_title = std::make_shared<ui::title_control>(icon_index::video, tt.movie_settings_title);
-	_crossfade_check = std::make_shared<ui::check_control>(_dlg, tt.movie_crossfade, _movie_state.crossfade, true,
+	_crossfade_check = std::make_shared<ui::check_control>(_frame, tt.movie_crossfade, _movie_state.crossfade, true,
 	                                                       false, [this](const bool checked)
 	                                                       {
 		                                                       // A radio button notifies only the one
@@ -1877,25 +1877,25 @@ void movie_view_controls::create_controls()
 		                                                       _movie_state.cut = !checked;
 		                                                       _view->settings_changed();
 	                                                       });
-	_cut_check = std::make_shared<ui::check_control>(_dlg, tt.movie_cut, _movie_state.cut, true, false,
+	_cut_check = std::make_shared<ui::check_control>(_frame, tt.movie_cut, _movie_state.cut, true, false,
 	                                                 [this](const bool checked)
 	                                                 {
 		                                                 _movie_state.cut = checked;
 		                                                 _movie_state.crossfade = !checked;
 		                                                 _view->settings_changed();
 	                                                 });
-	_transition_slider = std::make_shared<ui::slider_control>(_dlg, tt.movie_transition_length,
+	_transition_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_transition_length,
 	                                                          _movie_state.transition_tenths, 0, 50,
 	                                                          [this]
 	                                                          {
 		                                                          _view->settings_changed(
 			                                                          movie_edit_group::transition_length);
 	                                                          }, settled);
-	_fade_in_check = std::make_shared<ui::check_control>(_dlg, tt.movie_fade_in, _movie_state.fade_in, false, false,
+	_fade_in_check = std::make_shared<ui::check_control>(_frame, tt.movie_fade_in, _movie_state.fade_in, false, false,
 	                                                     [this](bool) { _view->settings_changed(); });
-	_fade_out_check = std::make_shared<ui::check_control>(_dlg, tt.movie_fade_out, _movie_state.fade_out, false,
+	_fade_out_check = std::make_shared<ui::check_control>(_frame, tt.movie_fade_out, _movie_state.fade_out, false,
 	                                                      false, [this](bool) { _view->settings_changed(); });
-	_photo_slider = std::make_shared<ui::slider_control>(_dlg, tt.movie_photo_duration, _movie_state.photo_tenths, 1,
+	_photo_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_photo_duration, _movie_state.photo_tenths, 1,
 	                                                     300,
 	                                                     [this]
 	                                                     {
@@ -1907,11 +1907,11 @@ void movie_view_controls::create_controls()
 	_clip_title = std::make_shared<ui::title_control>(icon_index::edit, tt.movie_clip_title);
 	_clip_text = std::make_shared<text_element>(std::string_view{}, ui::style::text_style::multiline);
 	_trim = std::make_shared<movie_trim_control>(_view.get());
-	_clip_hold_slider = std::make_shared<ui::slider_control>(_dlg, tt.movie_clip_duration,
+	_clip_hold_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_clip_duration,
 	                                                         _movie_state.clip_hold_tenths, 1, 300,
 	                                                         [this] { _view->hold_changed(movie_edit_group::clip_hold); },
 	                                                         settled);
-	_clip_hold_default_check = std::make_shared<ui::check_control>(_dlg, tt.movie_use_default,
+	_clip_hold_default_check = std::make_shared<ui::check_control>(_frame, tt.movie_use_default,
 	                                                               _movie_state.clip_hold_is_default, false, false,
 	                                                               [this](bool) { _view->hold_changed(); });
 
@@ -1933,7 +1933,7 @@ void movie_view_controls::create_controls()
 		_clip_hold_default_check,
 	};
 
-	_clr = ui::color(ui::style::color::dialog_text);
+	_clr = ui::color(ui::style::colors.dialog_text);
 	update_for_document();
 }
 
@@ -2122,13 +2122,13 @@ movie_view::~movie_view()
 	stop_preview_audio();
 }
 
-view_controls_host_ptr movie_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr movie_view::controls(const ui::frame_ptr& owner)
 {
 	if (!_controls)
 	{
 		_controls = std::make_shared<movie_view_controls>(_state, _movie_state);
 		_controls->_view = shared_from_this();
-		_controls->_frame = _controls->_dlg = owner->create_dlg(_controls, false);
+		_controls->_frame = owner;
 	}
 
 	return _controls;
@@ -2320,8 +2320,7 @@ void movie_view::layout(ui::measure_context& mc, const sizei extent)
 
 	if (_timeline)
 	{
-		ui::control_layouts positions;
-		_timeline->layout(mc, strip, positions);
+		_timeline->layout(mc, strip);
 	}
 }
 
@@ -2485,14 +2484,14 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 	           _play_bounds, clr, {});
 	xdraw_icon(dc, icon_index::small_right, _next_bounds, step_clr, {});
 
-	dc.draw_rect(_scrubber_bounds, ui::color(ui::style::color::dialog_background, dc.colors.alpha));
+	dc.draw_rect(_scrubber_bounds, ui::color(ui::style::colors.dialog_background, dc.colors.alpha));
 
 	if (total > 0)
 	{
 		const auto x = _scrubber_bounds.left + df::round(
 			_scrubber_bounds.width() * std::clamp(_movie_state.playhead / total, 0.0, 1.0));
 		dc.draw_rect({_scrubber_bounds.left, _scrubber_bounds.top, x, _scrubber_bounds.bottom},
-		             ui::color(ui::style::color::dialog_selected_background, dc.colors.alpha));
+		             ui::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
 	}
 
 	const recti clock{_scrubber_bounds.right + dc.padding2, _transport_bounds.top, _transport_bounds.right,

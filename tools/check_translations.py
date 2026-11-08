@@ -23,8 +23,8 @@ This runs two phases:
     values is indistinguishable from a correct one. That stays a review
     question.)
   * accelerator mismatches - a ``&`` that begins a word in the English source is
-    a Win32 mnemonic marker (``&OK``, ``As &JPEG``), because dialog buttons are
-    real Win32 controls. A translation may move the marker to a different
+    a mnemonic marker (``&OK``, ``As &JPEG``), which dialog buttons press
+    on Alt+letter. A translation may move the marker to a different
     letter, but must keep exactly one and must not leave it dangling. A ``&``
     surrounded by spaces or inside a word is literal text (``Fitness &
     Workout``, ``R&B``) and translations may render it as the local "and".
@@ -154,9 +154,9 @@ def placeholder_issues(src: str, got: str) -> list[str]:
     return issues
 
 
-# A '&' that begins a word in the English source is a Win32 mnemonic marker
-# (&OK, As &JPEG, &Don't Save): the dialog buttons created by create_button are
-# real Win32 controls, so Alt+letter activates them. A '&' that is surrounded by
+# A '&' that begins a word in the English source is a mnemonic marker
+# (&OK, As &JPEG, &Don't Save): the dialog buttons created by create_button read
+# it the same way (libdesktop's ui::parse_mnemonic), so Alt+letter activates them. A '&' that is surrounded by
 # spaces or sits inside a word is literal text (Fitness & Workout, R&B) and a
 # translation may legitimately render it as the local word for "and".
 MNEMONIC_RE = re.compile(r"(?:^|(?<=\s))&(?=\w)")

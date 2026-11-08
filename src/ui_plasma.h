@@ -7,7 +7,8 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: Animated plasma backdrop. Generates the cycling colour field drawn behind the
-// application mark, fading between colour and the sidebar tone as background work starts or stops.
+// application mark, fading between colour and the sidebar tone as background work starts or stops,
+// and drifting slowly once faded.
 
 #pragma once
 
@@ -47,6 +48,10 @@ struct plasma
 	constexpr static double t3_per_second = frames_per_second;
 	constexpr static double phase_period = 256.0 / t1_per_second;
 	constexpr static double max_step_seconds = 0.25;
+
+	// Faded, the field keeps drifting at this fraction of its busy speed, and is redrawn only when that
+	// moves the faster term a cosine index: two or three times a second, on ticks that come anyway.
+	constexpr static double idle_speed = 1.0 / 8.0;
 
 	plasma()
 	{
@@ -124,14 +129,15 @@ struct plasma
 			const auto gg = df::round(g * fc / fade_max + c * fg / cd);
 			const auto rr = df::round(r * fc / fade_max + c * fr / cd);
 
-			_palette[i] = ui::average(ui::style::color::sidebar_background, ui::rgb(bb, gg, rr));
+			_palette[i] = ui::average(ui::style::colors.sidebar_background, ui::rgb(bb, gg, rr));
 		}
 	}
 
 	// time_now is monotonic seconds. Elapsed time, not call count, drives the animation, so a dropped
-	// frame costs smoothness rather than speed. Returns false when the call arrived too soon to
-	// change anything, which is the caller's cue not to invalidate.
-	bool step(const double time_now)
+	// frame costs smoothness rather than speed. Busy shows the colour; faded, the field drifts only where
+	// drift is wanted. Returns whether the field changed, which is the caller's cue to invalidate: a call
+	// too soon, or an idle one that moves no cosine index, changes nothing.
+	bool step(const double time_now, const bool busy, const bool drift)
 	{
 		constexpr auto step_interval = 1.0 / frames_per_second;
 
@@ -145,7 +151,8 @@ struct plasma
 			                     : 0.0;
 		_last_step_time = time_now;
 
-		_show_color = df::jobs_running > 0 || _hover;
+		const auto was_active = is_active();
+		_show_color = busy || _hover;
 
 		const auto fade_delta = elapsed * (fade_max / fade_seconds);
 		const auto fade = std::clamp(_show_color ? _fade - fade_delta : _fade + fade_delta, 0.0,
@@ -157,7 +164,19 @@ struct plasma
 			init_plasma();
 		}
 
-		_phase = fmod(_phase + elapsed, phase_period);
+		if (!was_active && !is_active())
+		{
+			if (!drift) return false;
+			const auto index = [this] { return static_cast<int32_t>(_phase * t3_per_second); };
+			const auto before = index();
+			_phase = fmod(_phase + elapsed * idle_speed, phase_period);
+			if (index() == before) return false;
+		}
+		else
+		{
+			_phase = fmod(_phase + elapsed, phase_period);
+		}
+
 		step_plasma();
 		return true;
 	}

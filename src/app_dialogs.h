@@ -12,24 +12,26 @@
 
 #pragma once
 
+#include "app_commands.h"
+
 class view_state;
 
-void advanced_search_invoke(view_state& state, const ui::control_frame_ptr& parent, const view_host_base_ptr& view);
+void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent, const view_host_base_ptr& view);
 #ifndef WINSTORE
-void show_update_dialog(view_state& s, const ui::control_frame_ptr& parent);
+void show_update_dialog(view_state& s, const ui::frame_ptr& parent);
 #endif
-void show_keyboard_reference(view_state& s, const ui::control_frame_ptr& parent, const commands_map& commands);
-void about_invoke(view_state& s, const ui::control_frame_ptr& parent, commands_map& commands);
+void show_keyboard_reference(view_state& s, const ui::frame_ptr& parent, const commands_map& commands);
+void about_invoke(view_state& s, const ui::frame_ptr& parent, commands_map& commands);
 // Checks the index, then offers to defragment or reset it, each behind its own dialog.
-void index_maintenance_invoke(const view_state& s, const ui::control_frame_ptr& parent);
+void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent);
 // How large the index is and how many items it describes.
 std::string format_index_text(const view_state& s);
-void share_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view);
+void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view);
 
 // A command that acts on the selection first asks whether it can. When it cannot it says why, under
 // the command's own title, rather than doing nothing. Defined in app_commands.cpp.
 bool can_process_selection_or_explain(const view_state& s, const view_host_base_ptr& view,
-                                      const ui::control_frame_ptr& parent, std::string_view title,
+                                      const ui::frame_ptr& parent, std::string_view title,
                                       df::process_items_type type);
 
 bool should_refresh_advanced_search_hover_thumbnail(bool has_surface, bool has_thumbnail, bool is_staging,

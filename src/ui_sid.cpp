@@ -37,15 +37,15 @@ namespace
 		constexpr shade raised{0xFFFFFF, 0.12f};
 		constexpr shade line{0xFFFFFF, 0.1f};
 
-		ui::color32 text() { return ui::style::color::view_text; }
-		ui::color32 text_muted() { return ui::lerp(ui::style::color::view_text, ui::style::color::view_background, 0.35f); }
-		ui::color32 text_faint() { return ui::lerp(ui::style::color::view_text, ui::style::color::view_background, 0.6f); }
-		ui::color32 accent() { return ui::style::color::view_selected_background; }
-		ui::color32 accent_light() { return ui::lerp(ui::style::color::view_selected_background, ui::style::color::view_text, 0.4f); }
-		ui::color32 information() { return ui::style::color::info_background; }
-		ui::color32 green() { return ui::style::color::success_background; }
-		ui::color32 orange() { return ui::style::color::important_background; }
-		ui::color32 red() { return ui::style::color::warning_background; }
+		ui::color32 text() { return ui::style::colors.view_text; }
+		ui::color32 text_muted() { return ui::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.35f); }
+		ui::color32 text_faint() { return ui::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.6f); }
+		ui::color32 accent() { return ui::style::colors.view_selected_background; }
+		ui::color32 accent_light() { return ui::lerp(ui::style::colors.view_selected_background, ui::style::colors.view_text, 0.4f); }
+		ui::color32 information() { return ui::style::colors.info_background; }
+		ui::color32 green() { return ui::style::colors.success_background; }
+		ui::color32 orange() { return ui::style::colors.important_background; }
+		ui::color32 red() { return ui::style::colors.warning_background; }
 	}
 
 	// A silenced voice is drawn faded, as the tune goes on playing it.

@@ -187,7 +187,7 @@ public:
 			dc.draw_rounded_rect(logical_bounds.inflate(pad.cx, pad.cy), bg_color, dc.padding1);
 		}
 
-		const auto highlight_clr = ui::color(ui::style::color::dialog_selected_text, dc.colors.alpha);
+		const auto highlight_clr = ui::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
 		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
@@ -268,7 +268,7 @@ public:
 			dc.draw_rounded_rect(logical_bounds.inflate(pad.cx, pad.cy), bg_color, dc.padding1);
 		}
 
-		const auto highlight_clr = ui::color(ui::style::color::dialog_selected_text, dc.colors.alpha);
+		const auto highlight_clr = ui::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
 		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;

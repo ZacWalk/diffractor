@@ -971,9 +971,6 @@ msgstr "Une erreur inconnue s'est produite."
 msgid "Diffractor requires Windows 7 or newer."
 msgstr "Diffractor nécessite Windows 7 ou une version plus récente."
 
-msgid "Failed to register windows common control classes."
-msgstr "Échec de l'enregistrement des classes de contrôle communes Windows."
-
 msgid "Failed to initialize Winsock"
 msgstr "Échec de l'initialisation de Winsock"
 

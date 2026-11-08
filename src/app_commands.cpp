@@ -41,7 +41,7 @@
 extern bool toggle_details_state;
 
 bool can_process_selection_or_explain(const view_state& s, const view_host_base_ptr& view,
-                                             const ui::control_frame_ptr& parent, const std::string_view title,
+                                             const ui::frame_ptr& parent, const std::string_view title,
                                              const df::process_items_type type)
 {
 	const auto can_process = s.can_process_selection_and_mark_errors(view, type);
@@ -51,7 +51,7 @@ bool can_process_selection_or_explain(const view_state& s, const view_host_base_
 	return false;
 }
 
-static void zoom_invoke(const view_state& s, const ui::control_frame_ptr& parent)
+static void zoom_invoke(const view_state& s, const ui::frame_ptr& parent)
 {
 	const auto display = s.display_state();
 
@@ -112,7 +112,7 @@ static void edit_invoke(view_state& s)
 	}
 }
 
-static void containing_folder_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void containing_folder_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto i = s.command_item();
 
@@ -124,7 +124,7 @@ static void containing_folder_invoke(view_state& s, const ui::control_frame_ptr&
 	}
 }
 
-static void open_in_file_browser_invoke(const view_state& s, const ui::control_frame_ptr& parent,
+static void open_in_file_browser_invoke(const view_state& s, const ui::frame_ptr& parent,
                                         const view_host_base_ptr& view)
 {
 	if (can_process_selection_or_explain(s, view, parent, tt.open_in_browser_title,
@@ -144,7 +144,7 @@ static void open_in_file_browser_invoke(const view_state& s, const ui::control_f
 	}
 }
 
-static void new_folder_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void new_folder_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	if (!s.search().is_showing_folder()) return;
 
@@ -174,7 +174,7 @@ static void new_folder_invoke(view_state& s, const ui::control_frame_ptr& parent
 	}
 }
 
-static void burn_command_invoke(view_state& s, const ui::control_frame_ptr& parent,
+static void burn_command_invoke(view_state& s, const ui::frame_ptr& parent,
                                 const view_host_base_ptr& view)
 {
 	const auto dlg = make_dlg(parent);
@@ -209,7 +209,7 @@ static void burn_command_invoke(view_state& s, const ui::control_frame_ptr& pare
 	}
 }
 
-static void print_invoke(const view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void print_invoke(const view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	if (can_process_selection_or_explain(s, view, parent, tt.print_title, df::process_items_type::local_file))
 	{
@@ -226,7 +226,7 @@ quadd rotate_command_crop_bounds(const sizei dimensions, const ui::orientation s
 	return quadd(dimensions).transform(to_simple_transform_inv(current_orientation)).transform(transform);
 }
 
-static void rename_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void rename_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto title = tt.command_rename;
 	constexpr auto icon = icon_index::rename;
@@ -297,7 +297,7 @@ static void rename_invoke(view_state& s, const ui::control_frame_ptr& parent, co
 	}
 }
 
-static void file_properties_invoke(const view_state& s, const ui::control_frame_ptr& parent,
+static void file_properties_invoke(const view_state& s, const ui::frame_ptr& parent,
                                    const view_host_base_ptr& view)
 {
 	if (can_process_selection_or_explain(s, view, parent, tt.open_properties_title,
@@ -308,7 +308,7 @@ static void file_properties_invoke(const view_state& s, const ui::control_frame_
 	}
 }
 
-static void edit_paste_invoke(view_state& s, const ui::control_frame_ptr& parent,
+static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent,
                               const std::shared_ptr<view_frame>& view)
 {
 	const auto dlg = make_dlg(parent);
@@ -380,7 +380,7 @@ static void edit_paste_invoke(view_state& s, const ui::control_frame_ptr& parent
 	}
 }
 
-static void show_flatten_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void show_flatten_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto current_search = s.search();
 
@@ -416,7 +416,7 @@ static void zoom_navigator_mode_invoke(const view_state& state, const zoom_navig
 	state.invalidate_view(view_invalid::view_redraw | view_invalid::controller | view_invalid::options_save);
 }
 
-static void rotate_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view,
+static void rotate_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view,
                           const simple_transform t)
 {
 	// Rotation rewrites each item in place, so it never needs a save folder. The only
@@ -528,7 +528,7 @@ static void rotate_invoke(view_state& s, const ui::control_frame_ptr& parent, co
 	}
 }
 
-static void desktop_background_invoke(view_state& s, const ui::control_frame_ptr& parent)
+static void desktop_background_invoke(view_state& s, const ui::frame_ptr& parent)
 {
 	s.capture_display([&s, parent](const file_load_result& loaded)
 	{
@@ -611,7 +611,7 @@ static void desktop_background_invoke(view_state& s, const ui::control_frame_ptr
 	});
 }
 
-static void capture_invoke(view_state& s, const ui::control_frame_ptr& parent)
+static void capture_invoke(view_state& s, const ui::frame_ptr& parent)
 {
 	// Read now, not when the frame arrives: the frame is of this item, so this is the name it has
 	// to be offered under. Reading it in the callback named the capture after whatever the display
@@ -650,7 +650,7 @@ static void capture_invoke(view_state& s, const ui::control_frame_ptr& parent)
 	});
 }
 
-static void related_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void related_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto i = s.command_item();
 
@@ -662,7 +662,7 @@ static void related_invoke(view_state& s, const ui::control_frame_ptr& parent, c
 	}
 }
 
-static void favorite_tags_invoke(view_state& s, const ui::control_frame_ptr& parent)
+static void favorite_tags_invoke(view_state& s, const ui::frame_ptr& parent)
 {
 	auto dlg = make_dlg(parent);
 	auto favorite_tags = setting.favorite_tags;
@@ -760,7 +760,7 @@ static void favorite_tags_invoke(view_state& s, const ui::control_frame_ptr& par
 		view_invalid::tooltip);
 }
 
-static void rate_items_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view, int r)
+static void rate_items_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view, int r)
 {
 	auto dlg = make_dlg(parent);
 	metadata_edits edits;
@@ -773,7 +773,7 @@ static void rate_items_invoke(view_state& s, const ui::control_frame_ptr& parent
 	s.modify_items(results, icon, title, s.selected_items().items(), edits, view);
 }
 
-static void label_items_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view,
+static void label_items_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view,
                                const std::string_view label)
 {
 	const auto selected = s.selected_items();
@@ -798,7 +798,7 @@ static void label_items_invoke(view_state& s, const ui::control_frame_ptr& paren
 	s.modify_items(results, icon, title, items, edits, view);
 }
 
-static void cut_copy_invoke(const view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view,
+static void cut_copy_invoke(const view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view,
                             const bool is_move)
 {
 	const auto title = is_move ? tt.command_edit_cut : tt.command_edit_copy;
@@ -861,7 +861,7 @@ class folder_auto_complete final : public std::enable_shared_from_this<folder_au
 	std::shared_ptr<std::atomic_uint64_t> _latest_request = std::make_shared<std::atomic_uint64_t>(0);
 	destination_folder_enumerator _enumerate_child_folders;
 	std::vector<df::folder_path> _recents;
-	ui::control_frame_ptr _parent;
+	ui::frame_ptr _parent;
 	ui::auto_complete_match_ptr _selected;
 	uint64_t _request_id = 0;
 	std::weak_ptr<void> _picker_lifetime;
@@ -875,7 +875,7 @@ public:
 	std::weak_ptr<ui::search_control> _search_control;
 
 
-	folder_auto_complete(view_state& s, ui::control_frame_ptr parent,
+	folder_auto_complete(view_state& s, ui::frame_ptr parent,
 	                     std::shared_ptr<void> picker_lifetime = {},
 	                     std::shared_ptr<const df::folder_counts> folders = {},
 	                     destination_folder_enumerator enumerate_child_folders = {}) :
@@ -1108,7 +1108,7 @@ df::file_path selected_external_tool_target(const df::item_set& selected_items)
 	return selected_items.items().front()->path();
 }
 
-static void copy_move_invoke(view_state& s, const ui::control_frame_ptr& parent,
+static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
                              const std::shared_ptr<view_frame>& view,
                              const bool is_move)
 {
@@ -1249,7 +1249,7 @@ static void copy_move_invoke(view_state& s, const ui::control_frame_ptr& parent,
 	}
 }
 
-static void repeat_mode_toggle(const view_state& s, const ui::control_frame_ptr& parent)
+static void repeat_mode_toggle(const view_state& s, const ui::frame_ptr& parent)
 {
 	auto m = setting.repeat;
 
@@ -1270,13 +1270,13 @@ static void repeat_mode_toggle(const view_state& s, const ui::control_frame_ptr&
 	s.invalidate_view(view_invalid::tooltip | view_invalid::view_redraw | view_invalid::command_state);
 }
 
-static void font_invoke(const view_state& s, const ui::control_frame_ptr& parent)
+static void font_invoke(const view_state& s, const ui::frame_ptr& parent)
 {
 	setting.large_font = !setting.large_font;
 	s.invalidate_view(view_invalid::visual_options);
 }
 
-static void toggle_layout_scale_invoke(view_state& s, const ui::control_frame_ptr& parent)
+static void toggle_layout_scale_invoke(view_state& s, const ui::frame_ptr& parent)
 {
 	setting.step_item_scale(1, true);
 }
@@ -1357,7 +1357,7 @@ class open_with_auto_complete final : public ui::complete_strategy_t,
 				dc.draw_rounded_rect(logical_bounds.inflate(pad.cx, pad.cy), bg_color, dc.padding1);
 			}
 
-			const auto highlight_clr = ui::color(ui::style::color::dialog_selected_text, dc.colors.alpha);
+			const auto highlight_clr = ui::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
 			const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
 			const auto highlights = make_highlights(_match, highlight_clr);
 
@@ -1535,7 +1535,7 @@ public:
 	}
 };
 
-static void open_with_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view,
+static void open_with_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view,
                              commands_map& commands)
 {
 	const auto title = tt.open_with_app_tool;
@@ -1603,7 +1603,7 @@ static std::string format_drive_details(const platform::drive_t& d)
 	return str::combine(parts, ", ", false);
 }
 
-static void show_eject_dialog(view_state& s, const ui::control_frame_ptr& parent, const platform::drives& drives)
+static void show_eject_dialog(view_state& s, const ui::frame_ptr& parent, const platform::drives& drives)
 {
 	const auto title = tt.command_eject;
 	constexpr auto icon = icon_index::eject;
@@ -1677,7 +1677,7 @@ static void show_eject_dialog(view_state& s, const ui::control_frame_ptr& parent
 	}
 }
 
-static void eject_invoke(view_state& s, const ui::control_frame_ptr& parent, std::function<void()> complete)
+static void eject_invoke(view_state& s, const ui::frame_ptr& parent, std::function<void()> complete)
 {
 	s.queue_async(async_queue::work, [&s, weak_parent = std::weak_ptr(parent), complete = std::move(complete)]() mutable
 	{
@@ -1698,7 +1698,7 @@ static void eject_invoke(view_state& s, const ui::control_frame_ptr& parent, std
 }
 
 
-static void scan_invoke(view_state& s, const ui::control_frame_ptr& parent, const view_host_base_ptr& view)
+static void scan_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto scan_result = platform::scan(s.save_path());
 
@@ -1736,7 +1736,7 @@ static void browse_parent_invoke(view_state& s, const view_host_base_ptr& view)
 	}
 }
 
-static void favorite_invoke(view_state& state, const ui::control_frame_ptr& parent)
+static void favorite_invoke(view_state& state, const ui::frame_ptr& parent)
 {
 	const auto search = state.search();
 	const bool is_favorite = state.search_is_favorite();

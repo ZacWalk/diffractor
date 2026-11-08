@@ -1015,7 +1015,6 @@ void app_text_t::calc_text_mapping()
 		platform_text.error_sse2_needed,
 		platform_text.error_unknown,
 		platform_text.error_unsupported_os,
-		platform_text.error_windows_common_controls_failed,
 		platform_text.error_winsock_failed,
 		exif_metadata_title,
 		failed_to_create_folder_fmt,

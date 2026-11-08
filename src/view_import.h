@@ -74,8 +74,8 @@ public:
 		_analysis_valid = false;
 	}
 
-	view_controls_host_ptr controls(const ui::control_frame_ptr& owner);
-	void populate_controls(const view_controls_host_ptr& host, const ui::control_frame_ptr& frame);
+	view_controls_host_ptr controls(const ui::frame_ptr& owner);
+	void populate_controls(const view_controls_host_ptr& host, const ui::frame_ptr& frame);
 
 	std::string_view operation_name() const override { return tt.command_import; }
 

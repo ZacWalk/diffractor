@@ -127,7 +127,7 @@ class locate_auto_complete_strategy final : public std::enable_shared_from_this<
 {
 public:
 	view_state& _state;
-	ui::control_frame_ptr _parent;
+	ui::frame_ptr _parent;
 	ui::auto_complete_results _results;
 	ui::auto_complete_match_ptr _selected;
 
@@ -138,7 +138,7 @@ public:
 
 	std::function<void(const location_t&)> _changed;
 
-	locate_auto_complete_strategy(view_state& s, ui::control_frame_ptr parent,
+	locate_auto_complete_strategy(view_state& s, ui::frame_ptr parent,
 	                              std::function<void(const location_t&)> changed)
 		: _state(s), _parent(std::move(parent)), _changed(std::move(changed))
 	{
@@ -251,25 +251,23 @@ public:
 	{
 	}
 
+	// The search and its results fill the panel, which does not scroll.
 	void layout_controls(ui::measure_context& mc) override
 	{
 		if (_controls.empty()) return;
 
 		const auto layout_padding = df::round(mc.padding1 / mc.scale_factor);
-		const auto avail_bounds = recti(_extent).inflate(-layout_padding);
+		const auto avail_bounds = _bounds.inflate(-layout_padding);
 		mc.col_widths = {};
-		ui::control_layouts positions;
 		flex_container_layout column;
 		column.direction = flex_direction::column;
 		column.wrap = flex_wrap::no_wrap;
 		column.align_items = flex_align::start;
 		column.padding = {layout_padding, layout_padding};
-		_layout_height = layout_flex_elements(_controls, mc, positions, avail_bounds, column).cy;
+		_layout_height = layout_flex_elements(_controls, mc, avail_bounds, column).cy;
 		_layout_width = avail_bounds.width();
 		_label_width = mc.col_widths;
-		_scroller.layout({_layout_width, _extent.cy}, recti(_extent), {});
-		_dlg->apply_layout(positions, {});
-		_dlg->invalidate();
+		_scroller.layout({_layout_width, _bounds.height()}, _bounds, {});
 	}
 };
 
@@ -575,7 +573,7 @@ void locate_view::on_marker_clicked(const gps_coordinate& coordinate, const int 
 	refresh();
 
 	// The bubble was anchored to the old view; leaving it up would point at nothing.
-	_host->invalidate_view(view_invalid::tooltip | view_invalid::view_redraw);
+	_host->invalidate(ui::host_invalid::tooltip | ui::host_invalid::redraw);
 }
 
 void locate_view::request_reverse_geocode(const gps_coordinate& gps)
@@ -708,10 +706,10 @@ view_bars locate_view::bars() const
 }
 
 
-view_controls_host_ptr locate_view::controls(const ui::control_frame_ptr& owner)
+view_controls_host_ptr locate_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<locate_controls_host>(_state);
-	auto frame = owner->create_dlg(result, false);
+	const auto& frame = owner;
 
 	auto sel_changed = [this](const location_t& loc)
 	{
@@ -775,7 +773,7 @@ view_controls_host_ptr locate_view::controls(const ui::control_frame_ptr& owner)
 	}
 
 	result->_controls = controls;
-	result->_frame = result->_dlg = frame;
+	result->_frame = frame;
 	_populate_controls();
 
 	return result;

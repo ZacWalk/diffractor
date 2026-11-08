@@ -971,9 +971,6 @@ msgstr "알 수 없는 오류가 발생했습니다."
 msgid "Diffractor requires Windows 7 or newer."
 msgstr "Diffractor에는 Windows 7 이상이 필요합니다."
 
-msgid "Failed to register windows common control classes."
-msgstr "Windows 공통 컨트롤 클래스를 등록하지 못했습니다."
-
 msgid "Failed to initialize Winsock"
 msgstr "Winsock을 초기화하지 못했습니다."
 

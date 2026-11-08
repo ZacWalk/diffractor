@@ -10,9 +10,11 @@ The portable core and vendored dependencies build with CMake and GCC on Linux, a
 suite runs headlessly in Debug and Release. Indexing, search, metadata parsing, image and media decode,
 collections, locations, and core file operations use the same model and tests as Windows.
 
-Linux does not yet produce the interactive Diffractor application. There is no native window or
-message loop, text stack, renderer present target, audio output, or complete desktop integration.
-The Linux target is therefore a portability and headless-test target, not a distributable product.
+The interactive application runs on libdesktop's Linux window layer: SDL3 windows on Wayland or X11,
+the portable software rasterizer, and Pango text. Its frames, controls, menus and dialogs are the ones
+Windows shows, since libdesktop draws its controls and menus itself on both platforms. It has no audio
+output, hardware video presentation or much of the desktop integration (below), so the Linux target is
+not yet a distributable product.
 
 ## Platform Boundary
 
@@ -37,8 +39,11 @@ The Linux implementation currently provides:
 | Files, mapping, enumeration, paths | libdesktop's `platform_linux_files.cpp` |
 | Copy, move, delete, and shell stand-ins | libdesktop's `platform_linux_desktop.cpp` |
 | INI settings | libdesktop's `platform_linux_settings.cpp` |
-| The desktop UI's stand-ins: theme colours, key codes, UI-thread identity, icon glyphs, styled text, movie writing and audio output | libdesktop's `platform_linux_ui.cpp` |
-| Entry point, the absent hardware video decode, and the empty platform test registration | `platform_linux_app.cpp` |
+| Windows, popups, input, the menu loop, display scale and the text clipboard, on SDL3 | libdesktop's `platform_linux_window.cpp` |
+| Text layout, glyph fallback, icon glyphs and styled subtitles, with Pango | libdesktop's `platform_linux_text.cpp` |
+| The entry point | libdesktop's `platform_linux_main.cpp` (`libdesktop::render_main`) |
+| Theme colours, key codes, UI-thread identity, and the movie writing and audio output stand-ins | libdesktop's `platform_linux_ui.cpp` |
+| The absent hardware video decode, the empty platform test registration, and the icon font compiled in | `platform_linux_app.cpp` |
 
 Path identity follows the filesystem: case-insensitive on Windows and case-sensitive on Linux.
 Case-folded comparisons remain appropriate for media types, tags, and other vocabulary, but not for
@@ -54,9 +59,8 @@ reported by an atomic move.
 
 The current Linux platform has no implementation for:
 
-- native windows, input dispatch, dialogs, menus, clipboard, drag/drop, or monitor/DPI integration;
-- font discovery, shaping, fallback, and glyph rasterization;
-- a GPU backend or a native present target for the portable software rasterizer;
+- drag/drop, and files or images on the clipboard - text is supported;
+- a GPU backend;
 - audio output and hardware video presentation;
 - Windows Shell features such as associations, properties, Explorer thumbnails, device eject, the
   share sheet, and taskbar progress;
@@ -68,8 +72,8 @@ did not perform.
 
 ## Rendering Path
 
-The platform-independent software rasterizer already produces bounded BGRA tiles. A Linux UI needs a
-window-owned buffer and present target plus the text stack described above. Rendering parity remains
+Every window is drawn by the platform-independent software rasterizer, in bounded BGRA tiles that the
+window layer presents to the window's surface, with Pango setting the text. Rendering parity remains
 defined by [rendering.md](rendering.md); Linux does not get a reduced visual contract merely because
 its first backend is software.
 
@@ -85,13 +89,19 @@ Typical commands are:
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
-./build/diffractor /test
+./build/diffractor --test
 ```
+
+A leading `/` starts a path on Linux, so switches take `-` or `--` there.
 
 CI definitions remain authoritative for compiler versions and installed system prerequisites.
 
-Build from a Linux checkout. A Windows checkout with `core.autocrlf` set, built from WSL, gives
-FFmpeg's `configure` CRLF line endings, which `/bin/sh` rejects as "No such file or directory".
+From Windows, `.\dd.ps1 linux` builds Release in WSL and starts it on WSLg's display (`--config Debug`
+builds the other; further arguments reach Diffractor). It stops first if a package the build needs is
+missing - `./dd setup` inside WSL installs them - or if there is no display. A checkout on a Windows
+drive builds in `~/.cache/diffractor/<checkout path>/linux-build` rather than its own `tmp/`: a tree
+on `/mnt/c` is slow, and FetchContent cannot rename the directories it extracts there. FFmpeg arrives
+as an upstream archive, so a Windows checkout's CRLF line endings never reach its `configure`.
 
 ### Retiring MSBuild
 
@@ -104,8 +114,8 @@ how they join the application build.
 
 - libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) and
   [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h): abstraction required from each platform.
-- libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/system) and
-  [platform_linux_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_ui.cpp) and
+- libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/system),
+  [Linux window layer](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_window.cpp) and
   [platform_linux_app.cpp](../src/platform_linux_app.cpp): current Linux implementation.
 - libdesktop's [platform_compat.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_compat.h): cross-platform
   compatibility helpers.

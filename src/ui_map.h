@@ -14,10 +14,12 @@
 
 #include "ui_map_common.h"
 
-class map_control final : public view_element, public std::enable_shared_from_this<map_control>, public ui::frame_host
+// A frame of its own, placed where the element is laid out, so the map draws and pans apart from the dialog.
+class map_control final : public ui::frame_element, public std::enable_shared_from_this<map_control>,
+                          public ui::frame_host
 {
 public:
-	ui::control_frame_ptr _owner;
+	ui::frame_ptr _owner;
 	ui::frame_ptr _frame;
 	ui::bubble_window_ptr _bubble;
 	sizei _extent;
@@ -58,7 +60,7 @@ public:
 	{
 	}
 
-	void init(const ui::control_frame_ptr& owner)
+	void init(const ui::frame_ptr& owner)
 	{
 		_owner = owner;
 
@@ -82,15 +84,9 @@ public:
 		return {cx, cx};
 	}
 
-	void visit_controls(const std::function<void(const ui::control_base_ptr&)>& handler) override
+	ui::frame_ptr placed_frame() const override
 	{
-		handler(frame());
-	}
-
-	void layout(ui::measure_context& mc, const recti bounds_in, ui::control_layouts& positions) override
-	{
-		bounds = bounds_in;
-		positions.emplace_back(frame(), bounds, is_visible());
+		return _frame;
 	}
 
 	void on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized) override

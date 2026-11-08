@@ -574,8 +574,8 @@ void app_frame::focus_search(const bool has_focus)
 			style.child = false;
 			style.no_focus = true;
 			style.colors = {
-				ui::style::color::toolbar_background, ui::style::color::view_text,
-				ui::style::color::view_selected_background
+				ui::style::colors.toolbar_background, ui::style::colors.view_text,
+				ui::style::colors.view_selected_background
 			};
 
 			_search_predictions_frame = std::make_shared<ui::list_frame>();
@@ -619,7 +619,7 @@ void app_frame::cancel_search_edit()
 
 	if (outcome.select_first_completion && _search_predictions_frame)
 	{
-		const auto& results = _search_predictions_frame->_results;
+		const auto& results = _search_predictions_frame->results();
 		_search_predictions_frame->selected(
 			results.empty() ? nullptr : results.front(), ui::complete_strategy_t::select_type::init);
 	}
@@ -644,9 +644,7 @@ bool app_frame::search_accept_selected()
 
 void app_frame::set_search_edit_text(const std::string_view text)
 {
-	_search_setting_text = true;
 	_search_edit->window_text(text);
-	_search_setting_text = false;
 }
 
 void app_frame::preview_search_prediction(const std::string& text)
