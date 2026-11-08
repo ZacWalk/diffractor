@@ -13,7 +13,7 @@
 #include "util_zip.h"
 
 #include "files.h"
-#include "libdesktop/util_file.h"
+#include "libdesktop/platform/file.h"
 
 #define ZLIB_CONST 1
 
@@ -42,9 +42,9 @@ namespace
 		return lengths[static_cast<size_t>(month - 1)];
 	}
 
-	bool to_zip_date(zip_fileinfo& zi, const df::date_t modified)
+	bool to_zip_date(zip_fileinfo& zi, const core::date_t modified)
 	{
-		auto ft = modified.system_to_local().date();
+		auto ft = platform::utc_to_local(modified).date();
 
 		if (ft.month < 1 || ft.month > 12 ||
 			ft.day < 1 || ft.day > days_in_month(ft.year, ft.month) ||
@@ -116,7 +116,7 @@ bool df::zip_file::close()
 
 bool df::zip_file::add(const file_path path, const std::string_view name_in, const date_t modified) const
 {
-	file f;
+	platform::buffered_file f;
 
 	if (f.open_read(path, true))
 	{
@@ -125,7 +125,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 
 		if (name.size() > UINT16_MAX)
 		{
-			df::log(__FUNCTION__, std::format("zip entry name is too long: {} bytes", name.size()));
+			core::log(__FUNCTION__, std::format("zip entry name is too long: {} bytes", name.size()));
 			return false;
 		}
 
@@ -135,7 +135,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 
 		if (!to_zip_date(zi, modified))
 		{
-			df::log(__FUNCTION__, std::format("invalid zip entry date for {}", name));
+			core::log(__FUNCTION__, std::format("invalid zip entry date for {}", name));
 			return false;
 		}
 
@@ -151,7 +151,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 
 		if (err != ZIP_OK)
 		{
-			df::log(__FUNCTION__, std::format("error in opening {} in zip file", name));
+			core::log(__FUNCTION__, std::format("error in opening {} in zip file", name));
 			return false;
 		}
 
@@ -173,7 +173,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 			if (err != ZIP_OK)
 			{
 				//We could not write the file in the ZIP-File for whatever reason.
-				df::log(__FUNCTION__, std::format("error writing {} in zip file", name));
+				core::log(__FUNCTION__, std::format("error writing {} in zip file", name));
 				zipCloseFileInZip(std::any_cast<zipFile>(_handle));
 				return false;
 			}
@@ -183,7 +183,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 
 		if (written != attributes.size)
 		{
-			df::log(__FUNCTION__, std::format("read {} of {} bytes of {}", written, attributes.size, name));
+			core::log(__FUNCTION__, std::format("read {} of {} bytes of {}", written, attributes.size, name));
 			zipCloseFileInZip(std::any_cast<zipFile>(_handle));
 			return false;
 		}
@@ -192,7 +192,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 
 		if (err != ZIP_OK)
 		{
-			df::log(__FUNCTION__, std::format("error closing {} in zip file", name));
+			core::log(__FUNCTION__, std::format("error closing {} in zip file", name));
 			return false;
 		}
 
@@ -232,7 +232,7 @@ std::vector<archive_item> df::zip_file::list(const file_path zip_file_path)
 				{
 					if (file.size_filename > UINT16_MAX)
 					{
-						df::log(__FUNCTION__, std::format("zip entry name is too long: {} bytes", file.size_filename));
+						core::log(__FUNCTION__, std::format("zip entry name is too long: {} bytes", file.size_filename));
 						results.clear();
 						break;
 					}
@@ -248,13 +248,13 @@ std::vector<archive_item> df::zip_file::list(const file_path zip_file_path)
 
 					if (name_result != UNZ_OK)
 					{
-						df::log(__FUNCTION__, "could not read zip entry name");
+						core::log(__FUNCTION__, "could not read zip entry name");
 						results.clear();
 						break;
 					}
 
 					archive_item result_info;
-					result_info.filename = str::utf8_cast(std::string_view(filename.data(), filename.size()));
+					result_info.filename = core::utf8_cast(std::string_view(filename.data(), filename.size()));
 					result_info.uncompressed_size = file.uncompressed_size;
 					result_info.compressed_size = file.compressed_size;
 					result_info.created = platform::dos_date_to_ts(static_cast<uint16_t>(file.dosDate >> 16),

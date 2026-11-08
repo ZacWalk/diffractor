@@ -72,11 +72,11 @@ struct sid_tune_details
 // One tune of a .sid file, rendered as it is read. The decoder's read thread renders through the stream
 // open_sid_stream wraps it in; the UI thread reads the chip state and the samples already rendered. The
 // samples are kept, so going back is a copy and only going forward runs the emulator.
-class sid_tune_render final : df::no_copy
+class sid_tune_render final : core::no_copy
 {
 public:
 	// song is 1-based; 0 plays the tune the file starts on.
-	sid_tune_render(df::file_path path, int song, double seconds = sid_tune_seconds);
+	sid_tune_render(core::file_path path, int song, double seconds = sid_tune_seconds);
 	~sid_tune_render();
 
 	// Reads and checks the tune: false when the file is not one lib8bit can play. Called on the thread
@@ -100,7 +100,7 @@ public:
 	size_t samples_before(double seconds, int16_t* out, size_t count) const;
 
 	sid_tune_details details() const;
-	df::file_path path() const { return _path; }
+	core::file_path path() const { return _path; }
 
 	// A session plays the WAV the render makes, and its info describes that WAV: PCM at 689 kbit/s, and
 	// the WAV's layout. This puts the tune in its place - the chip for the codec, no bit rate, and the
@@ -115,19 +115,19 @@ private:
 	// The sample as heard: the last moments of the span fade out.
 	int16_t faded(uint64_t at, int16_t sample) const;
 
-	const df::file_path _path;
+	const core::file_path _path;
 	const int _requested_song;
 	const double _seconds;
 
 	// The emulator and what only the rendering thread touches. Held for the whole of a read.
-	mutable platform::mutex _render_mutex;
+	mutable core::mutex _render_mutex;
 	_Guarded_by_(_render_mutex) std::unique_ptr<class machine> _machine;
 	_Guarded_by_(_render_mutex) std::array<uint32_t, sid_register_count> _last_writes = {};
 	_Guarded_by_(_render_mutex) bool _loaded = false;
 	_Guarded_by_(_render_mutex) bool _load_ok = false;
 
 	// What both threads read. Taken only for copies, never while the emulator runs.
-	mutable platform::mutex _data_mutex;
+	mutable core::mutex _data_mutex;
 	_Guarded_by_(_data_mutex) std::vector<int16_t> _pcm;
 	_Guarded_by_(_data_mutex) std::vector<uint64_t> _frame_starts;
 	_Guarded_by_(_data_mutex) std::vector<sid_frame_state> _frames;
@@ -165,7 +165,7 @@ struct sid_header_texts
 	std::string released;
 };
 
-sid_header_texts read_sid_header_texts(df::cspan data);
+sid_header_texts read_sid_header_texts(core::cspan data);
 
 // The equal-tempered note nearest a voice's frequency register, such as "A4"; empty for zero.
 std::string sid_note_name(uint16_t frequency, uint32_t clock_hz);

@@ -32,9 +32,9 @@ namespace
 		return result;
 	}
 
-	int to_int(const std::string_view s, const int fallback = 0)
+	int subtitle_to_int(const std::string_view s, const int fallback = 0)
 	{
-		const auto trimmed = str::trim(s);
+		const auto trimmed = core::trim(s);
 		auto value = fallback;
 		const auto* const first = trimmed.data();
 		const auto* const last = trimmed.data() + trimmed.size();
@@ -42,9 +42,9 @@ namespace
 		return value;
 	}
 
-	double to_double(const std::string_view s, const double fallback = 0)
+	double subtitle_to_double(const std::string_view s, const double fallback = 0)
 	{
-		const auto trimmed = str::trim(s);
+		const auto trimmed = core::trim(s);
 		auto value = fallback;
 		std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), value);
 		return value;
@@ -53,7 +53,7 @@ namespace
 	// &HAABBGGRR, &HBBGGRR or a decimal, with ASS's alpha where 0 is opaque, as 0xAABBGGRR straight alpha.
 	uint32_t ass_color(std::string_view s, const uint32_t fallback)
 	{
-		s = str::trim(s);
+		s = core::trim(s);
 		while (!s.empty() && (s.back() == '&' || s.back() == 'H' || s.back() == 'h')) s.remove_suffix(1);
 
 		uint32_t value = 0;
@@ -81,7 +81,7 @@ namespace
 
 	bool ass_bool(const std::string_view s)
 	{
-		return to_int(s) != 0;
+		return subtitle_to_int(s) != 0;
 	}
 
 	// SSA's \a numbers its alignments 1-3 along the bottom, +4 for the top and +8 for the middle.
@@ -100,13 +100,13 @@ const subtitle_style& subtitle_script::style(const std::string_view name) const
 
 	for (const auto& s : styles)
 	{
-		if (str::icmp(s.name, name) == 0) return s;
+		if (core::icmp(s.name, name) == 0) return s;
 	}
 
 	// "*Default" is how some scripts name the style a line falls back to.
 	for (const auto& s : styles)
 	{
-		if (str::icmp(s.name, "Default") == 0) return s;
+		if (core::icmp(s.name, "Default") == 0) return s;
 	}
 
 	return styles.empty() ? fallback : styles.front();
@@ -120,32 +120,32 @@ subtitle_script parse_ass_header(const std::string_view header)
 	// SSA's [V4 Styles] number alignments as \a does; ASS's [V4+ Styles] as a keypad.
 	auto legacy = false;
 
-	for (auto line : str::split(header, false, [](const char c) { return c == '\n' || c == '\r'; }))
+	for (auto line : core::split(header, false, [](const char c) { return c == '\n' || c == '\r'; }))
 	{
-		line = str::trim(line);
+		line = core::trim(line);
 		if (line.empty()) continue;
 
 		if (line.front() == '[')
 		{
-			legacy = str::icmp(line, "[V4 Styles]") == 0;
-			in_styles = legacy || str::icmp(line, "[V4+ Styles]") == 0;
+			legacy = core::icmp(line, "[V4 Styles]") == 0;
+			in_styles = legacy || core::icmp(line, "[V4+ Styles]") == 0;
 			continue;
 		}
 
 		const auto colon = line.find(':');
 		if (colon == std::string_view::npos) continue;
 
-		const auto key = str::trim(line.substr(0, colon));
-		const auto value = str::trim(line.substr(colon + 1));
+		const auto key = core::trim(line.substr(0, colon));
+		const auto value = core::trim(line.substr(colon + 1));
 
-		if (str::icmp(key, "PlayResX") == 0) result.play_res_x = std::max(1, to_int(value, 384));
-		else if (str::icmp(key, "PlayResY") == 0) result.play_res_y = std::max(1, to_int(value, 288));
-		else if (in_styles && str::icmp(key, "Format") == 0)
+		if (core::icmp(key, "PlayResX") == 0) result.play_res_x = std::max(1, subtitle_to_int(value, 384));
+		else if (core::icmp(key, "PlayResY") == 0) result.play_res_y = std::max(1, subtitle_to_int(value, 288));
+		else if (in_styles && core::icmp(key, "Format") == 0)
 		{
 			format.clear();
-			for (const auto f : split_fields(value, ',', 64)) format.emplace_back(str::trim(f));
+			for (const auto f : split_fields(value, ',', 64)) format.emplace_back(core::trim(f));
 		}
-		else if (in_styles && str::icmp(key, "Style") == 0)
+		else if (in_styles && core::icmp(key, "Style") == 0)
 		{
 			subtitle_style style;
 			const auto fields = split_fields(value, ',', std::max<size_t>(format.size(), 1));
@@ -153,25 +153,25 @@ subtitle_script parse_ass_header(const std::string_view header)
 			for (size_t i = 0; i < fields.size() && i < format.size(); ++i)
 			{
 				const auto name = format[i];
-				const auto field = str::trim(fields[i]);
+				const auto field = core::trim(fields[i]);
 
-				if (str::icmp(name, "Name") == 0) style.name = field;
-				else if (str::icmp(name, "Fontname") == 0) style.font = field;
-				else if (str::icmp(name, "Fontsize") == 0) style.size = std::max(1.0, to_double(field, 16));
-				else if (str::icmp(name, "PrimaryColour") == 0) style.primary = ass_color(field, style.primary);
-				else if (str::icmp(name, "OutlineColour") == 0) style.outline_color = ass_color(field, style.outline_color);
-				else if (str::icmp(name, "Bold") == 0) style.bold = ass_bool(field);
-				else if (str::icmp(name, "Italic") == 0) style.italic = ass_bool(field);
-				else if (str::icmp(name, "Outline") == 0) style.outline = std::max(0.0, to_double(field, 1));
-				else if (str::icmp(name, "Alignment") == 0)
+				if (core::icmp(name, "Name") == 0) style.name = field;
+				else if (core::icmp(name, "Fontname") == 0) style.font = field;
+				else if (core::icmp(name, "Fontsize") == 0) style.size = std::max(1.0, subtitle_to_double(field, 16));
+				else if (core::icmp(name, "PrimaryColour") == 0) style.primary = ass_color(field, style.primary);
+				else if (core::icmp(name, "OutlineColour") == 0) style.outline_color = ass_color(field, style.outline_color);
+				else if (core::icmp(name, "Bold") == 0) style.bold = ass_bool(field);
+				else if (core::icmp(name, "Italic") == 0) style.italic = ass_bool(field);
+				else if (core::icmp(name, "Outline") == 0) style.outline = std::max(0.0, subtitle_to_double(field, 1));
+				else if (core::icmp(name, "Alignment") == 0)
 				{
-					const auto a = to_int(field, 2);
+					const auto a = subtitle_to_int(field, 2);
 					if (legacy && a >= 1 && a <= 11) style.alignment = legacy_alignment(a);
 					else if (!legacy && a >= 1 && a <= 9) style.alignment = a;
 				}
-				else if (str::icmp(name, "MarginL") == 0) style.margin_l = to_int(field, 10);
-				else if (str::icmp(name, "MarginR") == 0) style.margin_r = to_int(field, 10);
-				else if (str::icmp(name, "MarginV") == 0) style.margin_v = to_int(field, 10);
+				else if (core::icmp(name, "MarginL") == 0) style.margin_l = subtitle_to_int(field, 10);
+				else if (core::icmp(name, "MarginR") == 0) style.margin_r = subtitle_to_int(field, 10);
+				else if (core::icmp(name, "MarginV") == 0) style.margin_v = subtitle_to_int(field, 10);
 			}
 
 			result.styles.emplace_back(std::move(style));
@@ -192,10 +192,10 @@ ass_event_fields split_ass_event(const std::string_view ass)
 		return result;
 	}
 
-	result.style = str::trim(fields[2]);
-	result.margin_l = to_int(fields[4]);
-	result.margin_r = to_int(fields[5]);
-	result.margin_v = to_int(fields[6]);
+	result.style = core::trim(fields[2]);
+	result.margin_l = subtitle_to_int(fields[4]);
+	result.margin_r = subtitle_to_int(fields[5]);
+	result.margin_v = subtitle_to_int(fields[6]);
 	result.text = fields[8];
 	return result;
 }
@@ -219,7 +219,7 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 	result.margin_r = style.margin_r;
 	result.margin_v = style.margin_v;
 
-	platform::text_run current;
+	render::text_run current;
 	current.bold = style.bold;
 	current.italic = style.italic;
 	current.color = style.primary;
@@ -257,17 +257,17 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 		{
 			const auto close = tag.find(')');
 			const auto args = split_fields(tag.substr(0, close), ',', 2);
-			if (args.size() == 2) result.position = pointd(to_double(args[0]), to_double(args[1]));
+			if (args.size() == 2) result.position = pointd(subtitle_to_double(args[0]), subtitle_to_double(args[1]));
 		}
 		else if (starts("an"))
 		{
-			const auto a = to_int(tag);
+			const auto a = subtitle_to_int(tag);
 			if (a >= 1 && a <= 9) result.alignment = a;
 		}
 		else if (starts("1a") || starts("alpha"))
 		{
 			// One byte, where ASS's 00 is opaque.
-			auto digits = str::trim(tag);
+			auto digits = core::trim(tag);
 			while (!digits.empty() && (digits.back() == '&' || digits.back() == 'H' || digits.back() == 'h')) digits.remove_suffix(1);
 			if (digits.size() >= 2 && digits[0] == '&' && (digits[1] == 'H' || digits[1] == 'h')) digits.remove_prefix(2);
 			uint32_t v = 0;
@@ -278,7 +278,7 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 		{
 			if (!tag.empty() && std::isdigit(static_cast<unsigned char>(tag.front())))
 			{
-				const auto a = to_int(tag);
+				const auto a = subtitle_to_int(tag);
 				if (a >= 1 && a <= 11) result.alignment = legacy_alignment(a);
 			}
 		}
@@ -290,16 +290,16 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 		else if (starts("b"))
 		{
 			if (tag.empty()) current.bold = style.bold;
-			else if (std::isdigit(static_cast<unsigned char>(tag.front()))) current.bold = to_int(tag) != 0;
+			else if (std::isdigit(static_cast<unsigned char>(tag.front()))) current.bold = subtitle_to_int(tag) != 0;
 		}
 		else if (starts("i"))
 		{
 			if (tag.empty()) current.italic = style.italic;
-			else if (std::isdigit(static_cast<unsigned char>(tag.front()))) current.italic = to_int(tag) != 0;
+			else if (std::isdigit(static_cast<unsigned char>(tag.front()))) current.italic = subtitle_to_int(tag) != 0;
 		}
 		else if (starts("p"))
 		{
-			if (!tag.empty() && std::isdigit(static_cast<unsigned char>(tag.front()))) drawing = to_int(tag) != 0;
+			if (!tag.empty() && std::isdigit(static_cast<unsigned char>(tag.front()))) drawing = subtitle_to_int(tag) != 0;
 		}
 		else if (tag == "r" || starts("r"))
 		{
@@ -344,7 +344,7 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 					++end;
 				}
 
-				apply_override(str::trim(block.substr(slash + 1, end - slash - 1)));
+				apply_override(core::trim(block.substr(slash + 1, end - slash - 1)));
 				at = end;
 			}
 
@@ -389,14 +389,14 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 	return result;
 }
 
-ui::surface_ptr subtitle_image_surface(const subtitle_image& image)
+core::surface_ptr subtitle_image_surface(const subtitle_image& image)
 {
 	const auto w = image.rect.width();
 	const auto h = image.rect.height();
 	if (w <= 0 || h <= 0 || image.indices.size() < static_cast<size_t>(w) * h) return {};
 
-	auto surface = std::make_shared<ui::surface>();
-	if (!surface->alloc(w, h, ui::texture_format::ARGB, ui::orientation::top_left)) return {};
+	auto surface = std::make_shared<core::surface>();
+	if (!surface->alloc(w, h, core::texture_format::ARGB, core::orientation::top_left)) return {};
 
 	for (auto y = 0; y < h; ++y)
 	{
@@ -528,7 +528,7 @@ std::vector<subtitle_bitmap> render_subtitle_text(const subtitle_text& text, con
 	const auto sy = static_cast<double>(video.cy) / script.play_res_y;
 	const auto column = (std::clamp(text.alignment, 1, 9) - 1) % 3;
 
-	platform::styled_text spec;
+	render::styled_text spec;
 	spec.runs = text.runs;
 	spec.font_family = text.font;
 	spec.font_px = static_cast<float>(text.size * sy);
@@ -537,7 +537,7 @@ std::vector<subtitle_bitmap> render_subtitle_text(const subtitle_text& text, con
 	spec.alignment = column;
 	spec.wrap_width = std::max(1, static_cast<int>(video.cx - (text.margin_l + text.margin_r) * sx));
 
-	auto surface = platform::render_styled_text(spec);
+	auto surface = render::render_styled_text(spec);
 	if (!surface) return {};
 
 	const auto block = sized(surface->width(), surface->height());
@@ -572,7 +572,7 @@ std::vector<subtitle_bitmap> render_subtitle_images(const std::vector<subtitle_i
 
 void subtitle_events::reset(subtitle_script script, const sizei video)
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 	_events.clear();
 	_script = std::move(script);
 	_video = video;
@@ -580,13 +580,13 @@ void subtitle_events::reset(subtitle_script script, const sizei video)
 
 void subtitle_events::add(subtitle_event e)
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 	e.id = _next_id++;
 
 	// Repeats are common: a packet read again after a seek lands in the generation that replaced it.
 	for (const auto& existing : _events)
 	{
-		if (existing.gen == e.gen && df::equiv(existing.start, e.start) && existing.text.has_value() == e.text.has_value() &&
+		if (existing.gen == e.gen && core::equiv(existing.start, e.start) && existing.text.has_value() == e.text.has_value() &&
 			(!e.text || existing.text->plain_text() == e.text->plain_text()) && existing.images.size() == e.images.size())
 		{
 			return;
@@ -610,7 +610,7 @@ void subtitle_events::add(subtitle_event e)
 
 void subtitle_events::add_all(std::vector<subtitle_event> events)
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 
 	for (auto& e : events)
 	{
@@ -623,13 +623,13 @@ void subtitle_events::add_all(std::vector<subtitle_event> events)
 
 void subtitle_events::drop_older_than(const int gen)
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 	std::erase_if(_events, [gen](const subtitle_event& e) { return e.gen != 0 && e.gen < gen; });
 }
 
 void subtitle_events::layout(const sizei video)
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 	if (_video == video) return;
 
 	_video = video;
@@ -638,13 +638,13 @@ void subtitle_events::layout(const sizei video)
 
 sizei subtitle_events::layout() const
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 	return _video;
 }
 
 void subtitle_events::end_open(const double t)
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 
 	for (auto& e : _events)
 	{
@@ -672,7 +672,7 @@ void subtitle_events::prepare(const double pos)
 	sizei video;
 
 	{
-		platform::exclusive_lock lock(_mutex);
+		core::exclusive_lock lock(_mutex);
 		script = _script;
 		video = _video;
 
@@ -705,7 +705,7 @@ void subtitle_events::prepare(const double pos)
 		done.emplace_back(w.id, std::move(bitmaps));
 	}
 
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 
 	// Laid out for a size the picture has left since: dropped, and laid out again on the next pass.
 	if (_video != video) return;
@@ -720,7 +720,7 @@ void subtitle_events::prepare(const double pos)
 std::vector<subtitle_event> subtitle_events::at(const double pos, const int gen, const bool forced_only) const
 {
 	std::vector<subtitle_event> result;
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 
 	for (const auto& e : _events)
 	{
@@ -749,7 +749,7 @@ static uint64_t combine_shown_key(const uint64_t key, const uint64_t id)
 uint64_t subtitle_events::shown_key(const double pos, const int gen, const bool forced_only) const
 {
 	uint64_t key = 0;
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 
 	for (const auto& e : _events)
 	{
@@ -787,7 +787,7 @@ void end_replaced_pictures(std::vector<subtitle_event>& events)
 
 size_t subtitle_events::size() const
 {
-	platform::exclusive_lock lock(_mutex);
+	core::exclusive_lock lock(_mutex);
 	return _events.size();
 }
 
@@ -822,7 +822,7 @@ namespace
 	// The primary subtag: pt-BR is Portuguese, zh_Hans is Chinese.
 	std::string_view primary_subtag(std::string_view s)
 	{
-		s = str::trim(s);
+		s = core::trim(s);
 		const auto dash = s.find_first_of("-_");
 		return dash == std::string_view::npos ? s : s.substr(0, dash);
 	}
@@ -834,8 +834,8 @@ namespace
 
 		for (const auto& l : languages)
 		{
-			if (str::icmp(code, l.iso1) == 0 || str::icmp(code, l.iso2b) == 0 || str::icmp(code, l.iso2t) == 0 ||
-				str::icmp(code, l.name) == 0)
+			if (core::icmp(code, l.iso1) == 0 || core::icmp(code, l.iso2b) == 0 || core::icmp(code, l.iso2t) == 0 ||
+				core::icmp(code, l.name) == 0)
 				return &l;
 		}
 
@@ -850,7 +850,7 @@ bool same_language(const std::string_view a, const std::string_view b)
 	if (la && lb) return la == lb;
 
 	const auto pa = primary_subtag(a);
-	return !pa.empty() && str::icmp(pa, primary_subtag(b)) == 0;
+	return !pa.empty() && core::icmp(pa, primary_subtag(b)) == 0;
 }
 
 bool is_language_word(const std::string_view word)
@@ -862,14 +862,14 @@ sidecar_subtitle_name read_sidecar_subtitle_name(const std::string_view sidecar_
 {
 	sidecar_subtitle_name result;
 
-	const auto stem = sidecar_name.substr(0, df::find_ext(sidecar_name));
-	const auto video_stem = video_name.substr(0, df::find_ext(video_name));
-	if (stem.size() < video_stem.size() || str::icmp(stem.substr(0, video_stem.size()), video_stem) != 0) return result;
+	const auto stem = sidecar_name.substr(0, core::find_ext(sidecar_name));
+	const auto video_stem = video_name.substr(0, core::find_ext(video_name));
+	if (stem.size() < video_stem.size() || core::icmp(stem.substr(0, video_stem.size()), video_stem) != 0) return result;
 
-	for (const auto word : str::split(stem.substr(video_stem.size()), false,
+	for (const auto word : core::split(stem.substr(video_stem.size()), false,
 	                                  [](const char c) { return c == '.' || c == ' ' || c == '_'; }))
 	{
-		if (str::icmp(word, "forced") == 0) result.forced = true;
+		if (core::icmp(word, "forced") == 0) result.forced = true;
 		else if (result.language.empty() && find_language(word)) result.language = word;
 	}
 
@@ -889,7 +889,7 @@ subtitle_choice choose_subtitles(const std::vector<subtitle_offer>& offers, cons
 		return std::nullopt;
 	};
 
-	const auto speech_is_foreign = !audio_language.empty() && str::icmp(audio_language, "und") != 0 &&
+	const auto speech_is_foreign = !audio_language.empty() && core::icmp(audio_language, "und") != 0 &&
 		!same_language(audio_language, preferred_language);
 	const auto wanted = mode == subtitle_mode::always || (mode == subtitle_mode::foreign && speech_is_foreign);
 
@@ -904,23 +904,23 @@ subtitle_choice choose_subtitles(const std::vector<subtitle_offer>& offers, cons
 	return {};
 }
 
-std::vector<subtitle_offer> sidecar_subtitle_offers(const df::file_path video, const std::string_view sidecars)
+std::vector<subtitle_offer> sidecar_subtitle_offers(const core::file_path video, const std::string_view sidecars)
 {
 	std::vector<subtitle_offer> result;
 	const auto video_name = video.name().sv();
-	const auto names = str::split(sidecars, true);
+	const auto names = core::split(sidecars, true);
 
 	for (const auto name : names)
 	{
-		const auto ext_pos = std::min(df::find_ext(name), name.size());
+		const auto ext_pos = std::min(core::find_ext(name), name.size());
 		const auto ext = name.substr(ext_pos);
 		if (!is_subtitle_extension(ext)) continue;
 
 		// A VobSub's pictures are read through its .idx, so the .sub beside one is not offered twice.
-		if (str::icmp(ext, ".sub") == 0)
+		if (core::icmp(ext, ".sub") == 0)
 		{
 			const auto idx = std::string(name.substr(0, ext_pos)) + ".idx";
-			if (std::ranges::any_of(names, [&idx](const std::string_view n) { return str::icmp(n, idx) == 0; })) continue;
+			if (std::ranges::any_of(names, [&idx](const std::string_view n) { return core::icmp(n, idx) == 0; })) continue;
 		}
 
 		const auto read = read_sidecar_subtitle_name(name, video_name);

@@ -75,8 +75,8 @@ inline double chart_log_height(const uint64_t count, const uint64_t max_count)
 // an allocation behind moving the mouse.
 class chart_surface
 {
-	ui::surface_ptr _pixels; // 1x ARGB, premultiplied at the silhouette by the reduction
-	ui::surface_ptr _scratch; // the supersampled buffer the rasterisers draw into
+	core::surface_ptr _pixels; // 1x ARGB, premultiplied at the silhouette by the reduction
+	core::surface_ptr _scratch; // the supersampled buffer the rasterisers draw into
 	std::vector<uint16_t> _ids; // 1x, one identity per pixel
 	sizei _extent;
 
@@ -86,10 +86,10 @@ public:
 	bool prepare(sizei extent);
 	// The buffers, not the pointers: surface::alloc answers null pixels on a failed allocation while
 	// still reporting a size, so testing the shared_ptr alone lets a memset run against nothing.
-	bool is_ready() const { return _extent.cx > 0 && ui::is_valid(_pixels) && ui::is_valid(_scratch); }
+	bool is_ready() const { return _extent.cx > 0 && core::is_valid(_pixels) && core::is_valid(_scratch); }
 	sizei extent() const { return _extent; }
 
-	const ui::surface_ptr& pixels() const { return _pixels; }
+	const core::surface_ptr& pixels() const { return _pixels; }
 
 	uint16_t id_at(const pointi at) const
 	{
@@ -98,7 +98,7 @@ public:
 	}
 
 	// The rasterisers draw into these, then reduce.
-	ui::surface& supersampled() const { return *_scratch; }
+	core::surface& supersampled() const { return *_scratch; }
 	uint16_t* ids() { return _ids.data(); }
 	void clear();
 	void reduce() const;
@@ -106,7 +106,7 @@ public:
 
 struct pie_chart_wedge
 {
-	ui::color32 color = 0; // in the surface's channel order
+	core::color32 color = 0; // in the surface's channel order
 	uint16_t id = chart_surface::no_id;
 	bool raised = false;
 };
@@ -118,7 +118,7 @@ struct pie_chart_scene
 	// The well's floor. Always opaque: a transparent floor would let the sidebar show through a
 	// solid object, and would leave the centre - which opens Options - with no pixels
 	// of its own to be pointed at.
-	ui::color32 hole_color = 0;
+	core::color32 hole_color = 0;
 	uint16_t hole_id = pie_chart_hole_id;
 };
 
@@ -128,7 +128,7 @@ struct calendar_chart_cell
 {
 	recti cell; // the 1x rect the month owns
 	int height = 0; // 1x pixels above the cell's floor line; the caller may let it clear the cell
-	ui::color32 color = 0;
+	core::color32 color = 0;
 	uint16_t id = chart_surface::no_id;
 	bool raised = false;
 };

@@ -64,19 +64,7 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDR_DIFFRACTOR          ICON                    "res\\app.ico"
-
 IDI_APP_ICON            ICON                    "res\\app.ico"
-
-
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// The desktop UI's own: its cursors, drop shadow and shaders
-//
-
-#include "platform_win_render.rc"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -91,7 +79,6 @@ IDI_APP_ICON            ICON                    "res\\app.ico"
 // PNG
 //
 
-IDF_ICONS               BINARY                 "Res\\FluentSystemIcons-Resizable.ttf"
 
 
 /////////////////////////////////////////////////////////////////////////////

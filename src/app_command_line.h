@@ -39,8 +39,8 @@ struct movie_batch_options
 
 struct command_line_t
 {
-	df::file_path selection;
-	df::item_selector folder_path;
+	core::file_path selection;
+	core::item_selector folder_path;
 
 	bool no_gpu = false;
 	bool no_indexing = false;
@@ -75,7 +75,7 @@ extern command_line_t command_line;
 
 struct duplicate_report_test_photo
 {
-	df::file_path path;
+	core::file_path path;
 	uint64_t created_key = 0;
 	std::array<uint64_t, 4> phash{};
 };
@@ -98,5 +98,5 @@ int run_movie_batch(const movie_batch_options& options);
 namespace movie_batch_test_seams
 {
 	// Exercise the per-project worker without process initialization or the user's collection settings.
-	bool project_is_skipped(df::file_path project, const movie_batch_options& options);
+	bool project_is_skipped(core::file_path project, const movie_batch_options& options);
 }

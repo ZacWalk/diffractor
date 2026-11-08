@@ -21,7 +21,7 @@
 // drive root becomes the filesystem root and separators follow suit.
 static std::string as_platform_path(std::string_view windows_form)
 {
-	if constexpr (df::windows_path_semantics) return std::string(windows_form);
+	if constexpr (core::windows_path_semantics) return std::string(windows_form);
 
 	std::string result;
 
@@ -50,11 +50,11 @@ static void should_parse_searches()
 
 	df::index_file_item info;
 	info.ft = files::file_type_from_name("test.jpg");
-	info.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(2012, 9, 14));
+	info.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(2012, 9, 14));
 	assert_equal(true, matcher.match_item({}, info).is_match(), "date");
 
 	info.safe_ps()->dates.clear();
-	info.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(2012, 9, 13));
+	info.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(2012, 9, 13));
 	assert_equal(false, matcher.match_item({}, info).is_match(), "date");
 }
 
@@ -69,11 +69,11 @@ static void should_answer_a_date_group_header_with_its_own_items()
 
 	// A photograph taken in 2019 and written to this disk by an export in 2026 - the ordinary shape
 	// of a file whose two dates disagree, and the whole reason Created is an order of its own.
-	info.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(2019, 5, 4));
-	info.safe_ps()->dates.add(prop::date_source::xmp_create, df::date_t(2026, 8, 19));
+	info.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(2019, 5, 4));
+	info.safe_ps()->dates.add(prop::date_source::xmp_create, core::date_t(2026, 8, 19));
 
-	assert_equal(df::date_t(2019, 5, 4), info.safe_ps()->dates.original(), "the shutter is Original");
-	assert_equal(df::date_t(2026, 8, 19), info.safe_ps()->dates.created(), "and the export is Created");
+	assert_equal(core::date_t(2019, 5, 4), info.safe_ps()->dates.original(), "the shutter is Original");
+	assert_equal(core::date_t(2026, 8, 19), info.safe_ps()->dates.created(), "and the export is Created");
 
 	// Day zero is the whole month, which is what a group header stands for.
 	const auto header = [](const int month, const int year, const df::date_parts_prop target)
@@ -101,14 +101,14 @@ static void should_answer_a_date_group_header_with_its_own_items()
 	// to answer that order - and only that order, or Created reaches back into the shutter time.
 	df::index_file_item stamped;
 	stamped.ft = files::file_type_from_name("test.jpg");
-	stamped.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(2019, 5, 4));
-	stamped.file_created = df::date_t(2021, 3, 9);
+	stamped.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(2019, 5, 4));
+	stamped.file_created = core::date_t(2021, 3, 9);
 
 	assert_equal(false, stamped.safe_ps()->dates.created().is_valid(), "no tag names a creation date");
 
 	// Derived rather than written out: the group key converts the stamp to local, so the month the
 	// header carries depends on the machine and hard-coding one would pin nothing off UTC.
-	const auto stamp_parts = stamped.file_created.system_to_local().date();
+	const auto stamp_parts = platform::utc_to_local(stamped.file_created).date();
 
 	assert_equal(true, df::search_matcher(header(stamp_parts.month, stamp_parts.year,
 	                                             df::date_parts_prop::created))
@@ -455,7 +455,7 @@ static void should_preserve_and_auto_quote_search_input()
 	assert_equal("\"" + my_photos + "\"", base.parse_from_input("\"" + my_photos + "\"").text(),
 	             "already-quoted path not double-quoted");
 
-	const auto folder_query = std::string(test_files_folder.text()) + " Test";
+	const auto folder_query = std::string(test_files_folder().text()) + " Test";
 	const auto scoped = base.parse_from_input(folder_query);
 	assert_equal(1_z, scoped.selectors().size(), "folder query has one selector");
 	assert_equal(1_z, scoped.terms().size(), "the filename term is separate from the folder");
@@ -487,7 +487,7 @@ static void should_preserve_unavailable_path_scopes()
 	{
 		const auto missing = root.combine(name);
 		const auto path = std::string(missing.text());
-		for (const auto& text : {path, path + df::preferred_path_sep, "\"" + path + "\"", "'" + path + "'"})
+		for (const auto& text : {path, path + core::preferred_path_sep, "\"" + path + "\"", "'" + path + "'"})
 		{
 			for (const auto& search : {df::search_t::parse(text), current.parse_from_input(text)})
 			{
@@ -559,7 +559,7 @@ static void should_classify_search_scope()
 		assert_equal(true, s.kind == k::tag, "last token classified");
 		assert_equal("beach "s, s.lead, "lead text preserved");
 		assert_equal("do"s, s.value, "value taken from last token");
-		assert_equal("beach tag:dog"s, str::combine2(s.lead, s.format("#dog")), "lead + formatted value");
+		assert_equal("beach tag:dog"s, core::combine2(s.lead, s.format("#dog")), "lead + formatted value");
 	}
 
 	// Scope prefixes are case-insensitive.
@@ -624,9 +624,9 @@ public:
 
 static void should_format_search_predictions()
 {
-	assert_equal("#holiday #beach"s, str::combine2(auto_complete_lead("#holiday"), "#beach"),
+	assert_equal("#holiday #beach"s, core::combine2(auto_complete_lead("#holiday"), "#beach"),
 	             "missing separator is inserted");
-	assert_equal("#holiday #beach"s, str::combine2(auto_complete_lead("#holiday "), "#beach"),
+	assert_equal("#holiday #beach"s, core::combine2(auto_complete_lead("#holiday "), "#beach"),
 	             "existing separator is preserved");
 
 	// Issue #139 - a completed path containing spaces reads as one term. Committing it after a lead
@@ -637,15 +637,15 @@ static void should_format_search_predictions()
 	const auto photos = as_platform_path("C:\\Photos");
 
 	assert_equal("\"" + my_photos + "\"",
-	             folder_match(strategy, df::folder_path(my_photos)).edit_text(),
+	             folder_match(strategy, core::folder_path(my_photos)).edit_text(),
 	             "completed path with spaces is quoted");
-	assert_equal(photos, folder_match(strategy, df::folder_path(photos)).edit_text(),
+	assert_equal(photos, folder_match(strategy, core::folder_path(photos)).edit_text(),
 	             "completed path without spaces is left alone");
 	assert_equal("#holiday \"" + my_photos + "\"",
-	             folder_match(strategy, df::folder_path(my_photos), "#holiday"s).edit_text(),
+	             folder_match(strategy, core::folder_path(my_photos), "#holiday"s).edit_text(),
 	             "completed path after a lead term is quoted");
 	assert_equal(my_photos,
-	             folder_match(strategy, df::folder_path(my_photos), ui::match_highlights{}, 1, true).edit_text(),
+	             folder_match(strategy, core::folder_path(my_photos), ui::match_highlights{}, 1, true).edit_text(),
 	             "folder picker completions keep raw paths");
 
 	assert_equal(true, search_icon("holiday") == icon_index::search, "plain text uses search icon");
@@ -693,10 +693,10 @@ static void should_parse_file_size_terms()
 
 static void should_not_match_folder_without()
 {
-	const auto now_days = df::date_t(2000, 1, 1).to_days();
+	const auto now_days = core::date_t(2000, 1, 1).to_days();
 	const auto search = df::search_t::parse("without:tag");
 	const df::search_matcher matcher(search, now_days);
-	assert_equal(false, matcher.match_folder(test_files_folder.text(), "test"_c).is_match(), "folder name test");
+	assert_equal(false, matcher.match_folder(test_files_folder().text(), "test"_c).is_match(), "folder name test");
 }
 
 // A level used to start at `true`, the identity for AND but the annihilator for OR. A group opened
@@ -707,13 +707,13 @@ static void should_group_search_terms()
 	const auto matches = [](const std::string_view query, const std::string_view name)
 	{
 		df::index_file_item file;
-		file.name = str::cache(name);
+		file.name = core::cache(name);
 		file.ft = files::file_type_from_name(name);
 		file.safe_ps();
 
 		const auto search = df::search_t::parse(query);
-		const df::search_matcher matcher(search, df::date_t(2000, 1, 1).to_days());
-		return matcher.match_all_terms(test_files_folder.text(), file).is_match();
+		const df::search_matcher matcher(search, core::date_t(2000, 1, 1).to_days());
+		return matcher.match_all_terms(test_files_folder().text(), file).is_match();
 	};
 
 	assert_equal(true, matches("alpha or (beta gamma)", "alpha.jpg"), "the left side of an or still matches");
@@ -742,13 +742,13 @@ static void should_group_search_terms()
 		file.name = "shot.jpg"_c;
 		file.ft = files::file_type_from_name("shot.jpg");
 		const auto md = file.safe_ps();
-		md->camera_model = str::cache(camera);
+		md->camera_model = core::cache(camera);
 		md->f_number = aperture;
 		md->iso_speed = iso;
 
 		const auto search = df::search_t::parse(query);
-		const df::search_matcher matcher(search, df::date_t(2000, 1, 1).to_days());
-		return matcher.match_all_terms(test_files_folder.text(), file).is_match();
+		const df::search_matcher matcher(search, core::date_t(2000, 1, 1).to_days());
+		return matcher.match_all_terms(test_files_folder().text(), file).is_match();
 	};
 
 	constexpr auto grouped = "(camera:canon f/2.8) or iso:100"sv;
@@ -855,8 +855,8 @@ static void should_read_a_query_back_as_it_was_asked()
 			md->f_number = 5.6f;
 
 			const auto search = df::search_t::parse(query);
-			const df::search_matcher matcher(search, df::date_t(2000, 1, 1).to_days());
-			return matcher.match_all_terms(test_files_folder.text(), file).is_match();
+			const df::search_matcher matcher(search, core::date_t(2000, 1, 1).to_days());
+			return matcher.match_all_terms(test_files_folder().text(), file).is_match();
 		};
 
 		assert_equal(true, matches("f/3.5"), "the lens description is one of the two readings");
@@ -872,7 +872,7 @@ static void should_read_a_query_back_as_it_was_asked()
 // identity unchanged, the identity test at the publication point could not tell the two apart.
 static void should_not_call_a_cancelled_query_complete(shared_test_context& stc)
 {
-	const auto search = df::search_t().add_selector(test_files_folder);
+	const auto search = df::search_t().add_selector(test_files_folder());
 
 	auto complete_runs = 0;
 	auto partial_runs = 0;
@@ -891,7 +891,7 @@ static void should_not_call_a_cancelled_query_complete(shared_test_context& stc)
 	partial_runs = 0;
 
 	std::atomic_bool cancelled = true;
-	const df::cancel_token stopped(cancelled);
+	const core::cancel_token stopped(cancelled);
 	stc.test_index.query_items(search, cb, stopped);
 
 	assert_equal(0, complete_runs, "a cancelled walk does not claim to be complete");
@@ -902,8 +902,8 @@ static void should_match_volume_label()
 {
 	// Map a drive letter to a volume label so the volume: term can be matched
 	// deterministically without depending on the drives present on the machine.
-	df::hash_map<char, str::cached> labels;
-	labels['X'] = str::cache("Backup");
+	core::hash_map<char, core::cached> labels;
+	labels['X'] = core::cache("Backup");
 
 	const auto exact = df::search_t::parse("volume:Backup");
 	const auto& exact_term = exact.terms().front();
@@ -922,11 +922,11 @@ static void should_match_volume_label()
 	             "non-matching label");
 }
 
-static void should_match_date(const std::string_view query, const df::date_t d)
+static void should_match_date(const std::string_view query, const core::date_t d)
 {
 	df::index_file_item props_without_val;
 	props_without_val.ft = files::file_type_from_name("test.jpg");
-	props_without_val.file_modified = df::date_t(1972, 5, 25);
+	props_without_val.file_modified = core::date_t(1972, 5, 25);
 	props_without_val.safe_ps();
 
 	df::index_file_item props_with_val;
@@ -934,17 +934,17 @@ static void should_match_date(const std::string_view query, const df::date_t d)
 	props_with_val.safe_ps()->dates.add(prop::date_source::exif_original, d);
 
 	const auto search = df::search_t::parse(query);
-	df::search_matcher matcher(search, df::date_t(2000, 1, 1).to_days());
+	df::search_matcher matcher(search, core::date_t(2000, 1, 1).to_days());
 
-	assert_equal(true, matcher.match_all_terms(test_files_folder.text(), props_with_val).is_match(), query);
-	assert_equal(false, matcher.match_all_terms(test_files_folder.text(), props_without_val).is_match(), query);
+	assert_equal(true, matcher.match_all_terms(test_files_folder().text(), props_with_val).is_match(), query);
+	assert_equal(false, matcher.match_all_terms(test_files_folder().text(), props_without_val).is_match(), query);
 }
 
 static void assert_parse(const std::string_view selector, const std::string_view display,
                          const std::string_view folder,
                          const bool is_recursive, const std::string_view wildcard)
 {
-	const df::item_selector sel(selector);
+	const core::item_selector sel(selector);
 
 	assert_equal(display, sel.str(), "item_selector.str");
 	assert_equal(folder, sel.folder().text(), "item_selector.folder");
@@ -980,7 +980,7 @@ static void should_detect_folder_browse()
 	//
 	// parse_path only accepts a folder that exists, so this uses the fixtures folder rather than a
 	// system one that only happens to be there on one platform.
-	const std::string folder(test_files_folder.text());
+	const std::string folder(test_files_folder().text());
 
 #ifdef _WIN32
 	// A UNC path is a Windows spelling; elsewhere a leading backslash is an ordinary name character. "\\"
@@ -988,16 +988,16 @@ static void should_detect_folder_browse()
 	// offers - read from its spelling alone, since the file system would only wait on the network to say it
 	// is no folder.
 	assert_equal(true, df::search_t::parse("\\\\").is_empty(), "a UNC prefix alone names nothing");
-	const auto server = df::search_t().add_selector(df::item_selector(df::folder_path("\\\\server")));
+	const auto server = df::search_t().add_selector(core::item_selector(core::folder_path("\\\\server")));
 	assert_equal(true, df::search_t::parse("\\\\server") == server, "a server opens on its shares");
 	assert_equal(true, df::search_t::parse("\\\\server\\") == server, "with or without a closing separator");
 	assert_equal(true, server.is_folder(), "browsed as a folder is");
 	assert_equal(true, server.can_be_read_from("\\\\server"), "and read back from its text, as a favourite is");
 #endif
 	assert_equal(true, df::search_t::parse(folder).is_folder(), "plain folder path");
-	assert_equal(true, df::search_t::parse(folder + df::preferred_path_sep + "**").is_folder(),
+	assert_equal(true, df::search_t::parse(folder + core::preferred_path_sep + "**").is_folder(),
 	             "recursive folder browse");
-	assert_equal(true, df::search_t::parse(folder + df::preferred_path_sep + "*.jpg").is_folder(),
+	assert_equal(true, df::search_t::parse(folder + core::preferred_path_sep + "*.jpg").is_folder(),
 	             "folder with wildcard, no terms");
 
 	// A search - even one scoped to a folder - is not a folder browse.
@@ -1012,9 +1012,9 @@ static void should_detect_folder_browse()
 // share that was away held the window for twenty seconds. Wherever parsing matched, reading has to.
 static void should_read_a_favourite_without_the_file_system()
 {
-	const std::string folder(test_files_folder.text());
+	const std::string folder(test_files_folder().text());
 	const auto quoted = df::quote_path_term(folder);
-	const std::string sep(1, df::preferred_path_sep);
+	const std::string sep(1, core::preferred_path_sep);
 	const auto plain = _temps.next_folder("favourite");
 	const std::string spaced(_temps.next_folder("favourite place").text());
 
@@ -1037,12 +1037,12 @@ static void should_read_a_favourite_without_the_file_system()
 	// it, or a folder and a year. Parsing picks the one that is there, as the place in view is.
 	const auto ambiguous = std::string(plain.text()) + " 2019";
 	assert_equal(true, df::search_t::parse(ambiguous).can_be_read_from(ambiguous), "a folder and a year");
-	assert_equal(true, df::search_t().add_selector(df::item_selector(ambiguous)).can_be_read_from(ambiguous),
+	assert_equal(true, df::search_t().add_selector(core::item_selector(ambiguous)).can_be_read_from(ambiguous),
 	             "a folder named with a year, read without asking whether it is there");
 
 	// A favourite on a place that is away reads as that place, as parsing it does.
 	const auto away = std::string(plain.combine("away").text());
-	const auto away_search = df::search_t().add_selector(df::item_selector(away));
+	const auto away_search = df::search_t().add_selector(core::item_selector(away));
 	assert_equal(true, df::search_t::parse(away) == away_search, "parsing keeps a place that is away");
 	assert_equal(true, away_search.can_be_read_from(away), "a place that is away reads back");
 
@@ -1066,7 +1066,7 @@ static void should_star_a_favourite_search_in_view()
 	view_state state(ss, as, index, make_test_player());
 	const view_host_base_ptr view;
 	const auto saved = setting.search;
-	const df::scope_exit restore([saved] { setting.search = saved; });
+	const core::scope_exit restore([saved] { setting.search = saved; });
 
 	const auto starred = _temps.next_folder("starred");
 	const auto folder = df::search_t().add_selector(starred);
@@ -1118,14 +1118,14 @@ static bool contains(const std::vector<platform::folder_info>& files, const std:
 
 static void should_select_files()
 {
-	const auto recursive = df::item_selector(test_files_folder, true);
+	const auto recursive = core::item_selector(test_files_folder(), true);
 	assert_equal(true, contains(platform::select_files(recursive, true), "Screws.CR2"),
 	             "files from sub folders");
 	assert_equal(true, contains(platform::select_files(recursive, true), "Cube.png"), "files from sub folders");
 	assert_equal(true, contains(platform::select_files(recursive, true), "Test.jpg"), "files from sub folders");
 	assert_equal(false, contains(platform::select_folders(recursive, true), "raw"), "no folders");
 
-	const auto not_recursive = df::item_selector(test_files_folder, false);
+	const auto not_recursive = core::item_selector(test_files_folder(), false);
 	assert_equal(false, contains(platform::select_files(not_recursive, true), "Screws.CR2"),
 	             "no files from sub folder");
 	assert_equal(true, contains(platform::select_files(not_recursive, true), "Cube.png"),
@@ -1134,7 +1134,7 @@ static void should_select_files()
 	             "files from sub folders");
 	assert_equal(true, contains(platform::select_folders(not_recursive, true), "raw"), "include folders");
 
-	const auto recursive_png = df::item_selector(test_files_folder, true, "*.png");
+	const auto recursive_png = core::item_selector(test_files_folder(), true, "*.png");
 	assert_equal(false, contains(platform::select_files(recursive_png, true), "Screws.CR2"),
 	             "no files from sub folder");
 	assert_equal(true, contains(platform::select_files(recursive_png, true), "Cube.png"),
@@ -1143,7 +1143,7 @@ static void should_select_files()
 	             "files from sub folders");
 	assert_equal(false, contains(platform::select_folders(recursive_png, true), "raw"), "include folders");
 
-	const auto not_recursive_cr2 = df::item_selector(test_files_folder, false, "*.cr2");
+	const auto not_recursive_cr2 = core::item_selector(test_files_folder(), false, "*.cr2");
 	assert_equal(false, contains(platform::select_files(not_recursive_cr2, true), "Screws.CR2"),
 	             "no files from sub folder");
 	assert_equal(false, contains(platform::select_files(not_recursive_cr2, true), "Cube.png"),
@@ -1152,7 +1152,7 @@ static void should_select_files()
 	             "files from sub folders");
 	assert_equal(true, contains(platform::select_folders(not_recursive_cr2, true), "raw"), "include folders");
 
-	const auto recursive_cr2 = df::item_selector(test_files_folder, true, "*.cr2");
+	const auto recursive_cr2 = core::item_selector(test_files_folder(), true, "*.cr2");
 	assert_equal(true, contains(platform::select_files(recursive_cr2, true), "Screws.CR2"),
 	             "no files from sub folder");
 	assert_equal(false, contains(platform::select_files(recursive_cr2, true), "Cube.png"),
@@ -1165,8 +1165,8 @@ static void should_select_files()
 static void should_preserve_query_when_toggling_recursive_selectors()
 {
 	auto search = df::search_t::parse("#family @photo created:2020");
-	search.add_selector(df::item_selector(test_files_folder, false));
-	search.add_selector(df::item_selector(test_files_folder, false, "*.jpg"));
+	search.add_selector(core::item_selector(test_files_folder(), false));
+	search.add_selector(core::item_selector(test_files_folder(), false, "*.jpg"));
 
 	auto recursive = search;
 	recursive.set_recursive(true);
@@ -1180,7 +1180,7 @@ static void should_preserve_query_when_toggling_recursive_selectors()
 	recursive.remove_recursive();
 	assert_equal(search.format_terms(), recursive.format_terms(), "recursive toggle round-trips");
 
-	auto simple = df::search_t().add_selector(test_files_folder);
+	auto simple = df::search_t().add_selector(test_files_folder());
 	simple.set_recursive(true);
 	assert_equal(true, simple.has_recursive_selector(), "simple folder can still become recursive");
 }
@@ -1190,21 +1190,21 @@ static void should_preserve_query_when_toggling_recursive_selectors()
 // `C:\Pictures` is a scope that silently holds files the user never pointed at.
 static void should_bound_a_recursive_selector_at_a_folder_boundary()
 {
-	const df::folder_path root("c:\\Pics");
-	const df::item_selector pics(root, true);
+	const core::folder_path root("c:\\Pics");
+	const core::item_selector pics(root, true);
 
-	assert_equal(true, pics.match(df::file_path(root, "a.jpg")), "the root itself is in scope");
-	assert_equal(true, pics.match(df::file_path(df::folder_path("c:\\Pics\\holiday"), "b.jpg")),
+	assert_equal(true, pics.match(core::file_path(root, "a.jpg")), "the root itself is in scope");
+	assert_equal(true, pics.match(core::file_path(core::folder_path("c:\\Pics\\holiday"), "b.jpg")),
 	             "and so is a folder below it");
-	assert_equal(false, pics.match(df::file_path(df::folder_path("c:\\Pictures"), "c.jpg")),
+	assert_equal(false, pics.match(core::file_path(core::folder_path("c:\\Pictures"), "c.jpg")),
 	             "a sibling the root merely prefixes is not");
-	assert_equal(false, pics.match(df::file_path(df::folder_path("c:\\PicsOld\\holiday"), "d.jpg")),
+	assert_equal(false, pics.match(core::file_path(core::folder_path("c:\\PicsOld\\holiday"), "d.jpg")),
 	             "and neither is anything under one");
 
 	// Non-recursive was already an equality test; pinned so the two branches cannot drift apart.
-	const df::item_selector one_folder(root, false);
-	assert_equal(true, one_folder.match(df::file_path(root, "a.jpg")), "one folder holds its own files");
-	assert_equal(false, one_folder.match(df::file_path(df::folder_path("c:\\Pictures"), "c.jpg")),
+	const core::item_selector one_folder(root, false);
+	assert_equal(true, one_folder.match(core::file_path(root, "a.jpg")), "one folder holds its own files");
+	assert_equal(false, one_folder.match(core::file_path(core::folder_path("c:\\Pictures"), "c.jpg")),
 	             "and claims no sibling");
 }
 
@@ -1215,11 +1215,11 @@ static void should_bound_related_results_by_closeness()
 	df::bounded_best<int> slots;
 	slots.limit(3);
 
-	const df::folder_path folder("c:\\test");
+	const core::folder_path folder("c:\\test");
 
 	for (const auto distance : {50, 10, 40, 20, 30})
 	{
-		slots.offer(distance, df::file_path(folder, std::format("{}.jpg", distance)), distance);
+		slots.offer(distance, core::file_path(folder, std::format("{}.jpg", distance)), distance);
 	}
 
 	const auto best = slots.take();
@@ -1235,12 +1235,12 @@ static void should_bound_related_results_by_closeness()
 // search would answer differently each time it ran.
 static void should_break_related_ties_on_path()
 {
-	const df::folder_path folder("c:\\test");
-	const df::file_path a(folder, "a.jpg");
-	const df::file_path b(folder, "b.jpg");
-	const df::file_path c(folder, "c.jpg");
+	const core::folder_path folder("c:\\test");
+	const core::file_path a(folder, "a.jpg");
+	const core::file_path b(folder, "b.jpg");
+	const core::file_path c(folder, "c.jpg");
 
-	const auto survivors = [&](const df::file_paths& order)
+	const auto survivors = [&](const core::file_paths& order)
 	{
 		df::bounded_best<int> slots;
 		slots.limit(2);
@@ -1259,18 +1259,18 @@ static void should_break_related_ties_on_path()
 static void should_group_related_results_by_axis()
 {
 	df::related_collector<int> collector;
-	const df::folder_path folder("c:\\test");
+	const core::folder_path folder("c:\\test");
 
-	collector.offer({df::related_axis::location, 5}, df::file_path(folder, "place.jpg"), 4);
-	collector.offer({df::related_axis::duplicate, 0}, df::file_path(folder, "copy.jpg"), 1);
-	collector.offer({df::related_axis::time, 5}, df::file_path(folder, "when.jpg"), 3);
-	collector.offer({df::related_axis::album, 5}, df::file_path(folder, "album.jpg"), 2);
+	collector.offer({df::related_axis::location, 5}, core::file_path(folder, "place.jpg"), 4);
+	collector.offer({df::related_axis::duplicate, 0}, core::file_path(folder, "copy.jpg"), 1);
+	collector.offer({df::related_axis::time, 5}, core::file_path(folder, "when.jpg"), 3);
+	collector.offer({df::related_axis::album, 5}, core::file_path(folder, "album.jpg"), 2);
 
 	assert_equal(4u, static_cast<uint32_t>(collector.size()), "every axis holds its own matches");
 	assert_equal(1u, static_cast<uint32_t>(collector.size(df::related_axis::time)), "per axis count");
 
 	std::string order;
-	collector.drain([&order](const df::file_path, int&& value) { order += std::to_string(value); });
+	collector.drain([&order](const core::file_path, int&& value) { order += std::to_string(value); });
 
 	assert_equal("1234", order, "axes drain in priority order");
 }
@@ -1279,7 +1279,7 @@ static df::index_file_item make_related_candidate(const std::string_view name)
 {
 	df::index_file_item result;
 	result.ft = files::file_type_from_name(name);
-	result.name = str::cache(name);
+	result.name = core::cache(name);
 	return result;
 }
 
@@ -1330,10 +1330,10 @@ static std::string related_result_summary(index_state& index, const df::search_t
 static df::related_info make_related_anchor()
 {
 	df::related_info anchor;
-	anchor.path = df::file_path(test_files_folder, "anchor.jpg");
-	anchor.name = str::cache("anchor.jpg");
+	anchor.path = core::file_path(test_files_folder(), "anchor.jpg");
+	anchor.name = core::cache("anchor.jpg");
 	anchor.ft = files::file_type_from_name("anchor.jpg");
-	anchor.size = df::file_size(1000);
+	anchor.size = core::file_size(1000);
 	anchor.is_loaded = true;
 	return anchor;
 }
@@ -1343,20 +1343,20 @@ static df::search_result match_related(const df::related_info& anchor, const std
 {
 	const auto search = df::search_t().related(anchor);
 	const df::search_matcher matcher(search);
-	return matcher.match_item(df::file_path(test_files_folder, name), candidate);
+	return matcher.match_item(core::file_path(test_files_folder(), name), candidate);
 }
 
 static void should_match_related_by_album()
 {
 	auto anchor = make_related_anchor();
-	anchor.album = str::cache("Album");
-	anchor.disk = df::xy8::make(1, 1);
-	anchor.track = df::xy8::make(3, 12);
+	anchor.album = core::cache("Album");
+	anchor.disk = core::xy8::make(1, 1);
+	anchor.track = core::xy8::make(3, 12);
 
 	auto candidate = make_related_candidate("track5.mp3");
-	candidate.safe_ps()->album = str::cache("Album");
-	candidate.safe_ps()->disk = df::xy8::make(1, 1);
-	candidate.safe_ps()->track = df::xy8::make(5, 12);
+	candidate.safe_ps()->album = core::cache("Album");
+	candidate.safe_ps()->disk = core::xy8::make(1, 1);
+	candidate.safe_ps()->track = core::xy8::make(5, 12);
 
 	const auto match = match_related(anchor, "track5.mp3", candidate);
 	assert_equal(true, match.is_match(), "same album is related");
@@ -1364,8 +1364,8 @@ static void should_match_related_by_album()
 	assert_equal(2, static_cast<int>(match.distance), "distance is the gap in track order");
 
 	// Two artists can both have a "Greatest Hits", so a named artist on each side has to agree.
-	anchor.album_artist = str::cache("One");
-	candidate.safe_ps()->album_artist = str::cache("Another");
+	anchor.album_artist = core::cache("One");
+	candidate.safe_ps()->album_artist = core::cache("Another");
 	assert_equal(false, match_related(anchor, "track5.mp3", candidate).is_match(),
 	             "a different album artist is not the same album");
 }
@@ -1373,21 +1373,21 @@ static void should_match_related_by_album()
 static void should_match_related_by_series()
 {
 	auto anchor = make_related_anchor();
-	anchor.show = str::cache("Show");
+	anchor.show = core::cache("Show");
 	anchor.season = 2;
-	anchor.episode = df::xy8::make(5, 10);
+	anchor.episode = core::xy8::make(5, 10);
 
 	auto candidate = make_related_candidate("episode7.mkv");
-	candidate.safe_ps()->show = str::cache("Show");
+	candidate.safe_ps()->show = core::cache("Show");
 	candidate.safe_ps()->season = 2;
-	candidate.safe_ps()->episode = df::xy8::make(7, 10);
+	candidate.safe_ps()->episode = core::xy8::make(7, 10);
 
 	const auto match = match_related(anchor, "episode7.mkv", candidate);
 	assert_equal(true, match.is_match(), "same series is related");
 	assert_equal("series", matched_axis(match), "series axis");
 	assert_equal(2, static_cast<int>(match.distance), "distance is the gap in episode order");
 
-	candidate.safe_ps()->show = str::cache("Other show");
+	candidate.safe_ps()->show = core::cache("Other show");
 	assert_equal(false, match_related(anchor, "episode7.mkv", candidate).is_match(), "a different show is unrelated");
 }
 
@@ -1395,12 +1395,12 @@ static void should_match_related_by_series()
 static void should_match_related_by_film()
 {
 	auto anchor = make_related_anchor();
-	anchor.title = str::cache("Don't Look Up");
+	anchor.title = core::cache("Don't Look Up");
 	anchor.year = 2021;
 	anchor.kind = prop::media_kind::film;
 
 	auto candidate = make_related_candidate("Dont.Look.Up.2021.720p.mkv");
-	candidate.safe_ps()->title = str::cache("Dont Look Up");
+	candidate.safe_ps()->title = core::cache("Dont Look Up");
 	candidate.safe_ps()->year = 2021;
 	candidate.safe_ps()->kind = prop::media_kind::film;
 
@@ -1426,10 +1426,10 @@ static void should_match_related_by_film()
 static void should_match_related_by_capture_time()
 {
 	auto anchor = make_related_anchor();
-	anchor.metadata_created = df::date_t(2020, 5, 1, 12, 0, 0);
+	anchor.metadata_created = core::date_t(2020, 5, 1, 12, 0, 0);
 
 	auto candidate = make_related_candidate("burst.jpg");
-	candidate.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(2020, 5, 1, 12, 0, 30));
+	candidate.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(2020, 5, 1, 12, 0, 30));
 
 	const auto match = match_related(anchor, "burst.jpg", candidate);
 	assert_equal(true, match.is_match(), "a near capture time is related");
@@ -1437,7 +1437,7 @@ static void should_match_related_by_capture_time()
 	assert_equal(30, static_cast<int>(match.distance), "distance is the gap in seconds");
 
 	candidate.safe_ps()->dates.clear();
-	candidate.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(2020, 5, 3, 12, 0, 0));
+	candidate.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(2020, 5, 3, 12, 0, 0));
 	assert_equal(false, match_related(anchor, "burst.jpg", candidate).is_match(),
 	             "outside the window is not the same time");
 
@@ -1472,14 +1472,14 @@ static void should_match_related_by_capture_place()
 static void should_report_the_strongest_related_axis()
 {
 	auto anchor = make_related_anchor();
-	anchor.metadata_created = df::date_t(2020, 5, 1, 12, 0, 0);
+	anchor.metadata_created = core::date_t(2020, 5, 1, 12, 0, 0);
 	anchor.gps = gps_coordinate(51.5007, -0.1246);
-	anchor.album = str::cache("Album");
+	anchor.album = core::cache("Album");
 
 	auto candidate = make_related_candidate("everything.jpg");
 	candidate.safe_ps()->dates.add(prop::date_source::exif_original, anchor.metadata_created);
 	candidate.safe_ps()->coordinate = anchor.gps;
-	candidate.safe_ps()->album = str::cache("Album");
+	candidate.safe_ps()->album = core::cache("Album");
 
 	assert_equal("album", matched_axis(match_related(anchor, "everything.jpg", candidate)),
 	             "album outranks time and place");
@@ -1499,8 +1499,8 @@ static void should_list_an_item_once(shared_test_context& stc)
 {
 	stc.lazy_load_index();
 
-	const df::item_selector whole_tree(test_files_folder, true);
-	const df::item_selector sub_folder(test_files_folder.combine("raw"), true);
+	const core::item_selector whole_tree(test_files_folder(), true);
+	const core::item_selector sub_folder(test_files_folder().combine("raw"), true);
 
 	const auto tree_only = count_search_results(stc.test_index, df::search_t().add_selector(whole_tree));
 	const auto overlapping = count_search_results(stc.test_index,
@@ -1513,7 +1513,7 @@ static void should_match_related(shared_test_context& stc)
 {
 	stc.lazy_load_index();
 
-	const df::file_path path(test_files_folder, "Test.jpg");
+	const core::file_path path(test_files_folder(), "Test.jpg");
 	const auto i = std::make_shared<df::item_element>(path, stc.test_index.find_item(path));
 	stc.test_index.scan_item(i, true, false);
 
@@ -1526,8 +1526,8 @@ static void should_match_related(shared_test_context& stc)
 
 	r.group = 0;
 	df::index_file_item different_size = stc.test_index.find_item(path);
-	different_size.name = str::cache("different-name.jpg");
-	different_size.size = df::file_size(different_size.size.to_int64() + 1);
+	different_size.name = core::cache("different-name.jpg");
+	different_size.size = core::file_size(different_size.size.to_int64() + 1);
 	const auto related_search = df::search_t().related(r);
 	const df::search_matcher matcher(related_search);
 
@@ -1563,12 +1563,12 @@ static void should_not_treat_anchored_perceptual_group_as_pairwise_duplicate()
 		(1ull << 35) | (1ull << 36) | (1ull << 37);
 
 	df::related_info related;
-	related.path = df::file_path("c:\\photos\\left.jpg");
+	related.path = core::file_path("c:\\photos\\left.jpg");
 	related.name = "left.jpg"_c;
 	related.ft = files::file_type_from_name("left.jpg");
 	related.group = 7;
 	related.duplicate_grade = df::copy_grade::same_picture;
-	related.metadata_created = df::date_t(2026, 1, 1, 12, 0, 0);
+	related.metadata_created = core::date_t(2026, 1, 1, 12, 0, 0);
 	related.phash = {left, 0, 0, 0};
 	related.dimensions = {100, 100};
 	related.is_loaded = true;
@@ -1616,13 +1616,13 @@ static void should_use_only_exact_groups_for_related_duplicate_shortcut()
 		(1ull << 32) | (1ull << 33) | (1ull << 34);
 
 	df::related_info related;
-	related.path = df::file_path("c:\\photos\\original.jpg");
+	related.path = core::file_path("c:\\photos\\original.jpg");
 	related.name = "original.jpg"_c;
 	related.ft = files::file_type_from_name("original.jpg");
 	related.group = 11;
 	related.exact_group = 1;
 	related.duplicate_grade = df::copy_grade::identical;
-	related.metadata_created = df::date_t(2026, 1, 1, 12, 0, 0);
+	related.metadata_created = core::date_t(2026, 1, 1, 12, 0, 0);
 	related.phash = {base, 0, 0, 0};
 	related.dimensions = {100, 100};
 	related.is_loaded = true;
@@ -1658,16 +1658,16 @@ static void should_clear_exact_duplicate_shortcut_outside_collection()
 	const auto first_b = first_root.combine_file("first-b.jpg");
 	const auto second_a = second_root.combine_file("second-a.jpg");
 	const auto second_b = second_root.combine_file("second-b.jpg");
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), first_a, false, false);
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), first_b, false, false);
-	platform::copy_file(test_files_folder.combine_file("Small.jpg"), second_a, false, false);
-	platform::copy_file(test_files_folder.combine_file("Small.jpg"), second_b, false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), first_a, false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), first_b, false, false);
+	platform::copy_file(test_files_folder().combine_file("Small.jpg"), second_a, false, false);
+	platform::copy_file(test_files_folder().combine_file("Small.jpg"), second_b, false, false);
 
 	null_async_strategy as;
 	const location_cache locations;
 	index_state index(as, locations);
 
-	df::index_roots first_roots;
+	core::index_roots first_roots;
 	first_roots.folders.emplace(first_root);
 	index.index_roots(first_roots);
 	index.index_folders(test_token);
@@ -1676,7 +1676,7 @@ static void should_clear_exact_duplicate_shortcut_outside_collection()
 	assert_equal(true, index.find_item(first_a).exact_duplicate_group.load() != 0,
 	             "first collection earned an exact group");
 
-	df::index_roots second_roots;
+	core::index_roots second_roots;
 	second_roots.folders.emplace(second_root);
 	index.index_roots(second_roots);
 	index.index_folders(test_token);
@@ -1703,7 +1703,7 @@ static void should_match_related_from_text(shared_test_context& stc)
 {
 	stc.lazy_load_index();
 
-	const df::file_path path(test_files_folder, "Test.jpg");
+	const core::file_path path(test_files_folder(), "Test.jpg");
 	const auto i = std::make_shared<df::item_element>(path, stc.test_index.find_item(path));
 	stc.test_index.scan_item(i, true, false);
 
@@ -1849,7 +1849,7 @@ static void should_next_date_search()
 
 static void should_parse_search_input()
 {
-	const auto base_folder = std::string(test_files_folder.text());
+	const auto base_folder = std::string(test_files_folder().text());
 
 	null_state_strategy ss;
 	null_async_strategy as;
@@ -1858,17 +1858,17 @@ static void should_parse_search_input()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::items);
-	s.open(view, test_files_folder.text());
+	s.open(view, test_files_folder().text());
 	s.open(view, "..");
 
-	assert_equal(test_files_folder.parent().text(), s.search().text(), "Parse ..");
+	assert_equal(test_files_folder().parent().text(), s.search().text(), "Parse ..");
 
-	s.open(view, test_files_folder.text());
+	s.open(view, test_files_folder().text());
 	s.open(view, "**");
 
-	assert_equal(base_folder + df::preferred_path_sep + "**"s, s.search().text(), "Parse **");
+	assert_equal(base_folder + core::preferred_path_sep + "**"s, s.search().text(), "Parse **");
 
-	s.open(view, test_files_folder.text());
+	s.open(view, test_files_folder().text());
 	s.open(view, "aaa");
 
 	assert_equal("aaa"s, s.search().text(), "Parse aaa");
@@ -1879,12 +1879,12 @@ static void should_parse_search_input()
 
 static void should_parent()
 {
-	const auto folder = df::folder_path(as_platform_path("c:\\windows\\system32"));
+	const auto folder = core::folder_path(as_platform_path("c:\\windows\\system32"));
 	assert_equal(as_platform_path("c:\\windows"), folder.parent().text(), "parent test");
 	assert_equal(as_platform_path("c:\\"), folder.parent().parent().text(), "parent test");
 	assert_equal(as_platform_path("c:\\"), folder.parent().parent().parent().text(), "parent test");
 
-	const auto base_folder = std::string(test_files_folder.text());
+	const auto base_folder = std::string(test_files_folder().text());
 	null_state_strategy ss;
 	null_async_strategy as;
 	location_cache locations;
@@ -1893,20 +1893,20 @@ static void should_parent()
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::items);
 
-	df::index_roots roots;
-	roots.folders = {test_files_folder};
+	core::index_roots roots;
+	roots.folders = {test_files_folder()};
 	s.item_index.index_roots(roots);
 	s.item_index.index_folders(test_token);
 
 	s.open(view, base_folder + " test"s);
 	assert_equal(base_folder, s.parent_search().parent.text(), "parent test");
 
-	s.open(view, base_folder + df::preferred_path_sep + "raw"s);
+	s.open(view, base_folder + core::preferred_path_sep + "raw"s);
 	const auto raw_parent = s.parent_search();
 	assert_equal(base_folder, raw_parent.parent.text(), "parent \\raw");
 	assert_equal("raw", raw_parent.name, "parent name \\raw");
 
-	s.open(view, base_folder + df::preferred_path_sep + "*.png"s);
+	s.open(view, base_folder + core::preferred_path_sep + "*.png"s);
 	assert_equal(base_folder, s.parent_search().parent.text(), "parent *.png");
 
 	s.open(view, base_folder + " @photo"s);
@@ -1941,7 +1941,7 @@ static void should_parent()
 	const auto root = as_platform_path("c:\\");
 	// A folder scope only survives if the folder is real, so this uses the fixtures folder rather
 	// than a system one that only exists on one platform.
-	const std::string scope_folder(test_files_folder.text());
+	const std::string scope_folder(test_files_folder().text());
 
 	assert_equal(true, find_parent_search(df::search_t::parse(root)).parent.is_empty(), "parent of drive root");
 
@@ -1978,7 +1978,7 @@ static void should_parent()
 
 static void should_escape()
 {
-	const auto base_folder = std::string(test_files_folder.text());
+	const auto base_folder = std::string(test_files_folder().text());
 
 	null_state_strategy ss;
 	null_async_strategy as;
@@ -1987,17 +1987,17 @@ static void should_escape()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 
-	df::index_roots roots;
-	roots.folders = {test_files_folder};
+	core::index_roots roots;
+	roots.folders = {test_files_folder()};
 	s.item_index.index_roots(roots);
 	s.item_index.index_folders(test_token);
 
 	s.view_mode(view_type::items);
-	s.open(view, base_folder + df::preferred_path_sep + "**"s);
+	s.open(view, base_folder + core::preferred_path_sep + "**"s);
 	s.is_full_screen = true;
 	assert_equal(true, s.escape(view), "fullscreen escape handled");
 	assert_equal(1, ss.toggle_full_screen_count, "fullscreen escape toggled fullscreen");
-	assert_equal(base_folder + df::preferred_path_sep + "**"s, s.search().text(),
+	assert_equal(base_folder + core::preferred_path_sep + "**"s, s.search().text(),
 	             "fullscreen escape preserves search");
 	s.is_full_screen = false;
 	s.escape(view);
@@ -2018,7 +2018,7 @@ static void should_select_remote_items()
 
 	auto& locations = test_locations();
 
-	const auto is_remote = [&locations](const gps_coordinate coord, const str::cached stored_place)
+	const auto is_remote = [&locations](const gps_coordinate coord, const core::cached stored_place)
 	{
 		df::index_file_item file;
 		file.ft = files::file_type_from_name("test.jpg");
@@ -2028,7 +2028,7 @@ static void should_select_remote_items()
 		file.calc_search_presence();
 
 		const auto search = df::search_t::parse("@remote");
-		const df::search_matcher matcher(search, platform::now().to_days(), &locations);
+		const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
 		return matcher.match_item({}, file).is_match();
 	};
 
@@ -2057,7 +2057,7 @@ static void should_search_cyrillic_text()
 
 	df::index_file_item info;
 	info.ft = files::file_type_from_name("test.jpg");
-	info.safe_ps()->description = str::cache(description_with_x);
+	info.safe_ps()->description = core::cache(description_with_x);
 
 	assert_equal(true, matcher.match_item({}, info).is_match(), "Cyrillic X search");
 }
@@ -2122,12 +2122,12 @@ static void should_evaluate_folder_wildcards_inside_boolean_search()
 		df::index_file_item file;
 		file.name = "photo.jpg"_c;
 		file.ft = files::file_type_from_name("photo.jpg");
-		file.safe_ps()->tags = str::cache(tag);
+		file.safe_ps()->tags = core::cache(tag);
 		file.calc_search_presence();
 
 		const auto search = df::search_t::parse(query);
 		const df::search_matcher matcher(search);
-		return matcher.match_item(df::file_path(df::folder_path(folder), "photo.jpg"), file).is_match();
+		return matcher.match_item(core::file_path(core::folder_path(folder), "photo.jpg"), file).is_match();
 	};
 
 	assert_equal(false, matches("-**Private**", "c:\\photos\\Private", {}),
@@ -2151,34 +2151,34 @@ static void should_evaluate_folder_wildcards_inside_boolean_search()
 
 static void should_exclude_dot_folders_with_wildcard()
 {
-	df::index_roots roots;
+	core::index_roots roots;
 	roots.exclude_wildcards.emplace(".*"_c); // pattern to match any dot-prefixed folder
 
 	// Folder names starting with '.' should be excluded
-	assert_equal(true, df::is_excluded(roots, df::folder_path("c:\\photos\\.git")),
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.git")),
 	             ".git excluded");
-	assert_equal(true, df::is_excluded(roots, df::folder_path("c:\\photos\\.thumbnails")),
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.thumbnails")),
 	             ".thumbnails excluded");
-	assert_equal(true, df::is_excluded(roots, df::folder_path("c:\\photos\\.hidden")),
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.hidden")),
 	             ".hidden excluded");
 
 	// Folder names NOT starting with '.' should NOT be excluded
-	assert_equal(false, df::is_excluded(roots, df::folder_path("c:\\photos\\vacation")),
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\vacation")),
 	             "vacation not excluded");
-	assert_equal(false, df::is_excluded(roots, df::folder_path("c:\\photos\\2024")),
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\2024")),
 	             "2024 not excluded");
 }
 
 static void should_exclude_specific_folder_name()
 {
-	df::index_roots roots;
+	core::index_roots roots;
 	roots.exclude_wildcards.emplace("Proxy"_c);
 
-	assert_equal(true, df::is_excluded(roots, df::folder_path("c:\\photos\\Proxy")),
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\Proxy")),
 	             "Proxy excluded");
-	assert_equal(true, df::is_excluded(roots, df::folder_path("c:\\videos\\Proxy")),
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\videos\\Proxy")),
 	             "Proxy in different parent excluded");
-	assert_equal(false, df::is_excluded(roots, df::folder_path("c:\\photos\\originals")),
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\originals")),
 	             "originals not excluded");
 }
 
@@ -2189,27 +2189,27 @@ static void should_exclude_specific_folder_name()
 static void should_parse_exclude_dot_folder_by_name()
 {
 	// Exclude a dot-folder by bare name.
-	df::index_roots by_name;
+	core::index_roots by_name;
 	parse_more_folders(by_name, "-.dtrash");
 
 	assert_equal(0_z, by_name.excludes.size(), "no full-path excludes");
 	assert_equal(1_z, by_name.exclude_wildcards.size(), "dot name stored as wildcard");
 	assert_equal(".dtrash", *by_name.exclude_wildcards.begin(), "wildcard text preserved");
 
-	assert_equal(true, df::is_excluded(by_name, df::folder_path("c:\\photos\\.dtrash")),
+	assert_equal(true, core::is_excluded(by_name, core::folder_path("c:\\photos\\.dtrash")),
 	             ".dtrash excluded by name");
-	assert_equal(true, df::is_excluded(by_name, df::folder_path("d:\\other\\sub\\.dtrash")),
+	assert_equal(true, core::is_excluded(by_name, core::folder_path("d:\\other\\sub\\.dtrash")),
 	             ".dtrash excluded by name in any parent");
-	assert_equal(false, df::is_excluded(by_name, df::folder_path("c:\\photos\\dtrash")),
+	assert_equal(false, core::is_excluded(by_name, core::folder_path("c:\\photos\\dtrash")),
 	             "non-dot folder not excluded");
 
 	// Exclude the same dot-folder by full path - the case the user confirmed works.
-	df::index_roots by_path;
+	core::index_roots by_path;
 	const auto dtrash = as_platform_path("c:\\photos\\.dtrash");
 	parse_more_folders(by_path, "-" + dtrash);
 
 	assert_equal(1_z, by_path.excludes.size(), "full path stored as exclude");
-	assert_equal(true, df::is_excluded(by_path, df::folder_path(dtrash)),
+	assert_equal(true, core::is_excluded(by_path, core::folder_path(dtrash)),
 	             ".dtrash excluded by full path");
 }
 
@@ -2217,15 +2217,15 @@ static void should_parse_exclude_dot_folder_by_name()
 // round-trip through the parser into an exclude wildcard.
 static void should_parse_exclude_dot_wildcard()
 {
-	df::index_roots roots;
+	core::index_roots roots;
 	parse_more_folders(roots, "-.*");
 
 	assert_equal(1_z, roots.exclude_wildcards.size(), "dot wildcard stored");
 	assert_equal(".*", *roots.exclude_wildcards.begin(), "wildcard text preserved");
 
-	assert_equal(true, df::is_excluded(roots, df::folder_path("c:\\photos\\.git")),
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.git")),
 	             ".git excluded by .* wildcard");
-	assert_equal(false, df::is_excluded(roots, df::folder_path("c:\\photos\\normal")),
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\normal")),
 	             "normal folder not excluded by .* wildcard");
 }
 
@@ -2268,7 +2268,7 @@ static void should_search_korean_description()
 
 	df::index_file_item info;
 	info.ft = files::file_type_from_name("test.jpg");
-	info.safe_ps()->description = str::cache(description);
+	info.safe_ps()->description = core::cache(description);
 
 	assert_equal(true, matcher.match_item({}, info).is_match(), "Korean description search");
 }
@@ -2284,7 +2284,7 @@ static void should_match_korean_nfc_nfd()
 	constexpr auto nfd = "\u1100\u1161"; // 가 decomposed conjoining jamo
 
 	// Canonical equivalence: normalising both forms to NFC yields identical bytes.
-	// (Generic str::icmp intentionally stays byte-exact for path safety, so the
+	// (Generic core::icmp intentionally stays byte-exact for path safety, so the
 	// normalization happens in the search layer, not in icmp.)
 	assert_equal(platform::normalize_nfc(nfc), platform::normalize_nfc(nfd), "NFC(nfc) == NFC(nfd)");
 
@@ -2322,9 +2322,9 @@ static void should_handle_emoji_tags()
 	assert_equal(2, static_cast<int>(tags.size()), "emoji tag count");
 
 	// Case-folding a non-BMP code point is the identity (no case).
-	assert_equal_strict(party, str::to_lower(party), "emoji to_lower identity");
-	assert_equal(0, str::icmp(party, party), "emoji icmp equal");
-	assert_equal(true, str::icmp(party, cat) != 0, "different emoji differ");
+	assert_equal_strict(party, to_lower(party), "emoji to_lower identity");
+	assert_equal(0, icmp(party, party), "emoji icmp equal");
+	assert_equal(true, core::icmp(party, cat) != 0, "different emoji differ");
 
 	// Removing one emoji tag leaves the other intact.
 	tags.remove(tag_set(cat));
@@ -2399,17 +2399,17 @@ static void should_carry_modifiers_through_with_and_without()
 // answers. These are the arms that were missing, and the names that had no stored value behind them.
 static void should_answer_every_offered_with_scope()
 {
-	prop_test().orientation(ui::orientation::left_top)
+	prop_test().orientation(core::orientation::left_top)
 	           .is_match("with:orientation")
 	           .is_not_match("without:orientation");
 
 	// top_left is the default and none means nothing was recorded, so neither is an orientation
 	// anyone asked for - the test that answered `!= left_top` had these exactly backwards.
-	prop_test().orientation(ui::orientation::top_left).rate(3)
+	prop_test().orientation(core::orientation::top_left).rate(3)
 	           .is_not_match("with:orientation")
 	           .is_match("without:orientation");
 
-	prop_test().orientation(ui::orientation::none).rate(3)
+	prop_test().orientation(core::orientation::none).rate(3)
 	           .is_not_match("with:orientation")
 	           .is_match("without:orientation");
 
@@ -2535,15 +2535,15 @@ static void should_highlight_the_actual_auto_complete_match_text()
 
 static void should_measure_search_highlights_as_text_bytes()
 {
-	const auto cyrillic = str::ifind2("привет", "ве", 0);
+	const auto cyrillic = core::ifind2("привет", "ве", 0);
 	assert_equal(true, cyrillic.found, "cyrillic substring matches");
 	assert_equal(1_z, cyrillic.parts.size(), "one cyrillic highlight");
 	assert_equal(6u, cyrillic.parts[0].offset, "cyrillic byte offset");
 	assert_equal(4u, cyrillic.parts[0].length, "cyrillic highlight covers both two-byte letters");
 
-	assert_equal(8u, str::matched_text_byte_length("M\xc3\xbcnchen", 0, "m\xc3\xbcnchen"),
+	assert_equal(8u, core::matched_text_byte_length("M\xc3\xbcnchen", 0, "m\xc3\xbcnchen"),
 	             "folded umlaut prefix covers the whole UTF-8 folder name");
-	assert_equal(7u, str::matched_text_byte_length("Z\xc3\xbcrich", 0, "zurich"),
+	assert_equal(7u, core::matched_text_byte_length("Z\xc3\xbcrich", 0, "zurich"),
 	             "folded ASCII query covers the whole UTF-8 location text");
 }
 
@@ -2552,7 +2552,7 @@ static void should_measure_search_highlights_as_text_bytes()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Mirrors the vocabulary substring-prediction path in auto_complete_words: for single-token
-// queries, trigram candidates verified with str::ifind2 must reproduce a full ifind2 scan of
+// queries, trigram candidates verified with ifind2 must reproduce a full ifind2 scan of
 // the vocabulary exactly (the correctness guarantee behind the per-keystroke acceleration).
 static void should_accelerate_substring_prediction()
 {
@@ -2568,7 +2568,7 @@ static void should_accelerate_substring_prediction()
 	{
 		std::vector<uint32_t> out;
 		for (uint32_t i = 0; i < words.size(); ++i)
-			if (str::ifind2(words[i], q, 0).found) out.push_back(i);
+			if (core::ifind2(words[i], q, 0).found) out.push_back(i);
 		return out;
 	};
 
@@ -2579,7 +2579,7 @@ static void should_accelerate_substring_prediction()
 
 		std::vector<uint32_t> via_index;
 		for (const auto id : *cand)
-			if (str::ifind2(words[id], q, 0).found) via_index.push_back(id);
+			if (core::ifind2(words[id], q, 0).found) via_index.push_back(id);
 		std::ranges::sort(via_index);
 
 		assert_equal(true, via_index == scan(q), std::format("'{}' trigram+verify == full scan", q));
@@ -2625,7 +2625,7 @@ static void should_predict_search_completions(shared_test_context& stc)
 // out of the folder they are standing in while their date and type narrowings survived.
 static void should_broaden_one_narrowing_at_a_time()
 {
-	const auto folder = std::string(test_files_folder.text());
+	const auto folder = std::string(test_files_folder().text());
 	auto search = df::search_t::parse(folder + " @photo beach 2019-06-15"s);
 
 	assert_equal(true, search.has_date(), "the query starts with a date");
@@ -2664,12 +2664,12 @@ static void should_broaden_one_narrowing_at_a_time()
 	// 4. Only then a folder level.
 	const auto folder_parent = find_parent_search(parent);
 	assert_equal(true, folder_parent.parent.has_selector(), "the last step is one folder level");
-	assert_equal(test_files_folder.name(), folder_parent.name, "the departed folder is named");
-	assert_equal(true, folder_parent.parent.selectors().front().folder() == test_files_folder.parent(),
+	assert_equal(test_files_folder().name(), folder_parent.name, "the departed folder is named");
+	assert_equal(true, folder_parent.parent.selectors().front().folder() == test_files_folder().parent(),
 	             "the folder step goes up exactly one level");
 
 	// design.md: "A scope with nothing wider to show, such as a drive root, reports no parent".
-	auto root = df::search_t().add_selector(df::item_selector(df::folder_path("c:\\")));
+	auto root = df::search_t().add_selector(core::item_selector(core::folder_path("c:\\")));
 	assert_equal(true, find_parent_search(root).parent.is_empty(), "a drive root has no parent");
 }
 
@@ -2785,24 +2785,24 @@ void register_search_tests(view_state& state, test_registry& tests)
 
 	// One row per query/date pair. The name carries both so a failure names the case and
 	// /test: can select a single row.
-	const auto register_match_date = [&tests](const std::string& query, const df::date_t d)
+	const auto register_match_date = [&tests](const std::string& query, const core::date_t d)
 	{
 		tests.add(std::format("Should match date {} on {}", query, d.to_xmp_date()),
 		          [query, d] { should_match_date(query, d); });
 	};
 
-	register_match_date("2012-09-14", df::date_t(2012, 9, 14));
-	register_match_date("2012", df::date_t(2012, 1, 14));
-	register_match_date("2012|2013", df::date_t(2012, 1, 14));
-	register_match_date("(April or June) (2013 or 2015)", df::date_t(2013, 4, 22));
-	register_match_date("(April or June) (2013 or 2015)", df::date_t(2015, 6, 7));
-	register_match_date("age:4", df::date_t(1999, 12, 30));
+	register_match_date("2012-09-14", core::date_t(2012, 9, 14));
+	register_match_date("2012", core::date_t(2012, 1, 14));
+	register_match_date("2012|2013", core::date_t(2012, 1, 14));
+	register_match_date("(April or June) (2013 or 2015)", core::date_t(2013, 4, 22));
+	register_match_date("(April or June) (2013 or 2015)", core::date_t(2015, 6, 7));
+	register_match_date("age:4", core::date_t(1999, 12, 30));
 
 	// A bare month is a month whether or not a date scope names which date it applies to.
 	// Scoped, it used to parse as a YEAR, so every one of these returned nothing.
-	register_match_date("august", df::date_t(2019, 8, 3));
-	register_match_date("original:august", df::date_t(2019, 8, 3));
-	register_match_date("taken:august", df::date_t(2019, 8, 3));
+	register_match_date("august", core::date_t(2019, 8, 3));
+	register_match_date("original:august", core::date_t(2019, 8, 3));
+	register_match_date("taken:august", core::date_t(2019, 8, 3));
 
 	//
 	// Search format round-trip
@@ -2859,7 +2859,7 @@ void register_search_tests(view_state& state, test_registry& tests)
 		tests.add(std::format("Should parse {}", query), [query, expected](shared_test_context& stc)
 		{
 			const auto formatted = df::search_t::parse(query).format_terms();
-			assert_equal(str::is_empty(expected) ? query : expected, formatted, "parse query");
+			assert_equal(core::is_empty(expected) ? query : expected, formatted, "parse query");
 			// The canonical form must survive a second trip, or the address box would rewrite
 			// itself every time the user pressed Enter on an unchanged query.
 			const auto reparsed = df::search_t::parse(formatted).format_terms();
@@ -2946,11 +2946,11 @@ void register_search_tests(view_state& state, test_registry& tests)
 			          assert_equal(expected_index, count_search_results(stc.test_index, query), query);
 
 			          const auto query_recurse_test_folder = std::format(
-				          "\"{}\\**\" {} -excluded", test_files_folder, query);
+				          "\"{}\\**\" {} -excluded", test_files_folder(), query);
 			          assert_equal(expected_recurse, count_search_results(stc.empty_index, query_recurse_test_folder),
 			                       std::format("recurse {}", query));
 
-			          const auto query_test_folder = std::format("\"{}\" {}", test_files_folder, query);
+			          const auto query_test_folder = std::format("\"{}\" {}", test_files_folder(), query);
 			          assert_equal(expected_folder, count_search_results(stc.empty_index, query_test_folder),
 			                       std::format("folder {}", query));
 		          });

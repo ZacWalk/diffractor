@@ -11,7 +11,7 @@
 // geocoding, and distance calculations.
 
 #pragma once
-#include "libdesktop/util.h"
+#include "libdesktop/core/util.h"
 
 
 class gps_coordinate
@@ -40,13 +40,13 @@ public:
 
 	bool matches(const gps_coordinate other) const
 	{
-		return df::equiv(_latitude, other._latitude) && df::equiv(_longitude, other._longitude);
+		return core::equiv(_latitude, other._latitude) && core::equiv(_longitude, other._longitude);
 	}
 
 	friend bool operator==(const gps_coordinate lhs, const gps_coordinate rhs)
 	{
-		return df::equiv(lhs._latitude, rhs._latitude)
-			&& df::equiv(lhs._longitude, rhs._longitude);
+		return core::equiv(lhs._latitude, rhs._latitude)
+			&& core::equiv(lhs._longitude, rhs._longitude);
 	}
 
 	friend bool operator!=(const gps_coordinate lhs, const gps_coordinate rhs)
@@ -56,7 +56,7 @@ public:
 
 	bool is_empty() const
 	{
-		return df::equiv(_latitude, invalid_coordinate) || df::equiv(_longitude, invalid_coordinate);
+		return core::equiv(_latitude, invalid_coordinate) || core::equiv(_longitude, invalid_coordinate);
 	}
 
 	void clear()
@@ -65,7 +65,7 @@ public:
 		_longitude = invalid_coordinate;
 	}
 
-	// Exact, not df::equiv: this is a std::map key, and an absolute-epsilon comparison is not
+	// Exact, not core::equiv: this is a std::map key, and an absolute-epsilon comparison is not
 	// transitive, which makes an ordered container using it undefined behaviour.
 	bool operator<(const gps_coordinate rhs) const
 	{
@@ -107,7 +107,7 @@ public:
 		uint32_t n[3];
 		decimal_to_dms(coord, n);
 		// %u, not %lu: uint32_t is unsigned int, and under LP64 unsigned long is twice its width.
-		return str::print("%u,%u,%u%c", n[0], n[1], n[2],
+		return core::print("%u,%u,%u%c", n[0], n[1], n[2],
 		                  is_ns ? (coord < 0 ? 'S' : 'N') : coord < 0 ? 'W' : 'E');
 	}
 
@@ -270,9 +270,9 @@ constexpr uint32_t location_flag_extent = 0x4;
 struct location_t
 {
 	uint32_t id = 0;
-	str::cached place = {};
-	str::cached state = {};
-	str::cached country = {};
+	core::cached place = {};
+	core::cached state = {};
+	core::cached country = {};
 	gps_coordinate position = {};
 	double population = 0.0;
 	uint32_t flags = 0;
@@ -284,8 +284,8 @@ struct location_t
 	location_t(const location_t& other) noexcept = default;
 	location_t(location_t&& other) noexcept = default;
 
-	location_t(const uint32_t id_in, const str::cached city_in, const str::cached state_in,
-	           const str::cached country_in, const gps_coordinate position_in, const double pop,
+	location_t(const uint32_t id_in, const core::cached city_in, const core::cached state_in,
+	           const core::cached country_in, const gps_coordinate position_in, const double pop,
 	           const uint32_t flags_in = 0) noexcept
 		: id(id_in), place(city_in), state(state_in), country(country_in), position(position_in), population(pop),
 		  flags(flags_in)
@@ -326,7 +326,7 @@ struct location_t
 
 	bool is_empty() const
 	{
-		return id == 0 && str::is_empty(place) && str::is_empty(state) & str::is_empty(country) && position.
+		return id == 0 && core::is_empty(place) && core::is_empty(state) & core::is_empty(country) && position.
 			is_empty();
 	}
 
@@ -417,8 +417,8 @@ constexpr double location_max_attribution_km = location_attribution_radius_km(10
 struct map_location_area
 {
 	std::string name;
-	str::cached state = {};
-	str::cached country = {};
+	core::cached state = {};
+	core::cached country = {};
 	uint32_t count = 0;
 	pointi cell = {};
 	int cell_span = 1;
@@ -471,10 +471,10 @@ struct map_location_area
 	bool has_same_photo_bounds(const map_location_area& other) const
 	{
 		return position == other.position &&
-			df::equiv(min_latitude, other.min_latitude) &&
-			df::equiv(min_longitude, other.min_longitude) &&
-			df::equiv(max_latitude, other.max_latitude) &&
-			df::equiv(max_longitude, other.max_longitude);
+			core::equiv(min_latitude, other.min_latitude) &&
+			core::equiv(min_longitude, other.min_longitude) &&
+			core::equiv(max_latitude, other.max_latitude) &&
+			core::equiv(max_longitude, other.max_longitude);
 	}
 
 	bool operator==(const map_location_area& other) const = default;

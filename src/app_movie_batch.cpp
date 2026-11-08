@@ -45,7 +45,7 @@ namespace
 
 	// Whole lines only, flushed: the usual reader is a pipe into PowerShell, which shows nothing of a
 	// line until it ends.
-	void print(const std::string_view text)
+	void print_line(const std::string_view text)
 	{
 		printf("%.*s\n", static_cast<int>(text.size()), text.data());
 		fflush(stdout);
@@ -60,12 +60,12 @@ namespace
 		return hours > 0 ? std::format("{}:{:02}:{:02}", hours, minutes, rest) : std::format("{}:{:02}", minutes, rest);
 	}
 
-	bool has_extension(const df::file_path path, const std::string_view ext)
+	bool has_extension(const core::file_path path, const std::string_view ext)
 	{
-		return str::icmp(path.extension(), ext) == 0;
+		return core::icmp(path.extension(), ext) == 0;
 	}
 
-	std::string read_project_text(const df::file_path path)
+	std::string read_project_text(const core::file_path path)
 	{
 		const auto file = platform::open_file(path, platform::file_open_mode::read);
 		if (!file) return {};
@@ -106,18 +106,18 @@ namespace
 			match == movie_source_match::same_length || match == movie_source_match::siblings;
 	}
 
-	void print_paths(const std::string_view label, std::vector<df::file_path> paths)
+	void print_paths(const std::string_view label, std::vector<core::file_path> paths)
 	{
 		std::sort(paths.begin(), paths.end());
 
 		for (size_t i = 0; i < paths.size() && i < max_listed_paths; ++i)
 		{
-			print(std::format("  {:<10}{}", label, paths[i]));
+			print_line(std::format("  {:<10}{}", label, paths[i]));
 		}
 
 		if (paths.size() > max_listed_paths)
 		{
-			print(std::format("  {:<10}and {} more", label, paths.size() - max_listed_paths));
+			print_line(std::format("  {:<10}and {} more", label, paths.size() - max_listed_paths));
 		}
 	}
 
@@ -133,7 +133,7 @@ namespace
 			parts += std::format("{} {}", name, count);
 		}
 
-		print(std::format("  left out  {}: {}", loaded.ignored_elements, parts));
+		print_line(std::format("  left out  {}: {}", loaded.ignored_elements, parts));
 	}
 
 	// Every file in the collection by name, and in the -movie-media folder when one is given. Walked
@@ -144,20 +144,20 @@ namespace
 	class source_search
 	{
 	public:
-		source_search(df::index_roots roots, const bool show_hidden) : _roots(std::move(roots)), _show_hidden(show_hidden)
+		source_search(core::index_roots roots, const bool show_hidden) : _roots(std::move(roots)), _show_hidden(show_hidden)
 		{
 		}
 
-		const df::index_roots& roots() const
+		const core::index_roots& roots() const
 		{
 			return _roots;
 		}
 
-		std::vector<std::vector<df::file_path>> find(const std::vector<df::file_path>& missing)
+		std::vector<std::vector<core::file_path>> find(const std::vector<core::file_path>& missing)
 		{
 			walk();
 
-			std::vector<std::vector<df::file_path>> result(missing.size());
+			std::vector<std::vector<core::file_path>> result(missing.size());
 
 			for (size_t i = 0; i < missing.size(); ++i)
 			{
@@ -184,15 +184,15 @@ namespace
 
 			// Roots can nest -- a well-known folder inside a "More folders" line -- and a folder walked
 			// twice would offer every file in it twice, which the choice would read as two candidates.
-			df::unique_folders walked;
-			std::vector<df::folder_path> pending(_roots.folders.begin(), _roots.folders.end());
+			core::unique_folders walked;
+			std::vector<core::folder_path> pending(_roots.folders.begin(), _roots.folders.end());
 
 			while (!pending.empty())
 			{
 				const auto folder = pending.back();
 				pending.pop_back();
 
-				if (df::is_excluded(_roots, folder) || !walked.emplace(folder).second) continue;
+				if (core::is_excluded(_roots, folder) || !walked.emplace(folder).second) continue;
 
 				const auto contents = platform::iterate_file_items(folder, _show_hidden);
 
@@ -208,14 +208,14 @@ namespace
 				}
 			}
 
-			print(std::format("            {} files in {:.1f} s", str::format_count(files), seconds_since(started)));
+			print_line(std::format("            {} files in {:.1f} s", core::format_count(files), seconds_since(started)));
 		}
 
 	private:
-		df::index_roots _roots;
+		core::index_roots _roots;
 		bool _show_hidden = false;
 		bool _walked = false;
-		df::hash_map<std::string, std::vector<df::file_path>, df::ihash, df::ieq> _by_name;
+		core::hash_map<std::string, std::vector<core::file_path>, core::ihash, core::ieq> _by_name;
 	};
 
 	// Where each stored folder's sources were found, in the order the timeline first meets them. This
@@ -224,8 +224,8 @@ namespace
 	{
 		struct folder_move
 		{
-			df::folder_path from;
-			std::vector<std::pair<df::folder_path, int>> to;
+			core::folder_path from;
+			std::vector<std::pair<core::folder_path, int>> to;
 		};
 
 		std::vector<folder_move> moves;
@@ -249,11 +249,11 @@ namespace
 		{
 			std::ranges::stable_sort(move.to, [](const auto& l, const auto& r) { return l.second > r.second; });
 
-			print(std::format("    {}", move.from));
+			print_line(std::format("    {}", move.from));
 
 			for (const auto& [to, count] : move.to)
 			{
-				print(std::format("      -> {} ({})", to, count));
+				print_line(std::format("      -> {} ({})", to, count));
 			}
 		}
 	}
@@ -277,12 +277,12 @@ namespace
 		const auto other_length = count(movie_source_match::other_length);
 		const auto missing = count(movie_source_match::missing) + other_length;
 
-		print(std::format("  sources   {} files: {} at their stored path, {} found by name, {} ambiguous, {} missing",
+		print_line(std::format("  sources   {} files: {} at their stored path, {} found by name, {} ambiguous, {} missing",
 		                  sources.size(), count(movie_source_match::stored), found, ambiguous, missing));
 
 		if (found > 0)
 		{
-			print(std::format("            {} by a unique name, {} by matching folder names, {} by length, "
+			print_line(std::format("            {} by a unique name, {} by matching folder names, {} by length, "
 			                  "{} beside sources from the same folder", by_name, by_folders, by_length, by_siblings));
 			print_folder_moves(sources);
 		}
@@ -295,18 +295,18 @@ namespace
 
 			if (listed++ == max_listed_paths)
 			{
-				print(std::format("  ambiguous and {} more", ambiguous - static_cast<ptrdiff_t>(max_listed_paths)));
+				print_line(std::format("  ambiguous and {} more", ambiguous - static_cast<ptrdiff_t>(max_listed_paths)));
 				break;
 			}
 
-			print(std::format("  ambiguous {}", source.stored));
+			print_line(std::format("  ambiguous {}", source.stored));
 
 			auto candidates = source.candidates;
 			std::ranges::sort(candidates, [](const auto& l, const auto& r) { return l.first < r.first; });
 
 			for (const auto& candidate : candidates)
 			{
-				print(std::format("              could be {}", candidate.first));
+				print_line(std::format("              could be {}", candidate.first));
 			}
 		}
 
@@ -320,23 +320,23 @@ namespace
 
 			if (listed++ == max_listed_paths)
 			{
-				print(std::format("  not found and {} more", other_length - static_cast<ptrdiff_t>(max_listed_paths)));
+				print_line(std::format("  not found and {} more", other_length - static_cast<ptrdiff_t>(max_listed_paths)));
 				break;
 			}
 
-			print(std::format("  not found {}, {:.1f} s long", source.stored, source.recorded_seconds));
+			print_line(std::format("  not found {}, {:.1f} s long", source.stored, source.recorded_seconds));
 
 			auto candidates = source.candidates;
 			std::ranges::sort(candidates, [](const auto& l, const auto& r) { return l.first < r.first; });
 
 			for (const auto& [path, seconds] : candidates)
 			{
-				print(std::format("              {} has its name but is {:.1f} s", path, seconds));
+				print_line(std::format("              {} has its name but is {:.1f} s", path, seconds));
 			}
 		}
 
-		std::vector<df::file_path> lost;
-		std::vector<df::file_path> unreadable;
+		std::vector<core::file_path> lost;
+		std::vector<core::file_path> unreadable;
 		std::vector<std::string> differing;
 		size_t checked = 0;
 
@@ -370,17 +370,17 @@ namespace
 
 		if (checked > 0)
 		{
-			print(std::format("  lengths   {} of {} videos are as long as the project recorded", checked - differing.size(),
+			print_line(std::format("  lengths   {} of {} videos are as long as the project recorded", checked - differing.size(),
 			                  checked));
 
 			for (size_t i = 0; i < differing.size() && i < max_listed_paths; ++i)
 			{
-				print(std::format("  differs   {}", differing[i]));
+				print_line(std::format("  differs   {}", differing[i]));
 			}
 
 			if (differing.size() > max_listed_paths)
 			{
-				print(std::format("  differs   and {} more", differing.size() - max_listed_paths));
+				print_line(std::format("  differs   and {} more", differing.size() - max_listed_paths));
 			}
 		}
 	}
@@ -396,7 +396,7 @@ namespace
 	// What a render of these clips would make and whether it can, by the rule the Movie view's Render
 	// follows.
 	prepared_movie prepare_movie(std::vector<movie_clip> clips, const movie_settings& settings,
-	                             const df::file_path project_path, const bool skip_missing)
+	                             const core::file_path project_path, const bool skip_missing)
 	{
 		if (skip_missing)
 		{
@@ -405,7 +405,7 @@ namespace
 
 			if (clips.size() < before)
 			{
-				print(std::format("  skipping  {} of {} clips with no usable source", before - clips.size(), before));
+				print_line(std::format("  skipping  {} of {} clips with no usable source", before - clips.size(), before));
 			}
 		}
 
@@ -419,11 +419,11 @@ namespace
 
 		const auto photos = std::ranges::count_if(clips, [](const movie_clip& clip) { return clip.is_photo; });
 
-		print(std::format("  movie     {} videos and {} photos, {} long; {}x{} at {} fps, {:.1f} Mbit/s",
+		print_line(std::format("  movie     {} videos and {} photos, {} long; {}x{} at {} fps, {:.1f} Mbit/s",
 		                  std::ssize(clips) - photos, photos, format_duration(result.duration),
 		                  result.output.extent.cx, result.output.extent.cy, result.output.frame_rate,
 		                  result.output.video_bitrate / 1000000.0));
-		print(std::format("  settings  {}, fade in {}, fade out {}, photos held {:.1f} s",
+		print_line(std::format("  settings  {}, fade in {}, fade out {}, photos held {:.1f} s",
 		                  settings.transition == movie_transition::crossfade
 			                  ? std::format("crossfade {:.1f} s", settings.transition_seconds)
 			                  : "cuts"s,
@@ -433,12 +433,12 @@ namespace
 		{
 			if (clips.empty())
 			{
-				print("  not ready no clip has a usable source");
+				print_line("  not ready no clip has a usable source");
 			}
 			else
 			{
 				const auto unusable = std::ranges::count_if(clips, [](const movie_clip& c) { return !is_usable(c); });
-				print(std::format("  not ready {} of {} clips have no usable source{}", unusable, clips.size(),
+				print_line(std::format("  not ready {} of {} clips have no usable source{}", unusable, clips.size(),
 				                  skip_missing ? "" : "; -movie-skip-missing renders without them"));
 			}
 		}
@@ -459,22 +459,22 @@ namespace
 
 	// Where this run writes `project_path`'s output, refusing what would replace a file it should
 	// not: one written earlier in this run, or one already there that nobody asked to replace.
-	std::optional<df::file_path> choose_destination(const df::file_path project_path, const std::string_view ext,
-	                                                const df::folder_path output_folder, const bool overwrite,
-	                                                const std::vector<df::file_path>& written, bool& skipped)
+	std::optional<core::file_path> choose_destination(const core::file_path project_path, const std::string_view ext,
+	                                                const core::folder_path output_folder, const bool overwrite,
+	                                                const std::vector<core::file_path>& written, bool& skipped)
 	{
 		const auto folder = output_folder.is_empty() ? project_path.folder() : output_folder;
 		const auto destination = folder.combine_file_ext(project_path.file_name_without_extension(), ext);
 
-		if (std::ranges::any_of(written, [destination](const df::file_path path) { return path == destination; }))
+		if (std::ranges::any_of(written, [destination](const core::file_path path) { return path == destination; }))
 		{
-			print(std::format("  skipped   {} was written by an earlier project in this run", destination));
+			print_line(std::format("  skipped   {} was written by an earlier project in this run", destination));
 			return std::nullopt;
 		}
 
-		if (destination.exists() && !overwrite)
+		if (platform::exists(destination) && !overwrite)
 		{
-			print(std::format("  skipped   {} exists; pass -movie-overwrite to replace it", destination));
+			print_line(std::format("  skipped   {} exists; pass -movie-overwrite to replace it", destination));
 			skipped = true;
 			return std::nullopt;
 		}
@@ -483,11 +483,11 @@ namespace
 	}
 
 	// A Movie Maker project: imported into a native one, or checked as the import would make it.
-	project_outcome import_project(const df::file_path project_path, const movie_batch_options& options,
-	                               source_search& search, const df::folder_path output_folder,
-	                               std::vector<df::file_path>& written)
+	project_outcome import_project(const core::file_path project_path, const movie_batch_options& options,
+	                               source_search& search, const core::folder_path output_folder,
+	                               std::vector<core::file_path>& written)
 	{
-		std::optional<df::file_path> destination;
+		std::optional<core::file_path> destination;
 		if (options.mode != movie_batch_mode::check)
 		{
 			auto skipped = false;
@@ -499,20 +499,20 @@ namespace
 
 		if (text.empty())
 		{
-			print("  failed    the project file could not be read");
+			print_line("  failed    the project file could not be read");
 			return project_outcome::failed;
 		}
 
-		const auto find = [&search](const std::vector<df::file_path>& missing) { return search.find(missing); };
+		const auto find = [&search](const std::vector<core::file_path>& missing) { return search.find(missing); };
 		auto imported = import_movie_maker_project(text, project_path.folder(), find);
 		const auto& loaded = imported.loaded;
 
-		print(std::format("  read      {} clips", loaded.clips.size()));
+		print_line(std::format("  read      {} clips", loaded.clips.size()));
 		print_omitted(loaded);
 
 		if (!loaded)
 		{
-			print(loaded.status == movie_load_status::empty
+			print_line(loaded.status == movie_load_status::empty
 				      ? "  failed    the project holds no clip Movie can use"
 				      : "  failed    this is not a project Movie can read");
 			return project_outcome::failed;
@@ -526,7 +526,7 @@ namespace
 
 		if (options.mode == movie_batch_mode::check)
 		{
-			if (movie.ready) print("  ready     every clip has a usable source");
+			if (movie.ready) print_line("  ready     every clip has a usable source");
 			return movie.ready ? project_outcome::ready : project_outcome::failed;
 		}
 
@@ -535,20 +535,20 @@ namespace
 
 		if (!error.empty())
 		{
-			print(std::format("  failed    {}: {}", *destination, error));
+			print_line(std::format("  failed    {}: {}", *destination, error));
 			return project_outcome::failed;
 		}
 
 		written.emplace_back(*destination);
-		print(std::format("  wrote     {}", *destination));
+		print_line(std::format("  wrote     {}", *destination));
 		return movie.ready ? project_outcome::imported : project_outcome::imported_incomplete;
 	}
 
 	// A native project: rendered, or checked as the render would find it.
-	project_outcome render_project(const df::file_path project_path, const movie_batch_options& options,
-	                               const df::folder_path output_folder, std::vector<df::file_path>& written)
+	project_outcome render_project(const core::file_path project_path, const movie_batch_options& options,
+	                               const core::folder_path output_folder, std::vector<core::file_path>& written)
 	{
-		std::optional<df::file_path> destination;
+		std::optional<core::file_path> destination;
 		if (options.mode != movie_batch_mode::check)
 		{
 			auto skipped = false;
@@ -560,42 +560,42 @@ namespace
 
 		if (text.empty())
 		{
-			print("  failed    the project file could not be read");
+			print_line("  failed    the project file could not be read");
 			return project_outcome::failed;
 		}
 
 		const auto loaded = read_otio(text, project_path.folder());
 
-		print(std::format("  read      {} clips", loaded.clips.size()));
+		print_line(std::format("  read      {} clips", loaded.clips.size()));
 		print_omitted(loaded);
 
 		if (!loaded)
 		{
-			print(loaded.status == movie_load_status::empty
+			print_line(loaded.status == movie_load_status::empty
 				      ? "  failed    the project holds no clips"
 				      : "  failed    this is not a project Movie can read");
 			return project_outcome::failed;
 		}
 
-		df::hash_map<df::file_path, movie_probe_result, df::ihash, df::ieq> probes;
-		std::vector<df::file_path> missing;
-		std::vector<df::file_path> unreadable;
+		core::hash_map<core::file_path, movie_probe_result, core::ihash, core::ieq> probes;
+		std::vector<core::file_path> missing;
+		std::vector<core::file_path> unreadable;
 
 		for (const auto& clip : loaded.clips)
 		{
 			if (probes.contains(clip.path)) continue;
 
 			const auto probe = probe_movie_source(clip.path);
-			if (!probe.found) (clip.path.exists() ? unreadable : missing).emplace_back(clip.path);
+			if (!probe.found) (platform::exists(clip.path) ? unreadable : missing).emplace_back(clip.path);
 			probes.emplace(clip.path, probe);
 
 			if (probes.size() % probe_report_interval == 0)
 			{
-				print(std::format("  probing   {} sources", probes.size()));
+				print_line(std::format("  probing   {} sources", probes.size()));
 			}
 		}
 
-		print(std::format("  sources   {} files: {} usable, {} missing, {} unreadable", probes.size(),
+		print_line(std::format("  sources   {} files: {} usable, {} missing, {} unreadable", probes.size(),
 		                  probes.size() - missing.size() - unreadable.size(), missing.size(), unreadable.size()));
 		print_paths("missing", missing);
 		print_paths("unreadable", unreadable);
@@ -612,7 +612,7 @@ namespace
 
 		if (options.mode == movie_batch_mode::check)
 		{
-			print("  ready     every clip has a usable source");
+			print_line("  ready     every clip has a usable source");
 			return project_outcome::ready;
 		}
 
@@ -624,11 +624,11 @@ namespace
 		request.fail_if_exists = !options.overwrite;
 
 		const auto control = std::make_shared<movie_render_control>();
-		const auto token = df::cancel_token(control->cancelled);
+		const auto token = core::cancel_token(control->cancelled);
 		const auto started = batch_clock::now();
 		auto reported = 0;
 
-		print(std::format("  render    {}", *destination));
+		print_line(std::format("  render    {}", *destination));
 
 		const auto report = [&reported, started](const double fraction)
 		{
@@ -636,18 +636,18 @@ namespace
 			if (tenth <= reported || tenth >= 10) return;
 
 			reported = tenth;
-			print(std::format("            {}% after {}", tenth * 10, format_duration(seconds_since(started))));
+			print_line(std::format("            {}% after {}", tenth * 10, format_duration(seconds_since(started))));
 		};
 
 		const auto result = render_movie_to_file(request, report, token, control);
 
 		if (!result.ok)
 		{
-			print(std::format("  failed    {}", render_failure(result)));
+			print_line(std::format("  failed    {}", render_failure(result)));
 
 			if (!result.source.is_empty())
 			{
-				print(std::format("            no frame from {} at {:.2f} s", result.source, result.source_time));
+				print_line(std::format("            no frame from {} at {:.2f} s", result.source, result.source_time));
 			}
 
 			return project_outcome::failed;
@@ -656,17 +656,17 @@ namespace
 		written.emplace_back(*destination);
 
 		const auto took = seconds_since(started);
-		print(std::format("  rendered  {} of movie in {} ({:.1f}x real time)", format_duration(movie.duration),
+		print_line(std::format("  rendered  {} of movie in {} ({:.1f}x real time)", format_duration(movie.duration),
 		                  format_duration(took), took > 0 ? movie.duration / took : 0.0));
 		return project_outcome::rendered;
 	}
 }
 
-bool movie_batch_test_seams::project_is_skipped(const df::file_path project, const movie_batch_options& options)
+bool movie_batch_test_seams::project_is_skipped(const core::file_path project, const movie_batch_options& options)
 {
-	std::vector<df::file_path> written;
+	std::vector<core::file_path> written;
 	source_search search({}, false);
-	const auto folder = options.output.empty() ? df::folder_path{} : df::folder_path(options.output);
+	const auto folder = options.output.empty() ? core::folder_path{} : core::folder_path(options.output);
 	const auto outcome = has_extension(project, ".wlmp")
 		                     ? import_project(project, options, search, folder, written)
 		                     : render_project(project, options, folder, written);
@@ -685,22 +685,22 @@ int run_movie_batch(const movie_batch_options& options)
 		                         : "movie-check";
 
 	// Import reads Movie Maker projects, render reads native ones, and check reads either.
-	const auto reads = [mode](const df::file_path path)
+	const auto reads = [mode](const core::file_path path)
 	{
 		const auto wlmp = has_extension(path, ".wlmp");
 		const auto otio = has_extension(path, ".otio");
 		return mode == movie_batch_mode::import ? wlmp : mode == movie_batch_mode::render ? otio : wlmp || otio;
 	};
 
-	if (!df::is_path(options.projects))
+	if (!core::is_path(options.projects))
 	{
-		print(std::format("{}: give the full path of a project or of a folder of projects: {}", tool,
+		print_line(std::format("{}: give the full path of a project or of a folder of projects: {}", tool,
 		                  options.projects));
 		return 1;
 	}
 
-	std::vector<df::file_path> projects;
-	const auto projects_folder = df::folder_path(options.projects);
+	std::vector<core::file_path> projects;
+	const auto projects_folder = core::folder_path(options.projects);
 
 	if (platform::exists(projects_folder))
 	{
@@ -708,28 +708,28 @@ int run_movie_batch(const movie_batch_options& options)
 
 		for (const auto& file : contents.files)
 		{
-			const auto path = df::file_path(projects_folder, file.name);
+			const auto path = core::file_path(projects_folder, file.name);
 			if (reads(path)) projects.emplace_back(path);
 		}
 
-		std::ranges::sort(projects, [](const df::file_path l, const df::file_path r)
+		std::ranges::sort(projects, [](const core::file_path l, const core::file_path r)
 		{
-			return str::icmp(l.name(), r.name()) < 0;
+			return core::icmp(l.name(), r.name()) < 0;
 		});
 	}
 	else
 	{
-		const auto file = df::file_path(options.projects);
+		const auto file = core::file_path(options.projects);
 
-		if (!file.exists())
+		if (!platform::exists(file))
 		{
-			print(std::format("{}: no project or folder at {}", tool, options.projects));
+			print_line(std::format("{}: no project or folder at {}", tool, options.projects));
 			return 1;
 		}
 
 		if (!reads(file))
 		{
-			print(mode == movie_batch_mode::render && has_extension(file, ".wlmp")
+			print_line(mode == movie_batch_mode::render && has_extension(file, ".wlmp")
 				      ? std::format("{}: {} is a Movie Maker project; import it with -movie-import first", tool, file)
 				      : std::format("{}: {} is not a project {} reads", tool, file, tool));
 			return 1;
@@ -740,7 +740,7 @@ int run_movie_batch(const movie_batch_options& options)
 
 	if (projects.empty())
 	{
-		print(std::format("{}: no {} projects in {}", tool,
+		print_line(std::format("{}: no {} projects in {}", tool,
 		                  mode == movie_batch_mode::import ? ".wlmp" : mode == movie_batch_mode::render ? ".otio" : ".wlmp or .otio",
 		                  projects_folder));
 		return 1;
@@ -752,28 +752,28 @@ int run_movie_batch(const movie_batch_options& options)
 
 	if (!options.media.empty())
 	{
-		if (!df::is_path(options.media) || !platform::exists(df::folder_path(options.media)))
+		if (!core::is_path(options.media) || !platform::exists(core::folder_path(options.media)))
 		{
-			print(std::format("{}: the media folder {} does not exist", tool, options.media));
+			print_line(std::format("{}: the media folder {} does not exist", tool, options.media));
 			return 1;
 		}
 
-		roots.folders.emplace(df::folder_path(options.media));
+		roots.folders.emplace(core::folder_path(options.media));
 	}
 
 	source_search search(std::move(roots), setting.show_hidden);
 
-	df::folder_path output_folder;
+	core::folder_path output_folder;
 
 	if (!options.output.empty())
 	{
-		if (!df::is_path(options.output))
+		if (!core::is_path(options.output))
 		{
-			print(std::format("{}: give the full path of the output folder: {}", tool, options.output));
+			print_line(std::format("{}: give the full path of the output folder: {}", tool, options.output));
 			return 1;
 		}
 
-		output_folder = df::folder_path(options.output);
+		output_folder = core::folder_path(options.output);
 
 		if (mode != movie_batch_mode::check && !platform::exists(output_folder))
 		{
@@ -781,7 +781,7 @@ int run_movie_batch(const movie_batch_options& options)
 
 			if (created.failed())
 			{
-				print(std::format("{}: could not create {}: {}", tool, output_folder, created.format_error()));
+				print_line(std::format("{}: could not create {}: {}", tool, output_folder, created.format_error()));
 				return 1;
 			}
 		}
@@ -790,16 +790,16 @@ int run_movie_batch(const movie_batch_options& options)
 	// Absent rather than failing per project: no project could render, so none is attempted.
 	if (mode == movie_batch_mode::render && !platform::can_write_movies())
 	{
-		print(std::format("{}: this system has no movie encoder, so nothing can be rendered", tool));
+		print_line(std::format("{}: this system has no movie encoder, so nothing can be rendered", tool));
 		return 1;
 	}
 
-	print(std::format("{}: {} project{}", tool, projects.size(), projects.size() == 1 ? "" : "s"));
+	print_line(std::format("{}: {} project{}", tool, projects.size(), projects.size() == 1 ? "" : "s"));
 
-	if (std::ranges::any_of(projects, [](const df::file_path p) { return has_extension(p, ".wlmp"); }))
+	if (std::ranges::any_of(projects, [](const core::file_path p) { return has_extension(p, ".wlmp"); }))
 	{
-		for (const auto& folder : search.roots().folders) print(std::format("  search    {}", folder));
-		if (search.roots().folders.empty()) print("  search    the collection names no folders");
+		for (const auto& folder : search.roots().folders) print_line(std::format("  search    {}", folder));
+		if (search.roots().folders.empty()) print_line("  search    the collection names no folders");
 
 		// Walked now rather than on the first missing source: a Movie Maker project's sources have
 		// almost always moved, and the walk reads better here than inside one project's report.
@@ -808,23 +808,23 @@ int run_movie_batch(const movie_batch_options& options)
 
 	if (mode != movie_batch_mode::check)
 	{
-		print(std::format("  output    {}{}", output_folder.is_empty() ? "beside each project"s :
+		print_line(std::format("  output    {}{}", output_folder.is_empty() ? "beside each project"s :
 		                                       std::format("{}", output_folder),
 		                  options.overwrite ? ", replacing what is there" : ""));
 	}
 
 	if (options.skip_missing && mode != movie_batch_mode::import)
 	{
-		print("  skipping  clips whose source cannot be used");
+		print_line("  skipping  clips whose source cannot be used");
 	}
 
-	std::vector<df::file_path> written;
+	std::vector<core::file_path> written;
 	std::map<project_outcome, size_t> outcomes;
 
 	for (size_t i = 0; i < projects.size(); ++i)
 	{
-		print("");
-		print(std::format("[{}/{}] {}", i + 1, projects.size(), projects[i]));
+		print_line("");
+		print_line(std::format("[{}/{}] {}", i + 1, projects.size(), projects[i]));
 
 		auto outcome = project_outcome::failed;
 
@@ -838,37 +838,37 @@ int run_movie_batch(const movie_batch_options& options)
 		{
 			// One broken project does not stop the batch: the reason is reported with the project
 			// and counted in the exit code.
-			df::log(__FUNCTION__, e.what());
-			print(std::format("  failed    {}", e.what()));
+			core::log(__FUNCTION__, e.what());
+			print_line(std::format("  failed    {}", e.what()));
 		}
 		catch (...)
 		{
-			df::log(__FUNCTION__, "movie batch project failed");
-			print("  failed    an unexpected error stopped this project");
+			core::log(__FUNCTION__, "movie batch project failed");
+			print_line("  failed    an unexpected error stopped this project");
 		}
 
 		++outcomes[outcome];
 	}
 
-	print("");
+	print_line("");
 
 	const auto summary = std::format("{} project{}", projects.size(), projects.size() == 1 ? "" : "s");
 	const auto failed = outcomes[project_outcome::failed];
 
 	if (mode == movie_batch_mode::import)
 	{
-		print(std::format("{}: {} imported ready to render, {} imported with sources missing, {} skipped, {} failed",
+		print_line(std::format("{}: {} imported ready to render, {} imported with sources missing, {} skipped, {} failed",
 		                  summary, outcomes[project_outcome::imported], outcomes[project_outcome::imported_incomplete],
 		                  outcomes[project_outcome::skipped], failed));
 	}
 	else if (mode == movie_batch_mode::render)
 	{
-		print(std::format("{}: {} rendered, {} skipped, {} failed", summary, outcomes[project_outcome::rendered],
+		print_line(std::format("{}: {} rendered, {} skipped, {} failed", summary, outcomes[project_outcome::rendered],
 		                  outcomes[project_outcome::skipped], failed));
 	}
 	else
 	{
-		print(std::format("{}: {} ready to render, {} not", summary, outcomes[project_outcome::ready], failed));
+		print_line(std::format("{}: {} ready to render, {} not", summary, outcomes[project_outcome::ready], failed));
 	}
 
 	return failed == 0 && outcomes[project_outcome::imported_incomplete] == 0 ? 0 : 1;

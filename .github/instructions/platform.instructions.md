@@ -18,18 +18,20 @@ headers, and keeping those tests there is what lets every other test file stay f
 ## Adding to the abstraction
 
 When portable code needs a system capability, add it to libdesktop's
-[platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) - a change made in libdesktop, under its own
+[libdesktop/platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) - a change made in libdesktop, under its own
 AGENTS.md - as an intention, not as a thin wrapper over one API. The Linux side must be able to
 implement it honestly. A function named for a Win32 call has already leaked the boundary even
 though it compiles. A service only the window layer can implement is declared in
-libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h) instead, and implemented by libdesktop-render's
-`platform_win_*` backends and its `platform_linux_ui.cpp` - a change made in libdesktop too. What
+libdesktop's [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h) or [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h) instead, and implemented by its
+render library's backends (`src/render/win`, `src/render/linux`) - a change made in libdesktop too. What
 stays here is the application's own: its side of FFmpeg's hardware decoding
-(`platform_win_av.cpp`), its resource script and its Linux entry point (`platform_linux_app.cpp`).
+(`platform_win_av.cpp`), its resource script and Linux glue (`platform_linux_app.cpp`).
+`src/app.cpp` owns the Windows `wWinMain` and Linux `main`, and both call `platform::run`.
 
-Every new entry point needs a Linux counterpart or an explicit stub, and
-[linux.md](../../docs/linux.md) records which. The `platform_linux_*_stubs.cpp` files are
-alternatives to their real implementations, never built alongside them.
+Every new platform capability needs a Linux implementation or an explicit unavailable answer, and
+[linux.md](../../docs/linux.md) records which. `platform_linux_app.cpp` supplies the Linux
+hardware-decode and platform-test answers; it is built instead of the Windows-only
+`platform_win_av.cpp` and `test_platform_win.cpp`.
 
 ## Capability is answered at run time
 
@@ -40,5 +42,5 @@ another. `can_recycle` is the model: it asks about the path in front of it.
 ## Checks
 
 `/test:*path*` and the Windows suite via `.\dd.ps1 test`; the Linux build is
-`.github/workflows/linux.yml`. Adding a `platform.h` entry point without a Linux counterpart breaks
+`.github/workflows/linux.yml`. Adding a new `platform::` capability without a Linux counterpart breaks
 that workflow, not the local build, so state it in the summary when you cannot run it.

@@ -38,9 +38,9 @@ namespace
 		slot_count,
 	};
 
-	colour_slot slot_of(const pf::ui::text_style style)
+	colour_slot slot_of(const ui::text_style style)
 	{
-		using ts = pf::ui::text_style;
+		using ts = ui::text_style;
 
 		switch (style)
 		{
@@ -65,27 +65,27 @@ namespace
 	}
 
 	// Picked to read on the view's dark background, as the dump's colours always were.
-	std::array<ui::color, slot_count> make_palette(const ui::draw_context& dc)
+	std::array<core::color, slot_count> make_palette(const render::draw_context& dc)
 	{
 		const auto alpha = dc.colors.alpha;
-		std::array<ui::color, slot_count> result;
-		result[base] = ui::color(dc.colors.foreground, alpha);
-		result[dim] = ui::color(dc.colors.foreground, alpha * 0.77f);
-		result[control] = ui::color(ui::lighten(ui::style::colors.view_selected_background, 0.22f), alpha);
-		result[high_byte] = ui::color(ui::lighten(app_colors::duplicate_background, 0.66f), alpha);
-		result[keyword] = ui::color(ui::bgr(0x569CD6), alpha);
-		result[comment] = ui::color(ui::bgr(0x6A9955), alpha);
-		result[number] = ui::color(ui::bgr(0xB5CEA8), alpha);
-		result[string] = ui::color(ui::bgr(0xCE9178), alpha);
-		result[preprocessor] = ui::color(ui::bgr(0xC586C0), alpha);
-		result[heading1] = ui::color(ui::bgr(0x4FC1FF), alpha);
-		result[heading2] = ui::color(ui::bgr(0x569CD6), alpha);
-		result[heading3] = ui::color(ui::bgr(0x9CDCFE), alpha);
-		result[bold] = ui::color(ui::bgr(0xDCDCAA), alpha);
-		result[italic] = ui::color(ui::bgr(0xD7BA7D), alpha);
-		result[link] = ui::color(ui::bgr(0x4FC1FF), alpha);
-		result[muted] = ui::color(ui::bgr(0x9D9D9D), alpha);
-		result[bullet] = ui::color(ui::bgr(0x6796E6), alpha);
+		std::array<core::color, slot_count> result;
+		result[base] = core::color(dc.colors.foreground, alpha);
+		result[dim] = core::color(dc.colors.foreground, alpha * 0.77f);
+		result[control] = core::color(core::lighten(ui::style::colors.view_selected_background, 0.22f), alpha);
+		result[high_byte] = core::color(core::lighten(app_colors::duplicate_background, 0.66f), alpha);
+		result[keyword] = core::color(core::bgr(0x569CD6), alpha);
+		result[comment] = core::color(core::bgr(0x6A9955), alpha);
+		result[number] = core::color(core::bgr(0xB5CEA8), alpha);
+		result[string] = core::color(core::bgr(0xCE9178), alpha);
+		result[preprocessor] = core::color(core::bgr(0xC586C0), alpha);
+		result[heading1] = core::color(core::bgr(0x4FC1FF), alpha);
+		result[heading2] = core::color(core::bgr(0x569CD6), alpha);
+		result[heading3] = core::color(core::bgr(0x9CDCFE), alpha);
+		result[bold] = core::color(core::bgr(0xDCDCAA), alpha);
+		result[italic] = core::color(core::bgr(0xD7BA7D), alpha);
+		result[link] = core::color(core::bgr(0x4FC1FF), alpha);
+		result[muted] = core::color(core::bgr(0x9D9D9D), alpha);
+		result[bullet] = core::color(core::bgr(0x6796E6), alpha);
 		return result;
 	}
 
@@ -98,7 +98,7 @@ namespace
 	}
 
 	// The dump's offset is dimmed, and its control and high bytes coloured in both columns.
-	void dump_slots(std::vector<colour_slot>& slots, const df::cspan bytes, const int bytes_per_row, const size_t row)
+	void dump_slots(std::vector<colour_slot>& slots, const core::cspan bytes, const int bytes_per_row, const size_t row)
 	{
 		std::fill_n(slots.begin(), std::min<size_t>(8, slots.size()), dim);
 
@@ -150,12 +150,12 @@ namespace
 		{
 		}
 
-		ui::style::cursor cursor() const override
+		platform::cursor cursor() const override
 		{
-			return ui::style::cursor::text_select;
+			return platform::cursor::text_select;
 		}
 
-		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
 			view_controller::on_mouse_left_button_down(loc, keys);
 
@@ -185,7 +185,7 @@ namespace
 			}
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (!_tracking) return;
 			on_mouse_move(loc);
@@ -194,7 +194,7 @@ namespace
 
 		// The word of the character under the pointer, not of the gap nearest it: the right half of a
 		// word's last letter is nearer the space after it.
-		void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
 		{
 			auto& doc = _control->document();
 			doc.select_word(_control->position_from_point(loc, element_offset(), true), _control->bytes());
@@ -223,7 +223,7 @@ document_control::document_control(std::vector<uint8_t> bytes, const view_elemen
 {
 }
 
-df::cspan document_control::bytes() const
+core::cspan document_control::bytes() const
 {
 	if (_display) return _display->_selected_item_data;
 	return {_bytes.data(), _bytes.size()};
@@ -235,7 +235,7 @@ int document_control::text_left(const recti logical_bounds) const
 	return (logical_bounds.left + logical_bounds.right - _dump_width) / 2;
 }
 
-sizei document_control::measure(ui::measure_context& mc, const int width_limit) const
+sizei document_control::measure(render::measure_context& mc, const int width_limit) const
 {
 	auto& doc = *_document;
 	const auto data = bytes();
@@ -248,7 +248,7 @@ sizei document_control::measure(ui::measure_context& mc, const int width_limit) 
 		// a row of its own, which for a MiB of text is a million rows.
 		constexpr int min_columns = 8;
 		const auto extent = mc.measure_text(std::string(sample_chars, '0'), _font,
-		                                    ui::style::text_style::single_line, sample_chars * 256);
+		                                    render::text_style::single_line, sample_chars * 256);
 		_char_width = std::max(1.0, extent.cx / static_cast<double>(sample_chars));
 		_line_height = extent.cy + padding;
 		doc.layout(std::max(min_columns, static_cast<int>(width_limit / _char_width)), data.size);
@@ -257,14 +257,14 @@ sizei document_control::measure(ui::measure_context& mc, const int width_limit) 
 
 	// The widest row of whole groups of four bytes that fits, up to 32 a row.
 	const auto payload_width = std::max(byte_step, std::min(max_bytes_per_line,
-	                                                        df::round_up(static_cast<int>(data.size), byte_step)));
+	                                                        core::round_up(static_cast<int>(data.size), byte_step)));
 	auto bytes_per_line = 0;
 	_dump_width = 0;
 
 	for (auto candidate = byte_step; candidate <= payload_width; candidate += byte_step)
 	{
 		const auto chars = document_state::dump_row_chars(candidate);
-		const auto extent = mc.measure_text(std::string(chars, '0'), _font, ui::style::text_style::single_line,
+		const auto extent = mc.measure_text(std::string(chars, '0'), _font, render::text_style::single_line,
 		                                    width_limit + 200);
 
 		if (extent.cx > width_limit && bytes_per_line > 0) break;
@@ -315,7 +315,7 @@ view_controller_ptr document_control::controller_from_location(const view_host_p
 	return std::make_shared<document_select_controller>(host, shared_from_this(), logical_bounds, element_offset);
 }
 
-void document_control::render(ui::draw_context& dc, const pointi element_offset) const
+void document_control::render(render::draw_context& dc, const pointi element_offset) const
 {
 	const auto& doc = *_document;
 	const auto data = bytes();
@@ -333,19 +333,19 @@ void document_control::render(ui::draw_context& dc, const pointi element_offset)
 	const auto last_row = std::min(rows, first_row + (clip_bounds.height() + _line_height) / _line_height);
 	const auto left = text_left(logical_bounds);
 	const auto palette = make_palette(dc);
-	const auto selection_clr = ui::color(ui::style::colors.view_selected_background,
+	const auto selection_clr = core::color(ui::style::colors.view_selected_background,
 	                                     dc.colors.alpha * (doc.focused ? 0.85f : 0.4f));
 	const auto has_selection = doc.has_selection();
 	const auto [sel_from, sel_to] = doc.selection();
 
 	const auto& text = doc.text();
-	const auto highlight = text.language == pf::ui::syntax::language::plain
-		                       ? pf::ui::highlight_fn{}
-		                       : pf::ui::syntax::for_language(text.language);
+	const auto highlight = text.language == ui::syntax::language::plain
+		                       ? ui::highlight_fn{}
+		                       : ui::syntax::for_language(text.language);
 
 	std::vector<colour_slot> slots;
-	std::vector<ui::text_highlight_t> highlights;
-	std::vector<pf::ui::text_block> runs;
+	std::vector<render::text_highlight_t> highlights;
+	std::vector<ui::text_block> runs;
 	auto runs_line = -1;
 	auto run_count = 0;
 
@@ -370,7 +370,7 @@ void document_control::render(ui::draw_context& dc, const pointi element_offset)
 			{
 				if (runs_line != line)
 				{
-					runs.resize(pf::ui::syntax::blocks_for_line(source.size()));
+					runs.resize(ui::syntax::blocks_for_line(source.size()));
 					highlight(text.cookies.empty() ? 0u : text.cookies[line], source, runs, run_count);
 					runs_line = line;
 				}
@@ -443,6 +443,6 @@ void document_control::render(ui::draw_context& dc, const pointi element_offset)
 		}
 
 		dc.draw_text(row.display, highlights, recti(left, y, logical_bounds.right, y + _line_height), _font,
-		             ui::style::text_style::single_line, palette[base], {});
+		             render::text_style::single_line, palette[base], {});
 	}
 }

@@ -16,7 +16,7 @@
 
 #include "model_tile_cache.h"
 #include "libdesktop/ui.h"
-#include "libdesktop/util_kdtree.h"
+#include "libdesktop/core/kdtree.h"
 
 // For M_PI on some compilers, otherwise define it manually.
 #ifndef M_PI
@@ -235,8 +235,8 @@ public:
 	{
 		// Guards surface, in_view and requested — these are touched by both the UI
 		// thread (render/fetch_tiles/cleanup) and the map worker thread (fetch_tile).
-		platform::mutex mutex;
-		ui::surface_ptr surface;
+		mutex mutex;
+		core::surface_ptr surface;
 		bool in_view = false;
 		bool requested = false; // a fetch task is queued/in-flight for this tile
 	};
@@ -290,7 +290,7 @@ private:
 	std::map<map_tile_id, cache_entry_ptr> _tile_cache;
 	// A derived GPU cache rather than logical state, so it is shed on device loss from the const
 	// broadcast the same way an element's texture is.
-	mutable std::map<map_tile_id, ui::texture_ptr> _texture_cache;
+	mutable std::map<map_tile_id, render::texture_ptr> _texture_cache;
 
 	// Item-location markers, indexed spatially by worker-prepared snapshots so publication is a
 	// bounded move on the UI thread.
@@ -362,9 +362,9 @@ public:
 		return gps_coordinate(new_latitude, new_longitude);
 	}
 
-	void render(ui::draw_context& dc, const sizei& extent)
+	void render(render::draw_context& dc, const sizei& extent)
 	{
-		dc.clear(ui::color(dc.colors.background, 1.0f));
+		dc.clear(core::color(dc.colors.background, 1.0f));
 
 		const auto map_bounds = recti(extent);
 		const auto total_offset = _scroll_offset + _temp_drag_offset;
@@ -383,12 +383,12 @@ public:
 
 			// Copy the surface shared_ptr under the entry lock; the worker thread may be
 			// publishing it concurrently (a torn shared_ptr read would corrupt refcounts).
-			ui::surface_ptr surf;
+			core::surface_ptr surf;
 			const auto found_surface = _tile_cache.find(tile.coord);
 
 			if (found_surface != _tile_cache.end())
 			{
-				platform::exclusive_lock lock(found_surface->second->mutex);
+				core::exclusive_lock lock(found_surface->second->mutex);
 				surf = found_surface->second->surface;
 			}
 
@@ -398,7 +398,7 @@ public:
 			{
 				const auto texture = dc.create_texture();
 
-				if (texture && texture->update(surf) != ui::texture_update_result::failed)
+				if (texture && texture->update(surf) != render::texture_update_result::failed)
 				{
 					_texture_cache[tile.coord] = texture;
 					dc.draw_texture(texture, tile_rect);
@@ -408,7 +408,7 @@ public:
 
 			if (!drawn)
 			{
-				dc.draw_rect(tile_rect.inflate(-1), ui::color(0.5, 0.5, 0.5, 0.5));
+				dc.draw_rect(tile_rect.inflate(-1), core::color(0.5, 0.5, 0.5, 0.5));
 			}
 		}
 
@@ -770,7 +770,7 @@ private:
 
 	// A halo behind the bubble the user picked. Drawn under the markers so the bubble keeps
 	// its own shape, and anchored to the picked coordinate so it stays put as the map moves.
-	void render_selection(ui::draw_context& dc, const sizei& extent) const
+	void render_selection(render::draw_context& dc, const sizei& extent) const
 	{
 		if (!_selected.is_valid()) return;
 
@@ -780,10 +780,10 @@ private:
 		if (p.x < -r || p.y < -r || p.x > extent.cx + r || p.y > extent.cy + r) return;
 
 		const recti glow(p - pointi(r, r), sizei(r * 2, r * 2));
-		dc.draw_rounded_rect(glow, ui::color(1.0f, 1.0f, 1.0f, 0.8f), r);
+		dc.draw_rounded_rect(glow, core::color(1.0f, 1.0f, 1.0f, 0.8f), r);
 	}
 
-	void render_markers(ui::draw_context& dc, const sizei& extent) const
+	void render_markers(render::draw_context& dc, const sizei& extent) const
 	{
 		for (const auto& c : _clusters)
 		{
@@ -793,13 +793,13 @@ private:
 			// Semi-transparent so the underlying map stays visible: a soft white halo
 			// plus a translucent accent fill, with the aggregated count on top.
 			const recti halo = r.inflate(1);
-			dc.draw_rounded_rect(halo, ui::color(1.0f, 1.0f, 1.0f, 0.35f), radius + 1);
-			dc.draw_rounded_rect(r, ui::color(ui::style::colors.dialog_selected_background, 0.5f), radius);
+			dc.draw_rounded_rect(halo, core::color(1.0f, 1.0f, 1.0f, 0.35f), radius + 1);
+			dc.draw_rounded_rect(r, core::color(ui::style::colors.dialog_selected_background, 0.5f), radius);
 
 			if (c.count > 1)
 			{
-				dc.draw_text(std::to_string(c.count), r, ui::style::font_face::dialog,
-				             ui::style::text_style::single_line_center, ui::color(1.0f, 1.0f, 1.0f, 0.9f), {});
+				dc.draw_text(std::to_string(c.count), r, render::font_face::dialog,
+				             render::text_style::single_line_center, core::color(1.0f, 1.0f, 1.0f, 0.9f), {});
 			}
 		}
 	}
@@ -807,29 +807,29 @@ private:
 	// The OSM tile usage policy requires visible licence attribution on the map.
 	// Draw "© OpenStreetMap contributors" in the bottom-right corner with a
 	// translucent backing so it stays legible over any tile.
-	void render_attribution(ui::draw_context& dc, const sizei& extent) const
+	void render_attribution(render::draw_context& dc, const sizei& extent) const
 	{
 		constexpr std::string_view attribution = "© OpenStreetMap contributors";
 		constexpr int pad = 4;
 
-		const auto text_extent = dc.measure_text(attribution, ui::style::font_face::dialog,
-		                                         ui::style::text_style::single_line, extent.cx);
+		const auto text_extent = dc.measure_text(attribution, render::font_face::dialog,
+		                                         render::text_style::single_line, extent.cx);
 
 		const int w = text_extent.cx + pad * 2;
 		const int h = text_extent.cy + pad;
 
 		const recti bg_rect(std::max(0, extent.cx - w), std::max(0, extent.cy - h), extent.cx, extent.cy);
-		dc.draw_rect(bg_rect, ui::color(0.0f, 0.0f, 0.0f, 0.4f));
+		dc.draw_rect(bg_rect, core::color(0.0f, 0.0f, 0.0f, 0.4f));
 
 		const recti text_rect(bg_rect.left + pad, bg_rect.top, bg_rect.right - pad, bg_rect.bottom);
-		dc.draw_text(attribution, text_rect, ui::style::font_face::dialog, ui::style::text_style::single_line,
-		             ui::color(1.0f, 1.0f, 1.0f, 0.9f), {});
+		dc.draw_text(attribution, text_rect, render::font_face::dialog, render::text_style::single_line,
+		             core::color(1.0f, 1.0f, 1.0f, 0.9f), {});
 	}
 
 	// A plain cross, semi-transparent: two unbroken lines whose intersection is the coordinate
 	// that will be written. No ring and no centre disc - either would read as one more cluster
 	// bubble, and either would hide the bubble the user has just centred on.
-	void render_crosshair(ui::draw_context& dc, const sizei& extent) const
+	void render_crosshair(render::draw_context& dc, const sizei& extent) const
 	{
 		const int center_x = extent.cx / 2;
 		const int center_y = extent.cy / 2;
@@ -838,9 +838,9 @@ private:
 		constexpr int line_width = 3;
 		constexpr int half = line_width / 2;
 
-		const auto crosshair_color = ui::color(ui::style::colors.important_background, 0.6f);
+		const auto crosshair_color = core::color(ui::style::colors.important_background, 0.6f);
 		// A thin lighter underlay keeps the cross readable over both dark and pale tiles.
-		const auto outline_color = ui::color(1.0f, 1.0f, 1.0f, 0.35f);
+		const auto outline_color = core::color(1.0f, 1.0f, 1.0f, 0.35f);
 
 		const recti horizontal(center_x - arm, center_y - half, center_x + arm, center_y - half + line_width);
 		dc.draw_rect(horizontal.inflate(0, 1), outline_color);
@@ -855,19 +855,19 @@ private:
 	// the fetch below ends here exactly once, so a tile can always be asked for again.
 	static void publish_tile(async_strategy& async, const cache_entry_ptr& e,
 	                         const std::function<void()>& invalidate,
-	                         const std::shared_ptr<std::atomic_bool>& alive, const df::blob& data)
+	                         const std::shared_ptr<std::atomic_bool>& alive, const core::blob& data)
 	{
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
 		if (!data.empty())
 		{
 			files ff;
-			surface = ff.image_to_surface(df::cspan(data.data(), data.size()));
+			surface = ff.image_to_surface(core::cspan(data.data(), data.size()));
 		}
 
 		bool publish = false;
 		{
-			platform::exclusive_lock lock(e->mutex);
+			core::exclusive_lock lock(e->mutex);
 			e->requested = false;
 
 			if (surface && e->in_view && !e->surface)
@@ -907,7 +907,7 @@ private:
 		}
 
 		const auto response = send_request(s_osm_con, req);
-		const auto data = std::make_shared<df::blob>();
+		const auto data = std::make_shared<core::blob>();
 
 		if (response.status_code == 200 && !response.body.empty())
 		{
@@ -915,7 +915,7 @@ private:
 
 			async.queue_tile_db([key, data](tile_cache_db& db)
 			{
-				db.store(key, df::cspan(data->data(), data->size()));
+				db.store(key, core::cspan(data->data(), data->size()));
 			});
 		}
 		else
@@ -938,7 +938,7 @@ private:
 			[&async = _async, coord, key, e, invalidate = _invalidate, alive = _alive](tile_cache_db& db)
 			{
 				{
-					platform::exclusive_lock lock(e->mutex);
+					core::exclusive_lock lock(e->mutex);
 					if (!e->in_view || e->surface)
 					{
 						e->requested = false;
@@ -948,7 +948,7 @@ private:
 
 				// Decoding a PNG on this thread would stall every following lookup, and downloading on
 				// it would stall them for a network round trip, so both hand back to the map workers.
-				auto data = std::make_shared<df::blob>(db.load(key));
+				auto data = std::make_shared<core::blob>(db.load(key));
 
 				if (!data->empty())
 				{
@@ -984,7 +984,7 @@ private:
 		{
 			const bool vis = visible_tiles.contains(coord);
 			{
-				platform::exclusive_lock lock(entry->mutex);
+				core::exclusive_lock lock(entry->mutex);
 				entry->in_view = vis;
 			}
 			if (!vis)
@@ -1007,7 +1007,7 @@ private:
 			const auto& entry = found->second;
 			bool need_fetch = false;
 			{
-				platform::exclusive_lock lock(entry->mutex);
+				core::exclusive_lock lock(entry->mutex);
 				entry->in_view = true;
 
 				// Only enqueue when there is no surface and no task already in flight,
@@ -1040,7 +1040,7 @@ private:
 			{
 				bool vis;
 				{
-					platform::exclusive_lock lock(it->second->mutex);
+					core::exclusive_lock lock(it->second->mutex);
 					vis = it->second->in_view;
 				}
 

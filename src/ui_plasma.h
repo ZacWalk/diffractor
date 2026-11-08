@@ -17,7 +17,7 @@
 struct plasma
 {
 	uint32_t _palette[256];
-	std::unique_ptr<uint8_t, df::free_delete> _pixels = nullptr;
+	std::unique_ptr<uint8_t, core::free_delete> _pixels = nullptr;
 
 	double _fade = 0.0;
 	int _stride = 0;
@@ -61,7 +61,7 @@ struct plasma
 		}
 
 		_stride = calc_stride(_width, 32);
-		_pixels = df::unique_alloc<uint8_t>(_height * _stride);
+		_pixels = core::unique_alloc<uint8_t>(_height * _stride);
 
 		init_plasma();
 		step_plasma();
@@ -125,11 +125,11 @@ struct plasma
 			const auto r = _cosinus[(i + 64) & 0x0ff];
 
 			const auto c = b + g + r;
-			const auto bb = df::round(b * fc / fade_max + c * fb / cd);
-			const auto gg = df::round(g * fc / fade_max + c * fg / cd);
-			const auto rr = df::round(r * fc / fade_max + c * fr / cd);
+			const auto bb = core::round(b * fc / fade_max + c * fb / cd);
+			const auto gg = core::round(g * fc / fade_max + c * fg / cd);
+			const auto rr = core::round(r * fc / fade_max + c * fr / cd);
 
-			_palette[i] = ui::average(ui::style::colors.sidebar_background, ui::rgb(bb, gg, rr));
+			_palette[i] = core::average(ui::style::colors.sidebar_background, core::rgb(bb, gg, rr));
 		}
 	}
 
@@ -181,12 +181,12 @@ struct plasma
 		return true;
 	}
 
-	void render(const ui::texture_ptr& tex, const sizei dims) const
+	void render(const render::texture_ptr& tex, const sizei dims) const
 	{
-		df::assert_true(dims.cx <= _width);
-		df::assert_true(dims.cy <= _height);
+		core::assert_true(dims.cx <= _width);
+		core::assert_true(dims.cy <= _height);
 
-		tex->update({_height, _width}, ui::texture_format::RGB, ui::orientation::top_left, _pixels.get(), _stride,
+		tex->update({_height, _width}, core::texture_format::RGB, core::orientation::top_left, _pixels.get(), _stride,
 		            _height * _stride);
 	}
 

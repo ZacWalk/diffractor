@@ -607,7 +607,7 @@ def print_full(languages, source):
 # ---------------------------------------------------------------------------
 
 _DECLARATION_RE = re.compile(
-    r"^\s*(text_t|plural_text)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|\{)",
+    r"^\s*(?:core::)?(text_t|plural_text)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|\{)",
     re.MULTILINE,
 )
 
@@ -646,19 +646,24 @@ def _first_duplicates(names: list) -> set:
     return {name for name in names if name in seen or seen.add(name)}
 
 
+def _words_header(platform_header: Path) -> Path:
+    # libdesktop keeps the shared words in core and the platform messages in platform.
+    return platform_header.parent.parent / "core" / "strings.h"
+
+
 def _platform_text_header() -> Path:
-    sibling = REPO_ROOT.parent / "libdesktop" / "include" / "libdesktop" / "platform.h"
+    sibling = REPO_ROOT.parent / "libdesktop" / "include" / "libdesktop" / "platform" / "services.h"
     if sibling.is_file():
         return sibling
-    fetched = sorted(REPO_ROOT.glob("tmp/*/_deps/libdesktop-src/include/libdesktop/platform.h"))
+    fetched = sorted(REPO_ROOT.glob("tmp/*/_deps/libdesktop-src/include/libdesktop/platform/services.h"))
     signatures = {
-        (path.read_bytes(), path.with_name("util_strings.h").read_bytes())
+        (path.read_bytes(), _words_header(path).read_bytes())
         for path in fetched
     }
     if fetched and len(signatures) == 1:
         return fetched[0]
     raise ValueError(
-        "Cannot identify libdesktop's platform.h. Configure the build first or "
+        "Cannot identify libdesktop's platform/services.h. Configure the build first or "
         "pass --platform-text-header with the header used by this build."
     )
 
@@ -670,14 +675,14 @@ def check_app_text_registration(platform_header: Path | None = None) -> list:
     implementation = APP_TEXT_IMPL.read_text(encoding="utf-8")
 
     try:
-        for declaration, member, filename in (
-            ("platform::messages", "platform_text", "platform.h"),
-            ("str::words", "words", "util_strings.h"),
+        for declaration, member, is_words in (
+            (r"platform::messages", "platform_text", False),
+            (r"(?:core::)?words", "words", True),
         ):
-            if re.search(rf"^\s*{re.escape(declaration)}\s+{member}\s*;", header, re.MULTILINE):
+            if re.search(rf"^\s*{declaration}\s+{member}\s*;", header, re.MULTILINE):
                 shared = platform_header if platform_header is not None else _platform_text_header()
-                if filename != "platform.h":
-                    shared = shared.with_name(filename)
+                if is_words:
+                    shared = _words_header(shared)
                 messages = _app_text_declarations(shared.read_text(encoding="utf-8"))
                 if not messages["text_t"]:
                     raise ValueError(f"No platform messages found in {shared}")
@@ -716,7 +721,7 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--platform-text-header", type=Path,
-        help="libdesktop/include/libdesktop/platform.h used by the build; otherwise "
+        help="libdesktop/include/libdesktop/platform/services.h used by the build; otherwise "
              "use the sibling checkout or an unambiguous fetched copy",
     )
     parser.add_argument(

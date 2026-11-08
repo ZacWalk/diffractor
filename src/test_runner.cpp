@@ -20,7 +20,7 @@
 
 temp_files _temps;
 std::atomic_int test_version = 0;
-df::cancel_token test_token(test_version);
+core::cancel_token test_token(test_version);
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -65,7 +65,7 @@ int run_console_tests(const std::string_view test_filter)
 	std::vector<console_test_entry> filtered;
 	for (auto& entry : registry.entries)
 	{
-		if (str::wildcard_icmp(entry.name, test_filter))
+		if (core::wildcard_icmp(entry.name, test_filter))
 		{
 			filtered.push_back(std::move(entry));
 		}
@@ -87,7 +87,7 @@ int run_console_tests(const std::string_view test_filter)
 
 	// Two registrations under one name make /test:<name> ambiguous and a failure report unattributable.
 	{
-		df::hash_map<std::string_view, int, df::ihash, df::ieq> seen;
+		core::hash_map<std::string_view, int, core::ihash, core::ieq> seen;
 		for (const auto& entry : filtered) ++seen[entry.name];
 
 		for (const auto& [name, count] : seen)
@@ -107,14 +107,14 @@ int run_console_tests(const std::string_view test_filter)
 
 	for (const auto& entry : filtered)
 	{
-		const auto t = df::now();
+		const auto t = core::now();
 		const auto name_utf8 = std::string(entry.name.data(), entry.name.size());
 		const auto asserts_before = test_assert_count;
 
 		try
 		{
 			entry.func(stc);
-			const auto elapsed_ms = df::round((df::now() - t) * 1000);
+			const auto elapsed_ms = core::round((core::now() - t) * 1000);
 
 			// A test that asserted nothing proves nothing: it has usually been disabled by an early
 			// return or an #if, and would otherwise report PASS forever.
@@ -131,20 +131,20 @@ int run_console_tests(const std::string_view test_filter)
 		}
 		catch (const test_assert_exception& e)
 		{
-			const auto elapsed_ms = df::round((df::now() - t) * 1000);
+			const auto elapsed_ms = core::round((core::now() - t) * 1000);
 			const auto msg = std::string(e.message.data(), e.message.size());
 			printf("  FAIL  %s (%dms)\n        %s\n", name_utf8.c_str(), elapsed_ms, msg.c_str());
 			++failed;
 		}
 		catch (const std::exception& e)
 		{
-			const auto elapsed_ms = df::round((df::now() - t) * 1000);
+			const auto elapsed_ms = core::round((core::now() - t) * 1000);
 			printf("  FAIL  %s (%dms)\n        Exception: %s\n", name_utf8.c_str(), elapsed_ms, e.what());
 			++failed;
 		}
 		catch (...)
 		{
-			const auto elapsed_ms = df::round((df::now() - t) * 1000);
+			const auto elapsed_ms = core::round((core::now() - t) * 1000);
 			printf("  FAIL  %s (%dms)\n        Unknown exception\n", name_utf8.c_str(), elapsed_ms);
 			++failed;
 		}

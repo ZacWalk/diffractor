@@ -32,15 +32,15 @@ struct custom_dictionary_add_result
 
 class spell_check
 {
-	mutable platform::mutex _rw;
+	mutable core::mutex _rw;
 
 	struct pending_custom_word
 	{
 		uint64_t id = 0;
 		std::string word;
-		df::file_path path;
-		df::folder_path user_folder;
-		std::function<custom_dictionary_add_result(const df::file_path&, std::string_view)> writer;
+		core::file_path path;
+		core::folder_path user_folder;
+		std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)> writer;
 	};
 
 	_Guarded_by_(_rw) std::unique_ptr<Hunspell> _hunspell;
@@ -50,18 +50,18 @@ class spell_check
 	_Guarded_by_(_rw) mutable std::vector<pending_custom_word> _pending_custom_words;
 	_Guarded_by_(_rw) df::async_i* _async = nullptr;
 	_Guarded_by_(_rw) std::function<void()> _load_gate;
-	_Guarded_by_(_rw) std::function<custom_dictionary_add_result(const df::file_path&, std::string_view)>
+	_Guarded_by_(_rw) std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)>
 		_custom_dictionary_writer;
 
-	df::file_path _custom_dic_path;
+	core::file_path _custom_dic_path;
 
 	// Dictionaries ship beside the executable, but that folder is read-only in a Store install and
 	// in any per-machine install, so reads come from either folder and every write goes to the
 	// per-user one.
-	df::folder_path _shipped_folder;
-	df::folder_path _user_folder;
+	core::folder_path _shipped_folder;
+	core::folder_path _user_folder;
 
-	df::file_path find_dictionary(std::string_view name, std::string_view ext) const;
+	core::file_path find_dictionary(std::string_view name, std::string_view ext) const;
 	bool ensure_user_folder() const;
 	void set_default_paths();
 
@@ -87,12 +87,12 @@ public:
 
 	// The file "Add to dictionary" appends to. Exposed so a test can prove it is somewhere the user
 	// can write, without writing there.
-	df::file_path custom_dictionary_path() const { return _custom_dic_path; }
-	void configure_paths_for_tests(df::folder_path shipped_folder, df::folder_path user_folder);
+	core::file_path custom_dictionary_path() const { return _custom_dic_path; }
+	void configure_paths_for_tests(core::folder_path shipped_folder, core::folder_path user_folder);
 	void reset_paths_for_tests();
 	void set_load_gate_for_tests(std::function<void()> gate);
 	void set_custom_dictionary_writer_for_tests(
-		std::function<custom_dictionary_add_result(const df::file_path&, std::string_view)> writer);
+		std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)> writer);
 	void clear_test_hooks();
 };
 

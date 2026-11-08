@@ -79,12 +79,12 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {width_limit, ui::layout_slider_row(mc, _label, {0, 0, width_limit, 0}).height};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_row = ui::layout_slider_row(mc, _label, bounds);
@@ -92,13 +92,13 @@ public:
 		_edit->layout(mc, _row.edit);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
-		if (!str::is_empty(_label))
+		if (!core::is_empty(_label))
 		{
-			const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
-			dc.draw_text(_label, _row.label.offset(element_offset), ui::style::font_face::dialog,
-			             _row.stacked ? ui::style::text_style::multiline : ui::style::text_style::single_line,
+			const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
+			dc.draw_text(_label, _row.label.offset(element_offset), render::font_face::dialog,
+			             _row.stacked ? render::text_style::multiline : render::text_style::single_line,
 			             text_color, {});
 		}
 
@@ -108,7 +108,7 @@ public:
 	int value_to_slider(const double a) const
 	{
 		const auto d = a / _max;
-		return df::round(sqrt(fabs(d)) * (a < 0 ? -Range : Range));
+		return core::round(sqrt(fabs(d)) * (a < 0 ? -Range : Range));
 	}
 
 	double slider_to_value(const double s) const
@@ -130,7 +130,7 @@ public:
 
 	void update_slider() const
 	{
-		if (!df::equiv(_val, slider_to_value(_slider->get_pos())))
+		if (!core::equiv(_val, slider_to_value(_slider->get_pos())))
 		{
 			_slider->set_pos(value_to_slider(_val));
 		}
@@ -138,7 +138,7 @@ public:
 
 	void edit_change(const std::string_view text)
 	{
-		_val = std::clamp(str::to_double(text), _min, _max);
+		_val = std::clamp(core::to_double(text), _min, _max);
 		update_slider();
 		_changed();
 	}
@@ -147,7 +147,7 @@ public:
 	{
 		_tracking = is_tracking;
 		// The value is the one the box shows, to the hundredth, wherever the thumb lands between.
-		_val = std::clamp(str::to_double(format_edit_adjustment(slider_to_value(pos))), _min, _max);
+		_val = std::clamp(core::to_double(format_edit_adjustment(slider_to_value(pos))), _min, _max);
 		update_edit();
 		update_slider();
 		_changed();
@@ -192,7 +192,7 @@ namespace
 }
 
 // Segments a bright low-chroma page from a darker surround. Requires tonal separation to succeed.
-static document_candidate detect_document_by_region(const ui::const_surface_ptr& surface,
+static document_candidate detect_document_by_region(const core::const_surface_ptr& surface,
                                                     const std::vector<float>& luminance, const int width,
                                                     const int height)
 {
@@ -202,7 +202,7 @@ static document_candidate detect_document_by_region(const ui::const_surface_ptr&
 
 	for (const auto value : luminance)
 	{
-		++histogram[std::clamp(df::round(value * 255), 0, 255)];
+		++histogram[std::clamp(core::round(value * 255), 0, 255)];
 	}
 
 	const auto percentile = [&](const double fraction)
@@ -221,12 +221,12 @@ static document_candidate detect_document_by_region(const ui::const_surface_ptr&
 	std::vector<uint8_t> mask(pixel_count);
 	for (auto y = 0; y < height; ++y)
 	{
-		const auto* pixels = std::bit_cast<const ui::color32*>(surface->pixels_line(y));
+		const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
 		for (auto x = 0; x < width; ++x)
 		{
 			const auto color = pixels[x];
-			const auto maximum = std::max({ui::get_r(color), ui::get_g(color), ui::get_b(color)});
-			const auto minimum = std::min({ui::get_r(color), ui::get_g(color), ui::get_b(color)});
+			const auto maximum = std::max({core::get_r(color), core::get_g(color), core::get_b(color)});
+			const auto minimum = std::min({core::get_r(color), core::get_g(color), core::get_b(color)});
 			const auto chroma = (maximum - minimum) / 255.0;
 			const auto index = static_cast<size_t>(y) * width + x;
 			mask[index] = luminance[index] >= threshold && chroma <= 0.28 ? 1 : 0;
@@ -394,8 +394,8 @@ static document_candidate detect_document_by_region(const ui::const_surface_ptr&
 		for (auto sample = 0; sample < samples; ++sample)
 		{
 			const auto position = (sample + 0.5) / samples;
-			const auto x = std::clamp(df::round(a.X + (b.X - a.X) * position), 2, width - 3);
-			const auto y = std::clamp(df::round(a.Y + (b.Y - a.Y) * position), 2, height - 3);
+			const auto x = std::clamp(core::round(a.X + (b.X - a.X) * position), 2, width - 3);
+			const auto y = std::clamp(core::round(a.Y + (b.Y - a.Y) * position), 2, height - 3);
 			bool found = false;
 			for (auto yy = y - 2; yy <= y + 2 && !found; ++yy)
 				for (auto xx = x - 2; xx <= x + 2; ++xx)
@@ -449,7 +449,7 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 	std::array<uint32_t, 256> magnitude_histogram{};
 	for (const auto value : magnitude)
 	{
-		++magnitude_histogram[std::clamp(df::round(value / maximum_magnitude * 255), 0, 255)];
+		++magnitude_histogram[std::clamp(core::round(value / maximum_magnitude * 255), 0, 255)];
 	}
 	const auto strong_target = static_cast<size_t>(pixel_count * 0.06);
 	size_t strong_count = 0;
@@ -676,8 +676,8 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 		for (auto sample = 0; sample < samples; ++sample)
 		{
 			const auto position = (sample + 0.5) / samples;
-			const auto x = std::clamp(df::round(a.X + (b.X - a.X) * position), 1, width - 2);
-			const auto y = std::clamp(df::round(a.Y + (b.Y - a.Y) * position), 1, height - 2);
+			const auto x = std::clamp(core::round(a.X + (b.X - a.X) * position), 1, width - 2);
+			const auto y = std::clamp(core::round(a.Y + (b.Y - a.Y) * position), 1, height - 2);
 			auto found = false;
 			for (auto yy = (std::max)(1, y - 2); yy <= (std::min)(height - 2, y + 2) && !found; ++yy)
 				for (auto xx = (std::max)(1, x - 2); xx <= (std::min)(width - 2, x + 2); ++xx)
@@ -719,8 +719,8 @@ static document_detection_result build_document_result(const std::array<pointd, 
 	const auto left_height = pixel_corners[0].dist(pixel_corners[3]);
 	const auto right_height = pixel_corners[1].dist(pixel_corners[2]);
 	result.extent = {
-		(std::max)(32, df::round((top_width + bottom_width) * 0.5 / width * source_extent.cx)),
-		(std::max)(32, df::round((left_height + right_height) * 0.5 / height * source_extent.cy))
+		(std::max)(32, core::round((top_width + bottom_width) * 0.5 / width * source_extent.cx)),
+		(std::max)(32, core::round((left_height + right_height) * 0.5 / height * source_extent.cy))
 	};
 	result.confidence = std::clamp(confidence, 0.0, 1.0);
 	return result;
@@ -742,7 +742,7 @@ namespace
 }
 
 document_correction fit_document_correction(const std::array<pointd, 4>& corners, const sizei extent,
-                                            const ui::orientation orientation)
+                                            const core::orientation orientation)
 {
 	document_correction result;
 	if (extent.cx < 2 || extent.cy < 2) return result;
@@ -825,7 +825,7 @@ document_correction fit_document_correction(const std::array<pointd, 4>& corners
 	return result;
 }
 
-document_detection_result detect_document(const ui::const_surface_ptr& surface, const sizei source_extent)
+document_detection_result detect_document(const core::const_surface_ptr& surface, const sizei source_extent)
 {
 	if (!is_valid(surface) || surface->width() < 32 || surface->height() < 32) return {};
 
@@ -835,13 +835,13 @@ document_detection_result detect_document(const ui::const_surface_ptr& surface, 
 
 	for (auto y = 0; y < height; ++y)
 	{
-		const auto* pixels = std::bit_cast<const ui::color32*>(surface->pixels_line(y));
+		const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
 		for (auto x = 0; x < width; ++x)
 		{
 			const auto color = pixels[x];
 			luminance[static_cast<size_t>(y) * width + x] =
-				static_cast<float>((0.299 * ui::get_r(color) + 0.587 * ui::get_g(color) +
-					0.114 * ui::get_b(color)) / 255.0);
+				static_cast<float>((0.299 * core::get_r(color) + 0.587 * core::get_g(color) +
+					0.114 * core::get_b(color)) / 255.0);
 		}
 	}
 
@@ -889,9 +889,9 @@ public:
 		_tb = ui::make_toolbar({}, buttons);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		return {width_limit, default_control_height(mc)};
+		return {width_limit, ui::default_control_height(mc)};
 	}
 
 	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
@@ -899,7 +899,7 @@ public:
 		visit(_tb);
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		const auto extent = _tb->measure_toolbar(mc, bounds.width());
@@ -932,20 +932,20 @@ public:
 		return std::clamp(1 + (loc.x - bounds.left) / std::max(1, _cell_width), 0, 5);
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_cell_width = mc.icon_cxy;
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto hover = _hover_rating >= 0;
 		const auto bg = hover
 			                ? view_handle_color(false, true, false, dc.frame_has_focus, true).aa(dc.colors.alpha)
-			                : ui::color{};
+			                : core::color{};
 		const auto rating = hover ? _hover_rating : _rating;
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		std::string text;
 
@@ -954,8 +954,8 @@ public:
 			text += icon_to_utf8(i < rating ? icon_index::star_solid : icon_index::star);
 		}
 
-		dc.draw_text(text, bounds.offset(element_offset), ui::style::font_face::icons,
-		             ui::style::text_style::single_line, clr, bg);
+		dc.draw_text(text, bounds.offset(element_offset), render::font_face::icons,
+		             render::text_style::single_line, clr, bg);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
@@ -986,9 +986,9 @@ public:
 		_host->invalidate_element(_stars);
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::link;
+		return platform::cursor::link;
 	}
 
 	void on_mouse_move(const pointi loc) override
@@ -996,7 +996,7 @@ public:
 		hover_at(_stars->point_to_stars(loc - _origin));
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		_stars->_rating = _stars->point_to_stars(loc - _origin);
 		_host->invalidate_element(_stars);
@@ -1032,7 +1032,7 @@ public:
 		_stars = std::make_shared<star_rating>([this](const int stars)
 		{
 			_val = std::clamp(stars, 0, 5);
-			_edit->window_text(_val < 1 ? std::string{} : str::to_string(_val));
+			_edit->window_text(_val < 1 ? std::string{} : core::to_string(_val));
 		});
 	}
 
@@ -1047,39 +1047,39 @@ public:
 		visit(_stars);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		if (!str::is_empty(_label))
+		if (!core::is_empty(_label))
 		{
-			const auto label_extent = mc.measure_text(_label, ui::style::font_face::dialog,
-			                                          ui::style::text_style::single_line, width_limit);
+			const auto label_extent = mc.measure_text(_label, render::font_face::dialog,
+			                                          render::text_style::single_line, width_limit);
 			mc.col_widths.c1 = std::max(mc.col_widths.c1, label_extent.cx + mc.padding2);
 		}
 
-		return {width_limit, default_control_height(mc)};
+		return {width_limit, ui::default_control_height(mc)};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		auto rStars = bounds;
 		auto rEdit = bounds;
 
-		if (!str::is_empty(_label)) rEdit.left += mc.col_widths.c1;
-		rEdit.right = std::min(rEdit.left + df::round(50 * mc.scale_factor), bounds.right);
+		if (!core::is_empty(_label)) rEdit.left += mc.col_widths.c1;
+		rEdit.right = std::min(rEdit.left + core::round(50 * mc.scale_factor), bounds.right);
 		rStars.left = std::min(rEdit.right + mc.padding2, bounds.right);
 
 		_edit->layout(mc, rEdit);
 		_stars->layout(mc, rStars);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
-		if (!str::is_empty(_label))
+		if (!core::is_empty(_label))
 		{
 			auto r = bounds.offset(element_offset);
 			r.right = r.left + dc.col_widths.c1 - dc.padding2;
-			dc.draw_text(_label, r, ui::style::font_face::dialog, ui::style::text_style::single_line,
+			dc.draw_text(_label, r, render::font_face::dialog, render::text_style::single_line,
 			             {dc.colors.foreground, dc.colors.alpha}, {});
 		}
 
@@ -1096,14 +1096,14 @@ public:
 	{
 		if (event.type == view_element_event_type::populate)
 		{
-			_edit->window_text(str::to_string(_val));
+			_edit->window_text(core::to_string(_val));
 			_stars->_rating = _val;
 		}
 	}
 
 	void edit_change(const std::string_view text) const
 	{
-		_val = std::clamp(str::to_int(text), 0, 5);
+		_val = std::clamp(core::to_int(text), 0, 5);
 
 		if (_stars->_rating != _val)
 		{
@@ -1142,12 +1142,12 @@ public:
 		visit(_cancel);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		return {width_limit, mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 4};
+		return {width_limit, mc.text_line_height(render::font_face::dialog) + mc.padding2 * 4};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		const auto width = bounds.width() / 3;
@@ -1188,7 +1188,7 @@ view_controls_host_ptr edit_view::controls(const ui::frame_ptr& owner)
 	return _edit_controls;
 }
 
-ui::const_surface_ptr edit_view::build_preview_surface(const ui::const_surface_ptr& source,
+core::const_surface_ptr edit_view::build_preview_surface(const core::const_surface_ptr& source,
                                                        const sizei loaded_dimensions,
                                                        const image_edits& edits)
 {
@@ -1208,7 +1208,7 @@ ui::const_surface_ptr edit_view::build_preview_surface(const ui::const_surface_p
 	return apply_image_edits(source, preview_edits);
 }
 
-ui::const_surface_ptr edit_view::preview_surface() const
+core::const_surface_ptr edit_view::preview_surface() const
 {
 	return build_preview_surface(_dialog_preview_source, _loaded.dimensions(), _edit_state._edits);
 }
@@ -1255,7 +1255,7 @@ void edit_view::refresh()
 	_host->frame()->invalidate();
 }
 
-void edit_view::layout(ui::measure_context& mc, const sizei extent)
+void edit_view::layout(render::measure_context& mc, const sizei extent)
 {
 	// No reset on a new extent: queue_preview_decode asks again only if the wanted size changed, and
 	// the picture on screen stays until its replacement arrives.
@@ -1354,12 +1354,12 @@ bool should_accept_edit_analysis(const size_t current_display_generation, const 
 		current_edit_generation == result_edit_generation;
 }
 
-bool edit_preview_is_current(const ui::const_surface_ptr& preview, const sizei answered_request, const sizei wanted)
+bool edit_preview_is_current(const core::const_surface_ptr& preview, const sizei answered_request, const sizei wanted)
 {
 	return is_valid(preview) && answered_request == wanted;
 }
 
-file_load_result::failure edit_preview_failure(const ui::const_surface_ptr& preview, const file_load_result& loaded,
+file_load_result::failure edit_preview_failure(const core::const_surface_ptr& preview, const file_load_result& loaded,
                                                const sizei request)
 {
 	if (is_valid(preview)) return file_load_result::failure::none;
@@ -1426,7 +1426,7 @@ void edit_view::start_source_load(source_load_request request)
 	const auto weak = weak_from_this();
 	_state.queue_async(async_queue::load, [weak, request = std::move(request), &s = _state]
 	{
-		df::scope_locked_inc l(df::loading_media);
+		core::scope_locked_inc l(df::loading_media);
 		files loader;
 		auto loaded = loader.load(request.path, false);
 		s.queue_ui([weak, request, loaded = std::move(loaded)]() mutable
@@ -1463,7 +1463,7 @@ void edit_view::complete_source_load(const source_load_request& request, file_lo
 		if (is_photo())
 		{
 			const auto loaded_copy = _loaded;
-			const auto preview_dimensions = ui::scale_dimensions(loaded_copy.dimensions(), 192);
+			const auto preview_dimensions = core::scale_dimensions(loaded_copy.dimensions(), 192);
 			const auto weak_dialog = weak_from_this();
 			const auto dialog_generation = _display_generation;
 			_state.queue_async(async_queue::render,
@@ -1502,7 +1502,7 @@ void edit_view::queue_preview_decode()
 {
 	if (!can_edit_pixels() || _extent.is_empty()) return;
 
-	const auto preview_dimensions = ui::scale_dimensions(_loaded.dimensions(), _extent);
+	const auto preview_dimensions = core::scale_dimensions(_loaded.dimensions(), _extent);
 	if (preview_dimensions.is_empty()) return;
 	if (edit_preview_is_current(_preview_source, _preview_source_request, preview_dimensions)) return;
 	if (_preview_request_dimensions == preview_dimensions) return;
@@ -1539,7 +1539,7 @@ void edit_view::start_preview_decode(preview_decode_request request)
 	                   });
 }
 
-void edit_view::complete_preview_decode(const preview_decode_request& request, ui::const_surface_ptr source,
+void edit_view::complete_preview_decode(const preview_decode_request& request, core::const_surface_ptr source,
                                         const file_load_result::failure failure)
 {
 	_preview_decode_in_flight = false;
@@ -1595,13 +1595,13 @@ void edit_view::clear_crop_interaction_bounds()
 	_crop_handle_br = {};
 }
 
-void edit_view::draw_loading_status(ui::draw_context& dc, const std::string_view status) const
+void edit_view::draw_loading_status(render::draw_context& dc, const std::string_view status) const
 {
 	if (status.empty()) return;
 
 	const recti status_bounds(0, 0, _extent.cx, _extent.cy);
-	dc.draw_text(status, status_bounds, ui::style::font_face::title,
-	             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, dc.colors.alpha), {});
+	dc.draw_text(status, status_bounds, render::font_face::title,
+	             render::text_style::single_line_center, core::color(dc.colors.foreground, dc.colors.alpha), {});
 }
 
 df::item_element_ptr edit_view::next_editable_item(const bool forward) const
@@ -1681,40 +1681,40 @@ view_controller_ptr edit_view::controller_from_location(const view_host_ptr& hos
 	return nullptr;
 }
 
-df::file_path edit_save_suggestion(const df::file_path source, const std::function<bool(df::file_path)>& exists)
+core::file_path edit_save_suggestion(const core::file_path source, const std::function<bool(core::file_path)>& exists)
 {
 	const auto extension = files::can_save(source) ? std::string(source.extension()) : ".jpg"s;
 	const auto name = std::string(source.file_name_without_extension()) + "-edit"s;
-	auto path = df::file_path(source.folder(), name, extension);
+	auto path = core::file_path(source.folder(), name, extension);
 
 	// Number repeats rather than stacking suffixes, so a third edit is "photo-edit 3", not "photo-edit-edit-edit".
 	for (auto n = 2; exists(path); ++n)
 	{
-		path = df::file_path(source.folder(), name + " "s + std::to_string(n), extension);
+		path = core::file_path(source.folder(), name + " "s + std::to_string(n), extension);
 	}
 
 	return path;
 }
 
-bool select_path(df::file_path& path)
+bool select_path(core::file_path& path)
 {
 	// A format Diffractor cannot write is saved as JPEG under a name of its own: the same name with
 	// .jpg is, beside a RAW, the camera's own JPEG.
 	if (!files::can_save(path))
 	{
-		path = edit_save_suggestion(path, [](const df::file_path p) { return p.exists(); });
+		path = edit_save_suggestion(path, [](const core::file_path p) { return platform::exists(p); });
 	}
 
 	return platform::prompt_for_save_path(path);
 }
 
-bool edit_view::check_path(df::file_path& path, const ui::frame_ptr& owner) const
+bool edit_view::check_path(core::file_path& path, const ui::frame_ptr& owner) const
 {
 	if (!path.is_save_valid())
 	{
 		const auto dlg = make_dlg(owner);
 		const auto message = format_invalid_name_message(path.name());
-		dlg->show_message(icon_index::error, s_app_name, message);
+		dlg->show_message(icon_index::error, core::app_name(), message);
 		return false;
 	}
 
@@ -1727,7 +1727,7 @@ bool edit_view::check_path(df::file_path& path, const ui::frame_ptr& owner) cons
 			const std::vector<view_element_ptr> controls{
 				set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.save_changes,
 				                                                str_format(tt.save_as_jpeg_fmt.sv(), path.extension()),
-				                                                std::vector<ui::const_surface_ptr>{preview_surface()})),
+				                                                std::vector<core::const_surface_ptr>{preview_surface()})),
 				std::make_shared<divider_element>(),
 				std::make_shared<ui::ok_cancel_control>(dlg->_frame, tt.button_save_as_jpeg)
 			};
@@ -1745,7 +1745,7 @@ bool edit_view::check_path(df::file_path& path, const ui::frame_ptr& owner) cons
 
 			if (!path.is_save_valid())
 			{
-				make_dlg(owner)->show_message(icon_index::error, s_app_name,
+				make_dlg(owner)->show_message(icon_index::error, core::app_name(),
 				                              format_invalid_name_message(path.name()));
 				return false;
 			}
@@ -1798,7 +1798,7 @@ bool edit_view::can_exit()
 		const std::vector<view_element_ptr> controls = {
 			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.changes,
 			                                                str_format(tt.has_changes.sv(), _path.name()),
-			                                                std::vector<ui::const_surface_ptr>{preview_surface()})),
+			                                                std::vector<core::const_surface_ptr>{preview_surface()})),
 			std::make_shared<divider_element>(),
 			std::make_shared<save_buttons_control>(dlg->_frame,
 			                                       save_fn,
@@ -1853,7 +1853,7 @@ void edit_view::select_item(const df::item_element_ptr& item)
 	const std::vector<view_element_ptr> controls = {
 		set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.changes,
 		                                                str_format(tt.has_changes.sv(), _path.name()),
-		                                                std::vector<ui::const_surface_ptr>{preview_surface()})),
+		                                                std::vector<core::const_surface_ptr>{preview_surface()})),
 		std::make_shared<divider_element>(),
 		std::make_shared<save_buttons_control>(dlg->_frame, save_fn, discard_fn, [dlg] { dlg->close(true); })
 	};
@@ -1894,7 +1894,7 @@ bool edit_view::has_changes() const
 	return is_photo() && _edit_state.has_pixel_changes();
 }
 
-void edit_view::save(const df::file_path src_path, const df::file_path dst_path, const std::string_view xmp_name,
+void edit_view::save(const core::file_path src_path, const core::file_path dst_path, const std::string_view xmp_name,
                      const ui::frame_ptr& owner, std::function<void(bool)> complete) const
 {
 	auto update_result = std::make_shared<file_update_result>();
@@ -1948,7 +1948,7 @@ void edit_view::save(const df::file_path src_path, const df::file_path dst_path,
 						                   // what it just saved.
 						                   s.publish_written_image(scan_request.path,
 						                                           std::move(update_result->loaded),
-						                                           df::date_t(update_result->modified));
+						                                           core::date_t(update_result->modified));
 
 						                   const auto item = scan_request.lifetime.lock();
 						                   if (!item || item->path() != scan_request.path) return;
@@ -1966,9 +1966,9 @@ void edit_view::save(const df::file_path src_path, const df::file_path dst_path,
 		                   }
 		                   catch (const std::exception& e)
 		                   {
-			                   df::log(__FUNCTION__, e.what());
+			                   core::log(__FUNCTION__, e.what());
 			                   update_result->code = platform::file_op_result_code::FAILED;
-			                   update_result->error_message = str::utf8_cast(e.what());
+			                   update_result->error_message = core::utf8_cast(e.what());
 		                   }
 
 		                   s.queue_ui([update_result, detach, dst_path, me, photo_metadata, video_metadata,
@@ -1995,7 +1995,7 @@ void edit_view::save(const df::file_path src_path, const df::file_path dst_path,
 				                   }
 				                   else
 				                   {
-					                   dlg->show_message(icon_index::error, s_app_name,
+					                   dlg->show_message(icon_index::error, core::app_name(),
 					                                     update_result->format_error(str_format(
 						                                     tt.error_create_file_failed_fmt.sv(), dst_path)));
 				                   }
@@ -2042,7 +2042,7 @@ void edit_view::save_as()
 {
 	if (!can_edit_pixels()) return;
 
-	auto path = edit_save_suggestion(_path, [](const df::file_path p) { return p.exists(); });
+	auto path = edit_save_suggestion(_path, [](const core::file_path p) { return platform::exists(p); });
 	const auto xmp_name = _xmp_name;
 
 	const auto owner = _host->owner();
@@ -2086,7 +2086,7 @@ void edit_view::rotate_anticlockwise()
 {
 	if (!can_edit_pixels()) return;
 	const auto selection = _edit_state._edits.crop_bounds();
-	_edit_state._edits.crop_bounds(selection.transform(simple_transform::rot_270));
+	_edit_state._edits.crop_bounds(selection.transform(core::simple_transform::rot_270));
 	const auto horizontal = _edit_state._perspective_horizontal;
 	_edit_state._perspective_horizontal = _edit_state._perspective_vertical;
 	_edit_state._perspective_vertical = -horizontal;
@@ -2098,7 +2098,7 @@ void edit_view::rotate_clockwise()
 {
 	if (!can_edit_pixels()) return;
 	const auto selection = _edit_state._edits.crop_bounds();
-	_edit_state._edits.crop_bounds(selection.transform(simple_transform::rot_90));
+	_edit_state._edits.crop_bounds(selection.transform(core::simple_transform::rot_90));
 	const auto horizontal = _edit_state._perspective_horizontal;
 	_edit_state._perspective_horizontal = -_edit_state._perspective_vertical;
 	_edit_state._perspective_vertical = horizontal;
@@ -2133,13 +2133,13 @@ void edit_view::report_no_result(const std::string_view title) const
 // Decoding and scanning the image must not stall the window, so the analysis runs on a worker and
 // returns a detached applier. An empty applier means the adjustment found nothing to improve.
 void edit_view::queue_auto_adjust(const int max_dimension, std::string title,
-                                  std::function<std::function<void(edit_view_state&)>(const ui::const_surface_ptr&)>
+                                  std::function<std::function<void(edit_view_state&)>(const core::const_surface_ptr&)>
                                   analyze)
 {
 	if (!can_edit_pixels()) return;
 
 	const auto loaded = _loaded;
-	const auto scale_hint = ui::scale_dimensions(loaded.dimensions(), max_dimension, true);
+	const auto scale_hint = core::scale_dimensions(loaded.dimensions(), max_dimension, true);
 	const auto generation = _display_generation;
 	const auto edit_generation = _edit_generation;
 	const auto weak = weak_from_this();
@@ -2181,7 +2181,7 @@ void edit_view::queue_auto_adjust(const int max_dimension, std::string title,
 void edit_view::auto_color()
 {
 	queue_auto_adjust(512, std::string(tt.command_auto_color.sv()),
-	                  [](const ui::const_surface_ptr& surface) -> std::function<void(edit_view_state&)>
+	                  [](const core::const_surface_ptr& surface) -> std::function<void(edit_view_state&)>
 	                  {
 		                  if (!is_valid(surface)) return {};
 
@@ -2195,22 +2195,22 @@ void edit_view::auto_color()
 
 		                  for (auto y = 0u; y < surface->height(); ++y)
 		                  {
-			                  const auto* pixels = std::bit_cast<const ui::color32*>(surface->pixels_line(y));
+			                  const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
 
 			                  for (auto x = 0u; x < surface->width(); ++x)
 			                  {
 				                  const auto color = pixels[x];
-				                  if (ui::get_a(color) < 128) continue;
+				                  if (core::get_a(color) < 128) continue;
 
-				                  const auto red = ui::get_r(color) / 255.0;
-				                  const auto green = ui::get_g(color) / 255.0;
-				                  const auto blue = ui::get_b(color) / 255.0;
+				                  const auto red = core::get_r(color) / 255.0;
+				                  const auto green = core::get_g(color) / 255.0;
+				                  const auto blue = core::get_b(color) / 255.0;
 				                  const auto luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
 				                  const auto maximum = std::max({red, green, blue});
 				                  const auto minimum = std::min({red, green, blue});
 				                  const auto chroma = maximum - minimum;
 
-				                  ++luminance_histogram[std::clamp(df::round(luminance * 255), 0, 255)];
+				                  ++luminance_histogram[std::clamp(core::round(luminance * 255), 0, 255)];
 				                  chroma_sum += chroma;
 				                  ++sample_count;
 
@@ -2287,7 +2287,7 @@ void edit_view::auto_straighten()
 	const auto rotation_angle = _edit_state._edits.rotation_angle();
 
 	queue_auto_adjust(768, std::string(tt.command_auto_straighten.sv()),
-	                  [current_straighten, rotation_angle](const ui::const_surface_ptr& surface) ->
+	                  [current_straighten, rotation_angle](const core::const_surface_ptr& surface) ->
 	                  std::function<void(edit_view_state&)>
 	                  {
 		                  if (!is_valid(surface) || surface->width() < 3 || surface->height() < 3) return {};
@@ -2298,12 +2298,12 @@ void edit_view::auto_straighten()
 
 		                  for (auto y = 0; y < height; ++y)
 		                  {
-			                  const auto* pixels = std::bit_cast<const ui::color32*>(surface->pixels_line(y));
+			                  const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
 			                  for (auto x = 0; x < width; ++x)
 			                  {
 				                  grayscale[static_cast<size_t>(y) * width + x] =
-					                  static_cast<float>((0.299 * ui::get_r(pixels[x]) + 0.587 * ui::get_g(pixels[x]) +
-						                  0.114 * ui::get_b(pixels[x])) / 255.0);
+					                  static_cast<float>((0.299 * core::get_r(pixels[x]) + 0.587 * core::get_g(pixels[x]) +
+						                  0.114 * core::get_b(pixels[x])) / 255.0);
 			                  }
 		                  }
 
@@ -2477,7 +2477,7 @@ void edit_view::auto_document()
 	const auto orientation = _loaded.orientation();
 
 	queue_auto_adjust(768, std::string(tt.command_auto_document.sv()),
-	                  [dimensions, orientation](const ui::const_surface_ptr& surface) ->
+	                  [dimensions, orientation](const core::const_surface_ptr& surface) ->
 	                  std::function<void(edit_view_state&)>
 	                  {
 		                  const auto detected = detect_document(surface, dimensions);
@@ -2542,7 +2542,7 @@ void edit_view::changed()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-void edit_view_controls::layout_controls(ui::measure_context& mc)
+void edit_view_controls::layout_controls(render::measure_context& mc)
 {
 	if (!_controls.empty())
 	{
@@ -2694,7 +2694,7 @@ void edit_view_controls::create_controls()
 		_jxl_lossless_check,
 	};
 
-	_clr = ui::color(ui::style::colors.dialog_text);
+	_clr = core::color(ui::style::colors.dialog_text);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2703,7 +2703,7 @@ void edit_view_controls::create_controls()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void edit_view_state::reset(const prop::item_metadata_const_ptr& md, const sizei dimensions,
-                            const ui::orientation orientation)
+                            const core::orientation orientation)
 {
 	_edits.clear();
 
@@ -2787,17 +2787,17 @@ void edit_view::display_changed()
 	changed();
 }
 
-void edit_view::draw_handle(ui::draw_context& dc, const recti handle_bounds2, const float alpha)
+void edit_view::draw_handle(render::draw_context& dc, const recti handle_bounds2, const float alpha)
 {
-	const auto handle_clr = ui::color(ui::style::colors.dialog_selected_background, alpha * dc.colors.bg_alpha);
-	const auto handle_bg_clr = ui::color(ui::style::colors.dialog_selected_background, alpha * dc.colors.bg_alpha);
+	const auto handle_clr = core::color(ui::style::colors.dialog_selected_background, alpha * dc.colors.bg_alpha);
+	const auto handle_bg_clr = core::color(ui::style::colors.dialog_selected_background, alpha * dc.colors.bg_alpha);
 
 	dc.draw_rect(handle_bounds2, handle_clr);
-	dc.draw_border(handle_bounds2.inflate(df::round(-2 * dc.scale_factor)), handle_bounds2, handle_bg_clr,
+	dc.draw_border(handle_bounds2.inflate(core::round(-2 * dc.scale_factor)), handle_bounds2, handle_bg_clr,
 	               handle_bg_clr);
 }
 
-void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
+void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 {
 	auto clip_rect = dc.clip_bounds();
 
@@ -2830,7 +2830,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 
 		if (_invalid || !_texture)
 		{
-			const auto preview_dimensions = ui::scale_dimensions(_loaded.dimensions(), _extent);
+			const auto preview_dimensions = core::scale_dimensions(_loaded.dimensions(), _extent);
 			const auto has_current_preview = edit_preview_is_current(_preview_source, _preview_source_request,
 			                                                         preview_dimensions);
 			if (!has_current_preview)
@@ -2843,7 +2843,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 				if (!(_texture && _texture->is_valid()) && is_valid(_preview_source))
 				{
 					if (const auto t = dc.create_texture();
-						t && t->update(_preview_source) != ui::texture_update_result::failed)
+						t && t->update(_preview_source) != render::texture_update_result::failed)
 					{
 						_texture = t;
 					}
@@ -2860,7 +2860,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 			else
 			{
 				auto t = dc.create_texture();
-				if (t && t->update(_preview_source) != ui::texture_update_result::failed)
+				if (t && t->update(_preview_source) != render::texture_update_result::failed)
 				{
 					_texture = t;
 					_invalid = false;
@@ -2877,9 +2877,9 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		}
 
 		const auto sampler = calc_sampler(image_view_bounds.extent().round(), _texture->dimensions(),
-		                                  ui::orientation::top_left);
+		                                  core::orientation::top_left);
 
-		ui::texture_transform texture_transform;
+		render::texture_transform texture_transform;
 		if (_edit_state._edits.has_perspective())
 		{
 			const auto display_angle = to_radian(-_edit_state._edits.rotation_angle());
@@ -2895,7 +2895,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		}
 		if (_edit_state._edits.has_color_changes())
 		{
-			ui::color_adjust adjust;
+			render::color_adjust adjust;
 			adjust.color_params(_edit_state._edits.vibrance(), _edit_state._edits.saturation(),
 			                    _edit_state._edits.darks(), _edit_state._edits.midtones(), _edit_state._edits.lights(),
 			                    _edit_state._edits.contrast(), _edit_state._edits.brightness(),
@@ -2906,7 +2906,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		{
 			const auto outer_padding = dc.padding2 * 2;
 			const auto column_gap = dc.padding2 * 2;
-			const auto label_height = dc.text_line_height(ui::style::font_face::dialog) + dc.padding1;
+			const auto label_height = dc.text_line_height(render::font_face::dialog) + dc.padding1;
 			const quadd original_image_bounds(_loaded.dimensions());
 			const auto original_selection_bounds = _edit_state._original_edits.effective_crop_bounds(
 				_loaded.dimensions());
@@ -2957,7 +2957,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 				                      static_cast<int>(std::floor(crop_rect.bottom() + rounding_tolerance)));
 				const auto comparison_clip = crop_clip.intersection(bounds).intersection(clip_rect);
 				const auto comparison_sampler = calc_sampler(transformed_image_bounds.extent().round(),
-				                                             _texture->dimensions(), ui::orientation::top_left);
+				                                             _texture->dimensions(), core::orientation::top_left);
 				dc.clip_bounds(comparison_clip);
 				if (edited && texture_transform.has_changes())
 					dc.draw_texture(_texture, transformed_image_bounds, _texture->dimensions(), alpha,
@@ -2974,13 +2974,13 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 			draw_comparison_image(edited_bounds, edited_transform, true);
 			_image_transform = edited_transform;
 
-			const auto text_color = ui::color(dc.colors.foreground, alpha);
+			const auto text_color = core::color(dc.colors.foreground, alpha);
 			const recti original_label(original_bounds.left, outer_padding, original_bounds.right, image_top);
 			const recti edited_label(edited_bounds.left, outer_padding, edited_bounds.right, image_top);
-			dc.draw_text(tt.edit_original, original_label, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line_center, text_color, {});
-			dc.draw_text(tt.command_edit_preview, edited_label, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line_center, text_color, {});
+			dc.draw_text(tt.edit_original, original_label, render::font_face::dialog,
+			             render::text_style::single_line_center, text_color, {});
+			dc.draw_text(tt.command_edit_preview, edited_label, render::font_face::dialog,
+			             render::text_style::single_line_center, text_color, {});
 			return;
 		}
 
@@ -2996,7 +2996,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 
 		_crop_bounds = crop_bounding;
 
-		const auto pad1 = df::round(1 * dc.scale_factor);
+		const auto pad1 = core::round(1 * dc.scale_factor);
 		const auto pad8 = dc.padding2;
 		const auto pad16 = pad8 * 2;
 
@@ -3010,16 +3010,16 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		                    crop_bounding.bottom() + pad16);
 
 		const auto bounding = crop_bounding.round();
-		auto c1 = ui::color(0, alpha / 2.0f);
+		auto c1 = core::color(0, alpha / 2.0f);
 		dc.draw_border(bounding, border, c1, c1);
-		auto c2 = ui::color(ui::style::colors.dialog_selected_background, alpha);
+		auto c2 = core::color(ui::style::colors.dialog_selected_background, alpha);
 		dc.draw_border(bounding, bounding.inflate(pad1), c2, c2);
 
 		const auto grid_alpha = _edit_state.grid_alpha_animation.val();
 
 		if (grid_alpha > 0)
 		{
-			const auto c = ui::color(0, grid_alpha);
+			const auto c = core::color(0, grid_alpha);
 
 			// draw grid
 			const auto center = bounding.center();
@@ -3045,23 +3045,23 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		draw_handle(dc, _crop_handle_bl.round(), alpha);
 		draw_handle(dc, _crop_handle_br.round(), alpha);
 
-		const auto text_dims = std::format("{}x{}", df::round(actual_size.Width), df::round(actual_size.Height));
-		const sizei text_size = dc.measure_text(text_dims, ui::style::font_face::dialog,
-		                                        ui::style::text_style::single_line_center, bounding.width()).inflate(
+		const auto text_dims = std::format("{}x{}", core::round(actual_size.Width), core::round(actual_size.Height));
+		const sizei text_size = dc.measure_text(text_dims, render::font_face::dialog,
+		                                        render::text_style::single_line_center, bounding.width()).inflate(
 			dc.padding2);
 		const auto text_x = (bounding.left + bounding.right - text_size.cx) / 2;
 		const recti draw_text_rect(text_x, bounding.top - text_size.cy, text_x + text_size.cx, bounding.top);
 
-		dc.draw_text(text_dims, draw_text_rect, ui::style::font_face::dialog, ui::style::text_style::single_line_center,
-		             ui::color(dc.colors.foreground, alpha), {});
+		dc.draw_text(text_dims, draw_text_rect, render::font_face::dialog, render::text_style::single_line_center,
+		             core::color(dc.colors.foreground, alpha), {});
 
 		if (setting.show_debug_info)
 		{
-			const auto text_degs = str::print("%3.3f degrees", selection_angle);
-			dc.draw_text(text_degs, crop_bounding.round().inflate(df::round(100 * dc.scale_factor)),
-			             ui::style::font_face::title,
-			             ui::style::text_style::single_line_center,
-			             ui::color(ui::style::colors.warning_background, alpha), {});
+			const auto text_degs = core::print("%3.3f degrees", selection_angle);
+			dc.draw_text(text_degs, crop_bounding.round().inflate(core::round(100 * dc.scale_factor)),
+			             render::font_face::title,
+			             render::text_style::single_line_center,
+			             core::color(ui::style::colors.warning_background, alpha), {});
 		}
 	}
 	else if (!_loaded.is_empty())
@@ -3075,7 +3075,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		}
 
 		const auto alpha = dc.colors.alpha;
-		const auto dims = ui::scale_dimensions(_loaded.dimensions(), _extent, true);
+		const auto dims = core::scale_dimensions(_loaded.dimensions(), _extent, true);
 		const auto bounds = center_rect(dims, _extent);
 
 		if (_invalid || !_texture)
@@ -3093,7 +3093,7 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 			else
 			{
 				auto t = dc.create_texture();
-				if (t && t->update(_preview_source) != ui::texture_update_result::failed)
+				if (t && t->update(_preview_source) != render::texture_update_result::failed)
 				{
 					_texture = t;
 					_invalid = false;
@@ -3108,16 +3108,16 @@ void edit_view::render(ui::draw_context& dc, view_controller_ptr controller)
 			return;
 		}
 
-		const auto sampler = calc_sampler(bounds.extent(), _texture->dimensions(), ui::orientation::top_left);
+		const auto sampler = calc_sampler(bounds.extent(), _texture->dimensions(), core::orientation::top_left);
 		dc.draw_texture(_texture, bounds, alpha, sampler);
 
 		auto draw_text_rect = recti(_extent);
 		draw_text_rect.top = bounds.bottom + dc.padding2;
-		draw_text_rect.bottom = draw_text_rect.top + dc.text_line_height(ui::style::font_face::title) + dc.padding2 *
+		draw_text_rect.bottom = draw_text_rect.top + dc.text_line_height(render::font_face::title) + dc.padding2 *
 			2;
 
-		dc.draw_text(_path.name(), draw_text_rect, ui::style::font_face::title,
-		             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, alpha), {});
+		dc.draw_text(_path.name(), draw_text_rect, render::font_face::title,
+		             render::text_style::single_line_center, core::color(dc.colors.foreground, alpha), {});
 	}
 	else
 	{

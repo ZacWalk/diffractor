@@ -34,7 +34,7 @@ namespace
 		load_diagnostic* const _diagnostic;
 
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
 		explicit jxl_surface_sink(load_diagnostic* const diagnostic) : _diagnostic(diagnostic)
 		{
@@ -48,12 +48,12 @@ namespace
 				return {};
 			}
 
-			auto s = std::make_shared<ui::surface>();
+			auto s = std::make_shared<core::surface>();
 			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
 			                              frame.format == libfiles::pixel_format::bgra8
-				                              ? ui::texture_format::ARGB
-				                              : ui::texture_format::RGB,
-			                              static_cast<ui::orientation>(frame.orientation));
+				                              ? core::texture_format::ARGB
+				                              : core::texture_format::RGB,
+			                              static_cast<core::orientation>(frame.orientation));
 			if (!pixels) return {};
 			surface = std::move(s);
 			return {pixels, surface->stride()};
@@ -61,11 +61,11 @@ namespace
 	};
 }
 
-ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
+core::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 {
 	try
 	{
-		df::blob owned;
+		core::blob owned;
 		const auto data = s.view_all(owned);
 		libfiles::reader r{std::span<const uint8_t>(data.data, data.size)};
 
@@ -75,7 +75,7 @@ ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return {};
@@ -83,8 +83,8 @@ ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 
 // Packed pixels only: a planar surface - a video frame - is converted to packed by its caller first.
 // The orientation, when given, is which way the pixels stand in place of the surface's own.
-ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                       const file_encode_params& params, const std::optional<ui::orientation> orientation)
+core::image_ptr save_jxl(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+                       const file_encode_params& params, const std::optional<core::orientation> orientation)
 {
 	if (!is_valid(surface_in)) return {};
 
@@ -99,10 +99,10 @@ ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const libfiles::
 
 	switch (surface_in->format())
 	{
-	case ui::texture_format::RGB:
+	case core::texture_format::RGB:
 		view.format = libfiles::pixel_format::bgrx8;
 		break;
-	case ui::texture_format::ARGB:
+	case core::texture_format::ARGB:
 		view.format = libfiles::pixel_format::bgra8;
 		break;
 	default:
@@ -115,9 +115,9 @@ ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const libfiles::
 
 	auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), metadata,
 	                                          options);
-	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
+	for (const auto& note : encoded.notes) core::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};
 
-	return std::make_shared<ui::image>(df::blob(std::move(encoded.data)), dimensions,
-	                                   ui::image_format::JXL, turn);
+	return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dimensions,
+	                                   core::image_format::JXL, turn);
 }

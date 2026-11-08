@@ -158,11 +158,11 @@ namespace
 
 		uint64_t pos() const override { return _pos; }
 		bool trunc(uint64_t) const override { return false; }
-		df::file_path path() const override { return _render->path(); }
+		core::file_path path() const override { return _render->path(); }
 	};
 }
 
-sid_tune_render::sid_tune_render(df::file_path path, const int song, const double seconds) :
+sid_tune_render::sid_tune_render(core::file_path path, const int song, const double seconds) :
 	_path(std::move(path)), _requested_song(song), _seconds(seconds)
 {
 }
@@ -171,11 +171,11 @@ sid_tune_render::~sid_tune_render() = default;
 
 bool sid_tune_render::load()
 {
-	platform::exclusive_lock render_lock(_render_mutex);
+	core::exclusive_lock render_lock(_render_mutex);
 	if (_loaded) return _load_ok;
 	_loaded = true;
 
-	const auto bytes = df::blob_head_from_file(_path, max_sid_file_bytes);
+	const auto bytes = platform::blob_head_from_file(_path, max_sid_file_bytes);
 	if (bytes.empty() || bytes.size() >= max_sid_file_bytes) return false;
 
 	sid_tune_info info;
@@ -202,7 +202,7 @@ bool sid_tune_render::load()
 	const auto frames = static_cast<size_t>(samples / 800 + 2);
 
 	{
-		platform::exclusive_lock data_lock(_data_mutex);
+		core::exclusive_lock data_lock(_data_mutex);
 		_details = std::move(details);
 		_description = std::move(description);
 		_pcm.reserve(static_cast<size_t>(samples) + max_frame_samples);
@@ -247,7 +247,7 @@ void sid_tune_render::render_frame()
 	}
 	for (int v = 0; v < 3; ++v) frame.envelope[v] = snap.envelope[v];
 
-	platform::exclusive_lock data_lock(_data_mutex);
+	core::exclusive_lock data_lock(_data_mutex);
 	_frame_starts.emplace_back(_pcm.size());
 	_frames.emplace_back(frame);
 	_pcm.insert(_pcm.end(), samples, samples + n);
@@ -255,7 +255,7 @@ void sid_tune_render::render_frame()
 
 size_t sid_tune_render::read(const uint64_t first, int16_t* out, const size_t count)
 {
-	platform::exclusive_lock render_lock(_render_mutex);
+	core::exclusive_lock render_lock(_render_mutex);
 	if (!_load_ok) return 0;
 
 	const auto total = _sample_count.load();
@@ -265,14 +265,14 @@ size_t sid_tune_render::read(const uint64_t first, int16_t* out, const size_t co
 	for (;;)
 	{
 		{
-			platform::shared_lock data_lock(_data_mutex);
+			core::shared_lock data_lock(_data_mutex);
 			if (_pcm.size() >= end) break;
 		}
 
 		render_frame();
 	}
 
-	platform::shared_lock data_lock(_data_mutex);
+	core::shared_lock data_lock(_data_mutex);
 	const auto n = static_cast<size_t>(end - first);
 
 	for (auto i = 0_z; i < n; ++i)
@@ -302,7 +302,7 @@ size_t sid_tune_render::frames_before(const double seconds, sid_frame_state* out
 {
 	const auto sample = static_cast<uint64_t>(std::max(0.0, seconds) * sid_sample_rate);
 
-	platform::shared_lock data_lock(_data_mutex);
+	core::shared_lock data_lock(_data_mutex);
 	if (count == 0 || _frame_starts.empty() || sample >= _pcm.size()) return 0;
 
 	// The frame whose samples include this one: its state is the chip's at the end of that frame.
@@ -319,7 +319,7 @@ size_t sid_tune_render::samples_before(const double seconds, int16_t* out, const
 {
 	const auto sample = static_cast<uint64_t>(std::max(0.0, seconds) * sid_sample_rate);
 
-	platform::shared_lock data_lock(_data_mutex);
+	core::shared_lock data_lock(_data_mutex);
 	const auto end = std::min<uint64_t>(sample, _pcm.size());
 	const auto start = end > count ? end - count : 0;
 	const auto n = static_cast<size_t>(end - start);
@@ -329,17 +329,17 @@ size_t sid_tune_render::samples_before(const double seconds, int16_t* out, const
 
 sid_tune_details sid_tune_render::details() const
 {
-	platform::shared_lock data_lock(_data_mutex);
+	core::shared_lock data_lock(_data_mutex);
 	return _details;
 }
 
 void sid_tune_render::describe(av_media_info& info) const
 {
-	platform::shared_lock data_lock(_data_mutex);
+	core::shared_lock data_lock(_data_mutex);
 	if (!_description) return;
 
 	const auto chip = sid_chip_name(_details.chip_8580);
-	info.audio_codec = str::cache(chip);
+	info.audio_codec = core::cache(chip);
 	info.bitrate = 0;
 	info.metadata = _description->metadata;
 
@@ -385,7 +385,7 @@ std::string_view sid_chip_name(const bool chip_8580)
 	return chip_8580 ? "MOS 8580" : "MOS 6581";
 }
 
-sid_header_texts read_sid_header_texts(const df::cspan data)
+sid_header_texts read_sid_header_texts(const core::cspan data)
 {
 	sid_header_texts result;
 	if (data.size < 0x76) return result;
@@ -408,7 +408,7 @@ sid_header_texts read_sid_header_texts(const df::cspan data)
 			}
 		}
 
-		return std::string(str::trim(text));
+		return std::string(core::trim(text));
 	};
 
 	result.title = field(0x16);

@@ -40,7 +40,7 @@ animations are enabled; navigation to another item is immediate.
 
 Decode requests use display size where the codec supports scaled decode. Encoded data and browser
 thumbnails are budgeted; decoded surfaces are retained only while visible or when no cheaper form can
-recreate them. GPU textures are created lazily by the UI-owned draw context and may be discarded on
+recreate them. GPU textures are created lazily by the UI thread's render-owned draw context and may be discarded on
 device loss without reopening the source.
 Bitmap thumbnail scans obey the same encoded-byte ceiling as whole-file loads: a file over that
 ceiling may still contribute header and metadata, but it is not read into memory or published as a
@@ -177,9 +177,9 @@ surviving paths.
 - [model.cpp](../src/model.cpp), [model.h](../src/model.h) and [model_display.h](../src/model_display.h):
   `texture_state` and `display_state_t`.
 - [model_index.cpp](../src/model_index.cpp): change discovery, scanning, and thumbnail scheduling.
-- libdesktop's [platform_win_files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_files.cpp): replacement and coherent file handles.
+- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp): replacement and coherent file handles.
 - [view_rename.cpp](../src/view_rename.cpp): displaced rename groups and cancellation recovery.
 - [app_util.cpp](../src/app_util.cpp): Import planning, shared companions, and write rollback.
-- libdesktop's [platform_win_wic.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_wic.cpp): pasted clipboard bitmap encoding and staged
+- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp): pasted clipboard bitmap encoding and staged
   publication.
 - [metadata.cpp](../src/metadata.cpp): XMP packet and sidecar updates.

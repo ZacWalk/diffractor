@@ -1877,6 +1877,9 @@ msgstr "F10"
 msgid "F11"
 msgstr "F11"
 
+msgid "F12"
+msgstr "F12"
+
 msgid "F2"
 msgstr "F2"
 

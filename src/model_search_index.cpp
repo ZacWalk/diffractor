@@ -43,13 +43,13 @@ namespace
 		}
 	};
 
-	uint32_t intern_key(df::hash_map<std::string, uint32_t>& ids, std::string key)
+	uint32_t intern_key(core::hash_map<std::string, uint32_t>& ids, std::string key)
 	{
 		const auto next = static_cast<uint32_t>(ids.size());
 		return ids.try_emplace(std::move(key), next).first->second;
 	}
 
-	size_t key_map_bytes(const df::hash_map<std::string, uint32_t>& ids)
+	size_t key_map_bytes(const core::hash_map<std::string, uint32_t>& ids)
 	{
 		auto result = ids.bucket_count() * sizeof(void*);
 
@@ -207,14 +207,14 @@ std::string df::search_index::current_format_signature()
 	const auto* const video = files::file_type_from_name(std::string_view("a.mp4"));
 
 	return std::format("{}|{}|{}|{}|{}|{}|{}|{}",
-	                   format_size(file_size(uint64_t{1536})),
+	                   platform::format_size(file_size(uint64_t{1536})),
 	                   prop::format_pixels({}, picture),
 	                   prop::format_pixels({100, 100}, picture),
 	                   prop::format_pixels({500, 500}, picture),
 	                   prop::format_pixels({1920, 1080}, video),
 	                   prop::format_audio_sample_rate(44100u),
-	                   date_t(2024, 1, 15, 12).system_to_local().to_int64(),
-	                   date_t(2024, 7, 15, 12).system_to_local().to_int64());
+	                   platform::utc_to_local(date_t(2024, 1, 15, 12)).to_int64(),
+	                   platform::utc_to_local(date_t(2024, 7, 15, 12)).to_int64());
 }
 
 std::shared_ptr<const df::search_index> df::search_index::build(const folder_list& folders, const uint64_t generation,
@@ -224,7 +224,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 	auto& index = *result;
 	index._generation = generation;
 	index._format_signature = current_format_signature();
-	index._date_day = platform::now().to_days();
+	index._date_day = core::utc_now().to_days();
 
 	folder_list members;
 	members.reserve(folders.size());
@@ -287,7 +287,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 	std::vector<hash_map<uint32_t, std::vector<uint32_t>>> split_memo(split_fields.size());
 	hash_map<uint32_t, std::vector<uint32_t>> tag_memo;
 
-	const auto add_text = [&index, &text_ids, &text_docs](const str::cached value, const uint32_t doc)
+	const auto add_text = [&index, &text_ids, &text_docs](const core::cached value, const uint32_t doc)
 	{
 		const auto next = static_cast<uint32_t>(index._text_values.size());
 		const auto [found, inserted] = text_ids.try_emplace(value.id, next);
@@ -330,7 +330,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 			const auto rounded = round_size(static_cast<uint64_t>(file.size.to_int64()));
 			const auto [size_found, size_inserted] = size_memo.try_emplace(
 				size_key{rounded.unit.data(), rounded.n * 10 + rounded.dec}, no_value);
-			if (size_inserted) size_found->second = formatted_id(format_size(file.size));
+			if (size_inserted) size_found->second = formatted_id(platform::format_size(file.size));
 			if (size_found->second != no_value) formatted_docs.add(size_found->second, doc);
 
 			if (md)
@@ -380,7 +380,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 					{
 						split2(metadata.tags, true, [&index, &parts](const std::string_view part)
 						{
-							parts.emplace_back(intern_key(index._tag_ids, search_fold_key(str::trim(part))));
+							parts.emplace_back(intern_key(index._tag_ids, search_fold_key(core::trim(part))));
 						});
 					}
 
@@ -434,7 +434,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 		index._doc_folder.capacity() * sizeof(uint32_t) +
 		index._metadata.capacity() * sizeof(prop::item_metadata_ptr) +
 		index._listed_docs.byte_size() +
-		index._text_values.capacity() * sizeof(str::cached) +
+		index._text_values.capacity() * sizeof(core::cached) +
 		index._text_docs.byte_size() +
 		index._text_trigrams.byte_size() +
 		key_map_bytes(index._formatted_ids) + index._formatted_docs.byte_size() +
@@ -461,7 +461,7 @@ std::optional<uint32_t> df::search_index::find_folder(const folder_path path) co
 	return found->second;
 }
 
-std::optional<uint32_t> df::search_index::find_doc(const uint32_t folder, const str::cached name) const
+std::optional<uint32_t> df::search_index::find_doc(const uint32_t folder, const core::cached name) const
 {
 	const auto& entry = _folders[folder];
 	const auto first = _files.begin() + entry.first_doc;
@@ -698,7 +698,7 @@ df::search_index_evaluator::search_index_evaluator(std::shared_ptr<const search_
 	_index(std::move(index)),
 	_view(*_index, folders),
 	_formats_current(_index->format_signature() == search_index::current_format_signature()),
-	_dates_current(_formats_current && _index->date_day() == platform::now().to_days()),
+	_dates_current(_formats_current && _index->date_day() == core::utc_now().to_days()),
 	_base(_view.clean_docs())
 {
 	_base.intersect(_index->listed_docs());

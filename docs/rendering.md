@@ -7,7 +7,7 @@ and video presentation, and graphics recovery. [Design](design.md) owns visible 
 
 ## Backends
 
-Every window draws through `ui::draw_context_device` using one of two backends:
+Every window draws through `render::draw_context_device` using one of two backends:
 
 - Direct3D 11 is the primary backend for the main window.
 - The CPU software backend draws dialogs and popups and is the fallback when hardware setup fails or
@@ -28,7 +28,7 @@ rectangle limits required output but cannot affect pixels inside it. Layered win
 transparency; ordinary targets begin from the same neutral clear color.
 
 The GPU may dither solid output slightly to avoid banding. This is the only intentional visible
-backend difference. Alpha animation is disabled through `ui::animations_enabled` in software mode;
+backend difference. Alpha animation is disabled through `render::animations_enabled` in software mode;
 callers use `ui::animate_alpha` rather than bypassing that gate.
 
 ## Device And Frame Lifetime
@@ -122,8 +122,8 @@ A layout that could not be created is logged and left undrawn rather than derefe
 
 A subtitle is drawn from a bitmap made off the UI thread in the pixels of the picture as it is drawn -
 turned, for a video recorded turned and shown upright - then scaled with the picture; a picture that
-changes shape has its lines laid out again. Text goes through libdesktop's `platform::render_styled_text`,
-which lays its styled runs out with DirectWrite and composes them over a dilated outline in straight
+changes shape has its lines laid out again. Text goes through libdesktop's `render::render_styled_text`,
+which lays its styled runs out with DirectWrite on Windows or Pango on Linux and composes them over a dilated outline in straight
 alpha; pictures - Blu-ray, DVD and DVB subtitles - are expanded from their palettes, each from the canvas
 its stream states as it decodes. A picture stream shows one picture at a time: the next picture, or a
 clear, ends the one before it. Sizes follow the script's canvas, so a line takes the
@@ -132,7 +132,8 @@ and draws it over the frame the picture last drew. A line coming, going or finis
 rebuilds the scene once, since the lines are recorded into it and a replay would present the old ones.
 Two lines up at once are stacked rather than drawn
 over each other, and lines in the lower half rise clear of media controls floating over the picture as
-those fade in. Linux has no text renderer for subtitles yet, so only picture subtitles draw there.
+those fade in. Text subtitles use the backend's text renderer on both platforms; picture subtitles use
+their decoded palettes.
 
 ## Images And Pixel Formats
 
@@ -209,10 +210,10 @@ frames of that surface layout, and so does the CPU backend when a hardware pictu
 then on hardware pictures of that layout are downloaded and prepared on the decode thread; other
 layouts are still shared.
 
-The renderers see a frame only through `ui::video_frame`: the picture the decode thread prepared,
+The renderers see a frame only through `render::video_frame`: the picture the decode thread prepared,
 or else the decoder's texture with the lock its device takes around it, which a renderer copies only
 while holding it. Any other picture is converted by the application's scaler, made by
-`ui::make_surface_scaler`, so no renderer includes FFmpeg.
+`render::make_surface_scaler`, so no renderer includes FFmpeg.
 
 When hardware decoding, shared textures, or YUV presentation are unavailable, playback falls back to
 software-decoded surfaces. The fallback preserves timing, orientation, color intent, and playback
@@ -258,20 +259,23 @@ initialized backend selected. Logical application state remains independent from
 
 ## Where this lives
 
-- libdesktop's [platform_win_d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_d3d11.cpp): device and adapter selection, image
+- libdesktop's [d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/d3d11.cpp): device and adapter selection, image
   budgets, hardware drawing, swap-chain resources, texture upload and recycling, glyph atlases,
   video textures copied from the render device's decoder or shared from another device, and the render
   device and adapter published for the decoder.
-- libdesktop's [platform_win_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_ui.cpp): each window's backend choice, swap chain,
-  presentation and its hidden-window standby, the frame timer, and the switch to software on device loss.
-- libdesktop's [platform_win_software.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_software.cpp): CPU backend and Windows present
-  target.
-- libdesktop's [platform_win_font.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_font.cpp): font resolution, shaping, and glyph masks.
-- libdesktop's [platform_win_wic.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_wic.cpp): text rendered into surfaces, styled
+- libdesktop's [window_device.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/window_device.cpp): each window's backend choice, swap chain,
+  presentation and its hidden-window standby; [device.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/device.cpp): the switch to software
+  on device loss; [frame.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/ui/frame.cpp): the frame timer.
+- libdesktop's [software_context.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/software_context.cpp): CPU backend;
+  [software_present.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/software_present.cpp): its Windows present target; and
+  [window_device.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/linux/window_device.cpp): the Linux window device.
+- libdesktop's [font.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/font.cpp): Windows font resolution, shaping, and glyph masks;
+  [text.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/linux/text.cpp): Linux Pango layout, fallback and glyphs.
+- libdesktop's [text_surfaces.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/text_surfaces.cpp): text rendered into surfaces, styled
   and outlined for subtitles.
 - [av_subtitle.cpp](../src/av_subtitle.cpp): subtitle placement, stacking and rasterising, and
   [model.cpp](../src/model.cpp) `display_state_t::draw_subtitles`, which draws them over the picture.
-- libdesktop's [render_surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_surface.cpp) and [render_software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render_software.h):
+- libdesktop's [surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/core/surface.cpp) and [render/software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render/software.h):
   shared surfaces and software rasterization, and the CPU side of the HDR cube.
 - [av_format.cpp](../src/av_format.cpp): video decode, hardware decode selection, decode-thread
   picture preparation, the HDR mapping, and hardware-frame publication.
@@ -282,5 +286,5 @@ initialized backend selected. Logical application state remains independent from
 - [av_player.h](../src/av_player.h): the playback threads, the presenter that takes the frames its clock
   has reached, and the queue that makes only the latest waiting seek.
 - libdesktop's [yuv_common.hlsli](https://github.com/ZacWalk/libdesktop/blob/main/src/render/shaders/yuv_common.hlsli): YUV sampling and the GPU side of the HDR cube.
-- libdesktop's [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h): backend-neutral draw interfaces and presentation results, and the video frame
+- libdesktop's [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h): backend-neutral draw interfaces and presentation results, and the video frame
   and scaler interfaces the application hands the renderers.

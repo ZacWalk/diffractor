@@ -21,13 +21,13 @@
 // Shared helper function definitions
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-file_scan_result ff_scan_file(files& ff, const df::file_path path, const std::string_view xmp_sidecar)
+file_scan_result ff_scan_file(files& ff, const core::file_path path, const std::string_view xmp_sidecar)
 {
 	const auto* const ft = files::file_type_from_name(path);
 	return ff.scan_file(path, false, ft, xmp_sidecar, {}, libfiles::scan_intent::inspect);
 }
 
-rescan_spec ff_inspect_rescan(const df::file_path path)
+rescan_spec ff_inspect_rescan(const core::file_path path)
 {
 	rescan_spec spec;
 	spec.wanted = true;
@@ -36,7 +36,7 @@ rescan_spec ff_inspect_rescan(const df::file_path path)
 	return spec;
 }
 
-file_scan_result ff_scan_after_update(files& ff, file_update_result& result, const df::file_path path,
+file_scan_result ff_scan_after_update(files& ff, file_update_result& result, const core::file_path path,
                                       const std::string_view xmp_sidecar)
 {
 	if (result.scanned)
@@ -48,7 +48,7 @@ file_scan_result ff_scan_after_update(files& ff, file_update_result& result, con
 	return ff.scan_file(path, false, ft, xmp_sidecar, {}, libfiles::scan_intent::inspect);
 }
 
-file_scan_result ff_scan_and_load_thumb(files& ff, const df::file_path path,
+file_scan_result ff_scan_and_load_thumb(files& ff, const core::file_path path,
                                         const std::string_view xmp_sidecar)
 {
 	const auto* const ft = files::file_type_from_name(path);
@@ -115,9 +115,9 @@ void assert_metadata(const prop::item_metadata& expected, const prop::item_metad
 	assert_equal(expected.year, actual.year, "year", message);
 }
 
-prop::item_metadata_ptr metadata_from_cache(index_state& index, const df::file_path path)
+prop::item_metadata_ptr metadata_from_cache(index_state& index, const core::file_path path)
 {
-	const auto node = index.validate_folder(path.folder(), true, platform::now());
+	const auto node = index.validate_folder(path.folder(), true, core::utc_now());
 	node.folder->is_in_collection = true;
 	index.scan_item(node.folder, path, false, false, false, false, {}, false,
 	                files::file_type_from_name(path.name()));
@@ -125,10 +125,10 @@ prop::item_metadata_ptr metadata_from_cache(index_state& index, const df::file_p
 }
 
 
-prop::item_metadata_ptr extract_properties(const df::file_path path, const uint32_t t)
+prop::item_metadata_ptr extract_properties(const core::file_path path, const uint32_t t)
 {
 	auto result = std::make_shared<prop::item_metadata>();
-	const auto data = blob_from_file(path);
+	const auto data = platform::blob_from_file(path);
 
 	if (!data.empty())
 	{
@@ -178,9 +178,9 @@ prop::item_metadata_ptr expected_test_jpg()
 	result->camera_model = "Canon EOS 7D"_c;
 	result->coordinate = gps_coordinate(50.08806, 14.42083);
 	result->copyright_notice = "Copyright"_c;
-	result->dates.add(prop::date_source::exif_digitized, df::date_t(2012, 9, 14, 19, 21, 14));
-	result->dates.add(prop::date_source::exif_original, df::date_t(2012, 9, 14, 19, 21, 14));
-	result->dates.add(prop::date_source::exif_datetime, df::date_t(2012, 9, 14, 19, 21, 14));
+	result->dates.add(prop::date_source::exif_digitized, core::date_t(2012, 9, 14, 19, 21, 14));
+	result->dates.add(prop::date_source::exif_original, core::date_t(2012, 9, 14, 19, 21, 14));
+	result->dates.add(prop::date_source::exif_datetime, core::date_t(2012, 9, 14, 19, 21, 14));
 	result->description = "Caption"_c;
 	result->exposure_time = 1.0f / 100.0f;
 	result->iso_speed = 100;
@@ -199,7 +199,7 @@ prop::item_metadata_ptr expected_test_jpg()
 }
 
 
-df::index_file_item make_index_file_info(const df::date_t date)
+df::index_file_item make_index_file_info(const core::date_t date)
 {
 	df::index_file_item result;
 	result.file_modified = date;
@@ -210,17 +210,17 @@ df::index_file_item make_index_file_info(const df::date_t date)
 }
 
 
-df::item_element_ptr load_item(index_state& index, const df::file_path path, const bool load_thumb)
+df::item_element_ptr load_item(index_state& index, const core::file_path path, const bool load_thumb)
 {
 	auto i = std::make_shared<df::item_element>(path, index.find_item(path));
 	index.scan_item(i, load_thumb, false);
 	return i;
 }
 
-std::string_view detect_xmp_sidecar(const df::file_path path)
+std::string_view detect_xmp_sidecar(const core::file_path path)
 {
 	const auto xmp_path = path.extension(".xmp");
-	return xmp_path.exists() ? xmp_path.name() : std::string_view{};
+	return platform::exists(xmp_path) ? xmp_path.name() : std::string_view{};
 }
 
 int count_search_results(index_state& index, const df::search_t& search)
@@ -243,9 +243,9 @@ int count_search_results(index_state& index, const std::string_view query)
 
 void build_index(index_state& index, database& db)
 {
-	df::index_roots paths;
-	paths.folders.emplace(test_files_folder);
-	paths.excludes.emplace(test_files_folder.combine("excluded1"));
+	core::index_roots paths;
+	paths.folders.emplace(test_files_folder());
+	paths.excludes.emplace(test_files_folder().combine("excluded1"));
 	paths.exclude_wildcards.emplace("exclud*2"_c);
 
 	index.index_roots(paths);
@@ -273,7 +273,7 @@ void shared_test_context::lazy_load_index()
 
 		build_index(test_index, db1);
 
-		const df::item_selector selector(test_files_folder, true);
+		const core::item_selector selector(test_files_folder(), true);
 		df::item_set items1;
 
 		auto cb1 = [this, &items1](index_state::query_item_results items, const bool completed)
@@ -329,13 +329,13 @@ std::shared_ptr<av_session> make_test_session()
 	return make_test_session(nullptr);
 }
 
-std::shared_ptr<av_session> make_test_session(std::function<void(df::file_path, double)> save_position)
+std::shared_ptr<av_session> make_test_session(std::function<void(core::file_path, double)> save_position)
 {
 	static null_av_host navh;
 	return std::make_shared<av_session>(navh, std::move(save_position));
 }
 
-std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<const platform::thread_event> decode_wake)
+std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<const core::thread_event> decode_wake)
 {
 	static null_av_host navh;
 	return std::make_shared<av_session>(navh, nullptr, std::move(decode_wake));

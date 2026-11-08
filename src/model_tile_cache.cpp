@@ -21,7 +21,7 @@ namespace
 	// The index database keeps its own fault count, and nothing here is allowed to reach it.
 	void tile_db_error(sqlite3* db, const std::string_view sql)
 	{
-		df::log(__FUNCTION__, std::format("Tile cache error: {} [{}]", str::utf8_cast(sqlite3_errmsg(db)), sql));
+		core::log(__FUNCTION__, std::format("Tile cache error: {} [{}]", core::utf8_cast(sqlite3_errmsg(db)), sql));
 	}
 
 	// Wraps a statement for the length of one call. It either compiles its own SQL or borrows a
@@ -74,7 +74,7 @@ namespace
 			}
 		}
 
-		void bind(const int i, const df::cspan cs) const
+		void bind(const int i, const core::cspan cs) const
 		{
 			if (_handle != nullptr &&
 				sqlite3_bind_blob(_handle, i, cs.data, static_cast<int>(cs.size), SQLITE_STATIC) != SQLITE_OK)
@@ -102,14 +102,14 @@ namespace
 			}
 		}
 
-		df::blob blob(const int i) const
+		core::blob blob(const int i) const
 		{
 			if (_handle == nullptr) return {};
 
 			const auto* const data = static_cast<const uint8_t*>(sqlite3_column_blob(_handle, i));
 			const auto len = sqlite3_column_bytes(_handle, i);
 
-			return data == nullptr ? df::blob{} : df::blob(data, data + len);
+			return data == nullptr ? core::blob{} : core::blob(data, data + len);
 		}
 
 		int64_t int64(const int i) const
@@ -172,12 +172,12 @@ uint32_t tile_cache_test_seams::writes_since_prune(const tile_cache_db& db)
 	return db._writes_since_prune;
 }
 
-df::file_path resolve_tile_cache_db_path()
+core::file_path resolve_tile_cache_db_path()
 {
 	// Both caches are rebuildable, so they share the folder the index database uses.
 	const auto base = known_path(platform::known_folder::app_cache_data);
 
-	if (!base.exists())
+	if (!platform::exists(base))
 	{
 		platform::create_folder(base);
 	}
@@ -192,7 +192,7 @@ tile_cache_db::~tile_cache_db()
 
 bool tile_cache_db::is_db_thread() const
 {
-	return _db_thread_id == platform::current_thread_id();
+	return _db_thread_id == core::current_thread_id();
 }
 
 int tile_cache_db::exec(const std::string_view sql) const
@@ -259,8 +259,8 @@ bool tile_cache_db::connect_and_prepare()
 	if (sqlite3_open(std::bit_cast<const char*>(_db_path.str().c_str()), &_db) != SQLITE_OK)
 	{
 		_last_open_result = _db == nullptr ? SQLITE_NOMEM : sqlite3_errcode(_db);
-		df::log(__FUNCTION__, std::format("Failed to open tile cache: {}",
-		                                  _db ? str::utf8_cast(sqlite3_errmsg(_db)) : "out of memory"));
+		core::log(__FUNCTION__, std::format("Failed to open tile cache: {}",
+		                                  _db ? core::utf8_cast(sqlite3_errmsg(_db)) : "out of memory"));
 		return false;
 	}
 
@@ -297,7 +297,7 @@ bool tile_cache_db::connect_and_prepare()
 
 void tile_cache_db::delete_database_files() const
 {
-	if (!_db_path.exists()) return;
+	if (!platform::exists(_db_path)) return;
 
 	if (platform::delete_file(_db_path).success())
 	{
@@ -306,9 +306,9 @@ void tile_cache_db::delete_database_files() const
 		for (const auto suffix : {"-wal"sv, "-shm"sv})
 		{
 			const std::string sibling_name = std::string(_db_path.name()) + std::string(suffix);
-			const auto sibling = df::file_path(_db_path.folder(), std::string_view(sibling_name));
+			const auto sibling = core::file_path(_db_path.folder(), std::string_view(sibling_name));
 
-			if (sibling.exists())
+			if (platform::exists(sibling))
 			{
 				platform::delete_file(sibling);
 			}
@@ -316,11 +316,11 @@ void tile_cache_db::delete_database_files() const
 	}
 }
 
-void tile_cache_db::open(df::file_path path)
+void tile_cache_db::open(core::file_path path)
 {
 	sqlite3_initialize();
 
-	_db_thread_id = platform::current_thread_id();
+	_db_thread_id = core::current_thread_id();
 	_db_path = std::move(path);
 
 	if (connect_and_prepare()) return;
@@ -330,7 +330,7 @@ void tile_cache_db::open(df::file_path path)
 	if (!last_failure_allows_replacement())
 	{
 		close();
-		df::log(__FUNCTION__, "Tile cache unavailable - map tiles will be fetched this session"sv);
+		core::log(__FUNCTION__, "Tile cache unavailable - map tiles will be fetched this session"sv);
 		return;
 	}
 
@@ -340,7 +340,7 @@ void tile_cache_db::open(df::file_path path)
 	if (connect_and_prepare()) return;
 
 	close();
-	df::log(__FUNCTION__, "Tile cache unavailable - map tiles will be fetched each session"sv);
+	core::log(__FUNCTION__, "Tile cache unavailable - map tiles will be fetched each session"sv);
 }
 
 void tile_cache_db::close()
@@ -353,7 +353,7 @@ void tile_cache_db::close()
 	}
 	catch (const std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	for (auto** handle : {&_load, &_store, &_touch})
@@ -383,16 +383,16 @@ void tile_cache_db::begin()
 	}
 }
 
-df::blob tile_cache_db::load(const int64_t key)
+core::blob tile_cache_db::load(const int64_t key)
 {
 	if (_db == nullptr) return {};
 
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	const tile_stmt statement(_db, _load);
 	statement.bind(1, key);
 
-	auto result = statement.read() ? statement.blob(0) : df::blob{};
+	auto result = statement.read() ? statement.blob(0) : core::blob{};
 
 	if (!result.empty())
 	{
@@ -402,16 +402,16 @@ df::blob tile_cache_db::load(const int64_t key)
 	return result;
 }
 
-void tile_cache_db::store(const int64_t key, const df::cspan data)
+void tile_cache_db::store(const int64_t key, const core::cspan data)
 {
-	store(key, data, platform::now());
+	store(key, data, core::utc_now());
 }
 
-void tile_cache_db::store(const int64_t key, const df::cspan data, const df::date_t when)
+void tile_cache_db::store(const int64_t key, const core::cspan data, const core::date_t when)
 {
 	if (_db == nullptr || data.empty()) return;
 
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	begin();
 
@@ -428,13 +428,13 @@ void tile_cache_db::flush()
 {
 	if (_db == nullptr) return;
 
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	if (!_touched.empty())
 	{
 		begin();
 
-		const auto now = static_cast<int64_t>(platform::now().to_int64());
+		const auto now = static_cast<int64_t>(core::utc_now().to_int64());
 
 		for (const auto key : _touched)
 		{
@@ -464,14 +464,14 @@ void tile_cache_db::prune(const uint32_t unused_days, const int64_t max_size_byt
 {
 	if (_db == nullptr) return;
 
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	if (!commit_transaction()) return;
 
-	const auto now = static_cast<int64_t>(platform::now().to_int64());
+	const auto now = static_cast<int64_t>(core::utc_now().to_int64());
 	const auto days = [now](const uint32_t count)
 	{
-		const auto span = static_cast<int64_t>(count) * static_cast<int64_t>(df::date_t::intervals_per_day);
+		const auto span = static_cast<int64_t>(count) * static_cast<int64_t>(core::date_t::intervals_per_day);
 		return now > span ? now - span : int64_t{0};
 	};
 

@@ -31,7 +31,7 @@ std::vector<platform::file_dialog_filter> movie_project_filters();
 // thread by matching on path, so nothing the view owns crosses a queue.
 struct movie_probe_result
 {
-	df::file_path path;
+	core::file_path path;
 	bool found = false;
 	bool changed_during_probe = false;
 	bool is_photo = false;
@@ -42,7 +42,7 @@ struct movie_probe_result
 
 // Opens one source and measures it. File I/O and decoding, so it runs off the UI thread: on the
 // view's probe worker, or on the command line's own thread before any window exists.
-movie_probe_result probe_movie_source(df::file_path path);
+movie_probe_result probe_movie_source(core::file_path path);
 
 // What a probe makes of the clip it measured. One rule for the view and the command line, so a
 // project renders the same clips from both.
@@ -84,19 +84,19 @@ inline movie_clip apply_movie_probe(movie_clip clip, const movie_probe_result& p
 // For each path in `missing`, the files elsewhere that carry its name. The app answers from the
 // collection's index; the command line walks the collection's folders. Either way it runs off the
 // UI thread, and it is asked once per import, with every missing source at once.
-using movie_source_finder = std::function<std::vector<std::vector<df::file_path>>(
-	const std::vector<df::file_path>& missing)>;
+using movie_source_finder = std::function<std::vector<std::vector<core::file_path>>(
+	const std::vector<core::file_path>& missing)>;
 
 // What an import did with one source the project names.
 struct movie_import_source
 {
-	df::file_path stored;
+	core::file_path stored;
 	movie_source_match match = movie_source_match::stored;
 	// Where the timeline points now: the stored path, or the file chosen for it.
-	df::file_path path;
+	core::file_path path;
 	double recorded_seconds = 0;
 	// The files that carry its name, each with the length it measured; zero where it was not measured.
-	std::vector<std::pair<df::file_path, double>> candidates;
+	std::vector<std::pair<core::file_path, double>> candidates;
 	movie_probe_result probe;
 };
 
@@ -112,17 +112,17 @@ struct movie_import
 // collection file `find` offers that the rules in docs/movie.md#6-project-files choose. Every source
 // is measured, so the clips arrive probed; a clip whose source changed while it was measured is left
 // unprobed for the caller to measure again. File I/O and decoding, so it never runs on the UI thread.
-movie_import import_movie_maker_project(std::string_view xml, df::folder_path project_folder,
+movie_import import_movie_maker_project(std::string_view xml, core::folder_path project_folder,
                                         const movie_source_finder& find);
 
 // Writes `text` to a staged file beside `path`, and replaces `path` only once all of it is written,
 // so a failed save leaves the project that was there. Answers a failure in words, or nothing.
-std::string write_movie_project_file(df::file_path path, std::string_view text, bool fail_if_exists = false);
+std::string write_movie_project_file(core::file_path path, std::string_view text, bool fail_if_exists = false);
 
 struct movie_probe_retry_updates
 {
-	std::vector<df::file_path> retry_paths;
-	std::vector<df::file_path> missing_paths;
+	std::vector<core::file_path> retry_paths;
+	std::vector<core::file_path> missing_paths;
 };
 
 // Why a render stopped, as a reason rather than a sentence. The worker cannot word it: the text a
@@ -142,7 +142,7 @@ enum class movie_render_error
 // The claim is what makes Cancel and the final replace decide each other: whichever reaches it
 // first wins, so a cancel arriving while the encoder closes cannot leave a rendered file in place,
 // and a cancel arriving after it cannot claim one was discarded. The flag is a separate word
-// because df::cancel_token's version constructor increments the value it is handed, which a claim
+// because core::cancel_token's version constructor increments the value it is handed, which a claim
 // read as "still running at zero" cannot afford.
 struct movie_render_control
 {
@@ -171,7 +171,7 @@ struct movie_render_request
 	std::vector<movie_clip> clips;
 	movie_settings settings;
 	movie_output output;
-	df::file_path path;
+	core::file_path path;
 	bool fail_if_exists = false;
 };
 
@@ -184,7 +184,7 @@ struct movie_render_result
 	// refused replace. Everything else is a reason the caller translates.
 	std::string message;
 	// The clip whose frame could not be made, and where in its source, when that stopped the render.
-	df::file_path source;
+	core::file_path source;
 	double source_time = 0;
 };
 
@@ -193,7 +193,7 @@ struct movie_render_result
 // worker or on the command line's own thread. `report` receives the fraction done.
 movie_render_result render_movie_to_file(const movie_render_request& request,
                                          const std::function<void(double)>& report,
-                                         const df::cancel_token& token,
+                                         const core::cancel_token& token,
                                          const std::shared_ptr<movie_render_control>& control);
 
 struct movie_frame_cache_completion_decision
@@ -293,14 +293,14 @@ inline movie_probe_changed_action decide_movie_changed_probe_action(const int re
 		       : movie_probe_changed_action::mark_missing;
 }
 
-inline bool movie_path_list_contains(const std::vector<df::file_path>& paths, const df::file_path& path)
+inline bool movie_path_list_contains(const std::vector<core::file_path>& paths, const core::file_path& path)
 {
 	return std::find(paths.begin(), paths.end(), path) != paths.end();
 }
 
 inline movie_probe_retry_updates decide_movie_changed_probe_retries(const std::vector<movie_probe_result>& results,
-                                                                    df::hash_map<df::file_path, int, df::ihash,
-	                                                                    df::ieq>& retries,
+                                                                    core::hash_map<core::file_path, int, core::ihash,
+	                                                                    core::ieq>& retries,
                                                                     const int max_retries)
 {
 	movie_probe_retry_updates updates;
@@ -445,30 +445,30 @@ inline bool should_accept_movie_preview_pcm_loaded(const int current_generation,
 // Movie draws and composes stored pixels directly. A source's orientation -- Exif on a photo, rotation
 // metadata on a phone video -- is therefore applied where the frame is made, so the strip, the preview
 // and the render all receive the picture upright and cannot disagree about which way is up.
-inline sizei upright_movie_extent(const sizei stored, const ui::orientation orientation)
+inline sizei upright_movie_extent(const sizei stored, const core::orientation orientation)
 {
-	return ui::flips_xy(orientation) ? sizei{stored.cy, stored.cx} : stored;
+	return core::flips_xy(orientation) ? sizei{stored.cy, stored.cx} : stored;
 }
 
-inline ui::const_surface_ptr upright_movie_frame(const ui::const_surface_ptr& surface)
+inline core::const_surface_ptr upright_movie_frame(const core::const_surface_ptr& surface)
 {
 	if (!is_valid(surface)) return surface;
 
 	const auto orientation = surface->orientation();
-	if (orientation == ui::orientation::top_left || orientation == ui::orientation::none) return surface;
+	if (orientation == core::orientation::top_left || orientation == core::orientation::none) return surface;
 
 	auto turned = surface->transform(to_simple_transform(orientation));
 	if (!is_valid(turned)) return surface;
 
-	turned->orientation(ui::orientation::top_left);
+	turned->orientation(core::orientation::top_left);
 	return turned;
 }
 
 // The destination quad that draws a texture upright inside `target`, which is laid out for the
 // upright extent. Session textures carry the source orientation rather than turned pixels.
-inline quadd upright_movie_destination(const recti target, const ui::orientation orientation)
+inline quadd upright_movie_destination(const recti target, const core::orientation orientation)
 {
-	return orientation == ui::orientation::none ? quadd(target) : quadd(target).transform(to_simple_transform(orientation));
+	return orientation == core::orientation::none ? quadd(target) : quadd(target).transform(to_simple_transform(orientation));
 }
 
 class movie_view_controls final : public view_controls_host
@@ -500,7 +500,7 @@ public:
 	}
 
 	void create_controls();
-	void layout_controls(ui::measure_context& mc) override;
+	void layout_controls(render::measure_context& mc) override;
 	void options_changed() override;
 
 	// Refreshes the text and the visibility that depend on the document rather than on a control.
@@ -542,10 +542,10 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 
 	// Shed on device loss from the const broadcast; render rebuilds whenever they are absent, so
 	// clearing them is the whole recovery.
-	mutable ui::texture_ptr _texture_a;
-	mutable ui::texture_ptr _texture_b;
-	mutable ui::const_surface_ptr _drawn_a;
-	mutable ui::const_surface_ptr _drawn_b;
+	mutable render::texture_ptr _texture_a;
+	mutable render::texture_ptr _texture_b;
+	mutable core::const_surface_ptr _drawn_a;
+	mutable core::const_surface_ptr _drawn_b;
 
 	// The preview's picture sources: one per clip a crossfade can mix. Each is a video-only session
 	// the player decodes for, because a preview asked for the next frame every fortieth of a second
@@ -554,7 +554,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	struct preview_source
 	{
 		std::shared_ptr<av_session> session;
-		df::file_path path;
+		core::file_path path;
 		// The clip this slot is serving. A session that arrives after the slot has moved on is
 		// closed rather than adopted: it is alive, but it is no longer current.
 		int index = -1;
@@ -562,7 +562,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 		// Where the session was last told to be, until it gets there, so a position it is already
 		// walking towards does not become a seek on every frame.
 		std::optional<double> sought;
-		mutable ui::texture_ptr texture;
+		mutable render::texture_ptr texture;
 	};
 
 	std::array<preview_source, av_max_frame_sessions> _preview_sources;
@@ -578,7 +578,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	// for it, and a window read ahead of the playhead is there when the playhead arrives.
 	struct preview_audio
 	{
-		df::file_path path;
+		core::file_path path;
 		double start = 0;
 		double end = 0;
 		int sample_rate = 0;
@@ -620,12 +620,12 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	// which it can only do because it never runs at the same time as the movie preview. docs/movie.md
 	// owns that exclusivity; without it two things would be fighting over one audio device.
 	std::shared_ptr<av_session> _clip_session;
-	df::file_path _clip_session_path;
+	core::file_path _clip_session_path;
 	// Counts the clip player's open requests, so a session answering one that has since been replaced
 	// is closed rather than adopted.
 	uint64_t _clip_session_request = 0;
 	// Shed on device loss from the const broadcast, as the preview's textures are.
-	mutable ui::texture_ptr _clip_texture;
+	mutable render::texture_ptr _clip_texture;
 	// Set while a trim handle is captured: the preview shows that handle's frame instead of the
 	// playhead, and returns to the playhead when the handle is released.
 	std::optional<double> _preview_override;
@@ -646,7 +646,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	bool _project_io_active = false;
 	size_t _project_io_generation = 0;
 	size_t _probe_generation = 0;
-	df::hash_map<df::file_path, int, df::ihash, df::ieq> _probe_retries;
+	core::hash_map<core::file_path, int, core::ihash, core::ieq> _probe_retries;
 	std::function<void(bool)> _project_save_complete;
 
 public:
@@ -658,11 +658,11 @@ public:
 	void activate(sizei extent) override;
 	void deactivate() override;
 	void refresh() override;
-	void layout(ui::measure_context& mc, sizei extent) override;
-	void render(ui::draw_context& dc, view_controller_ptr controller) override;
+	void layout(render::measure_context& mc, sizei extent) override;
+	void render(render::draw_context& dc, view_controller_ptr controller) override;
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
-	bool mouse_wheel(pointi loc, ui::wheel_notch notch) override;
-	bool key_down(char32_t key, ui::key_state keys) override;
+	bool mouse_wheel(pointi loc, platform::wheel_notch notch) override;
+	bool key_down(char32_t key, platform::key_state keys) override;
 	bool escape() override;
 	bool can_exit() override;
 	bool confirm_exit() override;
@@ -677,13 +677,13 @@ public:
 	// Document edits. Each one re-reads what the panel shows, so the controls cannot describe a
 	// clip that is no longer current.
 	void add_items(const df::item_set& items);
-	void add_paths(const std::vector<df::file_path>& paths);
+	void add_paths(const std::vector<core::file_path>& paths);
 	// Inserts at a point in the timeline rather than appending, for a drop between two tiles.
-	void add_paths_at(const std::vector<df::file_path>& paths, size_t at);
+	void add_paths_at(const std::vector<core::file_path>& paths, size_t at);
 	// A drop from outside. `loc` is in view coordinates: over the strip it inserts at the tile
 	// boundary under the pointer, anywhere else it appends. Answers false when nothing dropped was a
 	// photo or a video.
-	bool drop_paths(const std::vector<df::file_path>& paths, pointi loc) override;
+	bool drop_paths(const std::vector<core::file_path>& paths, pointi loc) override;
 	void drag_paths_over(std::optional<pointi> loc) override;
 	void add_files();
 	void remove_current();
@@ -720,7 +720,7 @@ public:
 	void render_movie();
 	void render_progress(size_t generation, int percent);
 	void render_finished(size_t generation, bool ok, bool cancelled, movie_render_error reason,
-	                     const std::string& message, str::cached name);
+	                     const std::string& message, core::cached name);
 
 	bool has_clips() const { return !_movie_state.project.is_empty(); }
 	// Clips the user has changed since the timeline was last saved, seeded or opened: what leaving,
@@ -743,7 +743,7 @@ public:
 
 	// The clip player's current frame, uploaded on demand. Null unless it is the one running and it
 	// has a picture: the trim control falls back to its own decoded frame then.
-	ui::texture_ptr clip_texture(ui::draw_context& dc);
+	render::texture_ptr clip_texture(render::draw_context& dc);
 
 	void toggle_play();
 	// Stops whichever player is running. Picking a clip on the strip does this: playing on under a
@@ -791,7 +791,7 @@ private:
 	bool ensure_preview_source(size_t slot, int clip_index, const movie_clip& clip, double source_time);
 	// Ensures the slot, then keeps its session running and near the position the movie wants.
 	void update_preview_source(size_t slot, int clip_index, const movie_clip& clip, double source_time);
-	void preview_source_opened(size_t slot, int clip_index, df::file_path path, std::shared_ptr<av_session> ses);
+	void preview_source_opened(size_t slot, int clip_index, core::file_path path, std::shared_ptr<av_session> ses);
 	void close_preview_source(size_t slot);
 	void close_preview_sources();
 	// The preview's sound. Opened when the movie starts playing, fed a little ahead of the playhead
@@ -810,13 +810,13 @@ private:
 	// reads it, on a queue the preview's pictures do not use, so reading never delays a frame.
 	std::shared_ptr<const std::vector<int16_t>> preview_pcm(const movie_clip& clip, double source_time,
 	                                                        double& window_start);
-	void preview_pcm_loaded(df::file_path path, double start, double end, int sample_rate, int source_generation,
+	void preview_pcm_loaded(core::file_path path, double start, double end, int sample_rate, int source_generation,
 	                        std::vector<int16_t> pcm);
 	// Retires the clip player and puts its position back at the focused clip's in point.
 	void rewind_clip_player();
 	// Adopts a session the player opened, if the focus has not moved on since it was asked for.
-	void open_clip_session(df::file_path path, double at);
-	void clip_session_opened(df::file_path path, uint64_t request, std::shared_ptr<av_session> ses);
+	void open_clip_session(core::file_path path, double at);
+	void clip_session_opened(core::file_path path, uint64_t request, std::shared_ptr<av_session> ses);
 	void close_clip_session();
 	void retire_source_state();
 	// Asks before a running render is abandoned. Answers whether the caller may go on.
@@ -825,7 +825,7 @@ private:
 	void save_project(std::function<void(bool)> complete);
 	// Replaces the timeline with the clips a selection produces. Only ever reached for a timeline
 	// holding no unsaved work; leaving Movie is where unsaved work is settled.
-	void seed_from(const std::vector<df::file_path>& paths);
+	void seed_from(const std::vector<core::file_path>& paths);
 	// What Discard on leaving does: the timeline goes, the movie settings stay.
 	void discard_timeline();
 	// Re-reads the bound panel values from the document and shows them, for a change the panel did
@@ -833,6 +833,6 @@ private:
 	// one of them is not rewritten under the user.
 	void read_document();
 	void read_focused_clip();
-	void load_project(df::file_path path, bool is_wlmp);
+	void load_project(core::file_path path, bool is_wlmp);
 	recti calc_preview_target(sizei source) const;
 };

@@ -72,7 +72,7 @@ namespace
 		for (const auto& f : platform::iterate_file_items(folder, false).files)
 		{
 			const auto path = folder.combine_file(f.name);
-			if (str::icmp(path.extension(), ".po") == 0) result.emplace_back(path.file_name_without_extension());
+			if (core::icmp(path.extension(), ".po") == 0) result.emplace_back(path.file_name_without_extension());
 		}
 
 		return result;
@@ -83,12 +83,12 @@ namespace
 	class options_columns final : public view_elements
 	{
 	public:
-		sizei measure(ui::measure_context& mc, const int width_limit) const override
+		sizei measure(render::measure_context& mc, const int width_limit) const override
 		{
 			return {width_limit, arrange(mc, recti(0, 0, width_limit, 0), false)};
 		}
 
-		void layout(ui::measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			update_style_from_children();
 			bounds = bounds_in;
@@ -96,10 +96,10 @@ namespace
 		}
 
 	private:
-		int arrange(ui::measure_context& mc, const recti area, const bool place) const
+		int arrange(render::measure_context& mc, const recti area, const bool place) const
 		{
 			const auto gap = mc.padding2 * 4;
-			const auto min_width = df::round(340 * mc.scale_factor);
+			const auto min_width = core::round(340 * mc.scale_factor);
 			const auto columns = std::clamp((area.width() + gap) / (min_width + gap), 1, 4);
 			const auto width = (area.width() - gap * (columns - 1)) / columns;
 			std::vector<int> heights(columns, 0);
@@ -138,9 +138,9 @@ namespace
 		std::string _info;
 		mutable sizei _title_extent;
 
-		static int inset(const ui::measure_context& mc)
+		static int inset(const render::measure_context& mc)
 		{
-			return df::round(12 * mc.scale_factor);
+			return core::round(12 * mc.scale_factor);
 		}
 
 	public:
@@ -152,36 +152,36 @@ namespace
 			update_background_color();
 		}
 
-		sizei measure(ui::measure_context& mc, const int width_limit) const override
+		sizei measure(render::measure_context& mc, const int width_limit) const override
 		{
 			const auto text_width = std::max(0, width_limit - inset(mc) * 2 - mc.icon_cxy * 2);
-			_title_extent = mc.measure_text(_title, ui::style::font_face::title, ui::style::text_style::multiline,
+			_title_extent = mc.measure_text(_title, render::font_face::title, render::text_style::multiline,
 			                                text_width);
-			const auto info_extent = mc.measure_text(_info, ui::style::font_face::dialog,
-			                                         ui::style::text_style::multiline, text_width);
+			const auto info_extent = mc.measure_text(_info, render::font_face::dialog,
+			                                         render::text_style::multiline, text_width);
 			return {width_limit, _title_extent.cy + info_extent.cy + inset(mc) * 2};
 		}
 
-		void layout(ui::measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			measure(mc, bounds_in.width());
 		}
 
-		void render(ui::draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			render_background(dc, element_offset);
 
 			const auto content = bounds.offset(element_offset).inflate(-inset(dc));
-			const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+			const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 			const auto text_left = content.left + dc.icon_cxy * 2;
 			const auto title_bottom = content.top + _title_extent.cy;
 
 			xdraw_icon(dc, _icon, recti(content.left, content.top, text_left, title_bottom), clr, {});
 			dc.draw_text(_title, recti(text_left, content.top, content.right, title_bottom),
-			             ui::style::font_face::title, ui::style::text_style::multiline, clr, {});
+			             render::font_face::title, render::text_style::multiline, clr, {});
 			dc.draw_text(_info, recti(text_left, title_bottom, content.right, content.bottom),
-			             ui::style::font_face::dialog, ui::style::text_style::multiline, clr, {});
+			             render::font_face::dialog, render::text_style::multiline, clr, {});
 		}
 	};
 
@@ -202,15 +202,15 @@ namespace
 	}
 }
 
-std::vector<df::folder_path> library_type_folders(const settings_t::index_t& collection,
-                                                  const local_folders_result& local)
+std::vector<core::folder_path> library_type_folders(const settings_t::index_t& collection,
+                                                  const platform::local_folders_result& local)
 {
-	std::vector<df::folder_path> result;
+	std::vector<core::folder_path> result;
 
-	const auto add = [&result](const df::folder_path folder)
+	const auto add = [&result](const core::folder_path folder)
 	{
 		if (folder.is_empty()) return;
-		if (std::ranges::any_of(result, [folder](const df::folder_path f) { return f == folder; })) return;
+		if (std::ranges::any_of(result, [folder](const core::folder_path f) { return f == folder; })) return;
 		result.emplace_back(folder);
 	};
 
@@ -224,8 +224,8 @@ std::vector<df::folder_path> library_type_folders(const settings_t::index_t& col
 
 	for (const auto line : split_collection_folders(collection.more_folders))
 	{
-		const auto folder = str::trim(line);
-		if (!folder.empty() && !str::is_exclude(folder) && df::is_path(folder)) add(df::folder_path(folder));
+		const auto folder = core::trim(line);
+		if (!folder.empty() && !core::is_exclude(folder) && core::is_path(folder)) add(core::folder_path(folder));
 	}
 
 	for (const auto& [folder, kind] : parse_library_types(collection.library_types)) add(folder);
@@ -324,7 +324,7 @@ bool edited_options_differ(const settings_t& a, const settings_t& b)
 static settings_t stored_form(const options_view::edit_state& edit)
 {
 	auto result = edit.settings;
-	result.collection.more_folders = str::combine(split_collection_folders(edit.more_folders), "\n", true);
+	result.collection.more_folders = core::combine(split_collection_folders(edit.more_folders), "\n", true);
 	result.collection.library_types = format_library_types(edit.library_types);
 	result.subtitles = edit.subtitles_off
 		                   ? subtitle_mode::off
@@ -350,13 +350,13 @@ void options_view::open(const options_section section)
 	edit->settings = setting;
 
 	const auto& s = edit->settings;
-	edit->more_folders = str::combine(split_collection_folders(s.collection.more_folders), "\r\n", false);
+	edit->more_folders = core::combine(split_collection_folders(s.collection.more_folders), "\r\n", false);
 
 	const auto kinds = parse_library_types(s.collection.library_types);
 
 	for (const auto& folder : library_type_folders(s.collection, platform::local_folders()))
 	{
-		const auto found = std::ranges::find(kinds, folder, &std::pair<df::folder_path, prop::library_kind>::first);
+		const auto found = std::ranges::find(kinds, folder, &std::pair<core::folder_path, prop::library_kind>::first);
 		edit->library_types.emplace_back(folder, found != kinds.end() ? found->second : prop::library_kind::automatic);
 	}
 
@@ -483,7 +483,7 @@ void options_view::save()
 
 std::string_view options_view::title()
 {
-	_title = std::format("{}: {}", s_app_name, tt.options_title.sv());
+	_title = std::format("{}: {}", core::app_name(), tt.options_title.sv());
 	return _title;
 }
 
@@ -630,16 +630,16 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	folders->add(std::make_shared<ui::check_control>(frame, local.video.text(), s.collection.video));
 	folders->add(std::make_shared<ui::check_control>(frame, local.music.text(), s.collection.music));
 
-	if (local.onedrive_pictures.exists())
+	if (platform::exists(local.onedrive_pictures))
 		folders->add(std::make_shared<ui::check_control>(frame, local.onedrive_pictures.text(),
 		                                                 s.collection.onedrive_pictures));
-	if (local.onedrive_video.exists())
+	if (platform::exists(local.onedrive_video))
 		folders->add(std::make_shared<ui::check_control>(frame, local.onedrive_video.text(),
 		                                                 s.collection.onedrive_video));
-	if (local.onedrive_music.exists())
+	if (platform::exists(local.onedrive_music))
 		folders->add(std::make_shared<ui::check_control>(frame, local.onedrive_music.text(),
 		                                                 s.collection.onedrive_music));
-	if (local.dropbox_photos.exists())
+	if (platform::exists(local.dropbox_photos))
 		folders->add(std::make_shared<ui::check_control>(frame, local.dropbox_photos.text(), s.collection.drop_box));
 
 	// Other folders

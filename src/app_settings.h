@@ -467,16 +467,16 @@ public:
 extern settings_t setting;
 
 // Hands the renderer its YUV latch from setting.use_yuv, and keeps it there when a driver fault
-// clears it: a backend reads ui::yuv_textures_allowed when it starts and calls ui::on_yuv_fault.
+// clears it: a backend reads render::yuv_textures_allowed when it starts and calls render::on_yuv_fault.
 void connect_yuv_latch();
 
 std::vector<std::string_view> split_collection_folders(std::string_view text);
 
 // The collection roots the settings name, includes and excludes alike. Defined with the index
 // workers that start from it; the Movie command line reads the same roots to search the collection.
-df::index_roots index_folders(const settings_t::index_t& collection);
+core::index_roots index_folders(const settings_t::index_t& collection);
 
 // The library kind of each folder the collection settings give one, and the text that stores them.
-std::vector<std::pair<df::folder_path, prop::library_kind>> parse_library_types(std::string_view text);
-std::string format_library_types(const std::vector<std::pair<df::folder_path, prop::library_kind>>& kinds);
+std::vector<std::pair<core::folder_path, prop::library_kind>> parse_library_types(std::string_view text);
+std::string format_library_types(const std::vector<std::pair<core::folder_path, prop::library_kind>>& kinds);
 std::string_view library_kind_key(prop::library_kind kind);

@@ -11,11 +11,11 @@
 
 #pragma once
 
-#include "libdesktop/util.h"
+#include "libdesktop/core/util.h"
 
 
-using float_counts_type = df::hash_map<double, df::int_counter>;
-using id_counts_type = df::hash_map<int, df::int_counter>;
+using float_counts_type = core::hash_map<double, core::int_counter>;
+using id_counts_type = core::hash_map<int, core::int_counter>;
 
 class tag_set
 {
@@ -30,7 +30,7 @@ public:
 
 	tag_set(const std::string_view tags)
 	{
-		append(str::split(tags, true));
+		append(core::split(tags, true));
 	}
 
 	tag_set(const std::vector<std::string_view>& tags)
@@ -55,7 +55,7 @@ public:
 	void append(const std::vector<std::string_view>& tags)
 	{
 		_tags.insert(_tags.end(), tags.begin(), tags.end());
-		std::ranges::sort(_tags, df::iless());
+		std::ranges::sort(_tags, core::path_iless());
 	}
 
 	size_t size() const
@@ -75,7 +75,7 @@ public:
 
 	std::string to_string(const std::string_view join = " ", const bool quote = true) const
 	{
-		return str::combine(_tags, join, quote);
+		return core::combine(_tags, join, quote);
 	}
 
 	const std::string& operator[](const int i) const

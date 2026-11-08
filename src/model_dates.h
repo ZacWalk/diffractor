@@ -160,25 +160,25 @@ namespace prop
 		static constexpr int16_t utc_instant = INT16_MIN + 1;
 
 	private:
-		df::date_t _values[max_groups] = {};
+		core::date_t _values[max_groups] = {};
 		uint64_t _sources[max_groups] = {};
 		int16_t _offsets[max_groups] = {};
 		uint64_t _overflow = 0;
 		uint8_t _count = 0;
 
-		static constexpr uint64_t whole_seconds(const df::date_t d)
+		static constexpr uint64_t whole_seconds(const core::date_t d)
 		{
-			return d.to_int64() / df::date_t::intervals_per_second;
+			return d.to_int64() / core::date_t::intervals_per_second;
 		}
 
-		static constexpr bool is_second_aligned(const df::date_t d)
+		static constexpr bool is_second_aligned(const core::date_t d)
 		{
-			return (d.to_int64() % df::date_t::intervals_per_second) == 0;
+			return (d.to_int64() % core::date_t::intervals_per_second) == 0;
 		}
 
-		static df::date_t to_wall_clock(const df::date_t value, const int16_t offset)
+		static core::date_t to_wall_clock(const core::date_t value, const int16_t offset)
 		{
-			return offset == utc_instant ? value.system_to_local() : value;
+			return offset == utc_instant ? platform::utc_to_local(value) : value;
 		}
 
 		static constexpr bool compatible_representation(const int16_t left, const int16_t right)
@@ -204,13 +204,13 @@ namespace prop
 			return _count;
 		}
 
-		df::date_t group_value(const int i) const
+		core::date_t group_value(const int i) const
 		{
 			return _values[i];
 		}
 
 		// What the group reads as on a clock, which is what grouping and display want.
-		df::date_t group_wall_clock(const int i) const
+		core::date_t group_wall_clock(const int i) const
 		{
 			return to_wall_clock(_values[i], _offsets[i]);
 		}
@@ -275,7 +275,7 @@ namespace prop
 		}
 
 		// A source with no date says nothing and must never erase one already recorded.
-		void add(const date_source source, const df::date_t value, const int16_t utc_offset_mins = no_offset)
+		void add(const date_source source, const core::date_t value, const int16_t utc_offset_mins = no_offset)
 		{
 			if (source == date_source::none || !value.is_valid()) return;
 
@@ -325,12 +325,12 @@ namespace prop
 		}
 
 		// A container creation time or filesystem stamp, which are instants rather than readings.
-		void add_utc(const date_source source, const df::date_t instant)
+		void add_utc(const date_source source, const core::date_t instant)
 		{
 			add(source, instant, utc_instant);
 		}
 
-		df::date_t resolve(const date_concept kind) const
+		core::date_t resolve(const date_concept kind) const
 		{
 			for (const auto& info : date_sources)
 			{
@@ -362,16 +362,16 @@ namespace prop
 			return date_source::none;
 		}
 
-		df::date_t original() const { return resolve(date_concept::original); }
-		df::date_t created() const { return resolve(date_concept::created); }
-		df::date_t modified() const { return resolve(date_concept::modified); }
+		core::date_t original() const { return resolve(date_concept::original); }
+		core::date_t created() const { return resolve(date_concept::created); }
+		core::date_t modified() const { return resolve(date_concept::modified); }
 
 		// The Created reading, but only when it is stored as a UTC instant. A build older than the
 		// pack keeps `created_utc` in that form, and a wall clock written into it would be shifted
 		// again on read. There is no conversion available here that would not write the scanning
 		// machine's timezone into the index, so a naive reading answers nothing and the older build
 		// falls back to the Original date, which is the better answer anyway.
-		df::date_t created_as_utc_instant() const
+		core::date_t created_as_utc_instant() const
 		{
 			for (const auto& info : date_sources)
 			{
@@ -381,7 +381,7 @@ namespace prop
 				{
 					if (_sources[i] & static_cast<uint64_t>(info.source))
 					{
-						return _offsets[i] == utc_instant ? _values[i] : df::date_t{};
+						return _offsets[i] == utc_instant ? _values[i] : core::date_t{};
 					}
 				}
 			}
@@ -391,7 +391,7 @@ namespace prop
 
 		// The single date shown where there is room for one. A scan carrying no capture time still
 		// files under the day it was scanned rather than under nothing.
-		df::date_t best() const
+		core::date_t best() const
 		{
 			auto d = original();
 			if (!d.is_valid()) d = created();
@@ -473,7 +473,7 @@ namespace prop
 	// the frames order by name.
 	constexpr uint64_t parse_sub_second_intervals(const std::string_view str)
 	{
-		constexpr int digits_per_second = 7; // df::date_t counts 100 ns intervals
+		constexpr int digits_per_second = 7; // core::date_t counts 100 ns intervals
 
 		uint64_t result = 0;
 		auto used = 0;
@@ -531,7 +531,7 @@ namespace prop
 	// already answered one of those three must not appear again as itself, or the bubble carries the
 	// same row twice under two names.
 	inline bool shows_own_file_stamp_row(const date_pack& dates, const date_source stamp,
-	                                     const df::date_t stamp_value = {})
+	                                     const core::date_t stamp_value = {})
 	{
 		constexpr date_concept kinds[] = {
 			date_concept::original, date_concept::created, date_concept::modified
@@ -547,12 +547,12 @@ namespace prop
 		// only which tag won would then show the row twice, which is what this exists to prevent.
 		if (stamp_value.is_valid())
 		{
-			const auto stamp_second = stamp_value.to_int64() / df::date_t::intervals_per_second;
+			const auto stamp_second = stamp_value.to_int64() / core::date_t::intervals_per_second;
 
 			for (const auto kind : kinds)
 			{
 				const auto d = dates.resolve(kind);
-				if (d.is_valid() && d.to_int64() / df::date_t::intervals_per_second == stamp_second) return false;
+				if (d.is_valid() && d.to_int64() / core::date_t::intervals_per_second == stamp_second) return false;
 			}
 		}
 

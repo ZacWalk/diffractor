@@ -25,7 +25,7 @@ static std::atomic<int> db_fails = 0;
 inline void db_trace_error(sqlite3* db, const std::string_view sql)
 {
 	const auto code = sqlite3_errcode(db);
-	df::log(__FUNCTION__, std::format("Database error: {} [{}]", str::utf8_cast(sqlite3_errmsg(db)), sql));
+	core::log(__FUNCTION__, std::format("Database error: {} [{}]", core::utf8_cast(sqlite3_errmsg(db)), sql));
 
 	// Only count faults that say the database itself is unhealthy. Contention and cancellation
 	// are normal under load, and counting them left has_errors() permanently true, which
@@ -176,7 +176,7 @@ public:
 		}
 	}
 
-	void bind(const int i, const df::cspan cs) const
+	void bind(const int i, const core::cspan cs) const
 	{
 		if (_handle != nullptr && !cs.empty())
 		{
@@ -224,7 +224,7 @@ public:
 				db_trace_error(_db, "sqlite3_step");
 				if (checked)
 					throw app_exception(std::format("Failed to read cached properties: {}",
-					                                str::utf8_cast(sqlite3_errmsg(_db))));
+					                                core::utf8_cast(sqlite3_errmsg(_db))));
 			}
 		}
 		else if (checked)
@@ -278,13 +278,13 @@ public:
 		return {};
 	}
 
-	df::blob blob(const int i) const
+	core::blob blob(const int i) const
 	{
 		const auto bytes = data(i);
 		return {bytes.data, bytes.data + bytes.size};
 	}
 
-	df::cspan data(const int i) const
+	core::cspan data(const int i) const
 	{
 		if (_handle == nullptr) return {nullptr, 0};
 
@@ -300,7 +300,7 @@ public:
 		return {data_ptr, static_cast<size_t>(sqlite3_column_bytes(_handle, i))};
 	}
 
-	df::cspan data_checked(const int i) const
+	core::cspan data_checked(const int i) const
 	{
 		if (!_handle) throw app_exception("Cached-property query is not prepared"s);
 		const auto value = data(i);
@@ -420,13 +420,13 @@ database::~database()
 	close();
 }
 
-void database::open(const df::folder_path folder, const std::string_view file_name)
+void database::open(const core::folder_path folder, const std::string_view file_name)
 {
 	sqlite3_initialize();
 
-	df::scope_locked_inc l(_state.searching);
-	_db_thread_id = platform::current_thread_id();
-	_db_path = df::file_path(folder, file_name, ".db");
+	core::scope_locked_inc l(_state.searching);
+	_db_thread_id = core::current_thread_id();
+	_db_path = core::file_path(folder, file_name, ".db");
 	open();
 }
 
@@ -479,7 +479,7 @@ bool database::request_date_pack_rescan() const
 
 bool database::request_audio_metadata_rescan() const
 {
-	std::vector<std::pair<std::string, str::cached>> rows;
+	std::vector<std::pair<std::string, core::cached>> rows;
 
 	{
 		const db_statement items(_db, "select folder, name from item_properties where properties IS NOT NULL"s);
@@ -487,7 +487,7 @@ bool database::request_audio_metadata_rescan() const
 
 		while (items.read())
 		{
-			const auto name = str::cache(items.text(1));
+			const auto name = core::cache(items.text(1));
 			const auto* const ft = files::file_type_from_name(name);
 			if (!ft->has_trait(file_traits::music_metadata) && !ft->has_trait(file_traits::video_metadata) &&
 				!ft->has_trait(file_traits::av))
@@ -515,7 +515,7 @@ bool database::request_audio_metadata_rescan() const
 
 void database::upgrade_cached_metadata()
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	int stored_version = 0;
 
@@ -534,7 +534,7 @@ void database::upgrade_cached_metadata()
 	{
 		db_exec(_db, std::format("PRAGMA user_version = {};", db_metadata_version));
 
-		df::log(__FUNCTION__, std::format("Cached metadata was written by a newer build: version {} -> {}",
+		core::log(__FUNCTION__, std::format("Cached metadata was written by a newer build: version {} -> {}",
 		                                  stored_version, db_metadata_version));
 		return;
 	}
@@ -556,14 +556,14 @@ void database::upgrade_cached_metadata()
 
 	if (!upgraded)
 	{
-		df::log(__FUNCTION__, std::format("Failed to invalidate cached metadata written by version {}",
+		core::log(__FUNCTION__, std::format("Failed to invalidate cached metadata written by version {}",
 		                                  stored_version));
 		return;
 	}
 
 	db_exec(_db, std::format("PRAGMA user_version = {};", db_metadata_version));
 
-	df::log(__FUNCTION__, std::format("Cached metadata invalidated: version {} -> {}", stored_version,
+	core::log(__FUNCTION__, std::format("Cached metadata invalidated: version {} -> {}", stored_version,
 	                                  db_metadata_version));
 }
 
@@ -604,7 +604,7 @@ int database_test_seams::set_journal_mode(sqlite3* db, const std::string_view re
 	if (prepare_result != SQLITE_OK)
 	{
 		if (handle) sqlite3_finalize(handle);
-		df::log(__FUNCTION__, std::format("Failed to prepare journal mode: {}", str::utf8_cast(sqlite3_errmsg(db))));
+		core::log(__FUNCTION__, std::format("Failed to prepare journal mode: {}", core::utf8_cast(sqlite3_errmsg(db))));
 		return sqlite3_extended_errcode(db);
 	}
 
@@ -613,15 +613,15 @@ int database_test_seams::set_journal_mode(sqlite3* db, const std::string_view re
 
 	if (step_result != SQLITE_ROW)
 	{
-		df::log(__FUNCTION__, std::format("Failed to set journal mode: {}", str::utf8_cast(sqlite3_errmsg(db))));
+		core::log(__FUNCTION__, std::format("Failed to set journal mode: {}", core::utf8_cast(sqlite3_errmsg(db))));
 		return sqlite3_extended_errcode(db);
 	}
 
 	const auto* const text = sqlite3_column_text(journal_mode.get(), 0);
 	const auto actual = text == nullptr ? std::string{} : std::string(reinterpret_cast<const char*>(text));
-	if (str::icmp(actual, requested) != 0)
+	if (core::icmp(actual, requested) != 0)
 	{
-		df::log(__FUNCTION__, std::format("Requested journal mode '{}' but SQLite selected '{}'", requested, actual));
+		core::log(__FUNCTION__, std::format("Requested journal mode '{}' but SQLite selected '{}'", requested, actual));
 		return SQLITE_CANTOPEN;
 	}
 
@@ -637,7 +637,7 @@ int database_test_seams::probe_journal_mode(sqlite3* db)
 	if (prepare_result != SQLITE_OK)
 	{
 		if (handle) sqlite3_finalize(handle);
-		df::log(__FUNCTION__, std::format("Failed to prepare journal probe: {}", str::utf8_cast(sqlite3_errmsg(db))));
+		core::log(__FUNCTION__, std::format("Failed to prepare journal probe: {}", core::utf8_cast(sqlite3_errmsg(db))));
 		return sqlite3_extended_errcode(db);
 	}
 
@@ -646,7 +646,7 @@ int database_test_seams::probe_journal_mode(sqlite3* db)
 	if (step_result == SQLITE_OK) step_result = sqlite3_step(probe.get());
 	if (step_result == SQLITE_ROW) return SQLITE_OK;
 
-	df::log(__FUNCTION__, std::format("Journal probe failed: {}", str::utf8_cast(sqlite3_errmsg(db))));
+	core::log(__FUNCTION__, std::format("Journal probe failed: {}", core::utf8_cast(sqlite3_errmsg(db))));
 	return step_result == SQLITE_DONE ? SQLITE_ERROR : step_result;
 }
 
@@ -718,8 +718,8 @@ static schema_check_result schema_is_usable(sqlite3* db)
 
 		if (result != SQLITE_OK)
 		{
-			df::log(__FUNCTION__,
-			        std::format("Schema check failed: {} [{}]", str::utf8_cast(sqlite3_errmsg(db)), sql));
+			core::log(__FUNCTION__,
+			        std::format("Schema check failed: {} [{}]", core::utf8_cast(sqlite3_errmsg(db)), sql));
 			return database_test_seams::schema_failure_allows_replacement(result)
 				       ? schema_check_result::incompatible
 				       : schema_check_result::environmental_failure;
@@ -742,7 +742,7 @@ bool database::connect()
 
 		if (_db != nullptr)
 		{
-			error_msg = str::utf8_cast(sqlite3_errmsg(_db));
+			error_msg = core::utf8_cast(sqlite3_errmsg(_db));
 			sqlite3_close(_db);
 		}
 		else
@@ -751,7 +751,7 @@ bool database::connect()
 		}
 
 		_db = nullptr;
-		df::log(__FUNCTION__, std::format("Failed to open database: {}", error_msg));
+		core::log(__FUNCTION__, std::format("Failed to open database: {}", error_msg));
 		return false;
 	}
 
@@ -765,7 +765,7 @@ platform::file_op_result database::delete_database_files() const
 {
 	// A database that was never created is already in the state the caller is asking for, and
 	// reporting a failed delete would block the reset that doubles as a retry of the open.
-	if (!_db_path.exists())
+	if (!platform::exists(_db_path))
 	{
 		return {platform::file_op_result_code::OK};
 	}
@@ -779,15 +779,15 @@ platform::file_op_result database::delete_database_files() const
 		for (const auto suffix : {"-wal"sv, "-shm"sv})
 		{
 			const std::string sibling_name = std::string(_db_path.name()) + std::string(suffix);
-			const auto sibling = df::file_path(_db_path.folder(), std::string_view(sibling_name));
+			const auto sibling = core::file_path(_db_path.folder(), std::string_view(sibling_name));
 
-			if (sibling.exists())
+			if (platform::exists(sibling))
 			{
 				const auto sibling_result = platform::delete_file(sibling);
 
 				if (sibling_result.failed())
 				{
-					df::log(__FUNCTION__, sibling_result.format_error(std::format("Failed to delete {}", sibling)));
+					core::log(__FUNCTION__, sibling_result.format_error(std::format("Failed to delete {}", sibling)));
 				}
 			}
 		}
@@ -807,7 +807,7 @@ bool database::prepare_database(const bool can_replace)
 
 	if (is_shared_memory_failure_result(journal_result))
 	{
-		df::log(__FUNCTION__, "Shared memory unavailable - using a rollback journal"sv);
+		core::log(__FUNCTION__, "Shared memory unavailable - using a rollback journal"sv);
 
 		if (sqlite3_close_v2(_db) != SQLITE_OK)
 		{
@@ -830,8 +830,8 @@ bool database::prepare_database(const bool can_replace)
 	if (SQLITE_OK != journal_result)
 	{
 		const auto message = std::format("Failed to select database journal mode: {}\n\nPath: {}",
-		                                 str::utf8_cast(sqlite3_errmsg(_db)), _db_path);
-		df::log(__FUNCTION__, message);
+		                                 core::utf8_cast(sqlite3_errmsg(_db)), _db_path);
+		core::log(__FUNCTION__, message);
 
 		if (can_replace && is_unusable_db_file(journal_result))
 		{
@@ -866,8 +866,8 @@ bool database::prepare_database(const bool can_replace)
 	if (SQLITE_OK != create_result)
 	{
 		const auto message = std::format("Failed to create database: {}\n\nPath: {}",
-		                                 str::utf8_cast(sqlite3_errmsg(_db)), _db_path);
-		df::log(__FUNCTION__, message);
+		                                 core::utf8_cast(sqlite3_errmsg(_db)), _db_path);
+		core::log(__FUNCTION__, message);
 
 		if (can_replace && is_unusable_db_file(create_result))
 		{
@@ -894,7 +894,7 @@ bool database::prepare_database(const bool can_replace)
 		{
 			// Recorded rather than refused. The index is a rebuildable cache, and a corrupt file is
 			// now replaced on open, so the weaker crash guarantee costs a re-index at worst.
-			df::log(__FUNCTION__, std::format("Journal mode is '{}' rather than wal", mode));
+			core::log(__FUNCTION__, std::format("Journal mode is '{}' rather than wal", mode));
 		}
 	}
 
@@ -902,7 +902,7 @@ bool database::prepare_database(const bool can_replace)
 
 	// The periodic run below is what keeps statistics current on a connection that lives for the
 	// whole session; the open above has just done the work for today.
-	_optimized_day = platform::now().to_days();
+	_optimized_day = core::utc_now().to_days();
 
 	// Schema upgrades must run before the index load, which selects the columns they add.
 	// Otherwise that select fails to prepare and the whole index loads empty and silent.
@@ -935,7 +935,7 @@ bool database::prepare_database(const bool can_replace)
 	upgrade_cached_metadata();
 
 	load_index_values();
-	df::log(__FUNCTION__, std::format("Loaded index in {} ms", _state.stats.index_load_ms));
+	core::log(__FUNCTION__, std::format("Loaded index in {} ms", _state.stats.index_load_ms));
 
 	find_web_request = std::make_unique<db_statement>(_db, "select value from web_service_cache where key=?"s);
 	find_folder_thumbnail = std::make_unique<db_statement>(
@@ -945,7 +945,7 @@ bool database::prepare_database(const bool can_replace)
 
 	_state.stats.database_size = platform::file_attributes(_db_path).size;
 	_state.stats.database_path = _db_path;
-	df::log(__FUNCTION__, std::format("Index open {}", _state.stats.database_size));
+	core::log(__FUNCTION__, std::format("Index open {}", _state.stats.database_size));
 
 	return true;
 }
@@ -956,11 +956,11 @@ size_t database_test_seams::folder_thumbnail_visit_budget()
 }
 
 void database_test_seams::visit_folder_thumbnail_candidates(
-	const df::folder_path& root,
-	const std::function<bool(const df::folder_path&)>& visit,
-	const std::function<std::vector<df::folder_path>(const df::folder_path&)>& enumerate)
+	const core::folder_path& root,
+	const std::function<bool(const core::folder_path&)>& visit,
+	const std::function<std::vector<core::folder_path>(const core::folder_path&)>& enumerate)
 {
-	std::vector<df::folder_path> folders;
+	std::vector<core::folder_path> folders;
 	folders.emplace_back(root);
 
 	for (auto idx = 0u; idx < folders.size(); ++idx)
@@ -981,11 +981,11 @@ void database_test_seams::visit_folder_thumbnail_candidates(
 
 void database::open()
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
-	df::scope_locked_inc slc(df::jobs_running);
+	core::scope_locked_inc slc(df::jobs_running);
 
-	df::log(__FUNCTION__, std::format("Open database: {}", _db_path));
+	core::log(__FUNCTION__, std::format("Open database: {}", _db_path));
 
 	if (!connect())
 	{
@@ -1001,7 +1001,7 @@ void database::open()
 		// The cache holds nothing that re-indexing cannot rebuild, so a file this build cannot
 		// read is replaced. Refusing to start would leave the user no way back in, and the
 		// only repair - resetting the index - lives behind the window that failed to open.
-		df::log(__FUNCTION__, std::format("Replacing unusable database: {}", _db_path));
+		core::log(__FUNCTION__, std::format("Replacing unusable database: {}", _db_path));
 
 		close();
 
@@ -1039,7 +1039,7 @@ void database::close()
 
 	if (_db != nullptr)
 	{
-		df::assert_true(is_db_thread());
+		core::assert_true(is_db_thread());
 		db_exec(_db, "PRAGMA optimize;"s);
 
 		// close_v2 hands ownership to sqlite even if something is still outstanding, so the handle
@@ -1101,7 +1101,7 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 
 	if (!prop::is_null(md->width) || !prop::is_null(md->height))
 		write(prop::dimensions.id,
-		      df::xy32::make(md->width, md->height));
+		      core::xy32::make(md->width, md->height));
 	if (!prop::is_null(md->iso_speed)) write(prop::iso_speed.id, md->iso_speed);
 	if (!prop::is_null(md->focal_length)) write(prop::focal_length.id, md->focal_length);
 	if (!prop::is_null(md->focal_length_35mm_equivalent))
@@ -1134,7 +1134,7 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 		write(prop::longitude.id, md->coordinate.longitude());
 	}
 
-	if (md->orientation != ui::orientation::top_left && md->orientation != ui::orientation::none)
+	if (md->orientation != core::orientation::top_left && md->orientation != core::orientation::none)
 	{
 		const auto val = static_cast<uint8_t>(md->orientation);
 		write(prop::orientation.id, val);
@@ -1176,13 +1176,13 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 }
 
 
-void database::clean(const std::vector<df::file_path>& indexed_items) const
+void database::clean(const std::vector<core::file_path>& indexed_items) const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	if (!is_open()) return;
 
-	const auto today = platform::now().to_days();
+	const auto today = core::utc_now().to_days();
 
 	transaction t(_db);
 	const db_statement
@@ -1216,9 +1216,9 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 	// Diffractor sharing the cache file still finds dates. They are held back rather than added as
 	// they arrive: they precede the pack in the record order, and the pack holds four groups, so
 	// adding them first could evict a real reading the file actually carries.
-	df::date_t legacy_original;
-	df::date_t legacy_created;
-	df::date_t legacy_digitized;
+	core::date_t legacy_original;
+	core::date_t legacy_created;
+	core::date_t legacy_digitized;
 	auto has_date_pack = false;
 
 	while (!at_end())
@@ -1247,11 +1247,11 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 		{
 			uint8_t val{};
 			read_val(val);
-			md->orientation = static_cast<ui::orientation>(val);
+			md->orientation = static_cast<core::orientation>(val);
 		}
 		else if (t == prop::dimensions)
 		{
-			df::xy32 xy{};
+			core::xy32 xy{};
 			read_val(xy);
 			md->width = xy.x;
 			md->height = xy.y;
@@ -1344,11 +1344,11 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 
 void database::load_index_values() const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
-	df::measure_ms ms(_state.stats.index_load_ms);
+	core::measure_ms ms(_state.stats.index_load_ms);
 
-	df::folder_path last_group_name;
+	core::folder_path last_group_name;
 	db_items_t cached_items;
 	cached_items.reserve(1000);
 
@@ -1361,17 +1361,17 @@ void database::load_index_values() const
 		// Reading no rows here is indistinguishable from an empty collection, and the index would
 		// go on to re-scan everything and then let clean() delete the rows it could not read.
 		throw app_exception(std::format("Failed to read the index: {}\n\nPath: {}",
-		                                str::utf8_cast(sqlite3_errmsg(_db)), _db_path));
+		                                core::utf8_cast(sqlite3_errmsg(_db)), _db_path));
 	}
 
-	while (items.read() && !df::is_closing)
+	while (items.read() && !platform::is_closing)
 	{
-		const auto folder = df::folder_path(items.text(0));
-		const auto name = str::cache(items.text(1));
+		const auto folder = core::folder_path(items.text(0));
+		const auto name = core::cache(items.text(1));
 		const auto properties = items.data(2);
 		const auto crc = static_cast<uint32_t>(items.int32(3));
 		const auto media_position = items.int32(4);
-		const auto last_scanned = df::date_t(items.int64(5));
+		const auto last_scanned = core::date_t(items.int64(5));
 		const auto phash = static_cast<uint64_t>(items.int64(6));
 		const crypto::phash_rotations rotations{
 			phash,
@@ -1442,9 +1442,9 @@ void database::load_index_values() const
 	_state.cache_load_complete();
 }
 
-database::db_thumbnail database::load_thumbnail(const df::file_path id) const
+database::db_thumbnail database::load_thumbnail(const core::file_path id) const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	db_thumbnail result;
 
@@ -1459,16 +1459,16 @@ database::db_thumbnail database::load_thumbnail(const df::file_path id) const
 	{
 		result.thumb = load_image_file(find_thumbnail->blob(0));
 		result.cover_art = load_image_file(find_thumbnail->blob(1));
-		result.last_indexed = df::date_t(find_thumbnail->int64(2));
+		result.last_indexed = core::date_t(find_thumbnail->int64(2));
 	}
 
 	find_thumbnail->reset();
 	return result;
 }
 
-database::db_thumbnail database::load_folder_thumbnail(const str::cached folder) const
+database::db_thumbnail database::load_folder_thumbnail(const core::cached folder) const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	db_thumbnail result;
 
@@ -1480,7 +1480,7 @@ database::db_thumbnail database::load_folder_thumbnail(const str::cached folder)
 	{
 		result.thumb = load_image_file(find_folder_thumbnail->blob(0));
 		result.cover_art = load_image_file(find_folder_thumbnail->blob(1));
-		result.last_indexed = df::date_t(find_folder_thumbnail->int64(2));
+		result.last_indexed = core::date_t(find_folder_thumbnail->int64(2));
 	}
 
 	find_folder_thumbnail->reset();
@@ -1489,7 +1489,7 @@ database::db_thumbnail database::load_folder_thumbnail(const str::cached folder)
 
 std::string database::web_service_cache(const std::string_view key) const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	std::string result;
 
@@ -1509,11 +1509,11 @@ std::string database::web_service_cache(const std::string_view key) const
 
 void database::web_service_cache(const std::string_view key, const std::string_view value) const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	if (!is_open()) return;
 
-	const auto today = platform::now().to_days();
+	const auto today = core::utc_now().to_days();
 	transaction t(_db);
 
 	const db_statement insert_web_request(
@@ -1540,7 +1540,7 @@ void database::web_service_cache(const std::string_view key, const std::string_v
 
 item_import_set database::load_item_imports() const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	item_import_set results;
 
@@ -1548,13 +1548,13 @@ item_import_set database::load_item_imports() const
 
 	const db_statement items(_db, "select name, modified, size, imported from item_imports"s);
 
-	while (items.read() && !df::is_closing)
+	while (items.read() && !platform::is_closing)
 	{
 		item_import i;
-		i.name = str::cache(items.text(0));
-		i.modified = df::date_t(items.int64(1));
-		i.size = df::file_size(items.int64(2));
-		i.imported = df::date_t(items.int64(3));
+		i.name = core::cache(items.text(0));
+		i.modified = core::date_t(items.int64(1));
+		i.size = core::file_size(items.int64(2));
+		i.imported = core::date_t(items.int64(3));
 
 		results.emplace(i);
 	}
@@ -1564,7 +1564,7 @@ item_import_set database::load_item_imports() const
 
 void database::writes_item_imports(const item_import_set& writes) const
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	if (!is_open()) return;
 
@@ -1585,11 +1585,11 @@ void database::writes_item_imports(const item_import_set& writes) const
 
 bool database::is_db_thread() const
 {
-	return _db_thread_id == platform::current_thread_id();
+	return _db_thread_id == core::current_thread_id();
 }
 
-database::thumbnail_request::thumbnail_request(std::weak_ptr<df::item_element> lifetime_in, df::file_path path_in,
-                                               df::folder_path folder_in, const uint64_t generation_in,
+database::thumbnail_request::thumbnail_request(std::weak_ptr<df::item_element> lifetime_in, core::file_path path_in,
+                                               core::folder_path folder_in, const uint64_t generation_in,
                                                const bool is_folder_in, const bool has_thumbnail_in) noexcept
 	: lifetime(std::move(lifetime_in)),
 	  path(std::move(path_in)),
@@ -1608,7 +1608,7 @@ database::thumbnail_request database::make_thumbnail_request(const df::item_elem
 
 database::thumbnail_requests database::make_thumbnail_requests(const df::item_set& items)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	thumbnail_requests requests;
 	requests.reserve(items.size());
 
@@ -1622,29 +1622,29 @@ database::thumbnail_requests database::make_thumbnail_requests(const df::item_se
 
 void database::load_thumbnails(const index_state& index, const thumbnail_requests& requests) const
 {
-	df::assert_true(is_db_thread());
-	df::bump(df::db_perf.read_batches);
-	df::perf_timer timer(df::db_perf.read_us, &df::db_perf.read_max_us);
+	core::assert_true(is_db_thread());
+	core::bump(df::db_perf.read_batches);
+	core::perf_timer timer(df::db_perf.read_us, &df::db_perf.read_max_us);
 	bool cover_art_loaded = false;
 	index_state::thumbnail_results results;
 	results.reserve(requests.size());
 
 	for (const auto& request : requests)
 	{
-		if (df::is_closing)
+		if (platform::is_closing)
 			break;
 
 		if (request.is_folder)
 		{
 			database_test_seams::visit_folder_thumbnail_candidates(
 				request.folder,
-				[&](const df::folder_path& folder)
+				[&](const core::folder_path& folder)
 			{
 				auto loaded = load_folder_thumbnail(folder.text());
 
 				if (is_valid(loaded.thumb) || is_valid(loaded.cover_art))
 				{
-					cover_art_loaded |= ui::is_valid(loaded.cover_art);
+					cover_art_loaded |= core::is_valid(loaded.cover_art);
 					results.emplace_back(request.lifetime, request.path, std::move(loaded.thumb),
 					                     std::move(loaded.cover_art), loaded.last_indexed, request.generation);
 					return false;
@@ -1652,10 +1652,10 @@ void database::load_thumbnails(const index_state& index, const thumbnail_request
 
 				return !request.has_thumbnail;
 			},
-				[](const df::folder_path& folder)
+				[](const core::folder_path& folder)
 				{
-					std::vector<df::folder_path> result;
-					for (const auto& f : platform::select_folders(df::item_selector(folder), setting.show_hidden))
+					std::vector<core::folder_path> result;
+					for (const auto& f : platform::select_folders(core::item_selector(folder), setting.show_hidden))
 					{
 						result.emplace_back(folder.combine(f.name));
 					}
@@ -1665,19 +1665,19 @@ void database::load_thumbnails(const index_state& index, const thumbnail_request
 		else
 		{
 			auto loaded = load_thumbnail(request.path);
-			cover_art_loaded |= ui::is_valid(loaded.cover_art);
+			cover_art_loaded |= core::is_valid(loaded.cover_art);
 			results.emplace_back(request.lifetime, request.path, std::move(loaded.thumb),
 			                     std::move(loaded.cover_art), loaded.last_indexed, request.generation);
 		}
 	}
 
-	df::bump(df::db_perf.thumbnails_read, results.size());
+	core::bump(df::db_perf.thumbnails_read, results.size());
 	index.publish_thumbnails(std::move(results), cover_art_loaded);
 }
 
 void database::perform_writes()
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	// Dequeued even with nothing to write to. These carry encoded thumbnails, so leaving them to
 	// pile up while the index scans would spend memory on writes that can never be made.
@@ -1688,7 +1688,7 @@ void database::perform_writes()
 	// sees. It is nearly a no-op on the days it finds nothing to re-analyse.
 	if (is_open())
 	{
-		const auto today = platform::now().to_days();
+		const auto today = core::utc_now().to_days();
 
 		if (_optimized_day != today)
 		{
@@ -1704,10 +1704,10 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 	// compiling the write statements is the idle cost of the whole database layer.
 	if (!is_open() || writes.empty()) return;
 
-	const auto today = platform::now().to_days();
-	df::bump(df::db_perf.write_batches);
-	df::bump(df::db_perf.items_written, writes.size());
-	df::perf_timer timer(df::db_perf.write_us, &df::db_perf.write_max_us);
+	const auto today = core::utc_now().to_days();
+	core::bump(df::db_perf.write_batches);
+	core::bump(df::db_perf.items_written, writes.size());
+	core::perf_timer timer(df::db_perf.write_us, &df::db_perf.write_max_us);
 
 	transaction t(_db);
 	// A metadata write is a partial update: it carries properties and scan state, and only
@@ -1791,7 +1791,7 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 			if (media_position.has_value()) insert_properties.bind(5, static_cast<int>(media_position.value()));
 			else insert_properties.bind_null(5);
 
-			insert_properties.bind(6, write.metadata_scanned.value_or(df::date_t()).to_int64());
+			insert_properties.bind(6, write.metadata_scanned.value_or(core::date_t()).to_int64());
 			insert_properties.bind(7, today);
 
 			if (write.phash.has_value())
@@ -1851,7 +1851,7 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 
 			// The update inserts no row of its own, so a file with no properties row silently keeps no
 			// hash and is decoded again on the next pass that asks about it.
-			if (sqlite3_changes(_db) == 0) df::bump(df::index_perf.phash_unwritten);
+			if (sqlite3_changes(_db) == 0) core::bump(df::index_perf.phash_unwritten);
 		}
 
 		if (write.media_position.has_value())
@@ -1870,12 +1870,12 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 			insert_thumbnails.bind(3, write.thumb.value()->data());
 			insert_thumbnails.bind(4, write.cover_art.has_value() && is_valid(write.cover_art.value())
 				                          ? write.cover_art.value()->data()
-				                          : df::cspan{});
+				                          : core::cspan{});
 			insert_thumbnails.bind(5, write.thumb_scanned.has_value() ? write.thumb_scanned.value().to_int64() : 0);
 			insert_thumbnails.exec();
 			insert_thumbnails.reset();
 
-			df::bump(df::db_perf.thumbs_written);
+			core::bump(df::db_perf.thumbs_written);
 			++_state.stats.thumbs_saved;
 		}
 
@@ -1891,7 +1891,7 @@ bool database::has_errors() const
 
 void database::maintenance(const bool is_reset)
 {
-	df::assert_true(is_db_thread());
+	core::assert_true(is_db_thread());
 
 	if (is_reset)
 	{

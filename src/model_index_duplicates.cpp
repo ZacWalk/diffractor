@@ -37,7 +37,7 @@ constexpr size_t max_phash_requests_per_pass = 256;
 // A picture worth this much I/O to identify. Beyond it the read costs more than the answer is worth.
 // The hash reads the file whole, so the bound is also the most a whole read may hold: above that the
 // read answers empty, and a file refused for its size was recorded as one that failed to decode.
-constexpr uint64_t max_phash_file_bytes = df::max_blob_size;
+constexpr uint64_t max_phash_file_bytes = core::max_blob_size;
 
 // Runs once an anchor has been chosen and before its hash is compared, where a concurrent rescan can
 // clear the record's hash.
@@ -51,12 +51,12 @@ static auto next_dup_group = 1000u;
 // record each time, and left the id an item had already taken - the one its tooltip lists copies by -
 // matching nothing.
 template <typename RootOf, typename PreviousId>
-static df::hash_map<size_t, uint32_t> assign_group_ids(const size_t file_count, const RootOf& root_of,
-                                                       const df::hash_map<size_t, df::int_counter>& counts,
+static core::hash_map<size_t, uint32_t> assign_group_ids(const size_t file_count, const RootOf& root_of,
+                                                       const core::hash_map<size_t, core::int_counter>& counts,
                                                        const PreviousId& previous_id)
 {
-	df::hash_map<size_t, uint32_t> ids;
-	df::hash_set<uint32_t> claimed;
+	core::hash_map<size_t, uint32_t> ids;
+	core::hash_set<uint32_t> claimed;
 
 	for (size_t i = 0; i < file_count; ++i)
 	{
@@ -84,9 +84,9 @@ static __forceinline uint32_t x64to32(const uint64_t n)
 }
 
 
-std::vector<std::pair<df::file_path, df::index_file_item>> index_state::duplicate_list(const uint32_t group) const
+std::vector<std::pair<core::file_path, df::index_file_item>> index_state::duplicate_list(const uint32_t group) const
 {
-	std::vector<std::pair<df::file_path, df::index_file_item>> result;
+	std::vector<std::pair<core::file_path, df::index_file_item>> result;
 	const auto folders = _items.all_folders();
 
 	// Read-only: this answers a tooltip on the UI thread. Clearing the ids of files outside the
@@ -99,7 +99,7 @@ std::vector<std::pair<df::file_path, df::index_file_item>> index_state::duplicat
 			{
 				if (file.duplicates.load().group == group)
 				{
-					result.emplace_back(df::file_path(ifn.first, file.name), file);
+					result.emplace_back(core::file_path(ifn.first, file.name), file);
 				}
 			}
 		}
@@ -111,7 +111,7 @@ std::vector<std::pair<df::file_path, df::index_file_item>> index_state::duplicat
 void index_state::update_predictions()
 {
 	const auto folders = _items.all_folders();
-	const auto start_ms = df::now_ms();
+	const auto start_ms = core::now_ms();
 	const auto folder_count = folders.size();
 	// dup on:
 	// filename
@@ -125,7 +125,7 @@ void index_state::update_predictions()
 	{
 		const df::index_folder_item_ptr& folder;
 		const df::index_file_item* file;
-		df::folder_path path;
+		core::folder_path path;
 	};
 
 	std::vector<duplicate_candidate> files;
@@ -175,7 +175,7 @@ void index_state::update_predictions()
 		{
 			for (const auto& file : ifn.second->files)
 			{
-				if (df::is_closing) return;
+				if (platform::is_closing) return;
 				const auto file_index = files.size();
 				files.push_back({ifn.second, &file, ifn.first});
 
@@ -189,7 +189,7 @@ void index_state::update_predictions()
 
 				if (file.ft->has_trait(file_traits::av) && file.size.to_int64() != 0)
 				{
-					dups.emplace_back(duplicate_evidence_kind::av_name_size, str::to_lower(file.name),
+					dups.emplace_back(duplicate_evidence_kind::av_name_size, core::to_lower(file.name),
 					                  static_cast<uint64_t>(file.size.to_int64()), 0, file_index,
 					                  df::copy_grade::same_file);
 				}
@@ -198,7 +198,7 @@ void index_state::update_predictions()
 
 				if (created.is_valid())
 				{
-					dups.emplace_back(duplicate_evidence_kind::name_created, str::to_lower(file.name),
+					dups.emplace_back(duplicate_evidence_kind::name_created, core::to_lower(file.name),
 					                  static_cast<uint64_t>(created.to_int64()), 0, file_index,
 					                  df::copy_grade::same_file);
 				}
@@ -208,7 +208,7 @@ void index_state::update_predictions()
 		{
 			for (const auto& file : ifn.second->files)
 			{
-				_items.update_file(df::file_path(ifn.first, file.name), [](const df::index_folder_item_ptr&,
+				_items.update_file(core::file_path(ifn.first, file.name), [](const df::index_folder_item_ptr&,
 				                                                           const df::index_file_item& current_file)
 				{
 					if (current_file.exact_duplicate_group.load() == 0) return false;
@@ -265,7 +265,7 @@ void index_state::update_predictions()
 
 	for (auto i = 0u; i < dup_size; ++i)
 	{
-		if (df::is_closing) return;
+		if (platform::is_closing) return;
 
 		auto hi = i + 1;
 		while (hi < dup_size && cdups[hi].key() == cdups[i].key()) ++hi;
@@ -279,7 +279,7 @@ void index_state::update_predictions()
 
 			for (auto member = i; member < hi; ++member)
 			{
-				if (df::is_closing) return;
+				if (platform::is_closing) return;
 				unite(first, cdups[member].index);
 				record_grade(cdups[member].index, cdups[member].grade);
 			}
@@ -288,7 +288,7 @@ void index_state::update_predictions()
 		i = hi - 1;
 	}
 
-	df::hash_map<size_t, df::int_counter> exact_component_counts;
+	core::hash_map<size_t, core::int_counter> exact_component_counts;
 	for (auto i = 0u; i < files.size(); ++i)
 	{
 		++exact_component_counts[find_root(i)];
@@ -305,7 +305,7 @@ void index_state::update_predictions()
 		const auto root = find_root(i);
 		const auto found = exact_component_groups.find(root);
 		const auto group = found == exact_component_groups.end() ? 0u : found->second;
-		_items.update_file(df::file_path(files[i].path, files[i].file->name),
+		_items.update_file(core::file_path(files[i].path, files[i].file->name),
 		                    [group](const df::index_folder_item_ptr&, const df::index_file_item& file)
 		{
 			if (file.exact_duplicate_group.load() == group) return false;
@@ -323,7 +323,7 @@ void index_state::update_predictions()
 	std::vector<phash_request> phash_wanted;
 
 	{
-		df::hash_map<uint64_t, std::vector<size_t>> capture_times;
+		core::hash_map<uint64_t, std::vector<size_t>> capture_times;
 		uint32_t dated_pictures = 0;
 
 		for (size_t i = 0; i < files.size(); ++i)
@@ -363,7 +363,7 @@ void index_state::update_predictions()
 
 		for (const auto& [created, members] : capture_times)
 		{
-			if (df::is_closing) return;
+			if (platform::is_closing) return;
 
 			// One photograph proves nothing, and past this a capture time is unambiguously continuous
 			// shooting. Presence applies the same bound, so neither surface can see a set the other
@@ -434,7 +434,7 @@ void index_state::update_predictions()
 				// only noted here. The pass that follows the hashes will see them and compare.
 				if (phash_wanted.size() < max_phash_requests_per_pass)
 				{
-					phash_wanted.emplace_back(df::file_path(files[member].path, files[member].file->name),
+					phash_wanted.emplace_back(core::file_path(files[member].path, files[member].file->name),
 					                          revision_of(*files[member].file));
 				}
 			}
@@ -459,8 +459,8 @@ void index_state::update_predictions()
 				if (!held || !held->is_usable()) continue;
 
 				if (anchor == files.size() ||
-					df::file_path(files[member].path, files[member].file->name) <
-					df::file_path(files[anchor].path, files[anchor].file->name))
+					core::file_path(files[member].path, files[member].file->name) <
+					core::file_path(files[anchor].path, files[anchor].file->name))
 				{
 					anchor = member;
 					anchor_hashes = std::move(held);
@@ -542,26 +542,26 @@ void index_state::update_predictions()
 			if (!is_candidate[i]) ++uninvited;
 		}
 
-		df::set_gauge(df::index_perf.pass_pictures, dated_pictures);
-		df::set_gauge(df::index_perf.pass_buckets, static_cast<uint32_t>(capture_times.size()));
-		df::set_gauge(df::index_perf.pass_candidates, candidate_count);
-		df::set_gauge(df::index_perf.pass_wanted, wanted_count);
-		df::set_gauge(df::index_perf.pass_matched, matched_count);
-		df::set_gauge(df::index_perf.pass_crowded, crowded_count);
-		df::set_gauge(df::index_perf.pass_usable_held, usable_held);
-		df::set_gauge(df::index_perf.pass_declined_held, declined_held);
-		df::set_gauge(df::index_perf.pass_uninvited, uninvited);
-		df::set_gauge(df::index_perf.pass_dims_unknown, dims_unknown);
-		df::set_gauge(df::index_perf.pass_aspect_solo, aspect_solo);
-		df::set_gauge(df::index_perf.pass_aspect_solo_swap, aspect_solo_swap);
-		df::set_gauge(df::index_perf.pass_matched_cross_aspect, matched_cross_aspect);
+		render::set_gauge(df::index_perf.pass_pictures, dated_pictures);
+		render::set_gauge(df::index_perf.pass_buckets, static_cast<uint32_t>(capture_times.size()));
+		render::set_gauge(df::index_perf.pass_candidates, candidate_count);
+		render::set_gauge(df::index_perf.pass_wanted, wanted_count);
+		render::set_gauge(df::index_perf.pass_matched, matched_count);
+		render::set_gauge(df::index_perf.pass_crowded, crowded_count);
+		render::set_gauge(df::index_perf.pass_usable_held, usable_held);
+		render::set_gauge(df::index_perf.pass_declined_held, declined_held);
+		render::set_gauge(df::index_perf.pass_uninvited, uninvited);
+		render::set_gauge(df::index_perf.pass_dims_unknown, dims_unknown);
+		render::set_gauge(df::index_perf.pass_aspect_solo, aspect_solo);
+		render::set_gauge(df::index_perf.pass_aspect_solo_swap, aspect_solo_swap);
+		render::set_gauge(df::index_perf.pass_matched_cross_aspect, matched_cross_aspect);
 
 		stats.indexed_phash_count = static_cast<int>(usable_held);
 		stats.indexed_phash_declined_count = static_cast<int>(declined_held);
 		stats.indexed_phash_uninvited_count = static_cast<int>(uninvited);
 	}
 
-	df::hash_map<size_t, df::int_counter> component_counts;
+	core::hash_map<size_t, core::int_counter> component_counts;
 	for (auto i = 0u; i < files.size(); ++i)
 	{
 		++component_counts[find_root(i)];
@@ -577,14 +577,14 @@ void index_state::update_predictions()
 
 	for (auto i = 0u; i < files.size(); ++i)
 	{
-		if (df::is_closing) return;
+		if (platform::is_closing) return;
 		const auto root = find_root(i);
 		const auto count = static_cast<uint32_t>(component_counts[root]);
 		const auto found_group = component_groups.find(root);
 		const auto group = found_group == component_groups.end() ? 0u : found_group->second;
 		const auto grade = group == 0 ? df::copy_grade::none : grades[i];
 		const auto dup_info = df::duplicate_info{group, count, crowded[i], grade};
-		duplicates_changed |= _items.update_file(df::file_path(files[i].path, files[i].file->name),
+		duplicates_changed |= _items.update_file(core::file_path(files[i].path, files[i].file->name),
 		                                         [dup_info](const df::index_folder_item_ptr& folder,
 		                                                    const df::index_file_item& file)
 		{
@@ -602,13 +602,13 @@ void index_state::update_predictions()
 	stats.indexed_dup_folder_count = static_cast<int>(component_groups.size());
 	stats.indexed_crc_count = indexed_crc_count;
 	stats.indexed_max_compare_count = max_compare_count;
-	stats.predictions_ms = static_cast<int>(df::now_ms() - start_ms);
+	stats.predictions_ms = static_cast<int>(core::now_ms() - start_ms);
 
-	df::set_gauge(df::index_perf.pass_files, static_cast<uint32_t>(files.size()));
-	df::set_gauge(df::index_perf.pass_crc_held, static_cast<uint32_t>(indexed_crc_count));
-	df::set_gauge(df::index_perf.pass_dup_groups, static_cast<uint32_t>(component_groups.size()));
+	render::set_gauge(df::index_perf.pass_files, static_cast<uint32_t>(files.size()));
+	render::set_gauge(df::index_perf.pass_crc_held, static_cast<uint32_t>(indexed_crc_count));
+	render::set_gauge(df::index_perf.pass_dup_groups, static_cast<uint32_t>(component_groups.size()));
 
-	df::trace(std::format("Index update predictions: {} folders in {} ms", folder_count, stats.predictions_ms));
+	core::trace(std::format("Index update predictions: {} folders in {} ms", folder_count, stats.predictions_ms));
 
 	// Items already listed copied their duplicate counts when they were listed; presence hands them
 	// the new ones. Presence never asks for predictions, so this cannot cycle the way refresh_items did.
@@ -617,7 +617,7 @@ void index_state::update_predictions()
 		_async.invalidate_view(view_invalid::presence);
 	}
 
-	if (!phash_wanted.empty() && !df::is_closing)
+	if (!phash_wanted.empty() && !platform::is_closing)
 	{
 		queue_calc_perceptual_hashes(std::move(phash_wanted));
 	}
@@ -640,29 +640,29 @@ void index_state::queue_calc_perceptual_hashes(std::vector<phash_request> reques
 
 		for (const auto& request : requests)
 		{
-			if (df::is_closing) break;
+			if (platform::is_closing) break;
 
 			const auto& path = request.path;
 			crypto::phash_rotations hash{};
 			auto readable = false;
 
 			{
-				df::scope_locked_inc loading(df::loading_media);
-				df::perf_timer timer(df::index_perf.phash_us, &df::index_perf.phash_max_us);
-				df::bump(df::index_perf.phash_computed);
+				core::scope_locked_inc loading(df::loading_media);
+				core::perf_timer timer(df::index_perf.phash_us, &df::index_perf.phash_max_us);
+				core::bump(df::index_perf.phash_computed);
 				file_read_stream stream;
 
 				if (stream.open(path) && stream.size() <= max_phash_file_bytes)
 				{
 					files ff;
-					df::blob owner;
+					core::blob owner;
 					readable = true;
-					df::bump(df::index_perf.phash_bytes, stream.size());
+					core::bump(df::index_perf.phash_bytes, stream.size());
 					hash = ff.calc_perceptual_hash_rotations(stream.view_all(owner));
 				}
 				else
 				{
-					df::bump(df::index_perf.phash_unreadable);
+					core::bump(df::index_perf.phash_unreadable);
 				}
 			}
 
@@ -671,12 +671,12 @@ void index_state::queue_calc_perceptual_hashes(std::vector<phash_request> reques
 			if (crypto::phash_is_usable(hash[0]))
 			{
 				hashed.emplace_back(path, request.revision, hash);
-				df::bump(df::index_perf.phash_usable);
+				core::bump(df::index_perf.phash_usable);
 			}
 			else
 			{
 				hashed.emplace_back(path, request.revision, crypto::phash_rotations{crypto::phash_declined, 0, 0, 0});
-				if (readable) df::bump(df::index_perf.phash_declined);
+				if (readable) core::bump(df::index_perf.phash_declined);
 			}
 
 			if (hashed.size() >= publish_group)
@@ -703,10 +703,10 @@ struct presence_match
 struct presence_request
 {
 	std::weak_ptr<df::item_element> lifetime;
-	df::file_path path;
-	df::file_size size;
-	df::date_t file_modified;
-	df::date_t media_created;
+	core::file_path path;
+	core::file_size size;
+	core::date_t file_modified;
+	core::date_t media_created;
 	uint32_t crc32c = 0;
 	bool is_folder = false;
 	bool is_bitmap = false;
@@ -765,9 +765,9 @@ static df::copy_grade dup_match_grade(const df::index_file_item& file, const pre
 struct presence_similar_candidate
 {
 	size_t request_index = 0;
-	df::file_path path;
+	core::file_path path;
 	crypto::phash_rotations phash{};
-	df::date_t file_modified;
+	core::date_t file_modified;
 	uint64_t size = 0;
 	df::duplicate_info duplicates;
 	sizei dimensions;
@@ -839,7 +839,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 	// A member is only hashed by the predictions pass when another member shares its capture time, so
 	// the picture an outside file is being compared against often has no hash yet. It is computed
 	// here and saved, because answering "checking" forever would be an absence in all but name.
-	const auto hash_of = [&decoder, &index](const df::file_path path, const index_file_revision revision,
+	const auto hash_of = [&decoder, &index](const core::file_path path, const index_file_revision revision,
 	                                        const crypto::phash_rotations& known) -> crypto::phash_rotations
 	{
 		if (known[0] != 0) return known;
@@ -847,24 +847,24 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 		crypto::phash_rotations hash{};
 
 		{
-			df::scope_locked_inc loading(df::loading_media);
-			df::perf_timer timer(df::index_perf.phash_us, &df::index_perf.phash_max_us);
-			df::bump(df::index_perf.phash_computed);
-			df::bump(df::index_perf.phash_presence);
+			core::scope_locked_inc loading(df::loading_media);
+			core::perf_timer timer(df::index_perf.phash_us, &df::index_perf.phash_max_us);
+			core::bump(df::index_perf.phash_computed);
+			core::bump(df::index_perf.phash_presence);
 			file_read_stream stream;
 
 			if (stream.open(path) && stream.size() <= max_phash_file_bytes)
 			{
-				df::blob owner;
-				df::bump(df::index_perf.phash_bytes, stream.size());
+				core::blob owner;
+				core::bump(df::index_perf.phash_bytes, stream.size());
 				hash = decoder.calc_perceptual_hash_rotations(stream.view_all(owner));
-				df::bump(crypto::phash_is_usable(hash[0])
+				core::bump(crypto::phash_is_usable(hash[0])
 					         ? df::index_perf.phash_usable
 					         : df::index_perf.phash_declined);
 			}
 			else
 			{
-				df::bump(df::index_perf.phash_unreadable);
+				core::bump(df::index_perf.phash_unreadable);
 			}
 		}
 
@@ -876,7 +876,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 
 	for (auto i = candidates.begin(); i != candidates.end();)
 	{
-		if (df::is_closing) return;
+		if (platform::is_closing) return;
 
 		auto group_end = i;
 		while (group_end != candidates.end() && group_end->request_index == i->request_index) ++group_end;
@@ -956,7 +956,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 
 void index_state::queue_update_presence(const df::item_set& items)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	if (items.empty()) return;
 
 	std::vector<presence_request> requests;
@@ -973,7 +973,7 @@ void index_state::queue_update_presence(const df::item_set& items)
 
 	_async.queue_async(async_queue::index_presence_single, [this, requests = std::move(requests)]() mutable
 	{
-		df::measure_ms ms(stats.update_presence_ms);
+		core::measure_ms ms(stats.update_presence_ms);
 		df::index_folder_info_map indexed_folders;
 		std::vector<presence_match> matches(requests.size());
 
@@ -992,7 +992,7 @@ void index_state::queue_update_presence(const df::item_set& items)
 		std::vector<std::pair<uint32_t, size_t>> items_possible_hashes;
 		// Outside photographs whose capture time a member might share, keyed exactly rather than by the
 		// folded hash above, because a picture comparison is too expensive to run on a fold collision.
-		df::hash_map<uint64_t, std::vector<size_t>> requests_by_capture_time;
+		core::hash_map<uint64_t, std::vector<size_t>> requests_by_capture_time;
 
 		for (size_t index = 0; index < requests.size(); ++index)
 		{
@@ -1073,7 +1073,7 @@ void index_state::queue_update_presence(const df::item_set& items)
 								for (const auto request_index : shares_time->second)
 								{
 									similar_candidates.emplace_back(request_index,
-									                                df::file_path(ifn.first, file.name),
+									                                core::file_path(ifn.first, file.name),
 									                                rotations,
 									                                file.file_modified.load(),
 									                                file.size.to_int64(),
@@ -1157,6 +1157,6 @@ void index_state::queue_update_presence(const df::item_set& items)
 			}
 		});
 
-		df::trace(std::format("Index update presence {} items in {} ms", result_count, stats.update_presence_ms));
+		core::trace(std::format("Index update presence {} items in {} ms", result_count, stats.update_presence_ms));
 	});
 }

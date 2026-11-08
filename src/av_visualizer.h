@@ -239,7 +239,7 @@ class av_visualizer
 					if (current != target)
 					{
 						const auto alpha = target > current ? attack : release;
-						auto next = df::round(current + (target - current) * alpha);
+						auto next = core::round(current + (target - current) * alpha);
 						if (next == current) next += target > current ? 1 : -1;
 						_data[ch][i] = next;
 						changed = true;
@@ -308,7 +308,7 @@ class av_visualizer
 		}
 	};
 
-	mutable platform::mutex _mutex;
+	mutable core::mutex _mutex;
 	_Guarded_by_(_mutex) frame_queue _frames;
 	_Guarded_by_(_mutex) frame _frame;
 	_Guarded_by_(_mutex) double _last_step_time = -1.0;
@@ -348,7 +348,7 @@ public:
 			calc_bars(rBuffer, frame._data[1]);
 
 			{
-				platform::exclusive_lock lock(_mutex);
+				core::exclusive_lock lock(_mutex);
 				_frames.push(frame);
 			}
 
@@ -368,7 +368,7 @@ public:
 
 	bool step(const double time)
 	{
-		platform::exclusive_lock lock(_mutex);
+		core::exclusive_lock lock(_mutex);
 		const auto elapsed = _last_step_time < 0.0 ? 1.0 / 60.0 : std::clamp(time - _last_step_time, 0.0, 0.1);
 		_last_step_time = time;
 		return _frames.pop_animate(_frame, time + animation_lead, elapsed);
@@ -376,19 +376,19 @@ public:
 
 	void clear()
 	{
-		platform::exclusive_lock lock(_mutex);
+		core::exclusive_lock lock(_mutex);
 		_frames.clear();
 		_frame = frame(0.0);
 		_last_step_time = -1.0;
 	}
 
-	void render(const ui::vertices_ptr& verts, const recti rect, const pointi offset, const float alpha,
+	void render(const render::vertices_ptr& verts, const recti rect, const pointi offset, const float alpha,
 	            const double time) const
 	{
-		std::array<ui::vertex_rect, num_bars> bars;
+		std::array<render::vertex_rect, num_bars> bars;
 
 		{
-			platform::shared_lock lock(_mutex);
+			core::shared_lock lock(_mutex);
 
 			constexpr double scaleY = 444.0;
 			const double hh = rect.height() / 2.0;
@@ -415,9 +415,9 @@ public:
 				const auto gg = static_cast<float>((cos(ic - 0.125 * pi4) + 1.0) / 2.0);
 				const auto bb = static_cast<float>((cos(ic - 0.25 * pi4) + 1.0) / 2.0);
 
-				const recti col(df::round(x - inflate), df::round(y - yl * hh / scaleY), df::round(x + inflate),
-				                df::round(y + yr * hh / scaleY));
-				bars[i] = {col.offset(offset), ui::color(rr, gg, bb, static_cast<float>(a))};
+				const recti col(core::round(x - inflate), core::round(y - yl * hh / scaleY), core::round(x + inflate),
+				                core::round(y + yr * hh / scaleY));
+				bars[i] = {col.offset(offset), core::color(rr, gg, bb, static_cast<float>(a))};
 			}
 		}
 
@@ -434,7 +434,7 @@ private:
 
 			for (auto i = 0; i <= num_bars; i++)
 			{
-				result[i] = df::round(0.5 + pow(FFT_BUFFER_SIZE / 2.0, static_cast<double>(i) / num_bars));
+				result[i] = core::round(0.5 + pow(FFT_BUFFER_SIZE / 2.0, static_cast<double>(i) / num_bars));
 				if (i > 0 && result[i] <= result[i - 1]) result[i] = result[i - 1] + 1;
 				result[i] = std::min(result[i], static_cast<int>(FFT_BUFFER_SIZE / 2 - 1));
 			}
@@ -482,9 +482,9 @@ private:
 		return a * (1.0f - t) + b * t;
 	}
 
-	static ui::color interpolate(const ui::color ca, const ui::color cb, const float t, const float a)
+	static core::color interpolate(const core::color ca, const core::color cb, const float t, const float a)
 	{
-		ui::color result;
+		core::color result;
 		result.r = linear_interpolate(ca.r, cb.r, t);
 		result.g = linear_interpolate(ca.g, cb.g, t);
 		result.b = linear_interpolate(ca.b, cb.b, t);

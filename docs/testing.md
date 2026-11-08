@@ -14,7 +14,7 @@ Tests are compiled into the application and run from the command line. There is 
 
 `/test:` takes a wildcard matched against the test name, case-insensitively. A filter that matches nothing is a failure, not a silent pass.
 
-Release registers exactly six more tests than Debug: five decoder fuzz sweeps and the closest-location lookup are `#ifndef _DEBUG`. Debug `N` and Release `N + 6` is correct; any other gap means something was skipped.
+Release-only decoder fuzz sweeps and the closest-location lookup are guarded by `#ifndef _DEBUG`; keep that conditional coverage aligned between configurations so a missing registration is visible.
 
 The gateway also runs [test_release_tools.ps1](../tools/test_release_tools.ps1):
 SDK-only SymStore discovery, missing prerequisites, argument forwarding and
@@ -25,7 +25,7 @@ Translation registration checks include `app_text`'s composed libdesktop
 messages. [test_check_translations.py](../tools/test_check_translations.py)
 proves that omitted, duplicated, unknown and wrongly typed shared messages
 still fail. For an explicitly overridden libdesktop source, pass its
-`include/libdesktop/platform.h` to `check_translations.py --platform-text-header`.
+`include/libdesktop/platform/services.h` to `check_translations.py --platform-text-header`.
 
 ## Taxonomy
 
@@ -44,7 +44,7 @@ One file per subject, matching the `src/` prefixes in [implementation](implement
 | [test_search.cpp](../src/test_search.cpp) | `register_search_tests` | `model_search`, `model_related`, `app_match`: query parsing, term matching, scopes, negation, exclusion, related items, prediction |
 | [test_locations.cpp](../src/test_locations.cpp) | `register_location_tests` | `model_locations`, `model_visits`, `ui_map*`, `ui_globe`, `model_tile_cache`: the gazetteer, place naming, map areas and geometry, the globe's projection and framing, visits, the timeline, the map tile cache. See [locations](locations.md) |
 | [test_movie.cpp](../src/test_movie.cpp) | `register_movie_tests` | `model_movie`: the Movie document -- derived output geometry, transition and duration arithmetic, timeline edits and undo, what entering Movie does with the timeline it holds, the OpenTimelineIO project file, the Movie Maker reader, finding a moved source among same-named files. See [movie](movie.md) |
-| [test_view.cpp](../src/test_view.cpp) | `register_view_tests` | `view*`, `ui*`, `model_zoom`: the zoom model, the panorama camera and its field-of-view ladder, the item selector, the view scroller, flex layout, tile geometry, detail rows, the task-list run highlight, the SID monitor, text editing. The scroller, flex layout and hit-test tests are copies of libdesktop-render's, kept so they test the element tree through the application |
+| [test_view.cpp](../src/test_view.cpp) | `register_view_tests` | `view*`, `ui*`, `model_zoom`: the zoom model, the panorama camera and its field-of-view ladder, the item selector, the view scroller, flex layout, tile geometry, detail rows, the task-list run highlight, the SID monitor, text editing. The scroller, flex layout and hit-test tests mirror the corresponding coverage in libdesktop's `ui` suite, so they test the element tree through the application |
 | [test_app.cpp](../src/test_app.cpp) | `register_app_tests` | `app*`: selection and command enablement, settings persistence and the Options view, rename, import, sync and convert planning, external tools, history, the crash guard |
 | [test_platform_win.cpp](../src/test_platform_win.cpp) | `register_platform_tests` | `platform_win*`: extended paths, DXGI device loss, adapter classification and texture budgets, the decode device's adapter, texture recycling, the font stack, the registry store, the shell data object, control painting. The only file that may include system headers |
 
@@ -69,7 +69,7 @@ Ask what the test constrains, not what prompted it.
 
 - **Persist user state.** A test that appends to a real dictionary, settings key or collection passes once and then fails, and it edits a file the user owns. Write to `_temps` instead.
 - **Depend on another test.** Tests share one `shared_test_context` for the loaded index and gazetteer, because loading those per test is not affordable, but nothing else may carry between them.
-- **Depend on ordering, wall-clock timing, or the machine's fonts and DPI.** Layout tests measure through a stub measure context for this reason. Ordering includes the order a folder lists in: NTFS lists names sorted and ext4 does not, and a Linux build from a checkout under WSL's `/mnt/c` reaches `exe/` through links that list as NTFS does, so only CI shows the dependency. The record tests sort what they collect (`scan_parity::add_folder` in [test_files.cpp](../src/test_files.cpp)). The processor matters too, where a codec picks its kernels when it runs: dav1d decodes a damaged stream differently with each set, so the HEIF record pins its SSE4.1 kernels.
+- **Depend on ordering, wall-clock timing, or the machine's fonts and DPI.** Layout tests measure through application-owned stub contexts for this reason. Ordering includes the order a folder lists in: NTFS lists names sorted and ext4 does not, and a Linux build from a checkout under WSL's `/mnt/c` reaches `exe/` through links that list as NTFS does, so only CI shows the dependency. The record tests sort what they collect (`scan_parity::add_folder` in [test_files.cpp](../src/test_files.cpp)). The processor matters too, where a codec picks its kernels when it runs: dav1d decodes a damaged stream differently with each set, so the HEIF record pins its SSE4.1 kernels.
 - **Add files to `exe/test`.** That folder is indexed recursively and its file count is asserted by `expected_cached_item_count` and by every search-count test. Fixtures loaded directly by path go in `exe/test/excluded1`, which indexing skips.
 
 ## Proving a test is worth having

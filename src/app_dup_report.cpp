@@ -43,9 +43,9 @@ namespace
 
 	struct photo_entry
 	{
-		df::file_path path;
+		core::file_path path;
 		uint64_t created_key = 0;
-		df::date_t created;
+		core::date_t created;
 		bool created_from_exif = false;
 		crypto::phash_rotations phash{};
 	};
@@ -69,7 +69,7 @@ namespace
 		}
 	};
 
-	void collect_photos(const df::folder_path folder, std::vector<df::file_path>& result)
+	void collect_photos(const core::folder_path folder, std::vector<core::file_path>& result)
 	{
 		auto contents = platform::iterate_file_items(folder, false);
 
@@ -249,7 +249,7 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 {
 	load_file_types();
 
-	const auto folder = df::folder_path(folder_text);
+	const auto folder = core::folder_path(folder_text);
 
 	if (!platform::exists(folder))
 	{
@@ -261,9 +261,9 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 
 	if (!output_text.empty())
 	{
-		const auto output_path = df::find_last_slash(output_text) == std::string_view::npos
-			                         ? df::file_path(df::folder_path("."), output_text)
-			                         : df::file_path(output_text);
+		const auto output_path = core::find_last_slash(output_text) == std::string_view::npos
+			                         ? core::file_path(core::folder_path("."), output_text)
+			                         : core::file_path(output_text);
 		out.file = platform::open_file(output_path, platform::file_open_mode::create);
 		if (!out.file)
 		{
@@ -279,7 +279,7 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	out.line("");
 
 	printf("Enumerating photos...\n");
-	std::vector<df::file_path> paths;
+	std::vector<core::file_path> paths;
 	collect_photos(folder, paths);
 	printf("  %zu photos found\n", paths.size());
 
@@ -377,7 +377,7 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 
 		if (stream.open(entry.path) && stream.size() <= max_report_file_bytes)
 		{
-			df::blob owner;
+			core::blob owner;
 			entry.phash = ff.calc_perceptual_hash_rotations(stream.view_all(owner));
 		}
 

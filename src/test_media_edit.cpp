@@ -38,9 +38,9 @@ static uint32_t read_be32(const uint8_t* p)
 		static_cast<uint32_t>(p[2]) << 8 | p[3];
 }
 
-static df::blob find_xtra_entry(const df::file_path path, const std::string_view wanted_name)
+static core::blob find_xtra_entry(const core::file_path path, const std::string_view wanted_name)
 {
-	const auto data = df::blob_from_file(path);
+	const auto data = platform::blob_from_file(path);
 	for (size_t pos = 0; pos + 12 <= data.size(); ++pos)
 	{
 		const auto entry_size = read_be32(data.data() + pos);
@@ -58,23 +58,23 @@ static df::blob find_xtra_entry(const df::file_path path, const std::string_view
 	return {};
 }
 
-static str::cached make_unique_tags(tag_set tags1, const tag_set& tags2)
+static core::cached make_unique_tags(tag_set tags1, const tag_set& tags2)
 {
 	tags1.add(tags2);
 	tags1.make_unique();
-	return str::cache(tags1.to_string());
+	return core::cache(tags1.to_string());
 }
 
 static void should_apply_perspective_correction()
 {
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(16, 12, ui::texture_format::RGB);
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(16, 12, core::texture_format::RGB);
 
 	for (auto y = 0; y < 12; ++y)
 	{
 		for (auto x = 0; x < 16; ++x)
 		{
-			source->set_pixel(x, y, ui::rgba(x * 16, y * 20, 64));
+			source->set_pixel(x, y, core::rgba(x * 16, y * 20, 64));
 		}
 	}
 
@@ -84,7 +84,7 @@ static void should_apply_perspective_correction()
 	const auto corrected = apply_image_edits(source, edits);
 
 	assert_equal(true, source->dimensions() == corrected->dimensions(), "perspective dimensions");
-	assert_equal(true, source->pixel_difference(corrected) == ui::pixel_difference_result::not_equal,
+	assert_equal(true, source->pixel_difference(corrected) == core::pixel_difference_result::not_equal,
 	             "perspective changes pixels");
 
 	edits.crop_bounds(quadd(source->dimensions()));
@@ -143,7 +143,7 @@ static void should_fit_document_correction_to_controls()
 		corners[index] = {(0.5 + nx / denominator) * extent.cx, (0.5 + ny / denominator) * extent.cy};
 	}
 
-	const auto correction = fit_document_correction(corners, extent, ui::orientation::top_left);
+	const auto correction = fit_document_correction(corners, extent, core::orientation::top_left);
 	assert_equal(true, static_cast<bool>(correction), "document correction fits");
 	assert_equal(true, std::abs(correction.perspective_horizontal - horizontal) < 0.01,
 	             "recovers horizontal perspective");
@@ -170,8 +170,8 @@ static void should_fit_document_correction_to_controls()
 
 static void should_detect_only_clear_document_regions()
 {
-	const auto document = std::make_shared<ui::surface>();
-	document->alloc(160, 120, ui::texture_format::RGB);
+	const auto document = std::make_shared<core::surface>();
+	document->alloc(160, 120, core::texture_format::RGB);
 	constexpr std::array<pointd, 4> corners = {pointd(24, 18), pointd(140, 12), pointd(132, 108), pointd(18, 100)};
 	for (auto y = 0; y < 120; ++y)
 	{
@@ -188,7 +188,7 @@ static void should_detect_only_clear_document_regions()
 					break;
 				}
 			}
-			document->set_pixel(x, y, inside ? ui::rgba(238, 236, 232) : ui::rgba(40, 55, 70));
+			document->set_pixel(x, y, inside ? core::rgba(238, 236, 232) : core::rgba(40, 55, 70));
 		}
 	}
 
@@ -196,18 +196,18 @@ static void should_detect_only_clear_document_regions()
 	assert_equal(true, static_cast<bool>(detected), "detects clear document");
 	assert_equal(true, detected.extent.cx > 100 && detected.extent.cy > 80, "document extent is plausible");
 
-	const auto ambiguous = std::make_shared<ui::surface>();
-	ambiguous->alloc(160, 120, ui::texture_format::RGB);
+	const auto ambiguous = std::make_shared<core::surface>();
+	ambiguous->alloc(160, 120, core::texture_format::RGB);
 	for (auto y = 0; y < 120; ++y)
 		for (auto x = 0; x < 160; ++x)
-			ambiguous->set_pixel(x, y, ui::rgba(220, 220, 220));
+			ambiguous->set_pixel(x, y, core::rgba(220, 220, 220));
 	assert_equal(true, !detect_document(ambiguous, ambiguous->dimensions()), "rejects borderless bright image");
 }
 
 static void should_detect_photographed_document()
 {
 	files loader;
-	const auto loaded = loader.load(test_files_folder.combine("excluded1").combine_file("document.png"), false);
+	const auto loaded = loader.load(test_files_folder().combine("excluded1").combine_file("document.png"), false);
 	const auto surface = loaded.to_surface({768, 768});
 	const auto detected = detect_document(surface, loaded.dimensions());
 
@@ -222,14 +222,14 @@ static void should_detect_photographed_document()
 
 static void should_detect_document_at_image_edge()
 {
-	const auto document = std::make_shared<ui::surface>();
-	document->alloc(160, 120, ui::texture_format::RGB);
+	const auto document = std::make_shared<core::surface>();
+	document->alloc(160, 120, core::texture_format::RGB);
 	for (auto y = 0; y < 120; ++y)
 	{
 		for (auto x = 0; x < 160; ++x)
 		{
 			const auto inside = x < 130 && y < 100;
-			document->set_pixel(x, y, inside ? ui::rgba(238, 236, 232) : ui::rgba(40, 55, 70));
+			document->set_pixel(x, y, inside ? core::rgba(238, 236, 232) : core::rgba(40, 55, 70));
 		}
 	}
 
@@ -239,8 +239,8 @@ static void should_detect_document_at_image_edge()
 
 static void should_detect_low_contrast_document()
 {
-	const auto document = std::make_shared<ui::surface>();
-	document->alloc(240, 180, ui::texture_format::RGB);
+	const auto document = std::make_shared<core::surface>();
+	document->alloc(240, 180, core::texture_format::RGB);
 	constexpr std::array<pointd, 4> corners = {pointd(34, 22), pointd(210, 30), pointd(202, 160), pointd(26, 152)};
 
 	for (auto y = 0; y < 180; ++y)
@@ -259,8 +259,8 @@ static void should_detect_low_contrast_document()
 				}
 			}
 			// Lighting ramp overlaps page and surround tones, so no global threshold separates them.
-			const auto level = df::round((inside ? 148.0 : 120.0) + 70.0 * x / 240.0);
-			document->set_pixel(x, y, ui::rgba(level, level, level));
+			const auto level = core::round((inside ? 148.0 : 120.0) + 70.0 * x / 240.0);
+			document->set_pixel(x, y, core::rgba(level, level, level));
 		}
 	}
 
@@ -272,15 +272,15 @@ static void should_detect_low_contrast_document()
 
 static void should_crop_without_resampling()
 {
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(16, 12, ui::texture_format::RGB);
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(16, 12, core::texture_format::RGB);
 
 	for (auto y = 0; y < 12; ++y)
 	{
 		for (auto x = 0; x < 16; ++x)
 		{
 			// Alternating extremes, so any interpolation shows up immediately as a mid tone.
-			source->set_pixel(x, y, (x + y) & 1 ? ui::rgba(255, 255, 255) : ui::rgba(0, 0, 0));
+			source->set_pixel(x, y, (x + y) & 1 ? core::rgba(255, 255, 255) : core::rgba(0, 0, 0));
 		}
 	}
 
@@ -302,17 +302,17 @@ static void should_crop_without_resampling()
 
 static void should_apply_temperature_and_tint()
 {
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(1, 1, ui::texture_format::RGB);
-	source->set_pixel(0, 0, ui::rgba(128, 128, 128));
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(1, 1, core::texture_format::RGB);
+	source->set_pixel(0, 0, core::rgba(128, 128, 128));
 
 	image_edits edits;
 	edits.temperature(0.5);
 	edits.tint(0.25);
 	const auto adjusted = apply_image_edits(source, edits)->get_pixel(0, 0);
-	const auto adjusted_red = ui::get_b(adjusted);
-	const auto adjusted_green = ui::get_g(adjusted);
-	const auto adjusted_blue = ui::get_r(adjusted);
+	const auto adjusted_red = core::get_b(adjusted);
+	const auto adjusted_green = core::get_g(adjusted);
+	const auto adjusted_blue = core::get_r(adjusted);
 
 	assert_equal(true, adjusted_red > adjusted_blue, "temperature warms neutral pixel");
 	assert_equal(true, adjusted_green < adjusted_red, "positive tint reduces green");
@@ -321,10 +321,10 @@ static void should_apply_temperature_and_tint()
 static void should_initialize_edit_rotation_from_orientation()
 {
 	constexpr sizei landscape(120, 80);
-	const auto top_left = edit_view_state::initial_crop(landscape, ui::orientation::top_left);
-	const auto right_top = edit_view_state::initial_crop(landscape, ui::orientation::right_top);
-	const auto bottom_right = edit_view_state::initial_crop(landscape, ui::orientation::bottom_right);
-	const auto left_bottom = edit_view_state::initial_crop(landscape, ui::orientation::left_bottom);
+	const auto top_left = edit_view_state::initial_crop(landscape, core::orientation::top_left);
+	const auto right_top = edit_view_state::initial_crop(landscape, core::orientation::right_top);
+	const auto bottom_right = edit_view_state::initial_crop(landscape, core::orientation::bottom_right);
+	const auto left_bottom = edit_view_state::initial_crop(landscape, core::orientation::left_bottom);
 
 	assert_equal(0.0, top_left.angle(), "top-left rotation");
 	assert_equal(-90.0, right_top.angle(), "right-top rotation");
@@ -335,20 +335,20 @@ static void should_initialize_edit_rotation_from_orientation()
 	assert_equal(true, left_bottom.actual_extent().Height > left_bottom.actual_extent().Width,
 	             "left-bottom orientation is portrait");
 
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(3, 2, ui::texture_format::RGB);
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(3, 2, core::texture_format::RGB);
 	for (auto y = 0; y < 2; ++y)
 	{
 		for (auto x = 0; x < 3; ++x)
 		{
-			source->set_pixel(x, y, ui::rgba(10 + x + y * 3, 0, 0));
+			source->set_pixel(x, y, core::rgba(10 + x + y * 3, 0, 0));
 		}
 	}
 
 	image_edits edits;
-	edits.crop_bounds(edit_view_state::initial_crop(source->dimensions(), ui::orientation::right_top));
+	edits.crop_bounds(edit_view_state::initial_crop(source->dimensions(), core::orientation::right_top));
 	const auto edited = apply_image_edits(source, edits);
-	const auto displayed = source->transform(to_simple_transform(ui::orientation::right_top));
+	const auto displayed = source->transform(to_simple_transform(core::orientation::right_top));
 	assert_equal(true, displayed->dimensions() == edited->dimensions(),
 	             "right-top edit dimensions match image view");
 	for (auto y = 0u; y < edited->height(); ++y)
@@ -363,26 +363,26 @@ static void should_initialize_edit_rotation_from_orientation()
 
 static void should_rotate_displayed_oriented_pixels_clockwise()
 {
-	const auto assert_orientation = [](const ui::orientation orientation, const std::string_view message)
+	const auto assert_orientation = [](const core::orientation orientation, const std::string_view message)
 	{
-		const auto source = std::make_shared<ui::surface>();
-		source->alloc(3, 2, ui::texture_format::RGB);
+		const auto source = std::make_shared<core::surface>();
+		source->alloc(3, 2, core::texture_format::RGB);
 		for (auto y = 0; y < 2; ++y)
 		{
 			for (auto x = 0; x < 3; ++x)
 			{
-				source->set_pixel(x, y, ui::rgba(10 + x + y * 3, 0, 0));
+				source->set_pixel(x, y, core::rgba(10 + x + y * 3, 0, 0));
 			}
 		}
 
 		image_edits edits;
-		edits.crop_bounds(rotate_command_crop_bounds(source->dimensions(), orientation, simple_transform::rot_90, true));
+		edits.crop_bounds(rotate_command_crop_bounds(source->dimensions(), orientation, core::simple_transform::rot_90, true));
 		const auto actual = apply_image_edits(source, edits);
 		const auto displayed = source->transform(to_simple_transform(orientation));
-		const auto expected = displayed->transform(simple_transform::rot_270);
+		const auto expected = displayed->transform(core::simple_transform::rot_270);
 
-		assert_equal(true, ui::is_valid(actual), message, "actual rotated surface is valid");
-		assert_equal(true, ui::is_valid(expected), message, "expected rotated surface is valid");
+		assert_equal(true, core::is_valid(actual), message, "actual rotated surface is valid");
+		assert_equal(true, core::is_valid(expected), message, "expected rotated surface is valid");
 		assert_equal(true, expected->dimensions() == actual->dimensions(), message, "dimensions");
 		for (auto y = 0u; y < actual->height(); ++y)
 		{
@@ -393,21 +393,21 @@ static void should_rotate_displayed_oriented_pixels_clockwise()
 		}
 	};
 
-	assert_orientation(ui::orientation::right_top, "right_top");
-	assert_orientation(ui::orientation::left_bottom, "left_bottom");
+	assert_orientation(core::orientation::right_top, "right_top");
+	assert_orientation(core::orientation::left_bottom, "left_bottom");
 }
 
 static void should_build_rotated_edit_preview_surface()
 {
 	files ff;
-	const auto loaded = ff.load(test_files_folder.combine_file("Test.jpg"), false);
+	const auto loaded = ff.load(test_files_folder().combine_file("Test.jpg"), false);
 	const auto source_dimensions = loaded.dimensions();
-	const auto source = loaded.to_surface(ui::scale_dimensions(source_dimensions, 192));
+	const auto source = loaded.to_surface(core::scale_dimensions(source_dimensions, 192));
 
 	image_edits edits;
-	edits.crop_bounds(quadd(source_dimensions).transform(simple_transform::rot_90));
+	edits.crop_bounds(quadd(source_dimensions).transform(core::simple_transform::rot_90));
 	const auto preview = edit_view::build_preview_surface(source, source_dimensions, edits);
-	const auto expected_dimensions = ui::scale_dimensions(sizei(source->height(), source->width()), 128);
+	const auto expected_dimensions = core::scale_dimensions(sizei(source->height(), source->width()), 128);
 
 	assert_equal(true, is_valid(preview), "rotated edit preview is valid");
 	assert_equal(expected_dimensions.cx, static_cast<int>(preview->width()), "rotated edit preview width");
@@ -417,9 +417,9 @@ static void should_build_rotated_edit_preview_surface()
 static void should_build_straightened_edit_preview_without_black_corners()
 {
 	constexpr sizei loaded_dimensions(4000, 3000);
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(192, 144, ui::texture_format::RGB);
-	source->clear(ui::rgba(255, 255, 255));
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(192, 144, core::texture_format::RGB);
+	source->clear(core::rgba(255, 255, 255));
 
 	image_edits edits;
 	const quadd image_bounds(loaded_dimensions);
@@ -446,12 +446,12 @@ static void should_build_straightened_edit_preview_without_black_corners()
 static void should_not_treat_initial_orientation_as_an_edit()
 {
 	image_edits original_edits;
-	original_edits.crop_bounds(edit_view_state::initial_crop(sizei(120, 80), ui::orientation::right_top));
+	original_edits.crop_bounds(edit_view_state::initial_crop(sizei(120, 80), core::orientation::right_top));
 	auto current_edits = original_edits;
 
 	assert_equal(false, current_edits != original_edits, "initial EXIF orientation is baseline");
 
-	current_edits.crop_bounds(current_edits.crop_bounds().transform(simple_transform::rot_90));
+	current_edits.crop_bounds(current_edits.crop_bounds().transform(core::simple_transform::rot_90));
 	assert_equal(true, current_edits != original_edits, "user rotation changes baseline");
 }
 
@@ -459,17 +459,17 @@ static void should_not_treat_initial_orientation_as_an_edit()
 // JPEG kept Orientation=6 over pixels already upright and opened turned a second time.
 static void should_save_oriented_edit_upright()
 {
-	assert_equal(false, edit_view_state::save_metadata_edits(false, ui::orientation::right_top).orientation.
+	assert_equal(false, edit_view_state::save_metadata_edits(false, core::orientation::right_top).orientation.
 	             has_value(), "no pixel edit leaves the orientation alone");
-	assert_equal(false, edit_view_state::save_metadata_edits(true, ui::orientation::top_left).orientation.
+	assert_equal(false, edit_view_state::save_metadata_edits(true, core::orientation::top_left).orientation.
 	             has_value(), "an upright photo needs no orientation change");
 
 	files ff;
-	const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
+	const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 	const auto loaded = ff.load(load_path, false);
 	assert_equal(true, loaded.success, "exif-rotated.jpg loads");
-	assert_equal(static_cast<int>(ui::orientation::right_top), static_cast<int>(loaded.orientation()),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(loaded.orientation()),
 	             "the fixture is stored turned");
 
 	// The same edit state the view builds: the stored orientation as the baseline crop, then a colour
@@ -484,9 +484,9 @@ static void should_save_oriented_edit_upright()
 	const auto saved = ff.load(save_path, false);
 	assert_equal(loaded.dimensions().cy, saved.dimensions().cx, "the saved pixels are upright");
 	assert_equal(loaded.dimensions().cx, saved.dimensions().cy, "the saved pixels are upright");
-	assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(saved.orientation()),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(saved.orientation()),
 	             "the saved photo is not turned again when shown");
-	assert_equal(static_cast<int>(ui::orientation::top_left),
+	assert_equal(static_cast<int>(core::orientation::top_left),
 	             static_cast<int>(extract_properties(save_path, metadata_type::EXIF)->orientation),
 	             "the saved Exif orientation is upright");
 
@@ -495,7 +495,7 @@ static void should_save_oriented_edit_upright()
 	assert_equal(true, ff.update(load_path, png_path, md_edits, edits, {}, false, {}).success(), "edit saves as PNG");
 	const auto png = ff.load(png_path, false);
 	assert_equal(loaded.dimensions().cy, png.dimensions().cx, "the PNG pixels are upright");
-	assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(png.orientation()),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(png.orientation()),
 	             "a PNG saved from the edit is not turned again when shown");
 }
 
@@ -503,9 +503,9 @@ static void should_update_rating(const std::string_view name)
 {
 	files ff;
 
-	const auto ext = name.substr(df::find_ext(name));
+	const auto ext = name.substr(core::find_ext(name));
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto load_path = test_files_folder().combine_file(name);
 
 	metadata_edits edits1;
 	edits1.rating = 3;
@@ -533,9 +533,9 @@ static void should_update_label(const std::string_view name)
 {
 	files ff;
 
-	const auto ext = name.substr(df::find_ext(name));
+	const auto ext = name.substr(core::find_ext(name));
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto load_path = test_files_folder().combine_file(name);
 
 	metadata_edits set_label;
 	set_label.label = label_approved_text;
@@ -563,9 +563,9 @@ static void should_write_packets_with_libfiles(const std::string_view name)
 {
 	files ff;
 
-	const auto ext = name.substr(df::find_ext(name));
+	const auto ext = name.substr(core::find_ext(name));
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto load_path = test_files_folder().combine_file(name);
 
 	metadata_edits first;
 	first.rating = 2;
@@ -597,7 +597,7 @@ static void should_carry_shown_metadata_into_a_converted_file()
 	const auto source = _temps.next_path(".jpg");
 
 	{
-		const auto fixture = df::blob_from_file(test_files_folder.combine_file("IMG_9340.JPG"));
+		const auto fixture = platform::blob_from_file(test_files_folder().combine_file("IMG_9340.JPG"));
 		const std::vector<uint8_t> bytes(fixture.begin(), fixture.end());
 		libfiles::reader r(bytes);
 
@@ -610,7 +610,7 @@ static void should_carry_shown_metadata_into_a_converted_file()
 		libfiles::memory_stream out;
 		libfiles::write_updated(r, plan, out);
 		const auto& written = out.bytes();
-		assert_equal(true, df::blob_save_to_file({written.data(), written.size()}, source), "source stored");
+		assert_equal(true, platform::blob_save_to_file({written.data(), written.size()}, source), "source stored");
 	}
 
 	files ff;
@@ -619,7 +619,7 @@ static void should_carry_shown_metadata_into_a_converted_file()
 	assert_equal("Converted title"_c, before.to_props()->title, "source shows its IPTC title");
 
 	const auto destination = _temps.next_path(".png");
-	platform::copy_file(test_files_folder.combine_file("engine.png"), destination, false, false);
+	platform::copy_file(test_files_folder().combine_file("engine.png"), destination, false, false);
 
 	metadata_edits edits;
 	edits.rating = 3;
@@ -630,7 +630,7 @@ static void should_carry_shown_metadata_into_a_converted_file()
 	const auto props = after.to_props();
 	assert_equal("Converted title"_c, props->title, "title carried into the packet");
 	const auto tags = props->tags.sv();
-	assert_equal(true, str::contains(tags, "alpha") && str::contains(tags, "beta"), "tags carried");
+	assert_equal(true, core::contains(tags, "alpha") && core::contains(tags, "beta"), "tags carried");
 	assert_equal(3, props->rating, "the edit applied");
 }
 
@@ -642,7 +642,7 @@ static void should_carry_shown_metadata_into_a_jxl()
 	const auto source = _temps.next_path(".jpg");
 
 	{
-		const auto fixture = df::blob_from_file(test_files_folder.combine_file("IMG_9340.JPG"));
+		const auto fixture = platform::blob_from_file(test_files_folder().combine_file("IMG_9340.JPG"));
 		const std::vector<uint8_t> bytes(fixture.begin(), fixture.end());
 		libfiles::reader r(bytes);
 
@@ -655,7 +655,7 @@ static void should_carry_shown_metadata_into_a_jxl()
 		libfiles::memory_stream out;
 		libfiles::write_updated(r, plan, out);
 		const auto& written = out.bytes();
-		assert_equal(true, df::blob_save_to_file({written.data(), written.size()}, source), "source stored");
+		assert_equal(true, platform::blob_save_to_file({written.data(), written.size()}, source), "source stored");
 	}
 
 	files ff;
@@ -667,7 +667,7 @@ static void should_carry_shown_metadata_into_a_jxl()
 	edits.rating = 3;
 	const auto result = ff.update(source, destination, edits, {}, {}, false, {});
 	assert_equal(true, result.success(), std::format("converted ({})", result.format_error()));
-	assert_equal(false, destination.extension(".xmp").exists(), "no sidecar beside a JPEG XL");
+	assert_equal(false, platform::exists(destination.extension(".xmp")), "no sidecar beside a JPEG XL");
 
 	const auto after = ff_scan_file(ff, destination);
 	assert_equal(false, after.metadata.xmp.empty(), "the packet is boxed");
@@ -677,7 +677,7 @@ static void should_carry_shown_metadata_into_a_jxl()
 	const auto shown = before.to_props();
 	assert_equal("Converted title"_c, props->title, "title carried into the packet");
 	const auto tags = props->tags.sv();
-	assert_equal(true, str::contains(tags, "alpha") && str::contains(tags, "beta"), "tags carried");
+	assert_equal(true, core::contains(tags, "alpha") && core::contains(tags, "beta"), "tags carried");
 	assert_equal(3, props->rating, "the edit applied");
 	assert_equal(shown->camera_model, props->camera_model, "camera carried in the EXIF");
 	assert_equal(shown->dates.original(), props->dates.original(), "capture date carried");
@@ -689,7 +689,7 @@ static void should_carry_shown_metadata_into_a_jxl()
 static void should_rate_and_tag_a_jxl()
 {
 	const auto path = _temps.next_path(".jxl");
-	platform::copy_file(test_files_folder.combine_file("zoltan-tasi.jxl"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("zoltan-tasi.jxl"), path, false, false);
 
 	files ff;
 	const auto before = ff_scan_file(ff, path);
@@ -701,12 +701,12 @@ static void should_rate_and_tag_a_jxl()
 	first.add_tags = tag_set("harbour");
 	const auto rated = ff.update(path, first, {}, {}, false, {});
 	assert_equal(true, rated.success(), std::format("rated ({})", rated.format_error()));
-	assert_equal(false, path.extension(".xmp").exists(), "no sidecar beside a JPEG XL");
+	assert_equal(false, platform::exists(path.extension(".xmp")), "no sidecar beside a JPEG XL");
 
 	const auto after = ff_scan_file(ff, path);
 	const auto props = after.to_props();
 	assert_equal(4, props->rating, "the rating reads back");
-	assert_equal(true, str::contains(props->tags.sv(), "harbour"), "the tag reads back");
+	assert_equal(true, core::contains(props->tags.sv(), "harbour"), "the tag reads back");
 	assert_equal(before.width, after.width, "the size is the codestream's still");
 	assert_equal(before.to_props()->camera_model, props->camera_model, "the EXIF is kept");
 
@@ -719,7 +719,7 @@ static void should_rate_and_tag_a_jxl()
 
 	const auto pixels_after = ff.load(path, false);
 	assert_equal(true, pixels_after.success, "the picture reads");
-	assert_equal(true, pixels_before.to_surface()->pixel_difference(pixels_after.to_surface()) == ui::pixel_difference_result::equal,
+	assert_equal(true, pixels_before.to_surface()->pixel_difference(pixels_after.to_surface()) == core::pixel_difference_result::equal,
 	             "the picture is unchanged");
 }
 
@@ -728,13 +728,13 @@ static void should_rate_and_tag_a_jxl()
 static void should_rate_a_bare_jxl()
 {
 	files ff;
-	const auto source = ff.load(test_files_folder.combine_file("Test.jpg"), false);
+	const auto source = ff.load(test_files_folder().combine_file("Test.jpg"), false);
 	const auto image = save_jxl(source.to_surface(), {}, {});
 	assert_equal(true, image != nullptr, "encoded");
 
 	const auto path = _temps.next_path(".jxl");
-	assert_equal(true, df::blob_save_to_file(image->data(), path), "stored");
-	const auto bare = df::blob_from_file(path);
+	assert_equal(true, platform::blob_save_to_file(image->data(), path), "stored");
+	const auto bare = platform::blob_from_file(path);
 	assert_equal(true, bare.size() > 2 && bare[0] == 0xFF && bare[1] == 0x0A, "written bare");
 
 	metadata_edits edits;
@@ -742,7 +742,7 @@ static void should_rate_a_bare_jxl()
 	const auto result = ff.update(path, edits, {}, {}, false, {});
 	assert_equal(true, result.success(), std::format("rated ({})", result.format_error()));
 
-	const auto boxed = df::blob_from_file(path);
+	const auto boxed = platform::blob_from_file(path);
 	assert_equal(true, boxed.size() > 12 && boxed[3] == 0x0C && boxed[4] == 'J', "now a container");
 	assert_equal(true, boxed.size() > bare.size() &&
 	             std::ranges::equal(std::span(bare.data(), bare.size()),
@@ -763,7 +763,7 @@ static void should_write_a_sidecar_for_an_image_without_a_writer(const std::stri
 		                                   : std::vector<uint8_t>{0, 0, 0, 0x0C, 'j', 'P', ' ', ' ', 0x0D, 0x0A, 0x87, 0x0A,
 		                                                          0, 0, 0, 0x14, 'f', 't', 'y', 'p', 'j', 'p', 'x', ' ',
 		                                                          0, 0, 0, 0, 'j', 'p', 'x', ' '};
-	assert_equal(true, df::blob_save_to_file({image.data(), image.size()}, path), "image stored");
+	assert_equal(true, platform::blob_save_to_file({image.data(), image.size()}, path), "image stored");
 
 	files ff;
 	metadata_edits edits;
@@ -771,10 +771,10 @@ static void should_write_a_sidecar_for_an_image_without_a_writer(const std::stri
 	const auto result = ff.update(path, edits, {}, {}, false, {});
 	assert_equal(true, result.success(), std::format("edit saved ({})", result.format_error()));
 
-	const auto image_after = df::blob_from_file(path);
+	const auto image_after = platform::blob_from_file(path);
 	assert_equal(true, std::ranges::equal(image, image_after), "image unchanged");
 
-	const auto sidecar = df::blob_from_file(path.extension(".xmp"));
+	const auto sidecar = platform::blob_from_file(path.extension(".xmp"));
 	assert_equal(false, sidecar.empty(), "sidecar written");
 
 	libfiles::xmp::meta packet;
@@ -805,20 +805,20 @@ static void should_refuse_an_edit_to_flac_behind_an_id3_tag()
 	edits.rating = 3;
 	const auto result = ff.update(path, edits, {}, {}, false, {});
 	assert_equal(false, result.success(), "the edit is refused");
-	assert_equal(true, str::contains(result.format_error(), "this file format cannot store the metadata"),
+	assert_equal(true, core::contains(result.format_error(), "this file format cannot store the metadata"),
 	             std::format("refused as a format that cannot store metadata ({})", result.format_error()));
 	assert_equal(file, read_test_file(path), "the file is left as it was");
 }
 
 static void should_roundtrip_xmp_disc_metadata()
 {
-	const auto source = test_files_folder.combine_file("Byzantium.avi");
+	const auto source = test_files_folder().combine_file("Byzantium.avi");
 	const auto path = _temps.next_path(source.extension());
 	platform::copy_file(source, path, false, false);
 
 	files ff;
 	metadata_edits edits;
-	edits.disk_num = df::xy8{2, 3};
+	edits.disk_num = core::xy8{2, 3};
 	auto result = ff.update(path, edits, {}, {}, false, {}, ff_inspect_rescan(path));
 	assert_equal(true, result.success(), std::format("disc metadata saved ({})", result.format_error()));
 
@@ -836,13 +836,13 @@ static void should_keep_video_rotation_through_a_metadata_write()
 	files ff;
 
 	const auto save_path = _temps.next_path(".mp4");
-	const auto load_path = test_files_folder.combine("excluded1").combine_file("rotated90.mp4");
+	const auto load_path = test_files_folder().combine("excluded1").combine_file("rotated90.mp4");
 
 	const auto before = ff_scan_file(ff, load_path);
 	assert_equal(true, before.success, "the rotated fixture scans");
 	assert_equal(560u, before.width, "coded width");
 	assert_equal(320u, before.height, "coded height");
-	assert_equal(ui::orientation::right_top, before.to_props()->orientation,
+	assert_equal(core::orientation::right_top, before.to_props()->orientation,
 	             "the fixture is a video carrying a 90 degree display matrix");
 
 	metadata_edits set_label;
@@ -854,7 +854,7 @@ static void should_keep_video_rotation_through_a_metadata_write()
 	const auto ps = scanned.to_props();
 
 	assert_equal(label_approved_text, ps->label, "label written to the rotated video");
-	assert_equal(ui::orientation::right_top, ps->orientation, "rotation survives a metadata write");
+	assert_equal(core::orientation::right_top, ps->orientation, "rotation survives a metadata write");
 }
 
 // Issue #134 - ratings and labels could not be applied to files whose name contains emoji.
@@ -870,14 +870,14 @@ static void should_update_rating_and_label_for_emoji_filename()
 
 	const auto folder = _temps.next_folder("emoji-names");
 	const auto save_path = folder.combine_file(emoji_name);
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	metadata_edits create_edits;
 	create_edits.rating = 3;
 	auto created = ff.update(load_path, save_path, create_edits, {}, {}, false, {}, {},
 	                         ff_inspect_rescan(save_path));
 
-	assert_equal(true, save_path.exists(), "emoji-named file created");
+	assert_equal(true, platform::exists(save_path), "emoji-named file created");
 	assert_equal(emoji_name, save_path.name().sv(), "emoji name is not mangled on write");
 
 	{
@@ -911,7 +911,7 @@ static void should_update_rating_and_label_for_emoji_filename()
 
 	// A failed replacement leaves the working file behind, which is how the reporter saw the
 	// original name "disappear"; only the emoji-named file may remain.
-	assert_equal(true, save_path.exists(), "emoji-named file survives every update");
+	assert_equal(true, platform::exists(save_path), "emoji-named file survives every update");
 	assert_equal(1, static_cast<int>(platform::iterate_file_items(folder, false).files.size()),
 	             "no temporary files left beside the emoji-named file");
 }
@@ -921,23 +921,23 @@ static void should_update_rating_and_label_for_emoji_filename()
 // source - would leave that EXIF tag winning, and the tool would silently do nothing (#184).
 static void should_write_an_edited_original_date()
 {
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 
 	files ff;
 	const auto before = ff_scan_file(ff, load_path).to_props();
-	assert_equal(df::date_t(2012, 9, 14, 19, 21, 14), before->dates.original(), "the file starts with its own date");
+	assert_equal(core::date_t(2012, 9, 14, 19, 21, 14), before->dates.original(), "the file starts with its own date");
 
 	metadata_edits edits;
-	edits.date_original = df::date_t(1980, 6, 1, 9, 30, 0);
+	edits.date_original = core::date_t(1980, 6, 1, 9, 30, 0);
 
 	auto written = ff.update(load_path, save_path, edits, {}, {}, false, {}, {},
 	                         ff_inspect_rescan(save_path));
 	assert_equal(true, written.success(), std::format("date written ({})", written.format_error()));
 
 	const auto after = ff_scan_after_update(ff, written, save_path).to_props();
-	assert_equal(df::date_t(1980, 6, 1, 9, 30, 0), after->dates.original(), "the edited date is what the file reports");
-	assert_equal(df::date_t(1980, 6, 1, 9, 30, 0), after->created(), "and it is the date the item shows");
+	assert_equal(core::date_t(1980, 6, 1, 9, 30, 0), after->dates.original(), "the edited date is what the file reports");
+	assert_equal(core::date_t(1980, 6, 1, 9, 30, 0), after->created(), "and it is the date the item shows");
 }
 
 // The same rule on the Created axis: Test.jpg carries its own EXIF DateTimeDigitized, which outranks
@@ -946,28 +946,28 @@ static void should_write_an_edited_original_date()
 // when the picture was taken.
 static void should_write_an_edited_created_date()
 {
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 
 	files ff;
 	const auto before = ff_scan_file(ff, load_path).to_props();
-	assert_equal(df::date_t(2012, 9, 14, 19, 21, 14), before->dates.created(), "the file starts with its own date");
+	assert_equal(core::date_t(2012, 9, 14, 19, 21, 14), before->dates.created(), "the file starts with its own date");
 
 	metadata_edits edits;
-	edits.date_created = df::date_t(1994, 3, 7, 14, 5, 0);
+	edits.date_created = core::date_t(1994, 3, 7, 14, 5, 0);
 
 	auto written = ff.update(load_path, save_path, edits, {}, {}, false, {}, {},
 	                         ff_inspect_rescan(save_path));
 	assert_equal(true, written.success(), std::format("date written ({})", written.format_error()));
 
 	const auto after = ff_scan_after_update(ff, written, save_path).to_props();
-	assert_equal(df::date_t(1994, 3, 7, 14, 5, 0), after->dates.created(), "the edited date is what the file reports");
+	assert_equal(core::date_t(1994, 3, 7, 14, 5, 0), after->dates.created(), "the edited date is what the file reports");
 	assert_equal(before->dates.original(), after->dates.original(), "an edit to one date leaves the others alone");
 }
 
 static void should_update_exif_rating()
 {
-	const auto load_path = test_files_folder.combine_file("exif-rating.jpg");
+	const auto load_path = test_files_folder().combine_file("exif-rating.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 
 	files ff;
@@ -1009,7 +1009,7 @@ static void should_update_exif_rating()
 
 static void should_update_formatted_text()
 {
-	const auto load_path = test_files_folder.combine_file("exif-rating.jpg");
+	const auto load_path = test_files_folder().combine_file("exif-rating.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 	constexpr auto desc_text = "a\tb\nc";
 
@@ -1036,7 +1036,7 @@ static void should_update_formatted_text()
 
 static void should_update_synopsis()
 {
-	const auto load_path = test_files_folder.combine_file("exif-rating.jpg");
+	const auto load_path = test_files_folder().combine_file("exif-rating.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 	constexpr auto synopsis_text = "A long description of what happens";
 
@@ -1059,9 +1059,9 @@ static void should_update_metadata(const std::string_view name)
 {
 	files ff;
 
-	const auto ext = name.substr(df::find_ext(name));
+	const auto ext = name.substr(core::find_ext(name));
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto load_path = test_files_folder().combine_file(name);
 
 	const auto tags_to_add = tag_set("key1 key2 key3");
 
@@ -1095,7 +1095,7 @@ static void should_preserve_creator_names_with_apostrophes()
 {
 	files ff;
 
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	const auto assert_creator_round_trip = [&ff, load_path](const std::string_view input,
 	                                                        const std::vector<std::string>& creator_names)
@@ -1109,10 +1109,10 @@ static void should_preserve_creator_names_with_apostrophes()
 
 		const auto scanned = ff_scan_after_update(ff, written, save_path, detect_xmp_sidecar(save_path));
 		const auto props = scanned.to_props();
-		const auto expected_creator = str::combine(creator_names);
+		const auto expected_creator = core::combine(creator_names);
 		assert_equal(expected_creator, props->copyright_creator, "creator array read-back");
 
-		const auto read_back_names = str::split(props->copyright_creator, true);
+		const auto read_back_names = core::split(props->copyright_creator, true);
 		assert_equal(creator_names.size(), read_back_names.size(), "creator array boundary count");
 		for (auto i = 0_z; i < creator_names.size(); ++i)
 		{
@@ -1130,9 +1130,9 @@ static void should_preserve_creator_names_with_apostrophes()
 
 static void should_add_remove_tags(const std::string_view name)
 {
-	const auto ext = name.substr(df::find_ext(name));
+	const auto ext = name.substr(core::find_ext(name));
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto load_path = test_files_folder().combine_file(name);
 
 	const auto tags_to_add = tag_set("Максим yyyy zzzz");
 	const auto tags_to_remove = tag_set("Максим zzzz");
@@ -1173,7 +1173,7 @@ static void should_add_remove_tags(const std::string_view name)
 static void should_remove_shell_written_tags()
 {
 	// Copy a test JPEG to temp so we can modify it
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto save_path = _temps.next_path(".jpg");
 
 	files ff;
@@ -1257,7 +1257,7 @@ static void should_remove_shell_written_tags()
 static void should_read_mp4_xtra_metadata(const std::string_view name, const std::string_view expect_tag)
 {
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(name));
 	assert_equal(true, sr.media != nullptr, std::format("libfiles read {}", name));
 	if (!sr.media) return;
 
@@ -1265,9 +1265,9 @@ static void should_read_mp4_xtra_metadata(const std::string_view name, const std
 	bool found_rating = false;
 	for (const auto& tag : sr.media->tags)
 	{
-		if (str::icmp(tag.key, "WM/Category") == 0 && tag.value.find(expect_tag) != std::string::npos)
+		if (core::icmp(tag.key, "WM/Category") == 0 && tag.value.find(expect_tag) != std::string::npos)
 			found_category = true;
-		if (str::icmp(tag.key, "WM/SharedUserRating") == 0)
+		if (core::icmp(tag.key, "WM/SharedUserRating") == 0)
 			found_rating = true;
 	}
 
@@ -1288,7 +1288,7 @@ static void should_read_mp4_xtra_metadata(const std::string_view name, const std
 // libfiles writes them as separate descriptors too. Tag a WMV, then read it back. (#123)
 static void should_read_asf_wm_categories()
 {
-	const auto load_path = test_files_folder.combine_file("gen.wmv");
+	const auto load_path = test_files_folder().combine_file("gen.wmv");
 	const auto save_path = _temps.next_path(".wmv");
 
 	files ff;
@@ -1318,8 +1318,8 @@ static void should_read_asf_wm_categories()
 // writes Microsoft's binary format byte-exactly. (#123)
 static void should_write_windows_tags_via_xmp(const std::string_view name)
 {
-	const auto ext = name.substr(df::find_ext(name));
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto ext = name.substr(core::find_ext(name));
+	const auto load_path = test_files_folder().combine_file(name);
 	const auto save_path = _temps.next_path(ext);
 	const auto original_subtitle = find_xtra_entry(load_path, "WM/SubTitle");
 
@@ -1335,8 +1335,8 @@ static void should_write_windows_tags_via_xmp(const std::string_view name)
 	bool found_a = false, found_b = false;
 	for (const auto& t : shell.tags)
 	{
-		if (str::icmp(t, "WinWriteA") == 0) found_a = true;
-		if (str::icmp(t, "WinWriteB") == 0) found_b = true;
+		if (core::icmp(t, "WinWriteA") == 0) found_a = true;
+		if (core::icmp(t, "WinWriteB") == 0) found_b = true;
 	}
 	assert_equal(true, found_a && found_b, std::format("shell reads xmp-written tags {}", name));
 	assert_equal(true, shell.rating.has_value() && *shell.rating >= 63,
@@ -1358,8 +1358,8 @@ static void should_write_windows_tags_via_xmp(const std::string_view name)
 // read them back the same way Windows does, for the formats Windows can tag. (#123)
 static void should_roundtrip_windows_shell_tags(const std::string_view name)
 {
-	const auto ext = name.substr(df::find_ext(name));
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto ext = name.substr(core::find_ext(name));
+	const auto load_path = test_files_folder().combine_file(name);
 	const auto save_path = _temps.next_path(ext);
 
 	files ff;
@@ -1377,9 +1377,9 @@ static void should_roundtrip_windows_shell_tags(const std::string_view name)
 	bool found_a = false, found_b = false, found_c = false;
 	for (const auto& t : shell_meta.tags)
 	{
-		if (str::icmp(t, "WinTagA") == 0) found_a = true;
-		else if (str::icmp(t, "WinTagB") == 0) found_b = true;
-		else if (str::icmp(t, "Максим") == 0) found_c = true;
+		if (core::icmp(t, "WinTagA") == 0) found_a = true;
+		else if (core::icmp(t, "WinTagB") == 0) found_b = true;
+		else if (core::icmp(t, "Максим") == 0) found_c = true;
 	}
 	assert_equal(true, found_a && found_b && found_c, std::format("shell tags round-trip {}", name));
 
@@ -1392,8 +1392,8 @@ static void should_roundtrip_windows_shell_tags(const std::string_view name)
 // the Shell write must fail gracefully and the Diffractor scan must still succeed.
 static void should_handle_unsupported_shell_tags(const std::string_view name)
 {
-	const auto ext = name.substr(df::find_ext(name));
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto ext = name.substr(core::find_ext(name));
+	const auto load_path = test_files_folder().combine_file(name);
 	const auto save_path = _temps.next_path(ext);
 
 	files ff;
@@ -1410,9 +1410,9 @@ static void should_update_location(const std::string_view name)
 {
 	files ff;
 
-	const auto ext = name.substr(df::find_ext(name));
+	const auto ext = name.substr(core::find_ext(name));
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file(name);
+	const auto load_path = test_files_folder().combine_file(name);
 	const auto coordinate = gps_coordinate(40.71417, -74.00611);
 
 	metadata_edits metadata_edits;
@@ -1442,7 +1442,7 @@ static void should_update_location(const std::string_view name)
 static void should_update_gps_in_exif()
 {
 	const auto save_path = _temps.next_path(".jpg");
-	const auto load_path = test_files_folder.combine_file("IMG_9340.JPG");
+	const auto load_path = test_files_folder().combine_file("IMG_9340.JPG");
 	const auto coordinate = gps_coordinate(40.71417, -74.00611);
 
 	metadata_edits metadata_edits;
@@ -1471,7 +1471,7 @@ static void should_update_gps_in_exif()
 static void should_handle_international_characters()
 {
 	const auto save_path = _temps.next_path(".jpg");
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	constexpr auto description = "In vollen Zügen genießen";
 
 	tag_set tags;
@@ -1479,7 +1479,7 @@ static void should_handle_international_characters()
 	tags.add_one("Nældens takvinge");
 	tags.add_one("Žižkov");
 
-	const auto test = str::utf16_to_utf8(str::utf8_to_utf16(description));
+	const auto test = core::utf16_to_utf8(core::utf8_to_utf16(description));
 	assert_equal(description, test);
 
 	metadata_edits edits;
@@ -1514,7 +1514,7 @@ static void should_handle_international_characters()
 static void should_handle_korean_characters()
 {
 	const auto save_path = _temps.next_path(".jpg");
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	// "서울에서 찍은 사진" (a photo taken in Seoul)
 	constexpr auto description = "\uC11C\uC6B8\uC5D0\uC11C \uCC0D\uC740 \uC0AC\uC9C4";
 
@@ -1525,7 +1525,7 @@ static void should_handle_korean_characters()
 	tags.make_unique(); // tags are stored/read back in sorted order
 
 	// UTF-8 <-> UTF-16 round-trip of the Korean text must be lossless.
-	const auto test = str::utf16_to_utf8(str::utf8_to_utf16(description));
+	const auto test = core::utf16_to_utf8(core::utf8_to_utf16(description));
 	assert_equal(description, test);
 
 	metadata_edits edits;
@@ -1555,7 +1555,7 @@ static void should_handle_korean_characters()
 
 static void should_edit_video_metadata_in_place(const std::string_view name)
 {
-	const auto source = test_files_folder.combine_file(name);
+	const auto source = test_files_folder().combine_file(name);
 	const auto path = _temps.next_path(source.extension());
 	platform::copy_file(source, path, false, false);
 
@@ -1587,7 +1587,7 @@ static void should_edit_video_metadata_in_place(const std::string_view name)
 // import must not copy the whole video.
 static void should_inject_video_metadata_in_place(const std::string_view name)
 {
-	const auto source = test_files_folder.combine_file(name);
+	const auto source = test_files_folder().combine_file(name);
 	const auto path = _temps.next_path(source.extension());
 	platform::copy_file(source, path, false, false);
 
@@ -1611,7 +1611,7 @@ static void should_inject_video_metadata_in_place(const std::string_view name)
 // patch: the file is not staged and swapped, and keeps its size.
 static void should_patch_a_metadata_edit_that_fits(const std::string_view name)
 {
-	const auto source = test_files_folder.combine_file(name);
+	const auto source = test_files_folder().combine_file(name);
 	const auto path = _temps.next_path(source.extension());
 	platform::copy_file(source, path, false, false);
 
@@ -1643,7 +1643,7 @@ static void should_patch_a_metadata_edit_that_fits(const std::string_view name)
 static void should_stage_a_metadata_edit_that_does_not_fit()
 {
 	const auto path = _temps.next_path(".jpg");
-	platform::copy_file(test_files_folder.combine_file("IMG_9340.JPG"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("IMG_9340.JPG"), path, false, false);
 	const auto size_before = platform::file_attributes(path).size;
 
 	files ff;
@@ -1666,14 +1666,14 @@ static void should_stage_a_metadata_edit_that_does_not_fit()
 static void should_stage_an_edit_as_copying_and_updating_would()
 {
 	const auto source = _temps.next_path(".jpg");
-	platform::copy_file(test_files_folder.combine_file("IMG_9340.JPG"), source, false, false);
+	platform::copy_file(test_files_folder().combine_file("IMG_9340.JPG"), source, false, false);
 
-	const auto copied_and_updated = [](const df::file_path from, const metadata_edits& edits)
+	const auto copied_and_updated = [](const core::file_path from, const metadata_edits& edits)
 	{
 		const auto path = _temps.next_path(".jpg");
 		platform::copy_file(from, path, false, false);
 		assert_equal(true, metadata_xmp::update(path, from, edits, {}, {}).success, "copy updated");
-		return df::blob_from_file(path);
+		return platform::blob_from_file(path);
 	};
 
 	// The file has no packet, so its first one moves the image after it.
@@ -1685,7 +1685,7 @@ static void should_stage_an_edit_as_copying_and_updating_would()
 	const auto first_staged = metadata_xmp::stage_update(first_stage, source, first, {});
 	assert_equal(true, first_staged.has_value() && first_staged->success, "first edit staged");
 
-	const auto first_bytes = df::blob_from_file(first_stage);
+	const auto first_bytes = platform::blob_from_file(first_stage);
 	assert_equal(true, first_bytes.size() != platform::file_attributes(source).size, "the first packet moves the image");
 	assert_equal(true, std::ranges::equal(first_expected, first_bytes), "one pass writes what a copy and an update write");
 
@@ -1697,7 +1697,7 @@ static void should_stage_an_edit_as_copying_and_updating_would()
 	const auto second_staged = metadata_xmp::stage_update(second_stage, first_stage, second, {});
 	assert_equal(true, second_staged.has_value() && second_staged->success, "second edit staged");
 
-	const auto second_bytes = df::blob_from_file(second_stage);
+	const auto second_bytes = platform::blob_from_file(second_stage);
 	assert_equal(first_bytes.size(), second_bytes.size(), "an edit that fits is a patch");
 	assert_equal(true, std::ranges::equal(second_expected, second_bytes), "a patched copy writes the same");
 
@@ -1708,10 +1708,10 @@ static void should_stage_an_edit_as_copying_and_updating_would()
 
 	// A raw file keeps its metadata in a sidecar.
 	const auto raw = _temps.next_path(".CR2");
-	platform::copy_file(test_files_folder.combine("raw").combine_file("Screws.CR2"), raw, false, false);
+	platform::copy_file(test_files_folder().combine("raw").combine_file("Screws.CR2"), raw, false, false);
 	const auto raw_stage = _temps.next_path(".CR2");
 	assert_equal(false, metadata_xmp::stage_update(raw_stage, raw, first, {}).has_value(), "a raw file is the caller's");
-	assert_equal(false, raw_stage.exists(), "and nothing is staged for it");
+	assert_equal(false, platform::exists(raw_stage), "and nothing is staged for it");
 }
 
 // A raw file's metadata lives in its sidecar, so rating one must not cost the size of the raw.
@@ -1721,13 +1721,13 @@ static void should_edit_raw_sidecar_only()
 {
 	const auto path = _temps.next_path(".CR2");
 	const auto path_xmp = path.extension(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
 	platform::copy_file(raw_folder.combine_file("Screws.xmp"), path_xmp, false, false);
 
 	const auto attributes_before = platform::file_attributes(path);
-	const auto raw_before = df::blob_from_file(path);
+	const auto raw_before = platform::blob_from_file(path);
 
 	files ff;
 	metadata_edits edits;
@@ -1741,7 +1741,7 @@ static void should_edit_raw_sidecar_only()
 	const auto attributes_after = platform::file_attributes(path);
 	assert_equal(attributes_before.size, attributes_after.size, "raw size unchanged");
 	assert_equal(attributes_before.modified, attributes_after.modified, "raw modified time unchanged");
-	assert_equal(true, raw_before == df::blob_from_file(path), "raw bytes unchanged");
+	assert_equal(true, raw_before == platform::blob_from_file(path), "raw bytes unchanged");
 
 	prop::item_metadata sidecar;
 	metadata_xmp::parse(sidecar, path_xmp);
@@ -1758,26 +1758,26 @@ static void should_write_raw_sidecar_original_date()
 {
 	const auto path = _temps.next_path(".CR2");
 	const auto path_xmp = path.extension(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
 	platform::copy_file(raw_folder.combine_file("Screws.xmp"), path_xmp, false, false);
 
 	files ff;
 	const auto before = ff_scan_file(ff, path, detect_xmp_sidecar(path)).to_props();
-	assert_equal(df::date_t(2011, 9, 23, 23, 49, 16), before->dates.best(), "raw starts at embedded date");
+	assert_equal(core::date_t(2011, 9, 23, 23, 49, 16), before->dates.best(), "raw starts at embedded date");
 
 	metadata_edits edits;
-	edits.date_original = df::date_t(1980, 6, 1, 9, 30, 0);
+	edits.date_original = core::date_t(1980, 6, 1, 9, 30, 0);
 	const auto written = ff.update(path, edits, {}, {}, false, {});
 	assert_equal(true, written.success(), std::format("raw date saved ({})", written.format_error()));
 
 	const auto after = ff_scan_file(ff, path, detect_xmp_sidecar(path)).to_props();
-	assert_equal(df::date_t(1980, 6, 1, 9, 30, 0), after->dates.original(), "sidecar original date wins");
-	assert_equal(df::date_t(1980, 6, 1, 9, 30, 0), after->dates.best(), "and is the item date");
+	assert_equal(core::date_t(1980, 6, 1, 9, 30, 0), after->dates.original(), "sidecar original date wins");
+	assert_equal(core::date_t(1980, 6, 1, 9, 30, 0), after->dates.best(), "and is the item date");
 }
 
-static df::blob make_xmp_packet(const std::string_view body)
+static core::blob make_xmp_packet(const std::string_view body)
 {
 	const auto xml = std::format(
 		"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
@@ -1791,12 +1791,12 @@ static df::blob make_xmp_packet(const std::string_view body)
 	return {std::bit_cast<const uint8_t*>(xml.data()), std::bit_cast<const uint8_t*>(xml.data() + xml.size())};
 }
 
-static void write_xmp_packet(const df::file_path path, const std::string_view body)
+static void write_xmp_packet(const core::file_path path, const std::string_view body)
 {
-	df::blob_save_to_file(make_xmp_packet(body), path);
+	platform::blob_save_to_file(make_xmp_packet(body), path);
 }
 
-static void set_raw_source_xmp(const df::file_path path)
+static void set_raw_source_xmp(const core::file_path path)
 {
 	metadata_xmp::set_test_raw_source_xmp(path, make_xmp_packet(
 		                                      "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Embedded title</rdf:li></rdf:Alt></dc:title>"
@@ -1807,9 +1807,9 @@ static void should_seed_first_raw_sidecar_from_embedded_xmp()
 {
 	const auto path = _temps.next_path(".CR2");
 	const auto path_xmp = path.extension(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
-	const auto raw_before = df::blob_from_file(path);
+	const auto raw_before = platform::blob_from_file(path);
 	set_raw_source_xmp(path);
 
 	metadata_edits edits;
@@ -1819,8 +1819,8 @@ static void should_seed_first_raw_sidecar_from_embedded_xmp()
 	metadata_xmp::set_test_raw_source_xmp({}, {});
 
 	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
-	assert_equal(true, path_xmp.exists(), "first sidecar created");
-	assert_equal(true, raw_before == df::blob_from_file(path), "raw bytes unchanged");
+	assert_equal(true, platform::exists(path_xmp), "first sidecar created");
+	assert_equal(true, raw_before == platform::blob_from_file(path), "raw bytes unchanged");
 
 	prop::item_metadata sidecar;
 	metadata_xmp::parse(sidecar, path_xmp);
@@ -1833,7 +1833,7 @@ static void should_use_existing_partial_raw_sidecar_as_source()
 {
 	const auto path = _temps.next_path(".CR2");
 	const auto path_xmp = path.extension(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
 	write_xmp_packet(path_xmp,
 	                 "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Sidecar title</rdf:li></rdf:Alt></dc:title>");
@@ -1849,7 +1849,7 @@ static void should_use_existing_partial_raw_sidecar_as_source()
 	prop::item_metadata sidecar;
 	metadata_xmp::parse(sidecar, path_xmp);
 	assert_equal("Sidecar title", sidecar.title, "existing sidecar title survives");
-	assert_equal(true, str::is_empty(sidecar.tags), "partial sidecar remains authoritative over embedded tags");
+	assert_equal(true, core::is_empty(sidecar.tags), "partial sidecar remains authoritative over embedded tags");
 	assert_equal(2, sidecar.rating, "edit applied");
 }
 
@@ -1857,7 +1857,7 @@ static void should_keep_empty_raw_sidecar_subject_authoritative()
 {
 	const auto path = _temps.next_path(".CR2");
 	const auto path_xmp = path.extension(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
 	write_xmp_packet(path_xmp, "<dc:subject><rdf:Bag/></dc:subject>");
 	set_raw_source_xmp(path);
@@ -1871,7 +1871,7 @@ static void should_keep_empty_raw_sidecar_subject_authoritative()
 	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
 	prop::item_metadata sidecar;
 	metadata_xmp::parse(sidecar, path_xmp);
-	assert_equal(true, str::is_empty(sidecar.tags), "explicit empty sidecar subject stays authoritative");
+	assert_equal(true, core::is_empty(sidecar.tags), "explicit empty sidecar subject stays authoritative");
 	assert_equal(1, sidecar.rating, "edit applied");
 }
 
@@ -1898,7 +1898,7 @@ static void should_revalidate_folder_after_failed_live_date_write()
 	changed_failure.error_message = "distinctive live write failure";
 
 	std::string first_error;
-	df::unique_folders written;
+	core::unique_folders written;
 	const auto status = apply_batch_update_result(written, _temps.folder(), first_error, changed_failure);
 	assert_equal(true, item_status::fail == status, "date batches mark the item failed");
 	assert_equal(true, written.contains(_temps.folder()), "date batches revalidate a failed live-mutating write");
@@ -1907,7 +1907,7 @@ static void should_revalidate_folder_after_failed_live_date_write()
 
 static void should_mark_retry_failure_after_live_metadata_mutation()
 {
-	const auto source = test_files_folder.combine_file("gizmo.mp4");
+	const auto source = test_files_folder().combine_file("gizmo.mp4");
 	const auto path = _temps.next_path(".mp4");
 	platform::copy_file(source, path, false, false);
 
@@ -1933,7 +1933,7 @@ static void should_refuse_first_raw_sidecar_when_raw_source_is_unreadable()
 {
 	const auto path = _temps.next_path(".CR2");
 	const auto staged_path = _temps.next_path(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
 
 	metadata_edits edits;
@@ -1953,7 +1953,7 @@ static void should_refuse_first_raw_sidecar_when_raw_source_is_unreadable()
 	}
 
 	assert_equal(true, refused, "unreadable raw source is refused, not shadowed by a default sidecar");
-	assert_equal(false, staged_path.exists(), "no default sidecar is staged");
+	assert_equal(false, platform::exists(staged_path), "no default sidecar is staged");
 }
 #endif
 
@@ -1966,7 +1966,7 @@ static void should_refuse_to_write_an_unreadable_sidecar()
 	const auto path = _temps.next_path(".CR2");
 	const auto path_xmp = path.extension(".xmp");
 	const auto staged_path = _temps.next_path(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), path, false, false);
 	platform::copy_file(raw_folder.combine_file("Screws.xmp"), path_xmp, false, false);
@@ -1994,7 +1994,7 @@ static void should_refuse_to_write_an_unreadable_sidecar()
 		}
 
 		assert_equal(true, refused, "an unreadable sidecar is refused, not rebuilt from the edits alone");
-		assert_equal(false, staged_path.exists(), "and nothing is staged to swap over it");
+		assert_equal(false, platform::exists(staged_path), "and nothing is staged to swap over it");
 	}
 #endif
 
@@ -2013,11 +2013,11 @@ static void should_save_as_with_distinct_xmp_sidecar()
 	const auto source_xmp_path = source_path.extension(".xmp");
 	const auto destination_path = _temps.next_path(".CR2");
 	const auto destination_xmp_path = destination_path.extension(".xmp");
-	const auto raw_folder = test_files_folder.combine("raw");
+	const auto raw_folder = test_files_folder().combine("raw");
 
 	platform::copy_file(raw_folder.combine_file("Screws.CR2"), source_path, false, false);
 	platform::copy_file(raw_folder.combine_file("Screws.xmp"), source_xmp_path, false, false);
-	const auto source_xmp_before = df::blob_from_file(source_xmp_path);
+	const auto source_xmp_before = platform::blob_from_file(source_xmp_path);
 
 	metadata_edits edits;
 	edits.title = "Saved as copy";
@@ -2026,17 +2026,17 @@ static void should_save_as_with_distinct_xmp_sidecar()
 	const auto result = ff.update(source_path, destination_path, edits, {}, {}, false, source_xmp_path.name());
 
 	assert_equal(true, result.success(), "save as succeeds");
-	assert_equal(true, source_xmp_before == df::blob_from_file(source_xmp_path), "source sidecar unchanged");
-	assert_equal(true, destination_xmp_path.exists(), "destination sidecar created");
+	assert_equal(true, source_xmp_before == platform::blob_from_file(source_xmp_path), "source sidecar unchanged");
+	assert_equal(true, platform::exists(destination_xmp_path), "destination sidecar created");
 	prop::item_metadata destination_xmp;
 	metadata_xmp::parse(destination_xmp, destination_xmp_path);
 	assert_equal("Saved as copy", destination_xmp.title, "destination sidecar metadata");
 }
 
 // The rating in the packet a file keeps in itself, read where libfiles writes it.
-static int own_packet_rating(const df::file_path path)
+static int own_packet_rating(const core::file_path path)
 {
-	const auto file = df::blob_from_file(path);
+	const auto file = platform::blob_from_file(path);
 	const std::vector<uint8_t> bytes(file.begin(), file.end());
 	libfiles::reader r(bytes);
 	const auto packet = libfiles::read_packet(r).packet;
@@ -2056,14 +2056,14 @@ static void should_write_a_dng_sidecar_when_it_has_one()
 	for (const auto darktable_name : {false, true})
 	{
 		const auto path = _temps.next_path(".dng");
-		platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+		platform::copy_file(test_files_folder().combine_file("Small.tif"), path, false, false);
 		const auto path_xmp = darktable_name
 			                      ? path.folder().combine_file(std::format("{}.xmp", path.name().sv()))
 			                      : path.extension(".xmp");
 		write_xmp_packet(path_xmp, "<xmp:Rating>1</xmp:Rating>"
 		                 "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Sidecar title</rdf:li></rdf:Alt></dc:title>");
 
-		const auto dng_before = df::blob_from_file(path);
+		const auto dng_before = platform::blob_from_file(path);
 		const auto modified_before = platform::file_attributes(path).modified;
 		const auto what = darktable_name ? " (darktable's name)"s : " (Adobe's name)"s;
 
@@ -2074,18 +2074,18 @@ static void should_write_a_dng_sidecar_when_it_has_one()
 
 		assert_equal(true, result.success(), std::format("rating saved ({}){}", result.format_error(), what));
 		assert_equal(false, result.staged, "the DNG is not staged and swapped" + what);
-		assert_equal(true, dng_before == df::blob_from_file(path), "the DNG is untouched" + what);
+		assert_equal(true, dng_before == platform::blob_from_file(path), "the DNG is untouched" + what);
 		assert_equal(modified_before, platform::file_attributes(path).modified, "and keeps its time" + what);
 
 		prop::item_metadata sidecar;
 		metadata_xmp::parse(sidecar, path_xmp);
 		assert_equal(4, sidecar.rating, "the rating is in the sidecar" + what);
 		assert_equal("Sidecar title", sidecar.title, "beside what the sidecar held" + what);
-		if (darktable_name) assert_equal(false, path.extension(".xmp").exists(), "no second sidecar is made");
+		if (darktable_name) assert_equal(false, platform::exists(path.extension(".xmp")), "no second sidecar is made");
 
 		// Converted, the DNG gives what it shows: its sidecar's.
 		const auto converted = _temps.next_path(".jpg");
-		platform::copy_file(test_files_folder.combine_file("Test.jpg"), converted, false, false);
+		platform::copy_file(test_files_folder().combine_file("Test.jpg"), converted, false, false);
 		assert_equal(true, metadata_xmp::update(converted, path, {}, path_xmp.name(), {}).success,
 		             "a conversion is written" + what);
 		assert_equal(4, own_packet_rating(converted), "and carries the sidecar's rating" + what);
@@ -2096,7 +2096,7 @@ static void should_write_a_dng_sidecar_when_it_has_one()
 static void should_write_a_dng_itself_without_a_sidecar()
 {
 	const auto path = _temps.next_path(".dng");
-	platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("Small.tif"), path, false, false);
 
 	metadata_edits edits;
 	edits.rating = 3;
@@ -2104,7 +2104,7 @@ static void should_write_a_dng_itself_without_a_sidecar()
 	const auto result = ff.update(path, edits, {}, {}, false, {});
 
 	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
-	assert_equal(false, path.extension(".xmp").exists(), "no sidecar is made");
+	assert_equal(false, platform::exists(path.extension(".xmp")), "no sidecar is made");
 	assert_equal(3, own_packet_rating(path), "the rating is in the DNG");
 }
 
@@ -2114,9 +2114,9 @@ static void should_write_a_dng_sidecar_when_backing_up()
 {
 	const auto path = _temps.next_path(".dng");
 	const auto path_xmp = path.extension(".xmp");
-	platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("Small.tif"), path, false, false);
 	write_xmp_packet(path_xmp, "<xmp:Rating>1</xmp:Rating>");
-	const auto dng_before = df::blob_from_file(path);
+	const auto dng_before = platform::blob_from_file(path);
 
 	metadata_edits edits;
 	edits.rating = 5;
@@ -2124,7 +2124,7 @@ static void should_write_a_dng_sidecar_when_backing_up()
 	const auto result = ff.update(path, edits, {}, {}, true, path_xmp.name());
 
 	assert_equal(true, result.success(), std::format("rating saved ({})", result.format_error()));
-	assert_equal(true, dng_before == df::blob_from_file(path), "the DNG holds what it did");
+	assert_equal(true, dng_before == platform::blob_from_file(path), "the DNG holds what it did");
 
 	prop::item_metadata sidecar;
 	metadata_xmp::parse(sidecar, path_xmp);
@@ -2139,8 +2139,8 @@ static void should_write_a_dng_sidecar_when_backing_up()
 static void should_keep_a_dng_unchanged_when_its_sidecar_vanishes()
 {
 	const auto path = _temps.next_path(".dng");
-	platform::copy_file(test_files_folder.combine_file("Small.tif"), path, false, false);
-	const auto dng_before = df::blob_from_file(path);
+	platform::copy_file(test_files_folder().combine_file("Small.tif"), path, false, false);
+	const auto dng_before = platform::blob_from_file(path);
 	const auto staged = _temps.next_path(".xmp");
 
 	metadata_edits edits;
@@ -2148,7 +2148,7 @@ static void should_keep_a_dng_unchanged_when_its_sidecar_vanishes()
 	const auto result = metadata_xmp::update(path, path, edits, {}, staged, true);
 
 	assert_equal(true, result.success, "the edit is written");
-	assert_equal(true, dng_before == df::blob_from_file(path), "the DNG holds what it did");
+	assert_equal(true, dng_before == platform::blob_from_file(path), "the DNG holds what it did");
 	assert_equal(true, result.xmp_path == staged, "to the staged sidecar");
 
 	prop::item_metadata sidecar;
@@ -2158,20 +2158,20 @@ static void should_keep_a_dng_unchanged_when_its_sidecar_vanishes()
 
 static void should_preserve_orientation()
 {
-	const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
+	const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
 
 	files ff;
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 	const auto loaded_orientation = loaded.i->orientation();
 
-	const auto encoded_jpg = ff.surface_to_image(surface, {}, {}, ui::image_format::JPEG);
+	const auto encoded_jpg = ff.surface_to_image(surface, {}, {}, core::image_format::JPEG);
 	assert_equal(loaded_orientation, encoded_jpg->orientation(), "orientation for created jpg");
 
-	const auto encoded_png = ff.surface_to_image(surface, {}, {}, ui::image_format::PNG);
+	const auto encoded_png = ff.surface_to_image(surface, {}, {}, core::image_format::PNG);
 	assert_equal(loaded_orientation, encoded_png->orientation(), "orientation for created png");
 
-	const auto encoded_webp = ff.surface_to_image(surface, {}, {}, ui::image_format::WEBP);
+	const auto encoded_webp = ff.surface_to_image(surface, {}, {}, core::image_format::WEBP);
 	assert_equal(loaded_orientation, encoded_webp->orientation(), "orientation for created webp");
 
 	const auto loaded_jpg = load_image_file(encoded_jpg->data());
@@ -2189,7 +2189,7 @@ static void should_preserve_orientation()
 static void should_roundtrip_small_icc()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
@@ -2200,7 +2200,7 @@ static void should_roundtrip_small_icc()
 		metadata.icc[i] = static_cast<uint8_t>((i * 17u + 3u) & 0xffu);
 	}
 
-	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
+	const auto encoded = ff.surface_to_image(surface, metadata, {}, core::image_format::JPEG);
 
 	mem_read_stream stream(encoded->data());
 	const auto scanned = scan_photo(stream);
@@ -2215,7 +2215,7 @@ static void should_roundtrip_small_icc()
 static void should_roundtrip_large_icc()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
@@ -2227,7 +2227,7 @@ static void should_roundtrip_large_icc()
 		metadata.icc[i] = static_cast<uint8_t>((i * 31u + 7u) & 0xffu);
 	}
 
-	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
+	const auto encoded = ff.surface_to_image(surface, metadata, {}, core::image_format::JPEG);
 
 	mem_read_stream stream(encoded->data());
 	const auto scanned = scan_photo(stream);
@@ -2257,14 +2257,14 @@ static std::vector<uint8_t> make_xmp_packet(const size_t total_size)
 static void should_roundtrip_largest_xmp()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
 	libfiles::metadata_blocks metadata;
 	metadata.xmp = make_xmp_packet(65533u - xmp_signature_len);
 
-	const auto encoded = ff.surface_to_image(surface, metadata, {}, ui::image_format::JPEG);
+	const auto encoded = ff.surface_to_image(surface, metadata, {}, core::image_format::JPEG);
 
 	mem_read_stream stream(encoded->data());
 	const auto scanned = scan_photo(stream);
@@ -2279,7 +2279,7 @@ static void should_roundtrip_largest_xmp()
 static void should_report_oversized_xmp()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto loaded = ff.load(load_path, false);
 	const auto surface = loaded.to_surface();
 
@@ -2290,7 +2290,7 @@ static void should_report_oversized_xmp()
 
 	try
 	{
-		ff.surface_to_image(surface, oversized, {}, ui::image_format::JPEG);
+		ff.surface_to_image(surface, oversized, {}, core::image_format::JPEG);
 	}
 	catch (const std::exception&)
 	{
@@ -2302,7 +2302,7 @@ static void should_report_oversized_xmp()
 	libfiles::metadata_blocks writable;
 	writable.xmp = make_xmp_packet(1024u);
 
-	const auto encoded = ff.surface_to_image(surface, writable, {}, ui::image_format::JPEG);
+	const auto encoded = ff.surface_to_image(surface, writable, {}, core::image_format::JPEG);
 	assert_equal(true, is_valid(encoded), "encoder still usable after a rejected file");
 
 	mem_read_stream stream(encoded->data());

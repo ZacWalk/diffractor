@@ -14,6 +14,7 @@
     - run        : Run the recently built diffractor64.exe
     - run32      : Run the recently built diffractor32.exe (32-bit)
     - cpu        : Run diffractor64.exe using CPU software rendering
+    - vs         : Build Debug x64 and open diffractor64-d.exe in the Visual Studio debugger
     - linux      : Build the Linux application in WSL and run it there, shown through WSLg
     - build      : Bump the build number and build Release x64 (diffractor64.exe)
     - test       : Lint the repository, run unit tests and validate translation (.po) files
@@ -46,6 +47,12 @@
     Run diffractor64.exe using CPU software rendering
 
 .EXAMPLE
+    .\dd.ps1 vs
+    Build Debug x64 and open diffractor64-d.exe in the Visual Studio debugger; F5 starts it and a
+    crash stops with its call stack. --config Release, --no-build and --dry-run are options; any
+    other argument is passed to Diffractor.
+
+.EXAMPLE
     .\dd.ps1 test
     Lint the repository, run unit tests and validate translation (.po) files
 
@@ -60,7 +67,7 @@
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("desktop", "store", "run", "run32", "cpu", "linux", "test", "bean", "build", "bump-build", "bump-ver", "deploy", "release", "loc", "code", "clear-cache", "setup", "configure", "clean", "info", "help", "")]
+    [ValidateSet("desktop", "store", "run", "run32", "cpu", "linux", "test", "bean", "build", "bump-build", "bump-ver", "deploy", "release", "loc", "code", "vs", "clear-cache", "setup", "configure", "clean", "info", "help", "")]
     [string]$Command = "",
 
     # Package the version already in the tree, for rebuilding a submission that was never accepted.
@@ -286,6 +293,8 @@ function Show-Usage {
     Write-Host "  test         Lint, run unit tests and validate translation (.po) files"
     Write-Host "  bean         Run unit tests with the temp folder on the bean NAS (\\bean.local\home\tmp)"
     Write-Host "  code         Open VS Code with Developer Command Prompt environment"
+    Write-Host "  vs           Build Debug x64 and open it in the Visual Studio debugger (F5 starts it)"
+    Write-Host "               --config Release, --no-build, --dry-run; other arguments go to Diffractor"
     Write-Host "  loc          Regenerate location database files from geonames"
     Write-Host "  bump-build   Manually increment build number (e.g., $($version.Build) -> $($version.Build + 1))"
     Write-Host "  bump-ver     Increment version (e.g., $($version.VersionString) -> $($version.Major).$($version.Minor).$($version.Patch + 1))"
@@ -309,6 +318,7 @@ function Show-Usage {
     Write-Host "  .\dd.ps1 run          Run diffractor64.exe"
     Write-Host "  .\dd.ps1 run32        Run diffractor32.exe"
     Write-Host "  .\dd.ps1 cpu          Run diffractor64.exe using CPU software rendering"
+    Write-Host "  .\dd.ps1 vs           Debug diffractor64-d.exe in Visual Studio and read a crash's call stack"
     Write-Host "  .\dd.ps1 linux        Build and run the Linux build in WSL (Release; --config Debug for Debug)"
     Write-Host "  .\dd.ps1 test         Lint, run unit tests and validate .po files"
     Write-Host ""
@@ -1298,6 +1308,76 @@ function Open-VSCode {
     Write-Host ""
 }
 
+# Visual Studio's debugger on a fresh build: F5 starts Diffractor, and a crash stops at the faulting
+# line with its call stack. Debug by default, so every frame and local is there to read. Arguments
+# that are not options go to Diffractor, such as a folder to open.
+function Open-VisualStudio {
+    param([string[]]$Arguments = @())
+
+    if ($IsLinuxHost) {
+        Write-Host "Error: 'vs' opens Visual Studio, which is Windows-only." -ForegroundColor Red
+        exit 1
+    }
+
+    $configuration = "Debug"
+    $build = $true
+    $dryRun = $false
+    $appArguments = @()
+    for ($i = 0; $i -lt $Arguments.Count; $i++) {
+        switch ($Arguments[$i]) {
+            "--config" {
+                $i++
+                $value = if ($i -lt $Arguments.Count) { $Arguments[$i] } else { "" }
+                if ($value -eq "Debug") { $configuration = "Debug" }
+                elseif ($value -eq "Release") { $configuration = "Release" }
+                else {
+                    Write-Host "Error: --config takes Debug or Release." -ForegroundColor Red
+                    exit 1
+                }
+            }
+            "--no-build" { $build = $false }
+            "--dry-run" { $dryRun = $true }
+            default { $appArguments += $Arguments[$i] }
+        }
+    }
+
+    $vsPath = Test-VisualStudioEnvironment
+    $devenv = Join-Path $vsPath "Common7\IDE\devenv.exe"
+    if (-not (Test-Path $devenv)) {
+        Write-Host "Error: devenv.exe not found at $devenv." -ForegroundColor Red
+        Write-Host "Build Tools alone cannot debug; install Visual Studio with the C++ workload." -ForegroundColor Red
+        exit 1
+    }
+
+    $exe = Get-DiffractorExe -Configuration $configuration -Arch "x64"
+    $exeName = Split-Path $exe -Leaf
+    $quoted = @($appArguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } })
+    $devenvArguments = @("/debugexe", "`"$exe`"") + $quoted
+
+    if ($dryRun) {
+        Write-Host "Configuration: $configuration$(if (-not $build) { ' (no build)' })"
+        Write-Host "Build:         $(if ($build) { "tools/dd.py build --config $configuration --arch x64" } else { 'skipped' })"
+        Write-Host "Executable:    $exe$(if (-not (Test-Path $exe)) { ' (not built yet)' })"
+        Write-Host "Command:       `"$devenv`" $($devenvArguments -join ' ')"
+        return
+    }
+
+    # The build is incremental, and it sees edits to the sibling libdesktop, libfiles and lib8bit
+    # checkouts as well as Diffractor's own, which a timestamp check on src/ would not.
+    if ($build) { Invoke-CMakeBuild -Configuration $configuration -Arch "x64" }
+
+    if (-not (Test-Path $exe)) {
+        Write-Host "Error: $exeName not found at $exe." -ForegroundColor Red
+        exit 1
+    }
+
+    Start-Process -FilePath $devenv -ArgumentList $devenvArguments -WorkingDirectory $SourceFilesDir
+    Write-Host ""
+    Write-Host "Visual Studio is opening $exeName under its debugger." -ForegroundColor Green
+    Write-Host "Press F5 to start it. When it crashes, the Call Stack window (Ctrl+Alt+C) shows where." -ForegroundColor Green
+    Write-Host ""
+}
+
 function Clear-IconCache {
     Write-Host ""
     Write-Host "============================================================================" -ForegroundColor Cyan
@@ -1447,6 +1527,7 @@ switch ($Command) {
     "cpu" { Start-Diffractor -SoftwareRendering }
     "bean" { Invoke-Tests -TempPath "\\bean.local\home\tmp" }
     "code" { Open-VSCode }
+    "vs" { Open-VisualStudio -Arguments $Rest }
     "loc" { Update-Locations }
     "bump-build" { Invoke-BumpBuild }
     "bump-ver" { Invoke-BumpVersion }

@@ -38,7 +38,7 @@ namespace
 		}
 	};
 
-	po_report validate_one(const df::file_path lang_path, const app_text_t& texts)
+	po_report validate_one(const core::file_path lang_path, const app_text_t& texts)
 	{
 		po_report report;
 		report.file = std::string(lang_path.name().sv());
@@ -53,7 +53,7 @@ namespace
 
 		// Index the .po entries by msgid, detecting duplicates. The first entry
 		// (with an empty msgid) is the header and is skipped.
-		df::hash_map<std::string_view, const po_entry*> po_by_id;
+		core::hash_map<std::string_view, const po_entry*> po_by_id;
 
 		for (const auto& e : entries)
 		{
@@ -69,7 +69,7 @@ namespace
 
 		// Build the set of msgids that app_text.cpp needs, and check each one is
 		// present (and translated) in the .po file.
-		df::hash_set<std::string_view> needed;
+		core::hash_set<std::string_view> needed;
 
 		for (const auto& t : texts._all_texts)
 		{
@@ -167,7 +167,7 @@ int validate_po_files()
 	for (const auto& f : contents.files)
 	{
 		const auto lang_path = lang_folder.combine_file(f.name);
-		if (str::icmp(lang_path.extension(), ".po") != 0) continue;
+		if (core::icmp(lang_path.extension(), ".po") != 0) continue;
 
 		files_checked += 1;
 

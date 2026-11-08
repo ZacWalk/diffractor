@@ -11,7 +11,7 @@
 
 #pragma once
 #include "model_property.h"
-#include "libdesktop/platform_render.h"
+#include "libdesktop/render.h"
 
 struct AVChannelLayout;
 using channel_layout_ptr = std::shared_ptr<AVChannelLayout>;
@@ -41,7 +41,7 @@ struct audio_info_t
 // An endpoint's mix format as the buffers and the mixer take it.
 audio_info_t av_audio_info(const platform::audio_output_format& format);
 
-class audio_buffer final : df::no_copy
+class audio_buffer final : core::no_copy
 {
 	int gen = -1;
 
@@ -102,7 +102,7 @@ public:
 		return end_pos - start_pos;
 	}
 
-	df::cspan cdata() const
+	core::cspan cdata() const
 	{
 		return {data ? data + start_pos : nullptr, used_bytes()};
 	}
@@ -143,7 +143,7 @@ public:
 
 	void remove(const uint32_t bytes_to_remove)
 	{
-		df::assert_true(bytes_to_remove <= used_bytes());
+		core::assert_true(bytes_to_remove <= used_bytes());
 		start_pos += bytes_to_remove;
 		const auto bps = format.bytes_per_second();
 		if (bps > 0) time += bytes_to_remove / static_cast<double>(bps);

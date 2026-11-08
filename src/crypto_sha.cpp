@@ -31,7 +31,7 @@ sha1::sha1()
 }
 
 
-void sha1::update(const df::cspan input)
+void sha1::update(const core::cspan input)
 {
 	const uint8_t* data = input.data;
 	size_t remaining = input.size;
@@ -103,7 +103,7 @@ void sha1::final(uint8_t* digest_result)
 
 	for (unsigned int& i : digest)
 	{
-		i = df::byteswap32(i);
+		i = core::byteswap32(i);
 	}
 
 	memcpy_s(digest_result, DIGEST_SIZE, digest, DIGEST_SIZE);
@@ -352,7 +352,7 @@ void sha256::reset()
 	m_len = 0;
 }
 
-void sha256::update(const df::cspan cs)
+void sha256::update(const core::cspan cs)
 {
 	const auto len = cs.size;
 	const auto* input = cs.data;

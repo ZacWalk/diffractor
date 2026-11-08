@@ -6,20 +6,20 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: The application's side of the element tree, which is libdesktop-render's: the names it
+// Purpose: The application's side of the element tree, which is libdesktop UI's: the names it
 // has here, the application's invalidation flags and the host that maps an element's requests onto
 // them, the views and what a view declares for the frame's title bar and status bar. The drawn
 // controls are elements of the tree, so their header comes with it.
 
 #pragma once
 
-#include "libdesktop/render_controls.h"
+#include "libdesktop/ui/controls.h"
 
 class view_host;
 class view_state;
 enum class render_valid;
 
-// The element tree is libdesktop-render's (libdesktop/ui_elements.h); these are the names it has here.
+// The element tree is libdesktop's UI element tree (libdesktop/ui/elements.h); these are the names it has here.
 using view_element = ui::element;
 using view_element_ptr = ui::element_ptr;
 using view_element_style = ui::element_style;
@@ -62,15 +62,15 @@ using ui::make_icon_link_element;
 using ui::link_foreground_color;
 using ui::draw_splitter_handle;
 
-inline ui::color view_handle_color(const bool selected, const bool hover, const bool tracking,
+inline core::color view_handle_color(const bool selected, const bool hover, const bool tracking,
                                    const bool view_has_focus, const bool text_over,
-                                   const ui::color bg_clr = ui::color(ui::style::colors.group_background))
+                                   const core::color bg_clr = core::color(ui::style::colors.group_background))
 {
 	return ui::handle_color(selected, hover, tracking, view_has_focus, text_over, bg_clr);
 }
 
-inline void xdraw_icon(ui::draw_context& dc, const icon_index i, const recti bounds, const ui::color c,
-                       const ui::color bg, const ui::style::font_face font = ui::style::font_face::icons)
+inline void xdraw_icon(render::draw_context& dc, const icon_index i, const recti bounds, const core::color c,
+                       const core::color bg, const render::font_face font = render::font_face::icons)
 {
 	ui::draw_icon(dc, i, bounds, c, bg, font);
 }
@@ -232,7 +232,7 @@ struct view_bars
 // The bars every task view shows: the window buttons and Close above, the task's own commands below.
 view_bars task_view_bars(std::vector<bar_entry> bottom);
 
-class view_base : public df::no_copy
+class view_base : public core::no_copy
 {
 public:
 	struct progress_state
@@ -289,7 +289,7 @@ public:
 	// Files dropped on this view, in view coordinates. A view that answers true has consumed the
 	// drop; the default is false, which leaves the frame's own handling - opening the first item, or
 	// copying into the folder being shown - alone.
-	virtual bool drop_paths(const std::vector<df::file_path>& paths, const pointi loc)
+	virtual bool drop_paths(const std::vector<core::file_path>& paths, const pointi loc)
 	{
 		return false;
 	}
@@ -306,12 +306,12 @@ public:
 		return false;
 	}
 
-	virtual void render(ui::draw_context& rc, view_controller_ptr controller)
+	virtual void render(render::draw_context& rc, view_controller_ptr controller)
 	{
 	}
 
 	// Events
-	virtual void layout(ui::measure_context& mc, const sizei extent)
+	virtual void layout(render::measure_context& mc, const sizei extent)
 	{
 	}
 
@@ -319,7 +319,7 @@ public:
 	// which of that surface's axes moves; a second virtual for the horizontal axis was a half every
 	// view forgot to write. Returns whether the notch meant anything here, so an unconsumed one can
 	// fall through instead of being silently swallowed.
-	virtual bool mouse_wheel(const pointi loc, const ui::wheel_notch notch)
+	virtual bool mouse_wheel(const pointi loc, const platform::wheel_notch notch)
 	{
 		return false;
 	}
@@ -337,7 +337,7 @@ public:
 	{
 	}
 
-	virtual bool key_down(char32_t key, ui::key_state keys)
+	virtual bool key_down(char32_t key, platform::key_state keys)
 	{
 		return false;
 	}

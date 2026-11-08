@@ -44,14 +44,14 @@ static std::optional<agreed_date_row> agreed_date(const df::item_set& items, con
 {
 	if (items.is_empty()) return {};
 
-	df::date_t value;
+	core::date_t value;
 	auto source = prop::date_source::none;
 	auto first = true;
 
 	for (const auto& item : items.items())
 	{
 		const auto md = item->metadata();
-		const auto item_value = md ? md->dates.resolve(kind) : df::date_t{};
+		const auto item_value = md ? md->dates.resolve(kind) : core::date_t{};
 		const auto item_source = md ? md->dates.resolved_source(kind) : prop::date_source::none;
 
 		if (first)
@@ -93,8 +93,8 @@ static std::vector<std::string> genre_suggestions(const view_state& s, const df:
 		result.emplace_back(std::move(genre));
 	}
 
-	std::ranges::sort(result, str::iless());
-	result.erase(std::ranges::unique(result, df::ieq()).begin(), result.end());
+	std::ranges::sort(result, core::iless());
+	result.erase(std::ranges::unique(result, core::ieq()).begin(), result.end());
 	return result;
 }
 
@@ -121,7 +121,7 @@ std::string_view batch_tool_view::title()
 		                  : _mode == batch_tool_mode::metadata
 		                  ? tt.command_edit_metadata.sv()
 		                  : tt.command_adjust_date.sv();
-	_title = std::format("{}: {}", s_app_name, text);
+	_title = std::format("{}: {}", core::app_name(), text);
 	return _title;
 }
 
@@ -205,7 +205,7 @@ void batch_tool_view::refresh_convert()
 	// selected item. That is a worker's job: on a network or sleeping destination it is the
 	// difference between a responsive panel and a frozen one.
 	const auto sources = snapshot_convert_sources(_state.selected_items());
-	const auto write_folder = df::folder_path(setting.write_folder);
+	const auto write_folder = core::folder_path(setting.write_folder);
 	const auto extension = convert_extension();
 	const auto policy = setting.convert.collision;
 	const auto generation = ++_plan_generation;
@@ -237,8 +237,8 @@ void batch_tool_view::describe_convert_plan()
 	rows.reserve(_convert_plan.size());
 	_row_names.clear();
 	_row_names.reserve(_convert_plan.size());
-	const auto error_color = ui::lighten(ui::style::colors.warning_background, 0.55f);
-	const auto resolved_color = ui::lighten(ui::style::colors.important_background, 0.55f);
+	const auto error_color = core::lighten(ui::style::colors.warning_background, 0.55f);
+	const auto resolved_color = core::lighten(ui::style::colors.important_background, 0.55f);
 	int order = 0;
 	int collisions = 0;
 	for (const auto& entry : _convert_plan)
@@ -249,7 +249,7 @@ void batch_tool_view::describe_convert_plan()
 		const auto dimensions = entry.source.dimensions;
 		const auto max_side = setting.convert.limit_dimension ? setting.convert.max_side : 0;
 		const auto scale = max_side > 0 && std::max(dimensions.cx, dimensions.cy) > max_side
-			                   ? ui::scale_dimensions(dimensions, max_side, true)
+			                   ? core::scale_dimensions(dimensions, max_side, true)
 			                   : dimensions;
 
 		if (entry.collides) ++collisions;
@@ -301,8 +301,8 @@ void batch_tool_view::refresh_metadata()
 	// The date picker cannot show an empty date, so an untouched control displays today while an
 	// unset value would be written. Seed the value that the control already shows so the preview,
 	// the control and the written date agree.
-	if (!_metadata_date_original.is_valid()) _metadata_date_original = platform::now();
-	if (!_metadata_date_created.is_valid()) _metadata_date_created = platform::now();
+	if (!_metadata_date_original.is_valid()) _metadata_date_original = core::utc_now();
+	if (!_metadata_date_created.is_valid()) _metadata_date_created = core::utc_now();
 
 	std::vector<std::string_view> fields;
 	if (setting.set_title) fields.emplace_back(tt.prop_name_title.sv());
@@ -327,11 +327,11 @@ void batch_tool_view::refresh_metadata()
 	if (setting.set_copyright_source) fields.emplace_back(tt.copyright_source.sv());
 	if (setting.set_copyright_credit) fields.emplace_back(tt.copyright_credit.sv());
 	if (setting.set_copyright_url) fields.emplace_back(tt.copyright_url.sv());
-	const auto field_text = str::combine(fields, ", ", false);
+	const auto field_text = core::combine(fields, ", ", false);
 	std::vector<row_element_ptr> rows;
 	_row_names.clear();
 	_row_names.reserve(items.size());
-	const auto warning_color = ui::lighten(ui::style::colors.important_background, 0.55f);
+	const auto warning_color = core::lighten(ui::style::colors.important_background, 0.55f);
 	int order = 0;
 	for (const auto& item : items.items())
 	{
@@ -387,7 +387,7 @@ void batch_tool_view::update_date_start()
 	// the user chose but that is not a valid capture date, silently running something else.
 	if (!_new_start_seeded)
 	{
-		_new_start = _original_start.is_valid() ? _original_start : platform::now();
+		_new_start = _original_start.is_valid() ? _original_start : core::utc_now();
 		_new_start_seeded = true;
 	}
 }
@@ -473,9 +473,9 @@ void batch_tool_view::refresh_encode_settings()
 // outcome against a different file.
 void batch_tool_view::show_run_results(const std::vector<item_status>& statuses, const std::string_view error)
 {
-	const auto success_color = ui::lighten(ui::style::colors.success_background, 0.55f);
-	const auto fail_color = ui::lighten(ui::style::colors.warning_background, 0.55f);
-	const auto muted_color = ui::darken(ui::style::colors.view_text, 0.22f);
+	const auto success_color = core::lighten(ui::style::colors.success_background, 0.55f);
+	const auto fail_color = core::lighten(ui::style::colors.warning_background, 0.55f);
+	const auto muted_color = core::darken(ui::style::colors.view_text, 0.22f);
 
 	std::vector<view_operation_result> outcomes;
 	outcomes.reserve(_rows.size());
@@ -563,7 +563,7 @@ std::string batch_tool_view::run_blocked_reason() const
 	{
 		// The plan is still being computed, so nothing is wrong yet and there is nothing to name.
 		if (!_plan_valid) return {};
-		if (df::folder_path(setting.write_folder).is_empty()) return std::string(tt.convert_folder_required.sv());
+		if (core::folder_path(setting.write_folder).is_empty()) return std::string(tt.convert_folder_required.sv());
 		if (setting.convert.limit_dimension && setting.convert.max_side < 1)
 			return std::string(tt.convert_dimension_required.sv());
 
@@ -609,9 +609,9 @@ void batch_tool_view::run_convert()
 	struct convert_request
 	{
 		size_t plan_index = 0;
-		df::file_path source;
-		df::file_path destination;
-		str::cached xmp;
+		core::file_path source;
+		core::file_path destination;
+		core::cached xmp;
 		// The review found this destination occupied and the policy said to replace it. Every other row
 		// was reviewed as free, so anything now in its way is a file the user never saw.
 		bool replaces_existing = false;
@@ -644,7 +644,7 @@ void batch_tool_view::run_convert()
 	const auto webp_lossless = setting.convert.webp_lossless;
 	const auto jxl_quality = setting.convert.jxl_quality;
 	const auto jxl_lossless = setting.convert.jxl_lossless;
-	const auto write_folder = df::folder_path(setting.write_folder);
+	const auto write_folder = core::folder_path(setting.write_folder);
 	// Releasing the displayed file's handles can pump messages, and a Close handled in there leaves
 	// this view. A run started after that would write files with nothing on screen to show it.
 	const auto generation_before_detach = processing_generation();
@@ -701,7 +701,7 @@ void batch_tool_view::run_convert()
 					                   // never reviewed, so the row is left alone rather than written over - and so
 					                   // is a reviewed one that has changed since, which is no longer the file the
 					                   // user agreed to replace.
-					                   const auto destination_exists = request.destination.exists();
+					                   const auto destination_exists = platform::exists(request.destination);
 
 					                   if (destination_exists && (!request.replaces_existing ||
 						                   !unchanged_since_analysis(request.destination,
@@ -743,14 +743,14 @@ void batch_tool_view::run_convert()
 			                   // stay invisible until something else happens to rescan that folder.
 			                   if (wrote_anything)
 			                   {
-				                   df::unique_folders written;
+				                   core::unique_folders written;
 				                   written.emplace(write_folder);
 				                   s.item_index.queue_validate_changed_folders(std::move(written));
 			                   }
 		                   }
 		                   catch (const std::exception& e)
 		                   {
-			                   fatal = str::utf8_cast(e.what());
+			                   fatal = core::utf8_cast(e.what());
 		                   }
 
 		                   queue_run_results(s, view, generation, std::move(statuses), std::move(fatal),
@@ -762,8 +762,8 @@ void batch_tool_view::run_metadata()
 {
 	struct metadata_request
 	{
-		df::file_path path;
-		str::cached xmp;
+		core::file_path path;
+		core::cached xmp;
 	};
 	const auto items = _state.selected_items().items();
 	std::vector<metadata_request> requests;
@@ -793,7 +793,7 @@ void batch_tool_view::run_metadata()
 		                   std::vector<item_status> statuses(requests.size(), item_status::cancel);
 		                   std::string fatal;
 		                   std::string first_error;
-		                   df::unique_folders written;
+		                   core::unique_folders written;
 		                   try
 		                   {
 			                   files ff;
@@ -820,13 +820,13 @@ void batch_tool_view::run_metadata()
 				                   catch (const std::exception& e)
 				                   {
 					                   statuses[index] = item_status::fail;
-					                   if (first_error.empty()) first_error = str::utf8_cast(e.what());
+					                   if (first_error.empty()) first_error = core::utf8_cast(e.what());
 				                   }
 			                   }
 		                   }
 		                   catch (const std::exception& e)
 		                   {
-			                   fatal = str::utf8_cast(e.what());
+			                   fatal = core::utf8_cast(e.what());
 		                   }
 
 		                   // Outside the try: the write is invisible to the index until the folder is validated,
@@ -845,9 +845,9 @@ void batch_tool_view::run_dates()
 {
 	struct date_update_request
 	{
-		df::file_path path;
-		df::date_t media_created;
-		str::cached xmp;
+		core::file_path path;
+		core::date_t media_created;
+		core::cached xmp;
 	};
 
 	std::vector<date_update_request> requests;
@@ -879,7 +879,7 @@ void batch_tool_view::run_dates()
 		                   std::vector<item_status> statuses(requests.size(), item_status::cancel);
 		                   std::string fatal;
 		                   std::string first_error;
-		                   df::unique_folders written;
+		                   core::unique_folders written;
 		                   try
 		                   {
 			                   files ff;
@@ -910,13 +910,13 @@ void batch_tool_view::run_dates()
 				                   catch (const std::exception& e)
 				                   {
 					                   statuses[index] = item_status::fail;
-					                   if (first_error.empty()) first_error = str::utf8_cast(e.what());
+					                   if (first_error.empty()) first_error = core::utf8_cast(e.what());
 				                   }
 			                   }
 		                   }
 		                   catch (const std::exception& e)
 		                   {
-			                   fatal = str::utf8_cast(e.what());
+			                   fatal = core::utf8_cast(e.what());
 		                   }
 
 		                   // Outside the try: the write is invisible to the index until the folder is validated,
@@ -1090,7 +1090,7 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		// A date field carries what the item holds now, inside the checkbox: the value a run is about
 		// to replace is worth seeing beside its replacement, and worth nothing while the field is not
 		// in the run.
-		auto add_date_field = [&](const text_t& label, bool& selected, df::date_t& value,
+		auto add_date_field = [&](const text_t& label, bool& selected, core::date_t& value,
 		                          const prop::date_concept kind)
 		{
 			const auto group = std::make_shared<ui::group_control>();

@@ -17,7 +17,7 @@ enum class app_resource
 	map_png
 };
 
-df::blob load_app_resource(app_resource r);
+core::blob load_app_resource(app_resource r);
 
 namespace ui
 {
@@ -25,4 +25,4 @@ namespace ui
 }
 
 // Draws the application's mark centred on a surface, transparent around it.
-void fill_app_logo(ui::surface& surface);
+void fill_app_logo(core::surface& surface);

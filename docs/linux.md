@@ -19,12 +19,12 @@ not yet a distributable product.
 ## Platform Boundary
 
 Portable application code depends on libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) -
-the OS services of its system module, which also carries their Linux backend and
-[documents it](https://github.com/ZacWalk/libdesktop/blob/main/docs/system.md#the-linux-backend) - and on
-libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h) for what the desktop UI layer implements: icon glyphs,
-movie writing, audio output and the rendering probes. Operating-system headers, handles, and direct system calls
+its OS services, which carry their Linux backend and
+[document it](https://github.com/ZacWalk/libdesktop/blob/main/docs/platform.md#the-linux-backend) - and on
+libdesktop's [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h) and [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h) for what the window layer implements: icon glyphs and
+the rendering probes in render, the frame, controls and menus in ui. Movie writing and audio output are platform services. Operating-system headers, handles, and direct system calls
 remain in libdesktop and in the application's own `platform*` files - its side of FFmpeg's hardware
-decoding and its entry points. Repository lint enforces the parts
+decoding and Linux hooks; `src/app.cpp` owns the application entry points. Repository lint enforces the parts
 of this boundary visible from source text. It allows OS headers in any `platform*` file, though
 only `platform_win_av.cpp` and the Windows platform tests still need them. Property ratios and search
 terms are still read with `_snscanf_s` (in `model_property.cpp` and `model_search.cpp`), which
@@ -35,15 +35,15 @@ The Linux implementation currently provides:
 
 | Area | Implementation |
 | --- | --- |
-| Process, synchronization, locale, known folders | libdesktop's `platform_linux.cpp` |
-| Files, mapping, enumeration, paths | libdesktop's `platform_linux_files.cpp` |
-| Copy, move, delete, and shell stand-ins | libdesktop's `platform_linux_desktop.cpp` |
-| INI settings | libdesktop's `platform_linux_settings.cpp` |
-| Windows, popups, input, the menu loop, display scale and the text clipboard, on SDL3 | libdesktop's `platform_linux_window.cpp` |
-| Text layout, glyph fallback, icon glyphs and styled subtitles, with Pango | libdesktop's `platform_linux_text.cpp` |
-| The entry point | libdesktop's `platform_linux_main.cpp` (`libdesktop::render_main`) |
-| Theme colours, key codes, UI-thread identity, and the movie writing and audio output stand-ins | libdesktop's `platform_linux_ui.cpp` |
-| The absent hardware video decode, the empty platform test registration, and the icon font compiled in | `platform_linux_app.cpp` |
+| Process, synchronization, locale, known folders | `libdesktop/src/platform/linux/platform.cpp` |
+| Files, mapping, enumeration, paths | `libdesktop/src/platform/linux/files.cpp` |
+| Copy, move, delete, and shell stand-ins | `libdesktop/src/platform/linux/desktop.cpp` |
+| INI settings | `libdesktop/src/platform/linux/settings.cpp` |
+| Windows, popups, input, the menu loop, display scale and the text clipboard, on SDL3 | `libdesktop/src/platform/linux/window.cpp` and `app.cpp` |
+| Text layout, glyph fallback, icon glyphs and styled subtitles, with Pango | `libdesktop/src/render/linux/text.cpp` |
+| The entry points and lifecycle | Diffractor's [src/app.cpp](../src/app.cpp) (`wWinMain`/`main` calls `platform::run`) |
+| Theme colours, key codes, UI-thread identity, and the movie writing and audio output stand-ins | `libdesktop/src/platform/linux` |
+| The absent hardware video decode and empty platform test registration | [platform_linux_app.cpp](../src/platform_linux_app.cpp) |
 
 Path identity follows the filesystem: case-insensitive on Windows and case-sensitive on Linux.
 Case-folded comparisons remain appropriate for media types, tags, and other vocabulary, but not for
@@ -113,13 +113,13 @@ how they join the application build.
 ## Where this lives
 
 - libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) and
-  [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h): abstraction required from each platform.
-- libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/system),
-  [Linux window layer](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_window.cpp) and
+  [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h): abstraction required from each platform.
+- libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/platform/linux),
+  [Linux window layer](https://github.com/ZacWalk/libdesktop/blob/main/src/render/linux/window_device.cpp) and
   [platform_linux_app.cpp](../src/platform_linux_app.cpp): current Linux implementation.
-- libdesktop's [platform_compat.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_compat.h): cross-platform
+- libdesktop's [dialect.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/dialect.h): cross-platform
   compatibility helpers.
-- libdesktop's [render_software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render_software.h) and
-  [render_software.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_software.cpp): portable CPU rasterizer.
+- libdesktop's [render/software.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render/software.h) and
+  [software_context.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/software_context.cpp): portable CPU rasterizer.
 - [CMakeLists.txt](../CMakeLists.txt), `cmake/`, [dd.ps1](../dd.ps1), and
   [tools/dd.py](../tools/dd.py): build description and drivers.

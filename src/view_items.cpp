@@ -141,9 +141,9 @@ public:
 		}
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return _selecting ? ui::style::cursor::select : ui::style::cursor::normal;
+		return _selecting ? platform::cursor::select : platform::cursor::normal;
 	}
 
 	recti calc_logical_selection_bounds() const
@@ -151,7 +151,7 @@ public:
 		return _selecting ? recti(_start_logical_loc, _last_logical_loc).normalise() : recti();
 	}
 
-	void draw(ui::draw_context& rc) override
+	void draw(render::draw_context& rc) override
 	{
 		if (_selecting)
 		{
@@ -163,12 +163,12 @@ public:
 			                                .intersection(_scroller.client_bounds());
 			if (!selection.is_empty())
 			{
-				rc.draw_rect(selection, ui::color(ui::style::colors.dialog_selected_background, 0.5));
+				rc.draw_rect(selection, core::color(ui::style::colors.dialog_selected_background, 0.5));
 			}
 		}
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_tracking = true;
 		_cancel = false;
@@ -225,7 +225,7 @@ public:
 		_host->frame()->invalidate();
 	}
 
-	void invoke_select(const ui::key_state keys, const bool perform_open)
+	void invoke_select(const platform::key_state keys, const bool perform_open)
 	{
 		if (_cancel) return;
 
@@ -250,7 +250,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		update_state();
@@ -260,7 +260,7 @@ public:
 		end_selecting();
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		update_state();
@@ -316,7 +316,7 @@ public:
 	{
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_tracking = true;
 		_cancel = false;
@@ -342,7 +342,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		_tracking = false;
@@ -354,7 +354,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		open_item(_hover_item);
@@ -367,7 +367,7 @@ public:
 		if (!_hover_item || _drag_started) return;
 		_drag_started = true;
 
-		df::scope_locked_inc l(df::dragging_items);
+		core::scope_locked_inc l(df::dragging_items);
 		detach_file_handles detach(_state);
 
 		// The release or Escape that ends the gesture can be handled in that wait too, and a drag begun
@@ -475,11 +475,11 @@ recti items_view::sidebar_splitter_bounds() const
 
 void items_view::sidebar_width(const int x)
 {
-	const auto min_width = std::max(_scroll_width * 3, df::round(64 * _scale_factor));
+	const auto min_width = std::max(_scroll_width * 3, core::round(64 * _scale_factor));
 	const auto max_width = std::max(min_width, _client_extent.cx / 3);
 	const auto width = std::clamp(x, min_width, max_width);
 	if (width == _sidebar_width) return;
-	setting.sidebar.width = df::round(width / _scale_factor);
+	setting.sidebar.width = core::round(width / _scale_factor);
 	_state.invalidate_view(view_invalid::view_layout);
 }
 
@@ -501,17 +501,17 @@ public:
 		_view._sidebar_splitter_active--;
 	}
 
-	void draw(ui::draw_context& dc) override
+	void draw(render::draw_context& dc) override
 	{
 		_view.draw_splitter(dc, _view.sidebar_splitter_bounds(), true, _tracking);
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::left_right;
+		return platform::cursor::left_right;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_tracking = true;
 		_start_width = _view._sidebar_width;
@@ -523,7 +523,7 @@ public:
 		if (_tracking) _view.sidebar_width(loc.x);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (_tracking) _view.sidebar_width(loc.x);
 		_tracking = false;
@@ -573,8 +573,8 @@ namespace
 	                                        std::function<void(view_hover_element&)> tooltip, const bool latched)
 	{
 		auto chip = std::make_shared<link_element>(std::move(text), std::move(invoke), std::move(tooltip),
-		                                           ui::style::font_face::dialog,
-		                                           ui::style::text_style::multiline_center,
+		                                           render::font_face::dialog,
+		                                           render::text_style::multiline_center,
 		                                           flex_item::center);
 		chip->full_background(true);
 		chip->padding = {6, 4};
@@ -589,8 +589,8 @@ namespace
 	                                 std::function<void()> expand)
 	{
 		auto header = std::make_shared<link_element>(
-			std::format("{}|{}", title, str::format_count(count)), std::move(expand),
-			ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::center);
+			std::format("{}|{}", title, core::format_count(count)), std::move(expand),
+			render::font_face::dialog, render::text_style::single_line, flex_item::center);
 		header->padding = {6, 4};
 		return header;
 	}
@@ -599,7 +599,7 @@ namespace
 // locations.md 7.3: the breakdown row is the only optional row, and it collapses to a one-line
 // header when it would otherwise bury the items the user came to see. It never holds a captured
 // control while it is asked to collapse.
-void items_view::apply_control_row_budget(ui::measure_context& mc, const int width, const int budget)
+void items_view::apply_control_row_budget(render::measure_context& mc, const int width, const int budget)
 {
 	if (!_breakdown_row.element) return;
 
@@ -627,8 +627,8 @@ view_element_ptr items_view::build_related_header_row() const
 	auto row = std::make_shared<view_elements>(flex_item::center);
 
 	auto title = std::make_shared<text_element>(std::format("{} | {}", tt.command_related.sv(), name.sv()),
-	                                            ui::style::font_face::dialog,
-	                                            ui::style::text_style::single_line_center, flex_item::center);
+	                                            render::font_face::dialog,
+	                                            render::text_style::single_line_center, flex_item::center);
 	title->padding = {6, 4};
 	row->add(std::move(title));
 
@@ -640,8 +640,8 @@ view_element_ptr items_view::build_related_header_row() const
 		if (item->presence() == item_presence::unknown) break;
 
 		auto presence = std::make_shared<text_element>(item_presence_text(item->presence(), false),
-		                                               ui::style::font_face::dialog,
-		                                               ui::style::text_style::single_line_center,
+		                                               render::font_face::dialog,
+		                                               render::text_style::single_line_center,
 		                                               flex_item::center);
 		presence->padding = {6, 4};
 		row->add(std::move(presence));
@@ -673,7 +673,7 @@ view_element_ptr items_view::build_location_breakdown_row()
 		for (const auto& place : timeline.places)
 		{
 			total_count += place.count;
-			auto text = std::format("{}|{}", place.name, str::format_count(place.count));
+			auto text = std::format("{}|{}", place.name, core::format_count(place.count));
 
 			// The bubble names the place in full, because the chip is only as specific as it can
 			// be in the width it has.
@@ -765,9 +765,9 @@ void items_view::items_changed(const bool path_changed)
 	const auto is_searching = _state.item_index.searching > 0;
 	const auto has_filtered_out = !is_searching && total_count > shown_count;
 
-	const auto add_status = [&status_elements](const std::string_view text, const ui::style::font_face font)
+	const auto add_status = [&status_elements](const std::string_view text, const render::font_face font)
 	{
-		auto element = std::make_shared<text_element>(text, font, ui::style::text_style::multiline_center,
+		auto element = std::make_shared<text_element>(text, font, render::text_style::multiline_center,
 		                                              flex_item::center);
 		element->flex.max_size.cx = footer_message_width;
 		element->padding = {8, 2};
@@ -776,8 +776,8 @@ void items_view::items_changed(const bool path_changed)
 
 	const auto add_action = [&action_elements]<typename action_t>(const std::string_view text, action_t action)
 	{
-		auto link = std::make_shared<link_element>(text, std::move(action), ui::style::font_face::dialog,
-		                                           ui::style::text_style::single_line_center,
+		auto link = std::make_shared<link_element>(text, std::move(action), render::font_face::dialog,
+		                                           render::text_style::single_line_center,
 		                                           flex_item::center, true);
 		link->flex.max_size.cx = footer_message_width;
 		link->padding = {8, 6};
@@ -786,7 +786,7 @@ void items_view::items_changed(const bool path_changed)
 
 	if (is_searching)
 	{
-		add_status(tt.searching_text, ui::style::font_face::title);
+		add_status(tt.searching_text, render::font_face::title);
 	}
 	else if (!has_items && (_state.search().has_selector() || _state.search().has_terms()))
 	{
@@ -796,7 +796,7 @@ void items_view::items_changed(const bool path_changed)
 		// is not empty, so it says "Nothing found" and leaves the recovery to the filter action.
 		const auto browsing_folder = _state.search().is_folder();
 		add_status(browsing_folder && !has_filtered_out ? tt.empty_folder : tt.nothing_found1,
-		           ui::style::font_face::title);
+		           render::font_face::title);
 
 		if (!browsing_folder && !has_filtered_out)
 		{
@@ -810,7 +810,7 @@ void items_view::items_changed(const bool path_changed)
 				add_status(km > 0.0
 					           ? str_format(tt.nothing_within_fmt.sv(), format_distance_km(km), typed)
 					           : str_format(tt.nothing_at_place_fmt.sv(), typed),
-				           ui::style::font_face::dialog);
+				           render::font_face::dialog);
 
 				if (km > 0.0)
 				{
@@ -854,7 +854,7 @@ void items_view::items_changed(const bool path_changed)
 			}
 
 			// State the collection's edge, then offer the one move that widens it.
-			add_status(tt.nothing_found2, ui::style::font_face::dialog);
+			add_status(tt.nothing_found2, render::font_face::dialog);
 			add_action(tt.nothing_found_add_folders.sv(),
 			           std::function<void()>([this] { _state.invoke(commands::options); }));
 		}
@@ -912,7 +912,7 @@ void items_view::items_changed(const bool path_changed)
 	_state.invalidate_view(view_invalid::view_layout);
 }
 
-void items_view::draw_splitter(ui::draw_context& dc, const recti bounds, const bool active,
+void items_view::draw_splitter(render::draw_context& dc, const recti bounds, const bool active,
                                const bool tracking) const
 {
 	draw_splitter_handle(dc, bounds, _sidebar_splitter_width, active, tracking);
@@ -942,14 +942,14 @@ public:
 		_view._splitter_active--;
 	}
 
-	void draw(ui::draw_context& rc) override
+	void draw(render::draw_context& rc) override
 	{
 		_view.draw_splitter(rc, _view.calc_spliter_bounds(), true, _tracking);
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::left_right;
+		return platform::cursor::left_right;
 	}
 
 	void update_pos(const pointi loc) const
@@ -957,7 +957,7 @@ public:
 		_view.splitter_pos(loc.x, _tracking);
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_tracking = true;
 		_start = _view.splitter_pos();
@@ -973,7 +973,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (_tracking)
 		{
@@ -1215,9 +1215,9 @@ menu_type items_view::context_menu(const pointi loc)
 // moves. The modifier never changes meaning with position -- only what it acts on -- which is what
 // the old chain could not say: a bare Ctrl test sat between two region tests, so Ctrl resized
 // thumbnails everywhere except over the preview pane, where it silently did nothing.
-bool items_view::mouse_wheel(const pointi loc, const ui::wheel_notch notch)
+bool items_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch)
 {
-	const df::scope_exit refresh_controller([this] { _state.invalidate_view(view_invalid::controller); });
+	const core::scope_exit refresh_controller([this] { _state.invalidate_view(view_invalid::controller); });
 
 	switch (region_at(loc))
 	{
@@ -1257,7 +1257,7 @@ bool items_view::mouse_wheel(const pointi loc, const ui::wheel_notch notch)
 // The preview pane has two states and they answer the wheel differently, because what the notch can
 // usefully move is different: fitted there is a column of information to read, magnified there is a
 // picture to step through and a ladder to climb.
-bool items_view::media_wheel(const pointi loc, const ui::wheel_notch notch)
+bool items_view::media_wheel(const pointi loc, const platform::wheel_notch notch)
 {
 	const auto magnified = _display && (_display->is_temporary_zoom() || _display->is_zoom_mode());
 
@@ -1307,7 +1307,7 @@ bool items_view::media_wheel(const pointi loc, const ui::wheel_notch notch)
 // let into zoom mode, so it is allowed to be the scale control for whatever it is over.
 bool items_view::pinch(const pointi loc, const int steps)
 {
-	const df::scope_exit refresh_controller([this] { _state.invalidate_view(view_invalid::controller); });
+	const core::scope_exit refresh_controller([this] { _state.invalidate_view(view_invalid::controller); });
 
 	switch (region_at(loc))
 	{
@@ -1433,7 +1433,7 @@ void items_view::update_visible_items_list()
 		_visible_items = std::move(new_visible_items);
 		_visible_items_valid = true;
 		stage_visible_thumbnails();
-		df::trace("items_view::update_visible_items_list changed");
+		core::trace("items_view::update_visible_items_list changed");
 
 		const auto visible_center_loc = logical_items_bounds.center();
 		auto visible_center_distance = INT_MAX;
@@ -1564,7 +1564,7 @@ void items_view::stage_visible_thumbnails()
 }
 
 
-void items_view::render(ui::draw_context& dc, const view_controller_ptr controller)
+void items_view::render(render::draw_context& dc, const view_controller_ptr controller)
 {
 	const auto media_offset = -_media_scroller.scroll_offset();
 
@@ -1574,7 +1574,7 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 	{
 		if (_media_element)
 		{
-			const ui::scoped_clip clip(dc, calc_media_bounds());
+			const render::scoped_clip clip(dc, calc_media_bounds());
 			_media_element->render(dc, -media_offset);
 		}
 	}
@@ -1592,7 +1592,7 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 		}
 
 		{
-			const ui::scoped_clip clip(dc, _regions.items);
+			const render::scoped_clip clip(dc, _regions.items);
 			for (const auto& e : _item_elements)
 			{
 				if (e->bounds.intersects(logical_view_bounds))
@@ -1603,7 +1603,7 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 		}
 
 		{
-			const ui::scoped_clip clip(dc, _regions.media);
+			const render::scoped_clip clip(dc, _regions.media);
 			for (const auto& e : _media_elements)
 			{
 				e->render(dc, media_offset);
@@ -1611,7 +1611,7 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 		}
 
 		{
-			const ui::scoped_clip items_clip(dc, _regions.items);
+			const render::scoped_clip items_clip(dc, _regions.items);
 			const auto& state_focus = _state.focus_item();
 			const auto has_related = _state.search().has_related();
 
@@ -1689,7 +1689,7 @@ void items_view::render(ui::draw_context& dc, const view_controller_ptr controll
 
 	// Last, and over everything: the address bar above shares this view's background, so without an
 	// edge the two read as one surface and it is not obvious which part scrolls.
-	dc.draw_rect(recti(0, 0, _client_extent.cx, 1), ui::color(0.0f, 0.0f, 0.0f, dc.colors.alpha * 0.5f));
+	dc.draw_rect(recti(0, 0, _client_extent.cx, 1), core::color(0.0f, 0.0f, 0.0f, dc.colors.alpha * 0.5f));
 }
 
 void items_view::make_visible(const df::item_element_ptr& i)
@@ -1768,7 +1768,7 @@ void items_view::update_item_scroller_sections()
 			const auto icon = group->icon;
 			const auto y = group->bounds.top;
 
-			if (str::icmp(run_text, text) != 0 ||
+			if (core::icmp(run_text, text) != 0 ||
 				run_icon != icon)
 			{
 				close_run(y);
@@ -1798,7 +1798,7 @@ void items_view::update_item_scroller_sections()
 	_items_scroller.sections(std::move(sections));
 }
 
-int layout_media_column(const media_column_inputs& in, ui::measure_context& mc)
+int layout_media_column(const media_column_inputs& in, render::measure_context& mc)
 {
 	flex_container_layout media_column;
 	media_column.direction = flex_direction::column;
@@ -1828,7 +1828,7 @@ int layout_media_column(const media_column_inputs& in, ui::measure_context& mc)
 
 	// The element is shared and outlives this call, so the floor has to come back even if measuring
 	// or laying out a child throws - otherwise it keeps a raised minimum height for the session.
-	const df::scope_exit restore_floor([media, restore_media_min]
+	const core::scope_exit restore_floor([media, restore_media_min]
 	{
 		if (media) media->flex.min_size.cy = restore_media_min;
 	});
@@ -1836,10 +1836,10 @@ int layout_media_column(const media_column_inputs& in, ui::measure_context& mc)
 	if (media)
 	{
 		const auto content_width = std::max(
-			0, in.bounds.width() - df::round(media_column.padding.cx * 2 * mc.scale_factor));
+			0, in.bounds.width() - core::round(media_column.padding.cx * 2 * mc.scale_factor));
 		const auto natural_media = media->measure(mc, content_width).cy;
 		const auto floor_px = std::min(natural_media, in.bounds.height() / 2);
-		media->flex.min_size.cy = std::max(restore_media_min, df::round(floor_px / mc.scale_factor));
+		media->flex.min_size.cy = std::max(restore_media_min, core::round(floor_px / mc.scale_factor));
 	}
 
 	// One rule for both arrangements: the column is centred in the pane, and starts at the top once it
@@ -1871,7 +1871,7 @@ int layout_media_column(const media_column_inputs& in, ui::measure_context& mc)
 	return detail_top + detail_extent.cy;
 }
 
-void items_view::layout(ui::measure_context& mc, const sizei extent)
+void items_view::layout(render::measure_context& mc, const sizei extent)
 {
 	const auto focus = _state.focus_item();
 	const auto current_item_anchor = focus && is_visible(focus) ? focus : _layout_center_item;
@@ -1888,10 +1888,10 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 	_scale_factor = mc.scale_factor;
 	_top_chrome_height = 0;
 	_sidebar_splitter_width = mc.scroll_width;
-	const auto sidebar_min = df::round(64 * mc.scale_factor);
+	const auto sidebar_min = core::round(64 * mc.scale_factor);
 	const auto sidebar_max = std::max(sidebar_min, extent.cx / 3);
 	const auto sidebar_preferred = setting.sidebar.width > 0
-		                               ? df::round(setting.sidebar.width * mc.scale_factor)
+		                               ? core::round(setting.sidebar.width * mc.scale_factor)
 		                               : sidebar_host::preferred_width(mc);
 	_sidebar_width = std::clamp(sidebar_preferred, sidebar_min, sidebar_max);
 
@@ -1908,7 +1908,7 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 		_sidebar->layout_embedded(mc, sidebar_bounds());
 	}
 
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 
 	const auto is_zoom = _display && (_display->is_zoom_mode() || _display->comparing());
@@ -1942,8 +1942,8 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 			std::ranges::find(_media_elements, media_anchor.element) != _media_elements.end();
 		_media_scroller.restore_anchor(_host, media_anchor, media_anchor_is_current);
 
-		const auto scroll_text_width = mc.measure_text("88888", ui::style::font_face::dialog,
-		                                               ui::style::text_style::single_line, _client_extent.cx / 5).cx;
+		const auto scroll_text_width = mc.measure_text("88888", render::font_face::dialog,
+		                                               render::text_style::single_line, _client_extent.cx / 5).cx;
 		auto item_layout_iteration_count = 1;
 
 		for (auto i = 0; i < item_layout_iteration_count; i++)
@@ -1961,7 +1961,7 @@ void items_view::layout(ui::measure_context& mc, const sizei extent)
 			item_column.direction = flex_direction::column;
 			item_column.wrap = flex_wrap::no_wrap;
 			item_column.align_items = flex_align::start;
-			item_column.padding = {0, df::round(mc.padding2 / mc.scale_factor)};
+			item_column.padding = {0, core::round(mc.padding2 / mc.scale_factor)};
 			const auto items_height = layout_flex_elements(
 				_item_elements, mc, avail_item_bounds, item_column).cy;
 
@@ -2027,14 +2027,14 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg = calc_background_color(dc);
-		xdraw_icon(dc, icon_index::edit_copy, logical_bounds, ui::color(dc.colors.foreground, dc.colors.alpha), bg);
+		xdraw_icon(dc, icon_index::edit_copy, logical_bounds, core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -2077,15 +2077,15 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		_device_bounds = logical_bounds;
 		const auto bg = calc_background_color(dc);
-		xdraw_icon(dc, icon_index::link, logical_bounds, ui::color(dc.colors.foreground, dc.colors.alpha), bg);
+		xdraw_icon(dc, icon_index::link, logical_bounds, core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -2193,8 +2193,8 @@ class cover_art_control final : public view_element, public std::enable_shared_f
 {
 public:
 	df::item_element_ptr _item;
-	mutable ui::const_surface_ptr _tex_source;
-	mutable ui::texture_ptr _tex;
+	mutable core::const_surface_ptr _tex_source;
+	mutable render::texture_ptr _tex;
 	mutable int _cx_surface = 0;
 
 	std::shared_ptr<ui::group_control> _controls = std::make_shared<ui::group_control>();
@@ -2211,7 +2211,7 @@ public:
 
 	// Read from the item rather than held: the surface is decoded by the render worker and dropped by
 	// resource cleanup, so a copy kept here would outlive the eviction and miss the restage.
-	ui::const_surface_ptr surface() const
+	core::const_surface_ptr surface() const
 	{
 		return _item ? _item->cover_art_surface() : nullptr;
 	}
@@ -2238,7 +2238,7 @@ public:
 		_controls->hover(ic);
 	}
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
 		auto avail = cx;
 		auto cy = 0;
@@ -2263,7 +2263,7 @@ public:
 		return {cx, cy};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds) override
+	void layout(render::measure_context& mc, const recti bounds) override
 	{
 		view_element::layout(mc, bounds);
 
@@ -2272,7 +2272,7 @@ public:
 		_controls->layout(mc, control_bounds);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto s = surface();
 
@@ -2284,7 +2284,7 @@ public:
 			{
 				const auto t = dc.create_texture();
 
-				if (t && t->update(s) != ui::texture_update_result::failed)
+				if (t && t->update(s) != render::texture_update_result::failed)
 				{
 					_tex = t;
 					_tex_source = s;
@@ -2343,11 +2343,11 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto left = logical_bounds.left + std::max(0, (logical_bounds.width() - _table_width) / 2);
-		const auto color = ui::color(dc.colors.foreground, dc.colors.alpha * 0.77f);
+		const auto color = core::color(dc.colors.foreground, dc.colors.alpha * 0.77f);
 
 		for (auto i = 0_z; i < _values.size(); ++i)
 		{
@@ -2359,19 +2359,19 @@ public:
 			const auto row = static_cast<int>(i / _columns);
 			const auto cell = recti(left + column * _cell_width, logical_bounds.top + row * _line_height,
 			                        left + (column + 1) * _cell_width, logical_bounds.top + (row + 1) * _line_height);
-			dc.draw_text(std::string_view(text.data(), end - text.data()), cell, ui::style::font_face::code,
-			             ui::style::text_style::single_line_far, color, {});
+			dc.draw_text(std::string_view(text.data(), end - text.data()), cell, render::font_face::code,
+			             render::text_style::single_line_far, color, {});
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto extent = mc.measure_text("65535"sv, ui::style::font_face::code,
-		                                    ui::style::text_style::single_line, width_limit);
-		_line_height = extent.cy + df::round(2.0 * mc.scale_factor);
-		_cell_width = std::min(extent.cx + df::round(8.0 * mc.scale_factor), width_limit / _columns);
+		const auto extent = mc.measure_text("65535"sv, render::font_face::code,
+		                                    render::text_style::single_line, width_limit);
+		_line_height = extent.cy + core::round(2.0 * mc.scale_factor);
+		_cell_width = std::min(extent.cx + core::round(8.0 * mc.scale_factor), width_limit / _columns);
 		_table_width = _cell_width * _columns;
-		const auto rows = df::round_up(static_cast<int>(_values.size()), _columns);
+		const auto rows = core::round_up(static_cast<int>(_values.size()), _columns);
 		return {std::min(width_limit, _table_width), rows * _line_height};
 	}
 };
@@ -2627,13 +2627,13 @@ public:
 		if (_tree_state->invalidate) _tree_state->invalidate();
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
-		const auto clr_dim = ui::color(dc.colors.foreground, dc.colors.alpha * 0.55f);
-		const auto clr_line = ui::color(dc.colors.foreground, dc.colors.alpha * 0.3f);
-		const auto thickness = std::max(1, df::round(dc.scale_factor));
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr_dim = core::color(dc.colors.foreground, dc.colors.alpha * 0.55f);
+		const auto clr_line = core::color(dc.colors.foreground, dc.colors.alpha * 0.3f);
+		const auto thickness = std::max(1, core::round(dc.scale_factor));
 
 		for (auto i = 0_z; i < _visible.size(); ++i)
 		{
@@ -2669,7 +2669,7 @@ public:
 			if (static_cast<int>(i) == _hot)
 			{
 				dc.draw_rounded_rect(recti(logical_bounds.left, top, logical_bounds.right, top + _line_height),
-				                     ui::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.25f),
+				                     core::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.25f),
 				                     dc.padding1);
 			}
 
@@ -2678,8 +2678,8 @@ public:
 
 			if (x < key_right)
 			{
-				dc.draw_text(r.key, recti(x, top, key_right, top + _line_height), ui::style::font_face::dialog,
-				             ui::style::text_style::single_line, r.container ? clr : clr_dim, {});
+				dc.draw_text(r.key, recti(x, top, key_right, top + _line_height), render::font_face::dialog,
+				             render::text_style::single_line, r.container ? clr : clr_dim, {});
 			}
 
 			x = logical_bounds.left + _key_width;
@@ -2687,14 +2687,14 @@ public:
 			if (!(r.prose && v.open))
 			{
 				dc.draw_text(r.value, recti(x, top, x + _value_width - col_padding, top + _line_height),
-				             ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
+				             render::font_face::dialog, render::text_style::single_line, clr, {});
 			}
 
 			if (_shape_width > 0)
 			{
 				x = logical_bounds.left + _key_width + _value_width;
 				dc.draw_text(r.shape, recti(x, top, x + _shape_width - col_padding, top + _line_height),
-				             ui::style::font_face::dialog, ui::style::text_style::single_line_far, clr_dim, {});
+				             render::font_face::dialog, render::text_style::single_line_far, clr_dim, {});
 			}
 
 			if (v.detail_height > 0)
@@ -2716,17 +2716,17 @@ public:
 					dc.draw_text(r.detail,
 					             recti(logical_bounds.left + _detail_left, detail_top, logical_bounds.right,
 					                   detail_top + v.detail_height),
-					             r.prose ? ui::style::font_face::dialog : ui::style::font_face::code,
-					             ui::style::text_style::multiline, r.prose ? clr : clr_dim, {});
+					             r.prose ? render::font_face::dialog : render::font_face::code,
+					             render::text_style::multiline, r.prose ? clr : clr_dim, {});
 				}
 			}
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto text_height = mc.text_line_height(ui::style::font_face::dialog);
-		_line_height = text_height + df::round(4.0 * mc.scale_factor);
+		const auto text_height = mc.text_line_height(render::font_face::dialog);
+		_line_height = text_height + core::round(4.0 * mc.scale_factor);
 		_indent = text_height;
 		_visible.clear();
 		_visible.reserve(_rows.size());
@@ -2769,18 +2769,18 @@ public:
 			v.spines = mask;
 			v.open = open;
 
-			const auto key_size = mc.measure_text(r.key, ui::style::font_face::dialog,
-			                                      ui::style::text_style::single_line, width_limit, _line_height);
+			const auto key_size = mc.measure_text(r.key, render::font_face::dialog,
+			                                      render::text_style::single_line, width_limit, _line_height);
 			key_natural = std::max(key_natural, r.depth * _indent + key_size.cx + col_padding);
 
-			const auto value_size = mc.measure_text(r.value, ui::style::font_face::dialog,
-			                                        ui::style::text_style::single_line, width_limit, _line_height);
+			const auto value_size = mc.measure_text(r.value, render::font_face::dialog,
+			                                        render::text_style::single_line, width_limit, _line_height);
 			value_natural = std::max(value_natural, value_size.cx + col_padding);
 
 			if (!r.shape.empty())
 			{
-				const auto shape_size = mc.measure_text(r.shape, ui::style::font_face::dialog,
-				                                        ui::style::text_style::single_line, width_limit,
+				const auto shape_size = mc.measure_text(r.shape, render::font_face::dialog,
+				                                        render::text_style::single_line, width_limit,
 				                                        _line_height);
 				shape_natural = std::max(shape_natural, shape_size.cx + col_padding);
 			}
@@ -2816,9 +2816,9 @@ public:
 				{
 					v.detail_height = mc.measure_text(r.detail,
 					                                  r.prose
-						                                  ? ui::style::font_face::dialog
-						                                  : ui::style::font_face::code,
-					                                  ui::style::text_style::multiline, avail_width).cy;
+						                                  ? render::font_face::dialog
+						                                  : render::font_face::code,
+					                                  render::text_style::multiline, avail_width).cy;
 				}
 			}
 
@@ -2876,13 +2876,13 @@ public:
 		update_hot(loc);
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		_pressed_row = _bounds.contains(loc) ? _control->row_from_location(loc, _element_offset) : -1;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		// The row that was pressed is the row that toggles. Reading the release alone meant a press
 		// that drifted onto a neighbour, or off the control entirely, expanded or collapsed a row
@@ -2894,9 +2894,9 @@ public:
 		_pressed_row = -1;
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return _control->hot() >= 0 ? ui::style::cursor::link : ui::style::cursor::normal;
+		return _control->hot() >= 0 ? platform::cursor::link : platform::cursor::normal;
 	}
 };
 
@@ -2914,7 +2914,7 @@ inline view_controller_ptr metadata_tree_control::controller_from_location(
 
 void items_view::add_metadata_elements(std::vector<view_element_ptr>& elements, const metadata_block& block)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	if (block.values.empty() && block.raw.empty() && block.parsed) return;
 
@@ -2930,7 +2930,7 @@ void items_view::add_metadata_elements(std::vector<view_element_ptr>& elements, 
 	auto title = std::string(format_metadata_standard(block.standard));
 	std::string summary;
 
-	if (block.bytes > 0) summary = df::format_size(df::file_size(block.bytes));
+	if (block.bytes > 0) summary = platform::format_size(core::file_size(block.bytes));
 
 	if (value_count > 0)
 	{
@@ -2994,7 +2994,7 @@ static std::string single_line_preview(const std::string_view text)
 void items_view::add_description_elements(std::vector<view_element_ptr>& elements, const df::item_element_ptr& item,
                                           const prop::item_metadata_const_ptr& md)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	if (!md) return;
 
@@ -3025,7 +3025,7 @@ void items_view::add_description_elements(std::vector<view_element_ptr>& element
 
 	std::vector<view_element_ptr> buttons;
 
-	if (auto urls = df::url_extract_all(all_text); !urls.empty())
+	if (auto urls = core::url_extract_all(all_text); !urls.empty())
 	{
 		buttons.emplace_back(std::make_shared<url_element>(std::move(urls)));
 	}
@@ -3087,7 +3087,7 @@ void items_view::add_description_elements(std::vector<view_element_ptr>& element
 void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, const display_state_ptr& display,
                                      const df::item_element_ptr& item)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	const auto table = std::make_shared<ui::table_element>(flex_item::stretch);
 	table->no_shrink_col[0] = true;
@@ -3156,7 +3156,7 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 		auto stream = std::make_shared<stream_element>(_state, item, st, audio_track_number);
 
 		std::vector<view_element_ptr> row = {
-			std::make_shared<text_element>(str::to_string(st.index)),
+			std::make_shared<text_element>(core::to_string(st.index)),
 			std::make_shared<text_element>(type),
 			stream,
 			std::make_shared<text_element>(codec),
@@ -3175,7 +3175,7 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 
 void items_view::update_media_elements()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	if (!_reset_media_scroll)
 	{
 		_pending_media_anchor = _media_scroller.capture_anchor(
@@ -3278,12 +3278,12 @@ void items_view::update_media_elements()
 				{
 					elements.emplace_back(std::make_shared<document_control>(display, flex_item::center));
 
-					if (item->file_size().to_int64() > df::one_meg)
+					if (item->file_size().to_int64() > core::one_meg)
 					{
 						elements.emplace_back(std::make_shared<divider_element>());
 						auto element = std::make_shared<text_element>(tt.truncated_at_one_mb,
-						                                              ui::style::font_face::title,
-						                                              ui::style::text_style::multiline_center,
+						                                              render::font_face::title,
+						                                              render::text_style::multiline_center,
 						                                              flex_item::center |
 						                                              view_element_style::important);
 						element->padding = {8, 8};
@@ -3335,8 +3335,8 @@ void items_view::update_media_elements()
 				// separates them and a line as well would be saying it twice.
 				auto verbose_element = std::make_shared<link_element>(
 					setting.verbose_metadata ? tt.hide_verbose_metadata : tt.show_verbose_metadata,
-					commands::verbose_metadata, ui::style::font_face::dialog,
-					ui::style::text_style::multiline_center, flex_item::center);
+					commands::verbose_metadata, render::font_face::dialog,
+					render::text_style::multiline_center, flex_item::center);
 				elements.emplace_back(verbose_element);
 				elements.emplace_back(media_padding(8));
 			};

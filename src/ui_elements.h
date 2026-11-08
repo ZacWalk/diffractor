@@ -6,7 +6,7 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: The application's own elements on libdesktop-render's element tree: the explainer that
+// Purpose: The application's own elements on libdesktop UI's element tree: the explainer that
 // opens a view's controls panel, centred action text, and a surface drawn in the orientation the
 // user's settings ask for. The tree itself, and the basic elements, are libdesktop's.
 
@@ -32,35 +32,35 @@ public:
 	explicit action_element(const std::string_view t) : text_element_base(
 		t, flex_item::center | flex_item::new_line)
 	{
-		_font = ui::style::font_face::dialog;
-		_text_style = ui::style::text_style::multiline;
+		_font = render::font_face::dialog;
+		_text_style = render::text_style::multiline;
 		_foreground_clr = ui::style::colors.dialog_text;
 	}
 
 	explicit action_element(std::string&& t) : text_element_base(
 		t, flex_item::center | flex_item::new_line)
 	{
-		_font = ui::style::font_face::dialog;
-		_text_style = ui::style::text_style::multiline;
+		_font = render::font_face::dialog;
+		_text_style = render::text_style::multiline;
 		_foreground_clr = ui::style::colors.dialog_text;
 	}
 };
 
 class surface_element final : public view_element
 {
-	const ui::const_surface_ptr _surface;
-	mutable ui::texture_ptr _tex;
+	const core::const_surface_ptr _surface;
+	mutable render::texture_ptr _tex;
 	int _max_size = 0;
-	ui::orientation _orientation = ui::orientation::top_left;
+	core::orientation _orientation = core::orientation::top_left;
 
 public:
-	surface_element(ui::const_surface_ptr s, const int max_size, const view_element_options& options,
-	                const ui::orientation orientation = ui::orientation::top_left) noexcept :
+	surface_element(core::const_surface_ptr s, const int max_size, const view_element_options& options,
+	                const core::orientation orientation = core::orientation::top_left) noexcept :
 		view_element(options), _surface(std::move(s)), _max_size(max_size), _orientation(orientation)
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		if (is_valid(_surface))
 		{
@@ -68,7 +68,7 @@ public:
 			{
 				const auto t = dc.create_texture();
 
-				if (t && t->update(_surface) != ui::texture_update_result::failed)
+				if (t && t->update(_surface) != render::texture_update_result::failed)
 				{
 					_tex = t;
 				}
@@ -77,10 +77,10 @@ public:
 			if (_tex)
 			{
 				const auto destination = bounds.offset(element_offset);
-				if (setting.show_rotated && _orientation != ui::orientation::top_left)
+				if (setting.show_rotated && _orientation != core::orientation::top_left)
 				{
 					dc.draw_texture(_tex, quadd(destination).transform(to_simple_transform(_orientation)),
-					                recti(_tex->dimensions()), dc.colors.alpha, ui::texture_sampler::point);
+					                recti(_tex->dimensions()), dc.colors.alpha, render::texture_sampler::point);
 				}
 				else
 				{
@@ -90,12 +90,12 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		if (!is_valid(_surface)) return {};
 		auto dimensions = _surface->dimensions();
 		if (setting.show_rotated && flips_xy(_orientation)) std::swap(dimensions.cx, dimensions.cy);
-		return ui::scale_dimensions(dimensions,
+		return core::scale_dimensions(dimensions,
 		                            _max_size == 0 ? width_limit : std::min(_max_size, width_limit), true);
 	}
 

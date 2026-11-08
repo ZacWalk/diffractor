@@ -129,9 +129,9 @@ namespace
 	}
 
 	// Movie takes photos and videos and nothing else, wherever they come from.
-	std::vector<df::file_path> media_paths(const df::item_set& items)
+	std::vector<core::file_path> media_paths(const df::item_set& items)
 	{
-		std::vector<df::file_path> result;
+		std::vector<core::file_path> result;
 
 		for (const auto& i : items.items())
 		{
@@ -177,7 +177,7 @@ namespace
 
 struct movie_frame_key
 {
-	df::file_path path;
+	core::file_path path;
 	int time_ms = 0;
 	int max_dim = 0;
 
@@ -193,7 +193,7 @@ struct movie_frame_key_hash
 {
 	size_t operator()(const movie_frame_key& k) const noexcept
 	{
-		return df::ihash{}(k.path) ^ (static_cast<size_t>(k.time_ms) * 2654435761u) ^ (k.max_dim * 40503u);
+		return core::ihash{}(k.path) ^ (static_cast<size_t>(k.time_ms) * 2654435761u) ^ (k.max_dim * 40503u);
 	}
 };
 
@@ -203,7 +203,7 @@ struct movie_frame_key_hash
 class movie_slot_decoders
 {
 public:
-	ui::const_surface_ptr frame(const size_t slot, const df::file_path path, const double time, const int max_dim,
+	core::const_surface_ptr frame(const size_t slot, const core::file_path path, const double time, const int max_dim,
 	                            const double tolerance)
 	{
 		if (slot >= _decoders.size()) return {};
@@ -225,7 +225,7 @@ public:
 			decoder = std::move(opened);
 		}
 
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
 		// The slack is half a frame of the clip's own, so the frame decoded is the nearest one: a fixed
 		// step wider than a frame let a high-rate clip answer with its neighbour.
@@ -262,7 +262,7 @@ public:
 	// Answers from the cache when it can, and asks for the frame when it cannot. A miss returns
 	// null and the caller draws nothing there until the answer arrives and invalidates the view.
 	// `urgent` marks the frame the user is looking at, which jumps the queue of thumbnails behind it.
-	ui::const_surface_ptr fetch(const df::file_path path, const bool is_photo, const double time, const int max_dim,
+	core::const_surface_ptr fetch(const core::file_path path, const bool is_photo, const double time, const int max_dim,
 	                            const bool urgent = false)
 	{
 		if (path.is_empty() || max_dim <= 0) return {};
@@ -287,7 +287,7 @@ public:
 	// that until the one asked for arrives, so a preview waiting on a decode holds its picture
 	// instead of blinking to black between frames. `period` is one frame of the clip's source: a slot
 	// shows the frame at the time asked, so it is keyed to the millisecond and decoded to the nearest.
-	ui::const_surface_ptr slot_frame(const size_t slot, const df::file_path path, const bool is_photo,
+	core::const_surface_ptr slot_frame(const size_t slot, const core::file_path path, const bool is_photo,
 	                                 const double time, const int max_dim, const double period)
 	{
 		if (slot >= _slots.size() || path.is_empty() || max_dim <= 0) return {};
@@ -336,7 +336,7 @@ public:
 	// Peak audio levels across the whole of `path`: empty while they are being measured, and empty
 	// for a file that carries no audio. Measured once per source and kept, because the control that
 	// draws them repaints on every pointer move.
-	const std::vector<uint8_t>& audio_peaks(const df::file_path path)
+	const std::vector<uint8_t>& audio_peaks(const core::file_path path)
 	{
 		static const std::vector<uint8_t> none;
 
@@ -386,9 +386,9 @@ private:
 
 	struct slot_state
 	{
-		df::file_path path;
+		core::file_path path;
 		movie_frame_key shown;
-		ui::const_surface_ptr surface;
+		core::const_surface_ptr surface;
 	};
 
 	void touch(const movie_frame_key& key)
@@ -397,7 +397,7 @@ private:
 		_order.emplace_back(key);
 	}
 
-	void publish(const request_state& req, ui::const_surface_ptr surface, const uint64_t generation)
+	void publish(const request_state& req, core::const_surface_ptr surface, const uint64_t generation)
 	{
 		// The key carries every input the frame depends on, so a decoded frame is never wrong and is
 		// always worth keeping -- only a cache that has since been cleared refuses it.
@@ -527,7 +527,7 @@ private:
 	//
 	// The level track is drawn for one clip at a time, so asking for another clip's levels cancels the
 	// scan for the last where it stands, rather than letting it read a file nobody is looking at.
-	void request_peaks(const df::file_path path)
+	void request_peaks(const core::file_path path)
 	{
 		cancel_peaks();
 
@@ -541,7 +541,7 @@ private:
 		_state.queue_async(async_queue::work, [weak, path, generation, cancelled, &s = _state]
 		{
 			std::vector<uint8_t> peaks;
-			const df::cancel_token token(*cancelled);
+			const core::cancel_token token(*cancelled);
 			av_format_decoder decoder;
 
 			if (!token.is_cancelled() && decoder.open(path, media_intent::playback))
@@ -569,7 +569,7 @@ private:
 		_peaks_path.clear();
 	}
 
-	void publish_peaks(const df::file_path path, std::vector<uint8_t> peaks, const uint64_t generation,
+	void publish_peaks(const core::file_path path, std::vector<uint8_t> peaks, const uint64_t generation,
 	                   const std::shared_ptr<std::atomic_bool>& request, const bool completed)
 	{
 		// A file with no audio answers with an empty result, and that answer is kept: without it the
@@ -591,7 +591,7 @@ private:
 		if (on_answered) on_answered();
 	}
 
-	static ui::const_surface_ptr decode(const movie_frame_key& key, const bool is_photo)
+	static core::const_surface_ptr decode(const movie_frame_key& key, const bool is_photo)
 	{
 		const sizei max_dim{key.max_dim, key.max_dim};
 
@@ -611,7 +611,7 @@ private:
 		const auto duration = decoder.end_time() - decoder.start_time();
 		if (duration <= 0) return {};
 
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 		const auto wanted = std::clamp(key.time_ms / 1000.0, 0.0, duration);
 
 		return decoder.extract_thumbnail(surface, max_dim, wanted, duration, true, 0.0)
@@ -621,12 +621,12 @@ private:
 
 	view_state& _state;
 	std::shared_ptr<movie_slot_decoders> _decoders;
-	df::hash_map<movie_frame_key, ui::const_surface_ptr, movie_frame_key_hash> _cache;
-	df::hash_set<movie_frame_key, movie_frame_key_hash> _failed;
-	df::hash_map<df::file_path, std::vector<uint8_t>, df::ihash, df::ieq> _peaks;
+	core::hash_map<movie_frame_key, core::const_surface_ptr, movie_frame_key_hash> _cache;
+	core::hash_set<movie_frame_key, movie_frame_key_hash> _failed;
+	core::hash_map<core::file_path, std::vector<uint8_t>, core::ihash, core::ieq> _peaks;
 	// The one source whose levels are being measured, and the flag that cancels that scan. The flag is
 	// shared with the scan, which outlives this object's interest in it.
-	df::file_path _peaks_path;
+	core::file_path _peaks_path;
 	std::shared_ptr<std::atomic_bool> _peaks_cancel;
 	std::array<slot_state, slot_count> _slots;
 	std::vector<movie_frame_key> _order;
@@ -652,24 +652,24 @@ public:
 		padding = {4, 4};
 	}
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
 		// The scrollbar's row is always reserved, so a timeline that grows past the width does not
 		// push the strip, and the preview above it, upwards.
 		return {
-			cx, df::round(timeline_tile_cy * mc.scale_factor) + mc.padding2 * 3 +
-			mc.text_line_height(ui::style::font_face::dialog) + scrollbar_row_cy(mc)
+			cx, core::round(timeline_tile_cy * mc.scale_factor) + mc.padding2 * 3 +
+			mc.text_line_height(render::font_face::dialog) + scrollbar_row_cy(mc)
 		};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
 		// Hit testing has to use the device metrics the tiles were laid out with. Recomputing them
 		// from a nominal scale of 1 put every hit one tile out on any display above 100%.
-		_tile_cx = df::round(timeline_tile_cx * mc.scale_factor);
-		_tile_cy = df::round(timeline_tile_cy * mc.scale_factor);
+		_tile_cx = core::round(timeline_tile_cx * mc.scale_factor);
+		_tile_cy = core::round(timeline_tile_cy * mc.scale_factor);
 		_pad = mc.padding2;
 		_scrollbar_cy = scrollbar_row_cy(mc);
 
@@ -683,14 +683,14 @@ public:
 		clamp_scroll();
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto& project = _view->project();
 		const auto r = bounds.offset(element_offset);
 
-		dc.draw_rect(r, ui::color(ui::style::colors.group_background, dc.colors.alpha));
+		dc.draw_rect(r, core::color(ui::style::colors.group_background, dc.colors.alpha));
 
-		const auto text_cy = dc.text_line_height(ui::style::font_face::dialog);
+		const auto text_cy = dc.text_line_height(render::font_face::dialog);
 		const auto playing_index = clip_at_playhead();
 		const auto dragging = _drag_from >= 0 && _drag_to >= 0;
 
@@ -699,7 +699,7 @@ public:
 		{
 			// A tile scrolled part way out of the strip is cut at the strip's edge rather than drawn
 			// over the margin beside it.
-			const ui::scoped_clip strip_clip(dc, r);
+			const render::scoped_clip strip_clip(dc, r);
 
 			for (size_t i = 0; i < project.size(); ++i)
 			{
@@ -712,7 +712,7 @@ public:
 
 				// Selection is the set a command acts on; focus is the one the panel describes. They
 				// are drawn differently because they are different facts.
-				dc.draw_rect(tile, ui::color(is_selected
+				dc.draw_rect(tile, core::color(is_selected
 					                             ? ui::style::colors.dialog_selected_background
 					                             : ui::style::colors.dialog_background,
 				                             dc.colors.alpha * (dragging && is_selected ? 0.5f : 1.0f)));
@@ -724,13 +724,13 @@ public:
 					// Focus is one clip and the selection is a set, so focus is an outline over the
 					// selected fill rather than another fill.
 					dc.draw_border(tile.inflate(-dc.padding1), tile,
-					               ui::color(dc.colors.foreground, dc.colors.alpha),
-					               ui::color(dc.colors.foreground, 0.0f));
+					               core::color(dc.colors.foreground, dc.colors.alpha),
+					               core::color(dc.colors.foreground, 0.0f));
 				}
 
 				if (static_cast<int>(i) == playing_index)
 				{
-					const auto play_clr = ui::color(ui::style::colors.important_background, dc.colors.alpha);
+					const auto play_clr = core::color(ui::style::colors.important_background, dc.colors.alpha);
 					const recti bar{tile.left, tile.bottom - dc.padding1, tile.right, tile.bottom};
 					dc.draw_rect(bar, play_clr);
 				}
@@ -740,8 +740,8 @@ public:
 					                  ? std::format("{} *", format_clock(clip.duration()))
 					                  : format_clock(clip.duration());
 
-				dc.draw_text(text, label, ui::style::font_face::dialog, ui::style::text_style::single_line_center,
-				             ui::color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_text(text, label, render::font_face::dialog, render::text_style::single_line_center,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 
 			const auto marker = dragging ? std::optional<int>(_drag_to) : _external_drop_to;
@@ -750,7 +750,7 @@ public:
 			{
 				const auto x = r.left + _pad + *marker * (_tile_cx + _pad) - _pad / 2 - _scroll;
 				dc.draw_rect({x - 1, r.top + _pad, x + 2, r.top + _pad + _tile_cy},
-				             ui::color(dc.colors.foreground, dc.colors.alpha));
+				             core::color(dc.colors.foreground, dc.colors.alpha));
 			}
 		}
 
@@ -760,8 +760,8 @@ public:
 		{
 			const auto track = scrollbar_bounds().offset(element_offset);
 			const auto thumb = scrollbar_thumb_bounds().offset(element_offset);
-			dc.draw_rounded_rect(track, ui::color(dc.colors.foreground, dc.colors.alpha * 0.15f), track.height() / 2);
-			dc.draw_rounded_rect(thumb, ui::color(dc.colors.foreground, dc.colors.alpha * 0.55f), thumb.height() / 2);
+			dc.draw_rounded_rect(track, core::color(dc.colors.foreground, dc.colors.alpha * 0.15f), track.height() / 2);
+			dc.draw_rounded_rect(thumb, core::color(dc.colors.foreground, dc.colors.alpha * 0.55f), thumb.height() / 2);
 		}
 
 		prune_textures();
@@ -863,9 +863,9 @@ public:
 		const auto track = scrollbar_bounds();
 		const auto content = std::max(1, content_width());
 		const auto thumb_cx = std::min(track.width(), std::max(_scrollbar_cy * 3,
-		                                                       df::mul_div(track.width(), bounds.width(), content)));
+		                                                       core::mul_div(track.width(), bounds.width(), content)));
 		const auto travel = std::max(0, track.width() - thumb_cx);
-		const auto left = track.left + df::mul_div(_scroll, travel, std::max(1, max_scroll()));
+		const auto left = track.left + core::mul_div(_scroll, travel, std::max(1, max_scroll()));
 		return {left, track.top, left + thumb_cx, track.bottom};
 	}
 
@@ -874,14 +874,14 @@ public:
 	{
 		const auto track = scrollbar_bounds();
 		const auto travel = std::max(1, track.width() - scrollbar_thumb_bounds().width());
-		set_scroll(df::mul_div(std::clamp(x - track.left, 0, travel), max_scroll(), travel));
+		set_scroll(core::mul_div(std::clamp(x - track.left, 0, travel), max_scroll(), travel));
 	}
 
 	// A wheel or touchpad delta, in the units the frame accumulates them in, scaled with the tiles so
 	// one detent moves the strip the same distance on screen at any display scale.
 	void scroll_by_wheel(const int delta)
 	{
-		scroll_by(df::mul_div(delta, _tile_cx, timeline_tile_cx));
+		scroll_by(core::mul_div(delta, _tile_cx, timeline_tile_cx));
 	}
 
 	bool is_dragging() const
@@ -927,7 +927,7 @@ public:
 			return false;
 		}
 
-		const auto now = platform::tick_count();
+		const auto now = core::tick_count();
 		// Bounded, so a stall between two steps does not throw the strip to its end.
 		const auto elapsed = _edge_scroll_tick == 0 ? 0.0 : std::min(0.25, (now - _edge_scroll_tick) / 1000.0);
 		_edge_scroll_tick = now;
@@ -973,9 +973,9 @@ private:
 		return {x, r.top + _pad, x + _tile_cx, r.top + _pad + _tile_cy};
 	}
 
-	static int scrollbar_row_cy(const ui::measure_context& mc)
+	static int scrollbar_row_cy(const render::measure_context& mc)
 	{
-		return std::max(df::round(10 * mc.scale_factor), mc.padding1);
+		return std::max(core::round(10 * mc.scale_factor), mc.padding1);
 	}
 
 	// Every tile and the gap after it, plus the gap before the first.
@@ -1024,7 +1024,7 @@ private:
 		return static_cast<int>(movie_step_origin(project.timing().starts, 0, true, _view->movie_state().playhead));
 	}
 
-	void draw_thumbnail(ui::draw_context& dc, const movie_clip& clip, const size_t index, const recti target) const
+	void draw_thumbnail(render::draw_context& dc, const movie_clip& clip, const size_t index, const recti target) const
 	{
 		// A clip whose source was not found has nothing to draw and nothing to ask for. The probe
 		// owns that answer, so the strip states it rather than decoding to rediscover it -- and it
@@ -1032,13 +1032,13 @@ private:
 		// a clip that is gone.
 		if (clip.is_lost())
 		{
-			const auto clr = ui::color(ui::style::colors.warning_background, dc.colors.alpha);
-			const auto text_cy = dc.text_line_height(ui::style::font_face::dialog);
+			const auto clr = core::color(ui::style::colors.warning_background, dc.colors.alpha);
+			const auto text_cy = dc.text_line_height(render::font_face::dialog);
 			const recti icon{target.left, target.top, target.right, target.bottom - text_cy};
 
 			xdraw_icon(dc, icon_index::error, icon, clr, {});
 			dc.draw_text(clip.path.name().sv(), {target.left, icon.bottom, target.right, target.bottom},
-			             ui::style::font_face::dialog, ui::style::text_style::single_line_center, clr, {});
+			             render::font_face::dialog, render::text_style::single_line_center, clr, {});
 			return;
 		}
 
@@ -1047,9 +1047,9 @@ private:
 
 		if (!is_valid(surface))
 		{
-			dc.draw_text(clip.path.name().sv(), target, ui::style::font_face::dialog,
-			             ui::style::text_style::multiline_center,
-			             ui::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
+			dc.draw_text(clip.path.name().sv(), target, render::font_face::dialog,
+			             render::text_style::multiline_center,
+			             core::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
 			return;
 		}
 
@@ -1064,13 +1064,13 @@ private:
 		if (!entry.second || entry.first != surface)
 		{
 			auto t = dc.create_texture();
-			if (!t || t->update(surface) == ui::texture_update_result::failed) return;
+			if (!t || t->update(surface) == render::texture_update_result::failed) return;
 			entry = {surface, t};
 		}
 
 		// Fitted, never stretched: the movie letterboxes mixed aspect ratios and so does the strip
 		// that stands for it.
-		const auto fitted = ui::scale_dimensions(surface->dimensions(), target.extent(), false);
+		const auto fitted = core::scale_dimensions(surface->dimensions(), target.extent(), false);
 		dc.draw_texture(entry.second, recti(fitted).offset(target.center() - recti(fitted).center()),
 		                dc.colors.alpha);
 	}
@@ -1098,7 +1098,7 @@ private:
 	int64_t _edge_scroll_tick = 0;
 	double _edge_scroll_carry = 0;
 	mutable std::vector<movie_frame_key> _drawn;
-	mutable df::hash_map<movie_frame_key, std::pair<ui::const_surface_ptr, ui::texture_ptr>, movie_frame_key_hash>
+	mutable core::hash_map<movie_frame_key, std::pair<core::const_surface_ptr, render::texture_ptr>, movie_frame_key_hash>
 	_textures;
 };
 
@@ -1129,9 +1129,9 @@ public:
 	// it was set by on screen rather than snapping back to the other end.
 	int _last_handle = 0;
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
-		const auto frame_cy = df::round(trim_frame_cy * mc.scale_factor);
+		const auto frame_cy = core::round(trim_frame_cy * mc.scale_factor);
 
 		// A photo has no trim, no sound and no player, so the control is only its frame.
 		if (is_photo()) return {cx, frame_cy};
@@ -1139,21 +1139,21 @@ public:
 		return {
 			cx,
 			frame_cy + mc.padding1 + level_track_cy(mc.padding1) +
-			mc.text_line_height(ui::style::font_face::dialog)
+			mc.text_line_height(render::font_face::dialog)
 		};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_pad = mc.padding1;
-		_frame_cy = df::round(trim_frame_cy * mc.scale_factor);
+		_frame_cy = core::round(trim_frame_cy * mc.scale_factor);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto r = bounds.offset(element_offset);
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		draw_handle_frame(dc, {r.left, r.top, r.right, r.top + _frame_cy});
 
@@ -1162,12 +1162,12 @@ public:
 		if (is_photo()) return;
 
 		const auto track = track_bounds(r);
-		dc.draw_rect(track, ui::color(ui::style::colors.dialog_background, dc.colors.alpha));
+		dc.draw_rect(track, core::color(ui::style::colors.dialog_background, dc.colors.alpha));
 
 		if (_limit <= 0) return;
 
 		const recti selected{to_x(track, _start), track.top, to_x(track, _end), track.bottom};
-		dc.draw_rect(selected, ui::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
+		dc.draw_rect(selected, core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
 
 		draw_levels(dc, track);
 
@@ -1176,7 +1176,7 @@ public:
 		{
 			const auto x = to_x(track, *_view->clip_position());
 			dc.draw_rect({x, track.top, x + 2, track.bottom},
-			             ui::color(ui::style::colors.important_background, dc.colors.alpha));
+			             core::color(ui::style::colors.important_background, dc.colors.alpha));
 		}
 
 		draw_handle(dc, track, _start, clr);
@@ -1184,7 +1184,7 @@ public:
 
 		const recti label{r.left, track.bottom, r.right, r.bottom};
 		dc.draw_text(std::format("{} - {}", format_clock(_start), format_clock(_end)), label,
-		             ui::style::font_face::dialog, ui::style::text_style::single_line_center, clr, {});
+		             render::font_face::dialog, render::text_style::single_line_center, clr, {});
 
 		if (can_play())
 		{
@@ -1282,8 +1282,8 @@ private:
 	// again and a surface the cache has replaced never draws from a stale texture.
 	struct held_frame
 	{
-		ui::const_surface_ptr surface;
-		ui::texture_ptr texture;
+		core::const_surface_ptr surface;
+		render::texture_ptr texture;
 	};
 
 	// Tall enough that a spoken word is a visible bump rather than a flicker on a hairline.
@@ -1301,10 +1301,10 @@ private:
 	int to_x(const recti track, const double time) const
 	{
 		if (_limit <= 0) return track.left;
-		return track.left + df::round(track.width() * std::clamp(time / _limit, 0.0, 1.0));
+		return track.left + core::round(track.width() * std::clamp(time / _limit, 0.0, 1.0));
 	}
 
-	void draw_handle(ui::draw_context& dc, const recti track, const double time, const ui::color clr) const
+	void draw_handle(render::draw_context& dc, const recti track, const double time, const core::color clr) const
 	{
 		const auto x = to_x(track, time);
 		const auto half = std::max(3, dc.padding1);
@@ -1314,11 +1314,11 @@ private:
 	// One frame, showing what the handle in hand is selecting -- or, while the clip player runs, what
 	// the clip is doing. Two frames at once halved the size of each and still answered a question
 	// nobody was asking: while a handle moves, the only frame that matters is that handle's.
-	void draw_handle_frame(ui::draw_context& dc, const recti target) const
+	void draw_handle_frame(render::draw_context& dc, const recti target) const
 	{
 		const auto* const clip = _view->project().current_clip();
 
-		dc.draw_rect(target, ui::color(ui::style::colors.group_background, dc.colors.alpha));
+		dc.draw_rect(target, core::color(ui::style::colors.group_background, dc.colors.alpha));
 
 		if (!clip || clip->is_missing) return;
 
@@ -1343,10 +1343,10 @@ private:
 		{
 			if (const auto tex = _view->clip_texture(dc))
 			{
-				const auto fitted = ui::scale_dimensions(clip->extent, target.extent(), false);
+				const auto fitted = core::scale_dimensions(clip->extent, target.extent(), false);
 				const auto destination = recti(fitted).offset(target.center() - recti(fitted).center());
 				dc.draw_texture(tex, upright_movie_destination(destination, tex->_orientation),
-				                recti({}, tex->dimensions()), dc.colors.alpha, ui::texture_sampler::bilinear);
+				                recti({}, tex->dimensions()), dc.colors.alpha, render::texture_sampler::bilinear);
 				return;
 			}
 		}
@@ -1367,23 +1367,23 @@ private:
 	// Fitted, never stretched, as everything else that stands for a movie frame is. The surface it
 	// was made from is held beside the texture so an unchanged frame is not uploaded again and a
 	// surface the cache has replaced never draws from a stale texture.
-	static void draw_fitted(ui::draw_context& dc, const recti target, const ui::const_surface_ptr& surface,
+	static void draw_fitted(render::draw_context& dc, const recti target, const core::const_surface_ptr& surface,
 	                        held_frame& held)
 	{
 		if (held.surface != surface)
 		{
 			if (!held.texture) held.texture = dc.create_texture();
-			if (!held.texture || held.texture->update(surface) == ui::texture_update_result::failed) return;
+			if (!held.texture || held.texture->update(surface) == render::texture_update_result::failed) return;
 			held.surface = surface;
 		}
 
-		const auto fitted = ui::scale_dimensions(surface->dimensions(), target.extent(), false);
+		const auto fitted = core::scale_dimensions(surface->dimensions(), target.extent(), false);
 		dc.draw_texture(held.texture, recti(fitted).offset(target.center() - recti(fitted).center()), dc.colors.alpha);
 	}
 
 	// Where the sound is, drawn on the track being dragged. A trim is usually aimed at the start or
 	// end of someone talking, and that is invisible in a picture.
-	void draw_levels(ui::draw_context& dc, const recti track) const
+	void draw_levels(render::draw_context& dc, const recti track) const
 	{
 		const auto* const clip = _view->project().current_clip();
 		if (!clip || clip->is_photo || clip->is_missing) return;
@@ -1397,10 +1397,10 @@ private:
 		const auto middle = (track.top + track.bottom) / 2;
 		const auto half_cy = std::max(1, (track.height() - 2) / 2);
 
-		const auto inside = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto inside = core::color(dc.colors.foreground, dc.colors.alpha);
 		// Outside the trim is dimmed rather than hidden: the point of showing the whole source is
 		// seeing what a handle would have to move to include.
-		const auto outside = ui::color(dc.colors.foreground, dc.colors.alpha * 0.35f);
+		const auto outside = core::color(dc.colors.foreground, dc.colors.alpha * 0.35f);
 		const auto start_x = to_x(track, _start);
 		const auto end_x = to_x(track, _end);
 
@@ -1409,7 +1409,7 @@ private:
 			const auto bucket = static_cast<size_t>(static_cast<int64_t>(x - track.left) *
 				static_cast<int64_t>(peaks.size()) / cx);
 			const auto level = peaks[std::min(bucket, peaks.size() - 1)] / 255.0;
-			const auto cy = df::round(half_cy * level);
+			const auto cy = core::round(half_cy * level);
 			if (cy <= 0) continue;
 
 			dc.draw_rect({x, middle - cy, std::min(x + bar_cx, track.right), middle + cy},
@@ -1440,9 +1440,9 @@ namespace
 		{
 		}
 
-		ui::style::cursor cursor() const override { return ui::style::cursor::link; }
+		platform::cursor cursor() const override { return platform::cursor::link; }
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (_bounds.contains(loc)) _invoke();
 		}
@@ -1465,9 +1465,9 @@ namespace
 			_strip->end_drag();
 		}
 
-		ui::style::cursor cursor() const override { return ui::style::cursor::link; }
+		platform::cursor cursor() const override { return platform::cursor::link; }
 
-		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
 			view_controller::on_mouse_left_button_down(loc, keys);
 			_held = true;
@@ -1507,7 +1507,7 @@ namespace
 			_host->frame()->invalidate();
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (_strip->is_dragging())
 			{
@@ -1559,9 +1559,9 @@ namespace
 		{
 		}
 
-		ui::style::cursor cursor() const override { return ui::style::cursor::left_right; }
+		platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
 			view_controller::on_mouse_left_button_down(loc, keys);
 			_tracking = true;
@@ -1579,7 +1579,7 @@ namespace
 			if (_tracking) scroll_to(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (_tracking) scroll_to(loc);
 			_tracking = false;
@@ -1613,9 +1613,9 @@ namespace
 		{
 		}
 
-		ui::style::cursor cursor() const override { return ui::style::cursor::left_right; }
+		platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
 			view_controller::on_mouse_left_button_down(loc, keys);
 			_held = true;
@@ -1630,7 +1630,7 @@ namespace
 			if (_held) seek(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			_held = false;
 		}
@@ -1674,9 +1674,9 @@ namespace
 			_view->end_preview_override();
 		}
 
-		ui::style::cursor cursor() const override { return ui::style::cursor::left_right; }
+		platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
 			view_controller::on_mouse_left_button_down(loc, keys);
 
@@ -1711,7 +1711,7 @@ namespace
 			if (_held) move(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (!_held) return;
 
@@ -1776,7 +1776,7 @@ namespace
 		std::shared_ptr<movie_trim_control> _trim;
 		int _handle;
 		size_t _clip_index = 0;
-		df::file_path _clip_path;
+		core::file_path _clip_path;
 		int _press_x = 0;
 		double _press_time = 0;
 		bool _held = false;
@@ -1820,14 +1820,14 @@ void movie_view_state::read_from_project()
 
 	crossfade = s.transition == movie_transition::crossfade;
 	cut = !crossfade;
-	transition_tenths = std::clamp(df::round(s.transition_seconds * 10), 0, 100);
+	transition_tenths = std::clamp(core::round(s.transition_seconds * 10), 0, 100);
 	fade_in = s.fade_in;
 	fade_out = s.fade_out;
-	photo_tenths = std::clamp(df::round(s.photo_seconds * 10), 1, 600);
+	photo_tenths = std::clamp(core::round(s.photo_seconds * 10), 1, 600);
 
 	if (const auto* const clip = project.current_clip(); clip && clip->is_photo)
 	{
-		clip_hold_tenths = std::clamp(df::round(clip->duration() * 10), 1, 600);
+		clip_hold_tenths = std::clamp(core::round(clip->duration() * 10), 1, 600);
 		clip_hold_is_default = clip->photo_duration_is_default;
 	}
 }
@@ -1843,12 +1843,12 @@ movie_settings movie_view_state::to_settings() const
 	// The panel speaks tenths. A length it is still showing is the document's own and is kept exactly --
 	// another tool's 0.75 s crossfade shows as 0.8 -- so choosing a setting again changes nothing. A
 	// length typed in is held to the bounds any document is.
-	if (df::round(result.transition_seconds * 10) != transition_tenths)
+	if (core::round(result.transition_seconds * 10) != transition_tenths)
 	{
 		result.transition_seconds = std::clamp(transition_tenths / 10.0, 0.0, movie_max_transition_seconds);
 	}
 
-	if (df::round(result.photo_seconds * 10) != photo_tenths)
+	if (core::round(result.photo_seconds * 10) != photo_tenths)
 	{
 		result.photo_seconds = std::clamp(photo_tenths / 10.0, movie_min_photo_seconds, movie_max_photo_seconds);
 	}
@@ -1901,11 +1901,11 @@ void movie_view_controls::create_controls()
 	                                                     {
 		                                                     _view->settings_changed(movie_edit_group::photo_duration);
 	                                                     }, settled);
-	_output_text = std::make_shared<text_element>(std::string_view{}, ui::style::text_style::multiline);
+	_output_text = std::make_shared<text_element>(std::string_view{}, render::text_style::multiline);
 
 	_clip_divider = std::make_shared<divider_element>();
 	_clip_title = std::make_shared<ui::title_control>(icon_index::edit, tt.movie_clip_title);
-	_clip_text = std::make_shared<text_element>(std::string_view{}, ui::style::text_style::multiline);
+	_clip_text = std::make_shared<text_element>(std::string_view{}, render::text_style::multiline);
 	_trim = std::make_shared<movie_trim_control>(_view.get());
 	_clip_hold_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_clip_duration,
 	                                                         _movie_state.clip_hold_tenths, 1, 300,
@@ -1933,7 +1933,7 @@ void movie_view_controls::create_controls()
 		_clip_hold_default_check,
 	};
 
-	_clr = ui::color(ui::style::colors.dialog_text);
+	_clr = core::color(ui::style::colors.dialog_text);
 	update_for_document();
 }
 
@@ -1970,7 +1970,7 @@ bool movie_view_controls::update_for_document()
 		const auto bytes = static_cast<uint64_t>((output.video_bitrate + output.audio_bitrate) / 8.0 *
 			timing.duration);
 		output_text += "\n~ ";
-		output_text += df::format_size(df::file_size(bytes));
+		output_text += platform::format_size(core::file_size(bytes));
 	}
 
 	show_text(_output_text, _shown_output_text, output_text);
@@ -2057,7 +2057,7 @@ bool movie_view_controls::update_for_document()
 	return text_changed;
 }
 
-void movie_view_controls::layout_controls(ui::measure_context& mc)
+void movie_view_controls::layout_controls(render::measure_context& mc)
 {
 	if (!_controls.empty())
 	{
@@ -2174,7 +2174,7 @@ void movie_view::activate(const sizei extent)
 	changed();
 }
 
-void movie_view::seed_from(const std::vector<df::file_path>& paths)
+void movie_view::seed_from(const std::vector<core::file_path>& paths)
 {
 	auto& project = _movie_state.project;
 
@@ -2257,7 +2257,7 @@ void movie_view::broadcast_event(const view_element_event& event) const
 
 std::string_view movie_view::title()
 {
-	_title = std::format("{}: {}", s_app_name, tt.movie_title);
+	_title = std::format("{}: {}", core::app_name(), tt.movie_title);
 	return _title;
 }
 
@@ -2282,13 +2282,13 @@ bool movie_view::can_render() const
 	return _movie_state.project.is_ready_to_render() && !_progress.active;
 }
 
-void movie_view::layout(ui::measure_context& mc, const sizei extent)
+void movie_view::layout(render::measure_context& mc, const sizei extent)
 {
 	_extent = extent;
 
 	const auto outer = recti(extent).inflate(-mc.padding2);
 	const auto strip_cy = _timeline ? _timeline->measure(mc, outer.width()).cy : 0;
-	const auto transport_cy = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
+	const auto transport_cy = mc.text_line_height(render::font_face::dialog) + mc.padding2 * 2;
 
 	const auto strip_top = std::max(outer.top, outer.bottom - strip_cy);
 	const recti strip{outer.left, strip_top, outer.right, outer.bottom};
@@ -2307,8 +2307,8 @@ void movie_view::layout(ui::measure_context& mc, const sizei extent)
 		_play_bounds.right, _transport_bounds.top, _play_bounds.right + play_cx, _transport_bounds.bottom
 	};
 
-	const auto clock_cx = mc.measure_text("000:00 / 000:00", ui::style::font_face::dialog,
-	                                      ui::style::text_style::single_line, _transport_bounds.width()).cx;
+	const auto clock_cx = mc.measure_text("000:00 / 000:00", render::font_face::dialog,
+	                                      render::text_style::single_line, _transport_bounds.width()).cx;
 
 	_scrubber_bounds = {
 		_next_bounds.right + mc.padding2, _transport_bounds.top,
@@ -2332,21 +2332,21 @@ recti movie_view::calc_preview_target(const sizei source) const
 
 	// Fitted, never stretched. Mixed aspect ratios letterbox on black, which is what the render
 	// does, and the preview exists to be believed.
-	const auto fitted = ui::scale_dimensions(source, _preview_bounds.extent(), false);
+	const auto fitted = core::scale_dimensions(source, _preview_bounds.extent(), false);
 	return recti(fitted).offset(_preview_bounds.center() - recti(fitted).center());
 }
 
-void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
+void movie_view::render(render::draw_context& dc, view_controller_ptr controller)
 {
 	const auto& project = _movie_state.project;
 
-	dc.draw_rect(_preview_bounds, ui::color(0, dc.colors.alpha));
+	dc.draw_rect(_preview_bounds, core::color(0, dc.colors.alpha));
 
 	if (project.is_empty())
 	{
-		dc.draw_text(tt.movie_empty, _preview_bounds, ui::style::font_face::dialog,
-		             ui::style::text_style::multiline_center,
-		             ui::color(dc.colors.foreground, dc.colors.alpha), {});
+		dc.draw_text(tt.movie_empty, _preview_bounds, render::font_face::dialog,
+		             render::text_style::multiline_center,
+		             core::color(dc.colors.foreground, dc.colors.alpha), {});
 	}
 	else
 	{
@@ -2382,8 +2382,8 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		if (session_b >= av_max_frame_sessions) preopen_preview_source(session_a);
 
 		const auto draw_source = [&](const movie_frame_source& source, const size_t cache_slot,
-		                             const size_t session_slot, ui::texture_ptr& texture,
-		                             ui::const_surface_ptr& drawn, const float weight) -> recti
+		                             const size_t session_slot, render::texture_ptr& texture,
+		                             core::const_surface_ptr& drawn, const float weight) -> recti
 		{
 			if (source.index < 0 || weight <= 0.0f) return {};
 
@@ -2399,7 +2399,7 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 
 				if (preview.session)
 				{
-					preview.session->update_for_present(df::now());
+					preview.session->update_for_present(core::now());
 
 					if (!preview.texture) preview.texture = dc.create_texture();
 
@@ -2417,7 +2417,7 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 							dc.draw_texture(preview.texture,
 							                upright_movie_destination(target, preview.texture->_orientation),
 							                recti({}, preview.texture->dimensions()), dc.colors.alpha * weight,
-							                ui::texture_sampler::bilinear);
+							                render::texture_sampler::bilinear);
 							return target;
 						}
 					}
@@ -2435,7 +2435,7 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 			if (drawn != surface)
 			{
 				if (!texture) texture = dc.create_texture();
-				if (!texture || texture->update(surface) == ui::texture_update_result::failed) return {};
+				if (!texture || texture->update(surface) == render::texture_update_result::failed) return {};
 				drawn = surface;
 			}
 
@@ -2452,7 +2452,7 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 
 		if (has_mix)
 		{
-			const auto attenuation = ui::color(0, dc.colors.alpha * static_cast<float>(frame.b.weight));
+			const auto attenuation = core::color(0, dc.colors.alpha * static_cast<float>(frame.b.weight));
 			if (target_b.is_empty())
 			{
 				dc.draw_rect(_preview_bounds, attenuation);
@@ -2469,35 +2469,35 @@ void movie_view::render(ui::draw_context& dc, view_controller_ptr controller)
 		if (frame.fade_to_black > 0)
 		{
 			dc.draw_rect(_preview_bounds,
-			             ui::color(0, dc.colors.alpha * static_cast<float>(frame.fade_to_black)));
+			             core::color(0, dc.colors.alpha * static_cast<float>(frame.fade_to_black)));
 		}
 	}
 
-	const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+	const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 	const auto total = duration();
 
 	// Stepping needs somewhere to step to, so the two clip buttons state whether there is.
-	const auto step_clr = ui::color(dc.colors.foreground, dc.colors.alpha * (project.size() > 1 ? 1.0f : 0.35f));
+	const auto step_clr = core::color(dc.colors.foreground, dc.colors.alpha * (project.size() > 1 ? 1.0f : 0.35f));
 
 	xdraw_icon(dc, icon_index::small_left, _prev_bounds, step_clr, {});
 	xdraw_icon(dc, _movie_state.playing == movie_view_state::playing_t::movie ? icon_index::pause : icon_index::play,
 	           _play_bounds, clr, {});
 	xdraw_icon(dc, icon_index::small_right, _next_bounds, step_clr, {});
 
-	dc.draw_rect(_scrubber_bounds, ui::color(ui::style::colors.dialog_background, dc.colors.alpha));
+	dc.draw_rect(_scrubber_bounds, core::color(ui::style::colors.dialog_background, dc.colors.alpha));
 
 	if (total > 0)
 	{
-		const auto x = _scrubber_bounds.left + df::round(
+		const auto x = _scrubber_bounds.left + core::round(
 			_scrubber_bounds.width() * std::clamp(_movie_state.playhead / total, 0.0, 1.0));
 		dc.draw_rect({_scrubber_bounds.left, _scrubber_bounds.top, x, _scrubber_bounds.bottom},
-		             ui::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
+		             core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
 	}
 
 	const recti clock{_scrubber_bounds.right + dc.padding2, _transport_bounds.top, _transport_bounds.right,
 	                  _transport_bounds.bottom};
 	dc.draw_text(std::format("{} / {}", format_clock(_movie_state.playhead), format_clock(total)), clock,
-	             ui::style::font_face::dialog, ui::style::text_style::single_line_center, clr, {});
+	             render::font_face::dialog, render::text_style::single_line_center, clr, {});
 
 	if (_timeline) _timeline->render(dc, {});
 }
@@ -2540,7 +2540,7 @@ view_controller_ptr movie_view::controller_from_location(const view_host_ptr& ho
 	return nullptr;
 }
 
-bool movie_view::mouse_wheel(const pointi loc, const ui::wheel_notch notch)
+bool movie_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch)
 {
 	// The strip is one row that runs off the side, so either axis moves it along: there is nothing
 	// else for the wheel to do while the pointer is over it. It follows the smooth delta rather than
@@ -2552,7 +2552,7 @@ bool movie_view::mouse_wheel(const pointi loc, const ui::wheel_notch notch)
 	return true;
 }
 
-bool movie_view::key_down(const char32_t key, const ui::key_state keys)
+bool movie_view::key_down(const char32_t key, const platform::key_state keys)
 {
 	// The key constants are runtime values, so this cannot be a switch.
 	if (key == ' ')
@@ -2561,19 +2561,19 @@ bool movie_view::key_down(const char32_t key, const ui::key_state keys)
 		return true;
 	}
 
-	if (key == keys::DEL)
+	if (key == platform::keys::DEL)
 	{
 		remove_current();
 		return true;
 	}
 
-	if (key == keys::LEFT)
+	if (key == platform::keys::LEFT)
 	{
 		step_clip(false);
 		return true;
 	}
 
-	if (key == keys::RIGHT)
+	if (key == platform::keys::RIGHT)
 	{
 		step_clip(true);
 		return true;
@@ -2640,7 +2640,7 @@ bool movie_view::tick()
 	if (!_movie_state.is_playing()) return false;
 
 	// The high-resolution clock: GetTickCount's 16 ms steps moved the playhead unevenly.
-	const auto now = df::now();
+	const auto now = core::now();
 	const auto elapsed = _last_tick == 0.0 ? 0.0 : std::max(0.0, now - _last_tick);
 	_last_tick = now;
 
@@ -2689,7 +2689,7 @@ bool movie_view::tick()
 		{
 			// The session's clock, not the wall clock: the audio device drives it, and that is what
 			// puts a cut where the user heard it rather than near it.
-			const auto media_now = df::now();
+			const auto media_now = core::now();
 			repaint |= _clip_session->update_for_present(media_now);
 			_movie_state.clip_playhead = std::clamp(_clip_session->pos(media_now), clip->start, clip->end);
 
@@ -2723,7 +2723,7 @@ void movie_view::toggle_play()
 	_movie_state.playing = was_playing_movie
 		                       ? movie_view_state::playing_t::nothing
 		                       : movie_view_state::playing_t::movie;
-	_last_tick = df::now();
+	_last_tick = core::now();
 	_painted_frame = -1;
 
 	// Playing is the user saying where to look, so the preview stops answering for the focused clip.
@@ -2768,7 +2768,7 @@ void movie_view::toggle_play_clip()
 		open_clip_session(clip->path, _movie_state.clip_playhead);
 	}
 
-	_last_tick = df::now();
+	_last_tick = core::now();
 	_painted_frame = -1;
 	_state.invalidate_view(view_invalid::view_redraw | view_invalid::command_state | view_invalid::animations);
 }
@@ -2776,7 +2776,7 @@ void movie_view::toggle_play_clip()
 // The clip player is a real session, so it hears the file the ordinary way and the audio device
 // times it. It can take the application player's single slot only because it never runs at the same
 // time as the movie preview.
-void movie_view::open_clip_session(const df::file_path path, const double at)
+void movie_view::open_clip_session(const core::file_path path, const double at)
 {
 	close_clip_session();
 
@@ -2806,7 +2806,7 @@ void movie_view::open_clip_session(const df::file_path path, const double at)
 	                              });
 }
 
-void movie_view::clip_session_opened(const df::file_path path, const uint64_t request,
+void movie_view::clip_session_opened(const core::file_path path, const uint64_t request,
                                      std::shared_ptr<av_session> ses)
 {
 	// Focus may have moved, or the player stopped, or been started again, while the file was opening.
@@ -2908,7 +2908,7 @@ void movie_view::preopen_preview_source(const size_t used_slot)
 	if (!ensure_preview_source(slot, next.index, clip, clip.start)) return;
 
 	// Settled while it waits, so the transition's first frame is one the slot already holds.
-	_preview_sources[slot].session->update_for_present(df::now());
+	_preview_sources[slot].session->update_for_present(core::now());
 }
 
 // Points one preview slot at one clip, and answers whether it has a session yet. Opening is a
@@ -2972,7 +2972,7 @@ void movie_view::update_preview_source(const size_t slot, const int clip_index, 
 		preview.sought.reset();
 	}
 
-	const auto position = preview.session->pos(df::now());
+	const auto position = preview.session->pos(core::now());
 	// Parked, the frame shown must be the one at the playhead or the handle, not a neighbour, so it is
 	// held to half a frame of the clip's own.
 	const auto tolerance = playing ? preview_seek_tolerance : movie_frame_period(clip) / 2;
@@ -2985,7 +2985,7 @@ void movie_view::update_preview_source(const size_t slot, const int clip_index, 
 	}
 }
 
-void movie_view::preview_source_opened(const size_t slot, const int clip_index, const df::file_path path,
+void movie_view::preview_source_opened(const size_t slot, const int clip_index, const core::file_path path,
                                        std::shared_ptr<av_session> ses)
 {
 	if (slot >= _preview_sources.size()) return;
@@ -3096,7 +3096,7 @@ void movie_view::reset_preview_audio()
 	_preview_audio_time = _movie_state.playhead;
 	_preview_device->reset();
 	_preview_audio_priming = true;
-	_preview_audio_priming_since = platform::tick_count();
+	_preview_audio_priming_since = core::tick_count();
 }
 
 void movie_view::pump_preview_audio()
@@ -3137,7 +3137,7 @@ void movie_view::pump_preview_audio()
 	// While priming, a window still being read holds the start back so the movie begins with its
 	// sound. Once playing it is silence instead: a gap is shorter than the restart a stall costs, and
 	// the sound comes back in step as soon as the window arrives.
-	const auto waited = (platform::tick_count() - _preview_audio_priming_since) / 1000.0;
+	const auto waited = (core::tick_count() - _preview_audio_priming_since) / 1000.0;
 	const auto may_wait = _preview_audio_priming && waited < preview_audio_max_priming;
 	const auto target = std::min(duration(), _movie_state.playhead + preview_audio_lead);
 
@@ -3316,7 +3316,7 @@ std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_
 	return {};
 }
 
-void movie_view::preview_pcm_loaded(const df::file_path path, const double start, const double end,
+void movie_view::preview_pcm_loaded(const core::file_path path, const double start, const double end,
                                     const int sample_rate, const int source_generation, std::vector<int16_t> pcm)
 {
 	if (!should_accept_movie_preview_pcm_loaded(_preview_audio_source_generation, source_generation)) return;
@@ -3351,7 +3351,7 @@ void movie_view::retire_source_state()
 	_drawn_b.reset();
 }
 
-ui::texture_ptr movie_view::clip_texture(ui::draw_context& dc)
+render::texture_ptr movie_view::clip_texture(render::draw_context& dc)
 {
 	if (!_clip_session || _movie_state.playing != movie_view_state::playing_t::clip) return {};
 
@@ -3362,7 +3362,7 @@ ui::texture_ptr movie_view::clip_texture(ui::draw_context& dc)
 	// should stay on screen between frames.
 	_clip_session->update_texture(_clip_texture);
 
-	return _clip_texture->is_valid() ? _clip_texture : ui::texture_ptr{};
+	return _clip_texture->is_valid() ? _clip_texture : render::texture_ptr{};
 }
 
 void movie_view::seek(const double time)
@@ -3575,7 +3575,7 @@ void movie_view::hold_changed(const movie_edit_group group)
 		// may have moved since.
 		if (clip->photo_duration_is_default)
 		{
-			_movie_state.clip_hold_tenths = std::clamp(df::round(clip->duration() * 10), 1, 600);
+			_movie_state.clip_hold_tenths = std::clamp(core::round(clip->duration() * 10), 1, 600);
 			if (_controls) _controls->show_clip_values();
 		}
 
@@ -3611,12 +3611,12 @@ void movie_view::add_items(const df::item_set& items)
 	add_paths(media_paths(items));
 }
 
-void movie_view::add_paths(const std::vector<df::file_path>& paths)
+void movie_view::add_paths(const std::vector<core::file_path>& paths)
 {
 	add_paths_at(paths, _movie_state.project.size());
 }
 
-void movie_view::add_paths_at(const std::vector<df::file_path>& paths, const size_t at)
+void movie_view::add_paths_at(const std::vector<core::file_path>& paths, const size_t at)
 {
 	if (paths.empty()) return;
 
@@ -3639,9 +3639,9 @@ void movie_view::add_paths_at(const std::vector<df::file_path>& paths, const siz
 	changed();
 }
 
-bool movie_view::drop_paths(const std::vector<df::file_path>& paths, const pointi loc)
+bool movie_view::drop_paths(const std::vector<core::file_path>& paths, const pointi loc)
 {
-	std::vector<df::file_path> media;
+	std::vector<core::file_path> media;
 
 	for (const auto& path : paths)
 	{
@@ -3694,7 +3694,7 @@ void movie_view::undo()
 
 // Probing is I/O, so it runs on a worker and comes back as detached values matched to clips by
 // path. A clip whose source has moved keeps its stored times and stays marked missing.
-movie_probe_result probe_movie_source(const df::file_path path)
+movie_probe_result probe_movie_source(const core::file_path path)
 {
 	const auto attributes_before = platform::file_attributes(path);
 	movie_probe_result probe;
@@ -3732,7 +3732,7 @@ movie_probe_result probe_movie_source(const df::file_path path)
 	return probe;
 }
 
-movie_import import_movie_maker_project(const std::string_view xml, const df::folder_path project_folder,
+movie_import import_movie_maker_project(const std::string_view xml, const core::folder_path project_folder,
                                         const movie_source_finder& find)
 {
 	movie_import result;
@@ -3741,7 +3741,7 @@ movie_import import_movie_maker_project(const std::string_view xml, const df::fo
 
 	auto& clips = result.loaded.clips;
 	const auto& recorded = result.loaded.recorded_seconds;
-	df::hash_map<df::file_path, size_t, df::ihash, df::ieq> source_index;
+	core::hash_map<core::file_path, size_t, core::ihash, core::ieq> source_index;
 
 	for (size_t i = 0; i < clips.size(); ++i)
 	{
@@ -3756,9 +3756,9 @@ movie_import import_movie_maker_project(const std::string_view xml, const df::fo
 
 	// Every probe the import makes, kept: a candidate measured to settle a choice is not opened
 	// again when its clip is measured.
-	df::hash_map<df::file_path, movie_probe_result, df::ihash, df::ieq> probes;
+	core::hash_map<core::file_path, movie_probe_result, core::ihash, core::ieq> probes;
 
-	const auto probe = [&probes](const df::file_path path) -> const movie_probe_result&
+	const auto probe = [&probes](const core::file_path path) -> const movie_probe_result&
 	{
 		const auto known = probes.find(path);
 		if (known != probes.end()) return known->second;
@@ -3766,11 +3766,11 @@ movie_import import_movie_maker_project(const std::string_view xml, const df::fo
 	};
 
 	std::vector<size_t> missing_sources;
-	std::vector<df::file_path> missing;
+	std::vector<core::file_path> missing;
 
 	for (size_t i = 0; i < result.sources.size(); ++i)
 	{
-		if (result.sources[i].stored.exists()) continue;
+		if (platform::exists(result.sources[i].stored)) continue;
 
 		missing_sources.emplace_back(i);
 		missing.emplace_back(result.sources[i].stored);
@@ -3778,13 +3778,13 @@ movie_import import_movie_maker_project(const std::string_view xml, const df::fo
 
 	if (!missing.empty())
 	{
-		auto candidates = find ? find(missing) : std::vector<std::vector<df::file_path>>{};
+		auto candidates = find ? find(missing) : std::vector<std::vector<core::file_path>>{};
 		candidates.resize(missing.size());
 
 		std::vector<double> lengths;
 		for (const auto i : missing_sources) lengths.emplace_back(result.sources[i].recorded_seconds);
 
-		const auto measure = [&probe](const df::file_path path)
+		const auto measure = [&probe](const core::file_path path)
 		{
 			const auto& measured = probe(path);
 			return measured.found && !measured.is_photo ? measured.duration : 0.0;
@@ -3841,7 +3841,7 @@ movie_import import_movie_maker_project(const std::string_view xml, const df::fo
 
 void movie_view::probe_clips()
 {
-	std::vector<df::file_path> wanted;
+	std::vector<core::file_path> wanted;
 
 	for (const auto& clip : _movie_state.project.clips())
 	{
@@ -3948,7 +3948,7 @@ std::vector<platform::file_dialog_filter> movie_project_filters()
 
 namespace
 {
-	std::string read_text_file(const df::file_path path)
+	std::string read_text_file(const core::file_path path)
 	{
 		const auto file = platform::open_file(path, platform::file_open_mode::read);
 		if (!file) return {};
@@ -3970,13 +3970,13 @@ namespace
 	// than the disk: it already lists every member, so the search is one pass over memory instead of
 	// a walk of the collection. Runs on the import's worker; the index publishes immutable folder
 	// snapshots for readers on any thread.
-	std::vector<std::vector<df::file_path>> find_in_collection(const index_state& index,
-	                                                           const std::vector<df::file_path>& missing)
+	std::vector<std::vector<core::file_path>> find_in_collection(const index_state& index,
+	                                                           const std::vector<core::file_path>& missing)
 	{
-		df::hash_map<std::string, std::vector<size_t>, df::ihash, df::ieq> wanted;
+		core::hash_map<std::string, std::vector<size_t>, core::ihash, core::ieq> wanted;
 		for (size_t i = 0; i < missing.size(); ++i) wanted[std::string(missing[i].name())].emplace_back(i);
 
-		std::vector<std::vector<df::file_path>> result(missing.size());
+		std::vector<std::vector<core::file_path>> result(missing.size());
 
 		for (const auto& path : index.all_indexed_items())
 		{
@@ -3990,13 +3990,13 @@ namespace
 	}
 }
 
-std::string write_movie_project_file(const df::file_path path, const std::string_view text,
+std::string write_movie_project_file(const core::file_path path, const std::string_view text,
                                     const bool fail_if_exists)
 {
 	const auto staged = platform::temp_file(".otio", path.folder());
-	const auto cleanup = df::scope_exit([&staged] { platform::delete_file(staged); });
+	const auto cleanup = core::scope_exit([&staged] { platform::delete_file(staged); });
 
-	if (!df::blob_save_to_file({std::bit_cast<const uint8_t*>(text.data()), text.size()}, staged))
+	if (!platform::blob_save_to_file({std::bit_cast<const uint8_t*>(text.data()), text.size()}, staged))
 	{
 		return "could not write the staged project";
 	}
@@ -4007,7 +4007,7 @@ std::string write_movie_project_file(const df::file_path path, const std::string
 	return moved.failed() ? moved.format_error() : std::string{};
 }
 
-void movie_view::load_project(const df::file_path path, const bool is_wlmp)
+void movie_view::load_project(const core::file_path path, const bool is_wlmp)
 {
 	if (_project_io_active) return;
 
@@ -4042,7 +4042,7 @@ void movie_view::load_project(const df::file_path path, const bool is_wlmp)
 
 			if (!text.empty() && is_wlmp)
 			{
-				const auto find = [&index](const std::vector<df::file_path>& missing)
+				const auto find = [&index](const std::vector<core::file_path>& missing)
 				{
 					return find_in_collection(index, missing);
 				};
@@ -4058,11 +4058,11 @@ void movie_view::load_project(const df::file_path path, const bool is_wlmp)
 		}
 		catch (const std::exception& e)
 		{
-			df::log(__FUNCTION__, e.what());
+			core::log(__FUNCTION__, e.what());
 		}
 		catch (...)
 		{
-			df::log(__FUNCTION__, "project read failed");
+			core::log(__FUNCTION__, "project read failed");
 		}
 
 		s.queue_ui([weak, path, is_wlmp, generation, revision, relinked, loaded = std::move(loaded)]() mutable
@@ -4127,7 +4127,7 @@ void movie_view::load_project(const df::file_path path, const bool is_wlmp)
 
 void movie_view::open_project()
 {
-	std::vector<df::file_path> paths;
+	std::vector<core::file_path> paths;
 	if (!platform::prompt_for_open_paths(paths, movie_project_filters(), false) || paths.empty()) return;
 
 	load_project(paths.front(), false);
@@ -4135,7 +4135,7 @@ void movie_view::open_project()
 
 void movie_view::import_project()
 {
-	std::vector<df::file_path> paths;
+	std::vector<core::file_path> paths;
 
 	const std::vector<platform::file_dialog_filter> filters{
 		{std::string(tt.movie_maker_files.sv()), "*.wlmp"}
@@ -4163,7 +4163,7 @@ void movie_view::save_project(std::function<void(bool)> complete)
 
 	if (path.is_empty())
 	{
-		path = df::folder_path(platform::known_path(platform::known_folder::video)).combine_file_ext(
+		path = core::folder_path(platform::known_path(platform::known_folder::video)).combine_file_ext(
 			std::string(tt.movie_title.sv()), ".otio");
 	}
 
@@ -4232,7 +4232,7 @@ void movie_view::save_project(std::function<void(bool)> complete)
 
 void movie_view::add_files()
 {
-	std::vector<df::file_path> paths;
+	std::vector<core::file_path> paths;
 
 	const std::vector<platform::file_dialog_filter> filters{
 		{std::string(tt.movie_media_files.sv()), "*.mp4;*.mov;*.avi;*.mkv;*.m4v;*.jpg;*.jpeg;*.png;*.heic;*.webp"}
@@ -4253,14 +4253,14 @@ void movie_view::relink_missing()
 {
 	if (!has_missing_clips() || _project_io_active) return;
 
-	df::folder_path folder;
+	core::folder_path folder;
 	if (!platform::browse_for_folder(folder) || folder.is_empty()) return;
 
 	struct relink_candidate
 	{
 		size_t index = 0;
-		df::file_path original;
-		df::file_path candidate;
+		core::file_path original;
+		core::file_path candidate;
 	};
 
 	std::vector<relink_candidate> candidates;
@@ -4287,16 +4287,16 @@ void movie_view::relink_missing()
 		try
 		{
 			std::erase_if(candidates,
-			              [](const relink_candidate& candidate) { return !candidate.candidate.exists(); });
+			              [](const relink_candidate& candidate) { return !platform::exists(candidate.candidate); });
 		}
 		catch (const std::exception& e)
 		{
-			df::log(__FUNCTION__, e.what());
+			core::log(__FUNCTION__, e.what());
 			failed = true;
 		}
 		catch (...)
 		{
-			df::log(__FUNCTION__, "relink probe failed");
+			core::log(__FUNCTION__, "relink probe failed");
 			failed = true;
 		}
 
@@ -4371,7 +4371,7 @@ namespace
 	class movie_render_sources
 	{
 	public:
-		movie_render_sources(const int frame_rate, df::cancel_token abandon) :
+		movie_render_sources(const int frame_rate, core::cancel_token abandon) :
 			_abandon(std::move(abandon)), _frame_rate(std::max(1, frame_rate))
 		{
 		}
@@ -4379,7 +4379,7 @@ namespace
 		// The frame `clip` contributes at `source_time`, decoded forward from where this slot's
 		// decoder already sits. The render walks the movie in order, so every request but the first
 		// of a clip is a step forward and costs no seek.
-		ui::const_surface_ptr frame(const size_t slot, const movie_clip& clip, const double source_time,
+		core::const_surface_ptr frame(const size_t slot, const movie_clip& clip, const double source_time,
 		                            const sizei max_dim)
 		{
 			if (slot >= _slots.size()) return {};
@@ -4390,13 +4390,13 @@ namespace
 			if (clip.is_photo) return state.photo;
 			if (!state.decoder) return {};
 
-			ui::surface_ptr surface;
+			core::surface_ptr surface;
 
 			// Half a frame of slack: refining past that costs another walk of the group of pictures
 			// for a picture that is the same one.
 			return state.decoder->extract_frame_at(surface, max_dim, source_time, 0.5 / _frame_rate, _abandon)
 			       ? upright_movie_frame(surface)
-			       : ui::const_surface_ptr{};
+			       : core::const_surface_ptr{};
 		}
 
 		// One bounded source-time chunk at the output rate. Walking into the next chunk replaces it,
@@ -4441,9 +4441,9 @@ namespace
 	private:
 		struct slot_state
 		{
-			df::file_path path;
+			core::file_path path;
 			std::unique_ptr<av_format_decoder> decoder;
-			ui::const_surface_ptr photo;
+			core::const_surface_ptr photo;
 			std::vector<int16_t> pcm;
 			bool audio_read = false;
 			double audio_start = 0;
@@ -4473,13 +4473,13 @@ namespace
 		}
 
 		std::array<slot_state, render_slot_count> _slots;
-		df::cancel_token _abandon;
+		core::cancel_token _abandon;
 		int _frame_rate = movie_default_frame_rate;
 	};
 	// Adds one clip's picture into the canvas at `weight`. The canvas starts black and a frame's
 	// weights sum to one, so adding is the whole of the mix: a single contributor lands unchanged,
 	// and the letterbox stays black because black is what it is added to.
-	void add_weighted(ui::surface& canvas, const ui::surface& src, const pointi at, const double weight)
+	void add_weighted(core::surface& canvas, const core::surface& src, const pointi at, const double weight)
 	{
 		const auto scaled = static_cast<uint32_t>(std::lround(std::clamp(weight, 0.0, 1.0) * 256.0));
 		if (scaled == 0) return;
@@ -4520,7 +4520,7 @@ namespace
 
 	// The movie's own fade to black, applied to the finished composite rather than drawn over it, so
 	// what reaches the encoder is the pixels the preview showed.
-	void darken(ui::surface& canvas, const double fade)
+	void darken(core::surface& canvas, const double fade)
 	{
 		const auto keep = static_cast<uint32_t>(std::lround(std::clamp(1.0 - fade, 0.0, 1.0) * 256.0));
 		if (keep >= 256) return;
@@ -4570,14 +4570,14 @@ namespace
 	// preview draws by, so the two cannot disagree about what a mixed-aspect movie looks like.
 	recti fit_into(const sizei source, const sizei canvas)
 	{
-		const auto fitted = ui::scale_dimensions(source, canvas, false);
+		const auto fitted = core::scale_dimensions(source, canvas, false);
 		return recti(fitted).offset(recti(canvas).center() - recti(fitted).center());
 	}
 }
 
 movie_render_result render_movie_to_file(const movie_render_request& request,
                                          const std::function<void(double)>& report,
-                                         const df::cancel_token& token,
+                                         const core::cancel_token& token,
                                          const std::shared_ptr<movie_render_control>& control)
 {
 	movie_render_result result;
@@ -4628,15 +4628,15 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 
 	av_scaler scaler;
 
-	const auto canvas = std::make_shared<ui::surface>();
-	if (!canvas->alloc(request.output.extent, ui::texture_format::RGB))
+	const auto canvas = std::make_shared<core::surface>();
+	if (!canvas->alloc(request.output.extent, core::texture_format::RGB))
 	{
 		result.reason = movie_render_error::no_memory;
 		writer->abandon();
 		return result;
 	}
 
-	ui::surface_ptr fitted;
+	core::surface_ptr fitted;
 	std::vector<int16_t> chunk;
 
 	const auto frames = std::ceil(timing.duration * frame_rate);
@@ -4705,7 +4705,7 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 				result.reason = movie_render_error::undecodable;
 				result.source = request.clips[failed->index].path;
 				result.source_time = failed->source_time;
-				df::log(__FUNCTION__, std::format("no frame from {} at {:.3f}s", result.source, result.source_time));
+				core::log(__FUNCTION__, std::format("no frame from {} at {:.3f}s", result.source, result.source_time));
 			}
 
 			return result;
@@ -4715,7 +4715,7 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 
 		if (!writer->write_frame(canvas, time))
 		{
-			df::log(__FUNCTION__, writer->last_error());
+			core::log(__FUNCTION__, writer->last_error());
 			result.reason = movie_render_error::encoder_failed;
 			writer->abandon();
 			return result;
@@ -4754,7 +4754,7 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 			if (!chunk.empty() && !writer->write_audio(chunk.data(), chunk.size(),
 			                                           static_cast<double>(samples_written) / sample_rate))
 			{
-				df::log(__FUNCTION__, writer->last_error());
+				core::log(__FUNCTION__, writer->last_error());
 				result.reason = movie_render_error::encoder_failed;
 				writer->abandon();
 				return result;
@@ -4768,7 +4768,7 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 
 	if (!writer->close())
 	{
-		df::log(__FUNCTION__, writer->last_error());
+		core::log(__FUNCTION__, writer->last_error());
 		result.reason = movie_render_error::encoder_failed;
 		writer->abandon();
 		return result;
@@ -4807,7 +4807,7 @@ void movie_view::render_movie()
 	const auto& project = _movie_state.project;
 
 	auto path = project.path().is_empty()
-		            ? df::folder_path(platform::known_path(platform::known_folder::video)).combine_file_ext(
+		            ? core::folder_path(platform::known_path(platform::known_folder::video)).combine_file_ext(
 			            std::string(tt.movie_title.sv()), ".mp4")
 		            : project.path().folder().combine_file_ext(
 			            std::string(project.path().file_name_without_extension()), ".mp4");
@@ -4836,7 +4836,7 @@ void movie_view::render_movie()
 	const auto generation = _render_generation;
 	const auto weak = weak_from_this();
 	const auto control = _render_control;
-	const auto token = df::cancel_token(control->cancelled);
+	const auto token = core::cancel_token(control->cancelled);
 
 	_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
 
@@ -4870,7 +4870,7 @@ void movie_view::render_movie()
 		{
 			// A codec that throws is a bad file, not a broken application: it stops this run and
 			// reports why.
-			df::log(__FUNCTION__, str::utf8_cast(e.what()));
+			core::log(__FUNCTION__, core::utf8_cast(e.what()));
 			result.reason = movie_render_error::undecodable;
 		}
 
@@ -4894,7 +4894,7 @@ void movie_view::render_progress(const size_t generation, const int percent)
 
 void movie_view::render_finished(const size_t generation, const bool ok, const bool cancelled,
                                  const movie_render_error reason, const std::string& message,
-                                 const str::cached name)
+                                 const core::cached name)
 {
 	if (generation != _render_generation) return;
 

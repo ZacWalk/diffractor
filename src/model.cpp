@@ -41,7 +41,7 @@ static bool av_can_use_hw()
 		!platform::crash_guard_suppressed(platform::crash_guard::gpu_render);
 }
 
-df::folder_path view_state::save_path() const
+core::folder_path view_state::save_path() const
 {
 	if (!_search.has_selector()) return known_path(platform::known_folder::pictures);
 	return _search.selectors().front().folder();
@@ -118,7 +118,7 @@ void display_state_t::load_compare_preview(const int elapsed_numerator, const in
 		const auto duration1 = md1 ? std::max(1, static_cast<int>(md1->duration)) : 1;
 		const auto duration2 = md2 ? std::max(1, static_cast<int>(md2->duration)) : 1;
 		const auto max_duration = std::max(duration1, duration2);
-		const auto elapsed = std::clamp(df::mul_div(elapsed_numerator, max_duration,
+		const auto elapsed = std::clamp(core::mul_div(elapsed_numerator, max_duration,
 		                                            std::max(1, elapsed_denominator)), 0, max_duration);
 		const auto pos1 = std::min(elapsed, duration1);
 		const auto pos2 = std::min(elapsed, duration2);
@@ -143,8 +143,8 @@ void display_state_t::load_compare_preview(const int elapsed_numerator, const in
 				if (decoder.open1(path1) &&
 					decoder.open2(path2))
 				{
-					auto surface1 = std::make_shared<ui::surface>();
-					auto surface2 = std::make_shared<ui::surface>();
+					auto surface1 = std::make_shared<core::surface>();
+					auto surface2 = std::make_shared<core::surface>();
 
 					if (decoder.decoder1->extract_seek_frame(surface1, max_dim1, pos1, duration1) &&
 						decoder.decoder2->extract_seek_frame(surface2, max_dim2, pos2, duration2))
@@ -184,7 +184,7 @@ void display_state_t::load_seek_preview(int pos_numerator, int pos_denominator, 
 			{
 				if (decoder.open1(path))
 				{
-					auto surface = std::make_shared<ui::surface>();
+					auto surface = std::make_shared<core::surface>();
 
 					if (decoder.decoder1->extract_seek_frame(surface, video_preview_size, pos_numerator,
 					                                        pos_denominator, decoder.abandon_token()))
@@ -236,7 +236,7 @@ void display_state_t::update_av_session(const std::shared_ptr<av_session>& ses)
 
 void display_state_t::load_selected_item_data()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	const auto item = _item1;
 	if (!item) return;
@@ -247,9 +247,9 @@ void display_state_t::load_selected_item_data()
 	_async.queue_async(async_queue::load,
 	                   [self = ui_owned(_async, shared_from_this()), path = item->path(), text_allowed]
 	                   {
-		                   df::scope_locked_inc l(df::loading_media);
+		                   core::scope_locked_inc l(df::loading_media);
 		                   // Shared because the UI task is stored in a std::function, which requires a copyable target.
-		                   auto data = std::make_shared<df::blob>(blob_head_from_file(path, df::one_meg));
+		                   auto data = std::make_shared<core::blob>(platform::blob_head_from_file(path, core::one_meg));
 		                   auto text = std::make_shared<document_text>(
 			                   decode_document(*data, path.extension(), text_allowed));
 
@@ -265,7 +265,7 @@ void display_state_t::load_selected_item_data()
 
 void display_state_t::load_xmp_sidecar()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	const auto item = _item1;
 	if (!item) return;
@@ -283,7 +283,7 @@ void display_state_t::load_xmp_sidecar()
 
 	_async.queue_async(async_queue::load, [weak = weak_from_this(), &async = _async, sidecar, generation]
 	{
-		const auto packet = df::blob_from_file(sidecar);
+		const auto packet = platform::blob_from_file(sidecar);
 		if (packet.empty()) return;
 
 		bool parsed = false;
@@ -349,7 +349,7 @@ void display_state_t::calc_pixel_difference()
 void view_state::load_hover_thumb(const df::item_element_ptr& item, double pos_numerator,
                                   double pos_denominator)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	const auto generation = ++_hover_thumbnail_generation;
 
 	if (item &&
@@ -365,7 +365,7 @@ void view_state::load_hover_thumb(const df::item_element_ptr& item, double pos_n
 			{
 				if (decoder.open1(path))
 				{
-					auto surface = std::make_shared<ui::surface>();
+					auto surface = std::make_shared<core::surface>();
 
 					if (decoder.decoder1->
 					            extract_thumbnail(surface, video_preview_size, pos_numerator, pos_denominator, true,
@@ -404,7 +404,7 @@ void view_state::load_hover_thumb(const df::item_element_ptr& item, double pos_n
 
 void view_state::clear_hover_codec()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	++_hover_thumbnail_generation;
 	_async.queue_media_preview([](media_preview_state& decoder)
 	{
@@ -452,10 +452,10 @@ void view_state::rescan_hydrated_display_item()
 		                   files ff;
 		                   const auto thumb_surface = loaded.to_surface(setting.thumbnail_max_dimension, false, {},
 		                                                                decode_intent::thumbnail);
-		                   if (!ui::is_valid(thumb_surface)) return;
+		                   if (!core::is_valid(thumb_surface)) return;
 
 		                   auto thumb_image = ff.surface_to_thumbnail(thumb_surface);
-		                   if (!ui::is_valid(thumb_image) || thumb_image->data().size() >= df::two_fifty_six_k) return;
+		                   if (!core::is_valid(thumb_image) || thumb_image->data().size() >= core::two_fifty_six_k) return;
 
 		                   queue_ui([this, lifetime, path, modified, thumb_image = std::move(thumb_image)]
 		                   {
@@ -480,7 +480,7 @@ void view_state::rescan_hydrated_display_item()
 struct teardown_signal
 {
 	std::atomic_int remaining;
-	platform::thread_event done{true, false};
+	core::thread_event done{true, false};
 
 	explicit teardown_signal(const int owners) : remaining(owners)
 	{
@@ -499,7 +499,7 @@ std::function<void()> test_during_detach_file_handles;
 
 detach_file_handles::detach_file_handles(view_state& s) : _state(s)
 {
-	df::gauge_enter(df::file_handles_detached);
+	core::gauge_enter(df::file_handles_detached);
 	if (++s._file_handle_detach_count > 1) return;
 	s._detached_display_item.reset();
 	s._detached_display_is_playable = false;
@@ -577,11 +577,11 @@ detach_file_handles::detach_file_handles(view_state& s) : _state(s)
 
 detach_file_handles::~detach_file_handles()
 {
-	df::gauge_leave(df::file_handles_detached);
+	core::gauge_leave(df::file_handles_detached);
 
 	// A worker can own the last reference, because the guard is handed to callers through completion
 	// callbacks. Everything the release touches is UI-owned, including the non-atomic nesting count.
-	if (ui::is_ui_thread())
+	if (platform::is_ui_thread())
 	{
 		_state.release_detached_file_handles(_reopen_display);
 	}
@@ -594,7 +594,7 @@ detach_file_handles::~detach_file_handles()
 
 void view_state::release_detached_file_handles(const bool reopen_display)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	if (!reopen_display) _detached_display_should_reopen = false;
 	if (--_file_handle_detach_count != 0) return;
@@ -606,7 +606,7 @@ void view_state::release_detached_file_handles(const bool reopen_display)
 	{
 		const auto path = _detached_display_item->path();
 
-		if (path.exists())
+		if (platform::exists(path))
 		{
 			if (_detached_display_is_playable)
 			{
@@ -628,10 +628,10 @@ void view_state::release_detached_file_handles(const bool reopen_display)
 	item_index.queue_scan_modified_items(selected_items());
 }
 
-void view_state::publish_written_image(const df::file_path path, file_load_result loaded,
-                                       const df::date_t modified) const
+void view_state::publish_written_image(const core::file_path path, file_load_result loaded,
+                                       const core::date_t modified) const
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	const auto d = display_state();
 
@@ -648,22 +648,22 @@ void view_state::publish_written_image(const df::file_path path, file_load_resul
 }
 
 // Two selected items are both on screen, so both can be handed the bytes a write produced.
-std::vector<df::file_path> view_state::displayed_photo_paths() const
+std::vector<core::file_path> view_state::displayed_photo_paths() const
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	const auto d = display_state();
 	if (!d) return {};
 
-	std::vector<df::file_path> result;
+	std::vector<core::file_path> result;
 	if (d->_item1) result.emplace_back(d->_item1->path());
 	if (d->_item2) result.emplace_back(d->_item2->path());
 	return result;
 }
 
-void view_state::publish_written_handle(const df::file_path path, platform::file_ptr file)
+void view_state::publish_written_handle(const core::file_path path, platform::file_ptr file)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	// The reopen only uses the handle for the item it detached, so anything else would just be a
 	// file held open for nothing.
@@ -675,16 +675,16 @@ void view_state::publish_written_handle(const df::file_path path, platform::file
 	_detached_display_handle = std::move(file);
 }
 
-df::file_path view_state::detached_display_av_path() const
+core::file_path view_state::detached_display_av_path() const
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	return _detached_display_is_playable && _detached_display_should_reopen && _detached_display_item
 		       ? _detached_display_item->path()
-		       : df::file_path{};
+		       : core::file_path{};
 }
 
-bool media_preview_state::open1(const df::file_path file_path)
+bool media_preview_state::open1(const file_path file_path)
 {
 	const auto new_path = !decoder1 || decoder1->path() != file_path;
 
@@ -708,7 +708,7 @@ bool media_preview_state::open1(const df::file_path file_path)
 }
 
 
-bool media_preview_state::open2(const df::file_path file_path)
+bool media_preview_state::open2(const file_path file_path)
 {
 	const auto new_path = !decoder2 || decoder2->path() != file_path;
 
@@ -731,9 +731,9 @@ bool media_preview_state::open2(const df::file_path file_path)
 	return decoder2 != nullptr;
 }
 
-df::unique_paths make_unique_paths(df::paths selection)
+core::unique_paths make_unique_paths(core::paths selection)
 {
-	df::unique_paths result(selection.files.begin(), selection.files.end());
+	core::unique_paths result(selection.files.begin(), selection.files.end());
 	for (const auto& f : selection.folders) result.emplace(f);
 	return result;
 }
@@ -1090,9 +1090,9 @@ void view_state::group_order(const std::optional<group_by> group, const std::opt
 	}
 }
 
-ui::const_image_ptr view_state::first_selected_thumb() const
+core::const_image_ptr view_state::first_selected_thumb() const
 {
-	ui::const_image_ptr result;
+	core::const_image_ptr result;
 
 	for (const auto& b : _item_groups)
 	{
@@ -1119,7 +1119,7 @@ df::unique_items view_state::existing_items() const
 	return results;
 }
 
-void view_state::append_items(const view_host_base_ptr& view, df::item_set items, const df::unique_paths& selection,
+void view_state::append_items(const view_host_base_ptr& view, df::item_set items, const core::unique_paths& selection,
                               const bool is_first, const bool is_complete)
 {
 	df::item_elements select_list;
@@ -1691,13 +1691,13 @@ public:
 		if (_prop_key != prop::null)
 		{
 			result.elements->add(make_icon_element(_prop_key->icon, flex_item::no_break));
-			result.elements->add(std::make_shared<text_element>(_prop_key->text(), ui::style::font_face::dialog,
-			                                                    ui::style::text_style::multiline,
+			result.elements->add(std::make_shared<text_element>(_prop_key->text(), render::font_face::dialog,
+			                                                    render::text_style::multiline,
 			                                                    flex_item::line_break));
 		}
 
-		result.elements->add(std::make_shared<text_element>(_search.text(), ui::style::font_face::dialog,
-		                                                    ui::style::text_style::multiline,
+		result.elements->add(std::make_shared<text_element>(_search.text(), render::font_face::dialog,
+		                                                    render::text_style::multiline,
 		                                                    flex_item::line_break));
 
 		result.active_bounds = result.window_bounds = bounds.offset(element_offset);
@@ -1734,7 +1734,7 @@ static view_element_ptr make_link(view_state& s, std::string_view text, const pr
 
 static uint32_t calc_rank_color()
 {
-	return ui::average(app_colors::rank_background, ui::style::colors.view_text);
+	return core::average(app_colors::rank_background, ui::style::colors.view_text);
 }
 
 static std::vector<view_element_ptr> format_dims(const uint16_t width, const uint16_t height, const file_type_ref ft,
@@ -1768,7 +1768,7 @@ static std::vector<view_element_ptr> format_dims(const uint16_t width, const uin
 		}
 		else
 		{
-			const auto mp = ui::calc_mega_pixels(dims.cx, dims.cy);
+			const auto mp = core::calc_mega_pixels(dims.cx, dims.cy);
 
 			if (mp > 0.9)
 			{
@@ -1787,12 +1787,12 @@ static std::vector<view_element_ptr> create_camera_elements(view_state& s, const
 	if (!is_empty(md->camera_model))
 		results.emplace_back(
 			make_link(s, md->camera_model, prop::camera_model, search_result));
-	if (!df::is_zero(md->exposure_time))
+	if (!core::is_zero(md->exposure_time))
 		results.emplace_back(make_link(s, prop::format_exposure(md->exposure_time),
 		                               df::search_t().with(
 			                               prop::exposure_time, md->exposure_time),
 		                               prop::exposure_time, search_result));
-	if (!df::is_zero(md->f_number))
+	if (!core::is_zero(md->f_number))
 		results.emplace_back(make_link(s, prop::format_f_num(md->f_number),
 		                               df::search_t().with(prop::f_number, md->f_number),
 		                               prop::f_number, search_result));
@@ -1800,7 +1800,7 @@ static std::vector<view_element_ptr> create_camera_elements(view_state& s, const
 		results.emplace_back(make_link(s, prop::format_iso(md->iso_speed),
 		                               df::search_t().with(prop::iso_speed, md->iso_speed),
 		                               prop::iso_speed, search_result));
-	if (!df::is_zero(md->focal_length))
+	if (!core::is_zero(md->focal_length))
 		results.emplace_back(make_link(
 			s, prop::format_focal_length(md->focal_length, md->focal_length_35mm_equivalent),
 			df::search_t().with(prop::focal_length, md->focal_length), prop::focal_length, search_result));
@@ -1819,7 +1819,7 @@ static std::vector<view_element_ptr> create_album_elements(view_state& s, const 
 
 	if (md->year != 0)
 	{
-		results.emplace_back(make_link(s, str::to_string(md->year), df::search_t().with(prop::year, md->year),
+		results.emplace_back(make_link(s, core::to_string(md->year), df::search_t().with(prop::year, md->year),
 		                               prop::year, search_result));
 	}
 
@@ -1832,11 +1832,11 @@ static std::vector<view_element_ptr> create_artist_elements(view_state& s, const
                                                             const df::search_result& search_result)
 {
 	std::vector<view_element_ptr> results;
-	df::hash_map<std::string_view, prop::key_ref> unique;
+	core::hash_map<std::string_view, prop::key_ref> unique;
 
 	if (!is_empty(md->artist))
 	{
-		const auto parts = split(md->artist, true, str::is_artist_separator);
+		const auto parts = split(md->artist, true, core::is_artist_separator);
 
 		for (const auto& a : parts)
 		{
@@ -1846,7 +1846,7 @@ static std::vector<view_element_ptr> create_artist_elements(view_state& s, const
 
 	if (!is_empty(md->album_artist))
 	{
-		const auto parts = split(md->album_artist, true, str::is_artist_separator);
+		const auto parts = split(md->album_artist, true, core::is_artist_separator);
 
 		for (const auto& a : parts)
 		{
@@ -1875,7 +1875,7 @@ static std::vector<view_element_ptr> create_location_elements(view_state& s, con
                                                               const df::search_result& search_result)
 {
 	std::vector<view_element_ptr> results;
-	const auto location_link = [&s, &search_result](const str::cached text, const prop::key_ref prop,
+	const auto location_link = [&s, &search_result](const core::cached text, const prop::key_ref prop,
 	                                                const df::location_level level)
 	{
 		auto search = df::search_t().location(text.sv(), level);
@@ -1916,7 +1916,7 @@ static std::vector<view_element_ptr> create_location_elements(view_state& s, con
 
 	// locations.md 2.5: the label states how far it had to reach. `Near` is display honesty --
 	// the item still carries that place's identity, so it groups and searches as that place.
-	const auto has_place = !str::is_empty(derived->place.place);
+	const auto has_place = !core::is_empty(derived->place.place);
 	const auto search_text = has_place ? derived->place.place.sv() : derived->place.country.sv();
 	auto display = qualified_name(derived->place);
 
@@ -2014,7 +2014,7 @@ static void add_media_elements(view_state& s, const prop::item_metadata_const_pt
 
 	if (!is_empty(video_codec)) video.emplace_back(make_link(s, video_codec, prop::video_codec, search_result));
 	if (!is_empty(pixel_format)) video.emplace_back(make_link(s, pixel_format, prop::pixel_format, search_result));
-	if (!str::is_empty(bitrate)) video.emplace_back(make_link(s, bitrate, prop::bitrate, search_result));
+	if (!core::is_empty(bitrate)) video.emplace_back(make_link(s, bitrate, prop::bitrate, search_result));
 
 	if (!prop::is_null(audio_sample_rate))
 		audio.emplace_back(make_link(
@@ -2040,27 +2040,27 @@ static void add_media_elements(view_state& s, const prop::item_metadata_const_pt
 class title_badge_element final : public std::enable_shared_from_this<title_badge_element>, public view_element
 {
 	const std::string _text;
-	const ui::color32 _background;
+	const core::color32 _background;
 
 public:
-	title_badge_element(std::string text, const ui::color32 background,
+	title_badge_element(std::string text, const core::color32 background,
 	                    const view_element_options& options) noexcept :
 		view_element(options), _text(std::move(text)), _background(background)
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
-		dc.draw_text(_text, bounds.offset(element_offset), ui::style::font_face::dialog,
-		             ui::style::text_style::single_line_center,
-		             ui::color(dc.colors.foreground, dc.colors.alpha),
-		             ui::color(_background, dc.colors.alpha * dc.colors.bg_alpha));
+		dc.draw_text(_text, bounds.offset(element_offset), render::font_face::dialog,
+		             render::text_style::single_line_center,
+		             core::color(dc.colors.foreground, dc.colors.alpha),
+		             core::color(_background, dc.colors.alpha * dc.colors.bg_alpha));
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto extent = mc.measure_text(_text, ui::style::font_face::dialog,
-		                                    ui::style::text_style::single_line_center, width_limit, mc.icon_cxy);
+		const auto extent = mc.measure_text(_text, render::font_face::dialog,
+		                                    render::text_style::single_line_center, width_limit, mc.icon_cxy);
 		return {extent.cx + mc.padding2, extent.cy};
 	}
 };
@@ -2072,8 +2072,8 @@ class title_link_element final : public std::enable_shared_from_this<title_link_
 	struct sidecar_attribute
 	{
 		std::string name;
-		df::date_t modified;
-		df::file_size size;
+		core::date_t modified;
+		core::file_size size;
 	};
 
 	mutable std::string _sidecar_key;
@@ -2083,7 +2083,7 @@ class title_link_element final : public std::enable_shared_from_this<title_link_
 
 	void queue_sidecar_attributes(const std::vector<std::string>& sidecar_parts) const
 	{
-		const auto key = str::combine(sidecar_parts, "|");
+		const auto key = core::combine(sidecar_parts, "|");
 		if (_sidecar_key != key)
 		{
 			_sidecar_key = key;
@@ -2109,7 +2109,7 @@ class title_link_element final : public std::enable_shared_from_this<title_link_
 			for (const auto& part : parts)
 			{
 				const auto attribs = platform::file_attributes(folder.combine_file(part));
-				attributes.push_back({part, df::date_t(attribs.modified), df::file_size(attribs.size)});
+				attributes.push_back({part, core::date_t(attribs.modified), core::file_size(attribs.size)});
 			}
 
 			async.queue_ui([weak, generation, attributes = std::move(attributes)]() mutable
@@ -2130,8 +2130,8 @@ public:
 		text_element_base(text, style_in | view_element_style::has_tooltip | view_element_style::can_invoke),
 		_state(s), _item(std::move(i))
 	{
-		_font = ui::style::font_face::title;
-		_text_style = ui::style::text_style::single_line_center;
+		_font = render::font_face::title;
+		_text_style = render::text_style::single_line_center;
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -2154,7 +2154,7 @@ public:
 	struct title_badge
 	{
 		std::string text;
-		ui::color32 background;
+		core::color32 background;
 	};
 
 	std::vector<title_badge> badges() const
@@ -2165,7 +2165,7 @@ public:
 
 		if (sidecars > 0)
 		{
-			result.emplace_back(str::to_string(sidecars), app_colors::sidecar_background);
+			result.emplace_back(core::to_string(sidecars), app_colors::sidecar_background);
 		}
 
 		// Issue #137 - the count includes this file, so below two it says "no other copy", which the
@@ -2173,7 +2173,7 @@ public:
 		// is running would read as an answer it has not reached.
 		if (_item->presence() != item_presence::unknown && _item->duplicates().count > 1)
 		{
-			result.emplace_back(str::format_count(_item->duplicates().count),
+			result.emplace_back(core::format_count(_item->duplicates().count),
 			                    app_colors::duplicate_background);
 		}
 
@@ -2182,7 +2182,7 @@ public:
 
 	// The badges draw inside the title's own bounds and render takes their width out of the text, so
 	// a measurement of the text alone hands back bounds that clip the last characters of the title.
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		const auto& tl = text_layout(mc);
 		if (!tl) return {};
@@ -2192,8 +2192,8 @@ public:
 
 		for (const auto& badge : badges())
 		{
-			const auto badge_extent = mc.measure_text(badge.text, ui::style::font_face::dialog,
-			                                          ui::style::text_style::single_line_center,
+			const auto badge_extent = mc.measure_text(badge.text, render::font_face::dialog,
+			                                          render::text_style::single_line_center,
 			                                          width_limit, extent.cy);
 			width += badge_extent.cx + mc.padding2;
 		}
@@ -2201,7 +2201,7 @@ public:
 		return {std::min(width, width_limit), extent.cy};
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		// Built here rather than assumed, so a layout that failed while the device was lost does not
@@ -2223,8 +2223,8 @@ public:
 
 			for (size_t i = 0; i < badge_list.size(); ++i)
 			{
-				const auto extent = dc.measure_text(badge_list[i].text, ui::style::font_face::dialog,
-				                                    ui::style::text_style::single_line_center,
+				const auto extent = dc.measure_text(badge_list[i].text, render::font_face::dialog,
+				                                    render::text_style::single_line_center,
 				                                    logical_bounds.width(), logical_bounds.height());
 				badge_widths[i] = extent.cx + dc.padding2;
 				badges_width += badge_widths[i];
@@ -2240,7 +2240,7 @@ public:
 				dc.draw_rounded_rect(bg_bounds, bg, dc.padding1);
 			}
 
-			const ui::color text_clr(dc.colors.foreground, dc.colors.alpha);
+			const core::color text_clr(dc.colors.foreground, dc.colors.alpha);
 
 			auto text_bounds = logical_bounds;
 			text_bounds.right = text_bounds.left + text_width;
@@ -2251,9 +2251,9 @@ public:
 			for (size_t i = 0; i < badge_list.size(); ++i)
 			{
 				const recti badge_bounds(x, logical_bounds.top, x + badge_widths[i], logical_bounds.bottom);
-				dc.draw_text(badge_list[i].text, badge_bounds, ui::style::font_face::dialog,
-				             ui::style::text_style::single_line_center, text_clr,
-				             ui::color(badge_list[i].background, bg_alpha));
+				dc.draw_text(badge_list[i].text, badge_bounds, render::font_face::dialog,
+				             render::text_style::single_line_center, text_clr,
+				             core::color(badge_list[i].background, bg_alpha));
 				x += badge_widths[i];
 			}
 		}
@@ -2264,8 +2264,8 @@ public:
 		const auto i = _item;
 
 		auto row = std::make_shared<view_elements>(flex_item::line_break);
-		row->add(std::make_shared<text_element>(tt.presence_tile, ui::style::font_face::dialog,
-													ui::style::text_style::single_line,
+		row->add(std::make_shared<text_element>(tt.presence_tile, render::font_face::dialog,
+													render::text_style::single_line,
 				                                               view_element_style::none));
 
 		// The badges the title carries sit at the top right of the bubble, so the number the pointer
@@ -2284,8 +2284,8 @@ public:
 		hover.elements->add(std::move(row));
 
 		hover.elements->add(std::make_shared<text_element>(item_presence_text(i->presence(), true),
-													ui::style::font_face::dialog,
-													ui::style::text_style::multiline,
+													render::font_face::dialog,
+													render::text_style::multiline,
 													flex_item::line_break));
 
 		if (i)
@@ -2302,18 +2302,18 @@ public:
 				table->add(tt.prop_name_filename, tt.prop_name_modified, tt.prop_name_size);
 
 				const auto sidecar_parts = split(sidecars, true);
-				const std::set<std::string, df::iless> unique(sidecar_parts.begin(), sidecar_parts.end());
+				const std::set<std::string, core::path_iless> unique(sidecar_parts.begin(), sidecar_parts.end());
 				std::vector<std::string> ordered_unique(unique.begin(), unique.end());
 				queue_sidecar_attributes(ordered_unique);
 
 				for (const auto& part : ordered_unique)
 				{
 					const auto found = std::ranges::find(_sidecar_attributes, part, &sidecar_attribute::name);
-					table->add(part, ui::average(app_colors::sidecar_background, ui::style::colors.view_text),
+					table->add(part, core::average(app_colors::sidecar_background, ui::style::colors.view_text),
 					           found == _sidecar_attributes.end()
 						           ? std::string{}
-						           : platform::format_date(found->modified.system_to_local()),
-					           found == _sidecar_attributes.end() ? std::string{} : df::format_size(found->size));
+						           : platform::format_date(platform::utc_to_local(found->modified)),
+					           found == _sidecar_attributes.end() ? std::string{} : platform::format_size(found->size));
 				}
 
 				hover.elements->add(table);
@@ -2334,18 +2334,18 @@ public:
 					table->no_shrink_col[1] = true;
 					table->no_shrink_col[2] = true;
 					table->add(tt.prop_name_filename, tt.prop_name_modified, tt.prop_name_size);
-					table->add(i->name(), platform::format_date(i->file_modified().system_to_local()),
-					           df::format_size(i->file_size()));
+					table->add(i->name(), platform::format_date(platform::utc_to_local(i->file_modified())),
+					           platform::format_size(i->file_size()));
 
 					for (const auto& item : related)
 					{
 						if (item.first != i->path())
 						{
 							table->add(item.second.name,
-							           ui::average(app_colors::duplicate_background,
+							           core::average(app_colors::duplicate_background,
 							                       ui::style::colors.view_text),
-							           platform::format_date(item.second.file_modified.load().system_to_local()),
-							           df::format_size(item.second.size));
+							           platform::format_date(platform::utc_to_local(item.second.file_modified.load())),
+							           platform::format_size(item.second.size));
 						}
 					}
 
@@ -2509,7 +2509,7 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 				// a user reaches comparison deliberately. It changes what is on screen, not the file.
 				viewing->add(std::make_shared<pin_control>(s, item, true, view_element_style::none));
 
-				if (md && md->orientation != ui::orientation::top_left && md->orientation != ui::orientation::none)
+				if (md && md->orientation != core::orientation::top_left && md->orientation != core::orientation::none)
 				{
 					viewing->add(make_icon_link_element(icon_index::orientation, commands::option_show_rotated,
 					                                    view_element_style::none));
@@ -2567,7 +2567,7 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 					file_elements.emplace_back(file_browser_element);
 					file_elements.emplace_back(std::make_shared<items_dates_control>(s, item));
 
-					auto file_size = std::make_shared<text_element>(item->file_size().str(), view_element_style::none);
+					auto file_size = std::make_shared<text_element>(platform::format_size(item->file_size()), view_element_style::none);
 					if (search_result.is_match(prop::file_size))
 						file_size->set_style_bit(
 							view_element_style::important, true);
@@ -2618,7 +2618,7 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 						if (!is_empty(pixel_format))
 							pixel_elements.emplace_back(
 								make_link(s, pixel_format, prop::pixel_format, search_result));
-						if (!str::is_empty(bitrate))
+						if (!core::is_empty(bitrate))
 							pixel_elements.emplace_back(
 								make_link(s, bitrate, prop::bitrate, search_result));
 
@@ -2737,7 +2737,7 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 					table->add(tt.folder_title, item->folder().text());
 				}
 
-				auto file_size = std::make_shared<text_element>(item->file_size().str(), view_element_style::none);
+				auto file_size = std::make_shared<text_element>(platform::format_size(item->file_size()), view_element_style::none);
 				if (search_result.is_match(prop::file_size))
 					file_size->set_style_bit(
 						view_element_style::important, true);
@@ -2752,17 +2752,17 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 				table->add(tt_prep(tt.prop_name_original.sv()), media_created);
 
 				auto file_modified = std::make_shared<text_element>(
-					platform::format_date_time(item->file_modified().system_to_local()),
+					platform::format_date_time(platform::utc_to_local(item->file_modified())),
 					view_element_style::none);
 				if (search_result.type == df::search_result_type::match_date && s.search().
-					is_match(prop::modified, item->file_modified().system_to_local()))
+					is_match(prop::modified, platform::utc_to_local(item->file_modified())))
 					file_modified->set_style_bit(
 						view_element_style::important, true);
 				table->add(tt.prop_name_modified, file_modified);
 
 				const auto icon = ft->icon;
 				auto split = std::make_shared<split_element>(
-					platform::create_icon_surface(static_cast<char32_t>(icon)), table, flex_item::center);
+					render::create_icon_surface(static_cast<char32_t>(icon)), table, flex_item::center);
 				split->padding = {4, 4};
 				split->margin = {4, 4};
 				result->add(split);
@@ -2800,8 +2800,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 			                                            df::search_t().add_selector(i2->folder())));
 
 			table->add(tt.size_title,
-			           make_rank_element(i1->file_size().str(), i1->file_size() > i2->file_size()),
-			           make_rank_element(i2->file_size().str(), i1->file_size() < i2->file_size()));
+			           make_rank_element(platform::format_size(i1->file_size()), i1->file_size() > i2->file_size()),
+			           make_rank_element(platform::format_size(i2->file_size()), i1->file_size() < i2->file_size()));
 
 			table->add(tt_prep(tt.prop_name_original.sv()),
 			           make_rank_element(platform::format_date_time(i1->media_created()),
@@ -2810,9 +2810,9 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 			                             i1->media_created() < i2->media_created()));
 
 			table->add(tt.prop_name_modified,
-			           make_rank_element(platform::format_date_time(i1->file_modified().system_to_local()),
+			           make_rank_element(platform::format_date_time(platform::utc_to_local(i1->file_modified())),
 			                             i1->file_modified() > i2->file_modified()),
-			           make_rank_element(platform::format_date_time(i2->file_modified().system_to_local()),
+			           make_rank_element(platform::format_date_time(platform::utc_to_local(i2->file_modified())),
 			                             i1->file_modified() < i2->file_modified()));
 
 			// A comparison row states what has arrived. Waiting for both snapshots leaves the table blank
@@ -2822,8 +2822,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 
 			if (md1->duration && md2->duration)
 			{
-				table->add(tt.prop_name_duration, str::format_seconds(md1->duration),
-				           str::format_seconds(md2->duration));
+				table->add(tt.prop_name_duration, core::format_seconds(md1->duration),
+				           core::format_seconds(md2->duration));
 			}
 
 			// uint16_t operands promote to int, which overflows past about 46341 x 46341
@@ -2883,19 +2883,19 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 			{
 				identical_text = tt.items_identical;
 			}
-			else if (d->_pixel_difference == ui::pixel_difference_result::equal)
+			else if (d->_pixel_difference == core::pixel_difference_result::equal)
 			{
 				identical_text = tt.pixels_identical_files_not_identical;
 			}
-			else if (d->_pixel_difference == ui::pixel_difference_result::not_equal)
+			else if (d->_pixel_difference == core::pixel_difference_result::not_equal)
 			{
 				identical_text = tt.items_not_identical;
 			}
 
 			if (!identical_text.empty())
 			{
-				const auto element = std::make_shared<text_element>(identical_text, ui::style::font_face::dialog,
-				                                                    ui::style::text_style::multiline,
+				const auto element = std::make_shared<text_element>(identical_text, render::font_face::dialog,
+				                                                    render::text_style::multiline,
 				                                                    flex_item::line_break |
 				                                                    flex_item::center);
 				element->set_style_bit(view_element_style::info, true);
@@ -2941,8 +2941,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 					title = format_plural_text(tt.title_folder_count_fmt, folder_count);
 				}
 
-				elements->add(std::make_shared<text_element>(title, ui::style::font_face::title,
-				                                             ui::style::text_style::multiline,
+				elements->add(std::make_shared<text_element>(title, render::font_face::title,
+				                                             render::text_style::multiline,
 				                                             flex_item::line_break));
 			}
 
@@ -2959,8 +2959,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 					title = format_plural_text(tt.title_item_count_fmt, item_count);
 				}
 
-				elements->add(std::make_shared<text_element>(title, ui::style::font_face::title,
-				                                             ui::style::text_style::multiline,
+				elements->add(std::make_shared<text_element>(title, render::font_face::title,
+				                                             render::text_style::multiline,
 				                                             flex_item::line_break));
 			}
 
@@ -2974,7 +2974,7 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 			// is an expand-all arrow and reads as a download.
 			auto icon = file_type::folder.icon;
 			if (item_count > 0) icon = icon_index::set;
-			result->add(std::make_shared<split_element>(platform::create_icon_surface(static_cast<char32_t>(icon)),
+			result->add(std::make_shared<split_element>(render::create_icon_surface(static_cast<char32_t>(icon)),
 			                                            elements, flex_item::center));
 			result->add(std::make_shared<divider_element>());
 
@@ -2996,8 +2996,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 			{
 				command_row->add(std::make_shared<pin_control>(s, _pin_item, true, view_element_style::none));
 				command_row->add(std::make_shared<text_element>(_pin_item->name(),
-				                                                ui::style::font_face::dialog,
-				                                                ui::style::text_style::single_line,
+				                                                render::font_face::dialog,
+				                                                render::text_style::single_line,
 				                                                view_element_style::none));
 			}
 
@@ -3005,7 +3005,7 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 		}
 	}
 
-	df::assert_true(selected.empty() || !result->is_empty());
+	core::assert_true(selected.empty() || !result->is_empty());
 
 	return result;
 }
@@ -3036,15 +3036,15 @@ view_element_ptr view_state::create_selection_description()
 		title->elements.emplace_back(std::make_shared<command_link_element>(std::move(command)));
 	}
 	result->add(title);
-	result->add(std::make_shared<text_element>(primary.text, ui::style::font_face::dialog,
-	                                           ui::style::text_style::multiline,
+	result->add(std::make_shared<text_element>(primary.text, render::font_face::dialog,
+	                                           render::text_style::multiline,
 	                                           flex_item::grow | flex_item::line_break));
 	return result;
 }
 
 const located_place* view_state::derived_location(const gps_coordinate& coord)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	if (!coord.is_valid()) return nullptr;
 
 	if (const auto found = _resolved_places.find(attribution_cell(coord)); found != _resolved_places.end())
@@ -3076,9 +3076,9 @@ const located_place* view_state::derived_location(const gps_coordinate& coord)
 	return nullptr;
 }
 
-const uint64_t* view_state::day_item_count(const df::date_t d)
+const uint64_t* view_state::day_item_count(const core::date_t d)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	if (!d.is_valid()) return nullptr;
 
 	const auto st = d.date();
@@ -3117,7 +3117,7 @@ const uint64_t* view_state::day_item_count(const df::date_t d)
 
 void view_state::invalidate_day_counts()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	_day_counts.clear();
 	_counting_days.clear();
@@ -3195,7 +3195,7 @@ bool view_state::should_show_overlays() const
 {
 	if (_display && _display->is_zoom_mode())
 	{
-		return ui::ticks_since_last_user_action < ui::default_ticks_per_second * 5 || df::command_active;
+		return platform::ticks_since_last_user_action < render::default_ticks_per_second * 5 || ui::command_active;
 	}
 
 	if (_selected.has_folders())
@@ -3225,7 +3225,7 @@ bool view_state::should_show_overlays() const
 		return true;
 	}
 
-	return ui::ticks_since_last_user_action < ui::default_ticks_per_second * 5 || df::command_active;
+	return platform::ticks_since_last_user_action < render::default_ticks_per_second * 5 || ui::command_active;
 }
 
 void view_state::stop_slideshow() const
@@ -3258,7 +3258,7 @@ static bool calc_search_is_favorite(const df::search_t& search)
 	{
 		for (auto i = 0; i < setting.search.count; i++)
 		{
-			if (!str::is_empty(setting.search.path[i]))
+			if (!core::is_empty(setting.search.path[i]))
 			{
 				// Read, not parsed: this runs on the UI thread at every navigation, and parsing a
 				// favourite on a share that is away waits on the network.
@@ -3379,7 +3379,7 @@ df::search_parent find_parent_search(const df::search_t& search)
 
 	if (search.has_related())
 	{
-		result.parent = df::search_t().add_selector(df::item_selector(search.related().path.folder()));
+		result.parent = df::search_t().add_selector(core::item_selector(search.related().path.folder()));
 		result.name = search.related().path.name();
 		result.selection.files = {search.related().path};
 		return result;
@@ -3459,7 +3459,7 @@ df::search_parent find_parent_search(const df::search_t& search)
 			// A drive or share root is its own parent, so there is nothing wider to show.
 			if (parent_folder != folder)
 			{
-				result.parent = df::search_t().add_selector(df::item_selector(parent_folder));
+				result.parent = df::search_t().add_selector(core::item_selector(parent_folder));
 				result.name = folder.name();
 				result.selection.folders = {folder};
 			}
@@ -3480,7 +3480,7 @@ void view_state::open(const view_host_base_ptr& view, const std::string_view tex
 	{
 		auto search = _search;
 		const auto s = search.selectors().front();
-		const df::item_selector sel(s.folder(), true, s.wildcard());
+		const core::item_selector sel(s.folder(), true, s.wildcard());
 
 		open(view, search.clear_selectors().add_selector(sel), {});
 	}
@@ -3787,9 +3787,9 @@ df::item_element_ptr view_state::next_group_item(const bool forward) const
 	return nullptr;
 }
 
-df::string_counts view_state::selected_tags() const
+core::string_counts view_state::selected_tags() const
 {
-	df::string_counts result;
+	core::string_counts result;
 
 	for (const auto& i : _selected.items())
 	{
@@ -3809,9 +3809,9 @@ df::string_counts view_state::selected_tags() const
 	return result;
 }
 
-void view_state::open(const view_host_base_ptr& view, const df::file_path path)
+void view_state::open(const view_host_base_ptr& view, const core::file_path path)
 {
-	df::unique_paths sel;
+	core::unique_paths sel;
 	sel.emplace(path);
 	open(view, df::search_t().add_selector(path.folder()), sel);
 }
@@ -3840,7 +3840,7 @@ bool view_state::resolve_area_search(df::search_t& search) const
 	return search != original;
 }
 
-bool view_state::open(const view_host_base_ptr& view, const df::search_t& new_search, const df::unique_paths& selection)
+bool view_state::open(const view_host_base_ptr& view, const df::search_t& new_search, const core::unique_paths& selection)
 {
 	auto resolved_search = new_search;
 	resolve_area_search(resolved_search);
@@ -3873,10 +3873,10 @@ bool view_state::open(const view_host_base_ptr& view, const df::search_t& new_se
 }
 
 bool view_state::open_validated(const view_host_base_ptr& view, const df::search_t& new_search,
-                                const df::unique_paths& selection)
+                                const core::unique_paths& selection)
 {
 	static std::atomic_int version;
-	auto token = df::cancel_token(version);
+	auto token = core::cancel_token(version);
 	const auto path_changed = new_search != _search;
 
 	if (path_changed)
@@ -3985,7 +3985,7 @@ void view_state::open(const view_host_base_ptr& view, const df::item_element_ptr
 	}
 }
 
-using existing_textures_t = df::hash_map<df::file_path, std::shared_ptr<texture_state>, df::ihash, df::ieq>;
+using existing_textures_t = core::hash_map<core::file_path, std::shared_ptr<texture_state>, core::ihash, core::ieq>;
 
 static texture_state_ptr get_tex(const existing_textures_t& existing_textures, const df::item_element_ptr& item,
                                  async_strategy& as)
@@ -4052,7 +4052,7 @@ void view_state::load_display_state()
 				                   [new_display = ui_owned(_async, new_display), display_path, display_xmp,
 					                   display_file_type]
 				                   {
-					                   df::scope_locked_inc l(df::loading_media);
+					                   core::scope_locked_inc l(df::loading_media);
 					                   files ff;
 					                   const auto scan_result = ff.scan_file(
 						                   display_path, false, display_file_type, display_xmp, {},
@@ -4079,7 +4079,7 @@ void view_state::load_display_state()
 					_async.queue_async(async_queue::load,
 					                   [new_display = ui_owned(_async, new_display), display_path]
 					                   {
-						                   df::scope_locked_inc l(df::loading_media);
+						                   core::scope_locked_inc l(df::loading_media);
 						                   auto archive_items = files::list_archive(display_path);
 
 						                   new_display->_async.queue_ui(
@@ -4128,9 +4128,9 @@ void view_state::load_display_state()
 			struct crc_request
 			{
 				std::weak_ptr<df::item_element> item;
-				df::file_path path;
-				df::file_size size;
-				df::date_t modified;
+				core::file_path path;
+				core::file_size size;
+				core::date_t modified;
 				df::item_online_status online_status = df::item_online_status::offline;
 				uint32_t existing_crc = 0;
 			};
@@ -4138,7 +4138,7 @@ void view_state::load_display_state()
 			std::vector<crc_request> requests;
 			const auto two_files_size_same = new_display->_item1 && new_display->_item2 &&
 				new_display->_item1->file_size() == new_display->_item2->file_size();
-			constexpr auto max_load_size = 16u * static_cast<uint64_t>(df::one_meg);
+			constexpr auto max_load_size = 16u * static_cast<uint64_t>(core::one_meg);
 
 			for (const auto& item : {new_display->_item1, new_display->_item2})
 			{
@@ -4154,7 +4154,7 @@ void view_state::load_display_state()
 			{
 				for (const auto& request : requests)
 				{
-					df::scope_locked_inc loading(df::loading_media);
+					core::scope_locked_inc loading(df::loading_media);
 					const auto crc = platform::file_crc32(request.path);
 
 					if (crc)
@@ -4210,7 +4210,7 @@ void view_state::tick(const view_host_base_ptr& view, const double time_now)
 
 		if (is_slideshow || is_media_playing)
 		{
-			const auto slide_show_ticks = std::max(1, setting.slideshow_delay) * ui::default_ticks_per_second;
+			const auto slide_show_ticks = std::max(1, setting.slideshow_delay) * render::default_ticks_per_second;
 			const auto display_item = d->_item1;
 			const auto display_type = display_item ? display_item->file_type() : nullptr;
 			const auto is_photo = display_type && display_type->has_trait(file_traits::bitmap);
@@ -4243,7 +4243,7 @@ void view_state::tick(const view_host_base_ptr& view, const double time_now)
 
 				if (is_media_end)
 				{
-					df::trace("view_state::tick detected media played to end");
+					core::trace("view_state::tick detected media played to end");
 
 					if (d->_session)
 					{
@@ -4264,7 +4264,7 @@ void view_state::tick(const view_host_base_ptr& view, const double time_now)
 					t.is_av = is_av;
 					t.media_ended = is_media_end;
 					t.photo_delay_elapsed = is_photo_end;
-					t.can_next = df::command_active == 0 && display_item && mode_can_play && has_display_items();
+					t.can_next = ui::command_active == 0 && display_item && mode_can_play && has_display_items();
 					t.repeat = setting.repeat;
 					t.auto_advance = setting.auto_advance;
 
@@ -4365,7 +4365,7 @@ void texture_state::load_image(const df::item_element_ptr& i)
 
 void texture_state::seed_placeholder(const df::item_element_ptr& i)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	// Anything already drawn or waiting to be drawn is at least as good as the thumbnail, and
 	// replacing it would step backwards.
@@ -4376,7 +4376,7 @@ void texture_state::seed_placeholder(const df::item_element_ptr& i)
 	// df::fit_preserving_aspect. Publishing the thumbnail's shape here instead would jump the layout
 	// when the decode arrived.
 	const auto& s = i->thumbnail_surface();
-	if (ui::is_valid(s)) _staged_surface = s;
+	if (core::is_valid(s)) _staged_surface = s;
 }
 
 void texture_state::load_raw()
@@ -4385,7 +4385,7 @@ void texture_state::load_raw()
 	_async.queue_async(async_queue::load_raw,
 	                   [&as = _async, t = ui_owned(_async, shared_from_this()), path = _path, generation]
 	                   {
-		                   df::scope_locked_inc l(t->_preview_rendering);
+		                   core::scope_locked_inc l(t->_preview_rendering);
 		                   files loader;
 		                   auto loaded = loader.load(path, false);
 
@@ -4522,14 +4522,14 @@ void texture_state::refresh(const df::item_element_ptr& i)
 
 void texture_state::mark_visuals_current()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	_retain_visuals_on_modify = true;
 }
 
-void texture_state::publish_written_image(const df::file_path path, file_load_result loaded,
-                                          const df::date_t modified)
+void texture_state::publish_written_image(const core::file_path path, file_load_result loaded,
+                                          const core::date_t modified)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	if (!loaded.success || _path != path)
 	{
@@ -4541,7 +4541,7 @@ void texture_state::publish_written_image(const df::file_path path, file_load_re
 	++_load_generation;
 	_photo_loaded = true;
 	_retain_visuals_on_modify = false;
-	_photo_version = {prop::is_null(modified) ? platform::now() : modified, {}};
+	_photo_version = {prop::is_null(modified) ? core::utc_now() : modified, {}};
 	_display_geometry_known = false;
 	update(std::move(loaded));
 }
@@ -4571,7 +4571,7 @@ void texture_state::update(file_load_result loaded)
 	}
 }
 
-void texture_state::update(const ui::const_surface_ptr& staged_surface)
+void texture_state::update(const core::const_surface_ptr& staged_surface)
 {
 	if (_display_dimensions != staged_surface->dimensions() ||
 		_display_orientation != staged_surface->orientation())
@@ -4590,7 +4590,7 @@ void texture_state::update(const ui::const_surface_ptr& staged_surface)
 
 // Says why the media area is empty. Only reached when there is no texture at all, so it can never
 // cover an image.
-static void draw_display_problem(ui::draw_context& rc, const recti media_bounds,
+static void draw_display_problem(render::draw_context& rc, const recti media_bounds,
                                  const texture_state::display_problem problem, const sizei dims, const float alpha)
 {
 	if (problem == texture_state::display_problem::none || media_bounds.width() < 96) return;
@@ -4604,8 +4604,8 @@ static void draw_display_problem(ui::draw_context& rc, const recti media_bounds,
 		text += std::format("\n{} x {}", dims.cx, dims.cy);
 	}
 
-	rc.draw_text(text, media_bounds, ui::style::font_face::dialog, ui::style::text_style::multiline_center,
-	             ui::color(ui::style::colors.view_text, alpha), {});
+	rc.draw_text(text, media_bounds, render::font_face::dialog, render::text_style::multiline_center,
+	             core::color(ui::style::colors.view_text, alpha), {});
 }
 
 static sizei oriented_dimensions(const file_load_result& loaded)
@@ -4622,7 +4622,7 @@ static sizei oriented_dimensions(const file_load_result& loaded)
 
 // A texture's extent as it lands on screen. The destination is in display space, so an extent
 // compared against it has to be in the same one.
-static sizei oriented_extent(sizei dims, const ui::orientation orientation)
+static sizei oriented_extent(sizei dims, const core::orientation orientation)
 {
 	if (setting.show_rotated && flips_xy(orientation))
 	{
@@ -4637,27 +4637,27 @@ static sizei oriented_extent(sizei dims, const ui::orientation orientation)
 // scaled down rather than failing its upload and showing nothing.
 static sizei clamp_to_texture_budget(sizei target)
 {
-	const auto max_pixels = df::max_texture_bytes / 4;
+	const auto max_pixels = render::max_texture_bytes / 4;
 	const auto pixel_count = static_cast<int64_t>(target.cx) * target.cy;
 
 	if (pixel_count > max_pixels)
 	{
 		const auto memory_scale = std::sqrt(max_pixels / static_cast<double>(pixel_count));
 		target = {
-			std::max(1, df::round(target.cx * memory_scale)),
-			std::max(1, df::round(target.cy * memory_scale))
+			std::max(1, core::round(target.cx * memory_scale)),
+			std::max(1, core::round(target.cy * memory_scale))
 		};
 	}
 
-	const auto max_dimension = df::max_texture_dimension;
+	const auto max_dimension = render::max_texture_dimension;
 	const auto longest = std::max(target.cx, target.cy);
 
 	if (longest > max_dimension)
 	{
 		const auto edge_scale = max_dimension / static_cast<double>(longest);
 		target = {
-			std::clamp(df::round(target.cx * edge_scale), 1, max_dimension),
-			std::clamp(df::round(target.cy * edge_scale), 1, max_dimension)
+			std::clamp(core::round(target.cx * edge_scale), 1, max_dimension),
+			std::clamp(core::round(target.cy * edge_scale), 1, max_dimension)
 		};
 	}
 
@@ -4677,13 +4677,13 @@ sizei texture_state::calc_scale_hint() const
 		const auto full_width_needed = _display_bounds.width() * 2.0 * M_PI / std::max(0.01, _panorama.view.fov());
 		const auto wanted = std::min(1.0, full_width_needed / std::max(1, _panorama.geometry.full_width));
 		const auto target = sizei{
-			std::max(1, df::round(dims.cx * wanted)), std::max(1, df::round(dims.cy * wanted))
+			std::max(1, core::round(dims.cx * wanted)), std::max(1, core::round(dims.cy * wanted))
 		};
 
 		return clamp_to_texture_budget(target);
 	}
 
-	const auto scale = ui::calc_scale_down_factor(dims, _display_bounds.extent());
+	const auto scale = core::calc_scale_down_factor(dims, _display_bounds.extent());
 	const auto target = scale < 2 ? dims : sizei{dims.cx / scale, dims.cy / scale};
 
 	return clamp_to_texture_budget(target);
@@ -4692,7 +4692,7 @@ sizei texture_state::calc_scale_hint() const
 
 // The decode ladder, shared by the flat and projected presentations. What differs between them is
 // the resolution asked for, and calc_scale_hint owns that.
-void texture_state::update_decode(ui::draw_context& rc)
+void texture_state::update_decode(render::draw_context& rc)
 {
 	const auto media_bounds = _display_bounds;
 
@@ -4717,14 +4717,14 @@ void texture_state::update_decode(ui::draw_context& rc)
 
 			const auto decode_bytes = files::estimate_decode_bytes(_loaded.i, scale_hint);
 
-			if (decode_bytes > df::max_decode_bytes)
+			if (decode_bytes > render::max_decode_bytes)
 			{
 				// The codec has to build the whole frame before anything can be scaled down, and that
 				// frame will not fit. Nothing is queued; the media area says why instead.
 				_display_problem = display_problem::too_large;
-				df::log(__FUNCTION__, std::format("{} needs {} to decode, over the {} budget", _path.name(),
-				                                  df::file_size(decode_bytes).str(),
-				                                  df::file_size(df::max_decode_bytes).str()));
+				core::log(__FUNCTION__, std::format("{} needs {} to decode, over the {} budget", _path.name(),
+				                                  platform::format_size(core::file_size(decode_bytes)),
+				                                  platform::format_size(core::file_size(render::max_decode_bytes))));
 			}
 			else
 			{
@@ -4734,11 +4734,11 @@ void texture_state::update_decode(ui::draw_context& rc)
 				const auto retained = _retained_surface;
 				const auto cancel = std::make_shared<std::atomic_bool>(false);
 				_decode_cancel = cancel;
-				const df::cancel_token token(*cancel);
+				const core::cancel_token token(*cancel);
 
 				// A projection reads the pixels itself, and the CPU backend presents BGRA, so planar
 				// is asked for only when it can reach the sampler as planes.
-				const auto can_use_yuv = !wants_packed && ui::yuv_textures_enabled;
+				const auto can_use_yuv = !wants_packed && render::yuv_textures_enabled;
 
 				// A placeholder decodes in a fraction of the time a full-size image does, so it goes to
 				// the thumbnail queue rather than waiting behind the full-size decodes on the display
@@ -4749,14 +4749,14 @@ void texture_state::update_decode(ui::draw_context& rc)
 				                   {
 					                   if (cancel->load(std::memory_order_relaxed)) return;
 					                   files loader;
-					                   const auto can_reuse = ui::is_valid(retained) && retained->dimensions().cx >=
+					                   const auto can_reuse = core::is_valid(retained) && retained->dimensions().cx >=
 						                   scale_hint.cx &&
 						                   retained->dimensions().cy >= scale_hint.cy &&
-						                   (!wants_packed || ui::is_packed(retained->format()));
+						                   (!wants_packed || core::is_packed(retained->format()));
 					                   auto s = can_reuse
 						                            ? loader.fit_within(retained, scale_hint)
 						                            : ld.to_surface(scale_hint, can_use_yuv, token);
-					                   auto zoom = ui::is_valid(s)
+					                   auto zoom = core::is_valid(s)
 						                               ? loader.fit_within(
 							                               s, df::zoom_view_state::navigator_surface_extent)
 						                               : nullptr;
@@ -4771,7 +4771,7 @@ void texture_state::update_decode(ui::draw_context& rc)
 							                   // still beats the empty frame that would otherwise stand in for the whole
 							                   // full-size decode. It is staged alone: the retained surface and the
 							                   // navigator downsample belong to the phase that superseded it.
-							                   if (placeholder && ui::is_valid(s) && !t->_tex && !t->_staged_surface)
+							                   if (placeholder && core::is_valid(s) && !t->_tex && !t->_staged_surface)
 							                   {
 								                   t->_staged_surface = s;
 								                   t->_async.invalidate_view(view_invalid::view_redraw);
@@ -4785,7 +4785,7 @@ void texture_state::update_decode(ui::draw_context& rc)
 
 						                   // The request was not superseded, so a missing surface is a real decode failure
 						                   // rather than a cancellation.
-						                   if (!ui::is_valid(s)) t->_display_problem = display_problem::failed;
+						                   if (!core::is_valid(s)) t->_display_problem = display_problem::failed;
 
 						                   // What is worth holding is decided by what will read it. Comparing
 						                   // allocated bytes compares two formats against each other - planar YUV
@@ -4793,20 +4793,20 @@ void texture_state::update_decode(ui::draw_context& rc)
 						                   // surface from a flat view outweighed the packed decode a projection
 						                   // had just asked for, and the projection then had nothing it could
 						                   // read and drew an empty frame for as long as the item was open.
-						                   if (!can_reuse && ui::is_valid(s))
+						                   if (!can_reuse && core::is_valid(s))
 						                   {
 							                   const auto& held = t->_retained_surface;
-							                   const auto held_valid = ui::is_valid(held);
+							                   const auto held_valid = core::is_valid(held);
 							                   const auto keeps_format = !wants_packed || !held_valid ||
-								                   ui::is_packed(s->format()) == ui::is_packed(held->format());
-							                   const auto pixels = [](const ui::const_surface_ptr& surface)
+								                   core::is_packed(s->format()) == core::is_packed(held->format());
+							                   const auto pixels = [](const core::const_surface_ptr& surface)
 							                   {
 								                   const auto d = surface->dimensions();
 								                   return static_cast<int64_t>(d.cx) * d.cy;
 							                   };
 
 							                   if (!held_valid ||
-								                   (!keeps_format && ui::is_packed(s->format())) ||
+								                   (!keeps_format && core::is_packed(s->format())) ||
 								                   (keeps_format && pixels(s) > pixels(held)))
 							                   {
 								                   t->_retained_surface = s;
@@ -4823,7 +4823,7 @@ void texture_state::update_decode(ui::draw_context& rc)
 		if (s)
 		{
 			const auto tex = rc.create_texture();
-			if (tex && tex->update(s) != ui::texture_update_result::failed)
+			if (tex && tex->update(s) != render::texture_update_result::failed)
 			{
 				_tex = tex;
 				fade_out();
@@ -4836,7 +4836,7 @@ void texture_state::update_decode(ui::draw_context& rc)
 	}
 }
 
-void texture_state::draw(ui::draw_context& rc, const pointi offset, const int compare_pos, const bool first_texture,
+void texture_state::draw(render::draw_context& rc, const pointi offset, const int compare_pos, const bool first_texture,
                          const bool interactive)
 {
 	const auto media_bounds = _display_bounds;
@@ -4857,7 +4857,7 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 	const auto tex = _vid_tex && _vid_tex->is_valid() ? _vid_tex : _tex;
 	if ((!tex || !tex->is_valid()) && !media_bounds.is_empty())
 	{
-		rc.draw_rect(media_bounds.offset(offset), ui::color(ui::style::colors.group_background, alpha));
+		rc.draw_rect(media_bounds.offset(offset), core::color(ui::style::colors.group_background, alpha));
 		draw_display_problem(rc, media_bounds.offset(offset), _display_problem, calc_display_dimensions(), alpha);
 	}
 
@@ -5010,13 +5010,13 @@ void texture_state::draw(ui::draw_context& rc, const pointi offset, const int co
 
 		auto r = media_bounds.offset(offset);
 		r.left += 8;
-		r.top += rc.text_line_height(ui::style::font_face::dialog) + 8;
-		r.bottom = r.top + rc.text_line_height(ui::style::font_face::dialog) + 8;
+		r.top += rc.text_line_height(render::font_face::dialog) + 8;
+		r.bottom = r.top + rc.text_line_height(render::font_face::dialog) + 8;
 
 		rc.draw_text(std::format("{} alpha {:.2f}{}{}", phase, alpha, _fade_out_tex ? " over previous" : "",
 		                         _staged_surface ? " staged" : ""),
-		             r, ui::style::font_face::dialog, ui::style::text_style::single_line,
-		             ui::color(0xFFFF00, 1.0f), {});
+		             r, render::font_face::dialog, render::text_style::single_line,
+		             core::color(0xFFFF00, 1.0f), {});
 	}
 }
 
@@ -5031,7 +5031,7 @@ void texture_state::release_panorama_resources()
 	_panorama_rendered = false;
 }
 
-void texture_state::layout(ui::measure_context& mc, const recti bounds, const df::item_element_ptr& i)
+void texture_state::layout(render::measure_context& mc, const recti bounds, const df::item_element_ptr& i)
 {
 	_display_bounds = bounds;
 	refresh(i);
@@ -5042,7 +5042,7 @@ void texture_state::layout(ui::measure_context& mc, const recti bounds, const df
 // two tiers, and the camera both are handed is derived once so neither can hold a different one.
 // The camera and the decoded source together decide the frame, so a repaint that moved neither
 // reuses the texture it already has.
-void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, const prop::panorama_geometry& geometry,
+void texture_state::draw_panorama(render::draw_context& rc, const pointi offset, const prop::panorama_geometry& geometry,
                                   const panorama_view& view)
 {
 	_panorama = {true, geometry, view};
@@ -5060,11 +5060,11 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 
 	// Sphere the file does not hold, and every frame before the first decode arrives, read as the
 	// same empty surround rather than as whatever was drawn there last.
-	rc.draw_rect(media_bounds.offset(offset), ui::color(ui::style::colors.group_background, 1.0f));
+	rc.draw_rect(media_bounds.offset(offset), core::color(ui::style::colors.group_background, 1.0f));
 
-	const auto& source = ui::is_valid(_retained_surface) ? _retained_surface : _loaded.s;
+	const auto& source = core::is_valid(_retained_surface) ? _retained_surface : _loaded.s;
 
-	if (!ui::is_valid(source) || !ui::is_packed(source->format()) || !geometry.is_valid())
+	if (!is_valid(source) || !core::is_packed(source->format()) || !geometry.is_valid())
 	{
 		// A projection asks for more source than the flat view does, so it can be refused where the
 		// flat view was not. Saying why is what the flat path already does; an unexplained grey
@@ -5082,7 +5082,7 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 	{
 		_panorama_gpu_tex = rc.create_texture();
 
-		if (_panorama_gpu_tex && _panorama_gpu_tex->update_mipped(source) == ui::texture_update_result::failed)
+		if (_panorama_gpu_tex && _panorama_gpu_tex->update_mipped(source) == render::texture_update_result::failed)
 		{
 			_panorama_gpu_tex.reset();
 		}
@@ -5120,9 +5120,9 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 
 	const auto view_moved = !_panorama_rendered ||
 		_panorama_rendered_geometry != geometry ||
-		!df::equiv(_panorama_rendered_view.yaw(), view.yaw()) ||
-		!df::equiv(_panorama_rendered_view.pitch(), view.pitch()) ||
-		!df::equiv(_panorama_rendered_view.fov(), view.fov());
+		!core::equiv(_panorama_rendered_view.yaw(), view.yaw()) ||
+		!core::equiv(_panorama_rendered_view.pitch(), view.pitch()) ||
+		!core::equiv(_panorama_rendered_view.fov(), view.fov());
 
 	if (view_moved || !_panorama_surface || _panorama_surface->dimensions() != extent)
 	{
@@ -5130,9 +5130,9 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 		// on every one of them.
 		if (!_panorama_surface || _panorama_surface->dimensions() != extent)
 		{
-			_panorama_surface = std::make_shared<ui::surface>();
+			_panorama_surface = std::make_shared<core::surface>();
 
-			if (!_panorama_surface->alloc(extent, ui::texture_format::ARGB))
+			if (!_panorama_surface->alloc(extent, core::texture_format::ARGB))
 			{
 				// A failed alloc still reports the requested extent, so the buffer has to be dropped
 				// rather than left to be recognised as the right size on the next frame.
@@ -5142,7 +5142,7 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 		}
 
 		if (!_panorama_renderer.render(*_panorama_surface, geometry, view)) return;
-		if (_panorama_tex->update(_panorama_surface) == ui::texture_update_result::failed) return;
+		if (_panorama_tex->update(_panorama_surface) == render::texture_update_result::failed) return;
 
 		_panorama_rendered_view = view;
 		_panorama_rendered_geometry = geometry;
@@ -5151,18 +5151,18 @@ void texture_state::draw_panorama(ui::draw_context& rc, const pointi offset, con
 
 	// Bilinear rather than the default point: the destination is normally the viewport exactly, but
 	// the budget can clamp it, and a clamped frame magnified with point sampling is blocky.
-	rc.draw_texture(_panorama_tex, media_bounds.offset(offset), 1.0f, ui::texture_sampler::bilinear);
+	rc.draw_texture(_panorama_tex, media_bounds.offset(offset), 1.0f, render::texture_sampler::bilinear);
 }
 
 
-ui::texture_ptr texture_state::zoom_texture(ui::draw_context& rc, const sizei extent)
+render::texture_ptr texture_state::zoom_texture(render::draw_context& rc, const sizei extent)
 {
 	if (!_zoom_texture || _zoom_version != _photo_version)
 	{
 		const auto t = rc.create_texture();
 
 		if (t && _zoom_staged_surface &&
-			t->update(_zoom_staged_surface) != ui::texture_update_result::failed)
+			t->update(_zoom_staged_surface) != render::texture_update_result::failed)
 		{
 			_zoom_texture = t;
 			_zoom_version = _photo_version;
@@ -5303,12 +5303,12 @@ void display_state_t::populate(const view_state& state)
 		{
 			files ff;
 			constexpr sizei max_dims(256, 256);
-			std::vector<ui::const_surface_ptr> surfaces;
+			std::vector<core::const_surface_ptr> surfaces;
 			surfaces.reserve(images.size());
 
 			for (const auto& image : images)
 			{
-				surfaces.emplace_back(ff.image_to_surface(image, ui::scale_dimensions(image->dimensions(), max_dims)));
+				surfaces.emplace_back(ff.image_to_surface(image, core::scale_dimensions(image->dimensions(), max_dims)));
 				if (surfaces.size() >= max_surfaces) break;
 			}
 
@@ -5319,14 +5319,14 @@ void display_state_t::populate(const view_state& state)
 					// A thumbnail the decoder refuses yields no surface, and the collage reads the two
 					// lists by the same index, so an empty entry is dropped from both rather than left
 					// for the layout to take dimensions from.
-					std::vector<ui::const_surface_ptr> kept;
+					std::vector<core::const_surface_ptr> kept;
 					df::item_elements kept_items;
 					kept.reserve(surfaces.size());
 					kept_items.reserve(std::min(surfaces.size(), display->_collage_source_items.size()));
 
 					for (auto i = 0_z; i < surfaces.size(); ++i)
 					{
-						if (!ui::is_valid(surfaces[i])) continue;
+						if (!core::is_valid(surfaces[i])) continue;
 						if (i < display->_collage_source_items.size())
 							kept_items.emplace_back(display->_collage_source_items[i]);
 						kept.emplace_back(std::move(surfaces[i]));
@@ -5373,9 +5373,9 @@ render_valid display_state_t::update_for_present(const double time_now) const
 				}
 
 				const auto has_tex = _player_media_info.has_video && _selected_texture1 && _selected_texture1->_vid_tex;
-				vert_bounds.top = vert_bounds.top + (has_tex ? df::mul_div(_audio_element_bounds.height(), 3, 5) : 0);
+				vert_bounds.top = vert_bounds.top + (has_tex ? core::mul_div(_audio_element_bounds.height(), 3, 5) : 0);
 
-				const auto tex_bounds = ui::scale_dimensions(sizei{512, 256}, vert_bounds);
+				const auto tex_bounds = core::scale_dimensions(sizei{512, 256}, vert_bounds);
 				_session->update_visualizer(_audio_verts, tex_bounds, _audio_element_offset, _audio_element_alpha,
 				                            time_now);
 
@@ -5448,11 +5448,11 @@ render_valid display_state_t::update_for_present(const double time_now) const
 	return result;
 }
 
-void display_state_t::draw_subtitles(ui::draw_context& dc) const
+void display_state_t::draw_subtitles(render::draw_context& dc) const
 {
 	// Whatever this draws answers any repaint asked for since, so a later return to a key asked for
 	// before is asked for again.
-	const df::scope_exit answered([this] { _subtitles_requested_key = _subtitles_drawn_key; });
+	const core::scope_exit answered([this] { _subtitles_requested_key = _subtitles_drawn_key; });
 
 	const auto st = _selected_texture1;
 	const auto picture = st ? st->_last_picture_bounds : recti{};
@@ -5482,9 +5482,9 @@ void display_state_t::draw_subtitles(ui::draw_context& dc) const
 	// controls fade in.
 	const auto raise = _overlay_top > 0 ? static_cast<double>(dc.colors.overlay_alpha) : 0.0;
 	const auto placements = place_subtitles_on_picture(shown, video, picture, _overlay_top, raise,
-	                                                   df::round(8 * dc.scale_factor));
+	                                                   core::round(8 * dc.scale_factor));
 
-	using texture_entry = std::pair<ui::const_surface_ptr, ui::texture_ptr>;
+	using texture_entry = std::pair<core::const_surface_ptr, render::texture_ptr>;
 	std::vector<texture_entry> textures;
 	const auto alpha = dc.colors.alpha * st->_last_picture_alpha;
 
@@ -5492,15 +5492,15 @@ void display_state_t::draw_subtitles(ui::draw_context& dc) const
 	{
 		const auto& surface = p.bitmap->surface;
 		const auto cached = std::ranges::find(_subtitle_textures, surface, &texture_entry::first);
-		auto tex = cached != _subtitle_textures.end() ? cached->second : ui::texture_ptr{};
+		auto tex = cached != _subtitle_textures.end() ? cached->second : render::texture_ptr{};
 
 		if (!tex || !tex->is_valid())
 		{
 			tex = dc.create_texture();
-			if (!tex || tex->update(surface) == ui::texture_update_result::failed) continue;
+			if (!tex || tex->update(surface) == render::texture_update_result::failed) continue;
 		}
 
-		dc.draw_texture(tex, p.bounds, alpha, ui::texture_sampler::bilinear);
+		dc.draw_texture(tex, p.bounds, alpha, render::texture_sampler::bilinear);
 		textures.emplace_back(surface, std::move(tex));
 	}
 
@@ -5530,7 +5530,7 @@ texture_state::texture_state(async_strategy& async, const df::item_element_ptr& 
 	// A newly displayed item is shown at once; the only dissolve is between resolutions of one item.
 	_display_alpha_animation.reset(1.0f);
 
-	if (_display_dimensions.is_empty() && ui::is_valid(_loaded.i))
+	if (_display_dimensions.is_empty() && core::is_valid(_loaded.i))
 	{
 		// A stand-in, not an answer: the thumbnail carries the shape but a rounded version of it, so the
 		// geometry stays unknown and the first load replaces it. Claiming it as known froze the rounded
@@ -5541,8 +5541,8 @@ texture_state::texture_state(async_strategy& async, const df::item_element_ptr& 
 }
 
 
-void draw_texture_info(ui::draw_context& rc, const recti media_bounds, const ui::texture_ptr& tex,
-                       const ui::orientation orientation, const ui::texture_sampler sampler, const float alpha)
+void draw_texture_info(render::draw_context& rc, const recti media_bounds, const render::texture_ptr& tex,
+                       const core::orientation orientation, const render::texture_sampler sampler, const float alpha)
 {
 	if (tex && setting.show_debug_info && media_bounds.width() > 64)
 	{
@@ -5559,14 +5559,14 @@ void draw_texture_info(ui::draw_context& rc, const recti media_bounds, const ui:
 		                              r.width(), r.height(), to_string(sampler));
 
 		r.left += 8;
-		r.bottom = r.top + rc.text_line_height(ui::style::font_face::dialog) + 8;
-		rc.draw_text(text, r, ui::style::font_face::dialog, ui::style::text_style::single_line,
-		             ui::color(0xFFFFFF, alpha), {});
+		r.bottom = r.top + rc.text_line_height(render::font_face::dialog) + 8;
+		rc.draw_text(text, r, render::font_face::dialog, render::text_style::single_line,
+		             core::color(0xFFFFFF, alpha), {});
 	}
 }
 
-ui::texture_sampler calc_sampler(const sizei draw_extent, const sizei texture_extent,
-                                 const ui::orientation& orientation, const bool interactive, const bool provisional)
+render::texture_sampler calc_sampler(const sizei draw_extent, const sizei texture_extent,
+                                 const core::orientation& orientation, const bool interactive, const bool provisional)
 {
 	auto dims = texture_extent;
 
@@ -5584,7 +5584,7 @@ ui::texture_sampler calc_sampler(const sizei draw_extent, const sizei texture_ex
 
 	if (std::abs(sx - 1.0) <= one_to_one_tolerance)
 	{
-		return ui::texture_sampler::point;
+		return render::texture_sampler::point;
 	}
 
 	// Above 3x, point sampling shows the source's own pixels, which is what someone judging focus
@@ -5592,21 +5592,21 @@ ui::texture_sampler calc_sampler(const sizei draw_extent, const sizei texture_ex
 	// hard blocks where the image is about to appear.
 	if (sx > 3.0 && !provisional)
 	{
-		return ui::texture_sampler::point;
+		return render::texture_sampler::point;
 	}
 
-	if (interactive) return ui::texture_sampler::bilinear;
+	if (interactive) return render::texture_sampler::bilinear;
 
 	// Catmull-Rom in both directions until a magnified source pixel covers roughly three
 	// device pixels. Beyond that threshold point sampling keeps source pixels exact.
 	// Minification never exceeds ~2x because calc_scale_hint() already pre-scales the
 	// decoded surface, so the 4x4 footprint stays well sampled. Video is not pre-scaled;
 	// calc_video_sampler handles its minification.
-	return ui::texture_sampler::bicubic;
+	return render::texture_sampler::bicubic;
 }
 
-ui::texture_sampler calc_video_sampler(const sized picture_extent, const sizei texture_extent,
-                                       const ui::orientation& orientation, const bool interactive)
+render::texture_sampler calc_video_sampler(const sized picture_extent, const sizei texture_extent,
+                                       const core::orientation& orientation, const bool interactive)
 {
 	auto dims = texture_extent;
 
@@ -5615,7 +5615,7 @@ ui::texture_sampler calc_video_sampler(const sized picture_extent, const sizei t
 		std::swap(dims.cx, dims.cy);
 	}
 
-	if (dims.cx <= 0 || dims.cy <= 0) return ui::texture_sampler::bilinear;
+	if (dims.cx <= 0 || dims.cy <= 0) return render::texture_sampler::bilinear;
 
 	// A video frame is drawn at the size it was decoded, never pre-scaled as a still is, so a picture
 	// smaller than the frame is minified by the sampler itself, on every frame. Catmull-Rom's 4x4 footprint
@@ -5625,7 +5625,7 @@ ui::texture_sampler calc_video_sampler(const sized picture_extent, const sizei t
 
 	if (picture_extent.Width < dims.cx * minified_below && picture_extent.Height < dims.cy * minified_below)
 	{
-		return ui::texture_sampler::bilinear;
+		return render::texture_sampler::bilinear;
 	}
 
 	// The picture's own extent rather than the area it is fitted into: a pillarboxed video at one-to-one
@@ -5726,9 +5726,9 @@ df::process_result view_state::selection_process_result(const df::process_items_
 }
 
 
-df::folder_counts view_state::known_folders() const
+core::folder_counts view_state::known_folders() const
 {
-	df::folder_counts results;
+	core::folder_counts results;
 
 	const auto distinct_folders = item_index.distinct_folders();
 
@@ -5748,8 +5748,8 @@ df::folder_counts view_state::known_folders() const
 	recent_folders.count(results, 2 << 8);
 	history.count_folders(results, 2 << 8);
 
-	const auto write_folder = df::folder_path(setting.write_folder);
-	const auto import_destination_path = df::folder_path(setting.import.destination_path);
+	const auto write_folder = core::folder_path(setting.write_folder);
+	const auto import_destination_path = core::folder_path(setting.import.destination_path);
 
 	if (!import_destination_path.is_empty()) results[import_destination_path] += 2 << 8;
 	if (!write_folder.is_empty()) results[write_folder] += 2 << 8;
@@ -5760,15 +5760,15 @@ df::folder_counts view_state::known_folders() const
 
 // An empty result means there is no sibling in that direction. Navigation then does nothing rather
 // than silently changing level.
-static df::folder_path next_folder(const df::folder_path current, const bool is_forward)
+static core::folder_path next_folder(const core::folder_path current, const bool is_forward)
 {
 	const auto parent = current.parent();
-	auto peers = platform::select_folders(df::item_selector(parent), setting.show_hidden);
+	auto peers = platform::select_folders(core::item_selector(parent), setting.show_hidden);
 
-	std::ranges::sort(peers, [](auto&& l, auto&& r) { return str::icmp(l.name, r.name) < 0; });
+	std::ranges::sort(peers, [](auto&& l, auto&& r) { return core::icmp(l.name, r.name) < 0; });
 
 	const auto name = current.name();
-	const auto found = std::ranges::find_if(peers, [name](auto&& peer) { return str::icmp(name, peer.name) == 0; });
+	const auto found = std::ranges::find_if(peers, [name](auto&& peer) { return core::icmp(name, peer.name) == 0; });
 
 	if (found == peers.end())
 	{
@@ -5778,10 +5778,10 @@ static df::folder_path next_folder(const df::folder_path current, const bool is_
 	if (is_forward)
 	{
 		const auto next = std::next(found);
-		return next == peers.end() ? df::folder_path{} : parent.combine(next->name);
+		return next == peers.end() ? core::folder_path{} : parent.combine(next->name);
 	}
 
-	return found == peers.begin() ? df::folder_path{} : parent.combine(std::prev(found)->name);
+	return found == peers.begin() ? core::folder_path{} : parent.combine(std::prev(found)->name);
 }
 
 void view_state::refresh_sibling_folders()
@@ -5801,7 +5801,7 @@ void view_state::refresh_sibling_folders()
 		sibling_folders_t found;
 		found.scope = scope;
 
-		if (folder.exists())
+		if (platform::exists(folder))
 		{
 			found.next = next_folder(folder, true);
 			found.previous = next_folder(folder, false);

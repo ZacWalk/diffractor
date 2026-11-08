@@ -102,29 +102,29 @@ void app_frame::create_toolbars()
 	ui::edit_styles search_styles;
 	search_styles.rounded_corners = true;
 	search_styles.select_all_on_focus = true;
-	search_styles.capture_key_down = [this](const int key_code, const ui::key_state keys)
+	search_styles.capture_key_down = [this](const int key_code, const platform::key_state keys)
 	{
 		const auto key = static_cast<char32_t>(key_code);
 
-		if (key == keys::RETURN)
+		if (key == platform::keys::RETURN)
 		{
 			search_enter();
 			return true;
 		}
-		if (key == keys::ESCAPE)
+		if (key == platform::keys::ESCAPE)
 		{
 			cancel_search_edit();
 			return true;
 		}
-		if (key == keys::UP || key == keys::DOWN)
+		if (key == platform::keys::UP || key == platform::keys::DOWN)
 		{
 			if (_search_predictions_frame)
 			{
-				_search_predictions_frame->step_selection(key == keys::UP ? -1 : 1);
+				_search_predictions_frame->step_selection(key == platform::keys::UP ? -1 : 1);
 			}
 			return true;
 		}
-		return key == keys::TAB && !keys.control && !keys.shift && search_accept_selected();
+		return key == platform::keys::TAB && !keys.control && !keys.shift && search_accept_selected();
 	};
 	_search_edit = ui::make_edit(search_styles, {}, [this](const std::string_view text)
 	{
@@ -137,7 +137,7 @@ void app_frame::create_toolbars()
 	filter_styles.rounded_corners = true;
 	filter_styles.select_all_on_focus = true;
 	filter_styles.cue = tt.filter.sv();
-	filter_styles.capture_key_down = [this](const int key_code, const ui::key_state keys)
+	filter_styles.capture_key_down = [this](const int key_code, const platform::key_state keys)
 	{
 		return filter_key_down(static_cast<char32_t>(key_code), keys);
 	};
@@ -215,7 +215,7 @@ const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries
 	return _bars.emplace(entries, std::move(result)).first->second;
 }
 
-std::vector<bar_slot> app_frame::measure_bar(ui::measure_context& mc, const frame_bar& b,
+std::vector<bar_slot> app_frame::measure_bar(render::measure_context& mc, const frame_bar& b,
                                              const int control_height) const
 {
 	std::vector<bar_slot> result;
@@ -234,19 +234,19 @@ std::vector<bar_slot> app_frame::measure_bar(ui::measure_context& mc, const fram
 		case bar_control::item_filter:
 			// Narrows before anything is cut, but not past what still shows a typed word.
 			result.push_back({
-				{df::round(150 * mc.scale_factor), control_height}, df::round(80 * mc.scale_factor)
+				{core::round(150 * mc.scale_factor), control_height}, core::round(80 * mc.scale_factor)
 			});
 			break;
 		case bar_control::item_size:
 			// The wheel and the display menu also size thumbnails, so the slider is the first to go.
-			result.push_back({{df::round(100 * mc.scale_factor), control_height}, 0, true});
+			result.push_back({{core::round(100 * mc.scale_factor), control_height}, 0, true});
 			break;
 		case bar_control::item_totals:
 			result.push_back({
 				{
-					mc.measure_text(_totals_text, ui::style::font_face::dialog, ui::style::text_style::single_line,
+					mc.measure_text(_totals_text, render::font_face::dialog, render::text_style::single_line,
 					                _extent.cx).cx + mc.padding2 * 2,
-					mc.text_line_height(ui::style::font_face::dialog)
+					mc.text_line_height(render::font_face::dialog)
 				}
 			});
 			break;
@@ -359,9 +359,9 @@ bar_arrangement arrange_bar(const recti bounds, const std::vector<bar_slot>& slo
 	return result;
 }
 
-bool app_frame::filter_key_down(const char32_t key, const ui::key_state keys)
+bool app_frame::filter_key_down(const char32_t key, const platform::key_state keys)
 {
-	if (key == keys::ESCAPE)
+	if (key == platform::keys::ESCAPE)
 	{
 		cancel_filter_edit();
 		return true;
@@ -369,7 +369,7 @@ bool app_frame::filter_key_down(const char32_t key, const ui::key_state keys)
 
 	// The filter applies as it is typed, so Enter and Tab have nothing left to commit: both hand the
 	// keyboard back to the list it filtered.
-	if ((key == keys::RETURN || key == keys::TAB) && !keys.control && !keys.alt)
+	if ((key == platform::keys::RETURN || key == platform::keys::TAB) && !keys.control && !keys.alt)
 	{
 		focus_view();
 		return true;
@@ -531,14 +531,14 @@ std::string format_items_totals(const df::file_group_histogram& summary, const b
 
 	if (total_items.count > 0)
 	{
-		return std::format("{}|{}", str::format_count(total_items.count), df::format_size(total_items.size));
+		return std::format("{}|{}", core::format_count(total_items.count), platform::format_size(total_items.size));
 	}
 
 	const auto total_folders = summary.total_folders();
 
 	if (total_folders.count > 0)
 	{
-		return std::format("{} {}", str::format_count(total_folders.count), tt.folders);
+		return std::format("{} {}", core::format_count(total_folders.count), tt.folders);
 	}
 
 	return std::string(is_init_complete ? tt.empty : tt.loading);
@@ -552,7 +552,7 @@ std::string format_selection_summary(const df::item_set& selected)
 	const auto files = summary.total_items();
 	const auto count = format_plural_text(tt.title_item_count_fmt,
 	                                      static_cast<int64_t>(files.count + summary.total_folders().count));
-	return files.size.is_empty() ? count : std::format("{} \u00B7 {}", count, df::format_size(files.size));
+	return files.size.is_empty() ? count : std::format("{} \u00B7 {}", count, platform::format_size(files.size));
 }
 
 icon_index volumes_icons[5] = {
@@ -627,7 +627,7 @@ bool app_frame::update_toolbar_text(const commands cc, const std::string& text)
 // it owns the keyboard, so the task view claims nothing.
 commands app_frame::task_view_run_command() const
 {
-	if (df::command_active != 0) return commands::none;
+	if (ui::command_active != 0) return commands::none;
 
 	switch (_state.view_mode())
 	{
@@ -645,7 +645,7 @@ void app_frame::update_button_state(const bool resize)
 {
 	// Not cached: the update snooze is measured in days, so a session left open overnight has to
 	// see the new day arrive.
-	const auto now_days = platform::now().to_days();
+	const auto now_days = core::utc_now().to_days();
 	if (!_has_burner) _has_burner = platform::has_burner();
 	const auto has_burner = *_has_burner;
 
@@ -659,10 +659,10 @@ void app_frame::update_button_state(const bool resize)
 	const auto can_zoom = selection_status.can_zoom;
 	const auto display = _state.display_state();
 	const auto is_maximized = _app_frame->is_maximized();
-	const auto is_edit_view = df::command_active == 0 && view_mode == view_type::edit;
-	const auto is_items_view = df::command_active == 0 && view_mode == view_type::items;
-	const auto is_media_view = df::command_active == 0 && view_mode == view_type::media;
-	const auto is_media_or_items_view = df::command_active == 0 && (view_mode == view_type::items || view_mode ==
+	const auto is_edit_view = ui::command_active == 0 && view_mode == view_type::edit;
+	const auto is_items_view = ui::command_active == 0 && view_mode == view_type::items;
+	const auto is_media_view = ui::command_active == 0 && view_mode == view_type::media;
+	const auto is_media_or_items_view = ui::command_active == 0 && (view_mode == view_type::items || view_mode ==
 		view_type::media);
 	const auto has_selection = is_media_or_items_view && _state.has_selection();
 	const auto has_movie_selection = is_media_or_items_view && std::any_of(
@@ -683,7 +683,7 @@ void app_frame::update_button_state(const bool resize)
 	const auto can_save_pixels = is_media_or_items_view && save_pixels_result.success();
 #ifndef WINSTORE
 	const auto new_version_avail = is_media_or_items_view &&
-		df::version(s_app_version) < df::version(setting.available_version) && static_cast<int>(now_days) >= setting.
+		core::version(s_app_version) < core::version(setting.available_version) && static_cast<int>(now_days) >= setting.
 		min_show_update_day;
 	const auto show_new_version = is_media_or_items_view && (setting.force_available_version || new_version_avail);
 #endif
@@ -1142,9 +1142,9 @@ void app_frame::update_button_state(const bool resize)
 	                                               _state.item_index.is_init_complete());
 
 	update_toolbar_text(commands::menu_group_toolbar, summary_text);
-	update_toolbar_text(commands::filter_photos, str::format_count(_state.count_total(file_group::photo), true));
-	update_toolbar_text(commands::filter_videos, str::format_count(_state.count_total(file_group::video), true));
-	update_toolbar_text(commands::filter_audio, str::format_count(_state.count_total(file_group::audio), true));
+	update_toolbar_text(commands::filter_photos, core::format_count(_state.count_total(file_group::photo), true));
+	update_toolbar_text(commands::filter_videos, core::format_count(_state.count_total(file_group::video), true));
+	update_toolbar_text(commands::filter_audio, core::format_count(_state.count_total(file_group::audio), true));
 
 	// Only Items starts its status bar with Open, so no other view pays for summing the selection. Open is
 	// labelled with what it would open, and with its own name when nothing is selected: a toolbar keeps the
@@ -1211,9 +1211,9 @@ recti app_frame::calc_search_popup_bounds() const
 // rather than a constant table.
 std::vector<command_accelerator> default_keyboard_accelerators()
 {
-	constexpr auto control = keyboard_accelerator_t::control;
-	constexpr auto shift = keyboard_accelerator_t::shift;
-	constexpr auto alt = keyboard_accelerator_t::alt;
+	constexpr auto control = platform::keyboard_accelerator_t::control;
+	constexpr auto shift = platform::keyboard_accelerator_t::shift;
+	constexpr auto alt = platform::keyboard_accelerator_t::alt;
 
 	return {
 		{commands::rate_none, {'0'}},
@@ -1222,7 +1222,7 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::rate_3, {'3'}},
 		{commands::rate_4, {'4'}},
 		{commands::rate_5, {'5'}},
-		{commands::rate_rejected, {keys::DEL, alt}},
+		{commands::rate_rejected, {platform::keys::DEL, alt}},
 		{commands::label_select, {'6'}},
 		{commands::label_second, {'7'}},
 		{commands::label_approved, {'8'}},
@@ -1253,59 +1253,59 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::edit_paste, {'V', control}},
 		{commands::edit_cut, {'X', control}},
 		{commands::tool_move_to_folder, {'X', shift | control}},
-		{commands::browse_back, {keys::BACK}},
-		{commands::tool_delete, {keys::DEL}},
-		{commands::edit_cut, {keys::DEL, shift}},
-		{commands::group_toggle, {keys::DOWN, alt}},
+		{commands::browse_back, {platform::keys::BACK}},
+		{commands::tool_delete, {platform::keys::DEL}},
+		{commands::edit_cut, {platform::keys::DEL, shift}},
+		{commands::group_toggle, {platform::keys::DOWN, alt}},
 		{commands::group_file_type, {'K', control}},
 		{commands::group_created, {'K', control | shift}},
 
-		{commands::view_help, {keys::F1}},
-		{commands::keyboard, {keys::F1, control}},
-		{commands::tool_rename, {keys::F2}},
-		{commands::browse_search, {keys::F3}},
-		{commands::browse_search, {keys::BROWSER_SEARCH}},
-		{commands::filter_items, {keys::F3, control}},
-		{commands::view_show_sidebar, {keys::F4}},
-		{commands::view_show_sidebar, {keys::BROWSER_FAVORITES}},
-		{commands::refresh, {keys::F5}},
-		{commands::options, {keys::F6}},
-		{commands::playback_auto_play, {keys::F7, control}},
-		{commands::playback_volume_toggle, {keys::F7}},
-		{commands::tool_convert, {keys::F8}},
-		{commands::tool_import, {keys::F9}},
-		{commands::browse_recursive, {keys::F9, control}},
-		{commands::tool_sync, {keys::F9, shift | control}},
-		{commands::tool_share, {keys::F10}},
-		{commands::option_scale_up, {keys::F11, shift | control}},
-		{commands::view_fullscreen, {keys::F11}},
-		{commands::view_fullscreen, {keys::SPACE, shift | control}},
-		{commands::edit_copy, {keys::INSERT, control}},
-		{commands::edit_paste, {keys::INSERT, shift}},
-		{commands::browse_back, {keys::LEFT, alt}},
-		{commands::browse_previous_folder, {keys::LEFT, alt | control}},
-		{commands::browse_previous_item_extend, {keys::LEFT, control}},
-		{commands::tool_rotate_anticlockwise, {keys::OEM_4}},
-		{commands::tool_rotate_clockwise, {keys::OEM_6}},
-		{commands::tool_file_properties, {keys::RETURN, shift | control}},
-		{commands::browse_open_in_file_browser, {keys::RETURN, shift}},
-		{commands::tool_open_with, {keys::RETURN, control}},
-		{commands::view_zoom, {keys::SPACE, control}},
-		{commands::view_zoom_pane_flip, {keys::TAB}},
-		{commands::play, {keys::SPACE}},
-		{commands::slideshow, {keys::SPACE, shift}},
-		{commands::browse_forward, {keys::RIGHT, alt}},
-		{commands::browse_next_folder, {keys::RIGHT, alt | control}},
-		{commands::browse_next_item_extend, {keys::RIGHT, control}},
-		{commands::browse_parent, {keys::UP, alt}},
-		{commands::browse_previous_group, {keys::PRIOR}},
-		{commands::browse_next_group, {keys::NEXT}},
+		{commands::view_help, {platform::keys::F1}},
+		{commands::keyboard, {platform::keys::F1, control}},
+		{commands::tool_rename, {platform::keys::F2}},
+		{commands::browse_search, {platform::keys::F3}},
+		{commands::browse_search, {platform::keys::BROWSER_SEARCH}},
+		{commands::filter_items, {platform::keys::F3, control}},
+		{commands::view_show_sidebar, {platform::keys::F4}},
+		{commands::view_show_sidebar, {platform::keys::BROWSER_FAVORITES}},
+		{commands::refresh, {platform::keys::F5}},
+		{commands::options, {platform::keys::F6}},
+		{commands::playback_auto_play, {platform::keys::F7, control}},
+		{commands::playback_volume_toggle, {platform::keys::F7}},
+		{commands::tool_convert, {platform::keys::F8}},
+		{commands::tool_import, {platform::keys::F9}},
+		{commands::browse_recursive, {platform::keys::F9, control}},
+		{commands::tool_sync, {platform::keys::F9, shift | control}},
+		{commands::tool_share, {platform::keys::F10}},
+		{commands::option_scale_up, {platform::keys::F11, shift | control}},
+		{commands::view_fullscreen, {platform::keys::F11}},
+		{commands::view_fullscreen, {platform::keys::SPACE, shift | control}},
+		{commands::edit_copy, {platform::keys::INSERT, control}},
+		{commands::edit_paste, {platform::keys::INSERT, shift}},
+		{commands::browse_back, {platform::keys::LEFT, alt}},
+		{commands::browse_previous_folder, {platform::keys::LEFT, alt | control}},
+		{commands::browse_previous_item_extend, {platform::keys::LEFT, control}},
+		{commands::tool_rotate_anticlockwise, {platform::keys::OEM_4}},
+		{commands::tool_rotate_clockwise, {platform::keys::OEM_6}},
+		{commands::tool_file_properties, {platform::keys::RETURN, shift | control}},
+		{commands::browse_open_in_file_browser, {platform::keys::RETURN, shift}},
+		{commands::tool_open_with, {platform::keys::RETURN, control}},
+		{commands::view_zoom, {platform::keys::SPACE, control}},
+		{commands::view_zoom_pane_flip, {platform::keys::TAB}},
+		{commands::play, {platform::keys::SPACE}},
+		{commands::slideshow, {platform::keys::SPACE, shift}},
+		{commands::browse_forward, {platform::keys::RIGHT, alt}},
+		{commands::browse_next_folder, {platform::keys::RIGHT, alt | control}},
+		{commands::browse_next_item_extend, {platform::keys::RIGHT, control}},
+		{commands::browse_parent, {platform::keys::UP, alt}},
+		{commands::browse_previous_group, {platform::keys::PRIOR}},
+		{commands::browse_next_group, {platform::keys::NEXT}},
 
 		// Only reachable while the edit view is open, which is why these repeat Alt+Left/Alt+Right.
-		{commands::edit_item_save_and_prev, {keys::LEFT, alt}},
-		{commands::edit_item_save_and_next, {keys::RIGHT, alt}},
-		{commands::edit_item_save, {keys::RETURN, alt}},
-		{commands::view_close, {keys::ESCAPE}},
+		{commands::edit_item_save_and_prev, {platform::keys::LEFT, alt}},
+		{commands::edit_item_save_and_next, {platform::keys::RIGHT, alt}},
+		{commands::edit_item_save, {platform::keys::RETURN, alt}},
+		{commands::view_close, {platform::keys::ESCAPE}},
 	};
 }
 
@@ -1585,13 +1585,13 @@ void app_frame::update_command_text()
 
 	for (const auto& c : _commands)
 	{
-		c.second->keyboard_accelerator_text = format_keyboard_accelerator(c.second->kba);
+		c.second->keyboard_accelerator_text = platform::format_keyboard_accelerator(c.second->kba);
 	}
 
 	// Left and Right are handled directly by the view rather than by the accelerator table, so
 	// their hints are assigned after the formatting pass that would otherwise clear them.
-	_commands[commands::browse_previous_item]->keyboard_accelerator_text = tt.keyboard_left;
-	_commands[commands::browse_next_item]->keyboard_accelerator_text = tt.keyboard_right;
+	_commands[commands::browse_previous_item]->keyboard_accelerator_text = tt.platform_text.keyboard_left;
+	_commands[commands::browse_next_item]->keyboard_accelerator_text = tt.platform_text.keyboard_right;
 
 	for (const auto id : {
 		     commands::menu_open, commands::menu_open_status, commands::menu_tools_toolbar, commands::menu_playback,
@@ -1663,22 +1663,22 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 
 		if (!command->text.empty())
 		{
-			hover.elements->add(std::make_shared<text_element>(command->text, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(command->text, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break));
 		}
 
 		if (!command->tooltip_text.empty())
 		{
-			hover.elements->add(std::make_shared<text_element>(command->tooltip_text, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(command->tooltip_text, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break));
 		}
 
 		if (!command->enable && !command->disabled_reason.empty())
 		{
-			hover.elements->add(std::make_shared<text_element>(command->disabled_reason, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(command->disabled_reason, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break | view_element_style::important));
 		}
 	}
@@ -1707,7 +1707,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 			hover.elements->add(std::make_shared<text_element>(i->name()));
 		}
 
-		keyboard_accelerator = forward ? tt.keyboard_right : tt.keyboard_left;
+		keyboard_accelerator = forward ? tt.platform_text.keyboard_right : tt.platform_text.keyboard_left;
 	}
 	else if (id == commands::menu_group_toolbar)
 	{
@@ -1716,8 +1716,8 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 
 		// locations.md 7.1: the breakdown belongs to the totals affordance now; repeating it here
 		// would put it back where a user reaching for grouping does not want it.
-		hover.elements->add(std::make_shared<text_element>(tt.group_sort_tooltip, ui::style::font_face::dialog,
-		                                                   ui::style::text_style::multiline,
+		hover.elements->add(std::make_shared<text_element>(tt.group_sort_tooltip, render::font_face::dialog,
+		                                                   render::text_style::multiline,
 		                                                   flex_item::line_break));
 	}
 	else if (id == commands::browse_open_containingfolder)
@@ -1758,8 +1758,8 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 
 		if (!parent.is_empty())
 		{
-			hover.elements->add(std::make_shared<text_element>(parent.text(), ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(parent.text(), render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::new_line));
 		}
 	}
@@ -1772,12 +1772,12 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 			const auto is_favorite = _state.search_is_favorite();
 			const auto text = str_format((is_favorite ? tt.favorite_remove_fmt : tt.favorite_add_fmt).sv(),
 			                             search.text());
-			hover.elements->add(std::make_shared<text_element>(text, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::new_line));
 
-			hover.elements->add(std::make_shared<text_element>(tt.favorite_info, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(tt.favorite_info, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::new_line));
 		}
 	}
@@ -1789,12 +1789,12 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		{
 			const auto is_collection_root = _state.search_is_in_collection();
 			const auto text = is_collection_root ? tt.collection_in : tt.collection_not_in;
-			hover.elements->add(std::make_shared<text_element>(text, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::new_line));
 
-			hover.elements->add(std::make_shared<text_element>(tt.collection_info, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(tt.collection_info, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::new_line));
 		}
 	}
@@ -1807,15 +1807,15 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		{
 			hover.elements->add(std::make_shared<text_element>(
 				str_format(tt.selected_items_fmt.sv(), format_plural_text(tt.title_item_count_fmt, selected)),
-				ui::style::font_face::dialog, ui::style::text_style::single_line, flex_item::line_break));
+				render::font_face::dialog, render::text_style::single_line, flex_item::line_break));
 			hover.elements->add(std::make_shared<summary_control>(selected.summary(), flex_item::line_break));
 		}
 	}
 #ifndef WINSTORE
 	else if (id == commands::info_new_version)
 	{
-		hover.elements->add(std::make_shared<text_element>(tt.update_available, ui::style::font_face::dialog,
-		                                                   ui::style::text_style::multiline,
+		hover.elements->add(std::make_shared<text_element>(tt.update_available, render::font_face::dialog,
+		                                                   render::text_style::multiline,
 		                                                   flex_item::line_break));
 		hover.elements->add(
 			std::make_shared<text_element>(str_format(tt.update_avail_version_fmt.sv(), setting.available_version)));
@@ -1843,7 +1843,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 	{
 		if (command)
 		{
-			if (str::is_empty(keyboard_accelerator))
+			if (core::is_empty(keyboard_accelerator))
 			{
 				keyboard_accelerator = command->keyboard_accelerator_text;
 			}
@@ -1865,16 +1865,16 @@ void app_frame::status_tooltip(view_hover_element& hover) const
 
 	if (_status_hover == status_part::totals)
 	{
-		hover.elements->add(std::make_shared<text_element>(_totals_text, ui::style::font_face::dialog,
-		                                                   ui::style::text_style::single_line,
+		hover.elements->add(std::make_shared<text_element>(_totals_text, render::font_face::dialog,
+		                                                   render::text_style::single_line,
 		                                                   flex_item::line_break));
 		hover.elements->add(std::make_shared<summary_control>(_state.summary_shown(), flex_item::line_break));
 		hover.active_bounds = hover.window_bounds = _totals_bounds.offset(origin);
 	}
 	else if (_status_hover == status_part::status && _view)
 	{
-		hover.elements->add(std::make_shared<text_element>(_view->status(), ui::style::font_face::dialog,
-		                                                   ui::style::text_style::multiline,
+		hover.elements->add(std::make_shared<text_element>(_view->status(), render::font_face::dialog,
+		                                                   render::text_style::multiline,
 		                                                   flex_item::line_break));
 		hover.active_bounds = hover.window_bounds = _status_text_bounds.offset(origin);
 	}
@@ -1904,7 +1904,7 @@ void app_frame::update_tooltip()
 {
 	_hover.clear();
 
-	if (df::command_active == 0)
+	if (ui::command_active == 0)
 	{
 		if (setting.show_help_tooltips && _app_logo_hover)
 		{

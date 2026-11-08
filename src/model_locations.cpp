@@ -53,15 +53,15 @@ struct csv_entry
 		return _s.empty();
 	}
 
-	str::cached cached_string() const
+	core::cached cached_string() const
 	{
 		if (is_empty()) return {};
-		return str::trim_and_cache(_s);
+		return core::trim_and_cache(_s);
 	}
 
 	uint32_t hash() const
 	{
-		return str::fnv1a_i(_s);
+		return core::fnv1a_i(_s);
 	}
 
 	std::string_view to_range() const
@@ -71,7 +71,7 @@ struct csv_entry
 
 	int to_int() const
 	{
-		return str::to_int(_s);
+		return core::to_int(_s);
 	}
 
 	uint32_t to_code2() const
@@ -81,7 +81,7 @@ struct csv_entry
 
 	double to_double() const
 	{
-		return str::to_double(_s);
+		return core::to_double(_s);
 	}
 
 	float to_float() const
@@ -127,16 +127,16 @@ void location_t::clear()
 std::string format_distance_km(const double km)
 {
 	// SI symbols, not words, so the string reads the same as the `loc:"London, 10km"` a user types.
-	if (km < 1.0) return std::format("{} m", df::round(km * 1000.0));
+	if (km < 1.0) return std::format("{} m", core::round(km * 1000.0));
 	if (km < 10.0 && std::fabs(km - std::round(km)) > 0.05) return std::format("{:.1f} km", km);
-	return std::format("{} km", df::round(km));
+	return std::format("{} km", core::round(km));
 }
 
 std::string qualified_name(const location_t& loc)
 {
 	const auto level = loc.qualification();
 
-	str::cached parts[3] = {};
+	core::cached parts[3] = {};
 	auto count = 0;
 
 	parts[count++] = loc.place;
@@ -147,7 +147,7 @@ std::string qualified_name(const location_t& loc)
 
 	for (auto i = 0; i < count; ++i)
 	{
-		if (str::is_empty(parts[i])) continue;
+		if (core::is_empty(parts[i])) continue;
 
 		// A city-state, or a place whose name equals its region, must not repeat itself.
 		auto repeated = false;
@@ -202,7 +202,7 @@ std::string bearing_descriptor(const located_place& lp)
 		remaining = remaining.substr(comma + 1);
 	}
 
-	compass = str::trim(compass);
+	compass = core::trim(compass);
 	return str_format(tt.bearing_fmt.sv(), format_distance_km(lp.nearest_km), compass, place);
 }
 
@@ -218,7 +218,7 @@ std::string gps_coordinate::str() const
 
 void gps_coordinate::decimal_to_dms(const double coord, uint32_t& deg, uint32_t& min, uint32_t& sec)
 {
-	const int total_sec = abs(df::round(coord * 3600));
+	const int total_sec = abs(core::round(coord * 3600));
 	deg = total_sec / 3600;
 	min = total_sec / 60 % 60;
 	sec = total_sec % 60;
@@ -249,7 +249,7 @@ split_location_result split_location(const std::string_view text)
 	// Signed numbers from the start, as ISO 6709 writes them - "+47.6-122.3+56/" - and a coordinate
 	// search is typed. A place with two hyphens in its name, Stratford-upon-Avon, is not one: read as
 	// numbers, its words made a coordinate of 0, 0.
-	const auto trimmed = str::trim(text);
+	const auto trimmed = core::trim(text);
 	const auto c2 = trimmed.find_first_of(delims, 1);
 
 	if (starts_signed_number(trimmed) && c2 != std::string_view::npos)
@@ -267,9 +267,9 @@ split_location_result split_location(const std::string_view text)
 
 		if (lat_is_number && starts_signed_number(lng) && (alt.empty() || starts_signed_number(alt)))
 		{
-			result.x = str::to_double(lat);
-			result.y = str::to_double(lng);
-			result.z = str::to_double(alt);
+			result.x = core::to_double(lat);
+			result.y = core::to_double(lng);
+			result.z = core::to_double(alt);
 			result.success = true;
 		}
 	}
@@ -278,7 +278,7 @@ split_location_result split_location(const std::string_view text)
 }
 
 
-location_cache::location_cache() : _locations_path(df::probe_data_file(places_file_name))
+location_cache::location_cache() : _locations_path(platform::probe_data_file(places_file_name))
 {
 	static_assert(std::is_trivial_v<kd_coordinates_t>);
 	static_assert(std::is_trivial_v<location_id_and_offset>);
@@ -299,7 +299,7 @@ void location_cache::set_display_language(const std::string_view code)
 
 	for (auto i = 0; i < static_cast<int>(std::size(location_language_codes)); ++i)
 	{
-		if (str::icmp(location_language_codes[i], code) == 0)
+		if (core::icmp(location_language_codes[i], code) == 0)
 		{
 			bit = i;
 			break;
@@ -322,7 +322,7 @@ class mapped_line_reader
 	static constexpr uint64_t max_window = 64ull * 1024 * 1024;
 
 	platform::mapped_file_ptr _map;
-	df::cspan _window;
+	core::cspan _window;
 	uint64_t _window_start = 0; // absolute file offset of _window[0]
 	uint64_t _next = 0; // absolute file offset of the next unread line
 	uint64_t _size = 0;
@@ -344,7 +344,7 @@ class mapped_line_reader
 	}
 
 public:
-	explicit mapped_line_reader(const df::file_path path)
+	explicit mapped_line_reader(const core::file_path path)
 	{
 		_map = platform::map_file(path, platform::map_mode::windowed);
 
@@ -428,7 +428,7 @@ public:
 // Counts the records a file holds so the per-record vectors can be sized exactly. Scanning for
 // newlines against a mapped window costs a few milliseconds, which is cheaper than either the
 // committed memory a generous reserve wastes or the reallocation an ungenerous one forces.
-static size_t count_records(const df::file_path path)
+static size_t count_records(const core::file_path path)
 {
 	const auto map = platform::map_file(path, platform::map_mode::windowed);
 	if (!map) return 0;
@@ -462,22 +462,22 @@ static size_t count_records(const df::file_path path)
 	return count + (trailing_bytes ? 1 : 0);
 }
 
-static platform::mutex normalize_mutex;
-using county_normalize_map = std::unordered_map<str::cached, str::cached, df::ihash, df::ieq>;
+static core::mutex normalize_mutex;
+using county_normalize_map = std::unordered_map<core::cached, core::cached, core::ihash, core::ieq>;
 _Guarded_by_(normalize_mutex) static county_normalize_map county_abbreviations;
 _Guarded_by_(normalize_mutex) static county_normalize_map county_names;
 
 
-str::cached normalize_county_abbreviation(const str::cached country)
+core::cached normalize_county_abbreviation(const core::cached country)
 {
-	platform::exclusive_lock abbreviation_lock(normalize_mutex);
+	core::exclusive_lock abbreviation_lock(normalize_mutex);
 	const auto found = county_abbreviations.find(country);
 	return found != county_abbreviations.end() ? found->second : country;
 }
 
-str::cached normalize_county_name(const str::cached country)
+core::cached normalize_county_name(const core::cached country)
 {
-	platform::exclusive_lock abbreviation_lock(normalize_mutex);
+	core::exclusive_lock abbreviation_lock(normalize_mutex);
 	const auto found = county_names.find(country);
 	return found != county_names.end() ? found->second : country;
 }
@@ -776,7 +776,7 @@ void location_cache::load_countries()
 	county_normalize_map abbreviations;
 	county_normalize_map names;
 	csv_entry entries[max_location_cols];
-	mapped_line_reader file(df::probe_data_file(countries_file_name));
+	mapped_line_reader file(platform::probe_data_file(countries_file_name));
 
 	// Records are assigned by code, so a reload would otherwise keep countries the new file no
 	// longer has. Cleared before the open test, not inside it, because the normalization maps
@@ -805,7 +805,7 @@ void location_cache::load_countries()
 				const auto langmask = entries[2].to_uint32();
 				const auto localized_count = std::popcount(langmask);
 
-				std::vector<str::cached> localized;
+				std::vector<core::cached> localized;
 				localized.reserve(localized_count);
 
 				for (auto i = 0; i < localized_count && (3 + i) < entry_count; i++)
@@ -821,7 +821,7 @@ void location_cache::load_countries()
 					}
 				}
 
-				std::vector<str::cached> alt_names;
+				std::vector<core::cached> alt_names;
 
 				for (auto i = 3 + localized_count; i < entry_count; i++)
 				{
@@ -856,7 +856,7 @@ void location_cache::load_countries()
 		}
 	}
 
-	platform::exclusive_lock abbreviation_lock(normalize_mutex);
+	core::exclusive_lock abbreviation_lock(normalize_mutex);
 	std::swap(county_abbreviations, abbreviations);
 	std::swap(county_names, names);
 }
@@ -865,7 +865,7 @@ void location_cache::load_countries()
 void location_cache::load_states()
 {
 	csv_entry entries[max_location_cols];
-	mapped_line_reader file(df::probe_data_file(states_file_name));
+	mapped_line_reader file(platform::probe_data_file(states_file_name));
 
 	if (file.is_open())
 	{
@@ -875,7 +875,7 @@ void location_cache::load_states()
 		while (file.next(line, offset))
 		{
 			const auto entry_count = scan_entries(line, entries);
-			df::assert_true(entry_count == 2);
+			core::assert_true(entry_count == 2);
 
 			if (entry_count == 2)
 			{
@@ -1021,7 +1021,7 @@ location_t location_cache::build_location(const csv_entry* entries) const
 	if (offset != 0)
 	{
 		const auto localized = entries[name_col + offset].cached_string();
-		if (!str::is_empty(localized)) place = localized;
+		if (!core::is_empty(localized)) place = localized;
 	}
 
 	const gps_coordinate position(entries[Cols::latitude].to_double(), entries[Cols::longitude].to_double());
@@ -1031,7 +1031,7 @@ location_t location_cache::build_location(const csv_entry* entries) const
 
 void location_cache::load_index()
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 
 	// A reload tears down what readers were gated on, so retract readiness for its duration.
 	_index_loaded.store(false, std::memory_order_release);
@@ -1080,7 +1080,7 @@ void location_cache::load_index()
 
 		while (file.next(line, pos))
 		{
-			if (df::is_closing)
+			if (platform::is_closing)
 			{
 				// Returning here would publish a half-built index that never gets sorted or
 				// tree-built, so every later lookup would be wrong rather than simply empty.
@@ -1103,7 +1103,7 @@ void location_cache::load_index()
 
 				if (_place_name_col != Cols::name)
 				{
-					df::log(__FUNCTION__,
+					core::log(__FUNCTION__,
 					        std::format(
 						        "{} predates the qualification-level column; place names will be over-qualified",
 						        places_file_name));
@@ -1193,8 +1193,8 @@ struct location_match_possible
 	}
 };
 
-static bool find_match(const str::cached text, const std::string_view query, str::cached& text_result,
-                       str::part_t& highlight_result)
+static bool find_match(const core::cached text, const std::string_view query, core::cached& text_result,
+                       core::part_t& highlight_result)
 {
 	const auto found = ifind(text, query);
 
@@ -1208,14 +1208,14 @@ static bool find_match(const str::cached text, const std::string_view query, str
 	return false;
 }
 
-static bool find_match(const std::string_view text, const std::string_view query, str::cached& text_result,
-                       str::part_t& highlight_result)
+static bool find_match(const std::string_view text, const std::string_view query, core::cached& text_result,
+                       core::part_t& highlight_result)
 {
-	const auto found = str::ifind(text, query);
+	const auto found = core::ifind(text, query);
 
 	if (found != std::string_view::npos)
 	{
-		text_result = str::cache(text);
+		text_result = core::cache(text);
 		highlight_result = {found, query.length()};
 		return true;
 	}
@@ -1224,7 +1224,7 @@ static bool find_match(const std::string_view text, const std::string_view query
 }
 
 static bool find_match(const csv_entry* entry, const int entry_count, const std::string_view query,
-                       str::cached& text_result, str::part_t& highlight_result)
+                       core::cached& text_result, core::part_t& highlight_result)
 {
 	for (auto i = 0; i < entry_count; i++)
 	{
@@ -1237,8 +1237,8 @@ static bool find_match(const csv_entry* entry, const int entry_count, const std:
 	return false;
 }
 
-static bool find_match(const country_t& country, const std::string_view query, str::cached& text_result,
-                       str::part_t& highlight_result)
+static bool find_match(const country_t& country, const std::string_view query, core::cached& text_result,
+                       core::part_t& highlight_result)
 {
 	if (find_match(country.name(), query, text_result, highlight_result))
 	{
@@ -1269,7 +1269,7 @@ static bool find_match(const country_t& country, const std::string_view query, s
 location_matches location_cache::auto_complete(const std::string_view query, const uint32_t max_results,
                                                const gps_coordinate default_location) const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 
 	location_matches result;
 	std::vector<uint32_t> ngram_matches;
@@ -1277,12 +1277,12 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 
 	country_loc closest_country;
 	find_closest_locked(default_location.latitude(), default_location.longitude(), &closest_country);
-	const auto query_lower = str::to_lower(query);
-	auto query_parts = str::split(query_lower, true);
+	const auto query_lower = core::to_lower(query);
+	auto query_parts = core::split(query_lower, true);
 
 	for (auto&& part : query_parts)
 	{
-		part = str::trim(part);
+		part = core::trim(part);
 	}
 
 	if (!query_parts.empty())
@@ -1332,8 +1332,8 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 				{
 					if (!short_query || is_same_country)
 					{
-						str::cached text_result;
-						str::part_t highlight_result;
+						core::cached text_result;
+						core::part_t highlight_result;
 						bool has_match = false;
 
 						if (is_empty(possible.city.text))
@@ -1419,8 +1419,8 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 					if (const auto matched_name = possible.city.text.sv(); !matched_name.empty())
 					{
 						const auto& primary = query_parts.front();
-						if (str::icmp(matched_name, primary) == 0) possible.name_rank = 0;
-						else if (str::starts(matched_name, primary)) possible.name_rank = 1;
+						if (core::icmp(matched_name, primary) == 0) possible.name_rank = 0;
+						else if (core::starts(matched_name, primary)) possible.name_rank = 1;
 					}
 
 					possible.offset = line_offset;
@@ -1464,17 +1464,17 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 
 location_t location_cache::find_by_name(const std::string_view query) const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 
 	location_t result;
 	if (query.empty()) return result;
 
 	// locations.md 3.1: a place query is a name, optionally qualified by region and country.
-	auto query_parts = str::split(query, true, [](const char c) { return c == ','; });
+	auto query_parts = core::split(query, true, [](const char c) { return c == ','; });
 
 	for (auto&& part : query_parts)
 	{
-		part = str::trim(part);
+		part = core::trim(part);
 	}
 
 	std::erase_if(query_parts, [](const std::string_view p) { return p.empty(); });
@@ -1512,7 +1512,7 @@ location_t location_cache::find_by_name(const std::string_view query) const
 
 		for (auto i = _place_name_col; i < entry_count && !name_matched; ++i)
 		{
-			name_matched = str::icmp(str::trim(entries[i].to_range()), name) == 0;
+			name_matched = core::icmp(core::trim(entries[i].to_range()), name) == 0;
 		}
 
 		if (!name_matched) continue;
@@ -1524,9 +1524,9 @@ location_t location_cache::find_by_name(const std::string_view query) const
 		for (size_t i = 1; i < query_parts.size() && qualifiers_matched; ++i)
 		{
 			const auto qualifier = query_parts[i];
-			qualifiers_matched = str::icmp(state.sv(), qualifier) == 0 ||
-				str::icmp(country.localized_name(_display_lang_bit.load()).sv(), qualifier) == 0 ||
-				str::icmp(country.name().sv(), qualifier) == 0;
+			qualifiers_matched = core::icmp(state.sv(), qualifier) == 0 ||
+				core::icmp(country.localized_name(_display_lang_bit.load()).sv(), qualifier) == 0 ||
+				core::icmp(country.name().sv(), qualifier) == 0;
 		}
 
 		if (!qualifiers_matched) continue;
@@ -1548,7 +1548,7 @@ location_t location_cache::find_by_name(const std::string_view query) const
 
 location_t location_cache::find_by_id(const uint32_t id) const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	location_t result;
 	const auto found = std::lower_bound(_locations_by_id.begin(), _locations_by_id.end(),
 	                                    location_id_and_offset{id, 0});
@@ -1618,7 +1618,7 @@ kd_coordinates_t location_cache::find_closest_geo_locked(const double latitude, 
 
 country_loc location_cache::find_country(const double x, const double y) const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	const auto closest = find_closest_geo_locked(x, y);
 	const auto found = _countries.find(closest.country);
 	// NOTE: returns the canonical (English) name deliberately. This feeds the map/heat-map
@@ -1636,7 +1636,7 @@ location_t location_cache::find_closest(const double x, const double y) const
 
 location_t location_cache::find_closest(const double x, const double y, country_loc* country) const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	return find_closest_locked(x, y, country);
 }
 
@@ -1695,7 +1695,7 @@ location_t location_cache::find_largest_attributed(const double x, const double 
 	const gps_coordinate at(x, y);
 	if (!at.is_valid()) return {};
 
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	if (_tree.is_empty()) return {};
 
 	std::vector<kd_coordinates_t> candidates;
@@ -1731,7 +1731,7 @@ located_place location_cache::find_attributed(const double x, const double y, co
 	const gps_coordinate at(x, y);
 	if (!at.is_valid()) return {};
 
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	if (_tree.is_empty()) return {};
 
 	// Weighed the same way as find_closest: raw degrees rank somewhere far east or west as nearer
@@ -1835,7 +1835,7 @@ located_place location_cache::find_attributed(const double x, const double y, co
 location_t location_cache::find_largest(const double min_latitude, const double min_longitude,
                                         const double max_latitude, const double max_longitude) const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	std::vector<kd_coordinates_t> candidates;
 	_tree.find_in_bounds(_coords, static_cast<float>(min_latitude), static_cast<float>(min_longitude),
 	                     static_cast<float>(max_latitude), static_cast<float>(max_longitude), candidates);
@@ -1844,7 +1844,7 @@ location_t location_cache::find_largest(const double min_latitude, const double 
 	for (const auto& candidate : candidates)
 	{
 		if (!largest || candidate.population > largest->population ||
-			(df::equiv(candidate.population, largest->population) && candidate.id < largest->id))
+			(core::equiv(candidate.population, largest->population) && candidate.id < largest->id))
 		{
 			largest = &candidate;
 		}

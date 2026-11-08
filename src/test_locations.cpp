@@ -49,7 +49,7 @@ static void should_group_sidebar_map_by_place()
 	assert_equal(1u, static_cast<uint32_t>(histograms._location_groups.size()), "one place group");
 	const auto& group = histograms._location_groups.begin()->second;
 	assert_equal(2u, group.count, "place group count");
-	assert_equal(true, !str::is_empty(group.country), "place group country");
+	assert_equal(true, !core::is_empty(group.country), "place group country");
 	assert_equal(true, group.centroid().distance_in_kilometers({50.08806, 14.42083}) < 0.01,
 	             "place group uses photo centroid");
 }
@@ -96,9 +96,9 @@ static void should_pack_tile_database_keys()
 	}
 }
 
-static df::date_t tile_days_ago(const uint32_t days)
+static core::date_t tile_days_ago(const uint32_t days)
 {
-	return df::date_t(platform::now().to_int64() - days * df::date_t::intervals_per_day);
+	return core::date_t(core::utc_now().to_int64() - days * core::date_t::intervals_per_day);
 }
 
 static void should_cache_tiles_in_a_database()
@@ -111,8 +111,8 @@ static void should_cache_tiles_in_a_database()
 	constexpr auto key = map_tile_db_key(3, 1, 2);
 	assert_equal(true, db.load(key).empty(), "load absent returns empty", "tile cache");
 
-	const df::blob bytes = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4};
-	db.store(key, df::cspan(bytes));
+	const core::blob bytes = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4};
+	db.store(key, core::cspan(bytes));
 	db.flush();
 
 	const auto loaded = db.load(key);
@@ -135,12 +135,12 @@ static void should_prune_unused_tiles()
 	tile_cache_db db;
 	db.open(_temps.next_path(".db"));
 
-	const df::blob bytes = {1, 2, 3, 4};
+	const core::blob bytes = {1, 2, 3, 4};
 	const auto long_ago = tile_days_ago(60);
 
 	for (auto i = 0; i < 3; ++i)
 	{
-		db.store(map_tile_db_key(5, i, i), df::cspan(bytes), long_ago);
+		db.store(map_tile_db_key(5, i, i), core::cspan(bytes), long_ago);
 	}
 
 	db.flush();
@@ -158,12 +158,12 @@ static void should_bound_tile_cache_by_size()
 	tile_cache_db db;
 	db.open(_temps.next_path(".db"));
 
-	const df::blob bytes(8192, 0x5a);
+	const core::blob bytes(8192, 0x5a);
 	const auto long_ago = tile_days_ago(60);
 
 	for (auto i = 0; i < 8; ++i)
 	{
-		db.store(map_tile_db_key(6, i, i), df::cspan(bytes), long_ago);
+		db.store(map_tile_db_key(6, i, i), core::cspan(bytes), long_ago);
 	}
 
 	db.flush();
@@ -181,18 +181,18 @@ static void should_budget_expired_tile_pruning()
 	tile_cache_db db;
 	db.open(_temps.next_path(".db"));
 
-	const df::blob bytes = {1, 2, 3, 4};
+	const core::blob bytes = {1, 2, 3, 4};
 	const auto long_ago = tile_days_ago(60);
 	const auto recent = tile_days_ago(1);
 
 	for (auto i = 0; i < 4100; ++i)
 	{
-		db.store(map_tile_db_key(8, i, i), df::cspan(bytes), long_ago);
+		db.store(map_tile_db_key(8, i, i), core::cspan(bytes), long_ago);
 	}
 
 	for (auto i = 0; i < 3; ++i)
 	{
-		db.store(map_tile_db_key(9, i, i), df::cspan(bytes), recent);
+		db.store(map_tile_db_key(9, i, i), core::cspan(bytes), recent);
 	}
 
 	assert_equal(4103, static_cast<int>(db.count()), "stored before prune", "tile cache");
@@ -228,10 +228,10 @@ static void should_keep_tile_transaction_bookkeeping_after_commit_failure()
 	tile_cache_db db;
 	db.open(_temps.next_path(".db"));
 
-	const df::blob bytes = {1, 2, 3, 4};
+	const core::blob bytes = {1, 2, 3, 4};
 	for (auto i = 0u; i < tile_cache_db::prune_write_interval; ++i)
 	{
-		db.store(map_tile_db_key(10, static_cast<int>(i), static_cast<int>(i)), df::cspan(bytes));
+		db.store(map_tile_db_key(10, static_cast<int>(i), static_cast<int>(i)), core::cspan(bytes));
 	}
 
 	tile_cache_test_seams::fail_next_commit();
@@ -246,7 +246,7 @@ static void should_keep_tile_transaction_bookkeeping_after_commit_failure()
 	assert_equal(0, static_cast<int>(db.count()), "rolled back rows are not reported as stored", "tile cache");
 
 	constexpr auto key = map_tile_db_key(11, 1, 1);
-	db.store(key, df::cspan(bytes));
+	db.store(key, core::cspan(bytes));
 	db.flush();
 	assert_equal(true, db.load(key) == bytes, "subsequent writes persist after the fault clears", "tile cache");
 
@@ -260,11 +260,11 @@ static void should_keep_tiles_inside_the_retention_window()
 	tile_cache_db db;
 	db.open(_temps.next_path(".db"));
 
-	const df::blob bytes(8192, 0x5a);
+	const core::blob bytes(8192, 0x5a);
 
 	for (auto i = 0; i < 4; ++i)
 	{
-		db.store(map_tile_db_key(7, i, i), df::cspan(bytes));
+		db.store(map_tile_db_key(7, i, i), core::cspan(bytes));
 	}
 
 	db.flush();
@@ -280,8 +280,8 @@ static void should_keep_tiles_inside_the_retention_window()
 static void should_replace_an_unreadable_tile_cache()
 {
 	const auto path = _temps.next_path(".db");
-	const df::blob junk(4096, 0x7f);
-	df::blob_save_to_file(df::cspan(junk), path);
+	const core::blob junk(4096, 0x7f);
+	platform::blob_save_to_file(core::cspan(junk), path);
 
 	tile_cache_db db;
 	db.open(path);
@@ -289,8 +289,8 @@ static void should_replace_an_unreadable_tile_cache()
 	assert_equal(true, db.is_open(), "a file this build cannot read is replaced", "tile cache");
 
 	constexpr auto key = map_tile_db_key(4, 5, 6);
-	const df::blob bytes = {9, 8, 7};
-	db.store(key, df::cspan(bytes));
+	const core::blob bytes = {9, 8, 7};
+	db.store(key, core::cspan(bytes));
 	db.flush();
 
 	assert_equal(true, db.load(key) == bytes, "usable after replacement", "tile cache");
@@ -306,7 +306,7 @@ static void should_resolve_tile_cache_db_beside_index_db()
 
 	assert_equal(true, db_path == base.combine_file("map-tiles-cache.db"sv), "database beside index database",
 	             "tile cache location");
-	assert_equal(true, base.exists(), "base folder exists", "tile cache location");
+	assert_equal(true, platform::exists(base), "base folder exists", "tile cache location");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -637,10 +637,10 @@ static void should_build_aggregate_location_matrix()
 	const gps_coordinate prague2(50.0756, 14.4379);
 	const gps_coordinate sydney(-33.8688, 151.2093);
 	const gps_coordinate excluded_by_bounds(64.1466, -21.9426);
-	matrix.add(df::file_path("c:\\b.jpg"), prague2, true, 5);
-	matrix.add(df::file_path("c:\\sydney.jpg"), sydney, true, 0);
-	matrix.add(df::file_path("c:\\a.jpg"), prague1, true, 3);
-	matrix.add(df::file_path("c:\\reykjavik.jpg"), excluded_by_bounds, true, 5);
+	matrix.add(core::file_path("c:\\b.jpg"), prague2, true, 5);
+	matrix.add(core::file_path("c:\\sydney.jpg"), sydney, true, 0);
+	matrix.add(core::file_path("c:\\a.jpg"), prague1, true, 3);
+	matrix.add(core::file_path("c:\\reykjavik.jpg"), excluded_by_bounds, true, 5);
 	matrix.finalize();
 
 	assert_equal(2_z, matrix.cells.size(), "only occupied in-bounds cells are stored", "location matrix");
@@ -653,9 +653,9 @@ static void should_build_aggregate_location_matrix()
 	assert_equal(14.4379, prague->max_longitude, "cell retains maximum longitude", "location matrix");
 
 	location_matrix ranked;
-	ranked.add(df::file_path("c:\\0.txt"), prague1, false, 5);
-	ranked.add(df::file_path("c:\\a.jpg"), prague1, true, 3);
-	ranked.add(df::file_path("c:\\b.jpg"), prague1, true, 5);
+	ranked.add(core::file_path("c:\\0.txt"), prague1, false, 5);
+	ranked.add(core::file_path("c:\\a.jpg"), prague1, true, 3);
+	ranked.add(core::file_path("c:\\b.jpg"), prague1, true, 5);
 	ranked.finalize();
 	assert_equal("b.jpg", ranked.cells.front().representative_path.name(),
 	             "rated visual media outranks non-visual and lower-rated items", "location matrix");
@@ -674,7 +674,7 @@ static void should_select_thumbnail_representatives_while_counting()
 	auto make_file = [](const std::string_view name, const int rating)
 	{
 		df::index_file_item result;
-		result.name = str::cache(name);
+		result.name = core::cache(name);
 		result.ft = files::file_type_from_name(name);
 		const auto metadata = std::make_shared<prop::item_metadata>();
 		metadata->rating = rating;
@@ -686,20 +686,20 @@ static void should_select_thumbnail_representatives_while_counting()
 	const auto ordinary_photo = make_file("a.jpg", 3);
 	const auto rated_photo = make_file("b.jpg", 5);
 	df::file_group_histogram first;
-	first.record(text, df::file_path("c:\\0.txt"));
-	first.record(ordinary_photo, df::file_path("c:\\a.jpg"));
+	first.record(text, core::file_path("c:\\0.txt"));
+	first.record(ordinary_photo, core::file_path("c:\\a.jpg"));
 	assert_equal("a.jpg", first.representative_path.name(), "visual media outranks non-thumbnail files",
 	             "summary thumbnail");
 
 	df::file_group_histogram second;
-	second.record(rated_photo, df::file_path("c:\\b.jpg"));
+	second.record(rated_photo, core::file_path("c:\\b.jpg"));
 	first.add(second);
 	assert_equal("b.jpg", first.representative_path.name(), "rated media survives histogram merge",
 	             "summary thumbnail");
 
 	df::date_histogram dates;
-	dates.record_representative(0, ordinary_photo, df::file_path("c:\\a.jpg"));
-	dates.record_representative(0, rated_photo, df::file_path("c:\\b.jpg"));
+	dates.record_representative(0, ordinary_photo, core::file_path("c:\\a.jpg"));
+	dates.record_representative(0, rated_photo, core::file_path("c:\\b.jpg"));
 	assert_equal("b.jpg", dates.representative_paths[0].name(), "date bucket prioritises rated media",
 	             "summary thumbnail");
 }
@@ -712,7 +712,7 @@ static void should_find_location()
 {
 	auto& locations = test_locations();
 	// The display language is shared state; every early return below would otherwise leak it.
-	const df::scope_exit restore_language([&locations] { locations.set_display_language({}); });
+	const core::scope_exit restore_language([&locations] { locations.set_display_language({}); });
 
 	const auto default_location = gps_coordinate(51.5255317687988, -0.116743430495262); // London
 
@@ -733,7 +733,7 @@ static void should_find_location()
 	boulder_city_metadata->location_state = "Nevada"_c;
 	boulder_city_metadata->location_country = "United States"_c;
 	const auto boulder_city_search = df::search_t::parse("loc:\"Boulder City\"");
-	const df::search_matcher boulder_city_matcher(boulder_city_search, platform::now().to_days(), &locations);
+	const df::search_matcher boulder_city_matcher(boulder_city_search, core::utc_now().to_days(), &locations);
 	assert_equal(true, boulder_city_matcher.match_item({}, boulder_city_file).is_match(),
 	             "loc place uses map reverse geocode when stored place is empty");
 
@@ -759,8 +759,8 @@ static void should_find_location()
 	const auto short_local = locations.auto_complete("bi", 4, default_location);
 	assert_equal(true, std::ranges::any_of(short_local, [](const location_match& match)
 	             {
-		             return str::icmp(match.location.place, "Birmingham") == 0 &&
-			             str::icmp(match.location.country, "United Kingdom") == 0;
+		             return core::icmp(match.location.place, "Birmingham") == 0 &&
+			             core::icmp(match.location.country, "United Kingdom") == 0;
 	             }),
 	             "short prefixes include local places by canonical country code");
 	assert_equal(true, short_local.size() <= 4, "short completion honours the result cap");
@@ -768,7 +768,7 @@ static void should_find_location()
 	const auto short_nonlocal = locations.auto_complete("ar", 8, default_location);
 	assert_equal(false, std::ranges::any_of(short_nonlocal, [](const location_match& match)
 	             {
-		             return str::icmp(match.location.place, "Armidale") == 0;
+		             return core::icmp(match.location.place, "Armidale") == 0;
 	             }),
 	             "short prefixes still suppress non-local place matches");
 
@@ -780,8 +780,8 @@ static void should_find_location()
 	const auto local_de = locations.auto_complete("bi", 4, default_location);
 	assert_equal(true, std::ranges::any_of(local_de, [](const location_match& match)
 	             {
-		             return str::icmp(match.location.place, "Birmingham") == 0 &&
-			             str::icmp(match.location.country, "Vereinigtes Königreich") == 0;
+		             return core::icmp(match.location.place, "Birmingham") == 0 &&
+			             core::icmp(match.location.country, "Vereinigtes Königreich") == 0;
 	             }),
 	             "localized display names do not break short local completion");
 	locations.set_display_language("es");
@@ -791,8 +791,8 @@ static void should_find_location()
 	const auto local_es = locations.auto_complete("bi", 4, default_location);
 	assert_equal(true, std::ranges::any_of(local_es, [](const location_match& match)
 	             {
-		             return str::icmp(match.location.place, "Birmingham") == 0 &&
-			             str::icmp(match.location.country, "Reino Unido") == 0;
+		             return core::icmp(match.location.place, "Birmingham") == 0 &&
+			             core::icmp(match.location.country, "Reino Unido") == 0;
 	             }),
 	             "a second localized display language still completes local short prefixes");
 	locations.set_display_language("zh");
@@ -824,11 +824,11 @@ static void should_return_no_place_for_empty_location_lookup()
 	const location_cache locations;
 
 	const auto closest = locations.find_closest(0.0, 0.0);
-	assert_equal(true, str::is_empty(closest.place), "empty gazetteer has no closest place");
+	assert_equal(true, core::is_empty(closest.place), "empty gazetteer has no closest place");
 	assert_equal(0u, closest.id, "empty gazetteer has no closest id");
 
 	const auto invalid = locations.find_closest(std::numeric_limits<double>::quiet_NaN(), 0.0);
-	assert_equal(true, str::is_empty(invalid.place), "invalid lookup has no closest place");
+	assert_equal(true, core::is_empty(invalid.place), "invalid lookup has no closest place");
 
 	const auto country = locations.find_country(std::numeric_limits<double>::quiet_NaN(), 0.0);
 	assert_equal(0u, country.code, "invalid country lookup has no country code");
@@ -858,7 +858,7 @@ static void should_find_places_across_the_antimeridian_and_poles()
 static void should_reload_location_index()
 {
 	auto& locations = test_locations();
-	const df::scope_exit restore_language([&locations] { locations.set_display_language({}); });
+	const core::scope_exit restore_language([&locations] { locations.set_display_language({}); });
 	const auto default_location = gps_coordinate(51.5255317687988, -0.116743430495262); // London
 
 	const auto before = locations.auto_complete("london", 8, default_location);
@@ -1046,7 +1046,7 @@ static void should_bound_place_attribution()
 	const auto sahara = locations.find_attributed(23.0, 15.0);
 	assert_equal(static_cast<int>(location_attribution::remote), static_cast<int>(sahara.attribution),
 	             "220km from a small town is Remote");
-	assert_equal(true, str::is_empty(sahara.place.place), "Remote names no place");
+	assert_equal(true, core::is_empty(sahara.place.place), "Remote names no place");
 	assert_equal("Libya", sahara.place.country, "Remote still names a country when it can");
 	assert_equal("Libya"s, qualified_name(sahara.place), "a Remote label is the country alone");
 
@@ -1058,7 +1058,7 @@ static void should_bound_place_attribution()
 	// Issue #119: the out-param country stays canonical because it doubles as a search term.
 	{
 		locations.set_display_language("de");
-		const df::scope_exit restore_language([&locations] { locations.set_display_language({}); });
+		const core::scope_exit restore_language([&locations] { locations.set_display_language({}); });
 		country_loc canonical;
 		const auto munich_area = locations.find_attributed(48.137, 11.575, &canonical);
 		assert_equal("Deutschland", munich_area.place.country, "the displayed country is localized");
@@ -1070,9 +1070,9 @@ static void should_bound_place_attribution()
 	const auto atlantic = locations.find_attributed(35.0, -45.0);
 	assert_equal(static_cast<int>(location_attribution::remote), static_cast<int>(atlantic.attribution),
 	             "mid-ocean is Remote");
-	assert_equal(true, str::is_empty(atlantic.place.country), "mid-ocean claims no country");
+	assert_equal(true, core::is_empty(atlantic.place.country), "mid-ocean claims no country");
 	assert_equal(""s, qualified_name(atlantic.place), "mid-ocean has no place label");
-	assert_equal(false, str::is_empty(locations.find_closest(35.0, -45.0).place),
+	assert_equal(false, core::is_empty(locations.find_closest(35.0, -45.0).place),
 	             "find_closest stays unbounded for the bearing descriptor");
 
 	// An item with no coordinates is not located at all.
@@ -1142,7 +1142,7 @@ static void should_describe_bearing()
 	// find_closest stays unbounded precisely so a Remote item can still say where it was.
 	const auto atlantic = locations.find_attributed(35.0, -45.0);
 	const auto atlantic_text = bearing_descriptor(atlantic);
-	assert_equal(false, str::is_empty(atlantic.nearest.place), "Remote still resolves a nearest place");
+	assert_equal(false, core::is_empty(atlantic.nearest.place), "Remote still resolves a nearest place");
 	assert_equal(true, atlantic.nearest_km > location_max_attribution_km,
 	             "the nearest place is beyond every attribution radius");
 	assert_equal(true, atlantic_text.find(qualified_name(atlantic.nearest)) != std::string::npos,
@@ -1221,7 +1221,7 @@ static void should_recover_from_an_empty_location_search()
 	unplaced.without(df::search_term_type::has_location);
 	assert_equal(true, unplaced.single_place_term() == nullptr, "the location term is gone");
 
-	const auto has_no_location = [&unplaced](const gps_coordinate coord, const str::cached stored_place)
+	const auto has_no_location = [&unplaced](const gps_coordinate coord, const core::cached stored_place)
 	{
 		df::index_file_item file;
 		file.ft = files::file_type_from_name("test.jpg");
@@ -1247,7 +1247,7 @@ static void should_reproduce_a_location_group_from_its_header()
 	              .location("London", df::location_level::place)
 	              .location("England", df::location_level::state);
 
-	const auto matches = [&search](const str::cached place, const str::cached state)
+	const auto matches = [&search](const core::cached place, const core::cached state)
 	{
 		df::index_file_item file;
 		file.ft = files::file_type_from_name("test.jpg");
@@ -1391,7 +1391,7 @@ static void should_resolve_location_vocabulary()
 	const auto matches = [&locations](const std::string_view query, const df::index_file_item& file)
 	{
 		const auto search = df::search_t::parse(query);
-		const df::search_matcher matcher(search, platform::now().to_days(), &locations);
+		const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
 		return matcher.match_item({}, file).is_match();
 	};
 
@@ -1467,7 +1467,7 @@ static void should_complete_locations_as_search_terms()
 	// A level-qualified scope labels the place at that level and keeps the scope prefix.
 	const auto states = index.auto_complete_locations("cali", 5, df::location_level::state);
 	assert_equal(true, !states.empty(), "state scope predicts states");
-	assert_equal(true, str::starts(states.front().text, "state:"), "state scope keeps its prefix");
+	assert_equal(true, core::starts(states.front().text, "state:"), "state scope keeps its prefix");
 
 	const auto countries = index.auto_complete_locations("franc", 5, df::location_level::country);
 	assert_equal(true, !countries.empty(), "country scope predicts countries");
@@ -1475,7 +1475,7 @@ static void should_complete_locations_as_search_terms()
 
 	// Predictions are distinct; the gazetteer holds many rows per named place.
 	const auto many = index.auto_complete_locations("lond", 8);
-	df::hash_set<std::string, df::ihash, df::ieq> seen;
+	core::hash_set<std::string, core::ihash, core::ieq> seen;
 	for (const auto& m : many) assert_equal(true, seen.emplace(m.text).second, "predictions are distinct");
 
 	assert_equal(true, index.auto_complete_locations("", 5).empty(), "empty query predicts nothing");
@@ -1505,7 +1505,7 @@ static void should_match_location_radius_and_presence()
 	const auto matches = [&locations](const std::string_view query, const df::index_file_item& file)
 	{
 		const auto search = df::search_t::parse(query);
-		const df::search_matcher matcher(search, platform::now().to_days(), &locations);
+		const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
 		return matcher.match_item({}, file).is_match();
 	};
 
@@ -1550,7 +1550,7 @@ static void should_match_location_radius_and_presence()
 	assert_equal("Reno/United States", std::string(locations.find_by_name("Reno, Nevada").place.sv()) + "/" +
 	             std::string(locations.find_by_name("Reno, Nevada").country.sv()),
 	             "a region qualifier selects the same record");
-	assert_equal(true, str::is_empty(locations.find_by_name("Reno, France").place),
+	assert_equal(true, core::is_empty(locations.find_by_name("Reno, France").place),
 	             "a qualifier that does not hold resolves nothing");
 	assert_equal(true, matches("loc:\"Reno, 800km\"", gps_only), "a wide enough radius reaches the item");
 
@@ -1725,9 +1725,9 @@ static df::visit_sample visit_sample_at(const int y, const int m, const int d, c
                                         const std::string_view place)
 {
 	df::visit_sample s;
-	s.days = df::date_t(y, m, d).to_days();
+	s.days = core::date_t(y, m, d).to_days();
 	s.coordinate = gps_coordinate(lat, lon);
-	if (!place.empty()) s.place = str::cache(place);
+	if (!place.empty()) s.place = core::cache(place);
 	return s;
 }
 
@@ -1818,10 +1818,10 @@ static void should_tell_text_only_namesakes_apart()
 	                          const std::string_view state)
 	{
 		df::visit_sample s;
-		s.days = df::date_t(year, month, day, 12, 0, 0).to_days();
-		s.place = str::cache(place);
-		s.state = str::cache(state);
-		s.country = str::cache("United States");
+		s.days = core::date_t(year, month, day, 12, 0, 0).to_days();
+		s.place = core::cache(place);
+		s.state = core::cache(state);
+		s.country = core::cache("United States");
 		return s;
 	};
 
@@ -1929,8 +1929,8 @@ static df::visit_sample text_place_sample(const int day, const char* place, cons
 {
 	auto s = visit_sample_at(2022, 4, day, 0.0, 0.0, place);
 	s.coordinate = {};
-	s.state = str::cache(state);
-	s.country = str::cache(country);
+	s.state = core::cache(state);
+	s.country = core::cache(country);
 	return s;
 }
 
@@ -1938,7 +1938,7 @@ static uint32_t count_matching_place_chip(const location_cache& locations, const
                                           const df::visit_place_tally& place)
 {
 	const auto search = df::visit_place_search(df::search_t(), place);
-	const df::search_matcher matcher(search, platform::now().to_days(), &locations);
+	const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
 	auto count = 0u;
 
 	for (const auto& s : request.samples)
@@ -1960,9 +1960,9 @@ static uint32_t count_matching_place_chip(const location_cache& locations, const
 
 static bool place_chip_matches_sample(const df::visit_place_tally& place, const df::visit_sample& sample)
 {
-	const auto matches = [](const str::cached chip, const str::cached value)
+	const auto matches = [](const core::cached chip, const core::cached value)
 	{
-		return is_empty(chip) || (!is_empty(value) && str::icmp(chip, value) == 0);
+		return is_empty(chip) || (!is_empty(value) && core::icmp(chip, value) == 0);
 	};
 
 	return matches(place.place, sample.place) &&
@@ -2189,7 +2189,7 @@ static void should_cancel_place_breakdown_derivation()
 {
 	const location_cache locations;
 	std::atomic_bool cancelled = true;
-	df::visit_request request{df::cancel_token(cancelled)};
+	df::visit_request request{core::cancel_token(cancelled)};
 
 	for (auto i = 0; i < 512; ++i)
 	{
@@ -2264,7 +2264,7 @@ static void should_reproduce_a_place_breakdown_from_its_chip()
 	const auto count_matches = [&locations, &request](const df::search_t& search)
 	{
 		auto count = 0u;
-		const df::search_matcher matcher(search, platform::now().to_days(), &locations);
+		const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
 
 		for (const auto& s : request.samples)
 		{
@@ -2300,8 +2300,8 @@ static void should_tell_two_place_chips_apart()
 	{
 		auto s = visit_sample_at(2022, 4, day, 0.0, 0.0, place);
 		s.coordinate = {};
-		s.state = str::cache(state);
-		s.country = str::cache(country);
+		s.state = core::cache(state);
+		s.country = core::cache(country);
 		return s;
 	};
 
@@ -2370,8 +2370,8 @@ static void should_run_the_search_a_timeline_node_promises()
 	df::visit_node node;
 	node.name = "Tokyo, Japan";
 	node.named = true;
-	node.first = df::date_t(2019, 6, 12);
-	node.last = df::date_t(2019, 6, 21);
+	node.first = core::date_t(2019, 6, 12);
+	node.last = core::date_t(2019, 6, 21);
 	node.count = 10;
 	node.radius_km = 25.0;
 	node.centre = gps_coordinate(35.68, 139.69);
@@ -2400,10 +2400,10 @@ static void should_run_the_search_a_timeline_node_promises()
 		df::index_file_item file;
 		file.ft = files::file_type_from_name("test.jpg");
 		const auto md = file.safe_ps();
-		md->dates.add(prop::date_source::exif_original, df::date_t(y, m, d, 12, 0, 0));
+		md->dates.add(prop::date_source::exif_original, core::date_t(y, m, d, 12, 0, 0));
 		file.calc_search_presence();
 
-		const df::search_matcher matcher(range, platform::now().to_days());
+		const df::search_matcher matcher(range, core::utc_now().to_days());
 		return matcher.match_item({}, file).is_match();
 	};
 
@@ -2416,8 +2416,8 @@ static void should_run_the_search_a_timeline_node_promises()
 	// A node with no name at all clicks through as coordinates, never as an invented place.
 	df::visit_node remote;
 	remote.name = "Remote area";
-	remote.first = df::date_t(2004, 2, 1);
-	remote.last = df::date_t(2006, 9, 4);
+	remote.first = core::date_t(2004, 2, 1);
+	remote.last = core::date_t(2006, 9, 4);
 	remote.radius_km = 100.0;
 	remote.centre = gps_coordinate(-40.5, -110.25);
 

@@ -41,7 +41,7 @@ namespace
 			{
 				if (result.status == custom_dictionary_add_status::failed)
 				{
-					df::log(__FUNCTION__, result.message);
+					core::log(__FUNCTION__, result.message);
 				}
 
 				if (done) done();
@@ -69,26 +69,26 @@ spell_check::spell_check()
 }
 
 // The per-user copy wins, so a downloaded dictionary supersedes a shipped one of the same name.
-df::file_path spell_check::find_dictionary(const std::string_view name, const std::string_view ext) const
+core::file_path spell_check::find_dictionary(const std::string_view name, const std::string_view ext) const
 {
 	const auto user_path = _user_folder.combine_file_ext(name, ext);
-	return user_path.exists() ? user_path : _shipped_folder.combine_file_ext(name, ext);
+	return platform::exists(user_path) ? user_path : _shipped_folder.combine_file_ext(name, ext);
 }
 
 // Created on demand rather than at construction, so a user who never adds a word or downloads a
 // dictionary gets no empty folder.
 bool spell_check::ensure_user_folder() const
 {
-	return _user_folder.exists() || platform::create_folder(_user_folder).success();
+	return platform::exists(_user_folder) || platform::create_folder(_user_folder).success();
 }
 
 spell_check::~spell_check()
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	_hunspell.reset();
 }
 
-static void download_dic(df::async_i& async, const df::file_path path, spell_check& checker)
+static void download_dic(df::async_i& async, const core::file_path path, spell_check& checker)
 {
 	// example https://diffractor.com/static/dictionaries/en_GB.aff
 
@@ -113,7 +113,7 @@ static void download_dic(df::async_i& async, const df::file_path path, spell_che
 
 void spell_check::lazy_download(df::async_i& async)
 {
-	const std::unordered_set<std::string_view, df::ihash, df::ieq> known_dics =
+	const std::unordered_set<std::string_view, core::ihash, core::ieq> known_dics =
 	{
 		"bg_BG",
 		"ca_ES",
@@ -162,10 +162,10 @@ void spell_check::lazy_download(df::async_i& async)
 		const auto aff = find_dictionary(language, ".aff");
 		const auto dic = find_dictionary(language, ".dic");
 
-		if ((!aff.exists() || !dic.exists()) && ensure_user_folder())
+		if ((!platform::exists(aff) || !platform::exists(dic)) && ensure_user_folder())
 		{
-			if (!aff.exists()) download_dic(async, _user_folder.combine_file_ext(language, ".aff"s), *this);
-			if (!dic.exists()) download_dic(async, _user_folder.combine_file_ext(language, ".dic"s), *this);
+			if (!platform::exists(aff)) download_dic(async, _user_folder.combine_file_ext(language, ".aff"s), *this);
+			if (!platform::exists(dic)) download_dic(async, _user_folder.combine_file_ext(language, ".dic"s), *this);
 		}
 	}
 }
@@ -174,16 +174,16 @@ namespace
 {
 	struct spell_paths
 	{
-		df::folder_path shipped_folder;
-		df::folder_path user_folder;
-		df::file_path custom_dic_path;
+		core::folder_path shipped_folder;
+		core::folder_path user_folder;
+		core::file_path custom_dic_path;
 		std::function<void()> load_gate;
 	};
 
-	df::file_path find_dictionary(const spell_paths& paths, const std::string_view name, const std::string_view ext)
+	core::file_path find_dictionary(const spell_paths& paths, const std::string_view name, const std::string_view ext)
 	{
 		const auto user_path = paths.user_folder.combine_file_ext(name, ext);
-		return user_path.exists() ? user_path : paths.shipped_folder.combine_file_ext(name, ext);
+		return platform::exists(user_path) ? user_path : paths.shipped_folder.combine_file_ext(name, ext);
 	}
 
 	std::unique_ptr<Hunspell> load_dictionary_from_paths(const spell_paths& paths)
@@ -194,16 +194,16 @@ namespace
 		auto aff_path = find_dictionary(paths, language, ".aff");
 		auto dic_path = find_dictionary(paths, language, ".dic");
 
-		if (!aff_path.exists())
+		if (!platform::exists(aff_path))
 		{
 			aff_path = find_dictionary(paths, "en_US", ".aff");
 			dic_path = find_dictionary(paths, "en_US", ".dic");
 		}
 
-		if (!aff_path.exists() || !dic_path.exists()) return {};
+		if (!platform::exists(aff_path) || !platform::exists(dic_path)) return {};
 
-		auto hunspell = std::make_unique<Hunspell>(str::utf8_to_a(aff_path.str()).c_str(),
-		                                           str::utf8_to_a(dic_path.str()).c_str());
+		auto hunspell = std::make_unique<Hunspell>(platform::utf8_to_a(aff_path.str()).c_str(),
+		                                           platform::utf8_to_a(dic_path.str()).c_str());
 
 		std::ifstream f(platform::to_stream_path(paths.custom_dic_path));
 
@@ -215,7 +215,7 @@ namespace
 			{
 				if (!line.empty())
 				{
-					hunspell->add(str::utf8_cast2(line));
+					hunspell->add(core::utf8_cast2(line));
 				}
 			}
 		}
@@ -235,7 +235,7 @@ void spell_check::lazy_load()
 	spell_paths paths;
 
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		if (_hunspell || _loading) return;
 
 		_loading = true;
@@ -251,10 +251,10 @@ void spell_check::lazy_load()
 	}
 	catch (const std::exception& e)
 	{
-		df::log(__FUNCTION__, std::format("failed to load dictionary: {}", e.what()));
+		core::log(__FUNCTION__, std::format("failed to load dictionary: {}", e.what()));
 	}
 
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	if (generation == _generation)
 	{
 		_hunspell = std::move(loaded);
@@ -268,7 +268,7 @@ void spell_check::queue_load(df::async_i& async)
 	spell_paths paths;
 
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		_async = &async;
 
 		if (_hunspell || _loading) return;
@@ -288,12 +288,12 @@ void spell_check::queue_load(df::async_i& async)
 		}
 		catch (const std::exception& e)
 		{
-			df::log(__FUNCTION__, std::format("failed to load dictionary: {}", e.what()));
+			core::log(__FUNCTION__, std::format("failed to load dictionary: {}", e.what()));
 		}
 
 		async.queue_ui([this, generation, result]
 		{
-			platform::exclusive_lock lock(_rw);
+			core::exclusive_lock lock(_rw);
 			if (generation == _generation)
 			{
 				_hunspell = std::move(result->hunspell);
@@ -308,7 +308,7 @@ void spell_check::queue_load()
 	df::async_i* async = nullptr;
 
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		async = _async;
 	}
 
@@ -318,7 +318,7 @@ void spell_check::queue_load()
 void spell_check::dictionary_downloaded(df::async_i& async)
 {
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		_hunspell.reset();
 		_loading = false;
 		++_generation;
@@ -329,7 +329,7 @@ void spell_check::dictionary_downloaded(df::async_i& async)
 
 void spell_check::configure_async(df::async_i* async)
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	_async = async;
 	++_generation;
 	_loading = false;
@@ -341,9 +341,9 @@ bool spell_check::is_word_valid(const std::string_view word) const
 	if (word.empty())
 		return true;
 
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	if (!_hunspell) return true;
-	return _hunspell->spell(str::utf8_cast2(word));
+	return _hunspell->spell(core::utf8_cast2(word));
 }
 
 std::vector<std::string> spell_check::suggest(const std::string_view word) const
@@ -352,28 +352,28 @@ std::vector<std::string> spell_check::suggest(const std::string_view word) const
 	if (word.empty())
 		return {};
 
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	if (!_hunspell) return {};
 
-	const auto suggestions = _hunspell->suggest(str::utf8_cast2(word));
+	const auto suggestions = _hunspell->suggest(core::utf8_cast2(word));
 
 	std::vector<std::string> result;
 	result.reserve(suggestions.size()); // Reserve space for better performance
 	std::transform(suggestions.begin(),
 	               suggestions.end(),
 	               std::back_inserter(result),
-	               [](const std::string& s) { return str::utf8_cast2(s); });
+	               [](const std::string& s) { return core::utf8_cast2(s); });
 
 	return result;
 }
 
 namespace
 {
-	custom_dictionary_add_result persist_custom_dictionary_word(const df::file_path path,
-	                                                           const df::folder_path user_folder,
+	custom_dictionary_add_result persist_custom_dictionary_word(const core::file_path path,
+	                                                           const core::folder_path user_folder,
 	                                                           const std::string_view word)
 	{
-		if (!user_folder.exists() && !platform::create_folder(user_folder).success())
+		if (!platform::exists(user_folder) && !platform::create_folder(user_folder).success())
 		{
 			return {custom_dictionary_add_status::failed, std::format("could not create {}", user_folder)};
 		}
@@ -418,12 +418,12 @@ void spell_check::add_word(const std::string_view word,
 
 	df::async_i* async = nullptr;
 	uint64_t generation = 0;
-	df::file_path custom_dic_path;
-	df::folder_path user_folder;
-	std::function<custom_dictionary_add_result(const df::file_path&, std::string_view)> writer;
+	core::file_path custom_dic_path;
+	core::folder_path user_folder;
+	std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)> writer;
 
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		async = _async;
 		generation = _generation;
 		custom_dic_path = _custom_dic_path;
@@ -435,8 +435,8 @@ void spell_check::add_word(const std::string_view word,
 
 	if (!async)
 	{
-		platform::exclusive_lock lock(_rw);
-		if (_hunspell) _hunspell->add(str::utf8_cast2(word_copy));
+		core::exclusive_lock lock(_rw);
+		if (_hunspell) _hunspell->add(core::utf8_cast2(word_copy));
 		if (complete) complete({custom_dictionary_add_status::session_only, "no async strategy configured"});
 		return;
 	}
@@ -444,7 +444,7 @@ void spell_check::add_word(const std::string_view word,
 	uint64_t pending_id = 0;
 
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		pending_id = ++_next_custom_word_id;
 		_pending_custom_words.emplace_back(pending_custom_word{pending_id, word_copy, custom_dic_path, user_folder,
 		                                                       writer});
@@ -469,7 +469,7 @@ void spell_check::add_word(const std::string_view word,
 		                   }
 
 		                   {
-			                   platform::exclusive_lock lock(_rw);
+			                   core::exclusive_lock lock(_rw);
 			                   std::erase_if(_pending_custom_words, [pending_id](const pending_custom_word& pending)
 			                   {
 				                   return pending.id == pending_id;
@@ -478,7 +478,7 @@ void spell_check::add_word(const std::string_view word,
 
 		                   if (result.status == custom_dictionary_add_status::failed)
 		                   {
-			                   df::log(__FUNCTION__, result.message);
+			                   core::log(__FUNCTION__, result.message);
 		                   }
 
 		                   async->queue_ui([this, generation, word_copy, result, complete]() mutable
@@ -486,14 +486,14 @@ void spell_check::add_word(const std::string_view word,
 			                   auto final_result = result;
 
 			                   {
-				                   platform::exclusive_lock lock(_rw);
+				                   core::exclusive_lock lock(_rw);
 				                   if (generation != _generation)
 				                   {
 					                   final_result = {custom_dictionary_add_status::stale, {}};
 				                   }
 				                   else if (final_result.persisted() && _hunspell)
 				                   {
-					                   _hunspell->add(str::utf8_cast2(word_copy));
+					                   _hunspell->add(core::utf8_cast2(word_copy));
 				                   }
 			                   }
 
@@ -507,7 +507,7 @@ void spell_check::flush_pending_custom_words() const
 	std::vector<pending_custom_word> pending;
 
 	{
-		platform::exclusive_lock lock(_rw);
+		core::exclusive_lock lock(_rw);
 		pending = std::move(_pending_custom_words);
 		_pending_custom_words.clear();
 	}
@@ -530,20 +530,20 @@ void spell_check::flush_pending_custom_words() const
 
 		if (result.status == custom_dictionary_add_status::failed)
 		{
-			df::log(__FUNCTION__, result.message);
+			core::log(__FUNCTION__, result.message);
 		}
 	}
 }
 
 bool spell_check::is_ready() const
 {
-	platform::shared_lock lock(_rw);
+	core::shared_lock lock(_rw);
 	return !!_hunspell;
 }
 
-void spell_check::configure_paths_for_tests(const df::folder_path shipped_folder, const df::folder_path user_folder)
+void spell_check::configure_paths_for_tests(const core::folder_path shipped_folder, const core::folder_path user_folder)
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	_shipped_folder = shipped_folder;
 	_user_folder = user_folder;
 	_custom_dic_path = _user_folder.combine_file("custom.dic");
@@ -555,7 +555,7 @@ void spell_check::configure_paths_for_tests(const df::folder_path shipped_folder
 
 void spell_check::reset_paths_for_tests()
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	set_default_paths();
 	_hunspell.reset();
 	_loading = false;
@@ -565,20 +565,20 @@ void spell_check::reset_paths_for_tests()
 
 void spell_check::set_load_gate_for_tests(std::function<void()> gate)
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	_load_gate = std::move(gate);
 }
 
 void spell_check::set_custom_dictionary_writer_for_tests(
-	std::function<custom_dictionary_add_result(const df::file_path&, std::string_view)> writer)
+	std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)> writer)
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	_custom_dictionary_writer = std::move(writer);
 }
 
 void spell_check::clear_test_hooks()
 {
-	platform::exclusive_lock lock(_rw);
+	core::exclusive_lock lock(_rw);
 	_load_gate = {};
 	_custom_dictionary_writer = {};
 }

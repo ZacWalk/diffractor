@@ -69,10 +69,10 @@ static std::string_view vendor_blob_name(const uint8_t* p, const uint32_t len)
 	return {};
 }
 
-ui::orientation metadata_exif::orientation(const std::span<const uint8_t> cs)
+core::orientation metadata_exif::orientation(const std::span<const uint8_t> cs)
 {
 	const auto stored = libfiles::summarize_exif(cs).orientation;
-	return stored ? static_cast<ui::orientation>(*stored) : ui::orientation::top_left;
+	return stored ? static_cast<core::orientation>(*stored) : core::orientation::top_left;
 }
 
 // A lossless turn changes the pixels' orientation and dimensions and nothing else, so the block is
@@ -80,11 +80,11 @@ ui::orientation metadata_exif::orientation(const std::span<const uint8_t> cs)
 // Interoperability directories. Nothing else in it changes or moves, so a maker note keeps the
 // absolute offsets it relies on. libexif rewrote the whole block, which emptied five of the fixtures'
 // Canon maker notes and re-encoded five others.
-df::blob metadata_exif::fix_dims(const df::span cs, const int image_width, const int image_height)
+core::blob metadata_exif::fix_dims(const core::span cs, const int image_width, const int image_height)
 {
-	df::assert_true(is_exif_signature({cs.data, cs.size}));
+	core::assert_true(is_exif_signature({cs.data, cs.size}));
 
-	df::blob result(cs.data, cs.data + cs.size);
+	core::blob result(cs.data, cs.data + cs.size);
 	if (result.size() <= exif_signature.size()) return result;
 
 	const auto width = static_cast<uint32_t>(image_width);
@@ -104,17 +104,17 @@ df::blob metadata_exif::fix_dims(const df::span cs, const int image_width, const
 	return result;
 }
 
-static std::string exif_date_text(const df::date_t date)
+static std::string exif_date_text(const core::date_t date)
 {
 	const auto d = date.date();
 	return std::format("{:04}:{:02}:{:02} {:02}:{:02}:{:02}", d.year, d.month, d.day, d.hour, d.minute, d.second);
 }
 
-df::blob metadata_exif::make_exif(const prop::item_metadata_ptr& md)
+core::blob metadata_exif::make_exif(const prop::item_metadata_ptr& md)
 {
 	libfiles::exif_fields f;
 
-	if (md->orientation != ui::orientation::none) f.orientation = static_cast<uint16_t>(md->orientation);
+	if (md->orientation != core::orientation::none) f.orientation = static_cast<uint16_t>(md->orientation);
 	if (!prop::is_null(md->f_number)) f.f_number = md->f_number;
 	if (!prop::is_null(md->exposure_time)) f.exposure_time = md->exposure_time;
 	if (!prop::is_null(md->iso_speed)) f.iso_speed = md->iso_speed;
@@ -135,7 +135,7 @@ df::blob metadata_exif::make_exif(const prop::item_metadata_ptr& md)
 	if (const auto created = md->dates.created(); created.is_valid()) f.digitized = exif_date_text(created);
 
 	const auto tiff = libfiles::make_exif(f);
-	df::blob result(exif_signature.begin(), exif_signature.end());
+	core::blob result(exif_signature.begin(), exif_signature.end());
 	result.insert(result.end(), tiff.begin(), tiff.end());
 	return result;
 }
@@ -251,7 +251,7 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 			auto& row = result.emplace_back(
 				e.name ? *e.name : std::format("Tag 0x{:04x}", e.tag),
 				readable
-					? std::string(str::utf8_cast(rendered))
+					? std::string(core::utf8_cast(rendered))
 					: std::format("{}, {} bytes", vendor.empty() ? std::string_view{"binary"} : vendor, e.bytes.size()));
 
 			row.depth = 1;
@@ -262,7 +262,7 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 			// row is opened.
 			if (!e.bytes.empty())
 			{
-				const auto kept = std::min<size_t>(e.bytes.size(), str::max_hex_dump_bytes);
+				const auto kept = std::min<size_t>(e.bytes.size(), core::max_hex_dump_bytes);
 				row.detail = metadata_binary_detail{std::vector<uint8_t>(e.bytes.begin(), e.bytes.begin() + kept)};
 			}
 		}
@@ -281,8 +281,8 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 			const auto make = std::ranges::find(directory.entries, uint16_t{0x010f}, &libfiles::exif_listing_entry::tag);
 			if (make == directory.entries.end()) continue;
 
-			const auto trimmed = str::trim(std::string_view{make->value});
-			if (!trimmed.empty() && !is_binary_text(trimmed)) title = std::format("MakerNote ({})", str::utf8_cast(trimmed));
+			const auto trimmed = core::trim(std::string_view{make->value});
+			if (!trimmed.empty() && !is_binary_text(trimmed)) title = std::format("MakerNote ({})", core::utf8_cast(trimmed));
 			break;
 		}
 
@@ -298,7 +298,7 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 				!is_binary_text(rendered);
 
 			auto& row = result.emplace_back(v.name ? *v.name : std::format("Tag 0x{:04x}", v.id),
-			                                readable ? std::string(str::utf8_cast(rendered)) : std::string{"binary"});
+			                                readable ? std::string(core::utf8_cast(rendered)) : std::string{"binary"});
 
 			row.depth = 1;
 			row.shape = std::format("0x{:04x}", v.id);
@@ -424,11 +424,11 @@ metadata_kv_list metadata_iptc::to_info(const std::span<const uint8_t> cs)
 
 namespace xmp_ns = libfiles::xmp::ns;
 
-static df::file_path s_test_raw_source_xmp_path;
-static df::blob s_test_raw_source_xmp;
+static core::file_path s_test_raw_source_xmp_path;
+static core::blob s_test_raw_source_xmp;
 static std::vector<int> s_test_update_failure_sequence;
 
-void metadata_xmp::set_test_raw_source_xmp(const df::file_path path, const df::cspan xmp)
+void metadata_xmp::set_test_raw_source_xmp(const core::file_path path, const core::cspan xmp)
 {
 	s_test_raw_source_xmp_path = path;
 	s_test_raw_source_xmp.assign(xmp.begin(), xmp.end());
@@ -444,8 +444,8 @@ void metadata_xmp::set_test_update_failure_sequence(std::vector<int> actions)
 // exit perf summary.
 static void record_xmp_error(const std::string_view context, const std::string_view message)
 {
-	df::bump(df::file_perf.metadata_errors);
-	df::log_once(context, message);
+	core::bump(df::file_perf.metadata_errors);
+	core::log_once(context, message);
 }
 
 void metadata_edits::apply(libfiles::xmp::meta& meta) const
@@ -455,17 +455,17 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 		const auto position = location_coordinate.value();
 
 		meta.set_property(xmp_ns::exif, "GPSLatitude",
-		                 str::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.latitude(), true)));
+		                 core::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.latitude(), true)));
 		meta.set_property(xmp_ns::exif, "GPSLongitude",
-		                 str::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.longitude(), false)));
+		                 core::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.longitude(), false)));
 	}
 
 
 	if (location_place.has_value())
 	{
-		if (!str::is_empty(location_place.value()))
+		if (!core::is_empty(location_place.value()))
 		{
-			meta.set_property(xmp_ns::photoshop, "City", str::utf8_cast2(location_place.value()));
+			meta.set_property(xmp_ns::photoshop, "City", core::utf8_cast2(location_place.value()));
 		}
 		else
 		{
@@ -475,9 +475,9 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (location_state.has_value())
 	{
-		if (!str::is_empty(location_state.value()))
+		if (!core::is_empty(location_state.value()))
 		{
-			meta.set_property(xmp_ns::photoshop, "State", str::utf8_cast2(location_state.value()));
+			meta.set_property(xmp_ns::photoshop, "State", core::utf8_cast2(location_state.value()));
 		}
 		else
 		{
@@ -487,9 +487,9 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (location_country.has_value())
 	{
-		if (!str::is_empty(location_country.value()))
+		if (!core::is_empty(location_country.value()))
 		{
-			meta.set_property(xmp_ns::photoshop, "Country", str::utf8_cast2(location_country.value()));
+			meta.set_property(xmp_ns::photoshop, "Country", core::utf8_cast2(location_country.value()));
 		}
 		else
 		{
@@ -499,22 +499,22 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (copyright_credit.has_value())
 	{
-		meta.set_property(xmp_ns::photoshop, "Credit", str::utf8_cast2(copyright_credit.value()));
+		meta.set_property(xmp_ns::photoshop, "Credit", core::utf8_cast2(copyright_credit.value()));
 	}
 
 	if (copyright_url.has_value())
 	{
-		meta.set_property(xmp_ns::xmp_rights, "WebStatement", str::utf8_cast2(copyright_url.value()));
+		meta.set_property(xmp_ns::xmp_rights, "WebStatement", core::utf8_cast2(copyright_url.value()));
 	}
 
 	if (copyright_source.has_value())
 	{
-		meta.set_property(xmp_ns::photoshop, "Source", str::utf8_cast2(copyright_source.value()));
+		meta.set_property(xmp_ns::photoshop, "Source", core::utf8_cast2(copyright_source.value()));
 	}
 
 	if (copyright_notice.has_value())
 	{
-		meta.set_localized_text(xmp_ns::dc, "rights", "", "x-default", str::utf8_cast2(copyright_notice.value()));
+		meta.set_localized_text(xmp_ns::dc, "rights", "", "x-default", core::utf8_cast2(copyright_notice.value()));
 	}
 
 	if (copyright_creator.has_value())
@@ -523,19 +523,19 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 		// alt-lang text produces a packet Adobe tools will not show.
 		meta.delete_property(xmp_ns::dc, "creator");
 
-		if (str::is_empty(copyright_creator.value()))
+		if (core::is_empty(copyright_creator.value()))
 		{
 			meta.set_composite(xmp_ns::dc, "creator", libfiles::xmp::array_is_ordered);
 		}
 		else
 		{
 			// Names are separated by punctuation, never by the space inside "Jane Doe".
-			for (const auto& part : str::split(copyright_creator.value(), true, str::is_artist_separator))
+			for (const auto& part : core::split(copyright_creator.value(), true, core::is_artist_separator))
 			{
-				const auto name = str::trim(part);
+				const auto name = core::trim(part);
 				if (!name.empty())
 				{
-					meta.append_array_item(xmp_ns::dc, "creator", libfiles::xmp::array_is_ordered, str::utf8_cast2(name));
+					meta.append_array_item(xmp_ns::dc, "creator", libfiles::xmp::array_is_ordered, core::utf8_cast2(name));
 				}
 			}
 		}
@@ -543,22 +543,22 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (title.has_value())
 	{
-		meta.set_localized_text(xmp_ns::dc, "title", "", "x-default", str::utf8_cast2(title.value()));
+		meta.set_localized_text(xmp_ns::dc, "title", "", "x-default", core::utf8_cast2(title.value()));
 	}
 
 	if (description.has_value())
 	{
-		meta.set_localized_text(xmp_ns::dc, "description", "", "x-default", str::utf8_cast2(description.value()));
+		meta.set_localized_text(xmp_ns::dc, "description", "", "x-default", core::utf8_cast2(description.value()));
 	}
 
 	if (comment.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "logComment", str::utf8_cast2(comment.value()));
+		meta.set_property(xmp_ns::dm, "logComment", core::utf8_cast2(comment.value()));
 	}
 
 	if (synopsis.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "synopsis", str::utf8_cast2(synopsis.value()));
+		meta.set_property(xmp_ns::dm, "synopsis", core::utf8_cast2(synopsis.value()));
 	}
 
 	if (rating.has_value())
@@ -571,9 +571,9 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (label.has_value())
 	{
-		if (!str::is_empty(label.value()))
+		if (!core::is_empty(label.value()))
 		{
-			meta.set_property(xmp_ns::xmp, "Label", str::utf8_cast2(label.value()));
+			meta.set_property(xmp_ns::xmp, "Label", core::utf8_cast2(label.value()));
 		}
 		else
 		{
@@ -583,22 +583,22 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (album.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "album", str::utf8_cast2(album.value()));
+		meta.set_property(xmp_ns::dm, "album", core::utf8_cast2(album.value()));
 	}
 
 	if (album_artist.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "albumArtist", str::utf8_cast2(album_artist.value()));
+		meta.set_property(xmp_ns::dm, "albumArtist", core::utf8_cast2(album_artist.value()));
 	}
 
 	if (genre.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "genre", str::utf8_cast2(genre.value()));
+		meta.set_property(xmp_ns::dm, "genre", core::utf8_cast2(genre.value()));
 	}
 
 	if (show.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "show", str::utf8_cast2(show.value()));
+		meta.set_property(xmp_ns::dm, "show", core::utf8_cast2(show.value()));
 	}
 
 	if (year.has_value() && !date_created.has_value())
@@ -606,12 +606,12 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 		// A bare year and a Created date are the same XMP property, told apart on read by whether it
 		// parses as a date. Writing both would leave whichever went last, so the date wins: it is the
 		// more specific answer and it still carries the year.
-		meta.set_property(xmp_ns::xmp, "CreateDate", str::utf8_cast2(str::to_string(year.value())));
+		meta.set_property(xmp_ns::xmp, "CreateDate", core::utf8_cast2(core::to_string(year.value())));
 	}
 
 	if (date_created.has_value())
 	{
-		const auto text = str::utf8_cast2(date_created.value().to_xmp_date());
+		const auto text = core::utf8_cast2(date_created.value().to_xmp_date());
 
 		// Both, as Original writes both below: xmp:CreateDate is the fourth-ranked Created source, so
 		// wherever the file's own DateTimeDigitized survives the write it would outrank the edit and
@@ -622,7 +622,7 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (date_original.has_value())
 	{
-		const auto text = str::utf8_cast2(date_original.value().to_xmp_date());
+		const auto text = core::utf8_cast2(date_original.value().to_xmp_date());
 
 		// Both, because photoshop:DateCreated alone is the lowest-authority capture source and would
 		// be outranked by the file's own DateTimeOriginal - the edit would appear to do nothing. The
@@ -633,33 +633,33 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 
 	if (episode.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "episode", str::utf8_cast2(episode.value().str()));
+		meta.set_property(xmp_ns::dm, "episode", core::utf8_cast2(episode.value().str()));
 	}
 
 	if (season.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "season", str::utf8_cast2(str::to_string(season.value())));
+		meta.set_property(xmp_ns::dm, "season", core::utf8_cast2(core::to_string(season.value())));
 	}
 
 	if (track_num.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "trackNumber", str::utf8_cast2(track_num.value().str()));
+		meta.set_property(xmp_ns::dm, "trackNumber", core::utf8_cast2(track_num.value().str()));
 	}
 
 	if (disk_num.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "discNumber", str::utf8_cast2(disk_num.value().str()));
+		meta.set_property(xmp_ns::dm, "discNumber", core::utf8_cast2(disk_num.value().str()));
 	}
 
 	if (artist.has_value())
 	{
-		meta.set_property(xmp_ns::dm, "artist", str::utf8_cast2(artist.value()));
+		meta.set_property(xmp_ns::dm, "artist", core::utf8_cast2(artist.value()));
 	}
 
 	if (orientation.has_value())
 	{
 		meta.set_property(xmp_ns::tiff, "Orientation",
-		                 str::utf8_cast2(str::to_string(static_cast<int>(orientation.value()))), libfiles::xmp::delete_existing);
+		                 core::utf8_cast2(core::to_string(static_cast<int>(orientation.value()))), libfiles::xmp::delete_existing);
 	}
 
 	if (!remove_tags.is_empty() || !add_tags.is_empty())
@@ -672,7 +672,7 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 			std::string str;
 			if (meta.get_array_item(xmp_ns::dc, "subject", i + 1, &str))
 			{
-				tags.add_one(str::cache(str));
+				tags.add_one(core::cache(str));
 			}
 		}
 
@@ -689,14 +689,14 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 		else
 			for (auto i = 0u; i < tags.size(); i++)
 			{
-				meta.append_array_item(xmp_ns::dc, "subject", libfiles::xmp::value_is_array, str::utf8_cast2(tags[i]));
+				meta.append_array_item(xmp_ns::dc, "subject", libfiles::xmp::value_is_array, core::utf8_cast2(tags[i]));
 			}
 
 		// Sync exif:XPKeywords (Windows Explorer tag) with dc:subject. Cleared tags are written
 		// as an empty value rather than a deleted property: the TIFF export leaves tags that are
 		// simply absent from XMP alone, so deleting here would leave the old keywords in place.
 		meta.set_property(xmp_ns::exif, "XPKeywords",
-		                 tags.is_empty() ? std::string() : str::utf8_cast2(tags.to_string(";", false)));
+		                 tags.is_empty() ? std::string() : core::utf8_cast2(tags.to_string(";", false)));
 	}
 
 	if (remove_rating)
@@ -715,13 +715,13 @@ static std::string_view packet_text(const std::span<const uint8_t> xmp)
 	return text;
 }
 
-void metadata_xmp::parse(prop::item_metadata& pd, const df::file_path path)
+void metadata_xmp::parse(prop::item_metadata& pd, const core::file_path path)
 {
-	const auto f = blob_from_file(path);
+	const auto f = platform::blob_from_file(path);
 	apply_properties(pd, libfiles::properties_from_xmp(std::span<const uint8_t>(f.data(), f.size())));
 }
 
-df::file_path probe_xmp_path(const df::file_path src_path, const std::string_view xmp_name)
+core::file_path probe_xmp_path(const core::file_path src_path, const std::string_view xmp_name)
 {
 	if (!xmp_name.empty())
 	{
@@ -731,7 +731,7 @@ df::file_path probe_xmp_path(const df::file_path src_path, const std::string_vie
 	return src_path.extension(".xmp");
 }
 
-bool metadata_xmp::sidecar_holds_metadata(const df::file_path path, const std::string_view xmp_name)
+bool metadata_xmp::sidecar_holds_metadata(const core::file_path path, const std::string_view xmp_name)
 {
 	const auto* const ft = files::file_type_from_name(path);
 	if (!ft->has_trait(file_traits::embedded_xmp)) return true;
@@ -739,7 +739,7 @@ bool metadata_xmp::sidecar_holds_metadata(const df::file_path path, const std::s
 	return !platform::file_attributes(probe_xmp_path(path, xmp_name)).confirmed_missing();
 }
 
-static std::optional<libfiles::packet_reading> read_file_packet(df::file_path path);
+static std::optional<libfiles::packet_reading> read_file_packet(core::file_path path);
 
 // GPano writes these as plain integers. A property the file omits leaves its member zero, which
 // prop::panorama_geometry reads as an incomplete declaration and resolves against the pixels.
@@ -759,7 +759,7 @@ static void read_panorama_geometry(const libfiles::xmp::meta& xmp, prop::panoram
 	read("CroppedAreaImageHeightPixels", g.cropped_height);
 }
 
-prop::panorama_geometry metadata_xmp::panorama(const df::file_path path)
+prop::panorama_geometry metadata_xmp::panorama(const core::file_path path)
 {
 	prop::panorama_geometry result;
 
@@ -792,7 +792,7 @@ prop::panorama_geometry metadata_xmp::panorama(const df::file_path path)
 		// so joining an incomplete embedded declaration to the sidecar's would describe neither file.
 		result = {};
 
-		const auto sidecar = blob_from_file(probe_xmp_path(path, {}));
+		const auto sidecar = platform::blob_from_file(probe_xmp_path(path, {}));
 
 		if (!sidecar.empty())
 		{
@@ -816,9 +816,9 @@ static libfiles::file_format libfiles_update_format(libfiles::reader& r)
 	return libfiles::info(libfiles::identify(r)).update_format;
 }
 
-static libfiles::file_format libfiles_update_format(const df::file_path path)
+static libfiles::file_format libfiles_update_format(const core::file_path path)
 {
-	const auto f = open_file(path, platform::file_open_mode::read);
+	const auto f = platform::open_file(path, platform::file_open_mode::read);
 	if (!f) return libfiles::file_format::unknown;
 
 	platform_file_stream stream(f);
@@ -828,16 +828,16 @@ static libfiles::file_format libfiles_update_format(const df::file_path path)
 
 // A format Diffractor reads a packet from but libfiles writes none to - a FLAC stream behind an ID3 tag,
 // named as an MP3 - is refused for an edit before anything is planned, whichever way the edit is written.
-static void require_updatable(const df::file_path path)
+static void require_updatable(const core::file_path path)
 {
 	if (!libfiles::can_update(libfiles_update_format(path))) throw app_exception("this file format cannot store the metadata");
 }
 
 // The packet a file holds, where libfiles reads and writes it, including compressed JPEG XL boxes.
 // Nothing when libfiles does not read the format or the file cannot be opened.
-static std::optional<libfiles::packet_reading> read_file_packet(const df::file_path path)
+static std::optional<libfiles::packet_reading> read_file_packet(const core::file_path path)
 {
-	const auto f = open_file(path, platform::file_open_mode::read);
+	const auto f = platform::open_file(path, platform::file_open_mode::read);
 	if (!f) return {};
 
 	platform_file_stream stream(f);
@@ -857,9 +857,9 @@ static void seed_from_shown(const prop::item_metadata& shown, libfiles::xmp::met
 		return !xmp.get_property(ns, name);
 	};
 
-	const auto text = [](const str::cached value) -> std::optional<std::string>
+	const auto text = [](const core::cached value) -> std::optional<std::string>
 	{
-		if (str::is_empty(value)) return {};
+		if (core::is_empty(value)) return {};
 		return std::string(value.sv());
 	};
 
@@ -872,7 +872,7 @@ static void seed_from_shown(const prop::item_metadata& shown, libfiles::xmp::met
 	if (missing(xmp_ns::photoshop, "City")) seed.location_place = text(shown.location_place);
 	if (missing(xmp_ns::photoshop, "State")) seed.location_state = text(shown.location_state);
 	if (missing(xmp_ns::photoshop, "Country")) seed.location_country = text(shown.location_country);
-	if (missing(xmp_ns::dc, "subject") && !str::is_empty(shown.tags)) seed.add_tags = tag_set(shown.tags);
+	if (missing(xmp_ns::dc, "subject") && !core::is_empty(shown.tags)) seed.add_tags = tag_set(shown.tags);
 
 	seed.apply(xmp);
 }
@@ -900,7 +900,7 @@ static libfiles::legacy_edits legacy_edits_of(const metadata_edits& edits, const
 	const auto text = [](const std::optional<std::string>& value) -> std::optional<std::string>
 	{
 		if (!value) return {};
-		return str::utf8_cast2(*value);
+		return core::utf8_cast2(*value);
 	};
 
 	legacy.title = text(edits.title);
@@ -946,8 +946,8 @@ static libfiles::legacy_edits legacy_edits_of(const metadata_edits& edits, const
 	legacy.genre = text(edits.genre);
 	legacy.comment = text(edits.comment);
 	legacy.copyright_url = text(edits.copyright_url);
-	if (edits.track_num) legacy.track = str::utf8_cast2(edits.track_num->str());
-	if (edits.disk_num) legacy.disc = str::utf8_cast2(edits.disk_num->str());
+	if (edits.track_num) legacy.track = core::utf8_cast2(edits.track_num->str());
+	if (edits.disk_num) legacy.disc = core::utf8_cast2(edits.disk_num->str());
 
 	// A bare year is the packet's Created date when no full date is given, as apply() writes it.
 	if (edits.year && !edits.date_created) legacy.year = edits.year.value();
@@ -967,9 +967,9 @@ static libfiles::metadata_update update_of(const libfiles::xmp::meta& xmp, const
 // Patches the file where it lies when nothing it holds has to move - anything new is appended and only
 // then referred to, so an interruption leaves a file that reads whole - otherwise writes the updated
 // file beside it in one pass and swaps it in, so the file is never left half rewritten.
-static void write_with_libfiles(const df::file_path path, const libfiles::metadata_update& update)
+static void write_with_libfiles(const core::file_path path, const libfiles::metadata_update& update)
 {
-	auto f = open_file(path, platform::file_open_mode::read);
+	auto f = platform::open_file(path, platform::file_open_mode::read);
 	if (!f) throw app_exception("the file could not be opened for reading");
 
 	auto source = std::make_unique<platform_file_stream>(f);
@@ -984,7 +984,7 @@ static void write_with_libfiles(const df::file_path path, const libfiles::metada
 		source.reset();
 		f.reset();
 
-		const auto rw = open_file(path, platform::file_open_mode::read_write);
+		const auto rw = platform::open_file(path, platform::file_open_mode::read_write);
 		if (!rw) throw app_exception("the file could not be opened for writing");
 
 		platform_file_stream file(rw);
@@ -994,10 +994,10 @@ static void write_with_libfiles(const df::file_path path, const libfiles::metada
 
 	const auto temp = platform::temp_file(path.extension(), path.folder());
 	auto swapped = false;
-	const df::scope_exit discard([temp, &swapped] { if (!swapped) platform::delete_file(temp); });
+	const core::scope_exit discard([temp, &swapped] { if (!swapped) platform::delete_file(temp); });
 
 	{
-		const auto out = open_file(temp, platform::file_open_mode::create);
+		const auto out = platform::open_file(temp, platform::file_open_mode::create);
 		if (!out) throw app_exception("the updated file could not be created");
 
 		platform_file_stream destination(out);
@@ -1014,7 +1014,7 @@ static void write_with_libfiles(const df::file_path path, const libfiles::metada
 
 // The edit starts from the packet the file holds. libfiles reads it where it writes it; a format libfiles
 // does not read - a HEIF being converted - gives the packet diffractor's scan finds.
-static void read_embedded_source(const df::file_path src_path, const file_type_ref src_ft, const bool converting,
+static void read_embedded_source(const core::file_path src_path, const file_type_ref src_ft, const bool converting,
                                  const metadata_edits& edits, libfiles::xmp::meta& xmp)
 {
 	std::optional<file_scan_result> scanned;
@@ -1058,14 +1058,14 @@ static void read_embedded_source(const df::file_path src_path, const file_type_r
 
 		for (auto i = 0u; i < shown.size(); ++i)
 		{
-			xmp.append_array_item(xmp_ns::dc, "subject", libfiles::xmp::value_is_array, str::utf8_cast2(shown[i]));
+			xmp.append_array_item(xmp_ns::dc, "subject", libfiles::xmp::value_is_array, core::utf8_cast2(shown[i]));
 		}
 	}
 }
 
 // A failure the tests ask for, before anything is read. Action 2 first leaves a byte at the path being
 // written, as an update that fails part way would.
-static void run_test_update_failure(const df::file_path update_path)
+static void run_test_update_failure(const core::file_path update_path)
 {
 	if (s_test_update_failure_sequence.empty()) return;
 
@@ -1083,7 +1083,7 @@ static void run_test_update_failure(const df::file_path update_path)
 // The packet an edit starts from, with the edit applied: the one the source holds, its sidecar's - a
 // DNG's too, when it has one - or, for a raw file without a sidecar, the one its scan finds. Where the
 // metadata lives is the caller's answer, so the file read is the one the caller decided to write.
-static void read_edit_source(const df::file_path src_path, const file_type_ref src_ft, const bool converting,
+static void read_edit_source(const core::file_path src_path, const file_type_ref src_ft, const bool converting,
                              const metadata_edits& edits, const std::string_view src_xmp_name,
                              const bool in_sidecar, libfiles::xmp::meta& xmp)
 {
@@ -1101,7 +1101,7 @@ static void read_edit_source(const df::file_path src_path, const file_type_ref s
 		// stop, moved one step earlier.
 		if (!attributes.confirmed_missing())
 		{
-			auto f = blob_from_file(path_xmp);
+			auto f = platform::blob_from_file(path_xmp);
 
 			// Same rule as the embedded branch: a sidecar that cannot be read is unknown, not empty.
 			// Applying the edits to a default packet and swapping it over the file would write away
@@ -1129,7 +1129,7 @@ static void read_edit_source(const df::file_path src_path, const file_type_ref s
 			{
 				files ff;
 				const auto scanned = ff.scan_file(src_path, false, src_ft);
-				if (!scanned.success && !open_file(src_path, platform::file_open_mode::read))
+				if (!scanned.success && !platform::open_file(src_path, platform::file_open_mode::read))
 				{
 					throw app_exception("the existing metadata could not be read");
 				}
@@ -1146,15 +1146,15 @@ static void read_edit_source(const df::file_path src_path, const file_type_ref s
 }
 
 // A read or write failure, with what the system says about the file it happened to.
-static app_exception file_failure(const std::exception& e, const df::file_path failing_path)
+static app_exception file_failure(const std::exception& e, const core::file_path failing_path)
 {
 	const auto reason = platform::file_write_error(failing_path);
 	return app_exception(reason.empty() ? std::string(e.what()) : std::format("{} ({})", reason, e.what()));
 }
 
-xmp_update_result metadata_xmp::update(const df::file_path update_path, const df::file_path src_path,
+xmp_update_result metadata_xmp::update(const core::file_path update_path, const core::file_path src_path,
                                        const metadata_edits& edits, const std::string_view src_xmp_name,
-                                       const df::file_path dst_xmp_path, const std::optional<bool> src_in_sidecar)
+                                       const core::file_path dst_xmp_path, const std::optional<bool> src_in_sidecar)
 {
 	xmp_update_result result;
 
@@ -1195,7 +1195,7 @@ xmp_update_result metadata_xmp::update(const df::file_path update_path, const df
 			const auto buffer = xmp.serialize({.omit_packet_wrapper = true});
 
 			const auto path_xmp = dst_xmp_path;
-			const auto f = open_file(path_xmp, platform::file_open_mode::create);
+			const auto f = platform::open_file(path_xmp, platform::file_open_mode::create);
 
 			if (f)
 			{
@@ -1222,24 +1222,24 @@ xmp_update_result metadata_xmp::update(const df::file_path update_path, const df
 	catch (const libfiles::xmp::error& e)
 	{
 		// The packet itself refused the edit, such as a value for what the file holds as an array.
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw app_exception(e.what());
 	}
 	catch (const libfiles::read_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, failing_path);
 	}
 	catch (const libfiles::write_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, failing_path);
 	}
 
 	return result;
 }
 
-df::blob metadata_xmp::encoded_packet(const df::file_path src_path, const df::file_path dst_path,
+core::blob metadata_xmp::encoded_packet(const core::file_path src_path, const core::file_path dst_path,
                                       const metadata_edits& edits, const std::string_view src_xmp_name)
 {
 	run_test_update_failure(dst_path);
@@ -1259,22 +1259,22 @@ df::blob metadata_xmp::encoded_packet(const df::file_path src_path, const df::fi
 
 		const auto packet = xmp.serialize();
 		const auto* const bytes = std::bit_cast<const uint8_t*>(packet.data());
-		return df::blob(bytes, bytes + packet.size());
+		return core::blob(bytes, bytes + packet.size());
 	}
 	catch (const libfiles::xmp::error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw app_exception(e.what());
 	}
 	catch (const libfiles::read_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, src_path);
 	}
 }
 
-std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path stage_path,
-                                                            const df::file_path src_path,
+std::optional<xmp_update_result> metadata_xmp::stage_update(const core::file_path stage_path,
+                                                            const core::file_path src_path,
                                                             const metadata_edits& edits,
                                                             const std::string_view src_xmp_name)
 {
@@ -1284,7 +1284,7 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 
 	// Held until the stage is written. Windows lets no one write the file meanwhile, so the plan made
 	// from it describes the bytes the stage is made from.
-	const auto f = open_file(src_path, platform::file_open_mode::read);
+	const auto f = platform::open_file(src_path, platform::file_open_mode::read);
 	if (!f) return {};
 
 	platform_file_stream source(f);
@@ -1322,7 +1322,7 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 		}
 		else
 		{
-			const auto out = open_file(stage_path, platform::file_open_mode::create);
+			const auto out = platform::open_file(stage_path, platform::file_open_mode::create);
 			if (!out) throw app_exception("the updated file could not be created");
 
 			platform_file_stream destination(out);
@@ -1334,24 +1334,24 @@ std::optional<xmp_update_result> metadata_xmp::stage_update(const df::file_path 
 	catch (const libfiles::xmp::error& e)
 	{
 		// The packet itself refused the edit, such as a value for what the file holds as an array.
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw app_exception(e.what());
 	}
 	catch (const libfiles::read_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, failing_path);
 	}
 	catch (const libfiles::write_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, failing_path);
 	}
 
 	return result;
 }
 
-bool metadata_xmp::patch(const df::file_path path, const metadata_edits& edits, const std::string_view src_xmp_name)
+bool metadata_xmp::patch(const core::file_path path, const metadata_edits& edits, const std::string_view src_xmp_name)
 {
 	// The file's own packet is not the one in use, so there is nothing to patch into it.
 	if (sidecar_holds_metadata(path, src_xmp_name)) return false;
@@ -1369,7 +1369,7 @@ bool metadata_xmp::patch(const df::file_path path, const metadata_edits& edits, 
 
 		// One handle no one else may open meanwhile, for the plan and the patch: the bytes planned from
 		// are the bytes patched.
-		const auto f = open_file(path, platform::file_open_mode::read_write);
+		const auto f = platform::open_file(path, platform::file_open_mode::read_write);
 		if (!f) throw app_exception("the file could not be opened for writing");
 
 		platform_file_stream file(f);
@@ -1385,17 +1385,17 @@ bool metadata_xmp::patch(const df::file_path path, const metadata_edits& edits, 
 	catch (const libfiles::xmp::error& e)
 	{
 		// The packet itself refused the edit, such as a value for what the file holds as an array.
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw app_exception(e.what());
 	}
 	catch (const libfiles::read_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, path);
 	}
 	catch (const libfiles::write_error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw file_failure(e, path);
 	}
 }
@@ -1407,11 +1407,11 @@ void metadata_xmp::update(std::string& buffer, const metadata_edits& edits)
 		libfiles::xmp::meta meta;
 		meta.parse(buffer);
 		edits.apply(meta);
-		buffer = str::utf8_cast(meta.serialize());
+		buffer = core::utf8_cast(meta.serialize());
 	}
 	catch (const libfiles::xmp::error& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 		throw app_exception(e.what());
 	}
 }
@@ -1521,7 +1521,7 @@ metadata_kv_list metadata_xmp::to_info(const std::span<const uint8_t> xmp, bool&
 				                         ? meta.count_array_items(node.schema, node.path)
 				                         : 0;
 
-			auto& row = result.emplace_back(node.path, str::utf8_cast(node.value));
+			auto& row = result.emplace_back(node.path, core::utf8_cast(node.value));
 			row.depth = xmp_path_depth(node.path) + 1;
 			row.container = is_container;
 			row.id = std::format("xmp.{}", node.path);

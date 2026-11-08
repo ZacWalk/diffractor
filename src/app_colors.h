@@ -13,7 +13,7 @@
 
 namespace app_colors
 {
-	constexpr ui::color32 rank_background = ui::bgr(0x00997711);
-	constexpr ui::color32 sidecar_background = ui::bgr(0x006677CC);
-	constexpr ui::color32 duplicate_background = ui::bgr(0x007711AA);
+	constexpr core::color32 rank_background = core::bgr(0x00997711);
+	constexpr core::color32 sidecar_background = core::bgr(0x006677CC);
+	constexpr core::color32 duplicate_background = core::bgr(0x007711AA);
 }

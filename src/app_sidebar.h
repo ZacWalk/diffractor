@@ -43,13 +43,13 @@
 #include "ui_plasma.h"
 #include "app_util.h"
 
-static std::string format_total_text(const df::count_and_size total, const bool multi_line)
+static std::string format_total_text(const core::count_and_size total, const bool multi_line)
 {
 	std::string result;
 
 	if (total.count > 0)
 	{
-		result = str::format_count(total.count);
+		result = core::format_count(total.count);
 	}
 
 	if (multi_line)
@@ -57,7 +57,7 @@ static std::string format_total_text(const df::count_and_size total, const bool 
 		if (!total.size.is_empty())
 		{
 			result += "\n";
-			result += df::format_size(total.size);
+			result += platform::format_size(total.size);
 		}
 	}
 
@@ -66,13 +66,13 @@ static std::string format_total_text(const df::count_and_size total, const bool 
 
 struct text_layout_state
 {
-	ui::text_layout_ptr tf;
+	render::text_layout_ptr tf;
 	std::string text;
-	ui::style::font_face font = ui::style::font_face::dialog;
-	ui::style::text_style style = ui::style::text_style::multiline;
+	render::font_face font = render::font_face::dialog;
+	render::text_style style = render::text_style::multiline;
 	std::string _built_text; // the value of `text` that tf was last built from
 
-	void lazy_load(ui::measure_context& mc)
+	void lazy_load(render::measure_context& mc)
 	{
 		// Rebuild when tf is missing OR when `text` was reassigned directly (e.g. a
 		// language change re-populates a reused item and updates .text without going
@@ -86,8 +86,8 @@ struct text_layout_state
 		}
 	}
 
-	void lazy_load(ui::measure_context& mc, const std::string& text_in, const ui::style::text_style style_in,
-	               const ui::style::font_face font_in = ui::style::font_face::dialog)
+	void lazy_load(render::measure_context& mc, const std::string& text_in, const render::text_style style_in,
+	               const render::font_face font_in = render::font_face::dialog)
 	{
 		const auto need_create = tf == nullptr ||
 			text != text_in ||
@@ -118,11 +118,11 @@ struct text_layout_state
 
 struct sidebar_tooltip_thumbnail
 {
-	df::file_path path;
+	core::file_path path;
 	df::item_element_ptr item;
 	bool requested = false;
 
-	void add(const view_hover_element& hover, const view_state& state, const df::file_path& representative_path)
+	void add(const view_hover_element& hover, const view_state& state, const core::file_path& representative_path)
 	{
 		if (representative_path.is_empty()) return;
 		if (path != representative_path)
@@ -171,7 +171,7 @@ public:
 	std::string tooltip_text;
 	std::string key;
 	df::search_t search;
-	std::function<df::file_group_histogram(view_state& s, df::cancel_token token)> calc_sum;
+	std::function<df::file_group_histogram(view_state& s, core::cancel_token token)> calc_sum;
 	df::file_group_histogram summary;
 	// Distinguishes "not counted yet" from "counted, and the answer is none" - both render blank.
 	bool summary_known = false;
@@ -180,7 +180,7 @@ public:
 	bool sum_is_cheap = false;
 	// How many of the items the view shows this row's search keeps, when the search index could say.
 	std::optional<uint64_t> scoped_count;
-	ui::color32 clr = 0;
+	core::color32 clr = 0;
 	int icon_repeat = 1;
 	mutable sidebar_tooltip_thumbnail _tooltip_thumbnail;
 
@@ -197,14 +197,14 @@ public:
 		return format_total_text(summary.total_items(), false);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		render_background(dc, element_offset);
 
 		const auto draw_clr = clr
-			                      ? ui::color(ui::average(clr, dc.colors.foreground), dc.colors.alpha)
-			                      : ui::color(dc.colors.foreground, dc.colors.alpha);
+			                      ? core::color(core::average(clr, dc.colors.foreground), dc.colors.alpha)
+			                      : core::color(dc.colors.foreground, dc.colors.alpha);
 		const auto has_text = !title_layout.is_empty();
 		const auto has_image = icon != icon_index::none;
 
@@ -218,8 +218,8 @@ public:
 			r.left = x;
 			r.right = x + cx;
 
-			icon_layout.lazy_load(dc, icon_to_utf8(icon, icon_repeat), ui::style::text_style::single_line_center,
-			                      ui::style::font_face::icons);
+			icon_layout.lazy_load(dc, icon_to_utf8(icon, icon_repeat), render::text_style::single_line_center,
+			                      render::font_face::icons);
 			dc.draw_text(icon_layout.tf, r, draw_clr, {});
 			x += cx + dc.padding1;
 		}
@@ -229,9 +229,9 @@ public:
 
 		const auto total_text = summary_text();
 
-		if (!str::is_empty(total_text))
+		if (!core::is_empty(total_text))
 		{
-			total_layout.lazy_load(dc, total_text, ui::style::text_style::single_line_far);
+			total_layout.lazy_load(dc, total_text, render::text_style::single_line_far);
 			const auto sum_text_extent = total_layout.tf->measure_text(text_bounds.width());
 			dc.draw_text(total_layout.tf, text_bounds, draw_clr, {});
 			text_bounds.right = text_bounds.right - sum_text_extent.cx;
@@ -244,9 +244,9 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		auto cy = mc.text_line_height(ui::style::font_face::dialog);
+		auto cy = mc.text_line_height(render::font_face::dialog);
 		auto cx = width_limit;
 		const auto total_text = summary_text();
 
@@ -255,9 +255,9 @@ public:
 			cx -= mc.icon_cxy + mc.padding1;
 		}
 
-		if (!str::is_empty(total_text))
+		if (!core::is_empty(total_text))
 		{
-			total_layout.lazy_load(mc, total_text, ui::style::text_style::single_line_far);
+			total_layout.lazy_load(mc, total_text, render::text_style::single_line_far);
 			const auto sum_text_extent = total_layout.tf->measure_text(cx);
 			cx -= sum_text_extent.cx;
 		}
@@ -288,23 +288,23 @@ public:
 		else
 		{
 			result.elements->add(make_icon_element(tooltip_icon, icon_repeat, flex_item::no_break));
-			result.elements->add(std::make_shared<text_element>(title_layout.text, ui::style::font_face::title,
-			                                                    ui::style::text_style::multiline,
+			result.elements->add(std::make_shared<text_element>(title_layout.text, render::font_face::title,
+			                                                    render::text_style::multiline,
 			                                                    flex_item::line_break));
 		}
 
 		_tooltip_thumbnail.add(result, _state, summary.representative_path);
 
-		if (str::is_empty(tooltip_text))
+		if (core::is_empty(tooltip_text))
 		{
-			result.elements->add(std::make_shared<text_element>(search.text(), ui::style::font_face::dialog,
-			                                                    ui::style::text_style::multiline,
+			result.elements->add(std::make_shared<text_element>(search.text(), render::font_face::dialog,
+			                                                    render::text_style::multiline,
 			                                                    flex_item::new_line));
 		}
 		else
 		{
-			result.elements->add(std::make_shared<text_element>(tooltip_text, ui::style::font_face::dialog,
-			                                                    ui::style::text_style::multiline,
+			result.elements->add(std::make_shared<text_element>(tooltip_text, render::font_face::dialog,
+			                                                    render::text_style::multiline,
 			                                                    flex_item::new_line));
 		}
 
@@ -313,8 +313,8 @@ public:
 		if (scoped_count)
 		{
 			result.elements->add(std::make_shared<text_element>(format_plural_text(tt.sidebar_kept_fmt, static_cast<int64_t>(*scoped_count)),
-			                                                    ui::style::font_face::dialog,
-			                                                    ui::style::text_style::multiline,
+			                                                    render::font_face::dialog,
+			                                                    render::text_style::multiline,
 			                                                    flex_item::new_line));
 		}
 
@@ -352,7 +352,7 @@ public:
 	explicit sidebar_drive_element(view_state& state, const platform::drive_t& d) noexcept
 		: view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(state), _drive(d)
 	{
-		if (!str::is_empty(_drive.vol_name))
+		if (!core::is_empty(_drive.vol_name))
 		{
 			title_layout.text = std::format("{} ({})", _drive.name, _drive.vol_name);
 		}
@@ -364,15 +364,15 @@ public:
 		icon = drive_icon(_drive.type);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		render_background(dc, element_offset);
 
-		const auto pad1 = df::round(1 * dc.scale_factor);
-		const auto graph_height = df::round(_graph_height * dc.scale_factor);
+		const auto pad1 = core::round(1 * dc.scale_factor);
+		const auto graph_height = core::round(_graph_height * dc.scale_factor);
 		const auto has_image = icon != icon_index::none;
-		const auto draw_clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto draw_clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto x = logical_bounds.left;
 
@@ -381,8 +381,8 @@ public:
 			auto r = logical_bounds;
 			r.right = r.left + dc.icon_cxy;
 			r.bottom -= graph_height;
-			icon_layout.lazy_load(dc, icon_to_utf8(icon), ui::style::text_style::single_line_center,
-			                      ui::style::font_face::icons);
+			icon_layout.lazy_load(dc, icon_to_utf8(icon), render::text_style::single_line_center,
+			                      render::font_face::icons);
 			dc.draw_text(icon_layout.tf, r, draw_clr, {});
 			x += dc.icon_cxy + dc.padding1;
 		}
@@ -394,41 +394,41 @@ public:
 		auto graph_bounds = logical_bounds;
 		graph_bounds.top = text_bounds.bottom + dc.padding1;
 
-		dc.draw_rect(graph_bounds, ui::color(ui::style::colors.sidebar_background, draw_clr.a).scale(1.22f));
+		dc.draw_rect(graph_bounds, core::color(ui::style::colors.sidebar_background, draw_clr.a).scale(1.22f));
 
 		// Capacity is zero for a drive with no media inserted; there is no usage to plot.
 		if (!_drive.capacity.is_empty())
 		{
 			auto used_bounds = graph_bounds.inflate(-pad1);
-			used_bounds.right = used_bounds.left + static_cast<int>(df::mul_div(
+			used_bounds.right = used_bounds.left + static_cast<int>(core::mul_div(
 				static_cast<int64_t>(used_bounds.width()), static_cast<int64_t>(_drive.used.to_int64()),
 				static_cast<int64_t>(_drive.capacity.to_int64())));
 
 			dc.draw_rect(used_bounds,
-			             ui::color(
-				             ui::average(ui::style::colors.sidebar_background, ui::style::colors.important_background),
+			             core::color(
+				             core::average(ui::style::colors.sidebar_background, ui::style::colors.important_background),
 				             draw_clr.a));
 		}
 
-		const auto total_text = std::format("{}|{}", df::format_size(_drive.used),
-		                                    df::format_size(_drive.capacity));
+		const auto total_text = std::format("{}|{}", platform::format_size(_drive.used),
+		                                    platform::format_size(_drive.capacity));
 
-		if (!str::is_empty(total_text))
+		if (!core::is_empty(total_text))
 		{
-			total_layout.lazy_load(dc, total_text, ui::style::text_style::single_line_far);
+			total_layout.lazy_load(dc, total_text, render::text_style::single_line_far);
 			const auto sum_text_extent = total_layout.tf->measure_text(text_bounds.width());
 			dc.draw_text(total_layout.tf, text_bounds, draw_clr, {});
 			text_bounds.right = text_bounds.right - sum_text_extent.cx;
 		}
 
-		title_layout.lazy_load(dc, _drive.name, ui::style::text_style::single_line);
+		title_layout.lazy_load(dc, _drive.name, render::text_style::single_line);
 		dc.draw_text(title_layout.tf, text_bounds, draw_clr, {});
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto cy = mc.text_line_height(ui::style::font_face::dialog);
-		const auto graph_height = df::round(_graph_height * mc.scale_factor);
+		const auto cy = mc.text_line_height(render::font_face::dialog);
+		const auto graph_height = core::round(_graph_height * mc.scale_factor);
 		return {width_limit, cy + graph_height + mc.padding1};
 	}
 
@@ -442,21 +442,21 @@ public:
 	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
 	{
 		result.elements->add(make_icon_element(icon, flex_item::no_break));
-		result.elements->add(std::make_shared<text_element>(_drive.name, ui::style::font_face::title,
-		                                                    ui::style::text_style::multiline,
+		result.elements->add(std::make_shared<text_element>(_drive.name, render::font_face::title,
+		                                                    render::text_style::multiline,
 		                                                    flex_item::line_break));
 
 
 		const auto table = std::make_shared<ui::table_element>(flex_item::center);
 
-		if (!str::is_empty(_drive.vol_name))
+		if (!core::is_empty(_drive.vol_name))
 		{
 			table->add(tt.disk_label, _drive.vol_name);
 		}
 
-		table->add(tt.disk_capacity, _drive.capacity.str());
-		table->add(tt_prep(tt.disk_free), _drive.free.str());
-		table->add(tt.disk_used, _drive.used.str());
+		table->add(tt.disk_capacity, platform::format_size(_drive.capacity));
+		table->add(tt_prep(tt.disk_free), platform::format_size(_drive.free));
+		table->add(tt.disk_used, platform::format_size(_drive.used));
 		table->add(tt.disk_system, _drive.file_system);
 
 		result.elements->add(table);
@@ -493,7 +493,7 @@ struct sidebar_summary
 	bool known = false;
 };
 
-using search_items_by_key_t = df::hash_map<std::string, sidebar_summary, df::ihash, df::ieq>;
+using search_items_by_key_t = core::hash_map<std::string, sidebar_summary, core::ihash, core::ieq>;
 
 inline bool should_publish_sidebar_structural_request(const uint64_t current_request, const uint64_t packet_request)
 {
@@ -540,7 +540,7 @@ public:
 				item->tooltip_icon = item->icon = search.has_selector() ? icon_index::folder : icon_index::search;
 				item->title_layout.text = tt.translate_text(title);
 				item->search = search;
-				item->calc_sum = [search](const view_state& s, const df::cancel_token& token)
+				item->calc_sum = [search](const view_state& s, const core::cancel_token& token)
 				{
 					return s.item_index.count_matches(search, token);
 				};
@@ -556,7 +556,7 @@ public:
 
 	void compact_summary(index_state::distinct_results& summary) const
 	{
-		std::ranges::sort(summary, [](auto&& left, auto&& right) { return str::icmp(left.first, right.first) < 0; });
+		std::ranges::sort(summary, [](auto&& left, auto&& right) { return core::icmp(left.first, right.first) < 0; });
 
 		auto dst = summary.begin();
 		const auto last = summary.end();
@@ -568,7 +568,7 @@ public:
 
 			while (i != last)
 			{
-				if (str::icmp(i->first, dst->first) == 0)
+				if (core::icmp(i->first, dst->first) == 0)
 				{
 					dst->second.add(i->second);
 				}
@@ -602,7 +602,7 @@ public:
 			tags = s.item_index.distinct_tags();
 		}
 
-		str::split2(config.favorite_tags, true, [&tags](std::string_view part)
+		core::split2(config.favorite_tags, true, [&tags](std::string_view part)
 		{
 			tags.emplace_back(part, df::file_group_histogram{});
 		});
@@ -614,7 +614,7 @@ public:
 			auto tag = std::string(t.first);
 			auto search = df::search_t().with(prop::tag, tag);
 
-			if (!str::is_empty(tag) && !search.is_empty())
+			if (!is_empty(tag) && !search.is_empty())
 			{
 				auto key = std::format("t:{}", tag);
 				auto i = create_or_find_item(s, existing, key);
@@ -622,7 +622,7 @@ public:
 				i->tooltip_icon = icon_index::tag;
 				i->title_layout.text = tag;
 				i->search = search;
-				i->calc_sum = [tag](const view_state& s, df::cancel_token token)
+				i->calc_sum = [tag](const view_state& s, core::cancel_token token)
 				{
 					return s.item_index.tag_summary(tag);
 				};
@@ -642,7 +642,7 @@ public:
 		i->tooltip_icon = i->icon = icon_index::star_solid;
 		i->icon_repeat = rating;
 		i->search = df::search_t::parse(key);
-		i->calc_sum = [rating](const view_state& s, df::cancel_token token)
+		i->calc_sum = [rating](const view_state& s, core::cancel_token token)
 		{
 			return s.item_index.rating_summary(rating);
 		};
@@ -653,7 +653,7 @@ public:
 
 	search_item_ptr create_item(view_state& s, const search_items_by_key_t& existing, const std::string& key,
 	                            const icon_index icon, const text_t& name, const text_t& tooltip,
-	                            const ui::color32 clr = 0) const
+	                            const core::color32 clr = 0) const
 	{
 		auto i = create_or_find_item(s, existing, key);
 		i->tooltip_icon = i->icon = icon;
@@ -661,7 +661,7 @@ public:
 		i->title_layout.text = name;
 		i->tooltip_text = tooltip;
 		i->search = df::search_t::parse(key);
-		i->calc_sum = [search = i->search](const view_state& s, const df::cancel_token& token)
+		i->calc_sum = [search = i->search](const view_state& s, const core::cancel_token& token)
 		{
 			return s.item_index.count_matches(search, token);
 		};
@@ -701,7 +701,7 @@ public:
 			auto key = std::format("l:{}", label);
 			auto search = df::search_t().with(prop::label, label);
 
-			if (!str::is_empty(label) && !search.is_empty())
+			if (!is_empty(label) && !search.is_empty())
 			{
 				const auto* const def = find_rate_label_def(label);
 				auto i = create_or_find_item(s, existing, key);
@@ -710,7 +710,7 @@ public:
 				i->title_layout.text = prop::format_label(label);
 				i->tooltip_text = {};
 				i->search = search;
-				i->calc_sum = [label](const view_state& s, df::cancel_token token)
+				i->calc_sum = [label](const view_state& s, core::cancel_token token)
 				{
 					return s.item_index.label_summary(label);
 				};
@@ -749,7 +749,7 @@ public:
 	{
 		if (!s.item_index.is_init_complete()) return rows;
 
-		const df::cancel_token token;
+		const core::cancel_token token;
 		const auto indexed = counter.is_indexed();
 
 		for (const auto& row : rows)
@@ -784,14 +784,14 @@ static int calc_indexing_perc(const index_progress_snapshot& stats)
 {
 	const auto total = stats.index_item_count;
 	const auto processed = stats.index_item_count - stats.index_item_remaining;
-	const auto result = df::mul_div(std::clamp(processed, 0, total), 100, total);
+	const auto result = core::mul_div(std::clamp(processed, 0, total), 100, total);
 	return std::clamp(result, 1, 100);
 }
 
 class sidebar_indexing_element final : public view_element,
                                        public std::enable_shared_from_this<sidebar_indexing_element>
 {
-	ui::style::font_face _font = ui::style::font_face::title;
+	render::font_face _font = render::font_face::title;
 	view_state& _s;
 
 public:
@@ -808,24 +808,24 @@ public:
 		return std::format("{} {}%", tt.indexing, calc_indexing_perc(_s.item_index.indexing_progress()));
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		render_background(dc, element_offset);
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
-		dc.draw_text(format_text(), logical_bounds, _font, ui::style::text_style::multiline_center, clr, {});
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
+		dc.draw_text(format_text(), logical_bounds, _font, render::text_style::multiline_center, clr, {});
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto extent = mc.measure_text(format_text(), _font, ui::style::text_style::multiline_center, width_limit);
+		const auto extent = mc.measure_text(format_text(), _font, render::text_style::multiline_center, width_limit);
 		return {width_limit, extent.cy};
 	}
 
 	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
 	{
-		hover.elements->add(std::make_shared<text_element>(tt.indexing_message, ui::style::font_face::dialog,
-		                                                   ui::style::text_style::multiline,
+		hover.elements->add(std::make_shared<text_element>(tt.indexing_message, render::font_face::dialog,
+		                                                   render::text_style::multiline,
 		                                                   flex_item::line_break));
 		hover.elements->add(std::make_shared<action_element>(tt.options_title));
 
@@ -868,7 +868,7 @@ public:
 	{
 		int id = 0;
 		uint64_t count = 0;
-		df::file_size size;
+		core::file_size size;
 		file_group_ref group = file_group::other;
 		bool focus = false;
 	};
@@ -890,7 +890,7 @@ public:
 		{
 			int64_t weight;
 			uint64_t count;
-			df::file_size size;
+			core::file_size size;
 			file_group_ref group;
 		};
 
@@ -904,7 +904,7 @@ public:
 
 			// Cube root: a collection is mostly photographs, and a pie drawn to a linear share
 			// would leave every other media type too thin to read or to aim at.
-			const auto weight = std::max<int64_t>(1, df::round(std::cbrt(static_cast<double>(c.count))));
+			const auto weight = std::max<int64_t>(1, core::round(std::cbrt(static_cast<double>(c.count))));
 			counts.emplace_back(weight, c.count, c.size, file_group_from_index(i));
 		}
 
@@ -1019,17 +1019,17 @@ public:
 			const auto file_types = _state.item_index.file_types();
 			const auto index_roots = _state.item_index.includes_with_totals();
 			const auto total = file_types.total_items();
-			const auto num = platform::format_number(str::to_string(total.count));
-			const auto num_folder = platform::format_number(str::to_string(_state.item_index.stats.index_folder_count));
-			const auto size = df::format_size(total.size);
+			const auto num = platform::format_number(core::to_string(total.count));
+			const auto num_folder = platform::format_number(core::to_string(_state.item_index.stats.index_folder_count));
+			const auto size = platform::format_size(total.size);
 			const auto text = str_format(tt.total_title.sv(), num, size, num_folder);
 
-			hover.elements->add(std::make_shared<text_element>(tt.collection_title, ui::style::font_face::title,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(tt.collection_title, render::font_face::title,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break |
 			                                                   flex_item::center));
-			hover.elements->add(std::make_shared<text_element>(text, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break |
 			                                                   flex_item::center));
 
@@ -1046,11 +1046,11 @@ public:
 			for (const auto& f : index_roots)
 			{
 				const auto folder_text = std::make_shared<text_element>(f.folder.text());
-				folder_text->foreground_color(ui::emphasize(ui::style::colors.view_text));
-				const auto count_text = std::make_shared<text_element>(str::format_count(f.count),
-				                                                       ui::style::text_style::single_line_far);
-				const auto size_text = std::make_shared<text_element>(df::format_size(f.size),
-				                                                      ui::style::text_style::single_line_far);
+				folder_text->foreground_color(core::emphasize(ui::style::colors.view_text));
+				const auto count_text = std::make_shared<text_element>(core::format_count(f.count),
+				                                                       render::text_style::single_line_far);
+				const auto size_text = std::make_shared<text_element>(platform::format_size(f.size),
+				                                                      render::text_style::single_line_far);
 				table->add(folder_text, count_text, size_text);
 			}
 
@@ -1070,18 +1070,18 @@ public:
 				{
 					const auto ft = e.group;
 					const auto icon = ft->icon;
-					const auto num = platform::format_number(str::to_string(e.count));
-					const auto size = df::format_size(e.size);
+					const auto num = platform::format_number(core::to_string(e.count));
+					const auto size = platform::format_size(e.size);
 
 					hover.elements->add(make_icon_element(icon, flex_item::no_break));
 					hover.elements->add(std::make_shared<text_element>(ft->display_name(e.count > 1),
-					                                                   ui::style::font_face::title,
-					                                                   ui::style::text_style::multiline,
+					                                                   render::font_face::title,
+					                                                   render::text_style::multiline,
 					                                                   flex_item::line_break));
 
 					const auto text = str_format(tt.collection_contains.sv(), num, ft->display_name(e.count > 1), size);
-					hover.elements->add(std::make_shared<text_element>(text, ui::style::font_face::dialog,
-					                                                   ui::style::text_style::multiline,
+					hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
+					                                                   render::text_style::multiline,
 					                                                   flex_item::line_break));
 					break;
 				}
@@ -1089,7 +1089,7 @@ public:
 
 			if (!hover.elements->is_empty())
 			{
-				hover.preferred_size = df::mul_div(view_hover_element::default_preferred_size, 2, 3);
+				hover.preferred_size = core::mul_div(view_hover_element::default_preferred_size, 2, 3);
 			}
 		}
 
@@ -1160,7 +1160,7 @@ public:
 		}
 	}
 
-	mutable ui::texture_ptr _tex;
+	mutable render::texture_ptr _tex;
 	mutable chart_surface _chart;
 
 	// Every input the pixels depend on. A key that omits one serves the wedge the pointer left, or
@@ -1168,7 +1168,7 @@ public:
 	struct render_key
 	{
 		sizei extent;
-		ui::color32 hole_color = 0;
+		core::color32 hole_color = 0;
 		uint32_t generation = 0;
 		file_group_ref raised = nullptr;
 		bool center_hover = false;
@@ -1183,7 +1183,7 @@ public:
 
 	mutable render_key _rendered;
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto extent = logical_bounds.extent();
@@ -1198,7 +1198,7 @@ public:
 
 		// The well floor is opaque so the total reads against a surface of its own, and so the
 		// centre has pixels the pointer can claim for Options, which opens on the collection.
-		auto hole_color = ui::darken(ui::style::colors.sidebar_background, 0.35f);
+		auto hole_color = core::darken(ui::style::colors.sidebar_background, 0.35f);
 
 		if (_center_hover)
 		{
@@ -1225,16 +1225,16 @@ public:
 					const auto& e = _file_type_entries[i];
 					const auto color = e.count > 0
 						                   ? e.group->color
-						                   : ui::lighten(ui::style::colors.sidebar_background, 0.25f);
+						                   : core::lighten(ui::style::colors.sidebar_background, 0.25f);
 
 					scene.wedges[i] = {
-						ui::abgr(e.focus ? ui::lighten(color, 0.14f) : color),
+						core::abgr(e.focus ? core::lighten(color, 0.14f) : color),
 						static_cast<uint16_t>(pie_chart_wedge_id_base + i),
 						e.focus
 					};
 				}
 
-				scene.hole_color = ui::abgr(hole_color);
+				scene.hole_color = core::abgr(hole_color);
 				scene.hole_id = pie_chart_hole_id;
 
 				render_pie_chart(_chart, scene);
@@ -1244,23 +1244,23 @@ public:
 			}
 		}
 
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		if (_chart.is_ready())
 		{
 			dc.draw_texture(_tex, recti(logical_bounds.top_left(), _chart.extent()), dc.colors.alpha);
 		}
 
-		dc.draw_text(_text, logical_bounds, ui::style::font_face::dialog, ui::style::text_style::multiline_center, clr,
+		dc.draw_text(_text, logical_bounds, render::font_face::dialog, render::text_style::multiline_center, clr,
 		             {});
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		// Wider than it is tall, because the disc is tilted. The two spare pixels are the margin the
 		// rasteriser keeps around the silhouette.
-		const auto size = std::min(width_limit, df::round(sidebar_visualization_size * mc.scale_factor));
-		return {size, df::round(size * pie_chart_aspect) + 2};
+		const auto size = std::min(width_limit, core::round(sidebar_visualization_size * mc.scale_factor));
+		return {size, core::round(size * pie_chart_aspect) + 2};
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
@@ -1270,7 +1270,7 @@ public:
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		if (bounds != bounds_in)
 		{
@@ -1321,7 +1321,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 
 	view_state& _state;
 	std::array<df::date_counts, col_count * df::max_history_years> _counts{};
-	std::array<df::file_path, col_count * df::max_history_years> _representative_paths{};
+	std::array<core::file_path, col_count * df::max_history_years> _representative_paths{};
 	std::array<uint64_t, df::max_history_years> _year_totals{};
 	mutable sidebar_tooltip_thumbnail _tooltip_thumbnail;
 
@@ -1358,7 +1358,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		const auto cell = std::max(1, (element_width - 2 * _skew_pad) / std::max(1, _range.year_count()));
 		const auto depth = base_recede_x *
 			std::clamp(cell / 4, 1, std::max(1, std::abs(_month_style.depth_x) / 2));
-		return {depth, std::max(1, df::round(std::abs(depth) * 1.3)), 1, 1};
+		return {depth, std::max(1, core::round(std::abs(depth) * 1.3)), 1, 1};
 	}
 
 	// The row's own box inside the element: what the skew leaves it, and how far it slides across
@@ -1373,19 +1373,19 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	row_plan plan_rows(const int element_width) const
 	{
 		const auto available = std::max(col_count, element_width - 2 * _skew_pad);
-		const auto width = std::max(col_count, df::mul_div(available, 100 - skew_percent, 100));
+		const auto width = std::max(col_count, core::mul_div(available, 100 - skew_percent, 100));
 		return {width, available - width};
 	}
 
-	mutable ui::texture_ptr _tex;
+	mutable render::texture_ptr _tex;
 	mutable chart_surface _chart;
 	mutable bool _chart_invalid = true;
 
 	struct render_key
 	{
 		sizei extent;
-		ui::color32 background = 0;
-		ui::color32 foreground = 0;
+		core::color32 background = 0;
+		core::color32 foreground = 0;
 		uint32_t generation = 0;
 		int hover_month = invalid_hover;
 		int hover_year = invalid_hover;
@@ -1459,7 +1459,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 
 	void populate(const df::date_histogram& summary)
 	{
-		const auto now = platform::now().date();
+		const auto now = core::utc_now().date();
 		_current_year = now.year;
 		_current_month = now.month;
 		_counts = summary.dates;
@@ -1504,7 +1504,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	}
 
 	void build_month_cells(std::vector<calendar_chart_cell>& cells, const recti local, const sizei extent,
-	                       const ui::color32 foreground) const
+	                       const core::color32 foreground) const
 	{
 		// The window sets its own scale. Absolute comparison across the whole collection is what the
 		// navigator underneath is for; inside eight years, what matters is how the months compare.
@@ -1556,7 +1556,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 				const auto shown = !future && year == _shown_year && m + 1 == _shown_month;
 
 				const auto floor_y = cell.bottom - 1;
-				auto height = share <= 0.0 ? 0 : std::max(1, df::round(share * ceiling));
+				auto height = share <= 0.0 ? 0 : std::max(1, core::round(share * ceiling));
 
 				if (previous_top[m] == std::numeric_limits<int>::min())
 				{
@@ -1580,14 +1580,14 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 					// tone: the globe beside it is a photograph of the world, and a grid of
 					// near-white blocks took the panel over. The month being listed is the
 					// exception - it is warm, so the panel and the listing agree at a glance.
-					const auto tint = future ? 16 : count > 0 ? 55 + df::round(share * 90.0) : 32;
+					const auto tint = future ? 16 : count > 0 ? 55 + core::round(share * 90.0) : 32;
 					color = shown
-						        ? ui::lerp(ui::style::colors.sidebar_background,
+						        ? core::lerp(ui::style::colors.sidebar_background,
 						                   ui::style::colors.important_background, 200)
-						        : ui::lerp(ui::style::colors.sidebar_background, foreground, tint);
+						        : core::lerp(ui::style::colors.sidebar_background, foreground, tint);
 				}
 
-				cells.emplace_back(cell, height, ui::abgr(color),
+				cells.emplace_back(cell, height, core::abgr(color),
 				                   future
 					                   ? chart_surface::no_id
 					                   : static_cast<uint16_t>(month_id_base + row * col_count + m),
@@ -1597,7 +1597,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	}
 
 	void build_navigator_cells(std::vector<calendar_chart_cell>& cells, const recti local,
-	                           const calendar_chart_style& style, const ui::color32 foreground) const
+	                           const calendar_chart_style& style, const core::color32 foreground) const
 	{
 		const auto years = _range.year_count();
 		const auto ceiling = std::max(1, _nav_height - style.depth_y - 2);
@@ -1615,23 +1615,23 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			const auto selected = year >= oldest_shown && year <= _window_end;
 			const auto hovered = _hover_year == year;
 			const auto share = chart_log_height(total, _year_max);
-			const auto height = total == 0 ? 0 : std::max(1, df::round(share * ceiling));
+			const auto height = total == 0 ? 0 : std::max(1, core::round(share * ceiling));
 
 			// The selected span is tinted rather than boxed: a bracket drawn round eight bars is
 			// one more line to read, where a run of warm bars simply is the thing shown above.
 			const auto color = hovered
 				                   ? ui::style::colors.important_background
 				                   : selected
-				                   ? ui::lerp(ui::style::colors.sidebar_background,
+				                   ? core::lerp(ui::style::colors.sidebar_background,
 				                              ui::style::colors.important_background, 165)
-				                   : ui::lerp(ui::style::colors.sidebar_background, foreground, 50);
+				                   : core::lerp(ui::style::colors.sidebar_background, foreground, 50);
 
-			cells.emplace_back(cell, height, ui::abgr(color),
+			cells.emplace_back(cell, height, core::abgr(color),
 			                   static_cast<uint16_t>(navigator_id_base + index), hovered);
 		}
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto extent = logical_bounds.extent();
@@ -1681,30 +1681,30 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto width = std::min(width_limit, df::round(max_content_width * mc.scale_factor));
+		const auto width = std::min(width_limit, core::round(max_content_width * mc.scale_factor));
 
-		row_height = df::round(mc.scale_factor * base_row_height);
-		_skew_pad = df::round(mc.scale_factor * base_skew_pad);
-		_nav_gap = df::round(mc.scale_factor * base_navigator_gap);
+		row_height = core::round(mc.scale_factor * base_row_height);
+		_skew_pad = core::round(mc.scale_factor * base_skew_pad);
+		_nav_gap = core::round(mc.scale_factor * base_navigator_gap);
 
 		// Depth is taken out of the block's own width, so a fixed depth would eat a narrow sidebar
 		// alive. Scale it to the cell instead and keep the face the wider part.
 		const auto plan = plan_rows(width);
 		const auto cell_width = std::max(4, plan.width / col_count);
-		const auto depth = base_recede_x * std::clamp(cell_width / 4, 1, df::round(mc.scale_factor * base_depth_x));
+		const auto depth = base_recede_x * std::clamp(cell_width / 4, 1, core::round(mc.scale_factor * base_depth_x));
 
 		_month_style = {
 			depth,
 			// Tipped up steeper than the depth is wide. Seen nearly side on a block reads as a
 			// rectangle with a smear along one edge; it is the visible cap that makes it a solid.
-			std::max(2, df::round(std::abs(depth) * 1.3)),
-			std::max(1, df::round(mc.scale_factor * base_gap)),
-			std::max(1, df::round(mc.scale_factor * base_lift))
+			std::max(2, core::round(std::abs(depth) * 1.3)),
+			std::max(1, core::round(mc.scale_factor * base_gap)),
+			std::max(1, core::round(mc.scale_factor * base_lift))
 		};
 
-		_nav_height = df::round(mc.scale_factor * base_navigator_height);
+		_nav_height = core::round(mc.scale_factor * base_navigator_height);
 
 		// The room a first-row block needs to lean into. Without it the newest year - usually the
 		// busiest - would be the one year that could not reach the full height, and the scale it
@@ -1721,14 +1721,14 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		// Fake isometric: the row itself slides across as the years come forward, so the plan the
 		// blocks stand on recedes the same way they do. One diagonal across the whole window, now
 		// that the window is eight years rather than however many the collection spans.
-		const auto step = df::mul_div(row_count - 1 - row, plan.travel, row_count - 1);
+		const auto step = core::mul_div(row_count - 1 - row, plan.travel, row_count - 1);
 		const auto offset = _month_style.depth_x >= 0 ? step : plan.travel - step;
 		const auto left = logical_bounds.left + _skew_pad + offset;
 
 		return {
-			left + df::mul_div(month, plan.width, col_count),
+			left + core::mul_div(month, plan.width, col_count),
 			logical_bounds.top + _top_pad + row * row_height,
-			left + df::mul_div(month + 1, plan.width, col_count),
+			left + core::mul_div(month + 1, plan.width, col_count),
 			logical_bounds.top + _top_pad + (row + 1) * row_height
 		};
 	}
@@ -1741,9 +1741,9 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		const auto top = logical_bounds.top + _top_pad + row_count * row_height + _nav_gap;
 
 		return {
-			left + df::mul_div(index, width, years),
+			left + core::mul_div(index, width, years),
 			top,
-			left + df::mul_div(index + 1, width, years),
+			left + core::mul_div(index + 1, width, years),
 			top + _nav_height
 		};
 	}
@@ -1768,13 +1768,13 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			const auto total = offset >= 0 && offset < df::max_history_years ? _year_totals[offset] : 0;
 
 			hover.elements->add(make_icon_element(icon_index::time, flex_item::no_break));
-			hover.elements->add(std::make_shared<text_element>(str::to_string(_hover_year),
-			                                                   ui::style::font_face::title,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(core::to_string(_hover_year),
+			                                                   render::font_face::title,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break));
 			hover.elements->add(std::make_shared<text_element>(
 				format_plural_text(tt.title_item_count_fmt, static_cast<uint32_t>(total)),
-				ui::style::font_face::dialog, ui::style::text_style::multiline, flex_item::line_break));
+				render::font_face::dialog, render::text_style::multiline, flex_item::line_break));
 			hover.elements->add(std::make_shared<action_element>(tt.history_navigator_action));
 		}
 		else if (hover_month_is_valid())
@@ -1783,28 +1783,28 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			const auto row = _hover_month >> 8;
 			const auto date_index = offset_of_year(year_of_row(row)) * col_count + m;
 			const auto date_count = _counts[date_index];
-			const auto month = str::month(m + 1, true);
-			const auto year = str::to_string(year_of_row(row));
+			const auto month = core::month(m + 1, true);
+			const auto year = core::to_string(year_of_row(row));
 
 			hover.elements->add(make_icon_element(icon_index::time, flex_item::no_break));
-			hover.elements->add(std::make_shared<text_element>(month, ui::style::font_face::title,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(month, render::font_face::title,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::no_break));
-			hover.elements->add(std::make_shared<text_element>(year, ui::style::font_face::title,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(year, render::font_face::title,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::line_break));
 			_tooltip_thumbnail.add(hover, _state, _representative_paths[date_index]);
-			hover.elements->add(std::make_shared<text_element>(tt.collection_contains2, ui::style::font_face::dialog,
-			                                                   ui::style::text_style::multiline,
+			hover.elements->add(std::make_shared<text_element>(tt.collection_contains2, render::font_face::dialog,
+			                                                   render::text_style::multiline,
 			                                                   flex_item::new_line));
 
 			const auto table = std::make_shared<ui::table_element>(flex_item::center);
 			const auto num1 = std::make_shared<text_element>(
-				platform::format_number(str::to_string(date_count.created)),
-				ui::style::text_style::single_line_far);
+				platform::format_number(core::to_string(date_count.created)),
+				render::text_style::single_line_far);
 			const auto num2 = std::make_shared<text_element>(
-				platform::format_number(str::to_string(date_count.modified)),
-				ui::style::text_style::single_line_far);
+				platform::format_number(core::to_string(date_count.modified)),
+				render::text_style::single_line_far);
 			table->add(num1, std::make_shared<text_element>(str_format(tt.items_created_fmt.sv(), month, year)));
 			table->add(num2, std::make_shared<text_element>(str_format(tt.items_modified_fmt.sv(), month, year)));
 			hover.elements->add(table);
@@ -1879,7 +1879,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 
 			// The calendar buckets on the same capture-first ladder the tile shows, so the click has to
 			// ask for that key rather than the Created concept.
-			const auto ks = ui::current_key_state();
+			const auto ks = platform::current_key_state();
 			const auto type = ks.control ? df::date_parts_prop::modified : df::date_parts_prop::original;
 			const auto search = df::search_t().day(0, m + 1, year_of_row(row), type);
 
@@ -1892,14 +1892,14 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 {
 	view_state& _state;
 
-	ui::const_surface_ptr _surface;
-	ui::const_surface_ptr _surface_original;
+	core::const_surface_ptr _surface;
+	core::const_surface_ptr _surface_original;
 	globe_renderer _renderer;
-	mutable ui::texture_ptr _tex;
-	mutable ui::surface_ptr _globe_surface;
-	mutable ui::texture_ptr _marker_tex;
+	mutable render::texture_ptr _tex;
+	mutable core::surface_ptr _globe_surface;
+	mutable render::texture_ptr _marker_tex;
 	mutable int _marker_size = 0;
-	mutable ui::color32 _marker_color = 0;
+	mutable core::color32 _marker_color = 0;
 
 	mutable bool _tex_invalid = true;
 	mutable sizei _rendered_extent;
@@ -1913,16 +1913,16 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	bool _drag_start_view_is_user_set = false;
 
 	std::vector<map_location_area> _locations;
-	df::hash_map<uint32_t, map_location_area> _resolved_areas;
+	core::hash_map<uint32_t, map_location_area> _resolved_areas;
 
 	struct representative_item
 	{
-		df::file_path path;
+		core::file_path path;
 		df::item_element_ptr item;
 	};
 
-	mutable df::hash_map<uint32_t, representative_item> _representatives;
-	mutable df::unique_paths _thumbnail_requests;
+	mutable core::hash_map<uint32_t, representative_item> _representatives;
+	mutable core::unique_paths _thumbnail_requests;
 	int _hover_location = -1;
 
 	// Issue #119: the display language bit that _resolved_areas / _locations names were resolved
@@ -1932,7 +1932,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 
 	// Naming an area reads the gazetteer, so it runs on the location worker. These track the
 	// requests in flight and make any answer that arrives after a language change discardable.
-	df::hash_set<uint32_t> _resolving_areas;
+	core::hash_set<uint32_t> _resolving_areas;
 	uint32_t _resolved_generation = 0;
 
 	// The sphere fills the element, which is square and the same size as the pie chart above it.
@@ -1960,9 +1960,9 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	// The hovered area is marked with a translucent disc rather than a filled box: a square drawn
 	// on a sphere reads as a sticker stuck to it, and an opaque one hides the place it names.
 	// Built as a surface so the hardware and software backends draw the same marker.
-	void update_marker(ui::draw_context& dc, const int diameter) const
+	void update_marker(render::draw_context& dc, const int diameter) const
 	{
-		const auto clr = ui::bgr(ui::style::colors.important_background);
+		const auto clr = core::bgr(ui::style::colors.important_background);
 
 		// Keyed on the colour as well as the size: the accent colour is a theme value, and a key
 		// that omits an input serves one theme's marker under another.
@@ -1974,18 +1974,18 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 			if (!_marker_tex) return;
 		}
 
-		const auto surface = std::make_shared<ui::surface>();
+		const auto surface = std::make_shared<core::surface>();
 
 		// A failed alloc still reports the requested extent, so the marker has to be abandoned before
 		// the loop below writes through the null it handed back. Leaving the key unset retries.
-		if (!surface->alloc(diameter, diameter, ui::texture_format::ARGB)) return;
+		if (!surface->alloc(diameter, diameter, core::texture_format::ARGB)) return;
 
 		const auto centre = (diameter - 1) / 2.0;
 		const auto radius = diameter / 2.0;
 
 		for (auto y = 0; y < diameter; ++y)
 		{
-			auto* const line = std::bit_cast<ui::color32*>(surface->pixels_line(y));
+			auto* const line = std::bit_cast<core::color32*>(surface->pixels_line(y));
 
 			for (auto x = 0; x < diameter; ++x)
 			{
@@ -2002,7 +2002,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 
 				const auto rb = ((clr & 0x00FF00FFu) * scale >> 8) & 0x00FF00FFu;
 				const auto g = ((clr & 0x0000FF00u) * scale >> 8) & 0x0000FF00u;
-				line[x] = (static_cast<uint32_t>(df::round(alpha * 255.0)) << 24) | rb | g;
+				line[x] = (static_cast<uint32_t>(core::round(alpha * 255.0)) << 24) | rb | g;
 			}
 		}
 
@@ -2047,7 +2047,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	// a miss queues the work and the published result invalidates the tooltip that asked.
 	void resolve_area(map_location_area& area)
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 		invalidate_stale_language();
 
 		if (!area.name.empty()) return;
@@ -2125,29 +2125,29 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	// oceans the colour of whatever was behind them - black, which sits badly beside the rest of
 	// the palette. Composite it once over deep water, using the source's alpha as coverage so
 	// coastlines stay smooth.
-	static ui::const_surface_ptr composite_water(const ui::const_surface_ptr& map)
+	static core::const_surface_ptr composite_water(const core::const_surface_ptr& map)
 	{
 		if (!is_valid(map)) return map;
 
 		const auto dims = map->dimensions();
-		const auto result = std::make_shared<ui::surface>();
+		const auto result = std::make_shared<core::surface>();
 
 		// A failed alloc still reports the requested extent, so the composite is abandoned rather than
 		// written through the null it handed back. The uncomposited map draws, over a black ocean.
-		if (!result->alloc(dims, ui::texture_format::ARGB)) return map;
+		if (!result->alloc(dims, core::texture_format::ARGB)) return map;
 
 		// Land is one flat tone, so its colour is whatever the first opaque pixel carries - and a
 		// fully opaque pixel reads the same whether the decode premultiplied alpha or not.
-		auto land = ui::bgr(ui::rgb(128, 128, 128));
+		auto land = core::bgr(core::rgb(128, 128, 128));
 		auto found_land = false;
 
 		for (auto y = 0; y < dims.cy && !found_land; ++y)
 		{
-			const auto* const line = std::bit_cast<const ui::color32*>(map->pixels_line(y));
+			const auto* const line = std::bit_cast<const core::color32*>(map->pixels_line(y));
 
 			for (auto x = 0; x < dims.cx; ++x)
 			{
-				if (ui::get_a(line[x]) == 255)
+				if (core::get_a(line[x]) == 255)
 				{
 					land = line[x] & 0x00FFFFFFu;
 					found_land = true;
@@ -2156,16 +2156,16 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 			}
 		}
 
-		const auto water = ui::bgr(ui::rgb(19, 38, 64));
+		const auto water = core::bgr(core::rgb(19, 38, 64));
 
 		for (auto y = 0; y < dims.cy; ++y)
 		{
-			const auto* const source = std::bit_cast<const ui::color32*>(map->pixels_line(y));
-			auto* const destination = std::bit_cast<ui::color32*>(result->pixels_line(y));
+			const auto* const source = std::bit_cast<const core::color32*>(map->pixels_line(y));
+			auto* const destination = std::bit_cast<core::color32*>(result->pixels_line(y));
 
 			for (auto x = 0; x < dims.cx; ++x)
 			{
-				destination[x] = (ui::lerp(water, land, static_cast<int>(ui::get_a(source[x]))) & 0x00FFFFFFu) |
+				destination[x] = (core::lerp(water, land, static_cast<int>(core::get_a(source[x]))) & 0x00FFFFFFu) |
 					0xFF000000u;
 			}
 		}
@@ -2174,7 +2174,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	}
 
 public:
-	sidebar_map_element(view_state& state, ui::const_surface_ptr s) :
+	sidebar_map_element(view_state& state, core::const_surface_ptr s) :
 		view_element(view_element_style::has_tooltip | view_element_style::can_invoke | flex_item::center),
 		_state(state), _surface_original(composite_water(s))
 	{
@@ -2279,7 +2279,7 @@ public:
 			{
 				_summary = summary;
 				const auto dims = _surface_original->dimensions();
-				df::assert_true(dims.cx * df::location_heat_map::map_height ==
+				core::assert_true(dims.cx * df::location_heat_map::map_height ==
 					dims.cy * df::location_heat_map::map_width);
 
 				const auto max_coord = *std::max_element(summary.coordinates.begin(), summary.coordinates.end());
@@ -2321,8 +2321,8 @@ public:
 						}
 					}
 
-					auto surface = std::make_shared<ui::surface>();
-					const auto pixels = surface->alloc(dims, ui::texture_format::ARGB);
+					auto surface = std::make_shared<core::surface>();
+					const auto pixels = surface->alloc(dims, core::texture_format::ARGB);
 
 					if (!pixels)
 					{
@@ -2334,7 +2334,7 @@ public:
 						return true;
 					}
 
-					const auto heat_color = ui::bgr(ui::style::colors.important_background) | 0xFF000000;
+					const auto heat_color = core::bgr(ui::style::colors.important_background) | 0xFF000000;
 					memset(pixels, 0, surface->stride() * dims.cy);
 
 					for (auto y = 0; y < dims.cy; ++y)
@@ -2348,7 +2348,7 @@ public:
 							const auto strength = heat_strength[heat_y * df::location_heat_map::map_width + heat_x];
 							surf_line[x] = strength == 0.0f
 								               ? map_line[x]
-								               : ui::lerp(map_line[x], heat_color, strength);
+								               : core::lerp(map_line[x], heat_color, strength);
 						}
 					}
 
@@ -2364,7 +2364,7 @@ public:
 		return false;
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		if (!_renderer.is_ready()) return;
 
@@ -2392,9 +2392,9 @@ public:
 			// drag re-renders on every frame and would otherwise allocate on every one of them.
 			if (!_globe_surface || _globe_surface->dimensions() != extent)
 			{
-				_globe_surface = std::make_shared<ui::surface>();
+				_globe_surface = std::make_shared<core::surface>();
 
-				if (!_globe_surface->alloc(extent, ui::texture_format::ARGB))
+				if (!_globe_surface->alloc(extent, core::texture_format::ARGB))
 				{
 					// A failed alloc still reports the requested extent, so the buffer has to be dropped
 					// rather than left to be recognised as the right size on the next frame.
@@ -2432,11 +2432,11 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		// Square, and as wide as the pie above it: the pie is tilted and so shorter than it is wide,
 		// but a sphere is not, and the two still have to line up on their width.
-		const auto size = std::min(width_limit, df::round(sidebar_visualization_size * mc.scale_factor));
+		const auto size = std::min(width_limit, core::round(sidebar_visualization_size * mc.scale_factor));
 		return {size, size};
 	}
 
@@ -2504,8 +2504,8 @@ public:
 			hover.elements->add(make_icon_element(icon_index::location, flex_item::no_break));
 			hover.elements->add(std::make_shared<text_element>(
 				named ? name : format_plural_text(tt.map_items_here_fmt, location.count),
-				ui::style::font_face::title,
-				ui::style::text_style::multiline,
+				render::font_face::title,
+				render::text_style::multiline,
 				flex_item::line_break));
 
 			if (const auto found = _representatives.find(area_key(location)); found != _representatives.end())
@@ -2543,8 +2543,8 @@ public:
 			if (named)
 			{
 				hover.elements->add(std::make_shared<text_element>(
-					str_format(tt.click_items_from_fmt.sv(), location.count, name), ui::style::font_face::dialog,
-					ui::style::text_style::multiline, flex_item::new_line));
+					str_format(tt.click_items_from_fmt.sv(), location.count, name), render::font_face::dialog,
+					render::text_style::multiline, flex_item::new_line));
 
 				// locations.md 5.4: the action line states the search it will run, including the
 				// radius, so the count on the map and the count after the click are never a surprise.
@@ -2630,12 +2630,12 @@ public:
 		invalidate();
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return _tracking ? ui::style::cursor::hand_up : ui::style::cursor::hand_down;
+		return _tracking ? platform::cursor::hand_up : platform::cursor::hand_down;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		view_controller::on_mouse_left_button_down(loc, keys);
 		_tracking = true;
@@ -2660,7 +2660,7 @@ public:
 		update_hover(loc);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		const auto was_cancelled = _cancelled;
@@ -2725,20 +2725,20 @@ inline view_controller_ptr sidebar_map_element::controller_from_location(const v
 class app_logo_element final : public std::enable_shared_from_this<app_logo_element>, public view_element
 {
 	view_state& _state;
-	std::string_view _text = s_app_name;
-	ui::style::font_face _font = ui::style::font_face::title;
-	ui::style::text_style _text_style = ui::style::text_style::single_line;
+	std::string_view _text = core::app_name();
+	render::font_face _font = render::font_face::title;
+	render::text_style _text_style = render::text_style::single_line;
 	bool _interactive = true;
 	bool _show_plasma = true;
 	double _logo_scale = 1.0;
 
 	mutable plasma logo_plasma;
-	mutable ui::texture_ptr _plasma_tex;
-	mutable ui::texture_ptr _logo_tex;
+	mutable render::texture_ptr _plasma_tex;
+	mutable render::texture_ptr _logo_tex;
 	mutable int _logo_size = 0;
 
 public:
-	app_logo_element(view_state& state, const ui::style::font_face font = ui::style::font_face::title,
+	app_logo_element(view_state& state, const render::font_face font = render::font_face::title,
 	                 const bool interactive = true, const bool show_plasma = true, const double logo_scale = 1.0,
 	                 const view_element_options& options = {}) noexcept :
 		view_element(options | (interactive
@@ -2753,7 +2753,7 @@ public:
 		_text = t;
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		render_background(dc, element_offset);
@@ -2778,7 +2778,7 @@ public:
 		// Drawn at the exact size it is shown at, so it stays sharp at every scale factor. Over the
 		// plasma the mark is inset so the backdrop reads as a border around it.
 		const auto logo_box = std::min(logo_bounds.width(), logo_bounds.height());
-		const auto logo_size = _show_plasma ? df::round(logo_box * 0.8) : logo_box;
+		const auto logo_size = _show_plasma ? core::round(logo_box * 0.8) : logo_box;
 
 		if (logo_size > 0 && (!_logo_tex || _logo_size != logo_size))
 		{
@@ -2786,9 +2786,9 @@ public:
 
 			if (t)
 			{
-				const auto logo_surface = std::make_shared<ui::surface>();
+				const auto logo_surface = std::make_shared<core::surface>();
 
-				if (logo_surface->alloc(logo_size, logo_size, ui::texture_format::ARGB))
+				if (logo_surface->alloc(logo_size, logo_size, core::texture_format::ARGB))
 				{
 					fill_app_logo(*logo_surface);
 					_logo_tex = t;
@@ -2806,19 +2806,19 @@ public:
 
 		if (_show_plasma)
 		{
-			const auto plasma_border_clr = ui::color(0.25f, 0.25f, 0.25f, 1.0f);
-			const auto pad = df::round(1 * dc.scale_factor);
+			const auto plasma_border_clr = core::color(0.25f, 0.25f, 0.25f, 1.0f);
+			const auto pad = core::round(1 * dc.scale_factor);
 			dc.draw_border(logo_bounds, logo_bounds.inflate(pad), plasma_border_clr, plasma_border_clr);
 		}
 
 		auto text_bounds = logical_bounds;
 		text_bounds.left = logo_bounds.right + dc.padding2;
-		dc.draw_text(_text, text_bounds, _font, _text_style, ui::color(dc.colors.foreground, dc.colors.alpha), {});
+		dc.draw_text(_text, text_bounds, _font, _text_style, core::color(dc.colors.foreground, dc.colors.alpha), {});
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto logo_box = df::round((mc.text_line_height(_font) + mc.padding2) * _logo_scale);
+		const auto logo_box = core::round((mc.text_line_height(_font) + mc.padding2) * _logo_scale);
 		const auto text_width_limit = std::max(0, width_limit - logo_box - mc.padding2);
 		const auto text_extent = mc.measure_text(_text, _font, _text_style, text_width_limit);
 		return {std::min(width_limit, logo_box + mc.padding2 + text_extent.cx), std::max(logo_box, text_extent.cy)};
@@ -2872,9 +2872,9 @@ public:
 		if (value)
 		{
 			_bg_target = view_handle_color(false, true, false, true, true,
-			                               ui::color(ui::style::colors.toolbar_background));
+			                               core::color(ui::style::colors.toolbar_background));
 
-			if (ui::is_alpha_zero(_bg_color.a))
+			if (core::is_alpha_zero(_bg_color.a))
 			{
 				_bg_color.r = _bg_target.r;
 				_bg_color.g = _bg_target.g;
@@ -2897,7 +2897,7 @@ public:
 
 	bool step_background_if_animations_disabled()
 	{
-		return ui::animations_enabled ? false : step_background();
+		return render::animations_enabled ? false : step_background();
 	}
 
 	void free_graphics_resources() const
@@ -2940,7 +2940,7 @@ public:
 
 	sidebar_host(view_state& s) : _state(s)
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		_indexing_elements = std::make_shared<sidebar_indexing_element>(
 			s, flex_item::stretch |
@@ -2997,16 +2997,16 @@ public:
 		return setting.show_sidebar;
 	}
 
-	void layout_embedded(ui::measure_context& mc, const recti bounds)
+	void layout_embedded(render::measure_context& mc, const recti bounds)
 	{
 		_embedded_bounds = bounds;
 		_extent = bounds.extent();
 		layout(mc);
 	}
 
-	void render_embedded(ui::draw_context& dc)
+	void render_embedded(render::draw_context& dc)
 	{
-		dc.draw_rect(_embedded_bounds, ui::color(ui::style::colors.sidebar_background, dc.colors.alpha));
+		dc.draw_rect(_embedded_bounds, core::color(ui::style::colors.sidebar_background, dc.colors.alpha));
 		dc.clip_bounds(_embedded_bounds);
 		on_window_paint(dc);
 		dc.restore_clip();
@@ -3029,7 +3029,7 @@ public:
 	// or hiding one element does not rebuild every other element, its text layout and its count.
 	void compose_elements()
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		_elements.clear();
 		if (_show_indexing_control) _elements.emplace_back(_indexing_elements);
@@ -3043,7 +3043,7 @@ public:
 	void update_content(std::vector<search_item_ptr> items, std::vector<drive_item_ptr> drives,
 	                    std::vector<view_element_ptr> item_elements)
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		_items = std::move(items);
 		_drives = std::move(drives);
@@ -3060,7 +3060,7 @@ public:
 	// the answer rather than the sidebar waiting for the scan on every unrelated invalidation.
 	void populate_drives()
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		_state.queue_async(async_queue::sidebar,
 		                   [t = ui_owned(_state._async, shared_from_this()), &s = _state]
@@ -3080,7 +3080,7 @@ public:
 	// change to which rows exist - the cheaper tiers above cover everything else.
 	void populate()
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		const auto histograms = _state.item_index.histograms();
 		_type_chart->populate(histograms->_file_types);
@@ -3168,19 +3168,19 @@ public:
 
 			                   auto tags_element = std::make_shared<link_element>(
 				                   tag_show_text, commands::view_favorite_tags,
-				                   ui::style::font_face::dialog,
-				                   ui::style::text_style::multiline_center,
+				                   render::font_face::dialog,
+				                   render::text_style::multiline_center,
 				                   flex_item::center);
 
 			                   auto customise_element = std::make_shared<link_element>(
 				                   tt.command_customise, commands::options_sidebar,
-				                   ui::style::font_face::dialog,
-				                   ui::style::text_style::multiline_center,
+				                   render::font_face::dialog,
+				                   render::text_style::multiline_center,
 				                   flex_item::center);
 			                   auto favorite_tags_element = std::make_shared<link_element>(tt.customise_tags_title,
 				                   commands::favorite_tags,
-				                   ui::style::font_face::dialog,
-				                   ui::style::text_style::multiline_center,
+				                   render::font_face::dialog,
+				                   render::text_style::multiline_center,
 				                   flex_item::center);
 
 			                   item_elements.emplace_back(tags_element);
@@ -3200,7 +3200,7 @@ public:
 		                   });
 	}
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized) override
+	void on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized) override
 	{
 		if (!is_minimized)
 		{
@@ -3209,9 +3209,9 @@ public:
 		}
 	}
 
-	void on_window_paint(ui::draw_context& dc) override
+	void on_window_paint(render::draw_context& dc) override
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		const auto offset = _scroller.scroll_offset();
 		const auto logical_clip_bounds = dc.clip_bounds().offset(offset);
@@ -3233,8 +3233,8 @@ public:
 
 		if (setting.show_debug_info && _active_controller)
 		{
-			const auto c = ui::color(1.0f, 0.0f, 0.0f, 1.0f);
-			const auto pad = df::round(2 * dc.scale_factor);
+			const auto c = core::color(1.0f, 0.0f, 0.0f, 1.0f);
+			const auto pad = core::round(2 * dc.scale_factor);
 			dc.draw_border(_controller_bounds, _controller_bounds.inflate(pad), c, c);
 		}
 	}
@@ -3279,7 +3279,7 @@ public:
 		if (!_state.item_index.is_init_complete()) return;
 
 		static std::atomic_int version;
-		df::cancel_token token(version);
+		core::cancel_token token(version);
 
 		// calc_sum only queries item_index, which is synchronized, so it is safe off the UI thread. The
 		// elements themselves are not: they own text layouts, so the list is guarded rather than copied
@@ -3289,7 +3289,7 @@ public:
 
 		// What the view shows, by path, so each row can say how many of those items it keeps. Folders are
 		// left out: no row counts them.
-		auto shown = std::make_shared<std::vector<df::file_path>>();
+		auto shown = std::make_shared<std::vector<core::file_path>>();
 		shown->reserve(_state.display_items().size());
 
 		for (const auto& i : _state.display_items()._items)
@@ -3300,7 +3300,7 @@ public:
 		_state.queue_async(async_queue::sidebar, [weak = weak_from_this(), &s = _state, elements, token, shown,
 				                   current_search = _state.search()]
 		                   {
-			                   df::scope_locked_inc slc(df::jobs_running);
+			                   core::scope_locked_inc slc(df::jobs_running);
 			                   search_counter counter(s.item_index);
 
 			                   if (counter.is_indexed())
@@ -3337,6 +3337,7 @@ public:
 
 				                   if (token.is_cancelled()) return;
 
+				                   const auto prediction_count = counts.size();
 				                   s.queue_ui([weak, counts = std::move(counts), token]
 				                   {
 					                   if (token.is_cancelled()) return;
@@ -3353,7 +3354,7 @@ public:
 					                   t->invalidate();
 				                   });
 
-				                   df::trace(std::format("Sidebar update {} predictions from the search index", counts.size()));
+				                   core::trace(std::format("Sidebar update {} predictions from the search index", prediction_count));
 				                   return;
 			                   }
 
@@ -3383,13 +3384,13 @@ public:
 				                   }
 			                   }
 
-			                   df::trace(std::format("Sidebar update {} predictions", update_count));
+			                   core::trace(std::format("Sidebar update {} predictions", update_count));
 		                   });
 	}
 
 	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		if (_scroller.can_scroll() && ctx.occluded(_scroller.scroll_bounds()))
 		{
@@ -3407,7 +3408,7 @@ public:
 		return nullptr;
 	}
 
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
 		_scroller.offset(shared_from_this(), 0, -(delta / 2));
 		was_handled = _scroller.can_scroll();
@@ -3439,14 +3440,14 @@ public:
 		invalidate();
 	}
 
-	void layout(ui::measure_context& mc)
+	void layout(render::measure_context& mc)
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		constexpr auto x_padding = 4;
 		const auto embedded = !_embedded_bounds.is_empty();
 		const auto scroll_padding = embedded || _scroller.can_scroll() ? mc.scroll_width : x_padding;
-		const auto layout_padding = sizei{0, df::round(mc.padding1 / mc.scale_factor)};
+		const auto layout_padding = sizei{0, core::round(mc.padding1 / mc.scale_factor)};
 		auto avail_bounds = embedded ? _embedded_bounds : recti(_extent);
 		avail_bounds.left += x_padding; // -(mc.baseline_snap / 2);
 		avail_bounds.right -= scroll_padding; // -(mc.baseline_snap / 2);
@@ -3472,16 +3473,16 @@ public:
 		_scroller.layout({client_bounds.width(), content_extent.cy + mc.padding2}, client_bounds, scroll_bounds);
 	}
 
-	static int preferred_width(ui::measure_context& mc)
+	static int preferred_width(render::measure_context& mc)
 	{
-		const auto extent = mc.measure_text("Documents", ui::style::font_face::dialog,
-		                                    ui::style::text_style::single_line, 200);
-		return df::mul_div(extent.cx, 5, 2);
+		const auto extent = mc.measure_text("Documents", render::font_face::dialog,
+		                                    render::text_style::single_line, 200);
+		return core::mul_div(extent.cx, 5, 2);
 	}
 
 	void focus_changed(const bool has_focus, const ui::control_ptr& child) override
 	{
-		df::trace(std::format("Sidebar navigation_controls::focus {}", has_focus));
+		core::trace(std::format("Sidebar navigation_controls::focus {}", has_focus));
 
 		_has_focus = has_focus;
 		invalidate();
@@ -3532,7 +3533,7 @@ public:
 	{
 	}
 
-	bool key_down(const int c, const ui::key_state keys) override
+	bool key_down(const int c, const platform::key_state keys) override
 	{
 		return false;
 	};
@@ -3574,7 +3575,7 @@ public:
 
 	void dpi_changed() override
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		broadcast_event({view_element_event_type::dpi_changed, shared_from_this()});
 
@@ -3592,7 +3593,7 @@ public:
 	// texture belonging to a device that no longer exists, with no way for it ever to be told.
 	void broadcast_event(const view_element_event& event) const
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		if (_indexing_elements) _indexing_elements->dispatch_event(event);
 		if (_type_chart) _type_chart->dispatch_event(event);

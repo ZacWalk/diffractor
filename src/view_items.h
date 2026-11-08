@@ -50,7 +50,7 @@ struct media_column_inputs
 };
 
 // Returns the scrollable content height.
-int layout_media_column(const media_column_inputs& in, ui::measure_context& mc);
+int layout_media_column(const media_column_inputs& in, render::measure_context& mc);
 
 
 struct item_and_group
@@ -131,7 +131,7 @@ public:
 
 	view_element_ptr build_location_breakdown_row();
 	view_element_ptr build_related_header_row() const;
-	void apply_control_row_budget(ui::measure_context& mc, int width, int budget);
+	void apply_control_row_budget(render::measure_context& mc, int width, int budget);
 
 	// Every interactive area of the view is a rectangle in this set. update_regions() is the only
 	// writer and runs during layout; render, hit testing, wheel routing and context menus all read
@@ -185,7 +185,7 @@ public:
 	void deactivate() override;
 	void refresh() override;
 
-	void render(ui::draw_context& dc, view_controller_ptr controller) override;
+	void render(render::draw_context& dc, view_controller_ptr controller) override;
 
 	menu_type context_menu(pointi loc) override;
 	// A press anywhere but on the panel's document gives Copy and Select all back to the items.
@@ -195,9 +195,9 @@ public:
 	void update_visible_items_list();
 	void stage_visible_thumbnails();
 	void retry_visible_thumbnails(double time_now);
-	void layout(ui::measure_context& mc, sizei extent) override;
-	bool mouse_wheel(pointi loc, ui::wheel_notch notch) override;
-	bool media_wheel(pointi loc, ui::wheel_notch notch);
+	void layout(render::measure_context& mc, sizei extent) override;
+	bool mouse_wheel(pointi loc, platform::wheel_notch notch) override;
+	bool media_wheel(pointi loc, platform::wheel_notch notch);
 	bool step_zoom(pointi loc, int steps);
 	bool pinch(pointi loc, int steps) override;
 
@@ -207,7 +207,7 @@ public:
 	void items_scroll_popup(view_hover_element& hover, pointi loc) const;
 	group_and_item scroll_loc_to_item(pointi loc) const;
 
-	// recti::contains is inclusive, so an empty (all-zero) region would otherwise claim the origin.
+	// core::recti::contains is inclusive, so an empty (all-zero) region would otherwise claim the origin.
 	static bool region_hit(const recti r, const pointi loc)
 	{
 		return !r.is_empty() && r.contains(loc);
@@ -231,7 +231,7 @@ public:
 		// drag: without this the media region overlapped the strip the item grid reserves, and
 		// being hit tested first it painted over the grid and swallowed its clicks.
 		const auto x_max = std::max(left, _client_extent.cx - _scroll_width * 3);
-		return std::clamp(left + df::mul_div(setting.item_splitter_pos, std::max(0, _client_extent.cx - left),
+		return std::clamp(left + core::mul_div(setting.item_splitter_pos, std::max(0, _client_extent.cx - left),
 		                                     settings_t::item_splitter_max), left, x_max);
 	}
 
@@ -242,7 +242,7 @@ public:
 			const auto left = content_left();
 			const auto width = std::max(0, _client_extent.cx - left);
 			const auto min_size = std::min(_scroll_width * 5, width / 2);
-			const auto s = df::mul_div(std::clamp(x - left, min_size, width - min_size),
+			const auto s = core::mul_div(std::clamp(x - left, min_size, width - min_size),
 			                           settings_t::item_splitter_max, std::max(1, width));
 
 			if (s != setting.item_splitter_pos)
@@ -322,7 +322,7 @@ public:
 	void add_description_elements(std::vector<view_element_ptr>& elements, const df::item_element_ptr& item,
 	                              const prop::item_metadata_const_ptr& md);
 
-	void draw_splitter(ui::draw_context& dc, recti bounds, bool active, bool tracking) const;
+	void draw_splitter(render::draw_context& dc, recti bounds, bool active, bool tracking) const;
 
 	void line_up(bool toggle_selection, bool extend_selection) const;
 	void line_down(bool toggle_selection, bool extend_selection) const;

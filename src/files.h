@@ -77,12 +77,12 @@ struct media_name_props
 	int aired_day = 0;
 };
 
-using file_group_by_name = df::hash_map<std::string_view, file_group_ref, df::ihash, df::ieq>;
-using file_type_by_extension = df::hash_map<std::string_view, file_type_ref, df::ihash, df::ieq>;
+using file_group_by_name = core::hash_map<std::string_view, file_group_ref, core::ihash, core::ieq>;
+using file_type_by_extension = core::hash_map<std::string_view, file_type_ref, core::ihash, core::ieq>;
 
 // Many tools can open the same extension or group, so every match is kept in declaration order.
-using file_tool_by_extension = df::hash_map<std::string_view, std::vector<file_tool_ptr>, df::ihash, df::ieq>;
-using file_tool_by_group = df::hash_map<std::string_view, std::vector<file_tool_ptr>, df::ihash, df::ieq>;
+using file_tool_by_extension = core::hash_map<std::string_view, std::vector<file_tool_ptr>, core::ihash, core::ieq>;
+using file_tool_by_group = core::hash_map<std::string_view, std::vector<file_tool_ptr>, core::ihash, core::ieq>;
 
 enum class file_traits : uint32_t
 {
@@ -143,7 +143,7 @@ public:
 	file_group(
 		const std::string_view name,
 		const std::string_view plural_name,
-		const ui::color32 color,
+		const core::color32 color,
 		const icon_index icon,
 		const file_traits traits,
 		const group_key_type key,
@@ -161,7 +161,7 @@ public:
 	std::string_view name;
 	std::string_view plural_name;
 	group_key_type key;
-	ui::color32 color;
+	core::color32 color;
 	icon_index icon = icon_index::document;
 	file_traits traits = file_traits::none;
 	std::vector<std::string_view> sidecars;
@@ -194,9 +194,9 @@ public:
 		return traits && t;
 	}
 
-	ui::color32 text_color(const ui::color32 default_text_color) const
+	core::color32 text_color(const core::color32 default_text_color) const
 	{
-		return ui::average(default_text_color, color);
+		return core::average(default_text_color, color);
 	}
 
 
@@ -264,12 +264,12 @@ public:
 
 	std::string display_name(const bool is_plural) const { return group->display_name(is_plural); }
 
-	ui::color32 text_color(const ui::color32 default_text_color) const
+	core::color32 text_color(const core::color32 default_text_color) const
 	{
 		return group->text_color(default_text_color);
 	}
 
-	ui::const_surface_ptr default_thumbnail() const;
+	core::const_surface_ptr default_thumbnail() const;
 
 	// Extension matches first, then group matches, both in config order so the menu is stable.
 	std::vector<file_tool_ptr> all_tools() const
@@ -309,14 +309,14 @@ inline bool can_compare_file_types(const file_type_ref ft1, const file_type_ref 
 
 struct file_tool
 {
-	str::cached exe = {};
-	str::cached invoke_text = {};
-	str::cached text = {};
-	str::cached extensions = {};
-	str::cached group = {};
-	df::file_path exe_path = {};
+	core::cached exe = {};
+	core::cached invoke_text = {};
+	core::cached text = {};
+	core::cached extensions = {};
+	core::cached group = {};
+	core::file_path exe_path = {};
 
-	bool invoke(df::file_path path) const;
+	bool invoke(core::file_path path) const;
 
 	bool exists() const
 	{
@@ -329,8 +329,8 @@ struct file_tool
 // coordinate of the focused item before the link is opened in the browser.
 struct file_map_link
 {
-	str::cached text = {};
-	str::cached url = {};
+	core::cached text = {};
+	core::cached url = {};
 };
 
 // Detached result of reading diffractor-tools.json and locating the configured executables.
@@ -392,20 +392,20 @@ public:
 	uint32_t width = 0;
 	uint32_t height = 0;
 
-	str::cached pixel_format = {};
-	ui::orientation orientation = ui::orientation::top_left;
+	core::cached pixel_format = {};
+	core::orientation orientation = core::orientation::top_left;
 	// The decoder already rotated the pixels for a transform stored in the container (HEIF 'irot'
 	// / 'imir'), so `orientation` describes nothing further to do. Tracked separately for the
 	// thumbnail because it is a distinct item that need not carry the same transform.
 	bool orientation_applied = false;
 	bool thumbnail_orientation_applied = false;
 
-	mutable ui::const_image_ptr thumbnail_image;
-	ui::surface_ptr thumbnail_surface;
-	mutable ui::const_image_ptr cover_art;
+	mutable core::const_image_ptr thumbnail_image;
+	core::surface_ptr thumbnail_surface;
+	mutable core::const_image_ptr cover_art;
 	// The whole encoded file wrapped for display. Set only where the scan already read the file into
 	// memory and the bytes are directly displayable (JPEG/PNG/WEBP), so it costs nothing to keep.
-	ui::const_image_ptr full_image;
+	core::const_image_ptr full_image;
 
 	// The blocks as libfiles read them. Move-only: each is a full metadata buffer, so an implicit copy
 	// would be a silent deep copy.
@@ -423,32 +423,32 @@ public:
 	// How the file itself is assembled, as read by the format scanner rather than a metadata parser.
 	metadata_kv_list structure_metadata;
 
-	df::date_t created_utc;
-	df::date_t created_local;
+	core::date_t created_utc;
+	core::date_t created_local;
 	prop::date_source created_local_source = prop::date_source::none;
 	int iso_speed = 0;
 	float exposure_time = 0;
 	float f_number = 0;
 	float focal_length = 0;
 
-	str::cached comment = {};
-	str::cached artist = {};
-	str::cached camera_model = {};
-	str::cached camera_manufacturer = {};
-	str::cached video_codec = {};
-	str::cached copyright_notice = {};
-	str::cached title = {};
-	mutable std::vector<str::cached> keywords;
-	mutable std::vector<str::cached> windows_categories;
+	core::cached comment = {};
+	core::cached artist = {};
+	core::cached camera_model = {};
+	core::cached camera_manufacturer = {};
+	core::cached video_codec = {};
+	core::cached copyright_notice = {};
+	core::cached title = {};
+	mutable std::vector<core::cached> keywords;
+	mutable std::vector<core::cached> windows_categories;
 
 	uint32_t nb_streams = 0;
 	double duration = 0.0;
 
-	str::cached audio_codec = {};
+	core::cached audio_codec = {};
 	int audio_sample_rate = 0;
 	int audio_channels = 0;
 	prop::audio_sample_t audio_sample_type = prop::audio_sample_t::none;
-	str::cached bitrate = {};
+	core::cached bitrate = {};
 	mutable gps_coordinate gps;
 	uint32_t crc32c = 0;
 	bool success = false;
@@ -502,8 +502,8 @@ struct file_load_result
 	// Read from the header, so it survives a refusal that decoded nothing.
 	sizei source_dimensions;
 
-	ui::const_surface_ptr s;
-	ui::const_image_ptr i;
+	core::const_surface_ptr s;
+	core::const_image_ptr i;
 
 	file_load_result() noexcept = default;
 	file_load_result(const file_load_result&) = default;
@@ -512,10 +512,10 @@ struct file_load_result
 	file_load_result& operator=(file_load_result&&) noexcept = default;
 
 	sizei dimensions() const;
-	ui::const_surface_ptr to_surface(sizei scale_hint = {}, bool can_use_yuv = false,
-	                                 const df::cancel_token& token = {},
+	core::const_surface_ptr to_surface(sizei scale_hint = {}, bool can_use_yuv = false,
+	                                 const core::cancel_token& token = {},
 	                                 decode_intent intent = decode_intent::display) const;
-	ui::pixel_difference_result calc_pixel_difference(const file_load_result& other) const;
+	core::pixel_difference_result calc_pixel_difference(const file_load_result& other) const;
 
 	void clear()
 	{
@@ -528,10 +528,10 @@ struct file_load_result
 
 	bool is_empty() const
 	{
-		return ui::is_empty(s) && ui::is_empty(i);
+		return core::is_empty(s) && core::is_empty(i);
 	}
 
-	ui::orientation orientation() const
+	core::orientation orientation() const
 	{
 		if (success)
 		{
@@ -543,7 +543,7 @@ struct file_load_result
 
 	bool is_jpeg() const
 	{
-		return success && ui::is_jpeg(i);
+		return success && core::is_jpeg(i);
 	}
 };
 
@@ -567,7 +567,7 @@ struct file_encode_params
 	// The JPEG an edit is being written back over, when there is one. Encoding against its own
 	// quantization tables and chroma sampling leaves an untouched block quantizing to itself,
 	// where the quality slider's tables would re-quantize the whole image.
-	df::cspan jpeg_source;
+	core::cspan jpeg_source;
 	// A conversion: the pixels are encoded afresh with these settings wherever the result goes to a
 	// new path, even into the source's own format - not copied, transformed losslessly, or encoded
 	// against the source's tables. A write over the source itself is never re-encoded for it.
@@ -625,7 +625,7 @@ struct file_update_publish
 	platform::file_attributes_t destination_attributes;
 };
 
-extern std::function<void(df::file_path destination)> test_before_file_update_publish;
+extern std::function<void(core::file_path destination)> test_before_file_update_publish;
 
 
 // Shared by the format scanners to build the file-structure block: a leaf row, a section heading,
@@ -650,7 +650,7 @@ bool is_subtitle_suffix(std::string_view word);
 // Where a sidecar of `primary` goes when that file is renamed, moved or copied to `destination`: the new name,
 // then whatever the sidecar's own name carries after the old one's. Movie.en.forced.srt beside Movie.mkv becomes
 // New.en.forced.srt, so two sidecars that share an extension never land on one name.
-df::file_path moved_sidecar_path(df::file_path primary, df::file_path destination, df::file_path sidecar);
+core::file_path moved_sidecar_path(core::file_path primary, core::file_path destination, core::file_path sidecar);
 // The name's reading, with the show and season an episode's folders give when its name leaves them out:
 // Show/Season 2/S02E05.mkv, or Show.Name.S01.1080p/E05.mkv. Folder names, not paths.
 media_name_props scan_info_from_path(std::string_view name, std::string_view folder, std::string_view parent_folder);
@@ -687,7 +687,7 @@ struct nfo_details
 	int season = -1;
 	int episode = -1;
 	// A film's premiere or an episode's air date, at the precision the .nfo gives.
-	df::date_t released;
+	core::date_t released;
 
 	bool is_empty() const { return type == kind::none; }
 };
@@ -699,7 +699,7 @@ nfo_details parse_nfo(std::string_view text);
 bool is_named_for_its_folder(std::string_view stem, std::string_view folder);
 // What the .nfo files about a video say: its own (Movie.nfo, or a film folder's movie.nfo when the film is named
 // for its folder), with the show its tvshow.nfo names, in its folder or the one above. Reads the file system.
-nfo_details read_video_nfo(df::file_path video);
+nfo_details read_video_nfo(core::file_path video);
 // Sets what an .nfo says over what the container's tags said: a media manager's details are chosen by the user,
 // where a container's are often a release group's. A file's XMP is applied after, so the user's own edits win.
 void apply_nfo(prop::item_metadata& md, const nfo_details& nfo);
@@ -713,36 +713,36 @@ struct load_diagnostic
 };
 
 // Records what a loader read and answers whether decoding must be refused because the frame would
-// not fit in df::max_decode_bytes. Called before any pixels are allocated.
+// not fit in render::max_decode_bytes. Called before any pixels are allocated.
 bool reject_over_budget_source(load_diagnostic* diagnostic, sizei source_dimensions, std::string_view format);
 
 // A PSD's composite image, decoded by libfiles. Throws for a file cut short, so a damaged PSD is not
 // offered to ffmpeg.
-ui::surface_ptr load_psd(read_stream& s, load_diagnostic* diagnostic = nullptr);
-file_load_result load_raw(df::file_path path, bool can_load_preview);
-ui::surface_ptr load_png(df::cspan data);
-ui::surface_ptr load_webp(df::cspan data, bool can_use_yuv = false, sizei target_extent = {});
-ui::surface_ptr load_heif(read_stream& s, load_diagnostic* diagnostic = nullptr);
+core::surface_ptr load_psd(read_stream& s, load_diagnostic* diagnostic = nullptr);
+file_load_result load_raw(core::file_path path, bool can_load_preview);
+core::surface_ptr load_png(core::cspan data);
+core::surface_ptr load_webp(core::cspan data, bool can_use_yuv = false, sizei target_extent = {});
+core::surface_ptr load_heif(read_stream& s, load_diagnostic* diagnostic = nullptr);
 // The libheif decoder plugin HEVC goes to - "ffmpeg" where libheif carries that plugin - or null.
 const char* heif_hevc_decoder_id();
 // The decoder plugin a file's primary image is steered to, or null where libheif keeps its own choice.
 const char* heif_primary_decoder_id(read_stream& s);
-ui::surface_ptr load_jxl(read_stream& s, load_diagnostic* diagnostic = nullptr);
+core::surface_ptr load_jxl(read_stream& s, load_diagnostic* diagnostic = nullptr);
 
-ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata);
-ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+core::image_ptr save_png(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata);
+core::image_ptr save_webp(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
                         const file_encode_params& params);
 // Written by encoder, the caller's long-lived one, or by one of its own when none is given.
-ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+core::image_ptr save_jpeg(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
                         const file_encode_params& encoder_params, libfiles::jpeg_encoder* encoder = nullptr);
 // The pixels' orientation goes in the codestream, and the metadata in boxes, so the packet given is the
 // one the file is written with. An orientation given overrides the surface's, which an edited surface
 // does not hold reliably.
-ui::image_ptr save_jxl(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                       const file_encode_params& params, std::optional<ui::orientation> orientation = {});
-ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surface_ptr& surface,
+core::image_ptr save_jxl(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+                       const file_encode_params& params, std::optional<core::orientation> orientation = {});
+core::image_ptr save_surface(const core::image_format& format, const core::const_surface_ptr& surface,
                            const libfiles::metadata_blocks& metadata, const file_encode_params& params);
-ui::image_format extension_to_format(std::string_view ext);
+core::image_format extension_to_format(std::string_view ext);
 
 // What Diffractor adds to libfiles' JPEG codecs - its decode budget for a lossless turn, its log and its
 // errors - and the signatures the metadata blocks in a JPEG's markers begin with. libfiles encodes,
@@ -760,7 +760,7 @@ inline constexpr size_t xmp_signature_len = xmp_signature.size();
 // could have been but its coefficients would not fit the decode budget: a refusal a caller must not
 // answer with a re-encode, which holds more still. A libjpeg failure part way is logged and thrown as an
 // app_exception; both codecs stay usable.
-df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, libfiles::jpeg_encoder& encoder,
+core::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, libfiles::jpeg_encoder& encoder,
                               std::span<const uint8_t> src, simple_transform transform, bool* over_budget = nullptr);
 
 struct pack128
@@ -770,7 +770,7 @@ struct pack128
 	uint32_t u3;
 	uint32_t u4;
 
-	operator df::cspan() const
+	operator core::cspan() const
 	{
 		return {std::bit_cast<const uint8_t*>(this), 16};
 	}
@@ -803,8 +803,8 @@ public:
 	virtual uint64_t peek64(uint64_t pos) = 0;
 	virtual pack128 peek128(uint64_t pos) = 0;
 
-	virtual df::blob read_all() = 0;
-	virtual df::blob read(uint64_t pos, size_t len) = 0;
+	virtual core::blob read_all() = 0;
+	virtual core::blob read(uint64_t pos, size_t len) = 0;
 	virtual void read(uint64_t pos, uint8_t* buffer, size_t len) = 0;
 
 	// As read, but bypassing any window the stream keeps, for a caller that buffers for itself.
@@ -814,13 +814,13 @@ public:
 	}
 
 	// Empty unless the whole stream is already resident and can be borrowed without copying.
-	virtual df::cspan view() const
+	virtual core::cspan view() const
 	{
 		return {};
 	}
 
 	// Borrows the whole stream when possible, otherwise loads it into owner and borrows that.
-	df::cspan view_all(df::blob& owner)
+	core::cspan view_all(core::blob& owner)
 	{
 		const auto borrowed = view();
 		if (!borrowed.empty()) return borrowed;
@@ -840,7 +840,7 @@ class mem_read_stream final : public read_stream
 	const uint8_t* const _data = nullptr;
 
 public:
-	mem_read_stream(const df::cspan cs) : _data(cs.data)
+	mem_read_stream(const core::cspan cs) : _data(cs.data)
 	{
 		_file_size = cs.size;
 	}
@@ -885,22 +885,22 @@ public:
 		memcpy(buffer, _data + pos, len);
 	}
 
-	df::blob read(const uint64_t pos, const size_t len) override
+	core::blob read(const uint64_t pos, const size_t len) override
 	{
 		check_range(pos, len);
-		df::blob result(len);
+		core::blob result(len);
 		memcpy(result.data(), _data + pos, len);
 		return result;
 	}
 
-	df::cspan view() const override
+	core::cspan view() const override
 	{
 		return {_data, static_cast<size_t>(_file_size)};
 	}
 
-	df::blob read_all() override
+	core::blob read_all() override
 	{
-		df::blob result(static_cast<size_t>(_file_size));
+		core::blob result(static_cast<size_t>(_file_size));
 		memcpy(result.data(), _data, static_cast<size_t>(_file_size));
 		return result;
 	}
@@ -924,7 +924,7 @@ public:
 	file_read_stream(const file_read_stream&) = delete;
 	file_read_stream& operator=(const file_read_stream&) = delete;
 
-	bool open(df::file_path path);
+	bool open(core::file_path path);
 	bool open(platform::file_ptr h);
 	void close();
 
@@ -967,18 +967,18 @@ public:
 	void read(uint64_t pos, uint8_t* buffer, size_t len) override;
 	void read_through(uint64_t pos, uint8_t* buffer, size_t len) override;
 
-	df::blob read(const uint64_t pos, const size_t len) override
+	core::blob read(const uint64_t pos, const size_t len) override
 	{
 		// Validate before sizing the buffer - len comes from untrusted file fields.
 		check_range(pos, len);
-		df::blob result(len);
+		core::blob result(len);
 		read(pos, result.data(), len);
 		return result;
 	}
 
 	// Reads straight off the handle: routing the whole file through the sliding window would
 	// allocate and copy it a second time.
-	df::blob read_all() override;
+	core::blob read_all() override;
 };
 
 // A platform file as the stream libfiles reads and writes. Every access seeks first, so the handle's
@@ -1025,7 +1025,7 @@ public:
 	}
 };
 
-struct codec_info final : df::no_copy
+struct codec_info final : core::no_copy
 {
 	bool item_only = false;
 	std::string title;
@@ -1308,8 +1308,8 @@ public:
 
 // The edits applied to a surface: perspective, straightening, crop and scale, then the colour. The
 // surface itself when none of them changes it; empty when a canvas cannot be had or the token cancels.
-ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, const image_edits& photo_edits,
-                                        const df::cancel_token& token = {});
+core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source, const image_edits& photo_edits,
+                                        const core::cancel_token& token = {});
 
 class metadata_edits
 {
@@ -1328,18 +1328,18 @@ public:
 	std::optional<std::string> album_artist;
 	std::optional<std::string> genre;
 	std::optional<std::string> show;
-	std::optional<df::date_t> date_original;
-	std::optional<df::date_t> date_created;
+	std::optional<core::date_t> date_original;
+	std::optional<core::date_t> date_created;
 
 	std::optional<int> season;
-	std::optional<df::xy8> episode;
+	std::optional<core::xy8> episode;
 	std::optional<int> year;
 	std::optional<int> rating;
 	std::optional<std::string> label;
-	std::optional<ui::orientation> orientation;
+	std::optional<core::orientation> orientation;
 
-	std::optional<df::xy8> track_num;
-	std::optional<df::xy8> disk_num;
+	std::optional<core::xy8> track_num;
+	std::optional<core::xy8> disk_num;
 
 	tag_set add_tags;
 	tag_set remove_tags;
@@ -1409,9 +1409,9 @@ public:
 struct archive_item
 {
 	std::string filename;
-	df::file_size uncompressed_size;
-	df::file_size compressed_size;
-	df::date_t created;
+	core::file_size uncompressed_size;
+	core::file_size compressed_size;
+	core::date_t created;
 };
 
 // What a caller decoding in-memory bytes asks for: the extent the result has to fit, whether planar
@@ -1434,13 +1434,13 @@ struct still_format
 	std::string_view description;
 	file_traits traits = file_traits::none;
 	// A loaded file keeps its encoded bytes in this form rather than decoding them.
-	ui::image_format encoded = ui::image_format::Unknown;
+	core::image_format encoded = core::image_format::Unknown;
 	// Dimensions, metadata and, when asked for, a thumbnail, read without decoding the frame.
 	file_scan_result (*scan)(read_stream& s, libfiles::scan_intent intent, bool want_thumbnail, files* decoder) = nullptr;
 	// Decodes a whole file for a load. The diagnostic names a source refused for its size.
-	ui::surface_ptr (*load)(read_stream& s, load_diagnostic* diagnostic) = nullptr;
+	core::surface_ptr (*load)(read_stream& s, load_diagnostic* diagnostic) = nullptr;
 	// Decodes in-memory bytes for display or a thumbnail.
-	ui::surface_ptr (*decode)(files& ff, df::cspan data, const still_decode_request& request) = nullptr;
+	core::surface_ptr (*decode)(files& ff, core::cspan data, const still_decode_request& request) = nullptr;
 };
 
 std::span<const still_format> still_formats();
@@ -1448,17 +1448,17 @@ const still_format* find_still_format(libfiles::image_format format);
 // The extension-table entry for a still format, built from its still_format.
 file_type still_file_type(libfiles::image_format format);
 // The JPEG entry's decoder. A friend of files, whose decoder state it uses.
-ui::surface_ptr decode_still_jpeg(files& ff, df::cspan data, const still_decode_request& request);
+core::surface_ptr decode_still_jpeg(files& ff, core::cspan data, const still_decode_request& request);
 
 // Formats whose loaded files stay encoded: the bytes are the image.
 inline bool is_image_format(const libfiles::image_format& format)
 {
 	const auto* const still = find_still_format(format);
-	return still && still->encoded != ui::image_format::Unknown;
+	return still && still->encoded != core::image_format::Unknown;
 }
 
 
-ui::image_ptr load_image_file(df::cspan data);
+core::image_ptr load_image_file(core::cspan data);
 // want_thumbnail is opt-in because extracting an embedded thumbnail is not free: it reads the
 // thumbnail's bytes off the file and copies them, or decodes them, none of which a metadata scan
 // has any use for. decoder is the caller's own files instance, borrowed only when a thumbnail in
@@ -1492,7 +1492,7 @@ file_scan_result scan_jxl_libfiles(read_stream& s, libfiles::scan_intent intent,
 struct media_scan_read
 {
 	std::shared_ptr<const libfiles::media_scan_result> scan;
-	df::blob cover_art;
+	core::blob cover_art;
 };
 
 // Reads the container through libfiles, leaving the handle at the start for a decoder opened next.
@@ -1519,11 +1519,11 @@ bool language_matches_ui(std::string_view iso639, std::string_view ui_language);
 namespace files_test_hooks
 {
 	// files::decode_jpeg, which every path that decodes a JPEG takes.
-	ui::surface_ptr decode_jpeg(files& ff, df::cspan data, sizei target_extent, bool can_use_yuv,
+	core::surface_ptr decode_jpeg(files& ff, core::cspan data, sizei target_extent, bool can_use_yuv,
 	                            decode_intent intent, bool& is_yuv);
 }
 
-class files final : df::no_copy
+class files final : core::no_copy
 {
 	// libfiles' JPEG codecs, long-lived because setting libjpeg up is not free; each use resets them.
 	libfiles::jpeg_transformer _jpeg_transformer;
@@ -1534,27 +1534,27 @@ class files final : df::no_copy
 
 	std::unique_ptr<av_scaler> _scaler{};
 
-	file_scan_result scan_raw(df::file_path path, std::string_view xmp_sidecar, bool load_thumb, sizei max,
+	file_scan_result scan_raw(core::file_path path, std::string_view xmp_sidecar, bool load_thumb, sizei max,
 	                          libfiles::scan_intent intent);
 
 	// The write itself. update() wraps it so the post-write re-scan happens where the coherent
 	// handle is still valid and the handle never escapes.
-	platform::file_op_result update_impl(df::file_path path_src, df::file_path path_dst,
+	platform::file_op_result update_impl(core::file_path path_src, core::file_path path_dst,
 	                                     const metadata_edits& metadata_edits, const image_edits& photo_edits,
 	                                     const file_encode_params& params, bool create_original,
 	                                     std::string_view src_xmp_name, std::string_view dst_xmp_name,
 	                                     const file_update_publish& publish, bool* live_file_maybe_changed);
 
 	av_scaler& scaler();
-	ui::surface_ptr decode_jpeg(df::cspan data, sizei target_extent, bool can_use_yuv,
-	                            std::optional<ui::orientation> orientation_override, bool& is_yuv,
-	                            const df::cancel_token& token, decode_intent intent);
+	core::surface_ptr decode_jpeg(core::cspan data, sizei target_extent, bool can_use_yuv,
+	                            std::optional<core::orientation> orientation_override, bool& is_yuv,
+	                            const core::cancel_token& token, decode_intent intent);
 
-	friend ui::surface_ptr files_test_hooks::decode_jpeg(files& ff, df::cspan data, sizei target_extent,
+	friend core::surface_ptr files_test_hooks::decode_jpeg(files& ff, core::cspan data, sizei target_extent,
 	                                                     bool can_use_yuv, decode_intent intent, bool& is_yuv);
 
 	// The still_format entry for JPEG decodes through the decoder state this object holds.
-	friend ui::surface_ptr decode_still_jpeg(files& ff, df::cspan data, const still_decode_request& request);
+	friend core::surface_ptr decode_still_jpeg(files& ff, core::cspan data, const still_decode_request& request);
 
 	// Shared by the two fit_within overloads; defined in files.cpp, where both instantiate it.
 	template <typename Ptr>
@@ -1564,65 +1564,65 @@ public:
 	files();
 	~files() override;
 
-	ui::const_image_ptr surface_to_image(const ui::const_surface_ptr& surface_in,
+	core::const_image_ptr surface_to_image(const core::const_surface_ptr& surface_in,
 	                                     const libfiles::metadata_blocks& metadata,
-	                                     const file_encode_params& params, ui::image_format format);
-	ui::const_image_ptr surface_to_thumbnail(const ui::const_surface_ptr& surface_in);
-	ui::surface_ptr image_to_surface(const ui::const_image_ptr& image, sizei scale_hint = {}, bool can_use_yuv = false,
-	                                 const df::cancel_token& token = {},
+	                                     const file_encode_params& params, core::image_format format);
+	core::const_image_ptr surface_to_thumbnail(const core::const_surface_ptr& surface_in);
+	core::surface_ptr image_to_surface(const core::const_image_ptr& image, sizei scale_hint = {}, bool can_use_yuv = false,
+	                                 const core::cancel_token& token = {},
 	                                 decode_intent intent = decode_intent::display);
-	ui::surface_ptr image_to_surface(df::cspan data, sizei scale_hint = {}, bool can_use_yuv = false,
+	core::surface_ptr image_to_surface(core::cspan data, sizei scale_hint = {}, bool can_use_yuv = false,
 	                                 decode_intent intent = decode_intent::display);
 
 	// Reduces a surface to fit within a ceiling, never enlarging: a picture already inside it comes
 	// back untouched, and so does one no resampler would take. Whoever asks for a ceiling wants a
 	// bound on the pixels it will hold, not a size to fill.
-	ui::surface_ptr fit_within(ui::surface_ptr surface_in, sizei ceiling);
-	ui::const_surface_ptr fit_within(ui::const_surface_ptr surface_in, sizei ceiling);
+	core::surface_ptr fit_within(core::surface_ptr surface_in, sizei ceiling);
+	core::const_surface_ptr fit_within(core::const_surface_ptr surface_in, sizei ceiling);
 
 	// A 64-bit perceptual hash of the picture, or 0 when it has too little detail to identify.
 	// Reads the stored pixels, not the oriented ones, so a file whose only change is an orientation
 	// tag still hashes as the same picture. Decoding at the hash's own extent is the point: a JPEG
 	// scales in the DCT domain, so this costs a fraction of a full decode.
-	uint64_t calc_perceptual_hash(df::cspan encoded);
-	static uint64_t calc_perceptual_hash(const ui::const_surface_ptr& surface);
+	uint64_t calc_perceptual_hash(core::cspan encoded);
+	static uint64_t calc_perceptual_hash(const core::const_surface_ptr& surface);
 
 	// The same picture hashed in all four quarter turns, so a rotated copy can be recognised. One
 	// decode and one reduction serve all four.
-	crypto::phash_rotations calc_perceptual_hash_rotations(df::cspan encoded);
-	static crypto::phash_rotations calc_perceptual_hash_rotations(const ui::const_surface_ptr& surface);
+	crypto::phash_rotations calc_perceptual_hash_rotations(core::cspan encoded);
+	static crypto::phash_rotations calc_perceptual_hash_rotations(const core::const_surface_ptr& surface);
 
 	// Bytes a decode must allocate before its result can be scaled down. libjpeg reduces while
 	// decoding, by up to 1/8, so a JPEG never materialises its full frame; the other deferred codecs
 	// build the whole thing at native size first.
-	static int64_t estimate_decode_bytes(const ui::const_image_ptr& image, sizei scale_hint);
+	static int64_t estimate_decode_bytes(const core::const_image_ptr& image, sizei scale_hint);
 	static int64_t estimate_decode_bytes(sizei source_dimensions);
 
-	// True when that allocation is more than df::max_decode_bytes allows on this machine.
-	static bool exceeds_decode_budget(const ui::const_image_ptr& image, sizei scale_hint);
+	// True when that allocation is more than render::max_decode_bytes allows on this machine.
+	static bool exceeds_decode_budget(const core::const_image_ptr& image, sizei scale_hint);
 	static bool exceeds_decode_budget(sizei source_dimensions);
-	ui::pixel_difference_result
-	pixel_difference(const ui::const_image_ptr& expected, const ui::const_image_ptr& actual);
+	core::pixel_difference_result
+	pixel_difference(const core::const_image_ptr& expected, const core::const_image_ptr& actual);
 
-	bool save(df::file_path path, const file_load_result& loaded);
+	bool save(core::file_path path, const file_load_result& loaded);
 
 
-	static std::string_view to_string(const ui::image_format f)
+	static std::string_view to_string(const core::image_format f)
 	{
 		switch (f)
 		{
-		case ui::image_format::JPEG: return "JPEG";
-		case ui::image_format::PNG: return "PNG";
-		case ui::image_format::WEBP: return "WEBP";
-		case ui::image_format::JXL: return "JXL";
-		case ui::image_format::Unknown: break;
+		case core::image_format::JPEG: return "JPEG";
+		case core::image_format::PNG: return "PNG";
+		case core::image_format::WEBP: return "WEBP";
+		case core::image_format::JXL: return "JXL";
+		case core::image_format::Unknown: break;
 		default: ;
 		}
 
 		return "Unknown";
 	}
 
-	static file_type_ref file_type_from_name(df::file_path path);
+	static file_type_ref file_type_from_name(core::file_path path);
 	static file_type_ref file_type_from_name(std::string_view name);
 
 	// A few media extensions are also common source extensions - .ts is both an MPEG-2 transport
@@ -1631,39 +1631,39 @@ public:
 	// has_media_header_rule accepts are covered; everything else is left to the decoder as before.
 	static constexpr size_t media_header_probe_bytes = 1024;
 	static bool has_media_header_rule(std::string_view extension);
-	static bool media_header_matches(std::string_view extension, df::cspan header);
+	static bool media_header_matches(std::string_view extension, core::cspan header);
 
 	// Whether pixels can be written to a file of this extension: JPEG, PNG, WebP and JPEG XL. A file
 	// is rewritten in place only where its format is also one Diffractor edits.
-	static bool can_save(df::file_path path);
+	static bool can_save(core::file_path path);
 	static bool can_save_extension(std::string_view ext);
-	static bool is_jpeg(df::file_path path);
+	static bool is_jpeg(core::file_path path);
 	static bool is_jpeg(std::string_view name);
-	static bool is_raw(df::file_path path);
+	static bool is_raw(core::file_path path);
 	static bool is_raw(std::string_view name);
 	static bool is_jpeg(uint32_t header);
 
 	// want_image asks for `full_image`: the whole encoded file wrapped for display. It costs a second
 	// parse and a copy of the file, so a scan that will not display the bytes leaves it unset.
-	file_scan_result scan_file(df::file_path path, bool load_thumb, file_type_ref ft,
+	file_scan_result scan_file(core::file_path path, bool load_thumb, file_type_ref ft,
 	                           std::string_view xmp_sidecar = {}, sizei max_thumb_size = {},
 	                           libfiles::scan_intent intent = libfiles::scan_intent::index, bool want_image = false);
 
 	// Scan an already-open file (see files.cpp). Lets a just-edited file be re-scanned
 	// through the coherent handle returned by replace_file, avoiding a stale SMB by-name reopen.
-	file_scan_result scan_file(platform::file_ptr f, df::file_path path, bool load_thumb, file_type_ref ft,
+	file_scan_result scan_file(platform::file_ptr f, core::file_path path, bool load_thumb, file_type_ref ft,
 	                           std::string_view xmp_sidecar = {}, sizei max_thumb_size = {},
 	                           libfiles::scan_intent intent = libfiles::scan_intent::index, bool want_image = false);
 
-	file_load_result load(df::file_path path, bool can_load_preview);
+	file_load_result load(core::file_path path, bool can_load_preview);
 
-	file_update_result update(df::file_path path_src, df::file_path path_dst,
+	file_update_result update(core::file_path path_src, core::file_path path_dst,
 	                          const metadata_edits& metadata_edits, const image_edits& photo_edits,
 	                          const file_encode_params& params, bool create_original,
 	                          std::string_view src_xmp_name, std::string_view dst_xmp_name = {},
 	                          const rescan_spec& rescan = {}, const file_update_publish& publish = {});
 
-	file_update_result update(const df::file_path path, const metadata_edits& metadata_edits,
+	file_update_result update(const core::file_path path, const metadata_edits& metadata_edits,
 	                          const image_edits& photo_edits, const file_encode_params& params,
 	                          const bool create_original, const std::string_view xmp_name,
 	                          const rescan_spec& rescan = {})
@@ -1671,12 +1671,12 @@ public:
 		return update(path, path, metadata_edits, photo_edits, params, create_original, xmp_name, xmp_name, rescan);
 	}
 
-	static std::vector<archive_item> list_archive(df::file_path zip_file_path);
+	static std::vector<archive_item> list_archive(core::file_path zip_file_path);
 
 	// A Commodore 64 image's listing, as libfiles lists it, drawn by libfiles into an RGB surface eight
 	// pixels a character, the glyphs in fg on bg; null when there is nothing to draw. The caller scales
 	// the texture to fit the space it has.
-	static ui::const_surface_ptr c64_listing_surface(const libfiles::c64_listing& listing, uint32_t fg, uint32_t bg);
+	static core::const_surface_ptr c64_listing_surface(const libfiles::c64_listing& listing, uint32_t fg, uint32_t bg);
 	// A .sid tune's header as its properties: title, author, release, tunes and chip.
-	static file_scan_result scan_sid(df::cspan data);
+	static file_scan_result scan_sid(core::cspan data);
 };

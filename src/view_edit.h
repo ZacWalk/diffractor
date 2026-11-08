@@ -42,9 +42,9 @@ struct document_correction
 	explicit operator bool() const { return !crop.is_empty(); }
 };
 
-document_detection_result detect_document(const ui::const_surface_ptr& surface, sizei source_extent);
+document_detection_result detect_document(const core::const_surface_ptr& surface, sizei source_extent);
 document_correction fit_document_correction(const std::array<pointd, 4>& corners, sizei extent,
-                                            ui::orientation orientation);
+                                            core::orientation orientation);
 bool edit_load_has_source_pixels(const file_load_result& loaded);
 std::string_view edit_load_status_text(const file_load_result& loaded, bool source_loading);
 bool should_accept_edit_async_result(size_t current_display_generation, size_t result_display_generation);
@@ -56,10 +56,10 @@ bool should_accept_edit_analysis(size_t current_display_generation, size_t resul
 // Whether the preview in hand answers the size the view now wants. The decode treats its request as
 // a ceiling - it can land a pixel short on one axis, or at the native size of a picture smaller than
 // the view - so a preview is judged by the request it answered, never by its own extent.
-bool edit_preview_is_current(const ui::const_surface_ptr& preview, sizei answered_request, sizei wanted);
+bool edit_preview_is_current(const core::const_surface_ptr& preview, sizei answered_request, sizei wanted);
 // Loading a JPEG, PNG or WebP reads only its header, so the preview is the first full decode. One that
 // produced nothing is named as a failed load would be: too large when the decode budget refused it.
-file_load_result::failure edit_preview_failure(const ui::const_surface_ptr& preview, const file_load_result& loaded,
+file_load_result::failure edit_preview_failure(const core::const_surface_ptr& preview, const file_load_result& loaded,
                                                sizei request);
 // The load state once the first preview has failed: no pixels to edit, and the reason the status names.
 file_load_result edit_load_without_preview(const file_load_result& loaded, file_load_result::failure failure);
@@ -72,7 +72,7 @@ std::string format_edit_adjustment(double value);
 // Where an edited photo is offered to be saved beside its source: "<name>-edit", numbered past names
 // taken, in the source's format when Diffractor can write it and as JPEG otherwise - never the name of
 // a file already there, such as the camera's own JPEG beside a RAW.
-df::file_path edit_save_suggestion(df::file_path source, const std::function<bool(df::file_path)>& exists);
+core::file_path edit_save_suggestion(core::file_path source, const std::function<bool(core::file_path)>& exists);
 
 struct edit_preview_render_decision
 {
@@ -131,7 +131,7 @@ public:
 		_scroller._scroll_child_controls = true;
 	}
 
-	void layout_controls(ui::measure_context& mc) override;
+	void layout_controls(render::measure_context& mc) override;
 	void create_controls();
 	bool is_tracking() const;
 
@@ -144,7 +144,7 @@ class edit_view final : public view_base, public std::enable_shared_from_this<ed
 
 	struct source_load_request
 	{
-		df::file_path path;
+		core::file_path path;
 		size_t display_generation = 0;
 		std::optional<rectd> pending_crop;
 	};
@@ -173,17 +173,17 @@ class edit_view final : public view_base, public std::enable_shared_from_this<ed
 	rectd _crop_handle_br;
 
 	std::string _title;
-	df::file_path _path;
+	core::file_path _path;
 	std::string_view _xmp_name;
 	file_type_ref _mt = nullptr;
 	file_load_result _loaded;
-	ui::const_surface_ptr _preview_source;
+	core::const_surface_ptr _preview_source;
 	// The request _preview_source answered; meaningful only while it is set.
 	sizei _preview_source_request;
-	ui::const_surface_ptr _dialog_preview_source;
+	core::const_surface_ptr _dialog_preview_source;
 	// Shed on device loss from the const broadcast; render rebuilds whenever it is absent, so
 	// clearing it is the whole recovery.
-	mutable ui::texture_ptr _texture;
+	mutable render::texture_ptr _texture;
 	display_state_ptr _media_display;
 	view_element_ptr _media_element;
 	view_element_ptr _play_element;
@@ -214,16 +214,16 @@ public:
 	}
 
 	view_controls_host_ptr controls(const ui::frame_ptr& owner);
-	static ui::const_surface_ptr build_preview_surface(const ui::const_surface_ptr& source, sizei loaded_dimensions,
+	static core::const_surface_ptr build_preview_surface(const core::const_surface_ptr& source, sizei loaded_dimensions,
 	                                                   const image_edits& edits);
-	ui::const_surface_ptr preview_surface() const;
+	core::const_surface_ptr preview_surface() const;
 
 	void activate(sizei extent) override;
 	void deactivate() override;
 	void refresh() override;
 	void update_media_elements() override;
 
-	void layout(ui::measure_context& mc, sizei extent) override;
+	void layout(render::measure_context& mc, sizei extent) override;
 	bool is_photo() const;
 	bool can_edit_pixels() const;
 	void queue_source_load(source_load_request request);
@@ -231,20 +231,20 @@ public:
 	void complete_source_load(const source_load_request& request, file_load_result loaded);
 	void queue_preview_decode();
 	void start_preview_decode(preview_decode_request request);
-	void complete_preview_decode(const preview_decode_request& request, ui::const_surface_ptr source,
+	void complete_preview_decode(const preview_decode_request& request, core::const_surface_ptr source,
 	                             file_load_result::failure failure);
 	void clear_crop_interaction_bounds();
-	void draw_loading_status(ui::draw_context& dc, std::string_view status) const;
+	void draw_loading_status(render::draw_context& dc, std::string_view status) const;
 	void changed();
 	void cancel() const;
 	void exit() override;
 	bool escape() override;
 	void save_current();
-	void save(df::file_path src_path, df::file_path dst_path, std::string_view xmp_name,
+	void save(core::file_path src_path, core::file_path dst_path, std::string_view xmp_name,
 	          const ui::frame_ptr& owner, std::function<void(bool)> complete) const;
 	bool has_changes() const;
 	void select_item(const df::item_element_ptr& item);
-	void render(ui::draw_context& dc, view_controller_ptr controller) override;
+	void render(render::draw_context& dc, view_controller_ptr controller) override;
 	bool can_exit() override;
 	void display_changed() override;
 
@@ -256,9 +256,9 @@ public:
 		if (_scrubber_element) _scrubber_element->dispatch_event(event);
 	}
 
-	static void draw_handle(ui::draw_context& dc, recti handle_bounds2, float alpha);
+	static void draw_handle(render::draw_context& dc, recti handle_bounds2, float alpha);
 
-	bool check_path(df::file_path& path, const ui::frame_ptr& owner) const;
+	bool check_path(core::file_path& path, const ui::frame_ptr& owner) const;
 	df::item_element_ptr next_editable_item(bool forward) const;
 	void save_and_next(bool forward);
 	void save_as();
@@ -269,7 +269,7 @@ public:
 	void color_reset();
 	void report_no_result(std::string_view title) const;
 	void queue_auto_adjust(int max_dimension, std::string title,
-	                       std::function<std::function<void(edit_view_state&)>(const ui::const_surface_ptr&)> analyze);
+	                       std::function<std::function<void(edit_view_state&)>(const core::const_surface_ptr&)> analyze);
 	void auto_color();
 	void auto_straighten();
 	void auto_document();
@@ -321,11 +321,11 @@ public:
 
 		if (i)
 		{
-			_title = std::format("{}: {}", s_app_name, tt.editing_title);
+			_title = std::format("{}: {}", core::app_name(), tt.editing_title);
 		}
 		else
 		{
-			_title = s_app_name;
+			_title = core::app_name();
 		}
 
 		return _title;

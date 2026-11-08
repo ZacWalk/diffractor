@@ -141,11 +141,11 @@ namespace df
 	class search_index final
 	{
 	public:
-		using folder_list = std::vector<std::pair<folder_path, index_folder_item_ptr>>;
+		using folder_list = std::vector<std::pair<core::folder_path, index_folder_item_ptr>>;
 
 		struct folder_entry
 		{
-			folder_path path;
+			core::folder_path path;
 			// Holds the node alive, so every document's record stays valid as long as the snapshot is.
 			index_folder_item_ptr node;
 			// The node's search revision when it was read: what it held then holds while this does.
@@ -196,9 +196,9 @@ namespace df
 		}
 
 		std::optional<uint32_t> folder_of(const index_folder_item* node) const;
-		std::optional<uint32_t> find_folder(folder_path path) const;
+		std::optional<uint32_t> find_folder(core::folder_path path) const;
 		// The document holding this file, when its folder is one the snapshot read.
-		std::optional<uint32_t> find_doc(uint32_t folder, str::cached name) const;
+		std::optional<uint32_t> find_doc(uint32_t folder, core::cached name) const;
 
 		uint32_t doc_folder(const uint32_t doc) const
 		{
@@ -215,7 +215,7 @@ namespace df
 			return _metadata[doc].get();
 		}
 
-		file_path path(const uint32_t doc) const
+		core::file_path path(const uint32_t doc) const
 		{
 			return _folders[_doc_folder[doc]].path.combine_file(_files[doc]->name);
 		}
@@ -227,7 +227,7 @@ namespace df
 		// One term's documents, as search_matcher::match_term answers each. Documents outside `within`
 		// are only answered when the term is indexed; otherwise they are left out.
 		doc_set evaluate_term(const search_matcher& matcher, const search_term& term, const doc_set& within,
-		                      bool formats_current, bool dates_current, const cancel_token& token) const;
+		                      bool formats_current, bool dates_current, const core::cancel_token& token) const;
 
 		// The day the snapshot was read on.
 		uint32_t date_day() const
@@ -236,14 +236,14 @@ namespace df
 		}
 
 	private:
-		doc_set evaluate_text(const search_matcher& matcher, const search_term& term, const cancel_token& token) const;
+		doc_set evaluate_text(const search_matcher& matcher, const search_term& term, const core::cancel_token& token) const;
 		doc_set evaluate_tag(const search_term& term) const;
 		doc_set evaluate_each(const search_matcher& matcher, const search_term& term, const doc_set& within,
-		                      const cancel_token& token) const;
+		                      const core::cancel_token& token) const;
 
 		std::vector<folder_entry> _folders;
-		hash_map<const index_folder_item*, uint32_t> _folder_by_node;
-		hash_map<folder_path, uint32_t, ihash, ieq> _folder_by_path;
+		core::hash_map<const index_folder_item*, uint32_t> _folder_by_node;
+		core::hash_map<core::folder_path, uint32_t, core::ihash, core::ieq> _folder_by_path;
 		std::vector<const index_file_item*> _files;
 		std::vector<uint32_t> _doc_folder;
 		// Read once, as the folder's revision was read; while the revision holds, so does every pointer.
@@ -252,21 +252,21 @@ namespace df
 
 		// The distinct names and text fields a free-text term searches inside, with a trigram index over
 		// them so a term is checked against the few values that could contain it.
-		std::vector<str::cached> _text_values;
+		std::vector<core::cached> _text_values;
 		value_docs _text_docs;
 		trigram_index _text_trigrams;
 
 		// The sizes and numbers a free-text term matches whole, as displayed, keyed by search_fold_key.
-		hash_map<std::string, uint32_t> _formatted_ids;
+		core::hash_map<std::string, uint32_t> _formatted_ids;
 		value_docs _formatted_docs;
 		std::string _format_signature;
 
 		// The entries of tags and artists a free-text term matches one of, keyed by search_fold_key.
-		hash_map<std::string, uint32_t> _split_ids;
+		core::hash_map<std::string, uint32_t> _split_ids;
 		value_docs _split_docs;
 
 		// Tags as a tag: term compares them, trimmed, keyed by search_fold_key.
-		hash_map<std::string, uint32_t> _tag_ids;
+		core::hash_map<std::string, uint32_t> _tag_ids;
 		value_docs _tag_docs;
 
 		// Documents grouped by the value of a property its value terms read nothing else of an item for,
@@ -284,7 +284,7 @@ namespace df
 		// falls on: an index into _date_values, which holds one date of that day. A date term compares
 		// only the day, so each day is asked once rather than each document converting its stamps.
 		std::vector<uint32_t> _date_keys;
-		std::vector<date_t> _date_values;
+		std::vector<core::date_t> _date_values;
 		// Which keys date_term_keys_of chooses, and what is a valid date, depend on the day it is.
 		uint32_t _date_day = 0;
 
@@ -408,11 +408,11 @@ namespace df
 		// The snapshot documents a related-free, selector-free search matches: in a clean folder, not a
 		// sidecar, through the presence prefilter, and matched by its terms combined as the matcher
 		// combines them.
-		doc_set evaluate(const search_matcher& matcher, const cancel_token& token);
+		doc_set evaluate(const search_matcher& matcher, const core::cancel_token& token);
 
 	private:
 		doc_set eligible_docs(const search_matcher& matcher);
 		doc_set leaf_docs(const search_matcher& matcher, const search_term& term, const doc_set& within,
-		                  bool within_is_eligible, const cancel_token& token);
+		                  bool within_is_eligible, const core::cancel_token& token);
 	};
 }

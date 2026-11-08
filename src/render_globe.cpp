@@ -48,7 +48,7 @@ namespace
 
 	// Scales the three colour bytes by a Q8 factor without caring which of them is red. Alpha is
 	// the caller's answer, not the source's.
-	inline ui::color32 modulate(const ui::color32 c, const uint32_t shade_q8, const uint32_t alpha)
+	inline core::color32 modulate(const core::color32 c, const uint32_t shade_q8, const uint32_t alpha)
 	{
 		const auto rb = (((c & 0x00FF00FFu) * shade_q8) >> 8) & 0x00FF00FFu;
 		const auto g = (((c & 0x0000FF00u) * shade_q8) >> 8) & 0x0000FF00u;
@@ -57,7 +57,7 @@ namespace
 
 	// Two colours blended with a Q8 weight, a channel pair at a time. The weights sum to 256, so
 	// each 16 bit lane peaks at 255*256 and nothing carries into its neighbour.
-	inline ui::color32 blend_q8(const ui::color32 c1, const ui::color32 c2, const uint32_t t)
+	inline core::color32 blend_q8(const core::color32 c1, const core::color32 c2, const uint32_t t)
 	{
 		const auto inverse = 256u - t;
 		const auto rb = ((((c1 & 0x00FF00FFu) * inverse) + ((c2 & 0x00FF00FFu) * t)) >> 8) & 0x00FF00FFu;
@@ -65,7 +65,7 @@ namespace
 		return rb | ga;
 	}
 
-	inline ui::color32 sample_bilinear(const source_level& level, const double u, const double v)
+	inline core::color32 sample_bilinear(const source_level& level, const double u, const double v)
 	{
 		const auto u_floor = std::floor(u);
 		const auto v_floor = std::floor(v);
@@ -79,14 +79,14 @@ namespace
 		const auto y0 = std::clamp(static_cast<int>(v_floor), 0, level.cy - 1);
 		const auto y1 = std::min(y0 + 1, level.cy - 1);
 
-		const auto line0 = std::bit_cast<const ui::color32*>(level.pixels + y0 * level.stride);
-		const auto line1 = std::bit_cast<const ui::color32*>(level.pixels + y1 * level.stride);
+		const auto line0 = std::bit_cast<const core::color32*>(level.pixels + y0 * level.stride);
+		const auto line1 = std::bit_cast<const core::color32*>(level.pixels + y1 * level.stride);
 
 		return blend_q8(blend_q8(line0[x0], line0[x1], u_frac), blend_q8(line1[x0], line1[x1], u_frac), v_frac);
 	}
 }
 
-void globe_renderer::set_source(ui::const_surface_ptr source)
+void globe_renderer::set_source(core::const_surface_ptr source)
 {
 	_levels.clear();
 
@@ -100,14 +100,14 @@ void globe_renderer::set_source(ui::const_surface_ptr source)
 	while (extent.cx > 64 && extent.cy > 32)
 	{
 		const sizei next(extent.cx / 2, extent.cy / 2);
-		ui::surface_ptr reduced;
-		if (!ui::area_downscale(_levels.back(), reduced, next)) break;
+		core::surface_ptr reduced;
+		if (!core::area_downscale(_levels.back(), reduced, next)) break;
 		_levels.emplace_back(std::move(reduced));
 		extent = next;
 	}
 }
 
-bool globe_renderer::render(ui::surface& destination, const globe_projection& projection) const
+bool globe_renderer::render(core::surface& destination, const globe_projection& projection) const
 {
 	if (_levels.empty()) return false;
 
@@ -158,7 +158,7 @@ bool globe_renderer::render(ui::surface& destination, const globe_projection& pr
 		const auto x_last = std::min(dims.cx - 1, static_cast<int>(std::floor(center.x + half_width * radius)));
 		if (x_first > x_last) continue;
 
-		auto* const line = std::bit_cast<ui::color32*>(destination.pixels_line(y));
+		auto* const line = std::bit_cast<core::color32*>(destination.pixels_line(y));
 		const auto uy2 = uy * uy;
 
 		for (auto x = x_first; x <= x_last;)
@@ -241,7 +241,7 @@ bool globe_renderer::render(ui::surface& destination, const globe_projection& pr
 				if (r2 > feather_from)
 				{
 					const auto coverage = (1.0 - std::sqrt(r2)) * radius + 0.5;
-					const auto covered = df::round(coverage * 255.0);
+					const auto covered = core::round(coverage * 255.0);
 					if (covered <= 0) continue;
 
 					alpha = static_cast<uint32_t>(std::min(covered, 255));

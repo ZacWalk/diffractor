@@ -24,14 +24,14 @@
 #include "model_visits.h"
 #include "av_host.h"
 
-constexpr ui::color32 color_for_delete = ui::bgr(0xaa2211);
-constexpr ui::color32 color_for_action = ui::bgr(0xCC6611);
-constexpr ui::color32 color_rate_rejected = ui::bgr(0xE01C2B);
-constexpr ui::color32 color_label_approved = ui::bgr(0x6FC958);
-constexpr ui::color32 color_label_to_do = ui::bgr(0xD08CE0);
-constexpr ui::color32 color_label_select = ui::bgr(0xFD6460);
-constexpr ui::color32 color_label_review = ui::bgr(0x52B7F2);
-constexpr ui::color32 color_label_second = ui::bgr(0xF2CC51);
+constexpr core::color32 color_for_delete = core::bgr(0xaa2211);
+constexpr core::color32 color_for_action = core::bgr(0xCC6611);
+constexpr core::color32 color_rate_rejected = core::bgr(0xE01C2B);
+constexpr core::color32 color_label_approved = core::bgr(0x6FC958);
+constexpr core::color32 color_label_to_do = core::bgr(0xD08CE0);
+constexpr core::color32 color_label_select = core::bgr(0xFD6460);
+constexpr core::color32 color_label_review = core::bgr(0x52B7F2);
+constexpr core::color32 color_label_second = core::bgr(0xF2CC51);
 
 // The grading vocabulary. One definition drives the grading control, the thumbnail badge, the
 // sidebar filters, and the Rate or Label menu, so a mark is learned once and recognized everywhere.
@@ -40,7 +40,7 @@ constexpr ui::color32 color_label_second = ui::bgr(0xF2CC51);
 struct rate_label_def
 {
 	std::string_view key;
-	ui::color32 clr;
+	core::color32 clr;
 	icon_index icon;
 };
 
@@ -64,7 +64,7 @@ inline const rate_label_def* find_rate_label_def(const std::string_view label)
 {
 	for (const auto& d : rate_label_defs)
 	{
-		if (!d.key.empty() && str::icmp(d.key, label) == 0) return &d;
+		if (!d.key.empty() && core::icmp(d.key, label) == 0) return &d;
 	}
 
 	return nullptr;
@@ -72,11 +72,11 @@ inline const rate_label_def* find_rate_label_def(const std::string_view label)
 
 // One badge definition for every surface: the thumbnail flag, the detail row, and the selection
 // panel control all draw the same mark for the same state.
-void draw_rate_label_badge(ui::draw_context& dc, std::string_view label, int rating, recti logical_bounds, float alpha);
+void draw_rate_label_badge(render::draw_context& dc, std::string_view label, int rating, recti logical_bounds, float alpha);
 
 // The pin mark is the same orange badge wherever it appears, so the held item reads the same in the
 // item grid, the selection collage and the panel control.
-void draw_pin_badge(ui::draw_context& dc, recti logical_bounds, float alpha);
+void draw_pin_badge(render::draw_context& dc, recti logical_bounds, float alpha);
 
 
 class location_cache;
@@ -92,15 +92,15 @@ struct subtitle_choice;
 
 using display_state_ptr = std::shared_ptr<display_state_t>;
 
-ui::texture_sampler calc_sampler(sizei draw_extent, sizei texture_extent, const ui::orientation& orientation,
+render::texture_sampler calc_sampler(sizei draw_extent, sizei texture_extent, const core::orientation& orientation,
                                  bool interactive = false, bool provisional = false);
 // The sampler for a video frame drawn into picture_extent: bilinear when it is minified, otherwise as
 // calc_sampler chooses for the picture's own extent.
-ui::texture_sampler calc_video_sampler(sized picture_extent, sizei texture_extent, const ui::orientation& orientation,
+render::texture_sampler calc_video_sampler(sized picture_extent, sizei texture_extent, const core::orientation& orientation,
                                        bool interactive = false);
-void draw_texture_info(ui::draw_context& rc, recti media_bounds, const ui::texture_ptr& tex,
-                       ui::orientation orientation, ui::texture_sampler sampler, float alpha);
-df::unique_paths make_unique_paths(df::paths selection);
+void draw_texture_info(render::draw_context& rc, recti media_bounds, const render::texture_ptr& tex,
+                       core::orientation orientation, render::texture_sampler sampler, float alpha);
+core::unique_paths make_unique_paths(core::paths selection);
 
 struct media_preview_state
 {
@@ -119,14 +119,14 @@ struct media_preview_state
 
 	// A pointer that has already moved on makes the rest of the walk toward an exact frame
 	// worthless, so the decode stops at the nearest frame it has reached and answers with that.
-	df::cancel_token abandon_token() const
+	core::cancel_token abandon_token() const
 	{
-		return superseded ? df::cancel_token(*superseded) : df::cancel_token{};
+		return superseded ? core::cancel_token(*superseded) : core::cancel_token{};
 	}
 
 	void close();
-	bool open1(df::file_path file_path);
-	bool open2(df::file_path file_path);
+	bool open1(file_path file_path);
+	bool open2(file_path file_path);
 };
 
 // async_strategy - Core async execution and thread coordination interface.
@@ -253,7 +253,7 @@ public:
 		// atomically: a count above one can drop to zero between the test and this destructor's own
 		// release, which is precisely the worker-thread destruction this type exists to prevent. The
 		// hop costs one queued message that releases a reference and does nothing else.
-		if (_p && !ui::is_ui_thread())
+		if (_p && !platform::is_ui_thread())
 		{
 			_async->queue_ui([p = std::move(_p)]
 			{
@@ -346,7 +346,7 @@ struct state_strategy
 	virtual void invalidate_view(view_invalid invalid) = 0;
 };
 
-class recent_state final : public df::no_copy
+class recent_state final : public core::no_copy
 {
 public:
 	static constexpr int max_size = 64;
@@ -359,7 +359,7 @@ public:
 		return _items;
 	}
 
-	void count_strings(df::string_counts& results, const int weight, const std::string_view prefix = {}) const
+	void count_strings(core::string_counts& results, const int weight, const std::string_view prefix = {}) const
 	{
 		// Keys are views, so the text must be interned: _items is rewritten whenever a search or
 		// folder is used again, which would otherwise leave earlier counts dangling.
@@ -367,22 +367,22 @@ public:
 		{
 			if (prefix.empty())
 			{
-				results[str::cache(i)] += weight;
+				results[core::cache(i)] += weight;
 			}
 			else
 			{
-				results[str::cache(std::format("{}{}", prefix, i))] += weight;
+				results[core::cache(std::format("{}{}", prefix, i))] += weight;
 			}
 		}
 	}
 
-	void count(df::folder_counts& results, const int weight) const
+	void count(core::folder_counts& results, const int weight) const
 	{
 		for (const auto& i : _items)
 		{
-			if (df::is_path(i))
+			if (core::is_path(i))
 			{
-				results[df::folder_path(i)] += weight;
+				results[core::folder_path(i)] += weight;
 			}
 		}
 	}
@@ -422,7 +422,7 @@ public:
 		}
 	}
 
-	static void add_list(std::vector<df::folder_path>& results, const std::vector<std::string_view>& adds)
+	static void add_list(std::vector<core::folder_path>& results, const std::vector<std::string_view>& adds)
 	{
 		for (const auto& a : adds)
 		{
@@ -438,20 +438,20 @@ public:
 
 	static std::string combine(const std::vector<std::string>& strings)
 	{
-		return str::combine(strings);
+		return core::combine(strings);
 	}
 
-	static std::string combine(const std::vector<df::folder_path>& strings)
+	static std::string combine(const std::vector<core::folder_path>& strings)
 	{
 		return combine_paths(strings);
 	}
 
 	static int compare(const std::string_view l, const std::string_view r)
 	{
-		return str::icmp(l, r);
+		return core::icmp(l, r);
 	}
 
-	static int compare(const df::folder_path l, const df::folder_path r)
+	static int compare(const core::folder_path l, const core::folder_path r)
 	{
 		return l.compare(r);
 	}
@@ -463,7 +463,7 @@ public:
 	static bool is_damaged_entry(const std::string_view entry)
 	{
 		const auto first_text = entry.find_first_not_of("\"'");
-		if (first_text == std::string_view::npos || !df::is_path(entry.substr(first_text))) return false;
+		if (first_text == std::string_view::npos || !core::is_path(entry.substr(first_text))) return false;
 
 		return entry.find("\"'") != std::string_view::npos || entry.find("'\"") != std::string_view::npos;
 	}
@@ -474,7 +474,7 @@ public:
 		std::string str;
 		properties->read(section, key, str);
 
-		for (const auto& item : str::split(str, true))
+		for (const auto& item : core::split(str, true))
 		{
 			if (!is_damaged_entry(item)) _items.emplace_back(item);
 		}
@@ -487,13 +487,13 @@ public:
 	}
 };
 
-class history_state final : public df::no_copy
+class history_state final : public core::no_copy
 {
 public:
 	struct history_entry
 	{
 		df::search_t search;
-		df::paths selected;
+		core::paths selected;
 	};
 
 	static constexpr int max_history_size = 32;
@@ -502,24 +502,24 @@ public:
 
 	history_state() = default;
 
-	void count_strings(df::string_counts& results, const int weight) const
+	void count_strings(core::string_counts& results, const int weight) const
 	{
 		for (const auto& h : _history)
 		{
 			for (const auto& s : h.search.selectors())
 			{
-				results[str::cache(s.str())] += weight;
+				results[core::cache(s.str())] += weight;
 				results[s.folder().text()] += weight;
 			}
 
 			for (const auto& t : h.search.terms())
 			{
-				results[str::cache(format_term(t))] += weight;
+				results[core::cache(format_term(t))] += weight;
 			}
 		}
 	}
 
-	void count_folders(df::folder_counts& results, int weight) const
+	void count_folders(core::folder_counts& results, int weight) const
 	{
 		if (weight == 0)
 		{
@@ -533,7 +533,7 @@ public:
 		{
 			for (const auto& s : h.search.selectors())
 			{
-				if (s.folder().exists())
+				if (platform::exists(s.folder()))
 				{
 					results[s.folder()] += weight;
 				}
@@ -561,7 +561,7 @@ public:
 		return _history[_pos + 1];
 	}
 
-	bool move_history_pos(const int n, df::paths selected, history_entry& result)
+	bool move_history_pos(const int n, core::paths selected, history_entry& result)
 	{
 		const auto i = _pos + n;
 
@@ -589,10 +589,10 @@ public:
 		return true;
 	}
 
-	void commit_history_pos(const int n, df::paths selected)
+	void commit_history_pos(const int n, core::paths selected)
 	{
 		const auto i = _pos + n;
-		df::assert_true(i >= 0 && i < static_cast<int>(_history.size()));
+		core::assert_true(i >= 0 && i < static_cast<int>(_history.size()));
 		_history[_pos].selected = std::move(selected);
 		_pos = i;
 	}
@@ -605,7 +605,7 @@ public:
 		}
 	}
 
-	void history_add(const df::search_t& link, df::paths selected)
+	void history_add(const df::search_t& link, core::paths selected)
 	{
 		if (_pos != -1)
 		{
@@ -618,7 +618,7 @@ public:
 			_history.resize(_pos + 1);
 		}
 
-		_history.emplace_back(link, df::paths{});
+		_history.emplace_back(link, core::paths{});
 
 		if (_history.size() > max_history_size)
 		{
@@ -639,8 +639,8 @@ sizei calc_draw_shape(sizei oriented_texture_extent, sizei display_dimensions, b
 
 struct texture_source_version
 {
-	df::date_t file;
-	df::date_t thumbnail;
+	core::date_t file;
+	core::date_t thumbnail;
 
 	friend bool operator==(const texture_source_version&, const texture_source_version&) = default;
 	friend bool operator!=(const texture_source_version&, const texture_source_version&) = default;
@@ -699,17 +699,17 @@ public:
 		failed
 	};
 
-	ui::texture_ptr _tex;
-	ui::texture_ptr _vid_tex;
+	render::texture_ptr _tex;
+	render::texture_ptr _vid_tex;
 	async_strategy& _async;
 
 	friend class display_state_t;
 
 private:
-	df::file_path _path;
+	core::file_path _path;
 	file_load_result _loaded;
-	ui::const_surface_ptr _staged_surface;
-	ui::const_surface_ptr _retained_surface;
+	core::const_surface_ptr _staged_surface;
+	core::const_surface_ptr _retained_surface;
 	std::shared_ptr<std::atomic_bool> _decode_cancel;
 
 	texture_source_version _photo_version;
@@ -721,21 +721,21 @@ private:
 	uint64_t _load_generation = 0;
 	int _load_retry_count = 0;
 
-	ui::texture_ptr _last_draw_tex;
+	render::texture_ptr _last_draw_tex;
 	recti _last_draw_source_rect;
-	ui::texture_sampler _last_drawn_sampler = ui::texture_sampler::point;
+	render::texture_sampler _last_drawn_sampler = render::texture_sampler::point;
 
-	ui::texture_ptr _fade_out_tex;
+	render::texture_ptr _fade_out_tex;
 	recti _fade_out_source_rect;
-	ui::texture_sampler _fade_out_sampler = ui::texture_sampler::point;
+	render::texture_sampler _fade_out_sampler = render::texture_sampler::point;
 
 	ui::animate_alpha _display_alpha_animation;
 	std::atomic_int _preview_rendering = 0;
 
 	recti _display_bounds;
 
-	ui::texture_ptr _zoom_texture;
-	ui::const_surface_ptr _zoom_staged_surface;
+	render::texture_ptr _zoom_texture;
+	core::const_surface_ptr _zoom_staged_surface;
 	texture_source_version _zoom_version;
 
 	// The projection this frame is drawing, set by the media control before each draw and read by
@@ -743,20 +743,20 @@ private:
 	// resolution its field of view asks for, not at the resolution the viewport asks for.
 	panorama_request _panorama;
 	panorama_renderer _panorama_renderer;
-	ui::const_surface_ptr _panorama_source;
-	ui::surface_ptr _panorama_surface;
-	ui::texture_ptr _panorama_tex;
+	core::const_surface_ptr _panorama_source;
+	core::surface_ptr _panorama_surface;
+	render::texture_ptr _panorama_tex;
 	// The same pixels uploaded with a mip chain, for a backend that projects them itself. Kept apart
 	// from _panorama_tex, which is where the software rasteriser puts its finished frame.
-	ui::const_surface_ptr _panorama_gpu_source;
-	ui::texture_ptr _panorama_gpu_tex;
+	core::const_surface_ptr _panorama_gpu_source;
+	render::texture_ptr _panorama_gpu_tex;
 	panorama_view _panorama_rendered_view;
 	// The rendered pixels depend on the coverage as strongly as on the camera, and the declaration
 	// read lands after the first frames are already on screen.
 	prop::panorama_geometry _panorama_rendered_geometry;
 	bool _panorama_rendered = false;
 
-	void update_decode(ui::draw_context& rc);
+	void update_decode(render::draw_context& rc);
 	// Everything only a projection needs: the mipped upload, the reduced copies and the frame the
 	// software rasteriser draws into. Between them they are the largest thing the item holds.
 	void release_panorama_resources();
@@ -775,7 +775,7 @@ public:
 	// the first refresh that sees that write's stamps.
 	bool _retain_visuals_on_modify = false;
 
-	ui::orientation _display_orientation = ui::orientation::top_left;
+	core::orientation _display_orientation = core::orientation::top_left;
 	sizei _display_dimensions;
 	display_problem _display_problem = display_problem::none;
 
@@ -799,13 +799,13 @@ public:
 	// Adopts the image a write just produced, for the path it was written to. Supersedes any load
 	// already in flight so a slower by-name read cannot land on top of it. The modified time is the
 	// file's own, so the stamp stays in the same clock domain as the item's timestamps.
-	void publish_written_image(df::file_path path, file_load_result loaded, df::date_t modified);
-	void draw(ui::draw_context& rc, pointi offset, int compare_pos, bool first_texture, bool interactive = false);
+	void publish_written_image(core::file_path path, file_load_result loaded, core::date_t modified);
+	void draw(render::draw_context& rc, pointi offset, int compare_pos, bool first_texture, bool interactive = false);
 	// zoom.md: the same image drawn as the sphere it declares itself to be. Shares the decode ladder
 	// with draw; only the presentation differs.
-	void draw_panorama(ui::draw_context& rc, pointi offset, const prop::panorama_geometry& geometry,
+	void draw_panorama(render::draw_context& rc, pointi offset, const prop::panorama_geometry& geometry,
 	                   const panorama_view& view);
-	void layout(ui::measure_context& mc, recti bounds, const df::item_element_ptr& i);
+	void layout(render::measure_context& mc, recti bounds, const df::item_element_ptr& i);
 	sizei calc_display_dimensions() const;
 	void clear();
 	bool is_empty() const;
@@ -817,7 +817,7 @@ public:
 		return _display_dimensions;
 	}
 
-	ui::orientation display_orientation() const
+	core::orientation display_orientation() const
 	{
 		return _display_orientation;
 	}
@@ -838,7 +838,7 @@ public:
 	// at the size it needs instead of returning to the file. A format that decoded straight to a
 	// surface keeps it: _loaded.s is the compressed form it does not have.
 	void release_decoded_surfaces();
-	void update(const ui::const_surface_ptr& staged_surface);
+	void update(const core::const_surface_ptr& staged_surface);
 	void update(file_load_result loaded);
 	void complete_load(file_load_result loaded, uint64_t generation, bool raw);
 	void cancel_pending_decode();
@@ -849,7 +849,7 @@ public:
 		return _is_raw;
 	}
 
-	ui::texture_ptr zoom_texture(ui::draw_context& rc, sizei extent);
+	render::texture_ptr zoom_texture(render::draw_context& rc, sizei extent);
 
 	recti display_bounds() const
 	{
@@ -870,7 +870,7 @@ public:
 	// every seeding path exists to keep off the screen.
 	bool has_visual() const
 	{
-		return (_tex && _tex->is_valid()) || (_vid_tex && _vid_tex->is_valid()) || ui::is_valid(_staged_surface);
+		return (_tex && _tex->is_valid()) || (_vid_tex && _vid_tex->is_valid()) || is_valid(_staged_surface);
 	}
 
 	bool is_provisional() const
@@ -895,11 +895,11 @@ public:
 	// displayed texture is never measured at all.
 	size_t retained_decoded_bytes() const noexcept
 	{
-		std::array<const ui::surface*, 4> seen{};
+		std::array<const core::surface*, 4> seen{};
 		size_t seen_count = 0;
 		size_t bytes = 0;
 
-		const auto add = [&seen, &seen_count, &bytes](const ui::const_surface_ptr& s)
+		const auto add = [&seen, &seen_count, &bytes](const core::const_surface_ptr& s)
 		{
 			if (!s) return;
 			for (size_t i = 0; i < seen_count; ++i) if (seen[i] == s.get()) return;
@@ -924,9 +924,9 @@ using texture_state_ptr = std::shared_ptr<texture_state>;
 // owned; the geometry read is published back through queue_ui against this path.
 struct panorama_session
 {
-	df::file_path path;
+	core::file_path path;
 	sizei source;
-	df::date_t modified;
+	core::date_t modified;
 	prop::panorama_geometry geometry;
 	panorama_view view;
 	// The declaration has been looked up for this path, source size and file revision, whether or not
@@ -944,11 +944,11 @@ struct common_display_state_t
 	bool _is_slideshow = false;
 	df::zoom_view_state _zoom;
 	panorama_session _panorama;
-	std::vector<std::pair<df::file_path, texture_state_ptr>> _recent_textures;
+	std::vector<std::pair<core::file_path, texture_state_ptr>> _recent_textures;
 
 	static constexpr size_t max_recent_textures = 5;
 
-	void retain_texture(const df::file_path path, const texture_state_ptr& texture)
+	void retain_texture(const core::file_path path, const texture_state_ptr& texture)
 	{
 		if (!texture) return;
 		std::erase_if(_recent_textures, [&path](const auto& entry) { return entry.first == path; });
@@ -974,7 +974,7 @@ struct common_display_state_t
 
 		// About what the displayed image itself is allowed, so the cache can carry one expensive decode
 		// forward rather than several.
-		const auto budget = static_cast<size_t>(df::max_texture_bytes);
+		const auto budget = static_cast<size_t>(render::max_texture_bytes);
 
 		for (const auto index : retained_texture_eviction_indexes(entries, budget))
 			_recent_textures.erase(_recent_textures.begin() + index);
@@ -1022,7 +1022,7 @@ public:
 		_groups.emplace(group);
 	}
 
-	bool match_text(const str::cached text) const
+	bool match_text(const core::cached text) const
 	{
 		if (_text.empty()) return true;
 		if (_text.length() == 1 && _text[0] != '*' && _text[0] != '?') return starts(text, _text);
@@ -1100,7 +1100,7 @@ inline filter_t media_filter_from_string(const std::string_view text)
 {
 	filter_t result;
 
-	for (const auto part : str::split(text, false, [](const char c) { return c == ','; }))
+	for (const auto part : core::split(text, false, [](const char c) { return c == ','; }))
 	{
 		if (const auto* const group = parse_file_group(std::string(part)))
 		{
@@ -1128,7 +1128,7 @@ struct batch_edit_spec
 	// Runs on the worker, once per item, so it must capture only detached values - never a view,
 	// control, item, or anything else UI-owned. Returns nothing for an item that could not be
 	// prepared, which is reported as a failed item.
-	std::function<std::optional<item_edits>(df::file_path)> make_edits;
+	std::function<std::optional<item_edits>(core::file_path)> make_edits;
 	df::process_items_type process_type = df::process_items_type::can_save_metadata;
 	file_encode_params encode_params;
 	// Decided on the UI thread before the write, so it cannot consult the per-item edits: the caller
@@ -1168,8 +1168,8 @@ private:
 	struct sibling_folders_t
 	{
 		df::search_t scope;
-		df::folder_path next;
-		df::folder_path previous;
+		core::folder_path next;
+		core::folder_path previous;
 	};
 
 	df::item_set _search_items;
@@ -1198,7 +1198,7 @@ private:
 	df::search_parent _parent_search;
 	sibling_folders_t _sibling_folders;
 
-	df::hash_map<std::string, map_location_area, df::ihash, df::ieq> _map_locations;
+	core::hash_map<std::string, map_location_area, core::ihash, core::ieq> _map_locations;
 	filter_t _filter;
 	common_display_state_t _common_display_state;
 
@@ -1228,8 +1228,8 @@ private:
 	// Counting the items that share a day has no selector, so it walks every indexed folder. The
 	// dates tooltip therefore never counts inline: it reads this memo, keyed on the packed day, and
 	// the query worker fills it in. Cleared whenever the index summary changes.
-	df::hash_map<uint32_t, uint64_t> _day_counts;
-	df::hash_set<uint32_t> _counting_days;
+	core::hash_map<uint32_t, uint64_t> _day_counts;
+	core::hash_set<uint32_t> _counting_days;
 	uint32_t _day_counts_generation = 1;
 
 	// Bumped whenever the memo is cleared. A worker result carrying a stale stamp is dropped rather
@@ -1245,7 +1245,7 @@ private:
 
 	// Path of the cloud-only item we already queued a post-hydration rescan for, so the per-frame
 	// check triggers it only once.
-	df::file_path _hydration_rescan_done;
+	core::file_path _hydration_rescan_done;
 	uint64_t _hover_thumbnail_generation = 0;
 
 	// Stamped on each display capture request, which arrives later when it has to be read from a
@@ -1259,7 +1259,7 @@ private:
 	struct unpublished_open_t
 	{
 		df::search_t search;
-		df::unique_paths selection;
+		core::unique_paths selection;
 		bool path_changed = false;
 	};
 
@@ -1269,7 +1269,7 @@ private:
 	{
 		df::search_t search;
 		int direction = 0;
-		df::paths selected;
+		core::paths selected;
 	};
 
 	std::optional<pending_history_move_t> _pending_history_move;
@@ -1279,7 +1279,7 @@ private:
 
 	void refresh_sibling_folders();
 	bool open_validated(const view_host_base_ptr& view, const df::search_t& new_search,
-	                    const df::unique_paths& selection);
+	                    const core::unique_paths& selection);
 
 public:
 	df::item_element_ptr _edit_item;
@@ -1294,13 +1294,13 @@ public:
 	// applied to another.
 	struct pending_edit_crop_t
 	{
-		df::file_path path;
+		core::file_path path;
 		rectd normalised;
 	};
 
 	std::optional<pending_edit_crop_t> _pending_edit_crop;
 
-	std::optional<rectd> take_pending_edit_crop(const df::file_path path)
+	std::optional<rectd> take_pending_edit_crop(const core::file_path path)
 	{
 		// Consumed only by the item it was drawn for. Resetting first threw the rectangle away on any
 		// intervening display change, so the user's crop vanished and Edit opened full frame with
@@ -1321,7 +1321,7 @@ public:
 	// other is still dragging.
 	struct drawn_region_t
 	{
-		df::file_path path;
+		core::file_path path;
 		rectd region;
 		rectd restore;
 		bool dragging = false;
@@ -1329,7 +1329,7 @@ public:
 
 	drawn_region_t _drawn_region;
 
-	rectd drawn_region(const df::file_path path) const
+	rectd drawn_region(const core::file_path path) const
 	{
 		// An empty key means there is no one picture to own a region, not a picture every control
 		// shares. Without this, two photo_controls that both resolve to no item would answer with -
@@ -1338,7 +1338,7 @@ public:
 		return _drawn_region.path == path ? _drawn_region.region : rectd{};
 	}
 
-	void drawn_region(const df::file_path path, const rectd region)
+	void drawn_region(const core::file_path path, const rectd region)
 	{
 		if (path.is_empty()) return;
 		if (_drawn_region.path != path) _drawn_region = {path, {}, {}, false};
@@ -1353,7 +1353,7 @@ public:
 	// A drag hides the region's buttons, which would otherwise sit under the pointer moving the
 	// rectangle they belong to. A draw replaces what was there and keeps it as what a cancel puts
 	// back; a move keeps it.
-	void begin_region_drag(const df::file_path path, const bool replaces)
+	void begin_region_drag(const core::file_path path, const bool replaces)
 	{
 		if (path.is_empty()) return;
 		const auto previous = drawn_region(path);
@@ -1447,7 +1447,7 @@ public:
 
 	// The number of indexed items sharing this day, or null until the query worker answers. Counting
 	// scans every indexed folder, so it never runs on the UI thread.
-	const uint64_t* day_item_count(df::date_t d);
+	const uint64_t* day_item_count(core::date_t d);
 
 	// The counts describe the index, so a scan that changed it makes them stale.
 	void invalidate_day_counts();
@@ -1518,16 +1518,16 @@ public:
 
 	// Adopts the image a write just produced for the displayed item, so the edit that changed the
 	// pixels does not have to be read back off disk to be seen.
-	void publish_written_image(df::file_path path, file_load_result loaded, df::date_t modified) const;
+	void publish_written_image(core::file_path path, file_load_result loaded, core::date_t modified) const;
 	// Adopts the open handle a write kept over the detached item, so the playback session that is
 	// about to reopen it does not have to open the path again.
-	void publish_written_handle(df::file_path path, platform::file_ptr file);
+	void publish_written_handle(core::file_path path, platform::file_ptr file);
 	// The item whose pixels are on screen, so a write to it can ask for its image back.
-	std::vector<df::file_path> displayed_photo_paths() const;
+	std::vector<core::file_path> displayed_photo_paths() const;
 	// The detached playable item that will be reopened, so a write to it can be asked for its handle.
-	df::file_path detached_display_av_path() const;
+	core::file_path detached_display_av_path() const;
 
-	df::folder_counts known_folders() const;
+	core::folder_counts known_folders() const;
 
 	df::item_element_ptr end_item(bool forward) const;
 	df::item_element_ptr next_item(bool forward, bool extend) const;
@@ -1537,12 +1537,12 @@ public:
 	df::item_element_ptr next_group_item(bool forward) const;
 	df::item_element_ptr next_unselected_item() const;
 
-	df::folder_path save_path() const;
+	core::folder_path save_path() const;
 
-	ui::const_image_ptr first_selected_thumb() const;
+	core::const_image_ptr first_selected_thumb() const;
 	void capture_display(const std::function<void(file_load_result)>& f) const;
 
-	df::string_counts selected_tags() const;
+	core::string_counts selected_tags() const;
 
 	group_by group_order() const
 	{
@@ -1676,7 +1676,7 @@ public:
 			if (md && md->coordinate.is_valid())
 			{
 				const auto coordinate = md->coordinate;
-				platform::open(str::print("https://www.google.com/maps/place/%f,%f", coordinate.latitude(),
+				platform::open(core::print("https://www.google.com/maps/place/%f,%f", coordinate.latitude(),
 				                          coordinate.longitude()));
 				return;
 			}
@@ -1697,11 +1697,11 @@ public:
 				const auto coordinate = md->coordinate;
 				auto substitute = [&coordinate](std::ostringstream& result, const std::string_view token)
 				{
-					if (token == "latitude") result << str::print("%f", coordinate.latitude());
-					else if (token == "longitude") result << str::print("%f", coordinate.longitude());
+					if (token == "latitude") result << core::print("%f", coordinate.latitude());
+					else if (token == "longitude") result << core::print("%f", coordinate.longitude());
 				};
 
-				platform::open(str::replace_tokens(url_template, substitute));
+				platform::open(core::replace_tokens(url_template, substitute));
 				return;
 			}
 		}
@@ -1733,9 +1733,9 @@ public:
 	}
 
 	void open(const view_host_base_ptr& view, std::string_view text);
-	void open(const view_host_base_ptr& view, df::file_path path);
+	void open(const view_host_base_ptr& view, core::file_path path);
 	bool resolve_area_search(df::search_t& search) const;
-	bool open(const view_host_base_ptr& view, const df::search_t& path, const df::unique_paths& selection);
+	bool open(const view_host_base_ptr& view, const df::search_t& path, const core::unique_paths& selection);
 	void open(const view_host_base_ptr& view, const df::item_element_ptr& i);
 	void load_display_state();
 	void release_retained_textures() { _common_display_state.clear_retained_textures(); }
@@ -1759,7 +1759,7 @@ public:
 
 	df::unique_items existing_items() const;
 
-	void append_items(const view_host_base_ptr& view, df::item_set items, const df::unique_paths& selection,
+	void append_items(const view_host_base_ptr& view, df::item_set items, const core::unique_paths& selection,
 	                  bool is_first, bool is_complete);
 
 	df::process_result can_process_selection_and_mark_errors(const view_host_base_ptr& view,
@@ -1921,7 +1921,7 @@ public:
 	// The photos and videos the timeline was built from, in listing order. Entering with the same ones
 	// returns to it; entering with others starts a new one. A project opened in Movie keeps the
 	// selection of the timeline it replaced.
-	std::vector<df::file_path> built_from;
+	std::vector<core::file_path> built_from;
 
 	bool is_playing() const { return playing != playing_t::nothing; }
 
@@ -1991,28 +1991,28 @@ public:
 		_tint = 0;
 	}
 
-	void reset(const prop::item_metadata_const_ptr& md, sizei dimensions, ui::orientation orientation);
+	void reset(const prop::item_metadata_const_ptr& md, sizei dimensions, core::orientation orientation);
 
 	bool has_pixel_changes() const
 	{
 		return _edits != _original_edits;
 	}
 
-	static quadd initial_crop(const sizei dimensions, const ui::orientation orientation)
+	static quadd initial_crop(const sizei dimensions, const core::orientation orientation)
 	{
 		return quadd(dimensions).transform(to_simple_transform_inv(orientation));
 	}
 
 	// initial_crop draws the stored orientation into the pixels, so a written pixel edit is already
 	// upright. Leaving the orientation tag behind would turn the saved photo a second time.
-	static metadata_edits save_metadata_edits(const bool has_pixel_changes, const ui::orientation stored_orientation)
+	static metadata_edits save_metadata_edits(const bool has_pixel_changes, const core::orientation stored_orientation)
 	{
 		metadata_edits result;
 
-		if (has_pixel_changes && stored_orientation != ui::orientation::top_left &&
-			stored_orientation != ui::orientation::none)
+		if (has_pixel_changes && stored_orientation != core::orientation::top_left &&
+			stored_orientation != core::orientation::none)
 		{
-			result.orientation = ui::orientation::top_left;
+			result.orientation = core::orientation::top_left;
 		}
 
 		return result;
@@ -2025,9 +2025,9 @@ public:
 	// grid: with `show_rotated` on the two are different spaces, and permuting corners only reorders
 	// points - it cannot move them, so a rotated capture would crop pixels nobody selected.
 	static quadd crop_from_displayed_rect(const rectd normalised, const sizei dimensions,
-	                                      const ui::orientation orientation, const bool was_rotated)
+	                                      const core::orientation orientation, const bool was_rotated)
 	{
-		const auto flips = was_rotated && ui::flips_xy(orientation);
+		const auto flips = was_rotated && core::flips_xy(orientation);
 		const auto width = static_cast<double>(flips ? dimensions.cy : dimensions.cx);
 		const auto height = static_cast<double>(flips ? dimensions.cx : dimensions.cy);
 
@@ -2037,19 +2037,19 @@ public:
 
 		auto stored = displayed;
 
-		if (was_rotated && orientation != ui::orientation::top_left)
+		if (was_rotated && orientation != core::orientation::top_left)
 		{
 			const auto to_stored = [orientation, width, height](const pointd p) -> pointd
 			{
 				switch (orientation)
 				{
-				case ui::orientation::top_right: return {width - p.X, p.Y};
-				case ui::orientation::bottom_right: return {width - p.X, height - p.Y};
-				case ui::orientation::bottom_left: return {p.X, height - p.Y};
-				case ui::orientation::left_top: return {p.Y, p.X};
-				case ui::orientation::right_top: return {p.Y, width - p.X};
-				case ui::orientation::right_bottom: return {height - p.Y, width - p.X};
-				case ui::orientation::left_bottom: return {height - p.Y, p.X};
+				case core::orientation::top_right: return {width - p.X, p.Y};
+				case core::orientation::bottom_right: return {width - p.X, height - p.Y};
+				case core::orientation::bottom_left: return {p.X, height - p.Y};
+				case core::orientation::left_top: return {p.Y, p.X};
+				case core::orientation::right_top: return {p.Y, width - p.X};
+				case core::orientation::right_bottom: return {height - p.Y, width - p.X};
+				case core::orientation::left_bottom: return {height - p.Y, p.X};
 				default: return p;
 				}
 			};

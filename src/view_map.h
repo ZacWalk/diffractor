@@ -27,14 +27,14 @@ class map_pan_controller final : public view_controller
 public:
 	map_pan_controller(map_view& view, const view_host_ptr& host, recti bounds);
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return _tracking ? ui::style::cursor::hand_up : ui::style::cursor::hand_down;
+		return _tracking ? platform::cursor::hand_up : platform::cursor::hand_down;
 	}
 
-	void on_mouse_left_button_down(pointi loc, ui::key_state keys) override;
+	void on_mouse_left_button_down(pointi loc, platform::key_state keys) override;
 	void on_mouse_move(pointi loc) override;
-	void on_mouse_left_button_up(pointi loc, ui::key_state keys) override;
+	void on_mouse_left_button_up(pointi loc, platform::key_state keys) override;
 	void popup_from_location(view_hover_element& hover) override;
 };
 
@@ -74,12 +74,12 @@ public:
 		_engine.clear_caches();
 	}
 
-	void layout(ui::measure_context& mc, const sizei extent) override
+	void layout(render::measure_context& mc, const sizei extent) override
 	{
 		_extent = extent;
 	}
 
-	void render(ui::draw_context& dc, view_controller_ptr controller) override
+	void render(render::draw_context& dc, view_controller_ptr controller) override
 	{
 		_engine.render(dc, _extent);
 	}
@@ -93,7 +93,7 @@ public:
 	}
 
 	// The map's primary axis and its scale are the same thing, so the modifier changes nothing here.
-	bool mouse_wheel(const pointi loc, const ui::wheel_notch notch) override
+	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
 	{
 		if (!notch.is_vertical()) return false;
 		if (_engine.zoom(notch.delta, recti(_extent))) on_map_zoomed(_engine.zoom_level());
@@ -153,7 +153,7 @@ inline map_pan_controller::map_pan_controller(map_view& view, const view_host_pt
 {
 }
 
-inline void map_pan_controller::on_mouse_left_button_down(const pointi loc, const ui::key_state keys)
+inline void map_pan_controller::on_mouse_left_button_down(const pointi loc, const platform::key_state keys)
 {
 	view_controller::on_mouse_left_button_down(loc, keys);
 	_tracking = true;
@@ -205,7 +205,7 @@ inline void map_pan_controller::popup_from_location(view_hover_element& hover)
 	}
 }
 
-inline void map_pan_controller::on_mouse_left_button_up(const pointi loc, const ui::key_state keys)
+inline void map_pan_controller::on_mouse_left_button_up(const pointi loc, const platform::key_state keys)
 {
 	if (_tracking)
 	{

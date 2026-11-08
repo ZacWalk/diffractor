@@ -11,13 +11,13 @@
 
 #pragma once
 
-class md5 final : df::no_copy
+class md5 final : core::no_copy
 {
 public:
 	md5(); // simple initializer
 	md5(std::string_view s); // digest string, finalize
 
-	void update(df::cspan data);
+	void update(core::cspan data);
 
 	void update(const std::string_view input)
 	{
@@ -31,7 +31,7 @@ public:
 
 	void update(const char* sz)
 	{
-		update({(const uint8_t*)sz, str::len(sz)});
+		update({(const uint8_t*)sz, core::len(sz)});
 	}
 
 	void finalize();
@@ -51,5 +51,5 @@ private:
 	// that length is implied to be 64.
 
 	static void Encode(uint8_t* dest, const uint32_t* src, size_t length);
-	static void Decode(uint32_t* dest, df::cspan src);
+	static void Decode(uint32_t* dest, core::cspan src);
 };

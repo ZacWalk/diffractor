@@ -85,7 +85,7 @@ namespace crypto
 
 			while (p < sv.end())
 			{
-				h ^= str::to_lower(str::pop_utf8_char(p, sv.end()));
+				h ^= core::to_lower(core::pop_utf8_char(p, sv.end()));
 				h *= FNV_32_PRIME;
 			}
 

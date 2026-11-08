@@ -64,7 +64,7 @@ ass_event_fields split_ass_event(std::string_view ass);
 // colour, alignment and position. Other overrides are dropped, and so is drawing-mode text.
 struct subtitle_text
 {
-	std::vector<platform::text_run> runs;
+	std::vector<render::text_run> runs;
 	std::string font = "Arial";
 	double size = 16;
 	double outline = 1;
@@ -91,12 +91,12 @@ struct subtitle_image
 	std::vector<uint32_t> palette;
 };
 
-ui::surface_ptr subtitle_image_surface(const subtitle_image& image);
+core::surface_ptr subtitle_image_surface(const subtitle_image& image);
 
 // A rasterised subtitle, placed on the canvas: the video's pixels.
 struct subtitle_bitmap
 {
-	ui::const_surface_ptr surface;
+	core::const_surface_ptr surface;
 	rectd bounds;
 };
 
@@ -153,7 +153,7 @@ std::vector<subtitle_placement> place_subtitles_on_picture(const std::vector<sub
 // sidecar when the session opens; read by the UI thread, which takes only finished bitmaps.
 class subtitle_events
 {
-	mutable platform::mutex _mutex;
+	mutable core::mutex _mutex;
 	_Guarded_by_(_mutex) std::vector<subtitle_event> _events;
 	_Guarded_by_(_mutex) subtitle_script _script;
 	_Guarded_by_(_mutex) sizei _video;
@@ -195,7 +195,7 @@ void end_replaced_pictures(std::vector<subtitle_event>& events);
 struct subtitle_choice
 {
 	int stream = -1;
-	df::file_path sidecar;
+	core::file_path sidecar;
 
 	bool is_none() const { return stream < 0 && sidecar.is_empty(); }
 	friend bool operator==(const subtitle_choice&, const subtitle_choice&) = default;
@@ -251,4 +251,4 @@ struct subtitle_state
 };
 
 // The sidecar subtitles beside a video, from the sidecar names its index entry records.
-std::vector<subtitle_offer> sidecar_subtitle_offers(df::file_path video, std::string_view sidecars);
+std::vector<subtitle_offer> sidecar_subtitle_offers(core::file_path video, std::string_view sidecars);

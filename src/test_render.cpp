@@ -10,9 +10,9 @@
 
 #include "pch.h"
 #include "test.h"
-#include "libdesktop/util_simd.h"
+#include "libdesktop/core/simd.h"
 #include "av_format.h"
-#include "libdesktop/render_software.h"
+#include "libdesktop/render/software.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "ui_elements.h"
@@ -27,8 +27,8 @@ static uint8_t blend_opaque_channel(const uint8_t dest, const float src, const f
 
 static void should_unpremultiply_surface_alpha()
 {
-	ui::surface surface;
-	assert_equal(true, surface.alloc(3, 1, ui::texture_format::ARGB) != nullptr, "alpha fixture allocated");
+	core::surface surface;
+	assert_equal(true, surface.alloc(3, 1, core::texture_format::ARGB) != nullptr, "alpha fixture allocated");
 	surface.set_pixel(0, 0, 0x80402010u);
 	surface.set_pixel(1, 0, 0x00112233u);
 	surface.set_pixel(2, 0, 0xff336699u);
@@ -130,7 +130,7 @@ static void should_match_simd_software_blends()
 static void should_tone_map_through_a_cube_as_a_trilinear_sample()
 {
 	constexpr int n = 5;
-	ui::tone_map_lut lut;
+	core::tone_map_lut lut;
 	lut.size = n;
 	lut.rgba.resize(static_cast<size_t>(n) * n * n * 4);
 
@@ -198,8 +198,8 @@ static void should_tone_map_through_a_cube_as_a_trilinear_sample()
 	}
 
 	const auto pixels = signal.size() / 3;
-	std::vector<ui::color32> fast(pixels);
-	std::vector<ui::color32> baseline(pixels);
+	std::vector<core::color32> fast(pixels);
+	std::vector<core::color32> baseline(pixels);
 	lut.apply(signal.data(), pixels, fast.data());
 	lut.apply_baseline(signal.data(), pixels, baseline.data());
 
@@ -239,9 +239,9 @@ static void should_tone_map_through_a_cube_as_a_trilinear_sample()
 
 static void should_convert_yuv_surfaces_for_software_rendering()
 {
-	auto check_output = [](const ui::surface_ptr& output)
+	auto check_output = [](const core::surface_ptr& output)
 	{
-		assert_equal(true, ui::is_valid(output), "converted YUV surface is valid");
+		assert_equal(true, core::is_valid(output), "converted YUV surface is valid");
 		assert_equal(uint32_t{4}, output->width(), "converted YUV width");
 		assert_equal(uint32_t{2}, output->height(), "converted YUV height");
 		for (auto y = 0; y < 2; ++y)
@@ -260,10 +260,10 @@ static void should_convert_yuv_surfaces_for_software_rendering()
 	};
 
 	av_scaler scaler;
-	const auto output = std::make_shared<ui::surface>();
-	ui::surface nv12;
-	nv12.alloc(4, 2, ui::texture_format::NV12);
-	nv12.color_space(ui::color_space::rec601_limited);
+	const auto output = std::make_shared<core::surface>();
+	core::surface nv12;
+	nv12.alloc(4, 2, core::texture_format::NV12);
+	nv12.color_space(color_space::rec601_limited);
 	for (auto y = 0; y < 2; ++y)
 	{
 		auto* const row = nv12.pixels_line(y);
@@ -274,17 +274,17 @@ static void should_convert_yuv_surfaces_for_software_rendering()
 	std::fill_n(nv12_chroma, nv12.stride(), uint8_t{128});
 	assert_equal(true, scaler.convert_yuv_surface(nv12, output), "convert NV12 surface");
 	check_output(output);
-	ui::surface_ptr scaled;
-	const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
+	core::surface_ptr scaled;
+	const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
 	{
 	});
 	assert_equal(true, scaler.scale_surface(nv12_view, scaled, {2, 1}), "scale NV12 surface");
 	assert_equal(true, scaled->dimensions() == sizei{2, 1}, "scaled NV12 dimensions");
-	assert_equal(true, scaled->format() == ui::texture_format::RGB, "scaled NV12 format");
+	assert_equal(true, scaled->format() == core::texture_format::RGB, "scaled NV12 format");
 
-	ui::surface p010;
-	p010.alloc(4, 2, ui::texture_format::P010);
-	p010.color_space(ui::color_space::rec601_limited);
+	core::surface p010;
+	p010.alloc(4, 2, core::texture_format::P010);
+	p010.color_space(color_space::rec601_limited);
 	for (auto y = 0; y < 2; ++y)
 	{
 		auto* const row = std::bit_cast<uint16_t*>(p010.pixels_line(y));
@@ -295,12 +295,12 @@ static void should_convert_yuv_surfaces_for_software_rendering()
 	std::fill_n(p010_chroma, p010.stride() / sizeof(uint16_t), uint16_t{512u << 6});
 	assert_equal(true, scaler.convert_yuv_surface(p010, output), "convert P010 surface");
 	check_output(output);
-	const auto p010_view = ui::const_surface_ptr(&p010, [](const ui::surface*)
+	const auto p010_view = core::const_surface_ptr(&p010, [](const core::surface*)
 	{
 	});
 	assert_equal(true, scaler.scale_surface(p010_view, scaled, {2, 1}), "scale P010 surface");
 	assert_equal(true, scaled->dimensions() == sizei{2, 1}, "scaled P010 dimensions");
-	assert_equal(true, scaled->format() == ui::texture_format::RGB, "scaled P010 format");
+	assert_equal(true, scaled->format() == core::texture_format::RGB, "scaled P010 format");
 }
 
 // An enlargement is what area_downscale refuses, and it is the case the software backend hits every
@@ -310,9 +310,9 @@ static void should_bilinear_resize_packed_surfaces()
 {
 	const auto make_source = [](const int cx, const int cy)
 	{
-		auto s = std::make_shared<ui::surface>();
-		s->alloc(cx, cy, ui::texture_format::ARGB, ui::orientation::left_bottom);
-		s->color_space(ui::color_space::rec709_limited);
+		auto s = std::make_shared<core::surface>();
+		s->alloc(cx, cy, core::texture_format::ARGB, core::orientation::left_bottom);
+		s->color_space(color_space::rec709_limited);
 		return s;
 	};
 
@@ -324,12 +324,12 @@ static void should_bilinear_resize_packed_surfaces()
 		row[0] = row[1] = row[2] = row[3] = 0;
 		row[4] = row[5] = row[6] = row[7] = 200;
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::bilinear_resize(src, dst, {4, 1}), "widen a two sample ramp");
+		core::surface_ptr dst;
+		assert_equal(true, core::bilinear_resize(src, dst, {4, 1}), "widen a two sample ramp");
 		assert_equal(true, dst->dimensions() == sizei{4, 1}, "enlarged dimensions");
-		assert_equal(true, dst->format() == ui::texture_format::ARGB, "enlarged format");
-		assert_equal(true, dst->orientation() == ui::orientation::left_bottom, "enlarged orientation");
-		assert_equal(true, dst->color_space() == ui::color_space::rec709_limited, "enlarged colour space");
+		assert_equal(true, dst->format() == core::texture_format::ARGB, "enlarged format");
+		assert_equal(true, dst->orientation() == core::orientation::left_bottom, "enlarged orientation");
+		assert_equal(true, dst->color_space() == color_space::rec709_limited, "enlarged colour space");
 
 		const auto* const out = dst->pixels_line(0);
 		assert_equal(0, static_cast<int>(out[0]), "first sample keeps the source end");
@@ -356,8 +356,8 @@ static void should_bilinear_resize_packed_surfaces()
 			}
 		}
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::bilinear_resize(src, dst, {31, 22}), "enlarge a flat surface");
+		core::surface_ptr dst;
+		assert_equal(true, core::bilinear_resize(src, dst, {31, 22}), "enlarge a flat surface");
 
 		auto flat = true;
 
@@ -379,39 +379,39 @@ static void should_bilinear_resize_packed_surfaces()
 	// area_downscale refuses it and this is what answers it.
 	{
 		const auto src = make_source(16, 16);
-		ui::surface_ptr dst;
-		assert_equal(false, ui::area_downscale(src, dst, {32, 8}), "the area filter refuses a mixed resize");
-		assert_equal(true, ui::bilinear_resize(src, dst, {32, 8}), "bilinear takes a mixed resize");
+		core::surface_ptr dst;
+		assert_equal(false, core::area_downscale(src, dst, {32, 8}), "the area filter refuses a mixed resize");
+		assert_equal(true, core::bilinear_resize(src, dst, {32, 8}), "bilinear takes a mixed resize");
 		assert_equal(true, dst->dimensions() == sizei{32, 8}, "mixed resize dimensions");
 	}
 
 	// Planar surfaces are four bytes a pixel to this walk; they belong to swscale.
 	{
-		ui::surface nv12;
-		nv12.alloc(8, 8, ui::texture_format::NV12);
-		const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
+		core::surface nv12;
+		nv12.alloc(8, 8, core::texture_format::NV12);
+		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
 		{
 		});
 
-		ui::surface_ptr dst;
-		assert_equal(false, ui::bilinear_resize(nv12_view, dst, {16, 16}), "refuse a planar format");
+		core::surface_ptr dst;
+		assert_equal(false, core::bilinear_resize(nv12_view, dst, {16, 16}), "refuse a planar format");
 	}
 }
 
 static void should_area_downscale_packed_and_planar_surfaces()
 {
-	const auto make_source = [](const int cx, const int cy, const ui::texture_format format)
+	const auto make_source = [](const int cx, const int cy, const core::texture_format format)
 	{
-		auto s = std::make_shared<ui::surface>();
-		s->alloc(cx, cy, format, ui::orientation::left_bottom);
-		s->color_space(ui::color_space::rec709_limited);
+		auto s = std::make_shared<core::surface>();
+		s->alloc(cx, cy, format, core::orientation::left_bottom);
+		s->color_space(color_space::rec709_limited);
 		return s;
 	};
 
 	// A flat source must survive a reduction untouched. Any weight run that does not sum to exactly
 	// 256 shifts the level here, which is the failure this whole scheme has to rule out.
 	{
-		const auto src = make_source(97, 61, ui::texture_format::ARGB);
+		const auto src = make_source(97, 61, core::texture_format::ARGB);
 
 		for (auto y = 0; y < 61; ++y)
 		{
@@ -425,12 +425,12 @@ static void should_area_downscale_packed_and_planar_surfaces()
 			}
 		}
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::area_downscale(src, dst, {13, 9}), "reduce a flat surface");
+		core::surface_ptr dst;
+		assert_equal(true, core::area_downscale(src, dst, {13, 9}), "reduce a flat surface");
 		assert_equal(true, dst->dimensions() == sizei{13, 9}, "reduced dimensions");
-		assert_equal(true, dst->format() == ui::texture_format::ARGB, "reduced format");
-		assert_equal(true, dst->orientation() == ui::orientation::left_bottom, "reduced orientation");
-		assert_equal(true, dst->color_space() == ui::color_space::rec709_limited, "reduced colour space");
+		assert_equal(true, dst->format() == core::texture_format::ARGB, "reduced format");
+		assert_equal(true, dst->orientation() == core::orientation::left_bottom, "reduced orientation");
+		assert_equal(true, dst->color_space() == color_space::rec709_limited, "reduced colour space");
 
 		for (auto y = 0; y < 9; ++y)
 		{
@@ -449,7 +449,7 @@ static void should_area_downscale_packed_and_planar_surfaces()
 	// An exact 2:1 reduction must be the mean of each 2x2 block, so a checkerboard of 0 and 200
 	// answers 100 everywhere. Nearest neighbour or a dropped contribution cannot produce that.
 	{
-		const auto src = make_source(64, 64, ui::texture_format::RGB);
+		const auto src = make_source(64, 64, core::texture_format::RGB);
 
 		for (auto y = 0; y < 64; ++y)
 		{
@@ -461,8 +461,8 @@ static void should_area_downscale_packed_and_planar_surfaces()
 			}
 		}
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::area_downscale(src, dst, {32, 32}), "reduce a checkerboard");
+		core::surface_ptr dst;
+		assert_equal(true, core::area_downscale(src, dst, {32, 32}), "reduce a checkerboard");
 
 		for (auto y = 0; y < 32; ++y)
 		{
@@ -477,7 +477,7 @@ static void should_area_downscale_packed_and_planar_surfaces()
 	// A horizontal ramp reduced 4:1 must stay monotonic and keep its ends, which a wrong first index
 	// or a truncated run would break.
 	{
-		const auto src = make_source(256, 8, ui::texture_format::RGB);
+		const auto src = make_source(256, 8, core::texture_format::RGB);
 
 		for (auto y = 0; y < 8; ++y)
 		{
@@ -489,8 +489,8 @@ static void should_area_downscale_packed_and_planar_surfaces()
 			}
 		}
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::area_downscale(src, dst, {64, 2}), "reduce a ramp");
+		core::surface_ptr dst;
+		assert_equal(true, core::area_downscale(src, dst, {64, 2}), "reduce a ramp");
 
 		const auto* const row = dst->pixels_line(0);
 		assert_equal(2, static_cast<int>(row[0]), "ramp first sample");
@@ -503,34 +503,34 @@ static void should_area_downscale_packed_and_planar_surfaces()
 
 	// Refusals hand the work back to swscale rather than producing a wrong picture.
 	{
-		const auto rgb = make_source(8, 8, ui::texture_format::RGB);
-		ui::surface_ptr dst;
-		assert_equal(false, ui::area_downscale(rgb, dst, {16, 4}), "refuse an enlargement");
-		assert_equal(false, ui::area_downscale(rgb, dst, {0, 4}), "refuse an empty extent");
+		const auto rgb = make_source(8, 8, core::texture_format::RGB);
+		core::surface_ptr dst;
+		assert_equal(false, core::area_downscale(rgb, dst, {16, 4}), "refuse an enlargement");
+		assert_equal(false, core::area_downscale(rgb, dst, {0, 4}), "refuse an empty extent");
 
 		// P010 samples are 16 bit, which the Q8 accumulators cannot hold.
-		ui::surface p010;
-		p010.alloc(8, 8, ui::texture_format::P010);
-		const auto p010_view = ui::const_surface_ptr(&p010, [](const ui::surface*)
+		core::surface p010;
+		p010.alloc(8, 8, core::texture_format::P010);
+		const auto p010_view = core::const_surface_ptr(&p010, [](const core::surface*)
 		{
 		});
-		assert_equal(false, ui::area_downscale(p010_view, dst, {4, 4}), "refuse a 16 bit planar format");
+		assert_equal(false, core::area_downscale(p010_view, dst, {4, 4}), "refuse a 16 bit planar format");
 
 		// NV12 chroma is one pair per 2x2 luma block, so an odd extent has no whole answer.
-		ui::surface nv12;
-		nv12.alloc(8, 8, ui::texture_format::NV12);
-		const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
+		core::surface nv12;
+		nv12.alloc(8, 8, core::texture_format::NV12);
+		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
 		{
 		});
-		assert_equal(false, ui::area_downscale(nv12_view, dst, {5, 4}), "refuse an odd nv12 extent");
+		assert_equal(false, core::area_downscale(nv12_view, dst, {5, 4}), "refuse an odd nv12 extent");
 	}
 
 	// NV12 reduces as two planes: the luma on its own, and the interleaved chroma pair at half the
 	// extent. A flat picture must survive both, and U must not bleed into V.
 	{
-		ui::surface nv12;
-		nv12.alloc(64, 32, ui::texture_format::NV12);
-		nv12.color_space(ui::color_space::rec601_full);
+		core::surface nv12;
+		nv12.alloc(64, 32, core::texture_format::NV12);
+		nv12.color_space(color_space::rec601_full);
 
 		const auto stride = nv12.stride();
 		auto* const luma = nv12.pixels();
@@ -552,14 +552,14 @@ static void should_area_downscale_packed_and_planar_surfaces()
 			}
 		}
 
-		const auto nv12_view = ui::const_surface_ptr(&nv12, [](const ui::surface*)
+		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
 		{
 		});
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::area_downscale(nv12_view, dst, {32, 16}), "reduce an nv12 surface");
-		assert_equal(true, dst->format() == ui::texture_format::NV12, "reduced nv12 format");
-		assert_equal(true, dst->color_space() == ui::color_space::rec601_full, "reduced nv12 colour space");
+		core::surface_ptr dst;
+		assert_equal(true, core::area_downscale(nv12_view, dst, {32, 16}), "reduce an nv12 surface");
+		assert_equal(true, dst->format() == core::texture_format::NV12, "reduced nv12 format");
+		assert_equal(true, dst->color_space() == color_space::rec601_full, "reduced nv12 colour space");
 
 		const auto dst_stride = dst->stride();
 		auto luma_correct = true;
@@ -588,7 +588,7 @@ static void should_area_downscale_packed_and_planar_surfaces()
 
 	// Same size on one axis is still a reduction; the identity run must not be rejected or shifted.
 	{
-		const auto src = make_source(40, 10, ui::texture_format::RGB);
+		const auto src = make_source(40, 10, core::texture_format::RGB);
 
 		for (auto y = 0; y < 10; ++y)
 		{
@@ -600,8 +600,8 @@ static void should_area_downscale_packed_and_planar_surfaces()
 			}
 		}
 
-		ui::surface_ptr dst;
-		assert_equal(true, ui::area_downscale(src, dst, {40, 5}), "reduce one axis only");
+		core::surface_ptr dst;
+		assert_equal(true, core::area_downscale(src, dst, {40, 5}), "reduce one axis only");
 		assert_equal(240, static_cast<int>(dst->pixels_line(0)[20 * 4]), "identity axis keeps the column");
 		assert_equal(10, static_cast<int>(dst->pixels_line(0)[19 * 4]), "identity axis keeps its neighbour");
 	}
@@ -610,7 +610,7 @@ static void should_area_downscale_packed_and_planar_surfaces()
 	// it was reduced on. Sizes are deliberately not multiples of the vector widths so both the wide
 	// loops and their scalar tails are covered.
 	{
-		const auto src = make_source(211, 97, ui::texture_format::ARGB);
+		const auto src = make_source(211, 97, core::texture_format::ARGB);
 		auto seed = 0x9e3779b9u;
 
 		for (auto y = 0; y < 97; ++y)
@@ -626,10 +626,10 @@ static void should_area_downscale_packed_and_planar_surfaces()
 
 		for (const auto extent : {sizei{53, 29}, sizei{211, 12}, sizei{7, 97}, sizei{210, 96}})
 		{
-			ui::surface_ptr wide;
-			ui::surface_ptr baseline;
-			assert_equal(true, ui::area_downscale(src, wide, extent), "reduce with the selected width");
-			assert_equal(true, ui::area_downscale_baseline(src, baseline, extent), "reduce with the SSE2 baseline");
+			core::surface_ptr wide;
+			core::surface_ptr baseline;
+			assert_equal(true, core::area_downscale(src, wide, extent), "reduce with the selected width");
+			assert_equal(true, core::area_downscale_baseline(src, baseline, extent), "reduce with the SSE2 baseline");
 
 			auto identical = true;
 
@@ -647,20 +647,20 @@ static void should_area_downscale_packed_and_planar_surfaces()
 static void should_estimate_decode_cost()
 {
 	// The estimate reads only the header fields, but an image with no bytes counts as empty.
-	const auto make_image = [](const ui::image_format format)
+	const auto make_image = [](const core::image_format format)
 	{
-		df::blob bytes;
+		core::blob bytes;
 		bytes.resize(16);
-		return std::make_shared<ui::image>(std::move(bytes), sizei{4000, 3000}, format,
-		                                   ui::orientation::top_left);
+		return std::make_shared<core::image>(std::move(bytes), sizei{4000, 3000}, format,
+		                                   core::orientation::top_left);
 	};
 
-	const auto png = make_image(ui::image_format::PNG);
+	const auto png = make_image(core::image_format::PNG);
 	assert_equal(4000ll * 3000ll * 4, static_cast<uint64_t>(
 		             files::estimate_decode_bytes(png, {400, 300})),
 	             "a PNG builds the whole frame however small a target is asked for");
 
-	const auto jpeg = make_image(ui::image_format::JPEG);
+	const auto jpeg = make_image(core::image_format::JPEG);
 	assert_equal(500ll * 375ll * 4, static_cast<uint64_t>(
 		             files::estimate_decode_bytes(jpeg, {400, 300})),
 	             "libjpeg reduces by up to 1/8 while decoding");
@@ -675,10 +675,10 @@ static void should_estimate_decode_cost()
 
 static void should_refuse_over_budget_sources()
 {
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 
-	df::max_decode_bytes = 64ll * 1024ll * 1024ll; // exactly 4096 x 4096
+	render::max_decode_bytes = 64ll * 1024ll * 1024ll; // exactly 4096 x 4096
 
 	load_diagnostic fits;
 	assert_equal(false, reject_over_budget_source(&fits, {4096, 4096}, "test"), "a source at the budget is decoded");
@@ -700,10 +700,10 @@ static void should_refuse_over_budget_sources()
 // enough to exhaust the machine walked straight past the ceiling every other decoder observes.
 static void should_refuse_an_over_budget_raw()
 {
-	const auto path = test_files_folder.combine("raw").combine_file("Screws.CR2");
+	const auto path = test_files_folder().combine("raw").combine_file("Screws.CR2");
 
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 
 	files ff;
 
@@ -715,7 +715,7 @@ static void should_refuse_an_over_budget_raw()
 	assert_equal(false, dimensions.is_empty(), "and reports its size");
 
 	// One pixel's worth under what this source needs.
-	df::max_decode_bytes = static_cast<int64_t>(dimensions.cx) * dimensions.cy * 4 - 4;
+	render::max_decode_bytes = static_cast<int64_t>(dimensions.cx) * dimensions.cy * 4 - 4;
 
 	const auto refused = ff.load(path, false);
 	assert_equal(false, refused.success, "a raw past the budget is refused");
@@ -729,9 +729,9 @@ static void should_animate_alpha_between_values()
 {
 	// The gate is off when the CPU software backend is active, so force the animated
 	// behaviour under test and restore whatever the running renderer selected.
-	const auto restore_animations = ui::animations_enabled;
-	const df::scope_exit restore_scope([restore_animations] { ui::animations_enabled = restore_animations; });
-	ui::animations_enabled = true;
+	const auto restore_animations = render::animations_enabled;
+	const core::scope_exit restore_scope([restore_animations] { render::animations_enabled = restore_animations; });
+	render::animations_enabled = true;
 
 	ui::animate_alpha alpha;
 	alpha.reset(0.0f, 1.0f);
@@ -759,14 +759,14 @@ static void should_animate_alpha_between_values()
 // in the same place whatever the refresh rate that produced it.
 static void should_fade_at_the_same_rate_on_any_refresh_rate()
 {
-	const auto restore_animations = ui::animations_enabled;
+	const auto restore_animations = render::animations_enabled;
 	const auto restore_factor = ui::animation_step_factor;
-	const df::scope_exit restore_scope([restore_animations, restore_factor]
+	const core::scope_exit restore_scope([restore_animations, restore_factor]
 	{
-		ui::animations_enabled = restore_animations;
+		render::animations_enabled = restore_animations;
 		ui::animation_step_factor = restore_factor;
 	});
-	ui::animations_enabled = true;
+	render::animations_enabled = true;
 
 	const auto fade_for = [](const int frames_per_second, const double seconds)
 	{
@@ -800,9 +800,9 @@ static void should_skip_alpha_animation_when_disabled()
 {
 	// CPU software rendering cannot afford per-frame fades: every alpha reaches its target
 	// immediately so draws stay on the opaque fast paths and no extra frames are requested.
-	const auto restore_animations = ui::animations_enabled;
-	const df::scope_exit restore_scope([restore_animations] { ui::animations_enabled = restore_animations; });
-	ui::animations_enabled = false;
+	const auto restore_animations = render::animations_enabled;
+	const core::scope_exit restore_scope([restore_animations] { render::animations_enabled = restore_animations; });
+	render::animations_enabled = false;
 
 	ui::animate_alpha alpha;
 	alpha.reset(0.0f, 1.0f);
@@ -817,7 +817,7 @@ static void should_skip_alpha_animation_when_disabled()
 static void should_resize()
 {
 	const auto save_path = _temps.next_path();
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	image_edits edits;
 	edits.scale(sizei(200, 150));
@@ -847,19 +847,19 @@ static void should_rotate()
 
 	{
 		const auto save_path = _temps.next_path();
-		const auto load_path = test_files_folder.combine_file("Test.jpg");
+		const auto load_path = test_files_folder().combine_file("Test.jpg");
 		const auto loaded = ff.load(load_path, false);
 
 		image_edits edits;
 		const quadd crop(loaded.i->dimensions());
-		edits.crop_bounds(crop.transform(simple_transform::rot_90));
+		edits.crop_bounds(crop.transform(core::simple_transform::rot_90));
 
 		metadata_edits md_edits;
-		md_edits.orientation = ui::orientation::top_left;
+		md_edits.orientation = core::orientation::top_left;
 
 		ff.update(load_path, save_path, md_edits, edits, {}, false, {});
 
-		const auto expected = extract_properties(test_files_folder.combine_file("Test90.jpg"));
+		const auto expected = extract_properties(test_files_folder().combine_file("Test90.jpg"));
 		const auto actual = extract_properties(save_path);
 
 		// Test.jpg is 683 pixels tall, which is not a whole number of MCUs, so the lossless path
@@ -873,31 +873,31 @@ static void should_rotate()
 
 	{
 		const auto save_path = _temps.next_path();
-		const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
+		const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
 		const auto loaded = ff.load(load_path, false);
 
 		image_edits edits;
 		const quadd crop(loaded.i->dimensions());
-		edits.crop_bounds(crop.transform(simple_transform::rot_90));
+		edits.crop_bounds(crop.transform(core::simple_transform::rot_90));
 
 		metadata_edits md_edits;
-		md_edits.orientation = ui::orientation::top_left;
+		md_edits.orientation = core::orientation::top_left;
 
 		ff.update(load_path, save_path, md_edits, edits, {}, false, {});
 
 		const auto actual_exif = extract_properties(save_path, metadata_type::EXIF);
-		assert_equal(ui::orientation::top_left, actual_exif->orientation, "orientation");
+		assert_equal(core::orientation::top_left, actual_exif->orientation, "orientation");
 	}
 
 	{
 		// PNG
 		const auto save_path = _temps.next_path(".png");
-		const auto load_path = test_files_folder.combine_file("engine.png");
+		const auto load_path = test_files_folder().combine_file("engine.png");
 		const auto loaded = ff.load(load_path, false);
 
 		image_edits edits;
 		const quadd crop(loaded.i->dimensions());
-		edits.crop_bounds(crop.transform(simple_transform::rot_90));
+		edits.crop_bounds(crop.transform(core::simple_transform::rot_90));
 		ff.update(load_path, save_path, {}, edits, {}, false, {});
 
 		const auto updated = ff.load(save_path, false);
@@ -908,12 +908,12 @@ static void should_rotate()
 	{
 		// WEBP
 		const auto save_path = _temps.next_path(".webp");
-		const auto load_path = test_files_folder.combine_file("lake.webp");
+		const auto load_path = test_files_folder().combine_file("lake.webp");
 		const auto loaded = ff.load(load_path, false);
 
 		image_edits edits;
 		const quadd crop(loaded.i->dimensions());
-		edits.crop_bounds(crop.transform(simple_transform::rot_90));
+		edits.crop_bounds(crop.transform(core::simple_transform::rot_90));
 		ff.update(load_path, save_path, {}, edits, {}, false, {});
 
 		const auto updated = ff.load(save_path, false);
@@ -925,17 +925,17 @@ static void should_rotate()
 
 static void should_not_cpu_transform_planar_surfaces()
 {
-	const auto planar = std::make_shared<ui::surface>();
-	assert_equal(true, planar->alloc(8, 8, ui::texture_format::NV12), "nv12 surface allocates");
+	const auto planar = std::make_shared<core::surface>();
+	assert_equal(true, planar->alloc(8, 8, core::texture_format::NV12), "nv12 surface allocates");
 
-	const auto rotated = planar->transform(simple_transform::rot_90);
-	assert_equal(false, ui::is_valid(rotated), "planar surfaces are not transformed as packed pixels");
+	const auto rotated = planar->transform(core::simple_transform::rot_90);
+	assert_equal(false, core::is_valid(rotated), "planar surfaces are not transformed as packed pixels");
 }
 
 static void should_rotate133()
 {
 	const auto save_path = _temps.next_path();
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	files ff;
 	const auto loaded = ff.load(load_path, false);
@@ -958,8 +958,8 @@ static void should_rotate133()
 // altered. Truncating instead of rounding in adjust_color moves every channel a level and fails this.
 static void should_leave_colour_unchanged_when_neutral()
 {
-	const auto src = std::make_shared<ui::surface>();
-	assert_equal(true, src->alloc(16, 4, ui::texture_format::ARGB), "neutral source allocated");
+	const auto src = std::make_shared<core::surface>();
+	assert_equal(true, src->alloc(16, 4, core::texture_format::ARGB), "neutral source allocated");
 
 	for (auto y = 0; y < 4; ++y)
 	{
@@ -974,10 +974,10 @@ static void should_leave_colour_unchanged_when_neutral()
 		}
 	}
 
-	const auto dst = std::make_shared<ui::surface>();
-	assert_equal(true, dst->alloc(16, 4, ui::texture_format::ARGB), "neutral destination allocated");
+	const auto dst = std::make_shared<core::surface>();
+	assert_equal(true, dst->alloc(16, 4, core::texture_format::ARGB), "neutral destination allocated");
 
-	ui::color_adjust adjust;
+	render::color_adjust adjust;
 	adjust.color_params(0, 0, 0, 0, 0, 0, 0);
 	adjust.apply(src, dst->pixels(), dst->stride(), {});
 
@@ -1016,16 +1016,16 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 	// A neutral adjustment must leave the preview at the identity ramp the transform is born with,
 	// or an unedited picture is previewed through a curve.
 	{
-		ui::color_adjust neutral;
+		render::color_adjust neutral;
 		neutral.color_params(0, 0, 0, 0, 0, 0, 0);
 
-		ui::texture_transform transform;
-		const ui::texture_transform identity;
+		render::texture_transform transform;
+		const render::texture_transform identity;
 		neutral.populate_texture_transform(transform);
 
 		auto worst = 0.0f;
 
-		for (auto index = 0; index < ui::texture_transform::curve_len; ++index)
+		for (auto index = 0; index < render::texture_transform::curve_len; ++index)
 		{
 			worst = std::max(worst, std::abs(transform.curve[index] - identity.curve[index]));
 		}
@@ -1033,10 +1033,10 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		assert_equal(true, worst < 0.01f, "a neutral adjustment previews as the identity curve");
 	}
 
-	ui::color_adjust adjust;
+	render::color_adjust adjust;
 	adjust.color_params(0, 0, 0.5, 0.0, -0.5, 0.4, 0.1);
 
-	ui::texture_transform transform;
+	render::texture_transform transform;
 	adjust.populate_texture_transform(transform);
 
 	assert_equal(true, transform.has_color_changes, "an adjusted curve reports colour changes");
@@ -1044,18 +1044,18 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 	// It must also no longer be the identity, which is what a preview that was never repopulated
 	// would still be showing.
 	{
-		const ui::texture_transform identity;
+		const render::texture_transform identity;
 		assert_equal(false, transform.curve == identity.curve, "an adjusted curve is not the identity");
 	}
 
 	// A grey ramp isolates the curve: with no saturation change the output luma is the curve itself.
-	const auto src = std::make_shared<ui::surface>();
-	assert_equal(true, src->alloc(ui::texture_transform::curve_len, 1, ui::texture_format::ARGB),
+	const auto src = std::make_shared<core::surface>();
+	assert_equal(true, src->alloc(render::texture_transform::curve_len, 1, core::texture_format::ARGB),
 	             "ramp source allocated");
 
 	auto* const row = src->pixels_line(0);
 
-	for (auto x = 0; x < ui::texture_transform::curve_len; ++x)
+	for (auto x = 0; x < render::texture_transform::curve_len; ++x)
 	{
 		row[x * 4 + 0] = static_cast<uint8_t>(x);
 		row[x * 4 + 1] = static_cast<uint8_t>(x);
@@ -1063,35 +1063,35 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		row[x * 4 + 3] = 255;
 	}
 
-	const auto dst = std::make_shared<ui::surface>();
-	assert_equal(true, dst->alloc(ui::texture_transform::curve_len, 1, ui::texture_format::ARGB),
+	const auto dst = std::make_shared<core::surface>();
+	assert_equal(true, dst->alloc(render::texture_transform::curve_len, 1, core::texture_format::ARGB),
 	             "ramp destination allocated");
 	adjust.apply(src, dst->pixels(), dst->stride(), {});
 
 	const auto* const out = dst->pixels_line(0);
 	auto worst = 0;
 
-	for (auto x = 0; x < ui::texture_transform::curve_len; ++x)
+	for (auto x = 0; x < render::texture_transform::curve_len; ++x)
 	{
-		const auto previewed = df::round(transform.curve[x] * 255.0);
+		const auto previewed = core::round(transform.curve[x] * 255.0);
 		worst = std::max(worst, std::abs(previewed - static_cast<int>(out[x * 4 + 1])));
 	}
 
 	assert_equal(true, worst <= 2, "the preview curve tracks the curve apply uses");
 
 	// Monotonic, because a tone curve that folds back inverts contrast somewhere in the picture.
-	for (auto x = 1; x < ui::texture_transform::curve_len; ++x)
+	for (auto x = 1; x < render::texture_transform::curve_len; ++x)
 	{
 		assert_equal(true, transform.curve[x] >= transform.curve[x - 1], "the tone curve never folds back");
 	}
 
 	// MEDIA-001 - raw BGRA primaries catch a saved-path red/blue swap that a grey ramp cannot.
 	{
-		ui::color_adjust desaturate;
+		render::color_adjust desaturate;
 		desaturate.color_params(0, -1.0, 0, 0, 0, 0, 0);
 
-		const auto primaries = std::make_shared<ui::surface>();
-		assert_equal(true, primaries->alloc(3, 1, ui::texture_format::ARGB), "primary source allocated");
+		const auto primaries = std::make_shared<core::surface>();
+		assert_equal(true, primaries->alloc(3, 1, core::texture_format::ARGB), "primary source allocated");
 		auto* const primary_row = primaries->pixels_line(0);
 		const std::array<std::array<uint8_t, 4>, 3> bgra_pixels{{
 			{0, 0, 255, 255}, // red in BGRA memory order
@@ -1100,8 +1100,8 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		}};
 		for (auto x = 0; x < 3; ++x) std::memcpy(primary_row + x * 4, bgra_pixels[x].data(), 4);
 
-		const auto primary_out = std::make_shared<ui::surface>();
-		assert_equal(true, primary_out->alloc(3, 1, ui::texture_format::ARGB), "primary destination allocated");
+		const auto primary_out = std::make_shared<core::surface>();
+		assert_equal(true, primary_out->alloc(3, 1, core::texture_format::ARGB), "primary destination allocated");
 		assert_equal(true, desaturate.apply(primaries, primary_out->pixels(), primary_out->stride(), {}),
 		             "primary desaturation applied");
 
@@ -1121,11 +1121,11 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 	// MEDIA-001 - temperature is channel-directed: warming a red pixel should not boost the stored
 	// blue byte, and cooling a blue pixel should not boost the stored red byte.
 	{
-		ui::color_adjust warm;
+		render::color_adjust warm;
 		warm.color_params(0, 0, 0, 0, 0, 0, 0, 1.0, 0);
 
-		const auto src_warm = std::make_shared<ui::surface>();
-		assert_equal(true, src_warm->alloc(2, 1, ui::texture_format::ARGB), "temperature source allocated");
+		const auto src_warm = std::make_shared<core::surface>();
+		assert_equal(true, src_warm->alloc(2, 1, core::texture_format::ARGB), "temperature source allocated");
 		auto* const row_warm = src_warm->pixels_line(0);
 		const std::array<std::array<uint8_t, 4>, 2> bgra_pixels{{
 			{10, 20, 160, 255},
@@ -1133,8 +1133,8 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		}};
 		for (auto x = 0; x < 2; ++x) std::memcpy(row_warm + x * 4, bgra_pixels[x].data(), 4);
 
-		const auto dst_warm = std::make_shared<ui::surface>();
-		assert_equal(true, dst_warm->alloc(2, 1, ui::texture_format::ARGB), "temperature destination allocated");
+		const auto dst_warm = std::make_shared<core::surface>();
+		assert_equal(true, dst_warm->alloc(2, 1, core::texture_format::ARGB), "temperature destination allocated");
 		assert_equal(true, warm.apply(src_warm, dst_warm->pixels(), dst_warm->stride(), {}),
 		             "temperature adjustment applied");
 
@@ -1148,8 +1148,8 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 // chroma path independently of the tone curve.
 static void should_desaturate_to_grey()
 {
-	const auto src = std::make_shared<ui::surface>();
-	assert_equal(true, src->alloc(8, 1, ui::texture_format::ARGB), "chroma source allocated");
+	const auto src = std::make_shared<core::surface>();
+	assert_equal(true, src->alloc(8, 1, core::texture_format::ARGB), "chroma source allocated");
 
 	auto* const row = src->pixels_line(0);
 
@@ -1161,10 +1161,10 @@ static void should_desaturate_to_grey()
 		row[x * 4 + 3] = 255;
 	}
 
-	const auto dst = std::make_shared<ui::surface>();
-	assert_equal(true, dst->alloc(8, 1, ui::texture_format::ARGB), "chroma destination allocated");
+	const auto dst = std::make_shared<core::surface>();
+	assert_equal(true, dst->alloc(8, 1, core::texture_format::ARGB), "chroma destination allocated");
 
-	ui::color_adjust adjust;
+	render::color_adjust adjust;
 	adjust.color_params(0, -1.0, 0, 0, 0, 0, 0);
 	adjust.apply(src, dst->pixels(), dst->stride(), {});
 
@@ -1184,7 +1184,7 @@ static void should_desaturate_to_grey()
 
 static void should_rasterise_tiles_identically_to_the_whole_surface()
 {
-	const auto probe = ui::probe_software_rasterizer();
+	const auto probe = render::probe_software_rasterizer();
 
 	assert_equal(true, probe.tiles > 1, "the scene was split across tiles");
 	assert_equal(true, probe.painted_pixels > 1000, "the scene painted something to compare");
@@ -1208,7 +1208,7 @@ static void should_rasterise_one_scene_to_one_answer_on_every_platform()
 	// or a primitive changes.
 	// The first and last samples are the untouched fill, which is how the scene is pinned to
 	// painting only inside itself.
-	static constexpr std::array<uint32_t, ui::rasterizer_sample_count> recorded{
+	static constexpr std::array<uint32_t, render::rasterizer_sample_count> recorded{
 		0x40404040, 0xff543e8b, 0xff3366e6, 0xff8344a1, 0xff8344a1, 0xffe6d972,
 		0xff4e4b8e, 0xff2d3d7c, 0xff6ba8a5, 0xff719d69, 0xff6c7561, 0xff869a5a,
 		0xff5e954b, 0xff56a764, 0xff406e73, 0xff26377e, 0xff838387, 0xff5b8773,
@@ -1217,9 +1217,9 @@ static void should_rasterise_one_scene_to_one_answer_on_every_platform()
 
 	constexpr int tolerance = 3;
 
-	const auto probe = ui::probe_software_rasterizer();
+	const auto probe = render::probe_software_rasterizer();
 
-	const auto format = [](const std::array<uint32_t, ui::rasterizer_sample_count>& s)
+	const auto format = [](const std::array<uint32_t, render::rasterizer_sample_count>& s)
 	{
 		std::string result;
 		for (const auto v : s) result += std::format("0x{:08x}, ", v);
@@ -1228,7 +1228,7 @@ static void should_rasterise_one_scene_to_one_answer_on_every_platform()
 
 	auto within = true;
 
-	for (auto i = 0; i < ui::rasterizer_sample_count; ++i)
+	for (auto i = 0; i < render::rasterizer_sample_count; ++i)
 	{
 		for (auto shift = 0; shift < 32; shift += 8)
 		{
@@ -1252,22 +1252,22 @@ namespace
 {
 	// An equirectangular world stand-in whose colour says where a pixel came from: everything above
 	// 45 north is green, the western hemisphere red, the eastern blue.
-	ui::const_surface_ptr make_globe_test_source()
+	core::const_surface_ptr make_globe_test_source()
 	{
-		auto source = std::make_shared<ui::surface>();
-		source->alloc(256, 128, ui::texture_format::ARGB);
+		auto source = std::make_shared<core::surface>();
+		source->alloc(256, 128, core::texture_format::ARGB);
 
 		for (auto y = 0; y < 128; ++y)
 		{
-			auto* const line = std::bit_cast<ui::color32*>(source->pixels_line(y));
+			auto* const line = std::bit_cast<core::color32*>(source->pixels_line(y));
 
 			for (auto x = 0; x < 256; ++x)
 			{
 				line[x] = y < 32
-					          ? ui::rgba(0, 255, 0)
+					          ? core::rgba(0, 255, 0)
 					          : x < 128
-					          ? ui::rgba(255, 0, 0)
-					          : ui::rgba(0, 0, 255);
+					          ? core::rgba(255, 0, 0)
+					          : core::rgba(0, 0, 255);
 			}
 		}
 
@@ -1279,19 +1279,19 @@ namespace
 	// to it. The ramp is a triangle rather than a saw so that it is continuous across the date line
 	// too - a saw would jump 255 to 0 there and every reading near the seam would be a blend of the
 	// two ends rather than a position.
-	ui::const_surface_ptr make_globe_ramp_source()
+	core::const_surface_ptr make_globe_ramp_source()
 	{
-		auto source = std::make_shared<ui::surface>();
-		source->alloc(256, 128, ui::texture_format::ARGB);
+		auto source = std::make_shared<core::surface>();
+		source->alloc(256, 128, core::texture_format::ARGB);
 
 		for (auto y = 0; y < 128; ++y)
 		{
-			auto* const line = std::bit_cast<ui::color32*>(source->pixels_line(y));
+			auto* const line = std::bit_cast<core::color32*>(source->pixels_line(y));
 
 			for (auto x = 0; x < 256; ++x)
 			{
 				const auto ramp = static_cast<uint32_t>(x < 128 ? x * 2 : (255 - x) * 2);
-				line[x] = ui::rgba(255, 0, ramp);
+				line[x] = core::rgba(255, 0, ramp);
 			}
 		}
 
@@ -1300,13 +1300,13 @@ namespace
 
 	// Which of the source's three colours a rendered pixel came from, whatever the shading did to
 	// its brightness. '-' when nothing is drawn there.
-	char globe_hue(const ui::color32 c)
+	char globe_hue(const core::color32 c)
 	{
-		if (ui::get_a(c) < 128) return '-';
+		if (core::get_a(c) < 128) return '-';
 
-		const auto r = ui::get_r(c);
-		const auto g = ui::get_g(c);
-		const auto b = ui::get_b(c);
+		const auto r = core::get_r(c);
+		const auto g = core::get_g(c);
+		const auto b = core::get_b(c);
 
 		if (r > g && r > b) return 'r';
 		if (g > r && g > b) return 'g';
@@ -1324,8 +1324,8 @@ static void should_render_the_globe()
 	constexpr int radius = 100;
 	constexpr pointi center(104, 104);
 
-	ui::surface destination;
-	destination.alloc(208, 208, ui::texture_format::ARGB);
+	core::surface destination;
+	destination.alloc(208, 208, core::texture_format::ARGB);
 
 	const auto render_view = [&](const gps_coordinate view)
 	{
@@ -1345,16 +1345,16 @@ static void should_render_the_globe()
 	             "globe render");
 
 	// Off the sphere is nothing at all, and the limb is neither hard nor missing.
-	assert_equal(0u, ui::get_a(destination.get_pixel(center.x + radius + 4, center.y)),
+	assert_equal(0u, core::get_a(destination.get_pixel(center.x + radius + 4, center.y)),
 	             "beyond the sphere is transparent", "globe render");
-	assert_equal(255u, ui::get_a(destination.get_pixel(center.x, center.y)), "the centre is opaque",
+	assert_equal(255u, core::get_a(destination.get_pixel(center.x, center.y)), "the centre is opaque",
 	             "globe render");
 
 	auto feathered = false;
 
 	for (auto x = center.x + radius - 3; x <= center.x + radius + 1; ++x)
 	{
-		const auto alpha = ui::get_a(destination.get_pixel(x, center.y));
+		const auto alpha = core::get_a(destination.get_pixel(x, center.y));
 		if (alpha > 0 && alpha < 255) feathered = true;
 	}
 
@@ -1421,10 +1421,10 @@ static void should_render_the_globe()
 	for (auto x = center.x - radius / 2; x <= center.x + radius / 2; ++x)
 	{
 		const auto c = destination.get_pixel(x, center.y);
-		const auto red = static_cast<double>(ui::get_r(c));
-		if (ui::get_a(c) != 255 || red < 16.0) continue;
+		const auto red = static_cast<double>(core::get_r(c));
+		if (core::get_a(c) != 255 || red < 16.0) continue;
 
-		const auto position = 255.0 * ui::get_b(c) / red;
+		const auto position = 255.0 * core::get_b(c) / red;
 		if (previous >= 0.0 && std::abs(position - previous) > 8.0) ++jumps;
 		previous = position;
 	}
@@ -1441,35 +1441,35 @@ namespace
 	// An equirectangular source whose colour says which quadrant of itself a pixel came from, so a
 	// rendered pixel can be traced back to a longitude and a latitude rather than only to "some
 	// pixel". Green is the northern half; red and blue split the southern half west and east.
-	ui::const_surface_ptr make_panorama_test_source()
+	core::const_surface_ptr make_panorama_test_source()
 	{
-		auto source = std::make_shared<ui::surface>();
-		source->alloc(512, 256, ui::texture_format::ARGB);
+		auto source = std::make_shared<core::surface>();
+		source->alloc(512, 256, core::texture_format::ARGB);
 
 		for (auto y = 0; y < 256; ++y)
 		{
-			auto* const line = std::bit_cast<ui::color32*>(source->pixels_line(y));
+			auto* const line = std::bit_cast<core::color32*>(source->pixels_line(y));
 
 			for (auto x = 0; x < 512; ++x)
 			{
 				line[x] = y < 128
-					          ? ui::rgba(0, 255, 0)
+					          ? core::rgba(0, 255, 0)
 					          : x < 256
-					          ? ui::rgba(255, 0, 0)
-					          : ui::rgba(0, 0, 255);
+					          ? core::rgba(255, 0, 0)
+					          : core::rgba(0, 0, 255);
 			}
 		}
 
 		return source;
 	}
 
-	char panorama_hue(const ui::color32 c)
+	char panorama_hue(const core::color32 c)
 	{
-		if (ui::get_a(c) < 128) return '-';
+		if (core::get_a(c) < 128) return '-';
 
-		const auto r = ui::get_r(c);
-		const auto g = ui::get_g(c);
-		const auto b = ui::get_b(c);
+		const auto r = core::get_r(c);
+		const auto g = core::get_g(c);
+		const auto b = core::get_b(c);
 
 		if (r > g && r > b) return 'r';
 		if (g > r && g > b) return 'g';
@@ -1486,8 +1486,8 @@ static void should_render_a_projected_panorama()
 
 	const prop::panorama_geometry sphere{512, 256, 0, 0, 512, 256};
 
-	ui::surface destination;
-	destination.alloc(240, 160, ui::texture_format::ARGB);
+	core::surface destination;
+	destination.alloc(240, 160, core::texture_format::ARGB);
 
 	constexpr auto middle_x = 120;
 	constexpr auto middle_y = 80;
@@ -1526,12 +1526,12 @@ static void should_render_a_projected_panorama()
 	// nearest row repeated - it is nothing, which is the honest answer and the one the flat draw
 	// could not give.
 	const auto strip = prop::panorama_geometry::assumed({512, 64});
-	auto strip_source = std::make_shared<ui::surface>();
-	strip_source->alloc(512, 64, ui::texture_format::ARGB);
+	auto strip_source = std::make_shared<core::surface>();
+	strip_source->alloc(512, 64, core::texture_format::ARGB);
 	for (auto y = 0; y < 64; ++y)
 	{
-		auto* const line = std::bit_cast<ui::color32*>(strip_source->pixels_line(y));
-		for (auto x = 0; x < 512; ++x) line[x] = ui::rgba(255, 0, 0);
+		auto* const line = std::bit_cast<core::color32*>(strip_source->pixels_line(y));
+		for (auto x = 0; x < 512; ++x) line[x] = core::rgba(255, 0, 0);
 	}
 
 	panorama_renderer partial;
@@ -1574,7 +1574,7 @@ static void should_render_a_projected_panorama()
 
 			for (auto y = 0; y < dims.cy; ++y)
 			{
-				const auto drawn = ui::get_a(destination.get_pixel(x, y)) >= 128;
+				const auto drawn = core::get_a(destination.get_pixel(x, y)) >= 128;
 				if (drawn && (y < first - 1 || y > last + 1)) ++over;
 				if (!drawn && y > first && y < last) ++under;
 			}
@@ -1596,8 +1596,8 @@ static void should_render_a_projected_panorama()
 	// The decode hands out planar YUV unless something says it will read the pixels itself. Walked
 	// as colour values a luma plane is grey and tiles, and it fails looking like a broken projection
 	// rather than like a surface that cannot be read - so the renderer refuses it outright.
-	auto planar = std::make_shared<ui::surface>();
-	planar->alloc(512, 256, ui::texture_format::NV12);
+	auto planar = std::make_shared<core::surface>();
+	planar->alloc(512, 256, core::texture_format::NV12);
 
 	panorama_renderer yuv;
 	yuv.set_source(planar);
@@ -1644,13 +1644,13 @@ static void should_point_at_the_pie_wedge_that_was_drawn()
 		{
 			const auto back = i < pie_chart_segment_count / 2;
 			scene.wedges[i] = {
-				back ? ui::rgba(255, 0, 0, 255) : ui::rgba(0, 0, 255, 255),
+				back ? core::rgba(255, 0, 0, 255) : core::rgba(0, 0, 255, 255),
 				static_cast<uint16_t>(back ? pie_chart_wedge_id_base : pie_chart_wedge_id_base + 1),
 				back && raise_back
 			};
 		}
 
-		scene.hole_color = ui::rgba(0, 255, 0, 255);
+		scene.hole_color = core::rgba(0, 255, 0, 255);
 		render_pie_chart(chart, scene);
 	};
 
@@ -1691,12 +1691,12 @@ static void should_point_at_the_pie_wedge_that_was_drawn()
 			if (back)
 			{
 				++back_pixels;
-				if (ui::get_r(c) <= ui::get_b(c)) ++mismatches;
+				if (core::get_r(c) <= core::get_b(c)) ++mismatches;
 			}
 			else
 			{
 				++front_pixels;
-				if (ui::get_b(c) <= ui::get_r(c)) ++mismatches;
+				if (core::get_b(c) <= core::get_r(c)) ++mismatches;
 			}
 		}
 	}
@@ -1737,9 +1737,9 @@ static void should_reach_every_month_block_in_the_calendar()
 			// The last month stands for one the collection has not reached: a socket with no
 			// identity, so it is drawn but cannot be aimed at.
 			const auto future = m == 11;
-			cells.emplace_back(recti(df::mul_div(m, extent.cx, 12), 0, df::mul_div(m + 1, extent.cx, 12), extent.cy),
+			cells.emplace_back(recti(core::mul_div(m, extent.cx, 12), 0, core::mul_div(m + 1, extent.cx, 12), extent.cy),
 			                   future ? 0 : m,
-			                   ui::rgba(200, 200, 200, 255),
+			                   core::rgba(200, 200, 200, 255),
 			                   future ? chart_surface::no_id : static_cast<uint16_t>(m + 1),
 			                   raise && m == 5);
 		}
@@ -1829,10 +1829,10 @@ static void should_keep_an_overlapped_month_selectable()
 
 		// Cells are given in drawing order: the upper row first, so the block below occludes it.
 		const std::vector<calendar_chart_cell> cells{
-			{recti(0, 0, 30, row_height), upper_height, ui::rgba(200, 200, 200, 255), 1, false},
-			{recti(30, 0, 60, row_height), 0, ui::rgba(200, 200, 200, 255), 2, false},
-			{recti(0, row_height, 30, row_height * 2), lower_height, ui::rgba(120, 120, 120, 255), 3, false},
-			{recti(30, row_height, 60, row_height * 2), 10, ui::rgba(120, 120, 120, 255), 4, false},
+			{recti(0, 0, 30, row_height), upper_height, core::rgba(200, 200, 200, 255), 1, false},
+			{recti(30, 0, 60, row_height), 0, core::rgba(200, 200, 200, 255), 2, false},
+			{recti(0, row_height, 30, row_height * 2), lower_height, core::rgba(120, 120, 120, 255), 3, false},
+			{recti(30, row_height, 60, row_height * 2), 10, core::rgba(120, 120, 120, 255), 4, false},
 		};
 
 		render_calendar_chart(chart, cells, style);

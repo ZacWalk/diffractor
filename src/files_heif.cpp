@@ -62,7 +62,7 @@ namespace
 		const std::string_view _format;
 
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
 		heif_surface_sink(load_diagnostic* const diagnostic, const std::string_view format) :
 			_diagnostic(diagnostic), _format(format)
@@ -79,11 +79,11 @@ namespace
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
-			auto s = std::make_shared<ui::surface>();
+			auto s = std::make_shared<core::surface>();
 			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
 			                              frame.format == libfiles::pixel_format::bgra8
-				                              ? ui::texture_format::ARGB
-				                              : ui::texture_format::RGB);
+				                              ? core::texture_format::ARGB
+				                              : core::texture_format::RGB);
 			if (!pixels) return {};
 			surface = std::move(s);
 			return {pixels, surface->stride()};
@@ -103,7 +103,7 @@ namespace
 	}
 
 	// alloc does not zero, so the row padding is cleared rather than uploaded uninitialised.
-	void clear_row_padding(ui::surface& s)
+	void clear_row_padding(core::surface& s)
 	{
 		const auto row_bytes = static_cast<size_t>(s.dimensions().cx) * 4u;
 
@@ -143,7 +143,7 @@ file_scan_result scan_heif_libfiles(read_stream& s, const libfiles::scan_intent 
 	return result;
 }
 
-ui::surface_ptr load_heif(read_stream& s, load_diagnostic* const diagnostic)
+core::surface_ptr load_heif(read_stream& s, load_diagnostic* const diagnostic)
 {
 	heif_surface_sink sink(diagnostic, "HEIF");
 	const auto decoded = decode_with_libfiles(s, sink, false);
@@ -153,7 +153,7 @@ ui::surface_ptr load_heif(read_stream& s, load_diagnostic* const diagnostic)
 	// libheif has already turned the pixels for the item's own 'irot'/'imir', and libfiles reports the
 	// EXIF orientation only where it has not, so the image is never turned twice. The scan path reports
 	// top_left for these files, and the display agrees with it.
-	sink.surface->orientation(static_cast<ui::orientation>(decoded.frame.orientation));
+	sink.surface->orientation(static_cast<core::orientation>(decoded.frame.orientation));
 	return sink.surface;
 }
 

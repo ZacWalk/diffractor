@@ -99,7 +99,7 @@ namespace
 		// A lead surrogate the end of the head separated from its trail is not a character.
 		if (!units.empty() && units.back() >= 0xD800 && units.back() <= 0xDBFF) units.pop_back();
 
-		out += str::utf16_to_utf8(std::u16string_view(units));
+		out += core::utf16_to_utf8(std::u16string_view(units));
 	}
 
 	// The 0x80 to 0x9F row of Windows-1252. The five bytes it leaves undefined stay the C1 controls
@@ -118,7 +118,7 @@ namespace
 		for (size_t i = 0; i < n; ++i)
 		{
 			const auto c = p[i];
-			str::char32_to_utf8(inserter, c >= 0x80 && c < 0xA0 ? windows_1252_row8[c - 0x80] : c);
+			core::char32_to_utf8(inserter, c >= 0x80 && c < 0xA0 ? windows_1252_row8[c - 0x80] : c);
 		}
 	}
 
@@ -147,16 +147,16 @@ namespace
 		return controls * 100 <= text.size();
 	}
 
-	pf::ui::syntax::language language_of(std::string_view extension)
+	ui::syntax::language language_of(std::string_view extension)
 	{
 		if (extension.starts_with('.')) extension.remove_prefix(1);
 
-		if (str::icmp(extension, "md") == 0 || str::icmp(extension, "markdown") == 0)
+		if (core::icmp(extension, "md") == 0 || core::icmp(extension, "markdown") == 0)
 		{
-			return pf::ui::syntax::language::markdown;
+			return ui::syntax::language::markdown;
 		}
 
-		return pf::ui::syntax::language_from_extension(extension);
+		return ui::syntax::language_from_extension(extension);
 	}
 
 	void split_lines(document_text& doc)
@@ -183,10 +183,10 @@ namespace
 	// starts in: a block comment opened above a line colours it.
 	void record_cookies(document_text& doc)
 	{
-		using pf::ui::syntax::language;
-		if (doc.language == language::plain || doc.language == language::markdown) return;
+		using ui::syntax::language;
+		if (doc.language == ui::syntax::language::plain || doc.language == ui::syntax::language::markdown) return;
 
-		const auto highlight = pf::ui::syntax::for_language(doc.language);
+		const auto highlight = ui::syntax::for_language(doc.language);
 		doc.cookies.resize(doc.lines.size());
 
 		uint32_t cookie = 0;
@@ -197,7 +197,7 @@ namespace
 		{
 			doc.cookies[i] = cookie;
 			carried |= cookie != 0;
-			cookie = highlight(cookie, doc.line(i), std::span<pf::ui::text_block>{}, count);
+			cookie = highlight(cookie, doc.line(i), std::span<ui::text_block>{}, count);
 		}
 
 		if (!carried) doc.cookies.clear();
@@ -214,7 +214,7 @@ namespace
 	}
 }
 
-document_text decode_document(const df::cspan bytes, const std::string_view extension, const bool text_allowed)
+document_text decode_document(const core::cspan bytes, const std::string_view extension, const bool text_allowed)
 {
 	document_text result;
 	if (!text_allowed || bytes.empty()) return result;
@@ -334,7 +334,7 @@ void document_state::layout(const int columns, const size_t byte_count)
 				if (chars >= max_row_chars && i > begin) break;
 
 				auto it = s.begin() + i;
-				const auto cp = str::pop_utf8_char(it, s.end());
+				const auto cp = core::pop_utf8_char(it, s.end());
 				const auto next = static_cast<uint32_t>(it - s.begin());
 				const auto w = cp == '\t' ? tab_size - col % tab_size : document_column_width(cp);
 
@@ -404,7 +404,7 @@ int document_state::dump_row_chars(const int bytes_per_row)
 	return static_cast<int>(sizeof(uint32_t)) * 2 + 4 + bytes_per_row * 4 + bytes_per_row / 8 * 2;
 }
 
-std::string document_state::dump_row(const df::cspan bytes, const int bytes_per_row, const size_t row)
+std::string document_state::dump_row(const core::cspan bytes, const int bytes_per_row, const size_t row)
 {
 	static constexpr char hex_chars[] = "0123456789ABCDEF";
 
@@ -440,7 +440,7 @@ std::string document_state::dump_row(const df::cspan bytes, const int bytes_per_
 	return line;
 }
 
-document_row_text document_state::row_text(const size_t row, const df::cspan bytes) const
+document_row_text document_state::row_text(const size_t row, const core::cspan bytes) const
 {
 	document_row_text result;
 
@@ -465,7 +465,7 @@ document_row_text document_state::row_text(const size_t row, const df::cspan byt
 	while (i < r.end)
 	{
 		auto it = s.begin() + i;
-		const auto cp = str::pop_utf8_char(it, s.end());
+		const auto cp = core::pop_utf8_char(it, s.end());
 		const auto next = static_cast<uint32_t>(it - s.begin());
 
 		result.cells.push_back({i, static_cast<uint32_t>(result.display.size()), col});
@@ -495,7 +495,7 @@ document_row_text document_state::row_text(const size_t row, const df::cspan byt
 	return result;
 }
 
-document_position document_state::position_at(const size_t row, const double column, const df::cspan bytes) const
+document_position document_state::position_at(const size_t row, const double column, const core::cspan bytes) const
 {
 	if (row >= row_count()) return {};
 
@@ -513,7 +513,7 @@ document_position document_state::position_at(const size_t row, const double col
 	return {line, static_cast<int>(t.cells.back().source)};
 }
 
-document_position document_state::character_at(const size_t row, const double column, const df::cspan bytes) const
+document_position document_state::character_at(const size_t row, const double column, const core::cspan bytes) const
 {
 	if (row >= row_count()) return {};
 
@@ -531,19 +531,19 @@ document_position document_state::character_at(const size_t row, const double co
 	return {line, static_cast<int>(cells[last].source)};
 }
 
-int document_state::line_count(const df::cspan bytes) const
+int document_state::line_count(const core::cspan bytes) const
 {
 	return is_text() ? static_cast<int>(_text.lines.size()) : static_cast<int>(row_count());
 }
 
-std::string_view document_state::line_text(const int line, const df::cspan bytes, std::string& dump) const
+std::string_view document_state::line_text(const int line, const core::cspan bytes, std::string& dump) const
 {
 	if (is_text()) return _text.line(line);
 	dump = dump_row(bytes, _columns, line);
 	return dump;
 }
 
-void document_state::select_all(const df::cspan bytes)
+void document_state::select_all(const core::cspan bytes)
 {
 	const auto lines = line_count(bytes);
 	if (lines == 0) return;
@@ -553,7 +553,7 @@ void document_state::select_all(const df::cspan bytes)
 	select({}, {lines - 1, static_cast<int>(last.size())});
 }
 
-void document_state::select_word(const document_position at, const df::cspan bytes)
+void document_state::select_word(const document_position at, const core::cspan bytes)
 {
 	if (at.line < 0 || at.line >= line_count(bytes)) return;
 
@@ -583,7 +583,7 @@ void document_state::select_word(const document_position at, const df::cspan byt
 	select({at.line, begin}, {at.line, end});
 }
 
-std::string document_state::selected_text(const df::cspan bytes) const
+std::string document_state::selected_text(const core::cspan bytes) const
 {
 	if (!has_selection()) return {};
 

@@ -171,8 +171,8 @@ settings_t setting;
 
 void connect_yuv_latch()
 {
-	ui::yuv_textures_allowed = setting.use_yuv;
-	ui::on_yuv_fault = []
+	render::yuv_textures_allowed = setting.use_yuv;
+	render::on_yuv_fault = []
 	{
 		setting.use_yuv = false;
 		setting.write();
@@ -244,7 +244,7 @@ static void init_item_scale_snaps()
 
 	for (auto i = 0; i < settings_t::item_scale_count; i++)
 	{
-		settings_t::item_scale_snaps[i] = df::round(std::sqrt(prime));
+		settings_t::item_scale_snaps[i] = core::round(std::sqrt(prime));
 		prime *= 1.3333;
 	}
 }
@@ -254,7 +254,7 @@ static int item_scale_snap_position(const int index)
 	const auto clamped_index = std::clamp(index, 0, settings_t::item_scale_count - 1);
 	const auto min_dimension = settings_t::item_scale_snaps[0];
 	const auto dimension_range = settings_t::item_scale_snaps[settings_t::item_scale_count - 1] - min_dimension;
-	return df::round(static_cast<double>(settings_t::item_scale_snaps[clamped_index] - min_dimension) *
+	return core::round(static_cast<double>(settings_t::item_scale_snaps[clamped_index] - min_dimension) *
 		settings_t::item_scale_position_max / std::max(1, dimension_range));
 }
 
@@ -280,7 +280,7 @@ int settings_t::item_scale_dimension() const
 {
 	const auto min_dimension = item_scale_snaps[0];
 	const auto dimension_range = item_scale_snaps[item_scale_count - 1] - min_dimension;
-	return min_dimension + df::round(static_cast<double>(item_scale_slider_position()) *
+	return min_dimension + core::round(static_cast<double>(item_scale_slider_position()) *
 		dimension_range / item_scale_position_max);
 }
 
@@ -412,7 +412,7 @@ settings_t::settings_t()
 	instantiations = 0;
 
 	copyright_notice = std::format("\xC2\xA9 {} {} - All Rights Reserved",
-	                               platform::now().year(),
+	                               core::utc_now().year(),
 	                               platform::user_name());
 	copyright_creator = platform::user_name();
 	artist = platform::user_name();
@@ -688,13 +688,13 @@ public:
 		// read of a setting that had never been written silently zeroed it.
 		if (!_file->read(section, name, str)) return false;
 
-		v = str::to_double(str);
+		v = core::to_double(str);
 		return true;
 	}
 
 	bool write(const std::string_view section, const std::string_view name, const double v) const
 	{
-		return _file->write(section, name, str::to_string(v, 5));
+		return _file->write(section, name, core::to_string(v, 5));
 	}
 
 #if !DF_LONG_IS_INT64
@@ -782,14 +782,14 @@ public:
 	}
 
 	bool read(const std::string_view section, const std::string_view name,
-	          df::hash_map<std::string, std::string, df::ihash, df::ieq>& v) const
+	          core::hash_map<std::string, std::string, core::ihash, core::ieq>& v) const
 	{
 		std::string combined;
 		const auto success = read(section, name, combined);
 
 		if (success)
 		{
-			const auto parts = str::split(combined, true, str::is_white_space);
+			const auto parts = core::split(combined, true, core::is_white_space);
 
 			for (const auto& part : parts)
 			{
@@ -806,10 +806,10 @@ public:
 	}
 
 	bool write(const std::string_view section, const std::string_view name,
-	           const df::hash_map<std::string, std::string, df::ihash, df::ieq>& v)
+	           const core::hash_map<std::string, std::string, core::ihash, core::ieq>& v)
 	{
 		std::string combined;
-		for (const auto& s : v) str::join(combined, s.first + ":"s + s.second);
+		for (const auto& s : v) core::join(combined, s.first + ":"s + s.second);
 		return write(section, name, combined);
 	}
 
@@ -818,7 +818,7 @@ public:
 		return _file->read(section, name, pValue, n);
 	}
 
-	bool write(const std::string_view section, const std::string_view name, const df::cspan cs) const
+	bool write(const std::string_view section, const std::string_view name, const core::cspan cs) const
 	{
 		return _file->write(section, name, cs);
 	}
@@ -941,7 +941,7 @@ void settings_t::read()
 
 	int last_run = 0;
 	store.read({}, s_last_run, last_run);
-	first_run_today = last_run != static_cast<int>(platform::now().to_days());
+	first_run_today = last_run != static_cast<int>(core::utc_now().to_days());
 	store.read({}, s_first_time, first_run_ever);
 
 	store.read(s_rename, s_template, rename.name_template);
@@ -1023,7 +1023,7 @@ void settings_t::read()
 		int history_years = 0;
 		if (store.read(s_sidebar, s_history_years, history_years) && history_years > 0)
 		{
-			sidebar.history_start_year = platform::now().date().year - history_years + 1;
+			sidebar.history_start_year = core::utc_now().date().year - history_years + 1;
 		}
 	}
 	store.read(s_sidebar, s_sidebar_width, sidebar.width);
@@ -1085,7 +1085,7 @@ void settings_t::write() const
 	store.write({}, s_check_for_updates, check_for_updates);
 	store.write({}, s_send_crash_dumps, send_crash_dumps);
 #endif
-	store.write({}, s_last_run, platform::now().to_days());
+	store.write({}, s_last_run, core::utc_now().to_days());
 	store.write({}, s_location_latitude, default_location.latitude());
 	store.write({}, s_location_longitude, default_location.longitude());
 	store.write({}, s_locate_only_without_location, locate_only_without_location);
@@ -1212,7 +1212,7 @@ void settings_t::write() const
 
 std::vector<std::string_view> split_collection_folders(const std::string_view text)
 {
-	return str::split(text, true, [](const char c) { return c == '\n' || c == '\r'; });
+	return core::split(text, true, [](const char c) { return c == '\n' || c == '\r'; });
 }
 
 std::string_view library_kind_key(const prop::library_kind kind)
@@ -1228,17 +1228,17 @@ std::string_view library_kind_key(const prop::library_kind kind)
 	return "automatic";
 }
 
-std::vector<std::pair<df::folder_path, prop::library_kind>> parse_library_types(const std::string_view text)
+std::vector<std::pair<core::folder_path, prop::library_kind>> parse_library_types(const std::string_view text)
 {
-	std::vector<std::pair<df::folder_path, prop::library_kind>> result;
+	std::vector<std::pair<core::folder_path, prop::library_kind>> result;
 
-	for (const auto line : str::split(text, false, [](const char c) { return c == '\n' || c == '\r'; }))
+	for (const auto line : core::split(text, false, [](const char c) { return c == '\n' || c == '\r'; }))
 	{
 		const auto tab = line.find('\t');
 		if (tab == std::string_view::npos) continue;
 
-		const auto key = str::trim(line.substr(0, tab));
-		const auto folder = str::trim(line.substr(tab + 1));
+		const auto key = core::trim(line.substr(0, tab));
+		const auto folder = core::trim(line.substr(tab + 1));
 		if (folder.empty()) continue;
 
 		constexpr prop::library_kind kinds[] = {
@@ -1247,9 +1247,9 @@ std::vector<std::pair<df::folder_path, prop::library_kind>> parse_library_types(
 
 		for (const auto kind : kinds)
 		{
-			if (str::icmp(key, library_kind_key(kind)) == 0)
+			if (core::icmp(key, library_kind_key(kind)) == 0)
 			{
-				result.emplace_back(df::folder_path(folder), kind);
+				result.emplace_back(core::folder_path(folder), kind);
 				break;
 			}
 		}
@@ -1258,7 +1258,7 @@ std::vector<std::pair<df::folder_path, prop::library_kind>> parse_library_types(
 	return result;
 }
 
-std::string format_library_types(const std::vector<std::pair<df::folder_path, prop::library_kind>>& kinds)
+std::string format_library_types(const std::vector<std::pair<core::folder_path, prop::library_kind>>& kinds)
 {
 	std::string result;
 

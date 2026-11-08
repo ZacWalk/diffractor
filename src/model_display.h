@@ -35,7 +35,7 @@ public:
 	// lost the display and must close what it was handed, not publish it. UI thread only.
 	uint32_t _av_generation = 0;
 
-	df::blob _selected_item_data;
+	core::blob _selected_item_data;
 	// The panel's document of a file with no viewer: _selected_item_data decoded as text, or a dump of
 	// it. Set with the bytes, and keeps its selection while the panel is rebuilt.
 	std::shared_ptr<document_state> _document;
@@ -65,7 +65,7 @@ public:
 	// Latches the end of the current clip until the queued pause/seek has actually taken effect.
 	bool _media_end_handled = false;
 
-	ui::pixel_difference_result _pixel_difference = ui::pixel_difference_result::unknown;
+	core::pixel_difference_result _pixel_difference = core::pixel_difference_result::unknown;
 	int _last_scrubber_pos = -1;
 	int _last_duration = -1;
 	int _last_seconds = -1;
@@ -73,9 +73,9 @@ public:
 	std::string _duration;
 	std::string _time;
 
-	ui::const_surface_ptr _hover_surface;
+	core::const_surface_ptr _hover_surface;
 
-	mutable ui::vertices_ptr _audio_verts;
+	mutable render::vertices_ptr _audio_verts;
 	mutable pointi _audio_element_offset;
 	mutable recti _audio_element_bounds;
 	mutable float _audio_element_alpha = 1.0f;
@@ -95,7 +95,7 @@ public:
 	std::optional<subtitle_choice> _subtitle_choice;
 	// The textures of the subtitle bitmaps on show, keyed by the surface each was uploaded from, so a line
 	// is uploaded once however many frames it stays up. UI thread only.
-	mutable std::vector<std::pair<ui::const_surface_ptr, ui::texture_ptr>> _subtitle_textures;
+	mutable std::vector<std::pair<core::const_surface_ptr, render::texture_ptr>> _subtitle_textures;
 	// What draw_subtitles last drew, as subtitle_events::shown_key names it, and the key a repaint has been
 	// asked for since then - each change is asked for once.
 	mutable uint64_t _subtitles_drawn_key = 0;
@@ -139,15 +139,15 @@ public:
 	// The declaration request this display has already queued. Held here rather than on the session
 	// because the session outlives every display: a read released with its display publishes nothing,
 	// and the next display is the thing that should ask again.
-	df::file_path _panorama_read_path;
+	core::file_path _panorama_read_path;
 	sizei _panorama_read_source;
-	df::date_t _panorama_read_modified;
+	core::date_t _panorama_read_modified;
 
-	std::vector<ui::const_image_ptr> _images;
-	std::vector<ui::const_surface_ptr> _surfaces;
+	std::vector<core::const_image_ptr> _images;
+	std::vector<core::const_surface_ptr> _surfaces;
 	// UI-owned, index-aligned with _images/_surfaces so a collage cell can name the item it shows.
 	df::item_elements _collage_source_items;
-	mutable std::vector<ui::texture_ptr> _textures;
+	mutable std::vector<render::texture_ptr> _textures;
 	std::vector<recti> _surface_bounds;
 	size_t _selection_item_count = 0;
 	size_t _collage_image_count = 0;
@@ -183,7 +183,7 @@ public:
 	render_valid update_for_present(double time_now) const;
 	// Draws the subtitles on show over the video frame last drawn, scaled from the video's pixels to the
 	// picture. Lines at the bottom rise clear of the media controls while those show.
-	void draw_subtitles(ui::draw_context& dc) const;
+	void draw_subtitles(render::draw_context& dc) const;
 
 	double media_pos() const
 	{
@@ -294,7 +294,7 @@ public:
 	void mark_zoom_activity() noexcept
 	{
 		++_zoom_activity_generation;
-		_zoom_activity_time = df::now();
+		_zoom_activity_time = core::now();
 	}
 
 	bool zoom_interactive(const double time_now) const noexcept
@@ -328,7 +328,7 @@ public:
 
 	int zoom_scale_percent() const
 	{
-		return df::round(current_zoom_state().effective_scale(zoom_fit_scale()) * 100.0);
+		return core::round(current_zoom_state().effective_scale(zoom_fit_scale()) * 100.0);
 	}
 
 	void adjust_zoom_scale(const int direction, const pointd anchor)
@@ -607,7 +607,7 @@ public:
 		// flat rather than shown wrong; vanishingly rare, because a stitcher writes the panorama the
 		// way up it means it.
 		return !setting.show_rotated || !_selected_texture1 ||
-			_selected_texture1->display_orientation() == ui::orientation::top_left;
+			_selected_texture1->display_orientation() == core::orientation::top_left;
 	}
 
 	// Whether the next magnified draw is a projection. Inspect zoom is included: zoom.md makes it and
@@ -634,7 +634,7 @@ public:
 	// includes source dimensions: replacing a file at the same path must reread its crop geometry,
 	// while ordinary repopulation must not throw away where the user is looking or the flat/projected
 	// choice they made.
-	void panorama_item(const df::file_path path, const sizei source, const df::date_t modified)
+	void panorama_item(const core::file_path path, const sizei source, const core::date_t modified)
 	{
 		auto& session = _common._panorama;
 
@@ -658,8 +658,8 @@ public:
 	// The declared coverage, once the file has answered. Applied only while the item and source size
 	// it was read for are still on screen. Declaration currency is separate from the user's camera
 	// and flat/projected choice, so a same-path declaration refresh does not reset either.
-	void panorama_geometry(const df::file_path path, const prop::panorama_geometry& declared, const sizei source,
-	                       const df::date_t modified)
+	void panorama_geometry(const core::file_path path, const prop::panorama_geometry& declared, const sizei source,
+	                       const core::date_t modified)
 	{
 		auto& session = _common._panorama;
 
@@ -912,8 +912,8 @@ public:
 
 	int slideshow_pos() const
 	{
-		return df::mul_div(_next_photo_tick, 1000,
-		                   std::max(1, setting.slideshow_delay) * ui::default_ticks_per_second);
+		return core::mul_div(_next_photo_tick, 1000,
+		                   std::max(1, setting.slideshow_delay) * render::default_ticks_per_second);
 	}
 
 	// Brings the scrubber's position and time text up to the session. Repaints only while the media controls
@@ -930,11 +930,11 @@ public:
 			const auto len = end - start;
 			const auto media_pos = _session ? _session->last_frame_time() : 0.0;
 			const auto pos = static_cast<int>((media_pos - start) * _scrubber_width / std::max(1.0, len));
-			const auto endi = df::round(end);
+			const auto endi = core::round(end);
 
 			if (endi != _last_duration)
 			{
-				_duration = str::format_seconds(endi);
+				_duration = core::format_seconds(endi);
 			}
 
 			if (pos != _last_scrubber_pos)
@@ -943,12 +943,12 @@ public:
 				invalid = true;
 			}
 
-			const auto position = df::round(media_pos);
+			const auto position = core::round(media_pos);
 
 			if (_last_seconds != position)
 			{
 				_last_seconds = position;
-				_time = str::format_seconds(position);
+				_time = core::format_seconds(position);
 				invalid = true;
 			}
 

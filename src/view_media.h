@@ -13,8 +13,8 @@
 
 inline view_element_ptr make_icon_link_element2(const icon_index i, commands cmd, const view_element_options& style_in)
 {
-	auto element = std::make_shared<link_element>(icon_to_utf8(i), cmd, ui::style::font_face::icons,
-	                                              ui::style::text_style::single_line_center, style_in, true);
+	auto element = std::make_shared<link_element>(icon_to_utf8(i), cmd, render::font_face::icons,
+	                                              render::text_style::single_line_center, style_in, true);
 	return element;
 }
 
@@ -63,7 +63,7 @@ public:
 
 	~media_view() override
 	{
-		df::log(__FUNCTION__, "destruct");
+		core::log(__FUNCTION__, "destruct");
 	}
 
 	recti calc_media_bounds() const
@@ -92,7 +92,7 @@ public:
 	}
 
 	// zoom.md 11: fullscreen has one surface, so the modifier alone chooses which of its axes moves.
-	bool mouse_wheel(const pointi loc, const ui::wheel_notch notch) override
+	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
 	{
 		if (!_display) return false;
 
@@ -169,7 +169,7 @@ public:
 		return true;
 	}
 
-	void render(ui::draw_context& dc, view_controller_ptr controller) override
+	void render(render::draw_context& dc, view_controller_ptr controller) override
 	{
 		const auto original_colors = dc.colors;
 		dc.colors.overlay_alpha = overlay_alpha;
@@ -186,7 +186,7 @@ public:
 					                         ? _controls_element->bounds.top - (_controls_element->padding * dc.scale_factor).cy
 					                         : 0;
 			}
-			const df::scope_exit clear_overlay_top([this] { if (_display) _display->_overlay_top = 0; });
+			const core::scope_exit clear_overlay_top([this] { if (_display) _display->_overlay_top = 0; });
 
 			_media_element->render(dc, {0, 0});
 		}
@@ -202,7 +202,7 @@ public:
 				// paints over the picture the view exists to show. The clip admits the rounded
 				// background the element paints outside its bounds, as the description's does.
 				const auto pad = _controls_element->padding * dc.scale_factor;
-				const ui::scoped_clip clip(dc, _controls_element->bounds.inflate(pad.cx, pad.cy));
+				const render::scoped_clip clip(dc, _controls_element->bounds.inflate(pad.cx, pad.cy));
 				_controls_element->render(dc, {0, 0});
 			}
 			if (_description_element && !_description_element->bounds.is_empty())
@@ -210,7 +210,7 @@ public:
 				// The clip caps overlong prose, so it must admit the rounded background the element
 				// paints outside its bounds or the panel loses its corners.
 				const auto pad = _description_element->padding * dc.scale_factor;
-				const ui::scoped_clip clip(dc, _description_element->bounds.inflate(pad.cx, pad.cy));
+				const render::scoped_clip clip(dc, _description_element->bounds.inflate(pad.cx, pad.cy));
 				_description_element->render(dc, {0, 0});
 			}
 
@@ -226,22 +226,22 @@ public:
 				const auto alpha = dc.colors.alpha * (1.0f - dc.colors.overlay_alpha);
 				const auto scale_factor = dc.scale_factor;
 
-				auto progress_bounds = calc_media_bounds().inflate(df::round(-20 * scale_factor));
-				progress_bounds.top = progress_bounds.bottom - df::round(16 * scale_factor);
-				progress_bounds.right = progress_bounds.left + df::round(64 * scale_factor);
+				auto progress_bounds = calc_media_bounds().inflate(core::round(-20 * scale_factor));
+				progress_bounds.top = progress_bounds.bottom - core::round(16 * scale_factor);
+				progress_bounds.right = progress_bounds.left + core::round(64 * scale_factor);
 
-				dc.draw_rect(progress_bounds, ui::color(ui::style::colors.group_background, alpha * 0.7f));
+				dc.draw_rect(progress_bounds, core::color(ui::style::colors.group_background, alpha * 0.7f));
 
-				auto r = progress_bounds.inflate(df::round(-2 * scale_factor));
-				r.right = r.left + df::mul_div(std::min(_display->slideshow_pos(), 1000), r.width(), 1000);
-				dc.draw_rect(r, ui::color(ui::style::colors.view_selected_background, alpha * 0.7f));
+				auto r = progress_bounds.inflate(core::round(-2 * scale_factor));
+				r.right = r.left + core::mul_div(std::min(_display->slideshow_pos(), 1000), r.width(), 1000);
+				dc.draw_rect(r, core::color(ui::style::colors.view_selected_background, alpha * 0.7f));
 			}
 		}
 
 		dc.colors = original_colors;
 	}
 
-	void layout(ui::measure_context& mc, const sizei extent) override
+	void layout(render::measure_context& mc, const sizei extent) override
 	{
 		_client_extent = extent;
 
@@ -250,10 +250,10 @@ public:
 
 		if (!_state.is_full_screen || !_display || !_display->is_one())
 		{
-			avail_bounds = avail_bounds.inflate(df::round(-4 * scale_factor));
+			avail_bounds = avail_bounds.inflate(core::round(-4 * scale_factor));
 		}
 
-		const int minimum_media_control_width = df::round(32 * 7 * scale_factor);
+		const int minimum_media_control_width = core::round(32 * 7 * scale_factor);
 		// Zoom and compare give the whole client to the media element, as items_view does, so its
 		// navigator and rating overlays stay in the client corners after a resize.
 		const auto media_owns_client = _display && (_display->is_zoom_mode() || _display->comparing());
@@ -268,8 +268,8 @@ public:
 			const auto control_limit = avail_bounds.inflate(-mc.padding2);
 			const auto panel_gap = mc.padding2;
 			const auto controls_width = std::min(control_limit.width(),
-			                                     std::max(df::round(360 * scale_factor),
-			                                              df::mul_div(control_limit.width(), 5, 11)));
+			                                     std::max(core::round(360 * scale_factor),
+			                                              core::mul_div(control_limit.width(), 5, 11)));
 			const auto controls_extent = _controls_element->measure(mc, controls_width);
 			// design.md: the overlay identifies rather than summarises, and this is the bound that
 			// stops it growing back into a summary as a file turns out to carry more metadata. An item
@@ -290,13 +290,13 @@ public:
 			// showing one never narrows the controls or moves them.
 			auto panel_height = controls_height;
 			const auto description_avail = control_limit.right - control_bounds.right - panel_gap;
-			const auto min_description_width = df::round(220 * scale_factor);
+			const auto min_description_width = core::round(220 * scale_factor);
 
 			if (_description_element && description_avail >= min_description_width)
 			{
-				const auto description_width = std::min(description_avail, df::round(420 * scale_factor));
+				const auto description_width = std::min(description_avail, core::round(420 * scale_factor));
 				const auto description_extent = _description_element->measure(mc, description_width);
-				const auto max_description_height = std::max(df::round(112 * scale_factor), avail_bounds.height() / 3);
+				const auto max_description_height = std::max(core::round(112 * scale_factor), avail_bounds.height() / 3);
 				const auto description_height = std::min(description_extent.cy, max_description_height);
 				const recti description_bounds{
 					control_limit.right - description_width, control_limit.bottom - description_height,

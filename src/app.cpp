@@ -13,6 +13,10 @@
 
 #include "pch.h"
 
+#ifdef _WIN32
+#include "libdesktop/platform/win32.h"
+#endif
+
 #include "app_text.h"
 #include "util_zip.h"
 
@@ -23,7 +27,7 @@
 
 #include "ui_dialog.h"
 #include "util_crash_files_db.h"
-#include "libdesktop/util_log.h"
+#include "libdesktop/core/log.h"
 #include "files.h"
 #include "av_format.h"
 #include "view_items.h"
@@ -51,22 +55,23 @@
 #include "app_command_status.h"
 #include "util_spell.h"
 
-
-const std::string_view s_app_name = "Diffractor";
+std::atomic_int df::file_handles_detached = 0;
+std::atomic_int df::jobs_running = 0;
+std::atomic_int df::loading_media = 0;
+std::atomic_int df::dragging_items = 0;
+std::atomic_int df::handling_crash = 0;
+std::atomic<core::file_path> df::last_loaded_path;
 const std::string_view s_app_version = "127.4";
 const std::string_view g_app_build = "1315";
 
-const ui::chrome_icon_set ui::chrome_icons = {
-	.check = icon_index::check,
-	.checkbox_off = icon_index::checkbox_off,
-	.checkbox_on = icon_index::checkbox_on,
-	.radio_off = icon_index::radio_off,
-	.radio_on = icon_index::radio_on,
-	.close = icon_index::close,
-	.maximize = icon_index::maximize,
-	.minimize = icon_index::minimize,
-	.restore = icon_index::restore,
-};
+extern const unsigned char diffractor_resource_icon_font[];
+extern const unsigned long diffractor_resource_icon_font_size;
+
+void register_diffractor_icon_font()
+{
+	render::set_icon_font({diffractor_resource_icon_font,
+	                       static_cast<size_t>(diffractor_resource_icon_font_size)});
+}
 static constexpr auto s_search = "search";
 
 extern void start_worker(platform::task_queue& q, std::string_view name);
@@ -78,7 +83,7 @@ std::string df::format_version(const bool short_text)
 		return std::format("{}.{}", s_app_version, g_app_build);
 	}
 
-	return std::format("{}: {}.{}  |  {}", tt.version, s_app_version, g_app_build, str::utf8_cast(__DATE__));
+	return std::format("{}: {}.{}  |  {}", tt.version, s_app_version, g_app_build, core::utf8_cast(__DATE__));
 };
 
 bool is_app_installed()
@@ -96,7 +101,7 @@ struct app_updates_and_location_params
 
 	void apply(const app_frame_ptr& app, const view_state& s) const
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		setting.default_location = gps;
 		setting.available_version = version;
@@ -114,7 +119,7 @@ struct app_updates_and_location_params
 
 static gps_coordinate parse_coordinates(const std::string_view text, const gps_coordinate def_coords)
 {
-	const auto splits = str::split(text, true);
+	const auto splits = core::split(text, true);
 
 	if (splits.size() == 2)
 	{
@@ -123,7 +128,7 @@ static gps_coordinate parse_coordinates(const std::string_view text, const gps_c
 
 		if (!longitude.empty() && !latitude.empty())
 		{
-			return {str::to_double(latitude), str::to_double(longitude)};
+			return {core::to_double(latitude), core::to_double(longitude)};
 		}
 	}
 
@@ -154,8 +159,8 @@ static void check_for_updates_and_location(const app_frame_ptr& app, view_state&
 					{"v"s, std::string(s_app_version)},
 					{"b"s, std::string(g_app_build)},
 					{"f"s, setting.first_run_ever ? "1"s : "0"s},
-					{"ft"s, str::to_hex(reported_features)},
-					{"i"s, str::to_hex(setting.instantiations)},
+					{"ft"s, core::to_hex(reported_features)},
+					{"i"s, core::to_hex(setting.instantiations)},
 					{"os"s, platform::OS()},
 					// The packed platform identity. It ships alongside `os` for one release rather
 					// than replacing it on the same commit, so the ingest can change without a gap
@@ -164,7 +169,7 @@ static void check_for_updates_and_location(const app_frame_ptr& app, view_state&
 					// sent, a system value means "right now" and is recomputed every time, and
 					// OR-accumulating an architecture would make anyone who once ran the 32-bit
 					// build look like a permanent 32-bit user.
-					{"s"s, str::to_hex(df::pack_environment(platform::environment()))},
+					{"s"s, core::to_hex(platform::pack_environment(platform::environment()))},
 				};
 
 				const auto con = platform::connect_to_host("diffractor.com");
@@ -172,13 +177,13 @@ static void check_for_updates_and_location(const app_frame_ptr& app, view_state&
 
 				if (response.status_code == 200)
 				{
-					df::util::json::json_doc json;
+					core::json::json_doc json;
 					json.Parse(response.body);
 
 					app_updates_and_location_params params;
-					params.version = df::util::json::safe_string(json, "current_version");
-					params.test_version = df::util::json::safe_string(json, "test_version");
-					params.gps = parse_coordinates(df::util::json::safe_string(json, "latlon"), params.gps);
+					params.version = core::json::safe_string(json, "current_version");
+					params.test_version = core::json::safe_string(json, "test_version");
+					params.gps = parse_coordinates(core::json::safe_string(json, "latlon"), params.gps);
 
 					clear_reported_feature_use(reported_features);
 
@@ -209,12 +214,12 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 	config = "debug";
 #endif //_DEBUG
 
-	const auto seconds_running = platform::now().to_seconds() - df::start_time.to_seconds();
+	const auto seconds_running = core::utc_now().to_seconds() - ui::start_time.to_seconds();
 
 	result.reserve(include_state ? 25_z : 19_z);
 	result.emplace_back("Version:", df::format_version(true));
 	result.emplace_back("Windows:", std::format("{} {} {}", platform::OS(), arch, config));
-	result.emplace_back("Id:", str::to_hex(df::crc32c(platform::user_name()), false));
+	result.emplace_back("Id:", core::to_hex(core::crc32c(platform::user_name()), false));
 	result.emplace_back("Running:", std::format("{} seconds", seconds_running));
 	platform::memory_usage_t mem;
 
@@ -224,20 +229,20 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 		// comparing the two sees the same number. Shared pages are mapped data files, which cost
 		// this process nothing private.
 		result.emplace_back("Memory:",
-		                    std::format("{} (commit {}, shared {})", df::file_size(mem.private_working_set),
-		                                df::file_size(mem.commit), df::file_size(mem.shared_working_set)));
-		result.emplace_back("Peak memory:", df::file_size(mem.peak_working_set).str());
+		                    std::format("{} (commit {}, shared {})", core::file_size(mem.private_working_set),
+		                                core::file_size(mem.commit), core::file_size(mem.shared_working_set)));
+		result.emplace_back("Peak memory:", platform::format_size(core::file_size(mem.peak_working_set)));
 	}
 
 	result.emplace_back("Static Memory:",
-	                    df::file_size(platform::static_memory_usage.load(std::memory_order_relaxed)).str());
+	                    platform::format_size(core::file_size(core::static_memory_usage.load(std::memory_order_relaxed))));
 
-	result.emplace_back("GPU:", df::gpu_desc);
-	result.emplace_back("GPU Id:", df::gpu_id);
-	result.emplace_back("D3D:", df::d3d_info);
+	result.emplace_back("GPU:", render::gpu_desc);
+	result.emplace_back("GPU Id:", render::gpu_id);
+	result.emplace_back("D3D:", render::d3d_info);
 
-	result.emplace_back("Indexed items:", str::to_string(index.stats.index_item_count));
-	result.emplace_back("Indexed folders:", str::to_string(index.stats.index_folder_count));
+	result.emplace_back("Indexed items:", core::to_string(index.stats.index_item_count));
+	result.emplace_back("Indexed folders:", core::to_string(index.stats.index_folder_count));
 	result.emplace_back("Duplicates:",
 	                    std::format("g={} mcomp={}", index.stats.indexed_dup_folder_count,
 	                                index.stats.indexed_max_compare_count));
@@ -245,7 +250,7 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 	                    std::format("crc={} phash={} declined={} uninvited={}", index.stats.indexed_crc_count,
 	                                index.stats.indexed_phash_count, index.stats.indexed_phash_declined_count,
 	                                index.stats.indexed_phash_uninvited_count));
-	result.emplace_back("DB size:", index.stats.database_size.str());
+	result.emplace_back("DB size:", platform::format_size(index.stats.database_size));
 	result.emplace_back("Saved:", std::format("{} items | {} thumbs", index.stats.items_saved,
 	                                          index.stats.thumbs_saved));
 
@@ -256,12 +261,12 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 
 	if (include_state)
 	{
-		result.emplace_back("Jobs running: ", str::to_string(df::jobs_running));
-		result.emplace_back("Is indexing: ", str::to_string(index.indexing));
-		result.emplace_back("Is searching: ", str::to_string(index.searching));
-		result.emplace_back("Is command active: ", str::to_string(df::command_active));
-		result.emplace_back("Is closing: ", str::to_string(df::is_closing));
-		result.emplace_back("Rendering function: ", str::utf8_cast(df::rendering_func.load(std::memory_order_relaxed)));
+		result.emplace_back("Jobs running: ", core::to_string(df::jobs_running));
+		result.emplace_back("Is indexing: ", core::to_string(index.indexing));
+		result.emplace_back("Is searching: ", core::to_string(index.searching));
+		result.emplace_back("Is command active: ", core::to_string(ui::command_active));
+		result.emplace_back("Is closing: ", core::to_string(platform::is_closing));
+		result.emplace_back("Rendering function: ", core::utf8_cast(render::rendering_func.load(std::memory_order_relaxed)));
 	}
 
 	return result;
@@ -269,11 +274,11 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 
 void app_logo_element::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
 {
-	hover.elements->add(std::make_shared<text_element>(_text, ui::style::font_face::title,
-	                                                   ui::style::text_style::single_line,
+	hover.elements->add(std::make_shared<text_element>(_text, render::font_face::title,
+	                                                   render::text_style::single_line,
 	                                                   flex_item::line_break));
-	hover.elements->add(std::make_shared<text_element>(df::format_version(false), ui::style::font_face::dialog,
-	                                                   ui::style::text_style::single_line,
+	hover.elements->add(std::make_shared<text_element>(df::format_version(false), render::font_face::dialog,
+	                                                   render::text_style::single_line,
 	                                                   flex_item::line_break));
 
 	if (setting.show_debug_info)
@@ -292,14 +297,14 @@ void app_logo_element::tooltip(view_hover_element& hover, const pointi loc, cons
 	hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 }
 
-view_element_ptr create_app_logo_element(view_state& s, const ui::style::font_face font, const bool interactive,
+view_element_ptr create_app_logo_element(view_state& s, const render::font_face font, const bool interactive,
                                          const bool show_plasma, const double logo_scale,
                                          const view_element_options& options)
 {
 	return std::make_shared<app_logo_element>(s, font, interactive, show_plasma, logo_scale, options);
 }
 
-void app_frame::app_fail(const std::string_view message, const std::string_view more_text)
+void app_frame::fail(const std::string_view message, const std::string_view more_text)
 {
 	auto message_s = std::string(message);
 	auto more_text_s = std::string(more_text);
@@ -308,7 +313,7 @@ void app_frame::app_fail(const std::string_view message, const std::string_view 
 	// wWinMain returns as soon as init() fails, so a queued dialog would never be shown and the
 	// process would simply disappear. Say it synchronously instead. Restricted to the UI thread so
 	// a worker reporting a failure after the window has gone still just queues and is dropped.
-	if (!_app_frame && ui::is_ui_thread())
+	if (!_app_frame && platform::is_ui_thread())
 	{
 		auto text = message_s;
 		if (!more_text_s.empty()) text += "\n\n" + more_text_s;
@@ -338,7 +343,7 @@ void app_frame::app_fail(const std::string_view message, const std::string_view 
 
 void media_view::update_media_elements()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	const auto display = _state.display_state();
 	_display = display;
 	view_element_ptr media_element;
@@ -408,13 +413,13 @@ void media_view::update_media_elements()
 // Case-insensitive exact match for a switch name.
 static bool is_switch(const std::string_view op, const std::string_view name)
 {
-	return str::icmp(op, name) == 0;
+	return core::icmp(op, name) == 0;
 }
 
 // Case-insensitive match for "<prefix><value>" where value is non-empty.
 static bool switch_value(const std::string_view op, const std::string_view prefix, std::string_view& value)
 {
-	if (op.size() > prefix.size() && str::icmp(op.substr(0, prefix.size()), prefix) == 0)
+	if (op.size() > prefix.size() && core::icmp(op.substr(0, prefix.size()), prefix) == 0)
 	{
 		value = op.substr(prefix.size());
 		return true;
@@ -425,9 +430,9 @@ static bool switch_value(const std::string_view op, const std::string_view prefi
 
 void command_line_t::parse(const std::string_view command_line_text)
 {
-	// str::split with detect_quotes strips the surrounding quotes, so a quoted
+	// core::split with detect_quotes strips the surrounding quotes, so a quoted
 	// path containing spaces arrives here as a single part.
-	for (const auto part : str::split(str::trim(command_line_text), true, str::is_white_space))
+	for (const auto part : core::split(core::trim(command_line_text), true, core::is_white_space))
 	{
 		if (part.empty())
 		{
@@ -436,7 +441,7 @@ void command_line_t::parse(const std::string_view command_line_text)
 
 		// A leading '/' introduces a switch only where it cannot begin an absolute path. Everywhere
 		// else '/home/zac' would be read as a switch and never reach the path branch below.
-		const auto starts_switch = part[0] == '-' || (df::windows_path_semantics && part[0] == '/');
+		const auto starts_switch = part[0] == '-' || (core::windows_path_semantics && part[0] == '/');
 
 		if (starts_switch && part.size() > 1)
 		{
@@ -498,11 +503,11 @@ void command_line_t::parse(const std::string_view command_line_text)
 			// A trailing "**" asks for the folder with its subfolders, as it does in the address box.
 			// AutoPlay opens an inserted card that way, and may name a drive without its separator.
 			auto text = std::string(part);
-			if (df::windows_path_semantics && text.size() == 4 && text[1] == ':') text.insert(2, 1, df::preferred_path_sep);
+			if (core::windows_path_semantics && text.size() == 4 && text[1] == ':') text.insert(2, 1, core::preferred_path_sep);
 
-			if (df::is_path(text))
+			if (core::is_path(text))
 			{
-				const df::item_selector selector(text);
+				const core::item_selector selector(text);
 
 				if (selector.is_recursive() && !selector.has_wildcard() && platform::exists(selector.folder()))
 				{
@@ -511,9 +516,9 @@ void command_line_t::parse(const std::string_view command_line_text)
 				}
 			}
 		}
-		else if (df::is_path(part))
+		else if (core::is_path(part))
 		{
-			const auto folder = df::folder_path(part);
+			const auto folder = core::folder_path(part);
 
 			if (platform::exists(folder))
 			{
@@ -522,7 +527,7 @@ void command_line_t::parse(const std::string_view command_line_text)
 			}
 			else
 			{
-				const auto file = df::file_path(part);
+				const auto file = core::file_path(part);
 
 				if (platform::exists(file))
 				{
@@ -559,20 +564,20 @@ void view_frame::clear_status()
 	update_status({}, {});
 }
 
-void view_frame::draw_status(ui::draw_context& dc) const
+void view_frame::draw_status(render::draw_context& dc) const
 {
 	if (!_status_title.empty() || !_status_text.empty())
 	{
-		constexpr auto title_font = ui::style::font_face::title;
-		constexpr auto text_font = ui::style::font_face::dialog;
+		constexpr auto title_font = render::font_face::title;
+		constexpr auto text_font = render::font_face::dialog;
 
-		const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
-		const auto bg_color = ui::color(ui::style::colors.important_background, dc.colors.alpha);
+		const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
+		const auto bg_color = core::color(ui::style::colors.important_background, dc.colors.alpha);
 		const sizei avail_extent{_view_bounds.width() / 2, _view_bounds.height() / 2};
 
-		const auto title_extent = dc.measure_text(_status_title, title_font, ui::style::text_style::multiline_center,
+		const auto title_extent = dc.measure_text(_status_title, title_font, render::text_style::multiline_center,
 		                                          avail_extent.cx);
-		const auto text_extent = dc.measure_text(_status_text, text_font, ui::style::text_style::multiline_center,
+		const auto text_extent = dc.measure_text(_status_text, text_font, render::text_style::multiline_center,
 		                                         avail_extent.cx);
 		const auto text_spacing = !_status_title.empty() && !_status_text.empty() ? _status_padding : 0;
 
@@ -586,8 +591,8 @@ void view_frame::draw_status(ui::draw_context& dc) const
 		text_bounds.top = text_bounds.bottom - text_extent.cy;
 
 		dc.draw_rect(bounds.inflate(_status_padding), bg_color);
-		dc.draw_text(_status_title, title_bounds, title_font, ui::style::text_style::multiline_center, text_color, {});
-		dc.draw_text(_status_text, text_bounds, text_font, ui::style::text_style::multiline_center, text_color, {});
+		dc.draw_text(_status_title, title_bounds, title_font, render::text_style::multiline_center, text_color, {});
+		dc.draw_text(_status_text, text_bounds, text_font, render::text_style::multiline_center, text_color, {});
 	}
 }
 
@@ -633,18 +638,18 @@ namespace
 			_view->frame()->invalidate(_view->_splitter.bounds);
 		}
 
-		ui::style::cursor cursor() const override
+		platform::cursor cursor() const override
 		{
-			return ui::style::cursor::left_right;
+			return platform::cursor::left_right;
 		}
 
-		void draw(ui::draw_context& dc) override
+		void draw(render::draw_context& dc) override
 		{
 			const auto& s = _view->_splitter;
 			draw_splitter_handle(dc, s.bounds, s.width, true, s.tracking);
 		}
 
-		void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
 			_view->_splitter.tracking = true;
 			_view->drag_splitter(loc);
@@ -655,7 +660,7 @@ namespace
 			if (_view->_splitter.tracking) _view->drag_splitter(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (!_view->_splitter.tracking) return;
 
@@ -690,7 +695,7 @@ void view_frame::drag_splitter(const pointi loc)
 
 	// The pointer holds the middle of the strip, so the grab point does not jump on the first move.
 	const auto panel_width = clamp_pane_width(_extent.cx - loc.x - s.width / 2, available, s.min_pane);
-	const auto pos = std::max(1, df::mul_div(panel_width, settings_t::view_splitter_max, available));
+	const auto pos = std::max(1, core::mul_div(panel_width, settings_t::view_splitter_max, available));
 
 	if (setting.set_view_splitter(_state.view_mode(), pos))
 	{
@@ -704,23 +709,23 @@ void view_frame::drag_splitter(const pointi loc)
 
 // The view takes what the panel, the splitter and the strip leave: the panel the share of the width the
 // view keeps for it - all of it when it is the whole frame - and the strip a band along the base.
-void view_frame::on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized)
+void view_frame::on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized)
 {
 	_extent = extent;
 
 	const auto scale_factor = mc.scale_factor;
 	const auto has_panel = _panel != nullptr;
 	const auto fills = has_panel && _panel_fills;
-	const auto splitter_width = has_panel && !fills ? df::mul_div(mc.scroll_width, 3, 5) : 0;
-	const auto min_pane = df::round(200 * scale_factor);
+	const auto splitter_width = has_panel && !fills ? core::mul_div(mc.scroll_width, 3, 5) : 0;
+	const auto min_pane = core::round(200 * scale_factor);
 	const auto available = std::max(0, extent.cx - splitter_width);
 	const auto stored = setting.view_splitter(_state.view_mode());
 	const auto preferred = stored > 0
-		                       ? df::mul_div(available, stored, settings_t::view_splitter_max)
-		                       : std::max(extent.cx / 4, df::round(400 * scale_factor));
+		                       ? core::mul_div(available, stored, settings_t::view_splitter_max)
+		                       : std::max(extent.cx / 4, core::round(400 * scale_factor));
 	const auto panel_width = fills ? extent.cx : has_panel ? clamp_pane_width(preferred, available, min_pane) : 0;
 	const auto content_right = std::max(0, extent.cx - panel_width - splitter_width);
-	const auto strip_height = _strip_wanted ? std::min(df::round(150 * scale_factor), extent.cy / 3) : 0;
+	const auto strip_height = _strip_wanted ? std::min(core::round(150 * scale_factor), extent.cy / 3) : 0;
 
 	_view_bounds = recti(0, 0, content_right, extent.cy - strip_height);
 	_strip->bounds = recti(0, extent.cy - strip_height, content_right, extent.cy);
@@ -735,15 +740,15 @@ void view_frame::on_window_layout(ui::measure_context& mc, const sizei extent, c
 	if (_panel) _panel->layout_panel(mc, recti(content_right + splitter_width, 0, extent.cx, extent.cy));
 }
 
-void view_frame::on_window_paint(ui::draw_context& dc)
+void view_frame::on_window_paint(render::draw_context& dc)
 {
-	dc.time_now = df::now();
+	dc.time_now = core::now();
 	dc.colors.alpha = 1.0;
 	dc.colors.overlay_alpha = 1.0;
 
 	if (!_view_bounds.is_empty())
 	{
-		ui::scoped_clip clip(dc, _view_bounds);
+		render::scoped_clip clip(dc, _view_bounds);
 		_view->render(dc, _active_controller);
 	}
 
@@ -752,7 +757,7 @@ void view_frame::on_window_paint(ui::draw_context& dc)
 	if (!_splitter.bounds.is_empty())
 	{
 		// In the panel's colour, so the strip reads as part of it until the user touches it.
-		dc.draw_rect(_splitter.bounds, ui::color(ui::style::colors.dialog_background, dc.colors.alpha));
+		dc.draw_rect(_splitter.bounds, core::color(ui::style::colors.dialog_background, dc.colors.alpha));
 	}
 
 	if (_active_controller)
@@ -764,8 +769,8 @@ void view_frame::on_window_paint(ui::draw_context& dc)
 
 	if (setting.show_debug_info && _active_controller)
 	{
-		const auto c = ui::color(1.0f, 0.0f, 0.0f, 1.0f);
-		const auto pad = df::round(2 * dc.scale_factor);
+		const auto c = core::color(1.0f, 0.0f, 0.0f, 1.0f);
+		const auto pad = core::round(2 * dc.scale_factor);
 		dc.draw_border(_controller_bounds, _controller_bounds.inflate(pad), c, c);
 	}
 }
@@ -776,16 +781,16 @@ void view_frame::visit_elements(const std::function<void(const view_element_ptr&
 	if (_panel) _panel->visit_elements(visit);
 }
 
-void view_frame::on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled)
+void view_frame::on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled)
 {
 	if (in_panel(loc)) _panel->on_mouse_wheel(loc, delta, keys, was_handled);
-	else if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, ui::wheel_axis::vertical, _wheel_vertical);
+	else if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, platform::wheel_axis::vertical, _wheel_vertical);
 	update_controller(loc);
 }
 
 void view_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
 {
-	df::trace(std::format("render_window::focus {}", has_focus));
+	core::trace(std::format("render_window::focus {}", has_focus));
 	_view->focus(has_focus && !child);
 	if (child && _panel) _panel->focus_changed(has_focus, child);
 	if (focus_listener) focus_listener(has_focus, child);
@@ -819,7 +824,7 @@ void bar_frame::init(const ui::frame_ptr& owner)
 	_frame = owner->create_frame(weak_from_this(), fs);
 }
 
-void bar_frame::on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized)
+void bar_frame::on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized)
 {
 	if (is_minimized) return;
 	_extent = extent;
@@ -831,7 +836,7 @@ void bar_frame::on_window_layout(ui::measure_context& mc, const sizei extent, co
 	frame()->invalidate();
 }
 
-void bar_frame::on_window_paint(ui::draw_context& dc)
+void bar_frame::on_window_paint(render::draw_context& dc)
 {
 	if (_kind == kind::title) _app.paint_title_bar(dc);
 	else _app.draw_status_bar(dc);
@@ -866,7 +871,7 @@ void bar_frame::on_mouse_leave(const pointi loc)
 	else _app.update_status_hover({-1, -1});
 }
 
-void bar_frame::on_mouse_left_button_up(const pointi loc, const ui::key_state keys)
+void bar_frame::on_mouse_left_button_up(const pointi loc, const platform::key_state keys)
 {
 	if (_kind == kind::title) _app.title_bar_click(loc);
 }
@@ -886,16 +891,15 @@ std::vector<ui::command_ptr> bar_frame::menu(const pointi loc)
 	return _app.context_menu(menu_type::sidebar);
 }
 
-app_frame::app_frame(ui::plat_app_ptr pa) :
+app_frame::app_frame() :
 	_item_index(*this, _locations),
-	_player(std::make_shared<av_player>(*this, [&index = _item_index](const df::file_path path, const double position)
+	_player(std::make_shared<av_player>(*this, [&index = _item_index](const core::file_path path, const double position)
 	{
 		index.save_media_position(path, position);
 	})),
 	_state(*this, *this, _item_index, _player),
 	_edit_view_state(_state),
-	_db(_state.item_index),
-	_pa(std::move(pa))
+	_db(_state.item_index)
 {
 	_title_bar = std::make_shared<bar_frame>(*this, bar_frame::kind::title);
 	_view_frame = std::make_shared<view_frame>(_state);
@@ -924,7 +928,7 @@ app_frame::app_frame(ui::plat_app_ptr pa) :
 	_view_batch = std::make_shared<batch_tool_view>(_state, _view_frame);
 	_view_items = std::make_shared<items_view>(_state, _view_frame);
 	_view_selector = std::make_shared<selector_view>(_state, _selector_frame,
-	                                                 [this](const df::item_element_ptr& item, const ui::key_state keys)
+	                                                 [this](const df::item_element_ptr& item, const platform::key_state keys)
 	                                                 {
 		                                                 select_from_selector(item, keys);
 	                                                 });
@@ -950,25 +954,25 @@ app_frame::~app_frame()
 	(void)_ui_queue.dequeue_all();
 	_state.close();
 
-	df::log(__FUNCTION__, "destruct");
+	core::log(__FUNCTION__, "destruct");
 }
 
-void app_frame::prepare_frame()
+void app_frame::frame_tick()
 {
-	df::assert_true(ui::is_ui_thread());
-	df::bump(df::ui_perf.frame_prepares);
+	core::assert_true(platform::is_ui_thread());
+	core::bump(render::ui_perf.frame_prepares);
 	const auto vf = _view_frame;
 
 	// _view is only assigned by view_changed, which init() reaches after the frame exists.
-	if (!df::is_closing && vf && _view)
+	if (!platform::is_closing && vf && _view)
 	{
-		const auto time_now = df::now();
+		const auto time_now = core::now();
 		const auto display_frequency = platform::display_frequency();
 		const auto animation_delay_ms = 1000 / display_frequency;
-		constexpr auto idle_delay_ms = 1000 / ui::default_ticks_per_second;
+		constexpr auto idle_delay_ms = 1000 / render::default_ticks_per_second;
 
 		// Clamped so a stall, a breakpoint, or a first frame cannot snap every fade to its target.
-		const auto prepare_us = df::now_us();
+		const auto prepare_us = core::now_us();
 		const auto elapsed_s = _last_prepare_us == 0
 			                       ? 1.0 / display_frequency
 			                       : std::clamp((prepare_us - _last_prepare_us) / 1'000'000.0, 1.0 / 240.0,
@@ -997,8 +1001,8 @@ void app_frame::prepare_frame()
 			ui::animations.erase(i);
 		}
 
-		df::record_peak(df::ui_perf.animations_peak, static_cast<uint32_t>(ui::animations.size()));
-		if (is_animating2) df::bump(df::ui_perf.prepares_registered_anim);
+		core::record_peak(render::ui_perf.animations_peak, static_cast<uint32_t>(ui::animations.size()));
+		if (is_animating2) core::bump(render::ui_perf.prepares_registered_anim);
 
 		const auto display = _state.display_state();
 		auto frame_delay = idle_delay_ms;
@@ -1006,7 +1010,7 @@ void app_frame::prepare_frame()
 		if (display)
 		{
 			is_animating |= display->step();
-			if (is_animating) df::bump(df::ui_perf.prepares_display_anim);
+			if (is_animating) core::bump(render::ui_perf.prepares_display_anim);
 
 			// If a cloud-only item was hydrated by viewing it, rescan so its items-view
 			// thumbnail and index state refresh.
@@ -1016,7 +1020,7 @@ void app_frame::prepare_frame()
 
 			if (prepare_result == render_valid::invalid || is_animating)
 			{
-				if (prepare_result == render_valid::invalid) df::bump(df::ui_perf.prepares_display_invalid);
+				if (prepare_result == render_valid::invalid) core::bump(render::ui_perf.prepares_display_invalid);
 				invalidate_status();
 				vf->frame()->invalidate();
 			}
@@ -1038,7 +1042,7 @@ void app_frame::prepare_frame()
 			// Only the logo changed, so only the logo is invalidated - the title bar repaints that
 			// rectangle and nothing else does. Faded, it drifts on the idle timer's ticks, and only where
 			// animation is wanted and the window can be seen.
-			if (_app_logo->step_plasma(time_now, ui::animations_enabled && !vf->is_occluded()))
+			if (_app_logo->step_plasma(time_now, render::animations_enabled && !vf->is_occluded()))
 			{
 				_title_bar->frame()->invalidate(_app_logo->invalidate_bounds());
 			}
@@ -1069,7 +1073,7 @@ void app_frame::prepare_frame()
 		}
 
 		_frame_delay = frame_delay;
-		_pa->frame_delay(frame_delay);
+		platform::set_frame_delay(frame_delay);
 	}
 }
 
@@ -1102,7 +1106,7 @@ void app_frame::update_overlay()
 				{
 					const auto dd = target - value;
 					if (fabs(dd) <= 0.001f) return false;
-					value = ui::animations_enabled ? value + dd * ui::animation_step_factor : target;
+					value = render::animations_enabled ? value + dd * ui::animation_step_factor : target;
 					fv->invalidate_view(view_invalid::view_redraw);
 					return true;
 				};
@@ -1135,7 +1139,7 @@ void app_frame::tick()
 	// timer - already exist, so a tick can land in between.
 	if (_app_frame && _app_frame->is_visible() && _view)
 	{
-		const auto time_now = df::now();
+		const auto time_now = core::now();
 
 		_state.tick(_view_frame, time_now);
 		_view_items->retry_visible_thumbnails(time_now);
@@ -1179,7 +1183,7 @@ void app_frame::tick()
 		{
 			_last_texture_eviction_bounds = logical_bounds;
 			free_graphics_resources(true, true);
-			df::trim_thumbnail_blobs(_state.search_items().items(), logical_bounds, df::max_thumbnail_bytes);
+			df::trim_thumbnail_blobs(_state.search_items().items(), logical_bounds, core::max_thumbnail_bytes);
 		}
 
 		update_overlay();
@@ -1197,7 +1201,7 @@ void app_frame::tick()
 	{
 		constexpr auto folder_change_settle_seconds = 1.0;
 
-		if ((df::now() - _folder_change_time) > folder_change_settle_seconds)
+		if ((core::now() - _folder_change_time) > folder_change_settle_seconds)
 		{
 			_folder_change_time = 0.0;
 			// The notification only says something touched the folder. Refreshing re-opens the whole
@@ -1225,9 +1229,9 @@ void app_frame::tick_screenshot()
 	if (_screenshot_stage == 0)
 	{
 		const auto scene = std::string_view(command_line.screenshot_scene);
-		const auto options_command = str::icmp(scene, "options") == 0
+		const auto options_command = core::icmp(scene, "options") == 0
 			                             ? commands::options
-			                             : str::icmp(scene, "options-sidebar") == 0
+			                             : core::icmp(scene, "options-sidebar") == 0
 			                             ? commands::options_sidebar
 			                             : commands::none;
 		const auto is_options = options_command != commands::none;
@@ -1235,7 +1239,7 @@ void app_frame::tick_screenshot()
 		// The Options view shows no items, so it need not wait for any.
 		if (!is_options && !_state.has_display_items()) return;
 
-		_pa->sys_command(ui::sys_command_type::RESTORE);
+		_app_frame->sys_command(platform::sys_command_type::RESTORE);
 		auto window_bounds = _app_frame->window_bounds();
 		window_bounds.right = window_bounds.left + 1600;
 		window_bounds.bottom = window_bounds.top + 1000;
@@ -1245,38 +1249,38 @@ void app_frame::tick_screenshot()
 		{
 			invoke(options_command);
 		}
-		else if (str::icmp(scene, "items") == 0)
+		else if (core::icmp(scene, "items") == 0)
 		{
 			if (!_state.has_selection()) _state.select_next(_view_frame, true, false, false);
 			_state.view_mode(view_type::items);
 		}
-		else if (str::icmp(scene, "fullscreen") == 0 ||
-			str::icmp(scene, "edit") == 0 || str::icmp(scene, "edit-preview") == 0)
+		else if (core::icmp(scene, "fullscreen") == 0 ||
+			core::icmp(scene, "edit") == 0 || core::icmp(scene, "edit-preview") == 0)
 		{
 			if (!_state.has_selection()) _state.select_next(_view_frame, true, false, false);
-			if (str::icmp(scene, "fullscreen") == 0)
+			if (core::icmp(scene, "fullscreen") == 0)
 			{
 				invoke(commands::view_fullscreen);
 			}
 			else
 			{
 				invoke(commands::tool_edit);
-				if (str::icmp(scene, "edit-preview") == 0) invoke(commands::edit_item_preview);
+				if (core::icmp(scene, "edit-preview") == 0) invoke(commands::edit_item_preview);
 			}
 		}
 		else
 		{
 			_state.select_all(_view_frame);
-			if (str::icmp(scene, "rename") == 0) invoke(commands::tool_rename);
-			else if (str::icmp(scene, "adjust-date") == 0) invoke(commands::tool_adjust_date);
-			else if (str::icmp(scene, "convert") == 0) invoke(commands::tool_convert);
-			else if (str::icmp(scene, "metadata") == 0) invoke(commands::tool_edit_metadata);
-			else if (str::icmp(scene, "import") == 0) invoke(commands::tool_import);
-			else if (str::icmp(scene, "sync") == 0) invoke(commands::tool_sync);
-			else if (str::icmp(scene, "locate") == 0) invoke(commands::tool_locate);
+			if (core::icmp(scene, "rename") == 0) invoke(commands::tool_rename);
+			else if (core::icmp(scene, "adjust-date") == 0) invoke(commands::tool_adjust_date);
+			else if (core::icmp(scene, "convert") == 0) invoke(commands::tool_convert);
+			else if (core::icmp(scene, "metadata") == 0) invoke(commands::tool_edit_metadata);
+			else if (core::icmp(scene, "import") == 0) invoke(commands::tool_import);
+			else if (core::icmp(scene, "sync") == 0) invoke(commands::tool_sync);
+			else if (core::icmp(scene, "locate") == 0) invoke(commands::tool_locate);
 			else
 			{
-				df::log(__FUNCTION__, std::format("Unknown screenshot scene: {}", scene));
+				core::log(__FUNCTION__, std::format("Unknown screenshot scene: {}", scene));
 				_screenshot_stage = 2;
 				queue_ui([frame = _app_frame] { frame->close(); });
 				return;
@@ -1284,34 +1288,34 @@ void app_frame::tick_screenshot()
 		}
 
 		_screenshot_stage = 1;
-		_screenshot_ready_time = df::now() + 10.0;
+		_screenshot_ready_time = core::now() + 10.0;
 		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw);
 		return;
 	}
 
-	if (_screenshot_stage == 1 && df::now() >= _screenshot_ready_time)
+	if (_screenshot_stage == 1 && core::now() >= _screenshot_ready_time)
 	{
 		const auto output = command_line.screenshot_output.empty()
 			                    ? known_path(platform::known_folder::running_app_folder).parent().combine_file(
 				                    "screenshot.webp")
-			                    : df::file_path(command_line.screenshot_output);
+			                    : core::file_path(command_line.screenshot_output);
 		files ff;
 		const auto captured = platform::capture_window_surface(_app_frame->handle());
-		const auto surface = captured ? ff.fit_within(captured, {800, 500}) : ui::surface_ptr{};
+		const auto surface = captured ? ff.fit_within(captured, {800, 500}) : core::surface_ptr{};
 		const auto format = extension_to_format(output.extension());
 		const auto image = surface
 			                   ? ff.surface_to_image(surface, libfiles::metadata_blocks{}, file_encode_params{}, format)
-			                   : ui::const_image_ptr{};
+			                   : core::const_image_ptr{};
 		const auto file = image ? platform::open_file(output, platform::file_open_mode::create) : platform::file_ptr{};
 		const auto saved = file && file->write(image->data().data(), image->data().size()) == image->data().size();
 		if (!saved)
 		{
-			df::log(__FUNCTION__, std::format("Screenshot failed: {}", output));
+			core::log(__FUNCTION__, std::format("Screenshot failed: {}", output));
 			_screenshot_stage = 2;
 		}
 		else
 		{
-			df::log(__FUNCTION__, std::format("Screenshot saved: {}", output));
+			core::log(__FUNCTION__, std::format("Screenshot saved: {}", output));
 			_screenshot_stage = 2;
 			queue_ui([frame = _app_frame] { frame->close(); });
 		}
@@ -1346,7 +1350,7 @@ void app_frame::load_options(const platform::setting_file_ptr& store)
 {
 	if (store->root_created())
 	{
-		const str::cached default_folders[] =
+		const core::cached default_folders[] =
 		{
 			known_path(platform::known_folder::pictures).text(),
 			known_path(platform::known_folder::video).text(),
@@ -1444,17 +1448,17 @@ void app_frame::search_complete(const df::search_t& search, const bool path_chan
 		save_options(true);
 		invalidate_view(view_invalid::address);
 
-		std::vector<df::folder_path> folders;
+		std::vector<core::folder_path> folders;
 
 		for (const auto& s : search.selectors())
 		{
-			if (s.folder().exists())
+			if (platform::exists(s.folder()))
 			{
 				folders.emplace_back(s.folder());
 			}
 		}
 
-		_pa->monitor_folders(folders);
+		platform::monitor_folders(folders);
 	}
 
 	_view->items_changed(path_changed);
@@ -1482,7 +1486,7 @@ void app_frame::search_complete(const df::search_t& search, const bool path_chan
 
 // Every bar's toolbars share one style, so measuring all of them gives both bars a height that stays put
 // as views come and go.
-static int bars_toolbar_height(ui::measure_context& mc,
+static int bars_toolbar_height(render::measure_context& mc,
                                const std::map<std::vector<bar_entry>, app_frame::frame_bar>& bars, const int cx)
 {
 	auto result = 0;
@@ -1498,28 +1502,28 @@ static int bars_toolbar_height(ui::measure_context& mc,
 	return result;
 }
 
-int app_frame::title_bar_height(ui::measure_context& mc)
+int app_frame::title_bar_height(render::measure_context& mc)
 {
-	const auto cy_address = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
+	const auto cy_address = mc.text_line_height(render::font_face::dialog) + mc.padding2 * 2;
 	const auto content_height = std::max({
 		_navigate1->measure_toolbar(mc, _extent.cx).cy, _navigate2->measure_toolbar(mc, _extent.cx).cy,
 		_navigate3->measure_toolbar(mc, _extent.cx).cy, cy_address, bars_toolbar_height(mc, _bars, _extent.cx)
 	}) + mc.padding2;
-	return df::mul_div(content_height, 6, 5);
+	return core::mul_div(content_height, 6, 5);
 }
 
-int app_frame::status_bar_height(ui::measure_context& mc)
+int app_frame::status_bar_height(render::measure_context& mc)
 {
-	const auto cy_control = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+	const auto cy_control = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 	return std::max(bars_toolbar_height(mc, _bars, _extent.cx), cy_control) + mc.padding2;
 }
 
 // The window holds three regions, each with a surface of its own: the title bar, the view - with its panel
 // and strip - and the status bar. Full screen and a zoomed picture give the view the whole window; otherwise
 // a line of the window's background is left round the edge, which is its border.
-void app_frame::layout(ui::measure_context& mc)
+void app_frame::layout(render::measure_context& mc)
 {
-	if (df::is_closing || !_app_frame || !_view || !_navigate1 || !_search_edit || !_navigate2 || !_navigate3 ||
+	if (platform::is_closing || !_app_frame || !_view || !_navigate1 || !_search_edit || !_navigate2 || !_navigate3 ||
 		!_filter_edit || !_item_size || _extent.is_empty())
 	{
 		return;
@@ -1533,7 +1537,7 @@ void app_frame::layout(ui::measure_context& mc)
 	const auto picture_zoomed = _state.is_items_or_media_view() && display && display->is_zoom_mode();
 	_show_bars = !_state.is_full_screen && !picture_zoomed;
 
-	const auto scale1 = df::round(1 * mc.scale_factor);
+	const auto scale1 = core::round(1 * mc.scale_factor);
 	const auto client = recti(_extent).inflate(_state.is_full_screen ? 0 : -scale1);
 	const auto body_top = _show_bars ? client.top + title_bar_height(mc) : client.top;
 	const auto body_bottom = _show_bars ? std::max(body_top, client.bottom - status_bar_height(mc)) : client.bottom;
@@ -1567,14 +1571,14 @@ void app_frame::visit_elements(const std::function<void(const view_element_ptr&,
 // The title bar, in its own coordinates: the logo and title at the left; the address box between the history
 // and folder buttons, centred in the window, where the view navigates; or the view's own commands, placed
 // before the title so a long title yields to Close; and the window's buttons at the right.
-void app_frame::layout_title_bar(ui::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
+void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
 {
 	if (!_view || !_navigate1) return;
 
 	const auto declared = _view->bars();
 	const auto show_navigation = declared.navigation;
-	const auto scale300 = df::round(300 * mc.scale_factor);
-	const auto scale1000 = df::round(1000 * mc.scale_factor);
+	const auto scale300 = core::round(300 * mc.scale_factor);
+	const auto scale1000 = core::round(1000 * mc.scale_factor);
 	const auto area = recti(extent);
 
 	const auto navigate1_extent = _navigate1->measure_toolbar(mc, extent.cx);
@@ -1586,8 +1590,8 @@ void app_frame::layout_title_bar(ui::measure_context& mc, const sizei extent, st
 	static const std::vector<bar_entry> no_entries;
 	const auto& top_entries = declared.navigation ? no_entries : declared.top;
 	const auto& top_bar = bar(top_entries);
-	const auto cy_address = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2 * 2;
-	const auto cy_control = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+	const auto cy_address = mc.text_line_height(render::font_face::dialog) + mc.padding2 * 2;
+	const auto cy_control = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 	const auto top_slots = measure_bar(mc, top_bar, cy_control);
 	const auto center_y = [&area](const int height) { return area.top + (area.height() - height) / 2; };
 
@@ -1609,7 +1613,7 @@ void app_frame::layout_title_bar(ui::measure_context& mc, const sizei extent, st
 	const auto address_y = center_y(cy_address);
 	const recti search_bounds(address_left, address_y, address_right, address_y + cy_address);
 
-	_app_logo->text(declared.navigation ? s_app_name : _view->title());
+	_app_logo->text(declared.navigation ? core::app_name() : _view->title());
 	const auto title_left = area.left + mc.padding2;
 	const auto top_arrangement = arrange_bar(recti(title_left, area.top, area.right - mc.padding2, area.bottom),
 	                                         top_slots, mc.padding1);
@@ -1652,7 +1656,7 @@ void app_frame::layout_title_bar(ui::measure_context& mc, const sizei extent, st
 // corner the window is resized by, then whatever the view starts the bar with at the leading end; the
 // view's status takes the room between them. The trailing controls are placed first, so a short bar gives up
 // the leading ones before them.
-void app_frame::layout_status_bar(ui::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
+void app_frame::layout_status_bar(render::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
 {
 	if (!_view || !_filter_edit) return;
 
@@ -1661,7 +1665,7 @@ void app_frame::layout_status_bar(ui::measure_context& mc, const sizei extent, s
 	static const std::vector<bar_entry> no_entries;
 	const auto& bottom_bar = bar(view_processing ? running_task_bar() : declared.bottom);
 	const auto& leading_bar = bar(view_processing ? no_entries : declared.bottom_leading);
-	const auto cy_control = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+	const auto cy_control = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 	const auto bottom_slots = measure_bar(mc, bottom_bar, cy_control);
 	const auto leading_slots = measure_bar(mc, leading_bar, cy_control);
 
@@ -1703,7 +1707,7 @@ void app_frame::layout_status_bar(ui::measure_context& mc, const sizei extent, s
 	}
 }
 
-void app_frame::paint_title_bar(ui::draw_context& dc)
+void app_frame::paint_title_bar(render::draw_context& dc)
 {
 	if (_show_bars && !_title_bounds.is_empty())
 	{
@@ -1711,41 +1715,41 @@ void app_frame::paint_title_bar(ui::draw_context& dc)
 	}
 }
 
-void parse_more_folders(df::index_roots& result, const std::string_view more_folders, const platform::drives& drives)
+void parse_more_folders(core::index_roots& result, const std::string_view more_folders, const platform::drives& drives)
 {
-	df::hash_set<std::string, df::ihash, df::ieq> drive_label_includes;
+	core::hash_set<std::string, core::ihash, core::ieq> drive_label_includes;
 
 	for (auto line : split_collection_folders(more_folders))
 	{
-		if (!str::is_empty(line))
+		if (!core::is_empty(line))
 		{
-			if (str::is_exclude(line))
+			if (core::is_exclude(line))
 			{
-				while (!line.empty() && (str::is_white_space(line.front()) || line.front() == '-'))
+				while (!line.empty() && (core::is_white_space(line.front()) || line.front() == '-'))
 				{
 					line = line.substr(1);
 				}
 
-				const auto exclude = str::trim(line);
+				const auto exclude = core::trim(line);
 
-				if (df::is_path(exclude))
+				if (core::is_path(exclude))
 				{
 					// A syntactic full path is always recorded as an exclude, even
 					// when it is not currently present (offline/removable drive or
 					// a not-yet-created folder). Requiring existence here silently
 					// dropped such excludes, making full-path exclusion unreliable.
-					result.excludes.emplace(df::folder_path(exclude));
+					result.excludes.emplace(core::folder_path(exclude));
 				}
 				else
 				{
-					result.exclude_wildcards.emplace(str::cache(line));
+					result.exclude_wildcards.emplace(core::cache(line));
 				}
 			}
 			else
 			{
-				const auto path = df::folder_path(line);
+				const auto path = core::folder_path(line);
 
-				if (path.exists())
+				if (platform::exists(path))
 				{
 					result.folders.emplace(path);
 				}
@@ -1759,13 +1763,13 @@ void parse_more_folders(df::index_roots& result, const std::string_view more_fol
 	}
 
 	// Resolve device/volume labels to the matching drive(s) by volume name.
-	df::hash_set<std::string, df::ihash, df::ieq> resolved_labels;
+	core::hash_set<std::string, core::ihash, core::ieq> resolved_labels;
 
 	for (const auto& d : drives)
 	{
 		if (drive_label_includes.contains(d.vol_name))
 		{
-			result.folders.emplace(df::folder_path(d.name));
+			result.folders.emplace(core::folder_path(d.name));
 			resolved_labels.emplace(d.vol_name);
 		}
 	}
@@ -1774,9 +1778,9 @@ void parse_more_folders(df::index_roots& result, const std::string_view more_fol
 	// network shares or removable devices whose mapped drive letter can change.
 	for (const auto& label : drive_label_includes)
 	{
-		if (!resolved_labels.contains(label) && platform::is_server(label))
+		if (!resolved_labels.contains(label) && core::is_server(label))
 		{
-			result.folders.emplace(df::folder_path(label));
+			result.folders.emplace(core::folder_path(label));
 		}
 	}
 
@@ -1786,7 +1790,7 @@ void parse_more_folders(df::index_roots& result, const std::string_view more_fol
 	}
 }
 
-void parse_more_folders(df::index_roots& result, const std::string_view more_folders)
+void parse_more_folders(core::index_roots& result, const std::string_view more_folders)
 {
 	parse_more_folders(result, more_folders, platform::scan_drives());
 }
@@ -1814,7 +1818,7 @@ void app_frame::complete_pending_events()
 	// depth to stop unbounded stack growth. Beyond the cap the queued work is left for the next idle
 	// pass (queued work re-signals the idle event), which drains it once the stack unwinds.
 	constexpr int max_reentrancy_depth = 8;
-	df::scope_locked_inc depth(_completing_pending_events);
+	core::scope_locked_inc depth(_completing_pending_events);
 
 	if (_completing_pending_events > max_reentrancy_depth)
 	{
@@ -1824,24 +1828,24 @@ void app_frame::complete_pending_events()
 
 	try
 	{
-		if (!df::is_closing && _app_frame)
+		if (!platform::is_closing && _app_frame)
 		{
 			// Only the outermost pass is timed; a nested drain runs inside its parent's measurement.
-			std::optional<df::perf_timer> ui_busy;
-			if (_completing_pending_events == 1) ui_busy.emplace(df::ui_perf.idle_us, &df::ui_perf.idle_max_us);
+			std::optional<core::perf_timer> ui_busy;
+			if (_completing_pending_events == 1) ui_busy.emplace(render::ui_perf.idle_us, &render::ui_perf.idle_max_us);
 
 			const auto tasks = _ui_queue.dequeue_all();
-			df::bump(df::ui_perf.idle_drains);
-			df::bump(df::ui_perf.idle_tasks, tasks.size());
-			df::record_peak(df::ui_perf.idle_batch_peak, static_cast<uint32_t>(tasks.size()));
+			core::bump(render::ui_perf.idle_drains);
+			core::bump(render::ui_perf.idle_tasks, tasks.size());
+			core::record_peak(render::ui_perf.idle_batch_peak, static_cast<uint32_t>(tasks.size()));
 
 			for (const auto& t : tasks)
 			{
 				try
 				{
 					const auto wait_us = t.wait_us();
-					df::bump(df::ui_perf.idle_wait_us, wait_us);
-					df::record_peak(df::ui_perf.idle_wait_max_us,
+					core::bump(render::ui_perf.idle_wait_us, wait_us);
+					core::record_peak(render::ui_perf.idle_wait_max_us,
 					                static_cast<uint32_t>(std::min<uint64_t>(wait_us, UINT32_MAX)));
 					t();
 				}
@@ -1849,7 +1853,7 @@ void app_frame::complete_pending_events()
 				{
 					// Per task, as start_worker does: the batch has already been dequeued, so letting one
 					// failure reach the outer handler would silently discard every task queued behind it.
-					df::log(__FUNCTION__, e.what());
+					core::log(__FUNCTION__, e.what());
 				}
 			}
 
@@ -1883,7 +1887,7 @@ void app_frame::complete_pending_events()
 
 			if (pop_invalid_flag(_invalids, view_invalid::animations))
 			{
-				prepare_frame();
+				frame_tick();
 			}
 
 			if (pop_invalid_flag(_invalids, view_invalid::options_save))
@@ -1923,7 +1927,7 @@ void app_frame::complete_pending_events()
 
 			if (pop_invalid_flag(_invalids, view_invalid::refresh_items))
 			{
-				if (df::file_handles_detached == 0 && df::command_active == 0)
+				if (df::file_handles_detached == 0 && ui::command_active == 0)
 				{
 					_view->refresh_from_source();
 				}
@@ -1966,7 +1970,7 @@ void app_frame::complete_pending_events()
 			{
 				const auto display = _state.display_state();
 				const auto is_playing = display && display->is_playing();
-				_pa->enable_screen_saver(!_state.is_full_screen && !is_playing);
+				platform::enable_screen_saver(!_state.is_full_screen && !is_playing);
 			}
 
 			if (pop_invalid_flag(_invalids, view_invalid::sidebar))
@@ -2120,12 +2124,12 @@ void app_frame::complete_pending_events()
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	if (_completing_pending_events == 1 && _pending_events_deferred.exchange(false))
 	{
-		_pa->queue_idle();
+		platform::queue_idle();
 	}
 }
 
@@ -2167,13 +2171,13 @@ void app_frame::report_safe_start()
 	});
 }
 
-bool app_frame::key_down(const char32_t key, const ui::key_state keys)
+bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 {
 	// Ctrl is itself a key press, so this is where the modifier that arms drawing a region first
 	// becomes known - and the pointer may not move again before the user acts on it.
 	_view_frame->sync_modifier_cursor();
 
-	if (df::command_active == 0)
+	if (ui::command_active == 0)
 	{
 		// The filter box is an edit, so it reaches here first only for the keys an edit hands up; the
 		// rest it handles itself.
@@ -2193,25 +2197,25 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 		if (_search_has_focus)
 		{
-			if (key == keys::RETURN)
+			if (key == platform::keys::RETURN)
 			{
 				search_enter();
 				return true;
 			}
-			if (key == keys::ESCAPE)
+			if (key == platform::keys::ESCAPE)
 			{
 				cancel_search_edit();
 				return true;
 			}
-			if (key == keys::UP) return step_predictions(-1);
-			if (key == keys::DOWN) return step_predictions(1);
-			if (key == keys::TAB && !keys.control && !keys.shift && search_accept_selected()) return true;
+			if (key == platform::keys::UP) return step_predictions(-1);
+			if (key == platform::keys::DOWN) return step_predictions(1);
+			if (key == platform::keys::TAB && !keys.control && !keys.shift && search_accept_selected()) return true;
 		}
 
 		// Enter submits the task view the user is in, so a task can be completed without leaving the
 		// keyboard. Routed through the run command so a run the toolbar refuses stays refused, and
 		// so a single-line entry field does not just beep.
-		if (key == keys::RETURN && !keys.control && !keys.shift && !keys.alt)
+		if (key == platform::keys::RETURN && !keys.control && !keys.shift && !keys.alt)
 		{
 			const auto run_command = task_view_run_command();
 
@@ -2232,7 +2236,7 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 			return _view->key_down(key, keys);
 		}
 
-		if (key == keys::ESCAPE)
+		if (key == platform::keys::ESCAPE)
 		{
 			if (_selector_frame->escape_controller()) return true;
 			if (_view_frame->escape_controller()) return true;
@@ -2255,26 +2259,26 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 		if (!_view_controls_have_focus && _state.is_items_or_media_view())
 		{
-			if (key == keys::SPACE && _view_frame->key_down_controller(key, keys)) return true;
+			if (key == platform::keys::SPACE && _view_frame->key_down_controller(key, keys)) return true;
 
 			const auto display = _state.display_state();
 			if (_view_has_focus && display && display->is_zoom_mode() && !keys.control && !keys.shift && !keys.alt)
 			{
 				constexpr double arrow_step = 48.0;
-				if (key == keys::LEFT) display->pan_zoom_by({-arrow_step, 0.0});
-				else if (key == keys::RIGHT) display->pan_zoom_by({arrow_step, 0.0});
-				else if (key == keys::UP) display->pan_zoom_by({0.0, -arrow_step});
-				else if (key == keys::DOWN) display->pan_zoom_by({0.0, arrow_step});
-				else if (key == keys::PRIOR) _state.select_next_media(_view_frame, false);
-				else if (key == keys::NEXT) _state.select_next_media(_view_frame, true);
-				else if (key == keys::HOME) display->pan_zoom_to_horizontal_edge(false);
-				else if (key == keys::END) display->pan_zoom_to_horizontal_edge(true);
+				if (key == platform::keys::LEFT) display->pan_zoom_by({-arrow_step, 0.0});
+				else if (key == platform::keys::RIGHT) display->pan_zoom_by({arrow_step, 0.0});
+				else if (key == platform::keys::UP) display->pan_zoom_by({0.0, -arrow_step});
+				else if (key == platform::keys::DOWN) display->pan_zoom_by({0.0, arrow_step});
+				else if (key == platform::keys::PRIOR) _state.select_next_media(_view_frame, false);
+				else if (key == platform::keys::NEXT) _state.select_next_media(_view_frame, true);
+				else if (key == platform::keys::HOME) display->pan_zoom_to_horizontal_edge(false);
+				else if (key == platform::keys::END) display->pan_zoom_to_horizontal_edge(true);
 				else goto no_zoom_pan_key;
 				return true;
 			}
 
 		no_zoom_pan_key:
-			if (key == keys::APPS)
+			if (key == platform::keys::APPS)
 			{
 				const auto command = find_command(commands::menu_main);
 				const auto menu = command && command->menu ? command->menu() : std::vector<ui::command_ptr>{};
@@ -2287,48 +2291,48 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 				}
 				return true;
 			}
-			if (key == keys::BROWSER_BACK)
+			if (key == platform::keys::BROWSER_BACK)
 			{
 				_state.browse_back(_view_frame);
 				return true;
 			}
-			if (key == keys::BROWSER_FORWARD)
+			if (key == platform::keys::BROWSER_FORWARD)
 			{
 				_state.browse_forward(_view_frame);
 				return true;
 			}
-			if (key == keys::BROWSER_REFRESH)
+			if (key == platform::keys::BROWSER_REFRESH)
 			{
 				reload();
 				return true;
 			}
-			if (key == keys::BROWSER_HOME)
+			if (key == platform::keys::BROWSER_HOME)
 			{
 				invoke(commands::view_fullscreen);
 				return true;
 			}
-			if (key == keys::BROWSER_STOP || key == keys::MEDIA_STOP)
+			if (key == platform::keys::BROWSER_STOP || key == platform::keys::MEDIA_STOP)
 			{
 				const auto display = _state.display_state();
 				if (display && display->is_playing_media()) _state.stop();
 				return true;
 			}
-			if (key == keys::MEDIA_PLAY_PAUSE)
+			if (key == platform::keys::MEDIA_PLAY_PAUSE)
 			{
 				_state.play(_view_frame);
 				return true;
 			}
-			if (key == keys::MEDIA_PREV_TRACK)
+			if (key == platform::keys::MEDIA_PREV_TRACK)
 			{
 				_state.select_next(_view_frame, false, keys.control, keys.shift);
 				return true;
 			}
-			if (key == keys::MEDIA_NEXT_TRACK)
+			if (key == platform::keys::MEDIA_NEXT_TRACK)
 			{
 				_state.select_next(_view_frame, true, keys.control, keys.shift);
 				return true;
 			}
-			if (key == keys::RETURN && !keys.control && !keys.shift)
+			if (key == platform::keys::RETURN && !keys.control && !keys.shift)
 			{
 				if (_state.enter(_view_frame)) return true;
 			}
@@ -2337,22 +2341,22 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 			{
 				if (!keys.alt)
 				{
-					if (key == keys::LEFT)
+					if (key == platform::keys::LEFT)
 					{
 						_state.select_next(_view_frame, false, keys.control, keys.shift);
 						return true;
 					}
-					if (key == keys::RIGHT)
+					if (key == platform::keys::RIGHT)
 					{
 						_state.select_next(_view_frame, true, keys.control, keys.shift);
 						return true;
 					}
-					if (key == keys::HOME)
+					if (key == platform::keys::HOME)
 					{
 						_state.select_end(_view_frame, false, keys.control, keys.shift);
 						return true;
 					}
-					if (key == keys::END)
+					if (key == platform::keys::END)
 					{
 						_state.select_end(_view_frame, true, keys.control, keys.shift);
 						return true;
@@ -2360,14 +2364,14 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 
 					if (_state.view_mode() == view_type::items)
 					{
-						if (key == keys::UP)
+						if (key == platform::keys::UP)
 						{
 							_state.stop_slideshow();
 							_view_items->line_up(keys.control, keys.shift);
 							_state.make_visible(_state.focus_item());
 							return true;
 						}
-						if (key == keys::DOWN)
+						if (key == platform::keys::DOWN)
 						{
 							_state.stop_slideshow();
 							_view_items->line_down(keys.control, keys.shift);
@@ -2379,7 +2383,7 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 			}
 		}
 
-		const auto normalized_key = keys::normalize_numpad(key);
+		const auto normalized_key = platform::keys::normalize_numpad(key);
 		const auto display = _state.display_state();
 		// As for the bars: a task view opened over a zoomed photo keeps its own shortcuts.
 		const auto zoom_mode = _state.is_items_or_media_view() && display && display->is_zoom_mode();
@@ -2391,12 +2395,12 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 				display->toggle_zoom_fit();
 				return true;
 			}
-			if (normalized_key == keys::OEM_PLUS)
+			if (normalized_key == platform::keys::OEM_PLUS)
 			{
 				display->adjust_zoom_scale(1);
 				return true;
 			}
-			if (!keys.shift && normalized_key == keys::OEM_MINUS)
+			if (!keys.shift && normalized_key == platform::keys::OEM_MINUS)
 			{
 				display->adjust_zoom_scale(-1);
 				return true;
@@ -2417,9 +2421,9 @@ bool app_frame::key_down(const char32_t key, const ui::key_state keys)
 				if (ac.key == normalized_key)
 				{
 					const auto key_state_match =
-						((ac.key_state & keyboard_accelerator_t::control) != 0) == keys.control &&
-						((ac.key_state & keyboard_accelerator_t::shift) != 0) == keys.shift &&
-						((ac.key_state & keyboard_accelerator_t::alt) != 0) == keys.alt;
+						((ac.key_state & platform::keyboard_accelerator_t::control) != 0) == keys.control &&
+						((ac.key_state & platform::keyboard_accelerator_t::shift) != 0) == keys.shift &&
+						((ac.key_state & platform::keyboard_accelerator_t::alt) != 0) == keys.alt;
 
 					if (key_state_match && c.second->enable)
 					{
@@ -2495,7 +2499,7 @@ void app_frame::toggle_full_screen()
 		focus_view();
 	}
 
-	_pa->full_screen(_state.is_full_screen);
+	_app_frame->full_screen(_state.is_full_screen);
 	invalidate_view(view_invalid::app_layout | view_invalid::view_layout |
 		view_invalid::screen_saver | view_invalid::command_state);
 }
@@ -2509,7 +2513,7 @@ void app_frame::open_default_folder()
 	{
 		// An empty entry is not "no selection": append_items reads a non-empty set as an explicit
 		// list of paths to select, so a folder-only command line must pass an empty set.
-		df::unique_paths selection;
+		core::unique_paths selection;
 		if (!command_line.selection.is_empty()) selection.emplace(command_line.selection);
 		success = _state.open(_view_frame, df::search_t().add_selector(command_line.folder_path), selection);
 	}
@@ -2539,7 +2543,7 @@ void app_frame::open_default_folder()
 	if (!success)
 	{
 		_state.open(_view_frame,
-		            df::search_t().add_selector(df::item_selector(known_path(platform::known_folder::pictures))), {});
+		            df::search_t().add_selector(core::item_selector(known_path(platform::known_folder::pictures))), {});
 	}
 }
 
@@ -2570,7 +2574,7 @@ void app_frame::element_broadcast(const view_element_event& event)
 
 void app_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
 {
-	df::trace(std::format("app_frame::focus {}", has_focus));
+	core::trace(std::format("app_frame::focus {}", has_focus));
 
 	if (child == _search_edit)
 	{
@@ -2591,7 +2595,7 @@ void app_frame::focus_changed(const bool has_focus, const ui::control_ptr& child
 
 void app_frame::item_focus_changed(const df::item_element_ptr& focus, const df::item_element_ptr& previous)
 {
-	df::trace("app_frame::focus_changed");
+	core::trace("app_frame::focus_changed");
 
 	if (_view_items->is_visible(previous))
 	{
@@ -2643,7 +2647,7 @@ void app_frame::reset_selector_selection_anchor()
 	_view_selector->reset_selection_anchor();
 }
 
-void app_frame::select_from_selector(const df::item_element_ptr& item, const ui::key_state keys)
+void app_frame::select_from_selector(const df::item_element_ptr& item, const platform::key_state keys)
 {
 	if (!item) return;
 
@@ -2685,9 +2689,9 @@ void app_frame::select_from_selector(const df::item_element_ptr& item, const ui:
 
 void app_frame::display_changed()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
-	if (!df::is_closing)
+	if (!platform::is_closing)
 	{
 		_view->display_changed();
 		_view_selector->display_changed();
@@ -2721,8 +2725,8 @@ void app_frame::reload()
 
 void app_frame::view_changed(const view_type m)
 {
-	df::assert_true(ui::is_ui_thread());
-	df::assert_true(m != view_type::media || _state.is_full_screen);
+	core::assert_true(platform::is_ui_thread());
+	core::assert_true(m != view_type::media || _state.is_full_screen);
 
 	// Opening Locate on items that already carry a location must not hide them. A selector strip
 	// that cannot show the item being placed reads as "nothing here" rather than as a live filter.
@@ -2862,7 +2866,7 @@ void app_frame::select_language(const std::string_view lang_code)
 {
 	setting.language = lang_code;
 
-	if (str::icmp(lang_code, "en") == 0)
+	if (core::icmp(lang_code, "en") == 0)
 	{
 		tt.clear();
 	}
@@ -2883,16 +2887,16 @@ void app_frame::invoke(const command_info_ptr& command)
 	{
 		if (command->enable)
 		{
-			df::log(__FUNCTION__, command->text);
+			core::log(__FUNCTION__, command->text);
 
-			df::scope_locked_inc sl(df::command_active);
+			core::scope_locked_inc sl(ui::command_active);
 			command->invoke();
 			invalidate_view(view_invalid::command_state);
 		}
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 }
 
@@ -2986,11 +2990,11 @@ bool app_frame::can_open_search(const df::search_t& link)
 	return false;
 }
 
-void app_frame::folder_changed(const df::folder_path folder)
+void app_frame::folder_changed(const core::folder_path folder)
 {
 	// Sync clients and batch tools report many changes in quick succession, so collect the folders and
 	// let tick compare them once the burst has settled.
-	_folder_change_time = df::now();
+	_folder_change_time = core::now();
 	_folders_changed.emplace(folder);
 }
 
@@ -3004,7 +3008,7 @@ void app_frame::dpi_changed()
 	invalidate_view(view_invalid::app_layout);
 }
 
-void app_frame::on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized)
+void app_frame::on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized)
 {
 	if (!is_minimized)
 	{
@@ -3014,24 +3018,24 @@ void app_frame::on_window_layout(ui::measure_context& mc, const sizei extent, co
 }
 
 // A container: what it shows is its regions'.
-void app_frame::on_window_paint(ui::draw_context& dc)
+void app_frame::on_window_paint(render::draw_context& dc)
 {
 }
 
 // The frame paints the parts of the status bar that are not controls: the totals among them, and the
 // view's status in the room they leave, which says what the view is doing. A run shows it in a pill: one
 // that fills as the count rises, or that pulses while the run cannot yet say how much is left.
-void app_frame::draw_status_bar(ui::draw_context& dc)
+void app_frame::draw_status_bar(render::draw_context& dc)
 {
 	_status_text_clipped = false;
 	if (!_show_bars || !_view) return;
 
-	constexpr auto font = ui::style::font_face::dialog;
-	const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
+	constexpr auto font = render::font_face::dialog;
+	const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
 
 	if (!_totals_bounds.is_empty())
 	{
-		dc.draw_text(_totals_text, _totals_bounds, font, ui::style::text_style::single_line_center, text_color, {});
+		dc.draw_text(_totals_text, _totals_bounds, font, render::text_style::single_line_center, text_color, {});
 	}
 
 	const auto status = _view->status();
@@ -3052,7 +3056,7 @@ void app_frame::draw_status_bar(ui::draw_context& dc)
 			                    ? std::format("{}{}{} / {}", status, status.empty() ? "" : "  ", progress.total,
 			                                  progress.total)
 			                    : text;
-		const auto extent = dc.measure_text(widest, font, ui::style::text_style::single_line,
+		const auto extent = dc.measure_text(widest, font, render::text_style::single_line,
 		                                    _status_text_bounds.width());
 		const auto height = std::min(_status_text_bounds.height(), extent.cy + dc.padding1 * 2);
 		const auto top = _status_text_bounds.top + (_status_text_bounds.height() - height) / 2;
@@ -3062,30 +3066,30 @@ void app_frame::draw_status_bar(ui::draw_context& dc)
 
 		if (counted)
 		{
-			dc.draw_rounded_rect(pill, ui::color(ui::style::colors.important_background, dc.colors.alpha * 0.3f),
+			dc.draw_rounded_rect(pill, core::color(ui::style::colors.important_background, dc.colors.alpha * 0.3f),
 			                     dc.padding1);
 			auto done = pill;
-			done.right = pill.left + df::mul_div(pill.width(), static_cast<int>(std::min<int64_t>(position, INT_MAX)),
+			done.right = pill.left + core::mul_div(pill.width(), static_cast<int>(std::min<int64_t>(position, INT_MAX)),
 			                                     static_cast<int>(std::min<int64_t>(progress.total, INT_MAX)));
 			if (!done.is_empty())
 			{
-				dc.draw_rounded_rect(done, ui::color(ui::style::colors.important_background, dc.colors.alpha),
+				dc.draw_rounded_rect(done, core::color(ui::style::colors.important_background, dc.colors.alpha),
 				                     dc.padding1);
 			}
 		}
 		else
 		{
-			const auto alpha = command_progress_alpha(progress.active, progress.total, platform::tick_count());
-			dc.draw_rounded_rect(pill, ui::color(ui::style::colors.important_background, dc.colors.alpha * alpha),
+			const auto alpha = command_progress_alpha(progress.active, progress.total, core::tick_count());
+			dc.draw_rounded_rect(pill, core::color(ui::style::colors.important_background, dc.colors.alpha * alpha),
 			                     dc.padding1);
 		}
 
 		text_bounds = pill.inflate(-dc.padding2, 0);
 	}
 
-	const auto extent = dc.measure_text(text, font, ui::style::text_style::single_line, 100000);
+	const auto extent = dc.measure_text(text, font, render::text_style::single_line, 100000);
 	_status_text_clipped = extent.cx > text_bounds.width();
-	dc.draw_text(text, text_bounds, font, ui::style::text_style::single_line, text_color, {});
+	dc.draw_text(text, text_bounds, font, render::text_style::single_line, text_color, {});
 }
 
 void app_frame::title_bar_mouse_move(const pointi loc)
@@ -3096,7 +3100,7 @@ void app_frame::title_bar_mouse_move(const pointi loc)
 
 	if (_app_logo->hover(logo_hover))
 	{
-		if (ui::animations_enabled)
+		if (render::animations_enabled)
 		{
 			ui::animations[_app_logo.get()] = [logo = _app_logo, frame = _title_bar->frame()]
 			{
@@ -3130,7 +3134,7 @@ void app_frame::title_bar_mouse_leave()
 
 	if (_app_logo->hover(false))
 	{
-		if (ui::animations_enabled)
+		if (render::animations_enabled)
 		{
 			ui::animations[_app_logo.get()] = [logo = _app_logo, frame = _title_bar->frame()]
 			{
@@ -3195,23 +3199,23 @@ void app_frame::web_service_cache(std::string key, std::string value)
 
 void app_frame::work_progress(const void* source, const int64_t done, const int64_t total)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	_work_reports.update(source, done, total);
-	_pa->show_progress(done, total);
+	platform::show_progress(done, total);
 }
 
 void app_frame::work_finished(const void* source)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	if (!_work_reports.finish(source)) return;
 
 	if (const auto latest = _work_reports.latest())
 	{
-		_pa->show_progress(latest->done, latest->total);
+		platform::show_progress(latest->done, latest->total);
 	}
 	else
 	{
-		_pa->end_progress();
+		platform::end_progress();
 	}
 }
 
@@ -3252,7 +3256,7 @@ void app_frame::delete_items(const df::item_set& items)
 
 		std::vector<view_element_ptr> controls;
 		auto title_control = std::make_shared<ui::title_control2>(
-			dlg->_frame, icon_index::cancel, title, format_plural_text(info_fmt, items), std::vector<ui::const_surface_ptr>{},
+			dlg->_frame, icon_index::cancel, title, format_plural_text(info_fmt, items), std::vector<core::const_surface_ptr>{},
 			items.size());
 		title_control->selection_async(items.thumbs(), items.size(), _state._async);
 		controls.emplace_back(set_margin(title_control));
@@ -3297,7 +3301,7 @@ void app_frame::delete_items(const df::item_set& items)
 			// items, duplicates, a tag or a date - has nothing watching it and would keep listing
 			// what was just deleted. This is noted before the operation and reported after it
 			// whatever the result, because a cancelled or partly failed delete still removes files.
-			df::unique_folders touched;
+			core::unique_folders touched;
 			for (const auto& path : items.file_paths()) touched.emplace(path.folder());
 			for (const auto& path : items.folder_paths()) touched.emplace(path.parent());
 
@@ -3327,7 +3331,7 @@ void app_frame::delete_items(const df::item_set& items)
 
 			if (should_select_next)
 			{
-				df::unique_paths selection;
+				core::unique_paths selection;
 				if (next) next->add_to(selection);
 				_state.open(_view_frame, _state.search(), selection);
 			}
@@ -3359,11 +3363,12 @@ bool app_frame::edit_has_changes() const
 
 bool app_frame::pre_init()
 {
-	df::log("main", df::format_version(false));
+	register_diffractor_icon_font();
+	core::log("main", df::format_version(false));
 
 	// Written before anything can fail, so a truncated or crash-terminated log still says which
 	// machine shape produced it. Perf numbers are only readable against the core count.
-	df::log("main", std::format("windows {} {} {} | {} cores", platform::OS(),
+	core::log("main", std::format("windows {} {} {} | {} cores", platform::OS(),
 	                            sizeof(void*) == 8 ? "64-bit" : "32-bit",
 #ifdef _DEBUG
 	                            "debug",
@@ -3379,14 +3384,14 @@ bool app_frame::pre_init()
 	(void)crash_files();
 
 	// The chrome's embedded PNGs decode with the application's own decoder on every backend.
-	ui::decode_embedded_image = [](const df::cspan data)
+	render::decode_embedded_image = [](const core::cspan data)
 	{
 		files ff;
 		return ff.image_to_surface(data);
 	};
 
 	// The renderers scale and convert pictures with FFmpeg's swscale, as the decoder does.
-	ui::make_surface_scaler = []() -> std::unique_ptr<ui::surface_scaler> { return std::make_unique<av_scaler>(); };
+	render::make_surface_scaler = []() -> std::unique_ptr<render::surface_scaler> { return std::make_unique<av_scaler>(); };
 
 	return true;
 }
@@ -3428,22 +3433,19 @@ void app_frame::update_font_size() const
 	// The Large text option scales the whole interface with it.
 	constexpr int large_font_size = 21;
 
-	if (_pa)
-	{
-		_pa->set_font_base_size(setting.large_font ? large_font_size : ui::default_font_size);
-	}
+	render::set_base_font_size(setting.large_font ? large_font_size : render::default_font_size);
 }
 
 bool app_frame::init(const std::string_view command_line_text)
 {
 	log_func lf(__FUNCTION__);
-	df::log(__FUNCTION__, std::format("is_app_installed {}", is_app_installed()));
+	core::log(__FUNCTION__, std::format("is_app_installed {}", is_app_installed()));
 
 	// These files are skipped by the indexer for the rest of the session, so they are stated once
 	// rather than left as an unexplained absence of metadata and thumbnails.
 	if (const auto skipped = crash_files().skipped_file_count(); skipped > 0)
 	{
-		df::log(__FUNCTION__, std::format("skipping {} file(s) that crashed a previous run of this release{}",
+		core::log(__FUNCTION__, std::format("skipping {} file(s) that crashed a previous run of this release{}",
 		                                  skipped, crash_files().is_full() ? " - the crash list is full" : ""));
 	}
 
@@ -3475,7 +3477,7 @@ bool app_frame::init(const std::string_view command_line_text)
 	// Issue #227: only seed the default favorite tags on first run. After the user has
 	// configured favorites once (flag set below, persisted on save) an empty list is
 	// respected instead of resurrecting the removed defaults on every launch.
-	if (should_seed_default_favorite_tags(setting.favorite_tags_initialized, str::is_empty(setting.favorite_tags),
+	if (should_seed_default_favorite_tags(setting.favorite_tags_initialized, core::is_empty(setting.favorite_tags),
 	                                      store->root_created()))
 	{
 		setting.favorite_tags = tt.default_favorite_tags;
@@ -3491,11 +3493,11 @@ bool app_frame::init(const std::string_view command_line_text)
 	window_style.colors = {
 		ui::style::colors.view_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
 	};
-	_app_frame = _pa->create_app_frame(store, shared_from_this(), window_style);
+	_app_frame = ui::create_app_frame(shared_from_this(), store, shared_from_this(), window_style);
 
 	if (!_app_frame)
 	{
-		app_fail(tt.error_create_window_failed, {});
+		fail(tt.error_create_window_failed, {});
 		return false;
 	}
 
@@ -3746,50 +3748,50 @@ void app_frame::exit()
 	_threads.clear();
 }
 
-void app_frame::system_event(const ui::os_event_type ost)
+void app_frame::system_event(const platform::os_event_type ost)
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
-	if (ost == ui::os_event_type::system_device_change)
+	if (ost == platform::os_event_type::system_device_change)
 	{
 		_has_burner.reset();
 		invalidate_view(
 			view_invalid::app_layout | view_invalid::view_layout | view_invalid::sidebar_drives |
 			view_invalid::index);
 	}
-	else if (ost == ui::os_event_type::options_changed)
+	else if (ost == platform::os_event_type::options_changed)
 	{
 		invalidate_view(view_invalid::options);
 	}
-	else if (ost == ui::os_event_type::dpi_changed)
+	else if (ost == platform::os_event_type::dpi_changed)
 	{
 		invalidate_view(view_invalid::visual_options);
 	}
-	else if (ost == ui::os_event_type::screen_locked)
+	else if (ost == platform::os_event_type::screen_locked)
 	{
 		_state.stop();
 	}
-	else if (ost == ui::os_event_type::system_suspending)
+	else if (ost == platform::os_event_type::system_suspending)
 	{
 		// The machine may never come back (hibernate failure, flat battery), so treat suspend as
 		// the last chance to persist. Stopping also releases the sleep block we are about to lose.
 		_state.stop();
 		save_options();
 	}
-	else if (ost == ui::os_event_type::system_resumed)
+	else if (ost == platform::os_event_type::system_resumed)
 	{
 		invalidate_view(
 			view_invalid::app_layout | view_invalid::view_layout | view_invalid::sidebar |
 			view_invalid::index | view_invalid::screen_saver);
 	}
-	else if (ost == ui::os_event_type::session_ending)
+	else if (ost == platform::os_event_type::session_ending)
 	{
 		// No prompting and no teardown: this runs before any shutdown question is asked, and again
 		// once the session is really ending, and the process is terminated regardless of what it
 		// does next.
 		save_options();
 	}
-	else if (ost == ui::os_event_type::graphics_device_lost)
+	else if (ost == platform::os_event_type::graphics_device_lost)
 	{
 		// Every texture and surface belongs to the device that has just gone away. Release
 		// them here - the platform layer then rebuilds each window's draw context on the CPU
@@ -3808,16 +3810,49 @@ void app_frame::final_exit()
 	df::log_perf_summary();
 	log_file_op_summary();
 
-	df::log("main", "exit");
-	df::close_log();
+	core::log("main", "exit");
+	platform::close_log();
 }
 
-ui::app_ptr create_app(const ui::plat_app_ptr& pa)
+
+static void register_diffractor_chrome_icons()
 {
-	return std::make_shared<app_frame>(pa);
+	ui::set_chrome_icons({
+		.check = icon_index::check,
+		.checkbox_off = icon_index::checkbox_off,
+		.checkbox_on = icon_index::checkbox_on,
+		.radio_off = icon_index::radio_off,
+		.radio_on = icon_index::radio_on,
+		.close = icon_index::close,
+		.maximize = icon_index::maximize,
+		.minimize = icon_index::minimize,
+		.restore = icon_index::restore,
+	});
 }
 
-void app_frame::crash(const df::file_path dump_file_path)
+#ifdef _WIN32
+int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
+{
+	// app_frame builds its views here, before platform::run, and they belong to this thread.
+	platform::set_ui_thread();
+	core::set_app_name("Diffractor");
+	register_diffractor_chrome_icons();
+	auto app = std::make_shared<app_frame>();
+	return platform::run(app, __argc, __argv);
+}
+#else
+int main(int argc, char** argv)
+{
+	// app_frame builds its views here, before platform::run, and they belong to this thread.
+	platform::set_ui_thread();
+	core::set_app_name("Diffractor");
+	register_diffractor_chrome_icons();
+	auto app = std::make_shared<app_frame>();
+	return platform::run(app, argc, argv);
+}
+#endif
+
+void app_frame::crash(const core::file_path dump_file_path)
 {
 	// Claimed atomically: a test-then-increment let a second thread faulting inside this handler
 	// start its own report and post a duplicate.
@@ -3825,7 +3860,7 @@ void app_frame::crash(const df::file_path dump_file_path)
 
 	if (df::handling_crash.compare_exchange_strong(unclaimed, 1))
 	{
-		const df::scope_exit release_claim([] { --df::handling_crash; });
+		const core::scope_exit release_claim([] { --df::handling_crash; });
 
 		if (_app_frame)
 		{
@@ -3837,33 +3872,33 @@ void app_frame::crash(const df::file_path dump_file_path)
 #ifndef WINSTORE
 		if (setting.send_crash_dumps)
 		{
-			df::log(__FUNCTION__, "*** CRASH ***");
+			core::log(__FUNCTION__, "*** CRASH ***");
 
 			if (const auto last_loaded = df::last_loaded_path.load(std::memory_order_relaxed);
 				!last_loaded.is_empty())
 			{
-				df::log(__FUNCTION__, std::format("Last file type opened: {}", last_loaded.extension()));
+				core::log(__FUNCTION__, std::format("Last file type opened: {}", last_loaded.extension()));
 			}
 
-			const auto* const render_func = df::rendering_func.load(std::memory_order_relaxed);
+			const auto* const render_func = render::rendering_func.load(std::memory_order_relaxed);
 
-			if (!str::is_empty(render_func))
+			if (!core::is_empty(render_func))
 			{
-				df::log(__FUNCTION__, std::format("Rendering function: {}", str::utf8_cast(render_func)));
+				core::log(__FUNCTION__, std::format("Rendering function: {}", core::utf8_cast(render_func)));
 			}
 
 			if (dump_file_path.is_empty())
 			{
 				// Reported anyway: the logs carry the timeline, the configuration and the last file opened,
 				// which is often enough to attribute the fault without a dump.
-				df::log(__FUNCTION__, "no minidump was written - reporting logs only");
+				core::log(__FUNCTION__, "no minidump was written - reporting logs only");
 			}
 
-			const auto log_file_path = df::close_log();
-			const auto previous_log_path = df::previous_log_path;
+			const auto log_file_path = platform::close_log();
+			const auto previous_log_path = platform::previous_log_path;
 			const auto crash_zip_path = platform::temp_file();
 
-			const auto now = platform::now();
+			const auto now = core::utc_now();
 			const auto date = now.date();
 
 			const auto name = std::format("Diffractor-{}-{}-{:04}{:02}{:02}-{:02}{:02}{:02}.dmp",
@@ -3876,8 +3911,8 @@ void app_frame::crash(const df::file_path dump_file_path)
 			if (zip.create(crash_zip_path))
 			{
 				if (!dump_file_path.is_empty()) zip.add(dump_file_path, name);
-				if (log_file_path.exists()) zip.add(log_file_path);
-				if (previous_log_path.exists()) zip.add(previous_log_path);
+				if (platform::exists(log_file_path)) zip.add(log_file_path);
+				if (platform::exists(previous_log_path)) zip.add(previous_log_path);
 				// Only an archive that closed is one to send. Finishing the central directory can fail
 				// - a full disk, a short write - and the partial file would reach the server as a
 				// corrupt upload while the dump it was meant to carry is deleted below.
@@ -3913,7 +3948,7 @@ void app_frame::crash(const df::file_path dump_file_path)
 			const auto con = platform::connect_to_host("diffractor.com");
 			send_request(con, req);
 
-			if (crash_zip_path.exists()) platform::delete_file(crash_zip_path);
+			if (platform::exists(crash_zip_path)) platform::delete_file(crash_zip_path);
 		}
 #endif
 
@@ -3948,7 +3983,7 @@ static void apply_gpu_crash_guard()
 		if (setting.use_d3d11va)
 		{
 			setting.use_d3d11va = false;
-			df::log(__FUNCTION__,
+			core::log(__FUNCTION__,
 			        "Previous run crashed during hardware video decode - disabling HW video decode (GPU rendering kept)");
 		}
 	}
@@ -3957,7 +3992,7 @@ static void apply_gpu_crash_guard()
 		if (setting.use_gpu)
 		{
 			platform::suppress_crash_guard(platform::crash_guard::gpu_render, true);
-			df::log(__FUNCTION__,
+			core::log(__FUNCTION__,
 			        "Previous run lost the GPU device - using software rendering for this recovery session");
 		}
 		return;
@@ -3995,7 +4030,7 @@ bool app_frame::load_settings(const platform::setting_file_ptr& store)
 	// device creation it exists to avoid already done.
 	if (_safe_start)
 	{
-		df::log(__FUNCTION__, std::format("{} starts did not settle - reverting to safe presentation",
+		core::log(__FUNCTION__, std::format("{} starts did not settle - reverting to safe presentation",
 		                                  unsettled_starts));
 		setting.reset_presentation();
 	}
@@ -4006,7 +4041,7 @@ bool app_frame::load_settings(const platform::setting_file_ptr& store)
 	return true;
 }
 
-std::string app_frame::restart_cmd_line()
+std::string app_frame::restart_command_line()
 {
 	return command_line.format_restart_cmd_line();
 }

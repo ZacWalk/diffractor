@@ -131,5 +131,5 @@ model's scale and center.
   coordination.
 - [ui_panorama.h](../src/ui_panorama.h) and
   [render_panorama.cpp](../src/render_panorama.cpp): panorama camera and software projection.
-- libdesktop's [render_surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/render_surface.cpp): shared resampling.
+- libdesktop's [surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/core/surface.cpp): shared resampling.
 - [app_commands.cpp](../src/app_commands.cpp): zoom commands and navigator setting.

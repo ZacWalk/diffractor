@@ -16,27 +16,27 @@ static simple_transform to_simple_transform(const image_edits& pe)
 {
 	const auto a = pe.rotation_angle();
 
-	if (df::equiv(a, -90) || df::equiv(a, 270))
+	if (core::equiv(a, -90) || core::equiv(a, 270))
 	{
-		return simple_transform::rot_270;
+		return core::simple_transform::rot_270;
 	}
 
-	if (df::equiv(a, 90) || df::equiv(a, -270))
+	if (core::equiv(a, 90) || core::equiv(a, -270))
 	{
-		return simple_transform::rot_90;
+		return core::simple_transform::rot_90;
 	}
 
-	if (df::equiv(a, 180) || df::equiv(a, -180))
+	if (core::equiv(a, 180) || core::equiv(a, -180))
 	{
-		return simple_transform::rot_180;
+		return core::simple_transform::rot_180;
 	}
 
-	return simple_transform::none;
+	return core::simple_transform::none;
 }
 
 // get_pixel returns transparent black outside the surface, so an interpolated edge sample would drag
 // every rotated, straightened or perspective-corrected border toward black. Clamp to the edge instead.
-static __forceinline ui::color32 sample_clamped(const ui::surface& src, const int x, const int y)
+static __forceinline core::color32 sample_clamped(const core::surface& src, const int x, const int y)
 {
 	return src.get_pixel(std::clamp(x, 0, static_cast<int>(src.width()) - 1),
 	                     std::clamp(y, 0, static_cast<int>(src.height()) - 1));
@@ -52,7 +52,7 @@ static __forceinline double catmull_rom_weight(const double t)
 
 // Catmull-Rom, the same sampler the edit preview draws with, so a saved straighten keeps the detail
 // the preview showed rather than the extra softening bilinear leaves behind.
-static ui::color32 sample_catmull_rom(const ui::surface& src, const double x, const double y, const bool has_alpha)
+static core::color32 sample_catmull_rom(const core::surface& src, const double x, const double y, const bool has_alpha)
 {
 	const auto left_f = floor(x);
 	const auto top_f = floor(y);
@@ -82,11 +82,11 @@ static ui::color32 sample_catmull_rom(const ui::surface& src, const double x, co
 			const auto c = sample_clamped(src, left + i - 1, top + j - 1);
 			const auto weight = weights_x[i] * weights_y[j];
 			// Filtering straight alpha would let a transparent pixel pull its colour into the result.
-			const auto coverage = has_alpha ? weight * (ui::get_a(c) / 255.0) : weight;
+			const auto coverage = has_alpha ? weight * (core::get_a(c) / 255.0) : weight;
 
-			red += ui::get_r(c) * coverage;
-			green += ui::get_g(c) * coverage;
-			blue += ui::get_b(c) * coverage;
+			red += core::get_r(c) * coverage;
+			green += core::get_g(c) * coverage;
+			blue += core::get_b(c) * coverage;
 			alpha += coverage;
 		}
 	}
@@ -98,19 +98,19 @@ static ui::color32 sample_catmull_rom(const ui::surface& src, const double x, co
 		blue /= alpha;
 	}
 
-	return ui::saturate_rgba(df::round(red), df::round(green), df::round(blue),
-	                         has_alpha ? df::round(alpha * 255.0) : 255);
+	return core::saturate_rgba(core::round(red), core::round(green), core::round(blue),
+	                         has_alpha ? core::round(alpha * 255.0) : 255);
 }
 
-ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, const image_edits& photo_edits,
-                                        const df::cancel_token& token)
+core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source, const image_edits& photo_edits,
+                                        const core::cancel_token& token)
 {
 	const auto dimensions = source->dimensions();
 	const auto format = source->format();
 
 	if (photo_edits.has_perspective())
 	{
-		auto canvas = std::make_shared<ui::surface>();
+		auto canvas = std::make_shared<core::surface>();
 
 		if (!canvas->alloc(dimensions, format)) return {};
 
@@ -121,12 +121,12 @@ ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, con
 			photo_edits.perspective_vertical() * angle_sin;
 		const auto vertical = photo_edits.perspective_horizontal() * angle_sin +
 			photo_edits.perspective_vertical() * angle_cos;
-		const auto has_alpha = format == ui::texture_format::ARGB;
+		const auto has_alpha = format == core::texture_format::ARGB;
 
 		for (auto y = 0u; y < canvas->height(); ++y)
 		{
 			if (token.is_cancelled()) return {};
-			auto* const dst_line = std::bit_cast<ui::color32*>(canvas->pixels_line(y));
+			auto* const dst_line = std::bit_cast<core::color32*>(canvas->pixels_line(y));
 			const auto normalized_y = (y + 0.5) / canvas->height() - 0.5;
 
 			for (auto x = 0u; x < canvas->width(); ++x)
@@ -153,11 +153,11 @@ ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, con
 		return apply_image_edits(canvas, remaining_edits, token);
 	}
 
-	ui::const_surface_ptr surface_result;
+	core::const_surface_ptr surface_result;
 
 	const auto rot_angle = photo_edits.rotation_angle();
-	const auto is_flip_rotate = !df::is_zero(rot_angle) &&
-		df::is_zero(fabs(fmod(rot_angle, 90))) &&
+	const auto is_flip_rotate = !core::is_zero(rot_angle) &&
+		core::is_zero(fabs(fmod(rot_angle, 90))) &&
 		!photo_edits.has_crop(dimensions) &&
 		!photo_edits.has_scale();
 
@@ -174,10 +174,10 @@ ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, con
 		const auto extent = crop.extent().round();
 		const auto canvas_extent = sizei(std::clamp(extent.cx, 1, dimensions.cx),
 		                                 std::clamp(extent.cy, 1, dimensions.cy));
-		const auto left = std::clamp(df::round(crop.left()), 0, dimensions.cx - canvas_extent.cx);
-		const auto top = std::clamp(df::round(crop.top()), 0, dimensions.cy - canvas_extent.cy);
+		const auto left = std::clamp(core::round(crop.left()), 0, dimensions.cx - canvas_extent.cx);
+		const auto top = std::clamp(core::round(crop.top()), 0, dimensions.cy - canvas_extent.cy);
 
-		auto canvas = std::make_shared<ui::surface>();
+		auto canvas = std::make_shared<core::surface>();
 
 		if (canvas->alloc(canvas_extent, format))
 		{
@@ -211,11 +211,11 @@ ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, con
 		const auto inc_aff = aff.invert();
 		const auto canvas_extent = transformed_crop.extent().round();
 
-		auto canvas = std::make_shared<ui::surface>();
+		auto canvas = std::make_shared<core::surface>();
 
 		if (canvas->alloc(canvas_extent, format))
 		{
-			const auto has_alpha = format == ui::texture_format::ARGB;
+			const auto has_alpha = format == core::texture_format::ARGB;
 
 			const auto dst_to_src_points0 = inc_aff.transform({0.0, 0.0});
 			const auto dst_to_src_points1 = inc_aff.transform({1.0, 0.0});
@@ -228,7 +228,7 @@ ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, con
 
 			for (auto y = 0u; y < canvas->height(); y++)
 			{
-				auto* const dst_line = std::bit_cast<ui::color32*>(canvas->pixels_line(y));
+				auto* const dst_line = std::bit_cast<core::color32*>(canvas->pixels_line(y));
 
 				for (auto x = 0u; x < canvas->width(); x++)
 				{
@@ -269,13 +269,13 @@ ui::const_surface_ptr apply_image_edits(const ui::const_surface_ptr& source, con
 		// surface here is the failure; reading its dimensions would be a null dereference.
 		if (!surface_result) return {};
 
-		ui::color_adjust adjust;
+		render::color_adjust adjust;
 		adjust.color_params(photo_edits.vibrance(), photo_edits.saturation(), photo_edits.darks(),
 		                    photo_edits.midtones(),
 		                    photo_edits.lights(), photo_edits.contrast(), photo_edits.brightness(),
 		                    photo_edits.temperature(), photo_edits.tint());
 
-		auto canvas = std::make_shared<ui::surface>();
+		auto canvas = std::make_shared<core::surface>();
 
 		if (canvas->alloc(surface_result->dimensions(), surface_result->format()))
 		{

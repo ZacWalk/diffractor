@@ -76,7 +76,7 @@ public:
 
 	std::string_view title() override
 	{
-		_title = std::format("{}: {}", s_app_name, tt.command_rename);
+		_title = std::format("{}: {}", core::app_name(), tt.command_rename);
 		return _title;
 	}
 

@@ -26,13 +26,13 @@ namespace
 	{
 		std::string result;
 
-		for (const auto part : str::split(extensions, false, [](const char c) { return c == ','; }))
+		for (const auto part : core::split(extensions, false, [](const char c) { return c == ','; }))
 		{
-			const auto trimmed = str::trim(part);
+			const auto trimmed = core::trim(part);
 			if (trimmed.empty()) continue;
 
 			if (!result.empty()) result += ", ";
-			result += str::to_upper(trimmed);
+			result += core::to_upper(trimmed);
 		}
 
 		return result;
@@ -50,10 +50,10 @@ namespace
 		"gen-docs:end markers is overwritten on each run; edit the surrounding "
 		"text freely. -->\n\n";
 
-	std::string read_text_file(const df::file_path path)
+	std::string read_text_file(const core::file_path path)
 	{
 		if (!platform::exists(path)) return {};
-		const auto b = df::blob_from_file(path);
+		const auto b = platform::blob_from_file(path);
 		return std::string(reinterpret_cast<const char*>(b.data()), b.size());
 	}
 
@@ -61,7 +61,7 @@ namespace
 	// gen-docs markers. If the existing page has both markers, only the region
 	// between them is replaced with `block`. Otherwise the full `default_page`
 	// (narrative shell + markers + block) is written.
-	bool splice_and_save(const df::folder_path folder, const std::string_view file_name,
+	bool splice_and_save(const core::folder_path folder, const std::string_view file_name,
 	                     const std::string& default_page, const std::string& block)
 	{
 		const auto path = folder.combine_file(file_name);
@@ -85,8 +85,8 @@ namespace
 			printf("  wrote %s (new page with markers)\n", std::string(path.str()).c_str());
 		}
 
-		const auto saved = df::blob_save_to_file(
-			df::cspan(reinterpret_cast<const uint8_t*>(out.data()), out.size()), path);
+		const auto saved = platform::blob_save_to_file(
+			core::cspan(reinterpret_cast<const uint8_t*>(out.data()), out.size()), path);
 
 		if (!saved)
 		{
@@ -149,7 +149,7 @@ namespace
 		md += "\n\n";
 	}
 
-	bool generate_formats_page(const df::folder_path folder)
+	bool generate_formats_page(const core::folder_path folder)
 	{
 		const auto types = all_file_types();
 		const auto codecs = av_supported_codecs();
@@ -179,9 +179,9 @@ int generate_wiki_docs(const std::string_view output_folder)
 {
 	load_file_types();
 
-	const df::folder_path folder = output_folder.empty()
+	const core::folder_path folder = output_folder.empty()
 		                               ? platform::known_path(platform::known_folder::running_app_folder)
-		                               : df::folder_path(output_folder);
+		                               : core::folder_path(output_folder);
 
 	if (!platform::exists(folder))
 	{

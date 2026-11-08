@@ -60,7 +60,7 @@ std::string str::decode_xml_entities(const std::string_view text)
 			if (ec == std::errc{} && ptr == digits.data() + digits.size() && code > 0 && code < 0x110000 &&
 				(code < 0xD800 || code > 0xDFFF))
 			{
-				str::char32_to_utf8(std::back_inserter(result), code);
+				core::char32_to_utf8(std::back_inserter(result), code);
 			}
 		}
 		else
@@ -74,7 +74,7 @@ std::string str::decode_xml_entities(const std::string_view text)
 	return result;
 }
 
-static const df::hash_set<std::string_view, df::ihash, df::ieq> unwanted_english_word = {
+static const core::hash_set<std::string_view, core::ihash, core::ieq> unwanted_english_word = {
 	"and",
 };
 
@@ -86,7 +86,7 @@ static bool is_range_separator(const char c)
 	return std::ispunct(uc) || std::isspace(uc);
 }
 
-static bool is_num(const std::string_view text)
+static bool is_num_token(const std::string_view text)
 {
 	return !text.empty() && std::find_if(text.begin(), text.end(), [](const char c)
 	{
@@ -94,27 +94,27 @@ static bool is_num(const std::string_view text)
 	}) == text.end();
 }
 
-static bool is_num_with_prefix(const std::string_view text, const std::string_view prefix)
+static bool is_num_token_with_prefix(const std::string_view text, const std::string_view prefix)
 {
-	return text.rfind(prefix, 0) == 0 && is_num(text.substr(prefix.size()));
+	return text.rfind(prefix, 0) == 0 && is_num_token(text.substr(prefix.size()));
 }
 
 static bool is_wanted_word(const std::string_view text)
 {
 	if (text.size() <= 2) return false;
-	if (is_num(text)) return false;
-	if (is_num_with_prefix(text, "DSC")) return false;
-	if (is_num_with_prefix(text, "DSCF")) return false;
-	if (is_num_with_prefix(text, "Image")) return false;
-	if (is_num_with_prefix(text, "IMG_")) return false;
-	if (is_num_with_prefix(text, "IMGP")) return false;
-	if (is_num_with_prefix(text, "MVI_")) return false;
-	if (is_num_with_prefix(text, "PIC_")) return false;
-	if (is_num_with_prefix(text, "SN")) return false;
+	if (is_num_token(text)) return false;
+	if (is_num_token_with_prefix(text, "DSC")) return false;
+	if (is_num_token_with_prefix(text, "DSCF")) return false;
+	if (is_num_token_with_prefix(text, "Image")) return false;
+	if (is_num_token_with_prefix(text, "IMG_")) return false;
+	if (is_num_token_with_prefix(text, "IMGP")) return false;
+	if (is_num_token_with_prefix(text, "MVI_")) return false;
+	if (is_num_token_with_prefix(text, "PIC_")) return false;
+	if (is_num_token_with_prefix(text, "SN")) return false;
 	return !unwanted_english_word.contains(text);
 }
 
-void str::count_ranges(df::dense_string_counts& totals, const std::string_view text)
+void str::count_ranges(core::dense_string_counts& totals, const std::string_view text)
 {
 	if (!text.empty())
 	{

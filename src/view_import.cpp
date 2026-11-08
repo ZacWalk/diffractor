@@ -45,7 +45,7 @@ static import_options make_import_options()
 {
 	import_options result;
 	result.source_filter = setting.import.source_filter;
-	result.dest_folder = df::folder_path(setting.import.destination_path);
+	result.dest_folder = core::folder_path(setting.import.destination_path);
 	result.dest_structure = setting.import.dest_folder_structure.empty()
 		                        ? default_custom_folder_structure
 		                        : setting.import.dest_folder_structure;
@@ -97,7 +97,7 @@ view_controls_host_ptr import_view::controls(const ui::frame_ptr& owner)
 		}
 		catch (const std::exception& e)
 		{
-			error = str::utf8_cast(e.what());
+			error = core::utf8_cast(e.what());
 		}
 
 		s.queue_ui([weak_view, weak_controls, frame, sources_temp = std::move(sources_temp), error = std::move(error)]
@@ -234,9 +234,9 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 
 void import_view::update_rows(const import_analysis_result& analysis_result, const import_options& options)
 {
-	const auto gray_text_color = ui::darken(ui::style::colors.view_text, 0.22f);
-	const auto blue_text_color = ui::lighten(ui::style::colors.dialog_selected_background, 0.55f);
-	const auto orange_text_color = ui::lighten(ui::style::colors.important_background, 0.55f);
+	const auto gray_text_color = core::darken(ui::style::colors.view_text, 0.22f);
+	const auto blue_text_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+	const auto orange_text_color = core::lighten(ui::style::colors.important_background, 0.55f);
 
 	std::vector<row_element_ptr> rows;
 	std::vector<std::string> text;
@@ -343,11 +343,11 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 
 static auto calc_import_root(const std::vector<import_source>& sources, const bool select_other_folder)
 {
-	df::index_roots result;
+	core::index_roots result;
 
 	if (select_other_folder)
 	{
-		result.folders.emplace(df::folder_path(setting.import.source_path));
+		result.folders.emplace(core::folder_path(setting.import.source_path));
 	}
 	else
 	{
@@ -433,7 +433,7 @@ void import_view::run()
 	// Both made before the handles are released, which can pump messages: a Cancel - or a Close the
 	// user confirms - handled in there has to reach this run. Made afterwards, each took the cancelled
 	// count as its starting point and the copy went ahead regardless.
-	auto token = df::cancel_token(*cancel_source);
+	auto token = core::cancel_token(*cancel_source);
 	const auto view = shared_from_this();
 	const auto results = make_run_status(view, processing_generation, cancel_source, completion_status);
 	const auto detach = std::make_shared<detach_file_handles>(_state);
@@ -493,7 +493,7 @@ void import_view::analyze()
 	begin_processing(0);
 	const auto processing_generation = this->processing_generation();
 	const auto cancel_source = processing_cancel_source();
-	auto token = df::cancel_token(*cancel_source);
+	auto token = core::cancel_token(*cancel_source);
 	_status = std::string(tt.analyzing.sv());
 
 	// The token points into cancel_source without owning it, and the next Analyze replaces the view's
@@ -509,7 +509,7 @@ void import_view::analyze()
 			}
 			catch (const std::exception& e)
 			{
-				s.queue_ui([view, processing_generation, error = str::utf8_cast(e.what())]
+				s.queue_ui([view, processing_generation, error = core::utf8_cast(e.what())]
 				{
 					if (!view->is_processing_generation(processing_generation)) return;
 					view->end_processing();
@@ -532,7 +532,7 @@ void import_view::analyze()
 				              }
 				              catch (const std::exception& e)
 				              {
-					              s.queue_ui([view, processing_generation, error = str::utf8_cast(e.what())]
+					              s.queue_ui([view, processing_generation, error = core::utf8_cast(e.what())]
 					              {
 						              if (!view->is_processing_generation(processing_generation)) return;
 						              view->end_processing();

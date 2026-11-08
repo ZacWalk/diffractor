@@ -11,8 +11,8 @@
 
 #include "pch.h"
 
-#include "libdesktop/util_base64.h"
-#include "libdesktop/util_simd.h"
+#include "libdesktop/core/base64.h"
+#include "libdesktop/core/simd.h"
 #include "crypto.h"
 #include "crypto_sha.h"
 

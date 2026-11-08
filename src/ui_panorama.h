@@ -311,10 +311,10 @@ struct panorama_request
 // rasteriser are never handed different cameras. The scales carry the file's coverage: a direction
 // at the left of the file lands at u 0, and one a full turn later at `full width / cropped width`,
 // so anything at or past 1 is sphere the file does not hold.
-inline ui::panorama_params panorama_shader_params(const prop::panorama_geometry& geometry,
+inline render::panorama_params panorama_shader_params(const prop::panorama_geometry& geometry,
                                                   const panorama_view& view, const sized viewport) noexcept
 {
-	ui::panorama_params result;
+	render::panorama_params result;
 
 	result.yaw = static_cast<float>(view.yaw());
 	result.pitch = static_cast<float>(view.pitch());
@@ -344,11 +344,11 @@ inline ui::panorama_params panorama_shader_params(const prop::panorama_geometry&
 // where one destination pixel spans many source texels.
 class panorama_renderer
 {
-	std::vector<ui::const_surface_ptr> _levels;
+	std::vector<core::const_surface_ptr> _levels;
 
 public:
-	void set_source(ui::const_surface_ptr source);
+	void set_source(core::const_surface_ptr source);
 	bool is_ready() const { return !_levels.empty(); }
 	sizei source_extent() const;
-	bool render(ui::surface& destination, const prop::panorama_geometry& geometry, const panorama_view& view) const;
+	bool render(core::surface& destination, const prop::panorama_geometry& geometry, const panorama_view& view) const;
 };

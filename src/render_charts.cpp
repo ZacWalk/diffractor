@@ -19,7 +19,7 @@ namespace
 {
 	// Colours are written opaque inside the solid and transparent black outside it, so the box
 	// reduction produces premultiplied edges for free - the same convention the globe's limb uses.
-	inline ui::color32 shade(const ui::color32 c, const double factor)
+	inline core::color32 shade(const core::color32 c, const double factor)
 	{
 		const auto q = static_cast<uint32_t>(std::clamp(factor, 0.0, 1.0) * 256.0);
 		const auto rb = (((c & 0x00FF00FFu) * q) >> 8) & 0x00FF00FFu;
@@ -49,8 +49,8 @@ namespace
 	// Fills a convex quad, writing the identity for whichever subsample lands on a 1x pixel. Faces
 	// are small parallelograms, so a scanline span costs less than the per-pixel tests the pie
 	// needs, and the supersample carries the edges.
-	void fill_convex(ui::surface& surface, uint16_t* ids, const sizei extent, const std::array<pointi, 4>& pts,
-	                 const ui::color32 color, const uint16_t id)
+	void fill_convex(core::surface& surface, uint16_t* ids, const sizei extent, const std::array<pointi, 4>& pts,
+	                 const core::color32 color, const uint16_t id)
 	{
 		const auto dims = surface.dimensions();
 
@@ -91,7 +91,7 @@ namespace
 			const auto x_end = std::min(dims.cx - 1, static_cast<int>(std::floor(x_max - 0.5)));
 			if (x_start > x_end) continue;
 
-			auto* const line = std::bit_cast<ui::color32*>(surface.pixels_line(y));
+			auto* const line = std::bit_cast<core::color32*>(surface.pixels_line(y));
 			for (auto x = x_start; x <= x_end; ++x) line[x] = color;
 
 			if (id != chart_surface::no_id && (y & 1) == 0)
@@ -115,16 +115,16 @@ bool chart_surface::prepare(const sizei extent)
 	// is_valid, not the pointer or the size: a failed alloc still reports the requested extent, so a
 	// dimension compare alone recognises the empty buffer as the right one and never asks again -
 	// one transient failure would then stop this chart drawing for the life of the process.
-	if (!ui::is_valid(_scratch) || _scratch->dimensions() != supersampled)
+	if (!core::is_valid(_scratch) || _scratch->dimensions() != supersampled)
 	{
-		_scratch = std::make_shared<ui::surface>();
-		_scratch->alloc(supersampled, ui::texture_format::ARGB);
+		_scratch = std::make_shared<core::surface>();
+		_scratch->alloc(supersampled, core::texture_format::ARGB);
 	}
 
-	if (!ui::is_valid(_pixels) || _pixels->dimensions() != extent)
+	if (!core::is_valid(_pixels) || _pixels->dimensions() != extent)
 	{
-		_pixels = std::make_shared<ui::surface>();
-		_pixels->alloc(extent, ui::texture_format::ARGB);
+		_pixels = std::make_shared<core::surface>();
+		_pixels->alloc(extent, core::texture_format::ARGB);
 	}
 
 	if (_extent != extent)
@@ -151,9 +151,9 @@ void chart_surface::reduce() const
 
 	for (auto y = 0; y < _extent.cy; ++y)
 	{
-		const auto* const src0 = std::bit_cast<const ui::color32*>(_scratch->pixels_line(y * 2));
-		const auto* const src1 = std::bit_cast<const ui::color32*>(_scratch->pixels_line(y * 2 + 1));
-		auto* const dst = std::bit_cast<ui::color32*>(_pixels->pixels_line(y));
+		const auto* const src0 = std::bit_cast<const core::color32*>(_scratch->pixels_line(y * 2));
+		const auto* const src1 = std::bit_cast<const core::color32*>(_scratch->pixels_line(y * 2 + 1));
+		auto* const dst = std::bit_cast<core::color32*>(_pixels->pixels_line(y));
 
 		for (auto x = 0; x < _extent.cx; ++x)
 		{
@@ -231,7 +231,7 @@ void render_pie_chart(chart_surface& destination, const pie_chart_scene& scene)
 
 	for (auto y = y_first; y <= y_last; ++y)
 	{
-		auto* const line = std::bit_cast<ui::color32*>(surface.pixels_line(y));
+		auto* const line = std::bit_cast<core::color32*>(surface.pixels_line(y));
 		auto* const id_line = (y & 1) == 0 ? ids + static_cast<size_t>(y / chart_supersample) * extent.cx : nullptr;
 		const auto py = y + 0.5 - centre_y;
 
@@ -239,7 +239,7 @@ void render_pie_chart(chart_surface& destination, const pie_chart_scene& scene)
 		{
 			const auto px = x + 0.5 - centre_x;
 
-			ui::color32 color = 0;
+			core::color32 color = 0;
 			auto id = chart_surface::no_id;
 
 			// The two top faces, the raised one first because it is both higher and nearer.
@@ -371,9 +371,9 @@ void render_calendar_chart(chart_surface& destination, const std::vector<calenda
 		// Three clearly separate tones. Light from the upper left: the cap catches it and the face
 		// being looked at sits in the middle. The visible side turns away from the light when the
 		// scene recedes right and into it when it recedes left, so its tone follows the sign.
-		const auto top_face = ui::lighten(cell.color, 0.34f);
-		const auto front_face = ui::darken(cell.color, 0.10f);
-		const auto side_face = depth_x > 0 ? ui::darken(cell.color, 0.52f) : ui::lighten(cell.color, 0.18f);
+		const auto top_face = core::lighten(cell.color, 0.34f);
+		const auto front_face = core::darken(cell.color, 0.10f);
+		const auto side_face = depth_x > 0 ? core::darken(cell.color, 0.52f) : core::lighten(cell.color, 0.18f);
 		const auto side_edge = depth_x > 0 ? right : left;
 
 		// The top face alone is the empty socket an unphotographed month leaves. Absence has to be

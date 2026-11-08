@@ -25,9 +25,9 @@ Ask what the test **constrains**, not what prompted it.
 - A duplicate test name **fails**.
 - A filter matching no test **fails**. Silence used to mean the filter missed.
 
-Release registers exactly six more tests than Debug (five decoder fuzz sweeps and the closest
--location lookup are `#ifndef _DEBUG`). Debug `N` and Release `N + 6` is correct; any other gap
-means something was skipped.
+Release-only decoder fuzz sweeps and the closest-location lookup are guarded by
+`#ifndef _DEBUG`; keep that conditional coverage aligned between configurations so a missing
+registration is visible.
 
 ## A test must not
 

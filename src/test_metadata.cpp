@@ -31,8 +31,8 @@
 static void should_replace_tokens()
 {
 	files ff;
-	const auto image_md = ff_scan_file(ff, test_files_folder.combine_file("Test.jpg"));
-	const auto audio_md = ff_scan_file(ff, test_files_folder.combine_file("Colorblind.mp3"));
+	const auto image_md = ff_scan_file(ff, test_files_folder().combine_file("Test.jpg"));
+	const auto audio_md = ff_scan_file(ff, test_files_folder().combine_file("Colorblind.mp3"));
 
 	const auto md1 = image_md.to_props();
 	const auto md2 = audio_md.to_props();
@@ -48,7 +48,7 @@ static void should_replace_tokens()
 
 static void should_scan_jpeg()
 {
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	prop::item_metadata expected_exif;
 	expected_exif.camera_manufacturer = "Canon"_c;
@@ -61,9 +61,9 @@ static void should_scan_jpeg()
 	expected_exif.exposure_time = 1.0f / 100.0f;
 	expected_exif.iso_speed = 100;
 	expected_exif.focal_length = 15.0f;
-	expected_exif.dates.add(prop::date_source::exif_digitized, df::date_t(2012, 9, 14, 19, 21, 14));
-	expected_exif.dates.add(prop::date_source::exif_original, df::date_t(2012, 9, 14, 19, 21, 14));
-	expected_exif.dates.add(prop::date_source::exif_datetime, df::date_t(2012, 9, 14, 19, 21, 14));
+	expected_exif.dates.add(prop::date_source::exif_digitized, core::date_t(2012, 9, 14, 19, 21, 14));
+	expected_exif.dates.add(prop::date_source::exif_original, core::date_t(2012, 9, 14, 19, 21, 14));
+	expected_exif.dates.add(prop::date_source::exif_datetime, core::date_t(2012, 9, 14, 19, 21, 14));
 	expected_exif.rating = 0;
 
 	assert_metadata(expected_exif, *extract_properties(load_path, metadata_type::EXIF), "EXIF");
@@ -78,7 +78,7 @@ static void should_scan_jpeg()
 	expected_iptc.copyright_notice = "Copyright"_c;
 	expected_iptc.rating = 0;
 	// 2:55 and 2:60, which agree with the EXIF original this file also carries.
-	expected_iptc.dates.add(prop::date_source::iptc_created, df::date_t(2012, 9, 14, 19, 21, 14));
+	expected_iptc.dates.add(prop::date_source::iptc_created, core::date_t(2012, 9, 14, 19, 21, 14));
 
 	assert_metadata(expected_iptc, *extract_properties(load_path, metadata_type::IPTC), "IPTC");
 
@@ -94,9 +94,9 @@ static void should_scan_jpeg()
 	expected_xmp.lens = "EF-S15-85mm f/3.5-5.6 IS USM"_c;
 	expected_xmp.copyright_notice = "Copyright"_c;
 	expected_xmp.rating = 4;
-	expected_xmp.dates.add(prop::date_source::xmp_exif_digitized, df::date_t(2012, 9, 14, 19, 21, 14));
-	expected_xmp.dates.add(prop::date_source::xmp_exif_original, df::date_t(2012, 9, 14, 19, 21, 14));
-	expected_xmp.dates.add(prop::date_source::xmp_modify, df::date_t(2012, 9, 14, 19, 21, 14));
+	expected_xmp.dates.add(prop::date_source::xmp_exif_digitized, core::date_t(2012, 9, 14, 19, 21, 14));
+	expected_xmp.dates.add(prop::date_source::xmp_exif_original, core::date_t(2012, 9, 14, 19, 21, 14));
+	expected_xmp.dates.add(prop::date_source::xmp_modify, core::date_t(2012, 9, 14, 19, 21, 14));
 
 	assert_metadata(expected_xmp, *actual_xmp, "XMP");
 
@@ -106,7 +106,7 @@ static void should_scan_jpeg()
 
 static void should_parse_xmp()
 {
-	const auto load_path = test_files_folder.combine_file("IMG_0604.xmp");
+	const auto load_path = test_files_folder().combine_file("IMG_0604.xmp");
 
 	prop::item_metadata actual;
 	metadata_xmp::parse(actual, load_path);
@@ -154,7 +154,7 @@ static void should_clear_tags_from_an_empty_xmp_subject()
 		prop::item_metadata md;
 		md.tags = "Holiday Portugal"_c;
 		metadata_xmp::parse(md, write_sidecar("<dc:subject><rdf:Bag/></dc:subject>"));
-		assert_equal(true, str::is_empty(md.tags), "an empty subject array clears the tags it supersedes");
+		assert_equal(true, core::is_empty(md.tags), "an empty subject array clears the tags it supersedes");
 	}
 
 	{
@@ -295,13 +295,13 @@ static void should_report_empty_xmp_packet_as_parsed()
 		R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
 		R"(<rdf:Description rdf:about=""/></rdf:RDF></x:xmpmeta>)";
 	bool parsed = false;
-	const auto empty_rows = metadata_xmp::to_info(df::cspan{std::bit_cast<const uint8_t*>(empty_packet.data()),
+	const auto empty_rows = metadata_xmp::to_info(core::cspan{std::bit_cast<const uint8_t*>(empty_packet.data()),
 	                                                        empty_packet.size()}, parsed);
 	assert_equal(true, empty_rows.empty(), "an empty packet has no rows");
 	assert_equal(true, parsed, "an empty packet is understood");
 
 	const std::string broken_packet = R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description)";
-	metadata_xmp::to_info(df::cspan{std::bit_cast<const uint8_t*>(broken_packet.data()), broken_packet.size()},
+	metadata_xmp::to_info(core::cspan{std::bit_cast<const uint8_t*>(broken_packet.data()), broken_packet.size()},
 	                      parsed);
 	assert_equal(false, parsed, "a malformed packet is not understood");
 }
@@ -408,10 +408,10 @@ static void should_scan_tiff_camera_metadata()
 	assert_equal(400, static_cast<int>(md->iso_speed), "TIFF ISO");
 	assert_equal(true, std::abs(md->f_number - 2.8f) < 0.0001f, "TIFF aperture");
 	assert_equal(true, std::abs(md->exposure_time - 1.0f / 250) < 0.000001f, "TIFF exposure");
-	assert_equal(df::date_t(2024, 5, 6, 7, 8, 0), md->dates.original(), "TIFF capture date");
-	assert_equal(df::date_t(2024, 5, 6, 7, 8, 1), md->dates.created(), "TIFF digitized date");
-	assert_equal(df::date_t(2024, 5, 6, 7, 8, 9), md->dates.modified(), "TIFF modified date");
-	assert_equal(ui::orientation::right_top, md->orientation, "TIFF orientation");
+	assert_equal(core::date_t(2024, 5, 6, 7, 8, 0), md->dates.original(), "TIFF capture date");
+	assert_equal(core::date_t(2024, 5, 6, 7, 8, 1), md->dates.created(), "TIFF digitized date");
+	assert_equal(core::date_t(2024, 5, 6, 7, 8, 9), md->dates.modified(), "TIFF modified date");
+	assert_equal(core::orientation::right_top, md->orientation, "TIFF orientation");
 
 	libfiles::xmp::meta xmp;
 	xmp.set_property(libfiles::xmp::ns::tiff, "Model", "XMP camera");
@@ -434,7 +434,7 @@ static std::string panorama_packet(const prop::panorama_geometry& geometry)
 		geometry.cropped_width, geometry.cropped_height);
 }
 
-static df::file_path write_panorama_fixture(const bool heif, const std::string_view packet, const bool compress)
+static core::file_path write_panorama_fixture(const bool heif, const std::string_view packet, const bool compress)
 {
 	const auto path = _temps.next_path(heif ? ".heif" : ".jxl");
 	if (heif)
@@ -546,8 +546,8 @@ static void should_read_embedded_panorama_geometry()
 
 static void should_merge_xmp_sidecar()
 {
-	const auto cr2_path = test_files_folder.combine_file("Gherkin.CR2");
-	const auto xmp_path = test_files_folder.combine_file("Gherkin.xmp");
+	const auto cr2_path = test_files_folder().combine_file("Gherkin.CR2");
+	const auto xmp_path = test_files_folder().combine_file("Gherkin.xmp");
 
 	const auto actual = extract_properties(cr2_path);
 
@@ -561,7 +561,7 @@ static void should_merge_xmp_sidecar()
 
 static void should_scan_mp3()
 {
-	const auto load_path = test_files_folder.combine_file("Colorblind.mp3");
+	const auto load_path = test_files_folder().combine_file("Colorblind.mp3");
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -583,11 +583,11 @@ static void should_scan_mp3()
 	expected.track.x = 7;
 	expected.year = 1999;
 	// Its tag gives only the year, which dates the track rather than leaving it to the day it was copied.
-	expected.dates.add(prop::date_source::container_created, df::date_t(1999, 1, 1, 0, 0, 0));
+	expected.dates.add(prop::date_source::container_created, core::date_t(1999, 1, 1, 0, 0, 0));
 
 	assert_metadata(expected, *actual.to_props(), "Colorblind.mp3");
 
-	const auto load_path2 = test_files_folder.combine_file("Games Without Frontiers.mp3");
+	const auto load_path2 = test_files_folder().combine_file("Games Without Frontiers.mp3");
 	const auto actual2 = ff_scan_file(ff, load_path2);
 
 	prop::item_metadata expected2;
@@ -603,11 +603,11 @@ static void should_scan_mp3()
 	expected2.disk.x = 1;
 	expected2.encoder = "Lavf51.12.1"_c;
 	expected2.audio_codec = "mp3"_c;
-	expected2.dates.add(prop::date_source::container_created, df::date_t(2003, 1, 1, 0, 0, 0));
+	expected2.dates.add(prop::date_source::container_created, core::date_t(2003, 1, 1, 0, 0, 0));
 
 	assert_metadata(expected2, *actual2.to_props(), "Games Without Frontiers.mp3");
 
-	const auto load_path3 = test_files_folder.combine_file("Is It Any Wonder.mp3");
+	const auto load_path3 = test_files_folder().combine_file("Is It Any Wonder.mp3");
 	const auto actual3 = ff_scan_file(ff, load_path3);
 
 	prop::item_metadata expected3;
@@ -622,7 +622,7 @@ static void should_scan_mp3()
 	expected3.track.x = 2;
 	expected3.audio_codec = "mp3"_c;
 	// TDRC "2006-06-20" names a calendar day, not an instant, so it is the day wherever it is shown.
-	expected3.dates.add(prop::date_source::container_created, df::date_t(2006, 6, 20, 0, 0, 0));
+	expected3.dates.add(prop::date_source::container_created, core::date_t(2006, 6, 20, 0, 0, 0));
 	expected3.publisher = "Interscope"_c;
 
 	assert_metadata(expected3, *actual3.to_props(), "Is It Any Wonder.mp3");
@@ -630,7 +630,7 @@ static void should_scan_mp3()
 
 static void should_scan_mp4()
 {
-	const auto load_path = test_files_folder.combine_file("gizmo.mp4");
+	const auto load_path = test_files_folder().combine_file("gizmo.mp4");
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -646,8 +646,8 @@ static void should_scan_mp4()
 	expected.width = 560;
 	expected.height = 320;
 	expected.rating = 4;
-	expected.dates.add_utc(prop::date_source::container_created, df::date_t(2010, 3, 20, 21, 29, 11));
-	expected.dates.add_utc(prop::date_source::xmp_modify, df::date_t(2010, 3, 20, 21, 29, 12));
+	expected.dates.add_utc(prop::date_source::container_created, core::date_t(2010, 3, 20, 21, 29, 11));
+	expected.dates.add_utc(prop::date_source::xmp_modify, core::date_t(2010, 3, 20, 21, 29, 12));
 	expected.year = 2010;
 	expected.video_codec = "h264"_c;
 	expected.encoder = "HandBrake 0.9.4 2009112300"_c;
@@ -655,7 +655,7 @@ static void should_scan_mp4()
 
 	assert_metadata(expected, *actual.to_props(), "gizmo.mp4");
 
-	const auto load_path2 = test_files_folder.combine_file("This Year's Love.m4a");
+	const auto load_path2 = test_files_folder().combine_file("This Year's Love.m4a");
 	const auto actual2 = ff_scan_file(ff, load_path2);
 
 	prop::item_metadata expected2;
@@ -665,7 +665,7 @@ static void should_scan_mp4()
 	expected2.composer = "David Gray"_c;
 	expected2.album = "David Gray: Greatest Hits"_c;
 	expected2.copyright_notice = "\u2117 2007 Iht Records Ltd under exclusive licence to Warner Music UK Ltd"_c;
-	expected2.dates.add_utc(prop::date_source::container_created, df::date_t(2007, 11, 9, 8, 0, 0));
+	expected2.dates.add_utc(prop::date_source::container_created, core::date_t(2007, 11, 9, 8, 0, 0));
 	expected2.genre = "Pop"_c;
 	expected2.duration = 10;
 	expected2.audio_codec = "aac"_c;
@@ -711,7 +711,7 @@ static void should_not_resurrect_container_tags()
 	metadata_xmp::update(unrelated_xmp, unrelated_edits);
 
 	file_scan_result absent_subject;
-	absent_subject.ffmpeg_metadata.emplace_back(str::cache("keywords"), "nativekey");
+	absent_subject.ffmpeg_metadata.emplace_back(core::cache("keywords"), "nativekey");
 	absent_subject.metadata.xmp.assign(unrelated_xmp.begin(), unrelated_xmp.end());
 	assert_equal("nativekey"_c, absent_subject.to_props()->tags,
 	             "unrelated xmp does not suppress native keywords");
@@ -725,7 +725,7 @@ static void should_not_resurrect_container_tags()
 
 	// A scan result carrying the stale container keyword AND the embedded XMP.
 	file_scan_result sr;
-	sr.ffmpeg_metadata.emplace_back(str::cache("keywords"), "stucktag");
+	sr.ffmpeg_metadata.emplace_back(core::cache("keywords"), "stucktag");
 	sr.metadata.xmp.assign(xmp_buffer.begin(), xmp_buffer.end());
 
 	const auto md = sr.to_props();
@@ -742,7 +742,7 @@ static void should_not_resurrect_container_tags()
 	metadata_xmp::update(empty_xmp, clear_edits);
 
 	file_scan_result empty_subject;
-	empty_subject.ffmpeg_metadata.emplace_back(str::cache("keywords"), "nativekey");
+	empty_subject.ffmpeg_metadata.emplace_back(core::cache("keywords"), "nativekey");
 	empty_subject.metadata.xmp.assign(empty_xmp.begin(), empty_xmp.end());
 	assert_equal(true, empty_subject.to_props()->tags.is_empty(),
 	             "empty xmp subject suppresses native keywords");
@@ -756,8 +756,8 @@ static void should_apply_property_level_windows_metadata_precedence()
 	metadata_xmp::update(unrelated_xmp, unrelated_edits);
 
 	file_scan_result fallback;
-	fallback.ffmpeg_metadata.emplace_back(str::cache("WM/Category"), "WindowsTag");
-	fallback.ffmpeg_metadata.emplace_back(str::cache("WM/SharedUserRating"), "75");
+	fallback.ffmpeg_metadata.emplace_back(core::cache("WM/Category"), "WindowsTag");
+	fallback.ffmpeg_metadata.emplace_back(core::cache("WM/SharedUserRating"), "75");
 	fallback.metadata.xmp.assign(unrelated_xmp.begin(), unrelated_xmp.end());
 	const auto fallback_metadata = fallback.to_props();
 	assert_equal("WindowsTag"_c, fallback_metadata->tags, "unrelated xmp allows windows tags");
@@ -774,8 +774,8 @@ static void should_apply_property_level_windows_metadata_precedence()
 	metadata_xmp::update(cleared_xmp, remove_edits);
 
 	file_scan_result cleared;
-	cleared.ffmpeg_metadata.emplace_back(str::cache("WM/Category"), "StaleTag");
-	cleared.ffmpeg_metadata.emplace_back(str::cache("WM/SharedUserRating"), "99");
+	cleared.ffmpeg_metadata.emplace_back(core::cache("WM/Category"), "StaleTag");
+	cleared.ffmpeg_metadata.emplace_back(core::cache("WM/SharedUserRating"), "99");
 	cleared.metadata.xmp.assign(cleared_xmp.begin(), cleared_xmp.end());
 	const auto cleared_metadata = cleared.to_props();
 	assert_equal(true, cleared_metadata->tags.is_empty(), "cleared xmp tags suppress stale windows tags");
@@ -790,31 +790,31 @@ static void should_apply_property_level_windows_metadata_precedence()
 static void should_read_language_suffixed_container_tags()
 {
 	const auto ui_language = setting.language;
-	const df::scope_exit restore([ui_language] { setting.language = ui_language; });
+	const core::scope_exit restore([ui_language] { setting.language = ui_language; });
 	setting.language = "de";
 
 	file_scan_result only_suffixed;
-	only_suffixed.ffmpeg_metadata.emplace_back(str::cache("TITLE-eng"), "English title");
-	only_suffixed.ffmpeg_metadata.emplace_back(str::cache("ARTIST-fra"), "Artiste");
+	only_suffixed.ffmpeg_metadata.emplace_back(core::cache("TITLE-eng"), "English title");
+	only_suffixed.ffmpeg_metadata.emplace_back(core::cache("ARTIST-fra"), "Artiste");
 	const auto suffixed = only_suffixed.to_props();
 	assert_equal("English title"_c, suffixed->title, "a title tagged only in a language is read");
 	assert_equal("Artiste"_c, suffixed->artist, "and so is an artist");
 
 	file_scan_result several;
-	several.ffmpeg_metadata.emplace_back(str::cache("TITLE-eng"), "English title");
-	several.ffmpeg_metadata.emplace_back(str::cache("TITLE-ger"), "Deutscher Titel");
-	several.ffmpeg_metadata.emplace_back(str::cache("TITLE-fra"), "Titre");
-	several.ffmpeg_metadata.emplace_back(str::cache("ALBUM-deu"), "Album auf Deutsch");
-	several.ffmpeg_metadata.emplace_back(str::cache("ALBUM"), "Plain album");
-	several.ffmpeg_metadata.emplace_back(str::cache("ALBUM-fra"), "Album en francais");
+	several.ffmpeg_metadata.emplace_back(core::cache("TITLE-eng"), "English title");
+	several.ffmpeg_metadata.emplace_back(core::cache("TITLE-ger"), "Deutscher Titel");
+	several.ffmpeg_metadata.emplace_back(core::cache("TITLE-fra"), "Titre");
+	several.ffmpeg_metadata.emplace_back(core::cache("ALBUM-deu"), "Album auf Deutsch");
+	several.ffmpeg_metadata.emplace_back(core::cache("ALBUM"), "Plain album");
+	several.ffmpeg_metadata.emplace_back(core::cache("ALBUM-fra"), "Album en francais");
 	const auto languages = several.to_props();
 	assert_equal("Deutscher Titel"_c, languages->title, "the UI language is read before the others");
 	assert_equal("Plain album"_c, languages->album, "and the plain key before any language, whatever the order");
 
 	file_scan_result special;
-	special.ffmpeg_metadata.emplace_back(str::cache("model-eng"), "Camera");
-	special.ffmpeg_metadata.emplace_back(str::cache("COMMENT-deu"), "Kommentar");
-	special.ffmpeg_metadata.emplace_back(str::cache("title-sort"), "Sort title");
+	special.ffmpeg_metadata.emplace_back(core::cache("model-eng"), "Camera");
+	special.ffmpeg_metadata.emplace_back(core::cache("COMMENT-deu"), "Kommentar");
+	special.ffmpeg_metadata.emplace_back(core::cache("title-sort"), "Sort title");
 	const auto kept = special.to_props();
 	assert_equal("Camera"_c, kept->camera_model, "a suffixed model is still the camera model");
 	assert_equal("Kommentar"_c, kept->comment, "a Matroska comment in a language is read as the comment");
@@ -828,7 +828,7 @@ static void should_read_language_suffixed_container_tags()
 static void should_scan_matroska(const std::string_view name, const std::string_view video_codec)
 {
 	files ff;
-	const auto actual = ff_scan_file(ff, test_files_folder.combine_file(name));
+	const auto actual = ff_scan_file(ff, test_files_folder().combine_file(name));
 
 	prop::item_metadata expected;
 	expected.title = "Matroska Test Title"_c;
@@ -841,14 +841,14 @@ static void should_scan_matroska(const std::string_view name, const std::string_
 	expected.height = 16;
 	expected.duration = 1;
 	expected.encoder = "diffractor-test"_c; // Matroska MuxingApp
-	expected.video_codec = str::cache(video_codec);
+	expected.video_codec = core::cache(video_codec);
 
 	assert_metadata(expected, *actual.to_props(), name);
 }
 
 static void should_scan_mov()
 {
-	const auto load_path = test_files_folder.combine_file("ipod.mov");
+	const auto load_path = test_files_folder().combine_file("ipod.mov");
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -866,19 +866,19 @@ static void should_scan_mov()
 	expected.height = 480;
 	expected.rating = 4;
 	expected.video_codec = "mpeg4"_c;
-	expected.dates.add_utc(prop::date_source::container_created, df::date_t(2005, 10, 17, 22, 54, 32));
-	expected.dates.add_utc(prop::date_source::xmp_modify, df::date_t(2005, 10, 17, 22, 56, 39));
+	expected.dates.add_utc(prop::date_source::container_created, core::date_t(2005, 10, 17, 22, 54, 32));
+	expected.dates.add_utc(prop::date_source::xmp_modify, core::date_t(2005, 10, 17, 22, 56, 39));
 	expected.year = 2005;
 
 	assert_metadata(expected, *actual.to_props(), "ipod.mov");
 
-	const auto load_path2 = test_files_folder.combine_file("StPauls.MOV");
+	const auto load_path2 = test_files_folder().combine_file("StPauls.MOV");
 	const auto actual2 = ff_scan_file(ff, load_path2);
 
 	prop::item_metadata expected2;
 	// Apple's creation date states the offset of the zone it was made in, so it is the time the camera's
 	// clock showed there, as a photo's EXIF time with its offset is.
-	expected2.dates.add(prop::date_source::container_created, df::date_t(2011, 3, 13, 15, 13, 49), 0);
+	expected2.dates.add(prop::date_source::container_created, core::date_t(2011, 3, 13, 15, 13, 49), 0);
 	expected2.audio_codec = "aac"_c;
 	// Issue #61: the QuickTime ISO6709 location tag must reach the coordinate, or the world map
 	// cannot plot the video.
@@ -903,7 +903,7 @@ static void should_scan_mov()
 
 static void should_scan_avi()
 {
-	const auto load_path = test_files_folder.combine_file("Byzantium.avi");
+	const auto load_path = test_files_folder().combine_file("Byzantium.avi");
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -927,7 +927,7 @@ static void should_scan_avi()
 
 static void should_scan_raw()
 {
-	const auto load_path = test_files_folder.combine("raw").combine_file("Screws.CR2");
+	const auto load_path = test_files_folder().combine("raw").combine_file("Screws.CR2");
 
 	prop::item_metadata expected;
 	expected.file_name = "Screws.CR2"_c;
@@ -946,7 +946,7 @@ static void should_scan_raw()
 	expected.focal_length = 100;
 	expected.iso_speed = 100;
 	expected.pixel_format = "RGBG"_c;
-	expected.dates.add(prop::date_source::embedded_created, df::date_t(2011, 9, 23, 23, 49, 16));
+	expected.dates.add(prop::date_source::embedded_created, core::date_t(2011, 9, 23, 23, 49, 16));
 
 	null_async_strategy as;
 	const location_cache locations;
@@ -958,7 +958,7 @@ static void should_scan_raw()
 static void should_scan_mod()
 {
 	constexpr auto file_name = "giana.mod";
-	const auto load_path = test_files_folder.combine("retro").combine_file(file_name);
+	const auto load_path = test_files_folder().combine("retro").combine_file(file_name);
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -974,7 +974,7 @@ static std::string png_test_xmp(int rating);
 static void should_scan_heic()
 {
 	constexpr auto file_name = "melnik.heic";
-	const auto load_path = test_files_folder.combine_file(file_name);
+	const auto load_path = test_files_folder().combine_file(file_name);
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -993,7 +993,7 @@ static void should_not_double_apply_heif_rotation()
 	// heif_image_handle_get_width/height and rotates the decoded pixels. Applying the
 	// Exif orientation on top of that would rotate the image a second time.
 	constexpr auto file_name = "melnik-rotated.heic";
-	const auto load_path = test_files_folder.combine("excluded1").combine_file(file_name);
+	const auto load_path = test_files_folder().combine("excluded1").combine_file(file_name);
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -1007,14 +1007,14 @@ static void should_not_double_apply_heif_rotation()
 	assert_equal(4000, props->height, "height", file_name);
 
 	// Already upright, so no further rotation may be requested.
-	assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(props->orientation),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(props->orientation),
 	             "orientation", file_name);
 
 	// The display path decodes the same item, so it must agree with the scan rather than
 	// rotating a second time - a mismatch here shows as a thumbnail facing the wrong way.
 	const auto loaded = ff.load(load_path, false);
 	assert_equal(true, is_valid(loaded.s), "loaded", file_name);
-	assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(loaded.orientation()),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(loaded.orientation()),
 	             "loaded orientation", file_name);
 	assert_equal(2252, loaded.dimensions().cx, "loaded width", file_name);
 	assert_equal(4000, loaded.dimensions().cy, "loaded height", file_name);
@@ -1024,10 +1024,10 @@ static void should_not_double_apply_heif_rotation()
 	// thumbnail must also be portrait once its own orientation is applied.
 	const auto* const ft = files::file_type_from_name(load_path);
 	const auto with_thumb = ff.scan_file(load_path, true, ft, {}, {}, libfiles::scan_intent::index);
-	assert_equal(true, ui::is_valid(with_thumb.thumbnail_surface), "thumbnail", file_name);
+	assert_equal(true, core::is_valid(with_thumb.thumbnail_surface), "thumbnail", file_name);
 
 	const auto thumb_extent = with_thumb.thumbnail_surface->dimensions();
-	const auto thumb_upright = ui::flips_xy(with_thumb.thumbnail_surface->orientation())
+	const auto thumb_upright = core::flips_xy(with_thumb.thumbnail_surface->orientation())
 		                           ? sizei{thumb_extent.cy, thumb_extent.cx}
 		                           : thumb_extent;
 	assert_equal(true, thumb_upright.cy > thumb_upright.cx, "thumbnail is upright portrait", file_name);
@@ -1036,7 +1036,7 @@ static void should_not_double_apply_heif_rotation()
 static void should_scan_avif()
 {
 	constexpr auto file_name = "hato.profile0.10bpc.yuv420.avif";
-	const auto load_path = test_files_folder.combine_file(file_name);
+	const auto load_path = test_files_folder().combine_file(file_name);
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -1049,10 +1049,10 @@ static void should_scan_avif()
 	assert_equal("yuv420", props->pixel_format, "pixel_format", file_name);
 }
 
-static ui::surface_ptr make_png_metadata_surface()
+static core::surface_ptr make_png_metadata_surface()
 {
-	auto surface = std::make_shared<ui::surface>();
-	surface->alloc(4, 4, ui::texture_format::RGB);
+	auto surface = std::make_shared<core::surface>();
+	surface->alloc(4, 4, core::texture_format::RGB);
 
 	for (auto y = 0; y < 4; ++y)
 	{
@@ -1069,7 +1069,7 @@ static ui::surface_ptr make_png_metadata_surface()
 	return surface;
 }
 
-static void append_png_be32(df::blob& out, const uint32_t value)
+static void append_png_be32(core::blob& out, const uint32_t value)
 {
 	out.push_back(static_cast<uint8_t>(value >> 24));
 	out.push_back(static_cast<uint8_t>(value >> 16));
@@ -1077,10 +1077,10 @@ static void append_png_be32(df::blob& out, const uint32_t value)
 	out.push_back(static_cast<uint8_t>(value));
 }
 
-static void insert_png_chunk_before_iend(df::blob& png, const char (&type)[5], const df::cspan data,
+static void insert_png_chunk_before_iend(core::blob& png, const char (&type)[5], const core::cspan data,
                                          const bool valid_crc = true)
 {
-	df::blob chunk;
+	core::blob chunk;
 	append_png_be32(chunk, static_cast<uint32_t>(data.size));
 	const auto type_start = chunk.size();
 	chunk.insert(chunk.end(), type, type + 4);
@@ -1094,10 +1094,10 @@ static void insert_png_chunk_before_iend(df::blob& png, const char (&type)[5], c
 	png.insert(png.end() - 12, chunk.begin(), chunk.end());
 }
 
-static df::blob make_png_text_chunk_payload(const bool compressed, const std::string_view xmp)
+static core::blob make_png_text_chunk_payload(const bool compressed, const std::string_view xmp)
 {
 	constexpr auto png_xmp_text_key = "XML:com.adobe.xmp";
-	df::blob data;
+	core::blob data;
 	data.insert(data.end(), png_xmp_text_key, png_xmp_text_key + strlen(png_xmp_text_key) + 1);
 	data.push_back(compressed ? 1 : 0);
 	data.push_back(0); // zlib
@@ -1122,19 +1122,19 @@ static df::blob make_png_text_chunk_payload(const bool compressed, const std::st
 	return data;
 }
 
-static df::file_path write_png_with_trailing_chunk(const std::string_view type, const df::blob& data)
+static core::file_path write_png_with_trailing_chunk(const std::string_view type, const core::blob& data)
 {
 	files ff;
-	const auto image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, ui::image_format::PNG);
+	const auto image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, core::image_format::PNG);
 	const auto& encoded = image->data();
-	df::blob png(encoded.data(), encoded.data() + encoded.size());
+	core::blob png(encoded.data(), encoded.data() + encoded.size());
 
 	assert_equal(4_z, type.size(), "png chunk type is four bytes");
 	const char chunk_type[5] = {type[0], type[1], type[2], type[3], 0};
 	insert_png_chunk_before_iend(png, chunk_type, data);
 
 	const auto path = _temps.next_path(".png");
-	df::blob_save_to_file(png, path);
+	platform::blob_save_to_file(png, path);
 	return path;
 }
 
@@ -1170,9 +1170,9 @@ static void should_read_png_metadata_after_idat()
 		libfiles::metadata_blocks metadata;
 		const auto xmp = png_test_xmp(3);
 		metadata.xmp.assign(xmp.begin(), xmp.end());
-		const auto image = ff.surface_to_image(make_png_metadata_surface(), metadata, {}, ui::image_format::PNG);
+		const auto image = ff.surface_to_image(make_png_metadata_surface(), metadata, {}, core::image_format::PNG);
 		const auto path = _temps.next_path(".png");
-		df::blob_save_to_file(image->data(), path);
+		platform::blob_save_to_file(image->data(), path);
 		return path;
 	}();
 
@@ -1185,42 +1185,42 @@ static void should_read_png_metadata_after_idat()
 	assert_equal(before->rating, after->rating, "an XMP packet after IDAT reads like one before IDAT");
 	assert_equal(3, after->rating, "trailing XMP rating");
 
-	auto prefixed_exif = make_orientation_exif(ui::orientation::right_top);
+	auto prefixed_exif = make_orientation_exif(core::orientation::right_top);
 	prefixed_exif.insert(prefixed_exif.begin(), exif_signature.begin(), exif_signature.end());
 	const auto prefixed_exif_path = write_png_with_trailing_chunk("eXIf", prefixed_exif);
-	assert_equal(static_cast<int>(ui::orientation::right_top),
+	assert_equal(static_cast<int>(core::orientation::right_top),
 	             static_cast<int>(ff_scan_file(ff, prefixed_exif_path).orientation),
 	             "Exif-prefixed trailing eXIf orientation reads");
 
 	const auto compressed_path = write_png_with_trailing_chunk("iTXt", make_png_text_chunk_payload(true, png_test_xmp(4)));
 	assert_equal(4, ff_scan_file(ff, compressed_path).to_props()->rating, "compressed trailing XMP reads");
 
-	const auto bad_crc_image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, ui::image_format::PNG);
+	const auto bad_crc_image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, core::image_format::PNG);
 	const auto& bad_crc_encoded = bad_crc_image->data();
-	df::blob bad_crc(bad_crc_encoded.data(), bad_crc_encoded.data() + bad_crc_encoded.size());
+	core::blob bad_crc(bad_crc_encoded.data(), bad_crc_encoded.data() + bad_crc_encoded.size());
 	const auto bad = make_png_text_chunk_payload(false, png_test_xmp(5));
 	insert_png_chunk_before_iend(bad_crc, "iTXt", bad, false);
 	const auto bad_crc_path = _temps.next_path(".png");
-	df::blob_save_to_file(bad_crc, bad_crc_path);
+	platform::blob_save_to_file(bad_crc, bad_crc_path);
 	assert_equal(0, ff_scan_file(ff, bad_crc_path).to_props()->rating, "bad CRC metadata is ignored");
 
-	const auto truncated_image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, ui::image_format::PNG);
+	const auto truncated_image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, core::image_format::PNG);
 	const auto& truncated_encoded = truncated_image->data();
-	df::blob truncated(truncated_encoded.data(), truncated_encoded.data() + truncated_encoded.size());
+	core::blob truncated(truncated_encoded.data(), truncated_encoded.data() + truncated_encoded.size());
 	const auto payload = make_png_text_chunk_payload(false, png_test_xmp(5));
 	append_png_be32(truncated, static_cast<uint32_t>(payload.size() + 100));
 	constexpr uint8_t itxt_type[] = {'i', 'T', 'X', 't'};
 	truncated.insert(truncated.end(), std::begin(itxt_type), std::end(itxt_type));
 	truncated.insert(truncated.end(), payload.begin(), payload.end());
 	const auto truncated_path = _temps.next_path(".png");
-	df::blob_save_to_file(truncated, truncated_path);
+	platform::blob_save_to_file(truncated, truncated_path);
 	assert_equal(0, ff_scan_file(ff, truncated_path).to_props()->rating, "truncated trailing metadata is ignored");
 }
 
 static void should_scan_webp()
 {
 	constexpr auto file_name = "lake.webp";
-	const auto load_path = test_files_folder.combine_file(file_name);
+	const auto load_path = test_files_folder().combine_file(file_name);
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -1234,7 +1234,7 @@ static void should_scan_webp()
 static void should_scan_jxl()
 {
 	constexpr auto file_name = "zoltan-tasi.jxl";
-	const auto load_path = test_files_folder.combine_file(file_name);
+	const auto load_path = test_files_folder().combine_file(file_name);
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -1292,7 +1292,7 @@ static std::string row_value_or_empty(const metadata_kv_list& rows, const std::s
 // is the one a reader makes, and it has to stay inside the block.
 static void should_write_a_complete_orientation_exif()
 {
-	const auto exif = make_orientation_exif(ui::orientation::right_top);
+	const auto exif = make_orientation_exif(core::orientation::right_top);
 	const auto u16 = [&exif](const size_t at)
 	{
 		return static_cast<size_t>(exif[at]) | static_cast<size_t>(exif[at + 1]) << 8;
@@ -1315,7 +1315,7 @@ static void should_write_a_complete_orientation_exif()
 
 	assert_equal(1, ifds, "the chain is the one IFD that carries the orientation");
 	assert_equal(0x0112_z, u16(10), "whose one entry is the orientation tag");
-	assert_equal(static_cast<size_t>(ui::orientation::right_top), u16(18), "holding the value asked for");
+	assert_equal(static_cast<size_t>(core::orientation::right_top), u16(18), "holding the value asked for");
 }
 
 // The verbose pane is a block inspector: each embedded block must describe its own extent and
@@ -1325,7 +1325,7 @@ static void should_present_exif_block_by_ifd()
 	constexpr auto file_name = "Test.jpg";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::exif);
 
@@ -1375,7 +1375,7 @@ static void should_present_maker_note_section()
 	constexpr auto file_name = "Test.jpg";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::exif);
 
@@ -1430,7 +1430,7 @@ static void should_present_derived_exif_section()
 	constexpr auto file_name = "Test.jpg";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::exif);
 
@@ -1519,9 +1519,9 @@ static void should_keep_unknown_exif_tags_through_a_rotate()
 	put_entry(private_tag, fmt_short, 1, 0x1234); // a tag the listing has no name for
 	put32(0);
 
-	const auto contains_private_tag = [](const df::blob& block)
+	const auto contains_private_tag = [](const core::blob& block)
 	{
-		for (const auto& kv : metadata_exif::to_info(df::cspan{block.data(), block.size()}))
+		for (const auto& kv : metadata_exif::to_info(core::cspan{block.data(), block.size()}))
 		{
 			if (kv.key.find("FDE8") != std::string::npos || kv.id.find("fde8") != std::string::npos) return true;
 		}
@@ -1529,10 +1529,10 @@ static void should_keep_unknown_exif_tags_through_a_rotate()
 		return false;
 	};
 
-	const df::blob before(buf.begin(), buf.end());
+	const core::blob before(buf.begin(), buf.end());
 	assert_equal(true, contains_private_tag(before), "the fixture carries a tag the listing does not name");
 
-	const auto after = metadata_exif::fix_dims(df::span{buf.data(), buf.size()}, 640, 480);
+	const auto after = metadata_exif::fix_dims(core::span{buf.data(), buf.size()}, 640, 480);
 	assert_equal(false, after.empty(), "the rotate rewrote the block");
 	assert_equal(true, contains_private_tag(after), "and the unnamed tag survived it");
 }
@@ -1590,7 +1590,7 @@ static void should_derive_focal_length_facts()
 	put32(63);
 	put32(10);
 
-	const auto kv = metadata_exif::to_info(df::cspan{buf.data(), buf.size()});
+	const auto kv = metadata_exif::to_info(core::cspan{buf.data(), buf.size()});
 
 	const auto find_derived = [&kv](const std::string_view key) -> const metadata_kv*
 	{
@@ -1662,7 +1662,7 @@ static void should_present_exif_tags_as_stored()
 	buf.insert(buf.end(), value.begin(), value.end());
 	buf.push_back(0);
 
-	const auto kv = metadata_exif::to_info(df::cspan{buf.data(), buf.size()});
+	const auto kv = metadata_exif::to_info(core::cspan{buf.data(), buf.size()});
 
 	const auto* row = static_cast<const metadata_kv*>(nullptr);
 
@@ -1701,7 +1701,7 @@ static void should_present_embedded_thumbnail_as_an_image()
 	constexpr auto file_name = "Test.jpg";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::exif);
 
@@ -1719,7 +1719,7 @@ static void should_present_embedded_thumbnail_as_an_image()
 	const auto* const image = std::get_if<metadata_image_detail>(&thumbnail->detail);
 
 	assert_equal(true, image != nullptr, "thumbnail is an image", file_name);
-	assert_equal(true, ui::is_valid(image->surface), "thumbnail surface", file_name);
+	assert_equal(true, core::is_valid(image->surface), "thumbnail surface", file_name);
 	assert_equal(true, thumbnail->open_by_default, "thumbnail opens by default", file_name);
 
 	// The surface is the payload's own size. Handing the decoder a target extent enlarges a small
@@ -1742,7 +1742,7 @@ static void should_present_embedded_thumbnail_as_an_image()
 		++binary_rows;
 		assert_equal(false, binary->is_image, "undecoded payload is not marked an image", file_name);
 		assert_equal(false, r.open_by_default, "hex dump stays closed", file_name);
-		assert_equal(true, binary->bytes.size() <= str::max_hex_dump_bytes, "hex dump is bounded", file_name);
+		assert_equal(true, binary->bytes.size() <= core::max_hex_dump_bytes, "hex dump is bounded", file_name);
 	}
 
 	// The maker note and other binary entries are still reported, so the check above means something.
@@ -1756,7 +1756,7 @@ static void should_present_raw_block_sections()
 	constexpr auto file_name = "Gherkin.CR2";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name), "Gherkin.xmp");
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name), "Gherkin.xmp");
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::raw);
 
@@ -1819,7 +1819,7 @@ static void should_present_jpeg_structure_block()
 	constexpr auto file_name = "Test.jpg";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::structure);
 
@@ -1868,7 +1868,7 @@ static void should_present_jpeg_embedded_images()
 	constexpr auto file_name = "Sony.JPG";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::structure);
 
@@ -1906,7 +1906,7 @@ static void should_present_webp_structure_block()
 	constexpr auto file_name = "lake.webp";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::structure);
 
@@ -1920,7 +1920,7 @@ static void should_present_heif_structure_block()
 	constexpr auto file_name = "melnik.heic";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::structure);
 
@@ -1935,7 +1935,7 @@ static void should_present_icc_block_sections()
 	constexpr auto file_name = "cmyk.jpg";
 
 	files ff;
-	const auto sr = ff_scan_file(ff, test_files_folder.combine_file(file_name));
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
 	const auto info = sr.to_info();
 	const auto block = find_block(info, metadata_standard::icc);
 
@@ -2385,7 +2385,7 @@ static void should_read_show_and_season_from_folders()
 static void should_derive_values_from_names()
 {
 	constexpr auto automatic = prop::library_kind::automatic;
-	const auto copied = df::date_t(2023, 5, 1, 10, 0, 0);
+	const auto copied = core::date_t(2023, 5, 1, 10, 0, 0);
 
 	prop::item_metadata film;
 	film.dates.add_utc(prop::date_source::file_created, copied);
@@ -2414,7 +2414,7 @@ static void should_derive_values_from_names()
 	const auto title_after = [](const std::string_view title, const std::string_view name)
 	{
 		prop::item_metadata md;
-		md.title = str::cache(title);
+		md.title = core::cache(title);
 		derive_name_values(md, name, "Films", "Video", prop::library_kind::automatic);
 		return std::string(md.title.sv());
 	};
@@ -2437,7 +2437,7 @@ static void should_derive_values_from_names()
 	             "one repeating a release name gives way to what the name says");
 
 	prop::item_metadata comment;
-	comment.comment = str::cache("https://www.yts.mx");
+	comment.comment = core::cache("https://www.yts.mx");
 	derive_name_values(comment, "Movie.2019.1080p.WEB.x264-GRP", "Films", "Video", automatic);
 	assert_equal(true, is_empty(comment.comment), "a website is no comment");
 
@@ -2459,19 +2459,19 @@ static void should_derive_values_from_names()
 	dated.dates.add_utc(prop::date_source::file_created, copied);
 	derive_name_values(dated, "NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP", "NFL", "TV", automatic);
 	assert_equal(true, dated.kind == prop::media_kind::episode, "a dated release is an episode");
-	assert_equal(df::date_t(2024, 1, 7, 0, 0, 0), dated.created(), "filed under the day it aired");
+	assert_equal(core::date_t(2024, 1, 7, 0, 0, 0), dated.created(), "filed under the day it aired");
 	assert_equal("2024-01-07"sv, prop::episode_label(dated).sv(), "and labelled by it");
 
 	// A recording dated the day it aired names the day itself, so its name adds no date and the label reads its own.
 	prop::item_metadata recorded;
-	recorded.dates.add_utc(prop::date_source::file_created, df::date_t(2024, 1, 7, 12, 0, 0));
+	recorded.dates.add_utc(prop::date_source::file_created, core::date_t(2024, 1, 7, 12, 0, 0));
 	derive_name_values(recorded, "NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP", "NFL", "TV", automatic);
 	assert_equal("2024-01-07"sv, prop::episode_label(recorded).sv(), "a recording is labelled by the day it aired");
 
 	// The file's own tags win over its name, and are never marked as read from it.
 	prop::item_metadata tagged;
-	tagged.title = str::cache("The Real Title");
-	tagged.show = str::cache("The Real Show");
+	tagged.title = core::cache("The Real Title");
+	tagged.show = core::cache("The Real Show");
 	derive_name_values(tagged, "Other.Show.S02E04.Other.Title.720p.HDTV.x264-GRP", "TV", "Video", automatic);
 	assert_equal("The Real Title"sv, tagged.title.sv(), "a tagged title stays");
 	assert_equal("The Real Show"sv, tagged.show.sv(), "and a tagged show");
@@ -2603,7 +2603,7 @@ static void should_parse_exif_tags()
 	}
 
 	prop::item_metadata md;
-	apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{buf.data(), buf.size()})));
+	apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{buf.data(), buf.size()})));
 
 	assert_equal("DiffractorApp", md.encoder, "Software -> encoder");
 	assert_equal("Ansel Adams", md.artist, "Artist -> artist (XPAuthor must not override)");
@@ -2673,7 +2673,7 @@ static void should_read_windows_xp_tags_as_written()
 	for (const auto& entry : entries) buf.insert(buf.end(), entry.second.begin(), entry.second.end());
 
 	prop::item_metadata md;
-	apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{buf.data(), buf.size()})));
+	apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{buf.data(), buf.size()})));
 
 	assert_equal("Winter", md.title, "XPTitle -> title");
 	assert_equal("alpha beta", md.tags, "XPKeywords -> tags, one for each keyword");
@@ -2790,7 +2790,8 @@ static void should_parse_exif_gps_height()
 		{0x000c, FMT_STRING, 2, {'K', 0}},
 		{0x000d, FMT_URATIONAL, 1, urational(900, 1)},
 	});
-	apply_properties(cruising, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{cruising_exif.data(), cruising_exif.size()})));
+	apply_properties(cruising,
+		libfiles::properties_from_exif(libfiles::read_exif(core::cspan{cruising_exif.data(), cruising_exif.size()})));
 	assert_equal(10668.0f, cruising.altitude, "GPSAltitude -> altitude");
 	assert_equal(900.0f, cruising.gps_speed, "GPSSpeed in km/h -> gps_speed");
 
@@ -2800,7 +2801,7 @@ static void should_parse_exif_gps_height()
 		{0x0005, FMT_BYTE, 1, {1}},
 		{0x0006, FMT_URATIONAL, 1, urational(180, 10)},
 	});
-	apply_properties(dive, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{dive_exif.data(), dive_exif.size()})));
+	apply_properties(dive, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{dive_exif.data(), dive_exif.size()})));
 	assert_equal(-18.0f, dive.altitude, "below-sea-level reference negates the altitude");
 
 	// Knots are the other common speed reference.
@@ -2809,7 +2810,7 @@ static void should_parse_exif_gps_height()
 		{0x000c, FMT_STRING, 2, {'N', 0}},
 		{0x000d, FMT_URATIONAL, 1, urational(100, 1)},
 	});
-	apply_properties(knots, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{knots_exif.data(), knots_exif.size()})));
+	apply_properties(knots, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{knots_exif.data(), knots_exif.size()})));
 	assert_equal(185.2f, knots.gps_speed, "GPSSpeed in knots -> km/h");
 }
 
@@ -2843,7 +2844,7 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(37, 4, 0)},
 	});
-	apply_properties(equator, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{equator_exif.data(), equator_exif.size()})));
+	apply_properties(equator, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{equator_exif.data(), equator_exif.size()})));
 	assert_equal(true, equator.coordinate.is_valid(), "a latitude of zero is a position, not an absence");
 	assert_equal(true, std::abs(equator.coordinate.longitude() - 37.0667) < 0.001, "and it keeps its longitude");
 
@@ -2855,7 +2856,8 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(0, 0, 0)},
 	});
-	apply_properties(meridian, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{meridian_exif.data(), meridian_exif.size()})));
+	apply_properties(meridian,
+		libfiles::properties_from_exif(libfiles::read_exif(core::cspan{meridian_exif.data(), meridian_exif.size()})));
 	assert_equal(true, meridian.coordinate.is_valid(), "a longitude of zero is a position too");
 	assert_equal(true, std::abs(meridian.coordinate.latitude() - 51.4778) < 0.001, "and it keeps its latitude");
 
@@ -2867,13 +2869,13 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(0, 0, 0)},
 	});
-	apply_properties(no_fix, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{no_fix_exif.data(), no_fix_exif.size()})));
+	apply_properties(no_fix, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{no_fix_exif.data(), no_fix_exif.size()})));
 	assert_equal(false, no_fix.coordinate.is_valid(), "but a zero pair is a receiver with no fix");
 
 	// And a file carrying no coordinate at all still has none.
 	prop::item_metadata none;
 	const auto none_exif = build_gps_exif({{0x0005, FMT_BYTE, 1, {0}}});
-	apply_properties(none, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{none_exif.data(), none_exif.size()})));
+	apply_properties(none, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{none_exif.data(), none_exif.size()})));
 	assert_equal(false, none.coordinate.is_valid(), "and an absent coordinate stays absent");
 }
 
@@ -2923,7 +2925,7 @@ static void should_parse_an_extended_length_iptc_dataset()
 		block.insert(block.end(), b.begin(), b.end());
 
 		prop::item_metadata md;
-		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(df::cspan{block.data(), block.size()})));
+		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(core::cspan{block.data(), block.size()})));
 		assert_equal("Lisbon", md.title, "a two-octet size still reads");
 		assert_equal("Ada Lovelace", md.copyright_notice, "and the dataset after it is still found");
 	}
@@ -2937,7 +2939,7 @@ static void should_parse_an_extended_length_iptc_dataset()
 		block.insert(block.end(), b.begin(), b.end());
 
 		prop::item_metadata md;
-		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(df::cspan{block.data(), block.size()})));
+		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(core::cspan{block.data(), block.size()})));
 		assert_equal("Lisbon", md.title, "an extended size reads its own payload");
 		assert_equal("Ada Lovelace", md.copyright_notice, "and the walk stays aligned for what follows");
 	}
@@ -3003,7 +3005,7 @@ static void should_drop_binary_exif_comment()
 	};
 	prop::item_metadata md_junk;
 	const auto exif_junk = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, junk);
-	apply_properties(md_junk, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_junk.data(), exif_junk.size()})));
+	apply_properties(md_junk, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_junk.data(), exif_junk.size()})));
 	assert_equal(true, prop::is_null(md_junk.comment), "binary Samsung comment dropped");
 
 	// SM-G900F hides its blob behind a valid "ASCII\0\0\0" character code, so the marker
@@ -3013,7 +3015,8 @@ static void should_drop_binary_exif_comment()
 	for (const uint8_t c : {0x27, 0x03, 0xab, 0x5c, 0x46, 0x0b, 0x01, 0x00}) samsung.push_back(c);
 	prop::item_metadata md_samsung;
 	const auto exif_samsung = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, samsung);
-	apply_properties(md_samsung, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_samsung.data(), exif_samsung.size()})));
+	apply_properties(md_samsung,
+		libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_samsung.data(), exif_samsung.size()})));
 	assert_equal(true, prop::is_null(md_samsung.comment), "ASCII-prefixed binary comment dropped");
 
 	// Control: a well-formed ASCII UserComment ("ASCII\0\0\0" prefix) is preserved.
@@ -3022,7 +3025,7 @@ static void should_drop_binary_exif_comment()
 	};
 	prop::item_metadata md_good;
 	const auto exif_good = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, good);
-	apply_properties(md_good, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_good.data(), exif_good.size()})));
+	apply_properties(md_good, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_good.data(), exif_good.size()})));
 	assert_equal("Hello", md_good.comment, "valid ASCII comment preserved");
 
 	// Control: multi-line text with trailing nul padding survives the binary scan.
@@ -3031,7 +3034,7 @@ static void should_drop_binary_exif_comment()
 	};
 	prop::item_metadata md_padded;
 	const auto exif_padded = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, padded);
-	apply_properties(md_padded, libfiles::properties_from_exif(libfiles::read_exif(df::cspan{exif_padded.data(), exif_padded.size()})));
+	apply_properties(md_padded, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_padded.data(), exif_padded.size()})));
 	assert_equal("Line\n2", md_padded.comment, "multi-line padded comment preserved");
 }
 
@@ -3063,7 +3066,7 @@ static void should_replace_item_metadata_without_resetting_playback_position()
 	initial_metadata->media_position = 12.0;
 	initial.metadata.store(initial_metadata);
 
-	const auto path = df::file_path("c:\\position.mp4");
+	const auto path = core::file_path("c:\\position.mp4");
 	const auto item = std::make_shared<df::item_element>(path, initial);
 	const auto old_snapshot = item->metadata();
 	item->media_position(24.0);
@@ -3173,14 +3176,14 @@ static void should_parse_korean_tags()
 static void should_prefer_datetimeoriginal_for_created()
 {
 	prop::item_metadata md;
-	md.dates.add_utc(prop::date_source::container_created, df::date_t(2020, 1, 1, 12, 0, 0));
-	md.dates.add(prop::date_source::exif_original, df::date_t(2005, 6, 15, 9, 30, 0));
-	assert_equal(df::date_t(2005, 6, 15, 9, 30, 0), md.created(), "prefers DateTimeOriginal");
+	md.dates.add_utc(prop::date_source::container_created, core::date_t(2020, 1, 1, 12, 0, 0));
+	md.dates.add(prop::date_source::exif_original, core::date_t(2005, 6, 15, 9, 30, 0));
+	assert_equal(core::date_t(2005, 6, 15, 9, 30, 0), md.created(), "prefers DateTimeOriginal");
 
 	// With no capture time, fall back to the container date - converted, because it is an instant.
 	prop::item_metadata md2;
-	md2.dates.add_utc(prop::date_source::container_created, df::date_t(2020, 1, 1, 12, 0, 0));
-	assert_equal(df::date_t(2020, 1, 1, 12, 0, 0).system_to_local(), md2.created(), "falls back to the container date");
+	md2.dates.add_utc(prop::date_source::container_created, core::date_t(2020, 1, 1, 12, 0, 0));
+	assert_equal(platform::utc_to_local(core::date_t(2020, 1, 1, 12, 0, 0)), md2.created(), "falls back to the container date");
 
 	// With neither set the date is invalid (the item then uses the file date).
 	const prop::item_metadata md3;
@@ -3239,12 +3242,12 @@ static void should_hold_date_sources_in_authority_order()
 static void should_collapse_sources_that_agree_to_the_second()
 {
 	prop::date_pack pack;
-	pack.add(prop::date_source::exif_original, df::date_t(2025, 8, 16, 18, 11, 56));
-	pack.add(prop::date_source::exif_digitized, df::date_t(2025, 8, 16, 18, 11, 56));
+	pack.add(prop::date_source::exif_original, core::date_t(2025, 8, 16, 18, 11, 56));
+	pack.add(prop::date_source::exif_digitized, core::date_t(2025, 8, 16, 18, 11, 56));
 
 	// The XMP reading of the same second, carrying 368 ms and a +01:00 offset.
-	const auto with_millis = df::date_t(df::date_t(2025, 8, 16, 18, 11, 56).to_int64() +
-		368 * (df::date_t::intervals_per_second / 1000));
+	const auto with_millis = core::date_t(core::date_t(2025, 8, 16, 18, 11, 56).to_int64() +
+		368 * (core::date_t::intervals_per_second / 1000));
 	pack.add(prop::date_source::xmp_create, with_millis, 60);
 
 	assert_equal(1, pack.group_count(), "one value, not three");
@@ -3259,17 +3262,17 @@ static void should_collapse_sources_that_agree_to_the_second()
 static void should_rank_editor_rewritten_dates_below_the_shutter()
 {
 	prop::date_pack pack;
-	pack.add(prop::date_source::photoshop_created, df::date_t(2026, 6, 2, 7, 22, 9));
-	pack.add(prop::date_source::exif_original, df::date_t(2025, 8, 16, 18, 11, 56));
+	pack.add(prop::date_source::photoshop_created, core::date_t(2026, 6, 2, 7, 22, 9));
+	pack.add(prop::date_source::exif_original, core::date_t(2025, 8, 16, 18, 11, 56));
 
-	assert_equal(df::date_t(2025, 8, 16, 18, 11, 56), pack.original(), "DateTimeOriginal wins");
+	assert_equal(core::date_t(2025, 8, 16, 18, 11, 56), pack.original(), "DateTimeOriginal wins");
 	assert_equal(true, pack.resolved_source(prop::date_concept::original) == prop::date_source::exif_original,
 	             "and the panel can say so");
 
 	// With nothing better it is still the best answer available, which is why it is read at all.
 	prop::date_pack only_editor;
-	only_editor.add(prop::date_source::photoshop_created, df::date_t(2026, 6, 2, 7, 22, 9));
-	assert_equal(df::date_t(2026, 6, 2, 7, 22, 9), only_editor.original(), "used when nothing else answers");
+	only_editor.add(prop::date_source::photoshop_created, core::date_t(2026, 6, 2, 7, 22, 9));
+	assert_equal(core::date_t(2026, 6, 2, 7, 22, 9), only_editor.original(), "used when nothing else answers");
 }
 
 // #184 - EXIF 0x0132 is the time the file last changed. Reading it as a creation date is what put
@@ -3277,13 +3280,13 @@ static void should_rank_editor_rewritten_dates_below_the_shutter()
 static void should_read_exif_datetime_as_modified()
 {
 	prop::date_pack pack;
-	pack.add(prop::date_source::exif_datetime, df::date_t(2023, 8, 1, 0, 0, 0));
-	pack.add(prop::date_source::exif_original, df::date_t(1990, 2, 1, 0, 0, 0));
+	pack.add(prop::date_source::exif_datetime, core::date_t(2023, 8, 1, 0, 0, 0));
+	pack.add(prop::date_source::exif_original, core::date_t(1990, 2, 1, 0, 0, 0));
 
-	assert_equal(df::date_t(1990, 2, 1, 0, 0, 0), pack.original(), "capture time");
-	assert_equal(df::date_t(2023, 8, 1, 0, 0, 0), pack.modified(), "0x0132 is the file change time");
+	assert_equal(core::date_t(1990, 2, 1, 0, 0, 0), pack.original(), "capture time");
+	assert_equal(core::date_t(2023, 8, 1, 0, 0, 0), pack.modified(), "0x0132 is the file change time");
 	assert_equal(false, pack.created().is_valid(), "and it is not a creation date");
-	assert_equal(df::date_t(1990, 2, 1, 0, 0, 0), pack.best(), "so the item files under 1990");
+	assert_equal(core::date_t(1990, 2, 1, 0, 0, 0), pack.best(), "so the item files under 1990");
 }
 
 // Modified describes the file, so the filesystem answers it. A metadata modify tag records when a
@@ -3294,26 +3297,26 @@ static void should_read_exif_datetime_as_modified()
 static void should_take_the_modified_date_from_the_filesystem()
 {
 	prop::date_pack pack;
-	pack.add(prop::date_source::exif_datetime, df::date_t(2019, 5, 4, 9, 0, 0));
-	pack.add(prop::date_source::xmp_modify, df::date_t(2019, 5, 4, 9, 0, 0));
-	pack.add(prop::date_source::file_modified, df::date_t(2026, 8, 19, 21, 30, 0));
+	pack.add(prop::date_source::exif_datetime, core::date_t(2019, 5, 4, 9, 0, 0));
+	pack.add(prop::date_source::xmp_modify, core::date_t(2019, 5, 4, 9, 0, 0));
+	pack.add(prop::date_source::file_modified, core::date_t(2026, 8, 19, 21, 30, 0));
 
-	assert_equal(df::date_t(2026, 8, 19, 21, 30, 0), pack.modified(), "the stamp, not the stale tag");
+	assert_equal(core::date_t(2026, 8, 19, 21, 30, 0), pack.modified(), "the stamp, not the stale tag");
 	assert_equal("File modified", prop::date_source_name(pack.resolved_source(prop::date_concept::modified)),
 	             "and it says so");
 
 	// Copying destroys the creation stamp and preserves the modification stamp, which is why the
 	// two concepts rank the filesystem differently rather than by accident.
 	prop::date_pack copied;
-	copied.add(prop::date_source::container_created, df::date_t(2020, 1, 2, 3, 4, 5));
-	copied.add(prop::date_source::file_created, df::date_t(2026, 8, 19, 21, 30, 0));
+	copied.add(prop::date_source::container_created, core::date_t(2020, 1, 2, 3, 4, 5));
+	copied.add(prop::date_source::file_created, core::date_t(2026, 8, 19, 21, 30, 0));
 
-	assert_equal(df::date_t(2020, 1, 2, 3, 4, 5), copied.created(), "the container, not the copy time");
+	assert_equal(core::date_t(2020, 1, 2, 3, 4, 5), copied.created(), "the container, not the copy time");
 
 	// With no stamp - a remote item, or a placeholder that was never hydrated - the tag still answers.
 	prop::date_pack no_stamp;
-	no_stamp.add(prop::date_source::exif_datetime, df::date_t(2019, 5, 4, 9, 0, 0));
-	assert_equal(df::date_t(2019, 5, 4, 9, 0, 0), no_stamp.modified(), "rather than nothing at all");
+	no_stamp.add(prop::date_source::exif_datetime, core::date_t(2019, 5, 4, 9, 0, 0));
+	assert_equal(core::date_t(2019, 5, 4, 9, 0, 0), no_stamp.modified(), "rather than nothing at all");
 }
 
 // #184 - the date bubble names the tag behind each date, then lists the filesystem stamps. A stamp
@@ -3323,9 +3326,9 @@ static void should_not_repeat_a_filesystem_stamp_in_the_date_bubble()
 {
 	// The ordinary photograph: metadata answers Original and Created, the stamp answers Modified.
 	prop::date_pack photo;
-	photo.add(prop::date_source::exif_original, df::date_t(2025, 8, 16, 18, 11, 56));
-	photo.add(prop::date_source::xmp_create, df::date_t(2025, 8, 16, 18, 12, 30));
-	photo.add(prop::date_source::file_modified, df::date_t(2026, 8, 19, 21, 30, 0));
+	photo.add(prop::date_source::exif_original, core::date_t(2025, 8, 16, 18, 11, 56));
+	photo.add(prop::date_source::xmp_create, core::date_t(2025, 8, 16, 18, 12, 30));
+	photo.add(prop::date_source::file_modified, core::date_t(2026, 8, 19, 21, 30, 0));
 
 	assert_equal(true, prop::shows_own_file_stamp_row(photo, prop::date_source::file_created),
 	             "the creation stamp answered nothing, so it gets its own row");
@@ -3343,8 +3346,8 @@ static void should_not_repeat_a_filesystem_stamp_in_the_date_bubble()
 	// A copy: the creation stamp is the copy time and the container still states when the content
 	// was made, so Created is answered by the container and the stamp stands on its own.
 	prop::date_pack copied;
-	copied.add(prop::date_source::container_created, df::date_t(2020, 1, 2, 3, 4, 5));
-	copied.add(prop::date_source::file_created, df::date_t(2026, 8, 19, 21, 30, 0));
+	copied.add(prop::date_source::container_created, core::date_t(2020, 1, 2, 3, 4, 5));
+	copied.add(prop::date_source::file_created, core::date_t(2026, 8, 19, 21, 30, 0));
 	assert_equal(true, prop::shows_own_file_stamp_row(copied, prop::date_source::file_created),
 	             "the container answered Created, so the copy time is still worth showing");
 
@@ -3352,17 +3355,17 @@ static void should_not_repeat_a_filesystem_stamp_in_the_date_bubble()
 	// practice the pack does not carry them and asking which tag won cannot answer on its own. A row
 	// carrying an instant already on screen under another tag is the duplicate this exists to stop.
 	prop::date_pack unstamped;
-	unstamped.add(prop::date_source::exif_original, df::date_t(2025, 8, 16, 18, 11, 56));
-	unstamped.add(prop::date_source::xmp_modify, df::date_t(2026, 8, 19, 21, 30, 0));
+	unstamped.add(prop::date_source::exif_original, core::date_t(2025, 8, 16, 18, 11, 56));
+	unstamped.add(prop::date_source::xmp_modify, core::date_t(2026, 8, 19, 21, 30, 0));
 
 	assert_equal(false, prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_modified,
-	                                                   df::date_t(2026, 8, 19, 21, 30, 0)),
+	                                                   core::date_t(2026, 8, 19, 21, 30, 0)),
 	             "the same instant under another tag is the same row");
 	assert_equal(true, prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_modified,
-	                                                  df::date_t(2026, 8, 19, 21, 31, 0)),
+	                                                  core::date_t(2026, 8, 19, 21, 31, 0)),
 	             "a minute apart is a different fact and says something");
 	assert_equal(true, prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_created,
-	                                                  df::date_t(2026, 8, 19, 22, 0, 0)),
+	                                                  core::date_t(2026, 8, 19, 22, 0, 0)),
 	             "and a stamp nothing above matches keeps its row");
 }
 
@@ -3396,10 +3399,10 @@ static void should_carry_the_zone_and_fraction_a_date_was_written_with()
 	// The fraction is what keeps two frames of a burst apart; without it they collapse to one group
 	// and order by name instead of by time.
 	prop::date_pack burst;
-	burst.add(prop::date_source::exif_original, df::date_t(df::date_t(2024, 6, 1, 12, 0, 0).to_int64() + 2'000'000));
-	burst.add(prop::date_source::xmp_exif_original, df::date_t(2024, 6, 1, 12, 0, 0));
+	burst.add(prop::date_source::exif_original, core::date_t(core::date_t(2024, 6, 1, 12, 0, 0).to_int64() + 2'000'000));
+	burst.add(prop::date_source::xmp_exif_original, core::date_t(2024, 6, 1, 12, 0, 0));
 	assert_equal(1, burst.group_count(), "the same second is one group");
-	assert_equal(2'000'000ll, burst.group_value(0).to_int64() % df::date_t::intervals_per_second,
+	assert_equal(2'000'000ll, burst.group_value(0).to_int64() % core::date_t::intervals_per_second,
 	             "and it keeps the more precise reading");
 }
 
@@ -3408,25 +3411,25 @@ static void should_carry_the_zone_and_fraction_a_date_was_written_with()
 // was recorded for no file at all: the rung was filled and dead at the same time.
 static void should_read_a_gps_date_stamp_as_a_date()
 {
-	df::date_t bare;
+	core::date_t bare;
 	assert_equal(false, bare.parse_exif_date("2023:07:14"),
 	             "the colon spelling has no date-only form in the shared parser");
 
-	df::date_t punctuated;
+	core::date_t punctuated;
 	assert_equal(true, punctuated.parse_exif_date("2023:07:14 00:00:00"),
 	             "so the stamp is punctuated to midnight before parsing, as IPTC dates already are");
-	assert_equal(df::date_t(2023, 7, 14, 0, 0, 0), punctuated, "and it reads as the day the file states");
+	assert_equal(core::date_t(2023, 7, 14, 0, 0, 0), punctuated, "and it reads as the day the file states");
 
 	// The stamp is only half of it: the pair becomes one UTC instant, which is what makes it able to
 	// recover a zone an EXIF reading never stated.
 	constexpr auto seconds = 9ull * 3600 + 41 * 60 + 6;
-	const df::date_t instant(punctuated.to_int64() + seconds * df::date_t::intervals_per_second);
+	const core::date_t instant(punctuated.to_int64() + seconds * core::date_t::intervals_per_second);
 
 	prop::date_pack pack;
 	pack.add_utc(prop::date_source::gps_stamp, instant);
 
 	assert_equal(true, pack.has_source(prop::date_source::gps_stamp), "the reference date is recorded");
-	assert_equal(df::date_t(2023, 7, 14, 9, 41, 6), pack.group_value(0), "with the time the stamp carries");
+	assert_equal(core::date_t(2023, 7, 14, 9, 41, 6), pack.group_value(0), "with the time the stamp carries");
 	assert_equal(prop::date_pack::utc_instant, pack.group_offset(0), "and as an instant, not a wall clock");
 }
 
@@ -3435,26 +3438,26 @@ static void should_read_a_gps_date_stamp_as_a_date()
 static void should_separate_original_from_created_for_a_scan()
 {
 	prop::date_pack pack;
-	pack.add(prop::date_source::exif_original, df::date_t(1980, 6, 1, 12, 0, 0));
-	pack.add(prop::date_source::exif_digitized, df::date_t(2024, 3, 9, 16, 45, 0));
-	pack.add(prop::date_source::file_modified, df::date_t(2024, 3, 9, 16, 50, 0));
+	pack.add(prop::date_source::exif_original, core::date_t(1980, 6, 1, 12, 0, 0));
+	pack.add(prop::date_source::exif_digitized, core::date_t(2024, 3, 9, 16, 45, 0));
+	pack.add(prop::date_source::file_modified, core::date_t(2024, 3, 9, 16, 50, 0));
 
-	assert_equal(df::date_t(1980, 6, 1, 12, 0, 0), pack.original(), "when the photograph was taken");
-	assert_equal(df::date_t(2024, 3, 9, 16, 45, 0), pack.created(), "when the file was made");
-	assert_equal(df::date_t(2024, 3, 9, 16, 50, 0), pack.modified(), "when the file last changed");
-	assert_equal(df::date_t(1980, 6, 1, 12, 0, 0), pack.best(), "the item files under 1980");
+	assert_equal(core::date_t(1980, 6, 1, 12, 0, 0), pack.original(), "when the photograph was taken");
+	assert_equal(core::date_t(2024, 3, 9, 16, 45, 0), pack.created(), "when the file was made");
+	assert_equal(core::date_t(2024, 3, 9, 16, 50, 0), pack.modified(), "when the file last changed");
+	assert_equal(core::date_t(1980, 6, 1, 12, 0, 0), pack.best(), "the item files under 1980");
 }
 
 // A scan carrying no capture time must still land somewhere a user can find it.
 static void should_fall_back_through_created_to_modified()
 {
 	prop::date_pack created_only;
-	created_only.add(prop::date_source::container_created, df::date_t(2024, 3, 9, 16, 45, 0));
-	assert_equal(df::date_t(2024, 3, 9, 16, 45, 0), created_only.best(), "falls back to created");
+	created_only.add(prop::date_source::container_created, core::date_t(2024, 3, 9, 16, 45, 0));
+	assert_equal(core::date_t(2024, 3, 9, 16, 45, 0), created_only.best(), "falls back to created");
 
 	prop::date_pack modified_only;
-	modified_only.add(prop::date_source::file_modified, df::date_t(2024, 3, 9, 16, 50, 0));
-	assert_equal(df::date_t(2024, 3, 9, 16, 50, 0), modified_only.best(), "falls back to modified");
+	modified_only.add(prop::date_source::file_modified, core::date_t(2024, 3, 9, 16, 50, 0));
+	assert_equal(core::date_t(2024, 3, 9, 16, 50, 0), modified_only.best(), "falls back to modified");
 
 	constexpr prop::date_pack empty;
 	assert_equal(false, empty.best().is_valid(), "and claims nothing when the file carries no date");
@@ -3466,15 +3469,15 @@ static void should_fall_back_through_created_to_modified()
 static void should_pack_dates_canonically_regardless_of_parse_order()
 {
 	prop::date_pack forward;
-	forward.add(prop::date_source::exif_original, df::date_t(1980, 6, 1, 12, 0, 0));
-	forward.add(prop::date_source::exif_digitized, df::date_t(2024, 3, 9, 16, 45, 0));
+	forward.add(prop::date_source::exif_original, core::date_t(1980, 6, 1, 12, 0, 0));
+	forward.add(prop::date_source::exif_digitized, core::date_t(2024, 3, 9, 16, 45, 0));
 
 	prop::date_pack reverse;
-	reverse.add(prop::date_source::exif_digitized, df::date_t(2024, 3, 9, 16, 45, 0));
-	reverse.add(prop::date_source::exif_original, df::date_t(1980, 6, 1, 12, 0, 0));
+	reverse.add(prop::date_source::exif_digitized, core::date_t(2024, 3, 9, 16, 45, 0));
+	reverse.add(prop::date_source::exif_original, core::date_t(1980, 6, 1, 12, 0, 0));
 
 	assert_equal(true, forward == reverse, "the pack is canonical");
-	assert_equal(df::date_t(1980, 6, 1, 12, 0, 0), forward.group_value(0), "groups run oldest first");
+	assert_equal(core::date_t(1980, 6, 1, 12, 0, 0), forward.group_value(0), "groups run oldest first");
 
 	// A source with no date says nothing, and must not erase one already recorded.
 	auto with_empty = forward;
@@ -3488,8 +3491,8 @@ static void should_pack_dates_canonically_regardless_of_parse_order()
 // loses the instant.
 static void should_preserve_date_representation_when_coalescing_sources()
 {
-	const auto utc_created = df::date_t(2024, 3, 9, 8, 0, 0);
-	const auto floating_original = utc_created.system_to_local();
+	const auto utc_created = core::date_t(2024, 3, 9, 8, 0, 0);
+	const auto floating_original = platform::utc_to_local(utc_created);
 
 	prop::date_pack forward;
 	forward.add(prop::date_source::exif_original, floating_original);
@@ -3515,18 +3518,18 @@ static void should_preserve_date_representation_when_coalescing_sources()
 static void should_record_dates_that_do_not_fit()
 {
 	prop::date_pack pack;
-	pack.add(prop::date_source::exif_original, df::date_t(2001, 1, 1));
-	pack.add(prop::date_source::exif_digitized, df::date_t(2002, 1, 1));
-	pack.add(prop::date_source::xmp_create, df::date_t(2003, 1, 1));
-	pack.add(prop::date_source::exif_datetime, df::date_t(2004, 1, 1));
-	pack.add(prop::date_source::rip_date, df::date_t(2005, 1, 1));
+	pack.add(prop::date_source::exif_original, core::date_t(2001, 1, 1));
+	pack.add(prop::date_source::exif_digitized, core::date_t(2002, 1, 1));
+	pack.add(prop::date_source::xmp_create, core::date_t(2003, 1, 1));
+	pack.add(prop::date_source::exif_datetime, core::date_t(2004, 1, 1));
+	pack.add(prop::date_source::rip_date, core::date_t(2005, 1, 1));
 
 	assert_equal(prop::date_pack::max_groups, pack.group_count(), "the pack is full");
 	assert_equal(true, pack.overflow() && prop::date_source::rip_date, "the source that did not fit is recorded");
 	assert_equal(true, pack.has_source(prop::date_source::rip_date), "and is still reported as present");
-	assert_equal(df::date_t(2001, 1, 1), pack.original(), "the dates that resolve are unaffected");
-	assert_equal(df::date_t(2002, 1, 1), pack.created(), "the dates that resolve are unaffected");
-	assert_equal(df::date_t(2004, 1, 1), pack.modified(), "the dates that resolve are unaffected");
+	assert_equal(core::date_t(2001, 1, 1), pack.original(), "the dates that resolve are unaffected");
+	assert_equal(core::date_t(2002, 1, 1), pack.created(), "the dates that resolve are unaffected");
+	assert_equal(core::date_t(2004, 1, 1), pack.modified(), "the dates that resolve are unaffected");
 }
 
 // tag_set is what every keyword edit passes through, and it is the reason a written file keeps its
@@ -3632,7 +3635,7 @@ namespace xmp_corpus
 	// the same properties in another order; what it must keep then is each property.
 	std::string by_property(const std::string& dump)
 	{
-		auto lines = str::split(dump, false, [](const char c) { return c == '\n'; });
+		auto lines = core::split(dump, false, [](const char c) { return c == '\n'; });
 		std::ranges::sort(lines);
 
 		std::string out;
@@ -3648,8 +3651,8 @@ namespace xmp_corpus
 
 	std::string first_difference(const std::string& expected, const std::string& actual)
 	{
-		const auto e = str::split(expected, false, [](const char c) { return c == '\n'; });
-		const auto a = str::split(actual, false, [](const char c) { return c == '\n'; });
+		const auto e = core::split(expected, false, [](const char c) { return c == '\n'; });
+		const auto a = core::split(actual, false, [](const char c) { return c == '\n'; });
 
 		for (size_t i = 0; i < std::max(e.size(), a.size()); ++i)
 		{
@@ -3661,7 +3664,7 @@ namespace xmp_corpus
 		return {};
 	}
 
-	void add_folder(const df::folder_path folder, std::vector<df::file_path>& files)
+	void add_folder(const core::folder_path folder, std::vector<core::file_path>& files)
 	{
 		const auto contents = platform::iterate_file_items(folder, false);
 
@@ -3691,17 +3694,17 @@ namespace xmp_corpus
 #endif
 	}
 
-	std::vector<df::file_path> corpus_files()
+	std::vector<core::file_path> corpus_files()
 	{
-		std::vector<df::file_path> files;
-		add_folder(test_files_folder, files);
-		add_folder(test_formats_folder, files);
+		std::vector<core::file_path> files;
+		add_folder(test_files_folder(), files);
+		add_folder(test_formats_folder(), files);
 
 		const auto extra = environment_variable("DIFFRACTOR_XMP_CORPUS");
 
-		for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+		for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 		{
-			add_folder(df::folder_path(part), files);
+			add_folder(core::folder_path(part), files);
 		}
 
 		return files;
@@ -3723,9 +3726,9 @@ namespace xmp_corpus
 		{
 			const auto name = path.str();
 
-			if (str::icmp(path.extension(), ".xmp"sv) == 0)
+			if (core::icmp(path.extension(), ".xmp"sv) == 0)
 			{
-				const auto bytes = df::blob_from_file(path);
+				const auto bytes = platform::blob_from_file(path);
 				packets.push_back({name + " (sidecar)", std::string(bytes.begin(), bytes.end())});
 				continue;
 			}
@@ -3855,7 +3858,7 @@ static void should_parse_every_xmp_packet_whole_and_cut_short()
 		}
 	}
 
-	df::log(__FUNCTION__, std::format("{} packets from {} files: {} parsed, {} refused, {} failures",
+	core::log(__FUNCTION__, std::format("{} packets from {} files: {} parsed, {} refused, {} failures",
 	                                  packets.size(), from_files, parsed, refused, failures.size()));
 
 	std::string report;
@@ -3947,9 +3950,9 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 	using property_sweep::read;
 
 	// The fixtures alone: an extra corpus named by DIFFRACTOR_XMP_CORPUS is no part of the record.
-	std::vector<df::file_path> paths;
-	xmp_corpus::add_folder(test_files_folder, paths);
-	xmp_corpus::add_folder(test_formats_folder, paths);
+	std::vector<core::file_path> paths;
+	xmp_corpus::add_folder(test_files_folder(), paths);
+	xmp_corpus::add_folder(test_formats_folder(), paths);
 
 	std::vector<property_sweep::blocks> fixtures;
 	std::vector<xmp_corpus::labelled_packet> packets;
@@ -3957,9 +3960,9 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 
 	for (const auto& path : paths)
 	{
-		if (str::icmp(path.extension(), ".xmp"sv) == 0)
+		if (core::icmp(path.extension(), ".xmp"sv) == 0)
 		{
-			const auto bytes = df::blob_from_file(path);
+			const auto bytes = platform::blob_from_file(path);
 			packets.push_back({std::string(path.name()) + " (sidecar)", std::string(bytes.begin(), bytes.end())});
 			continue;
 		}
@@ -4038,14 +4041,14 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 		}
 	}
 
-	const auto checksum = df::crc32c(record.data(), record.size());
-	df::log(__FUNCTION__, std::format("{} fixtures, {} packets, {} readings; record {:08x}", fixtures.size(),
+	const auto checksum = core::crc32c(record.data(), record.size());
+	core::log(__FUNCTION__, std::format("{} fixtures, {} packets, {} readings; record {:08x}", fixtures.size(),
 	                                  packets.size(), readings, checksum));
 
 	// A difference is found by diffing the readings this writes against a run of the code the record was taken from.
 	if (const auto dump = xmp_corpus::environment_variable("DIFFRACTOR_PROPERTY_RECORD"); !dump.empty())
 	{
-		df::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, df::file_path(dump));
+		platform::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, core::file_path(dump));
 	}
 
 	assert_equal(true, fixtures.size() > 20, std::format("the fixtures carry metadata blocks ({})", fixtures.size()));
@@ -4092,8 +4095,8 @@ static void should_read_keywords_and_bylines_whole()
 	assert_equal("Jane Doe; John Smith", md->artist, "each name whole and once, the by-lines after the EXIF Artist");
 
 	std::vector<std::string> names;
-	str::split2(md->artist, true, [&names](const std::string_view part) { names.emplace_back(str::trim(part)); },
-	            str::is_artist_separator);
+	core::split2(md->artist, true, [&names](const std::string_view part) { names.emplace_back(core::trim(part)); },
+	            core::is_artist_separator);
 	assert_equal(2, static_cast<int>(names.size()), "the artist search splits the names apart");
 	assert_equal("John Smith", names[1], "and finds each whole");
 }

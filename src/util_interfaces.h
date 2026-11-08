@@ -13,6 +13,16 @@
 
 #include <variant>
 
+namespace df
+{
+	extern std::atomic_int file_handles_detached;
+	extern std::atomic_int jobs_running;
+	extern std::atomic_int loading_media;
+	extern std::atomic_int dragging_items;
+	extern std::atomic_int handling_crash;
+	extern std::atomic<core::file_path> last_loaded_path;
+}
+
 // The groups the app's commands fall in, which a ui::command carries for it; none comes first, so a
 // value-initialized group is none.
 enum class command_group
@@ -32,7 +42,7 @@ enum class command_group
 	edit_item
 };
 
-// The tree of view elements, libdesktop-render's (libdesktop/ui_elements.h), named here for the
+// The tree of view elements, libdesktop's UI element tree (libdesktop/ui/elements.h), named here for the
 // headers that pass one around.
 namespace ui
 {
@@ -196,7 +206,7 @@ struct metadata_binary_detail
 // Decoded off the UI thread by whoever built the block, because painting never decodes.
 struct metadata_image_detail
 {
-	ui::const_surface_ptr surface;
+	core::const_surface_ptr surface;
 };
 
 struct metadata_numeric_detail
@@ -240,15 +250,15 @@ struct metadata_kv
 	{
 	}
 
-	metadata_kv(const str::cached k, std::string v) : key(k.sv()), value(std::move(v))
+	metadata_kv(const core::cached k, std::string v) : key(k.sv()), value(std::move(v))
 	{
 	}
 
-	metadata_kv(const str::cached k, const std::string_view v) : key(k.sv()), value(v)
+	metadata_kv(const core::cached k, const std::string_view v) : key(k.sv()), value(v)
 	{
 	}
 
-	metadata_kv(const str::cached k, const char* v) : key(k.sv()), value(v)
+	metadata_kv(const core::cached k, const char* v) : key(k.sv()), value(v)
 	{
 	}
 };

@@ -19,10 +19,10 @@
 #include "model.h"
 #include "util_text.h"
 
-static void add_words(df::dense_string_counts& distinct_words, strings_by_prop& distinct_text, const str::cached text,
+static void add_words(core::dense_string_counts& distinct_words, strings_by_prop& distinct_text, const core::cached text,
                       const prop::key_ref key)
 {
-	count_ranges(distinct_words, text);
+	str::count_ranges(distinct_words, text);
 	distinct_text[key].emplace(text);
 }
 
@@ -54,7 +54,7 @@ pointi location_matrix_params::cell(const gps_coordinate coordinate) const
 	};
 }
 
-void location_matrix::add(df::file_path path, const gps_coordinate coordinate, const bool can_thumbnail,
+void location_matrix::add(core::file_path path, const gps_coordinate coordinate, const bool can_thumbnail,
                           const int rating)
 {
 	if (!params.contains(coordinate)) return;
@@ -107,7 +107,7 @@ void location_matrix::finalize()
 }
 
 location_matrix index_state::build_location_matrix(const location_matrix_params& params,
-                                                   const df::unique_paths& excluded) const
+                                                   const core::unique_paths& excluded) const
 {
 	location_matrix result{params};
 
@@ -120,7 +120,7 @@ location_matrix index_state::build_location_matrix(const location_matrix_params&
 			const auto metadata = file.metadata.load();
 			if (!metadata || !metadata->coordinate.is_valid()) continue;
 
-			auto path = df::file_path(folder, file.name);
+			auto path = core::file_path(folder, file.name);
 			const auto visual_media = file.ft &&
 				(file.ft->has_trait(file_traits::bitmap) || file.ft->has_trait(file_traits::video_metadata));
 			const auto can_thumbnail = visual_media && file.ft->has_trait(file_traits::thumbnail);
@@ -138,10 +138,10 @@ location_matrix index_state::build_location_matrix(const location_matrix_params&
 
 void index_state::update_summary(const uint64_t generation)
 {
-	const auto start_ms = df::now_ms();
+	const auto start_ms = core::now_ms();
 
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		if (generation != 0 && generation != _summary_generation) return;
 	}
 
@@ -150,9 +150,9 @@ void index_state::update_summary(const uint64_t generation)
 	prop_text_summary distinct_tags;
 	tag_companion_counts tag_companions;
 
-	df::dense_string_counts distinct_words;
+	core::dense_string_counts distinct_words;
 	strings_by_prop distinct_text;
-	df::unique_folders distinct_other_folders;
+	core::unique_folders distinct_other_folders;
 	size_t tag_companion_work = 0;
 
 	index_histograms histograms;
@@ -165,7 +165,7 @@ void index_state::update_summary(const uint64_t generation)
 	{
 		if (generation != 0)
 		{
-			platform::shared_lock lock(_summary_rw);
+			core::shared_lock lock(_summary_rw);
 			if (generation != _summary_generation) return;
 		}
 
@@ -175,15 +175,15 @@ void index_state::update_summary(const uint64_t generation)
 		{
 			for (const auto& file : ifn.second->files)
 			{
-				if (df::is_closing) return;
+				if (platform::is_closing) return;
 				if (generation != 0 && --files_until_currency_check == 0)
 				{
 					files_until_currency_check = 256;
-					platform::shared_lock lock(_summary_rw);
+					core::shared_lock lock(_summary_rw);
 					if (generation != _summary_generation) return;
 				}
 
-				const auto path = df::file_path(ifn.first, file.name);
+				const auto path = core::file_path(ifn.first, file.name);
 				histograms.record(_locations, file, path);
 				const auto md = file.metadata.load();
 
@@ -194,42 +194,42 @@ void index_state::update_summary(const uint64_t generation)
 					       [&distinct_words, &distinct_tags, &distinct_tag_texts, &companion_tags, &file, &path](
 					       const std::string_view part)
 					       {
-						       const auto cached_tag = str::cache(part);
+						       const auto cached_tag = core::cache(part);
 						       if (companion_tags.size() < max_tag_companion_tags_per_item &&
 							       std::ranges::none_of(companion_tags, [part](const auto& existing)
 							       {
-								       return str::icmp(existing, part) == 0;
+								       return core::icmp(existing, part) == 0;
 							       }))
 						       {
 							       companion_tags.emplace_back(part);
 						       }
 						       distinct_tag_texts.emplace(cached_tag);
-						       distinct_words[str::cache(std::format("#{}", part))] += 1;
+						       distinct_words[core::cache(std::format("#{}", part))] += 1;
 						       distinct_tags[cached_tag].record(file, path);
 					       });
 
 					for (const auto& tag : companion_tags)
 					{
-						if (df::is_closing) return;
+						if (platform::is_closing) return;
 						for (const auto& companion : companion_tags)
 						{
 							if ((++tag_companion_work & 255u) == 0)
 							{
-								if (df::is_closing) return;
+								if (platform::is_closing) return;
 								if (generation != 0)
 								{
-									platform::shared_lock lock(_summary_rw);
+									core::shared_lock lock(_summary_rw);
 									if (generation != _summary_generation) return;
 								}
 							}
-							if (str::icmp(tag, companion) != 0)
+							if (core::icmp(tag, companion) != 0)
 							{
 								auto& companions = tag_companions[tag];
-								const auto cached_companion = str::cache(companion);
+								const auto cached_companion = core::cache(companion);
 								auto found = companions.find(cached_companion);
 								if (found == companions.end())
 								{
-									found = companions.emplace(cached_companion, df::int_counter{}).first;
+									found = companions.emplace(cached_companion, core::int_counter{}).first;
 								}
 								++found->second;
 							}
@@ -287,12 +287,12 @@ void index_state::update_summary(const uint64_t generation)
 					{
 						// Genre is a single ';'-separated field; index each value
 						// separately so the sidebar and autocomplete list them individually.
-						count_ranges(distinct_words, md->genre);
+						str::count_ranges(distinct_words, md->genre);
 						split2(md->genre, false, [&distinct_text](const std::string_view part)
 						{
-							const auto g = str::trim(part);
-							if (!g.empty()) distinct_text[prop::genre].emplace(str::cache(g));
-						}, str::is_genre_separator);
+							const auto g = core::trim(part);
+							if (!g.empty()) distinct_text[prop::genre].emplace(core::cache(g));
+						}, core::is_genre_separator);
 					}
 					if (!prop::is_null(md->lens)) add_words(distinct_words, distinct_text, md->lens, prop::lens);
 					if (!prop::is_null(md->location_place))
@@ -358,33 +358,33 @@ void index_state::update_summary(const uint64_t generation)
 	summary->_tag_companions = std::move(tag_companions);
 	if (generation != 0)
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		if (generation != _summary_generation) return;
 	}
 	if (!rebuild_sorted_words(*summary, generation)) return;
 
 	index_metadata_summary_const_ptr published_summary = std::move(summary);
 	index_histograms_const_ptr histogram_snapshot = std::make_shared<index_histograms>(std::move(histograms));
-	const auto scanned_other_folders = std::make_shared<const df::unique_folders>(std::move(distinct_other_folders));
+	const auto scanned_other_folders = std::make_shared<const core::unique_folders>(std::move(distinct_other_folders));
 
 	for (;;)
 	{
-		std::shared_ptr<const df::unique_folders> current_other_folders;
+		std::shared_ptr<const core::unique_folders> current_other_folders;
 		{
-			platform::shared_lock lock(_summary_rw);
+			core::shared_lock lock(_summary_rw);
 			if (generation != 0 && generation != _summary_generation) return;
 			current_other_folders = _summary._distinct_other_folders;
 		}
 
-		auto merged_other_folders = std::make_shared<df::unique_folders>(*scanned_other_folders);
+		auto merged_other_folders = std::make_shared<core::unique_folders>(*scanned_other_folders);
 		merged_other_folders->insert(current_other_folders->begin(), current_other_folders->end());
-		std::shared_ptr<const df::unique_folders> other_folders_snapshot = std::move(merged_other_folders);
+		std::shared_ptr<const core::unique_folders> other_folders_snapshot = std::move(merged_other_folders);
 
 		{
 			index_metadata_summary_const_ptr old_summary;
 			index_histograms_const_ptr old_histograms;
-			std::shared_ptr<const df::unique_folders> old_other_folders;
-			platform::exclusive_lock lock(_summary_rw);
+			std::shared_ptr<const core::unique_folders> old_other_folders;
+			core::exclusive_lock lock(_summary_rw);
 			if (generation != 0 && generation != _summary_generation) return;
 			if (_summary._distinct_other_folders != current_other_folders) continue;
 			_summary._metadata.swap(published_summary);
@@ -399,16 +399,16 @@ void index_state::update_summary(const uint64_t generation)
 
 	_async.invalidate_view(view_invalid::sidebar | view_invalid::tooltip);
 
-	df::trace(std::format("Index update summary in {} ms", df::now_ms() - start_ms));
+	core::trace(std::format("Index update summary in {} ms", core::now_ms() - start_ms));
 }
 
-void index_histograms::record(const location_cache&, const df::index_file_item& file, const df::file_path& path)
+void index_histograms::record(const location_cache&, const df::index_file_item& file, const core::file_path& path)
 {
 	const auto year = _year;
 	constexpr auto map_width = static_cast<int>(df::location_heat_map::map_width);
 
 	const auto md = file.metadata.load();
-	auto created = file.file_created.system_to_local();
+	auto created = platform::utc_to_local(file.file_created);
 
 	if (md)
 	{
@@ -433,7 +433,7 @@ void index_histograms::record(const location_cache&, const df::index_file_item& 
 			const auto place_name = md->location_place;
 			const auto state_name = md->location_state;
 			const auto country_name = md->location_country;
-			if (!str::is_empty(place_name) || !str::is_empty(state_name) || !str::is_empty(country_name))
+			if (!core::is_empty(place_name) || !core::is_empty(state_name) || !core::is_empty(country_name))
 			{
 				const auto group_id = crypto::hash_gen(country_name.sv()).append(state_name.sv()).append(
 					place_name.sv()).result();
@@ -448,7 +448,7 @@ void index_histograms::record(const location_cache&, const df::index_file_item& 
 				}
 				else
 				{
-					const auto name = !str::is_empty(place_name) ? place_name : country_name;
+					const auto name = !core::is_empty(place_name) ? place_name : country_name;
 					_location_groups[group_id] = {
 						name, state_name, country_name, 1, map_loc, coord.latitude(), coord.longitude()
 					};
@@ -471,7 +471,7 @@ void index_histograms::record(const location_cache&, const df::index_file_item& 
 		_dates.record_representative(date_index, file, path);
 	}
 
-	const auto modified_date_parts = file.file_modified.load().system_to_local().date();
+	const auto modified_date_parts = platform::utc_to_local(file.file_modified.load()).date();
 	const auto modified_date_parts_year_offset = year - modified_date_parts.year;
 
 	if (modified_date_parts_year_offset >= 0 && modified_date_parts_year_offset < df::max_history_years)
@@ -500,7 +500,7 @@ std::vector<map_location_area> index_histograms::map_locations(const int request
 		double max_longitude = std::numeric_limits<double>::lowest();
 	};
 
-	df::hash_map<uint32_t, area_build> builds;
+	core::hash_map<uint32_t, area_build> builds;
 	for (auto cell_index = 0u; cell_index < _locations.coordinates.size(); ++cell_index)
 	{
 		const auto count = _locations.coordinates[cell_index];
@@ -553,7 +553,7 @@ std::optional<map_location_area> index_histograms::find_map_location(const std::
 	std::vector<location_t> named_locations;
 	for (const auto& match : locations.auto_complete(name, 32, default_location))
 	{
-		if (str::icmp(match.location.place, name) == 0)
+		if (core::icmp(match.location.place, name) == 0)
 		{
 			named_locations.emplace_back(match.location);
 		}
@@ -577,7 +577,7 @@ std::optional<map_location_area> index_histograms::find_map_location(const std::
 			{
 				selected = locations.find_closest(found->position.latitude(), found->position.longitude());
 			}
-			if (str::icmp(selected.place, name) == 0)
+			if (core::icmp(selected.place, name) == 0)
 			{
 				auto result = *found;
 				result.name = selected.place;
@@ -592,24 +592,24 @@ std::optional<map_location_area> index_histograms::find_map_location(const std::
 	return {};
 }
 
-std::vector<str::cached> index_state::distinct_genres() const
+std::vector<core::cached> index_state::distinct_genres() const
 {
 	index_metadata_summary_const_ptr summary;
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		summary = _summary._metadata;
 	}
 	const auto found = summary->_distinct_text.find(prop::genre);
 	return found != summary->_distinct_text.end()
-		       ? std::vector<str::cached>{found->second.begin(), found->second.end()}
-		       : std::vector<str::cached>{};
+		       ? std::vector<core::cached>{found->second.begin(), found->second.end()}
+		       : std::vector<core::cached>{};
 }
 
 std::vector<std::string> index_state::auto_complete_text(const prop::key_ref key)
 {
 	index_metadata_summary_const_ptr summary;
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		summary = _summary._metadata;
 	}
 	const auto found = summary->_distinct_text.find(key);
@@ -618,9 +618,9 @@ std::vector<std::string> index_state::auto_complete_text(const prop::key_ref key
 		       : std::vector<std::string>{};
 }
 
-static df::count_and_size sum_items(const df::index_folder_info_const_ptr& folder)
+static core::count_and_size sum_items(const df::index_folder_info_const_ptr& folder)
 {
-	df::count_and_size result;
+	core::count_and_size result;
 
 	// folders_snapshot() returns a temporary shared_ptr; dereferencing it into the range-for only
 	// extends the pointee's lifetime through the initializer, not the loop body, so the snapshot is
@@ -645,10 +645,10 @@ static df::count_and_size sum_items(const df::index_folder_info_const_ptr& folde
 
 std::vector<index_state::folder_total> index_state::includes_with_totals() const
 {
-	df::unique_folders includes;
+	core::unique_folders includes;
 
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		includes = _summary._roots.folders;
 	}
 
@@ -657,7 +657,7 @@ std::vector<index_state::folder_total> index_state::includes_with_totals() const
 
 	for (const auto& f : includes)
 	{
-		df::file_size size;
+		core::file_size size;
 		uint64_t count = 0;
 		const auto existing_folder = _items.find(f);
 
@@ -683,10 +683,10 @@ bool index_state::rebuild_sorted_words(index_metadata_summary& summary, const ui
 
 	for (const auto& kv : summary._distinct_words) sorted.emplace_back(kv.first);
 
-	std::ranges::sort(sorted, [](const std::string_view a, const std::string_view b) { return str::icmp(a, b) < 0; });
+	std::ranges::sort(sorted, [](const std::string_view a, const std::string_view b) { return core::icmp(a, b) < 0; });
 	if (generation != 0)
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		if (generation != _summary_generation) return false;
 	}
 
@@ -698,7 +698,7 @@ bool index_state::rebuild_sorted_words(index_metadata_summary& summary, const ui
 	{
 		if (generation != 0 && (i & 255u) == 0)
 		{
-			platform::shared_lock lock(_summary_rw);
+			core::shared_lock lock(_summary_rw);
 			if (generation != _summary_generation) return false;
 		}
 		summary._word_trigrams.add(i, sorted[i]);
@@ -712,12 +712,12 @@ bool index_state::rebuild_sorted_words(index_metadata_summary& summary, const ui
 std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 	const std::string_view query, const size_t max_results)
 {
-	df::assert_true(!ui::is_ui_thread());
+	core::assert_true(!platform::is_ui_thread());
 
 	std::vector<auto_complete_word> result;
 	index_metadata_summary_const_ptr summary;
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		summary = _summary._metadata;
 	}
 
@@ -742,25 +742,25 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 	                          {
 		                          return left.second != right.second
 			                                 ? left.second > right.second
-			                                 : str::icmp(left.first, right.first) < 0;
+			                                 : core::icmp(left.first, right.first) < 0;
 	                          });
 
 	for (size_t i = 0; i < prefix_taken; ++i)
 	{
 		const auto word = prefix_words[i].first;
-		result.emplace_back(std::string(word), std::vector<str::part_t>{{0, str::matched_text_byte_length(word, 0, query)}},
+		result.emplace_back(std::string(word), std::vector<core::part_t>{{0, core::matched_text_byte_length(word, 0, query)}},
 		                    prefix_words[i].second);
 	}
 
 	// For longer queries, top up with interior substring matches the prefix pass cannot find,
 	// skipping words already added as prefix matches. A single-token query (no spaces) matches
 	// as a contiguous substring, so the vocabulary trigram index can supply the candidates and
-	// we verify each with str::ifind2 - identical results to a full scan, but far fewer checks.
+	// we verify each with core::ifind2 - identical results to a full scan, but far fewer checks.
 	// Multi-word queries use ifind2's word-gap semantics, which trigrams cannot bound, so those
 	// (and queries too short for a trigram) fall back to a full scan.
 	if (query.size() > 2 && result.size() < max_results)
 	{
-		// str::normalize_for_compare folds every whitespace form to a word gap, not just a space,
+		// core::normalize_for_compare folds every whitespace form to a word gap, not just a space,
 		// so any of them means the query has to take the full-scan path.
 		const auto candidates = query.find_first_of(" \t\n\v\f\r") == std::string_view::npos
 			                        ? summary->_word_trigrams.candidates(query)
@@ -774,9 +774,9 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 				if (id >= summary->_sorted_words.size()) continue;
 
 				const auto word = summary->_sorted_words[id];
-				if (str::starts(word, query)) continue; // already added by the prefix pass
+				if (core::starts(word, query)) continue; // already added by the prefix pass
 
-				const auto found = str::ifind2(word, query, 0);
+				const auto found = core::ifind2(word, query, 0);
 				if (found.found)
 				{
 					const auto count = summary->_distinct_words.find(word);
@@ -790,9 +790,9 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 			for (const auto& word : summary->_distinct_words)
 			{
 				if (result.size() >= max_results) break;
-				if (str::starts(word.first, query)) continue; // already added by the prefix pass
+				if (core::starts(word.first, query)) continue; // already added by the prefix pass
 
-				const auto found = str::ifind2(word.first, query, 0);
+				const auto found = core::ifind2(word.first, query, 0);
 				if (found.found) result.emplace_back(std::string(word.first), found.parts, word.second.i);
 			}
 		}
@@ -805,10 +805,10 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_tag_comp
 	const std::vector<std::string>& tags, const std::string_view prefix, const size_t max_results) const
 {
 	std::vector<auto_complete_word> result;
-	df::hash_map<std::string, int, df::ihash, df::ieq> scores;
+	core::hash_map<std::string, int, core::ihash, core::ieq> scores;
 	index_metadata_summary_const_ptr summary;
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		summary = _summary._metadata;
 	}
 
@@ -819,10 +819,10 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_tag_comp
 
 		for (const auto& [companion, count] : found->second)
 		{
-			if ((prefix.empty() || str::starts(companion, prefix)) &&
+			if ((prefix.empty() || core::starts(companion, prefix)) &&
 				std::ranges::none_of(tags, [&companion](const auto& existing)
 				{
-					return str::icmp(existing, companion) == 0;
+					return core::icmp(existing, companion) == 0;
 				}))
 			{
 				scores[std::string(companion)] += count.i;
@@ -834,7 +834,7 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_tag_comp
 	std::ranges::sort(ranked, [](const auto& left, const auto& right)
 	{
 		return left.second == right.second
-			       ? str::icmp(left.first, right.first) < 0
+			       ? core::icmp(left.first, right.first) < 0
 			       : left.second > right.second;
 	});
 
@@ -842,7 +842,7 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_tag_comp
 	{
 		if (result.size() >= max_results) break;
 		result.emplace_back(std::format("#{}", tag),
-		                    prefix.empty() ? std::vector<str::part_t>{} : std::vector<str::part_t>{{1, prefix.size()}},
+		                    prefix.empty() ? std::vector<core::part_t>{} : std::vector<core::part_t>{{1, prefix.size()}},
 		                    count);
 	}
 
@@ -853,7 +853,7 @@ size_t index_state::tag_companion_entry_count() const
 {
 	index_metadata_summary_const_ptr summary;
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		summary = _summary._metadata;
 	}
 
@@ -905,7 +905,7 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_location
 	if (query.empty()) return result;
 
 	const auto summary = histograms();
-	df::hash_set<std::string, df::ihash, df::ieq> seen;
+	core::hash_set<std::string, core::ihash, core::ieq> seen;
 
 	for (const auto& match : _locations.auto_complete(query, static_cast<uint32_t>(max_results * 4),
 	                                                  setting.default_location))
@@ -928,17 +928,17 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_location
 		// have matched THAT label: "Frankfurt" is a fine hit for `loc:franc` and a wrong one for
 		// `country:franc`, where the answer is France.
 		if ((level == df::location_level::state || level == df::location_level::country) &&
-			str::ifind(name, query) == std::string_view::npos)
+			core::ifind(name, query) == std::string_view::npos)
 		{
 			continue;
 		}
 
 		auto text = df::search_t().location(name, level).text();
-		std::vector<str::part_t> highlights;
+		std::vector<core::part_t> highlights;
 
-		if (const auto found = str::ifind(text, query); found != std::string_view::npos)
+		if (const auto found = core::ifind(text, query); found != std::string_view::npos)
 		{
-			highlights.emplace_back(found, str::matched_text_byte_length(text, found, query));
+			highlights.emplace_back(found, core::matched_text_byte_length(text, found, query));
 		}
 
 		result.emplace_back(std::move(text), std::move(highlights),
@@ -959,15 +959,15 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_location
 std::vector<index_state::auto_complete_folder> index_state::auto_complete_folders(
 	const std::string_view query, const size_t max_results) const
 {
-	df::assert_true(!ui::is_ui_thread());
+	core::assert_true(!platform::is_ui_thread());
 
 	std::vector<auto_complete_folder> result;
 
 	// Retain the immutable folder snapshots under a shared lock, then match unlocked.
-	std::array<std::shared_ptr<const df::unique_folders>, 3> folder_sets;
+	std::array<std::shared_ptr<const core::unique_folders>, 3> folder_sets;
 
 	{
-		platform::shared_lock lock(_summary_rw);
+		core::shared_lock lock(_summary_rw);
 		folder_sets[0] = _summary._distinct_prime_folders;
 		folder_sets[1] = _summary._distinct_folders;
 		folder_sets[2] = _summary._distinct_other_folders;
@@ -981,7 +981,7 @@ std::vector<index_state::auto_complete_folder> index_state::auto_complete_folder
 			{
 				auto name_pos = folder.is_root() ? 0u : folder.find_last_slash() + 1;
 				if (name_pos == std::string_view::npos) name_pos = 0;
-				auto found = str::ifind2(folder.text().substr(name_pos), query, name_pos);
+				auto found = core::ifind2(folder.text().substr(name_pos), query, name_pos);
 
 				if (!found.found && name_pos != 0)
 				{
@@ -1001,15 +1001,15 @@ std::vector<index_state::auto_complete_folder> index_state::auto_complete_folder
 			{
 				const auto name_pos = folder.is_root() ? 0u : folder.find_last_slash() + 1;
 
-				if (name_pos != std::string_view::npos && str::starts(folder.text().substr(name_pos), query))
+				if (name_pos != std::string_view::npos && core::starts(folder.text().substr(name_pos), query))
 				{
 					result.emplace_back(
-						folder, std::vector<str::part_t>{{name_pos, str::matched_text_byte_length(folder.text(), name_pos, query)}});
+						folder, std::vector<core::part_t>{{name_pos, core::matched_text_byte_length(folder.text(), name_pos, query)}});
 					if (result.size() > max_results) break;
 				}
 				else if (starts(folder.text(), query))
 				{
-					result.emplace_back(folder, std::vector<str::part_t>{{0, str::matched_text_byte_length(folder.text(), 0, query)}});
+					result.emplace_back(folder, std::vector<core::part_t>{{0, core::matched_text_byte_length(folder.text(), 0, query)}});
 					if (result.size() > max_results) break;
 				}
 			}

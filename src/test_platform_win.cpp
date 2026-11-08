@@ -14,11 +14,11 @@
 // Keeping them here is what lets every other test file stay free of system headers.
 
 #include "pch.h"
-#include "libdesktop/platform_win.h"
-#include "libdesktop/platform_win_render.h"
-#include "libdesktop/platform_win_visual.h"
+#include "libdesktop/platform/win32.h"
+#include "libdesktop/render/win32.h"
+#include "libdesktop/render/software.h"
 #include "av_format.h"
-#include "libdesktop/platform_win_render_res.h"
+
 #include "test_fixtures.h"
 
 #include <mmreg.h>
@@ -32,9 +32,9 @@ extern "C" {
 // recognised from its spelling and volume type without being reached.
 static void should_recognise_network_locations()
 {
-	assert_equal(true, platform::is_network_location(df::folder_path(R"(\\server\share\photos)")),
+	assert_equal(true, platform::is_network_location(core::folder_path(R"(\\server\share\photos)")),
 	             "a UNC share is a network location");
-	assert_equal(false, platform::is_network_location(test_files_folder), "the local test folder is not");
+	assert_equal(false, platform::is_network_location(test_files_folder()), "the local test folder is not");
 }
 
 static void should_preserve_writability_probe_collisions()
@@ -52,12 +52,12 @@ static void should_preserve_writability_probe_collisions()
 static void should_convert_extended_file_system_paths()
 {
 	const auto long_unc = std::string("\\\\server\\share\\") + std::string(MAX_PATH, 'x');
-	const auto converted = platform::to_file_system_path(df::folder_path(long_unc));
+	const auto converted = platform::to_file_system_path(core::folder_path(long_unc));
 	assert_equal(std::wstring(L"\\\\?\\UNC\\server\\share\\") + std::wstring(MAX_PATH, L'x'), converted,
 	             "long UNC path");
 
 	const auto extended = std::wstring(L"\\\\?\\C:\\") + std::wstring(MAX_PATH, L'x');
-	assert_equal(extended, platform::to_file_system_path(df::folder_path(str::utf16_to_utf8(extended))),
+	assert_equal(extended, platform::to_file_system_path(core::folder_path(core::utf16_to_utf8(extended))),
 	             "extended path unchanged");
 }
 
@@ -72,14 +72,14 @@ static void should_convert_dates_with_their_own_dst_offset()
 
 	for (const auto month : {1, 7})
 	{
-		const auto utc = df::date_t(2024, month, 15, 12, 0, 0).to_int64() + fraction;
-		const auto local = df::date_t(2024, month, 15, month == 1 ? 7 : 8, 0, 0).to_int64() + fraction;
+		const auto utc = core::date_t(2024, month, 15, 12, 0, 0).to_int64() + fraction;
+		const auto local = core::date_t(2024, month, 15, month == 1 ? 7 : 8, 0, 0).to_int64() + fraction;
 		assert_equal(local, platform::utc_to_local(utc, &zone), "conversion uses the timestamp's season");
 		assert_equal(utc, platform::local_to_utc(local, &zone), "reverse conversion preserves every tick");
 	}
 
-	const auto after_jump = df::date_t(2024, 3, 10, 3, 30, 0).to_int64();
-	assert_equal(df::date_t(2024, 3, 10, 7, 30, 0).to_int64(), platform::local_to_utc(after_jump, &zone),
+	const auto after_jump = core::date_t(2024, 3, 10, 3, 30, 0).to_int64();
+	assert_equal(core::date_t(2024, 3, 10, 7, 30, 0).to_int64(), platform::local_to_utc(after_jump, &zone),
 	             "an unambiguous time after the spring transition uses daylight bias");
 	assert_equal(uint64_t{0}, platform::utc_to_local(0, &zone), "an absent timestamp remains absent");
 }
@@ -112,7 +112,7 @@ namespace
 	uint64_t stamp(const int month, const int day, const int hour, const int minute, const int second = 0,
 	               const int ms = 0)
 	{
-		return df::date_t(2024, month, day, hour, minute, second).to_int64() + static_cast<uint64_t>(ms) *
+		return core::date_t(2024, month, day, hour, minute, second).to_int64() + static_cast<uint64_t>(ms) *
 			test_ticks_per_ms;
 	}
 
@@ -227,7 +227,7 @@ static void should_convert_the_current_zone_like_the_system()
 		}
 
 		auto mismatches = 0;
-		const auto start = df::date_t(year, 1, 1, 0, 0, 0).to_int64() + 7654321;
+		const auto start = core::date_t(year, 1, 1, 0, 0, 0).to_int64() + 7654321;
 
 		for (auto half_day = 0; half_day < 730; ++half_day)
 		{
@@ -244,7 +244,7 @@ static void should_convert_the_current_zone_like_the_system()
 // that for every date in every search and grouping. Removing the year cache fails this test.
 static void should_tabulate_local_time_once_per_year()
 {
-	const auto start = df::date_t(2023, 1, 1, 0, 0, 0).to_int64();
+	const auto start = core::date_t(2023, 1, 1, 0, 0, 0).to_int64();
 	constexpr uint64_t step = 31'536'000'000ull;
 	const auto before = platform::time_zone_system_queries();
 	uint64_t total = 0;
@@ -268,7 +268,7 @@ static void should_initialize_unicode_ini_settings()
 	const auto settings = platform::create_ini_file_settings(folder);
 	const std::string value = "C:\\\xe6\x9d\xb1\xe4\xba\xac\\\xf0\x9f\x8e\xac.mp4";
 	assert_equal(true, settings->write("paths", "movie", value), "Unicode setting is written");
-	const auto bytes = df::blob_from_file(ini);
+	const auto bytes = platform::blob_from_file(ini);
 	assert_equal(true, bytes.size() >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe,
 	             "new INI files explicitly select Unicode independent of the ANSI code page");
 
@@ -514,7 +514,7 @@ static void should_create_the_decode_device_on_the_render_adapter()
 
 	const auto previous = render_adapter();
 	const auto previous_device = render_device();
-	const df::scope_exit restore([previous, previous_device]
+	const core::scope_exit restore([previous, previous_device]
 	{
 		publish_render_adapter(previous);
 		publish_render_device(previous_device);
@@ -524,7 +524,7 @@ static void should_create_the_decode_device_on_the_render_adapter()
 	publish_render_device(nullptr);
 
 	auto* device = av_platform_create_hw_device(AV_HWDEVICE_TYPE_D3D11VA);
-	const df::scope_exit release([&device] { av_buffer_unref(&device); });
+	const core::scope_exit release([&device] { av_buffer_unref(&device); });
 
 	assert_equal(true, device != nullptr, "a decode device is made");
 	if (!device) return;
@@ -555,7 +555,7 @@ static void should_decode_on_the_render_device_when_it_carries_video()
 
 	const auto previous = render_adapter();
 	const auto previous_device = render_device();
-	const df::scope_exit restore([previous, previous_device]
+	const core::scope_exit restore([previous, previous_device]
 	{
 		publish_render_adapter(previous);
 		publish_render_device(previous_device);
@@ -564,7 +564,7 @@ static void should_decode_on_the_render_device_when_it_carries_video()
 	publish_render_device(render);
 
 	auto* device = av_platform_create_hw_device(AV_HWDEVICE_TYPE_D3D11VA);
-	const df::scope_exit release([&device] { av_buffer_unref(&device); });
+	const core::scope_exit release([&device] { av_buffer_unref(&device); });
 
 	assert_equal(true, device != nullptr, "a decode device is made");
 	if (!device) return;
@@ -582,7 +582,7 @@ static void should_lend_the_renderer_the_decode_device_lock()
 	auto* device = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA);
 	assert_equal(true, device != nullptr, "a D3D11VA device context");
 	if (!device) return;
-	const df::scope_exit release_device([&device] { av_buffer_unref(&device); });
+	const core::scope_exit release_device([&device] { av_buffer_unref(&device); });
 
 	auto held = 0;
 	auto* const hwctx = static_cast<AVD3D11VADeviceContext*>(reinterpret_cast<AVHWDeviceContext*>(device->data)->hwctx);
@@ -593,9 +593,9 @@ static void should_lend_the_renderer_the_decode_device_lock()
 	auto* frames = av_hwframe_ctx_alloc(device);
 	assert_equal(true, frames != nullptr, "a frames context on it");
 	if (!frames) return;
-	const df::scope_exit release_frames([&frames] { av_buffer_unref(&frames); });
+	const core::scope_exit release_frames([&frames] { av_buffer_unref(&frames); });
 
-	ui::video_picture picture;
+	render::video_picture picture;
 	av_platform_decode_lock(reinterpret_cast<const AVHWFramesContext*>(frames->data), picture);
 	assert_equal(true, picture.lock != nullptr && picture.unlock != nullptr, "the picture carries a lock");
 
@@ -607,7 +607,7 @@ static void should_lend_the_renderer_the_decode_device_lock()
 		assert_equal(0, held, "and is released with the device's own");
 	}
 
-	ui::video_picture none;
+	render::video_picture none;
 	av_platform_decode_lock(nullptr, none);
 	assert_equal(true, none.lock == nullptr && none.unlock == nullptr, "a picture with no device carries none");
 }
@@ -712,14 +712,14 @@ static void should_recycle_a_texture_only_when_nothing_draws_it()
 	if (!device) return;
 
 	constexpr sizei thumb = {64, 48};
-	constexpr auto argb = ui::texture_format::ARGB;
+	constexpr auto argb = core::texture_format::ARGB;
 	const auto thumb_bytes = d3d11_texture_pool::texture_bytes(thumb, argb);
 	d3d11_texture_pool pool(thumb_bytes * 8);
 
 	const auto released = create_plain_texture(device.Get(), thumb);
 	pool.give({thumb, argb, released, {}});
 	assert_equal(true, pool.take({64, 50}, argb).texture == nullptr, "a different size is not handed out");
-	assert_equal(true, pool.take(thumb, ui::texture_format::RGB).texture == nullptr, "nor a different format");
+	assert_equal(true, pool.take(thumb, core::texture_format::RGB).texture == nullptr, "nor a different format");
 	assert_equal(true, pool.take(thumb, argb).texture == released, "the same size and format is");
 	assert_equal(0_z, pool.size(), "and leaves the pool");
 
@@ -803,70 +803,70 @@ static void should_overwrite_a_recycled_texture_with_the_new_picture()
 	constexpr uint32_t green = 0xFF00FF00u;
 	const std::vector<uint32_t> first_picture(static_cast<size_t>(dims.cx) * dims.cy, red);
 	const std::vector<uint32_t> second_picture(static_cast<size_t>(dims.cx) * dims.cy, green);
-	const auto created_before = df::gpu_perf.textures_created.load();
-	const auto reused_before = df::gpu_perf.textures_reused.load();
+	const auto created_before = render::gpu_perf.textures_created.load();
+	const auto reused_before = render::gpu_perf.textures_reused.load();
 
 	{
 		const auto first = d3d11_create_texture(f);
-		assert_equal(true, first->update(dims, ui::texture_format::ARGB, ui::orientation::top_left,
+		assert_equal(true, first->update(dims, core::texture_format::ARGB, core::orientation::top_left,
 		                                 reinterpret_cast<const uint8_t*>(first_picture.data()), stride, bytes) ==
-		             ui::texture_update_result::tex_created, "the first picture makes a texture");
+		             render::texture_update_result::tex_created, "the first picture makes a texture");
 	}
 
 	assert_equal(1_z, f->texture_pool->size(), "which is kept when it is released");
-	auto kept = f->texture_pool->take(dims, ui::texture_format::ARGB);
+	auto kept = f->texture_pool->take(dims, core::texture_format::ARGB);
 	const auto first_texture = kept.texture;
 	f->texture_pool->give(std::move(kept));
 
 	{
 		const auto second = d3d11_create_texture(f);
-		assert_equal(true, second->update(dims, ui::texture_format::ARGB, ui::orientation::top_left,
+		assert_equal(true, second->update(dims, core::texture_format::ARGB, core::orientation::top_left,
 		                                  reinterpret_cast<const uint8_t*>(second_picture.data()), stride, bytes) ==
-		             ui::texture_update_result::tex_created, "a texture taken from the pool is new to its caller");
+		             render::texture_update_result::tex_created, "a texture taken from the pool is new to its caller");
 		assert_equal(0_z, f->texture_pool->size(), "the second picture took it");
 	}
 
-	assert_equal(1ull, df::gpu_perf.textures_created.load() - created_before, "one texture was made");
-	assert_equal(1ull, df::gpu_perf.textures_reused.load() - reused_before, "and one reused");
+	assert_equal(1ull, render::gpu_perf.textures_created.load() - created_before, "one texture was made");
+	assert_equal(1ull, render::gpu_perf.textures_reused.load() - reused_before, "and one reused");
 
-	const auto returned = f->texture_pool->take(dims, ui::texture_format::ARGB);
+	const auto returned = f->texture_pool->take(dims, core::texture_format::ARGB);
 	assert_equal(true, returned.texture == first_texture, "the second picture was drawn into the first texture");
 	assert_equal(true, returned.texture && texture_holds(device.Get(), context.Get(), returned.texture.Get(), green),
 	             "and holds the new picture, not the old one");
 }
 
 // A decoded frame as the renderers see it, described by the test rather than by a decoder.
-class fake_video_frame final : public ui::video_frame
+class fake_video_frame final : public render::video_frame
 {
 public:
-	ui::const_surface_ptr prepared;
-	ui::video_picture described;
+	core::const_surface_ptr prepared;
+	render::video_picture described;
 	mutable int cpu_requests = 0;
 
-	ui::const_surface_ptr prepared_surface() const override { return prepared; }
-	ui::video_picture picture() const override { return described; }
+	core::const_surface_ptr prepared_surface() const override { return prepared; }
+	render::video_picture picture() const override { return described; }
 	void request_cpu_frames() const override { ++cpu_requests; }
 };
 
 // Converts any frame into a 32 x 16 picture, and counts the frames it was asked for.
-class fake_frame_scaler final : public ui::surface_scaler
+class fake_frame_scaler final : public render::surface_scaler
 {
 public:
 	std::shared_ptr<int> frames;
 
-	bool scale_surface(const ui::const_surface_ptr&, ui::surface_ptr&, sizei, bool) override { return false; }
-	bool convert_yuv_surface(const ui::surface&, const ui::surface_ptr&) override { return false; }
+	bool scale_surface(const core::const_surface_ptr&, core::surface_ptr&, sizei, bool) override { return false; }
+	bool convert_yuv_surface(const core::surface&, const core::surface_ptr&) override { return false; }
 
-	bool scale_surface(const ui::video_frame&, const ui::surface_ptr& surface_out) override
+	bool scale_surface(const render::video_frame&, const core::surface_ptr& surface_out) override
 	{
 		++*frames;
-		return surface_out->alloc(32, 16, ui::texture_format::RGB) != nullptr;
+		return surface_out->alloc(32, 16, core::texture_format::RGB) != nullptr;
 	}
 };
 
-static std::function<std::unique_ptr<ui::surface_scaler>()> make_fake_frame_scaler(std::shared_ptr<int> frames)
+static std::function<std::unique_ptr<render::surface_scaler>()> make_fake_frame_scaler(std::shared_ptr<int> frames)
 {
-	return [frames]() -> std::unique_ptr<ui::surface_scaler>
+	return [frames]() -> std::unique_ptr<render::surface_scaler>
 	{
 		auto s = std::make_unique<fake_frame_scaler>();
 		s->frames = frames;
@@ -877,8 +877,8 @@ static std::function<std::unique_ptr<ui::surface_scaler>()> make_fake_frame_scal
 static std::shared_ptr<fake_video_frame> make_prepared_video_frame(const sizei dimensions)
 {
 	auto frame = std::make_shared<fake_video_frame>();
-	const auto picture = std::make_shared<ui::surface>();
-	picture->alloc(dimensions, ui::texture_format::RGB);
+	const auto picture = std::make_shared<core::surface>();
+	picture->alloc(dimensions, core::texture_format::RGB);
 	frame->prepared = picture;
 	return frame;
 }
@@ -900,18 +900,18 @@ static void should_present_a_video_frame_through_its_interface()
 	f->texture_pool = std::make_unique<d3d11_texture_pool>(1024 * 1024);
 
 	const auto frames_converted = std::make_shared<int>(0);
-	const auto restore_scaler = ui::make_surface_scaler;
-	const df::scope_exit restore([restore_scaler] { ui::make_surface_scaler = restore_scaler; });
-	ui::make_surface_scaler = make_fake_frame_scaler(frames_converted);
+	const auto restore_scaler = render::make_surface_scaler;
+	const core::scope_exit restore([restore_scaler] { render::make_surface_scaler = restore_scaler; });
+	render::make_surface_scaler = make_fake_frame_scaler(frames_converted);
 
 	const auto texture = d3d11_create_texture(f);
-	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == ui::texture_update_result::tex_created,
+	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == render::texture_update_result::tex_created,
 	             "a prepared picture is uploaded");
 	assert_equal(true, texture->dimensions() == sizei{64, 48}, "as it was prepared");
 	assert_equal(0, *frames_converted, "with nothing converted");
 
 	const auto unprepared = std::make_shared<fake_video_frame>();
-	assert_equal(true, texture->update(unprepared) != ui::texture_update_result::failed,
+	assert_equal(true, texture->update(unprepared) != render::texture_update_result::failed,
 	             "a picture in system memory is converted by the scaler");
 	assert_equal(true, texture->dimensions() == sizei{32, 16}, "and uploaded as converted");
 	assert_equal(1, *frames_converted, "once");
@@ -920,12 +920,12 @@ static void should_present_a_video_frame_through_its_interface()
 	const auto unlocked = std::make_shared<fake_video_frame>();
 	auto texture_name = 0;
 	unlocked->described.texture = &texture_name;
-	assert_equal(true, d3d11_create_texture(f)->update(unlocked) == ui::texture_update_result::failed,
+	assert_equal(true, d3d11_create_texture(f)->update(unlocked) == render::texture_update_result::failed,
 	             "a hardware picture without its device's lock is refused");
 	assert_equal(1, *frames_converted, "rather than converted");
 
-	ui::make_surface_scaler = nullptr;
-	assert_equal(true, d3d11_create_texture(f)->update(unprepared) == ui::texture_update_result::failed,
+	render::make_surface_scaler = nullptr;
+	assert_equal(true, d3d11_create_texture(f)->update(unprepared) == render::texture_update_result::failed,
 	             "and with no scaler a picture in system memory cannot be presented");
 }
 
@@ -935,19 +935,19 @@ static void should_present_a_video_frame_through_its_interface()
 static void should_present_a_video_frame_in_software_through_its_interface()
 {
 	const auto frames_converted = std::make_shared<int>(0);
-	const auto restore_scaler = ui::make_surface_scaler;
-	const df::scope_exit restore([restore_scaler] { ui::make_surface_scaler = restore_scaler; });
-	ui::make_surface_scaler = make_fake_frame_scaler(frames_converted);
+	const auto restore_scaler = render::make_surface_scaler;
+	const core::scope_exit restore([restore_scaler] { render::make_surface_scaler = restore_scaler; });
+	render::make_surface_scaler = make_fake_frame_scaler(frames_converted);
 
-	const auto renderer = create_software_draw_context(nullptr, nullptr, false, ui::default_font_size);
+	const auto renderer = create_software_draw_context(nullptr, nullptr, false, render::default_font_size);
 	const auto texture = renderer->create_texture();
-	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == ui::texture_update_result::tex_created,
+	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == render::texture_update_result::tex_created,
 	             "a prepared picture is copied");
 	assert_equal(true, texture->dimensions() == sizei{64, 48}, "as it was prepared");
 	assert_equal(0, *frames_converted, "with nothing converted");
 
 	const auto unprepared = std::make_shared<fake_video_frame>();
-	assert_equal(true, texture->update(unprepared) == ui::texture_update_result::tex_created,
+	assert_equal(true, texture->update(unprepared) == render::texture_update_result::tex_created,
 	             "a picture in system memory is converted by the scaler");
 	assert_equal(true, texture->dimensions() == sizei{32, 16}, "and held as converted");
 	assert_equal(1, *frames_converted, "once");
@@ -956,14 +956,14 @@ static void should_present_a_video_frame_in_software_through_its_interface()
 	const auto hardware = std::make_shared<fake_video_frame>();
 	auto texture_name = 0;
 	hardware->described.texture = &texture_name;
-	assert_equal(true, texture->update(hardware) == ui::texture_update_result::tex_updated,
+	assert_equal(true, texture->update(hardware) == render::texture_update_result::tex_updated,
 	             "a hardware picture is converted too");
 	assert_equal(2, *frames_converted, "by the scaler");
 	assert_equal(1, hardware->cpu_requests, "and the decoder is asked for pictures in system memory");
 
-	ui::make_surface_scaler = nullptr;
+	render::make_surface_scaler = nullptr;
 	assert_equal(true,
-	             renderer->create_texture()->update(unprepared) == ui::texture_update_result::failed,
+	             renderer->create_texture()->update(unprepared) == render::texture_update_result::failed,
 	             "with no scaler a picture in system memory cannot be presented");
 }
 
@@ -971,7 +971,7 @@ static void should_suppress_gpu_for_recovery_session()
 {
 	platform::suppress_crash_guard(platform::crash_guard::gpu_render, true);
 	// Suppression is process-global; a failing assertion below must not leave it on.
-	const df::scope_exit restore_guard([]
+	const core::scope_exit restore_guard([]
 	{
 		platform::suppress_crash_guard(platform::crash_guard::gpu_render, false);
 	});
@@ -997,7 +997,7 @@ static void should_fall_back_for_missing_glyphs()
 	constexpr char32_t hangul = U'\uAC00'; // 가
 
 	// "Calibri" is the app's dialog/UI font; "Malgun Gothic" is the Windows Korean font.
-	const auto probe = platform::probe_glyph_fallback("Calibri", "Malgun Gothic", hangul);
+	const auto probe = render::probe_glyph_fallback("Calibri", "Malgun Gothic", hangul);
 
 	if (!probe.available)
 	{
@@ -1028,7 +1028,7 @@ static void should_fall_back_for_missing_glyphs()
 // so a size change cannot return the previous face.
 static void should_cache_font_faces_per_face_and_size()
 {
-	const auto probe = platform::probe_font_cache(16);
+	const auto probe = render::probe_font_cache(16);
 
 	if (!probe.available)
 	{
@@ -1074,8 +1074,8 @@ class registry_test_root
 public:
 	explicit registry_test_root(const std::string_view name)
 	{
-		_root = std::format("Software\\DiffractorTest\\{}-{}", name, platform::tick_count());
-		_root_w = str::utf8_to_utf16(_root);
+		_root = std::format("Software\\DiffractorTest\\{}-{}", name, core::tick_count());
+		_root_w = core::utf8_to_utf16(_root);
 	}
 
 	~registry_test_root()
@@ -1093,7 +1093,7 @@ public:
 
 	std::wstring subkey(const std::string_view section) const
 	{
-		return str::utf8_to_utf16(std::format("{}\\{}", _root, section));
+		return core::utf8_to_utf16(std::format("{}\\{}", _root, section));
 	}
 };
 
@@ -1124,14 +1124,14 @@ static void should_persist_to_registry()
 static void should_validate_registry_value_types_and_sizes()
 {
 	const registry_test_root root("malformed");
-	const auto section = std::format("test-malformed-{}", platform::tick_count());
+	const auto section = std::format("test-malformed-{}", core::tick_count());
 	const auto sectionW = root.subkey(section);
 	HKEY key = nullptr;
 	assert_equal(static_cast<int>(ERROR_SUCCESS),
 	             static_cast<int>(RegCreateKeyExW(HKEY_CURRENT_USER, sectionW.c_str(), 0, nullptr,
 	                                              REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &key, nullptr)),
 	             "create registry test section");
-	const df::scope_exit close_key([&key] { if (key) RegCloseKey(key); });
+	const core::scope_exit close_key([&key] { if (key) RegCloseKey(key); });
 
 	constexpr wchar_t text[] = L"text";
 	constexpr uint16_t short_number = 42;
@@ -1190,14 +1190,14 @@ static void should_validate_registry_value_types_and_sizes()
 
 static void should_offer_each_drag_format_once()
 {
-	const auto file1 = test_files_folder.combine_file("Test.jpg");
-	const auto file2 = test_files_folder.combine_file("Small.jpg");
+	const auto file1 = test_files_folder().combine_file("Test.jpg");
+	const auto file2 = test_files_folder().combine_file("Small.jpg");
 
-	assert_equal(true, file1.exists(), "Test.jpg exists");
-	assert_equal(true, file2.exists(), "small.jpg exists");
+	assert_equal(true, platform::exists(file1), "Test.jpg exists");
+	assert_equal(true, platform::exists(file2), "small.jpg exists");
 
-	const std::vector<df::file_path> files{file1, file2};
-	const std::vector<df::folder_path> folders;
+	const std::vector<core::file_path> files{file1, file2};
+	const std::vector<core::folder_path> folders;
 
 	const auto probe = platform::probe_drag_data_object(files, folders);
 
@@ -1267,7 +1267,7 @@ static int WINAPI shell_aborts_a(SHFILEOPSTRUCTA* op)
 
 static void should_double_terminate_shell_destination_buffers()
 {
-	const auto target = df::folder_path("C:\\photos");
+	const auto target = core::folder_path("C:\\photos");
 	const auto wide_destination = platform::probe_shell_destination_w(target);
 	const auto narrow_destination = platform::probe_shell_destination_a(target);
 
@@ -1314,7 +1314,7 @@ static void should_let_windows_confirm_recycle_that_would_destroy()
 static void should_materialize_advertised_clipboard_images()
 {
 	files ff;
-	const auto loaded = ff.load(test_files_folder.combine_file("Test.jpg"), false);
+	const auto loaded = ff.load(test_files_folder().combine_file("Test.jpg"), false);
 	assert_equal(true, loaded.success, "test image loads");
 
 	const auto probe = platform::probe_drag_data_object(clipboard_image_of(loaded));
@@ -1353,7 +1353,7 @@ static void should_pass_bare_save_dialog_extensions()
 
 static void should_publish_pasted_bitmap_after_closing_stage()
 {
-	const auto folder = _temps.folder().combine(std::format("pasted-bitmap-{}", platform::tick_count()));
+	const auto folder = _temps.folder().combine(std::format("pasted-bitmap-{}", core::tick_count()));
 	assert_equal(true, platform::create_folder(folder).success(), "create bitmap paste temp folder");
 
 	const uint32_t pixels[] = {
@@ -1362,14 +1362,14 @@ static void should_publish_pasted_bitmap_after_closing_stage()
 	};
 	const auto bitmap = CreateBitmap(2, 2, 1, 32, pixels);
 	assert_equal(true, bitmap != nullptr, "create test bitmap");
-	const df::scope_exit delete_bitmap([bitmap] { DeleteObject(bitmap); });
+	const core::scope_exit delete_bitmap([bitmap] { DeleteObject(bitmap); });
 
 	const auto result = save_bitmap_info(folder, "pasted", true, bitmap);
 
 	assert_equal(true, result.success(), "bitmap save succeeds");
 	assert_equal(1, static_cast<int>(result.created_files.files.size()), "one published file");
 	const auto final_path = result.created_files.files.front();
-	assert_equal(true, final_path.exists(), "published file exists");
+	assert_equal(true, platform::exists(final_path), "published file exists");
 
 	const auto attributes = GetFileAttributesW(platform::to_file_system_path(final_path).c_str());
 	assert_equal(false, attributes == INVALID_FILE_ATTRIBUTES, "published file attributes read");
@@ -1404,9 +1404,9 @@ static void should_reject_unusable_file_names()
 // backend loads one, so both backends draw the same shadow with or without WIC.
 static void should_decode_embedded_chrome_images()
 {
-	assert_equal(true, static_cast<bool>(ui::decode_embedded_image), "the application installed its decoder");
+	assert_equal(true, static_cast<bool>(render::decode_embedded_image), "the application installed its decoder");
 
-	const auto shadow = ui::decode_embedded(load_resource(IDB_SHADOW, L"PNG"));
+	const auto shadow = render::load_shadow_art();
 	assert_equal(true, shadow != nullptr, "the shadow decodes");
 	assert_equal(true, shadow && !shadow->dimensions().is_empty(), "to an image with pixels");
 }
@@ -1418,25 +1418,25 @@ static void should_offer_the_maximize_caption_button_only_on_a_resizable_frame()
 	constexpr uint32_t full_screen = frame & ~(WS_CAPTION | WS_THICKFRAME);
 	constexpr uint32_t dialog = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
 
-	assert_equal(true, platform::presents_maximize_caption_button(df::os_release::windows_11, frame),
+	assert_equal(true, platform::presents_maximize_caption_button(platform::os_release::windows_11, frame),
 	             "a resizable Windows 11 frame offers snap layouts over its maximize button");
-	assert_equal(true, platform::presents_maximize_caption_button(df::os_release::windows_later, frame),
+	assert_equal(true, platform::presents_maximize_caption_button(platform::os_release::windows_later, frame),
 	             "a later release keeps them");
-	assert_equal(false, platform::presents_maximize_caption_button(df::os_release::windows_10, frame),
+	assert_equal(false, platform::presents_maximize_caption_button(platform::os_release::windows_10, frame),
 	             "Windows 10 has no snap layouts, so the button stays a toolbar button");
-	assert_equal(false, platform::presents_maximize_caption_button(df::os_release::unknown, frame),
+	assert_equal(false, platform::presents_maximize_caption_button(platform::os_release::unknown, frame),
 	             "a release that could not be read is not assumed to have them");
-	assert_equal(false, platform::presents_maximize_caption_button(df::os_release::windows_11, full_screen),
+	assert_equal(false, platform::presents_maximize_caption_button(platform::os_release::windows_11, full_screen),
 	             "Fullscreen strips the resizing frame");
-	assert_equal(false, platform::presents_maximize_caption_button(df::os_release::windows_11, dialog),
+	assert_equal(false, platform::presents_maximize_caption_button(platform::os_release::windows_11, dialog),
 	             "a dialog has no maximize box");
 
 	// The flyout would open over the restore button and take the click meant for it.
-	assert_equal(false, platform::presents_maximize_caption_button(df::os_release::windows_11, maximized),
+	assert_equal(false, platform::presents_maximize_caption_button(platform::os_release::windows_11, maximized),
 	             "a maximized frame's restore button stays a toolbar button");
-	assert_equal(true, platform::can_present_maximize_caption_button(df::os_release::windows_11, maximized),
+	assert_equal(true, platform::can_present_maximize_caption_button(platform::os_release::windows_11, maximized),
 	             "a maximized frame still keeps the top of its frame clear for when it is restored");
-	assert_equal(false, platform::can_present_maximize_caption_button(df::os_release::windows_10, frame),
+	assert_equal(false, platform::can_present_maximize_caption_button(platform::os_release::windows_10, frame),
 	             "Windows 10 frames keep their frame as it was");
 }
 
@@ -1469,7 +1469,7 @@ static void should_read_coherent_number_format_snapshots()
 		                                            {L",", L".", 1, 1},
 	                                            },
 	                                            true);
-	const df::scope_exit restore([] { platform::clear_number_format_probe_snapshots(); });
+	const core::scope_exit restore([] { platform::clear_number_format_probe_snapshots(); });
 
 	assert_equal("1,234", platform::format_number("1234"), "the first format uses one complete snapshot");
 	assert_equal(",", platform::number_dec_sep(), "invalidation during refresh remains pending for the next read");
@@ -1479,7 +1479,7 @@ static void should_read_coherent_number_format_snapshots()
 
 static void should_bound_the_software_buffer_as_the_client_grows()
 {
-	const auto probe = platform::probe_software_tiling();
+	const auto probe = render::probe_software_tiling();
 
 	// Without this the assertion below would still pass if the buffer went back to tracking the
 	// window, which is the thing tiling exists to stop.
@@ -1491,10 +1491,10 @@ static void should_bound_the_software_buffer_as_the_client_grows()
 
 static void should_translate_highlight_spans_to_utf16_clusters()
 {
-	const auto highlight = ui::color(1.0f, 0.0f, 0.0f, 1.0f);
-	const auto plain = ui::color(0.0f, 0.0f, 1.0f, 1.0f);
+	const auto highlight = core::color(1.0f, 0.0f, 0.0f, 1.0f);
+	const auto plain = core::color(0.0f, 0.0f, 1.0f, 1.0f);
 	const std::string text = "\xf0\x9f\x98\x80" "caf\xc3\xa9" "X";
-	const auto converted = ui::utf8_to_utf16(text, {{4, 5, highlight}});
+	const auto converted = render::utf8_to_utf16(text, {{4, 5, highlight}});
 
 	assert_equal(7_z, converted.text.size(), "emoji is preserved as a surrogate pair");
 	assert_equal(0xd83d, static_cast<int>(converted.text[0]), "lead surrogate");
@@ -1504,21 +1504,21 @@ static void should_translate_highlight_spans_to_utf16_clusters()
 	assert_equal(4u, converted.highlights[0].length, "highlight length is UTF-16 text, not UTF-8 bytes");
 
 	const uint16_t clusters[] = {0, 0, 1};
-	const auto first = ui::text_cluster_span_for_glyph(0, 2, clusters, 3, 10);
-	const auto second = ui::text_cluster_span_for_glyph(1, 2, clusters, 3, 10);
+	const auto first = render::text_cluster_span_for_glyph(0, 2, clusters, 3, 10);
+	const auto second = render::text_cluster_span_for_glyph(1, 2, clusters, 3, 10);
 	assert_equal(10u, first.offset, "cluster offset includes run text position");
 	assert_equal(2u, first.length, "one glyph cluster can span multiple text units");
 	assert_equal(12u, second.offset, "the next glyph starts after the multi-unit cluster");
-	assert_equal(highlight.r, ui::text_cluster_color(plain, first, {{10, 2, highlight}}).r,
+	assert_equal(highlight.r, render::text_cluster_color(plain, first, {{10, 2, highlight}}).r,
 	             "a complete cluster is highlighted");
-	assert_equal(highlight.r, ui::text_cluster_color(plain, first, {{10, 1, highlight}}).r,
+	assert_equal(highlight.r, render::text_cluster_color(plain, first, {{10, 1, highlight}}).r,
 	             "a base letter highlight colours its combining-mark cluster");
 }
 
 static void should_build_text_cluster_spans_once_per_run()
 {
 	const uint16_t clusters[] = {0, 0, 1, 2, 2};
-	const auto spans = ui::text_cluster_spans_for_glyph_run(3, clusters, 5, 4);
+	const auto spans = render::text_cluster_spans_for_glyph_run(3, clusters, 5, 4);
 
 	assert_equal(3_z, spans.size(), "one span per glyph");
 	assert_equal(4u, spans[0].offset, "first cluster starts at run text position");
@@ -1531,28 +1531,28 @@ static void should_build_text_cluster_spans_once_per_run()
 
 static void should_apply_positive_ascender_offsets_upward()
 {
-	assert_equal(80.0f, ui::glyph_top_from_baseline(100.0f, 20, 0.0f), "no ascender offset");
-	assert_equal(77.0f, ui::glyph_top_from_baseline(100.0f, 20, 3.0f), "positive ascender moves up");
-	assert_equal(83.0f, ui::glyph_top_from_baseline(100.0f, 20, -3.0f), "negative ascender moves down");
+	assert_equal(80.0f, render::glyph_top_from_baseline(100.0f, 20, 0.0f), "no ascender offset");
+	assert_equal(77.0f, render::glyph_top_from_baseline(100.0f, 20, 3.0f), "positive ascender moves up");
+	assert_equal(83.0f, render::glyph_top_from_baseline(100.0f, 20, -3.0f), "negative ascender moves down");
 }
 
 static void should_clear_text_highlights_between_draws()
 {
-	std::vector<ui::text_highlight_t> highlights = {{0, 3, ui::color(1.0f, 0.0f, 0.0f, 1.0f)}};
-	ui::clear_text_highlights(highlights);
+	std::vector<render::text_highlight_t> highlights = {{0, 3, core::color(1.0f, 0.0f, 0.0f, 1.0f)}};
+	render::clear_text_highlights(highlights);
 	assert_equal(true, highlights.empty(), "plain/layout draws start without stale highlight intervals");
 }
 
 static void should_gate_native_bubble_alpha_steps()
 {
-	const auto restore_animations = ui::animations_enabled;
-	const df::scope_exit restore_scope([restore_animations] { ui::animations_enabled = restore_animations; });
+	const auto restore_animations = render::animations_enabled;
+	const core::scope_exit restore_scope([restore_animations] { render::animations_enabled = restore_animations; });
 
-	ui::animations_enabled = true;
+	render::animations_enabled = true;
 	assert_equal(72, ui::fade_alpha_step(0, 255), "enabled fade advances toward visible");
 	assert_equal(0, ui::fade_alpha_step(1, 0), "enabled fade snaps the terminal hidden alpha");
 
-	ui::animations_enabled = false;
+	render::animations_enabled = false;
 	auto alpha = 0;
 	alpha = ui::gated_fade_alpha_step(alpha, 255);
 	assert_equal(255, alpha, "disabled show snaps visible");
@@ -1562,9 +1562,9 @@ static void should_gate_native_bubble_alpha_steps()
 
 static void should_handle_unavailable_font_layout()
 {
-	text_layout_impl layout(nullptr, ui::style::font_face::dialog);
+	text_layout_impl layout(nullptr, render::font_face::dialog);
 
-	layout.update("text", ui::style::text_style::single_line);
+	layout.update("text", render::text_style::single_line);
 	const auto measured = layout.measure_text(100, 100);
 	assert_equal(0, measured.cx, "unavailable font has no measured width");
 	assert_equal(0, measured.cy, "unavailable font has no measured height");
@@ -1581,7 +1581,7 @@ static void should_handle_unavailable_font_layout()
 
 static void should_snap_gpu_text_in_pixel_coordinates()
 {
-	assert_equal(true, platform::probe_d3d11_pixel_snapping(),
+	assert_equal(true, render::probe_d3d11_pixel_snapping(),
 	             "text callbacks report enabled snapping, identity transform and one pixel per DIP");
 }
 

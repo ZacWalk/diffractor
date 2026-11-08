@@ -18,7 +18,7 @@
 // platform::native_path already answers.
 namespace
 {
-	auto libraw_path(const df::file_path path)
+	auto libraw_path(const core::file_path path)
 	{
 		return platform::to_file_system_path(path);
 	}
@@ -28,14 +28,14 @@ namespace
 	// anything.
 	class raw_surface_sink final : public libfiles::image_sink
 	{
-		const df::file_path _path;
+		const core::file_path _path;
 
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 		// The size refused for the budget, read from the header.
 		sizei over_budget;
 
-		explicit raw_surface_sink(const df::file_path path) : _path(path)
+		explicit raw_surface_sink(const core::file_path path) : _path(path)
 		{
 		}
 
@@ -44,17 +44,17 @@ namespace
 			const sizei dimensions{static_cast<int>(declared.source_width), static_cast<int>(declared.source_height)};
 			if (dimensions.is_empty() || !files::exceeds_decode_budget(dimensions)) return true;
 
-			df::log(__FUNCTION__, std::format("{} is {} x {}, past the decode budget of {}", _path.name(), dimensions.cx,
-			                                  dimensions.cy, df::file_size(df::max_decode_bytes).str()));
+			core::log(__FUNCTION__, std::format("{} is {} x {}, past the decode budget of {}", _path.name(), dimensions.cx,
+			                                  dimensions.cy, platform::format_size(core::file_size(render::max_decode_bytes))));
 			over_budget = dimensions;
 			return false;
 		}
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
-			auto s = std::make_shared<ui::surface>();
+			auto s = std::make_shared<core::surface>();
 			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
-			                              ui::texture_format::RGB, static_cast<ui::orientation>(frame.orientation));
+			                              core::texture_format::RGB, static_cast<core::orientation>(frame.orientation));
 			if (!pixels) return {};
 			surface = std::move(s);
 			return {pixels, surface->stride()};
@@ -62,7 +62,7 @@ namespace
 	};
 }
 
-file_load_result load_raw(const df::file_path path, const bool can_load_preview)
+file_load_result load_raw(const core::file_path path, const bool can_load_preview)
 {
 	file_load_result result;
 	const std::filesystem::path native(libraw_path(path));
@@ -75,7 +75,7 @@ file_load_result load_raw(const df::file_path path, const bool can_load_preview)
 
 		if (is_valid(i))
 		{
-			i->orientation(static_cast<ui::orientation>(loaded.orientation));
+			i->orientation(static_cast<core::orientation>(loaded.orientation));
 			result.i = std::move(i);
 			result.success = true;
 			result.is_preview = true;
@@ -101,13 +101,13 @@ file_load_result load_raw(const df::file_path path, const bool can_load_preview)
 	}
 	else if (!loaded.decoded.error.empty())
 	{
-		df::log(__FUNCTION__, std::format("{}: {}", path.name(), loaded.decoded.error));
+		core::log(__FUNCTION__, std::format("{}: {}", path.name(), loaded.decoded.error));
 	}
 
 	return result;
 }
 
-file_scan_result files::scan_raw(const df::file_path path, const std::string_view xmp_sidecar, const bool load_thumb,
+file_scan_result files::scan_raw(const core::file_path path, const std::string_view xmp_sidecar, const bool load_thumb,
                                  const sizei max, const libfiles::scan_intent intent)
 {
 	file_scan_result result;
@@ -119,13 +119,13 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 	{
 		result.width = scanned.width;
 		result.height = scanned.height;
-		result.orientation = static_cast<ui::orientation>(scanned.orientation);
+		result.orientation = static_cast<core::orientation>(scanned.orientation);
 		result.metadata.xmp.assign(scanned.xmp.begin(), scanned.xmp.end());
 
 		if (scanned.created)
 		{
 			const auto& c = *scanned.created;
-			const df::date_t created(c.year, c.month, c.day, c.hour, c.minute, c.second);
+			const core::date_t created(c.year, c.month, c.day, c.hour, c.minute, c.second);
 
 			if (created.is_valid())
 			{
@@ -134,11 +134,11 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 			}
 		}
 
-		result.pixel_format = str::cache(scanned.pixel_format);
-		result.camera_manufacturer = str::cache(scanned.camera_make);
-		result.camera_model = str::cache(scanned.camera_model);
-		result.comment = str::cache(scanned.comment);
-		result.artist = str::cache(scanned.artist);
+		result.pixel_format = core::cache(scanned.pixel_format);
+		result.camera_manufacturer = core::cache(scanned.camera_make);
+		result.camera_model = core::cache(scanned.camera_model);
+		result.comment = core::cache(scanned.comment);
+		result.artist = core::cache(scanned.artist);
 		result.iso_speed = scanned.iso_speed;
 		result.exposure_time = scanned.exposure_time;
 		result.f_number = scanned.f_number;
@@ -156,7 +156,7 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 
 	if (!scanned.thumbnail_jpeg.empty())
 	{
-		result.thumbnail_surface = image_to_surface(df::cspan{scanned.thumbnail_jpeg.data(), scanned.thumbnail_jpeg.size()},
+		result.thumbnail_surface = image_to_surface(core::cspan{scanned.thumbnail_jpeg.data(), scanned.thumbnail_jpeg.size()},
 		                                            max, false, decode_intent::thumbnail);
 
 		if (result.thumbnail_surface)
@@ -164,7 +164,7 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 			// Decoded smaller than the preview's own size, as it always was, so the rule is judged on the
 			// shape decoded.
 			const auto decoded = result.thumbnail_surface->dimensions();
-			result.thumbnail_surface->orientation(static_cast<ui::orientation>(libfiles::raw_preview_orientation(
+			result.thumbnail_surface->orientation(static_cast<core::orientation>(libfiles::raw_preview_orientation(
 				decoded.cx, decoded.cy, static_cast<uint16_t>(result.thumbnail_surface->orientation()),
 				scanned.image_width, scanned.image_height, scanned.image_orientation)));
 		}
@@ -174,9 +174,9 @@ file_scan_result files::scan_raw(const df::file_path path, const std::string_vie
 		result.thumbnail_surface = std::move(sink.surface);
 	}
 
-	if (!str::is_empty(xmp_sidecar))
+	if (!core::is_empty(xmp_sidecar))
 	{
-		const auto sidecar = blob_from_file(path.folder().combine_file(xmp_sidecar));
+		const auto sidecar = platform::blob_from_file(path.folder().combine_file(xmp_sidecar));
 		result.metadata.xmp.assign(sidecar.begin(), sidecar.end());
 	}
 

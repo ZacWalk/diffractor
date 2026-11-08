@@ -45,7 +45,7 @@ class locate_view final :
 
 	struct marker_item
 	{
-		df::file_path path;
+		core::file_path path;
 		df::item_element_ptr item;
 	};
 
@@ -57,7 +57,7 @@ class locate_view final :
 	// Collection-wide markers are built off the UI thread, so a result that lands after the
 	// user has zoomed again describes a map that no longer exists.
 	uint32_t _marker_generation = 0;
-	df::unique_paths _thumbnail_requests;
+	core::unique_paths _thumbnail_requests;
 	bool run(detach_file_handles& detach);
 
 public:
@@ -100,7 +100,7 @@ public:
 
 	std::string_view title() override
 	{
-		_title = std::format("{}: {}", s_app_name, tt.location_title);
+		_title = std::format("{}: {}", core::app_name(), tt.location_title);
 		return _title;
 	}
 

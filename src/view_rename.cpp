@@ -18,23 +18,23 @@
 
 #include "ui_controls.h"
 
-static void notify_rename_after_move(const df::file_path source, const df::file_path destination)
+static void notify_rename_after_move(const core::file_path source, const core::file_path destination)
 {
 	if (df::rename_after_move_for_test) df::rename_after_move_for_test(source, destination);
 }
 
-static platform::file_op_result rename_recovery_failed(const df::file_path expected_path,
-                                                       const df::file_path surviving_path,
+static platform::file_op_result rename_recovery_failed(const core::file_path expected_path,
+                                                       const core::file_path surviving_path,
                                                        platform::file_op_result result)
 {
 	result.code = platform::file_op_result_code::FAILED;
 	result.error_message = std::format("Could not restore {}; surviving path is {}. {}",
 	                                   expected_path.str(), surviving_path.str(), result.format_error());
-	df::log(__FUNCTION__, result.error_message);
+	core::log(__FUNCTION__, result.error_message);
 	return result;
 }
 
-static platform::file_op_result move_rename_path(const df::file_path source, const df::file_path destination,
+static platform::file_op_result move_rename_path(const core::file_path source, const core::file_path destination,
                                                  const bool fail_if_exists, const bool is_folder = false)
 {
 	if (is_folder)
@@ -54,7 +54,7 @@ static platform::file_op_result move_rename_path(const df::file_path source, con
 		auto result = platform::move_file(source_folder, temporary_folder);
 		if (result.success())
 		{
-			const auto temporary_path = df::file_path(temporary_folder.parent(), temporary_folder.name());
+			const auto temporary_path = core::file_path(temporary_folder.parent(), temporary_folder.name());
 			notify_rename_after_move(source, temporary_path);
 			result = platform::move_file(temporary_folder, destination_folder);
 			if (result.success())
@@ -120,17 +120,17 @@ void rename_view::run()
 	_state.queue_async(async_queue::work, [renames, results, &index = _state.item_index]
 	{
 		result_scope rr(results);
-		df::unique_folders scan_folders;
+		core::unique_folders scan_folders;
 
 		// Existence alone cannot tell the reviewed file from one that replaced it since. A source
 		// that changed would be moved under a name chosen for content the user never saw, and under
 		// Replace a changed destination would be written over without having been reviewed. Folders
 		// are held to existence only: their contents change without the folder becoming another.
-		const auto reviewed_file = [](const df::file_path path, const platform::file_attributes_t& reviewed)
+		const auto reviewed_file = [](const core::file_path path, const platform::file_attributes_t& reviewed)
 		{
 			return reviewed.exists()
 				       ? unchanged_since_analysis(path, reviewed.modified, reviewed.size)
-				       : !path.exists();
+				       : !platform::exists(path);
 		};
 
 		for (const auto& rename : renames)
@@ -153,7 +153,7 @@ void rename_view::run()
 			for (auto index = 0_z; index < rename.sidecars.size(); ++index)
 			{
 				const auto& [source, destination] = rename.sidecars[index];
-				if (!source.exists() || destination.exists() != rename.sidecar_destinations_exist[index] ||
+				if (!platform::exists(source) || platform::exists(destination) != rename.sidecar_destinations_exist[index] ||
 					!reviewed_file(source, rename.sidecar_source_attributes[index]) ||
 					!reviewed_file(destination, rename.sidecar_destination_attributes[index]))
 				{
@@ -168,17 +168,17 @@ void rename_view::run()
 		// and the row that owns it renames from there; anything still parked when the run ends goes
 		// back where it came from. The test matches the one the plan used, or the run would park a
 		// path the plan never counted as free.
-		std::set<std::string, df::path_key_less> vacating;
+		std::set<std::string, core::path_key_less> vacating;
 
 		for (const auto& rename : renames)
 		{
 			const auto source_key = rename_path_key(rename.source, rename.is_folder);
-			if (rename.noop || df::compare_path_key(source_key, rename_path_key(rename.destination, rename.is_folder)) == 0)
+			if (rename.noop || core::compare_path_key(source_key, rename_path_key(rename.destination, rename.is_folder)) == 0)
 				continue;
 
 			vacating.emplace(source_key);
 			for (const auto& [source, destination] : rename.sidecars)
-				if (df::compare_path_key(source.pack(), destination.pack()) != 0)
+				if (core::compare_path_key(source.pack(), destination.pack()) != 0)
 				{
 					vacating.emplace(source.pack());
 				}
@@ -186,12 +186,12 @@ void rename_view::run()
 
 		struct parked_path
 		{
-			df::file_path original;
-			df::file_path temporary;
+			core::file_path original;
+			core::file_path temporary;
 			bool is_folder = false;
 		};
 
-		std::map<std::string, parked_path, df::path_key_less> parked;
+		std::map<std::string, parked_path, core::path_key_less> parked;
 		std::string first_recovery_error;
 
 		const auto remember_recovery_error = [&](const platform::file_op_result& op)
@@ -204,13 +204,13 @@ void rename_view::run()
 			if (first_recovery_error.empty()) first_recovery_error = message;
 		};
 
-		auto current_path = [&parked](const df::file_path path, const bool is_folder)
+		auto current_path = [&parked](const core::file_path path, const bool is_folder)
 		{
 			const auto found = parked.find(rename_path_key(path, is_folder));
 			return found == parked.end() ? path : found->second.temporary;
 		};
 
-		auto free_destination = [&](const df::file_path destination, const bool is_folder)
+		auto free_destination = [&](const core::file_path destination, const bool is_folder)
 		{
 			const platform::file_op_result nothing_to_do{platform::file_op_result_code::OK, {}, {}};
 			const auto key = rename_path_key(destination, is_folder);
@@ -239,9 +239,9 @@ void rename_view::run()
 				continue;
 			}
 
-			std::vector<std::pair<df::file_path, df::file_path>> moved_sidecars;
+			std::vector<std::pair<core::file_path, core::file_path>> moved_sidecars;
 			platform::file_op_result result{platform::file_op_result_code::OK, {}, {}};
-			df::unique_folders touched_folders;
+			core::unique_folders touched_folders;
 			touched_folders.emplace(rename.source.folder());
 			touched_folders.emplace(rename.destination.folder());
 			for (auto index = 0_z; index < rename.sidecars.size(); ++index)
@@ -306,13 +306,13 @@ void rename_view::run()
 
 			struct recovery_member
 			{
-				df::file_path original;
-				df::file_path current;
-				df::file_path reviewed;
+				core::file_path original;
+				core::file_path current;
+				core::file_path reviewed;
 				bool is_folder;
 			};
 			const auto primary = rename.is_folder
-				                     ? df::file_path(rename.source.folder().parent(), rename.source.folder().name())
+				                     ? core::file_path(rename.source.folder().parent(), rename.source.folder().name())
 				                     : rename.source;
 			std::vector<recovery_member> group{
 				{primary, current_path(rename.source, rename.is_folder), rename.destination, rename.is_folder}
@@ -320,19 +320,19 @@ void rename_view::run()
 			for (const auto& [source, destination] : rename.sidecars)
 				group.push_back({source, current_path(source, false), destination, false});
 
-			const auto destinations_free = [&group](const std::vector<df::file_path>& destinations)
+			const auto destinations_free = [&group](const std::vector<core::file_path>& destinations)
 			{
 				for (size_t i = 0; i < group.size(); ++i)
 				{
 					const auto& member = group[i];
-					if (df::compare_path_key(rename_path_key(member.current, member.is_folder),
+					if (core::compare_path_key(rename_path_key(member.current, member.is_folder),
 					                         rename_path_key(destinations[i], member.is_folder)) != 0 &&
 						rename_path_exists(destinations[i], member.is_folder))
 						return false;
 				}
 				return true;
 			};
-			const auto recover = [&](const std::vector<df::file_path>& destinations)
+			const auto recover = [&](const std::vector<core::file_path>& destinations)
 			{
 				platform::file_op_result recovery{platform::file_op_result_code::ALREADY_EXISTS};
 				if (!destinations_free(destinations)) return recovery;
@@ -341,7 +341,7 @@ void rename_view::run()
 						return platform::file_op_result{platform::file_op_result_code::FAILED,
 							std::format("Missing rename recovery source {}", member.current.str())};
 
-				std::vector<std::pair<size_t, df::file_path>> moved;
+				std::vector<std::pair<size_t, core::file_path>> moved;
 				for (size_t i = 0; i < group.size(); ++i)
 				{
 					auto& member = group[i];
@@ -369,7 +369,7 @@ void rename_view::run()
 				return platform::file_op_result{platform::file_op_result_code::OK};
 			};
 
-			std::vector<df::file_path> destinations;
+			std::vector<core::file_path> destinations;
 			for (const auto& member : group) destinations.emplace_back(member.original);
 			auto recovery = recover(destinations);
 			if (recovery.failed())
@@ -386,7 +386,7 @@ void rename_view::run()
 				const auto extension = rename.is_folder ? ""sv : primary.extension();
 				for (auto suffix = 2; suffix < 10000; ++suffix)
 				{
-					destinations[0] = df::file_path(primary.folder(), std::format("{} ({})", base, suffix), extension);
+					destinations[0] = core::file_path(primary.folder(), std::format("{} ({})", base, suffix), extension);
 					for (size_t i = 1; i < group.size(); ++i)
 						destinations[i] = destinations[0].extension(group[i].original.extension());
 					if (!destinations_free(destinations)) continue;
@@ -402,7 +402,7 @@ void rename_view::run()
 				if (numbered)
 				{
 					const auto message = std::format("Recovered {} as {}", primary.str(), destinations[0].str());
-					df::log(__FUNCTION__, message);
+					core::log(__FUNCTION__, message);
 					remember_recovery_message(message);
 				}
 			}
@@ -463,7 +463,7 @@ void rename_view::refresh()
 	const auto name_template = setting.rename.name_template;
 	// Held to what numbering can count from: below zero has no digits, and near the top of an int the
 	// count would overflow before the last item.
-	const auto start_seq = std::clamp(str::to_int(setting.rename.start_seq), 0, 999'999'999);
+	const auto start_seq = std::clamp(core::to_int(setting.rename.start_seq), 0, 999'999'999);
 	const auto policy = setting.rename.collision;
 	const auto completion_status = format_plural_text(tt.rename_fmt, items);
 	const auto generation = ++_analysis_generation;
@@ -483,8 +483,8 @@ void rename_view::refresh()
 			                   const auto view = weak_view.lock();
 			                   if (!view || generation != view->_analysis_generation) return;
 
-			                   const auto error_text_color = ui::lighten(ui::style::colors.warning_background, 0.55f);
-			                   const auto rename_text_color = ui::lighten(
+			                   const auto error_text_color = core::lighten(ui::style::colors.warning_background, 0.55f);
+			                   const auto rename_text_color = core::lighten(
 				                   ui::style::colors.dialog_selected_background, 0.55f);
 			                   std::vector<row_element_ptr> rows;
 			                   rows.reserve(renames.size());

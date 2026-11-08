@@ -46,7 +46,7 @@ The log is cheaper than the dump and often decides the answer on its own. Take:
   last log line with `Process Uptime` in the dump: a long gap means the fault has no
   logged neighbour and the log is only context.
 - **The tail** — `*** CRASH ***`, plus `Last file type opened` and `Rendering
-  function` (from `df::rendering_func`, maintained by `df::scope_rendering_func`) when
+  function` (from `render::rendering_func`, maintained by `render::scope_rendering_func`) when
   they were set.
 - **`crash_files_db` lines** — file types added to the skip list, and on the next run
   the count of files skipped because they crashed a previous run of the same release line.
@@ -119,6 +119,12 @@ Run cdb from a `.ps1` invoked as `pwsh -NoProfile -File`. An inline
 
 ## 5. Local debug builds
 
+A crash you can reproduce is quickest to read live. `.\dd.ps1 vs` builds Debug x64 and opens
+`exe\diffractor64-d.exe` in the Visual Studio debugger; F5 starts it, and the crash stops at the
+faulting line with the Call Stack window (Ctrl+Alt+C) showing how it got there. `--config Release`
+debugs the Release build instead, `--no-build` skips the build, `--dry-run` prints what it would do,
+and any other argument is passed to Diffractor.
+
 A dump from `exe\diffractor64-d.exe` usually has no stored symbols, and the local PDB
 has been relinked since. Force the mismatched PDB on:
 
@@ -170,9 +176,10 @@ that says this configuration took that path. Two out of three is a hypothesis.
 | Crash-handling subject | Source |
 |---|---|
 | Exception filter and report contents | [app.cpp](../src/app.cpp) |
-| Minidump writing, and restart and recovery registration | libdesktop's [platform_win_process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_process.cpp) |
+| Minidump writing, and restart and recovery registration | libdesktop's [process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/process.cpp) |
 | The open-file list a fault records, and its bounds | [util_crash_files_db.h](../src/util_crash_files_db.h) |
-| The graphics crash guard and hardware-acceleration fallback | libdesktop's [platform_win_settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win_settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
+| The graphics crash guard and hardware-acceleration fallback | libdesktop's [settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
 | The degraded start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
-| Diagnostic log and session counters | libdesktop's [util_log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util_log.h) and [util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/util.h); [app_perf.h](../src/app_perf.h) |
+| Diagnostic log and session counters | libdesktop's [core/log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/log.h), [core/util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/util.h) and [platform/services.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform/services.h); [app_perf.h](../src/app_perf.h) |
 | SDK symbol-store discovery and publishing | `Get-SymStore` and `Add-ToSymbolStore` in [dd.ps1](../dd.ps1) |
+| Debugging a reproducible crash in Visual Studio (`dd.ps1 vs`) | `Open-VisualStudio` in [dd.ps1](../dd.ps1) |

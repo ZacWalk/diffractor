@@ -55,11 +55,11 @@ public:
 		return _command;
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		if (!_command->visible) return {};
 
-		const auto cy = mc.text_line_height(ui::style::font_face::dialog);
+		const auto cy = mc.text_line_height(render::font_face::dialog);
 		auto cx = 0;
 
 		if (_command->icon != icon_index::none) cx += cy;
@@ -68,14 +68,14 @@ public:
 
 		if (!text.empty())
 		{
-			cx += mc.padding1 + mc.measure_text(text, ui::style::font_face::dialog,
-			                                    ui::style::text_style::single_line, width_limit).cx;
+			cx += mc.padding1 + mc.measure_text(text, render::font_face::dialog,
+			                                    render::text_style::single_line, width_limit).cx;
 		}
 
 		return {std::min(std::max(cx, 1), width_limit), cy};
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		if (!_command->visible) return;
 
@@ -85,7 +85,7 @@ public:
 		render_background(dc, element_offset);
 
 		const auto alpha = (_command->enable ? 1.0f : 0.35f) * dc.colors.alpha;
-		const auto clr = ui::color(link_foreground_color(), alpha);
+		const auto clr = core::color(link_foreground_color(), alpha);
 		const auto text = label();
 		auto text_bounds = logical_bounds;
 
@@ -96,10 +96,10 @@ public:
 			if (pos >= 0)
 			{
 				auto track = logical_bounds;
-				track.top = track.bottom - df::round(3 * dc.scale_factor);
-				dc.draw_rect(track, ui::color(ui::style::colors.group_background, alpha * 0.7f));
-				track.right = track.left + df::mul_div(std::min(pos, 1000), track.width(), 1000);
-				dc.draw_rect(track, ui::color(ui::style::colors.view_selected_background, alpha));
+				track.top = track.bottom - core::round(3 * dc.scale_factor);
+				dc.draw_rect(track, core::color(ui::style::colors.group_background, alpha * 0.7f));
+				track.right = track.left + core::mul_div(std::min(pos, 1000), track.width(), 1000);
+				dc.draw_rect(track, core::color(ui::style::colors.view_selected_background, alpha));
 			}
 		}
 
@@ -113,10 +113,10 @@ public:
 
 		if (!text.empty())
 		{
-			dc.draw_text(text, text_bounds, ui::style::font_face::dialog,
+			dc.draw_text(text, text_bounds, render::font_face::dialog,
 			             _command->icon != icon_index::none
-				             ? ui::style::text_style::single_line
-				             : ui::style::text_style::single_line_center, clr, {});
+				             ? render::text_style::single_line
+				             : render::text_style::single_line_center, clr, {});
 		}
 	}
 
@@ -196,18 +196,18 @@ private:
 
 using command_link_element_ptr = std::shared_ptr<command_link_element>;
 
-static std::string_view orientation_to_string(const ui::orientation& o) noexcept
+static std::string_view orientation_to_string(const core::orientation& o) noexcept
 {
 	switch (o)
 	{
-	case ui::orientation::top_left: return tt.orientation_top_left;
-	case ui::orientation::top_right: return tt.orientation_top_right;
-	case ui::orientation::bottom_right: return tt.orientation_bottom_right;
-	case ui::orientation::bottom_left: return tt.orientation_bottom_left;
-	case ui::orientation::left_top: return tt.orientation_left_top;
-	case ui::orientation::right_top: return tt.orientation_right_top;
-	case ui::orientation::right_bottom: return tt.orientation_right_bottom;
-	case ui::orientation::left_bottom: return tt.orientation_left_bottom;
+	case core::orientation::top_left: return tt.orientation_top_left;
+	case core::orientation::top_right: return tt.orientation_top_right;
+	case core::orientation::bottom_right: return tt.orientation_bottom_right;
+	case core::orientation::bottom_left: return tt.orientation_bottom_left;
+	case core::orientation::left_top: return tt.orientation_left_top;
+	case core::orientation::right_top: return tt.orientation_right_top;
+	case core::orientation::right_bottom: return tt.orientation_right_bottom;
+	case core::orientation::left_bottom: return tt.orientation_left_bottom;
 	default: break;
 	}
 
@@ -269,13 +269,13 @@ public:
 		return 0;
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg = calc_background_color(dc);
 		const auto is_hover = is_style_bit_set(view_element_style::hover);
 		const auto rating = is_hover ? last_hover_rating : displayed_rating();
-		const auto clr = ui::color(dc.colors.foreground, _can_edit ? dc.colors.alpha : dc.colors.alpha / 4.0f);
+		const auto clr = core::color(dc.colors.foreground, _can_edit ? dc.colors.alpha : dc.colors.alpha / 4.0f);
 
 		std::string text;
 
@@ -284,15 +284,15 @@ public:
 			text += icon_to_utf8(i < rating ? icon_index::star_solid : icon_index::star);
 		}
 
-		dc.draw_text(text, logical_bounds, ui::style::font_face::icons,
-		             ui::style::text_style::single_line_center, clr, bg);
+		dc.draw_text(text, logical_bounds, render::font_face::icons,
+		             render::text_style::single_line_center, clr, bg);
 	}
 
 	// The bubble states both grading values, because Reject and the stars share one metadata field
 	// and a user who cannot see that will not understand why a star cleared their Reject mark.
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		_icon_cxy = mc.icon_cxy;
 		return {mc.icon_cxy * 5, mc.icon_cxy};
@@ -356,13 +356,13 @@ public:
 		return cell <= 0 ? -1 : cell;
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		_icon_cxy = mc.icon_cxy;
 		return {mc.icon_cxy * cell_count, mc.icon_cxy};
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg = calc_background_color(dc);
@@ -374,11 +374,11 @@ public:
 
 		const auto reject_text = icon_to_utf8(rate_label_reject.icon);
 		const auto reject_clr = rating < 0
-			                        ? ui::color(rate_label_reject.clr, dc.colors.alpha)
-			                        : ui::color(dc.colors.foreground, dc.colors.alpha / 3.0f);
+			                        ? core::color(rate_label_reject.clr, dc.colors.alpha)
+			                        : core::color(dc.colors.foreground, dc.colors.alpha / 3.0f);
 
-		dc.draw_text(reject_text, reject_bounds, ui::style::font_face::icons,
-		             ui::style::text_style::single_line_center, reject_clr, bg);
+		dc.draw_text(reject_text, reject_bounds, render::font_face::icons,
+		             render::text_style::single_line_center, reject_clr, bg);
 
 		std::string stars;
 
@@ -390,9 +390,9 @@ public:
 		auto star_bounds = logical_bounds;
 		star_bounds.left = logical_bounds.left + cxy;
 
-		dc.draw_text(stars, star_bounds, ui::style::font_face::icons,
-		             ui::style::text_style::single_line_center,
-		             ui::color(dc.colors.foreground, dc.colors.alpha), bg);
+		dc.draw_text(stars, star_bounds, render::font_face::icons,
+		             render::text_style::single_line_center,
+		             core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
 	void hover(interaction_context& ic) override
@@ -463,12 +463,12 @@ public:
 	{
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
 
-	void render(ui::draw_context& dc, pointi element_offset) const override;
+	void render(render::draw_context& dc, pointi element_offset) const override;
 	void dispatch_event(const view_element_event& event) override;
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
@@ -496,12 +496,12 @@ public:
 		style |= view_element_style::has_tooltip | view_element_style::can_invoke;
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
 
-	void render(ui::draw_context& dc, pointi element_offset) const override;
+	void render(render::draw_context& dc, pointi element_offset) const override;
 	void dispatch_event(const view_element_event& event) override;
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
@@ -519,11 +519,11 @@ class items_dates_control final : public std::enable_shared_from_this<items_date
 	view_state& _state;
 	const df::item_element_ptr _item;
 	std::string _text;
-	df::date_t _shown_date;
+	core::date_t _shown_date;
 	df::date_parts_prop _shown_target = df::date_parts_prop::original;
 	bool _invalid = false;
-	ui::style::font_face _font = ui::style::font_face::dialog;
-	ui::style::text_style _text_style = ui::style::text_style::multiline;
+	render::font_face _font = render::font_face::dialog;
+	render::text_style _text_style = render::text_style::multiline;
 
 public:
 	items_dates_control(view_state& s, df::item_element_ptr i) noexcept : view_element(
@@ -539,7 +539,7 @@ public:
 		// is not a match on another. The stamps are UTC instants in the index, so they are converted
 		// before being compared or shown, the way the index matcher converts them.
 		const auto created_concept = _item->file_or_metadata_created();
-		const auto modified_date = _item->file_modified().system_to_local();
+		const auto modified_date = platform::utc_to_local(_item->file_modified());
 
 		if (search.is_match(prop::created_utc, created_concept))
 		{
@@ -580,15 +580,15 @@ public:
 		update_background_color();
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto bg = calc_background_color(dc);
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto text = _invalid ? tt.invalid.sv() : std::string_view(_text);
-		dc.draw_text(text, logical_bounds, _font, _text_style, ui::color(dc.colors.foreground, dc.colors.alpha), bg);
+		dc.draw_text(text, logical_bounds, _font, _text_style, core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return mc.measure_text(_invalid ? tt.invalid.sv() : std::string_view(_text), _font, _text_style, width_limit);
 	}
@@ -632,7 +632,7 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto i = _item;
 
@@ -646,14 +646,14 @@ public:
 
 			if (is_pin)
 			{
-				bg.merge(ui::color(ui::style::colors.important_background, dc.colors.alpha));
+				bg.merge(core::color(ui::style::colors.important_background, dc.colors.alpha));
 			}
 
-			xdraw_icon(dc, icon, logical_bounds, ui::color(dc.colors.foreground, alpha), bg);
+			xdraw_icon(dc, icon, logical_bounds, core::color(dc.colors.foreground, alpha), bg);
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -706,12 +706,12 @@ public:
 	{
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::link;
+		return platform::cursor::link;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (_bounds.contains(loc))
 		{
@@ -746,13 +746,13 @@ protected:
 	}
 
 public:
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto bg = calc_background_color(dc);
-		xdraw_icon(dc, _icon, bounds.offset(element_offset), ui::color(dc.colors.foreground, dc.colors.alpha), bg);
+		xdraw_icon(dc, _icon, bounds.offset(element_offset), core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -824,8 +824,8 @@ class stream_element final : public std::enable_shared_from_this<stream_element>
 	view_state& _state;
 	const df::item_element_ptr _item;
 	const av_stream_info _stream;
-	ui::style::font_face _font = ui::style::font_face::dialog;
-	ui::style::text_style _text_style = ui::style::text_style::multiline;
+	render::font_face _font = render::font_face::dialog;
+	render::text_style _text_style = render::text_style::multiline;
 	std::string _text;
 	icon_index _icon = icon_index::none;
 
@@ -848,7 +848,7 @@ public:
 		set_style_bit(view_element_style::checked, _stream.is_playing);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg = calc_background_color(dc);
@@ -858,16 +858,16 @@ public:
 		{
 			auto icon_bounds = logical_bounds;
 			icon_bounds.right = icon_bounds.left + logical_bounds.height();
-			xdraw_icon(dc, _icon, icon_bounds, ui::color(link_foreground_color(), dc.colors.alpha), bg);
+			xdraw_icon(dc, _icon, icon_bounds, core::color(link_foreground_color(), dc.colors.alpha), bg);
 			text_bounds.left = icon_bounds.right + dc.padding1;
 		}
 
 		dc.draw_text(_text, text_bounds, _font, _text_style,
-		             ui::color(_icon == icon_index::none ? dc.colors.foreground : link_foreground_color(),
+		             core::color(_icon == icon_index::none ? dc.colors.foreground : link_foreground_color(),
 		                       dc.colors.alpha), bg);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		sizei result;
 
@@ -930,7 +930,7 @@ class summary_control final : public std::enable_shared_from_this<summary_contro
 
 	std::vector<entry> _lines;
 
-	ui::style::font_face _font = ui::style::font_face::dialog;
+	render::font_face _font = render::font_face::dialog;
 
 public:
 	summary_control(const df::file_group_histogram& summary,
@@ -948,9 +948,9 @@ public:
 			if (c.count > 0)
 			{
 				const auto* const ft = file_group_from_index(i);
-				const auto size = c.size.is_empty() ? std::string{} : df::format_size(c.size);
+				const auto size = c.size.is_empty() ? std::string{} : platform::format_size(c.size);
 				const auto text = ft->display_name(c.count > 1);
-				const auto num = platform::format_number(str::to_string(c.count));
+				const auto num = platform::format_number(core::to_string(c.count));
 
 				_lines.emplace_back(ft->icon, text, num, size, ft);
 			}
@@ -969,19 +969,19 @@ public:
 	const int icon_width = 24;
 	const int col_padding = 4;
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto cy = logical_bounds.height() - static_cast<int>(_line_height * _lines.size());
 		auto y = logical_bounds.top + cy;
 
-		constexpr auto text_style = ui::style::text_style::single_line;
-		constexpr auto num_style = ui::style::text_style::single_line_far;
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		constexpr auto text_style = render::text_style::single_line;
+		constexpr auto num_style = render::text_style::single_line_far;
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		for (const auto& line : _lines)
 		{
-			const auto clr_text = ui::color(line.ft->text_color(dc.colors.foreground), dc.colors.alpha);
+			const auto clr_text = core::color(line.ft->text_color(dc.colors.foreground), dc.colors.alpha);
 
 			auto x = logical_bounds.left;
 			xdraw_icon(dc, line.icon, recti(x, y, x + icon_width, y + _line_height), clr, {});
@@ -997,9 +997,9 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		_line_height = mc.text_line_height(ui::style::font_face::dialog) + 2;
+		_line_height = mc.text_line_height(render::font_face::dialog) + 2;
 
 		_col_1_width = 0;
 		_col_2_width = 0;
@@ -1007,15 +1007,15 @@ public:
 
 		for (const auto& line : _lines)
 		{
-			auto extent = mc.measure_text(line.count, ui::style::font_face::dialog, ui::style::text_style::single_line,
+			auto extent = mc.measure_text(line.count, render::font_face::dialog, render::text_style::single_line,
 			                              100, _line_height);
 			_col_1_width = std::max(extent.cx + icon_width, _col_1_width);
 
-			extent = mc.measure_text(line.name, ui::style::font_face::dialog, ui::style::text_style::single_line, 100,
+			extent = mc.measure_text(line.name, render::font_face::dialog, render::text_style::single_line, 100,
 			                         _line_height);
 			_col_2_width = std::max(extent.cx + col_padding, _col_2_width);
 
-			extent = mc.measure_text(line.size, ui::style::font_face::dialog, ui::style::text_style::single_line, 100,
+			extent = mc.measure_text(line.size, render::font_face::dialog, render::text_style::single_line, 100,
 			                         _line_height);
 			_col_3_width = std::max(extent.cx + col_padding, _col_3_width);
 		}
@@ -1037,12 +1037,12 @@ class file_list_control final : public std::enable_shared_from_this<file_list_co
 
 	mutable int _line_height = 0;
 	mutable int _col_widths[col_count] = {};
-	ui::style::text_style _text_style[col_count];
+	render::text_style _text_style[col_count];
 
 	struct entry
 	{
 		icon_index icon;
-		ui::color32 color;
+		core::color32 color;
 		std::array<std::string, col_count> text;
 		mutable std::array<sizei, col_count> extents;
 	};
@@ -1050,7 +1050,7 @@ class file_list_control final : public std::enable_shared_from_this<file_list_co
 	display_state_ptr _display;
 	std::vector<entry> _lines;
 
-	ui::style::font_face _font = ui::style::font_face::dialog;
+	render::font_face _font = render::font_face::dialog;
 
 public:
 	file_list_control(display_state_ptr display, const view_element_options& style_in) noexcept :
@@ -1072,20 +1072,20 @@ public:
 			const auto color = ft->text_color(ui::style::colors.view_text);
 			const auto text = i.filename;
 			const auto created = prop::format_date(i.created);
-			const auto compressed_size = is_empty ? std::string{} : df::format_size(i.compressed_size);
+			const auto compressed_size = is_empty ? std::string{} : platform::format_size(i.compressed_size);
 			const auto uncompressed_size = i.uncompressed_size.is_empty()
 				                               ? std::string{}
-				                               : df::format_size(i.uncompressed_size);
+				                               : platform::format_size(i.uncompressed_size);
 
 			_lines.emplace_back(ft->icon, color,
 			                    std::array<std::string, col_count>{text, created, uncompressed_size, compressed_size},
 			                    std::array<sizei, col_count>{});
 		}
 
-		_text_style[0] = ui::style::text_style::single_line;
-		_text_style[1] = ui::style::text_style::single_line;
-		_text_style[2] = ui::style::text_style::single_line_far;
-		_text_style[3] = ui::style::text_style::single_line_far;
+		_text_style[0] = render::text_style::single_line;
+		_text_style[1] = render::text_style::single_line;
+		_text_style[2] = render::text_style::single_line_far;
+		_text_style[3] = render::text_style::single_line_far;
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -1096,18 +1096,18 @@ public:
 		}
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto min_top = logical_bounds.top - _line_height;
 		const auto cy = logical_bounds.height() - static_cast<int>(_line_height * _lines.size());
 		auto y = logical_bounds.top + cy;
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		for (const auto& line : _lines)
 		{
 			auto x = logical_bounds.left;
-			const auto clr_title = ui::color(line.color, dc.colors.alpha);
+			const auto clr_title = color(line.color, dc.colors.alpha);
 
 			xdraw_icon(dc, line.icon, recti(x, y, x + icon_width, y + _line_height), clr, {});
 			x += icon_width;
@@ -1134,9 +1134,9 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		_line_height = mc.text_line_height(ui::style::font_face::dialog) + 2;
+		_line_height = mc.text_line_height(render::font_face::dialog) + 2;
 
 		for (int& _col_width : _col_widths)
 		{
@@ -1149,8 +1149,8 @@ public:
 			{
 				if (line.extents[i].is_empty())
 				{
-					line.extents[i] = mc.measure_text(line.text[i], ui::style::font_face::dialog,
-					                                  ui::style::text_style::single_line, 1000, _line_height);
+					line.extents[i] = mc.measure_text(line.text[i], render::font_face::dialog,
+					                                  render::text_style::single_line, 1000, _line_height);
 				}
 
 				const auto width = line.extents[i].cx + col_padding;
@@ -1185,15 +1185,15 @@ class commodore_disk_control final : public std::enable_shared_from_this<commodo
 {
 	display_state_ptr _display;
 
-	mutable ui::texture_ptr _texture;
+	mutable render::texture_ptr _texture;
 	mutable sizei _tex_extent;
 
 	libfiles::c64_listing _listing;
 	int _cols = 0;
 	int _rows = 0;
 
-	uint32_t c64_blue = ui::rgb(33, 27, 174);
-	uint32_t c64_light_blue = ui::rgb(95, 83, 254);
+	uint32_t c64_blue = core::rgb(33, 27, 174);
+	uint32_t c64_light_blue = core::rgb(95, 83, 254);
 
 	// Scale that fits the cols*8 x rows*8 listing texture into the available
 	// width. Prefer an integer DPI-based scale for crisp pixels, but shrink so
@@ -1203,7 +1203,7 @@ class commodore_disk_control final : public std::enable_shared_from_this<commodo
 		const int tex_w = _cols * 8;
 		if (tex_w <= 0) return 1.0;
 
-		double scale = std::max(1, df::round(scale_factor * 2.0));
+		double scale = std::max(1, core::round(scale_factor * 2.0));
 		if (tex_w * scale > inner_w) scale = static_cast<double>(std::max(8, inner_w)) / tex_w;
 		return scale;
 	}
@@ -1231,7 +1231,7 @@ public:
 		}
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		if (_cols <= 0 || _rows <= 0) return;
 
@@ -1252,34 +1252,34 @@ public:
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto inner_w = logical_bounds.width() - dc.padding2 * 4;
 		const auto scale = fit_scale(inner_w, dc.scale_factor);
-		const auto w = std::max(1, df::round(_cols * 8 * scale));
-		const auto h = std::max(1, df::round(_rows * 8 * scale));
+		const auto w = std::max(1, core::round(_cols * 8 * scale));
+		const auto h = std::max(1, core::round(_rows * 8 * scale));
 		const auto left = logical_bounds.left + (logical_bounds.width() - w) / 2;
 		const auto top = logical_bounds.top + dc.padding2 * 2;
 		const auto dst = recti(left, top, left + w, top + h);
 
-		const auto bg_clr = ui::color(c64_blue, dc.colors.alpha);
-		const auto border_clr = ui::color(c64_light_blue, dc.colors.alpha);
+		const auto bg_clr = core::color(c64_blue, dc.colors.alpha);
+		const auto border_clr = core::color(c64_light_blue, dc.colors.alpha);
 		const auto bg_bounds = dst.inflate(dc.padding2);
 
 		// Point sampling keeps crisp retro pixels at exact integer scales; use
 		// bilinear when the listing is shrunk to a fractional scale so it stays
 		// smooth and legible instead of dropping pixel rows.
 		const bool integer_scale = std::abs(scale - std::round(scale)) < 0.01;
-		const auto sampler = integer_scale ? ui::texture_sampler::point : ui::texture_sampler::bilinear;
+		const auto sampler = integer_scale ? render::texture_sampler::point : render::texture_sampler::bilinear;
 
 		dc.draw_rect(bg_bounds, bg_clr);
 		dc.draw_border(bg_bounds, bg_bounds.inflate(dc.padding2), border_clr, border_clr);
 		dc.draw_texture(_texture, dst, recti(0, 0, _tex_extent.cx, _tex_extent.cy), dc.colors.alpha, sampler);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		if (_cols <= 0 || _rows <= 0) return {width_limit, 0};
 
 		const auto inner_w = width_limit - mc.padding2 * 4;
 		const auto scale = fit_scale(inner_w, mc.scale_factor);
-		const auto h = std::max(1, df::round(_rows * 8 * scale));
+		const auto h = std::max(1, core::round(_rows * 8 * scale));
 
 		return {width_limit, h + mc.padding2 * 4};
 	}
@@ -1297,23 +1297,23 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 
 		render_background(dc, element_offset);
 
 		const auto icon = _display->is_playing_media() ? icon_index::pause : icon_index::play;
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		xdraw_icon(dc, icon, logical_bounds, clr, {});
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		// Transport leads the row, so it is drawn larger than the icon controls beside it - but it is
 		// the same glyph font, so an unscaled box would clip it once the display scale passes 175%.
-		const auto cxy = df::round(32 * mc.scale_factor);
+		const auto cxy = core::round(32 * mc.scale_factor);
 		return {cxy, cxy};
 	}
 
@@ -1372,7 +1372,7 @@ public:
 		return logical_bounds.inflate(-_display->_time_width, 0);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		render_background(dc, element_offset);
@@ -1384,8 +1384,8 @@ public:
 		{
 			const auto is_tracking = is_style_bit_set(view_element_style::tracking);
 			const auto is_hover = is_style_bit_set(view_element_style::hover);
-			const auto scrub_bg_clr = ui::color(0, dc.colors.alpha / 3.33f);
-			const auto scale1 = df::round(1 * dc.scale_factor);
+			const auto scrub_bg_clr = core::color(0, dc.colors.alpha / 3.33f);
+			const auto scale1 = core::round(1 * dc.scale_factor);
 
 			auto scrub_bounds = track_bounds;
 
@@ -1402,7 +1402,7 @@ public:
 			const auto max_scrubber_width = scrub_bounds.width() - scale1 * 2;
 			const auto media_pos = _display->media_pos() - _display->media_start();
 			const auto media_len = std::max(1.0, _display->media_end() - _display->media_start());
-			const auto pos = df::round(media_pos * max_scrubber_width / media_len);
+			const auto pos = core::round(media_pos * max_scrubber_width / media_len);
 
 			scrub_bounds.left += scale1;
 			scrub_bounds.right = scrub_bounds.left + std::clamp(pos, scale1 * 2, max_scrubber_width);
@@ -1419,19 +1419,19 @@ public:
 			auto duration_bounds = logical_bounds;
 			duration_bounds.left = track_bounds.right;
 
-			const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+			const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
-			dc.draw_text(_display->_time, time_bounds, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line_center, clr, {});
-			dc.draw_text(_display->_duration, duration_bounds, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line_center, clr, {});
+			dc.draw_text(_display->_time, time_bounds, render::font_face::dialog,
+			             render::text_style::single_line_center, clr, {});
+			dc.draw_text(_display->_duration, duration_bounds, render::font_face::dialog,
+			             render::text_style::single_line_center, clr, {});
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto extent = mc.measure_text("00:00:00", ui::style::font_face::dialog,
-		                                    ui::style::text_style::single_line, 200);
+		const auto extent = mc.measure_text("00:00:00", render::font_face::dialog,
+		                                    render::text_style::single_line, 200);
 		_display->_time_width = extent.cx + mc.padding2;
 		// Natural width is the narrowest usable track; flex grow claims the row's spare width.
 		const auto natural_width = std::min(width_limit, _display->_time_width * 4);
@@ -1504,9 +1504,9 @@ public:
 			const auto x = std::clamp(loc.x, track_bounds.left, track_bounds.right);
 
 			hover.elements->add(std::make_shared<surface_element>(surface, 200, view_element_style::none));
-			hover.elements->add(std::make_shared<text_element>(str::format_seconds(df::round(surface->time())),
-			                                                   ui::style::font_face::dialog,
-			                                                   ui::style::text_style::single_line,
+			hover.elements->add(std::make_shared<text_element>(core::format_seconds(core::round(surface->time())),
+			                                                   render::font_face::dialog,
+			                                                   render::text_style::single_line,
 			                                                   flex_item::center |
 			                                                   flex_item::new_line));
 
@@ -1548,8 +1548,8 @@ public:
 	group_title_control(const std::string_view title,
 	                    const std::vector<view_element_ptr>& other_controls = {}) noexcept
 	{
-		elements.emplace_back(std::make_shared<text_element>(title, ui::style::font_face::title,
-		                                                     ui::style::text_style::multiline,
+		elements.emplace_back(std::make_shared<text_element>(title, render::font_face::title,
+		                                                     render::text_style::multiline,
 		                                                     flex_item::grow));
 		for (const auto& e : other_controls) elements.emplace_back(e);
 	}
@@ -1568,7 +1568,7 @@ public:
 		return _children;
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		render_background(dc, element_offset);
 
@@ -1581,7 +1581,7 @@ public:
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		for (const auto& e : elements)
 		{
@@ -1594,17 +1594,17 @@ public:
 
 		flex_container_layout row;
 		row.wrap = flex_wrap::no_wrap;
-		row.gap.cx = df::round(mc.padding1 / mc.scale_factor);
+		row.gap.cx = core::round(mc.padding1 / mc.scale_factor);
 		return {width_limit, calc_flex_layout(children(), mc, {width_limit, -1}, row).extent.cy};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
 		flex_container_layout row;
 		row.wrap = flex_wrap::no_wrap;
-		row.gap.cx = df::round(mc.padding1 / mc.scale_factor);
+		row.gap.cx = core::round(mc.padding1 / mc.scale_factor);
 		const auto calculated = calc_flex_layout(children(), mc, bounds.extent(), row);
 		for (auto i = 0u; i < elements.size(); ++i)
 		{
@@ -1671,11 +1671,11 @@ public:
 	mutable recti _region_zoom_bounds;
 	mutable recti _region_crop_bounds;
 
-	df::file_path region_item() const
+	core::file_path region_item() const
 	{
 		// _display is non-null for this control's whole lifetime - the constructor reads it - so the
 		// question here is only whether it resolves to one picture.
-		return _display->is_one() && _display->_item1 ? _display->_item1->path() : df::file_path{};
+		return _display->is_one() && _display->_item1 ? _display->_item1->path() : core::file_path{};
 	}
 
 	rectd region() const
@@ -1788,9 +1788,9 @@ public:
 		}
 	}
 
-	void render_zoom_thumb(ui::draw_context& dc, pointi element_offset) const;
+	void render_zoom_thumb(render::draw_context& dc, pointi element_offset) const;
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		if (_display->_selected_texture1)
 		{
@@ -1809,7 +1809,7 @@ public:
 					const auto element = weak.lock();
 					if (!element) return false;
 					element->_host->invalidate(ui::host_invalid::redraw);
-					return element->_display->zoom_interactive(df::now());
+					return element->_display->zoom_interactive(core::now());
 				};
 				_host->invalidate(ui::host_invalid::animations);
 			}
@@ -1832,10 +1832,10 @@ public:
 				// dc is shared by the whole frame, so the alpha is put back on every exit rather than
 				// on the normal one: an element that threw would otherwise dim everything painted after it.
 				const auto original_alpha = dc.colors.alpha;
-				const df::scope_exit restore_alpha([&dc, original_alpha] { dc.colors.alpha = original_alpha; });
+				const core::scope_exit restore_alpha([&dc, original_alpha] { dc.colors.alpha = original_alpha; });
 				dc.colors.alpha *= std::min(dc.colors.overlay_alpha, _display->_zoom_overlay_alpha);
 				const auto grading_bounds = _zoom_grading_element->bounds.offset(element_offset);
-				dc.draw_rect(grading_bounds.inflate(dc.padding1), ui::color(0, dc.colors.alpha * 0.5f));
+				dc.draw_rect(grading_bounds.inflate(dc.padding1), core::color(0, dc.colors.alpha * 0.5f));
 				_zoom_grading_element->render(dc, element_offset);
 			}
 		}
@@ -1850,7 +1850,7 @@ public:
 		}
 	}
 
-	void render_region(ui::draw_context& dc, const pointi element_offset) const
+	void render_region(render::draw_context& dc, const pointi element_offset) const
 	{
 		_region_close_bounds.clear();
 		_region_zoom_bounds.clear();
@@ -1859,8 +1859,8 @@ public:
 		const auto region = region_bounds(element_offset);
 		if (region.is_empty()) return;
 
-		const auto border_clr = ui::color(ui::style::colors.dialog_selected_background, dc.colors.alpha);
-		dc.draw_border(region, region.inflate(df::round(2 * dc.scale_factor)), border_clr, border_clr);
+		const auto border_clr = core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha);
+		dc.draw_border(region, region.inflate(core::round(2 * dc.scale_factor)), border_clr, border_clr);
 
 		// Hidden during a drag: the buttons would sit under the pointer that is still drawing the
 		// rectangle they belong to.
@@ -1887,9 +1887,9 @@ public:
 		_region_crop_bounds = _region_zoom_bounds.offset(cxy + gap, 0);
 
 		const auto strip = recti(_region_close_bounds.left, top, _region_crop_bounds.right, top + cxy);
-		dc.draw_rounded_rect(strip.inflate(gap), ui::color(0, dc.colors.alpha * 0.66f), dc.padding1);
+		dc.draw_rounded_rect(strip.inflate(gap), core::color(0, dc.colors.alpha * 0.66f), dc.padding1);
 
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 		xdraw_icon(dc, icon_index::close, _region_close_bounds, clr, {});
 		xdraw_icon(dc, icon_index::zoom_in, _region_zoom_bounds, clr, {});
 		xdraw_icon(dc, icon_index::crop, _region_crop_bounds, clr, {});
@@ -1909,19 +1909,19 @@ public:
 
 			const auto cx = std::max(1.0, dimensions.Width * image_scale);
 			const auto cy = std::max(1.0, dimensions.Height * image_scale);
-			return {df::round(cx), df::round(cy)};
+			return {core::round(cx), core::round(cy)};
 		}
 
 		return {};
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		const auto tex_extent = calc_tex_extent(width_limit, width_limit * 3);
 		return {width_limit, tex_extent.cy};
 	}
 
-	void layout(ui::measure_context& mc)
+	void layout(render::measure_context& mc)
 	{
 		if (_zoom_grading_element) _zoom_grading_element->bounds.clear();
 		if (_display->_selected_texture1)
@@ -1961,7 +1961,7 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		layout(mc);
@@ -1995,7 +1995,7 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		try
 		{
@@ -2017,10 +2017,10 @@ public:
 		}
 		catch (std::exception& e)
 		{
-			// A frame that cannot be drawn is dropped rather than propagated out of paint. df::trace
+			// A frame that cannot be drawn is dropped rather than propagated out of paint. core::trace
 			// is compiled out of a shipping build, so the reason has to reach the log or a blank
 			// video is a defect with no evidence; log_once bounds a failure that repeats per frame.
-			df::log_once(__FUNCTION__, e.what());
+			core::log_once(__FUNCTION__, e.what());
 		}
 	}
 
@@ -2038,19 +2038,19 @@ public:
 
 			const auto cx = std::max(1.0, dimensions.Width * image_scale);
 			const auto cy = std::max(1.0, dimensions.Height * image_scale);
-			result = sizei(df::round(cx), df::round(cy));
+			result = sizei(core::round(cx), core::round(cy));
 		}
 
 		return result;
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		const auto tex_extent = calc_tex_extent(width_limit, width_limit * 3);
 		return {width_limit, tex_extent.cy};
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2097,9 +2097,9 @@ public:
 	{
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		if (_fills_view) return {width_limit, std::max(width_limit, df::round(500 * mc.scale_factor))};
+		if (_fills_view) return {width_limit, std::max(width_limit, core::round(500 * mc.scale_factor))};
 
 		// Cover art is the only picture an audio file has, and layout gives it the top three fifths of
 		// the pane, so the pane is that art scaled to the width and grown back. Without art there is no
@@ -2110,14 +2110,14 @@ public:
 
 		if (art.cx <= 0 || art.cy <= 0)
 		{
-			return {width_limit, df::round(128 * mc.scale_factor)};
+			return {width_limit, core::round(128 * mc.scale_factor)};
 		}
 
-		const auto art_cy = std::min(df::mul_div(art.cy, width_limit, art.cx), width_limit);
-		return {width_limit, std::max(df::round(128 * mc.scale_factor), df::mul_div(art_cy, 5, 3))};
+		const auto art_cy = std::min(core::mul_div(art.cy, width_limit, art.cx), width_limit);
+		return {width_limit, std::max(core::round(128 * mc.scale_factor), core::mul_div(art_cy, 5, 3))};
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		_display->_audio_element_offset = element_offset;
 		_display->_audio_element_alpha = dc.colors.alpha;
@@ -2153,7 +2153,7 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2165,9 +2165,9 @@ public:
 				const auto i = _display->_item1;
 
 				auto limit_bounds = bounds;
-				limit_bounds.bottom = bounds.top + df::mul_div(bounds.height(), 3, 5);
+				limit_bounds.bottom = bounds.top + core::mul_div(bounds.height(), 3, 5);
 
-				const auto tex_bounds = ui::scale_dimensions(st->calc_display_dimensions(), limit_bounds);
+				const auto tex_bounds = core::scale_dimensions(st->calc_display_dimensions(), limit_bounds);
 				st->layout(mc, center_rect(tex_bounds, limit_bounds), i);
 			}
 		}
@@ -2226,9 +2226,9 @@ public:
 		}
 	}
 
-	void render_zoom_thumb(ui::draw_context& dc, pointi element_offset) const;
+	void render_zoom_thumb(render::draw_context& dc, pointi element_offset) const;
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		_display->_pane_marker_bounds = {};
 		const auto compare_pos = calc_compare_pos();
@@ -2254,7 +2254,7 @@ public:
 			// Both alphas are restored on every exit path, not just the normal one: dc is shared by the
 			// whole frame, so an element that threw would leave everything painted afterwards dimmed.
 			const auto original_overlay_alpha = dc.colors.overlay_alpha;
-			const df::scope_exit restore_overlay_alpha(
+			const core::scope_exit restore_overlay_alpha(
 				[&dc, original_overlay_alpha] { dc.colors.overlay_alpha = original_overlay_alpha; });
 
 			if (_display->is_zoom_mode())
@@ -2270,10 +2270,10 @@ public:
 				if (grading && !grading->bounds.is_empty())
 				{
 					const auto original_alpha = dc.colors.alpha;
-					const df::scope_exit restore_alpha([&dc, original_alpha] { dc.colors.alpha = original_alpha; });
+					const core::scope_exit restore_alpha([&dc, original_alpha] { dc.colors.alpha = original_alpha; });
 					dc.colors.alpha *= dc.colors.overlay_alpha;
 					const auto grading_bounds = grading->bounds.offset(element_offset);
-					dc.draw_rect(grading_bounds.inflate(dc.padding1), ui::color(0, dc.colors.alpha * 0.5f));
+					dc.draw_rect(grading_bounds.inflate(dc.padding1), core::color(0, dc.colors.alpha * 0.5f));
 					grading->render(dc, element_offset);
 				}
 			}
@@ -2289,36 +2289,36 @@ public:
 					// One pane owns the canvas, so its name goes in the free corner and fades with the other overlays.
 					const auto alpha = dc.colors.overlay_alpha;
 					const std::string_view text = active == df::zoom_pane::primary ? "A" : "B";
-					const auto extent = dc.measure_text(text, ui::style::font_face::title,
-					                                    ui::style::text_style::single_line_center, 200);
+					const auto extent = dc.measure_text(text, render::font_face::title,
+					                                    render::text_style::single_line_center, 200);
 					const recti letter(client.right - dc.padding2 - std::max(extent.cx, extent.cy),
 					                   client.top + dc.padding2, client.right - dc.padding2,
 					                   client.top + dc.padding2 + extent.cy);
 					_display->_pane_marker_bounds[0] = letter.inflate(dc.padding1);
-					dc.draw_rect(_display->_pane_marker_bounds[0], ui::color(0, alpha * 0.5f));
-					dc.draw_text(text, letter, ui::style::font_face::title,
-					             ui::style::text_style::single_line_center,
-					             ui::color(dc.colors.foreground, alpha), {});
+					dc.draw_rect(_display->_pane_marker_bounds[0], core::color(0, alpha * 0.5f));
+					dc.draw_text(text, letter, render::font_face::title,
+					             render::text_style::single_line_center,
+					             core::color(dc.colors.foreground, alpha), {});
 				}
 				else if (_pane_marker_height > 0)
 				{
 					const auto alpha = dc.colors.alpha;
 					const auto marker_bottom = client.top + _pane_marker_height;
-					const auto underline = std::max(2, df::round(2 * dc.scale_factor));
+					const auto underline = std::max(2, core::round(2 * dc.scale_factor));
 
 					for (auto i = 0; i < 2; ++i)
 					{
 						const std::string_view text = i == 0 ? "A" : "B";
 						const auto is_active = can_zoom && (i == 0) == (active == df::zoom_pane::primary);
-						const recti label(client.left + df::mul_div(i, client.width(), 2), client.top,
-						                  client.left + df::mul_div(i + 1, client.width(), 2), marker_bottom);
-						dc.draw_text(text, label, ui::style::font_face::title,
-						             ui::style::text_style::single_line_center,
-						             ui::color(dc.colors.foreground, is_active || !can_zoom ? alpha : alpha * 0.5f),
+						const recti label(client.left + core::mul_div(i, client.width(), 2), client.top,
+						                  client.left + core::mul_div(i + 1, client.width(), 2), marker_bottom);
+						dc.draw_text(text, label, render::font_face::title,
+						             render::text_style::single_line_center,
+						             core::color(dc.colors.foreground, is_active || !can_zoom ? alpha : alpha * 0.5f),
 						             {});
 
-						const auto extent = dc.measure_text(text, ui::style::font_face::title,
-						                                    ui::style::text_style::single_line_center, 200);
+						const auto extent = dc.measure_text(text, render::font_face::title,
+						                                    render::text_style::single_line_center, 200);
 						const auto width = std::max(extent.cx, underline * 3);
 						const auto center_x = label.center().x;
 						const recti marker(center_x - width / 2, client.top, center_x - width / 2 + width,
@@ -2330,7 +2330,7 @@ public:
 						{
 							// The active pane is marked under its own letter, so nothing is drawn over the image.
 							dc.draw_rect(recti(marker.left, marker_bottom - underline, marker.right, marker_bottom),
-							             ui::color(ui::style::colors.view_selected_background, alpha));
+							             core::color(ui::style::colors.view_selected_background, alpha));
 						}
 					}
 				}
@@ -2341,16 +2341,16 @@ public:
 				auto split_bounds = bounds.offset(element_offset);
 				split_bounds.left = std::max(split_bounds.left, compare_pos - 1);
 				split_bounds.right = std::min(split_bounds.right, compare_pos + 1);
-				dc.draw_rect(split_bounds, ui::color(0, dc.colors.overlay_alpha));
+				dc.draw_rect(split_bounds, core::color(0, dc.colors.overlay_alpha));
 
 				const auto icon_size = std::max(dc.padding2, dc.scroll_width);
 				const auto icon_top = bounds.bottom + element_offset.y - icon_size - dc.padding1;
 				xdraw_icon(dc, icon_index::small_left,
 				           recti(compare_pos - icon_size, icon_top, compare_pos, icon_top + icon_size),
-				           ui::color(dc.colors.foreground, dc.colors.overlay_alpha), {});
+				           core::color(dc.colors.foreground, dc.colors.overlay_alpha), {});
 				xdraw_icon(dc, icon_index::small_right,
 				           recti(compare_pos, icon_top, compare_pos + icon_size, icon_top + icon_size),
-				           ui::color(dc.colors.foreground, dc.colors.overlay_alpha), {});
+				           core::color(dc.colors.foreground, dc.colors.overlay_alpha), {});
 			}
 			else if (_display->_is_compare_video)
 			{
@@ -2364,11 +2364,11 @@ public:
 				const auto max_duration = std::max(duration1, duration2);
 				const auto row_gap = std::max(dc.padding1, 4);
 				const auto row_height = std::max(4, (scrubber.height() - row_gap) / 2);
-				const auto track_color = ui::color(0, dc.colors.alpha / 3.33f);
+				const auto track_color = core::color(0, dc.colors.alpha / 3.33f);
 				const auto handle_color = view_handle_color(false, is_hover, is_tracking, dc.frame_has_focus, true).aa(
 					dc.colors.alpha);
-				const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
-				const auto scale1 = df::round(1 * dc.scale_factor);
+				const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
+				const auto scale1 = core::round(1 * dc.scale_factor);
 
 				for (auto row = 0; row < 2; ++row)
 				{
@@ -2376,7 +2376,7 @@ public:
 					auto track = scrubber;
 					track.top += row * (row_height + row_gap);
 					track.bottom = track.top + row_height;
-					track.right = track.left + df::mul_div(track.width(), duration, max_duration);
+					track.right = track.left + core::mul_div(track.width(), duration, max_duration);
 
 					auto track_background = track;
 					if (!is_hover && !is_tracking)
@@ -2386,10 +2386,10 @@ public:
 					}
 					dc.draw_rounded_rect(track_background, track_color, dc.padding1);
 
-					const auto elapsed = df::mul_div(std::clamp(_display->_compare_video_pos, 0, scrubber.width()),
+					const auto elapsed = core::mul_div(std::clamp(_display->_compare_video_pos, 0, scrubber.width()),
 					                                 max_duration, std::max(1, scrubber.width()));
 					const auto playhead = track.left +
-						df::mul_div(std::min(elapsed, duration), track.width(), duration);
+						core::mul_div(std::min(elapsed, duration), track.width(), duration);
 					auto progress = track;
 					progress.left += scale1;
 					// A much shorter clip scales its track down to a few pixels, so the high bound
@@ -2403,8 +2403,8 @@ public:
 					auto duration_bounds = track;
 					duration_bounds.left = track.right + dc.padding1;
 					duration_bounds.right = duration_bounds.left + _display->_time_width;
-					dc.draw_text(str::format_seconds(duration), duration_bounds, ui::style::font_face::dialog,
-					             ui::style::text_style::single_line, text_color, {});
+					dc.draw_text(core::format_seconds(duration), duration_bounds, render::font_face::dialog,
+					             render::text_style::single_line, text_color, {});
 				}
 			}
 			else if (!_display->is_zoom_mode())
@@ -2413,7 +2413,7 @@ public:
 				auto rr = comparison_divider_device_bounds(_display->_compare_bounds, element_offset);
 				rr.left = (rr.left + rr.right) / 2;
 				rr.right = rr.left + 1;
-				dc.draw_rect(rr, ui::color(ui::average(dc.colors.background, 0), dc.colors.alpha));
+				dc.draw_rect(rr, core::color(core::average(dc.colors.background, 0), dc.colors.alpha));
 			}
 		}
 	}
@@ -2442,7 +2442,7 @@ public:
 				if (!setting.scale_up && image_scale > 1.0) image_scale = 1.0;
 				const auto cx = std::max(1.0, dimensions.Width * image_scale);
 				const auto cy = std::max(1.0, dimensions.Height * image_scale);
-				result.emplace_back(df::round(cx), df::round(cy));
+				result.emplace_back(core::round(cx), core::round(cy));
 			}
 		}
 
@@ -2450,14 +2450,14 @@ public:
 	}
 
 	// Panes are named in reserved space above the images; a magnified pane is named by an overlay instead.
-	int calc_pane_marker_height(ui::measure_context& mc) const
+	int calc_pane_marker_height(render::measure_context& mc) const
 	{
 		if (!_display->is_comparison() || _display->_comparing || _display->is_zoom_mode()) return 0;
-		return mc.measure_text("A", ui::style::font_face::title, ui::style::text_style::single_line_center, 200).cy +
+		return mc.measure_text("A", render::font_face::title, render::text_style::single_line_center, 200).cy +
 			mc.padding2;
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		_pane_marker_height = calc_pane_marker_height(mc);
 
@@ -2481,7 +2481,7 @@ public:
 		return {};
 	}
 
-	void layout(ui::measure_context& mc) const
+	void layout(render::measure_context& mc) const
 	{
 		_pane_marker_height = calc_pane_marker_height(mc);
 
@@ -2495,7 +2495,7 @@ public:
 			const auto zoom_mode = _display->is_zoom_mode();
 			const auto zoomed_pane = _display->active_zoom_pane();
 			const auto layout_extent = calc_normal_extents(bounds.width(), bounds.height());
-			df::assert_true(layout_extent.size() == tex_count);
+			core::assert_true(layout_extent.size() == tex_count);
 
 			const std::array<texture_state_ptr, 2> selected_textures{
 				_display->_selected_texture1, _display->_selected_texture2
@@ -2515,8 +2515,8 @@ public:
 				{
 					if (!zoom_mode)
 					{
-						tex_bounds.left = bounds.left + df::mul_div(i, bounds.width(), tex_count);
-						tex_bounds.right = bounds.left + df::mul_div(i + 1, bounds.width(), tex_count);
+						tex_bounds.left = bounds.left + core::mul_div(i, bounds.width(), tex_count);
+						tex_bounds.right = bounds.left + core::mul_div(i + 1, bounds.width(), tex_count);
 
 						if (i == 0) tex_bounds = tex_bounds.offset(-1, 0);
 						if (i == 1) tex_bounds = tex_bounds.offset(1, 0);
@@ -2542,9 +2542,9 @@ public:
 				const auto md2 = _display->_item2->metadata();
 				const auto duration1 = md1 ? static_cast<int>(md1->duration) : 0;
 				const auto duration2 = md2 ? static_cast<int>(md2->duration) : 0;
-				const auto duration_text = str::format_seconds(std::max(duration1, duration2));
-				_display->_time_width = mc.measure_text(duration_text, ui::style::font_face::dialog,
-				                                        ui::style::text_style::single_line, 200).cx;
+				const auto duration_text = core::format_seconds(std::max(duration1, duration2));
+				_display->_time_width = mc.measure_text(duration_text, render::font_face::dialog,
+				                                        render::text_style::single_line, 200).cx;
 
 				_display->_compare_video_control_bounds = bounds;
 				_display->_compare_video_control_bounds.top = bounds.bottom - compare_timeline_height;
@@ -2556,7 +2556,7 @@ public:
 
 			auto handle_bounds = bounds;
 			handle_bounds.top += _pane_marker_height;
-			_display->_compare_bounds = center_rect(sizei{mc.scroll_width, df::mul_div(handle_bounds.height(), 5, 7)},
+			_display->_compare_bounds = center_rect(sizei{mc.scroll_width, core::mul_div(handle_bounds.height(), 5, 7)},
 			                                        handle_bounds);
 
 			if (zoom_mode)
@@ -2590,7 +2590,7 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		layout(mc);
@@ -2651,10 +2651,10 @@ public:
 	{
 	}
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
 		const auto image_count = _display->_selection_item_count;
-		const auto cx_control = std::min(360, df::mul_div(cx, 5, 11));
+		const auto cx_control = std::min(360, core::mul_div(cx, 5, 11));
 
 		if (image_count > 0)
 		{
@@ -2687,12 +2687,12 @@ public:
 		return results;
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 		_panel_bounds = bounds_in.inflate(-mc.padding1);
 		const auto collage_bounds = _panel_bounds.inflate(-mc.padding2);
-		const auto minimum_cell = std::max(1, df::round(96 * mc.scale_factor));
+		const auto minimum_cell = std::max(1, core::round(96 * mc.scale_factor));
 		const auto area_capacity = static_cast<size_t>(std::max(
 			1, collage_bounds.area() / (minimum_cell * minimum_cell)));
 		const auto cell_capacity = std::clamp(area_capacity, 6_z, display_state_t::max_surfaces);
@@ -2706,7 +2706,7 @@ public:
 		_display->_surface_bounds = ui::layout_collage(
 			collage_bounds, surface_dims(_display->_collage_image_count, has_overflow));
 
-		const auto gutter = std::max(1, df::round(2 * mc.scale_factor));
+		const auto gutter = std::max(1, core::round(2 * mc.scale_factor));
 		for (auto& surface_bounds : _display->_surface_bounds)
 		{
 			if (surface_bounds.width() > gutter * 2 && surface_bounds.height() > gutter * 2)
@@ -2718,10 +2718,10 @@ public:
 		_pin_badge_bounds = calc_pin_badge_bounds(mc.icon_cxy);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		dc.draw_rounded_rect(_panel_bounds.offset(element_offset),
-		                     ui::color(ui::style::colors.group_background, dc.colors.alpha), dc.padding1);
+		                     core::color(ui::style::colors.group_background, dc.colors.alpha), dc.padding1);
 
 		// Keyed on the surface count rather than on being non-empty, so a set published after the first
 		// paint is uploaded rather than half-drawn against a cache built for a shorter one.
@@ -2734,7 +2734,7 @@ public:
 			{
 				auto t = dc.create_texture();
 
-				if (t && t->update(s) == ui::texture_update_result::failed)
+				if (t && t->update(s) == render::texture_update_result::failed)
 				{
 					t.reset();
 				}
@@ -2781,9 +2781,9 @@ public:
 				                                       static_cast<int64_t>(_display->_selection_item_count))
 				                  : std::format("+{}", _display->_selection_overflow_count);
 
-			dc.draw_rect(overflow_bounds, ui::color(ui::style::colors.group_background, dc.colors.alpha));
-			dc.draw_text(text, overflow_bounds, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line_center, ui::color(dc.colors.foreground, dc.colors.alpha),
+			dc.draw_rect(overflow_bounds, core::color(ui::style::colors.group_background, dc.colors.alpha));
+			dc.draw_text(text, overflow_bounds, render::font_face::dialog,
+			             render::text_style::single_line_center, core::color(dc.colors.foreground, dc.colors.alpha),
 			             {});
 		}
 
@@ -2836,21 +2836,21 @@ public:
 
 class split_element final : public view_element, public std::enable_shared_from_this<split_element>
 {
-	const ui::const_surface_ptr _surface;
+	const core::const_surface_ptr _surface;
 	const view_element_ptr _child;
-	mutable ui::texture_ptr _tex;
+	mutable render::texture_ptr _tex;
 	mutable sizei _surface_extent;
 	mutable sizei _child_extent;
 	recti _surface_bounds;
 	recti _child_bounds;
 
 public:
-	split_element(ui::const_surface_ptr s, view_element_ptr child, const view_element_options& style_in) noexcept :
+	split_element(core::const_surface_ptr s, view_element_ptr child, const view_element_options& style_in) noexcept :
 		view_element(style_in), _surface(std::move(s)), _child(std::move(child))
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		if (is_valid(_surface))
 		{
@@ -2858,7 +2858,7 @@ public:
 			{
 				const auto t = dc.create_texture();
 
-				if (t && t->update(_surface) != ui::texture_update_result::failed)
+				if (t && t->update(_surface) != render::texture_update_result::failed)
 				{
 					_tex = t;
 				}
@@ -2876,7 +2876,7 @@ public:
 		}
 	}
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2915,9 +2915,9 @@ public:
 		return _child->controller_from_location(host, loc, element_offset, ctx);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		_surface_extent = ui::scale_dimensions(_surface->dimensions(), width_limit / 2, true);
+		_surface_extent = core::scale_dimensions(_surface->dimensions(), width_limit / 2, true);
 		_child_extent = _child->measure(mc, width_limit - _surface_extent.cx);
 		return {_child_extent.cx + _surface_extent.cx, std::max(_surface_extent.cy, _child_extent.cy)};
 	}
@@ -2944,13 +2944,13 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		auto icon_bounds = bounds.offset(element_offset);
 		icon_bounds.right = icon_bounds.left + dc.icon_cxy + _icon_padding;
 		icon_bounds.left += 8;
 
-		xdraw_icon(dc, _icon, icon_bounds, ui::color(dc.colors.foreground, dc.colors.alpha), {});
+		xdraw_icon(dc, _icon, icon_bounds, core::color(dc.colors.foreground, dc.colors.alpha), {});
 
 		if (_child)
 		{
@@ -2959,7 +2959,7 @@ public:
 	}
 
 
-	void layout(ui::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
 
@@ -2992,7 +2992,7 @@ public:
 		return _child->controller_from_location(host, loc, element_offset, ctx);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		const auto w = mc.icon_cxy + _icon_padding;
 		_child_extent = _child->measure(mc, width_limit - w);

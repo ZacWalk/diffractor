@@ -25,12 +25,23 @@
 // Shared constants
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline const auto test_files_folder = known_path(platform::known_folder::test_files_folder);
+inline core::folder_path test_files_folder()
+{
+	return known_path(platform::known_folder::test_files_folder);
+}
+
 // Beside the test folder, not in it: expected_cached_item_count below counts what is in there.
-inline const auto test_formats_folder = test_files_folder.parent().combine("test-formats");
+inline core::folder_path test_formats_folder()
+{
+	return test_files_folder().parent().combine("test-formats");
+}
+
 // Files an encoder wrote once, kept as written because it writes other bytes on other platforms: a
 // record of what decodes them could not be taken over files written afresh.
-inline const auto test_generated_folder = test_files_folder.parent().combine("test-generated");
+inline core::folder_path test_generated_folder()
+{
+	return test_files_folder().parent().combine("test-generated");
+}
 inline constexpr sizei thumbnail_max_dimension = {256, 256};
 inline constexpr int expected_cached_item_count = 49;
 
@@ -172,21 +183,21 @@ location_cache& test_locations();
 
 // Measures nothing, so a layout test observes only the arrangement the layout code chose rather than
 // the font metrics of whichever machine ran it.
-class flex_test_measure_context final : public ui::measure_context
+class flex_test_measure_context final : public render::measure_context
 {
 public:
-	sizei measure_text(std::string_view text, ui::style::font_face font, ui::style::text_style style, int cx,
+	sizei measure_text(std::string_view text, render::font_face font, render::text_style style, int cx,
 	                   int cy = 0) override
 	{
 		return {};
 	}
 
-	int text_line_height(ui::style::font_face font) override
+	int text_line_height(render::font_face font) override
 	{
 		return 0;
 	}
 
-	ui::text_layout_ptr create_text_layout(ui::style::font_face font) override
+	render::text_layout_ptr create_text_layout(render::font_face font) override
 	{
 		return {};
 	}
@@ -202,7 +213,7 @@ public:
 		padding(0);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {std::min(_desired.cx, width_limit), _desired.cy};
 	}
@@ -318,18 +329,18 @@ public:
 
 class temp_files
 {
-	mutable df::folder_path _folder;
-	df::file_paths _paths;
+	mutable core::folder_path _folder;
+	core::file_paths _paths;
 	mutable int _folder_seq = 0;
 	mutable bool _owns_folder = false;
 
 	// Base folder for temp files. Overridable via the /test-temp:<path> command
 	// line option so round-trip tests can be run against a network drive.
-	static df::folder_path temp_base()
+	static core::folder_path temp_base()
 	{
 		if (!command_line.test_temp_folder.empty())
 		{
-			return df::folder_path(command_line.test_temp_folder);
+			return core::folder_path(command_line.test_temp_folder);
 		}
 
 		return platform::temp_folder();
@@ -337,20 +348,20 @@ class temp_files
 
 	// Resolved lazily so the /test-temp override (parsed after this global is
 	// constructed) is honoured on first use.
-	df::folder_path resolve_folder() const
+	core::folder_path resolve_folder() const
 	{
 		if (_folder.is_empty())
 		{
 			const auto base = temp_base();
-			if (!base.exists())
+			if (!platform::exists(base))
 			{
 				platform::create_folder(base);
 			}
 
 			for (auto attempt = 0; attempt < 100; ++attempt)
 			{
-				const auto candidate = base.combine(std::format("diffractor-{}-{}", platform::tick_count(), attempt));
-				if (candidate.exists()) continue;
+				const auto candidate = base.combine(std::format("diffractor-{}-{}", core::tick_count(), attempt));
+				if (platform::exists(candidate)) continue;
 
 				const auto result = platform::create_folder(candidate);
 				if (result.success())
@@ -373,7 +384,7 @@ class temp_files
 public:
 	temp_files() = default;
 
-	explicit temp_files(const df::folder_path existing_folder) : _folder(existing_folder)
+	explicit temp_files(const core::folder_path existing_folder) : _folder(existing_folder)
 	{
 	}
 
@@ -390,14 +401,14 @@ public:
 	std::vector<std::string> delete_temps()
 	{
 		std::vector<std::string> errors;
-		df::file_paths remaining_paths;
+		core::file_paths remaining_paths;
 
 		for (const auto& path : _paths)
 		{
-			if (!path.exists()) continue;
+			if (!platform::exists(path)) continue;
 
 			const auto result = platform::delete_file(path);
-			if (result.failed() && path.exists())
+			if (result.failed() && platform::exists(path))
 			{
 				errors.emplace_back(result.format_error("delete temp file", path.str()));
 				remaining_paths.emplace_back(path);
@@ -406,7 +417,7 @@ public:
 
 		_paths = std::move(remaining_paths);
 
-		if (_owns_folder && !_folder.is_empty() && _folder.exists())
+		if (_owns_folder && !_folder.is_empty() && platform::exists(_folder))
 		{
 			std::error_code ec;
 			std::filesystem::remove_all(platform::to_stream_path(_folder), ec);
@@ -415,7 +426,7 @@ public:
 				errors.emplace_back(std::format("delete temp folder\n{}\n{}", _folder.text(), ec.message()));
 			}
 
-			if (!_folder.exists())
+			if (!platform::exists(_folder))
 			{
 				_folder = {};
 				_owns_folder = false;
@@ -427,12 +438,12 @@ public:
 		return errors;
 	}
 
-	df::folder_path folder() const
+	core::folder_path folder() const
 	{
 		return resolve_folder();
 	}
 
-	df::file_path next_path(const std::string_view ext = ".jpg")
+	core::file_path next_path(const std::string_view ext = ".jpg")
 	{
 		const auto folder = resolve_folder();
 
@@ -444,11 +455,11 @@ public:
 	// A private subfolder for tests that open a folder as a search scope. Such a test must not use
 	// folder(): that is shared by the whole run, so its cost and its result counts would depend on
 	// whatever files earlier tests happened to leave behind.
-	df::folder_path next_folder(const std::string_view name)
+	core::folder_path next_folder(const std::string_view name)
 	{
 		const auto result = resolve_folder().combine(std::format("{}-{}", name, ++_folder_seq));
 
-		if (!result.exists())
+		if (!platform::exists(result))
 		{
 			platform::create_folder(result);
 		}
@@ -456,9 +467,9 @@ public:
 		return result;
 	}
 
-	df::file_path next_path_in(const df::folder_path folder, const std::string_view ext = ".jpg")
+	core::file_path next_path_in(const core::folder_path folder, const std::string_view ext = ".jpg")
 	{
-		if (!folder.exists())
+		if (!platform::exists(folder))
 		{
 			platform::create_folder(folder);
 		}
@@ -483,7 +494,7 @@ struct metadata_type
 
 extern temp_files _temps;
 extern std::atomic_int test_version;
-extern df::cancel_token test_token;
+extern core::cancel_token test_token;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Shared fixtures built in memory
@@ -556,47 +567,47 @@ struct shared_test_context
 // Shared helper functions (defined in tests_core_utils.cpp)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-file_scan_result ff_scan_file(files& ff, df::file_path path, std::string_view xmp_sidecar = {});
+file_scan_result ff_scan_file(files& ff, core::file_path path, std::string_view xmp_sidecar = {});
 // Ask files::update to re-scan what it wrote, the way the app does: through the coherent handle
 // replace_file kept open, so a by-name reopen cannot return pre-swap content over SMB. The sidecar
 // is left unset so the write resolves the one it just created.
-rescan_spec ff_inspect_rescan(df::file_path path);
+rescan_spec ff_inspect_rescan(core::file_path path);
 // The result of that scan, falling back to a by-name scan if the write produced none.
-file_scan_result ff_scan_after_update(files& ff, file_update_result& result, df::file_path path,
+file_scan_result ff_scan_after_update(files& ff, file_update_result& result, core::file_path path,
                                       std::string_view xmp_sidecar = {});
-file_scan_result ff_scan_and_load_thumb(files& ff, df::file_path path,
+file_scan_result ff_scan_and_load_thumb(files& ff, core::file_path path,
                                         std::string_view xmp_sidecar = {});
 void assert_metadata(const prop::item_metadata& expected, const prop::item_metadata& actual,
                      std::string_view message = {});
-prop::item_metadata_ptr extract_properties(df::file_path path, uint32_t t = metadata_type::ALL);
+prop::item_metadata_ptr extract_properties(core::file_path path, uint32_t t = metadata_type::ALL);
 prop::item_metadata_ptr expected_test_jpg();
-prop::item_metadata_ptr metadata_from_cache(index_state& index, df::file_path path);
-df::index_file_item make_index_file_info(df::date_t date);
-df::item_element_ptr load_item(index_state& index, df::file_path path, bool load_thumb);
-std::string_view detect_xmp_sidecar(df::file_path path);
+prop::item_metadata_ptr metadata_from_cache(index_state& index, core::file_path path);
+df::index_file_item make_index_file_info(core::date_t date);
+df::item_element_ptr load_item(index_state& index, core::file_path path, bool load_thumb);
+std::string_view detect_xmp_sidecar(core::file_path path);
 void build_index(index_state& index, database& db);
 int count_search_results(index_state& index, const df::search_t& search);
 int count_search_results(index_state& index, std::string_view query);
 std::shared_ptr<av_player> make_test_player();
 // Never opened, so it holds no file and no decoder threads; only its identity is of interest.
 std::shared_ptr<av_session> make_test_session();
-std::shared_ptr<av_session> make_test_session(std::function<void(df::file_path, double)> save_position);
+std::shared_ptr<av_session> make_test_session(std::function<void(core::file_path, double)> save_position);
 // A session as a player makes one: the presenter sets decode_wake when it takes frames from the queue.
-std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<const platform::thread_event> decode_wake);
+std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<const core::thread_event> decode_wake);
 
 // The gazetteer costs seconds to load, so every test that needs real place data shares one
 // loaded instance. A test that mutates it (set_display_language) must restore it before returning.
 location_cache& test_locations();
 
-inline void write_test_file(const df::file_path path, const std::string_view text)
+inline void write_test_file(const core::file_path path, const std::string_view text)
 {
 	std::ofstream fs(platform::to_stream_path(path), std::ios::binary | std::ios::trunc);
 	fs << text;
 }
 
-inline std::string read_test_file(const df::file_path path)
+inline std::string read_test_file(const core::file_path path)
 {
-	const auto data = df::blob_from_file(path);
+	const auto data = platform::blob_from_file(path);
 	return {std::bit_cast<const char*>(data.data()), data.size()};
 }
 
@@ -607,7 +618,7 @@ inline std::string read_test_file(const df::file_path path)
 class prop_test
 {
 	df::index_file_item _f;
-	uint32_t now_days = df::date_t(2000, 1, 1).to_days();
+	uint32_t now_days = core::date_t(2000, 1, 1).to_days();
 
 public:
 	prop_test()
@@ -617,32 +628,32 @@ public:
 
 	prop_test& tag(const std::string_view s)
 	{
-		_f.safe_ps()->tags = str::cache(s);
+		_f.safe_ps()->tags = core::cache(s);
 		return *this;
 	}
 
 	prop_test& date(const int y, const int m, const int d)
 	{
-		_f.safe_ps()->dates.add(prop::date_source::exif_original, df::date_t(y, m, d));
+		_f.safe_ps()->dates.add(prop::date_source::exif_original, core::date_t(y, m, d));
 		return *this;
 	}
 
 	prop_test& file_created_date(const int y, const int m, const int d)
 	{
-		_f.file_created = df::date_t(y, m, d);
-		_f.file_modified = df::date_t(y, m, d);
+		_f.file_created = core::date_t(y, m, d);
+		_f.file_modified = core::date_t(y, m, d);
 		return *this;
 	}
 
 	prop_test& desc(const std::string_view s)
 	{
-		_f.safe_ps()->description = str::cache(s);
+		_f.safe_ps()->description = core::cache(s);
 		return *this;
 	}
 
 	prop_test& genre(const std::string_view s)
 	{
-		_f.safe_ps()->genre = str::cache(s);
+		_f.safe_ps()->genre = core::cache(s);
 		return *this;
 	}
 
@@ -654,19 +665,19 @@ public:
 
 	prop_test& track(const uint8_t n, const uint8_t of = 0)
 	{
-		_f.safe_ps()->track = df::xy8::make(n, of);
+		_f.safe_ps()->track = core::xy8::make(n, of);
 		return *this;
 	}
 
 	prop_test& disk(const uint8_t n, const uint8_t of = 0)
 	{
-		_f.safe_ps()->disk = df::xy8::make(n, of);
+		_f.safe_ps()->disk = core::xy8::make(n, of);
 		return *this;
 	}
 
 	prop_test& episode(const uint8_t n, const uint8_t of = 0)
 	{
-		_f.safe_ps()->episode = df::xy8::make(n, of);
+		_f.safe_ps()->episode = core::xy8::make(n, of);
 		return *this;
 	}
 
@@ -690,11 +701,11 @@ public:
 
 	prop_test& digitized(const int y, const int m, const int d)
 	{
-		_f.safe_ps()->dates.add(prop::date_source::exif_digitized, df::date_t(y, m, d));
+		_f.safe_ps()->dates.add(prop::date_source::exif_digitized, core::date_t(y, m, d));
 		return *this;
 	}
 
-	prop_test& orientation(const ui::orientation o)
+	prop_test& orientation(const core::orientation o)
 	{
 		_f.safe_ps()->orientation = o;
 		return *this;
@@ -766,7 +777,7 @@ public:
 // Additional assert_equal overloads for test files
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void assert_equal(const ui::orientation expected, const ui::orientation actual,
+static void assert_equal(const core::orientation expected, const core::orientation actual,
                          const std::string_view name = {},
                          const std::string_view message = {})
 {

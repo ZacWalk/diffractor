@@ -25,9 +25,9 @@ namespace ui
 
 	std::vector<recti> layout_collage(recti draw_bounds, const std::vector<sizei>& dimensions);
 
-	static int default_control_height(measure_context& mc, const int lines = 1)
+	static int default_control_height(render::measure_context& mc, const int lines = 1)
 	{
-		return mc.text_line_height(style::font_face::dialog) * lines + mc.padding2;
+		return mc.text_line_height(render::font_face::dialog) * lines + mc.padding2;
 	}
 
 	struct slider_row_layout
@@ -39,15 +39,15 @@ namespace ui
 		bool stacked = false;
 	};
 
-	inline slider_row_layout layout_slider_row(measure_context& mc, const std::string_view label, const recti bounds)
+	inline slider_row_layout layout_slider_row(render::measure_context& mc, const std::string_view label, const recti bounds)
 	{
 		const auto width = std::max(0, bounds.width());
 		const auto control_height = default_control_height(mc);
 		const auto label_extent = label.empty() ? sizei{} :
-			mc.measure_text(label, style::font_face::dialog, style::text_style::single_line, width);
+			mc.measure_text(label, render::font_face::dialog, render::text_style::single_line, width);
 		mc.col_widths.c1 = std::max(mc.col_widths.c1, label_extent.cx);
-		const auto number_extent = mc.measure_text("00.00", style::font_face::dialog,
-		                                          style::text_style::single_line, width);
+		const auto number_extent = mc.measure_text("00.00", render::font_face::dialog,
+		                                          render::text_style::single_line, width);
 		const auto edit_width = std::min(width, number_extent.cx + mc.padding2 * 2);
 		const auto split = bounds.right - edit_width;
 		const auto track_right = std::max(bounds.left, split - mc.padding1);
@@ -61,7 +61,7 @@ namespace ui
 		{
 			if (result.stacked)
 			{
-				const auto extent = mc.measure_text(label, style::font_face::dialog, style::text_style::multiline, width);
+				const auto extent = mc.measure_text(label, render::font_face::dialog, render::text_style::multiline, width);
 				result.label = {bounds.left, bounds.top, bounds.right, bounds.top + extent.cy};
 				controls_top = result.label.bottom + mc.padding1;
 			}
@@ -101,7 +101,7 @@ namespace ui
 
 	using auto_complete_match_ptr = std::shared_ptr<auto_complete_match>;
 	using auto_complete_results = std::vector<auto_complete_match_ptr>;
-	using match_highlights = std::vector<str::part_t>;
+	using match_highlights = std::vector<core::part_t>;
 
 	class complete_strategy_t
 	{
@@ -179,12 +179,12 @@ namespace ui
 			visit(_edit);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			return {cx, layout_slider_row(mc, _label, {0, 0, cx, 0}).height};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			_row = layout_slider_row(mc, _label, bounds);
@@ -192,13 +192,13 @@ namespace ui
 			_edit->layout(mc, _row.edit);
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
-			if (!str::is_empty(_label))
+			if (!core::is_empty(_label))
 			{
-				const auto text_color = color(dc.colors.foreground, dc.colors.alpha);
-				dc.draw_text(_label, _row.label.offset(element_offset), style::font_face::dialog,
-				             _row.stacked ? style::text_style::multiline : style::text_style::single_line, text_color, {});
+				const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
+				dc.draw_text(_label, _row.label.offset(element_offset), render::font_face::dialog,
+				             _row.stacked ? render::text_style::multiline : render::text_style::single_line, text_color, {});
 			}
 
 			render_children(dc, element_offset);
@@ -207,9 +207,9 @@ namespace ui
 		void update_edit() const
 		{
 			const auto actual = _edit->window_text();
-			const auto expected = str::to_string(_val);
+			const auto expected = core::to_string(_val);
 
-			if (actual.empty() || str::to_int(actual) != str::to_int(expected))
+			if (actual.empty() || core::to_int(actual) != core::to_int(expected))
 			{
 				_edit->window_text(expected);
 			}
@@ -235,7 +235,7 @@ namespace ui
 		{
 			// Typed, the number can be anything; what it is bound to - a save quality, a delay - takes
 			// only the slider's range, and a WebP quality of 150 failed every save that used it.
-			_val = std::clamp(str::to_int(text), _min, _max);
+			_val = std::clamp(core::to_int(text), _min, _max);
 			update_slider();
 			if (_changed) _changed();
 		}
@@ -261,10 +261,10 @@ namespace ui
 		{
 		}
 
-		recti control_bounds(const measure_context& mc, const recti row) const
+		recti control_bounds(const render::measure_context& mc, const recti row) const
 		{
 			auto r = row;
-			if (!str::is_empty(_label)) r.left += mc.col_widths.c1;
+			if (!core::is_empty(_label)) r.left += mc.col_widths.c1;
 			return r;
 		}
 
@@ -274,26 +274,26 @@ namespace ui
 			_label = label;
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			if (!str::is_empty(_label))
+			if (!core::is_empty(_label))
 			{
-				const auto label_extent = mc.measure_text(_label, style::font_face::dialog,
-				                                          style::text_style::single_line, cx);
+				const auto label_extent = mc.measure_text(_label, render::font_face::dialog,
+				                                          render::text_style::single_line, cx);
 				mc.col_widths.c1 = std::max(mc.col_widths.c1, label_extent.cx + mc.padding2);
 			}
 
 			return {cx, default_control_height(mc)};
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
-			if (!str::is_empty(_label))
+			if (!core::is_empty(_label))
 			{
 				auto r = bounds.offset(element_offset);
 				r.right = r.left + dc.col_widths.c1 - dc.padding2;
-				dc.draw_text(_label, r, style::font_face::dialog, style::text_style::single_line,
-				             color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_text(_label, r, render::font_face::dialog, render::text_style::single_line,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 
 			render_children(dc, element_offset);
@@ -309,7 +309,7 @@ namespace ui
 		using labelled_element::labelled_element;
 
 		// Splits the control area between the edit and a trailing toolbar button.
-		void layout_edit_and_toolbar(measure_context& mc, const toolbar_ptr& tb) const
+		void layout_edit_and_toolbar(render::measure_context& mc, const toolbar_ptr& tb) const
 		{
 			auto edit_bounds = control_bounds(mc, bounds);
 			auto tb_bounds = bounds;
@@ -334,7 +334,7 @@ namespace ui
 			visit(_edit);
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			_edit->layout(mc, control_bounds(mc, bounds));
@@ -451,7 +451,7 @@ namespace ui
 			}
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			layout_edit_and_toolbar(mc, _tb);
@@ -560,12 +560,12 @@ namespace ui
 			visit(_edit);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			return {cx, _edit_height * mc.text_line_height(style::font_face::dialog)};
+			return {cx, _edit_height * mc.text_line_height(render::font_face::dialog)};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			auto rEdit = bounds;
@@ -633,7 +633,7 @@ namespace ui
 			visit(_tb);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			auto cy = 0;
 
@@ -646,7 +646,7 @@ namespace ui
 			return {cx, cy};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -670,10 +670,10 @@ namespace ui
 		{
 			edit_styles style;
 			style.number = true;
-			_edit = ui::make_edit(style, empty_zero && v == 0 ? std::string{} : str::to_string(v),
+			_edit = ui::make_edit(style, empty_zero && v == 0 ? std::string{} : core::to_string(v),
 			                       [this](const std::string_view text)
 			                       {
-				                       _val = str::to_int(text);
+				                       _val = core::to_int(text);
 				                       if (_changed) _changed(_val);
 			                       });
 		}
@@ -682,7 +682,7 @@ namespace ui
 		{
 			if (event.type == view_element_event_type::populate)
 			{
-				_edit->window_text(_empty_zero && _val == 0 ? std::string{} : str::to_string(_val));
+				_edit->window_text(_empty_zero && _val == 0 ? std::string{} : core::to_string(_val));
 			}
 		}
 	};
@@ -697,9 +697,9 @@ namespace ui
 		{
 			edit_styles style;
 			style.number = true;
-			_edit = ui::make_edit(style, str::to_string(v, 5), [this](const std::string_view text)
+			_edit = ui::make_edit(style, core::to_string(v, 5), [this](const std::string_view text)
 			{
-				_val = str::to_double(text);
+				_val = core::to_double(text);
 			});
 		}
 
@@ -707,9 +707,9 @@ namespace ui
 		{
 			edit_styles style;
 			style.number = true;
-			_edit = ui::make_edit(style, str::to_string(v, 5), [this](const std::string_view text)
+			_edit = ui::make_edit(style, core::to_string(v, 5), [this](const std::string_view text)
 			{
-				_val = str::to_double(text);
+				_val = core::to_double(text);
 			});
 		}
 
@@ -717,31 +717,31 @@ namespace ui
 		{
 			if (event.type == view_element_event_type::populate)
 			{
-				_edit->window_text(str::to_string(_val, 5));
+				_edit->window_text(core::to_string(_val, 5));
 			}
 		}
 	};
 
 	class num_pair_control final : public labelled_element, public std::enable_shared_from_this<num_pair_control>
 	{
-		df::xy8& _val;
+		core::xy8& _val;
 		edit_ptr _edit1;
 		edit_ptr _edit2;
 		mutable recti _of_bounds;
 
 	public:
 		num_pair_control(const frame_ptr& h, const std::string_view label,
-		                 df::xy8& v) : labelled_element(label), _val(v)
+		                 core::xy8& v) : labelled_element(label), _val(v)
 		{
 			edit_styles style;
 			style.number = true;
-			_edit1 = ui::make_edit(style, str::to_string(_val.x), [this](const std::string_view text)
+			_edit1 = ui::make_edit(style, core::to_string(_val.x), [this](const std::string_view text)
 			{
-				_val.x = str::to_int(text);
+				_val.x = core::to_int(text);
 			});
-			_edit2 = ui::make_edit(style, str::to_string(_val.y), [this](const std::string_view text)
+			_edit2 = ui::make_edit(style, core::to_string(_val.y), [this](const std::string_view text)
 			{
-				_val.y = str::to_int(text);
+				_val.y = core::to_int(text);
 			});
 		}
 
@@ -755,31 +755,31 @@ namespace ui
 		{
 			if (event.type == view_element_event_type::populate)
 			{
-				_edit1->window_text(str::to_string(_val.x));
-				const auto y_val = _val.y == 0 ? std::string{} : str::to_string(_val.y);
+				_edit1->window_text(core::to_string(_val.x));
+				const auto y_val = _val.y == 0 ? std::string{} : core::to_string(_val.y);
 				_edit2->window_text(y_val);
 			}
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
-			if (!str::is_empty(_label))
+			if (!core::is_empty(_label))
 			{
-				dc.draw_text(tt.num_of, _of_bounds.offset(element_offset), style::font_face::dialog,
-				             style::text_style::single_line,
-				             color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_text(tt.num_of, _of_bounds.offset(element_offset), render::font_face::dialog,
+				             render::text_style::single_line,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 
 			labelled_element::render(dc, element_offset);
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
-			const auto controls_left = bounds.left + (str::is_empty(_label) ? 0 : mc.col_widths.c1);
-			const auto of_extent = mc.measure_text(tt.num_of, style::font_face::dialog,
-			                                       style::text_style::single_line, bounds.width());
-			const auto desired_edit_width = df::round(60 * mc.scale_factor);
+			const auto controls_left = bounds.left + (core::is_empty(_label) ? 0 : mc.col_widths.c1);
+			const auto of_extent = mc.measure_text(tt.num_of, render::font_face::dialog,
+			                                       render::text_style::single_line, bounds.width());
+			const auto desired_edit_width = core::round(60 * mc.scale_factor);
 			const auto available_width = std::max(0, bounds.right - controls_left - of_extent.cx - mc.padding2 * 2);
 			const auto edit_width = std::min(desired_edit_width, available_width / 2);
 
@@ -849,13 +849,13 @@ namespace ui
 			}
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			_control_height = default_control_height(mc);
 			return {cx, (_control_height + mc.padding1) * (_row_count + 1)};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -863,7 +863,7 @@ namespace ui
 			{
 				const auto height = default_control_height(mc);
 				const auto y = bounds.top + (height + mc.padding1) * (i + 1);
-				const auto x = bounds.left + df::mul_div(bounds.width(), 1, 3);
+				const auto x = bounds.left + core::mul_div(bounds.width(), 1, 3);
 
 				recti r1(bounds.left, y, x, y + height);
 				recti r2(x + mc.padding1, y, bounds.right, y + height);
@@ -873,19 +873,19 @@ namespace ui
 			}
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto r = bounds.offset(element_offset);
 			const auto y = r.top;
-			const auto x = r.left + df::mul_div(r.width(), 1, 3);
+			const auto x = r.left + core::mul_div(r.width(), 1, 3);
 
 			const recti r1(r.left, y, x, y + _control_height);
 			const recti r2(x + dc.padding1, y, r.right, y + _control_height);
 
-			dc.draw_text(tt.prop_name_title, r1, style::font_face::dialog, style::text_style::single_line_center,
-			             color(dc.colors.foreground, dc.colors.alpha), {});
-			dc.draw_text(tt.search_or_folder, r2, style::font_face::dialog, style::text_style::single_line_center,
-			             color(dc.colors.foreground, dc.colors.alpha), {});
+			dc.draw_text(tt.prop_name_title, r1, render::font_face::dialog, render::text_style::single_line_center,
+			             core::color(dc.colors.foreground, dc.colors.alpha), {});
+			dc.draw_text(tt.search_or_folder, r2, render::font_face::dialog, render::text_style::single_line_center,
+			             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			render_children(dc, element_offset);
 		}
 	};
@@ -933,7 +933,7 @@ namespace ui
 			visit(_tb);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			_edit_height = default_control_height(mc, _multiline ? 10 : 1);
 
@@ -946,7 +946,7 @@ namespace ui
 			return {cx, _edit_height};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -980,7 +980,7 @@ namespace ui
 
 			if (_multiline)
 			{
-				const auto lines = str::split(existing_last_path, true,
+				const auto lines = core::split(existing_last_path, true,
 				                              [](const char c) { return c == '\n' || c == '\r'; });
 
 				if (!lines.empty())
@@ -989,9 +989,9 @@ namespace ui
 				}
 			}
 
-			const auto is_exclude = str::is_exclude(existing_last_path);
-			auto browse_path = df::folder_path(
-				str::trim(is_exclude ? existing_last_path.substr(1) : existing_last_path));
+			const auto is_exclude = core::is_exclude(existing_last_path);
+			auto browse_path = core::folder_path(
+				core::trim(is_exclude ? existing_last_path.substr(1) : existing_last_path));
 
 			if (platform::browse_for_folder(browse_path))
 			{
@@ -1057,7 +1057,7 @@ namespace ui
 			visit(_tb);
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			layout_edit_and_toolbar(mc, _tb);
@@ -1116,7 +1116,7 @@ namespace ui
 			visit(_tb);
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -1131,26 +1131,26 @@ namespace ui
 			_label_bounds.right = bounds.left + mc.col_widths.c1;
 
 			_text_bounds = bounds;
-			if (!str::is_empty(_label)) _text_bounds.left += mc.col_widths.c1 + mc.padding2;
+			if (!core::is_empty(_label)) _text_bounds.left += mc.col_widths.c1 + mc.padding2;
 			_text_bounds.right = tb_bounds.left - mc.padding2;
 
 			_tb->layout(mc, tb_bounds);
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
-			const auto text_clr = color(dc.colors.foreground, dc.colors.alpha);
+			const auto text_clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
-			if (!str::is_empty(_label))
+			if (!core::is_empty(_label))
 			{
 				const auto r = _label_bounds.offset(element_offset);
-				dc.draw_text(_label, r, style::font_face::dialog, style::text_style::single_line, text_clr, {});
+				dc.draw_text(_label, r, render::font_face::dialog, render::text_style::single_line, text_clr, {});
 			}
 
-			if (!str::is_empty(_text))
+			if (!core::is_empty(_text))
 			{
 				const auto r = _text_bounds.offset(element_offset);
-				dc.draw_text(_text, r, style::font_face::dialog, style::text_style::single_line, text_clr, {});
+				dc.draw_text(_text, r, render::font_face::dialog, render::text_style::single_line, text_clr, {});
 			}
 
 			render_children(dc, element_offset);
@@ -1172,25 +1172,25 @@ namespace ui
 
 	class date_control final : public labelled_element, public std::enable_shared_from_this<date_control>
 	{
-		df::date_t& _val;
+		core::date_t& _val;
 		date_time_control_ptr _control;
 		std::function<void()> _changed;
 
 	public:
-		date_control(const frame_ptr& h, const std::string_view label, df::date_t& val,
+		date_control(const frame_ptr& h, const std::string_view label, core::date_t& val,
 		             const bool include_time = true, std::function<void()> changed = {}) :
 			labelled_element(label), _val(val), _changed(std::move(changed))
 		{
-			_control = make_date_time_control(val, [this](const df::date_t val) { on_changed(val); }, include_time);
+			_control = make_date_time_control(val, [this](const core::date_t val) { on_changed(val); }, include_time);
 		}
 
-		date_control(const frame_ptr& h, df::date_t& val, const bool include_time = true,
+		date_control(const frame_ptr& h, core::date_t& val, const bool include_time = true,
 		             std::function<void()> changed = {}) : _val(val), _changed(std::move(changed))
 		{
-			_control = make_date_time_control(val, [this](const df::date_t val) { on_changed(val); }, include_time);
+			_control = make_date_time_control(val, [this](const core::date_t val) { on_changed(val); }, include_time);
 		}
 
-		void on_changed(const df::date_t val) const
+		void on_changed(const core::date_t val) const
 		{
 			_val = val;
 			if (_changed) _changed();
@@ -1201,12 +1201,12 @@ namespace ui
 			visit(_control);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			if (!str::is_empty(_label))
+			if (!core::is_empty(_label))
 			{
-				const auto label_extent = mc.measure_text(_label, style::font_face::dialog,
-				                                          style::text_style::single_line, cx);
+				const auto label_extent = mc.measure_text(_label, render::font_face::dialog,
+				                                          render::text_style::single_line, cx);
 				mc.col_widths.c1 = std::max(mc.col_widths.c1, label_extent.cx + mc.padding2);
 				const auto control_extent = _control->measure(mc, cx - mc.col_widths.c1);
 				return {mc.col_widths.c1 + control_extent.cx, default_control_height(mc)};
@@ -1214,7 +1214,7 @@ namespace ui
 			return {_control->measure(mc, cx).cx, default_control_height(mc)};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			_control->layout(mc, control_bounds(mc, bounds));
@@ -1223,8 +1223,8 @@ namespace ui
 
 	class image_control final : public view_element, public std::enable_shared_from_this<image_control>
 	{
-		surface_ptr _image;
-		mutable texture_ptr _tex;
+		core::surface_ptr _image;
+		mutable render::texture_ptr _tex;
 
 	public:
 		image_control(const frame_ptr& h, const app_resource i)
@@ -1237,18 +1237,18 @@ namespace ui
 		{
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			return scale_dimensions(_image->dimensions(), std::clamp(cx, 300, 500), true);
+			return core::scale_dimensions(_image->dimensions(), std::clamp(cx, 300, 500), true);
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			if (!_tex)
 			{
 				const auto t = dc.create_texture();
 
-				if (t && t->update(_image) != texture_update_result::failed)
+				if (t && t->update(_image) != render::texture_update_result::failed)
 				{
 					_tex = t;
 				}
@@ -1263,49 +1263,49 @@ namespace ui
 
 	class before_after_control final : public view_element, public std::enable_shared_from_this<before_after_control>
 	{
-		const_surface_ptr _before;
-		const_surface_ptr _after;
-		simple_transform _after_transform = simple_transform::none;
+		core::const_surface_ptr _before;
+		core::const_surface_ptr _after;
+		simple_transform _after_transform = core::simple_transform::none;
 
-		mutable texture_ptr _tex_before;
-		mutable texture_ptr _tex_after;
+		mutable render::texture_ptr _tex_before;
+		mutable render::texture_ptr _tex_after;
 
 		mutable int _text_height = 0;
 
 	public:
-		before_after_control(const_surface_ptr before, const_surface_ptr after) : _before(std::move(before)),
+		before_after_control(core::const_surface_ptr before, core::const_surface_ptr after) : _before(std::move(before)),
 			_after(std::move(after))
 		{
 		}
 
-		before_after_control(const_surface_ptr before, const simple_transform after_transform) : _before(before),
+		before_after_control(core::const_surface_ptr before, const simple_transform after_transform) : _before(before),
 			_after(std::move(before)), _after_transform(after_transform)
 		{
 		}
 
 		static sizei transform_dimensions(sizei dims, const simple_transform t)
 		{
-			if (t == simple_transform::rot_90 || t == simple_transform::rot_270) std::swap(dims.cx, dims.cy);
+			if (t == core::simple_transform::rot_90 || t == core::simple_transform::rot_270) std::swap(dims.cx, dims.cy);
 			return dims;
 		}
 
 		static simple_transform preview_destination_transform(const simple_transform t)
 		{
-			if (t == simple_transform::rot_90) return simple_transform::rot_270;
-			if (t == simple_transform::rot_270) return simple_transform::rot_90;
+			if (t == core::simple_transform::rot_90) return core::simple_transform::rot_270;
+			if (t == core::simple_transform::rot_270) return core::simple_transform::rot_90;
 			return t;
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			_text_height = mc.text_line_height(style::font_face::dialog);
+			_text_height = mc.text_line_height(render::font_face::dialog);
 
-			const auto s1 = scale_dimensions(_before->dimensions(), cx / 2);
-			const auto s2 = scale_dimensions(transform_dimensions(_after->dimensions(), _after_transform), cx / 2);
+			const auto s1 = core::scale_dimensions(_before->dimensions(), cx / 2);
+			const auto s2 = core::scale_dimensions(transform_dimensions(_after->dimensions(), _after_transform), cx / 2);
 			return {cx, std::max(s1.cy, s2.cy) + _text_height};
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto device_bounds = bounds.offset(element_offset);
 
@@ -1313,7 +1313,7 @@ namespace ui
 			{
 				const auto t = dc.create_texture();
 
-				if (t && t->update(_before) != texture_update_result::failed)
+				if (t && t->update(_before) != render::texture_update_result::failed)
 				{
 					_tex_before = t;
 				}
@@ -1323,15 +1323,15 @@ namespace ui
 			{
 				const auto t = dc.create_texture();
 
-				if (t && t->update(_after) != texture_update_result::failed)
+				if (t && t->update(_after) != render::texture_update_result::failed)
 				{
 					_tex_after = t;
 				}
 			}
 
 			const auto center = device_bounds.center();
-			constexpr auto font = style::font_face::dialog;
-			const auto text_color = color(dc.colors.foreground, dc.colors.alpha);
+			constexpr auto font = render::font_face::dialog;
+			const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
 
 			auto rImage = device_bounds;
 			rImage.top += _text_height + dc.padding2;
@@ -1339,20 +1339,20 @@ namespace ui
 
 			auto r1 = rImage;
 			r1.right = center.x - 2;
-			if (_tex_before) dc.draw_texture(_tex_before, scale_dimensions(_tex_before->dimensions(), r1));
+			if (_tex_before) dc.draw_texture(_tex_before, core::scale_dimensions(_tex_before->dimensions(), r1));
 
 			auto r2 = rImage;
 			r2.left = center.x + 2;
 			if (_tex_after)
 			{
-				const auto after_bounds = scale_dimensions(transform_dimensions(_tex_after->dimensions(),
+				const auto after_bounds = core::scale_dimensions(transform_dimensions(_tex_after->dimensions(),
 				                                                               _after_transform), r2);
 				const auto destination_transform = preview_destination_transform(_after_transform);
-				const auto after_destination = destination_transform == simple_transform::none
+				const auto after_destination = destination_transform == core::simple_transform::none
 					                               ? quadd(after_bounds)
 					                               : quadd(after_bounds).transform(destination_transform);
 				dc.draw_texture(_tex_after, after_destination, recti({}, _tex_after->dimensions()), dc.colors.alpha,
-				                texture_sampler::bilinear);
+				                render::texture_sampler::bilinear);
 			}
 
 			r1.top -= _text_height;
@@ -1361,8 +1361,8 @@ namespace ui
 			r1.bottom = r1.top + _text_height;
 			r2.bottom = r2.top + _text_height;
 
-			dc.draw_text(tt.before, r1, font, style::text_style::single_line_center, text_color, {});
-			dc.draw_text(tt.after, r2, font, style::text_style::single_line_center, text_color, {});
+			dc.draw_text(tt.before, r1, font, render::text_style::single_line_center, text_color, {});
+			dc.draw_text(tt.after, r2, font, render::text_style::single_line_center, text_color, {});
 		}
 	};
 
@@ -1459,7 +1459,7 @@ namespace ui
 			_rows.emplace_back(r);
 		}
 
-		void add(const std::string_view label, const color32 clr, const std::string_view text1,
+		void add(const std::string_view label, const core::color32 clr, const std::string_view text1,
 		         const std::string_view text2) const
 		{
 			row r;
@@ -1564,7 +1564,7 @@ namespace ui
 			return false;
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			std::vector<int> col_widths;
 			auto max_row_width = 0;
@@ -1612,14 +1612,14 @@ namespace ui
 					for (auto i = 0u; i < col_widths.size(); ++i)
 					{
 						const auto no_shrink = i < max_cols && no_shrink_col[i];
-						if (!no_shrink) col_widths[i] = df::mul_div(shrink_avail, col_widths[i], shrink_width);
+						if (!no_shrink) col_widths[i] = core::mul_div(shrink_avail, col_widths[i], shrink_width);
 					}
 				}
 				else if (max_row_width > 0)
 				{
 					for (auto& width : col_widths)
 					{
-						width = df::mul_div(target_width, width, max_row_width);
+						width = core::mul_div(target_width, width, max_row_width);
 					}
 				}
 
@@ -1667,7 +1667,7 @@ namespace ui
 			return {max_row_width + scroll_padding, _total_height};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			measure(mc, bounds_in.width());
 
@@ -1703,7 +1703,7 @@ namespace ui
 			}
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto scroll_offset = element_offset - _scroller.scroll_offset();
 			const auto show_scroll = can_scroll && _scroller.can_scroll();
@@ -1717,7 +1717,7 @@ namespace ui
 			{
 				if (frame_when_empty)
 				{
-					const auto clr = color(average(dc.colors.background, 0u), dc.colors.alpha);
+					const auto clr = core::color(average(dc.colors.background, 0u), dc.colors.alpha);
 					dc.draw_border(bounds.inflate(-8), bounds.inflate(-7), clr, clr);
 				}
 			}
@@ -1736,7 +1736,7 @@ namespace ui
 						{
 							auto alt_bounds = row_bounds;
 							if (show_scroll) alt_bounds.right = _scroller.scroll_bounds().left;
-							dc.draw_rounded_rect(alt_bounds, color(0x000000, dc.colors.alpha / 11.11f), dc.padding1);
+							dc.draw_rounded_rect(alt_bounds, core::color(0x000000, dc.colors.alpha / 11.11f), dc.padding1);
 						}
 
 						for (const auto& e : r.cells)
@@ -1869,9 +1869,9 @@ namespace ui
 			visit(_button);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			_extent = mc.measure_text(_text, style::font_face::dialog, style::text_style::multiline,
+			_extent = mc.measure_text(_text, render::font_face::dialog, render::text_style::multiline,
 			                          cx - (button_width + 8));
 			_extent.cx += 8;
 			return {cx, std::max(_extent.cy, default_control_height(mc) + mc.padding2 * 2)};
@@ -1883,18 +1883,18 @@ namespace ui
 			_parent->invalidate({});
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			auto r = bounds.offset(element_offset);
 			r.right -= button_width + 8;
 			r = center_rect(_extent, r);
 
-			dc.draw_text(_text, r, style::font_face::dialog, style::text_style::multiline,
-			             color(dc.colors.foreground, dc.colors.alpha), {});
+			dc.draw_text(_text, r, render::font_face::dialog, render::text_style::multiline,
+			             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			render_children(dc, element_offset);
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -1933,27 +1933,27 @@ namespace ui
 			}
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			measure_text(mc);
 			constexpr auto prog_height = 16;
 			return {cx, std::max(100, _text_extent.cy + prog_height)};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			layout(mc);
 		}
 
-		void measure_text(measure_context& mc) const
+		void measure_text(render::measure_context& mc) const
 		{
-			_text_extent = mc.measure_text(_text, style::font_face::dialog, style::text_style::multiline,
+			_text_extent = mc.measure_text(_text, render::font_face::dialog, render::text_style::multiline,
 			                               bounds.width() - 32);
 			_text_extent.cx += 4;
 		}
 
-		void layout(measure_context& mc)
+		void layout(render::measure_context& mc)
 		{
 			layout();
 		}
@@ -1971,27 +1971,27 @@ namespace ui
 			_parent->invalidate();
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			render_progress(dc, _rect_progress.offset(-element_offset), _pos);
-			dc.draw_text(_text, _rect_text.offset(-element_offset), style::font_face::dialog,
-			             style::text_style::multiline_center, color(dc.colors.foreground, dc.colors.alpha), {});
+			dc.draw_text(_text, _rect_text.offset(-element_offset), render::font_face::dialog,
+			             render::text_style::multiline_center, core::color(dc.colors.foreground, dc.colors.alpha), {});
 		}
 
-		static void render_progress(draw_context& dc, const recti progress_rect, const int64_t pos)
+		static void render_progress(render::draw_context& dc, const recti progress_rect, const int64_t pos)
 		{
 			if (!progress_rect.is_empty())
 			{
-				const auto cc = color(dc.colors.background, dc.colors.alpha).scale(1.22f);
+				const auto cc = core::color(dc.colors.background, dc.colors.alpha).scale(1.22f);
 
 				if (pos > 0)
 				{
 					dc.draw_rect(progress_rect, cc);
 
 					auto r = progress_rect.inflate(-2);
-					r.right = r.left + static_cast<int>(df::mul_div(std::min<int64_t>(pos, 1000),
+					r.right = r.left + static_cast<int>(core::mul_div(std::min<int64_t>(pos, 1000),
 					                                                static_cast<int64_t>(r.width()), 1000ll));
-					dc.draw_rect(r, color(0xFFFFFF, dc.colors.alpha * 0.22f));
+					dc.draw_rect(r, core::color(0xFFFFFF, dc.colors.alpha * 0.22f));
 				}
 				else
 				{
@@ -2001,13 +2001,13 @@ namespace ui
 					const auto segment_width = std::max(1, inner.width() / 5);
 					const auto travel_width = inner.width() + segment_width;
 					// Unsigned throughout: tick_count passes INT_MAX after ~24.8 days of uptime.
-					const auto offset = static_cast<int>(platform::tick_count() / 20u %
+					const auto offset = static_cast<int>(core::tick_count() / 20u %
 						static_cast<uint32_t>(std::max(1, travel_width)));
 					auto segment = inner;
 					segment.left += offset - segment_width;
 					segment.right = segment.left + segment_width;
 					dc.draw_rect(segment.intersection(inner),
-					             color(style::colors.important_background, dc.colors.alpha));
+					             core::color(style::colors.important_background, dc.colors.alpha));
 				}
 			}
 		}
@@ -2020,10 +2020,10 @@ namespace ui
 
 		void message(const std::string_view m, const int64_t nn = 0, const int64_t dd = 0)
 		{
-			df::assert_true(is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 
 			const auto text_changed = _text != m;
-			const auto pos = dd > 0ll ? df::mul_div(1000ll, nn, dd) : 0ll;
+			const auto pos = dd > 0ll ? core::mul_div(1000ll, nn, dd) : 0ll;
 
 			if (_pos != pos || text_changed)
 			{
@@ -2060,19 +2060,19 @@ namespace ui
 			_text = a;
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			const auto icon_width = _icon == icon_index::none ? 0 : mc.icon_cxy + mc.padding2;
-			const auto text_extent = mc.measure_text(_text, style::font_face::title, style::text_style::multiline,
+			const auto text_extent = mc.measure_text(_text, render::font_face::title, render::text_style::multiline,
 			                                         cx - icon_width);
 
 			return {text_extent.cx + icon_width, text_extent.cy};
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			auto r = bounds.offset(element_offset);
-			const auto clr = color(dc.colors.foreground, dc.colors.alpha);
+			const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 			if (_icon != icon_index::none)
 			{
@@ -2082,7 +2082,7 @@ namespace ui
 				r.left += dc.icon_cxy + dc.padding2;
 			}
 
-			dc.draw_text(_text, r, style::font_face::title, style::text_style::single_line, clr, {});
+			dc.draw_text(_text, r, render::font_face::title, render::text_style::single_line, clr, {});
 		}
 	};
 
@@ -2096,8 +2096,8 @@ namespace ui
 		icon_index _icon = icon_index::none;
 		frame_ptr _parent;
 
-		std::vector<const_surface_ptr> _surfaces;
-		mutable std::vector<texture_ptr> _textures;
+		std::vector<core::const_surface_ptr> _surfaces;
+		mutable std::vector<render::texture_ptr> _textures;
 		mutable std::vector<sizei> _surface_extents;
 		std::vector<recti> _surface_bounds;
 		size_t _selection_overflow_count = 0;
@@ -2117,13 +2117,13 @@ namespace ui
 		}
 
 		title_control2(frame_ptr h, const std::string_view text, const std::string_view text2,
-		               const std::vector<const_image_ptr>& images) : _text1(text), _text2(text2), _parent(std::move(h))
+		               const std::vector<core::const_image_ptr>& images) : _text1(text), _text2(text2), _parent(std::move(h))
 		{
 			init(images);
 		}
 
 		title_control2(frame_ptr h, const icon_index& icon, const std::string_view text,
-		               const std::string_view text2, const std::vector<const_image_ptr>& images,
+		               const std::string_view text2, const std::vector<core::const_image_ptr>& images,
 		               const size_t selection_count) : _text1(text),
 		                                               _text2(text2), _icon(icon), _parent(std::move(h))
 		{
@@ -2132,14 +2132,14 @@ namespace ui
 		}
 
 		title_control2(frame_ptr h, const icon_index& icon, const std::string_view text,
-		               const std::string_view text2, const std::vector<const_surface_ptr>& surfaces) : _text1(text),
+		               const std::string_view text2, const std::vector<core::const_surface_ptr>& surfaces) : _text1(text),
 			_text2(text2), _icon(icon), _parent(std::move(h))
 		{
 			init(surfaces);
 		}
 
 		title_control2(frame_ptr h, const icon_index& icon, const std::string_view text,
-		               const std::string_view text2, const std::vector<const_surface_ptr>& surfaces,
+		               const std::string_view text2, const std::vector<core::const_surface_ptr>& surfaces,
 		               const size_t selection_count) : _text1(text),
 		                                               _text2(text2), _icon(icon), _parent(std::move(h))
 		{
@@ -2147,33 +2147,33 @@ namespace ui
 			_selection_overflow_count = selection_count - std::min(selection_count, _surfaces.size());
 		}
 
-		void init(const std::vector<const_image_ptr>& images)
+		void init(const std::vector<core::const_image_ptr>& images)
 		{
 			files ff;
 			constexpr sizei max_dims(128, 128);
 
 			for (const auto& image : images)
 			{
-				if (is_valid(image))
+				if (core::is_valid(image))
 				{
-					auto surface = ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims));
-					if (is_valid(surface)) _surfaces.emplace_back(std::move(surface));
+					auto surface = ff.image_to_surface(image, core::scale_dimensions(image->dimensions(), max_dims));
+					if (core::is_valid(surface)) _surfaces.emplace_back(std::move(surface));
 					if (_surfaces.size() >= max_surfaces) break;
 				}
 			}
 		}
 
-		void init(const std::vector<const_surface_ptr>& surfaces)
+		void init(const std::vector<core::const_surface_ptr>& surfaces)
 		{
 			files ff;
 			constexpr sizei max_dims(128, 128);
 
 			for (const auto& surface : surfaces)
 			{
-				if (is_valid(surface))
+				if (core::is_valid(surface))
 				{
 					auto fitted = ff.fit_within(surface, max_dims);
-					if (is_valid(fitted)) _surfaces.emplace_back(std::move(fitted));
+					if (core::is_valid(fitted)) _surfaces.emplace_back(std::move(fitted));
 					if (_surfaces.size() >= max_surfaces) break;
 				}
 			}
@@ -2189,7 +2189,7 @@ namespace ui
 			_text1 = a;
 		}
 
-		void selection(const std::string_view text, const std::vector<const_surface_ptr>& surfaces,
+		void selection(const std::string_view text, const std::vector<core::const_surface_ptr>& surfaces,
 		               const size_t selection_count)
 		{
 			++_surface_generation;
@@ -2202,7 +2202,7 @@ namespace ui
 			_selection_overflow_count = selection_count - std::min(selection_count, _surfaces.size());
 		}
 
-		void selection_async(const std::vector<const_image_ptr>& images, const size_t selection_count,
+		void selection_async(const std::vector<core::const_image_ptr>& images, const size_t selection_count,
 		                     df::async_i& async)
 		{
 			const auto generation = ++_surface_generation;
@@ -2215,15 +2215,15 @@ namespace ui
 			{
 				files ff;
 				constexpr sizei max_dims(128, 128);
-				std::vector<const_surface_ptr> surfaces;
+				std::vector<core::const_surface_ptr> surfaces;
 				surfaces.reserve(std::min(max, staged_images.size()));
 
 				for (const auto& image : staged_images)
 				{
-					if (is_valid(image))
+					if (core::is_valid(image))
 					{
-						auto surface = ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims));
-						if (is_valid(surface)) surfaces.emplace_back(std::move(surface));
+						auto surface = ff.image_to_surface(image, core::scale_dimensions(image->dimensions(), max_dims));
+						if (core::is_valid(surface)) surfaces.emplace_back(std::move(surface));
 						if (surfaces.size() >= max) break;
 					}
 				}
@@ -2240,13 +2240,13 @@ namespace ui
 			});
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			const auto icon_width = _icon == icon_index::none ? 0 : mc.icon_cxy * 2;
 
-			_text_extent1 = mc.measure_text(_text1, style::font_face::title, style::text_style::multiline,
+			_text_extent1 = mc.measure_text(_text1, render::font_face::title, render::text_style::multiline,
 			                                cx - icon_width);
-			_text_extent2 = mc.measure_text(_text2, style::font_face::dialog, style::text_style::multiline,
+			_text_extent2 = mc.measure_text(_text2, render::font_face::dialog, render::text_style::multiline,
 			                                cx - icon_width);
 
 			for (int i = 0; i < 2; ++i)
@@ -2256,9 +2256,9 @@ namespace ui
 				                                         std::min(text_height, 100));
 				const auto max_text_width = cx - (image_extent.cx + mc.padding2 + icon_width);
 
-				_text_extent1 = mc.measure_text(_text1, style::font_face::title, style::text_style::multiline,
+				_text_extent1 = mc.measure_text(_text1, render::font_face::title, render::text_style::multiline,
 				                                max_text_width);
-				_text_extent2 = mc.measure_text(_text2, style::font_face::dialog, style::text_style::multiline,
+				_text_extent2 = mc.measure_text(_text2, render::font_face::dialog, render::text_style::multiline,
 				                                max_text_width);
 
 				_image_extent = image_extent;
@@ -2267,15 +2267,15 @@ namespace ui
 			return {cx, std::max(_text_extent1.cy + _text_extent2.cy + mc.padding2, _image_extent.cy)};
 		}
 
-		sizei measure_images(const measure_context& mc, const int avail_width, const int preferred_height) const
+		sizei measure_images(const render::measure_context& mc, const int avail_width, const int preferred_height) const
 		{
 			auto dims = surface_dims();
 
-			const auto cx_slot = df::mul_div(avail_width, 2, static_cast<int>(dims.size()));
+			const auto cx_slot = core::mul_div(avail_width, 2, static_cast<int>(dims.size()));
 
 			for (auto&& d : dims)
 			{
-				d = scale_dimensions(d, sizei{cx_slot, preferred_height}, true);
+				d = core::scale_dimensions(d, sizei{cx_slot, preferred_height}, true);
 			}
 
 			auto total_width = 0;
@@ -2289,7 +2289,7 @@ namespace ui
 			{
 				for (auto&& d : dims)
 				{
-					d = scale_dimensions(d, sizei{df::mul_div(d.cx, avail_width, total_width), preferred_height}, true);
+					d = core::scale_dimensions(d, sizei{core::mul_div(d.cx, avail_width, total_width), preferred_height}, true);
 				}
 			}
 
@@ -2307,7 +2307,7 @@ namespace ui
 			return {total_width, max_height};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -2339,7 +2339,7 @@ namespace ui
 			for (const auto& s : _surfaces)
 			{
 				auto dimensions = s->dimensions();
-				if (setting.show_rotated && flips_xy(s->orientation()))
+				if (setting.show_rotated && core::flips_xy(s->orientation()))
 				{
 					std::swap(dimensions.cx, dimensions.cy);
 				}
@@ -2354,7 +2354,7 @@ namespace ui
 			return results;
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			auto r = bounds.offset(element_offset);
 
@@ -2368,15 +2368,15 @@ namespace ui
 					icon_bounds.bottom = icon_bounds.top + _text_extent1.cy;
 				}
 
-				xdraw_icon(dc, _icon, icon_bounds, color(dc.colors.foreground, dc.colors.alpha), {});
+				xdraw_icon(dc, _icon, icon_bounds, core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 
 			if (_text2.empty())
 			{
 				auto text_rect1 = r;
 				text_rect1.right = text_rect1.left + _text_extent1.cx;
-				dc.draw_text(_text1, text_rect1, style::font_face::title, style::text_style::multiline,
-				             color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_text(_text1, text_rect1, render::font_face::title, render::text_style::multiline,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 			else
 			{
@@ -2389,10 +2389,10 @@ namespace ui
 				text_rect2.top = text_rect2.bottom - _text_extent2.cy;
 				text_rect2.right = text_rect2.left + _text_extent2.cx;
 
-				dc.draw_text(_text1, text_rect1, style::font_face::title, style::text_style::multiline,
-				             color(dc.colors.foreground, dc.colors.alpha), {});
-				dc.draw_text(_text2, text_rect2, style::font_face::dialog, style::text_style::multiline,
-				             color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_text(_text1, text_rect1, render::font_face::title, render::text_style::multiline,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_text(_text2, text_rect2, render::font_face::dialog, render::text_style::multiline,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 
 			if (_textures.size() != _surfaces.size()) _textures.resize(_surfaces.size());
@@ -2403,7 +2403,7 @@ namespace ui
 
 				auto t = dc.create_texture();
 
-				if (t && t->update(_surfaces[index]) != texture_update_result::failed) _textures[index] = std::move(t);
+				if (t && t->update(_surfaces[index]) != render::texture_update_result::failed) _textures[index] = std::move(t);
 			}
 
 			for (auto i = 0u; i < std::min(_surfaces.size(), _surface_bounds.size()); ++i)
@@ -2413,12 +2413,12 @@ namespace ui
 				const auto orientation = _surfaces[i]->orientation();
 				const auto draw_bounds = _surface_bounds[i].offset(element_offset);
 				const auto destination = setting.show_rotated
-					                         ? quadd(draw_bounds).transform(to_simple_transform(orientation))
+					                         ? quadd(draw_bounds).transform(core::to_simple_transform(orientation))
 					                         : quadd(draw_bounds);
 				const auto source_bounds = recti({}, texture->dimensions());
 				const auto sampler = draw_bounds.width() < source_bounds.width()
-					                     ? texture_sampler::bicubic
-					                     : texture_sampler::bilinear;
+					                     ? render::texture_sampler::bicubic
+					                     : render::texture_sampler::bilinear;
 				dc.draw_texture(texture, destination, source_bounds, dc.colors.alpha, sampler);
 			}
 
@@ -2426,9 +2426,9 @@ namespace ui
 			{
 				const auto overflow_bounds = _surface_bounds[_surfaces.size()].offset(element_offset);
 				const auto text = std::format("+{}", _selection_overflow_count);
-				dc.draw_rect(overflow_bounds, color(style::colors.group_background, dc.colors.alpha));
-				dc.draw_text(text, overflow_bounds, style::font_face::dialog, style::text_style::single_line_center,
-				             color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_rect(overflow_bounds, core::color(style::colors.group_background, dc.colors.alpha));
+				dc.draw_text(text, overflow_bounds, render::font_face::dialog, render::text_style::single_line_center,
+				             core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 		}
 	};
@@ -2440,8 +2440,8 @@ namespace ui
 		// reference closes a cycle whose last link is released while the frame is clearing those
 		// children, destroying the frame inside its own teardown.
 		frame_weak_ptr _parent;
-		std::vector<const_surface_ptr> _surfaces;
-		mutable std::vector<texture_ptr> _textures;
+		std::vector<core::const_surface_ptr> _surfaces;
+		mutable std::vector<render::texture_ptr> _textures;
 		mutable std::vector<sizei> _surface_extents;
 		std::vector<recti> _surface_bounds;
 		size_t _overflow_count = 0;
@@ -2453,7 +2453,7 @@ namespace ui
 		{
 		}
 
-		void selection(const std::vector<const_surface_ptr>& surfaces, const size_t selection_count)
+		void selection(const std::vector<core::const_surface_ptr>& surfaces, const size_t selection_count)
 		{
 			++_surface_generation;
 			_surfaces.clear();
@@ -2465,10 +2465,10 @@ namespace ui
 			files ff;
 			for (const auto& surface : surfaces)
 			{
-				if (is_valid(surface))
+				if (core::is_valid(surface))
 				{
 					auto fitted = ff.fit_within(surface, max_dims);
-					if (is_valid(fitted)) _surfaces.emplace_back(std::move(fitted));
+					if (core::is_valid(fitted)) _surfaces.emplace_back(std::move(fitted));
 					if (_surfaces.size() >= max_surfaces) break;
 				}
 			}
@@ -2478,7 +2478,7 @@ namespace ui
 			is_visible(!_surfaces.empty());
 		}
 
-		void selection_async(const std::vector<const_image_ptr>& images, const size_t selection_count,
+		void selection_async(const std::vector<core::const_image_ptr>& images, const size_t selection_count,
 		                     df::async_i& async)
 		{
 			const auto generation = ++_surface_generation;
@@ -2490,15 +2490,15 @@ namespace ui
 			{
 				files ff;
 				constexpr sizei max_dims(128, 128);
-				std::vector<const_surface_ptr> surfaces;
+				std::vector<core::const_surface_ptr> surfaces;
 				surfaces.reserve(std::min(max_surfaces, staged_images.size()));
 
 				for (const auto& image : staged_images)
 				{
-					if (is_valid(image))
+					if (core::is_valid(image))
 					{
-						auto surface = ff.image_to_surface(image, scale_dimensions(image->dimensions(), max_dims));
-						if (is_valid(surface)) surfaces.emplace_back(std::move(surface));
+						auto surface = ff.image_to_surface(image, core::scale_dimensions(image->dimensions(), max_dims));
+						if (core::is_valid(surface)) surfaces.emplace_back(std::move(surface));
 						if (surfaces.size() >= max_surfaces) break;
 					}
 				}
@@ -2519,18 +2519,18 @@ namespace ui
 			});
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			auto dimensions = surface_dims();
-			const auto slot_width = dimensions.empty() ? cx : df::mul_div(cx, 2, static_cast<int>(dimensions.size()));
-			for (auto& size : dimensions) size = scale_dimensions(size, sizei{slot_width, 72}, true);
+			const auto slot_width = dimensions.empty() ? cx : core::mul_div(cx, 2, static_cast<int>(dimensions.size()));
+			for (auto& size : dimensions) size = core::scale_dimensions(size, sizei{slot_width, 72}, true);
 
 			auto total_width = 0;
 			for (const auto size : dimensions) total_width += size.cx + mc.padding1;
 			if (total_width > cx)
 			{
 				for (auto& size : dimensions)
-					size = scale_dimensions(size, sizei{df::mul_div(size.cx, cx, total_width), 72}, true);
+					size = core::scale_dimensions(size, sizei{core::mul_div(size.cx, cx, total_width), 72}, true);
 			}
 
 			_surface_extents = dimensions;
@@ -2539,7 +2539,7 @@ namespace ui
 			return {cx, max_height};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			_surface_bounds.clear();
@@ -2555,7 +2555,7 @@ namespace ui
 			}
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			if (_textures.size() != _surfaces.size()) _textures.resize(_surfaces.size());
 
@@ -2563,7 +2563,7 @@ namespace ui
 			{
 				if (_textures[index]) continue;
 				auto texture = dc.create_texture();
-				if (texture && texture->update(_surfaces[index]) != texture_update_result::failed)
+				if (texture && texture->update(_surfaces[index]) != render::texture_update_result::failed)
 					_textures[index] = std::move(texture);
 			}
 
@@ -2573,21 +2573,21 @@ namespace ui
 				const auto draw_bounds = _surface_bounds[index].offset(element_offset);
 				const auto orientation = _surfaces[index]->orientation();
 				const auto destination = setting.show_rotated
-					                         ? quadd(draw_bounds).transform(to_simple_transform(orientation))
+					                         ? quadd(draw_bounds).transform(core::to_simple_transform(orientation))
 					                         : quadd(draw_bounds);
 				const auto source = recti({}, _textures[index]->dimensions());
 				dc.draw_texture(_textures[index], destination, source, dc.colors.alpha,
 				                draw_bounds.width() < source.width()
-					                ? texture_sampler::bicubic
-					                : texture_sampler::bilinear);
+					                ? render::texture_sampler::bicubic
+					                : render::texture_sampler::bilinear);
 			}
 
 			if (_overflow_count > 0 && _surface_bounds.size() > _surfaces.size())
 			{
 				const auto overflow_bounds = _surface_bounds[_surfaces.size()].offset(element_offset);
-				dc.draw_rect(overflow_bounds, color(style::colors.group_background, dc.colors.alpha));
-				dc.draw_text(std::format("+{}", _overflow_count), overflow_bounds, style::font_face::dialog,
-				             style::text_style::single_line_center, color(dc.colors.foreground, dc.colors.alpha), {});
+				dc.draw_rect(overflow_bounds, core::color(style::colors.group_background, dc.colors.alpha));
+				dc.draw_text(std::format("+{}", _overflow_count), overflow_bounds, render::font_face::dialog,
+				             render::text_style::single_line_center, core::color(dc.colors.foreground, dc.colors.alpha), {});
 			}
 		}
 
@@ -2599,7 +2599,7 @@ namespace ui
 			for (const auto& surface : _surfaces)
 			{
 				auto dimensions = surface->dimensions();
-				if (setting.show_rotated && flips_xy(surface->orientation())) std::swap(dimensions.cx, dimensions.cy);
+				if (setting.show_rotated && core::flips_xy(surface->orientation())) std::swap(dimensions.cx, dimensions.cy);
 				result.emplace_back(dimensions);
 			}
 			if (_overflow_count > 0) result.emplace_back(result.empty() ? sizei{128, 72} : result.back());
@@ -2636,7 +2636,7 @@ namespace ui
 	// capped at the widest content so a short list of check boxes is not stretched apart.
 	class col_control final : public view_elements
 	{
-		std::vector<screen_units> _preferred_widths;
+		std::vector<render::screen_units> _preferred_widths;
 
 	public:
 		bool compact = false;
@@ -2652,20 +2652,20 @@ namespace ui
 			for (const auto& c : controls) add(c);
 		}
 
-		void add(const view_element_ptr& p, const screen_units width = {0})
+		void add(const view_element_ptr& p, const render::screen_units width = {0})
 		{
 			view_elements::add(p);
 			_preferred_widths.emplace_back(width);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			if (_children.empty()) return {cx, 0};
 			apply_column_flex(mc, cx);
 			return view_elements::measure(mc, cx);
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			apply_column_flex(mc, bounds_in.width());
 			view_elements::layout(mc, bounds_in);
@@ -2680,14 +2680,14 @@ namespace ui
 			flex_container.align_items = flex_align::stretch;
 		}
 
-		flex_container_layout container_layout(const measure_context& mc) const override
+		flex_container_layout container_layout(const render::measure_context& mc) const override
 		{
 			auto result = flex_container;
-			result.gap.cx = df::round(mc.padding2 / mc.scale_factor);
+			result.gap.cx = core::round(mc.padding2 / mc.scale_factor);
 			return result;
 		}
 
-		void apply_column_flex(measure_context& mc, const int cx) const
+		void apply_column_flex(render::measure_context& mc, const int cx) const
 		{
 			for (auto i = 0u; i < _children.size(); ++i)
 			{
@@ -2727,7 +2727,7 @@ namespace ui
 			{
 				if (_children[i]->is_visible() && _preferred_widths[i].n == 0)
 				{
-					_children[i]->flex.max_size.cx = df::round(max_width / mc.scale_factor);
+					_children[i]->flex.max_size.cx = core::round(max_width / mc.scale_factor);
 				}
 			}
 		}
@@ -2754,9 +2754,9 @@ namespace ui
 			}
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			_extent = mc.measure_text(_text, style::font_face::dialog, style::text_style::multiline, cx - 32);
+			_extent = mc.measure_text(_text, render::font_face::dialog, render::text_style::multiline, cx - 32);
 			return {cx, std::max(64, _extent.cy + 8)};
 		}
 
@@ -2765,27 +2765,27 @@ namespace ui
 			_text = a;
 		}
 
-		static void draw_animation(draw_context& dc, const recti bounds_in)
+		static void draw_animation(render::draw_context& dc, const recti bounds_in)
 		{
 			auto bounds = bounds_in;
 			bounds.top = bounds.bottom - 8;
 
-			dc.draw_rect(bounds, color(lighten(dc.colors.background, 0.11f), dc.colors.alpha));
+			dc.draw_rect(bounds, core::color(lighten(dc.colors.background, 0.11f), dc.colors.alpha));
 
 			const auto inner = bounds.inflate(-2);
 			const auto cx = inner.width() / 5;
 			// Unsigned throughout: tick_count passes INT_MAX after ~24.8 days of uptime.
-			const auto xx = static_cast<int>(platform::tick_count() / 20u %
+			const auto xx = static_cast<int>(core::tick_count() / 20u %
 				static_cast<uint32_t>(std::max(1, inner.width())));
 
 			auto draw_bounds = inner;
 			draw_bounds.left = draw_bounds.left + xx - cx;
 			draw_bounds.right = draw_bounds.left + xx + cx;
 			dc.draw_rect(draw_bounds.intersection(inner),
-			             color(style::colors.dialog_selected_background, dc.colors.alpha));
+			             core::color(style::colors.dialog_selected_background, dc.colors.alpha));
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto icon_width = _icon != icon_index::none ? dc.icon_cxy : 0;
 			auto r = bounds.offset(element_offset);
@@ -2799,12 +2799,12 @@ namespace ui
 			{
 				auto icon_bounds = r;
 				icon_bounds.right = icon_bounds.left + dc.icon_cxy;
-				xdraw_icon(dc, _icon, icon_bounds, color(dc.colors.foreground, dc.colors.alpha), {});
+				xdraw_icon(dc, _icon, icon_bounds, core::color(dc.colors.foreground, dc.colors.alpha), {});
 				r.left += dc.icon_cxy + 8;
 			}
 
-			dc.draw_text(_text, r, style::font_face::dialog, style::text_style::multiline,
-			             color(dc.colors.foreground, dc.colors.alpha), {});
+			dc.draw_text(_text, r, render::font_face::dialog, render::text_style::multiline,
+			             core::color(dc.colors.foreground, dc.colors.alpha), {});
 		}
 	};
 
@@ -2920,7 +2920,7 @@ namespace ui
 			_check->set_checked(_val);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			if (_is_wide_format)
 			{
@@ -2956,7 +2956,7 @@ namespace ui
 			return {std::max(_check_extent.cx, _child_extent.cx + indent), cy_result};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			_check->layout(mc, recti(bounds.top_left(), _check_extent));
@@ -3025,15 +3025,15 @@ namespace ui
 			visit(_button);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			const auto avail = cx;
 			auto extent = _button->measure(mc, avail);
-			if (!str::is_empty(_details)) extent.cx = std::max(avail, extent.cx);
+			if (!core::is_empty(_details)) extent.cx = std::max(avail, extent.cx);
 			return extent;
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 			_button->layout(mc, bounds);
@@ -3110,7 +3110,7 @@ namespace ui
 			visit(_cancel);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			const auto ok_extent = _ok->measure(mc, cx);
 			const auto cancel_extent = _cancel->measure(mc, cx);
@@ -3126,7 +3126,7 @@ namespace ui
 			};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -3186,7 +3186,7 @@ namespace ui
 		view_scroller _scroller;
 		// The frame it is drawn in, which it asks to lay it out and draw it again as results arrive.
 		frame_ptr _frame;
-		color_style _colors;
+		render::color_style _colors;
 		bool _is_popup = false;
 		int _height = 0;
 
@@ -3216,7 +3216,7 @@ namespace ui
 
 		void show_results(const auto_complete_results& results)
 		{
-			df::assert_true(is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 
 			_results = results;
 			_scroller._offset = {0, 0};
@@ -3316,16 +3316,16 @@ namespace ui
 			else if (bottom > offset.y + client.height()) scroll_to(bottom - client.height());
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
 			return {cx, _height};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
-			const auto text_height = mc.text_line_height(style::font_face::dialog);
+			const auto text_height = mc.text_line_height(render::font_face::dialog);
 			auto y = bounds.top + mc.padding2;
 
 			for (const auto& i : _results)
@@ -3347,14 +3347,14 @@ namespace ui
 				          mc.padding2 * 2;
 		}
 
-		void render(draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto r = bounds.offset(element_offset);
-			scoped_clip clip(dc, r);
+			render::scoped_clip clip(dc, r);
 
 			if (_is_popup)
 			{
-				const auto border_clr = color(emphasize(_colors.background, 0.123f), dc.colors.alpha);
+				const auto border_clr = core::color(core::emphasize(_colors.background, 0.123f), dc.colors.alpha);
 				dc.draw_border(r.inflate(-3), r, border_clr, border_clr);
 			}
 
@@ -3362,10 +3362,10 @@ namespace ui
 			{
 				const auto text = _completes->no_results_message();
 
-				if (!str::is_empty(text))
+				if (!core::is_empty(text))
 				{
-					dc.draw_text(text, r.inflate(-32), style::font_face::title, style::text_style::multiline_center,
-					             color(dc.colors.foreground, dc.colors.alpha), {});
+					dc.draw_text(text, r.inflate(-32), render::font_face::title, render::text_style::multiline_center,
+					             core::color(dc.colors.foreground, dc.colors.alpha), {});
 				}
 			}
 			else
@@ -3431,7 +3431,7 @@ namespace ui
 
 		void init(const frame_ptr& owner, const complete_strategy_ptr& completes, const frame_style& style)
 		{
-			df::assert_true(!_frame);
+			core::assert_true(!_frame);
 
 			_list = std::make_shared<results_list>(completes, !style.child);
 			_list->_colors = style.colors;
@@ -3470,7 +3470,7 @@ namespace ui
 			_list->selected(i, st);
 		}
 
-		void on_window_layout(measure_context& mc, const sizei extent, const bool is_minimized) override
+		void on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized) override
 		{
 			if (is_minimized) return;
 
@@ -3492,7 +3492,7 @@ namespace ui
 			frame()->invalidate();
 		}
 
-		void on_window_paint(draw_context& dc) override
+		void on_window_paint(render::draw_context& dc) override
 		{
 			dc.frame_has_focus = true;
 			_list->render(dc, {});
@@ -3504,13 +3504,13 @@ namespace ui
 
 			if (setting.show_debug_info && _active_controller)
 			{
-				const auto c = color(1.0f, 0.0f, 0.0f, dc.colors.alpha);
-				const auto pad = df::round(2 * dc.scale_factor);
+				const auto c = core::color(1.0f, 0.0f, 0.0f, dc.colors.alpha);
+				const auto pad = core::round(2 * dc.scale_factor);
 				dc.draw_border(_controller_bounds, _controller_bounds.inflate(pad), c, c);
 			}
 		}
 
-		void on_mouse_wheel(const pointi loc, const int delta, const key_state keys, bool& was_handled) override
+		void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 		{
 			was_handled = _list->wheel(loc, {}, delta);
 			update_controller(loc);
@@ -3575,8 +3575,8 @@ namespace ui
 		               const complete_strategy_ptr& s) : _val(v), _completes(s)
 		{
 			edit_styles e_style;
-			e_style.font = style::font_face::title;
-			e_style.capture_key_down = [this](const int c, const key_state keys) { return key_down(c, keys); };
+			e_style.font = render::font_face::title;
+			e_style.capture_key_down = [this](const int c, const platform::key_state keys) { return key_down(c, keys); };
 			_edit = ui::make_edit(e_style, v, [this](const std::string_view text) { edit_change(text); });
 
 			if (s->folder_select_button)
@@ -3612,11 +3612,11 @@ namespace ui
 
 		void browse_for_folder() const
 		{
-			df::folder_path path;
+			core::folder_path path;
 
-			if (df::is_path(_val))
+			if (core::is_path(_val))
 			{
-				path = df::folder_path(_val);
+				path = core::folder_path(_val);
 			}
 
 			if (platform::browse_for_folder(path))
@@ -3648,14 +3648,14 @@ namespace ui
 			visit(_list);
 		}
 
-		sizei measure(measure_context& mc, const int cx) const override
+		sizei measure(render::measure_context& mc, const int cx) const override
 		{
-			_edit_line_height = mc.text_line_height(style::font_face::title) + 16;
-			const auto line_height = mc.text_line_height(style::font_face::dialog);
+			_edit_line_height = mc.text_line_height(render::font_face::title) + 16;
+			const auto line_height = mc.text_line_height(render::font_face::dialog);
 			return {cx, line_height * 16 + _edit_line_height + mc.padding2};
 		}
 
-		void layout(measure_context& mc, const recti bounds_in) override
+		void layout(render::measure_context& mc, const recti bounds_in) override
 		{
 			bounds = bounds_in;
 
@@ -3681,17 +3681,17 @@ namespace ui
 			_list->layout(mc, search_bounds);
 		}
 
-		bool key_down(const int key_code, const key_state keys) const
+		bool key_down(const int key_code, const platform::key_state keys) const
 		{
 			const auto key = static_cast<char32_t>(key_code);
 
-			if (key == keys::UP)
+			if (key == platform::keys::UP)
 			{
 				_list->step_selection(-1);
 				return true;
 			}
 
-			if (key == keys::DOWN)
+			if (key == platform::keys::DOWN)
 			{
 				_list->step_selection(1);
 				return true;
@@ -3723,11 +3723,11 @@ public:
 	ui::focus_snapshot _parent_focus;
 	int _layout_height = 0;
 	int _layout_width = 0;
-	ui::screen_units _max_height = {0};
-	ui::screen_units _max_width = {0};
-	ui::color _background = ui::color(ui::style::colors.dialog_background);
-	ui::color _clr = ui::color(ui::style::colors.dialog_text);
-	ui::column_widths _label_width;
+	render::screen_units _max_height = {0};
+	render::screen_units _max_width = {0};
+	core::color _background = core::color(ui::style::colors.dialog_background);
+	core::color _clr = core::color(ui::style::colors.dialog_text);
+	render::column_widths _label_width;
 	std::function<void()> _close_cb;
 	// Controls held outside the scrolling body so a title and actions such as Close stay in place.
 	size_t _pinned_header = 0;
@@ -3751,7 +3751,7 @@ public:
 		// call site opening a dialog would otherwise have to test for null, and none of the dozens do.
 		if (!_frame)
 		{
-			df::log(__FUNCTION__, "dialog window could not be created");
+			core::log(__FUNCTION__, "dialog window could not be created");
 			_frame = ui::no_frame();
 		}
 
@@ -3832,15 +3832,15 @@ public:
 		}
 	}
 
-	void show_status(icon_index icon, const std::string_view text, const ui::screen_units cx = {33},
-	                 const ui::screen_units cy = {66})
+	void show_status(icon_index icon, const std::string_view text, const render::screen_units cx = {33},
+	                 const render::screen_units cy = {66})
 	{
 		disable_parent();
 		const auto scale_factor = _frame->scale_factor();
 		const auto extent = sizei{cx * scale_factor, cy * scale_factor};
 		// Same anchor as show_modal, so a flow that alternates between busy and question phases
 		// keeps its window in one place instead of hopping.
-		_frame->position(center_rect(extent, ui::desktop_bounds(true)));
+		_frame->position(center_rect(extent, platform::desktop_bounds(true)));
 
 		const std::vector<view_element_ptr> controls = {std::make_shared<ui::busy_control>(_frame, icon, text)};
 		show_controls(controls, cx, cy);
@@ -3849,7 +3849,7 @@ public:
 	}
 
 	void show_cancel_status(icon_index icon, const std::string_view text, const std::function<void()>& cb,
-	                        const ui::screen_units cx = {33}, const ui::screen_units cy = {66})
+	                        const render::screen_units cx = {33}, const render::screen_units cy = {66})
 	{
 		disable_parent();
 		_close_cb = [f = _frame, cb]
@@ -3860,7 +3860,7 @@ public:
 
 		const auto scale_factor = _frame->scale_factor();
 		const auto extent = sizei{cx * scale_factor, cy * scale_factor};
-		_frame->position(center_rect(extent, ui::desktop_bounds(true)));
+		_frame->position(center_rect(extent, platform::desktop_bounds(true)));
 
 		const std::vector<view_element_ptr> controls = {
 			std::make_shared<ui::busy_control>(_frame, icon, text),
@@ -3872,7 +3872,7 @@ public:
 	}
 
 	void show_message(icon_index icon, const std::string_view title, const std::string_view text,
-	                  const ui::screen_units cx = {33})
+	                  const render::screen_units cx = {33})
 	{
 		const std::vector<view_element_ptr> controls = {
 			std::make_shared<ui::title_control2>(_frame, icon, title, text),
@@ -3882,13 +3882,13 @@ public:
 		show_modal(controls, cx);
 	}
 
-	ui::close_result show_modal(const std::vector<view_element_ptr>& controls, const ui::screen_units cx = {44},
-	                            const ui::screen_units cy = {88})
+	ui::close_result show_modal(const std::vector<view_element_ptr>& controls, const render::screen_units cx = {44},
+	                            const render::screen_units cy = {88})
 	{
 		disable_parent();
 		const auto scale_factor = _frame->scale_factor();
 		const auto extent = sizei{cx * scale_factor, cy * scale_factor};
-		_frame->position(center_rect(extent, ui::desktop_bounds(true)));
+		_frame->position(center_rect(extent, platform::desktop_bounds(true)));
 		show_controls(controls, cx, cy);
 		_frame->show(true);
 
@@ -3910,8 +3910,8 @@ public:
 		return result;
 	}
 
-	void show_controls(const std::vector<view_element_ptr>& controls, const ui::screen_units max_width,
-	                   const ui::screen_units max_height)
+	void show_controls(const std::vector<view_element_ptr>& controls, const render::screen_units max_width,
+	                   const render::screen_units max_height)
 	{
 		_max_width = max_width;
 		_max_height = max_height;
@@ -3958,15 +3958,15 @@ public:
 		layout();
 	}
 
-	void layout(ui::measure_context& mc)
+	void layout(render::measure_context& mc)
 	{
 		const auto scale_factor = _frame->scale_factor();
 
-		const auto work_area = ui::desktop_bounds(true);
+		const auto work_area = platform::desktop_bounds(true);
 		const auto max_width = std::min(work_area.width(), _max_width * scale_factor);
 		const auto max_height = std::min(work_area.height(), _max_height * scale_factor);
 
-		const auto layout_padding = df::round(mc.padding1 / mc.scale_factor);
+		const auto layout_padding = core::round(mc.padding1 / mc.scale_factor);
 		auto avail_bounds = recti(0, 0, max_width, max_height);
 		avail_bounds.right -= mc.scroll_width;
 
@@ -4031,7 +4031,7 @@ public:
 		if (_center || _resize)
 		{
 			const auto existing_bounds = _frame->window_bounds();
-			const auto work_area = ui::desktop_bounds(true);
+			const auto work_area = platform::desktop_bounds(true);
 			const auto bounds = _center
 				                    ? center_rect(sizei{_layout_width, _layout_height}, work_area)
 				                    : recti(existing_bounds.left, existing_bounds.top,
@@ -4068,13 +4068,13 @@ public:
 		}
 	}
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized) override
+	void on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized) override
 	{
 		_extent = extent;
 		layout(mc);
 	}
 
-	void on_window_paint(ui::draw_context& dc) override
+	void on_window_paint(render::draw_context& dc) override
 	{
 		dc.col_widths = _label_width;
 
@@ -4108,7 +4108,7 @@ public:
 		_scroller.draw_scroll(dc);
 
 		const auto border_outside = recti(0, 0, _layout_width, _layout_height);
-		const auto clr = ui::color(0xffffff, 0.22f);
+		const auto clr = core::color(0xffffff, 0.22f);
 		dc.draw_border(border_outside.inflate(-2), border_outside, clr, clr);
 
 		if (_active_controller)
@@ -4135,7 +4135,7 @@ public:
 		}
 	}
 
-	bool key_down(const int c, const ui::key_state keys) override
+	bool key_down(const int c, const platform::key_state keys) override
 	{
 		return false;
 	}
@@ -4163,7 +4163,7 @@ public:
 	}
 
 	// A list among the controls - a search's results - scrolls by itself before the dialog does.
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
 		if (first_at(loc, [&](const view_element_ptr& e, const pointi offset) { return e->wheel(loc, offset, delta); }))
 		{
@@ -4265,7 +4265,7 @@ class wallpaper_control final : public view_element, public std::enable_shared_f
 	bool& _maximize;
 	ui::frame_ptr _parent;
 	file_load_result _loaded;
-	mutable ui::texture_ptr _tex;
+	mutable render::texture_ptr _tex;
 
 public:
 	wallpaper_control(ui::frame_ptr h, file_load_result loaded, bool& maximize) : _maximize(maximize),
@@ -4278,31 +4278,31 @@ public:
 		_parent->invalidate({}, false);
 	}
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
-		const auto bounds = ui::desktop_bounds(true);
-		const auto cy = df::mul_div(cx, bounds.height(), bounds.width());
+		const auto bounds = platform::desktop_bounds(true);
+		const auto cy = core::mul_div(cx, bounds.height(), bounds.width());
 		return {cx, cy};
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto max_dim = std::max(bounds.width(), bounds.height());
 		const auto max_dims = _maximize ? sizei(max_dim, max_dim) : bounds.extent();
-		const auto dimensions = ui::scale_dimensions(_loaded.dimensions(), max_dims);
+		const auto dimensions = core::scale_dimensions(_loaded.dimensions(), max_dims);
 		const auto bg = ui::style::colors.desktop_background;
 
 		if (!_tex)
 		{
 			const auto t = dc.create_texture();
 
-			if (t && t->update(_loaded.to_surface(dimensions)) != ui::texture_update_result::failed)
+			if (t && t->update(_loaded.to_surface(dimensions)) != render::texture_update_result::failed)
 			{
 				_tex = t;
 			}
 		}
 
-		dc.draw_rect(bounds, ui::color(bg, dc.colors.alpha));
+		dc.draw_rect(bounds, core::color(bg, dc.colors.alpha));
 
 		if (_tex)
 		{

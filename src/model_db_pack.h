@@ -22,7 +22,7 @@ class metadata_packer
 public:
 	static constexpr uint8_t version = 1;
 
-	df::blob _data;
+	core::blob _data;
 
 	void reset_to_header()
 	{
@@ -37,7 +37,7 @@ public:
 		reset_to_header();
 	}
 
-	df::cspan cdata() const
+	core::cspan cdata() const
 	{
 		return _data;
 	}
@@ -75,12 +75,12 @@ public:
 		}
 	}
 
-	void write_blob(const uint16_t id, df::cspan value)
+	void write_blob(const uint16_t id, core::cspan value)
 	{
 		if (value.size > std::numeric_limits<uint32_t>::max() || (value.size && !value.data))
 			throw metadata_property_error("Invalid binary cache-property value");
 
-		df::blob owned;
+		core::blob owned;
 		if (value.size && !_data.empty())
 		{
 			const std::less<const uint8_t*> before;
@@ -111,13 +111,13 @@ public:
 		std::memcpy(_data.data() + existing_len, &v, val_len);
 	}
 
-	void write(const uint16_t id, const str::cached v)
+	void write(const uint16_t id, const core::cached v)
 	{
 		const auto val_len = v.size();
 
-		if (val_len >= df::one_meg)
+		if (val_len >= core::one_meg)
 		{
-			df::log(__FUNCTION__, std::format("metadata value for property {} dropped: {} bytes", id, val_len));
+			core::log(__FUNCTION__, std::format("metadata value for property {} dropped: {} bytes", id, val_len));
 			return;
 		}
 
@@ -151,7 +151,7 @@ public:
 		const auto count = dates.group_count();
 		if (count <= 0) return;
 
-		df::blob body;
+		core::blob body;
 		body.reserve(date_pack_header_len + count * date_pack_group_stride + date_pack_trailer_len);
 		body.push_back(date_pack_version);
 		body.push_back(static_cast<uint8_t>(count));
@@ -189,12 +189,12 @@ public:
 
 class metadata_unpacker
 {
-	const df::cspan _data;
+	const core::cspan _data;
 	size_t _pos = 2;
 	uint32_t _version = 0;
 
 public:
-	metadata_unpacker(const df::cspan data) : _data(data)
+	metadata_unpacker(const core::cspan data) : _data(data)
 	{
 		if (_data.data && _data.size >= 2 && _data.data[0] == 0xFF)
 		{
@@ -259,8 +259,8 @@ public:
 	struct property_record
 	{
 		uint16_t id;
-		df::cspan value;
-		df::cspan encoded;
+		core::cspan value;
+		core::cspan encoded;
 	};
 
 	// Borrowed views of complete records, for lossless cache-property edits without unpacking metadata.
@@ -279,7 +279,7 @@ public:
 		if (remaining() < length_bytes) throw metadata_property_error("Truncated cached-property length");
 		const auto length = read_len();
 		if (length > remaining()) throw metadata_property_error("Truncated cached-property value");
-		const df::cspan value{_data.data + _pos, length};
+		const core::cspan value{_data.data + _pos, length};
 		_pos += length;
 		return property_record{id, value, {_data.data + start, _pos - start}};
 	}
@@ -288,7 +288,7 @@ public:
 	void read_val(T& v)
 	{
 		const auto ser_len = read_len();
-		df::assert_true(sizeof(v) == ser_len);
+		core::assert_true(sizeof(v) == ser_len);
 
 		if (sizeof(v) == ser_len && remaining() >= ser_len)
 		{
@@ -406,7 +406,7 @@ public:
 			{
 				if (sources & static_cast<uint64_t>(info.source))
 				{
-					dates.add(info.source, df::date_t(value), offset);
+					dates.add(info.source, core::date_t(value), offset);
 				}
 			}
 		}
@@ -427,13 +427,13 @@ public:
 		return dates.group_count() > restored_before;
 	}
 
-	void read_val(str::cached& v)
+	void read_val(core::cached& v)
 	{
 		const auto ser_len = read_len();
 
 		if (remaining() >= ser_len)
 		{
-			v = str::cache(std::string_view{std::bit_cast<const char*>(_data.data + _pos), ser_len});
+			v = core::cache(std::string_view{std::bit_cast<const char*>(_data.data + _pos), ser_len});
 		}
 
 		_pos += ser_len;
@@ -442,10 +442,10 @@ public:
 	void unpack(const prop::item_metadata_ptr& md);
 };
 
-inline std::optional<df::cspan> metadata_find_blob_property(const df::cspan data, const uint16_t id)
+inline std::optional<core::cspan> metadata_find_blob_property(const core::cspan data, const uint16_t id)
 {
 	metadata_unpacker reader(data);
-	std::optional<df::cspan> result;
+	std::optional<core::cspan> result;
 	while (const auto record = reader.read_record())
 	{
 		if (record->id == id) result = record->value;
@@ -453,8 +453,8 @@ inline std::optional<df::cspan> metadata_find_blob_property(const df::cspan data
 	return result;
 }
 
-inline df::blob metadata_replace_blob_property(const df::cspan data, const uint16_t id,
-                                               const std::optional<df::cspan> value)
+inline core::blob metadata_replace_blob_property(const core::cspan data, const uint16_t id,
+                                               const std::optional<core::cspan> value)
 {
 	metadata_packer result;
 	metadata_unpacker reader(data);
@@ -468,7 +468,7 @@ inline df::blob metadata_replace_blob_property(const df::cspan data, const uint1
 	return std::move(result._data);
 }
 
-inline void metadata_preserve_unknown_properties(metadata_packer& destination, const df::cspan previous)
+inline void metadata_preserve_unknown_properties(metadata_packer& destination, const core::cspan previous)
 {
 	const auto original_size = destination.size();
 	try
@@ -484,6 +484,6 @@ inline void metadata_preserve_unknown_properties(metadata_packer& destination, c
 	catch (const metadata_property_error& error)
 	{
 		destination._data.resize(original_size);
-		df::log(__FUNCTION__, std::format("Invalid cached properties replaced by fresh metadata: {}", error.what()));
+		core::log(__FUNCTION__, std::format("Invalid cached properties replaced by fresh metadata: {}", error.what()));
 	}
 }

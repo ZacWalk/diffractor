@@ -15,21 +15,21 @@ class crash_files_db
 {
 	struct open_file
 	{
-		df::file_path path;
+		core::file_path path;
 		std::string_view context;
 		uint32_t thread_id = 0;
 	};
 
 	using open_file_id = uint64_t;
-	using open_file_map = df::hash_map<open_file_id, open_file>;
-	using path_set = df::hash_set<df::file_path, df::ihash, df::ieq>;
+	using open_file_map = core::hash_map<open_file_id, open_file>;
+	using path_set = core::hash_set<core::file_path, core::ihash, core::ieq>;
 
 	// The list only has to survive until the next launch, so a small ceiling is enough to stop a
 	// repeating crash from growing the file without bound. Lines left by other releases count toward
 	// it, because they are still occupying the file.
 	static constexpr size_t max_entries = 512;
 
-	df::file_path _crash_files_path;
+	core::file_path _crash_files_path;
 	std::string _release_tag;
 
 	path_set _crash_files;
@@ -37,7 +37,7 @@ class crash_files_db
 
 	open_file_map _open_files;
 	open_file_id _next_open_file_id = 1;
-	platform::mutex _mtx;
+	core::mutex _mtx;
 
 	// Each line is "<release>\t<path>". Only the running release's entries skip a file. A decoder fix
 	// ships in an update, and without the tag a file blacklisted once would never be scanned again on
@@ -69,10 +69,10 @@ public:
 	// actually reaches them, and costs at most one repeat crash per file.
 	static std::string release_tag(const std::string_view app_version)
 	{
-		return str::to_string(df::version(app_version).major);
+		return core::to_string(core::version(app_version).major);
 	}
 
-	crash_files_db(const df::file_path path, const std::string_view release_tag) :
+	crash_files_db(const core::file_path path, const std::string_view release_tag) :
 		_crash_files_path(path), _release_tag(release_tag)
 	{
 		try
@@ -83,13 +83,13 @@ public:
 		{
 			// Bounded fallback: an unreadable skip list only costs one repeated decoder crash, and
 			// this is constructed during startup where a throw would take the whole launch with it.
-			df::log(__FUNCTION__, e.what());
+			core::log(__FUNCTION__, e.what());
 			_crash_files.clear();
 			_lines_on_disk = 0;
 		}
 	}
 
-	bool is_known_crash_file(const df::file_path path) const
+	bool is_known_crash_file(const core::file_path path) const
 	{
 		return _crash_files.contains(path);
 	}
@@ -106,17 +106,17 @@ public:
 		return _lines_on_disk >= max_entries;
 	}
 
-	open_file_id add_open(const df::file_path path, const std::string_view context)
+	open_file_id add_open(const core::file_path path, const std::string_view context)
 	{
-		platform::exclusive_lock lock(_mtx);
+		core::exclusive_lock lock(_mtx);
 		const auto id = _next_open_file_id++;
-		_open_files[id] = {path, context, platform::current_thread_id()};
+		_open_files[id] = {path, context, core::current_thread_id()};
 		return id;
 	}
 
 	void remove_open(const open_file_id id)
 	{
-		platform::exclusive_lock lock(_mtx);
+		core::exclusive_lock lock(_mtx);
 		_open_files.erase(id);
 	}
 
@@ -130,11 +130,11 @@ public:
 	{
 		if (is_full()) return;
 
-		platform::try_exclusive_lock lock(_mtx);
+		core::try_exclusive_lock lock(_mtx);
 
 		if (!lock.locked())
 		{
-			df::log(__FUNCTION__, "open files busy - crash list not updated");
+			core::log(__FUNCTION__, "open files busy - crash list not updated");
 			return;
 		}
 
@@ -143,7 +143,7 @@ public:
 		// Several workers decode at once, so most open files are bystanders. Only the thread running
 		// this handler faulted, so record what it had open and leave the rest scannable. The recovery
 		// callback runs on its own thread and matches nothing, which falls back to recording them all.
-		const auto faulting_thread = platform::current_thread_id();
+		const auto faulting_thread = core::current_thread_id();
 		const auto attributed = std::ranges::any_of(_open_files, [faulting_thread](const auto& i)
 		{
 			return i.second.thread_id == faulting_thread;
@@ -160,7 +160,7 @@ public:
 			if (attributed && open.thread_id != faulting_thread) continue;
 			if (_crash_files.contains(open.path) || appended_paths.contains(open.path)) continue;
 
-			df::log(__FUNCTION__, std::format("Add file type to crash list {}", open.path.extension()));
+			core::log(__FUNCTION__, std::format("Add file type to crash list {}", open.path.extension()));
 			appended += std::format("{}\t{}\n", _release_tag, open.path.str());
 			appended_paths.emplace(open.path);
 			--room;
@@ -175,27 +175,27 @@ public:
 
 		// A read-only install folder makes this the difference between one crash and a crash on every
 		// launch, so it is stated rather than left as an unexplained repeat.
-		if (!file) df::log(__FUNCTION__, std::format("could not write {}", _crash_files_path.str()));
+		if (!file) core::log(__FUNCTION__, std::format("could not write {}", _crash_files_path.str()));
 	}
 
 	void log_open_files() const
 	{
-		platform::try_exclusive_lock lock(_mtx);
+		core::try_exclusive_lock lock(_mtx);
 
 		if (!lock.locked())
 		{
-			df::log(__FUNCTION__, "open files busy - not listed");
+			core::log(__FUNCTION__, "open files busy - not listed");
 			return;
 		}
 
-		const auto faulting_thread = platform::current_thread_id();
+		const auto faulting_thread = core::current_thread_id();
 
 		for (const auto& [id, open] : _open_files)
 		{
 			// The report is uploaded, so the file is identified by what diagnoses the fault - its type
 			// and the stage that had it open - rather than by name. The full path is recorded locally
 			// in the crash-files list, which stays on the machine.
-			df::log(__FUNCTION__, std::format("Open file {} in {}{}", open.path.extension(), open.context,
+			core::log(__FUNCTION__, std::format("Open file {} in {}{}", open.path.extension(), open.context,
 			                                  open.thread_id == faulting_thread ? " (faulting thread)" : ""));
 		}
 	}
@@ -207,7 +207,7 @@ struct record_open_path
 	crash_files_db& files_that_crash_diffractor_;
 	uint64_t _id = 0;
 
-	record_open_path(crash_files_db& files_that_crash_diffractor, const df::file_path path,
+	record_open_path(crash_files_db& files_that_crash_diffractor, const core::file_path path,
 	                 const std::string_view context) : files_that_crash_diffractor_(files_that_crash_diffractor)
 	{
 		_id = files_that_crash_diffractor_.add_open(path, context);

@@ -33,7 +33,7 @@
 #include "view_tags.h"
 #include "ui_sid.h"
 #include "app_commands.h"
-#include "libdesktop/render_software.h"
+#include "libdesktop/render/software.h"
 
 extern std::function<void()> test_during_detach_file_handles;
 
@@ -58,7 +58,7 @@ static void should_decide_when_movie_clip_sessions_are_retired()
 	assert_equal(true, should_rewind_movie_clip_after_document_focus_change(true),
 	             "and then park the new focused clip at its in point");
 
-	auto clip = make_movie_clip(df::file_path(df::windows_path_semantics ? "c:\\movie\\b.mp4" : "/movie/b.mp4"), {});
+	auto clip = make_movie_clip(core::file_path(core::windows_path_semantics ? "c:\\movie\\b.mp4" : "/movie/b.mp4"), {});
 	clip.start = 12.0;
 	assert_equal(12.0, rewound_movie_clip_playhead(&clip), "rewind parks at the focused clip's in point");
 	assert_equal(0.0, rewound_movie_clip_playhead(nullptr), "an empty timeline rewinds to zero");
@@ -91,7 +91,7 @@ static void should_step_movie_clips_from_the_playhead_while_playing()
 
 	for (auto i = 0; i < 9; ++i)
 	{
-		auto clip = make_movie_clip(df::file_path(df::windows_path_semantics ? "c:\\movie\\c.mp4" : "/movie/c.mp4"), {});
+		auto clip = make_movie_clip(core::file_path(core::windows_path_semantics ? "c:\\movie\\c.mp4" : "/movie/c.mp4"), {});
 		clip.start = 0.0;
 		clip.end = 10.0;
 		clips.emplace_back(clip);
@@ -236,7 +236,7 @@ static void should_bound_movie_probe_retries_for_moving_sources()
 	assert_equal(true, decide_movie_changed_probe_action(3, 2) == movie_probe_changed_action::mark_missing,
 	             "past the retry budget the clip reaches an explicit unresolved state");
 
-	const auto shared = df::file_path(df::windows_path_semantics ? "c:\\movie\\shared.mp4" : "/movie/shared.mp4");
+	const auto shared = core::file_path(core::windows_path_semantics ? "c:\\movie\\shared.mp4" : "/movie/shared.mp4");
 	std::vector<movie_probe_result> results(3);
 	for (auto& result : results)
 	{
@@ -244,7 +244,7 @@ static void should_bound_movie_probe_retries_for_moving_sources()
 		result.changed_during_probe = true;
 	}
 
-	df::hash_map<df::file_path, int, df::ihash, df::ieq> retries;
+	core::hash_map<core::file_path, int, core::ihash, core::ieq> retries;
 	const auto first = decide_movie_changed_probe_retries(results, retries, 2);
 	assert_equal(1_z, first.retry_paths.size(), "one changed source costs one retry, even with several clips");
 	assert_equal(0_z, first.missing_paths.size(), "so no shared clip is marked missing on the first movement");
@@ -266,7 +266,7 @@ static void should_bound_movie_probe_retries_for_moving_sources()
 // as a video just added, shared by the view and the command line.
 static void should_apply_a_movie_probe_to_the_clip_it_measured()
 {
-	const auto path = df::file_path(df::windows_path_semantics ? "c:\\movie\\clip.mp4" : "/movie/clip.mp4");
+	const auto path = core::file_path(core::windows_path_semantics ? "c:\\movie\\clip.mp4" : "/movie/clip.mp4");
 
 	movie_probe_result measured;
 	measured.path = path;
@@ -320,11 +320,11 @@ static void should_apply_a_movie_probe_to_the_clip_it_measured()
 // -movie-import share.
 static void should_import_a_movie_maker_project_from_the_collection()
 {
-	const auto video = test_files_folder.combine_file("gizmo.mp4");
+	const auto video = test_files_folder().combine_file("gizmo.mp4");
 	const auto measured = probe_movie_source(video);
 	assert_equal(true, measured.found && measured.duration > 1.6, "the fixture video measures");
 
-	const auto gone = test_files_folder.combine("no such folder");
+	const auto gone = test_files_folder().combine("no such folder");
 	const auto moved = gone.combine_file("gizmo.mp4");
 	const auto other = gone.combine_file("trip.mp4");
 	const auto lost = gone.combine_file("lost.mp4");
@@ -346,10 +346,10 @@ static void should_import_a_movie_maker_project_from_the_collection()
 </Project>)", moved, measured.duration, other, measured.duration + 30.0, lost, video, measured.duration);
 
 	auto searches = 0;
-	const movie_source_finder find = [&](const std::vector<df::file_path>& missing)
+	const movie_source_finder find = [&](const std::vector<core::file_path>& missing)
 	{
 		++searches;
-		std::vector<std::vector<df::file_path>> result(missing.size());
+		std::vector<std::vector<core::file_path>> result(missing.size());
 
 		// The fixture stands in for both namesakes: the right file for one, a different one for the other.
 		for (size_t i = 0; i < missing.size(); ++i)
@@ -360,7 +360,7 @@ static void should_import_a_movie_maker_project_from_the_collection()
 		return result;
 	};
 
-	const auto imported = import_movie_maker_project(xml, test_files_folder, find);
+	const auto imported = import_movie_maker_project(xml, test_files_folder(), find);
 	const auto& clips = imported.loaded.clips;
 
 	assert_equal(true, static_cast<bool>(imported.loaded), "the project imports");
@@ -411,21 +411,21 @@ static void should_count_movie_cache_bytes_once_per_frame()
 // those clips came out sideways in the strip, the preview and the rendered file.
 static void should_turn_movie_frames_upright()
 {
-	assert_equal(true, sizei{1200, 1800} == upright_movie_extent({1800, 1200}, ui::orientation::right_top),
+	assert_equal(true, sizei{1200, 1800} == upright_movie_extent({1800, 1200}, core::orientation::right_top),
 	             "a quarter-turned source is measured upright");
-	assert_equal(true, sizei{1800, 1200} == upright_movie_extent({1800, 1200}, ui::orientation::bottom_right),
+	assert_equal(true, sizei{1800, 1200} == upright_movie_extent({1800, 1200}, core::orientation::bottom_right),
 	             "a half-turned source keeps its shape");
 
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(3, 2, ui::texture_format::RGB, ui::orientation::right_top);
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(3, 2, core::texture_format::RGB, core::orientation::right_top);
 	for (auto y = 0; y < 2; ++y)
 	{
-		for (auto x = 0; x < 3; ++x) source->set_pixel(x, y, ui::rgba(10 + x + y * 3, 0, 0));
+		for (auto x = 0; x < 3; ++x) source->set_pixel(x, y, core::rgba(10 + x + y * 3, 0, 0));
 	}
 
 	const auto turned = upright_movie_frame(source);
 	assert_equal(true, sizei{2, 3} == turned->dimensions(), "the frame is turned upright");
-	assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(turned->orientation()),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(turned->orientation()),
 	             "and no longer asks to be turned again");
 
 	// Orientation 6 stores the visual top as column 0 and the visual right as row 0, so each displayed
@@ -435,25 +435,25 @@ static void should_turn_movie_frames_upright()
 	assert_equal(source->get_pixel(2, 1), turned->get_pixel(0, 2), "bottom left is the stored bottom of column 2");
 	assert_equal(source->get_pixel(2, 0), turned->get_pixel(1, 2), "bottom right is the stored top of column 2");
 
-	const auto upright = std::make_shared<ui::surface>();
-	upright->alloc(3, 2, ui::texture_format::RGB, ui::orientation::top_left);
-	assert_equal(true, upright_movie_frame(upright) == ui::const_surface_ptr(upright),
+	const auto upright = std::make_shared<core::surface>();
+	upright->alloc(3, 2, core::texture_format::RGB, core::orientation::top_left);
+	assert_equal(true, upright_movie_frame(upright) == core::const_surface_ptr(upright),
 	             "an upright frame is used as it is");
 
 	// The mirrored orientations were left as stored: unmirrored, and sideways for 5 and 7, though the
 	// extent measured them upright. Each displayed corner against the stored pixel EXIF puts there.
 	struct mirrored
 	{
-		ui::orientation orientation;
+		core::orientation orientation;
 		sizei extent;
 		pointi top_left, top_right, bottom_left;
 	};
 
 	for (const auto& m : {
-		     mirrored{ui::orientation::top_right, {3, 2}, {2, 0}, {0, 0}, {2, 1}},
-		     mirrored{ui::orientation::bottom_left, {3, 2}, {0, 1}, {2, 1}, {0, 0}},
-		     mirrored{ui::orientation::left_top, {2, 3}, {0, 0}, {0, 1}, {2, 0}},
-		     mirrored{ui::orientation::right_bottom, {2, 3}, {2, 1}, {2, 0}, {0, 1}}
+		     mirrored{core::orientation::top_right, {3, 2}, {2, 0}, {0, 0}, {2, 1}},
+		     mirrored{core::orientation::bottom_left, {3, 2}, {0, 1}, {2, 1}, {0, 0}},
+		     mirrored{core::orientation::left_top, {2, 3}, {0, 0}, {0, 1}, {2, 0}},
+		     mirrored{core::orientation::right_bottom, {2, 3}, {2, 1}, {2, 0}, {0, 1}}
 	     })
 	{
 		const auto name = std::format("orientation {}", static_cast<int>(m.orientation));
@@ -461,7 +461,7 @@ static void should_turn_movie_frames_upright()
 		const auto shown = upright_movie_frame(source);
 		assert_equal(true, m.extent == shown->dimensions(), name + " is measured upright");
 		assert_equal(true, m.extent == upright_movie_extent({3, 2}, m.orientation), name + " as the extent says");
-		assert_equal(static_cast<int>(ui::orientation::top_left), static_cast<int>(shown->orientation()),
+		assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(shown->orientation()),
 		             name + " is no longer to be turned");
 		assert_equal(source->get_pixel(m.top_left.x, m.top_left.y), shown->get_pixel(0, 0), name + " top left");
 		assert_equal(source->get_pixel(m.top_right.x, m.top_right.y), shown->get_pixel(m.extent.cx - 1, 0),
@@ -471,9 +471,9 @@ static void should_turn_movie_frames_upright()
 	}
 
 	const auto target = recti(0, 0, 20, 30);
-	assert_equal(true, upright_movie_destination(target, ui::orientation::top_left) == quadd(target),
+	assert_equal(true, upright_movie_destination(target, core::orientation::top_left) == quadd(target),
 	             "an upright texture draws into its target unchanged");
-	assert_equal(false, upright_movie_destination(target, ui::orientation::right_top) == quadd(target),
+	assert_equal(false, upright_movie_destination(target, core::orientation::right_top) == quadd(target),
 	             "a turned texture is drawn through a turned quad");
 }
 
@@ -494,8 +494,8 @@ static void should_retire_movie_source_caches_only_after_successful_replacement(
 	             "a read from the current source generation can fill the window");
 }
 
-static df::item_element_ptr make_versioned_photo_item(const df::file_path path, const df::date_t file_modified,
-                                                      const df::date_t thumbnail_modified)
+static df::item_element_ptr make_versioned_photo_item(const core::file_path path, const core::date_t file_modified,
+                                                      const core::date_t thumbnail_modified)
 {
 	df::index_file_item info;
 	info.ft = files::file_type_from_name(path.name());
@@ -506,8 +506,8 @@ static df::item_element_ptr make_versioned_photo_item(const df::file_path path, 
 	return result;
 }
 
-static void update_versioned_photo_item(const df::item_element_ptr& item, const df::file_path path,
-                                        const df::date_t file_modified, const df::date_t thumbnail_modified)
+static void update_versioned_photo_item(const df::item_element_ptr& item, const core::file_path path,
+                                        const core::date_t file_modified, const core::date_t thumbnail_modified)
 {
 	df::index_file_item info;
 	info.ft = files::file_type_from_name(path.name());
@@ -522,27 +522,27 @@ static void update_versioned_photo_item(const df::item_element_ptr& item, const 
 static void should_reload_displayed_photo_when_source_version_moves_backward()
 {
 	deferred_async_strategy as;
-	const auto path = df::file_path("c:\\source-version.jpg");
-	const auto item = make_versioned_photo_item(path, df::date_t(200), df::date_t(200));
+	const auto path = core::file_path("c:\\source-version.jpg");
+	const auto item = make_versioned_photo_item(path, core::date_t(200), core::date_t(200));
 	auto texture = std::make_shared<texture_state>(as, item);
 
 	texture->load_image(item);
 	assert_equal(1_z, as.pending_worker_count(async_queue::load), "the initial load is queued");
 
-	update_versioned_photo_item(item, path, df::date_t(100), df::date_t(200));
+	update_versioned_photo_item(item, path, core::date_t(100), core::date_t(200));
 	texture->refresh(item);
 	assert_equal(2_z, as.pending_worker_count(async_queue::load),
 	             "a changed file stamp reloads even when the maximum timestamp is unchanged");
 	texture->refresh(item);
 	assert_equal(2_z, as.pending_worker_count(async_queue::load), "the same tuple does not reload again");
 
-	update_versioned_photo_item(item, path, df::date_t(100), df::date_t(100));
+	update_versioned_photo_item(item, path, core::date_t(100), core::date_t(100));
 	texture->refresh(item);
 	assert_equal(2_z, as.pending_worker_count(async_queue::load),
 	             "thumbnail stamp changes alone do not full-decode the displayed photo again");
 
 	texture->mark_visuals_current();
-	update_versioned_photo_item(item, path, df::date_t(50), df::date_t(100));
+	update_versioned_photo_item(item, path, core::date_t(50), core::date_t(100));
 	texture->refresh(item);
 	assert_equal(2_z, as.pending_worker_count(async_queue::load),
 	             "a metadata-only write keeps the current visual across its new stamp");
@@ -552,7 +552,7 @@ static void should_reload_displayed_photo_when_source_version_moves_backward()
 
 	file_load_result written;
 	written.success = true;
-	const auto written_stamp = df::date_t(2026, 1, 5, 12, 0, 0);
+	const auto written_stamp = core::date_t(2026, 1, 5, 12, 0, 0);
 	texture->publish_written_image(path, std::move(written), written_stamp);
 	update_versioned_photo_item(item, path, written_stamp, {});
 	texture->refresh(item);
@@ -598,7 +598,7 @@ static texture_state_ptr make_counted_texture(async_strategy& as, const df::item
 {
 	return texture_state_ptr(new texture_state(as, item), [&counts](texture_state* texture)
 	{
-		if (ui::is_ui_thread()) ++counts.ui;
+		if (platform::is_ui_thread()) ++counts.ui;
 		else ++counts.worker;
 		delete texture;
 	});
@@ -660,8 +660,8 @@ public:
 // and dropped worker-task exits, so final texture release is posted back to the UI queue.
 static void should_release_comparison_preview_textures_on_ui_after_worker_exit()
 {
-	const auto path1 = df::file_path("c:\\compare-a.jpg");
-	const auto path2 = df::file_path("c:\\compare-b.jpg");
+	const auto path1 = core::file_path("c:\\compare-a.jpg");
+	const auto path2 = core::file_path("c:\\compare-b.jpg");
 
 	const auto run_case = [&](const bool run_preview, const bool keep_current_until_ui, const std::string_view label)
 	{
@@ -670,8 +670,8 @@ static void should_release_comparison_preview_textures_on_ui_after_worker_exit()
 		auto display = std::make_shared<display_state_t>(as, common);
 		texture_release_counts counts;
 
-		auto texture1 = make_counted_texture(as, make_versioned_photo_item(path1, df::date_t(1), {}), counts);
-		auto texture2 = make_counted_texture(as, make_versioned_photo_item(path2, df::date_t(1), {}), counts);
+		auto texture1 = make_counted_texture(as, make_versioned_photo_item(path1, core::date_t(1), {}), counts);
+		auto texture2 = make_counted_texture(as, make_versioned_photo_item(path2, core::date_t(1), {}), counts);
 		display->_selected_texture1 = texture1;
 		display->_selected_texture2 = texture2;
 		display->calc_pixel_difference();
@@ -713,26 +713,26 @@ static void should_release_comparison_preview_textures_on_ui_after_worker_exit()
 
 static void should_select_settled_zoom_sampler()
 {
-	assert_equal(true, calc_sampler({1000, 500}, {1000, 500}, ui::orientation::top_left) ==
-	             ui::texture_sampler::point, "one-to-one is exact");
-	assert_equal(true, calc_sampler({1003, 500}, {1000, 500}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bicubic, "just above one-to-one is settled smooth");
-	assert_equal(true, calc_sampler({1500, 750}, {1000, 500}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bicubic, "one and a half times is settled smooth");
-	assert_equal(true, calc_sampler({3000, 1500}, {1000, 500}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bicubic, "three times remains smooth");
-	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, ui::orientation::top_left) ==
-	             ui::texture_sampler::point, "above three times keeps source pixels exact");
-	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, ui::orientation::top_left, false, true) ==
-	             ui::texture_sampler::bicubic, "a magnified stand-in stays smooth rather than blocky");
-	assert_equal(true, calc_sampler({1000, 500}, {1000, 500}, ui::orientation::top_left, false, true) ==
-	             ui::texture_sampler::point, "a stand-in at one-to-one is still exact");
-	assert_equal(true, calc_sampler({1003, 500}, {1000, 500}, ui::orientation::top_left, true) ==
-	             ui::texture_sampler::bilinear, "interactive magnification just above one-to-one uses fast sampler");
-	assert_equal(true, calc_sampler({1500, 750}, {1000, 500}, ui::orientation::top_left, true) ==
-	             ui::texture_sampler::bilinear, "interactive magnification uses fast sampler");
-	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, ui::orientation::top_left, true) ==
-	             ui::texture_sampler::point, "interactive magnification above three times keeps source pixels exact");
+	assert_equal(true, calc_sampler({1000, 500}, {1000, 500}, core::orientation::top_left) ==
+	             render::texture_sampler::point, "one-to-one is exact");
+	assert_equal(true, calc_sampler({1003, 500}, {1000, 500}, core::orientation::top_left) ==
+	             render::texture_sampler::bicubic, "just above one-to-one is settled smooth");
+	assert_equal(true, calc_sampler({1500, 750}, {1000, 500}, core::orientation::top_left) ==
+	             render::texture_sampler::bicubic, "one and a half times is settled smooth");
+	assert_equal(true, calc_sampler({3000, 1500}, {1000, 500}, core::orientation::top_left) ==
+	             render::texture_sampler::bicubic, "three times remains smooth");
+	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, core::orientation::top_left) ==
+	             render::texture_sampler::point, "above three times keeps source pixels exact");
+	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, core::orientation::top_left, false, true) ==
+	             render::texture_sampler::bicubic, "a magnified stand-in stays smooth rather than blocky");
+	assert_equal(true, calc_sampler({1000, 500}, {1000, 500}, core::orientation::top_left, false, true) ==
+	             render::texture_sampler::point, "a stand-in at one-to-one is still exact");
+	assert_equal(true, calc_sampler({1003, 500}, {1000, 500}, core::orientation::top_left, true) ==
+	             render::texture_sampler::bilinear, "interactive magnification just above one-to-one uses fast sampler");
+	assert_equal(true, calc_sampler({1500, 750}, {1000, 500}, core::orientation::top_left, true) ==
+	             render::texture_sampler::bilinear, "interactive magnification uses fast sampler");
+	assert_equal(true, calc_sampler({3001, 1500}, {1000, 500}, core::orientation::top_left, true) ==
+	             render::texture_sampler::point, "interactive magnification above three times keeps source pixels exact");
 }
 
 // A video frame is drawn at the size it was decoded, so a picture smaller than it is minified by the sampler
@@ -740,38 +740,38 @@ static void should_select_settled_zoom_sampler()
 // own extent decides, not the pane it is fitted into.
 static void should_select_video_sampler_by_picture_size()
 {
-	assert_equal(true, calc_video_sampler({960, 540}, {3840, 2160}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bilinear, "a 4K frame drawn at a quarter of its size is bilinear");
-	assert_equal(true, calc_video_sampler({1400, 787}, {1920, 1080}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bilinear, "below three quarters is bilinear");
-	assert_equal(true, calc_video_sampler({1500, 844}, {1920, 1080}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bicubic, "just below one-to-one keeps its edges");
-	assert_equal(true, calc_video_sampler({1920, 1080}, {1920, 1080}, ui::orientation::top_left) ==
-	             ui::texture_sampler::point, "a picture at its decoded size is exact, whatever pane it is fitted into");
-	assert_equal(true, calc_video_sampler({2880, 1620}, {1920, 1080}, ui::orientation::top_left) ==
-	             ui::texture_sampler::bicubic, "a magnified picture is smooth");
-	assert_equal(true, calc_video_sampler({2880, 1620}, {1920, 1080}, ui::orientation::top_left, true) ==
-	             ui::texture_sampler::bilinear, "and fast while interacting");
+	assert_equal(true, calc_video_sampler({960, 540}, {3840, 2160}, core::orientation::top_left) ==
+	             render::texture_sampler::bilinear, "a 4K frame drawn at a quarter of its size is bilinear");
+	assert_equal(true, calc_video_sampler({1400, 787}, {1920, 1080}, core::orientation::top_left) ==
+	             render::texture_sampler::bilinear, "below three quarters is bilinear");
+	assert_equal(true, calc_video_sampler({1500, 844}, {1920, 1080}, core::orientation::top_left) ==
+	             render::texture_sampler::bicubic, "just below one-to-one keeps its edges");
+	assert_equal(true, calc_video_sampler({1920, 1080}, {1920, 1080}, core::orientation::top_left) ==
+	             render::texture_sampler::point, "a picture at its decoded size is exact, whatever pane it is fitted into");
+	assert_equal(true, calc_video_sampler({2880, 1620}, {1920, 1080}, core::orientation::top_left) ==
+	             render::texture_sampler::bicubic, "a magnified picture is smooth");
+	assert_equal(true, calc_video_sampler({2880, 1620}, {1920, 1080}, core::orientation::top_left, true) ==
+	             render::texture_sampler::bilinear, "and fast while interacting");
 }
 
 static void should_accumulate_precision_wheel_deltas()
 {
 	// The frame boundary accumulates the raw platform delta, one detent being 120.
 	auto pending = 0.0;
-	assert_equal(0, ui::accumulate_wheel_steps(pending, 40.0), "first partial detent");
-	assert_equal(0, ui::accumulate_wheel_steps(pending, 40.0), "second partial detent");
-	assert_equal(0, ui::accumulate_wheel_steps(pending, 39.0), "detent not rounded early");
-	assert_equal(1, ui::accumulate_wheel_steps(pending, 1.0), "exact detent steps once");
+	assert_equal(0, platform::accumulate_wheel_steps(pending, 40.0), "first partial detent");
+	assert_equal(0, platform::accumulate_wheel_steps(pending, 40.0), "second partial detent");
+	assert_equal(0, platform::accumulate_wheel_steps(pending, 39.0), "detent not rounded early");
+	assert_equal(1, platform::accumulate_wheel_steps(pending, 1.0), "exact detent steps once");
 	assert_zoom_near(0.0, pending, "positive detent consumed exactly");
-	assert_equal(-2, ui::accumulate_wheel_steps(pending, -240.0), "multiple reverse detents");
+	assert_equal(-2, platform::accumulate_wheel_steps(pending, -240.0), "multiple reverse detents");
 	assert_zoom_near(0.0, pending, "negative detents consumed exactly");
 
 	// The scroll answer is quantised to whole logical units by the same carry, so a device reporting
 	// a single raw unit at a time scrolls rather than halving to nothing on every event.
 	auto scroll = 0.0;
-	assert_equal(0, ui::accumulate_wheel_steps(scroll, 1.0 / 2.0, 1.0), "half a unit is carried, not dropped");
-	assert_equal(1, ui::accumulate_wheel_steps(scroll, 1.0 / 2.0, 1.0), "two halves make a unit");
-	assert_equal(60, ui::accumulate_wheel_steps(scroll, 120.0 / 2.0, 1.0), "a whole detent scrolls its full amount");
+	assert_equal(0, platform::accumulate_wheel_steps(scroll, 1.0 / 2.0, 1.0), "half a unit is carried, not dropped");
+	assert_equal(1, platform::accumulate_wheel_steps(scroll, 1.0 / 2.0, 1.0), "two halves make a unit");
+	assert_equal(60, platform::accumulate_wheel_steps(scroll, 120.0 / 2.0, 1.0), "a whole detent scrolls its full amount");
 }
 
 static void should_validate_zoom_navigator_mode()
@@ -1136,26 +1136,26 @@ static void should_look_around_inside_a_projected_panorama()
 	// The pixel under the middle of the viewport is the pixel the camera is pointed at. This is the
 	// property that makes every other one meaningful: if the centre drifts, nothing else is aimed.
 	assert_equal(true, view.texel_at(400.0, 300.0, viewport, sphere, u, v), "the centre samples the sphere");
-	assert_equal(2000, df::round(u), "and lands on the middle column");
-	assert_equal(1000, df::round(v), "and on the middle row");
+	assert_equal(2000, core::round(u), "and lands on the middle column");
+	assert_equal(1000, core::round(v), "and on the middle row");
 
 	// Off centre it must not merely be "somewhere else": a pixel to the right of centre is east of
 	// it, and one above is north. A symmetric check would pass for a mirrored projection too.
 	double right_u = 0.0, right_v = 0.0;
 	assert_equal(true, view.texel_at(700.0, 300.0, viewport, sphere, right_u, right_v), "so does one to its right");
 	assert_equal(true, right_u > u, "which is further east");
-	assert_equal(1000, df::round(right_v), "on the same row");
+	assert_equal(1000, core::round(right_v), "on the same row");
 
 	double above_u = 0.0, above_v = 0.0;
 	assert_equal(true, view.texel_at(400.0, 100.0, viewport, sphere, above_u, above_v), "and one above it");
 	assert_equal(true, above_v < v, "which is further north");
-	assert_equal(2000, df::round(above_u), "in the same column");
+	assert_equal(2000, core::round(above_u), "in the same column");
 
 	// Crossing the viewport turns by exactly one field of view, which is what "grab the world and
 	// drag it" means. Dragging right brings what was to the west into view, so the camera turns west.
 	const auto start = view;
 	view.drag({viewport.Width, 0.0}, viewport, start);
-	assert_equal(df::round(-start.fov_degrees() * 1000.0), df::round(view.yaw() * 180.0 / M_PI * 1000.0),
+	assert_equal(core::round(-start.fov_degrees() * 1000.0), core::round(view.yaw() * 180.0 / M_PI * 1000.0),
 	             "a drag of one viewport width turns by one field of view");
 	assert_equal(0.0, view.pitch(), "and does not tilt");
 
@@ -1163,18 +1163,18 @@ static void should_look_around_inside_a_projected_panorama()
 	// a coalesced or dropped move message cannot change where it ends up.
 	const auto after_first = view.yaw();
 	view.drag({viewport.Width, 0.0}, viewport, start);
-	assert_equal(df::round(after_first * 1e6), df::round(view.yaw() * 1e6), "and repeats to the same place");
+	assert_equal(core::round(after_first * 1e6), core::round(view.yaw() * 1e6), "and repeats to the same place");
 
 	// A vertical drag turns by the same amount per pixel, and straight up and straight down are both
 	// reachable without rolling past. Two viewport widths is 170 degrees of turn, so the clamp is
 	// what stops it rather than the drag running out.
 	view.drag({0.0, viewport.Width}, viewport, start);
-	assert_equal(df::round(start.fov_degrees()), df::round(view.pitch() * 180.0 / M_PI),
+	assert_equal(core::round(start.fov_degrees()), core::round(view.pitch() * 180.0 / M_PI),
 	             "dragging down one width looks up by one field of view");
 	view.drag({0.0, viewport.Width * 2.0}, viewport, start);
-	assert_equal(90, df::round(view.pitch() * 180.0 / M_PI), "and further looks straight up, no more");
+	assert_equal(90, core::round(view.pitch() * 180.0 / M_PI), "and further looks straight up, no more");
 	view.drag({0.0, -viewport.Width * 2.0}, viewport, start);
-	assert_equal(-90, df::round(view.pitch() * 180.0 / M_PI), "dragging up looks straight down, no more");
+	assert_equal(-90, core::round(view.pitch() * 180.0 / M_PI), "dragging up looks straight down, no more");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1184,26 +1184,26 @@ static void should_look_around_inside_a_projected_panorama()
 static void should_step_the_panorama_field_of_view_ladder()
 {
 	panorama_view view;
-	assert_equal(df::round(panorama_default_fov_deg), df::round(view.fov_degrees()), "a new view opens at the default");
+	assert_equal(core::round(panorama_default_fov_deg), core::round(view.fov_degrees()), "a new view opens at the default");
 
 	assert_equal(true, view.step_fov(1), "stepping in is a step");
-	assert_equal(70, df::round(view.fov_degrees()), "and narrows to the next stop");
+	assert_equal(70, core::round(view.fov_degrees()), "and narrows to the next stop");
 	assert_equal(true, view.step_fov(-1), "stepping out is a step");
-	assert_equal(85, df::round(view.fov_degrees()), "and returns to the one it came from");
+	assert_equal(85, core::round(view.fov_degrees()), "and returns to the one it came from");
 
 	// n steps in and n steps out returns exactly, which is L4 in the ladder this replaces.
 	for (auto i = 0; i < 4; ++i) view.step_fov(1);
 	for (auto i = 0; i < 4; ++i) view.step_fov(-1);
-	assert_equal(85, df::round(view.fov_degrees()), "four in and four out is where it started");
+	assert_equal(85, core::round(view.fov_degrees()), "four in and four out is where it started");
 
 	// The narrow end holds rather than stepping past; the wide end reports that there is nowhere
 	// wider, which is what makes the caller leave the projection instead of pretending.
 	for (auto i = 0; i < 20; ++i) view.step_fov(1);
-	assert_equal(df::round(panorama_min_fov_deg), df::round(view.fov_degrees()), "the narrow end holds");
+	assert_equal(core::round(panorama_min_fov_deg), core::round(view.fov_degrees()), "the narrow end holds");
 	assert_equal(true, view.step_fov(1), "and reports a step it did not need to take");
 
 	for (auto i = 0; i < 20; ++i) view.step_fov(-1);
-	assert_equal(df::round(panorama_max_fov_deg), df::round(view.fov_degrees()), "the wide end is the floor");
+	assert_equal(core::round(panorama_max_fov_deg), core::round(view.fov_degrees()), "the wide end is the floor");
 	assert_equal(false, view.step_fov(-1), "and stepping out from it leaves the projection");
 }
 
@@ -1223,40 +1223,40 @@ static void should_aim_a_projected_panorama_with_a_held_pointer()
 	// anywhere therefore looks at what was under the pointer, which is what makes the gesture
 	// positional rather than relative.
 	view.aim({400.0, 300.0}, viewport, sphere);
-	assert_equal(0, df::round(view.yaw() * 180.0 / M_PI), "the middle aims at the middle");
-	assert_equal(0, df::round(view.pitch() * 180.0 / M_PI), "and level");
+	assert_equal(0, core::round(view.yaw() * 180.0 / M_PI), "the middle aims at the middle");
+	assert_equal(0, core::round(view.pitch() * 180.0 / M_PI), "and level");
 
 	view.aim({800.0, 300.0}, viewport, sphere);
-	assert_equal(180, std::abs(df::round(view.yaw() * 180.0 / M_PI)), "the right edge aims at the far side");
+	assert_equal(180, std::abs(core::round(view.yaw() * 180.0 / M_PI)), "the right edge aims at the far side");
 
 	view.aim({0.0, 300.0}, viewport, sphere);
-	assert_equal(180, std::abs(df::round(view.yaw() * 180.0 / M_PI)), "and so does the left, from the other way");
+	assert_equal(180, std::abs(core::round(view.yaw() * 180.0 / M_PI)), "and so does the left, from the other way");
 
 	// Asymmetric probes: a quarter across is a quarter round, east of centre and not west.
 	view.aim({600.0, 300.0}, viewport, sphere);
-	assert_equal(90, df::round(view.yaw() * 180.0 / M_PI), "a quarter to the right is a quarter turn east");
+	assert_equal(90, core::round(view.yaw() * 180.0 / M_PI), "a quarter to the right is a quarter turn east");
 	view.aim({200.0, 300.0}, viewport, sphere);
-	assert_equal(-90, df::round(view.yaw() * 180.0 / M_PI), "and a quarter to the left is a quarter west");
+	assert_equal(-90, core::round(view.yaw() * 180.0 / M_PI), "and a quarter to the left is a quarter west");
 
 	view.aim({400.0, 0.0}, viewport, sphere);
-	assert_equal(90, df::round(view.pitch() * 180.0 / M_PI), "the top aims straight up");
+	assert_equal(90, core::round(view.pitch() * 180.0 / M_PI), "the top aims straight up");
 	view.aim({400.0, 600.0}, viewport, sphere);
-	assert_equal(-90, df::round(view.pitch() * 180.0 / M_PI), "and the bottom straight down");
+	assert_equal(-90, core::round(view.pitch() * 180.0 / M_PI), "and the bottom straight down");
 
 	// A partial panorama maps its own coverage, not the whole sphere: crossing the viewport must
 	// reach the ends of what the file holds and no further, or most of the gesture would aim at
 	// nothing.
 	const auto strip = prop::panorama_geometry::assumed({4000, 400});
 	view.aim({400.0, 0.0}, viewport, strip);
-	assert_equal(18, df::round(view.pitch() * 180.0 / M_PI), "the top of a strip aims at the top of the strip");
+	assert_equal(18, core::round(view.pitch() * 180.0 / M_PI), "the top of a strip aims at the top of the strip");
 	view.aim({400.0, 600.0}, viewport, strip);
-	assert_equal(-18, df::round(view.pitch() * 180.0 / M_PI), "and the bottom at its bottom");
+	assert_equal(-18, core::round(view.pitch() * 180.0 / M_PI), "and the bottom at its bottom");
 
 	// Off the edge is clamped rather than wrapped: a pointer dragged outside the element must not
 	// spin the view round.
 	view.aim({-500.0, -500.0}, viewport, sphere);
-	assert_equal(180, std::abs(df::round(view.yaw() * 180.0 / M_PI)), "a pointer off the left clamps to the edge");
-	assert_equal(90, df::round(view.pitch() * 180.0 / M_PI), "and off the top clamps to straight up");
+	assert_equal(180, std::abs(core::round(view.yaw() * 180.0 / M_PI)), "a pointer off the left clamps to the edge");
+	assert_equal(90, core::round(view.pitch() * 180.0 / M_PI), "and off the top clamps to straight up");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1270,9 +1270,9 @@ static void should_place_a_partial_panorama_on_the_sphere()
 	assert_equal(4000, strip.full_width, "the pixels span the full circle");
 	assert_equal(2000, strip.full_height, "so the notional sphere is 2:1");
 	assert_equal(800, strip.cropped_top, "and the strip sits on the horizon");
-	assert_equal(18, df::round(panorama_latitude_at_top(strip) * 180.0 / M_PI), "18 north at its top");
-	assert_equal(36, df::round(panorama_latitude_span(strip) * 180.0 / M_PI), "36 degrees of sky in all");
-	assert_equal(0, df::round(panorama_center_latitude(strip) * 180.0 / M_PI), "centred on the horizon");
+	assert_equal(18, core::round(panorama_latitude_at_top(strip) * 180.0 / M_PI), "18 north at its top");
+	assert_equal(36, core::round(panorama_latitude_span(strip) * 180.0 / M_PI), "36 degrees of sky in all");
+	assert_equal(0, core::round(panorama_center_latitude(strip) * 180.0 / M_PI), "centred on the horizon");
 
 	// A true 2:1 sphere is the identity, so the assumption costs nothing where it is not needed.
 	const auto whole = prop::panorama_geometry::assumed({4000, 2000});
@@ -1283,7 +1283,7 @@ static void should_place_a_partial_panorama_on_the_sphere()
 	double u = 0.0, v = 0.0;
 	assert_equal(false, panorama_texel_at(strip, 0.0, 60.0 * M_PI / 180.0, u, v), "60 north is not in the strip");
 	assert_equal(true, panorama_texel_at(strip, 0.0, 0.0, u, v), "the horizon is");
-	assert_equal(200, df::round(v), "half way down it");
+	assert_equal(200, core::round(v), "half way down it");
 
 	// A declaration that contradicts the pixels describes a different file, so it is refused rather
 	// than drawn: this is what stops a stale or copied GPano block bending the picture.
@@ -1324,15 +1324,15 @@ static void should_refresh_same_path_panorama_declaration_without_resetting_view
 	null_async_strategy as;
 	common_display_state_t common;
 	display_state_t display(as, common);
-	const df::file_path path("c:\\same-path-panorama.jpg");
-	const df::file_path other_path("c:\\other-panorama.jpg");
+	const core::file_path path("c:\\same-path-panorama.jpg");
+	const core::file_path other_path("c:\\other-panorama.jpg");
 	const prop::panorama_geometry old_decl{4000, 2000, 0, 0, 4000, 2000};
 	const prop::panorama_geometry stale_decl{4000, 2000, 100, 0, 2000, 1000};
 	const prop::panorama_geometry new_decl{8000, 5000, 0, 500, 8000, 4000};
 	const prop::panorama_geometry same_size_decl{8000, 5000, 0, 750, 8000, 4000};
 
-	display.panorama_item(path, {4000, 2000}, df::date_t(1));
-	display.panorama_geometry(path, old_decl, {4000, 2000}, df::date_t(1));
+	display.panorama_item(path, {4000, 2000}, core::date_t(1));
+	display.panorama_geometry(path, old_decl, {4000, 2000}, core::date_t(1));
 	assert_equal(true, common._panorama.resolved, "the first declaration resolves");
 
 	const auto start = common._panorama.view;
@@ -1340,30 +1340,30 @@ static void should_refresh_same_path_panorama_declaration_without_resetting_view
 	const auto yaw = common._panorama.view.yaw();
 	common._panorama.flat = true;
 
-	display.panorama_item(path, {8000, 4000}, df::date_t(2));
+	display.panorama_item(path, {8000, 4000}, core::date_t(2));
 	assert_equal(false, common._panorama.resolved, "changed same-path dimensions need a new declaration");
 	assert_equal(true, common._panorama.flat, "the user's flat choice is retained for the same path");
 	assert_zoom_near(yaw, common._panorama.view.yaw(), "the camera is retained for the same path");
 
-	display.panorama_geometry(path, stale_decl, {4000, 2000}, df::date_t(1));
+	display.panorama_geometry(path, stale_decl, {4000, 2000}, core::date_t(1));
 	assert_equal(false, common._panorama.resolved, "a stale declaration for the old source cannot win");
 
-	display.panorama_geometry(path, new_decl, {8000, 4000}, df::date_t(2));
+	display.panorama_geometry(path, new_decl, {8000, 4000}, core::date_t(2));
 	assert_equal(true, common._panorama.resolved, "the latest declaration resolves");
 	assert_equal(new_decl.cropped_top, common._panorama.geometry.cropped_top, "the latest crop is applied");
 	assert_equal(true, common._panorama.flat, "the declaration does not reset the flat choice");
 	assert_zoom_near(yaw, common._panorama.view.yaw(), "the declaration does not reset the camera");
 
-	display.panorama_item(path, {8000, 4000}, df::date_t(3));
+	display.panorama_item(path, {8000, 4000}, core::date_t(3));
 	assert_equal(false, common._panorama.resolved, "same-size source revision needs a new declaration");
-	display.panorama_geometry(path, same_size_decl, {8000, 4000}, df::date_t(3));
+	display.panorama_geometry(path, same_size_decl, {8000, 4000}, core::date_t(3));
 	assert_equal(same_size_decl.cropped_top, common._panorama.geometry.cropped_top,
 	             "same-size declaration edits are applied");
 	assert_zoom_near(yaw, common._panorama.view.yaw(), "same-path declaration edits still keep the camera");
 
-	display.panorama_item(other_path, {8000, 4000}, df::date_t(4));
+	display.panorama_item(other_path, {8000, 4000}, core::date_t(4));
 	common._panorama.view.drag({400, 0}, {800, 600}, common._panorama.view);
-	display.panorama_geometry(other_path, same_size_decl, {8000, 4000}, df::date_t(4));
+	display.panorama_geometry(other_path, same_size_decl, {8000, 4000}, core::date_t(4));
 	assert_zoom_near(0.0, common._panorama.view.yaw(), "a new panorama recentres when its declaration arrives");
 }
 
@@ -1481,7 +1481,7 @@ static void should_map_a_drawn_region_onto_stored_pixels()
 	// A portrait phone photograph: stored 4000x3000 landscape, displayed 3000x4000 upright.
 	constexpr sizei stored{4000, 3000};
 
-	const auto mapped = [](const rectd normalised, const ui::orientation o, const bool was_rotated)
+	const auto mapped = [](const rectd normalised, const core::orientation o, const bool was_rotated)
 	{
 		return edit_view_state::crop_from_displayed_rect(normalised, stored, o, was_rotated).bounding_rect();
 	};
@@ -1496,12 +1496,12 @@ static void should_map_a_drawn_region_onto_stored_pixels()
 	};
 
 	// The unrotated case must be left exactly where it was, or every ordinary photograph moves.
-	assert_rect(mapped({0.25, 0.5, 0.25, 0.25}, ui::orientation::top_left, true),
+	assert_rect(mapped({0.25, 0.5, 0.25, 0.25}, core::orientation::top_left, true),
 	            1000, 1500, 1000, 750, "an unrotated capture is not moved");
 
 	// With show_rotated off the picture is drawn in its stored orientation, so the fractions are
 	// already fractions of the stored picture and only the corner order carries the rotation.
-	assert_rect(mapped({0.25, 0.5, 0.25, 0.25}, ui::orientation::right_top, false),
+	assert_rect(mapped({0.25, 0.5, 0.25, 0.25}, core::orientation::right_top, false),
 	            1000, 1500, 1000, 750, "already stored space when the picture is not turned");
 
 	// One asymmetric probe per orientation, mapped by hand from the EXIF definition. A symmetric
@@ -1510,15 +1510,15 @@ static void should_map_a_drawn_region_onto_stored_pixels()
 	// Displayed rect is the top-left quarter-ish block {0.0, 0.0, 0.25, 0.5} of the displayed extent.
 	struct probe
 	{
-		ui::orientation orientation;
+		core::orientation orientation;
 		double x, y, w, h;
 	};
 
 	// Non-flipping: displayed extent is 4000x3000, so the block is 1000x1500 at the displayed origin.
 	constexpr probe upright_probes[]{
-		{ui::orientation::top_right, 3000, 0, 1000, 1500},   // mirrored left to right
-		{ui::orientation::bottom_right, 3000, 1500, 1000, 1500}, // turned half way round
-		{ui::orientation::bottom_left, 0, 1500, 1000, 1500}, // mirrored top to bottom
+		{core::orientation::top_right, 3000, 0, 1000, 1500},   // mirrored left to right
+		{core::orientation::bottom_right, 3000, 1500, 1000, 1500}, // turned half way round
+		{core::orientation::bottom_left, 0, 1500, 1000, 1500}, // mirrored top to bottom
 	};
 
 	for (const auto& p : upright_probes)
@@ -1530,10 +1530,10 @@ static void should_map_a_drawn_region_onto_stored_pixels()
 	// Flipping: displayed extent is 3000x4000, so the block is 750x2000 and the axes swap on the way
 	// back, giving a 2000x750 rectangle in stored space.
 	constexpr probe turned_probes[]{
-		{ui::orientation::left_top, 0, 0, 2000, 750},        // transposed about the main diagonal
-		{ui::orientation::right_top, 0, 2250, 2000, 750},    // rotated a quarter turn
-		{ui::orientation::right_bottom, 2000, 2250, 2000, 750}, // transposed about the anti-diagonal
-		{ui::orientation::left_bottom, 2000, 0, 2000, 750},  // rotated a quarter turn the other way
+		{core::orientation::left_top, 0, 0, 2000, 750},        // transposed about the main diagonal
+		{core::orientation::right_top, 0, 2250, 2000, 750},    // rotated a quarter turn
+		{core::orientation::right_bottom, 2000, 2250, 2000, 750}, // transposed about the anti-diagonal
+		{core::orientation::left_bottom, 2000, 0, 2000, 750},  // rotated a quarter turn the other way
 	};
 
 	for (const auto& p : turned_probes)
@@ -1645,9 +1645,9 @@ static void should_orient_selector_thumbnails()
 {
 	constexpr recti image_bounds(0, 0, 100, 100);
 	const auto rotated = selector_view::thumbnail_destination({4, 3}, image_bounds,
-	                                                          ui::orientation::right_top, true);
+	                                                          core::orientation::right_top, true);
 	const auto unrotated = selector_view::thumbnail_destination({4, 3}, image_bounds,
-	                                                            ui::orientation::right_top, false);
+	                                                            core::orientation::right_top, false);
 
 	assert_equal(90.0, rotated.angle(), "selector applies right-top orientation");
 	assert_equal(true, rotated.bounding_rect().extent().round() == sizei(75, 100),
@@ -1667,7 +1667,7 @@ static void should_range_select_across_selector()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::items);
-	s.open(view, df::search_t().add_selector(test_files_folder), {});
+	s.open(view, df::search_t().add_selector(test_files_folder()), {});
 	s.update_item_groups();
 	s.update_selection();
 
@@ -1757,7 +1757,7 @@ static void should_show_selected_thumbnail_without_waiting()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::items);
-	s.open(view, df::search_t().add_selector(test_files_folder), {});
+	s.open(view, df::search_t().add_selector(test_files_folder()), {});
 	s.update_item_groups();
 	s.update_selection();
 
@@ -1833,7 +1833,7 @@ static void should_stage_neighbour_stand_ins()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::media);
-	s.open(view, df::search_t().add_selector(test_files_folder), {});
+	s.open(view, df::search_t().add_selector(test_files_folder()), {});
 	s.update_item_groups();
 	s.update_selection();
 
@@ -2214,11 +2214,11 @@ public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
 	const ui::frame_ptr owner() override { return nullptr; }
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
-	void on_window_paint(ui::draw_context& dc) override {}
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override {}
+	void on_window_paint(render::draw_context& dc) override {}
 	void tick() override {}
 	void activate(bool is_active) override {}
-	bool key_down(const int c, const ui::key_state keys) override { return false; }
+	bool key_down(const int c, const platform::key_state keys) override { return false; }
 	void invoke(const commands cmd) override {}
 	bool is_command_checked(const commands cmd) override { return false; }
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override {}
@@ -2295,11 +2295,11 @@ public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
 	const ui::frame_ptr owner() override { return nullptr; }
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
-	void on_window_paint(ui::draw_context& dc) override {}
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override {}
+	void on_window_paint(render::draw_context& dc) override {}
 	void tick() override {}
 	void activate(bool is_active) override {}
-	bool key_down(const int c, const ui::key_state keys) override { return false; }
+	bool key_down(const int c, const platform::key_state keys) override { return false; }
 	void invoke(const commands cmd) override {}
 	bool is_command_checked(const commands cmd) override { return false; }
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override {}
@@ -2357,13 +2357,13 @@ public:
 	{
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		view_controller::on_mouse_left_button_down(loc, keys);
 		tracking = true;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (!cancelled) ++performed;
 		tracking = false;
@@ -2385,11 +2385,11 @@ public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
 	const ui::frame_ptr owner() override { return nullptr; }
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
-	void on_window_paint(ui::draw_context& dc) override {}
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override {}
+	void on_window_paint(render::draw_context& dc) override {}
 	void tick() override {}
 	void activate(bool is_active) override {}
-	bool key_down(const int c, const ui::key_state keys) override { return false; }
+	bool key_down(const int c, const platform::key_state keys) override { return false; }
 	void invoke(const commands cmd) override {}
 	bool is_command_checked(const commands cmd) override { return false; }
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override {}
@@ -2449,11 +2449,11 @@ public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
 	const ui::frame_ptr owner() override { return nullptr; }
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
-	void on_window_paint(ui::draw_context& dc) override {}
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override {}
+	void on_window_paint(render::draw_context& dc) override {}
 	void tick() override {}
 	void activate(bool is_active) override {}
-	bool key_down(const int c, const ui::key_state keys) override { return false; }
+	bool key_down(const int c, const platform::key_state keys) override { return false; }
 	void invoke(const commands cmd) override {}
 	bool is_command_checked(const commands cmd) override { return false; }
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override {}
@@ -2492,11 +2492,11 @@ public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
 	const ui::frame_ptr owner() override { return nullptr; }
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
-	void on_window_paint(ui::draw_context& dc) override {}
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override {}
+	void on_window_paint(render::draw_context& dc) override {}
 	void tick() override {}
 	void activate(bool is_active) override {}
-	bool key_down(const int c, const ui::key_state keys) override { return false; }
+	bool key_down(const int c, const platform::key_state keys) override { return false; }
 	void invoke(const commands cmd) override {}
 	bool is_command_checked(const commands cmd) override { return false; }
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override {}
@@ -2509,8 +2509,8 @@ public:
 		return items.items_controller_from_location(shared_from_this(), loc, ctx);
 	}
 
-	platform::drop_effect perform_drag(const std::vector<df::file_path>& files,
-	                                   const std::vector<df::folder_path>& folders) override
+	platform::drop_effect perform_drag(const std::vector<core::file_path>& files,
+	                                   const std::vector<core::folder_path>& folders) override
 	{
 		++drags;
 		return platform::drop_effect::copy;
@@ -2531,7 +2531,7 @@ static void should_start_one_drag_per_press_on_a_selected_item()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::items);
-	s.open(view, df::search_t().add_selector(test_files_folder), {});
+	s.open(view, df::search_t().add_selector(test_files_folder()), {});
 	s.update_item_groups();
 	s.update_selection();
 
@@ -2545,7 +2545,7 @@ static void should_start_one_drag_per_press_on_a_selected_item()
 	item->layout(mc, recti(0, 0, 100, 100));
 
 	items_view items(s, nullptr);
-	const df::scope_exit clear_hook([] { test_during_detach_file_handles = {}; });
+	const core::scope_exit clear_hook([] { test_during_detach_file_handles = {}; });
 
 	const auto drags_for = [&](const std::function<void(view_host&)>& while_releasing_media)
 	{
@@ -2582,11 +2582,11 @@ public:
 	const ui::frame_ptr frame() const override { return ui::no_frame(); }
 	const ui::frame_ptr owner() override { return nullptr; }
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override {}
-	void on_window_paint(ui::draw_context& dc) override {}
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override {}
+	void on_window_paint(render::draw_context& dc) override {}
 	void tick() override {}
 	void activate(bool is_active) override {}
-	bool key_down(const int c, const ui::key_state keys) override { return false; }
+	bool key_down(const int c, const platform::key_state keys) override { return false; }
 	void invoke(const commands cmd) override {}
 	bool is_command_checked(const commands cmd) override { return false; }
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override {}
@@ -2737,19 +2737,19 @@ static void should_separate_occlusion_from_exclusion()
 
 // The list view's chrome is measured in text lines, so unlike the flex stub this one has to report a
 // height. Only the vertical arrangement is under test, so the column widths are nominal.
-class list_test_measure_context final : public ui::measure_context
+class list_test_measure_context final : public render::measure_context
 {
 public:
 	static constexpr int line_height = 20;
 
-	sizei measure_text(const std::string_view text, ui::style::font_face font, ui::style::text_style style,
+	sizei measure_text(const std::string_view text, render::font_face font, render::text_style style,
 	                   const int cx, int cy = 0) override
 	{
 		return {std::min(cx, static_cast<int>(text.size()) * 8), line_height};
 	}
 
-	int text_line_height(ui::style::font_face font) override { return line_height; }
-	ui::text_layout_ptr create_text_layout(ui::style::font_face font) override { return {}; }
+	int text_line_height(render::font_face font) override { return line_height; }
+	render::text_layout_ptr create_text_layout(render::font_face font) override { return {}; }
 };
 
 class forwarding_test_controller final : public view_controller
@@ -2786,15 +2786,15 @@ public:
 	}
 };
 
-static ui::surface_ptr make_test_surface(const sizei dimensions, const ui::orientation orientation = ui::orientation::top_left)
+static core::surface_ptr make_test_surface(const sizei dimensions, const core::orientation orientation = core::orientation::top_left)
 {
-	auto surface = std::make_shared<ui::surface>();
-	surface->alloc(dimensions, ui::texture_format::ARGB, orientation);
+	auto surface = std::make_shared<core::surface>();
+	surface->alloc(dimensions, core::texture_format::ARGB, orientation);
 	surface->make_blank();
 	return surface;
 }
 
-static ui::const_image_ptr make_valid_test_image()
+static core::const_image_ptr make_valid_test_image()
 {
 	files ff;
 	return ff.surface_to_thumbnail(make_test_surface({16, 12}));
@@ -2859,16 +2859,16 @@ static void should_reject_stale_edit_load_preview_and_analysis_results()
 static void should_draw_edit_preview_decoded_short_of_its_request()
 {
 	files ff;
-	const auto loaded = ff.load(test_files_folder.combine_file("Test.jpg"), false);
+	const auto loaded = ff.load(test_files_folder().combine_file("Test.jpg"), false);
 	assert_equal(true, edit_load_has_source_pixels(loaded), "the fixture loads");
 
-	ui::const_surface_ptr last_preview;
+	core::const_surface_ptr last_preview;
 	sizei last_request;
 
 	for (const auto extent : {sizei(101, 300), sizei(1100, 800), sizei(512, 512)})
 	{
 		const auto label = std::format("{} x {}", extent.cx, extent.cy);
-		const auto request = ui::scale_dimensions(loaded.dimensions(), extent);
+		const auto request = core::scale_dimensions(loaded.dimensions(), extent);
 		const auto preview = loaded.to_surface(request);
 
 		assert_equal(true, is_valid(preview), label, "the preview decodes");
@@ -2894,13 +2894,13 @@ static void should_draw_edit_preview_decoded_short_of_its_request()
 static void should_report_edit_preview_that_cannot_decode_as_a_load_failure()
 {
 	// Half a PNG, read the way files::load reads one: the header parses, the image data is cut off.
-	const auto png = df::blob_from_file(test_files_folder.combine_file("engine.png"));
+	const auto png = platform::blob_from_file(test_files_folder().combine_file("engine.png"));
 	file_load_result truncated;
 	truncated.i = load_image_file({png.data(), png.size() / 2});
 	truncated.success = is_valid(truncated.i);
 	assert_equal(true, edit_load_has_source_pixels(truncated), "a header-only load is offered as editable");
 
-	const auto request = ui::scale_dimensions(truncated.dimensions(), sizei(640, 480));
+	const auto request = core::scale_dimensions(truncated.dimensions(), sizei(640, 480));
 	const auto unreadable = edit_preview_failure(truncated.to_surface(request), truncated, request);
 	assert_equal(true, unreadable == file_load_result::failure::unreadable, "an undecodable preview is unreadable");
 
@@ -2910,14 +2910,14 @@ static void should_report_edit_preview_that_cannot_decode_as_a_load_failure()
 	                    "an undecodable file says it failed rather than loading");
 
 	files ff;
-	const auto loaded = ff.load(test_files_folder.combine_file("Test.jpg"), false);
-	const auto fitted = ui::scale_dimensions(loaded.dimensions(), sizei(640, 480));
+	const auto loaded = ff.load(test_files_folder().combine_file("Test.jpg"), false);
+	const auto fitted = core::scale_dimensions(loaded.dimensions(), sizei(640, 480));
 	assert_equal(true, edit_preview_failure(loaded.to_surface(fitted), loaded, fitted) ==
 	             file_load_result::failure::none, "a decoded preview is not a failure");
 
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
-	df::max_decode_bytes = 64 * 1024;
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
+	render::max_decode_bytes = 64 * 1024;
 
 	const auto refused = edit_preview_failure(loaded.to_surface(fitted), loaded, fitted);
 	assert_equal(true, refused == file_load_result::failure::too_large, "a budget refusal is too large");
@@ -2937,10 +2937,10 @@ static void should_apply_pending_edit_crop_after_async_load()
 
 	assert_equal(true, crop.has_value(), "async bitmap load keeps the crop that opened Edit");
 	const auto bounds = crop ? crop->bounding_rect() : rectd{};
-	assert_equal(50, df::round(bounds.left()), "pending crop maps left to source pixels");
-	assert_equal(25, df::round(bounds.top()), "pending crop maps top to source pixels");
-	assert_equal(150, df::round(bounds.right()), "pending crop maps right to source pixels");
-	assert_equal(75, df::round(bounds.bottom()), "pending crop maps bottom to source pixels");
+	assert_equal(50, core::round(bounds.left()), "pending crop maps left to source pixels");
+	assert_equal(25, core::round(bounds.top()), "pending crop maps top to source pixels");
+	assert_equal(150, core::round(bounds.right()), "pending crop maps right to source pixels");
+	assert_equal(75, core::round(bounds.bottom()), "pending crop maps bottom to source pixels");
 
 	file_load_result empty;
 	assert_equal(false, edit_pending_crop_for_loaded_photo(pending, empty, false).has_value(),
@@ -3036,20 +3036,20 @@ static void should_pan_items_touch_on_magnified_media_like_fullscreen()
 	                 "fitted media ignores touch pan y");
 }
 
-static ui::const_image_ptr make_corrupt_test_image()
+static core::const_image_ptr make_corrupt_test_image()
 {
-	return std::make_shared<ui::image>(df::blob{0xff, 0xd8, 0xff, 0xd9}, sizei{32, 32},
-	                                   ui::image_format::JPEG, ui::orientation::top_left);
+	return std::make_shared<core::image>(core::blob{0xff, 0xd8, 0xff, 0xd9}, sizei{32, 32},
+	                                   core::image_format::JPEG, core::orientation::top_left);
 }
 
 static df::item_element_ptr make_thumbnail_test_item(const std::string& name,
-                                                     const ui::const_image_ptr& thumbnail)
+                                                     const core::const_image_ptr& thumbnail)
 {
 	df::index_file_item indexed;
-	indexed.name = str::cache(name);
+	indexed.name = core::cache(name);
 	indexed.ft = files::file_type_from_name(indexed.name);
 
-	const auto item = std::make_shared<df::item_element>(df::file_path("c:\\" + name), indexed);
+	const auto item = std::make_shared<df::item_element>(core::file_path("c:\\" + name), indexed);
 	item->thumbnail(thumbnail, {}, {});
 	return item;
 }
@@ -3081,7 +3081,7 @@ static void should_not_refresh_tooltip_for_fresh_request_when_only_cover_art_is_
 	assert_equal(true, stage.run_next(async_queue::render), "cover-art decode runs");
 	stage.drain_ui();
 	assert_equal(true, item->has_cached_surface(), "cover art can cache even when the thumbnail failed");
-	assert_equal(false, ui::is_valid(item->thumbnail_surface()), "thumbnail surface is still absent");
+	assert_equal(false, core::is_valid(item->thumbnail_surface()), "thumbnail surface is still absent");
 
 	deferred_async_strategy tooltip;
 	item->stage_thumbnail_surface(tooltip, false, true);
@@ -3142,7 +3142,7 @@ static void should_publish_async_selection_thumbnail_strip()
 {
 	deferred_async_strategy as;
 	auto strip = std::make_shared<ui::selection_thumbnails_control>(ui::no_frame());
-	const std::vector<ui::const_image_ptr> images{make_valid_test_image(), make_valid_test_image()};
+	const std::vector<core::const_image_ptr> images{make_valid_test_image(), make_valid_test_image()};
 
 	strip->selection_async(images, images.size(), as);
 	assert_equal(1_z, as.pending_worker_count(async_queue::render), "strip decode is queued");
@@ -3160,7 +3160,7 @@ static void should_discard_async_selection_strip_after_clear()
 {
 	deferred_async_strategy as;
 	auto strip = std::make_shared<ui::selection_thumbnails_control>(ui::no_frame());
-	const std::vector<ui::const_image_ptr> images{make_valid_test_image()};
+	const std::vector<core::const_image_ptr> images{make_valid_test_image()};
 
 	strip->selection_async(images, images.size(), as);
 	strip->selection({}, 0);
@@ -3180,7 +3180,7 @@ static void should_not_keep_selection_strip_frame_alive()
 	auto frame = std::make_shared<ui::null_frame>();
 	const std::weak_ptr<ui::null_frame> weak_frame = frame;
 	const auto strip = std::make_shared<ui::selection_thumbnails_control>(frame);
-	const std::vector<ui::const_image_ptr> images{make_valid_test_image()};
+	const std::vector<core::const_image_ptr> images{make_valid_test_image()};
 
 	strip->selection_async(images, images.size(), as);
 	frame.reset();
@@ -3193,11 +3193,11 @@ static void should_not_keep_selection_strip_frame_alive()
 
 static void should_preview_rotation_with_inverse_destination_transform()
 {
-	assert_equal(static_cast<int>(simple_transform::rot_270),
-	             static_cast<int>(ui::before_after_control::preview_destination_transform(simple_transform::rot_90)),
+	assert_equal(static_cast<int>(core::simple_transform::rot_270),
+	             static_cast<int>(ui::before_after_control::preview_destination_transform(core::simple_transform::rot_90)),
 	             "clockwise source edit previews with the inverse destination transform");
-	assert_equal(static_cast<int>(simple_transform::rot_90),
-	             static_cast<int>(ui::before_after_control::preview_destination_transform(simple_transform::rot_270)),
+	assert_equal(static_cast<int>(core::simple_transform::rot_90),
+	             static_cast<int>(ui::before_after_control::preview_destination_transform(core::simple_transform::rot_270)),
 	             "anticlockwise source edit previews with the inverse destination transform");
 }
 
@@ -3208,30 +3208,30 @@ static void should_preview_a_rotation_as_it_is_written()
 {
 	constexpr sizei extent(20, 10);
 	constexpr sizei rotated(10, 20);
-	const auto source = std::make_shared<ui::surface>();
-	source->alloc(extent.cx, extent.cy, ui::texture_format::RGB);
+	const auto source = std::make_shared<core::surface>();
+	source->alloc(extent.cx, extent.cy, core::texture_format::RGB);
 
 	for (auto y = 0; y < extent.cy; ++y)
 	{
 		for (auto x = 0; x < extent.cx; ++x)
 		{
 			const auto marked = x < extent.cx / 2 && y < extent.cy / 2;
-			source->set_pixel(x, y, marked ? ui::rgba(255, 255, 255) : ui::rgba(0, 0, 0));
+			source->set_pixel(x, y, marked ? core::rgba(255, 255, 255) : core::rgba(0, 0, 0));
 		}
 	}
 
-	for (const auto t : {simple_transform::rot_90, simple_transform::rot_270})
+	for (const auto t : {core::simple_transform::rot_90, core::simple_transform::rot_270})
 	{
-		const auto direction = t == simple_transform::rot_90 ? "clockwise"s : "anticlockwise"s;
+		const auto direction = t == core::simple_transform::rot_90 ? "clockwise"s : "anticlockwise"s;
 
 		image_edits edits;
-		edits.crop_bounds(rotate_command_crop_bounds(extent, ui::orientation::top_left, t, true));
+		edits.crop_bounds(rotate_command_crop_bounds(extent, core::orientation::top_left, t, true));
 		const auto written = apply_image_edits(source, edits);
-		assert_equal(true, ui::is_valid(written) && written->dimensions() == rotated,
+		assert_equal(true, core::is_valid(written) && written->dimensions() == rotated,
 		             "the rotation writes the picture on its side", direction);
 
 		std::vector<uint8_t> bits(static_cast<size_t>(rotated.cx) * rotated.cy * 4);
-		ui::software_canvas canvas;
+		render::software_canvas canvas;
 		canvas._bits = bits.data();
 		canvas._stride = rotated.cx * 4;
 		canvas._buffer_extent = rotated;
@@ -3239,11 +3239,11 @@ static void should_preview_a_rotation_as_it_is_written()
 		canvas._clip = recti({}, rotated);
 		const auto destination = quadd(recti({}, rotated)).transform(
 			ui::before_after_control::preview_destination_transform(t));
-		canvas.blit_quad(*source, recti({}, extent), destination, 1.0f, ui::texture_sampler::point, false);
+		canvas.blit_quad(*source, recti({}, extent), destination, 1.0f, render::texture_sampler::point, false);
 
 		// Turned clockwise the top-left quarter goes to the top right; anticlockwise, to the bottom left.
-		const auto expected_qx = t == simple_transform::rot_90 ? 1 : 0;
-		const auto expected_qy = t == simple_transform::rot_90 ? 0 : 1;
+		const auto expected_qx = t == core::simple_transform::rot_90 ? 1 : 0;
+		const auto expected_qy = t == core::simple_transform::rot_90 ? 0 : 1;
 
 		for (auto qy = 0; qy < 2; ++qy)
 		{
@@ -3252,7 +3252,7 @@ static void should_preview_a_rotation_as_it_is_written()
 				const auto x = rotated.cx / 4 + qx * rotated.cx / 2;
 				const auto y = rotated.cy / 4 + qy * rotated.cy / 2;
 				const auto expected = qx == expected_qx && qy == expected_qy;
-				assert_equal(expected, ui::get_g(written->get_pixel(x, y)) > 128,
+				assert_equal(expected, core::get_g(written->get_pixel(x, y)) > 128,
 				             "the rotation puts the mark in the quarter its direction turns it to", direction);
 				assert_equal(expected, canvas.pixel(x, y)[1] > 128,
 				             "and the preview shows it in the same quarter", direction);
@@ -3362,7 +3362,7 @@ public:
 	}
 };
 
-class slot_test_texture final : public ui::texture
+class slot_test_texture final : public render::texture
 {
 public:
 	int source_index = -1;
@@ -3373,33 +3373,33 @@ public:
 	{
 	}
 
-	ui::texture_update_result update(const ui::video_frame_ptr&) override { return ui::texture_update_result::failed; }
+	render::texture_update_result update(const render::video_frame_ptr&) override { return render::texture_update_result::failed; }
 
-	ui::texture_update_result update(const ui::const_surface_ptr& surface) override
+	render::texture_update_result update(const core::const_surface_ptr& surface) override
 	{
-		if (fail_update) return ui::texture_update_result::failed;
+		if (fail_update) return render::texture_update_result::failed;
 		_dimensions = surface->dimensions();
 		_src_extent = surface->dimensions();
 		_orientation = surface->orientation();
 		_format = surface->format();
-		return ui::texture_update_result::tex_created;
+		return render::texture_update_result::tex_created;
 	}
 
-	ui::texture_update_result update(sizei dims, ui::texture_format format, ui::orientation orientation,
+	render::texture_update_result update(sizei dims, core::texture_format format, core::orientation orientation,
 	                                 const uint8_t*, size_t, size_t) override
 	{
-		if (fail_update) return ui::texture_update_result::failed;
+		if (fail_update) return render::texture_update_result::failed;
 		_dimensions = dims;
 		_src_extent = dims;
 		_orientation = orientation;
 		_format = format;
-		return ui::texture_update_result::tex_created;
+		return render::texture_update_result::tex_created;
 	}
 
 	bool is_valid() const override { return !fail_update; }
 };
 
-class slot_test_draw_context final : public ui::draw_context
+class slot_test_draw_context final : public render::draw_context
 {
 public:
 	struct draw_call
@@ -3422,58 +3422,62 @@ public:
 		colors.alpha = 1.0f;
 	}
 
-	void clear(ui::color) override {}
-	void draw_rounded_rect(recti, ui::color, int) override {}
-	void draw_rect(recti, ui::color) override {}
-	void draw_text(const std::string_view text, const recti bounds, ui::style::font_face, ui::style::text_style,
-	               ui::color, ui::color) override
+	void clear(core::color) override {}
+	void draw_rounded_rect(recti, core::color, int) override {}
+	void draw_rect(recti, core::color) override {}
+	void draw_line(core::pointd, core::pointd, core::color, double) override {}
+	void draw_polyline(std::span<const core::pointd>, core::color, double) override {}
+	void draw_ellipse(recti, core::color, double) override {}
+	void fill_ellipse(recti, core::color) override {}
+	void draw_text(const std::string_view text, const recti bounds, render::font_face, render::text_style,
+	               core::color, core::color) override
 	{
 		text_bounds.emplace_back(bounds);
 		text_values.emplace_back(text);
 	}
-	void draw_text(std::string_view, const std::vector<ui::text_highlight_t>&, const recti bounds, ui::style::font_face,
-	               ui::style::text_style, ui::color, ui::color) override
+	void draw_text(std::string_view, const std::vector<render::text_highlight_t>&, const recti bounds, render::font_face,
+	               render::text_style, core::color, core::color) override
 	{
 		highlighted_text_bounds.emplace_back(bounds);
 	}
-	void draw_text(const ui::text_layout_ptr&, recti, ui::color, ui::color) override {}
-	void draw_border(recti, recti, ui::color, ui::color) override {}
-	void draw_texture(const ui::texture_ptr& t, recti dst, float, ui::texture_sampler) override
+	void draw_text(const render::text_layout_ptr&, recti, core::color, core::color) override {}
+	void draw_border(recti, recti, core::color, core::color) override {}
+	void draw_texture(const render::texture_ptr& t, recti dst, float, render::texture_sampler) override
 	{
 		const auto texture = std::dynamic_pointer_cast<slot_test_texture>(t);
 		draws.push_back({texture ? texture->source_index : -1, dst, recti({}, t->dimensions())});
 	}
-	void draw_texture(const ui::texture_ptr& t, recti dst, recti src, float, ui::texture_sampler, float) override
+	void draw_texture(const render::texture_ptr& t, recti dst, recti src, float, render::texture_sampler, float) override
 	{
 		const auto texture = std::dynamic_pointer_cast<slot_test_texture>(t);
 		draws.push_back({texture ? texture->source_index : -1, dst, src});
 	}
-	void draw_texture(const ui::texture_ptr& t, const quadd& dst, recti src, float, ui::texture_sampler) override
+	void draw_texture(const render::texture_ptr& t, const quadd& dst, recti src, float, render::texture_sampler) override
 	{
 		const auto texture = std::dynamic_pointer_cast<slot_test_texture>(t);
 		draws.push_back({texture ? texture->source_index : -1, dst.bounding_rect_i(), src});
 	}
-	void draw_texture(const ui::texture_ptr& t, const quadd& dst, recti src, float, ui::texture_sampler,
-	                  const ui::texture_transform&) override
+	void draw_texture(const render::texture_ptr& t, const quadd& dst, recti src, float, render::texture_sampler,
+	                  const render::texture_transform&) override
 	{
 		const auto texture = std::dynamic_pointer_cast<slot_test_texture>(t);
 		draws.push_back({texture ? texture->source_index : -1, dst.bounding_rect_i(), src});
 	}
-	void draw_vertices(const ui::vertices_ptr&) override {}
-	sizei measure_text(std::string_view text, ui::style::font_face, ui::style::text_style, int width,
+	void draw_vertices(const render::vertices_ptr&) override {}
+	sizei measure_text(std::string_view text, render::font_face, render::text_style, int width,
 	                   int = 0) override
 	{
 		return {std::min(width, static_cast<int>(text.size()) * 8), 20};
 	}
-	int text_line_height(ui::style::font_face) override { return 20; }
-	ui::texture_ptr create_texture() override
+	int text_line_height(render::font_face) override { return 20; }
+	render::texture_ptr create_texture() override
 	{
 		const auto index = created++;
 		const auto fail = static_cast<size_t>(index) < fail_uploads.size() && fail_uploads[index];
 		return std::make_shared<slot_test_texture>(index, fail);
 	}
-	ui::vertices_ptr create_vertices() override { return {}; }
-	ui::text_layout_ptr create_text_layout(ui::style::font_face) override { return {}; }
+	render::vertices_ptr create_vertices() override { return {}; }
+	render::text_layout_ptr create_text_layout(render::font_face) override { return {}; }
 	recti clip_bounds() const override { return clip; }
 	void clip_bounds(recti) override {}
 	void restore_clip() override {}
@@ -3508,18 +3512,18 @@ static void should_draw_only_hex_rows_inside_the_clip()
 
 
 // Records what a document draws: each row's text and highlights, and the rectangles filled behind it.
-class document_test_draw_context final : public ui::draw_context
+class document_test_draw_context final : public render::draw_context
 {
 public:
 	struct text_call
 	{
 		std::string text;
-		std::vector<ui::text_highlight_t> highlights;
+		std::vector<render::text_highlight_t> highlights;
 		recti bounds;
 	};
 
 	std::vector<text_call> texts;
-	std::vector<std::pair<recti, ui::color>> rects;
+	std::vector<std::pair<recti, core::color>> rects;
 	recti clip{0, 0, 4000, 4000};
 
 	document_test_draw_context()
@@ -3527,32 +3531,36 @@ public:
 		colors.alpha = 1.0f;
 	}
 
-	void clear(ui::color) override {}
-	void draw_rounded_rect(recti, ui::color, int) override {}
-	void draw_rect(const recti bounds, const ui::color c) override { rects.emplace_back(bounds, c); }
-	void draw_text(std::string_view, recti, ui::style::font_face, ui::style::text_style, ui::color, ui::color) override {}
-	void draw_text(const std::string_view text, const std::vector<ui::text_highlight_t>& highlights, const recti bounds,
-	               ui::style::font_face, ui::style::text_style, ui::color, ui::color) override
+	void clear(core::color) override {}
+	void draw_rounded_rect(recti, core::color, int) override {}
+	void draw_rect(const recti bounds, const core::color c) override { rects.emplace_back(bounds, c); }
+	void draw_line(core::pointd, core::pointd, core::color, double) override {}
+	void draw_polyline(std::span<const core::pointd>, core::color, double) override {}
+	void draw_ellipse(recti, core::color, double) override {}
+	void fill_ellipse(recti, core::color) override {}
+	void draw_text(std::string_view, recti, render::font_face, render::text_style, core::color, core::color) override {}
+	void draw_text(const std::string_view text, const std::vector<render::text_highlight_t>& highlights, const recti bounds,
+	               render::font_face, render::text_style, core::color, core::color) override
 	{
 		texts.push_back({std::string(text), highlights, bounds});
 	}
-	void draw_text(const ui::text_layout_ptr&, recti, ui::color, ui::color) override {}
-	void draw_border(recti, recti, ui::color, ui::color) override {}
-	void draw_texture(const ui::texture_ptr&, recti, float, ui::texture_sampler) override {}
-	void draw_texture(const ui::texture_ptr&, recti, recti, float, ui::texture_sampler, float) override {}
-	void draw_texture(const ui::texture_ptr&, const quadd&, recti, float, ui::texture_sampler) override {}
-	void draw_texture(const ui::texture_ptr&, const quadd&, recti, float, ui::texture_sampler,
-	                  const ui::texture_transform&) override {}
-	void draw_vertices(const ui::vertices_ptr&) override {}
-	sizei measure_text(const std::string_view text, ui::style::font_face, ui::style::text_style, const int width,
+	void draw_text(const render::text_layout_ptr&, recti, core::color, core::color) override {}
+	void draw_border(recti, recti, core::color, core::color) override {}
+	void draw_texture(const render::texture_ptr&, recti, float, render::texture_sampler) override {}
+	void draw_texture(const render::texture_ptr&, recti, recti, float, render::texture_sampler, float) override {}
+	void draw_texture(const render::texture_ptr&, const quadd&, recti, float, render::texture_sampler) override {}
+	void draw_texture(const render::texture_ptr&, const quadd&, recti, float, render::texture_sampler,
+	                  const render::texture_transform&) override {}
+	void draw_vertices(const render::vertices_ptr&) override {}
+	sizei measure_text(const std::string_view text, render::font_face, render::text_style, const int width,
 	                   int = 0) override
 	{
 		return {std::min(width, static_cast<int>(text.size()) * 8), 20};
 	}
-	int text_line_height(ui::style::font_face) override { return 20; }
-	ui::texture_ptr create_texture() override { return {}; }
-	ui::vertices_ptr create_vertices() override { return {}; }
-	ui::text_layout_ptr create_text_layout(ui::style::font_face) override { return {}; }
+	int text_line_height(render::font_face) override { return 20; }
+	render::texture_ptr create_texture() override { return {}; }
+	render::vertices_ptr create_vertices() override { return {}; }
+	render::text_layout_ptr create_text_layout(render::font_face) override { return {}; }
 	recti clip_bounds() const override { return clip; }
 	void clip_bounds(recti) override {}
 	void restore_clip() override {}
@@ -3568,13 +3576,13 @@ struct document_test_display
 	explicit document_test_display(const std::string_view bytes, const std::string_view extension = ".txt")
 	{
 		display = std::make_shared<display_state_t>(async, common);
-		display->_selected_item_data = df::blob(bytes.begin(), bytes.end());
+		display->_selected_item_data = core::blob(bytes.begin(), bytes.end());
 		display->_document = std::make_shared<document_state>(
 			decode_document(display->_selected_item_data, extension, true));
 	}
 };
 
-static df::cspan document_test_bytes(const std::string_view s)
+static core::cspan document_test_bytes(const std::string_view s)
 {
 	return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
 }
@@ -3778,7 +3786,7 @@ static void should_copy_a_document_selection_as_its_source_text()
 static void should_copy_a_dump_selection_as_its_rows()
 {
 	const std::vector<uint8_t> bytes = {'H', 'i', 0x00, 0xFF, 'a', 'b'};
-	const df::cspan span{bytes.data(), bytes.size()};
+	const core::cspan span{bytes.data(), bytes.size()};
 	document_state doc;
 	doc.layout(4, bytes.size());
 	assert_equal(2, static_cast<int>(doc.row_count()), "two rows of four bytes");
@@ -3808,17 +3816,17 @@ static void should_record_the_state_each_document_line_starts_in()
 {
 	const auto cpp = decode_document(document_test_bytes("int a; /* open\nstill comment\nclosed */ int b;\nint c;"),
 	                                 ".cpp", true);
-	assert_equal(true, cpp.language == pf::ui::syntax::language::cpp, "C++ by its extension");
+	assert_equal(true, cpp.language == ui::syntax::language::cpp, "C++ by its extension");
 	assert_equal(4, static_cast<int>(cpp.cookies.size()), "a state for every line");
 	assert_equal(true, cpp.cookies[0] == 0 && cpp.cookies[1] != 0 && cpp.cookies[2] != 0 && cpp.cookies[3] == 0,
 	             "inside the comment and out of it");
 
 	const auto md = decode_document(document_test_bytes("# Title\n- item"), ".MD", true);
-	assert_equal(true, md.language == pf::ui::syntax::language::markdown, "Markdown by its extension, in any case");
+	assert_equal(true, md.language == ui::syntax::language::markdown, "Markdown by its extension, in any case");
 	assert_equal(true, md.cookies.empty(), "Markdown carries nothing from line to line");
 
 	const auto plain = decode_document(document_test_bytes("/* not code */"), ".txt", true);
-	assert_equal(true, plain.language == pf::ui::syntax::language::plain && plain.cookies.empty(),
+	assert_equal(true, plain.language == ui::syntax::language::plain && plain.cookies.empty(),
 	             "plain text is not coloured");
 }
 
@@ -3838,7 +3846,7 @@ static void should_select_document_text_by_dragging()
 	hit_test_context ctx({8, 110}, recti(0, 0, 400, 400));
 	const auto controller = control->controller_from_location(host, {8, 110}, {}, ctx);
 	assert_equal(true, controller != nullptr, "the document takes a press");
-	assert_equal(true, controller->cursor() == ui::style::cursor::text_select, "under a text cursor");
+	assert_equal(true, controller->cursor() == platform::cursor::text_select, "under a text cursor");
 
 	const auto& doc = *test.display->_document;
 	const auto& bytes = test.display->_selected_item_data;
@@ -3859,7 +3867,7 @@ static void should_select_document_text_by_dragging()
 	controller->on_mouse_left_button_double_click({300, 110}, {});
 	assert_equal("beta", doc.selected_text(bytes), "and past the end of the line");
 
-	ui::key_state shift;
+	platform::key_state shift;
 	shift.shift = true;
 	controller->on_mouse_left_button_down({40, 130}, shift);
 	controller->on_mouse_left_button_up({40, 130}, shift);
@@ -3989,7 +3997,7 @@ static void should_colour_a_dump_by_byte_class()
 	assert_equal(1, static_cast<int>(dc.texts.size()), "one row");
 
 	const auto& highlights = dc.texts[0].highlights;
-	const auto color_at = [&highlights](const uint32_t offset) -> std::optional<ui::color>
+	const auto color_at = [&highlights](const uint32_t offset) -> std::optional<core::color>
 	{
 		for (const auto& h : highlights)
 		{
@@ -4051,7 +4059,7 @@ static void should_draw_image_errors_without_source_dimensions()
 			const auto errors = std::count(dc.text_values.begin(), dc.text_values.end(), tt.image_display_failed.sv());
 			assert_equal(comparison ? 2 : 1, static_cast<int>(errors),
 			             "each failed image has a visible message even without source dimensions");
-			assert_equal(true, measured.cy >= dc.text_line_height(ui::style::font_face::dialog) * 2,
+			assert_equal(true, measured.cy >= dc.text_line_height(render::font_face::dialog) * 2,
 			             "measurement reserves room for failure feedback");
 			for (auto i = 0_z; i < dc.text_values.size(); ++i)
 			{
@@ -4320,11 +4328,11 @@ static void should_cancel_the_run_a_new_one_replaces()
 
 	view->begin_processing(1);
 	const auto first_source = view->processing_cancel_source();
-	const df::cancel_token first(*first_source);
+	const core::cancel_token first(*first_source);
 
 	view->begin_processing(1);
 	const auto second_source = view->processing_cancel_source();
-	const df::cancel_token second(*second_source);
+	const core::cancel_token second(*second_source);
 
 	assert_equal(true, first.is_cancelled(), "the replaced run is cancelled");
 	assert_equal(false, second.is_cancelled(), "the run that replaced it is not");
@@ -4377,13 +4385,13 @@ static void should_leave_a_running_sync_alone_on_refresh()
 	deferred_async_strategy as;
 	location_cache locations;
 	index_state index(as, locations);
-	df::index_roots roots;
+	core::index_roots roots;
 	roots.folders.emplace(local);
 	index.index_roots(roots);
 	view_state s(ss, as, index, make_test_player());
 
 	const auto saved = setting.sync;
-	const df::scope_exit restore([saved] { setting.sync = saved; });
+	const core::scope_exit restore([saved] { setting.sync = saved; });
 	setting.sync.sync_collection = true;
 	setting.sync.remote_path = std::string(remote.text());
 	setting.sync.sync_local_remote = true;
@@ -4413,7 +4421,7 @@ static void should_leave_a_running_sync_alone_on_refresh()
 	}
 	as.drain_ui();
 
-	assert_equal(true, remote.combine_file("copy.txt").exists(), "Refresh did not stop the copy");
+	assert_equal(true, platform::exists(remote.combine_file("copy.txt")), "Refresh did not stop the copy");
 	assert_equal(false, view->progress().active, "the run reports its end");
 }
 
@@ -4524,11 +4532,11 @@ static void should_keep_the_options_of_an_unchosen_format_disabled()
 static void should_reject_failed_dialog_thumbnail_decodes()
 {
 	const auto valid_image = make_valid_test_image();
-	assert_equal(true, ui::is_valid(valid_image), "test fixture has a valid encoded image");
+	assert_equal(true, core::is_valid(valid_image), "test fixture has a valid encoded image");
 
-	const auto corrupt = std::make_shared<ui::image>(df::blob{0xff, 0xd8, 0xff, 0xd9}, sizei{32, 32},
-	                                                 ui::image_format::JPEG, ui::orientation::top_left);
-	std::vector<ui::const_image_ptr> images;
+	const auto corrupt = std::make_shared<core::image>(core::blob{0xff, 0xd8, 0xff, 0xd9}, sizei{32, 32},
+	                                                 core::image_format::JPEG, core::orientation::top_left);
+	std::vector<core::const_image_ptr> images;
 	images.emplace_back(corrupt);
 	for (auto i = 0; i < 7; ++i) images.emplace_back(valid_image);
 
@@ -4538,14 +4546,14 @@ static void should_reject_failed_dialog_thumbnail_decodes()
 
 	list_test_measure_context mc;
 	ui::selection_thumbnails_control strip(ui::no_frame());
-	std::vector<ui::const_surface_ptr> surfaces;
+	std::vector<core::const_surface_ptr> surfaces;
 	for (auto i = 0; i < 7; ++i) surfaces.emplace_back(make_test_surface({16, 12}));
 	strip.selection(surfaces, images.size());
 	const auto measured = strip.measure(mc, 700);
 	assert_equal(true, measured.cy > 0, "staged surfaces measure the strip");
 
 	ui::selection_thumbnails_control failed_strip(ui::no_frame());
-	failed_strip.selection(std::vector<ui::const_surface_ptr>{}, 2);
+	failed_strip.selection(std::vector<core::const_surface_ptr>{}, 2);
 	assert_equal(false, failed_strip.is_visible(), "thumbnail strips without staged surfaces stay hidden");
 }
 
@@ -4656,9 +4664,9 @@ static void should_reach_a_term_picker_s_add_button(view_state& state)
 
 static void should_preserve_thumbnail_texture_slots_after_upload_failure()
 {
-	const std::vector<ui::const_surface_ptr> surfaces{
-		make_test_surface({80, 40}, ui::orientation::top_left),
-		make_test_surface({30, 90}, ui::orientation::top_left)
+	const std::vector<core::const_surface_ptr> surfaces{
+		make_test_surface({80, 40}, core::orientation::top_left),
+		make_test_surface({30, 90}, core::orientation::top_left)
 	};
 	ui::title_control2 title(ui::no_frame(), icon_index::none, "Title", "Selection", surfaces);
 	list_test_measure_context mc;
@@ -4748,41 +4756,41 @@ static void should_keep_the_typed_filter_and_match_text_containing_it()
 	filter_t filter;
 	filter.wildcard("cat");
 	assert_equal_strict("cat", filter.text(), "filter preserves user input");
-	assert_equal(true, filter.match_text(str::cache("bobcatfish")), "filter applies contains matching");
+	assert_equal(true, filter.match_text(core::cache("bobcatfish")), "filter applies contains matching");
 }
 static void should_accumulate_rtl_text_widths_in_logical_order()
 {
 	const std::vector<uint32_t> positions{0, 1, 2, 3, 4};
-	const std::vector<ui::text_cluster_metric> rtl_visual_widths{
+	const std::vector<render::text_cluster_metric> rtl_visual_widths{
 		{1, 9.7f}, {1, 3.8f}, {1, 7.7f}, {1, 11.0f}
 	};
-	const auto xs = ui::logical_text_offset_xs(positions, rtl_visual_widths);
+	const auto xs = render::logical_text_offset_xs(positions, rtl_visual_widths);
 	assert_equal(0, xs[0], "text starts at zero");
 	assert_equal(true, std::ranges::is_sorted(xs), "logical caret widths are ascending");
 	assert_equal(32, xs.back(), "end width is the accumulated cluster width");
 
 	const std::vector<uint32_t> mixed_positions{0, 1, 2, 3};
-	const std::vector<ui::text_cluster_metric> mixed_clusters{{2, 13.0f}, {1, 5.0f}};
-	const auto mixed_xs = ui::logical_text_offset_xs(mixed_positions, mixed_clusters);
+	const std::vector<render::text_cluster_metric> mixed_clusters{{2, 13.0f}, {1, 5.0f}};
+	const auto mixed_xs = render::logical_text_offset_xs(mixed_positions, mixed_clusters);
 	assert_equal(13, mixed_xs[1], "a position inside a cluster advances to the cluster boundary");
 	assert_equal(13, mixed_xs[2], "the cluster boundary shares that same logical x");
 	assert_equal(18, mixed_xs[3], "following clusters continue from the accumulated width");
 }
 
-class slider_test_measure_context final : public ui::measure_context
+class slider_test_measure_context final : public render::measure_context
 {
 public:
-	sizei measure_text(const std::string_view text, ui::style::font_face font, const ui::style::text_style style,
+	sizei measure_text(const std::string_view text, render::font_face font, const render::text_style style,
 	                   const int width, int = 0) override
 	{
-		const auto natural_width = df::round(text.size() * 8 * scale_factor);
-		const auto lines = style == ui::style::text_style::single_line
+		const auto natural_width = core::round(text.size() * 8 * scale_factor);
+		const auto lines = style == render::text_style::single_line
 			                   ? 1 : std::max(1, (natural_width + std::max(1, width) - 1) / std::max(1, width));
 		return {std::min(width, natural_width), text_line_height(font) * lines};
 	}
 
-	int text_line_height(ui::style::font_face) override { return df::round(20 * scale_factor); }
-	ui::text_layout_ptr create_text_layout(ui::style::font_face) override { return {}; }
+	int text_line_height(render::font_face) override { return core::round(20 * scale_factor); }
+	render::text_layout_ptr create_text_layout(render::font_face) override { return {}; }
 };
 
 static void should_keep_narrow_slider_rows_usable()
@@ -4796,10 +4804,10 @@ static void should_keep_narrow_slider_rows_usable()
 			{
 				slider_test_measure_context mc;
 				mc.scale_factor = scale;
-				mc.padding1 = df::round(4 * scale);
-				mc.padding2 = df::round(8 * scale);
-				mc.col_widths.c1 = df::round(190 * scale);
-				const auto width = df::round(width_dip * scale);
+				mc.padding1 = core::round(4 * scale);
+				mc.padding2 = core::round(8 * scale);
+				mc.col_widths.c1 = core::round(190 * scale);
+				const auto width = core::round(width_dip * scale);
 				auto value = 0;
 				ui::slider_control slider(ui::no_frame(), label, value, -100, 100);
 				const auto measured = slider.measure(mc, width);
@@ -4913,28 +4921,28 @@ static void should_merge_control_colours_as_straight_alpha()
 		assert_equal(true, std::abs(expected - actual) < 0.0001f, message);
 	};
 
-	ui::color transparent_red(1.0f, 0.0f, 0.0f, 0.0f);
-	transparent_red.merge(ui::color(0.0f, 0.0f, 1.0f, 1.0f));
+	core::color transparent_red(1.0f, 0.0f, 0.0f, 0.0f);
+	transparent_red.merge(core::color(0.0f, 0.0f, 1.0f, 1.0f));
 	near(0.0f, transparent_red.r, "transparent source leaves destination red");
 	near(0.0f, transparent_red.g, "transparent source leaves destination green");
 	near(1.0f, transparent_red.b, "transparent source leaves destination blue");
 	near(1.0f, transparent_red.a, "transparent source leaves destination alpha");
 
-	ui::color opaque_red(1.0f, 0.0f, 0.0f, 1.0f);
-	opaque_red.merge(ui::color(0.0f, 0.0f, 1.0f, 0.0f));
+	core::color opaque_red(1.0f, 0.0f, 0.0f, 1.0f);
+	opaque_red.merge(core::color(0.0f, 0.0f, 1.0f, 0.0f));
 	near(1.0f, opaque_red.r, "opaque source keeps red");
 	near(0.0f, opaque_red.b, "opaque source hides transparent destination");
 	near(1.0f, opaque_red.a, "opaque source keeps alpha");
 
-	ui::color zero(0.4f, 0.2f, 0.1f, 0.0f);
-	zero.merge(ui::color(0.8f, 0.1f, 0.2f, 0.0f));
+	core::color zero(0.4f, 0.2f, 0.1f, 0.0f);
+	zero.merge(core::color(0.8f, 0.1f, 0.2f, 0.0f));
 	near(0.0f, zero.r, "zero over zero clears red");
 	near(0.0f, zero.g, "zero over zero clears green");
 	near(0.0f, zero.b, "zero over zero clears blue");
 	near(0.0f, zero.a, "zero over zero clears alpha");
 
-	ui::color half_red(1.0f, 0.0f, 0.0f, 0.5f);
-	half_red.merge(ui::color(0.0f, 0.0f, 1.0f, 0.5f));
+	core::color half_red(1.0f, 0.0f, 0.0f, 0.5f);
+	half_red.merge(core::color(0.0f, 0.0f, 1.0f, 0.5f));
 	near(2.0f / 3.0f, half_red.r, "half source normalizes red");
 	near(0.0f, half_red.g, "half source keeps green zero");
 	near(1.0f / 3.0f, half_red.b, "half source normalizes blue");
@@ -5016,7 +5024,7 @@ public:
 		padding(0);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		if (width_limit >= _desired.cx) return _desired;
 		return {width_limit, _desired.cy * 2};
@@ -5215,7 +5223,7 @@ static void should_limit_comparison_to_like_pairs()
 static void should_shape_the_tile_by_what_it_draws()
 {
 	df::index_file_item indexed;
-	indexed.name = str::cache("clip.mp4");
+	indexed.name = core::cache("clip.mp4");
 	indexed.ft = files::file_type_from_name(indexed.name);
 
 	const auto md = std::make_shared<prop::item_metadata>();
@@ -5223,15 +5231,15 @@ static void should_shape_the_tile_by_what_it_draws()
 	md->height = 1080;
 	indexed.metadata.store(md);
 
-	const auto path = df::file_path("c:\\clip.mp4");
+	const auto path = core::file_path("c:\\clip.mp4");
 	const auto item = std::make_shared<df::item_element>(path, indexed);
 
 	assert_equal(1920, item->layout_dims().cx, "video width shapes the tile before cover art arrives");
 	assert_equal(1080, item->layout_dims().cy, "video height shapes the tile before cover art arrives");
 	assert_equal(true, item->layout_aspect_known(), "indexed dimensions are an exact aspect");
 
-	const auto cover_art = std::make_shared<ui::image>(df::blob(16), sizei(600, 600),
-	                                                   ui::image_format::JPEG, ui::orientation::top_left);
+	const auto cover_art = std::make_shared<core::image>(core::blob(16), sizei(600, 600),
+	                                                   core::image_format::JPEG, core::orientation::top_left);
 	item->thumbnail({}, cover_art, {});
 
 	assert_equal(600, item->layout_dims().cx, "cover art width shapes the tile that draws it");
@@ -5250,16 +5258,16 @@ static void should_shape_the_tile_by_what_it_draws()
 static void should_not_justify_a_tile_shaped_by_a_thumbnail()
 {
 	df::index_file_item indexed;
-	indexed.name = str::cache("unscanned.jpg");
+	indexed.name = core::cache("unscanned.jpg");
 	indexed.ft = files::file_type_from_name(indexed.name);
 
-	const auto path = df::file_path("c:\\unscanned.jpg");
+	const auto path = core::file_path("c:\\unscanned.jpg");
 	const auto item = std::make_shared<df::item_element>(path, indexed);
 
 	assert_equal(false, item->layout_aspect_known(), "nothing known before a scan");
 
-	const auto thumb = std::make_shared<ui::image>(df::blob(16), sizei(160, 120),
-	                                               ui::image_format::JPEG, ui::orientation::top_left);
+	const auto thumb = std::make_shared<core::image>(core::blob(16), sizei(160, 120),
+	                                               core::image_format::JPEG, core::orientation::top_left);
 	item->thumbnail(thumb, {}, {});
 
 	assert_equal(160, item->layout_dims().cx, "the thumbnail stands in for an unknown aspect");
@@ -5292,19 +5300,19 @@ static void should_order_shows_and_albums_by_number()
 	const auto make_item = [](const std::string& name, const std::function<void(prop::item_metadata&)>& fill)
 	{
 		df::index_file_item indexed;
-		indexed.name = str::cache(name);
+		indexed.name = core::cache(name);
 		indexed.ft = files::file_type_from_name(indexed.name);
 		const auto md = std::make_shared<prop::item_metadata>();
 		fill(*md);
 		indexed.metadata.store(md);
-		return std::make_shared<df::item_element>(df::file_path("c:\\" + name), indexed);
+		return std::make_shared<df::item_element>(core::file_path("c:\\" + name), indexed);
 	};
 
 	const auto episode = [](const int season, const int number, const bool special)
 	{
 		return [=](prop::item_metadata& md)
 		{
-			md.show = str::cache("Show");
+			md.show = core::cache("Show");
 			md.season = static_cast<uint16_t>(season);
 			md.episode = prop::number_pair(number, 0);
 			md.is_special = special;
@@ -5316,7 +5324,7 @@ static void should_order_shows_and_albums_by_number()
 	{
 		return [=](prop::item_metadata& md)
 		{
-			md.album = str::cache("Album");
+			md.album = core::cache("Album");
 			md.disk = prop::number_pair(disc, 0);
 			md.track = prop::number_pair(number, 0);
 		};
@@ -5329,12 +5337,12 @@ static void should_order_shows_and_albums_by_number()
 		group->sort(group_by::album_show, sort_by::def, false);
 		std::vector<std::string> names;
 		for (const auto& i : group->items()) names.emplace_back(i->name());
-		return str::combine(names, ",", false);
+		return core::combine(names, ",", false);
 	};
 
 	assert_equal("z.mkv,a.mkv,m.mkv,b.mkv,c.mkv"s,
 	             order_of({
-		             make_item("c.mkv", [](prop::item_metadata& md) { md.show = str::cache("Show"); }),
+		             make_item("c.mkv", [](prop::item_metadata& md) { md.show = core::cache("Show"); }),
 		             make_item("b.mkv", episode(2, 1, false)),
 		             make_item("a.mkv", episode(1, 2, false)),
 		             make_item("m.mkv", episode(2, 0, true)),
@@ -5360,24 +5368,24 @@ static void should_play_on_to_the_next_episode()
 	view_state s(ss, as, index, make_test_player());
 	const view_host_base_ptr view;
 
-	const auto make_episode = [](const std::string& name, const int number, const df::date_t created)
+	const auto make_episode = [](const std::string& name, const int number, const core::date_t created)
 	{
 		df::index_file_item indexed;
-		indexed.name = str::cache(name);
+		indexed.name = core::cache(name);
 		indexed.ft = files::file_type_from_name(indexed.name);
 		const auto md = std::make_shared<prop::item_metadata>();
-		md->show = str::cache("Show");
+		md->show = core::cache("Show");
 		md->season = 1;
 		md->episode = prop::number_pair(number, 0);
 		md->kind = prop::media_kind::episode;
 		md->dates.add_utc(prop::date_source::file_created, created);
 		indexed.metadata.store(md);
-		return std::make_shared<df::item_element>(df::file_path("c:\\" + name), indexed);
+		return std::make_shared<df::item_element>(core::file_path("c:\\" + name), indexed);
 	};
 
-	const auto sd = make_episode("Show.S01E05.720p.mkv", 5, df::date_t(2020, 1, 1, 0, 0, 0));
-	const auto hd = make_episode("Show.S01E05.1080p.mkv", 5, df::date_t(2021, 1, 1, 0, 0, 0));
-	const auto six = make_episode("Show.S01E06.720p.mkv", 6, df::date_t(2019, 1, 1, 0, 0, 0));
+	const auto sd = make_episode("Show.S01E05.720p.mkv", 5, core::date_t(2020, 1, 1, 0, 0, 0));
+	const auto hd = make_episode("Show.S01E05.1080p.mkv", 5, core::date_t(2021, 1, 1, 0, 0, 0));
+	const auto six = make_episode("Show.S01E06.720p.mkv", 6, core::date_t(2019, 1, 1, 0, 0, 0));
 	s.append_items(view, df::item_set(df::item_elements{sd, hd, six}), {}, true, true);
 
 	assert_equal(true, s.next_episode(sd) == six, "the next episode, not another copy of this one");
@@ -5403,7 +5411,7 @@ static void should_keep_tile_aspect_when_laying_out_a_row()
 		const auto name = "item" + std::to_string(++next_name) + ".jpg";
 
 		df::index_file_item indexed;
-		indexed.name = str::cache(name);
+		indexed.name = core::cache(name);
 		indexed.ft = files::file_type_from_name(indexed.name);
 
 		const auto md = std::make_shared<prop::item_metadata>();
@@ -5411,7 +5419,7 @@ static void should_keep_tile_aspect_when_laying_out_a_row()
 		md->height = static_cast<uint16_t>(cy);
 		indexed.metadata.store(md);
 
-		return std::make_shared<df::item_element>(df::file_path("c:\\" + name), indexed);
+		return std::make_shared<df::item_element>(core::file_path("c:\\" + name), indexed);
 	};
 
 	const auto assert_row_aspects = [&](df::item_elements items, const std::string_view name)
@@ -5489,7 +5497,7 @@ static void should_track_the_active_row_across_a_reorder()
 	index_state index(as, locations);
 	view_state s(ss, as, index, make_test_player());
 	s.view_mode(view_type::items);
-	s.open(view, df::search_t().add_selector(test_files_folder), {});
+	s.open(view, df::search_t().add_selector(test_files_folder()), {});
 	s.update_item_groups();
 	s.update_selection();
 	s.select_all(view);
@@ -5679,17 +5687,17 @@ static void should_fade_sid_register_activity()
 }
 
 // Keeps what it was last given, as a renderer's vertices do.
-class recording_vertices final : public ui::vertices
+class recording_vertices final : public render::vertices
 {
 public:
 	int updates = 0;
-	std::vector<ui::vertex_rect> rects;
+	std::vector<render::vertex_rect> rects;
 
-	void update_bars(std::span<const ui::vertex_rect>) override
+	void update_bars(std::span<const render::vertex_rect>) override
 	{
 	}
 
-	void update_rects(const std::span<const ui::vertex_rect> r) override
+	void update_rects(const std::span<const render::vertex_rect> r) override
 	{
 		++updates;
 		rects.assign(r.begin(), r.end());
@@ -5703,7 +5711,7 @@ static void should_move_the_sid_monitor_with_the_tune()
 {
 	const auto path = _temps.next_path(".sid");
 	const auto tune = make_test_sid_tune();
-	assert_equal(true, df::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
+	assert_equal(true, platform::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
 
 	const auto render = std::make_shared<sid_tune_render>(path, 0, 1.0);
 	assert_equal(true, render->load(), "the tune loads");
@@ -5728,14 +5736,14 @@ static void should_move_the_sid_monitor_with_the_tune()
 	const auto verts = std::make_shared<recording_vertices>();
 	const auto drawn_in = [&verts](const recti area)
 	{
-		return std::ranges::count_if(verts->rects, [area](const ui::vertex_rect& r)
+		return std::ranges::count_if(verts->rects, [area](const render::vertex_rect& r)
 		{
 			return area.contains(r.bounds.top_left()) && r.bounds.right <= area.right + 1;
 		});
 	};
 	const auto lit = [&verts](const recti badge)
 	{
-		return std::ranges::any_of(verts->rects, [badge](const ui::vertex_rect& r) { return r.bounds == badge.inflate(-1); });
+		return std::ranges::any_of(verts->rects, [badge](const render::vertex_rect& r) { return r.bounds == badge.inflate(-1); });
 	};
 
 	sid_monitor_motion motion;
@@ -5752,12 +5760,12 @@ static void should_move_the_sid_monitor_with_the_tune()
 	assert_equal(true, drawn_in(parts.voices[0].shape) > 100, "its waveform is traced where its shape goes");
 	assert_equal(true, lit(parts.voices[0].gate), "its gate is lit");
 	assert_equal(false, lit(parts.voices[1].gate), "and the others' are not");
-	assert_equal(true, std::ranges::any_of(verts->rects, [&parts, &state](const ui::vertex_rect& r)
+	assert_equal(true, std::ranges::any_of(verts->rects, [&parts, &state](const render::vertex_rect& r)
 	{
 		const auto track = parts.voices[0].frequency.inflate(-1);
 		const auto frequency = state.regs[0] | (state.regs[1] << 8);
 		return r.bounds.left == track.left && r.bounds.top == track.top &&
-			r.bounds.width() == df::round(track.width() * (frequency / 65535.0));
+			r.bounds.width() == core::round(track.width() * (frequency / 65535.0));
 	}), "its frequency meter is filled as far as its frequency goes");
 	assert_equal(true, drawn_in(parts.scope) > 100, "the output is traced");
 	assert_equal(true, std::ranges::all_of(parts.volume, lit), "all fifteen volume steps are lit");
@@ -5784,7 +5792,7 @@ static void should_move_the_sid_monitor_with_the_tune()
 	sid_voice_mix solo;
 	solo.solo = 1;
 	motion.place(parts, render, solo, 1.0f, position, state, 20.0);
-	assert_equal(true, std::ranges::all_of(verts->rects, [&parts](const ui::vertex_rect& r)
+	assert_equal(true, std::ranges::all_of(verts->rects, [&parts](const render::vertex_rect& r)
 	{
 		return !parts.voices[0].shape.contains(r.bounds.top_left()) || r.fill.a < 0.5f;
 	}), "a voice the solo silences is drawn faded");
@@ -5821,11 +5829,11 @@ static void should_toggle_a_sid_voice_after_its_monitor_is_rebuilt()
 	document_test_draw_context dc;
 	monitor->render(dc, {});
 	const auto button_text = std::max(
-		dc.measure_text(tt.command_volume0, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx,
-		dc.measure_text(tt.sid_solo, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx);
+		dc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
+		dc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
 	auto scale = dc.scale_factor;
 	const auto l = fit_sid_monitor(monitor->bounds, dc.scale_factor, 1,
-	                               dc.text_line_height(ui::style::font_face::code), button_text, scale);
+	                               dc.text_line_height(render::font_face::code), button_text, scale);
 
 	const auto press = [&monitor, &host](const recti button)
 	{
@@ -5903,9 +5911,9 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// second Save As checked the RAW's extension for a free name, then offered a JPEG already there.
 	tests.add("Should suggest an edit a name of its own beside its source"s, []
 	{
-		const auto at = [](const std::string_view name) { return df::file_path(test_files_folder, name); };
-		const auto taken = [&at](const df::file_path p) { return p == at("IMG_1.jpg") || p == at("IMG_1-edit.jpg"); };
-		const auto none = [](const df::file_path) { return false; };
+		const auto at = [](const std::string_view name) { return core::file_path(test_files_folder(), name); };
+		const auto taken = [&at](const core::file_path p) { return p == at("IMG_1.jpg") || p == at("IMG_1-edit.jpg"); };
+		const auto none = [](const core::file_path) { return false; };
 
 		assert_equal("IMG_1-edit 2.jpg"s, std::string(edit_save_suggestion(at("IMG_1.CR2"), taken).name().sv()),
 		             "a RAW is saved as a JPEG of its own, past the edits already there");

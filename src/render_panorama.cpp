@@ -37,7 +37,7 @@ namespace
 
 	// Two colours blended with a Q8 weight, a channel pair at a time. The weights sum to 256, so
 	// each 16 bit lane peaks at 255*256 and nothing carries into its neighbour.
-	inline ui::color32 blend_q8(const ui::color32 c1, const ui::color32 c2, const uint32_t t)
+	inline core::color32 blend_q8(const core::color32 c1, const core::color32 c2, const uint32_t t)
 	{
 		const auto inverse = 256u - t;
 		const auto rb = ((((c1 & 0x00FF00FFu) * inverse) + ((c2 & 0x00FF00FFu) * t)) >> 8) & 0x00FF00FFu;
@@ -45,7 +45,7 @@ namespace
 		return rb | ga;
 	}
 
-	inline ui::color32 sample_bilinear(const source_level& level, double u, double v, const bool wrap)
+	inline core::color32 sample_bilinear(const source_level& level, double u, double v, const bool wrap)
 	{
 		// Clamped before the fraction is taken, not after: a coordinate half a texel outside the top
 		// or left edge otherwise keeps a fraction that weights it toward the *second* row, turning an
@@ -75,14 +75,14 @@ namespace
 		const auto y0 = std::clamp(static_cast<int>(v_floor), 0, level.cy - 1);
 		const auto y1 = std::min(y0 + 1, level.cy - 1);
 
-		const auto line0 = std::bit_cast<const ui::color32*>(level.pixels + y0 * level.stride);
-		const auto line1 = std::bit_cast<const ui::color32*>(level.pixels + y1 * level.stride);
+		const auto line0 = std::bit_cast<const core::color32*>(level.pixels + y0 * level.stride);
+		const auto line1 = std::bit_cast<const core::color32*>(level.pixels + y1 * level.stride);
 
 		return blend_q8(blend_q8(line0[x0], line0[x1], u_frac), blend_q8(line1[x0], line1[x1], u_frac), v_frac);
 	}
 }
 
-void panorama_renderer::set_source(ui::const_surface_ptr source)
+void panorama_renderer::set_source(core::const_surface_ptr source)
 {
 	_levels.clear();
 
@@ -92,7 +92,7 @@ void panorama_renderer::set_source(ui::const_surface_ptr source)
 	// broken projection rather than like a surface the reader cannot read. The decode is asked for
 	// packed pixels when a projection will consume them, so refusing here holds that to its word
 	// instead of guessing at a conversion.
-	if (!ui::is_packed(source->format())) return;
+	if (!core::is_packed(source->format())) return;
 
 	_levels.emplace_back(std::move(source));
 	auto extent = _levels.front()->dimensions();
@@ -106,8 +106,8 @@ void panorama_renderer::set_source(ui::const_surface_ptr source)
 		const sizei next(std::max(1, extent.cx / 2), std::max(1, extent.cy / 2));
 		if (next.cx == extent.cx && next.cy == extent.cy) break;
 
-		ui::surface_ptr reduced;
-		if (!ui::area_downscale(_levels.back(), reduced, next)) break;
+		core::surface_ptr reduced;
+		if (!core::area_downscale(_levels.back(), reduced, next)) break;
 		_levels.emplace_back(std::move(reduced));
 		extent = next;
 	}
@@ -118,7 +118,7 @@ sizei panorama_renderer::source_extent() const
 	return _levels.empty() ? sizei{} : _levels.front()->dimensions();
 }
 
-bool panorama_renderer::render(ui::surface& destination, const prop::panorama_geometry& geometry,
+bool panorama_renderer::render(core::surface& destination, const prop::panorama_geometry& geometry,
                                const panorama_view& view) const
 {
 	if (_levels.empty() || !geometry.is_valid()) return false;
@@ -192,7 +192,7 @@ bool panorama_renderer::render(ui::surface& destination, const prop::panorama_ge
 
 	for (auto y = 0; y < dims.cy; ++y)
 	{
-		auto* const line = std::bit_cast<ui::color32*>(destination.pixels_line(y));
+		auto* const line = std::bit_cast<core::color32*>(destination.pixels_line(y));
 		const auto sample_y = y + 0.5;
 
 		for (auto x = 0; x < dims.cx;)

@@ -33,6 +33,8 @@ intermediate/
 /exe/LICENSE.txt
 /exe/COPYING.GPLv3.txt
 /.vs
+# Visual Studio's state from `dd.ps1 vs`, which opens exe/diffractor64-d.exe.
+/exe/.vs
 /src/secrets.h
 /diffractor.zip
 *.lastcodeanalysissucceeded

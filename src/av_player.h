@@ -37,10 +37,10 @@ enum class render_valid
 struct av_texture_upload_state
 {
 	double time = -1;
-	const ui::texture* destination = nullptr;
+	const render::texture* destination = nullptr;
 };
 
-inline bool should_upload_video_frame(const av_texture_upload_state& state, const ui::texture* const destination,
+inline bool should_upload_video_frame(const av_texture_upload_state& state, const render::texture* const destination,
                                       const bool destination_valid, const double time)
 {
 	return destination && (!destination_valid || state.destination != destination || !is_equal(state.time, time));
@@ -115,7 +115,7 @@ inline bool should_correct_settled_seek(const bool scrubbing, const bool has_cur
                                         const double corrected_target)
 {
 	if (!scrubbing || !has_current_frame || frame_interval <= 0.0) return false;
-	return frame_time - target > frame_interval / 2.0 && !df::equiv(corrected_target, target);
+	return frame_time - target > frame_interval / 2.0 && !core::equiv(corrected_target, target);
 }
 
 // How many sessions the player will decode frames for beside the one it is playing. Two, because
@@ -137,7 +137,7 @@ class av_session final : public std::enable_shared_from_this<av_session>
 	av_frame_queue _audio_frames;
 	av_frame_queue _video_frames;
 
-	mutable platform::mutex _decoder_rw;
+	mutable core::mutex _decoder_rw;
 	_Guarded_by_(_decoder_rw) av_format_decoder _decoder;
 
 	// Cached copies of the decoder's stream presence, set under _decoder_rw when the
@@ -198,7 +198,7 @@ class av_session final : public std::enable_shared_from_this<av_session>
 	// A seek another thread needs but cannot make: the demuxer belongs to the read thread, which
 	// performs it from process_pending_forced_seek. The audio thread asks after reopening a lost
 	// endpoint; the presenter asks when a merged seek left its target behind the frames still to come.
-	mutable platform::mutex _forced_seek_mutex;
+	mutable core::mutex _forced_seek_mutex;
 	_Guarded_by_(_forced_seek_mutex) double _forced_seek = -1.0;
 	_Guarded_by_(_forced_seek_mutex) int _forced_seek_gen = 0;
 	// A settle correction is for one target. If a later merged seek has moved the target by the time
@@ -240,8 +240,8 @@ class av_session final : public std::enable_shared_from_this<av_session>
 	// actually watching it.
 	std::atomic<bool> _remembers_position = true;
 
-	mutable platform::mutex _presentation_mutex;
-	df::file_path _path;
+	mutable core::mutex _presentation_mutex;
+	core::file_path _path;
 
 	// Read by the UI thread (pos(), last_frame_time()) and written by the read/decode
 	// threads (update_texture/update_visualizer); atomic to avoid a torn read.
@@ -265,17 +265,17 @@ class av_session final : public std::enable_shared_from_this<av_session>
 	std::atomic<std::shared_ptr<audio_resampler>> _vis_resampler;
 
 	av_host& _host;
-	std::function<void(df::file_path, double)> _save_media_position;
+	std::function<void(core::file_path, double)> _save_media_position;
 
 	// The player's video decode event, set when the presenter takes frames: the only point at which the
 	// frame queue has room again. Without it a stream with nothing else waking the decoder - one with no
 	// audio, whose interleaved packets would - waited out the decoder's poll with its queue running dry.
 	// Null for a session no player decodes for.
-	std::shared_ptr<const platform::thread_event> _decode_wake;
+	std::shared_ptr<const core::thread_event> _decode_wake;
 
 public:
-	av_session(av_host& host, std::function<void(df::file_path, double)> save_media_position,
-	           std::shared_ptr<const platform::thread_event> decode_wake = {}) :
+	av_session(av_host& host, std::function<void(core::file_path, double)> save_media_position,
+	           std::shared_ptr<const core::thread_event> decode_wake = {}) :
 		_host(host), _save_media_position(std::move(save_media_position)), _decode_wake(std::move(decode_wake))
 	{
 	}
@@ -302,7 +302,7 @@ public:
 		return _has_audio && !_audio_unavailable;
 	}
 
-	void mark_audio_output_unavailable(const double time_now = df::now())
+	void mark_audio_output_unavailable(const double time_now = core::now())
 	{
 		if (_audio_unavailable.exchange(true)) return;
 		if (_pending_time_sync.exchange(false))
@@ -311,11 +311,11 @@ public:
 		}
 	}
 
-	void request_audio_recovery_seek(const double time_now = df::now())
+	void request_audio_recovery_seek(const double time_now = core::now())
 	{
 		const auto gen = _seek_gen.load();
 		const auto recovery_pos = pos(time_now);
-		platform::exclusive_lock lock(_forced_seek_mutex);
+		core::exclusive_lock lock(_forced_seek_mutex);
 		_forced_seek_gen = gen;
 		_forced_seek = std::max(0.0, recovery_pos);
 		_forced_seek_is_correction = false;
@@ -328,7 +328,7 @@ public:
 		bool is_correction = false;
 
 		{
-			platform::exclusive_lock lock(_forced_seek_mutex);
+			core::exclusive_lock lock(_forced_seek_mutex);
 			target = _forced_seek;
 			gen = _forced_seek_gen;
 			is_correction = _forced_seek_is_correction;
@@ -337,7 +337,7 @@ public:
 
 		if (target < 0.0) return false;
 		if (gen != _seek_gen) return false;
-		if (is_correction && !df::equiv(target, _last_seek)) return false;
+		if (is_correction && !core::equiv(target, _last_seek)) return false;
 		seek(target, _scrubbing, true);
 		return true;
 	}
@@ -504,14 +504,14 @@ public:
 		}
 	}
 
-	bool open(const df::file_path path, const file_type_ref file_type, const double starting_position,
+	bool open(const core::file_path path, const file_type_ref file_type, const double starting_position,
 	          const bool auto_play, const int video_track, const int audio_track, const bool can_use_hw,
 	          const bool use_last_played_pos, const bool can_use_threads, const bool video_only = false,
 	          const platform::file_ptr& file = {}, const subtitle_request& subtitles = {})
 	{
-		df::assert_true(_state == av_play_state::detached);
+		core::assert_true(_state == av_play_state::detached);
 
-		platform::exclusive_lock lock_dec(_decoder_rw);
+		core::exclusive_lock lock_dec(_decoder_rw);
 
 		// A handle handed over by the write that just replaced this file. Opening the path again is
 		// the read-after-write the hand-over exists to avoid.
@@ -538,7 +538,7 @@ public:
 
 			_end_time = end_time;
 			{
-				platform::exclusive_lock lock_present(_presentation_mutex);
+				core::exclusive_lock lock_present(_presentation_mutex);
 				_frame.reset();
 			}
 			_path = path;
@@ -548,7 +548,7 @@ public:
 			_scrubbing = false;
 			_start_time = start_time;
 			_state = auto_play ? av_play_state::playing : av_play_state::paused;
-			_time_offset = df::now();
+			_time_offset = core::now();
 			_pending_time_sync = true;
 			_reset_time_offset = !_has_audio; // && !scrubbing;
 			_settling = true;
@@ -602,11 +602,11 @@ public:
 				view_invalid::command_state);
 		}
 
-		platform::exclusive_lock lock(_decoder_rw);
+		core::exclusive_lock lock(_decoder_rw);
 		const auto path = _path;
 
 		{
-			platform::exclusive_lock lock_present(_presentation_mutex);
+			core::exclusive_lock lock_present(_presentation_mutex);
 			_frame.reset();
 		}
 
@@ -637,7 +637,7 @@ public:
 	// is asked for more as soon as there is room, but what is already queued is decoded rather than waited
 	// on: stopping after each packet left a stalled read - a network share, a cloud file - throttling decode
 	// to one packet per wake with a backlog sitting in the queue.
-	bool process_video(const platform::thread_event& read_event, const int max_packets = max_loop_iteration)
+	bool process_video(const core::thread_event& read_event, const int max_packets = max_loop_iteration)
 	{
 		if (!_has_video) return false;
 
@@ -647,7 +647,7 @@ public:
 
 		while (_video_frames.should_receive() && !_video_packets.is_empty())
 		{
-			if (_state == av_play_state::closed || df::is_closing) break;
+			if (_state == av_play_state::closed || platform::is_closing) break;
 
 			if (decoded >= max_packets)
 			{
@@ -656,7 +656,7 @@ public:
 			}
 
 			{
-				platform::shared_lock lock_dec(_decoder_rw);
+				core::shared_lock lock_dec(_decoder_rw);
 				_decoder.receive_frames(_video_packets, _video_frames);
 			}
 
@@ -674,7 +674,7 @@ public:
 	}
 
 	void process_audio(audio_buffer& playback_buffer, audio_buffer& vis_buffer,
-	                   const platform::thread_event& read_event)
+	                   const core::thread_event& read_event)
 	{
 		auto loop_iteration = 0;
 
@@ -685,7 +685,7 @@ public:
 			{
 				if (_audio_frames.should_receive())
 				{
-					platform::shared_lock lock(_decoder_rw);
+					core::shared_lock lock(_decoder_rw);
 					_decoder.receive_frames(_audio_packets, _audio_frames);
 				}
 
@@ -757,7 +757,7 @@ public:
 									pr->flush();
 									vr->flush();
 
-									df::trace(std::format("Player clear audio_buffer on seek_ver {}", sv));
+									core::trace(std::format("Player clear audio_buffer on seek_ver {}", sv));
 								}
 
 								// Volume above 100% cannot be delivered by the device
@@ -791,7 +791,7 @@ public:
 					break;
 				}
 
-				if (_state == av_play_state::closed || df::is_closing || ++loop_iteration > max_loop_iteration)
+				if (_state == av_play_state::closed || platform::is_closing || ++loop_iteration > max_loop_iteration)
 				{
 					break;
 				}
@@ -799,7 +799,7 @@ public:
 		}
 	}
 
-	void discard_audio_while_output_unavailable(const platform::thread_event& read_event)
+	void discard_audio_while_output_unavailable(const core::thread_event& read_event)
 	{
 		auto loop_iteration = 0;
 
@@ -808,7 +808,7 @@ public:
 			while (_audio_frames.should_receive())
 			{
 				{
-					platform::shared_lock lock(_decoder_rw);
+					core::shared_lock lock(_decoder_rw);
 					_decoder.receive_frames(_audio_packets, _audio_frames);
 				}
 
@@ -825,7 +825,7 @@ public:
 					read_event.set();
 				}
 
-				if (_state == av_play_state::closed || df::is_closing || ++loop_iteration > max_loop_iteration)
+				if (_state == av_play_state::closed || platform::is_closing || ++loop_iteration > max_loop_iteration)
 				{
 					break;
 				}
@@ -833,7 +833,7 @@ public:
 		}
 	}
 
-	void process_io(const platform::thread_event& video_event, const platform::thread_event& audio_event);
+	void process_io(const core::thread_event& video_event, const core::thread_event& audio_event);
 
 	bool has_ended(const double time_now) const
 	{
@@ -896,7 +896,7 @@ public:
 	void request_settle_correction_seek(const double target)
 	{
 		const auto gen = _seek_gen.load();
-		platform::exclusive_lock lock(_forced_seek_mutex);
+		core::exclusive_lock lock(_forced_seek_mutex);
 		_forced_seek_gen = gen;
 		_forced_seek = std::max(0.0, target);
 		_forced_seek_is_correction = true;
@@ -904,7 +904,7 @@ public:
 
 	bool update_for_present(const double time_now)
 	{
-		platform::exclusive_lock lock_present(_presentation_mutex);
+		core::exclusive_lock lock_present(_presentation_mutex);
 
 		const auto audio_clock = has_audio_clock();
 		const auto is_playing_state = _state == av_play_state::playing;
@@ -956,7 +956,7 @@ public:
 			taken |= popped;
 			return popped;
 		};
-		const df::scope_exit wake_decoder([this, &taken] { if (taken && _decode_wake) _decode_wake->set(); });
+		const core::scope_exit wake_decoder([this, &taken] { if (taken && _decode_wake) _decode_wake->set(); });
 
 		// Consume stale frames and current-generation end-of-stream markers before distance
 		// comparisons. A frame decoded after a seek's queue clear may still arrive with the old
@@ -1003,7 +1003,7 @@ public:
 				const auto front_time = _video_frames.front_time();
 
 				if (has_best && time_distance(best_ft, time) <= time_distance(front_time, time) &&
-					!df::equiv(best_ft, front_time))
+					!core::equiv(best_ft, front_time))
 				{
 					reached = true; // the next frame is past the target; this one is nearest
 					break;
@@ -1046,7 +1046,7 @@ public:
 				_settling = false;
 			}
 
-			if (!df::equiv(_correction_target, time)) _correction_target = -1.0;
+			if (!core::equiv(_correction_target, time)) _correction_target = -1.0;
 
 			if (should_correct_settled_seek(_scrubbing, has_best, best_ft, time, video_frame_interval(),
 			                                _correction_target))
@@ -1072,7 +1072,7 @@ public:
 				{
 					const auto front_time = av_time_from_frame(front);
 					const auto nearer = time_distance(nearest_ft, time) > time_distance(front_time, time);
-					if (!nearer && !(first && df::equiv(nearest_ft, front_time))) break;
+					if (!nearer && !(first && core::equiv(nearest_ft, front_time))) break;
 				}
 
 				av_frame_ptr next;
@@ -1118,8 +1118,8 @@ public:
 
 	file_load_result capture_first_frame() const
 	{
-		platform::shared_lock lock_dec(_decoder_rw);
-		platform::shared_lock lock_present(_presentation_mutex);
+		core::shared_lock lock_dec(_decoder_rw);
+		core::shared_lock lock_present(_presentation_mutex);
 
 		if (_frame)
 		{
@@ -1131,11 +1131,11 @@ public:
 
 	double time() const
 	{
-		platform::shared_lock lock_present(_presentation_mutex);
+		core::shared_lock lock_present(_presentation_mutex);
 		return av_time_from_frame(_frame);
 	}
 
-	void update_visualizer(const ui::vertices_ptr& verts, const recti rect, const pointi offset, const float alpha,
+	void update_visualizer(const render::vertices_ptr& verts, const recti rect, const pointi offset, const float alpha,
 	                       const double time_now) const
 	{
 		const auto time = pos(time_now);
@@ -1150,9 +1150,9 @@ public:
 		_last_frame_time = pos(time_now);
 	}
 
-	render_valid update_texture(const ui::texture_ptr& texture) const
+	render_valid update_texture(const render::texture_ptr& texture) const
 	{
-		platform::exclusive_lock lock_present(_presentation_mutex);
+		core::exclusive_lock lock_present(_presentation_mutex);
 		auto result = render_valid::valid;
 		const auto vf = _frame;
 
@@ -1165,13 +1165,13 @@ public:
 			{
 				const auto update_result = texture->update(av_video_frame(vf));
 
-				if (update_result != ui::texture_update_result::failed)
+				if (update_result != render::texture_update_result::failed)
 				{
 					_last_frame_time = time;
 					_last_texture = {time, texture.get()};
 
-					if (update_result == ui::texture_update_result::tex_created) result = render_valid::invalid;
-					if (update_result == ui::texture_update_result::tex_updated) result = render_valid::present;
+					if (update_result == render::texture_update_result::tex_created) result = render_valid::invalid;
+					if (update_result == render::texture_update_result::tex_updated) result = render_valid::present;
 				}
 			}
 		}
@@ -1185,12 +1185,12 @@ public:
 class av_player final : public std::enable_shared_from_this<av_player>
 {
 	// Shared with every session the player opens, which sets it when the presenter takes frames.
-	const std::shared_ptr<platform::thread_event> _video_event = std::make_shared<platform::thread_event>(false, false);
-	mutable platform::thread_event _audio_event;
-	mutable platform::thread_event _read_event;
+	const std::shared_ptr<core::thread_event> _video_event = std::make_shared<core::thread_event>(false, false);
+	mutable core::thread_event _audio_event;
+	mutable core::thread_event _read_event;
 
-	platform::mutex _queue_mutex;
-	platform::mutex _thread_mutex;
+	core::mutex _queue_mutex;
+	core::mutex _thread_mutex;
 	std::atomic<std::shared_ptr<av_session>> _thread_session;
 
 	// Sessions the player decodes for but never plays. Movie's preview needs pictures from two
@@ -1205,10 +1205,10 @@ class av_player final : public std::enable_shared_from_this<av_player>
 
 	_Guarded_by_(_queue_mutex) std::deque<std::function<void(std::shared_ptr<av_player>)>> _q;
 	av_host& _host;
-	std::function<void(df::file_path, double)> _save_media_position;
+	std::function<void(core::file_path, double)> _save_media_position;
 
 public:
-	av_player(av_host& host, std::function<void(df::file_path, double)> save_media_position = {}) :
+	av_player(av_host& host, std::function<void(core::file_path, double)> save_media_position = {}) :
 		_audio_event(false, false),
 		_read_event(false, false), _host(host), _save_media_position(std::move(save_media_position))
 	{
@@ -1217,7 +1217,7 @@ public:
 	void queue(std::function<void(std::shared_ptr<av_player>)> f)
 	{
 		{
-			platform::exclusive_lock lock(_queue_mutex);
+			core::exclusive_lock lock(_queue_mutex);
 			_q.emplace_back(std::move(f));
 		}
 
@@ -1252,7 +1252,7 @@ public:
 				use_last_played_pos, cb, file = std::move(file), subtitles = std::move(subtitles)](
 			const std::shared_ptr<av_player>& p)
 			{
-				df::scope_locked_inc l(df::loading_media);
+				core::scope_locked_inc l(df::loading_media);
 				auto ses = p->open_impl(path, file_type, starting_position, auto_play, video_track, audio_track,
 				                        can_use_hw, use_last_played_pos, false, file, subtitles);
 				if (cb) p->_host.queue_ui([cb, ses] { cb(ses); });
@@ -1262,12 +1262,12 @@ public:
 	// For a caller that has a path rather than an item, and whose playback stands for something
 	// other than the user viewing that file: Movie's clip player plays a clip of a timeline, so it
 	// must not write a resume position for the file that clip came from.
-	void open_detached(const df::file_path path, const file_type_ref file_type, const double start_position,
+	void open_detached(const core::file_path path, const file_type_ref file_type, const double start_position,
 	                   const bool auto_play, const std::function<void(std::shared_ptr<av_session>)>& cb)
 	{
 		queue([path, file_type, start_position, auto_play, cb](const std::shared_ptr<av_player>& p)
 		{
-			df::scope_locked_inc l(df::loading_media);
+			core::scope_locked_inc l(df::loading_media);
 			auto ses = p->open_impl(path, file_type, start_position, auto_play, -1, -1, false, false, false, {});
 
 			if (ses)
@@ -1290,14 +1290,14 @@ public:
 	// its own video -- and software decoded, because a hardware surface the caller has to download
 	// every frame costs more than it saves. It never becomes the playing session, and it never
 	// writes a resume position: it stands for a clip of a timeline, not for the user watching a file.
-	void open_frames(const size_t slot, const df::file_path path, const file_type_ref file_type,
+	void open_frames(const size_t slot, const core::file_path path, const file_type_ref file_type,
 	                 const double start_position, const std::function<void(std::shared_ptr<av_session>)>& cb)
 	{
 		if (slot >= av_max_frame_sessions) return;
 
 		queue([slot, path, file_type, start_position, cb](const std::shared_ptr<av_player>& p)
 		{
-			df::scope_locked_inc l(df::loading_media);
+			core::scope_locked_inc l(df::loading_media);
 			auto ses = p->open_frames_impl(slot, path, file_type, start_position);
 			if (cb) p->_host.queue_ui([cb, ses] { cb(ses); });
 		});
@@ -1337,7 +1337,7 @@ private:
 		_audio_event.set();
 	}
 
-	std::shared_ptr<av_session> open_impl(const df::file_path path, const file_type_ref file_type,
+	std::shared_ptr<av_session> open_impl(const core::file_path path, const file_type_ref file_type,
 	                                      const double starting_position, const bool auto_play,
 	                                      const int video_track, const int audio_track, const bool can_use_hw,
 	                                      const bool use_last_played_pos, const bool video_only,
@@ -1384,7 +1384,7 @@ private:
 		}
 	}
 
-	std::shared_ptr<av_session> open_frames_impl(const size_t slot, const df::file_path path,
+	std::shared_ptr<av_session> open_frames_impl(const size_t slot, const core::file_path path,
 	                                             const file_type_ref file_type, const double start_position)
 	{
 		// Replacing a slot closes what was there first, or the read thread goes on demuxing a file
@@ -1414,27 +1414,27 @@ private:
 public:
 	void audio_device_id(const std::string_view id) const
 	{
-		platform::exclusive_lock lock(_thread_mutex);
+		core::exclusive_lock lock(_thread_mutex);
 		_audio_device_id = id;
 		_audio_event.set();
 	}
 
 	std::string audio_device_id() const
 	{
-		platform::exclusive_lock lock(_thread_mutex);
+		core::exclusive_lock lock(_thread_mutex);
 		return _audio_device_id;
 	}
 
 	void play_audio_device_id(const std::string_view id) const
 	{
-		platform::exclusive_lock lock(_thread_mutex);
+		core::exclusive_lock lock(_thread_mutex);
 		_play_audio_device_id = id;
 		_audio_event.set();
 	}
 
 	std::string play_audio_device_id() const
 	{
-		platform::exclusive_lock lock(_thread_mutex);
+		core::exclusive_lock lock(_thread_mutex);
 		return _audio_device_id.empty() ? _play_audio_device_id : _audio_device_id;
 	}
 
@@ -1456,16 +1456,16 @@ public:
 
 	void decode_video() const
 	{
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {platform::event_exit, *_video_event};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {platform::event_exit, *_video_event};
 
 		// Packets a session decodes before the next has its turn: each now decodes its whole backlog, and the
 		// frame sources share this thread, so a turn is bounded rather than the queue.
 		constexpr int packets_per_turn = 4;
 		auto work_left = false;
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
-			if (!work_left) wait_for(events, thread_wait_ms(), false);
+			if (!work_left) platform::wait_for(events, thread_wait_ms(), false);
 
 			work_left = false;
 
@@ -1498,7 +1498,7 @@ public:
 
 		vis_buffer.init(vis_format);
 
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {platform::event_exit, _audio_event};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {platform::event_exit, _audio_event};
 
 		auto has_audio = false;
 		auto base_time = 0.0;
@@ -1509,7 +1509,7 @@ public:
 
 		std::shared_ptr<av_session> session;
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
 			const auto device_is_playing = ds && has_audio && session &&
 				session->_state == av_play_state::playing && !session->_scrubbing && !ds->is_stopped();
@@ -1523,7 +1523,7 @@ public:
 				const auto idle_timeout = need_create_device
 					                          ? 1000u
 					                          : std::numeric_limits<uint32_t>::max();
-				wait_for(events, idle_timeout, false);
+				platform::wait_for(events, idle_timeout, false);
 			}
 
 			if (audio_device_id() != device_id)
@@ -1651,7 +1651,7 @@ public:
 							playback_gen = playback_buffer.generation();
 							ds->reset();
 							session->_pending_time_sync = true;
-							session->_time_offset = df::now() - base_time;
+							session->_time_offset = core::now() - base_time;
 
 							// reset() empties the endpoint ring, so the next write is the
 							// first audio the restarted device plays. Ramp it, but not here -
@@ -1693,7 +1693,7 @@ public:
 								if (session->_pending_time_sync)
 								{
 									const auto time = base_time + ds->time();
-									session->_time_offset = df::now() - time;
+									session->_time_offset = core::now() - time;
 									session->_pending_time_sync = false;
 								}
 							}
@@ -1749,7 +1749,7 @@ public:
 					// device-clock stall, making video and the visualizer lead audible audio.
 					if (!ds->is_stopped() && !session->_pending_time_sync)
 					{
-						session->_time_offset = df::now() - audio_time;
+						session->_time_offset = core::now() - audio_time;
 					}
 				}
 				else
@@ -1762,11 +1762,11 @@ public:
 
 	void reading()
 	{
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {platform::event_exit, _read_event};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {platform::event_exit, _read_event};
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
-			wait_for(events, thread_wait_ms(), false);
+			platform::wait_for(events, thread_wait_ms(), false);
 
 			if (!run_queued_commands()) return;
 
@@ -1843,7 +1843,7 @@ public:
 
 		while (dequeue(f))
 		{
-			if (df::is_closing) return false;
+			if (platform::is_closing) return false;
 			f(player);
 		}
 
@@ -1853,7 +1853,7 @@ public:
 private:
 	bool dequeue(std::function<void(std::shared_ptr<av_player>)>& f)
 	{
-		platform::exclusive_lock lock(_queue_mutex);
+		core::exclusive_lock lock(_queue_mutex);
 		if (_q.empty()) return false;
 		f = std::move(_q.front());
 		_q.pop_front();

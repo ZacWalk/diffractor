@@ -7,7 +7,7 @@
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
 // Purpose: UI input controllers for moving a selection and dragging its handles. A clickable
-// element's controller is libdesktop-render's.
+// element's controller is libdesktop UI's.
 
 #pragma once
 
@@ -38,12 +38,12 @@ public:
 		}
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return _tracking ? ui::style::cursor::hand_up : ui::style::cursor::hand_down;
+		return _tracking ? platform::cursor::hand_up : platform::cursor::hand_down;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		if (!_tracking)
 		{
@@ -70,7 +70,7 @@ public:
 		_parent.device_selection(rr, false, true);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (_tracking)
 		{
@@ -125,12 +125,12 @@ public:
 		}
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::move;
+		return platform::cursor::move;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		if (!_tracking)
 		{
@@ -170,7 +170,7 @@ public:
 		_parent.device_selection2(rr, active_point);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (_tracking)
 		{

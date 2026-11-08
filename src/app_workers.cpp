@@ -27,18 +27,18 @@
 
 #include <utility>
 
-#include "libdesktop/util_log.h"
+#include "libdesktop/core/log.h"
 
 static std::atomic_int index_version;
 
-df::cancel_token make_scan_uncached_token_for_index_workers()
+core::cancel_token make_scan_uncached_token_for_index_workers()
 {
-	return df::cancel_token::current(index_version);
+	return core::cancel_token::current(index_version);
 }
 
-df::cancel_token make_index_update_token_for_worker_tests()
+core::cancel_token make_index_update_token_for_worker_tests()
 {
-	return df::cancel_token(index_version);
+	return core::cancel_token(index_version);
 }
 
 // Declared ahead of the queueing entry points below, which start these workers on first use.
@@ -59,12 +59,12 @@ void start_worker_group(std::vector<worker_queue_binding> bindings, std::string_
 static void record_queue_wait(const platform::task_queue::task_t& task, df::queue_counters* const perf)
 {
 	const auto wait_us = task.wait_us();
-	df::bump(perf->wait_us, wait_us);
-	df::record_peak(perf->wait_max_us, static_cast<uint32_t>(std::min<uint64_t>(wait_us, UINT32_MAX)));
+	core::bump(perf->wait_us, wait_us);
+	core::record_peak(perf->wait_max_us, static_cast<uint32_t>(std::min<uint64_t>(wait_us, UINT32_MAX)));
 }
 
-platform::thread_event media_preview_event(false, false);
-static platform::mutex media_preview_mutex;
+core::thread_event media_preview_event(false, false);
+static core::mutex media_preview_mutex;
 static _Guarded_by_(media_preview_mutex) std::function<void(media_preview_state&)> next_media_preview;
 static _Guarded_by_(media_preview_mutex) std::deque<std::function<void(media_preview_state&)>> media_preview_must_run;
 
@@ -74,9 +74,9 @@ static std::atomic_bool media_preview_superseded = false;
 
 // The collection roots the settings name. Taken as a value rather than read from the global: the
 // callers copy the settings on the thread that owns them and hand the copy to a worker.
-df::index_roots index_folders(const settings_t::index_t& collection)
+core::index_roots index_folders(const settings_t::index_t& collection)
 {
-	df::index_roots result;
+	core::index_roots result;
 	const auto local_folders = platform::local_folders();
 
 	if (collection.pictures && !local_folders.pictures.is_empty())
@@ -114,7 +114,7 @@ void app_frame::queue_media_preview(std::function<void(media_preview_state&)> f,
 	std::function<void(media_preview_state&)> superseded;
 
 	{
-		platform::exclusive_lock media_lock(media_preview_mutex);
+		core::exclusive_lock media_lock(media_preview_mutex);
 
 		// Only speculative preview work may be superseded. Teardown must still run: a caller waiting on
 		// a dropped close blocks for its whole timeout, and any pending preview is stale once teardown
@@ -141,7 +141,7 @@ void app_frame::queue_media_preview(std::function<void(media_preview_state&)> f,
 // straight through.
 static void wait_for_index_cache(index_state& index)
 {
-	const std::vector<std::reference_wrapper<platform::thread_event>> cache_events = {
+	const std::vector<std::reference_wrapper<core::thread_event>> cache_events = {
 		index.cache_loaded_event(), platform::event_exit
 	};
 
@@ -157,13 +157,13 @@ static void wait_for_index_cache(index_state& index)
 // with it: the scan workers then never started.
 void app_frame::start_index_workers()
 {
-	if (!df::is_closing && !_index_workers_started && _state.item_index.is_init_complete())
+	if (!platform::is_closing && !_index_workers_started && _state.item_index.is_init_complete())
 	{
 		_index_workers_started = true;
 
 		if (!command_line.no_indexing)
 		{
-			const auto token = df::cancel_token(index_version);
+			const auto token = core::cancel_token(index_version);
 			index_task_queue.enqueue([this, token]
 			{
 				_state.item_index.scan_uncached(token);
@@ -210,7 +210,7 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 {
 	if (command_line.no_indexing) return;
 
-	auto token = df::cancel_token(index_version);
+	auto token = core::cancel_token(index_version);
 
 	// Copied here, on the thread that owns the settings, and read from the copy on the worker. The
 	// collection settings are ordinary mutable globals: reading more_folders on a worker while the
@@ -223,7 +223,7 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 		// A Refresh or a device change early in startup gets here before the cache has loaded.
 		wait_for_index_cache(_state.item_index);
 
-		if (df::is_closing) return;
+		if (platform::is_closing) return;
 
 		// Forgetting runs on this queue, not the caller's, so it cannot interleave with the
 		// scan_uncached it is meant to feed.
@@ -260,7 +260,7 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 static void start_media_decode_video(const std::shared_ptr<av_player>& player)
 {
 	log_func lf(__FUNCTION__);
-	platform::set_thread_description("media decode_video");
+	core::set_thread_description("media decode_video");
 	platform::thread_init c;
 	player->decode_video();
 }
@@ -268,7 +268,7 @@ static void start_media_decode_video(const std::shared_ptr<av_player>& player)
 static void start_media_decode_audio(const std::shared_ptr<av_player>& player)
 {
 	log_func lf(__FUNCTION__);
-	platform::set_thread_description("media decode_audio");
+	core::set_thread_description("media decode_audio");
 	platform::thread_init c;
 	platform::media_thread_priority audio_priority;
 	player->decode_audio();
@@ -277,7 +277,7 @@ static void start_media_decode_audio(const std::shared_ptr<av_player>& player)
 static void start_media_reading(const std::shared_ptr<av_player>& player)
 {
 	log_func lf(__FUNCTION__);
-	platform::set_thread_description("media read");
+	core::set_thread_description("media read");
 	platform::thread_init c;
 	player->reading();
 }
@@ -287,7 +287,7 @@ static void start_database(database& db, platform::task_queue& database_task_que
                            const app_frame_ptr& app, std::function<void()> index_loaded_func)
 {
 	log_func lf(__FUNCTION__);
-	platform::set_thread_description("database");
+	core::set_thread_description("database");
 	auto* const perf = df::register_queue("database");
 
 	try
@@ -301,28 +301,28 @@ static void start_database(database& db, platform::task_queue& database_task_que
 		// drains the write queue - which holds encoded thumbnails and would otherwise grow for the
 		// whole session against a database that can never accept it.
 		async.invalidate_view(view_invalid::refresh_items);
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {
 			database_task_queue._event, platform::event_exit
 		};
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
 			// 0 is infinite. A pending write already wakes this thread: enqueue_db_write posts a no-op
 			// task on the empty-to-nonempty edge, and perform_writes below runs on every pass, so a
 			// periodic tick would only find work it had already been signalled for. PRAGMA optimize
 			// rides along with the next flush, which is the only time there is anything to re-analyse.
-			if (wait_for(events, 0, false) == 0)
+			if (platform::wait_for(events, 0, false) == 0)
 			{
 				try
 				{
-					df::scope_locked_inc l(df::jobs_running);
+					core::scope_locked_inc l(df::jobs_running);
 					const auto tasks = database_task_queue.dequeue_all();
 
 					if (!tasks.empty())
 					{
-						df::bump(perf->batches);
-						df::bump(perf->tasks, tasks.size());
-						df::record_peak(perf->batch_peak, static_cast<uint32_t>(tasks.size()));
+						core::bump(perf->batches);
+						core::bump(perf->tasks, tasks.size());
+						core::record_peak(perf->batch_peak, static_cast<uint32_t>(tasks.size()));
 					}
 
 					for (const auto& t : tasks)
@@ -330,29 +330,29 @@ static void start_database(database& db, platform::task_queue& database_task_que
 						try
 						{
 							record_queue_wait(t, perf);
-							df::perf_timer timer(perf->busy_us, &perf->task_max_us);
+							core::perf_timer timer(perf->busy_us, &perf->task_max_us);
 							t();
 						}
 						catch (const std::exception& e)
 						{
-							df::log(__FUNCTION__, e.what());
+							core::log(__FUNCTION__, e.what());
 						}
 					}
 				}
 				catch (std::exception& e)
 				{
-					df::log(__FUNCTION__, e.what());
+					core::log(__FUNCTION__, e.what());
 				}
 			}
 
 			try
 			{
-				df::scope_locked_inc l(df::jobs_running);
+				core::scope_locked_inc l(df::jobs_running);
 				db.perform_writes();
 			}
 			catch (std::exception& e)
 			{
-				df::log(__FUNCTION__, e.what());
+				core::log(__FUNCTION__, e.what());
 			}
 		}
 
@@ -360,8 +360,8 @@ static void start_database(database& db, platform::task_queue& database_task_que
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
-		app->app_fail(tt.error_index_database_failed, str::utf8_cast(e.what()));
+		core::log(__FUNCTION__, e.what());
+		app->fail(tt.error_index_database_failed, core::utf8_cast(e.what()));
 	}
 
 	// Truncate any tasks still queued at shutdown so their captured references
@@ -384,8 +384,8 @@ static void start_database(database& db, platform::task_queue& database_task_que
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
-		app->app_fail(tt.error_index_database_failed, str::utf8_cast(e.what()));
+		core::log(__FUNCTION__, e.what());
+		app->fail(tt.error_index_database_failed, core::utf8_cast(e.what()));
 	}
 }
 
@@ -394,7 +394,7 @@ void app_frame::queue_ui(std::function<void()> f)
 	// One idle wake drains the queued UI batch, so additional callbacks need no extra context switch.
 	if (_ui_queue.enqueue(std::move(f)))
 	{
-		_pa->queue_idle();
+		platform::queue_idle();
 	}
 }
 
@@ -405,7 +405,7 @@ bool app_frame::claim_worker_start(std::atomic_bool& started)
 {
 	// A worker created after this point would find its loop condition already false and exit without
 	// draining anything, so the thread is never made.
-	if (df::is_closing) return false;
+	if (platform::is_closing) return false;
 
 	return !started.load(std::memory_order_acquire) && !started.exchange(true, std::memory_order_acq_rel);
 }
@@ -524,7 +524,7 @@ void app_frame::queue_async_after(const async_queue q, const uint32_t delay_ms, 
 		search_index_task_queue.enqueue_after(delay_ms, std::move(f));
 		break;
 	default:
-		df::assert_true(false);
+		core::assert_true(false);
 		queue_async(q, std::move(f));
 		break;
 	}
@@ -555,20 +555,20 @@ void app_frame::queue_tile_db(std::function<void(tile_cache_db&)> f)
 static void start_media_preview()
 {
 	log_func lf(__FUNCTION__);
-	platform::set_thread_description("media_preview");
+	core::set_thread_description("media_preview");
 
 	// Every other worker truncates its queue on the way out, and for the same reason: these tasks
 	// hold handles to UI-owned objects, and leaving them in a file static defers their release to
 	// static destruction, after the factories and COM are already gone. It runs on the way out of
 	// the loop AND out of the catch, so a throw does not skip it. The lambdas are destroyed after
 	// the lock is released, because releasing a ui_owned_ptr posts to the UI queue.
-	const df::scope_exit truncate([]
+	const core::scope_exit truncate([]
 	{
 		std::deque<std::function<void(media_preview_state&)>> must_run;
 		std::function<void(media_preview_state&)> next;
 
 		{
-			platform::exclusive_lock media_lock(media_preview_mutex);
+			core::exclusive_lock media_lock(media_preview_mutex);
 			std::swap(media_preview_must_run, must_run);
 			std::swap(next_media_preview, next);
 		}
@@ -577,19 +577,19 @@ static void start_media_preview()
 	try
 	{
 		platform::thread_init c;
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {
 			media_preview_event, platform::event_exit
 		};
 		media_preview_state preview_decoder;
 		preview_decoder.superseded = &media_preview_superseded;
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
 			// The idle timeout exists only to release a decoder that is still open. Once it is closed
 			// there is nothing left to release, so wait for the next request (0 is infinite) rather than
 			// waking every five seconds for the rest of the session.
 			const auto idle_close_ms = (preview_decoder.decoder1 || preview_decoder.decoder2) ? 5000u : 0u;
-			const auto w = wait_for(events, idle_close_ms, false);
+			const auto w = platform::wait_for(events, idle_close_ms, false);
 
 			if (0 == w)
 			{
@@ -597,7 +597,7 @@ static void start_media_preview()
 				std::function<void(media_preview_state&)> f;
 
 				{
-					platform::exclusive_lock media_lock(media_preview_mutex);
+					core::exclusive_lock media_lock(media_preview_mutex);
 					std::swap(media_preview_must_run, must_run);
 					std::swap(next_media_preview, f);
 					media_preview_superseded.store(false, std::memory_order_relaxed);
@@ -615,7 +615,7 @@ static void start_media_preview()
 					}
 					catch (const std::exception& e)
 					{
-						df::log(__FUNCTION__, e.what());
+						core::log(__FUNCTION__, e.what());
 					}
 				}
 
@@ -627,7 +627,7 @@ static void start_media_preview()
 					}
 					catch (const std::exception& e)
 					{
-						df::log(__FUNCTION__, e.what());
+						core::log(__FUNCTION__, e.what());
 					}
 				}
 			}
@@ -639,7 +639,7 @@ static void start_media_preview()
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 }
 
@@ -649,14 +649,14 @@ static void drain_queue(platform::task_queue& q, df::queue_counters* perf)
 {
 	try
 	{
-		df::scope_locked_inc l(df::jobs_running);
+		core::scope_locked_inc l(df::jobs_running);
 		const auto tasks = q.dequeue_all();
 
 		if (!tasks.empty())
 		{
-			df::bump(perf->batches);
-			df::bump(perf->tasks, tasks.size());
-			df::record_peak(perf->batch_peak, static_cast<uint32_t>(tasks.size()));
+			core::bump(perf->batches);
+			core::bump(perf->tasks, tasks.size());
+			core::record_peak(perf->batch_peak, static_cast<uint32_t>(tasks.size()));
 		}
 
 		for (const auto& t : tasks)
@@ -664,42 +664,42 @@ static void drain_queue(platform::task_queue& q, df::queue_counters* perf)
 			try
 			{
 				record_queue_wait(t, perf);
-				df::perf_timer timer(perf->busy_us, &perf->task_max_us);
+				core::perf_timer timer(perf->busy_us, &perf->task_max_us);
 				t();
 			}
 			catch (const std::exception& e)
 			{
-				df::log(__FUNCTION__, e.what());
+				core::log(__FUNCTION__, e.what());
 			}
 		}
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 }
 
 void start_worker(platform::task_queue& q, const std::string_view name)
 {
 	log_func lf(__FUNCTION__, name);
-	platform::set_thread_description(name);
+	core::set_thread_description(name);
 
 	// One slot per worker thread, so the shared loop can account every queue without knowing which.
 	auto* const perf = df::register_queue(name);
 
-	if (!df::is_closing)
+	if (!platform::is_closing)
 	{
 		try
 		{
 			platform::thread_init c;
-			const std::vector<std::reference_wrapper<platform::thread_event>> events = {q._event, platform::event_exit};
+			const std::vector<std::reference_wrapper<core::thread_event>> events = {q._event, platform::event_exit};
 
-			while (!df::is_closing)
+			while (!platform::is_closing)
 			{
 				// A debounced queue reports how long is left before its work is due; every other queue
 				// reports ready as soon as it holds anything. Spending the delay in this wait is what
 				// keeps it off a task, which would otherwise hold this thread for the whole debounce.
-				// event_exit is manual-reset and set before df::is_closing is observed, so an indefinite
+				// event_exit is manual-reset and set before platform::is_closing is observed, so an indefinite
 				// wait still ends at shutdown.
 				const auto delay = q.delay_before_ready_ms();
 
@@ -710,13 +710,13 @@ void start_worker(platform::task_queue& q, const std::string_view name)
 				else
 				{
 					// Either nothing pending (block on the events) or a debounce still running out.
-					wait_for(events, delay == platform::task_queue::wait_indefinitely ? 0 : delay, false);
+					platform::wait_for(events, delay == platform::task_queue::wait_indefinitely ? 0 : delay, false);
 				}
 			}
 		}
 		catch (std::exception& e)
 		{
-			df::log(__FUNCTION__, e.what());
+			core::log(__FUNCTION__, e.what());
 		}
 	}
 
@@ -742,30 +742,30 @@ void start_worker(platform::task_queue& q, const std::string_view name)
 void start_worker_group(std::vector<worker_queue_binding> bindings, const std::string_view group_name)
 {
 	log_func lf(__FUNCTION__, group_name);
-	platform::set_thread_description(group_name);
+	core::set_thread_description(group_name);
 
 	std::vector<df::queue_counters*> perf;
 	perf.reserve(bindings.size());
 	for (const auto& b : bindings) perf.emplace_back(df::register_queue(b.name));
 
-	if (!df::is_closing)
+	if (!platform::is_closing)
 	{
 		try
 		{
 			platform::thread_init c;
 
-			std::vector<std::reference_wrapper<platform::thread_event>> events;
+			std::vector<std::reference_wrapper<core::thread_event>> events;
 			events.reserve(bindings.size() + 1);
 			for (const auto& b : bindings) events.emplace_back(b.queue->_event);
 			events.emplace_back(platform::event_exit);
 
-			while (!df::is_closing)
+			while (!platform::is_closing)
 			{
 				// wait_indefinitely is the largest uint32, so this also picks the nearest deadline.
 				auto wait_ms = platform::task_queue::wait_indefinitely;
 				auto drained = false;
 
-				for (size_t i = 0; i < bindings.size() && !df::is_closing; ++i)
+				for (size_t i = 0; i < bindings.size() && !platform::is_closing; ++i)
 				{
 					const auto delay = bindings[i].queue->delay_before_ready_ms();
 
@@ -781,12 +781,12 @@ void start_worker_group(std::vector<worker_queue_binding> bindings, const std::s
 
 				if (drained) continue;
 
-				wait_for(events, wait_ms == platform::task_queue::wait_indefinitely ? 0 : wait_ms, false);
+				platform::wait_for(events, wait_ms == platform::task_queue::wait_indefinitely ? 0 : wait_ms, false);
 			}
 		}
 		catch (std::exception& e)
 		{
-			df::log(__FUNCTION__, e.what());
+			core::log(__FUNCTION__, e.what());
 		}
 	}
 
@@ -803,19 +803,19 @@ void start_worker_group(std::vector<worker_queue_binding> bindings, const std::s
 void start_map_worker(platform::task_queue& q)
 {
 	log_func lf(__FUNCTION__, "map");
-	platform::set_thread_description("map");
+	core::set_thread_description("map");
 	auto* const perf = df::register_queue("map_tile");
 
 	try
 	{
 		platform::thread_init c;
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {q._event, platform::event_exit};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {q._event, platform::event_exit};
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
 			// Infinite, as start_worker: the re-signal below is what keeps the siblings moving, so a
 			// timeout could only wake a worker to find nothing.
-			if (wait_for(events, 0, false) == 0)
+			if (platform::wait_for(events, 0, false) == 0)
 			{
 				platform::task_queue::task_t task;
 
@@ -826,16 +826,16 @@ void start_map_worker(platform::task_queue& q)
 
 					try
 					{
-						df::scope_locked_inc l(df::jobs_running);
-						df::bump(perf->batches);
-						df::bump(perf->tasks);
+						core::scope_locked_inc l(df::jobs_running);
+						core::bump(perf->batches);
+						core::bump(perf->tasks);
 						record_queue_wait(task, perf);
-						df::perf_timer timer(perf->busy_us, &perf->task_max_us);
+						core::perf_timer timer(perf->busy_us, &perf->task_max_us);
 						task();
 					}
 					catch (std::exception& e)
 					{
-						df::log(__FUNCTION__, e.what());
+						core::log(__FUNCTION__, e.what());
 					}
 				}
 			}
@@ -843,7 +843,7 @@ void start_map_worker(platform::task_queue& q)
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 }
 
@@ -853,7 +853,7 @@ void start_map_worker(platform::task_queue& q)
 static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 {
 	log_func lf(__FUNCTION__, "map_tile_db");
-	platform::set_thread_description("map tile database");
+	core::set_thread_description("map tile database");
 	auto* const perf = df::register_queue("map_tile_db");
 
 	try
@@ -865,22 +865,22 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 		// hundred writes have already grown it further.
 		db.prune();
 
-		const std::vector<std::reference_wrapper<platform::thread_event>> events = {
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {
 			queue._event, platform::event_exit
 		};
 
-		while (!df::is_closing)
+		while (!platform::is_closing)
 		{
-			if (wait_for(events, 1000, false) == 0)
+			if (platform::wait_for(events, 1000, false) == 0)
 			{
-				df::scope_locked_inc l(df::jobs_running);
+				core::scope_locked_inc l(df::jobs_running);
 				const auto tasks = queue.dequeue_all();
 
 				if (!tasks.empty())
 				{
-					df::bump(perf->batches);
-					df::bump(perf->tasks, tasks.size());
-					df::record_peak(perf->batch_peak, static_cast<uint32_t>(tasks.size()));
+					core::bump(perf->batches);
+					core::bump(perf->tasks, tasks.size());
+					core::record_peak(perf->batch_peak, static_cast<uint32_t>(tasks.size()));
 				}
 
 				for (const auto& t : tasks)
@@ -888,12 +888,12 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 					try
 					{
 						record_queue_wait(t, perf);
-						df::perf_timer timer(perf->busy_us, &perf->task_max_us);
+						core::perf_timer timer(perf->busy_us, &perf->task_max_us);
 						t();
 					}
 					catch (std::exception& e)
 					{
-						df::log(__FUNCTION__, e.what());
+						core::log(__FUNCTION__, e.what());
 					}
 				}
 			}
@@ -906,7 +906,7 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	try
@@ -916,7 +916,7 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 }
 
@@ -926,7 +926,7 @@ void app_frame::start_workers()
 	// Runs on the work queue, so exit() can latch the thread list underneath it. start_if_running is
 	// what makes that safe - an unchecked start here appends workers to a list that has already been
 	// joined, and they then outlive COM and the graphics factories.
-	if (df::is_closing) return;
+	if (platform::is_closing) return;
 
 	auto app = shared_from_this();
 	async_strategy& async = *this;
@@ -937,7 +937,7 @@ void app_frame::start_workers()
 
 	auto index_loaded_func = [this]
 	{
-		if (!df::is_closing)
+		if (!platform::is_closing)
 		{
 			start_index_workers();
 		}
@@ -981,11 +981,11 @@ void app_frame::start_workers()
 	{
 		wait_for_index_cache(_state.item_index);
 
-		if (df::is_closing) return;
+		if (platform::is_closing) return;
 
 		_state.item_index.index_roots(index_folders(collection));
 
-		const auto token = df::cancel_token(index_version);
+		const auto token = core::cancel_token(index_version);
 		_state.item_index.index_folders(token, scan_collection);
 		queue_ui([this] { start_index_workers(); });
 		invalidate_view(view_invalid::sidebar | view_invalid::command_state | view_invalid::presence |

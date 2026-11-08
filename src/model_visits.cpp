@@ -92,17 +92,17 @@ namespace
 	// The identity a place name carries. Place alone merges namesakes - a Springfield in Illinois
 	// and one in Massachusetts are not the same visit - so the qualifying parts belong in the key,
 	// and folding the case is what stops one spelling splitting into two.
-	std::string place_identity_key(const str::cached place, const str::cached state, const str::cached country)
+	std::string place_identity_key(const core::cached place, const core::cached state, const core::cached country)
 	{
 		auto key = std::format("{}\x1f{}\x1f{}", place.sv(), state.sv(), country.sv());
-		return str::to_lower(key);
+		return core::to_lower(key);
 	}
 
 	std::string place_subset_key(const df::visit_place_tally& t, const uint32_t mask)
 	{
-		return place_identity_key((mask & 1u) != 0 ? t.place : str::cached{},
-		                          (mask & 2u) != 0 ? t.state : str::cached{},
-		                          (mask & 4u) != 0 ? t.country : str::cached{});
+		return place_identity_key((mask & 1u) != 0 ? t.place : core::cached{},
+		                          (mask & 2u) != 0 ? t.state : core::cached{},
+		                          (mask & 4u) != 0 ? t.country : core::cached{});
 	}
 
 	uint32_t place_mask(const df::visit_place_tally& t)
@@ -116,7 +116,7 @@ namespace
 	                                    std::map<std::string, resolved_name_t>& memo)
 	{
 		std::string query;
-		const auto append = [&query](const str::cached part)
+		const auto append = [&query](const core::cached part)
 		{
 			if (is_empty(part)) return;
 			if (!query.empty()) query.append(", ");
@@ -129,7 +129,7 @@ namespace
 
 		// find_by_name matches case-insensitively, so the memo has to as well or the same place
 		// spelt differently misses and re-reads the gazetteer.
-		const auto memo_key = str::to_lower(query);
+		const auto memo_key = core::to_lower(query);
 
 		const auto found = memo.find(memo_key);
 		if (found != memo.end()) return found->second;
@@ -182,7 +182,7 @@ namespace
 	// Exact identities are collapsed through the finite place/state/country predicate subsets. If
 	// a partial chip would return sharper identities, the whole connected set merges to the common
 	// predicate its search can honestly advertise.
-	bool collapse_subsumed_places(std::vector<df::visit_place_tally>& tallies, const df::cancel_token& token,
+	bool collapse_subsumed_places(std::vector<df::visit_place_tally>& tallies, const core::cancel_token& token,
 	                              df::visit_work_counters* counters)
 	{
 		if (tallies.size() < 2) return true;
@@ -405,7 +405,7 @@ namespace
 				for (const auto& other : tallies)
 				{
 					if (&other == &tally) continue;
-					collides = str::icmp(label, place_label(other, level)) == 0;
+					collides = core::icmp(label, place_label(other, level)) == 0;
 					if (collides) break;
 				}
 
@@ -599,8 +599,8 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		if (s.coordinate.is_valid())
 		{
 			bucket_key key;
-			key.lat = round(s.coordinate.latitude() / visit_bucket_degrees);
-			key.lon = round(s.coordinate.longitude() / visit_bucket_degrees);
+			key.lat = core::round(s.coordinate.latitude() / visit_bucket_degrees);
+			key.lon = core::round(s.coordinate.longitude() / visit_bucket_degrees);
 			buckets[key].emplace_back(i);
 		}
 		else
@@ -753,7 +753,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		{
 			// 6. Reveal on intent. An era is offered only when the query already names its place,
 			// and then it arrives as one node carrying its own bounds -- `London 2000-2010`.
-			if (request.intent_place.empty() || str::icmp(clusters[c].name, request.intent_place) != 0) continue;
+			if (request.intent_place.empty() || core::icmp(clusters[c].name, request.intent_place) != 0) continue;
 
 			candidate_t era;
 			era.cluster = static_cast<int>(c);
@@ -977,10 +977,10 @@ std::string df::visit_node_dates(const visit_node& node)
 
 	if (first.month == last.month)
 	{
-		return std::format("{} {}", str::short_month(first.month, true), first.year);
+		return std::format("{} {}", core::short_month(first.month, true), first.year);
 	}
 
-	return str::to_string(first.year);
+	return core::to_string(first.year);
 }
 
 static void apply_visit_location(df::search_t& search, const gps_coordinate centre, const std::string& name,
@@ -1053,7 +1053,7 @@ bool df::is_visit_node_selected(const search_t& current, const visit_node& node)
 		}
 		else if (t.type == search_term_type::location)
 		{
-			if (node.named) place = str::icmp(t.text, node.name) == 0;
+			if (node.named) place = core::icmp(t.text, node.name) == 0;
 			else place = t.coord_val.is_valid() && t.coord_val == node.centre;
 		}
 	}

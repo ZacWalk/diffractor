@@ -17,7 +17,7 @@
 inline bool find_auto_complete(const std::vector<std::string_view>& queries, const std::string_view text,
                                const bool is_path, ui::match_highlights& match)
 {
-	std::vector<str::part_t> found_subs;
+	std::vector<core::part_t> found_subs;
 
 	// Every part has to be found: the result test below counts one hit per query part, so a part
 	// that matches must move on to the next part rather than ending the walk.
@@ -31,7 +31,7 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 
 				if (is_path)
 				{
-					const auto last_slash = df::find_last_slash(text);
+					const auto last_slash = core::find_last_slash(text);
 
 					if (last_slash != std::string_view::npos && last_slash < text.size())
 					{
@@ -43,19 +43,19 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 				auto text_pos = text.begin() + static_cast<std::ptrdiff_t>(std::min(match_pos, text.size()));
 				auto query_pos = q.begin();
 				if (match_pos < text.size() &&
-					str::normalize_for_compare(str::pop_utf8_char(text_pos, text.end())) ==
-					str::normalize_for_compare(str::pop_utf8_char(query_pos, q.end())))
+					core::normalize_for_compare(core::pop_utf8_char(text_pos, text.end())) ==
+					core::normalize_for_compare(core::pop_utf8_char(query_pos, q.end())))
 				{
-					found_subs.emplace_back(match_pos, str::matched_text_byte_length(text, match_pos, q));
+					found_subs.emplace_back(match_pos, core::matched_text_byte_length(text, match_pos, q));
 				}
 			}
 			else
 			{
-				auto found = str::ifind(text, q);
+				auto found = core::ifind(text, q);
 
 				if (found != std::string_view::npos)
 				{
-					found_subs.emplace_back(found, str::matched_text_byte_length(text, found, q));
+					found_subs.emplace_back(found, core::matched_text_byte_length(text, found, q));
 				}
 			}
 		}
@@ -68,7 +68,7 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 		// Both text renderers walk the string forwards and consume highlights in order, dropping any
 		// whose offset is already behind them. found_subs is built in query order, which is not text
 		// order the moment the user types the words in a different order from the one they appear in.
-		std::ranges::sort(found_subs, [](const str::part_t& l, const str::part_t& r)
+		std::ranges::sort(found_subs, [](const core::part_t& l, const core::part_t& r)
 		{
 			return l.offset < r.offset;
 		});
@@ -79,10 +79,10 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 	return is_match;
 }
 
-static std::vector<ui::text_highlight_t> make_highlights(const ui::match_highlights& match,
-                                                         const ui::color highlight_clr)
+static std::vector<render::text_highlight_t> make_highlights(const ui::match_highlights& match,
+                                                         const core::color highlight_clr)
 {
-	std::vector<ui::text_highlight_t> highlights(match.size());
+	std::vector<render::text_highlight_t> highlights(match.size());
 
 	for (auto i = 0u; i < match.size(); i++)
 	{
@@ -96,29 +96,29 @@ static std::vector<ui::text_highlight_t> make_highlights(const ui::match_highlig
 
 static std::string auto_complete_lead(std::string lead)
 {
-	if (!lead.empty() && !str::is_white_space(lead.back())) lead.push_back(' ');
+	if (!lead.empty() && !core::is_white_space(lead.back())) lead.push_back(' ');
 	return lead;
 }
 
 // The count a prediction carries, right-aligned and quieter than its text. Answers the width it took so
 // the text stops short of it. None is drawn as nothing, as the sidebar draws it.
-static int draw_match_count(ui::draw_context& dc, const std::optional<uint64_t>& count, const recti bounds)
+static int draw_match_count(render::draw_context& dc, const std::optional<uint64_t>& count, const recti bounds)
 {
 	if (!count || *count == 0) return 0;
 
-	const auto text = str::format_count(*count);
-	const auto extent = dc.measure_text(text, ui::style::font_face::dialog, ui::style::text_style::single_line,
+	const auto text = core::format_count(*count);
+	const auto extent = dc.measure_text(text, render::font_face::dialog, render::text_style::single_line,
 	                                    bounds.width());
 	auto count_bounds = bounds;
 	count_bounds.left = std::max(bounds.left, bounds.right - extent.cx);
-	dc.draw_text(text, {}, count_bounds, ui::style::font_face::dialog, ui::style::text_style::single_line,
-	             ui::color(dc.colors.foreground, dc.colors.alpha * 0.6f), {});
+	dc.draw_text(text, {}, count_bounds, render::font_face::dialog, render::text_style::single_line,
+	             core::color(dc.colors.foreground, dc.colors.alpha * 0.6f), {});
 	return extent.cx + dc.padding2;
 }
 
 static icon_index search_icon(const std::string_view text)
 {
-	if (df::is_path(str::trim(text))) return icon_index::folder;
+	if (core::is_path(core::trim(text))) return icon_index::folder;
 
 	const auto search = df::search_t::parse(text);
 	if (search.has_recursive_selector()) return icon_index::recursive;
@@ -144,12 +144,12 @@ class folder_match final : public ui::auto_complete_match, public std::enable_sh
 {
 public:
 	ui::complete_strategy_t& _parent;
-	df::folder_path folder;
+	core::folder_path folder;
 	ui::match_highlights match;
 	std::string lead;
 	bool raw_edit_text = false;
 
-	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, ui::match_highlights m = {},
+	folder_match(ui::complete_strategy_t& parent, const core::folder_path f, ui::match_highlights m = {},
 	             const int w = 1, const bool raw = false) :
 		auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f), match(std::move(m)),
 		raw_edit_text(raw)
@@ -157,7 +157,7 @@ public:
 		weight = w;
 	}
 
-	folder_match(ui::complete_strategy_t& parent, const df::folder_path f, std::string l, ui::match_highlights m = {},
+	folder_match(ui::complete_strategy_t& parent, const core::folder_path f, std::string l, ui::match_highlights m = {},
 	             const int w = 1, const bool raw = false) : auto_complete_match(view_element_style::can_invoke),
 	                                                        _parent(parent), folder(f),
 	                                                        match(std::move(m)), lead(std::move(l)),
@@ -173,10 +173,10 @@ public:
 		// Issue #139: a completed path containing spaces must read as one term, not two. The whole
 		// input is only auto-quoted when it is nothing but a path, which a completion after a lead
 		// term never is - so the same rule is applied here rather than a second one invented.
-		return str::combine2(auto_complete_lead(lead), df::quote_path_term(folder.text()));
+		return core::combine2(auto_complete_lead(lead), df::quote_path_term(folder.text()));
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg_color = calc_background_color(dc);
@@ -187,30 +187,30 @@ public:
 			dc.draw_rounded_rect(logical_bounds.inflate(pad.cx, pad.cy), bg_color, dc.padding1);
 		}
 
-		const auto highlight_clr = ui::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto highlight_clr = core::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
-		const auto icon_width = dc.measure_text("X", ui::style::font_face::dialog,
-		                                        ui::style::text_style::single_line, bounds.width()).cy;
+		const auto icon_width = dc.measure_text("X", render::font_face::dialog,
+		                                        render::text_style::single_line, bounds.width()).cy;
 		auto icon_bounds = rr;
 		icon_bounds.right = icon_bounds.left + icon_width;
 		xdraw_icon(dc, icon_index::folder, icon_bounds, clr, {});
 		rr.left = icon_bounds.right + dc.padding2;
 		rr.right -= draw_match_count(dc, count, rr);
 
-		if (!str::is_empty(lead))
+		if (!core::is_empty(lead))
 		{
 			const auto lead_text = auto_complete_lead(lead);
-			const auto lead_extent = dc.measure_text(lead_text, ui::style::font_face::dialog,
-			                                         ui::style::text_style::single_line, bounds.width());
-			dc.draw_text(lead_text, {}, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
+			const auto lead_extent = dc.measure_text(lead_text, render::font_face::dialog,
+			                                         render::text_style::single_line, bounds.width());
+			dc.draw_text(lead_text, {}, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
 			rr.left += lead_extent.cx;
 		}
 
 
 		const auto highlights = make_highlights(match, highlight_clr);
-		dc.draw_text(folder.text(), highlights, rr, ui::style::font_face::dialog, ui::style::text_style::single_line,
+		dc.draw_text(folder.text(), highlights, rr, render::font_face::dialog, render::text_style::single_line,
 		             clr, {});
 	}
 
@@ -254,10 +254,10 @@ public:
 
 	std::string edit_text() const override
 	{
-		return str::combine2(auto_complete_lead(lead), text);
+		return core::combine2(auto_complete_lead(lead), text);
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg_color = calc_background_color(dc);
@@ -268,29 +268,29 @@ public:
 			dc.draw_rounded_rect(logical_bounds.inflate(pad.cx, pad.cy), bg_color, dc.padding1);
 		}
 
-		const auto highlight_clr = ui::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto highlight_clr = core::color(ui::style::colors.dialog_selected_text, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
-		const auto icon_width = dc.measure_text("X", ui::style::font_face::dialog,
-		                                        ui::style::text_style::single_line, bounds.width()).cy;
+		const auto icon_width = dc.measure_text("X", render::font_face::dialog,
+		                                        render::text_style::single_line, bounds.width()).cy;
 		auto icon_bounds = rr;
 		icon_bounds.right = icon_bounds.left + icon_width;
 		xdraw_icon(dc, icon, icon_bounds, clr, {});
 		rr.left = icon_bounds.right + dc.padding2;
 		rr.right -= draw_match_count(dc, count, rr);
 
-		if (!str::is_empty(lead))
+		if (!core::is_empty(lead))
 		{
 			const auto lead_text = auto_complete_lead(lead);
-			const auto lead_extent = dc.measure_text(lead_text, ui::style::font_face::dialog,
-			                                         ui::style::text_style::single_line, bounds.width());
-			dc.draw_text(lead_text, {}, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
+			const auto lead_extent = dc.measure_text(lead_text, render::font_face::dialog,
+			                                         render::text_style::single_line, bounds.width());
+			dc.draw_text(lead_text, {}, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
 			rr.left += lead_extent.cx;
 		}
 
 		const auto highlights = make_highlights(match, highlight_clr);
-		dc.draw_text(text, highlights, rr, ui::style::font_face::dialog, ui::style::text_style::single_line, clr, {});
+		dc.draw_text(text, highlights, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
 	}
 
 	void dispatch_event(const view_element_event& event) override

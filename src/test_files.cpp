@@ -51,8 +51,8 @@ extern "C" {
 
 static void should_check_overwrite()
 {
-	const auto src_path = df::file_path(test_files_folder, "Test.jpg");
-	const auto dest_folder = test_files_folder;
+	const auto src_path = core::file_path(test_files_folder(), "Test.jpg");
+	const auto dest_folder = test_files_folder();
 
 	df::item_set items;
 	const auto item = std::make_shared<df::item_element>(src_path, df::index_file_item{});
@@ -71,13 +71,13 @@ static void should_report_zip_create_failure()
 	const auto missing_folder = _temps.folder().combine("missing");
 	const auto path = missing_folder.combine_file("items.zip");
 	assert_equal(false, zip.create(path), "zip create failure reported");
-	assert_equal(false, path.exists(), "failed zip was not created");
+	assert_equal(false, platform::exists(path), "failed zip was not created");
 }
 
 class recording_file final : public platform::file
 {
-	df::file_path _path;
-	df::blob _prefix;
+	core::file_path _path;
+	core::blob _prefix;
 	uint64_t _size = 0;
 	mutable uint64_t _pos = 0;
 
@@ -85,7 +85,7 @@ public:
 	mutable uint64_t max_read = 0;
 	mutable uint64_t read_calls = 0;
 
-	recording_file(df::file_path path, df::blob prefix, const uint64_t size) :
+	recording_file(core::file_path path, core::blob prefix, const uint64_t size) :
 		_path(std::move(path)), _prefix(std::move(prefix)), _size(size)
 	{
 	}
@@ -131,7 +131,7 @@ public:
 
 	uint64_t pos() const override { return _pos; }
 	bool trunc(uint64_t) const override { return false; }
-	df::file_path path() const override { return _path; }
+	core::file_path path() const override { return _path; }
 };
 
 // The copy loop stops when read64k answers false, which it does for the end of the file and for a
@@ -144,9 +144,9 @@ static void should_add_a_multi_chunk_file_to_a_zip()
 	const auto source = _temps.next_path(".bin");
 
 	// Three buffer loads and a remainder, so the loop runs more than once and ends part way.
-	df::blob payload(64u * 1024u * 3u + 517u);
+	core::blob payload(64u * 1024u * 3u + 517u);
 	for (auto i = 0_z; i < payload.size(); ++i) payload[i] = static_cast<uint8_t>(i * 7 + (i >> 11));
-	df::blob_save_to_file(payload, source);
+	platform::blob_save_to_file(payload, source);
 
 	const auto archive = _temps.next_path(".zip");
 	df::zip_file zip;
@@ -163,15 +163,15 @@ static void should_add_a_multi_chunk_file_to_a_zip()
 static void should_round_trip_zip_entry_names()
 {
 	const auto source = _temps.next_path(".bin");
-	const df::blob payload = {1, 2, 3};
-	df::blob_save_to_file(payload, source);
+	const core::blob payload = {1, 2, 3};
+	platform::blob_save_to_file(payload, source);
 
 	const auto check_name = [&](const std::string& name)
 	{
 		const auto archive = _temps.next_path(".zip");
 		df::zip_file zip;
 		assert_equal(true, zip.create(archive), "the archive is created");
-		assert_equal(true, zip.add(source, name, df::date_t(2024, 1, 2, 3, 4, 6)), "the long-name entry is added");
+		assert_equal(true, zip.add(source, name, core::date_t(2024, 1, 2, 3, 4, 6)), "the long-name entry is added");
 		assert_equal(true, zip.close(), "the archive closes");
 
 		const auto listed = df::zip_file::list(archive);
@@ -188,7 +188,7 @@ static void should_round_trip_zip_entry_names()
 	df::zip_file zip;
 	assert_equal(true, zip.create(_temps.next_path(".zip")), "the archive for an oversized name is created");
 	assert_equal(false, zip.add(source, std::string(static_cast<size_t>(UINT16_MAX) + 1u, 'e'),
-	                            df::date_t(2024, 1, 2, 3, 4, 6)),
+	                            core::date_t(2024, 1, 2, 3, 4, 6)),
 	             "an entry name beyond the ZIP 16-bit length is refused");
 }
 
@@ -204,7 +204,7 @@ static void should_write_utf8_zip_entries()
 	assert_equal(true, zip.create(path), "ZIP created");
 	assert_equal(true, zip.add(source, name), "Unicode entry written");
 	assert_equal(true, zip.close(), "ZIP closed");
-	const auto bytes = df::blob_from_file(path);
+	const auto bytes = platform::blob_from_file(path);
 	assert_equal(true, bytes.size() >= 30, "local ZIP header present");
 	const auto flags = bytes[6] | bytes[7] << 8;
 	assert_equal(true, (flags & (1 << 11)) != 0, "entry declares UTF-8 rather than relying on the reader's code page");
@@ -232,11 +232,11 @@ static void should_keep_archive_entries_after_warnings()
 	assert_equal(true, zip.add(source, "first.bin"), "first entry written");
 	assert_equal(true, zip.add(source, "second.bin"), "second entry written");
 	assert_equal(true, zip.close(), "warning fixture closed");
-	auto bytes = df::blob_from_file(path);
+	auto bytes = platform::blob_from_file(path);
 	assert_equal(true, bytes.size() > 18, "local header contains CRC");
 	bytes[14] = 1;
 	bytes[15] = bytes[16] = bytes[17] = 0;
-	assert_equal(true, df::blob_save_to_file(bytes, path), "mismatched local CRC stored");
+	assert_equal(true, platform::blob_save_to_file(bytes, path), "mismatched local CRC stored");
 
 	const std::unique_ptr<archive, decltype(&archive_read_free)> reader(archive_read_new(), archive_read_free);
 	assert_equal(true, reader != nullptr, "archive reader allocated");
@@ -274,33 +274,33 @@ static void should_convert_archive_unix_timestamps()
 	std::copy(pax.begin(), pax.end(), bytes.begin() + 512);
 	header(1024, "dated.bin", '0', 0);
 	const auto path = _temps.next_path(".tar");
-	assert_equal(true, df::blob_save_to_file({bytes.data(), bytes.size()}, path), "PAX fixture stored");
+	assert_equal(true, platform::blob_save_to_file({bytes.data(), bytes.size()}, path), "PAX fixture stored");
 	const auto listed = files::list_archive(path);
 	assert_equal(1_z, listed.size(), "dated archive entry found");
-	assert_equal(df::date_t(2024, 1, 2, 3, 4, 5).to_int64() + 1234567,
+	assert_equal(core::date_t(2024, 1, 2, 3, 4, 5).to_int64() + 1234567,
 	             listed.front().created.to_int64(), "Unix epoch, seconds and fractional precision are converted");
 }
 
 static void should_round_trip_zip_entry_dates()
 {
 	const auto source = _temps.next_path(".bin");
-	const df::blob payload = {1, 2, 3};
-	df::blob_save_to_file(payload, source);
+	const core::blob payload = {1, 2, 3};
+	platform::blob_save_to_file(payload, source);
 
 	const std::array dates = {
-		df::date_t(2024, 1, 31, 23, 58, 56),
-		df::date_t(2024, 12, 31, 1, 2, 4),
-		df::date_t(2024, 2, 29, 6, 8, 10),
-		df::date_t(1975, 6, 15, 12, 0, 0),
-		df::date_t(1601, 1, 1, 0, 0, 0),
+		core::date_t(2024, 1, 31, 23, 58, 56),
+		core::date_t(2024, 12, 31, 1, 2, 4),
+		core::date_t(2024, 2, 29, 6, 8, 10),
+		core::date_t(1975, 6, 15, 12, 0, 0),
+		core::date_t(1601, 1, 1, 0, 0, 0),
 	};
 
 	const std::array expected = {
-		df::date_t(2024, 1, 31, 23, 58, 56),
-		df::date_t(2024, 12, 31, 1, 2, 4),
-		df::date_t(2024, 2, 29, 6, 8, 10),
-		df::date_t(1980, 1, 1, 0, 0, 0).local_to_system(),
-		df::date_t(1980, 1, 1, 0, 0, 0).local_to_system(),
+		core::date_t(2024, 1, 31, 23, 58, 56),
+		core::date_t(2024, 12, 31, 1, 2, 4),
+		core::date_t(2024, 2, 29, 6, 8, 10),
+		platform::local_to_utc(core::date_t(1980, 1, 1, 0, 0, 0)),
+		platform::local_to_utc(core::date_t(1980, 1, 1, 0, 0, 0)),
 	};
 
 	const auto archive = _temps.next_path(".zip");
@@ -332,20 +332,20 @@ static void should_create_original_before_replace()
 {
 	const auto destination = _temps.next_path(".jpg");
 	const auto replacement = _temps.next_path(".jpg");
-	const df::blob original = {1, 2, 3};
-	const df::blob updated = {4, 5, 6};
-	df::blob_save_to_file(original, destination);
-	df::blob_save_to_file(updated, replacement);
+	const core::blob original = {1, 2, 3};
+	const core::blob updated = {4, 5, 6};
+	platform::blob_save_to_file(original, destination);
+	platform::blob_save_to_file(updated, replacement);
 
 	const auto result = platform::replace_file(destination, replacement, true);
-	const auto original_path = df::file_path(destination.folder(),
+	const auto original_path = core::file_path(destination.folder(),
 	                                         std::string(destination.file_name_without_extension()) + ".original",
 	                                         destination.extension());
 	assert_equal(true, result.success(), "replacement with backup succeeds");
-	assert_equal(true, original_path.exists(), "original backup exists");
-	assert_equal(true, df::blob_from_file(original_path) == original, "backup contains original bytes");
+	assert_equal(true, platform::exists(original_path), "original backup exists");
+	assert_equal(true, platform::blob_from_file(original_path) == original, "backup contains original bytes");
 	assert_equal(true, result.coherent_handle != nullptr, "replacement returns coherent handle");
-	df::blob actual(updated.size());
+	core::blob actual(updated.size());
 	result.coherent_handle->seek(0, platform::file::whence::begin);
 	actual.resize(static_cast<size_t>(result.coherent_handle->read(actual.data(), actual.size())));
 	assert_equal(true, actual == updated, "destination contains updated bytes");
@@ -354,7 +354,7 @@ static void should_create_original_before_replace()
 
 static void should_report_move_or_copy_collision_paths()
 {
-	const auto root = _temps.folder().combine(std::format("move-copy-{}", platform::tick_count()));
+	const auto root = _temps.folder().combine(std::format("move-copy-{}", core::tick_count()));
 	const auto source = root.combine("source");
 	const auto target = root.combine("target");
 	const auto source_folder = source.combine("album");
@@ -364,10 +364,10 @@ static void should_report_move_or_copy_collision_paths()
 
 	const auto source_file = source.combine_file("photo.txt");
 	const auto occupied_file = target.combine_file("photo.txt");
-	const df::blob contents = {1};
-	df::blob_save_to_file(contents, source_file);
-	df::blob_save_to_file(contents, occupied_file);
-	df::blob_save_to_file(contents, source_folder.combine_file("inside.txt"));
+	const core::blob contents = {1};
+	platform::blob_save_to_file(contents, source_file);
+	platform::blob_save_to_file(contents, occupied_file);
+	platform::blob_save_to_file(contents, source_folder.combine_file("inside.txt"));
 
 	const auto result = platform::move_or_copy({source_file}, {source_folder}, target, false);
 	assert_equal(true, result.success(), "copy with collisions succeeds");
@@ -375,8 +375,8 @@ static void should_report_move_or_copy_collision_paths()
 	assert_equal(uint64_t{1}, static_cast<uint64_t>(result.created_files.folders.size()), "one created folder reported");
 	assert_equal(true, result.created_files.files.front() != occupied_file, "renamed file path reported");
 	assert_equal(true, result.created_files.folders.front() != occupied_folder, "renamed folder path reported");
-	assert_equal(true, result.created_files.files.front().exists(), "reported file exists");
-	assert_equal(true, result.created_files.folders.front().exists(), "reported folder exists");
+	assert_equal(true, platform::exists(result.created_files.files.front()), "reported file exists");
+	assert_equal(true, platform::exists(result.created_files.folders.front()), "reported folder exists");
 	platform::delete_items({}, {root}, false);
 }
 
@@ -417,11 +417,11 @@ static void should_preserve_linux_directory_move_on_unsupported_no_replace()
 	write_test_file(source.combine_file("original.txt"), "original");
 
 	platform::test_linux_move_file_failures({true, false});
-	const df::scope_exit restore([] { platform::test_linux_clear_move_file_failures(); });
+	const core::scope_exit restore([] { platform::test_linux_clear_move_file_failures(); });
 	const auto result = platform::move_file(source, destination);
 	assert_equal(true, result.failed(), "unsupported atomic directory rename is a reported failure");
 	assert_equal("original", read_test_file(source.combine_file("original.txt")), "source is retained");
-	assert_equal(false, destination.exists(), "an unsafe fallback did not publish a destination");
+	assert_equal(false, platform::exists(destination), "an unsafe fallback did not publish a destination");
 }
 
 static void should_refuse_linux_copy_identity_overwrites()
@@ -429,18 +429,18 @@ static void should_refuse_linux_copy_identity_overwrites()
 	const auto root = _temps.next_folder("linux-copy-identity");
 	const auto source = root.combine_file("source.bin");
 	const auto alias = root.combine_file("alias.bin");
-	const df::blob bytes = {1, 2, 3, 4};
-	df::blob_save_to_file(bytes, source);
+	const core::blob bytes = {1, 2, 3, 4};
+	platform::blob_save_to_file(bytes, source);
 	std::filesystem::create_hard_link(platform::to_stream_path(source), platform::to_stream_path(alias));
 
 	const auto same_path = platform::copy_file(source, source, false, false);
 	assert_equal(true, same_path.failed(), "copy to self fails");
-	assert_equal(true, df::blob_from_file(source) == bytes, "copy to self preserves source");
+	assert_equal(true, platform::blob_from_file(source) == bytes, "copy to self preserves source");
 
 	const auto hard_link = platform::copy_file(source, alias, false, false);
 	assert_equal(true, hard_link.failed(), "copy to hard-link alias fails");
-	assert_equal(true, df::blob_from_file(source) == bytes, "hard-link source bytes survive");
-	assert_equal(true, df::blob_from_file(alias) == bytes, "hard-link destination bytes survive");
+	assert_equal(true, platform::blob_from_file(source) == bytes, "hard-link source bytes survive");
+	assert_equal(true, platform::blob_from_file(alias) == bytes, "hard-link destination bytes survive");
 }
 
 static void should_report_linux_copy_flush_failures()
@@ -448,10 +448,10 @@ static void should_report_linux_copy_flush_failures()
 	const auto root = _temps.next_folder("linux-copy-flush");
 	const auto source = root.combine_file("source.bin");
 	const auto destination = root.combine_file("destination.bin");
-	const df::blob source_bytes = {9, 8, 7, 6, 5, 4};
-	const df::blob original_destination = {1, 2, 3};
-	df::blob_save_to_file(source_bytes, source);
-	df::blob_save_to_file(original_destination, destination);
+	const core::blob source_bytes = {9, 8, 7, 6, 5, 4};
+	const core::blob original_destination = {1, 2, 3};
+	platform::blob_save_to_file(source_bytes, source);
+	platform::blob_save_to_file(original_destination, destination);
 
 	platform::linux_copy_file_test_failures partial;
 	partial.max_write_bytes = 2;
@@ -460,7 +460,7 @@ static void should_report_linux_copy_flush_failures()
 	const auto partial_result = platform::copy_file(source, root.combine_file("partial.bin"), true, false);
 	platform::test_linux_clear_copy_file_failures();
 	assert_equal(true, partial_result.success(), "partial and interrupted writes complete");
-	assert_equal(true, df::blob_from_file(root.combine_file("partial.bin")) == source_bytes,
+	assert_equal(true, platform::blob_from_file(root.combine_file("partial.bin")) == source_bytes,
 	             "partial write copy has every byte");
 
 	platform::linux_copy_file_test_failures write_failure;
@@ -469,7 +469,7 @@ static void should_report_linux_copy_flush_failures()
 	const auto write_result = platform::copy_file(source, destination, false, false);
 	platform::test_linux_clear_copy_file_failures();
 	assert_equal(true, write_result.failed(), "write failure is reported");
-	assert_equal(true, df::blob_from_file(destination) == original_destination,
+	assert_equal(true, platform::blob_from_file(destination) == original_destination,
 	             "write failure preserves prior destination");
 
 	platform::linux_copy_file_test_failures close_failure;
@@ -478,7 +478,7 @@ static void should_report_linux_copy_flush_failures()
 	const auto close_result = platform::copy_file(source, destination, false, false);
 	platform::test_linux_clear_copy_file_failures();
 	assert_equal(true, close_result.failed(), "late close failure is reported");
-	assert_equal(true, df::blob_from_file(destination) == original_destination,
+	assert_equal(true, platform::blob_from_file(destination) == original_destination,
 	             "late close failure preserves prior destination");
 }
 
@@ -491,17 +491,17 @@ static void should_claim_linux_auto_rename_destinations_atomically()
 	platform::create_folder(target);
 
 	const auto source = source_folder.combine_file("photo.txt");
-	const df::blob source_bytes = {7};
-	const df::blob competing_bytes = {3};
-	df::blob_save_to_file(source_bytes, source);
+	const core::blob source_bytes = {7};
+	const core::blob competing_bytes = {3};
+	platform::blob_save_to_file(source_bytes, source);
 
 	bool competed = false;
-	platform::test_linux_before_claim_file_path = [&](const df::file_path candidate)
+	platform::test_linux_before_claim_file_path = [&](const core::file_path candidate)
 	{
 		if (!competed)
 		{
 			competed = true;
-			df::blob_save_to_file(competing_bytes, candidate);
+			platform::blob_save_to_file(competing_bytes, candidate);
 		}
 	};
 
@@ -512,18 +512,18 @@ static void should_claim_linux_auto_rename_destinations_atomically()
 	assert_equal(1_z, result.created_files.files.size(), "one copied file is reported");
 	assert_equal(true, result.created_files.files.front() != target.combine_file("photo.txt"),
 	             "the raced name was not reported as copied");
-	assert_equal(true, df::blob_from_file(target.combine_file("photo.txt")) == competing_bytes,
+	assert_equal(true, platform::blob_from_file(target.combine_file("photo.txt")) == competing_bytes,
 	             "competing file bytes survive");
-	assert_equal(true, df::blob_from_file(result.created_files.files.front()) == source_bytes,
+	assert_equal(true, platform::blob_from_file(result.created_files.files.front()) == source_bytes,
 	             "reported file has source bytes");
 
 	const auto replace_source = source_folder.combine_file("replace.txt");
 	const auto replace_target = target.combine_file("replace.txt");
-	df::blob_save_to_file(source_bytes, replace_source);
-	df::blob_save_to_file(competing_bytes, replace_target);
+	platform::blob_save_to_file(source_bytes, replace_source);
+	platform::blob_save_to_file(competing_bytes, replace_target);
 	const auto replace = platform::move_or_copy({replace_source}, {}, target, false, true);
 	assert_equal(true, replace.success(), "explicit replace still succeeds");
-	assert_equal(true, df::blob_from_file(replace_target) == source_bytes, "replace writes source bytes");
+	assert_equal(true, platform::blob_from_file(replace_target) == source_bytes, "replace writes source bytes");
 }
 
 static void should_reject_linux_recursive_copy_into_descendant()
@@ -532,7 +532,7 @@ static void should_reject_linux_recursive_copy_into_descendant()
 	const auto source = root.combine("source");
 	const auto child = source.combine("child");
 	platform::create_folder(child);
-	df::blob_save_to_file(df::blob{1}, source.combine_file("photo.txt"));
+	platform::blob_save_to_file(core::blob{1}, source.combine_file("photo.txt"));
 
 	const auto result = platform::move_or_copy({}, {source}, child, false);
 	assert_equal(true, result.failed(), "copy into descendant fails");
@@ -548,8 +548,8 @@ static void should_delete_linux_directory_symlinks()
 	const auto link = source.combine("linked");
 	platform::create_folder(source);
 	platform::create_folder(target);
-	df::blob_save_to_file(df::blob{1}, source.combine_file("file.txt"));
-	df::blob_save_to_file(df::blob{2}, target.combine_file("target.txt"));
+	platform::blob_save_to_file(core::blob{1}, source.combine_file("file.txt"));
+	platform::blob_save_to_file(core::blob{2}, target.combine_file("target.txt"));
 	std::filesystem::create_directory_symlink(platform::to_stream_path(target), platform::to_stream_path(link));
 
 	const auto result = platform::delete_items({}, {source}, false);
@@ -586,15 +586,15 @@ static void should_move_or_copy_into_its_own_folder_with_auto_rename()
 	const auto root = _temps.next_folder("linux-copy-self-parent");
 	const auto file = root.combine_file("photo.txt");
 	const auto folder = root.combine("album");
-	df::blob_save_to_file(df::blob{7}, file);
+	platform::blob_save_to_file(core::blob{7}, file);
 	platform::create_folder(folder);
-	df::blob_save_to_file(df::blob{8}, folder.combine_file("inside.txt"));
+	platform::blob_save_to_file(core::blob{8}, folder.combine_file("inside.txt"));
 
 	const auto file_result = platform::move_or_copy({file}, {}, root, false);
 	assert_equal(true, file_result.success(), std::format("file copy succeeds ({})", file_result.format_error()));
 	assert_equal(1_z, file_result.created_files.files.size(), "one copied file reported");
 	assert_equal(true, file_result.created_files.files.front() != file, "copy uses a new file name");
-	assert_equal(true, df::blob_from_file(file_result.created_files.files.front()) == df::blob{7},
+	assert_equal(true, platform::blob_from_file(file_result.created_files.files.front()) == core::blob{7},
 	             "copied file has the source bytes");
 
 	const auto folder_result = platform::move_or_copy({}, {folder}, root, false);
@@ -612,15 +612,15 @@ static void should_move_or_copy_stop_on_inner_linux_folder_collision()
 	const auto target = root.combine("target");
 	platform::create_folder(source);
 	platform::create_folder(target);
-	df::blob_save_to_file(df::blob{5}, source.combine_file("inside.txt"));
+	platform::blob_save_to_file(core::blob{5}, source.combine_file("inside.txt"));
 
 	bool competed = false;
-	platform::test_linux_before_copy_folder_file_path = [&](const df::file_path candidate)
+	platform::test_linux_before_copy_folder_file_path = [&](const core::file_path candidate)
 	{
 		if (!competed)
 		{
 			competed = true;
-			df::blob_save_to_file(df::blob{6}, candidate);
+			platform::blob_save_to_file(core::blob{6}, candidate);
 		}
 	};
 
@@ -629,7 +629,7 @@ static void should_move_or_copy_stop_on_inner_linux_folder_collision()
 
 	assert_equal(true, result.failed(), "inner collision fails the claimed tree");
 	assert_equal(false, platform::exists(target.combine("album (2)")), "inner collision does not retry the top folder");
-	assert_equal(true, df::blob_from_file(target.combine("album").combine_file("inside.txt")) == df::blob{6},
+	assert_equal(true, platform::blob_from_file(target.combine("album").combine_file("inside.txt")) == core::blob{6},
 	             "competing inner file survives");
 }
 
@@ -638,8 +638,8 @@ static void should_move_linux_no_replace_without_renameat_or_links()
 	const auto root = _temps.next_folder("linux-move-fallback");
 	const auto source = root.combine_file("source.txt");
 	const auto destination = root.combine_file("destination.txt");
-	const df::blob bytes = {4, 3, 2};
-	df::blob_save_to_file(bytes, source);
+	const core::blob bytes = {4, 3, 2};
+	platform::blob_save_to_file(bytes, source);
 
 	platform::test_linux_move_file_failures({true, true});
 	const auto result = platform::move_file(source, destination, true);
@@ -647,7 +647,7 @@ static void should_move_linux_no_replace_without_renameat_or_links()
 
 	assert_equal(true, result.success(), std::format("fallback move succeeds ({})", result.format_error()));
 	assert_equal(false, platform::exists(source), "source is removed after the exclusive copy");
-	assert_equal(true, df::blob_from_file(destination) == bytes, "destination has source bytes");
+	assert_equal(true, platform::blob_from_file(destination) == bytes, "destination has source bytes");
 }
 
 static void should_refuse_or_preserve_linux_replace_permissions()
@@ -656,11 +656,11 @@ static void should_refuse_or_preserve_linux_replace_permissions()
 	const auto source = root.combine_file("source.txt");
 	const auto read_only = root.combine_file("read-only.txt");
 	const auto private_file = root.combine_file("private.txt");
-	const df::blob source_bytes = {9};
-	const df::blob original_bytes = {1};
-	df::blob_save_to_file(source_bytes, source);
-	df::blob_save_to_file(original_bytes, read_only);
-	df::blob_save_to_file(original_bytes, private_file);
+	const core::blob source_bytes = {9};
+	const core::blob original_bytes = {1};
+	platform::blob_save_to_file(source_bytes, source);
+	platform::blob_save_to_file(original_bytes, read_only);
+	platform::blob_save_to_file(original_bytes, private_file);
 
 	namespace fs = std::filesystem;
 	fs::permissions(platform::to_stream_path(read_only),
@@ -668,7 +668,7 @@ static void should_refuse_or_preserve_linux_replace_permissions()
 	                fs::perm_options::replace);
 	const auto refused = platform::copy_file(source, read_only, false, false);
 	assert_equal(true, refused.failed(), "read-only destination refuses replace");
-	assert_equal(true, df::blob_from_file(read_only) == original_bytes, "read-only destination bytes survive");
+	assert_equal(true, platform::blob_from_file(read_only) == original_bytes, "read-only destination bytes survive");
 
 	fs::permissions(platform::to_stream_path(private_file), fs::perms::owner_read | fs::perms::owner_write,
 	                fs::perm_options::replace);
@@ -686,8 +686,8 @@ static void should_move_or_copy_reject_linux_destination_alias_inside_source()
 	const auto nested = source.combine("a").combine("b");
 	const auto target = root.combine("target-link");
 	platform::create_folder(nested);
-	df::blob_save_to_file(df::blob{1}, source.combine_file("top.txt"));
-	df::blob_save_to_file(df::blob{2}, source.combine("a").combine_file("mid.txt"));
+	platform::blob_save_to_file(core::blob{1}, source.combine_file("top.txt"));
+	platform::blob_save_to_file(core::blob{2}, source.combine("a").combine_file("mid.txt"));
 	std::filesystem::create_directory_symlink(platform::to_stream_path(nested), platform::to_stream_path(target));
 
 	const auto result = platform::move_or_copy({}, {source}, target, false);
@@ -708,10 +708,10 @@ static void should_fail_replace_when_flush_fails()
 	// locking. A POSIX open descriptor denies nothing, so there is no failure here to observe.
 	const auto destination = _temps.next_path(".bin");
 	const auto replacement = _temps.next_path(".bin");
-	const df::blob original = {1, 2, 3};
-	const df::blob updated = {4, 5, 6};
-	df::blob_save_to_file(original, destination);
-	df::blob_save_to_file(updated, replacement);
+	const core::blob original = {1, 2, 3};
+	const core::blob updated = {4, 5, 6};
+	platform::blob_save_to_file(original, destination);
+	platform::blob_save_to_file(updated, replacement);
 	auto locked = platform::open_file(replacement, platform::file_open_mode::read_write);
 	assert_equal(true, locked != nullptr, "replacement locked");
 
@@ -719,7 +719,7 @@ static void should_fail_replace_when_flush_fails()
 	locked.reset();
 	assert_equal(true, real_result.failed(), "real flush failure stops replacement");
 	assert_equal(true, !real_result.error_message.empty(), "real flush error reported");
-	assert_equal(true, df::blob_from_file(destination) == original, "destination unchanged after flush failure");
+	assert_equal(true, platform::blob_from_file(destination) == original, "destination unchanged after flush failure");
 #endif
 }
 
@@ -729,13 +729,13 @@ static void should_fail_replace_when_flush_fails()
 // here and the cleanup it proves has no way to be observed.
 static void should_cleanup_failed_update_temps()
 {
-	const auto src_path = df::file_path(test_files_folder, "Test.jpg");
+	const auto src_path = core::file_path(test_files_folder(), "Test.jpg");
 	// A private folder: enumerating the shared suite temp folder would scan every file every other
 	// test has left there.
 	const auto scratch = _temps.next_folder("update-temps");
 	const auto destination = _temps.next_path_in(scratch, ".jpg");
 	platform::copy_file(src_path, destination, false, false);
-	std::vector<str::cached> files_before;
+	std::vector<core::cached> files_before;
 	for (const auto& file : platform::iterate_file_items(scratch, false).files)
 	{
 		files_before.emplace_back(file.name);
@@ -755,7 +755,7 @@ static void should_cleanup_failed_update_temps()
 	const auto leaked = std::ranges::any_of(contents.files, [&files_before](const platform::file_info& file)
 	{
 		return std::ranges::find(files_before, file.name) == files_before.end() &&
-			str::starts(file.name, "diffractor_");
+			core::starts(file.name, "diffractor_");
 	});
 	assert_equal(false, leaked, "failed update removes temporary files");
 }
@@ -765,13 +765,13 @@ static void should_cleanup_failed_update_temps()
 static void should_write_a_read_only_source_to_another_path()
 {
 	const auto scratch = _temps.next_folder("read-only-source");
-	const auto source = df::file_path(scratch, "source.jpg");
-	const auto destination = df::file_path(scratch, "copy.jpg");
-	platform::copy_file(df::file_path(test_files_folder, "Test.jpg"), source, false, false);
+	const auto source = core::file_path(scratch, "source.jpg");
+	const auto destination = core::file_path(scratch, "copy.jpg");
+	platform::copy_file(core::file_path(test_files_folder(), "Test.jpg"), source, false, false);
 	std::filesystem::permissions(platform::to_stream_path(source),
 	                             std::filesystem::perms::owner_write | std::filesystem::perms::group_write |
 	                             std::filesystem::perms::others_write, std::filesystem::perm_options::remove);
-	const df::scope_exit restore([source] { platform::make_file_writable(source); });
+	const core::scope_exit restore([source] { platform::make_file_writable(source); });
 	assert_equal(true, platform::file_attributes(source).is_readonly, "the source is read-only");
 
 	metadata_edits edits;
@@ -783,7 +783,7 @@ static void should_write_a_read_only_source_to_another_path()
 	const auto contents = platform::iterate_file_items(scratch, false);
 	const auto stage_left = std::ranges::any_of(contents.files, [](const platform::file_info& file)
 	{
-		return str::starts(file.name, "diffractor_");
+		return core::starts(file.name, "diffractor_");
 	});
 	assert_equal(false, stage_left, "and no staged copy is left behind");
 	assert_equal(true, platform::exists(destination), "the copy is written");
@@ -846,7 +846,7 @@ static std::vector<uint8_t> make_test_xmp_packet(const std::string_view body)
 	return {std::bit_cast<const uint8_t*>(xml.data()), std::bit_cast<const uint8_t*>(xml.data() + xml.size())};
 }
 
-static ui::surface_ptr make_gradient_surface(int cx, int cy);
+static core::surface_ptr make_gradient_surface(int cx, int cy);
 
 static void should_fail_webp_save_when_metadata_chunk_insertion_fails()
 {
@@ -856,7 +856,7 @@ static void should_fail_webp_save_when_metadata_chunk_insertion_fails()
 	params.webp_lossless = true;
 
 	const auto assert_failed_chunk = [&](const std::string_view fourcc, const libfiles::metadata_blocks& metadata,
-	                                     const ui::const_surface_ptr& source)
+	                                     const core::const_surface_ptr& source)
 	{
 		files_test_hooks::fail_next_webp_chunk(fourcc);
 		const auto saved = save_webp(source, metadata, params);
@@ -872,9 +872,9 @@ static void should_fail_webp_save_when_metadata_chunk_insertion_fails()
 	assert_failed_chunk("EXIF", exif, surface);
 
 	libfiles::metadata_blocks orientation_metadata;
-	const auto rotated = std::make_shared<ui::surface>();
+	const auto rotated = std::make_shared<core::surface>();
 	rotated->copy(*surface, surface->dimensions());
-	rotated->orientation(ui::orientation::right_top);
+	rotated->orientation(core::orientation::right_top);
 	assert_failed_chunk("EXIF", orientation_metadata, rotated);
 
 	libfiles::metadata_blocks xmp;
@@ -886,8 +886,8 @@ static void should_fail_webp_save_when_metadata_chunk_insertion_fails()
 static void should_scan_d64()
 {
 	constexpr auto file_name = "Ace of Aces (Europe).D64";
-	const auto load_path = test_files_folder.combine("retro").combine_file(file_name);
-	const auto loaded = df::blob_from_file(load_path);
+	const auto load_path = test_files_folder().combine("retro").combine_file(file_name);
+	const auto loaded = platform::blob_from_file(load_path);
 	const auto contents = libfiles::list_c64_media({loaded.data(), loaded.size()});
 
 	assert_equal(4_z, contents.rows.size(), "d64", file_name);
@@ -897,7 +897,7 @@ static void should_scan_d64()
 static void should_scan_archive()
 {
 	constexpr auto file_name = "benchmarks.zip";
-	const auto load_path = test_files_folder.combine_file(file_name);
+	const auto load_path = test_files_folder().combine_file(file_name);
 	const auto contents = files::list_archive(load_path);
 
 	assert_equal(2_z, contents.size(), "archive", file_name);
@@ -943,17 +943,17 @@ static void should_register_every_still_format()
 
 	for (const auto& still : still_formats())
 	{
-		const auto name = std::string(str::split(still.extensions, true).front());
+		const auto name = std::string(core::split(still.extensions, true).front());
 		assert_equal(true, seen.insert(still.format).second, std::format("{} has one entry", name));
 		const auto signature = signatures.find(still.format);
 		assert_equal(true, signature != signatures.end() &&
 		             libfiles::detect_image_format({signature->second.data(), signature->second.size()}) == still.format,
 		             std::format("{} is detected", name));
 		assert_equal(true, still.scan != nullptr, std::format("{} is scanned", name));
-		assert_equal(true, still.encoded == ui::image_format::Unknown || still.decode != nullptr,
+		assert_equal(true, still.encoded == core::image_format::Unknown || still.decode != nullptr,
 		             std::format("{} kept encoded can still be decoded", name));
 
-		for (const auto ext : str::split(still.extensions, true))
+		for (const auto ext : core::split(still.extensions, true))
 		{
 			const auto* const ft = files::file_type_from_name(std::format("x.{}", ext));
 			assert_equal(true, ft->extension == still.extensions && ft->text == still.description &&
@@ -1031,7 +1031,7 @@ static void append_be32(std::vector<uint8_t>& b, const uint32_t v)
 static void append_photoshop_resource(std::vector<uint8_t>& out, uint16_t id, std::string_view name,
                                       std::span<const uint8_t> payload);
 
-static df::blob make_lab_psd(const std::vector<uint8_t>& l, const std::vector<uint8_t>& a,
+static core::blob make_lab_psd(const std::vector<uint8_t>& l, const std::vector<uint8_t>& a,
                              const std::vector<uint8_t>& b)
 {
 	std::vector<uint8_t> psd;
@@ -1059,7 +1059,7 @@ static void should_convert_psd_lab_samples_to_lab_coordinates()
 	mem_read_stream stream(psd);
 	const auto surface = load_psd(stream);
 
-	assert_equal(true, ui::is_valid(surface), "Lab PSD loaded");
+	assert_equal(true, core::is_valid(surface), "Lab PSD loaded");
 
 	const auto black = surface->get_pixel(0, 0);
 	const auto gray = surface->get_pixel(1, 0);
@@ -1068,26 +1068,26 @@ static void should_convert_psd_lab_samples_to_lab_coordinates()
 	const auto mid75 = surface->get_pixel(3, 0);
 	const auto white = surface->get_pixel(4, 0);
 
-	assert_equal(true, ui::get_r(black) < 4 && ui::get_g(black) < 4 && ui::get_b(black) < 4,
+	assert_equal(true, core::get_r(black) < 4 && core::get_g(black) < 4 && core::get_b(black) < 4,
 	             "Lab black is black");
-	assert_equal(true, std::abs(static_cast<int>(ui::get_r(mid50)) - static_cast<int>(ui::get_g(mid50))) <= 2 &&
-	             std::abs(static_cast<int>(ui::get_g(mid50)) - static_cast<int>(ui::get_b(mid50))) <= 2,
+	assert_equal(true, std::abs(static_cast<int>(core::get_r(mid50)) - static_cast<int>(core::get_g(mid50))) <= 2 &&
+	             std::abs(static_cast<int>(core::get_g(mid50)) - static_cast<int>(core::get_b(mid50))) <= 2,
 	             "Lab neutral gray is neutral");
-	assert_near(59.0, static_cast<double>(ui::get_r(mid25)), 1.0, "Lab L25 sRGB");
-	assert_near(119.0, static_cast<double>(ui::get_r(mid50)), 1.0, "Lab L50 sRGB");
-	assert_near(185.0, static_cast<double>(ui::get_r(mid75)), 1.0, "Lab L75 sRGB");
-	assert_equal(true, ui::get_r(white) > 250 && ui::get_g(white) > 250 && ui::get_b(white) > 250,
+	assert_near(59.0, static_cast<double>(core::get_r(mid25)), 1.0, "Lab L25 sRGB");
+	assert_near(119.0, static_cast<double>(core::get_r(mid50)), 1.0, "Lab L50 sRGB");
+	assert_near(185.0, static_cast<double>(core::get_r(mid75)), 1.0, "Lab L75 sRGB");
+	assert_equal(true, core::get_r(white) > 250 && core::get_g(white) > 250 && core::get_b(white) > 250,
 	             "Lab white is white");
 }
 
 class counting_read_stream final : public read_stream
 {
-	df::blob _prefix;
+	core::blob _prefix;
 
 public:
 	size_t max_read = 0;
 
-	counting_read_stream(df::blob prefix, const uint64_t size) : _prefix(std::move(prefix))
+	counting_read_stream(core::blob prefix, const uint64_t size) : _prefix(std::move(prefix))
 	{
 		_file_size = size;
 	}
@@ -1110,11 +1110,11 @@ public:
 	uint32_t peek32(const uint64_t pos) override { return peek<uint32_t>(pos); }
 	uint64_t peek64(const uint64_t pos) override { return peek<uint64_t>(pos); }
 	pack128 peek128(const uint64_t pos) override { return peek<pack128>(pos); }
-	df::blob read_all() override { return {}; }
+	core::blob read_all() override { return {}; }
 
-	df::blob read(const uint64_t pos, const size_t len) override
+	core::blob read(const uint64_t pos, const size_t len) override
 	{
-		df::blob result(len);
+		core::blob result(len);
 		read(pos, result.data(), len);
 		return result;
 	}
@@ -1132,7 +1132,7 @@ public:
 	}
 };
 
-static df::blob make_psd_prefix(const uint16_t channels, const uint32_t rows, const uint32_t columns,
+static core::blob make_psd_prefix(const uint16_t channels, const uint32_t rows, const uint32_t columns,
                                 const uint16_t depth, const uint16_t mode, const uint32_t color_len,
                                 const uint32_t resource_len)
 {
@@ -1158,15 +1158,15 @@ static void should_bound_psd_resource_allocations()
 
 	assert_equal(true, scanned.success, "oversized resource section is a bounded scan");
 	assert_equal(true, scanned.metadata.iptc.empty(), "oversized resource is not published");
-	assert_equal(true, stream.max_read < df::two_fifty_six_k, "oversized resource bytes are skipped, not allocated");
+	assert_equal(true, stream.max_read < core::two_fifty_six_k, "oversized resource bytes are skipped, not allocated");
 }
 
 static void should_read_small_psd_metadata_after_large_unused_resource()
 {
-	const df::blob exif = {'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 0x2a, 0};
+	const core::blob exif = {'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 0x2a, 0};
 	std::vector<uint8_t> resources;
 	append_photoshop_resource(resources, 0x0422, "", exif);
-	const df::blob large_unused(16u * 1024u * 1024u, 0);
+	const core::blob large_unused(16u * 1024u * 1024u, 0);
 	append_photoshop_resource(resources, 0x03ed, "", large_unused);
 
 	const auto prefix = make_psd_prefix(3, 1, 1, 8, 3, 0, static_cast<uint32_t>(resources.size()));
@@ -1177,7 +1177,7 @@ static void should_read_small_psd_metadata_after_large_unused_resource()
 
 	assert_equal(true, scanned.success, "large unused resource section scans");
 	assert_equal(true, std::ranges::equal(scanned.metadata.exif, exif), "small EXIF resource is still read");
-	assert_equal(true, stream.max_read < df::two_fifty_six_k, "unused large resource is skipped");
+	assert_equal(true, stream.max_read < core::two_fifty_six_k, "unused large resource is skipped");
 }
 
 static void should_load_valid_psd_indexed_palette()
@@ -1202,14 +1202,14 @@ static void should_load_valid_psd_indexed_palette()
 	append_be16(psd, 0); // raw compression
 	psd.push_back(7); // palette index
 
-	const df::blob bytes{psd.begin(), psd.end()};
+	const core::blob bytes{psd.begin(), psd.end()};
 	mem_read_stream stream(bytes);
 	const auto surface = load_psd(stream);
-	assert_equal(true, ui::is_valid(surface), "indexed psd loaded");
+	assert_equal(true, core::is_valid(surface), "indexed psd loaded");
 	const auto c = surface->get_pixel(0, 0);
-	assert_equal(30u, ui::get_r(c), "palette red");
-	assert_equal(20u, ui::get_g(c), "palette green");
-	assert_equal(10u, ui::get_b(c), "palette blue");
+	assert_equal(30u, core::get_r(c), "palette red");
+	assert_equal(20u, core::get_g(c), "palette green");
+	assert_equal(10u, core::get_b(c), "palette blue");
 }
 
 static void should_keep_dimensions_from_truncated_gif()
@@ -1301,7 +1301,7 @@ static void should_extract_embedded_thumbnails_only_on_demand()
 	// stream rather than a span into an already-resident blob.
 	for (const auto* const name : {"Nikon.JPG", "IMG_0096.JPG", "melnik.heic"})
 	{
-		const auto path = test_files_folder.combine_file(name);
+		const auto path = test_files_folder().combine_file(name);
 
 		files ff;
 		const auto indexed = ff_scan_file(ff, path);
@@ -1337,7 +1337,7 @@ static void should_decode_heic_hevc_with_ffmpeg()
 	const auto chosen = [](const std::string_view name)
 	{
 		file_read_stream stream;
-		if (!stream.open(test_files_folder.combine_file(name))) return std::string{"unreadable"};
+		if (!stream.open(test_files_folder().combine_file(name))) return std::string{"unreadable"};
 		const auto* const id = heif_primary_decoder_id(stream);
 		return std::string(id ? id : "");
 	};
@@ -1345,7 +1345,7 @@ static void should_decode_heic_hevc_with_ffmpeg()
 	assert_equal("ffmpeg"s, chosen("melnik.heic"), "a grid of HEVC tiles is steered to FFmpeg");
 	assert_equal(""s, chosen("hato.profile0.10bpc.yuv420.avif"), "an AV1 image keeps libheif's choice");
 
-	const auto file = platform::open_file(test_files_folder.combine_file("melnik.heic"), platform::file_open_mode::read);
+	const auto file = platform::open_file(test_files_folder().combine_file("melnik.heic"), platform::file_open_mode::read);
 	assert_equal(true, file != nullptr, "HEIC fixture opened");
 	if (!file) return;
 
@@ -1398,28 +1398,28 @@ static void should_decode_heic_hevc_with_ffmpeg()
 
 // Defined below with the other JPEG helpers; the orientation tests need a stream that carries no
 // Exif of its own, which is exactly what encoding one here produces.
-static ui::surface_ptr make_gradient_surface(int cx, int cy);
+static core::surface_ptr make_gradient_surface(int cx, int cy);
 
 // Regression: the JPEG decoder must keep the APP1 marker, or the embedded EXIF orientation is lost.
 static void should_read_jpeg_orientation()
 {
-	const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
-	const auto data = df::blob_from_file(load_path);
+	const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
+	const auto data = platform::blob_from_file(load_path);
 
 	files ff;
 	bool is_yuv = false;
 	const auto rotated = files_test_hooks::decode_jpeg(ff, data, {}, false, decode_intent::display, is_yuv);
 	assert_equal(true, is_valid(rotated), "decoded jpeg");
-	assert_equal(ui::orientation::right_top, rotated->orientation(), "decoder recovers EXIF orientation");
+	assert_equal(core::orientation::right_top, rotated->orientation(), "decoder recovers EXIF orientation");
 
 	// files holds ONE decoder for every image it reads, so each decode has to state what its own
 	// stream carries. Assigning the orientation only when an Exif marker was found left the
 	// previous file's value in place for a stream with none - which is most embedded RAW
 	// thumbnails - and drew them at that rotation.
-	const auto plain = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, ui::image_format::JPEG);
+	const auto plain = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, core::image_format::JPEG);
 	const auto upright = files_test_hooks::decode_jpeg(ff, plain->data(), {}, false, decode_intent::display, is_yuv);
 	assert_equal(true, is_valid(upright), "a jpeg carrying no orientation decodes");
-	assert_equal(ui::orientation::top_left, upright->orientation(),
+	assert_equal(core::orientation::top_left, upright->orientation(),
 	             "and is upright rather than keeping the last one's rotation");
 }
 
@@ -1431,7 +1431,7 @@ static void should_read_one_exif_orientation_everywhere()
 {
 	const auto block = [](const std::optional<uint16_t> primary, const uint16_t in_exif, const uint16_t thumbnail)
 	{
-		df::blob b;
+		core::blob b;
 		const auto put16 = [&b](const uint16_t v)
 		{
 			b.push_back(static_cast<uint8_t>(v));
@@ -1476,10 +1476,10 @@ static void should_read_one_exif_orientation_everywhere()
 	};
 
 	files ff;
-	const auto plain = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, ui::image_format::JPEG);
+	const auto plain = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, core::image_format::JPEG);
 	assert_equal(true, plain && !plain->data().empty(), "encoded a jpeg to carry each block");
 
-	const auto check = [&](const df::blob& exif, const ui::orientation expected, const std::string_view what)
+	const auto check = [&](const core::blob& exif, const core::orientation expected, const std::string_view what)
 	{
 		prop::item_metadata md;
 		apply_properties(md, libfiles::properties_from_exif(libfiles::read_exif({exif.data(), exif.size()})));
@@ -1490,7 +1490,7 @@ static void should_read_one_exif_orientation_everywhere()
 		// The block in an APP1 segment straight after the JPEG's SOI.
 		const auto& jpeg = plain->data();
 		const auto length = static_cast<uint16_t>(2 + 6 + exif.size());
-		df::blob carried(jpeg.begin(), jpeg.begin() + 2);
+		core::blob carried(jpeg.begin(), jpeg.begin() + 2);
 		carried.push_back(0xFF);
 		carried.push_back(0xE1);
 		carried.push_back(static_cast<uint8_t>(length >> 8));
@@ -1505,9 +1505,9 @@ static void should_read_one_exif_orientation_everywhere()
 		if (decoded) assert_equal(expected, decoded->orientation(), std::format("{}: the JPEG decoder", what));
 	};
 
-	check(block(uint16_t{1}, 6, 8), ui::orientation::top_left, "IFD0 says upright");
-	check(block(uint16_t{3}, 6, 8), ui::orientation::bottom_right, "IFD0 says turned");
-	check(block({}, 6, 8), ui::orientation::left_bottom, "only IFD1 says");
+	check(block(uint16_t{1}, 6, 8), core::orientation::top_left, "IFD0 says upright");
+	check(block(uint16_t{3}, 6, 8), core::orientation::bottom_right, "IFD0 says turned");
+	check(block({}, 6, 8), core::orientation::left_bottom, "only IFD1 says");
 }
 
 static std::vector<uint8_t> make_iptc_caption(const std::string_view caption)
@@ -1535,7 +1535,7 @@ static void append_photoshop_resource(std::vector<uint8_t>& out, const uint16_t 
 	if (payload.size() & 1u) out.push_back(0);
 }
 
-static df::blob jpeg_with_app13_resources(const ui::const_image_ptr& jpeg, const df::blob& resources)
+static core::blob jpeg_with_app13_resources(const core::const_image_ptr& jpeg, const core::blob& resources)
 {
 	std::vector<uint8_t> out;
 	const auto& source = jpeg->data();
@@ -1549,7 +1549,7 @@ static df::blob jpeg_with_app13_resources(const ui::const_image_ptr& jpeg, const
 	return {out.begin(), out.end()};
 }
 
-static void append_jpeg_marker(std::vector<uint8_t>& out, const uint8_t marker, const df::cspan payload)
+static void append_jpeg_marker(std::vector<uint8_t>& out, const uint8_t marker, const core::cspan payload)
 {
 	out.push_back(0xff);
 	out.push_back(marker);
@@ -1558,7 +1558,7 @@ static void append_jpeg_marker(std::vector<uint8_t>& out, const uint8_t marker, 
 	out.insert(out.end(), payload.begin(), payload.end());
 }
 
-static df::blob jpeg_with_metadata_markers(const ui::const_image_ptr& jpeg, const std::vector<df::blob>& payloads,
+static core::blob jpeg_with_metadata_markers(const core::const_image_ptr& jpeg, const std::vector<core::blob>& payloads,
                                            const std::vector<uint8_t>& markers)
 {
 	std::vector<uint8_t> out;
@@ -1572,14 +1572,14 @@ static df::blob jpeg_with_metadata_markers(const ui::const_image_ptr& jpeg, cons
 static void should_parse_jpeg_photoshop_iptc_resources()
 {
 	files ff;
-	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, ui::image_format::JPEG);
+	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, core::image_format::JPEG);
 	assert_equal(true, is_valid(jpeg), "jpeg encoded");
 
 	const auto iptc = make_iptc_caption("resource caption");
 	std::vector<uint8_t> resources;
 	constexpr std::string_view sig = "Photoshop 3.0\0"sv;
 	resources.insert(resources.end(), sig.begin(), sig.end());
-	const df::blob other = {1, 2, 3};
+	const core::blob other = {1, 2, 3};
 	append_photoshop_resource(resources, 0x03ed, "name", other);
 	append_photoshop_resource(resources, 0x0404, "iptc", iptc);
 
@@ -1594,7 +1594,7 @@ static void should_parse_jpeg_photoshop_iptc_resources()
 	// The resource the encoder writes the IPTC in reads back as it went in, its odd length padded.
 	libfiles::metadata_blocks written;
 	written.iptc = iptc;
-	const auto encoded = ff.surface_to_image(make_gradient_surface(8, 8), written, {}, ui::image_format::JPEG);
+	const auto encoded = ff.surface_to_image(make_gradient_surface(8, 8), written, {}, core::image_format::JPEG);
 	mem_read_stream encoded_stream(encoded->data());
 	const auto rescanned = scan_photo(encoded_stream);
 	assert_equal(true, std::ranges::equal(rescanned.metadata.iptc, iptc),
@@ -1604,15 +1604,15 @@ static void should_parse_jpeg_photoshop_iptc_resources()
 static void should_keep_app13_from_overriding_jpeg_app1_and_app2_metadata()
 {
 	files ff;
-	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, ui::image_format::JPEG);
+	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, core::image_format::JPEG);
 	assert_equal(true, is_valid(jpeg), "jpeg encoded");
 
 	const std::vector<uint8_t> app1_xmp = {'a', 'p', 'p', '1', '-', 'x', 'm', 'p'};
-	const df::blob app13_xmp = {'a', 'p', 'p', '1', '3', '-', 'x', 'm', 'p'};
+	const core::blob app13_xmp = {'a', 'p', 'p', '1', '3', '-', 'x', 'm', 'p'};
 	const std::vector<uint8_t> app1_exif = {'I', 'I', 0x2a, 0, 8, 0, 0, 0};
-	const df::blob app13_exif = {'M', 'M', 0, 0x2a};
+	const core::blob app13_exif = {'M', 'M', 0, 0x2a};
 	const std::vector<uint8_t> app2_icc = {'i', 'c', 'c', '-', 'a', 'p', 'p', '2'};
-	const df::blob app13_icc = {'i', 'c', 'c', '-', 'a', 'p', 'p', '1', '3'};
+	const core::blob app13_icc = {'i', 'c', 'c', '-', 'a', 'p', 'p', '1', '3'};
 
 	std::vector<uint8_t> app13;
 	constexpr std::string_view sig = "Photoshop 3.0\0"sv;
@@ -1621,19 +1621,19 @@ static void should_keep_app13_from_overriding_jpeg_app1_and_app2_metadata()
 	append_photoshop_resource(app13, 0x0422, "", app13_exif);
 	append_photoshop_resource(app13, 0x040f, "", app13_icc);
 
-	df::blob xmp_marker;
+	core::blob xmp_marker;
 	xmp_marker.insert(xmp_marker.end(), xmp_signature.begin(), xmp_signature.end());
 	xmp_marker.insert(xmp_marker.end(), app1_xmp.begin(), app1_xmp.end());
-	df::blob exif_marker;
+	core::blob exif_marker;
 	exif_marker.insert(exif_marker.end(), exif_signature.begin(), exif_signature.end());
 	exif_marker.insert(exif_marker.end(), app1_exif.begin(), app1_exif.end());
-	df::blob icc_marker;
+	core::blob icc_marker;
 	icc_marker.insert(icc_marker.end(), icc_signature.begin(), icc_signature.end());
 	icc_marker.push_back(1);
 	icc_marker.push_back(1);
 	icc_marker.insert(icc_marker.end(), app2_icc.begin(), app2_icc.end());
 
-	std::vector<df::blob> payloads;
+	std::vector<core::blob> payloads;
 	payloads.emplace_back(std::move(xmp_marker));
 	payloads.emplace_back(std::move(exif_marker));
 	payloads.emplace_back(std::move(icc_marker));
@@ -1649,11 +1649,11 @@ static void should_keep_app13_from_overriding_jpeg_app1_and_app2_metadata()
 static void should_preserve_non_iptc_jpeg_photoshop_resources()
 {
 	files ff;
-	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, ui::image_format::JPEG);
+	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, core::image_format::JPEG);
 	assert_equal(true, is_valid(jpeg), "jpeg encoded");
 
 	const auto iptc = make_iptc_caption("resource caption");
-	const df::blob other = {9, 8, 7, 6, 5};
+	const core::blob other = {9, 8, 7, 6, 5};
 	std::vector<uint8_t> app13;
 	constexpr std::string_view sig = "Photoshop 3.0\0"sv;
 	app13.insert(app13.end(), sig.begin(), sig.end());
@@ -1677,11 +1677,11 @@ static void should_preserve_non_iptc_jpeg_photoshop_resources()
 static void should_roundtrip_split_jpeg_photoshop_resources()
 {
 	files ff;
-	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, ui::image_format::JPEG);
+	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, core::image_format::JPEG);
 	assert_equal(true, is_valid(jpeg), "jpeg encoded");
 
-	const df::blob first_payload(40000, 0x31);
-	const df::blob second_payload(40000, 0x32);
+	const core::blob first_payload(40000, 0x31);
+	const core::blob second_payload(40000, 0x32);
 	std::vector<uint8_t> first;
 	std::vector<uint8_t> second;
 	constexpr std::string_view sig = "Photoshop 3.0\0"sv;
@@ -1690,7 +1690,7 @@ static void should_roundtrip_split_jpeg_photoshop_resources()
 	append_photoshop_resource(first, 0x03ed, "first", first_payload);
 	append_photoshop_resource(second, 0x03ee, "second", second_payload);
 
-	std::vector<df::blob> payloads;
+	std::vector<core::blob> payloads;
 	payloads.emplace_back(first.begin(), first.end());
 	payloads.emplace_back(second.begin(), second.end());
 	const auto wrapped = jpeg_with_metadata_markers(jpeg, payloads, {0xed, 0xed});
@@ -1711,10 +1711,10 @@ static void should_roundtrip_split_jpeg_photoshop_resources()
 	             "split APP13 resources survive re-encode");
 }
 
-static df::blob split_app13_payload(const std::vector<uint8_t>& joined, const size_t split_at)
+static core::blob split_app13_payload(const std::vector<uint8_t>& joined, const size_t split_at)
 {
 	constexpr std::string_view sig = "Photoshop 3.0\0"sv;
-	std::vector<df::blob> payloads;
+	std::vector<core::blob> payloads;
 	for (auto pos = 0_z; pos < joined.size(); pos += split_at)
 	{
 		std::vector<uint8_t> payload;
@@ -1726,14 +1726,14 @@ static df::blob split_app13_payload(const std::vector<uint8_t>& joined, const si
 	}
 
 	files ff;
-	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, ui::image_format::JPEG);
+	const auto jpeg = ff.surface_to_image(make_gradient_surface(8, 8), {}, {}, core::image_format::JPEG);
 	return jpeg_with_metadata_markers(jpeg, payloads, std::vector<uint8_t>(payloads.size(), 0xed));
 }
 
 static void should_join_straddled_jpeg_photoshop_resources()
 {
-	const df::blob first_payload(65490, 0x41);
-	const df::blob second_payload(5000, 0x42);
+	const core::blob first_payload(65490, 0x41);
+	const core::blob second_payload(5000, 0x42);
 	std::vector<uint8_t> joined;
 	append_photoshop_resource(joined, 0x03ed, "first", first_payload);
 	append_photoshop_resource(joined, 0x03ee, "second", second_payload);
@@ -1747,13 +1747,13 @@ static void should_join_straddled_jpeg_photoshop_resources()
 
 static void should_cap_joined_jpeg_photoshop_resources()
 {
-	const df::blob payload(1200, 0x43);
+	const core::blob payload(1200, 0x43);
 	std::vector<uint8_t> joined;
 	append_photoshop_resource(joined, 0x03ed, "first", payload);
 	append_photoshop_resource(joined, 0x03ee, "second", payload);
 
 	files_test_hooks::set_jpeg_photoshop_resource_cap(1600);
-	const df::scope_exit restore_cap([] { files_test_hooks::set_jpeg_photoshop_resource_cap(0); });
+	const core::scope_exit restore_cap([] { files_test_hooks::set_jpeg_photoshop_resource_cap(0); });
 
 	const auto wrapped = split_app13_payload(joined, 800);
 	mem_read_stream stream(wrapped);
@@ -1807,7 +1807,7 @@ static void should_prefer_primary_orientation_over_the_thumbnail_ifd()
 	};
 
 	files ff;
-	const auto jpeg = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, ui::image_format::JPEG);
+	const auto jpeg = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, core::image_format::JPEG);
 
 	const auto scan_with_exif = [&](const uint16_t ifd0_orientation, const uint16_t ifd1_orientation)
 	{
@@ -1829,14 +1829,14 @@ static void should_prefer_primary_orientation_over_the_thumbnail_ifd()
 		out.insert(out.end(), source.data() + 2, source.data() + source.size());
 
 		const auto path = _temps.next_path(".jpg");
-		df::blob_save_to_file(df::blob(out.begin(), out.end()), path);
+		platform::blob_save_to_file(core::blob(out.begin(), out.end()), path);
 		return ff_scan_file(ff, path).orientation;
 	};
 
-	assert_equal(static_cast<int>(ui::orientation::right_top),
+	assert_equal(static_cast<int>(core::orientation::right_top),
 	             static_cast<int>(scan_with_exif(6, 1)),
 	             "the primary image's rotation is what the photograph is shown at");
-	assert_equal(static_cast<int>(ui::orientation::top_left),
+	assert_equal(static_cast<int>(core::orientation::top_left),
 	             static_cast<int>(scan_with_exif(1, 6)),
 	             "and an upright primary is not rotated by its thumbnail");
 }
@@ -1875,7 +1875,7 @@ static void should_use_thumbnail_orientation_only_when_primary_is_absent()
 	};
 
 	files ff;
-	const auto plain = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, ui::image_format::JPEG);
+	const auto plain = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, core::image_format::JPEG);
 	const auto tiff = build_exif();
 	const auto& source = plain->data();
 
@@ -1900,7 +1900,7 @@ static void should_use_thumbnail_orientation_only_when_primary_is_absent()
 	const auto decoded = files_test_hooks::decode_jpeg(ff, {jpeg.data(), jpeg.size()}, {}, false,
 	                                                   decode_intent::display, is_yuv);
 	assert_equal(true, is_valid(decoded), "decoder reads IFD1-only jpeg");
-	assert_equal(static_cast<int>(ui::orientation::right_top),
+	assert_equal(static_cast<int>(core::orientation::right_top),
 	             static_cast<int>(scanned.orientation),
 	             "scan uses IFD1 orientation when IFD0 is absent");
 	assert_equal(static_cast<int>(scanned.orientation),
@@ -1962,16 +1962,16 @@ static void should_prefer_primary_tiff_orientation_over_the_thumbnail_ifd()
 		return scan_photo(stream).orientation;
 	};
 
-	assert_equal(static_cast<int>(ui::orientation::right_top),
+	assert_equal(static_cast<int>(core::orientation::right_top),
 	             static_cast<int>(scan_orientation(6, 1)),
 	             "the primary TIFF orientation is kept");
-	assert_equal(static_cast<int>(ui::orientation::top_left),
+	assert_equal(static_cast<int>(core::orientation::top_left),
 	             static_cast<int>(scan_orientation(1, 6)),
 	             "the thumbnail TIFF orientation does not rotate an upright primary");
 }
 
 // The payload of the first DQT segment, which is the table the encoder quantized with.
-static df::blob first_dqt(const df::cspan jpeg)
+static core::blob first_dqt(const core::cspan jpeg)
 {
 	for (size_t i = 2; i + 4 < jpeg.size;)
 	{
@@ -1994,14 +1994,14 @@ static df::blob first_dqt(const df::cspan jpeg)
 	return {};
 }
 
-static ui::surface_ptr make_gradient_surface(const int cx, const int cy)
+static core::surface_ptr make_gradient_surface(const int cx, const int cy)
 {
-	auto surface = std::make_shared<ui::surface>();
-	surface->alloc(cx, cy, ui::texture_format::RGB);
+	auto surface = std::make_shared<core::surface>();
+	surface->alloc(cx, cy, core::texture_format::RGB);
 
 	for (auto y = 0; y < cy; ++y)
 		for (auto x = 0; x < cx; ++x)
-			surface->set_pixel(x, y, ui::rgba((x * 4) & 0xFF, (y * 4) & 0xFF, ((x ^ y) * 4) & 0xFF));
+			surface->set_pixel(x, y, core::rgba((x * 4) & 0xFF, (y * 4) & 0xFF, ((x ^ y) * 4) & 0xFF));
 
 	return surface;
 }
@@ -2015,19 +2015,19 @@ static void should_reuse_source_jpeg_tables()
 
 	file_encode_params coarse;
 	coarse.jpeg_save_quality = 40;
-	const auto source = ff.surface_to_image(surface, {}, coarse, ui::image_format::JPEG);
+	const auto source = ff.surface_to_image(surface, {}, coarse, core::image_format::JPEG);
 	const auto source_dqt = first_dqt(source->data());
 	assert_equal(false, source_dqt.empty(), "source declares a quantization table");
 
 	file_encode_params matched;
 	matched.jpeg_save_quality = 95;
 	matched.jpeg_source = source->data();
-	const auto re_encoded = ff.surface_to_image(surface, {}, matched, ui::image_format::JPEG);
+	const auto re_encoded = ff.surface_to_image(surface, {}, matched, core::image_format::JPEG);
 	assert_equal(true, first_dqt(re_encoded->data()) == source_dqt, "re-encode adopts the source tables");
 
 	file_encode_params unmatched;
 	unmatched.jpeg_save_quality = 95;
-	const auto control = ff.surface_to_image(surface, {}, unmatched, ui::image_format::JPEG);
+	const auto control = ff.surface_to_image(surface, {}, unmatched, core::image_format::JPEG);
 	assert_equal(false, first_dqt(control->data()) == source_dqt, "quality still applies without a source");
 }
 
@@ -2041,28 +2041,28 @@ static void should_convert_a_jpeg_at_the_quality_asked()
 
 	file_encode_params fine;
 	fine.jpeg_save_quality = 95;
-	const auto source_image = ff.surface_to_image(surface, {}, fine, ui::image_format::JPEG);
+	const auto source_image = ff.surface_to_image(surface, {}, fine, core::image_format::JPEG);
 	const auto scratch = _temps.next_folder("convert-quality");
-	const auto source = df::file_path(scratch, "source.jpg");
-	assert_equal(true, df::blob_save_to_file(source_image->data(), source), "the source is written");
+	const auto source = core::file_path(scratch, "source.jpg");
+	assert_equal(true, platform::blob_save_to_file(source_image->data(), source), "the source is written");
 
 	file_encode_params convert;
 	convert.jpeg_save_quality = 30;
 	convert.reencode = true;
-	const auto expected = first_dqt(ff.surface_to_image(surface, {}, convert, ui::image_format::JPEG)->data());
+	const auto expected = first_dqt(ff.surface_to_image(surface, {}, convert, core::image_format::JPEG)->data());
 
-	const auto unresized = df::file_path(scratch, "unresized.jpg");
+	const auto unresized = core::file_path(scratch, "unresized.jpg");
 	assert_equal(true, ff.update(source, unresized, {}, {}, convert, false, {}).success(), "an unresized conversion");
-	assert_equal(true, first_dqt(df::blob_from_file(unresized)) == expected, "is encoded at the quality asked");
+	assert_equal(true, first_dqt(platform::blob_from_file(unresized)) == expected, "is encoded at the quality asked");
 
-	const auto resized = df::file_path(scratch, "resized.jpg");
+	const auto resized = core::file_path(scratch, "resized.jpg");
 	assert_equal(true, ff.update(source, resized, {}, image_edits(32), convert, false, {}).success(),
 	             "a resized one");
-	assert_equal(true, first_dqt(df::blob_from_file(resized)) == expected, "too, not with the source's tables");
+	assert_equal(true, first_dqt(platform::blob_from_file(resized)) == expected, "too, not with the source's tables");
 
-	const auto before = df::blob_from_file(source);
+	const auto before = platform::blob_from_file(source);
 	assert_equal(true, ff.update(source, source, {}, {}, convert, false, {}).success(), "a conversion over itself");
-	assert_equal(true, df::blob_from_file(source) == before, "leaves the source as it was");
+	assert_equal(true, platform::blob_from_file(source) == before, "leaves the source as it was");
 }
 
 // A source libjpeg fails on - one that is not a JPEG, or a lossless one, whose tables it will not copy -
@@ -2080,11 +2080,11 @@ static void should_save_over_a_source_jpeg_libjpeg_fails_on()
 		info->err->format_message(info, message);
 		throw test_assert_exception(message);
 	};
-	const df::scope_exit destroy([&encoder] { jpeg_destroy_compress(&encoder); });
+	const core::scope_exit destroy([&encoder] { jpeg_destroy_compress(&encoder); });
 	jpeg_create_compress(&encoder);
 	unsigned char* encoded = nullptr;
 	unsigned long encoded_size = 0;
-	const df::scope_exit free_encoded([&encoded] { std::free(encoded); });
+	const core::scope_exit free_encoded([&encoded] { std::free(encoded); });
 	jpeg_mem_dest(&encoder, &encoded, &encoded_size);
 	encoder.image_width = 16;
 	encoder.image_height = 16;
@@ -2105,21 +2105,21 @@ static void should_save_over_a_source_jpeg_libjpeg_fails_on()
 	const auto surface = make_gradient_surface(64, 64);
 	file_encode_params params;
 	params.jpeg_save_quality = 95;
-	const auto expected = first_dqt(ff.surface_to_image(surface, {}, params, ui::image_format::JPEG)->data());
+	const auto expected = first_dqt(ff.surface_to_image(surface, {}, params, core::image_format::JPEG)->data());
 
-	const df::blob not_jpeg = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
-	for (const auto source : {df::cspan(not_jpeg), df::cspan{encoded, encoded_size}})
+	const core::blob not_jpeg = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+	for (const auto source : {core::cspan(not_jpeg), core::cspan{encoded, encoded_size}})
 	{
 		params.jpeg_source = source;
-		const auto saved = save_surface(ui::image_format::JPEG, surface, {}, params);
+		const auto saved = save_surface(core::image_format::JPEG, surface, {}, params);
 		assert_equal(true, first_dqt(saved->data()) == expected, "a save falls back to the quality's tables");
-		const auto stored = ff.surface_to_image(surface, {}, params, ui::image_format::JPEG);
+		const auto stored = ff.surface_to_image(surface, {}, params, core::image_format::JPEG);
 		assert_equal(true, first_dqt(stored->data()) == expected, "so does the encoder files holds");
 	}
 }
 
 // What libfiles tells a sink about a JPEG before it reads a pixel, the decode then refused.
-static libfiles::frame_info jpeg_frame(const df::cspan data)
+static libfiles::frame_info jpeg_frame(const core::cspan data)
 {
 	struct refusing_sink final : libfiles::image_sink
 	{
@@ -2146,20 +2146,20 @@ static void should_refuse_imperfect_lossless_rotate()
 	files ff;
 
 	// 4:2:0 chroma puts the MCU grid on 16 pixels, so 20 rows cannot rotate losslessly.
-	const auto aligned = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, ui::image_format::JPEG);
-	const auto unaligned = ff.surface_to_image(make_gradient_surface(32, 20), {}, {}, ui::image_format::JPEG);
+	const auto aligned = ff.surface_to_image(make_gradient_surface(32, 32), {}, {}, core::image_format::JPEG);
+	const auto unaligned = ff.surface_to_image(make_gradient_surface(32, 20), {}, {}, core::image_format::JPEG);
 
 	libfiles::jpeg_encoder aligned_encoder;
 	const libfiles::jpeg_transformer aligned_transformer;
 	assert_equal(false,
-	             turn_jpeg_losslessly(aligned_transformer, aligned_encoder, aligned->data(), simple_transform::rot_90).empty(),
+	             turn_jpeg_losslessly(aligned_transformer, aligned_encoder, aligned->data(), core::simple_transform::rot_90).empty(),
 	             "aligned rotate stays lossless");
 
 	libfiles::jpeg_encoder unaligned_encoder;
 	const libfiles::jpeg_transformer unaligned_transformer;
 	assert_equal(true,
 	             turn_jpeg_losslessly(unaligned_transformer, unaligned_encoder, unaligned->data(),
-	                                  simple_transform::rot_90).empty(),
+	                                  core::simple_transform::rot_90).empty(),
 	             "unaligned rotate refuses rather than trimming");
 }
 
@@ -2183,7 +2183,7 @@ static void should_reuse_jpeg_encoder_after_abandoned_encode()
 }
 
 // Offset of the start-of-scan marker, or 0 when there is none.
-static size_t sos_offset(const df::cspan jpeg)
+static size_t sos_offset(const core::cspan jpeg)
 {
 	for (size_t i = 2; i + 4 < jpeg.size;)
 	{
@@ -2212,7 +2212,7 @@ static void should_survive_truncated_lossless_rotate()
 {
 	files ff;
 
-	const auto whole = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, ui::image_format::JPEG);
+	const auto whole = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, core::image_format::JPEG);
 	const auto& data = whole->data();
 	const auto sos = sos_offset(data);
 
@@ -2225,10 +2225,10 @@ static void should_survive_truncated_lossless_rotate()
 
 	assert_equal(true,
 	             turn_jpeg_losslessly(transformer, encoder, {truncated.data(), truncated.size()},
-	                                  simple_transform::rot_90).empty(),
+	                                  core::simple_transform::rot_90).empty(),
 	             "truncated rotate refuses");
 
-	assert_equal(false, turn_jpeg_losslessly(transformer, encoder, data, simple_transform::rot_90).empty(),
+	assert_equal(false, turn_jpeg_losslessly(transformer, encoder, data, core::simple_transform::rot_90).empty(),
 	             "transformer and encoder stay usable after the refusal");
 }
 
@@ -2240,7 +2240,7 @@ static void should_survive_truncated_lossless_rotate()
 static void should_refuse_an_over_budget_lossless_rotate()
 {
 	files ff;
-	const auto image = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, ui::image_format::JPEG);
+	const auto image = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, core::image_format::JPEG);
 
 	libfiles::jpeg_encoder encoder;
 	libfiles::jpeg_transformer transformer;
@@ -2254,19 +2254,19 @@ static void should_refuse_an_over_budget_lossless_rotate()
 	assert_equal(static_cast<uint64_t>(expected), static_cast<uint64_t>(transformer.coefficient_bytes()),
 	             "a rotate holds the whole image however little it would decode");
 
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 
-	df::max_decode_bytes = expected * 2 - 1;
+	render::max_decode_bytes = expected * 2 - 1;
 	auto over_budget = false;
 	assert_equal(true,
-	             turn_jpeg_losslessly(transformer, encoder, image->data(), simple_transform::rot_90, &over_budget).empty(),
+	             turn_jpeg_losslessly(transformer, encoder, image->data(), core::simple_transform::rot_90, &over_budget).empty(),
 	             "a rotate one byte over its workspace refuses");
 	assert_equal(true, over_budget, "and says the budget is why, which is not an imperfect rotate");
 
-	df::max_decode_bytes = expected * 2;
+	render::max_decode_bytes = expected * 2;
 	assert_equal(false,
-	             turn_jpeg_losslessly(transformer, encoder, image->data(), simple_transform::rot_90, &over_budget).empty(),
+	             turn_jpeg_losslessly(transformer, encoder, image->data(), core::simple_transform::rot_90, &over_budget).empty(),
 	             "the same rotate is taken when source and workspace both fit");
 	assert_equal(false, over_budget, "and is not reported as over budget");
 }
@@ -2277,31 +2277,31 @@ static void should_refuse_an_over_budget_lossless_rotate()
 // memory. The budget here fits the decode the re-encode would start with, but not the rotate.
 static void should_not_re_encode_a_rotate_refused_for_its_budget()
 {
-	const auto load_path = test_files_folder.combine_file("Lossless0.jpg");
+	const auto load_path = test_files_folder().combine_file("Lossless0.jpg");
 	const auto save_path = _temps.next_path();
-	const auto source = df::blob_from_file(load_path);
+	const auto source = platform::blob_from_file(load_path);
 
 	libfiles::jpeg_transformer transformer;
 	assert_equal(true, transformer.read_header({source.data(), source.size()}), "header read");
 	const sizei dimensions{static_cast<int>(transformer.width()), static_cast<int>(transformer.height())};
 	const auto rotate_bytes = transformer.coefficient_bytes() * 2;
 
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 
-	df::max_decode_bytes = rotate_bytes - 1;
-	assert_equal(true, static_cast<int64_t>(dimensions.cx) * dimensions.cy * 4 <= df::max_decode_bytes,
+	render::max_decode_bytes = rotate_bytes - 1;
+	assert_equal(true, static_cast<int64_t>(dimensions.cx) * dimensions.cy * 4 <= render::max_decode_bytes,
 	             "the decode a re-encode starts with fits the budget");
 
 	image_edits edits;
 	const quadd crop(dimensions);
-	edits.crop_bounds(crop.transform(simple_transform::rot_90));
+	edits.crop_bounds(crop.transform(core::simple_transform::rot_90));
 
 	files ff;
 	const auto result = ff.update(load_path, save_path, {}, edits, {}, false, {});
 
 	assert_equal(false, result.success(), "the rotate is refused rather than re-encoded");
-	assert_equal(false, save_path.exists(), "and nothing is written in its place");
+	assert_equal(false, platform::exists(save_path), "and nothing is written in its place");
 }
 
 // libjpeg reduces while it decodes, which is what makes an enormous stitch affordable as a
@@ -2313,10 +2313,10 @@ static void should_charge_a_progressive_jpeg_for_its_coefficients()
 	files ff;
 
 	// The fixture lives in excluded1 so that adding it does not change the indexed item counts.
-	const auto progressive = ff.load(test_files_folder.combine("excluded1").combine_file("Progressive.jpg"), false);
+	const auto progressive = ff.load(test_files_folder().combine("excluded1").combine_file("Progressive.jpg"), false);
 	assert_equal(true, is_valid(progressive.i), "the progressive fixture loads");
 
-	const auto baseline = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, ui::image_format::JPEG);
+	const auto baseline = ff.surface_to_image(make_gradient_surface(256, 256), {}, {}, core::image_format::JPEG);
 	assert_equal(true, is_valid(baseline), "and a baseline control of the same shape encodes");
 
 	// Both are 256 x 256 at 4:2:0. An eighth-scale decode writes 32 x 32 pixels either way, but the
@@ -2326,16 +2326,16 @@ static void should_charge_a_progressive_jpeg_for_its_coefficients()
 	constexpr int64_t scaled_output_bytes = 32ll * 32 * 4;
 	constexpr int64_t coefficient_bytes = (32 * 32 + 2 * 16 * 16) * 128;
 
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 
-	df::max_decode_bytes = scaled_output_bytes + coefficient_bytes - 1;
+	render::max_decode_bytes = scaled_output_bytes + coefficient_bytes - 1;
 	assert_equal(false, is_valid(ff.image_to_surface(progressive.i, thumbnail)),
 	             "a progressive thumbnail one byte short of its coefficients is refused");
 	assert_equal(true, is_valid(ff.image_to_surface(baseline, thumbnail)),
 	             "a baseline thumbnail of the same picture is not");
 
-	df::max_decode_bytes = scaled_output_bytes + coefficient_bytes;
+	render::max_decode_bytes = scaled_output_bytes + coefficient_bytes;
 	assert_equal(true, is_valid(ff.image_to_surface(progressive.i, thumbnail)),
 	             "and the progressive one is taken once its coefficients fit");
 }
@@ -2343,16 +2343,16 @@ static void should_charge_a_progressive_jpeg_for_its_coefficients()
 static void should_rotate_lossless()
 {
 	const auto save_path = _temps.next_path();
-	const auto load_path = test_files_folder.combine_file("Lossless0.jpg");
+	const auto load_path = test_files_folder().combine_file("Lossless0.jpg");
 
 	image_edits edits;
 	const quadd crop(sizei(640, 480));
-	edits.crop_bounds(crop.transform(simple_transform::rot_90));
+	edits.crop_bounds(crop.transform(core::simple_transform::rot_90));
 
 	files ff;
 	ff.update(load_path, save_path, {}, edits, {}, false, {});
 
-	const auto expected = extract_properties(test_files_folder.combine_file("Lossless90.jpg"));
+	const auto expected = extract_properties(test_files_folder().combine_file("Lossless90.jpg"));
 	const auto actual = extract_properties(save_path);
 
 	assert_equal(expected->width, actual->width);
@@ -2361,8 +2361,8 @@ static void should_rotate_lossless()
 
 static void should_rotate_lossless_exif_dimensions()
 {
-	const auto surface = std::make_shared<ui::surface>();
-	assert_equal(true, surface->alloc(32, 16, ui::texture_format::RGB) != nullptr, "rotation fixture allocated");
+	const auto surface = std::make_shared<core::surface>();
+	assert_equal(true, surface->alloc(32, 16, core::texture_format::RGB) != nullptr, "rotation fixture allocated");
 	surface->make_blank();
 	libfiles::metadata_blocks metadata;
 	metadata.exif = {
@@ -2375,10 +2375,10 @@ static void should_rotate_lossless_exif_dimensions()
 	const auto source = encoder.encode(32, 16, surface->pixels(), surface->stride(), 1, metadata, {});
 	libfiles::jpeg_transformer transformer;
 	libfiles::jpeg_encoder rotated_encoder;
-	const auto rotated = turn_jpeg_losslessly(transformer, rotated_encoder, source, simple_transform::rot_90);
+	const auto rotated = turn_jpeg_losslessly(transformer, rotated_encoder, source, core::simple_transform::rot_90);
 	assert_equal(false, rotated.empty(), "aligned JPEG rotated losslessly");
 	const auto path = _temps.next_path(".jpg");
-	assert_equal(true, df::blob_save_to_file(rotated, path), "rotated fixture saved");
+	assert_equal(true, platform::blob_save_to_file(rotated, path), "rotated fixture saved");
 	files codecs;
 	const auto scanned = ff_scan_file(codecs, path);
 	const auto listing = libfiles::list_exif({scanned.metadata.exif.data(), scanned.metadata.exif.size()});
@@ -2411,7 +2411,7 @@ static void should_rotate_lossless_exif_dimensions()
 // source carries down to one pair per 2x2 block. Only formats it cannot pack take the RGB path.
 static bool jpeg_uses_nv12(files& ff, const char* const name)
 {
-	const auto loaded = ff.load(test_files_folder.combine_file(name), false);
+	const auto loaded = ff.load(test_files_folder().combine_file(name), false);
 	assert_equal(true, is_valid(loaded.i), "loaded jpeg");
 
 	bool is_yuv = false;
@@ -2447,18 +2447,18 @@ static void should_decode_scaled_422_jpeg_as_nv12()
 
 	// Re-encoding through a 4:2:2 source adopts its sampling factors, giving a 4:2:2 image large
 	// enough for the smallest scale factor.
-	const auto donor = ff.load(test_files_folder.combine_file("Small.jpg"), false);
+	const auto donor = ff.load(test_files_folder().combine_file("Small.jpg"), false);
 	assert_equal(true, is_valid(donor.i), "loaded 4:2:2 source");
 
 	// The encoder consumes the surface as BGRX, so this is a saturated primary rather than the blue
 	// the argument order reads as. Which primary it is does not matter, only that it is far off
 	// neutral in chroma while the alternating band sits exactly on it.
 	constexpr auto extent = 1024;
-	const auto saturated = ui::rgba(0, 0, 255);
-	const auto neutral = ui::rgba(128, 128, 128);
+	const auto saturated = core::rgba(0, 0, 255);
+	const auto neutral = core::rgba(128, 128, 128);
 
-	const auto banded = std::make_shared<ui::surface>();
-	banded->alloc(extent, extent, ui::texture_format::RGB);
+	const auto banded = std::make_shared<core::surface>();
+	banded->alloc(extent, extent, core::texture_format::RGB);
 
 	for (auto y = 0; y < extent; ++y)
 	{
@@ -2473,13 +2473,13 @@ static void should_decode_scaled_422_jpeg_as_nv12()
 	file_encode_params params;
 	params.jpeg_source = donor.i->data();
 
-	const auto encoded = ff.surface_to_image(banded, {}, params, ui::image_format::JPEG);
+	const auto encoded = ff.surface_to_image(banded, {}, params, core::image_format::JPEG);
 	assert_equal(true, is_valid(encoded), "encoded jpeg");
 
 	// Without this the test is vacuous: 4:2:0 returns two luma rows per call, never reaches the
 	// defect, and averages the two bands together as its own correct answer.
 	const auto encoded_path = _temps.next_path(".jpg");
-	df::blob_save_to_file(encoded->data(), encoded_path);
+	platform::blob_save_to_file(encoded->data(), encoded_path);
 	assert_equal("yuv422", ff_scan_file(ff, encoded_path).pixel_format.sv(), "re-encoded as 4:2:2");
 
 	// Shown at an eighth of its size, so the decode reduces by 8.
@@ -2512,7 +2512,7 @@ static void should_decode_bands(const char* const name, const std::initializer_l
 {
 	// The fixtures live in excluded1 so that adding them does not change the indexed item counts.
 	files ff;
-	const auto loaded = ff.load(test_files_folder.combine("excluded1").combine_file(name), false);
+	const auto loaded = ff.load(test_files_folder().combine("excluded1").combine_file(name), false);
 	assert_equal(true, is_valid(loaded.i), std::format("loaded {}", name));
 
 	const auto surface = loaded.to_surface();
@@ -2553,11 +2553,11 @@ static void should_decode_lossless_grayscale_jpeg(const int precision)
 		info->err->format_message(info, message);
 		throw test_assert_exception(message);
 	};
-	const df::scope_exit destroy([&encoder] { jpeg_destroy_compress(&encoder); });
+	const core::scope_exit destroy([&encoder] { jpeg_destroy_compress(&encoder); });
 	jpeg_create_compress(&encoder);
 	unsigned char* encoded = nullptr;
 	unsigned long encoded_size = 0;
-	const df::scope_exit free_encoded([&encoded] { std::free(encoded); });
+	const core::scope_exit free_encoded([&encoded] { std::free(encoded); });
 	jpeg_mem_dest(&encoder, &encoded, &encoded_size);
 	encoder.image_width = 3;
 	encoder.image_height = 1;
@@ -2630,7 +2630,7 @@ static void should_decode_associated_alpha_jxl()
 	auto available = encoded.size();
 	assert_equal(JXL_ENC_SUCCESS, JxlEncoderProcessOutput(encoder.get(), &next, &available), "JXL fixture encoded");
 
-	mem_read_stream stream(df::cspan{encoded.data(), encoded.size() - available});
+	mem_read_stream stream(core::cspan{encoded.data(), encoded.size() - available});
 	const auto surface = load_jxl(stream);
 	assert_equal(true, is_valid(surface), "associated-alpha JXL decodes");
 	constexpr int expected[] = {32, 64, 128};
@@ -2731,7 +2731,7 @@ static void should_apply_png_gamma()
 	should_decode_bands("gamma.png", {0, 136, 186, 224}, 2);
 }
 
-static void append_png_be32(df::blob& out, const uint32_t value)
+static void append_png_be32(core::blob& out, const uint32_t value)
 {
 	out.push_back(static_cast<uint8_t>(value >> 24));
 	out.push_back(static_cast<uint8_t>(value >> 16));
@@ -2739,9 +2739,9 @@ static void append_png_be32(df::blob& out, const uint32_t value)
 	out.push_back(static_cast<uint8_t>(value));
 }
 
-static void insert_png_chunk_before_iend(df::blob& png, const char (&type)[5], const df::cspan data)
+static void insert_png_chunk_before_iend(core::blob& png, const char (&type)[5], const core::cspan data)
 {
-	df::blob chunk;
+	core::blob chunk;
 	append_png_be32(chunk, static_cast<uint32_t>(data.size));
 	const auto type_start = chunk.size();
 	chunk.insert(chunk.end(), type, type + 4);
@@ -2760,20 +2760,20 @@ static void insert_png_chunk_before_iend(df::blob& png, const char (&type)[5], c
 static void should_read_png_orientation_after_idat()
 {
 	files ff;
-	const auto image = ff.surface_to_image(make_gradient_surface(16, 8), {}, {}, ui::image_format::PNG);
+	const auto image = ff.surface_to_image(make_gradient_surface(16, 8), {}, {}, core::image_format::PNG);
 	const auto& encoded = image->data();
-	df::blob png(encoded.data(), encoded.data() + encoded.size());
+	core::blob png(encoded.data(), encoded.data() + encoded.size());
 
-	auto exif = make_orientation_exif(ui::orientation::right_top);
+	auto exif = make_orientation_exif(core::orientation::right_top);
 	exif.insert(exif.begin(), exif_signature.begin(), exif_signature.end());
 	insert_png_chunk_before_iend(png, "eXIf", {exif.data(), exif.size()});
 
 	const auto path = _temps.next_path(".png");
-	df::blob_save_to_file(png, path);
+	platform::blob_save_to_file(png, path);
 
-	const auto loaded = load_png(df::blob_from_file(path));
+	const auto loaded = load_png(platform::blob_from_file(path));
 	assert_equal(true, is_valid(loaded), "png loaded");
-	assert_equal(static_cast<int>(ui::orientation::right_top), static_cast<int>(loaded->orientation()),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(loaded->orientation()),
 	             "trailing eXIf orientation");
 }
 
@@ -2803,15 +2803,15 @@ static void should_decode_thin_jpeg_when_planar_is_preferred()
 
 	const auto decode = [&](const int cx, const int cy, const sizei target_extent, const std::string_view name)
 	{
-		const auto encoded = ff.surface_to_image(make_gradient_surface(cx, cy), {}, {}, ui::image_format::JPEG);
+		const auto encoded = ff.surface_to_image(make_gradient_surface(cx, cy), {}, {}, core::image_format::JPEG);
 		assert_equal(true, is_valid(encoded), std::format("{} encoded", name));
 
 		const auto packed = ff.image_to_surface(encoded, target_extent, false, {}, decode_intent::display);
-		assert_equal(true, ui::is_valid(packed), std::format("{} packed decode succeeds", name));
+		assert_equal(true, core::is_valid(packed), std::format("{} packed decode succeeds", name));
 
 		const auto planar_preferred = ff.image_to_surface(encoded, target_extent, true, {}, decode_intent::display);
-		assert_equal(true, ui::is_valid(planar_preferred), std::format("{} planar-preferred decode succeeds", name));
-		assert_equal(true, planar_preferred->format() == ui::texture_format::RGB,
+		assert_equal(true, core::is_valid(planar_preferred), std::format("{} planar-preferred decode succeeds", name));
+		assert_equal(true, planar_preferred->format() == core::texture_format::RGB,
 		             std::format("{} falls back to packed RGB", name));
 		assert_equal(true, packed->dimensions() == planar_preferred->dimensions(),
 		             std::format("{} keeps packed dimensions", name));
@@ -2833,7 +2833,7 @@ static void should_report_jpeg_chroma_subsampling()
 
 	const auto reported = [&ff](const char* const name)
 	{
-		return ff_scan_file(ff, test_files_folder.combine_file(name)).pixel_format;
+		return ff_scan_file(ff, test_files_folder().combine_file(name)).pixel_format;
 	};
 
 	assert_equal("yuv420", reported("exif-rotated.jpg").sv(), "4:2:0 jpeg");
@@ -2844,10 +2844,10 @@ static void should_report_jpeg_chroma_subsampling()
 struct webp_chunk
 {
 	std::string tag;
-	df::blob data;
+	core::blob data;
 };
 
-static std::vector<webp_chunk> read_webp_chunks(const df::file_path path)
+static std::vector<webp_chunk> read_webp_chunks(const core::file_path path)
 {
 	file_read_stream fs;
 	assert_equal(true, fs.open(path), "open webp");
@@ -2866,7 +2866,7 @@ static std::vector<webp_chunk> read_webp_chunks(const df::file_path path)
 		if (len > bytes.size() - payload) break; // subtract, so a 32-bit size_t cannot wrap
 
 		result.emplace_back(std::string(reinterpret_cast<const char*>(bytes.data() + pos), 4),
-		                    df::blob(bytes.begin() + payload, bytes.begin() + payload + len));
+		                    core::blob(bytes.begin() + payload, bytes.begin() + payload + len));
 		pos = payload + len + (len & 1);
 	}
 
@@ -2881,7 +2881,7 @@ static std::vector<webp_chunk> read_webp_chunks(const df::file_path path)
 static void should_preserve_webp_chunks_on_metadata_save()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("lake.webp");
+	const auto load_path = test_files_folder().combine_file("lake.webp");
 	const auto save_path = _temps.next_path(".webp");
 
 	const auto original = ff.load(load_path, false);
@@ -2932,7 +2932,7 @@ static void should_preserve_webp_chunks_on_metadata_save()
 static void should_honor_webp_save_quality()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto source = ff.load(load_path, false);
 	assert_equal(false, source.is_empty(), "source loaded");
 
@@ -2979,26 +2979,26 @@ static void should_honor_webp_save_quality()
 // format follows the bitstream: opaque in, RGB out; alpha in, ARGB out.
 static void should_tag_webp_surface_alpha()
 {
-	const auto opaque_path = test_files_folder.combine_file("lake.webp");
-	const auto opaque_data = df::blob_from_file(opaque_path);
+	const auto opaque_path = test_files_folder().combine_file("lake.webp");
+	const auto opaque_data = platform::blob_from_file(opaque_path);
 	assert_equal(false, opaque_data.empty(), "opaque webp read");
 
 	const auto opaque_surface = load_webp(opaque_data);
 	assert_equal(true, is_valid(opaque_surface), "opaque webp decoded");
-	assert_equal(true, opaque_surface->format() == ui::texture_format::RGB, "opaque webp surface is RGB");
+	assert_equal(true, opaque_surface->format() == core::texture_format::RGB, "opaque webp surface is RGB");
 
-	const auto transparent = std::make_shared<ui::surface>();
-	const auto* const pixels = transparent->alloc(16, 16, ui::texture_format::ARGB);
+	const auto transparent = std::make_shared<core::surface>();
+	const auto* const pixels = transparent->alloc(16, 16, core::texture_format::ARGB);
 	assert_equal(true, pixels != nullptr, "alpha surface allocated");
 
 	for (auto y = 0; y < 16; ++y)
 	{
-		auto* const line = std::bit_cast<ui::color32*>(transparent->pixels_line(y));
+		auto* const line = std::bit_cast<core::color32*>(transparent->pixels_line(y));
 
 		for (auto x = 0; x < 16; ++x)
 		{
 			// BGRA in memory: alpha ramps across the row so the encode keeps an alpha plane.
-			line[x] = (static_cast<ui::color32>(x * 16) << 24) | 0x00FF8040u;
+			line[x] = (static_cast<core::color32>(x * 16) << 24) | 0x00FF8040u;
 		}
 	}
 
@@ -3009,12 +3009,12 @@ static void should_tag_webp_surface_alpha()
 
 	const auto decoded = load_webp(encoded->data());
 	assert_equal(true, is_valid(decoded), "alpha webp decoded");
-	assert_equal(true, decoded->format() == ui::texture_format::ARGB, "alpha webp surface is ARGB");
+	assert_equal(true, decoded->format() == core::texture_format::ARGB, "alpha webp surface is ARGB");
 }
 
 static void should_decode_webp_at_the_requested_size()
 {
-	const auto data = df::blob_from_file(test_files_folder.combine_file("lake.webp"));
+	const auto data = platform::blob_from_file(test_files_folder().combine_file("lake.webp"));
 
 	const auto full = load_webp(data);
 	assert_equal(true, is_valid(full), "the fixture decodes");
@@ -3056,16 +3056,16 @@ static void should_decode_webp_at_the_requested_size()
 
 static void should_decode_opaque_lossy_webp_as_nv12()
 {
-	const auto data = df::blob_from_file(test_files_folder.combine_file("lake.webp"));
+	const auto data = platform::blob_from_file(test_files_folder().combine_file("lake.webp"));
 	const auto rgb = load_webp(data, false);
 	const auto nv12 = load_webp(data, true);
 
-	assert_equal(true, is_valid(rgb) && rgb->format() == ui::texture_format::RGB, "webp RGB fallback decoded");
-	assert_equal(true, is_valid(nv12) && nv12->format() == ui::texture_format::NV12, "webp NV12 decoded");
+	assert_equal(true, is_valid(rgb) && rgb->format() == core::texture_format::RGB, "webp RGB fallback decoded");
+	assert_equal(true, is_valid(nv12) && nv12->format() == core::texture_format::NV12, "webp NV12 decoded");
 	assert_equal(true, nv12->size() * 2 < rgb->size(), "webp NV12 uses less than half the RGB surface memory");
-	assert_equal(true, nv12->color_space() == ui::color_space::rec601_limited, "webp NV12 color space");
+	assert_equal(true, nv12->color_space() == color_space::rec601_limited, "webp NV12 color space");
 
-	const auto converted = std::make_shared<ui::surface>();
+	const auto converted = std::make_shared<core::surface>();
 	av_scaler scaler;
 	assert_equal(true, scaler.convert_yuv_surface(*nv12, converted), "webp NV12 converts for comparison");
 
@@ -3103,7 +3103,7 @@ static void should_decode_opaque_lossy_webp_as_nv12()
 
 		files planar_ff;
 		const auto round_trip = planar_ff.image_to_surface(planar_encoded, {}, false);
-		assert_equal(true, ui::is_valid(round_trip), "the planar webp decodes again");
+		assert_equal(true, core::is_valid(round_trip), "the planar webp decodes again");
 		assert_equal(true, round_trip->dimensions() == dimensions, "the planar webp keeps its size");
 
 		uint64_t planar_difference = 0;
@@ -3130,17 +3130,17 @@ static void should_decode_opaque_lossy_webp_as_nv12()
 	}
 
 	files ff;
-	const auto image = std::make_shared<ui::image>(df::cspan(data), dimensions, ui::image_format::WEBP,
-	                                              ui::orientation::top_left);
+	const auto image = std::make_shared<core::image>(core::cspan(data), dimensions, core::image_format::WEBP,
+	                                              core::orientation::top_left);
 	const auto dispatched = ff.image_to_surface(image, {}, true);
-	assert_equal(true, is_valid(dispatched) && dispatched->format() == ui::texture_format::NV12,
+	assert_equal(true, is_valid(dispatched) && dispatched->format() == core::texture_format::NV12,
 	             "webp image dispatch preserves NV12");
 
 	const auto target_extent = sizei{32, 32};
 	const auto scaled = ff.image_to_surface(image, target_extent, true);
-	assert_equal(true, is_valid(scaled) && scaled->format() == ui::texture_format::RGB,
+	assert_equal(true, is_valid(scaled) && scaled->format() == core::texture_format::RGB,
 	             "webp NV12 downscale produces target RGB");
-	assert_equal(true, ui::scale_dimensions(dimensions, target_extent) == scaled->dimensions(),
+	assert_equal(true, core::scale_dimensions(dimensions, target_extent) == scaled->dimensions(),
 	             "webp downscale honors target extent");
 }
 
@@ -3151,22 +3151,22 @@ static void should_decode_opaque_lossy_webp_as_nv12()
 static void should_thumbnail_a_jpeg_without_leaving_yuv()
 {
 	files ff;
-	const auto data = df::blob_from_file(test_files_folder.combine_file("Test.jpg"));
+	const auto data = platform::blob_from_file(test_files_folder().combine_file("Test.jpg"));
 	assert_equal(true, !data.empty(), "loaded jpeg bytes");
 
 	constexpr sizei ceiling{256, 256};
 	const auto surface = ff.image_to_surface(data, ceiling, true, decode_intent::thumbnail);
 
-	assert_equal(true, ui::is_valid(surface), "thumbnail decode produced a surface");
-	assert_equal(true, surface->format() == ui::texture_format::NV12, "a 4:2:0 jpeg stays planar to the encoder");
-	assert_equal(true, surface->color_space() == ui::color_space::rec601_full, "jpeg planes are full range");
+	assert_equal(true, core::is_valid(surface), "thumbnail decode produced a surface");
+	assert_equal(true, surface->format() == core::texture_format::NV12, "a 4:2:0 jpeg stays planar to the encoder");
+	assert_equal(true, surface->color_space() == color_space::rec601_full, "jpeg planes are full range");
 
 	const auto extent = surface->dimensions();
 	assert_equal(true, extent.cx <= ceiling.cx && extent.cy <= ceiling.cy, "the planar reduction honours the ceiling");
 	assert_equal(true, ((extent.cx | extent.cy) & 1) == 0, "the planar reduction lands on an even extent");
 
 	const auto thumb = ff.surface_to_thumbnail(surface);
-	assert_equal(true, is_valid(thumb) && thumb->format() == ui::image_format::WEBP,
+	assert_equal(true, is_valid(thumb) && thumb->format() == core::image_format::WEBP,
 	             "the planar surface encodes as webp");
 
 	// The range conversion is the one thing planes do not carry across: libwebp's YUV is limited
@@ -3175,7 +3175,7 @@ static void should_thumbnail_a_jpeg_without_leaving_yuv()
 	const auto packed = ff.image_to_surface(data, ceiling, false, decode_intent::thumbnail);
 	const auto decoded = ff.image_to_surface(thumb, {}, false);
 
-	assert_equal(true, ui::is_valid(packed) && ui::is_valid(decoded), "both comparison surfaces decoded");
+	assert_equal(true, core::is_valid(packed) && core::is_valid(decoded), "both comparison surfaces decoded");
 
 	// The planar reduction rounds down to an even extent, so the two can differ by a pixel on an
 	// axis. Compare the region they share.
@@ -3210,47 +3210,47 @@ static void should_thumbnail_a_jpeg_without_leaving_yuv()
 
 // The caller decides the pixel format, because only it knows whether these pixels are bound for a
 // texture, for a luma plane or for a packed reader. The latch a driver fault clears -
-// ui::yuv_textures_allowed, kept across runs in setting.use_yuv - reaches the decoders only through
-// ui::yuv_textures_enabled at the display call site; a decoder that read it directly would also
+// render::yuv_textures_allowed, kept across runs in setting.use_yuv - reaches the decoders only through
+// render::yuv_textures_enabled at the display call site; a decoder that read it directly would also
 // force packed on an analysis or thumbnail decode that never goes near a texture.
 static void should_let_the_caller_choose_the_decoded_pixel_format()
 {
 	const auto saved = setting.use_yuv;
-	const auto saved_allowed = ui::yuv_textures_allowed;
-	const df::scope_exit restore([saved, saved_allowed]
+	const auto saved_allowed = render::yuv_textures_allowed;
+	const core::scope_exit restore([saved, saved_allowed]
 	{
 		setting.use_yuv = saved;
-		ui::yuv_textures_allowed = saved_allowed;
+		render::yuv_textures_allowed = saved_allowed;
 	});
 
 	files ff;
-	const auto webp = df::blob_from_file(test_files_folder.combine_file("lake.webp"));
-	const auto jpeg = ff.load(test_files_folder.combine_file("exif-rotated.jpg"), false);
+	const auto webp = platform::blob_from_file(test_files_folder().combine_file("lake.webp"));
+	const auto jpeg = ff.load(test_files_folder().combine_file("exif-rotated.jpg"), false);
 	assert_equal(true, is_valid(jpeg.i), "loaded jpeg");
 
 	const auto webp_yuv = load_webp(webp, true);
 	const auto jpeg_yuv = jpeg.to_surface({}, true);
-	assert_equal(true, is_valid(webp_yuv) && webp_yuv->format() == ui::texture_format::NV12,
+	assert_equal(true, is_valid(webp_yuv) && webp_yuv->format() == core::texture_format::NV12,
 	             "webp nv12 when the caller allows it");
-	assert_equal(true, is_valid(jpeg_yuv) && jpeg_yuv->format() == ui::texture_format::NV12,
+	assert_equal(true, is_valid(jpeg_yuv) && jpeg_yuv->format() == core::texture_format::NV12,
 	             "jpeg nv12 when the caller allows it");
 
 	const auto webp_packed = load_webp(webp, false);
 	const auto jpeg_packed = jpeg.to_surface({}, false);
-	assert_equal(true, is_valid(webp_packed) && webp_packed->format() == ui::texture_format::RGB,
+	assert_equal(true, is_valid(webp_packed) && webp_packed->format() == core::texture_format::RGB,
 	             "webp rgb when the caller refuses planar");
-	assert_equal(true, is_valid(jpeg_packed) && jpeg_packed->format() == ui::texture_format::RGB,
+	assert_equal(true, is_valid(jpeg_packed) && jpeg_packed->format() == core::texture_format::RGB,
 	             "jpeg rgb when the caller refuses planar");
 
 	// The latch belongs to the texture upload, not to the decode. A thumbnail or analysis decode on
 	// a machine whose driver faulted must still be free to take the cheaper planar path.
 	setting.use_yuv = false;
-	ui::yuv_textures_allowed = false;
+	render::yuv_textures_allowed = false;
 	const auto webp_latched = load_webp(webp, true);
 	const auto jpeg_latched = jpeg.to_surface({}, true);
-	assert_equal(true, is_valid(webp_latched) && webp_latched->format() == ui::texture_format::NV12,
+	assert_equal(true, is_valid(webp_latched) && webp_latched->format() == core::texture_format::NV12,
 	             "webp still honours the caller with the fault latch set");
-	assert_equal(true, is_valid(jpeg_latched) && jpeg_latched->format() == ui::texture_format::NV12,
+	assert_equal(true, is_valid(jpeg_latched) && jpeg_latched->format() == core::texture_format::NV12,
 	             "jpeg still honours the caller with the fault latch set");
 }
 
@@ -3260,14 +3260,14 @@ static void should_let_the_caller_choose_the_decoded_pixel_format()
 static void should_decode_odd_sized_webp_as_nv12()
 {
 	constexpr sizei odd_extent{321, 215};
-	const auto surface = std::make_shared<ui::surface>();
-	assert_equal(true, surface->alloc(odd_extent, ui::texture_format::RGB) != nullptr, "allocated odd surface");
+	const auto surface = std::make_shared<core::surface>();
+	assert_equal(true, surface->alloc(odd_extent, core::texture_format::RGB) != nullptr, "allocated odd surface");
 
 	for (auto y = 0; y < odd_extent.cy; ++y)
 	{
 		for (auto x = 0; x < odd_extent.cx; ++x)
 		{
-			surface->set_pixel(x, y, ui::rgba(x & 0xff, y & 0xff, (x + y) & 0xff));
+			surface->set_pixel(x, y, core::rgba(x & 0xff, y & 0xff, (x + y) & 0xff));
 		}
 	}
 
@@ -3279,7 +3279,7 @@ static void should_decode_odd_sized_webp_as_nv12()
 	assert_equal(true, is_valid(encoded), "encoded odd webp");
 
 	const auto decoded = load_webp(encoded->data(), true);
-	assert_equal(true, is_valid(decoded) && decoded->format() == ui::texture_format::NV12,
+	assert_equal(true, is_valid(decoded) && decoded->format() == core::texture_format::NV12,
 	             "odd webp decodes as nv12");
 	assert_equal(320, decoded->dimensions().cx, "odd webp width cropped to even");
 	assert_equal(214, decoded->dimensions().cy, "odd webp height cropped to even");
@@ -3291,15 +3291,15 @@ static void should_decode_odd_sized_webp_as_nv12()
 static void should_keep_thumbnail_alpha_only_when_needed()
 {
 	files ff;
-	const auto loaded = ff.load(test_files_folder.combine_file("Test.jpg"), false);
+	const auto loaded = ff.load(test_files_folder().combine_file("Test.jpg"), false);
 	const auto photo = loaded.to_surface(setting.thumbnail_max_dimension, false, {}, decode_intent::thumbnail);
-	assert_equal(true, ui::is_valid(photo), "loaded photo surface");
+	assert_equal(true, core::is_valid(photo), "loaded photo surface");
 
 	const auto extent = photo->dimensions();
-	const auto opaque = std::make_shared<ui::surface>();
-	const auto translucent = std::make_shared<ui::surface>();
-	assert_equal(true, opaque->alloc(extent, ui::texture_format::ARGB) != nullptr, "allocated opaque surface");
-	assert_equal(true, translucent->alloc(extent, ui::texture_format::ARGB) != nullptr,
+	const auto opaque = std::make_shared<core::surface>();
+	const auto translucent = std::make_shared<core::surface>();
+	assert_equal(true, opaque->alloc(extent, core::texture_format::ARGB) != nullptr, "allocated opaque surface");
+	assert_equal(true, translucent->alloc(extent, core::texture_format::ARGB) != nullptr,
 	             "allocated translucent surface");
 
 	for (auto y = 0; y < extent.cy; ++y)
@@ -3307,7 +3307,7 @@ static void should_keep_thumbnail_alpha_only_when_needed()
 		for (auto x = 0; x < extent.cx; ++x)
 		{
 			const auto c = photo->get_pixel(x, y);
-			const auto rgb = ui::rgba(ui::get_r(c), ui::get_g(c), ui::get_b(c));
+			const auto rgb = core::rgba(core::get_r(c), core::get_g(c), core::get_b(c));
 			opaque->set_pixel(x, y, rgb);
 			translucent->set_pixel(x, y, x < extent.cx / 2 ? rgb & 0x00ffffff : rgb);
 		}
@@ -3316,23 +3316,23 @@ static void should_keep_thumbnail_alpha_only_when_needed()
 	const auto opaque_thumb = ff.surface_to_thumbnail(opaque);
 	const auto translucent_thumb = ff.surface_to_thumbnail(translucent);
 
-	assert_equal(true, is_valid(opaque_thumb) && opaque_thumb->format() == ui::image_format::WEBP,
+	assert_equal(true, is_valid(opaque_thumb) && opaque_thumb->format() == core::image_format::WEBP,
 	             "opaque thumbnail is stored as webp");
-	assert_equal(true, is_valid(translucent_thumb) && translucent_thumb->format() == ui::image_format::WEBP,
+	assert_equal(true, is_valid(translucent_thumb) && translucent_thumb->format() == core::image_format::WEBP,
 	             "translucent thumbnail is stored as webp");
 
 	// An opaque thumbnail that still carries an alpha plane cannot take the NV12 path.
 	const auto opaque_surface = ff.image_to_surface(opaque_thumb, {}, true);
-	assert_equal(true, ui::is_valid(opaque_surface) && opaque_surface->format() == ui::texture_format::NV12,
+	assert_equal(true, core::is_valid(opaque_surface) && opaque_surface->format() == core::texture_format::NV12,
 	             "opaque thumbnail drops its alpha plane and decodes as nv12");
 
 	const auto translucent_surface = ff.image_to_surface(translucent_thumb, {}, true);
-	assert_equal(true, ui::is_valid(translucent_surface) &&
-	             translucent_surface->format() == ui::texture_format::ARGB,
+	assert_equal(true, core::is_valid(translucent_surface) &&
+	             translucent_surface->format() == core::texture_format::ARGB,
 	             "translucent thumbnail keeps its alpha plane");
-	assert_equal(true, ui::get_a(translucent_surface->get_pixel(extent.cx / 4, extent.cy / 2)) < 128,
+	assert_equal(true, core::get_a(translucent_surface->get_pixel(extent.cx / 4, extent.cy / 2)) < 128,
 	             "transparent half survives the thumbnail round trip");
-	assert_equal(true, ui::get_a(translucent_surface->get_pixel(extent.cx * 3 / 4, extent.cy / 2)) > 200,
+	assert_equal(true, core::get_a(translucent_surface->get_pixel(extent.cx * 3 / 4, extent.cy / 2)) > 200,
 	             "opaque half survives the thumbnail round trip");
 
 	const auto png = save_png(translucent, {});
@@ -3343,7 +3343,7 @@ static void should_keep_thumbnail_alpha_only_when_needed()
 
 static void should_refuse_truncated_webp_decode()
 {
-	const auto data = df::blob_from_file(test_files_folder.combine_file("lake.webp"));
+	const auto data = platform::blob_from_file(test_files_folder().combine_file("lake.webp"));
 	auto truncated_size = 0_z;
 
 	for (auto size = 12_z; size < data.size(); ++size)
@@ -3371,7 +3371,7 @@ static void should_refuse_a_file_too_large_to_hold()
 	// A valid JPEG header followed by enough bytes to pass the ceiling. Nothing decodes it; the
 	// refusal happens on the file's size, before a byte is read.
 	{
-		const auto source = df::blob_from_file(test_files_folder.combine_file("Test.jpg"));
+		const auto source = platform::blob_from_file(test_files_folder().combine_file("Test.jpg"));
 		assert_equal(false, source.empty(), "the fixture loaded");
 
 		std::ofstream f(platform::to_stream_path(path), std::ios::binary | std::ios::trunc);
@@ -3380,14 +3380,14 @@ static void should_refuse_a_file_too_large_to_hold()
 		const std::vector<char> filler(1024 * 1024, 0);
 		auto written = source.size();
 
-		while (written <= static_cast<size_t>(df::max_blob_size))
+		while (written <= static_cast<size_t>(core::max_blob_size))
 		{
 			f.write(filler.data(), static_cast<std::streamsize>(filler.size()));
 			written += filler.size();
 		}
 	}
 
-	assert_equal(true, platform::file_attributes(path).size > static_cast<uint64_t>(df::max_blob_size),
+	assert_equal(true, platform::file_attributes(path).size > static_cast<uint64_t>(core::max_blob_size),
 	             "the fixture is past the ceiling");
 
 	files ff;
@@ -3404,7 +3404,7 @@ static void should_refuse_a_file_too_large_to_hold()
 
 	try
 	{
-		df::blob_from_file(path);
+		platform::blob_from_file(path);
 	}
 	catch (const app_exception&)
 	{
@@ -3412,14 +3412,14 @@ static void should_refuse_a_file_too_large_to_hold()
 	}
 
 	assert_equal(true, threw, "reading the whole file refuses rather than truncating");
-	assert_equal(1024_z, df::blob_head_from_file(path, 1024).size(), "an explicit prefix is still served");
+	assert_equal(1024_z, platform::blob_head_from_file(path, 1024).size(), "an explicit prefix is still served");
 
 	platform::delete_file(path);
 }
 
 static void should_convert_raw_to_jpeg()
 {
-	const auto load_path = test_files_folder.combine("raw").combine_file("Screws.CR2");
+	const auto load_path = test_files_folder().combine("raw").combine_file("Screws.CR2");
 	const auto save_path = _temps.next_path(".jpg");
 
 	files ff;
@@ -3445,7 +3445,7 @@ static void should_convert_raw_to_jpeg()
 static void should_decode_a_read_only_format(const std::string_view name)
 {
 	files ff;
-	const auto path = test_formats_folder.combine_file(name);
+	const auto path = test_formats_folder().combine_file(name);
 	const auto loaded = ff.load(path, false);
 
 	// These decode during load rather than on demand, so the surface is what comes back.
@@ -3460,7 +3460,7 @@ static void should_decode_a_read_only_format(const std::string_view name)
 	// The greyscale fixture carries one channel, so only the geometry above is comparable.
 	if (name.ends_with(".pgm")) return;
 
-	// Read by memory position: a surface is BGRA in memory, while ui::color32 spells the same bytes
+	// Read by memory position: a surface is BGRA in memory, while core::color32 spells the same bytes
 	// the other way round, so naming the channels here is what keeps the check legible.
 	const auto* const first = surface->pixels_line(0);
 	const auto* const last = surface->pixels_line(surface->dimensions().cy - 1) +
@@ -3474,7 +3474,7 @@ static void should_decode_a_read_only_format(const std::string_view name)
 static void should_save(const std::string_view ext, const bool should_support_metadata)
 {
 	const auto save_path = _temps.next_path(ext);
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	files ff;
 	constexpr image_edits color;
@@ -3497,9 +3497,9 @@ static void should_save(const std::string_view ext, const bool should_support_me
 // in flight until its answer arrives and were left waiting for good.
 static void should_answer_a_psd_cut_short_as_unreadable()
 {
-	const auto whole = df::blob_from_file(test_files_folder.combine_file("cherrys.psd"));
+	const auto whole = platform::blob_from_file(test_files_folder().combine_file("cherrys.psd"));
 	const auto path = _temps.next_path(".psd");
-	assert_equal(true, df::blob_save_to_file({whole.data(), whole.size() / 2}, path), "cut short");
+	assert_equal(true, platform::blob_save_to_file({whole.data(), whole.size() / 2}, path), "cut short");
 
 	files ff;
 	file_load_result loaded;
@@ -3524,11 +3524,11 @@ static void should_answer_a_psd_cut_short_as_unreadable()
 // whose fresh canvas carries no orientation of its own - and its EXIF agrees.
 static void should_save_a_turned_photo_as_a_turned_jxl()
 {
-	const auto load_path = test_files_folder.combine_file("exif-rotated.jpg");
+	const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
 
 	files ff;
 	const auto source = ff_scan_file(ff, load_path);
-	assert_equal(true, source.orientation != ui::orientation::top_left, "the fixture is stored turned");
+	assert_equal(true, source.orientation != core::orientation::top_left, "the fixture is stored turned");
 
 	for (const auto max_side : {0, 160})
 	{
@@ -3558,15 +3558,15 @@ static void should_save_a_turned_photo_as_a_turned_jxl()
 static void should_copy_an_unchanged_jxl_as_it_is()
 {
 	const auto source = _temps.next_path(".jxl");
-	platform::copy_file(test_files_folder.combine_file("zoltan-tasi.jxl"), source, false, false);
+	platform::copy_file(test_files_folder().combine_file("zoltan-tasi.jxl"), source, false, false);
 	const auto destination = _temps.next_path(".jxl");
 
 	files ff;
 	const auto result = ff.update(source, destination, {}, {}, {}, false, {});
 	assert_equal(true, result.success(), std::format("copied ({})", result.format_error()));
 
-	const auto before = df::blob_from_file(source);
-	const auto after = df::blob_from_file(destination);
+	const auto before = platform::blob_from_file(source);
+	const auto after = platform::blob_from_file(destination);
 	assert_equal(true, std::ranges::equal(before, after), "bytes unchanged");
 }
 
@@ -3575,7 +3575,7 @@ static void should_copy_an_unchanged_jxl_as_it_is()
 static void should_honor_jxl_save_settings()
 {
 	files ff;
-	const auto load_path = test_files_folder.combine_file("Test.jpg");
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
 	const auto source = ff.load(load_path, false);
 	assert_equal(false, source.is_empty(), "source loaded");
 
@@ -3621,7 +3621,7 @@ static void should_honor_jxl_save_settings()
 static void should_not_rewrite_unchanged_file()
 {
 	const auto path = _temps.next_path(".jpg");
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, false);
 	const auto modified_before = platform::file_attributes(path).modified;
 
 	files ff;
@@ -3637,7 +3637,7 @@ static void should_not_rewrite_unchanged_file()
 static void should_return_written_image()
 {
 	const auto path = _temps.next_path(".jpg");
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, false);
 
 	files ff;
 	const auto before = ff.load(path, false);
@@ -3683,7 +3683,7 @@ static void should_return_written_image()
 static void should_hand_over_written_handle()
 {
 	const auto path = _temps.next_path(".mp3");
-	platform::copy_file(test_files_folder.combine_file("Colorblind.mp3"), path, false, false);
+	platform::copy_file(test_files_folder().combine_file("Colorblind.mp3"), path, false, false);
 
 	files ff;
 
@@ -3698,8 +3698,8 @@ static void should_hand_over_written_handle()
 	assert_equal(true, result.staged, "edit staged and swapped");
 	assert_equal(true, result.display_handle != nullptr, "write handed over its open handle");
 
-	const auto expected = df::blob_from_file(path);
-	df::blob actual;
+	const auto expected = platform::blob_from_file(path);
+	core::blob actual;
 	actual.resize(expected.size());
 	result.display_handle->seek(0, platform::file::whence::begin);
 	actual.resize(static_cast<size_t>(result.display_handle->read(actual.data(), actual.size())));
@@ -3739,7 +3739,7 @@ static void should_keep_file_handles_detached_until_last_operation()
 // Decoder robustness
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-static bool write_binary_file(const df::file_path path, const uint8_t* const data, const int size)
+static bool write_binary_file(const core::file_path path, const uint8_t* const data, const int size)
 {
 	auto f = open_file(path, platform::file_open_mode::create);
 
@@ -3751,11 +3751,11 @@ static bool write_binary_file(const df::file_path path, const uint8_t* const dat
 	const auto written = f->write(data, size);
 	f.reset();
 
-	return written == static_cast<uint64_t>(size) && path.exists() && platform::file_attributes(path).size ==
+	return written == static_cast<uint64_t>(size) && platform::exists(path) && platform::file_attributes(path).size ==
 		static_cast<uint64_t>(size);
 }
 
-static file_scan_result scan_recorded_jpeg(files& ff, const df::blob& prefix, const uint64_t reported_size,
+static file_scan_result scan_recorded_jpeg(files& ff, const core::blob& prefix, const uint64_t reported_size,
                                            const bool load_thumbnail, std::shared_ptr<recording_file>& recorded)
 {
 	const auto path = _temps.next_path(".jpg");
@@ -3764,14 +3764,14 @@ static file_scan_result scan_recorded_jpeg(files& ff, const df::blob& prefix, co
 	                    {64, 64});
 }
 
-static df::blob blob_slice(const df::blob& bytes, const size_t offset, const size_t len)
+static core::blob blob_slice(const core::blob& bytes, const size_t offset, const size_t len)
 {
 	return {bytes.begin() + static_cast<ptrdiff_t>(offset), bytes.begin() + static_cast<ptrdiff_t>(offset + len)};
 }
 
 static void should_apply_encoded_ceiling_to_bitmap_thumbnail_scans()
 {
-	const auto source = df::blob_from_file(test_files_folder.combine_file("Test.jpg"));
+	const auto source = platform::blob_from_file(test_files_folder().combine_file("Test.jpg"));
 	assert_equal(true, source.size() > sizeof(pack128), "jpeg fixture loaded");
 
 	files ff;
@@ -3783,25 +3783,25 @@ static void should_apply_encoded_ceiling_to_bitmap_thumbnail_scans()
 	assert_equal(static_cast<uint64_t>(source.size()), below->max_read, "below-ceiling read is the whole file");
 
 	std::shared_ptr<recording_file> at_ceiling;
-	const auto at_scan = scan_recorded_jpeg(ff, source, df::max_blob_size, true, at_ceiling);
+	const auto at_scan = scan_recorded_jpeg(ff, source, core::max_blob_size, true, at_ceiling);
 	assert_equal(true, at_scan.success, "at-ceiling thumbnail scan reads metadata");
-	assert_equal(static_cast<uint64_t>(df::max_blob_size), at_ceiling->max_read,
+	assert_equal(static_cast<uint64_t>(core::max_blob_size), at_ceiling->max_read,
 	             "at-ceiling thumbnail read is still admitted");
 
 	std::shared_ptr<recording_file> above_thumbnail;
-	const auto above_scan = scan_recorded_jpeg(ff, source, static_cast<uint64_t>(df::max_blob_size) + 1u, true,
+	const auto above_scan = scan_recorded_jpeg(ff, source, static_cast<uint64_t>(core::max_blob_size) + 1u, true,
 	                                           above_thumbnail);
 	assert_equal(true, above_scan.success, "above-ceiling thumbnail scan keeps header metadata");
 	assert_equal(false, is_valid(above_scan.thumbnail_image), "above-ceiling scan does not publish a partial thumbnail");
-	assert_equal(true, above_thumbnail->max_read < static_cast<uint64_t>(df::max_blob_size),
+	assert_equal(true, above_thumbnail->max_read < static_cast<uint64_t>(core::max_blob_size),
 	             "above-ceiling scan never reads or allocates the whole file");
 
 	std::shared_ptr<recording_file> above_metadata;
-	const auto metadata_scan = scan_recorded_jpeg(ff, source, static_cast<uint64_t>(df::max_blob_size) + 1u, false,
+	const auto metadata_scan = scan_recorded_jpeg(ff, source, static_cast<uint64_t>(core::max_blob_size) + 1u, false,
 	                                              above_metadata);
 	assert_equal(true, metadata_scan.success, "above-ceiling metadata-only scan still succeeds");
 	assert_equal(false, is_valid(metadata_scan.thumbnail_image), "metadata-only scan has no thumbnail");
-	assert_equal(true, above_metadata->max_read < static_cast<uint64_t>(df::max_blob_size),
+	assert_equal(true, above_metadata->max_read < static_cast<uint64_t>(core::max_blob_size),
 	             "metadata-only scan remains bounded");
 }
 
@@ -3809,10 +3809,10 @@ static void should_reset_sliding_reader_when_reopened()
 {
 	const auto a = _temps.next_path(".bin");
 	const auto b = _temps.next_path(".bin");
-	const df::blob bytes_a = {0, 1, 2, 3, 4, 5, 6, 7};
-	const df::blob bytes_b = {20, 21, 22, 23, 24, 25, 26, 27, 28, 29};
-	df::blob_save_to_file(bytes_a, a);
-	df::blob_save_to_file(bytes_b, b);
+	const core::blob bytes_a = {0, 1, 2, 3, 4, 5, 6, 7};
+	const core::blob bytes_b = {20, 21, 22, 23, 24, 25, 26, 27, 28, 29};
+	platform::blob_save_to_file(bytes_a, a);
+	platform::blob_save_to_file(bytes_b, b);
 
 	file_read_stream stream;
 	assert_equal(true, stream.open(a), "open first file");
@@ -3833,9 +3833,9 @@ static void should_reset_sliding_reader_when_reopened()
 
 static void should_not_crash(const std::string_view name)
 {
-	const auto path = test_files_folder.combine_file(name);
-	auto blob = blob_from_file(path);
-	const auto ext = name.substr(df::find_ext(name));
+	const auto path = test_files_folder().combine_file(name);
+	auto blob = platform::blob_from_file(path);
+	const auto ext = name.substr(core::find_ext(name));
 
 	// Without this the whole test degrades silently: a missing or empty fixture makes both
 	// loops below no-ops, and "did not crash" would be reported for work that never ran.
@@ -3850,7 +3850,7 @@ static void should_not_crash(const std::string_view name)
 
 	auto corrupted = 0u;
 
-	for (auto i = 0u; i < size && !df::is_closing; i++)
+	for (auto i = 0u; i < size && !platform::is_closing; i++)
 	{
 		const auto v = data[i];
 		data[i] = 0xff;
@@ -3871,17 +3871,17 @@ static void should_not_crash(const std::string_view name)
 	constexpr auto truncation_steps = 32;
 	auto truncated = 0u;
 
-	for (auto i = 0u; i < truncation_steps && !df::is_closing; i++)
+	for (auto i = 0u; i < truncation_steps && !platform::is_closing; i++)
 	{
 		const auto save_path = _temps.next_path(ext);
-		const auto byte_count = df::mul_div(static_cast<int>(size), i, truncation_steps);
+		const auto byte_count = core::mul_div(static_cast<int>(size), i, truncation_steps);
 		assert_equal(true, write_binary_file(save_path, data, byte_count),
 		             std::format("{} truncation fixture {} was written", name, i));
 		ff_scan_and_load_thumb(ff, save_path);
 		++truncated;
 	}
 
-	if (df::is_closing)
+	if (platform::is_closing)
 	{
 		assert_equal(true, corrupted > 0u, std::format("{} sweep started before shutdown", name));
 		return;
@@ -3913,7 +3913,7 @@ namespace scan_parity
 
 		const auto block = [&s](const std::string_view name, const std::span<const uint8_t> b)
 		{
-			s += std::format("{} {} bytes {:08x}\n", name, b.size(), df::crc32c(b.data(), b.size()));
+			s += std::format("{} {} bytes {:08x}\n", name, b.size(), core::crc32c(b.data(), b.size()));
 		};
 
 		block("xmp", r.metadata.xmp);
@@ -3928,7 +3928,7 @@ namespace scan_parity
 			const auto& data = r.thumbnail_image->data();
 			const auto d = r.thumbnail_image->dimensions();
 			s += std::format("thumbnail image {} bytes {:08x} {}x{} orientation {}\n", data.size(),
-			                 df::crc32c(data.data(), data.size()), d.cx, d.cy,
+			                 core::crc32c(data.data(), data.size()), d.cx, d.cy,
 			                 static_cast<int>(r.thumbnail_image->orientation()));
 		}
 
@@ -3951,7 +3951,7 @@ namespace scan_parity
 			else if (const auto* const bytes = std::get_if<metadata_binary_detail>(&row.detail))
 			{
 				s += std::format(" {} {:08x} {}", bytes->bytes.size(),
-				                 df::crc32c(bytes->bytes.data(), bytes->bytes.size()), bytes->is_image);
+				                 core::crc32c(bytes->bytes.data(), bytes->bytes.size()), bytes->is_image);
 			}
 			else if (const auto* const table = std::get_if<metadata_numeric_detail>(&row.detail))
 			{
@@ -3967,8 +3967,8 @@ namespace scan_parity
 
 	std::string first_difference(const std::string& expected, const std::string& actual)
 	{
-		const auto expected_lines = str::split(expected, false, [](const char c) { return c == '\n'; });
-		const auto actual_lines = str::split(actual, false, [](const char c) { return c == '\n'; });
+		const auto expected_lines = core::split(expected, false, [](const char c) { return c == '\n'; });
+		const auto actual_lines = core::split(actual, false, [](const char c) { return c == '\n'; });
 
 		for (size_t i = 0; i < std::max(expected_lines.size(), actual_lines.size()); ++i)
 		{
@@ -4002,7 +4002,7 @@ namespace scan_parity
 	// A folder's files and then its folders', each in the order NTFS lists ASCII names - letters folded to
 	// upper case, then by byte - whatever order the file system returns them in. A record digests outcomes
 	// in this order; the records were taken on Windows, and an ext4 checkout lists a folder in its own.
-	void add_folder(const df::folder_path folder, std::vector<df::file_path>& files)
+	void add_folder(const core::folder_path folder, std::vector<core::file_path>& files)
 	{
 		auto contents = platform::iterate_file_items(folder, false);
 		const auto ntfs_before = [](const std::string_view a, const std::string_view b)
@@ -4064,10 +4064,10 @@ namespace scan_parity
 // A memory stream that does not lend its memory, so libfiles reads it through its window.
 class streamed_memory final : public read_stream
 {
-	df::cspan _data;
+	core::cspan _data;
 
 public:
-	explicit streamed_memory(const df::cspan data) : _data(data)
+	explicit streamed_memory(const core::cspan data) : _data(data)
 	{
 		_file_size = data.size;
 	}
@@ -4093,13 +4093,13 @@ public:
 		memcpy(buffer, _data.data + pos, len);
 	}
 
-	df::blob read(const uint64_t pos, const size_t len) override
+	core::blob read(const uint64_t pos, const size_t len) override
 	{
 		check_range(pos, len);
 		return {_data.data + pos, _data.data + pos + len};
 	}
 
-	df::blob read_all() override
+	core::blob read_all() override
 	{
 		return {_data.begin(), _data.end()};
 	}
@@ -4107,16 +4107,16 @@ public:
 
 static void should_scan_stills_alike_from_memory_and_streams()
 {
-	std::vector<df::file_path> corpus;
-	scan_parity::add_folder(test_files_folder, corpus);
-	scan_parity::add_folder(test_formats_folder, corpus);
+	std::vector<core::file_path> corpus;
+	scan_parity::add_folder(test_files_folder(), corpus);
+	scan_parity::add_folder(test_formats_folder(), corpus);
 
 	// Held here: split returns views into it, and a temporary would be gone before the loop runs.
 	const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
 
-	for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+	for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 	{
-		scan_parity::add_folder(df::folder_path(part), corpus);
+		scan_parity::add_folder(core::folder_path(part), corpus);
 	}
 
 	auto files_scanned = 0;
@@ -4139,7 +4139,7 @@ static void should_scan_stills_alike_from_memory_and_streams()
 		}
 	};
 
-	const auto compare_bytes = [&](const std::string& label, const df::cspan data, const bool thumbnails)
+	const auto compare_bytes = [&](const std::string& label, const core::cspan data, const bool thumbnails)
 	{
 		if (data.size < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(data))) return;
 
@@ -4157,7 +4157,7 @@ static void should_scan_stills_alike_from_memory_and_streams()
 
 	for (const auto& path : corpus)
 	{
-		auto bytes = df::blob_from_file(path);
+		auto bytes = platform::blob_from_file(path);
 		if (bytes.size() < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(bytes))) continue;
 
 		++files_scanned;
@@ -4196,10 +4196,10 @@ static void should_scan_stills_alike_from_memory_and_streams()
 		}
 	}
 
-	df::log(__FUNCTION__, std::format("{} files, {} comparisons, {} differences", files_scanned, comparisons,
+	core::log(__FUNCTION__, std::format("{} files, {} comparisons, {} differences", files_scanned, comparisons,
 	                                  differences.size()));
 
-	for (size_t i = 0; i < std::min<size_t>(differences.size(), 2000); ++i) df::log(__FUNCTION__, differences[i]);
+	for (size_t i = 0; i < std::min<size_t>(differences.size(), 2000); ++i) core::log(__FUNCTION__, differences[i]);
 
 	std::string report;
 	std::map<std::string, int> per_file;
@@ -4256,7 +4256,7 @@ static void should_date_media_by_a_year_only_tag()
 	full_date.created = {.year = 2019, .month = 6, .day = 3};
 	full_date.year = 2019;
 	const auto from_full = props_of(full_date);
-	assert_equal(df::date_t(2019, 6, 3, 0, 0, 0), from_full->created(), "a full date is not displaced by its year");
+	assert_equal(core::date_t(2019, 6, 3, 0, 0, 0), from_full->created(), "a full date is not displaced by its year");
 
 	// An iTunes film (stik 9) left with tvsn and tves is still no episode.
 	libfiles::properties film;
@@ -4273,7 +4273,7 @@ static void should_date_media_by_a_year_only_tag()
 static void should_use_folder_art_for_media_without_its_own()
 {
 	files ff;
-	const auto scan_art = [&ff](const df::file_path path)
+	const auto scan_art = [&ff](const core::file_path path)
 	{
 		return ff.scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, libfiles::scan_intent::index,
 		                    false).cover_art;
@@ -4281,32 +4281,32 @@ static void should_use_folder_art_for_media_without_its_own()
 
 	const auto bare = _temps.next_folder("no-folder-art");
 	const auto bare_track = bare.combine_file("Track.mp3");
-	platform::copy_file(test_files_folder.combine_file("Games Without Frontiers.mp3"), bare_track, false, false);
+	platform::copy_file(test_files_folder().combine_file("Games Without Frontiers.mp3"), bare_track, false, false);
 	assert_equal(true, scan_art(bare_track) == nullptr, "the fixture carries no art of its own");
 
 	const auto album = _temps.next_folder("folder-art");
 	const auto track = album.combine_file("Track.mp3");
-	platform::copy_file(test_files_folder.combine_file("Games Without Frontiers.mp3"), track, false, false);
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), album.combine_file("Folder.jpg"), false, false);
+	platform::copy_file(test_files_folder().combine_file("Games Without Frontiers.mp3"), track, false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), album.combine_file("Folder.jpg"), false, false);
 	assert_equal(true, scan_art(track) != nullptr, "a track takes its album's folder art");
 
 	// A folder's own art is a film's only in a folder named for that film. Beside home videos, Explorer's folder.jpg
 	// would make every one of them look the same.
 	const auto home = _temps.next_folder("home-videos");
 	const auto clip = home.combine_file("Birthday party.mp4");
-	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), clip, false, false);
+	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), clip, false, false);
 	assert_equal(true, scan_art(clip) == nullptr, "the video fixture carries no art of its own");
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), home.combine_file("folder.jpg"), false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), home.combine_file("folder.jpg"), false, false);
 	assert_equal(true, scan_art(clip) == nullptr, "a home video does not take its folder's art");
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), home.combine_file("Birthday party-poster.jpg"),
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), home.combine_file("Birthday party-poster.jpg"),
 	                    false, false);
 	assert_equal(true, scan_art(clip) != nullptr, "but does take a poster named for it");
 
 	const auto film_folder = _temps.next_folder("film-art").combine("Dune (2021)");
 	platform::create_folder(film_folder);
 	const auto film = film_folder.combine_file("Dune.2021.mp4");
-	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), film, false, false);
-	platform::copy_file(test_files_folder.combine_file("Test.jpg"), film_folder.combine_file("poster.jpg"), false, false);
+	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), film, false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), film_folder.combine_file("poster.jpg"), false, false);
 	assert_equal(true, scan_art(film) != nullptr, "a film takes the poster of a folder named for it");
 }
 
@@ -4336,7 +4336,7 @@ static void should_read_media_manager_nfo_files()
 	assert_equal("Action, Crime", film.genre, "every genre");
 	assert_equal("Universal", film.studio, "the studio");
 	assert_equal(2009, film.year, "the year");
-	assert_equal(true, film.released == df::date_t(2009, 4, 3, 0, 0, 0), "the premiere");
+	assert_equal(true, film.released == core::date_t(2009, 4, 3, 0, 0, 0), "the premiere");
 	assert_equal(-1, film.episode, "an actor's or a rating's fields are not the film's");
 
 	const auto episode = parse_nfo(
@@ -4365,14 +4365,14 @@ static void should_read_media_manager_nfo_files()
 static void should_set_nfo_details_over_container_tags()
 {
 	prop::item_metadata md;
-	md.title = str::cache("Dune.2021.1080p.WEBRip.x264-GRP");
-	md.genre = str::cache("Other");
+	md.title = core::cache("Dune.2021.1080p.WEBRip.x264-GRP");
+	md.genre = core::cache("Other");
 
 	nfo_details film;
 	film.type = nfo_details::kind::film;
 	film.title = "Dune";
 	film.year = 2021;
-	film.released = df::date_t(2021, 10, 22, 0, 0, 0);
+	film.released = core::date_t(2021, 10, 22, 0, 0, 0);
 	film.plot = "A desert planet.";
 	film.genre = "Science Fiction";
 	apply_nfo(md, film);
@@ -4420,11 +4420,11 @@ static void should_set_nfo_details_over_container_tags()
 static void should_find_the_nfo_files_about_a_video()
 {
 	const auto root = _temps.next_folder("nfo");
-	const auto write = [](const df::folder_path folder, const std::string_view name, const std::string_view text)
+	const auto write = [](const core::folder_path folder, const std::string_view name, const std::string_view text)
 	{
 		for (const auto f : {folder.parent().parent(), folder.parent(), folder})
 		{
-			if (!f.exists()) platform::create_folder(f);
+			if (!platform::exists(f)) platform::create_folder(f);
 		}
 
 		write_test_file(folder.combine_file(name), text);
@@ -4468,11 +4468,11 @@ static void should_find_the_nfo_files_about_a_video()
 static void should_read_nfo_files_only_when_asked()
 {
 	const auto saved = setting.read_nfo;
-	const df::scope_exit restore([saved] { setting.read_nfo = saved; });
+	const core::scope_exit restore([saved] { setting.read_nfo = saved; });
 
 	const auto folder = _temps.next_folder("nfo-scan");
 	const auto video = folder.combine_file("clip.mp4");
-	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), video, false, false);
+	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), video, false, false);
 	write_test_file(folder.combine_file("clip.nfo"),
 	                "<movie><title>The Gizmo</title><plot>A test.</plot><premiered>1999-12-31</premiered></movie>");
 
@@ -4485,7 +4485,7 @@ static void should_read_nfo_files_only_when_asked()
 	setting.read_nfo = false;
 	const auto unread = scan();
 	assert_equal(false, unread->dates.has_source(prop::date_source::media_manager), "not read unless asked");
-	assert_equal(false, str::icmp(unread->synopsis.sv(), "A test.") == 0, "nothing of it");
+	assert_equal(false, core::icmp(unread->synopsis.sv(), "A test.") == 0, "nothing of it");
 
 	setting.read_nfo = true;
 	const auto md = scan();
@@ -4497,8 +4497,8 @@ static void should_read_nfo_files_only_when_asked()
 
 static void should_read_media_with_libfiles()
 {
-	std::vector<df::file_path> corpus;
-	scan_parity::add_folder(test_files_folder, corpus);
+	std::vector<core::file_path> corpus;
+	scan_parity::add_folder(test_files_folder(), corpus);
 
 	auto files_read = 0;
 	std::vector<std::string> differences;
@@ -4517,7 +4517,7 @@ static void should_read_media_with_libfiles()
 	{
 		if (!files::file_type_from_name(path)->has_trait(file_traits::av)) continue;
 
-		auto bytes = df::blob_from_file(path);
+		auto bytes = platform::blob_from_file(path);
 		if (bytes.size() < 16) continue;
 
 		const auto name = path.str();
@@ -4613,7 +4613,7 @@ namespace psd_sweep
 	};
 
 	template <typename Load>
-	outcome run(Load&& load, const df::cspan bytes)
+	outcome run(Load&& load, const core::cspan bytes)
 	{
 		outcome o;
 		load_diagnostic diagnostic;
@@ -4649,12 +4649,12 @@ namespace psd_sweep
 	std::string describe(const outcome& o)
 	{
 		return std::format("threw {} {}x{} {} bytes {:08x} source {}x{} over budget {}", o.threw, o.dimensions.cx,
-		                   o.dimensions.cy, o.rows.size(), df::crc32c(o.rows.data(), o.rows.size()),
+		                   o.dimensions.cy, o.rows.size(), core::crc32c(o.rows.data(), o.rows.size()),
 		                   o.source_dimensions.cx, o.source_dimensions.cy, o.over_budget);
 	}
 
 	// A row as PackBits: runs of three or more alike repeated, the rest literal.
-	void packbits(const uint8_t* const row, const size_t n, df::blob& out)
+	void packbits(const uint8_t* const row, const size_t n, core::blob& out)
 	{
 		size_t x = 0;
 
@@ -4686,10 +4686,10 @@ namespace psd_sweep
 		}
 	}
 
-	df::blob make_psd(const uint16_t mode, const uint16_t depth, const uint16_t channels, const uint32_t width,
+	core::blob make_psd(const uint16_t mode, const uint16_t depth, const uint16_t channels, const uint32_t width,
 	                  const uint32_t height, const bool rle, const uint32_t table_length, uint32_t& seed)
 	{
-		df::blob b;
+		core::blob b;
 		const auto u16 = [&b](const uint32_t v) { b.push_back(static_cast<uint8_t>(v >> 8)); b.push_back(static_cast<uint8_t>(v)); };
 		const auto u32 = [&u16](const uint32_t v) { u16(v >> 16); u16(v & 0xFFFF); };
 		const auto next = [&seed] { seed = seed * 1664525u + 1013904223u; return static_cast<uint8_t>(seed >> 24); };
@@ -4709,7 +4709,7 @@ namespace psd_sweep
 		u16(rle ? 1 : 0);
 
 		const auto row_bytes = depth == 1 ? (width + 7) / 8 : width;
-		std::vector<df::blob> runs;
+		std::vector<core::blob> runs;
 
 		for (uint32_t c = 0; c < channels; ++c)
 		{
@@ -4721,7 +4721,7 @@ namespace psd_sweep
 
 				if (rle)
 				{
-					df::blob run;
+					core::blob run;
 					packbits(row.data(), row.size(), run);
 					runs.push_back(std::move(run));
 				}
@@ -4746,24 +4746,24 @@ static void should_decode_psds_as_load_psd_did()
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	std::vector<entry> corpus;
-	std::vector<df::file_path> files;
-	scan_parity::add_folder(test_files_folder, files);
+	std::vector<core::file_path> files;
+	scan_parity::add_folder(test_files_folder(), files);
 	const auto fixtures = files.size();
 
 	const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-	for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+	for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 	{
-		scan_parity::add_folder(df::folder_path(part), files);
+		scan_parity::add_folder(core::folder_path(part), files);
 	}
 
 	for (size_t i = 0; i < files.size(); ++i)
 	{
-		auto bytes = df::blob_from_file(files[i]);
+		auto bytes = platform::blob_from_file(files[i]);
 		if (bytes.size() >= 26 && libfiles::detect_image_format(bytes) == libfiles::image_format::psd)
 			corpus.push_back({std::string(files[i].name()), std::move(bytes), i < fixtures});
 	}
@@ -4812,7 +4812,7 @@ static void should_decode_psds_as_load_psd_did()
 	auto recorded_outcomes = 0;
 	std::string record;
 
-	const auto decode = [&](const df::cspan bytes, const bool recorded)
+	const auto decode = [&](const core::cspan bytes, const bool recorded)
 	{
 		++decodes;
 		const auto outcome = psd_sweep::run([](read_stream& s, load_diagnostic* d) { return load_psd(s, d); }, bytes);
@@ -4843,8 +4843,8 @@ static void should_decode_psds_as_load_psd_did()
 		}
 	}
 
-	const auto checksum = df::crc32c(record.data(), record.size());
-	df::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
+	const auto checksum = core::crc32c(record.data(), record.size());
+	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
 	                                  corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 1, "the fixtures hold a PSD");
@@ -4880,7 +4880,7 @@ namespace jpeg_sweep
 		std::vector<uint8_t> pixels;
 	};
 
-	outcome run(files& ff, const df::cspan data, const sizei target, const bool yuv, const decode_intent intent)
+	outcome run(files& ff, const core::cspan data, const sizei target, const bool yuv, const decode_intent intent)
 	{
 		outcome o;
 		const auto surface = files_test_hooks::decode_jpeg(ff, data, target, yuv, intent, o.yuv);
@@ -4894,7 +4894,7 @@ namespace jpeg_sweep
 			o.color_space = static_cast<int>(surface->color_space());
 
 			// The pixels only: a row's padding is the surface's, and the decoder does not write it.
-			const auto nv12 = surface->format() == ui::texture_format::NV12;
+			const auto nv12 = surface->format() == core::texture_format::NV12;
 			const auto row_bytes = static_cast<size_t>(o.dimensions.cx) * (nv12 ? 1 : 4);
 			const auto rows = static_cast<size_t>(o.dimensions.cy) * (nv12 ? 3 : 2) / 2;
 			o.pixels.reserve(row_bytes * rows);
@@ -4913,7 +4913,7 @@ namespace jpeg_sweep
 	{
 		return std::format("decoded {} yuv {} {}x{} format {} orientation {} colour {} {} bytes {:08x}", o.decoded,
 		                   o.yuv, o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.color_space,
-		                   o.pixels.size(), df::crc32c(o.pixels.data(), o.pixels.size()));
+		                   o.pixels.size(), core::crc32c(o.pixels.data(), o.pixels.size()));
 	}
 
 	struct request
@@ -4931,25 +4931,25 @@ static void should_decode_jpegs_as_jpeg_decoder_x_did()
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	std::vector<entry> corpus;
-	std::vector<df::file_path> files_found;
-	scan_parity::add_folder(test_files_folder, files_found);
-	scan_parity::add_folder(test_formats_folder, files_found);
+	std::vector<core::file_path> files_found;
+	scan_parity::add_folder(test_files_folder(), files_found);
+	scan_parity::add_folder(test_formats_folder(), files_found);
 	const auto fixtures = files_found.size();
 
 	const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-	for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+	for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 	{
-		scan_parity::add_folder(df::folder_path(part), files_found);
+		scan_parity::add_folder(core::folder_path(part), files_found);
 	}
 
 	for (size_t i = 0; i < files_found.size(); ++i)
 	{
-		auto bytes = df::blob_from_file(files_found[i]);
+		auto bytes = platform::blob_from_file(files_found[i]);
 		if (bytes.size() >= 64 && libfiles::detect_image_format(bytes) == libfiles::image_format::jpeg)
 			corpus.push_back({std::string(files_found[i].name()), std::move(bytes), i < fixtures});
 	}
@@ -4971,7 +4971,7 @@ static void should_decode_jpegs_as_jpeg_decoder_x_did()
 	auto recorded_outcomes = 0;
 	std::string record;
 
-	const auto decode = [&](const df::cspan bytes, const bool recorded, const std::vector<request>& requests)
+	const auto decode = [&](const core::cspan bytes, const bool recorded, const std::vector<request>& requests)
 	{
 		for (const auto& r : requests)
 		{
@@ -5008,8 +5008,8 @@ static void should_decode_jpegs_as_jpeg_decoder_x_did()
 		}
 	}
 
-	const auto checksum = df::crc32c(record.data(), record.size());
-	df::log(__FUNCTION__, std::format("{} files ({} recorded), {} decodes, {} decoded; record {:08x} over {} outcomes",
+	const auto checksum = core::crc32c(record.data(), record.size());
+	core::log(__FUNCTION__, std::format("{} files ({} recorded), {} decodes, {} decoded; record {:08x} over {} outcomes",
 	                                  corpus.size(), recorded_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, recorded_files >= 10, "the fixtures hold JPEGs");
@@ -5045,10 +5045,10 @@ namespace exif_sweep
 	// The tags as to_props leaves an item's: split, sorted and made unique.
 	std::string settled_tags(const std::string_view tags)
 	{
-		auto parts = str::split(tags, true);
-		std::ranges::sort(parts, str::iless());
-		parts.erase(std::ranges::unique(parts, df::ieq()).begin(), parts.end());
-		return str::combine(parts);
+		auto parts = core::split(tags, true);
+		std::ranges::sort(parts, core::iless());
+		parts.erase(std::ranges::unique(parts, core::ieq()).begin(), parts.end());
+		return core::combine(parts);
 	}
 
 	std::string describe(const prop::item_metadata& md, const libfiles::exif_metadata& exif)
@@ -5089,20 +5089,20 @@ static void should_read_exif_as_diffractors_parser_did()
 	struct block
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	std::vector<block> blocks;
-	std::vector<df::file_path> found;
-	scan_parity::add_folder(test_files_folder, found);
-	scan_parity::add_folder(test_formats_folder, found);
+	std::vector<core::file_path> found;
+	scan_parity::add_folder(test_files_folder(), found);
+	scan_parity::add_folder(test_formats_folder(), found);
 	const auto fixtures = found.size();
 
 	const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-	for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+	for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 	{
-		scan_parity::add_folder(df::folder_path(part), found);
+		scan_parity::add_folder(core::folder_path(part), found);
 	}
 
 	files ff;
@@ -5111,7 +5111,7 @@ static void should_read_exif_as_diffractors_parser_did()
 	{
 		auto info = ff_scan_file(ff, found[i]);
 		if (info.metadata.exif.size() > 16)
-			blocks.push_back({std::string(found[i].name()), df::blob(info.metadata.exif.begin(), info.metadata.exif.end()),
+			blocks.push_back({std::string(found[i].name()), core::blob(info.metadata.exif.begin(), info.metadata.exif.end()),
 			                  i < fixtures});
 	}
 
@@ -5120,7 +5120,7 @@ static void should_read_exif_as_diffractors_parser_did()
 	auto recorded_outcomes = 0;
 	std::string record;
 
-	const auto read = [&](const df::cspan bytes, const bool recorded)
+	const auto read = [&](const core::cspan bytes, const bool recorded)
 	{
 		++readings;
 		prop::item_metadata md;
@@ -5168,14 +5168,14 @@ static void should_read_exif_as_diffractors_parser_did()
 		}
 	}
 
-	const auto checksum = df::crc32c(record.data(), record.size());
-	df::log(__FUNCTION__, std::format("{} blocks ({} recorded), {} readings; record {:08x} over {} outcomes",
+	const auto checksum = core::crc32c(record.data(), record.size());
+	core::log(__FUNCTION__, std::format("{} blocks ({} recorded), {} readings; record {:08x} over {} outcomes",
 	                                  blocks.size(), recorded_blocks, readings, checksum, recorded_outcomes));
 
 	// A difference is found by diffing the readings this writes against a run of the code the record was taken from.
 	if (const auto dump = scan_parity::environment_variable("DIFFRACTOR_EXIF_RECORD"); !dump.empty())
 	{
-		df::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, df::file_path(dump));
+		platform::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, core::file_path(dump));
 	}
 
 	assert_equal(true, recorded_blocks >= 10, "the fixtures carry EXIF");
@@ -5210,8 +5210,8 @@ static void should_write_exif_as_libexif_did()
 	const std::string texts[] = {"", "A", "LG", "Sony", "Canon", "NIKON CORPORATION",
 	                             "\xC3\x9cn\xC3\xAF" "c\xC3\xB6" "d\xC3\xA9 \xE2\x9C\x93", std::string(301, 'x'), "odd",
 	                             "  padded  ", std::string(4000, 'y')};
-	const ui::orientation orientations[] = {ui::orientation::none, ui::orientation::top_left,
-	                                        ui::orientation::right_top, ui::orientation::left_bottom};
+	const core::orientation orientations[] = {core::orientation::none, core::orientation::top_left,
+	                                        core::orientation::right_top, core::orientation::left_bottom};
 	const std::string_view date_texts[] = {"", "2024:05:06 07:08:09", "1999:12:31 23:59:59", "2038:01:19 03:14:08"};
 
 	uint32_t state = 0x2545F491u;
@@ -5223,7 +5223,7 @@ static void should_write_exif_as_libexif_did()
 
 	const auto date = [](const std::string_view text)
 	{
-		df::date_t d;
+		core::date_t d;
 		if (!text.empty()) d.parse_exif_date(text);
 		return d;
 	};
@@ -5237,13 +5237,13 @@ static void should_write_exif_as_libexif_did()
 		md->iso_speed = isos[pick(std::size(isos))];
 		md->focal_length = focals[pick(std::size(focals))];
 		md->focal_length_35mm_equivalent = focal35s[pick(std::size(focal35s))];
-		md->camera_manufacturer = str::cache(texts[pick(std::size(texts))]);
-		md->camera_model = str::cache(texts[pick(std::size(texts))]);
-		md->artist = str::cache(texts[pick(std::size(texts))]);
-		md->lens = str::cache(texts[pick(std::size(texts))]);
-		md->copyright_notice = str::cache(texts[pick(std::size(texts))]);
-		md->description = str::cache(texts[pick(std::size(texts))]);
-		md->comment = str::cache(texts[pick(std::size(texts))]);
+		md->camera_manufacturer = core::cache(texts[pick(std::size(texts))]);
+		md->camera_model = core::cache(texts[pick(std::size(texts))]);
+		md->artist = core::cache(texts[pick(std::size(texts))]);
+		md->lens = core::cache(texts[pick(std::size(texts))]);
+		md->copyright_notice = core::cache(texts[pick(std::size(texts))]);
+		md->description = core::cache(texts[pick(std::size(texts))]);
+		md->comment = core::cache(texts[pick(std::size(texts))]);
 		if (const auto d = date(date_texts[pick(std::size(date_texts))]); d.is_valid())
 			md->dates.add(prop::date_source::exif_original, d);
 		if (const auto d = date(date_texts[pick(std::size(date_texts))]); d.is_valid())
@@ -5266,8 +5266,8 @@ static void should_write_exif_as_libexif_did()
 	write(std::make_shared<prop::item_metadata>());
 	for (auto i = 0; i < 6000; ++i) write(random_item());
 
-	const auto checksum = df::crc32c(record.data(), record.size());
-	df::log(__FUNCTION__, std::format("{} items; record {:08x} over {} bytes", items, checksum, record.size()));
+	const auto checksum = core::crc32c(record.data(), record.size());
+	core::log(__FUNCTION__, std::format("{} items; record {:08x} over {} bytes", items, checksum, record.size()));
 
 	assert_equal(6001, items, "the sweep is the one the record was taken over");
 	assert_equal(std::format("{:08x}", 0xc29fc1f1u), std::format("{:08x}", checksum),
@@ -5279,15 +5279,15 @@ static void should_write_exif_as_libexif_did()
 // these fixtures it emptied five Canon maker notes to six bytes and re-encoded five others.
 static void should_turn_exif_without_rewriting_it()
 {
-	std::vector<df::file_path> found;
-	scan_parity::add_folder(test_files_folder, found);
-	scan_parity::add_folder(test_formats_folder, found);
+	std::vector<core::file_path> found;
+	scan_parity::add_folder(test_files_folder(), found);
+	scan_parity::add_folder(test_formats_folder(), found);
 
 	const std::set<std::string> set_by_the_turn = {
 		"exif.0.0112", "exif.1.0112", "exif.2.a002", "exif.2.a003", "exif.4.1001", "exif.4.1002"
 	};
 
-	const auto rows = [](const df::blob& b)
+	const auto rows = [](const core::blob& b)
 	{
 		std::map<std::string, std::string> m;
 		for (const auto& r : metadata_exif::to_info({b.data(), b.size()})) m[r.id] = r.key + "|" + r.value + "|" + r.shape;
@@ -5303,7 +5303,7 @@ static void should_turn_exif_without_rewriting_it()
 		auto info = ff_scan_file(ff, path);
 		if (info.metadata.exif.size() <= 16) continue;
 
-		df::blob block;
+		core::blob block;
 		if (!is_exif_signature(info.metadata.exif)) block.assign(exif_signature.begin(), exif_signature.end());
 		block.insert(block.end(), info.metadata.exif.begin(), info.metadata.exif.end());
 		++blocks;
@@ -5317,7 +5317,7 @@ static void should_turn_exif_without_rewriting_it()
 			if (block[i] != turned[i]) ++changed;
 		assert_equal(true, changed <= 20, std::format("{}: only the turn's numbers change", name));
 
-		const auto tiff = [](const df::blob& b)
+		const auto tiff = [](const core::blob& b)
 		{
 			return std::span<const uint8_t>(b.data() + exif_signature.size(), b.size() - exif_signature.size());
 		};
@@ -5363,7 +5363,7 @@ namespace exif_listing_sweep
 			if (const auto* const binary = std::get_if<metadata_binary_detail>(&r.detail))
 			{
 				s += std::format("|{}{:08x}:{}", binary->is_image ? "image " : "",
-				                 df::crc32c(binary->bytes.data(), binary->bytes.size()), binary->bytes.size());
+				                 core::crc32c(binary->bytes.data(), binary->bytes.size()), binary->bytes.size());
 			}
 			else if (!std::holds_alternative<std::monostate>(r.detail))
 			{
@@ -5378,7 +5378,7 @@ namespace exif_listing_sweep
 
 	// Every variant of a block the listing sweep reads: whole, cut short, each of its first 256 bytes
 	// set to 0, 0xFF, its complement and its successor, and 160 more bytes spread through it flipped.
-	void for_each_variant(df::blob& b, const std::function<void(df::cspan)>& read)
+	void for_each_variant(core::blob& b, const std::function<void(core::cspan)>& read)
 	{
 		read({b.data(), b.size()});
 
@@ -5418,9 +5418,9 @@ namespace exif_listing_sweep
 // the same on Windows x64 and x86 and on Linux.
 static void should_list_exif_as_libexif_did()
 {
-	std::vector<df::file_path> found;
-	scan_parity::add_folder(test_files_folder, found);
-	scan_parity::add_folder(test_formats_folder, found);
+	std::vector<core::file_path> found;
+	scan_parity::add_folder(test_files_folder(), found);
+	scan_parity::add_folder(test_formats_folder(), found);
 
 	files ff;
 	auto blocks = 0;
@@ -5434,19 +5434,19 @@ static void should_list_exif_as_libexif_did()
 		if (info.metadata.exif.size() <= 16) continue;
 		++blocks;
 
-		df::blob exif(info.metadata.exif.begin(), info.metadata.exif.end());
-		exif_listing_sweep::for_each_variant(exif, [&](const df::cspan bytes)
+		core::blob exif(info.metadata.exif.begin(), info.metadata.exif.end());
+		exif_listing_sweep::for_each_variant(exif, [&](const core::cspan bytes)
 		{
 			const auto listing = metadata_exif::to_info(bytes);
 			const auto text = exif_listing_sweep::describe(listing);
-			const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-			checksum = df::crc32c(fold, sizeof(fold));
+			const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+			checksum = core::crc32c(fold, sizeof(fold));
 			rows += listing.size();
 			++listings;
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} blocks, {} listings, {} rows; record {:08x}", blocks, listings, rows, checksum));
+	core::log(__FUNCTION__, std::format("{} blocks, {} listings, {} rows; record {:08x}", blocks, listings, rows, checksum));
 
 	assert_equal(true, blocks >= 20, "the fixtures carry EXIF");
 	assert_equal(19354, listings, "the sweep is the one the record was taken over");
@@ -5465,8 +5465,8 @@ static void should_list_exif_as_libexif_did()
 namespace commodore_sweep
 {
 	// The colours the disk control draws with.
-	constexpr auto foreground = ui::rgb(95, 83, 254);
-	constexpr auto background = ui::rgb(33, 27, 174);
+	constexpr auto foreground = core::rgb(95, 83, 254);
+	constexpr auto background = core::rgb(33, 27, 174);
 
 	struct outcome
 	{
@@ -5478,7 +5478,7 @@ namespace commodore_sweep
 		bool operator==(const outcome&) const = default;
 	};
 
-	outcome run(const df::cspan bytes)
+	outcome run(const core::cspan bytes)
 	{
 		outcome o;
 		const auto listing = libfiles::list_c64_media({bytes.data, bytes.size});
@@ -5518,8 +5518,8 @@ namespace commodore_sweep
 		}
 
 		return std::format("{} rows {}x{} text {:08x} codes {:08x} pixels {:08x}", o.text.size(), o.dimensions.cx,
-		                   o.dimensions.cy, df::crc32c(text.data(), text.size()), df::crc32c(codes.data(), codes.size()),
-		                   df::crc32c(o.pixels.data(), o.pixels.size()));
+		                   o.dimensions.cy, core::crc32c(text.data(), text.size()), core::crc32c(codes.data(), codes.size()),
+		                   core::crc32c(o.pixels.data(), o.pixels.size()));
 	}
 
 	// Bytes from a seed, the same from every compiler: no expression draws twice, since C++ leaves the
@@ -5543,24 +5543,24 @@ namespace commodore_sweep
 		}
 	};
 
-	void append(df::blob& b, const std::string_view s)
+	void append(core::blob& b, const std::string_view s)
 	{
 		b.insert(b.end(), s.begin(), s.end());
 	}
 
-	void append_random(df::blob& b, random& rng, const size_t n)
+	void append_random(core::blob& b, random& rng, const size_t n)
 	{
 		for (size_t i = 0; i < n; ++i) b.push_back(rng.byte());
 	}
 
-	void append_le16(df::blob& b, const uint32_t v)
+	void append_le16(core::blob& b, const uint32_t v)
 	{
 		b.push_back(static_cast<uint8_t>(v));
 		b.push_back(static_cast<uint8_t>(v >> 8));
 	}
 
 	// A name of n bytes: any bytes at all, or capitals padded as the format pads them.
-	void append_name(df::blob& b, random& rng, const size_t n, const uint8_t pad)
+	void append_name(core::blob& b, random& rng, const size_t n, const uint8_t pad)
 	{
 		if (rng.below(3) == 0)
 		{
@@ -5574,11 +5574,11 @@ namespace commodore_sweep
 
 	// A disk any of whose sectors could be a directory sector: links mostly to its own tracks, sometimes
 	// ending the chain or leaving the disk, and entries of every type with names of any bytes.
-	df::blob make_disk(const size_t size, const uint32_t tracks, random& rng)
+	core::blob make_disk(const size_t size, const uint32_t tracks, random& rng)
 	{
 		static constexpr uint8_t types[] = {0, 0, 0x80, 0x81, 0x82, 0x82, 0x82, 0x83, 0x84, 0xC2, 0x99, 0x01};
 
-		df::blob b;
+		core::blob b;
 		b.reserve(size);
 		append_random(b, rng, size);
 
@@ -5625,7 +5625,7 @@ namespace commodore_sweep
 		return b;
 	}
 
-	df::blob make_t64(random& rng)
+	core::blob make_t64(random& rng)
 	{
 		static constexpr std::string_view descriptions[] = {
 			"C64S tape image file", "C64 tape image file", "C64S tape file", "C64 tape", "C64 cassette image"
@@ -5633,7 +5633,7 @@ namespace commodore_sweep
 		static constexpr uint8_t kinds[] = {0, 1, 1, 1, 1, 3};
 		static constexpr uint8_t types[] = {0, 0x80, 0x81, 0x82, 0x82, 0x82, 0x83, 0x84, 0xC2};
 
-		df::blob b;
+		core::blob b;
 		append(b, descriptions[rng.below(static_cast<uint32_t>(std::size(descriptions)))]);
 		while (b.size() < 32) b.push_back(rng.below(4) == 0 ? rng.byte() : 0);
 		append_random(b, rng, 2); // the version
@@ -5661,9 +5661,9 @@ namespace commodore_sweep
 		return b;
 	}
 
-	df::blob make_crt(random& rng)
+	core::blob make_crt(random& rng)
 	{
-		df::blob b;
+		core::blob b;
 		append(b, "C64 CARTRIDGE   ");
 		append_random(b, rng, 16);
 		append_name(b, rng, 32, 0);
@@ -5671,9 +5671,9 @@ namespace commodore_sweep
 		return b;
 	}
 
-	df::blob make_p00(random& rng)
+	core::blob make_p00(random& rng)
 	{
-		df::blob b;
+		core::blob b;
 		append(b, "C64File");
 		b.push_back(rng.below(4) == 0 ? rng.byte() : 0);
 		append_name(b, rng, 16, 0);
@@ -5682,17 +5682,17 @@ namespace commodore_sweep
 		return b;
 	}
 
-	df::blob make_prg(random& rng)
+	core::blob make_prg(random& rng)
 	{
 		static constexpr uint32_t lengths[] = {0, 1, 2, 3, 254, 255, 256, 65536, 65537, 65538, 65539};
 		const auto pick = rng.below(16);
-		df::blob b;
+		core::blob b;
 		append_random(b, rng, pick < std::size(lengths) ? lengths[pick] : rng.below(70000));
 		return b;
 	}
 
 	// Disks of every size each times, and tapes, cartridges and programs more times.
-	std::vector<std::pair<std::string, df::blob>> synthetic(const int each, random& rng)
+	std::vector<std::pair<std::string, core::blob>> synthetic(const int each, random& rng)
 	{
 		struct disk
 		{
@@ -5704,7 +5704,7 @@ namespace commodore_sweep
 			{174848, 35}, {175531, 35}, {196608, 40}, {197376, 40}, {349696, 70}, {351062, 70}, {819200, 80}
 		};
 
-		std::vector<std::pair<std::string, df::blob>> result;
+		std::vector<std::pair<std::string, core::blob>> result;
 
 		for (const auto& d : disks)
 		{
@@ -5741,17 +5741,17 @@ namespace commodore_sweep
 	// disk its first directory sector corrupted too, where those rarely land: its link, and each entry's
 	// type, size and the ends of its name.
 	template <typename Visit>
-	void for_each_variant(df::blob& bytes, Visit&& visit)
+	void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
-		visit(df::cspan(bytes));
-		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(df::cspan{bytes.data(), cut});
+		visit(core::cspan(bytes));
+		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
 		if (bytes.size() <= 16) return;
 
 		const auto corrupt = [&](const size_t at, const uint8_t value)
 		{
 			const auto original = bytes[at];
 			bytes[at] = value;
-			if (value != original) visit(df::cspan(bytes));
+			if (value != original) visit(core::cspan(bytes));
 			bytes[at] = original;
 		};
 
@@ -5783,27 +5783,27 @@ namespace commodore_sweep
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	// The fixtures, recorded, and DIFFRACTOR_SCAN_PARITY_CORPUS's folders, listed but not recorded.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 		const auto fixtures = found.size();
 
 		const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-		for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+		for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 		{
-			scan_parity::add_folder(df::folder_path(part), found);
+			scan_parity::add_folder(core::folder_path(part), found);
 		}
 
 		std::vector<entry> result;
 		for (size_t i = 0; i < found.size(); ++i)
-			result.push_back({std::string(found[i].name()), df::blob_from_file(found[i]), i < fixtures});
+			result.push_back({std::string(found[i].name()), platform::blob_from_file(found[i]), i < fixtures});
 		return result;
 	}
 }
@@ -5823,7 +5823,7 @@ static void should_list_commodore_media_as_list_disk_did()
 
 	for (auto& e : corpus)
 	{
-		commodore_sweep::for_each_variant(e.bytes, [&](const df::cspan bytes)
+		commodore_sweep::for_each_variant(e.bytes, [&](const core::cspan bytes)
 		{
 			const auto outcome = commodore_sweep::run(bytes);
 			++listings;
@@ -5831,13 +5831,13 @@ static void should_list_commodore_media_as_list_disk_did()
 			if (!e.recorded) return;
 
 			const auto text = commodore_sweep::describe(outcome);
-			const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-			checksum = df::crc32c(fold, sizeof(fold));
+			const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+			checksum = core::crc32c(fold, sizeof(fold));
 			++recorded_outcomes;
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files, {} listings, {} listed; record {:08x} over {} outcomes", corpus.size(),
+	core::log(__FUNCTION__, std::format("{} files, {} listings, {} listed; record {:08x} over {} outcomes", corpus.size(),
 	                                  listings, listed, checksum, recorded_outcomes));
 
 	assert_equal(true, has_disk, "the fixtures hold a disk");
@@ -5853,7 +5853,7 @@ static void should_scan_a_sid_tune_header()
 {
 	const auto tune = make_test_sid_tune();
 	const auto path = _temps.next_path(".sid");
-	assert_equal(true, df::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
+	assert_equal(true, platform::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
 
 	const auto* const ft = files::file_type_from_name(path);
 	assert_equal(true, ft->has_trait(file_traits::sid_tune), "a .sid file is a SID tune");
@@ -5869,7 +5869,7 @@ static void should_scan_a_sid_tune_header()
 	assert_equal("1987 Test Publisher", md->copyright_notice.sv(), "the release field, as the copyright it was");
 	assert_equal(1987, static_cast<int>(md->year), "the release's year");
 	assert_equal("Test Publisher", md->publisher.sv(), "and its publisher");
-	assert_equal(df::xy8{2, 3}, md->track, "the tune it starts on, of the tunes it holds");
+	assert_equal(core::xy8{2, 3}, md->track, "the tune it starts on, of the tunes it holds");
 	assert_equal("Commodore 64", md->system.sv(), "the machine");
 	assert_equal("MOS 6581", md->audio_codec.sv(), "the chip");
 	assert_equal(180, static_cast<int>(md->duration), "the span each tune plays for");
@@ -5877,7 +5877,7 @@ static void should_scan_a_sid_tune_header()
 	auto broken = tune;
 	broken[0] = 'X';
 	const auto broken_path = _temps.next_path(".sid");
-	df::blob_save_to_file({broken.data(), broken.size()}, broken_path);
+	platform::blob_save_to_file({broken.data(), broken.size()}, broken_path);
 	assert_equal(false, ff.scan_file(broken_path, false, ft).success, "a damaged header is not read as a tune");
 
 	// The header's text is ISO-8859-1, and a composer's name keeps its accent.
@@ -5885,7 +5885,7 @@ static void should_scan_a_sid_tune_header()
 	constexpr uint8_t hulsbeck[] = {'C', 'h', 'r', 'i', 's', ' ', 'H', 0xFC, 'l', 's', 'b', 'e', 'c', 'k', 0, 0};
 	std::ranges::copy(hulsbeck, accented.begin() + 0x36);
 	const auto accented_path = _temps.next_path(".sid");
-	df::blob_save_to_file({accented.data(), accented.size()}, accented_path);
+	platform::blob_save_to_file({accented.data(), accented.size()}, accented_path);
 	assert_equal("Chris H\xC3\xBClsbeck", ff.scan_file(accented_path, false, ft).to_props()->artist.sv(),
 	             "a Latin-1 name reads as UTF-8");
 }
@@ -5913,7 +5913,7 @@ namespace png_sweep
 	};
 
 	template <typename Load>
-	outcome run(Load&& load, const df::cspan bytes)
+	outcome run(Load&& load, const core::cspan bytes)
 	{
 		outcome o;
 
@@ -5953,7 +5953,7 @@ namespace png_sweep
 	{
 		return std::format("threw {} null {} {}x{} format {} orientation {} {} bytes {:08x}", o.threw, o.null,
 		                   o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.rows.size(),
-		                   df::crc32c(o.rows.data(), o.rows.size()));
+		                   core::crc32c(o.rows.data(), o.rows.size()));
 	}
 
 	[[noreturn]] void PNGCBAPI write_failed(png_structp, const png_const_charp message)
@@ -5967,7 +5967,7 @@ namespace png_sweep
 
 	void PNGCBAPI append(const png_structp png, const png_bytep data, const size_t length)
 	{
-		auto* const out = static_cast<df::blob*>(png_get_io_ptr(png));
+		auto* const out = static_cast<core::blob*>(png_get_io_ptr(png));
 		out->insert(out->end(), data, data + length);
 	}
 
@@ -5975,13 +5975,13 @@ namespace png_sweep
 	{
 	}
 
-	uint32_t be32(const df::blob& b, const size_t at)
+	uint32_t be32(const core::blob& b, const size_t at)
 	{
 		return static_cast<uint32_t>(b[at]) << 24 | static_cast<uint32_t>(b[at + 1]) << 16 |
 			static_cast<uint32_t>(b[at + 2]) << 8 | b[at + 3];
 	}
 
-	void put_be32(df::blob& b, const size_t at, const uint32_t v)
+	void put_be32(core::blob& b, const size_t at, const uint32_t v)
 	{
 		b[at] = static_cast<uint8_t>(v >> 24);
 		b[at + 1] = static_cast<uint8_t>(v >> 16);
@@ -5990,7 +5990,7 @@ namespace png_sweep
 	}
 
 	// Where the first chunk of a type begins, or 0. Walked in 64 bits, so a damaged length cannot wrap.
-	size_t find_chunk(const df::blob& file, const std::string_view type)
+	size_t find_chunk(const core::blob& file, const std::string_view type)
 	{
 		for (uint64_t at = 8; at + 12 <= file.size();)
 		{
@@ -6003,27 +6003,27 @@ namespace png_sweep
 	}
 
 	// The chunk's CRC, over its type and data, as zlib computes it.
-	uint32_t chunk_crc(const df::blob& file, const size_t at, const uint32_t length)
+	uint32_t chunk_crc(const core::blob& file, const size_t at, const uint32_t length)
 	{
 		return static_cast<uint32_t>(crc32(0, file.data() + at + 4, static_cast<uInt>(length + 4)));
 	}
 
-	df::blob splice(const df::blob& file, const size_t at, const std::string_view type, const df::blob& data)
+	core::blob splice(const core::blob& file, const size_t at, const std::string_view type, const core::blob& data)
 	{
-		df::blob chunk(12 + data.size());
+		core::blob chunk(12 + data.size());
 		put_be32(chunk, 0, static_cast<uint32_t>(data.size()));
 		std::copy(type.begin(), type.end(), chunk.begin() + 4);
 		std::copy(data.begin(), data.end(), chunk.begin() + 8);
 		put_be32(chunk, 8 + data.size(), chunk_crc(chunk, 0, static_cast<uint32_t>(data.size())));
 
-		df::blob result(file.begin(), file.begin() + static_cast<ptrdiff_t>(at));
+		core::blob result(file.begin(), file.begin() + static_cast<ptrdiff_t>(at));
 		result.insert(result.end(), chunk.begin(), chunk.end());
 		result.insert(result.end(), file.begin() + static_cast<ptrdiff_t>(at), file.end());
 		return result;
 	}
 
 	// A little-endian TIFF stream with one entry: the orientation.
-	df::blob orientation_exif(const uint16_t value)
+	core::blob orientation_exif(const uint16_t value)
 	{
 		return {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0,
 		        static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), 0, 0, 0, 0, 0, 0};
@@ -6048,7 +6048,7 @@ namespace png_sweep
 
 	// A PNG of noise as libpng writes one, 13 by 7 so every interlace pass has pixels, with an eXIf
 	// spliced in before the image data or after it, where libpng will not put one.
-	df::blob make_png(const spec& s, uint32_t& seed)
+	core::blob make_png(const spec& s, uint32_t& seed)
 	{
 		constexpr png_uint_32 width = 13;
 		constexpr png_uint_32 height = 7;
@@ -6065,7 +6065,7 @@ namespace png_sweep
 		std::vector<std::vector<uint8_t>> rows(height, std::vector<uint8_t>(row_bytes));
 		for (auto& row : rows) for (auto& b : row) b = next_byte(seed);
 
-		df::blob out;
+		core::blob out;
 		auto* png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, write_failed, write_quietly);
 		auto* info = png_create_info_struct(png);
 		png_set_write_fn(png, &out, append, flush_nothing);
@@ -6143,7 +6143,7 @@ namespace png_sweep
 
 	// Every colour type at every depth it has, interlaced and not, under each gamma; with transparency
 	// in every other file, and an orientation before or after the image data in two of every three.
-	std::vector<std::pair<std::string, df::blob>> synthetic(uint32_t& seed)
+	std::vector<std::pair<std::string, core::blob>> synthetic(uint32_t& seed)
 	{
 		struct kind
 		{
@@ -6156,7 +6156,7 @@ namespace png_sweep
 			{PNG_COLOR_TYPE_RGB, {8, 16}}, {PNG_COLOR_TYPE_RGB_ALPHA, {8, 16}}, {PNG_COLOR_TYPE_PALETTE, {1, 2, 4, 8}}
 		};
 
-		std::vector<std::pair<std::string, df::blob>> result;
+		std::vector<std::pair<std::string, core::blob>> result;
 		auto n = 0;
 
 		for (const auto& k : kinds)
@@ -6190,10 +6190,10 @@ namespace png_sweep
 	// bytes of its first image data chunk corrupted and that chunk's CRC put right, so libpng inflates
 	// and unfilters damaged data rather than stopping at the CRC.
 	template <typename Visit>
-	void for_each_variant(df::blob& bytes, Visit&& visit)
+	void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
-		visit(df::cspan(bytes));
-		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(df::cspan{bytes.data(), cut});
+		visit(core::cspan(bytes));
+		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
 		if (bytes.size() <= 16) return;
 
 		for (uint64_t k = 0; k < 48; ++k)
@@ -6201,7 +6201,7 @@ namespace png_sweep
 			const auto at = scan_parity::corruption_position(k, bytes.size());
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
-			if (bytes[at] != original) visit(df::cspan(bytes));
+			if (bytes[at] != original) visit(core::cspan(bytes));
 			bytes[at] = original;
 		}
 
@@ -6220,7 +6220,7 @@ namespace png_sweep
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(original ^ (k % 2 ? 0xFF : 0x5A));
 			put_be32(bytes, crc_at, chunk_crc(bytes, idat, length));
-			visit(df::cspan(bytes));
+			visit(core::cspan(bytes));
 			bytes[at] = original;
 			put_be32(bytes, crc_at, crc);
 		}
@@ -6229,29 +6229,29 @@ namespace png_sweep
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	// The fixtures' PNGs, recorded, and DIFFRACTOR_SCAN_PARITY_CORPUS's, decoded but not recorded.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 		const auto fixtures = found.size();
 
 		const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-		for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+		for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 		{
-			scan_parity::add_folder(df::folder_path(part), found);
+			scan_parity::add_folder(core::folder_path(part), found);
 		}
 
 		std::vector<entry> result;
 
 		for (size_t i = 0; i < found.size(); ++i)
 		{
-			auto bytes = df::blob_from_file(found[i]);
+			auto bytes = platform::blob_from_file(found[i]);
 			if (bytes.size() >= 16 && libfiles::detect_image_format(bytes) == libfiles::image_format::png)
 				result.push_back({std::string(found[i].name()), std::move(bytes), i < fixtures});
 		}
@@ -6275,21 +6275,21 @@ static void should_decode_pngs_as_load_png_did()
 
 	for (auto& e : corpus)
 	{
-		png_sweep::for_each_variant(e.bytes, [&](const df::cspan bytes)
+		png_sweep::for_each_variant(e.bytes, [&](const core::cspan bytes)
 		{
-			const auto outcome = png_sweep::run([](const df::cspan b) { return load_png(b); }, bytes);
+			const auto outcome = png_sweep::run([](const core::cspan b) { return load_png(b); }, bytes);
 			++decodes;
 			if (!outcome.rows.empty()) ++decoded;
 			if (!e.recorded) return;
 
 			const auto text = png_sweep::describe(outcome);
-			const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-			checksum = df::crc32c(fold, sizeof(fold));
+			const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+			checksum = core::crc32c(fold, sizeof(fold));
 			++recorded_outcomes;
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
+	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
 	                                  corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 5, "the fixtures hold PNGs");
@@ -6337,7 +6337,7 @@ namespace webp_sweep
 	};
 
 	template <typename Load>
-	outcome run(Load&& load, const df::cspan bytes, const request& r)
+	outcome run(Load&& load, const core::cspan bytes, const request& r)
 	{
 		outcome o;
 
@@ -6355,7 +6355,7 @@ namespace webp_sweep
 
 				if (!surface->empty())
 				{
-					const auto nv12 = surface->format() == ui::texture_format::NV12;
+					const auto nv12 = surface->format() == core::texture_format::NV12;
 					const auto row_bytes = static_cast<size_t>(o.dimensions.cx) * (nv12 ? 1 : 4);
 					const auto rows = o.dimensions.cy + (nv12 ? o.dimensions.cy / 2 : 0);
 
@@ -6379,7 +6379,7 @@ namespace webp_sweep
 	{
 		return std::format("threw {} null {} {}x{} format {} orientation {} cs {} {} bytes {:08x}", o.threw, o.null,
 		                   o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.color_space, o.rows.size(),
-		                   df::crc32c(o.rows.data(), o.rows.size()));
+		                   core::crc32c(o.rows.data(), o.rows.size()));
 	}
 
 	uint8_t next_byte(uint32_t& seed)
@@ -6410,20 +6410,20 @@ namespace webp_sweep
 		return bgra;
 	}
 
-	df::blob encode(const int width, const int height, const bool alpha, const bool lossless, uint32_t& seed)
+	core::blob encode(const int width, const int height, const bool alpha, const bool lossless, uint32_t& seed)
 	{
 		const auto bgra = make_bgra(width, height, alpha, seed);
 		uint8_t* out = nullptr;
 		const auto size = lossless
 			                  ? WebPEncodeLosslessBGRA(bgra.data(), width, height, width * 4, &out)
 			                  : WebPEncodeBGRA(bgra.data(), width, height, width * 4, 80.f, &out);
-		df::blob file(out, out + size);
+		core::blob file(out, out + size);
 		WebPFree(out);
 		return file;
 	}
 
 	// The file with metadata chunks added by libwebp's mux, which writes the VP8X header they need.
-	df::blob with_chunks(const df::blob& file, const df::blob& exif, const bool icc, const bool xmp)
+	core::blob with_chunks(const core::blob& file, const core::blob& exif, const bool icc, const bool xmp)
 	{
 		const WebPData image{file.data(), file.size()};
 		auto* const mux = WebPMuxCreate(&image, 1);
@@ -6452,16 +6452,16 @@ namespace webp_sweep
 
 		WebPData assembled{};
 		WebPMuxAssemble(mux, &assembled);
-		df::blob result(assembled.bytes, assembled.bytes + assembled.size);
+		core::blob result(assembled.bytes, assembled.bytes + assembled.size);
 		WebPDataClear(&assembled);
 		WebPMuxDelete(mux);
 		return result;
 	}
 
 	// A little-endian TIFF stream with one entry, the orientation, led by a JPEG signature when asked.
-	df::blob orientation_exif(const uint16_t value, const bool signature)
+	core::blob orientation_exif(const uint16_t value, const bool signature)
 	{
-		df::blob b;
+		core::blob b;
 		if (signature) b = {'E', 'x', 'i', 'f', 0, 0};
 		const uint8_t tiff[] = {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0,
 		                        static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), 0, 0, 0, 0, 0, 0};
@@ -6469,7 +6469,7 @@ namespace webp_sweep
 		return b;
 	}
 
-	df::blob animation(const bool lossless, uint32_t& seed)
+	core::blob animation(const bool lossless, uint32_t& seed)
 	{
 		WebPAnimEncoderOptions options;
 		WebPAnimEncoderOptionsInit(&options);
@@ -6494,7 +6494,7 @@ namespace webp_sweep
 		WebPAnimEncoderAdd(encoder, nullptr, 300, nullptr);
 		WebPData assembled{};
 		WebPAnimEncoderAssemble(encoder, &assembled);
-		df::blob result(assembled.bytes, assembled.bytes + assembled.size);
+		core::blob result(assembled.bytes, assembled.bytes + assembled.size);
 		WebPDataClear(&assembled);
 		WebPAnimEncoderDelete(encoder);
 		return result;
@@ -6502,12 +6502,12 @@ namespace webp_sweep
 
 	// A lossless header that claims width by height, and a few bytes of nothing after it: enough for
 	// libwebp to give the size, not to decode.
-	df::blob header_only(const uint32_t width, const uint32_t height)
+	core::blob header_only(const uint32_t width, const uint32_t height)
 	{
 		const auto bits = (width - 1) | (height - 1) << 14 | 1u << 28;
 		const uint8_t payload[] = {0x2f, static_cast<uint8_t>(bits), static_cast<uint8_t>(bits >> 8),
 		                           static_cast<uint8_t>(bits >> 16), static_cast<uint8_t>(bits >> 24), 0, 0, 0, 0, 0, 0, 0};
-		df::blob b = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'L',
+		core::blob b = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'L',
 		              static_cast<uint8_t>(sizeof(payload)), 0, 0, 0};
 		b.insert(b.end(), std::begin(payload), std::end(payload));
 		const auto riff = static_cast<uint32_t>(b.size() - 8);
@@ -6516,10 +6516,10 @@ namespace webp_sweep
 		return b;
 	}
 
-	std::vector<std::pair<std::string, df::blob>> synthetic(uint32_t& seed)
+	std::vector<std::pair<std::string, core::blob>> synthetic(uint32_t& seed)
 	{
 		static constexpr sizei sizes[] = {{37, 23}, {38, 24}, {1, 1}, {2, 2}, {3, 1}, {1, 3}, {64, 48}, {17, 1}};
-		std::vector<std::pair<std::string, df::blob>> result;
+		std::vector<std::pair<std::string, core::blob>> result;
 		auto n = 0;
 
 		for (const auto& s : sizes)
@@ -6534,7 +6534,7 @@ namespace webp_sweep
 					// signature; a profile or a packet besides, now and then.
 					if (n % 3 != 0 || n % 5 == 0)
 					{
-						const auto exif = n % 3 != 0 ? orientation_exif(static_cast<uint16_t>(1 + n % 8), n % 2 == 0) : df::blob{};
+						const auto exif = n % 3 != 0 ? orientation_exif(static_cast<uint16_t>(1 + n % 8), n % 2 == 0) : core::blob{};
 						file = with_chunks(file, exif, n % 5 == 0, n % 4 == 1);
 					}
 
@@ -6555,33 +6555,33 @@ namespace webp_sweep
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	// The fixtures' WebPs, recorded, and DIFFRACTOR_SCAN_PARITY_CORPUS's, decoded but not recorded.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 		const auto fixtures = found.size();
 
 		const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-		for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+		for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 		{
-			scan_parity::add_folder(df::folder_path(part), found);
+			scan_parity::add_folder(core::folder_path(part), found);
 		}
 
 		std::vector<entry> result;
 
 		for (size_t i = 0; i < found.size(); ++i)
 		{
-			df::blob bytes;
+			core::blob bytes;
 
 			try
 			{
-				bytes = df::blob_from_file(found[i]);
+				bytes = platform::blob_from_file(found[i]);
 			}
 			catch (const std::exception&)
 			{
@@ -6599,10 +6599,10 @@ namespace webp_sweep
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them.
 	template <typename Visit>
-	void for_each_variant(df::blob& bytes, Visit&& visit)
+	void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
-		visit(df::cspan(bytes));
-		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(df::cspan{bytes.data(), cut});
+		visit(core::cspan(bytes));
+		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
 		if (bytes.size() <= 16) return;
 
 		for (uint64_t k = 0; k < 48; ++k)
@@ -6610,7 +6610,7 @@ namespace webp_sweep
 			const auto at = scan_parity::corruption_position(k, bytes.size());
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
-			if (bytes[at] != original) visit(df::cspan(bytes));
+			if (bytes[at] != original) visit(core::cspan(bytes));
 			bytes[at] = original;
 		}
 	}
@@ -6631,25 +6631,25 @@ static void should_decode_webps_as_load_webp_did()
 
 	for (auto& e : corpus)
 	{
-		webp_sweep::for_each_variant(e.bytes, [&](const df::cspan bytes)
+		webp_sweep::for_each_variant(e.bytes, [&](const core::cspan bytes)
 		{
 			for (const auto& request : webp_sweep::requests)
 			{
-				const auto outcome = webp_sweep::run([](const df::cspan b, const bool yuv, const sizei t) { return load_webp(b, yuv, t); },
+				const auto outcome = webp_sweep::run([](const core::cspan b, const bool yuv, const sizei t) { return load_webp(b, yuv, t); },
 				                                     bytes, request);
 				++decodes;
 				if (!outcome.rows.empty()) ++decoded;
 				if (!e.recorded) continue;
 
 				const auto text = webp_sweep::describe(outcome);
-				const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-				checksum = df::crc32c(fold, sizeof(fold));
+				const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+				checksum = core::crc32c(fold, sizeof(fold));
 				++recorded_outcomes;
 			}
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
+	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
 	                                  corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 1, "the fixtures hold a WebP");
@@ -6684,7 +6684,7 @@ namespace heif_sweep
 		bool operator==(const surface_outcome&) const = default;
 	};
 
-	void capture(const ui::const_surface_ptr& surface, surface_outcome& o)
+	void capture(const core::const_surface_ptr& surface, surface_outcome& o)
 	{
 		o.null = !surface;
 		if (!surface) return;
@@ -6715,7 +6715,7 @@ namespace heif_sweep
 	};
 
 	template <typename Load, typename Scan>
-	outcome run(Load&& load, Scan&& scan, const df::cspan bytes)
+	outcome run(Load&& load, Scan&& scan, const core::cspan bytes)
 	{
 		outcome o;
 
@@ -6753,7 +6753,7 @@ namespace heif_sweep
 	{
 		return std::format("threw {} null {} {}x{} format {} orientation {} {} bytes {:08x}", o.threw, o.null,
 		                   o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.rows.size(),
-		                   df::crc32c(o.rows.data(), o.rows.size()));
+		                   core::crc32c(o.rows.data(), o.rows.size()));
 	}
 
 	std::string describe(const outcome& o)
@@ -6765,14 +6765,14 @@ namespace heif_sweep
 
 	heif_error write_to(heif_context*, const void* data, const size_t size, void* userdata)
 	{
-		auto* const out = static_cast<df::blob*>(userdata);
+		auto* const out = static_cast<core::blob*>(userdata);
 		out->insert(out->end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
 		return {heif_error_Ok, heif_suberror_Unspecified, ""};
 	}
 
-	df::blob written(heif_context* const ctx)
+	core::blob written(heif_context* const ctx)
 	{
-		df::blob file;
+		core::blob file;
 		heif_writer writer{};
 		writer.writer_api_version = 1;
 		writer.write = write_to;
@@ -6814,7 +6814,7 @@ namespace heif_sweep
 	}
 
 	// A little-endian TIFF stream with one entry, the orientation.
-	df::blob orientation_exif(const uint16_t value)
+	core::blob orientation_exif(const uint16_t value)
 	{
 		return {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0,
 		        static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), 0, 0, 0, 0, 0, 0};
@@ -6822,7 +6822,7 @@ namespace heif_sweep
 
 	// An image as libheif writes it through its uncompressed codec: its own rotation or mirror, an EXIF
 	// orientation, and a thumbnail item with a turn of its own, as asked.
-	df::blob make_heif(const spec& s, uint32_t& seed)
+	core::blob make_heif(const spec& s, uint32_t& seed)
 	{
 		auto* const image = make_image(s.width, s.height, s.alpha, seed);
 		auto* const ctx = heif_context_alloc();
@@ -6859,7 +6859,7 @@ namespace heif_sweep
 
 	// Colour with an alpha item of its own that declares it premultiplied, built as "Should decode
 	// associated alpha HEIF" builds it.
-	df::blob make_associated_alpha(const int width, const int height, uint32_t& seed)
+	core::blob make_associated_alpha(const int width, const int height, uint32_t& seed)
 	{
 		auto* const ctx = heif_context_alloc();
 		heif_encoder* encoder = nullptr;
@@ -6906,9 +6906,9 @@ namespace heif_sweep
 		return file;
 	}
 
-	std::vector<std::pair<std::string, df::blob>> synthetic(uint32_t& seed)
+	std::vector<std::pair<std::string, core::blob>> synthetic(uint32_t& seed)
 	{
-		std::vector<std::pair<std::string, df::blob>> result;
+		std::vector<std::pair<std::string, core::blob>> result;
 		static constexpr sizei sizes[] = {{7, 5}, {16, 8}, {1, 1}, {33, 17}};
 		static constexpr heif_orientation turns[] = {
 			heif_orientation_normal, heif_orientation_rotate_90_cw, heif_orientation_flip_horizontally,
@@ -6945,33 +6945,33 @@ namespace heif_sweep
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		bool recorded = false;
 	};
 
 	// The fixtures' HEIF and AVIF, recorded, and DIFFRACTOR_SCAN_PARITY_CORPUS's, decoded but not recorded.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 		const auto fixtures = found.size();
 
 		const auto extra = scan_parity::environment_variable("DIFFRACTOR_SCAN_PARITY_CORPUS");
-		for (const auto part : str::split(extra, true, [](const char c) { return c == ';'; }))
+		for (const auto part : core::split(extra, true, [](const char c) { return c == ';'; }))
 		{
-			scan_parity::add_folder(df::folder_path(part), found);
+			scan_parity::add_folder(core::folder_path(part), found);
 		}
 
 		std::vector<entry> result;
 
 		for (size_t i = 0; i < found.size(); ++i)
 		{
-			df::blob bytes;
+			core::blob bytes;
 
 			try
 			{
-				bytes = df::blob_from_file(found[i]);
+				bytes = platform::blob_from_file(found[i]);
 			}
 			catch (const std::exception&)
 			{
@@ -6989,10 +6989,10 @@ namespace heif_sweep
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them.
 	template <typename Visit>
-	void for_each_variant(df::blob& bytes, Visit&& visit)
+	void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
-		visit(df::cspan(bytes));
-		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(df::cspan{bytes.data(), cut});
+		visit(core::cspan(bytes));
+		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
 		if (bytes.size() <= 16) return;
 
 		for (uint64_t k = 0; k < 48; ++k)
@@ -7000,7 +7000,7 @@ namespace heif_sweep
 			const auto at = scan_parity::corruption_position(k, bytes.size());
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
-			if (bytes[at] != original) visit(df::cspan(bytes));
+			if (bytes[at] != original) visit(core::cspan(bytes));
 			bytes[at] = original;
 		}
 	}
@@ -7048,7 +7048,7 @@ static void should_decode_heifs_as_load_heif_did()
 
 	for (auto& e : corpus)
 	{
-		heif_sweep::for_each_variant(e.bytes, [&](const df::cspan bytes)
+		heif_sweep::for_each_variant(e.bytes, [&](const core::cspan bytes)
 		{
 			const auto outcome = heif_sweep::run(load_heif, scan_heif_libfiles, bytes);
 			++decodes;
@@ -7057,13 +7057,13 @@ static void should_decode_heifs_as_load_heif_did()
 			if (!e.recorded) return;
 
 			const auto text = heif_sweep::describe(outcome);
-			const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-			checksum = df::crc32c(fold, sizeof(fold));
+			const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+			checksum = core::crc32c(fold, sizeof(fold));
 			++recorded_outcomes;
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded, {} thumbnails; record {:08x} over {} outcomes",
+	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded, {} thumbnails; record {:08x} over {} outcomes",
 	                                  corpus.size(), real_files, decodes, decoded, thumbnails, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 2, "the fixtures hold HEIF and AVIF");
@@ -7100,7 +7100,7 @@ namespace jxl_sweep
 		bool over_budget = false;
 	};
 
-	outcome run(const df::cspan bytes)
+	outcome run(const core::cspan bytes)
 	{
 		outcome o;
 
@@ -7139,14 +7139,14 @@ namespace jxl_sweep
 	{
 		return std::format("threw {} null {} {}x{} format {} orientation {} {} bytes {:08x} source {}x{} over budget {}",
 		                   o.threw, o.null, o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.rows.size(),
-		                   with_rows ? df::crc32c(o.rows.data(), o.rows.size()) : 0u, o.source_dimensions.cx,
+		                   with_rows ? core::crc32c(o.rows.data(), o.rows.size()) : 0u, o.source_dimensions.cx,
 		                   o.source_dimensions.cy, o.over_budget);
 	}
 
 	struct entry
 	{
 		std::string name;
-		df::blob bytes;
+		core::blob bytes;
 		// Lossless, so its rows are the same on every machine.
 		bool exact = false;
 	};
@@ -7155,17 +7155,17 @@ namespace jxl_sweep
 	// keeps, whose rows are not.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 		const auto fixtures = found.size();
-		scan_parity::add_folder(test_generated_folder.combine("jxl"), found);
+		scan_parity::add_folder(test_generated_folder().combine("jxl"), found);
 
 		std::vector<entry> result;
 
 		for (size_t i = 0; i < found.size(); ++i)
 		{
-			auto bytes = df::blob_from_file(found[i]);
+			auto bytes = platform::blob_from_file(found[i]);
 			if (bytes.size() >= 16 && libfiles::detect_image_format(bytes) == libfiles::image_format::jxl)
 				result.push_back({std::string(found[i].name()), std::move(bytes), i >= fixtures});
 		}
@@ -7175,10 +7175,10 @@ namespace jxl_sweep
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them.
 	template <typename Visit>
-	void for_each_variant(df::blob& bytes, Visit&& visit)
+	void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
-		visit(df::cspan(bytes));
-		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(df::cspan{bytes.data(), cut});
+		visit(core::cspan(bytes));
+		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
 		if (bytes.size() <= 16) return;
 
 		for (uint64_t k = 0; k < 48; ++k)
@@ -7186,7 +7186,7 @@ namespace jxl_sweep
 			const auto at = scan_parity::corruption_position(k, bytes.size());
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
-			if (bytes[at] != original) visit(df::cspan(bytes));
+			if (bytes[at] != original) visit(core::cspan(bytes));
 			bytes[at] = original;
 		}
 	}
@@ -7203,19 +7203,19 @@ static void should_decode_jxls_as_load_jxl_did()
 	{
 		++files;
 
-		jxl_sweep::for_each_variant(e.bytes, [&](const df::cspan bytes)
+		jxl_sweep::for_each_variant(e.bytes, [&](const core::cspan bytes)
 		{
 			const auto outcome = jxl_sweep::run(bytes);
 			if (!outcome.rows.empty()) ++decoded;
 
 			const auto text = jxl_sweep::describe(outcome, e.exact);
-			const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-			checksum = df::crc32c(fold, sizeof(fold));
+			const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+			checksum = core::crc32c(fold, sizeof(fold));
 			++recorded_outcomes;
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files, {} decoded; record {:08x} over {} outcomes", files, decoded, checksum,
+	core::log(__FUNCTION__, std::format("{} files, {} decoded; record {:08x} over {} outcomes", files, decoded, checksum,
 	                                  recorded_outcomes));
 
 	assert_equal(23, files, "the fixture and the generated files are all there");
@@ -7260,7 +7260,7 @@ namespace raw_sweep
 		uint32_t rows_crc = 0;
 	};
 
-	outcome run(const df::file_path path, const bool preview)
+	outcome run(const core::file_path path, const bool preview)
 	{
 		outcome o;
 
@@ -7281,7 +7281,7 @@ namespace raw_sweep
 				o.image_dimensions = r.i->dimensions();
 				o.image_orientation = static_cast<int>(r.i->orientation());
 				o.image_bytes = r.i->data().size();
-				o.image_crc = df::crc32c(r.i->data().data(), r.i->data().size());
+				o.image_crc = core::crc32c(r.i->data().data(), r.i->data().size());
 			}
 
 			if (r.s)
@@ -7295,7 +7295,7 @@ namespace raw_sweep
 				{
 					const auto row_bytes = static_cast<size_t>(o.surface_dimensions.cx) * 4;
 					for (auto y = 0; y < o.surface_dimensions.cy; ++y)
-						o.rows_crc = df::crc32c(o.rows_crc, r.s->pixels_line(y), row_bytes);
+						o.rows_crc = core::crc32c(o.rows_crc, r.s->pixels_line(y), row_bytes);
 				}
 			}
 		}
@@ -7320,23 +7320,23 @@ namespace raw_sweep
 
 	struct entry
 	{
-		df::file_path path;
-		df::blob bytes;
+		core::file_path path;
+		core::blob bytes;
 	};
 
 	// The fixtures' raw files.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 
 		std::vector<entry> result;
 
 		for (const auto& path : found)
 		{
 			if (files::file_type_from_name(path)->has_trait(file_traits::raw))
-				result.push_back({path, df::blob_from_file(path)});
+				result.push_back({path, platform::blob_from_file(path)});
 		}
 
 		return result;
@@ -7354,17 +7354,17 @@ namespace raw_sweep
 		const auto path = _temps.next_path(e.path.extension());
 		auto& bytes = e.bytes;
 
-		const auto write = [&](const df::cspan variant, const bool develop)
+		const auto write = [&](const core::cspan variant, const bool develop)
 		{
-			if (!df::blob_save_to_file(variant, path)) throw std::runtime_error("the variant is not written");
+			if (!platform::blob_save_to_file(variant, path)) throw std::runtime_error("the variant is not written");
 			visit(path, develop);
 		};
 
-		write(df::cspan(bytes), true);
+		write(core::cspan(bytes), true);
 
 		for (const auto cut : scan_parity::cut_points(bytes.size()))
 		{
-			write(df::cspan{bytes.data(), cut}, cut == bytes.size() / 2 || cut == bytes.size() - 1);
+			write(core::cspan{bytes.data(), cut}, cut == bytes.size() / 2 || cut == bytes.size() - 1);
 		}
 
 		for (uint64_t k = 0; k < 48; ++k)
@@ -7372,7 +7372,7 @@ namespace raw_sweep
 			const auto at = scan_parity::corruption_position(k, bytes.size());
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
-			if (bytes[at] != original) write(df::cspan(bytes), k % 8 == 0);
+			if (bytes[at] != original) write(core::cspan(bytes), k % 8 == 0);
 			bytes[at] = original;
 		}
 	}
@@ -7393,9 +7393,9 @@ namespace raw_sweep
 		{
 			if (!m.tiny_budget && !develop) continue;
 
-			const auto restore_budget = df::max_decode_bytes;
-			const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
-			if (m.tiny_budget) df::max_decode_bytes = 64 * 1024;
+			const auto restore_budget = render::max_decode_bytes;
+			const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
+			if (m.tiny_budget) render::max_decode_bytes = 64 * 1024;
 			run(m);
 		}
 	}
@@ -7413,7 +7413,7 @@ static void should_load_raws_as_load_raw_did()
 	{
 		++files;
 
-		raw_sweep::for_each_variant(e, [&](const df::file_path path, const bool develop)
+		raw_sweep::for_each_variant(e, [&](const core::file_path path, const bool develop)
 		{
 			raw_sweep::for_each_mode(develop, [&](const raw_sweep::mode m)
 			{
@@ -7422,14 +7422,14 @@ static void should_load_raws_as_load_raw_did()
 				if (outcome.reason == static_cast<int>(file_load_result::failure::too_large)) ++too_large;
 
 				const auto text = std::format("{} {} {}", m.preview, m.tiny_budget, raw_sweep::describe(outcome));
-				const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-				checksum = df::crc32c(fold, sizeof(fold));
+				const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+				checksum = core::crc32c(fold, sizeof(fold));
 				++recorded_outcomes;
 			});
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files, {} loaded, {} too large; record {:08x} over {} outcomes", files, loaded,
+	core::log(__FUNCTION__, std::format("{} files, {} loaded, {} too large; record {:08x} over {} outcomes", files, loaded,
 	                                  too_large, checksum, recorded_outcomes));
 
 	assert_equal(2, files, "the fixtures' raw files are all there");
@@ -7444,27 +7444,27 @@ static void should_load_raws_as_load_raw_did()
 // entry - a short, one of them, little-endian - is IFD0's, which LibRaw takes the flip from.
 static void should_turn_a_raw_preview_as_its_raw_data()
 {
-	auto bytes = df::blob_from_file(test_files_folder.combine_file("Gherkin.CR2"));
+	auto bytes = platform::blob_from_file(test_files_folder().combine_file("Gherkin.CR2"));
 	constexpr uint8_t orientation_entry[] = {0x12, 0x01, 3, 0, 1, 0, 0, 0};
 	const auto found = std::ranges::search(bytes, orientation_entry);
 	assert_equal(true, !found.empty() && found.begin() + 10 <= bytes.end(), "the fixture states an orientation");
 
 	const auto value = found.begin() + 8;
-	value[0] = static_cast<uint8_t>(ui::orientation::right_top);
+	value[0] = static_cast<uint8_t>(core::orientation::right_top);
 	value[1] = 0;
 
 	const auto path = _temps.next_path(".CR2");
-	assert_equal(true, df::blob_save_to_file(bytes, path), "the turned fixture is written");
+	assert_equal(true, platform::blob_save_to_file(bytes, path), "the turned fixture is written");
 
 	const auto preview = load_raw(path, true);
 	assert_equal(true, preview.success && preview.is_preview && is_valid(preview.i), "the preview loads");
 	assert_equal(true, preview.i->width() > preview.i->height(), "the preview is stored unturned");
-	assert_equal(static_cast<int>(ui::orientation::right_top), static_cast<int>(preview.orientation()),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(preview.orientation()),
 	             "the preview is turned as the raw data is");
 
 	const auto developed = load_raw(path, false);
 	assert_equal(true, developed.success && !developed.is_preview && is_valid(developed.s), "the raw data develops");
-	assert_equal(static_cast<int>(ui::orientation::right_top), static_cast<int>(developed.orientation()),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(developed.orientation()),
 	             "the development is turned as the raw data is");
 
 	// A scan's thumbnail is the same preview, decoded smaller, and turned the same way.
@@ -7474,10 +7474,10 @@ static void should_turn_a_raw_preview_as_its_raw_data()
 	assert_equal(true, is_valid(scanned.thumbnail_surface), "the scan's thumbnail is decoded");
 	assert_equal(true, scanned.thumbnail_surface->dimensions().cx > scanned.thumbnail_surface->dimensions().cy,
 	             "the scan's thumbnail is stored unturned");
-	assert_equal(static_cast<int>(ui::orientation::right_top),
+	assert_equal(static_cast<int>(core::orientation::right_top),
 	             static_cast<int>(scanned.thumbnail_surface->orientation()),
 	             "the scan's thumbnail is turned as the raw data is");
-	assert_equal(static_cast<int>(ui::orientation::right_top), static_cast<int>(scanned.orientation),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(scanned.orientation),
 	             "the scan gives the raw data's turn");
 }
 
@@ -7521,7 +7521,7 @@ namespace raw_scan_sweep
 			if (is_valid(r.thumbnail_surface))
 			{
 				const auto row_bytes = static_cast<size_t>(s.dimensions().cx) * 4;
-				for (auto y = 0; y < s.dimensions().cy; ++y) rows = df::crc32c(rows, s.pixels_line(y), row_bytes);
+				for (auto y = 0; y < s.dimensions().cy; ++y) rows = core::crc32c(rows, s.pixels_line(y), row_bytes);
 			}
 
 			thumbnail = std::format("{} {}x{} format {} orientation {} rows {:08x}", is_valid(r.thumbnail_surface),
@@ -7537,12 +7537,12 @@ namespace raw_scan_sweep
 			r.pixel_format.sv(), r.camera_manufacturer.sv(), r.camera_model.sv(), r.comment.sv(), r.artist.sv(),
 			r.iso_speed, r.exposure_time, r.f_number, r.focal_length, r.created_local._i,
 			static_cast<int>(r.created_local_source), r.gps._latitude, r.gps._longitude, r.metadata.xmp.size(),
-			df::crc32c(r.metadata.xmp.data(), r.metadata.xmp.size()), r.metadata.exif.size(), r.metadata.iptc.size(),
-			r.thumbnail_image != nullptr, r.libraw_metadata.size(), df::crc32c(listing.data(), listing.size()),
+			core::crc32c(r.metadata.xmp.data(), r.metadata.xmp.size()), r.metadata.exif.size(), r.metadata.iptc.size(),
+			r.thumbnail_image != nullptr, r.libraw_metadata.size(), core::crc32c(listing.data(), listing.size()),
 			thumbnail);
 	}
 
-	std::string run(const df::file_path path, const mode m)
+	std::string run(const core::file_path path, const mode m)
 	{
 		try
 		{
@@ -7559,23 +7559,23 @@ namespace raw_scan_sweep
 
 	struct entry
 	{
-		df::file_path path;
-		df::blob bytes;
+		core::file_path path;
+		core::blob bytes;
 	};
 
 	// The fixtures' raw files.
 	std::vector<entry> corpus()
 	{
-		std::vector<df::file_path> found;
-		scan_parity::add_folder(test_files_folder, found);
-		scan_parity::add_folder(test_formats_folder, found);
+		std::vector<core::file_path> found;
+		scan_parity::add_folder(test_files_folder(), found);
+		scan_parity::add_folder(test_formats_folder(), found);
 
 		std::vector<entry> result;
 
 		for (const auto& path : found)
 		{
 			if (files::file_type_from_name(path)->has_trait(file_traits::raw))
-				result.push_back({path, df::blob_from_file(path)});
+				result.push_back({path, platform::blob_from_file(path)});
 		}
 
 		return result;
@@ -7589,21 +7589,21 @@ namespace raw_scan_sweep
 		const auto path = _temps.next_path(e.path.extension());
 		auto& bytes = e.bytes;
 
-		const auto write = [&](const df::cspan variant)
+		const auto write = [&](const core::cspan variant)
 		{
-			if (!df::blob_save_to_file(variant, path)) throw std::runtime_error("the variant is not written");
+			if (!platform::blob_save_to_file(variant, path)) throw std::runtime_error("the variant is not written");
 			visit(path, variant.size);
 		};
 
-		write(df::cspan(bytes));
-		for (const auto cut : scan_parity::cut_points(bytes.size())) write(df::cspan{bytes.data(), cut});
+		write(core::cspan(bytes));
+		for (const auto cut : scan_parity::cut_points(bytes.size())) write(core::cspan{bytes.data(), cut});
 
 		for (uint64_t k = 0; k < 48; ++k)
 		{
 			const auto at = scan_parity::corruption_position(k, bytes.size());
 			const auto original = bytes[at];
 			bytes[at] = static_cast<uint8_t>(k % 2 ? original ^ 0xFF : (k % 3 ? 0x00 : 0xFF));
-			if (bytes[at] != original) write(df::cspan(bytes));
+			if (bytes[at] != original) write(core::cspan(bytes));
 			bytes[at] = original;
 		}
 	}
@@ -7620,21 +7620,21 @@ static void should_scan_raws_as_scan_raw_did()
 	{
 		++files;
 
-		raw_scan_sweep::for_each_variant(e, [&](const df::file_path path, size_t)
+		raw_scan_sweep::for_each_variant(e, [&](const core::file_path path, size_t)
 		{
 			for (const auto& m : raw_scan_sweep::modes)
 			{
 				const auto text = raw_scan_sweep::run(path, m);
 				if (text.starts_with("success true")) ++scanned;
 
-				const uint32_t fold[] = {checksum, df::crc32c(text.data(), text.size())};
-				checksum = df::crc32c(fold, sizeof(fold));
+				const uint32_t fold[] = {checksum, core::crc32c(text.data(), text.size())};
+				checksum = core::crc32c(fold, sizeof(fold));
 				++recorded_outcomes;
 			}
 		});
 	}
 
-	df::log(__FUNCTION__, std::format("{} files, {} scanned; record {:08x} over {} outcomes", files, scanned, checksum,
+	core::log(__FUNCTION__, std::format("{} files, {} scanned; record {:08x} over {} outcomes", files, scanned, checksum,
 	                                  recorded_outcomes));
 
 	assert_equal(2, files, "the fixtures' raw files are all there");
@@ -7682,18 +7682,18 @@ namespace encode_sweep
 	// every block. Every byte is written, an RGB pixel's fourth and a row's padding too, so an encoder
 	// that read what it should ignore would show. Unless opaque, an ARGB picture is clear on its left
 	// third, opaque on its right and graded between.
-	ui::surface_ptr make_surface(const int cx, const int cy, const ui::texture_format format,
-	                             const ui::orientation orientation = ui::orientation::top_left,
-	                             const ui::color_space cs = ui::color_space::rec601_full, const bool opaque = false)
+	core::surface_ptr make_surface(const int cx, const int cy, const core::texture_format format,
+	                             const core::orientation orientation = core::orientation::top_left,
+	                             const core::color_space cs = core::color_space::rec601_full, const bool opaque = false)
 	{
-		auto s = std::make_shared<ui::surface>();
+		auto s = std::make_shared<core::surface>();
 		auto* const pixels = s->alloc(cx, cy, format, orientation);
 		s->color_space(cs);
 
 		const auto stride = s->stride();
 		const auto width = static_cast<size_t>(cx);
 		const auto height = static_cast<size_t>(cy);
-		const auto planar = format == ui::texture_format::NV12 || format == ui::texture_format::P010;
+		const auto planar = format == core::texture_format::NV12 || format == core::texture_format::P010;
 		const auto size = stride * height * (planar ? 3u : 2u) / 2u;
 		random rng{static_cast<uint32_t>(cx * 7919 + cy * 104729 + static_cast<int>(format) * 31) | 1u};
 
@@ -7705,7 +7705,7 @@ namespace encode_sweep
 			pixels[i] = static_cast<uint8_t>(x * 3 + y * 5 + edge + (rng.next() & 31u));
 		}
 
-		if (format == ui::texture_format::ARGB)
+		if (format == core::texture_format::ARGB)
 		{
 			const auto third = width / 3;
 
@@ -7722,19 +7722,19 @@ namespace encode_sweep
 		return s;
 	}
 
-	std::string describe(const ui::const_image_ptr& image)
+	std::string describe(const core::const_image_ptr& image)
 	{
 		if (!image) return "null";
 		const auto& data = image->data();
 		const auto d = image->dimensions();
 		return std::format("format {} {}x{} orientation {} {} bytes {:08x}", static_cast<int>(image->format()), d.cx,
 		                   d.cy, static_cast<int>(image->orientation()), data.size(),
-		                   df::crc32c(data.data(), data.size()));
+		                   core::crc32c(data.data(), data.size()));
 	}
 
 	std::string describe(const std::span<const uint8_t> data)
 	{
-		return std::format("{} bytes {:08x}", data.size(), df::crc32c(data.data(), data.size()));
+		return std::format("{} bytes {:08x}", data.size(), core::crc32c(data.data(), data.size()));
 	}
 
 	// What an encoder made, or why it threw.
@@ -7752,7 +7752,7 @@ namespace encode_sweep
 	}
 
 	// The payload of a JPEG's EXIF APP1 segment, its signature included.
-	df::blob exif_segment(const df::cspan jpeg)
+	core::blob exif_segment(const core::cspan jpeg)
 	{
 		for (size_t i = 2; i + 4 <= jpeg.size && jpeg.data[i] == 0xFF;)
 		{
@@ -7760,8 +7760,8 @@ namespace encode_sweep
 			const auto length = (static_cast<size_t>(jpeg.data[i + 2]) << 8) | jpeg.data[i + 3];
 			if (marker == 0xDA || length < 2 || i + 2 + length > jpeg.size) break;
 
-			const df::cspan payload{jpeg.data + i + 4, length - 2};
-			if (marker == 0xE1 && is_exif_signature(payload)) return df::blob(payload.begin(), payload.end());
+			const core::cspan payload{jpeg.data + i + 4, length - 2};
+			if (marker == 0xE1 && is_exif_signature(payload)) return core::blob(payload.begin(), payload.end());
 			i += 2 + length;
 		}
 
@@ -7851,7 +7851,7 @@ namespace encode_sweep
 		return params;
 	}
 
-	file_encode_params jpeg_params(const int quality, const df::cspan source = {})
+	file_encode_params jpeg_params(const int quality, const core::cspan source = {})
 	{
 		file_encode_params params;
 		params.jpeg_save_quality = quality;
@@ -7865,7 +7865,7 @@ static void should_encode_as_diffractors_encoders_did()
 	using encode_sweep::attempt;
 	using encode_sweep::make_surface;
 	using encode_sweep::metadata_case;
-	using ui::texture_format;
+	using core::texture_format;
 
 	std::string record;
 	auto outcomes = 0;
@@ -7879,11 +7879,11 @@ static void should_encode_as_diffractors_encoders_did()
 			++encoded;
 	};
 
-	const auto camera_exif = encode_sweep::exif_segment(df::blob_from_file(df::file_path(test_files_folder, "IMG_9340.JPG")));
+	const auto camera_exif = encode_sweep::exif_segment(platform::blob_from_file(core::file_path(test_files_folder(), "IMG_9340.JPG")));
 	assert_equal(true, camera_exif.size() > 1000, "the camera fixture carries EXIF");
 
-	const auto bare_exif = make_orientation_exif(ui::orientation::right_top);
-	df::blob signed_exif(exif_signature.begin(), exif_signature.end());
+	const auto bare_exif = make_orientation_exif(core::orientation::right_top);
+	core::blob signed_exif(exif_signature.begin(), exif_signature.end());
 	signed_exif.insert(signed_exif.end(), bare_exif.begin(), bare_exif.end());
 
 	const auto everything = [&]
@@ -7912,7 +7912,7 @@ static void should_encode_as_diffractors_encoders_did()
 		{"bare exif", [&] { return exif_only(bare_exif.clone()); }},
 		{"signed exif", [&] { return exif_only(signed_exif.clone()); }},
 		{"camera exif", [&] { return exif_only(camera_exif.clone()); }},
-		{"camera exif unsigned", [&] { return exif_only(df::blob(camera_exif.begin() + 6, camera_exif.end())); }},
+		{"camera exif unsigned", [&] { return exif_only(core::blob(camera_exif.begin() + 6, camera_exif.end())); }},
 		{"xmp", [] { libfiles::metadata_blocks m; m.xmp = encode_sweep::xmp(); return m; }},
 		{"iptc", [] { libfiles::metadata_blocks m; m.iptc = make_iptc_caption("Encoded by the sweep"); return m; }},
 		{"photoshop", [] { libfiles::metadata_blocks m; m.photoshop = encode_sweep::photoshop_resources({16, 13}); return m; }},
@@ -7930,7 +7930,7 @@ static void should_encode_as_diffractors_encoders_did()
 		}},
 		{"icc", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(132); return m; }},
 		{"icc over two segments", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(100000); return m; }},
-		{"icc libpng refuses", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::padded(df::blob{1, 2, 3}, 40); return m; }},
+		{"icc libpng refuses", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::padded(core::blob{1, 2, 3}, 40); return m; }},
 		{"everything", everything},
 		{"exif at the marker limit", [&] { return exif_only(encode_sweep::padded(bare_exif, 65527)); }},
 		{"exif a byte over", [&] { return exif_only(encode_sweep::padded(bare_exif, 65528)); }},
@@ -7958,19 +7958,19 @@ static void should_encode_as_diffractors_encoders_did()
 
 	// Every encoder with the same picture and metadata: save_surface's three, and files' long-lived JPEG
 	// encoder.
-	const auto encode_all = [&](const std::string& what, const ui::const_surface_ptr& surface,
+	const auto encode_all = [&](const std::string& what, const core::const_surface_ptr& surface,
 	                            const metadata_case& m)
 	{
-		note(what + " jpeg", attempt([&] { return save_surface(ui::image_format::JPEG, surface, m.make(), {}); }));
-		note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, m.make(), {}, ui::image_format::JPEG); }));
-		note(what + " png", attempt([&] { return save_surface(ui::image_format::PNG, surface, m.make(), {}); }));
-		note(what + " webp", attempt([&] { return save_surface(ui::image_format::WEBP, surface, m.make(), {}); }));
+		note(what + " jpeg", attempt([&] { return save_surface(core::image_format::JPEG, surface, m.make(), {}); }));
+		note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, m.make(), {}, core::image_format::JPEG); }));
+		note(what + " png", attempt([&] { return save_surface(core::image_format::PNG, surface, m.make(), {}); }));
+		note(what + " webp", attempt([&] { return save_surface(core::image_format::WEBP, surface, m.make(), {}); }));
 	};
 
 	// Each orientation, with and without an EXIF to carry it.
 	for (auto o = 0; o <= 8; ++o)
 	{
-		const auto surface = make_surface(16, 16, texture_format::RGB, static_cast<ui::orientation>(o));
+		const auto surface = make_surface(16, 16, texture_format::RGB, static_cast<core::orientation>(o));
 		encode_all(std::format("orientation {}", o), surface, metadata[0]);
 		encode_all(std::format("orientation {} bare exif", o), surface, metadata[1]);
 	}
@@ -7978,7 +7978,7 @@ static void should_encode_as_diffractors_encoders_did()
 	// Each kind of metadata, on a picture turned a quarter so an orientation EXIF is wanted.
 	for (const auto& m : metadata)
 	{
-		encode_all(m.name, make_surface(16, 16, texture_format::RGB, ui::orientation::right_top), m);
+		encode_all(m.name, make_surface(16, 16, texture_format::RGB, core::orientation::right_top), m);
 	}
 
 	// The pictures.
@@ -7987,7 +7987,7 @@ static void should_encode_as_diffractors_encoders_did()
 		int cx;
 		int cy;
 		texture_format format;
-		ui::color_space cs = ui::color_space::rec601_full;
+		core::color_space cs = core::color_space::rec601_full;
 		bool opaque = false;
 	};
 
@@ -7995,21 +7995,21 @@ static void should_encode_as_diffractors_encoders_did()
 		{1, 1, texture_format::RGB}, {7, 5, texture_format::RGB}, {16, 16, texture_format::RGB},
 		{33, 17, texture_format::RGB}, {64, 48, texture_format::RGB}, {301, 199, texture_format::RGB},
 		{7, 5, texture_format::ARGB}, {33, 17, texture_format::ARGB}, {64, 48, texture_format::ARGB},
-		{64, 48, texture_format::ARGB, ui::color_space::rec601_full, true},
-		{64, 48, texture_format::NV12, ui::color_space::rec601_full},
-		{64, 48, texture_format::NV12, ui::color_space::rec601_limited},
-		{64, 48, texture_format::NV12, ui::color_space::rec709_limited},
-		{34, 18, texture_format::NV12, ui::color_space::rec601_full},
-		{33, 17, texture_format::NV12, ui::color_space::rec601_full},
-		{64, 48, texture_format::P010, ui::color_space::rec2020_limited},
+		{64, 48, texture_format::ARGB, core::color_space::rec601_full, true},
+		{64, 48, texture_format::NV12, core::color_space::rec601_full},
+		{64, 48, texture_format::NV12, core::color_space::rec601_limited},
+		{64, 48, texture_format::NV12, core::color_space::rec709_limited},
+		{34, 18, texture_format::NV12, core::color_space::rec601_full},
+		{33, 17, texture_format::NV12, core::color_space::rec601_full},
+		{64, 48, texture_format::P010, core::color_space::rec2020_limited},
 	};
 
 	for (const auto& p : pictures)
 	{
-		const auto surface = make_surface(p.cx, p.cy, p.format, ui::orientation::top_left, p.cs, p.opaque);
+		const auto surface = make_surface(p.cx, p.cy, p.format, core::orientation::top_left, p.cs, p.opaque);
 		const auto what = std::format("{}x{} format {} colour {} opaque {}", p.cx, p.cy, static_cast<int>(p.format),
 		                              static_cast<int>(p.cs), p.opaque);
-		const auto packed = ui::is_packed(p.format);
+		const auto packed = core::is_packed(p.format);
 
 		// save_jpeg and save_png read four-byte pixels, so only files' routes, which refuse a plane, are
 		// given one.
@@ -8019,50 +8019,50 @@ static void should_encode_as_diffractors_encoders_did()
 			{
 				note(std::format("{} jpeg q{}", what, quality), attempt([&]
 				{
-					return save_surface(ui::image_format::JPEG, surface, {}, encode_sweep::jpeg_params(quality));
+					return save_surface(core::image_format::JPEG, surface, {}, encode_sweep::jpeg_params(quality));
 				}));
 			}
 
-			note(what + " png", attempt([&] { return save_surface(ui::image_format::PNG, surface, {}, {}); }));
+			note(what + " png", attempt([&] { return save_surface(core::image_format::PNG, surface, {}, {}); }));
 		}
 
-		note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, {}, {}, ui::image_format::JPEG); }));
-		note(what + " files png", attempt([&] { return ff.surface_to_image(surface, {}, {}, ui::image_format::PNG); }));
-		note(what + " files either", attempt([&] { return ff.surface_to_image(surface, {}, {}, ui::image_format::Unknown); }));
+		note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::JPEG); }));
+		note(what + " files png", attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::PNG); }));
+		note(what + " files either", attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::Unknown); }));
 
 		for (const auto& w : webp_cases)
 		{
-			note(what + " " + w.name, attempt([&] { return save_surface(ui::image_format::WEBP, surface, {}, w.params); }));
+			note(what + " " + w.name, attempt([&] { return save_surface(core::image_format::WEBP, surface, {}, w.params); }));
 		}
 
 		// A plane libwebp will not take is converted for the thumbnail store by FFmpeg's scaler, which
 		// is not what this records.
 		const auto webp_takes = packed || (p.format == texture_format::NV12 && ((p.cx | p.cy) & 1) == 0 &&
-			(p.cs == ui::color_space::rec601_full || p.cs == ui::color_space::rec601_limited));
+			(p.cs == core::color_space::rec601_full || p.cs == core::color_space::rec601_limited));
 		if (webp_takes) note(what + " thumbnail", attempt([&] { return ff.surface_to_thumbnail(surface); }));
 	}
 
 	// Source JPEGs whose tables an edit is encoded against - or, where they cannot be adopted, not.
 	{
-		const auto test_jpg = df::blob_from_file(df::file_path(test_files_folder, "Test.jpg"));
-		const auto excluded = test_files_folder.combine("excluded1");
-		const auto made_q40 = save_surface(ui::image_format::JPEG, make_surface(64, 48, texture_format::RGB), {},
+		const auto test_jpg = platform::blob_from_file(core::file_path(test_files_folder(), "Test.jpg"));
+		const auto excluded = test_files_folder().combine("excluded1");
+		const auto made_q40 = save_surface(core::image_format::JPEG, make_surface(64, 48, texture_format::RGB), {},
 		                                   encode_sweep::jpeg_params(40));
-		const auto made_q95 = save_surface(ui::image_format::JPEG, make_surface(33, 17, texture_format::RGB), {},
+		const auto made_q95 = save_surface(core::image_format::JPEG, make_surface(33, 17, texture_format::RGB), {},
 		                                   encode_sweep::jpeg_params(95));
 
-		std::vector<std::pair<std::string, df::blob>> sources;
-		sources.emplace_back("no source", df::blob{});
+		std::vector<std::pair<std::string, core::blob>> sources;
+		sources.emplace_back("no source", core::blob{});
 		sources.emplace_back("made at q40", made_q40->data().clone());
 		sources.emplace_back("made at q95", made_q95->data().clone());
 		sources.emplace_back("Test.jpg", test_jpg.clone());
-		sources.emplace_back("Progressive.jpg", df::blob_from_file(df::file_path(excluded, "Progressive.jpg")));
-		sources.emplace_back("cmyk.jpg", df::blob_from_file(df::file_path(test_files_folder, "cmyk.jpg")));
-		sources.emplace_back("deep12.jpg", df::blob_from_file(df::file_path(excluded, "deep12.jpg")));
-		sources.emplace_back("deep12gray.jpg", df::blob_from_file(df::file_path(excluded, "deep12gray.jpg")));
-		sources.emplace_back("soi only", df::blob{0xFF, 0xD8});
-		sources.emplace_back("Test.jpg cut at 100", df::blob(test_jpg.begin(), test_jpg.begin() + 100));
-		sources.emplace_back("Test.jpg cut at 20", df::blob(test_jpg.begin(), test_jpg.begin() + 20));
+		sources.emplace_back("Progressive.jpg", platform::blob_from_file(core::file_path(excluded, "Progressive.jpg")));
+		sources.emplace_back("cmyk.jpg", platform::blob_from_file(core::file_path(test_files_folder(), "cmyk.jpg")));
+		sources.emplace_back("deep12.jpg", platform::blob_from_file(core::file_path(excluded, "deep12.jpg")));
+		sources.emplace_back("deep12gray.jpg", platform::blob_from_file(core::file_path(excluded, "deep12gray.jpg")));
+		sources.emplace_back("soi only", core::blob{0xFF, 0xD8});
+		sources.emplace_back("Test.jpg cut at 100", core::blob(test_jpg.begin(), test_jpg.begin() + 100));
+		sources.emplace_back("Test.jpg cut at 20", core::blob(test_jpg.begin(), test_jpg.begin() + 20));
 
 		for (const auto& [name, source] : sources)
 		{
@@ -8074,8 +8074,8 @@ static void should_encode_as_diffractors_encoders_did()
 				{
 					const auto params = encode_sweep::jpeg_params(quality, source);
 					const auto what = std::format("{} {}x{} q{}", name, p.cx, p.cy, quality);
-					note(what + " jpeg", attempt([&] { return save_surface(ui::image_format::JPEG, surface, {}, params); }));
-					note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, {}, params, ui::image_format::JPEG); }));
+					note(what + " jpeg", attempt([&] { return save_surface(core::image_format::JPEG, surface, {}, params); }));
+					note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, {}, params, core::image_format::JPEG); }));
 				}
 			}
 		}
@@ -8085,16 +8085,16 @@ static void should_encode_as_diffractors_encoders_did()
 	// holds does; and the budget is fixed, so the record does not depend on the machine's memory.
 	libfiles::jpeg_encoder encoder;
 	libfiles::jpeg_transformer transformer;
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 	constexpr int64_t budget = 256ll * 1024 * 1024;
-	df::max_decode_bytes = budget;
+	render::max_decode_bytes = budget;
 
-	const auto between = make_surface(16, 16, texture_format::RGB, ui::orientation::bottom_right);
+	const auto between = make_surface(16, 16, texture_format::RGB, core::orientation::bottom_right);
 	const auto encode_between = [&]
 	{
 		return encoder.encode(16, 16, between->pixels(), between->stride(),
-		                      static_cast<uint16_t>(ui::orientation::bottom_right), {}, {});
+		                      static_cast<uint16_t>(core::orientation::bottom_right), {}, {});
 	};
 
 	// An encode started and abandoned, as a throw part way leaves one, and one refused for its metadata.
@@ -8102,15 +8102,15 @@ static void should_encode_as_diffractors_encoders_did()
 		const auto surface = make_surface(32, 32, texture_format::RGB);
 		const auto abandoned = attempt([&]
 		{
-			encoder.start(32, 32, static_cast<uint16_t>(ui::orientation::right_top), everything(), {});
-			return df::blob{};
+			encoder.start(32, 32, static_cast<uint16_t>(core::orientation::right_top), everything(), {});
+			return core::blob{};
 		});
 		note("started and abandoned", abandoned);
 		note("then encodes", attempt(encode_between));
 		note("refused", attempt([&]
 		{
 			return encoder.encode(32, 32, surface->pixels(), surface->stride(),
-			                      static_cast<uint16_t>(ui::orientation::top_left),
+			                      static_cast<uint16_t>(core::orientation::top_left),
 			                      exif_only(encode_sweep::padded(bare_exif, 65528)), {});
 		}));
 		note("then encodes", attempt(encode_between));
@@ -8156,11 +8156,11 @@ static void should_encode_as_diffractors_encoders_did()
 		// Transposing is never refused as imperfect, so it reaches the budget whatever the size.
 		if (coefficients > 0)
 		{
-			df::max_decode_bytes = coefficients * 2 - 1;
-			note(name + " transposed a byte over budget", turned(jpeg, simple_transform::transpose));
-			df::max_decode_bytes = coefficients * 2;
-			note(name + " transposed on budget", turned(jpeg, simple_transform::transpose));
-			df::max_decode_bytes = budget;
+			render::max_decode_bytes = coefficients * 2 - 1;
+			note(name + " transposed a byte over budget", turned(jpeg, core::simple_transform::transpose));
+			render::max_decode_bytes = coefficients * 2;
+			note(name + " transposed on budget", turned(jpeg, core::simple_transform::transpose));
+			render::max_decode_bytes = budget;
 		}
 
 		note(name + " then encodes", attempt(encode_between));
@@ -8169,17 +8169,17 @@ static void should_encode_as_diffractors_encoders_did()
 		{
 			for (const auto cut : scan_parity::cut_points(jpeg.size()))
 			{
-				note(std::format("{} cut at {} transposed", name, cut), turned(jpeg.first(cut), simple_transform::transpose));
+				note(std::format("{} cut at {} transposed", name, cut), turned(jpeg.first(cut), core::simple_transform::transpose));
 			}
 
-			df::blob copy(jpeg.begin(), jpeg.end());
+			core::blob copy(jpeg.begin(), jpeg.end());
 
 			for (uint64_t k = 0; k < 16; ++k)
 			{
 				const auto at = scan_parity::corruption_position(k, copy.size());
 				const auto original = copy[at];
 				copy[at] = static_cast<uint8_t>(original ^ 0xFF);
-				note(std::format("{} corrupt at {} transposed", name, at), turned(copy, simple_transform::transpose));
+				note(std::format("{} corrupt at {} transposed", name, at), turned(copy, core::simple_transform::transpose));
 				copy[at] = original;
 			}
 
@@ -8193,7 +8193,7 @@ static void should_encode_as_diffractors_encoders_did()
 		{
 			const auto surface = make_surface(cx, cy, format);
 			return encoder.encode(cx, cy, surface->pixels(), surface->stride(),
-			                      static_cast<uint16_t>(ui::orientation::top_left), m, {.quality = quality});
+			                      static_cast<uint16_t>(core::orientation::top_left), m, {.quality = quality});
 		};
 
 		turn("made 32x32 camera exif", made(32, 32, texture_format::RGB, exif_only(camera_exif.clone()), 85), true);
@@ -8208,24 +8208,24 @@ static void should_encode_as_diffractors_encoders_did()
 
 		// Sony.JPG is the one fixture whose EXIF gives its thumbnail an orientation, and too large to turn
 		// here, so a picture of the sweep's own carries its EXIF.
-		const auto sony_exif = encode_sweep::exif_segment(df::blob_from_file(df::file_path(test_files_folder, "Sony.JPG")));
+		const auto sony_exif = encode_sweep::exif_segment(platform::blob_from_file(core::file_path(test_files_folder(), "Sony.JPG")));
 		assert_equal(true, sony_exif.size() > 1000, "the Sony fixture carries EXIF");
 		turn("made 32x32 sony exif", made(32, 32, texture_format::RGB, exif_only(sony_exif.clone()), 85), false);
 		turn("empty", {}, false);
 
-		const df::blob not_jpeg{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+		const core::blob not_jpeg{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
 		turn("not a jpeg", not_jpeg, false);
 	}
 
 	// The fixtures small enough to turn every way quickly, by name so every platform takes them in the
 	// same order.
-	std::vector<df::file_path> found;
-	scan_parity::add_folder(test_files_folder, found);
-	std::vector<std::pair<std::string, df::blob>> fixtures;
+	std::vector<core::file_path> found;
+	scan_parity::add_folder(test_files_folder(), found);
+	std::vector<std::pair<std::string, core::blob>> fixtures;
 
 	for (const auto& path : found)
 	{
-		auto bytes = df::blob_from_file(path);
+		auto bytes = platform::blob_from_file(path);
 		if (bytes.size() >= 64 && bytes.size() <= 300 * 1024 && libfiles::detect_image_format(bytes) == libfiles::image_format::jpeg)
 			fixtures.emplace_back(std::string(path.name()), std::move(bytes));
 	}
@@ -8237,8 +8237,8 @@ static void should_encode_as_diffractors_encoders_did()
 
 	for (const auto& [name, bytes] : fixtures) turn(name, bytes, bytes.size() < 100 * 1024);
 
-	const auto checksum = df::crc32c(record.data(), record.size());
-	df::log(__FUNCTION__, std::format("{} fixtures turned, {} outcomes, {} encoded; record {:08x}", fixtures.size(),
+	const auto checksum = core::crc32c(record.data(), record.size());
+	core::log(__FUNCTION__, std::format("{} fixtures turned, {} outcomes, {} encoded; record {:08x}", fixtures.size(),
 	                                  outcomes, encoded, checksum));
 
 	assert_equal(true, fixtures.size() >= 15, "the fixtures hold JPEGs to turn");

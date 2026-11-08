@@ -35,11 +35,11 @@ constexpr int64_t map_tile_db_key(const int z, const int x, const int y) noexcep
 
 // Where the tile database lives: the app cache-data folder, the same place the index database
 // (diffractor-cache.db) is opened from, so both rebuildable caches sit together.
-df::file_path resolve_tile_cache_db_path();
+core::file_path resolve_tile_cache_db_path();
 
-class tile_cache_db final : public df::no_copy
+class tile_cache_db final : public core::no_copy
 {
-	df::file_path _db_path;
+	core::file_path _db_path;
 	uint32_t _db_thread_id = 0;
 	sqlite3* _db = nullptr;
 
@@ -76,17 +76,17 @@ public:
 
 	bool is_db_thread() const;
 	bool is_open() const { return _db != nullptr; }
-	const df::file_path& path() const { return _db_path; }
+	const core::file_path& path() const { return _db_path; }
 
 	// Opens, or replaces and reopens a file this build cannot use. A cache that cannot be opened at
 	// all leaves every call below a no-op, so the map falls back to fetching each session.
-	void open(df::file_path path);
+	void open(core::file_path path);
 	void close();
 
 	// Empty when absent. A hit stamps the tile as used, which is what the size prune orders by.
-	df::blob load(int64_t key);
-	void store(int64_t key, df::cspan data);
-	void store(int64_t key, df::cspan data, df::date_t when);
+	core::blob load(int64_t key);
+	void store(int64_t key, core::cspan data);
+	void store(int64_t key, core::cspan data, core::date_t when);
 
 	// Commits the batch the worker just drained and runs a prune when writes have earned one.
 	void flush();

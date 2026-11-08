@@ -19,7 +19,7 @@ extern const unsigned long diffractor_resource_sql_size;
 extern const unsigned char diffractor_resource_map_png[];
 extern const unsigned long diffractor_resource_map_png_size;
 
-df::blob load_app_resource(const app_resource r)
+core::blob load_app_resource(const app_resource r)
 {
 	switch (r)
 	{
@@ -41,22 +41,22 @@ namespace
 	{
 		double cx;
 		double cy;
-		ui::color32 fill;
-		ui::color32 border;
+		core::color32 fill;
+		core::color32 border;
 	};
 
 	// Supersample then box-average. Every edge is axis aligned, so this resolves them exactly and
 	// avoids the dark fringe a straight RGBA average produces around transparent pixels.
 	constexpr int logo_supersample = 4;
 
-	// Surface pixels are stored blue first (ARGB maps to DXGI_FORMAT_B8G8R8A8), while ui::rgb builds
+	// Surface pixels are stored blue first (ARGB maps to DXGI_FORMAT_B8G8R8A8), while core::rgb builds
 	// the red-first form these brand hex values are written in.
-	constexpr ui::color32 logo_color(const uint32_t r, const uint32_t g, const uint32_t b) noexcept
+	constexpr core::color32 logo_color(const uint32_t r, const uint32_t g, const uint32_t b) noexcept
 	{
-		return ui::abgr(ui::rgb(r, g, b));
+		return core::abgr(core::rgb(r, g, b));
 	}
 
-	void logo_fill_rect(ui::color32* buffer, const int n, int x0, int y0, int x1, int y1, const ui::color32 c,
+	void logo_fill_rect(core::color32* buffer, const int n, int x0, int y0, int x1, int y1, const core::color32 c,
 	                    const recti clip)
 	{
 		x0 = std::max({x0, 0, clip.left});
@@ -75,14 +75,14 @@ namespace
 		}
 	}
 
-	void logo_draw_square(ui::color32* buffer, const int n, const logo_square& sq, const double size,
+	void logo_draw_square(core::color32* buffer, const int n, const logo_square& sq, const double size,
 	                      const int border_width, const recti clip)
 	{
 		const auto half = size / 2.0;
-		const auto x0 = df::round(sq.cx - half);
-		const auto y0 = df::round(sq.cy - half);
-		const auto x1 = df::round(sq.cx + half);
-		const auto y1 = df::round(sq.cy + half);
+		const auto x0 = core::round(sq.cx - half);
+		const auto y0 = core::round(sq.cy - half);
+		const auto x1 = core::round(sq.cx + half);
+		const auto y1 = core::round(sq.cy + half);
 
 		logo_fill_rect(buffer, n, x0, y0, x1, y1, sq.border, clip);
 		logo_fill_rect(buffer, n, x0 + border_width, y0 + border_width, x1 - border_width, y1 - border_width, sq.fill,
@@ -90,7 +90,7 @@ namespace
 	}
 }
 
-void fill_app_logo(ui::surface& surface)
+void fill_app_logo(core::surface& surface)
 {
 	const auto cx = static_cast<int>(surface.width());
 	const auto cy = static_cast<int>(surface.height());
@@ -98,7 +98,7 @@ void fill_app_logo(ui::surface& surface)
 	if (extent <= 0) return;
 
 	const auto n = extent * logo_supersample;
-	std::vector<ui::color32> buffer(static_cast<size_t>(n) * n, 0u);
+	std::vector<core::color32> buffer(static_cast<size_t>(n) * n, 0u);
 
 	const auto size = n * 0.45;
 	const auto offset = size * 1.11;
@@ -120,8 +120,8 @@ void fill_app_logo(ui::surface& surface)
 
 	const auto half = size / 2.0;
 	const recti green_patch{
-		df::round(green.cx - half - border_width), df::round(green.cy),
-		df::round(green.cx), df::round(green.cy + half + border_width)
+		core::round(green.cx - half - border_width), core::round(green.cy),
+		core::round(green.cx), core::round(green.cy + half + border_width)
 	};
 	logo_draw_square(buffer.data(), n, green, size, border_width, green_patch);
 
@@ -131,7 +131,7 @@ void fill_app_logo(ui::surface& surface)
 
 	for (auto y = 0; y < cy; ++y)
 	{
-		auto* const line = std::bit_cast<ui::color32*>(surface.pixels_line(y));
+		auto* const line = std::bit_cast<core::color32*>(surface.pixels_line(y));
 
 		for (auto x = 0; x < cx; ++x)
 		{
@@ -154,9 +154,9 @@ void fill_app_logo(ui::surface& surface)
 				{
 					const auto c = src[i];
 					if (c == 0) continue;
-					r += ui::get_r(c);
-					g += ui::get_g(c);
-					b += ui::get_b(c);
+					r += core::get_r(c);
+					g += core::get_g(c);
+					b += core::get_b(c);
 					++opaque;
 				}
 			}
@@ -164,7 +164,7 @@ void fill_app_logo(ui::surface& surface)
 			// Channels are averaged in storage order, so this stays blue first like its source.
 			line[x] = opaque == 0
 				          ? 0
-				          : ui::rgba(r / opaque, g / opaque, b / opaque, opaque * 255 / samples);
+				          : core::rgba(r / opaque, g / opaque, b / opaque, opaque * 255 / samples);
 		}
 	}
 }

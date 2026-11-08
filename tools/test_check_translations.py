@@ -15,14 +15,17 @@ class RegistrationTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.header = self.root / "app_text.h"
         self.impl = self.root / "app_text.cpp"
-        self.platform = self.root / "platform.h"
+        self.platform = self.root / "include" / "libdesktop" / "platform" / "services.h"
+        self.platform.parent.mkdir(parents=True)
+        self.words = self.root / "include" / "libdesktop" / "core" / "strings.h"
+        self.words.parent.mkdir(parents=True)
         self.header.write_text(
             'text_t local = "Local";\n'
             'plural_text count = {"One", "Many"};\n'
             'platform::messages platform_text;\n',
             encoding="utf-8",
         )
-        self.platform.write_text('text_t shared = "Shared";\n', encoding="utf-8")
+        self.platform.write_text('core::text_t shared = "Shared";\n', encoding="utf-8")
         self.paths = patch.multiple(checker, APP_TEXT_HEADER=self.header, APP_TEXT_IMPL=self.impl)
         self.paths.start()
         self.addCleanup(self.paths.stop)
@@ -81,8 +84,8 @@ class RegistrationTests(unittest.TestCase):
 
     def test_words_are_checked_against_their_shared_header(self):
         with self.header.open("a", encoding="utf-8") as header:
-            header.write("str::words words;\n")
-        self.platform.with_name("util_strings.h").write_text('text_t month = "Month";\n', encoding="utf-8")
+            header.write("words words;\n")
+        self.words.write_text('text_t month = "Month";\n', encoding="utf-8")
         self.assertEqual([], self.registrations("local,\nplatform_text.shared,\nwords.month,"))
         self.assertIn("Missing from _all_texts (1): words.month", self.registrations())
         self.assertIn(
@@ -96,16 +99,18 @@ class RegistrationTests(unittest.TestCase):
 
     def test_fetched_header_discovery_rejects_ambiguous_builds(self):
         repo = self.root / "app"
-        first = repo / "tmp" / "win-build-x64" / "_deps" / "libdesktop-src" / "include" / "libdesktop" / "platform.h"
+        first = repo / "tmp" / "win-build-x64" / "_deps" / "libdesktop-src" / "include" / "libdesktop" / "platform" / "services.h"
         first.parent.mkdir(parents=True)
         first.write_text('text_t shared = "Shared";\n', encoding="utf-8")
-        first.with_name("util_strings.h").write_text('text_t month = "Month";\n', encoding="utf-8")
+        (first.parent.parent / "core").mkdir()
+        checker._words_header(first).write_text('text_t month = "Month";\n', encoding="utf-8")
         with patch.object(checker, "REPO_ROOT", repo):
             self.assertEqual(first, checker._platform_text_header())
-            second = repo / "tmp" / "win-build-x86" / "_deps" / "libdesktop-src" / "include" / "libdesktop" / "platform.h"
+            second = repo / "tmp" / "win-build-x86" / "_deps" / "libdesktop-src" / "include" / "libdesktop" / "platform" / "services.h"
             second.parent.mkdir(parents=True)
             second.write_text(first.read_text(encoding="utf-8"), encoding="utf-8")
-            second.with_name("util_strings.h").write_text('text_t different = "Different";\n', encoding="utf-8")
+            (second.parent.parent / "core").mkdir()
+            checker._words_header(second).write_text('text_t different = "Different";\n', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Cannot identify"):
                 checker._platform_text_header()
 

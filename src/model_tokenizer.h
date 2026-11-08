@@ -111,13 +111,13 @@ class search_tokenizer
 			// the query's own logic instead of matching what the user had quoted.
 			if (current_term.scope.empty() && !current_term.literal)
 			{
-				if (str::icmp(current_text, "or") == 0 || str::icmp(current_text, tt.query_or) == 0)
+				if (core::icmp(current_text, "or") == 0 || core::icmp(current_text, tt.query_or) == 0)
 				{
 					current_term.modifier.logical_op = df::search_term_modifier_bool::m_or;
 					current_text.clear();
 					return;
 				}
-				if (str::icmp(current_text, "and") == 0 || str::icmp(current_text, tt.query_and) == 0)
+				if (core::icmp(current_text, "and") == 0 || core::icmp(current_text, tt.query_and) == 0)
 				{
 					current_term.modifier.logical_op = df::search_term_modifier_bool::m_and;
 					current_text.clear();

@@ -339,12 +339,14 @@ diffractor_embed_resource(diffractor_resource_sql
         "${CMAKE_SOURCE_DIR}/src/Res/create_tables.sql" _sql_text)
 diffractor_embed_resource(diffractor_resource_map_png
         "${CMAKE_SOURCE_DIR}/src/Res/map-hires.png" _map_png_text)
+diffractor_embed_resource(diffractor_resource_icon_font
+        "${CMAKE_SOURCE_DIR}/src/Res/FluentSystemIcons-Resizable.ttf" _icon_font_text)
 
 set(_generated_resources "${CMAKE_BINARY_DIR}/generated/platform_resources.cpp")
 # Written through configure_file so an unchanged resource does not restamp the file and force a
 # rebuild on every configure.
 file(WRITE "${_generated_resources}.in"
-        "// Generated from src/Res by CMake. Do not edit.\n\n${_sql_text}\n${_map_png_text}")
+        "// Generated from src/Res by CMake. Do not edit.\n\n${_sql_text}\n${_map_png_text}\n${_icon_font_text}")
 configure_file("${_generated_resources}.in" "${_generated_resources}" COPYONLY)
 # A table of bytes needs none of the application's headers.
 set_source_files_properties("${_generated_resources}" PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
@@ -362,13 +364,6 @@ else ()
             src/platform_linux_app.cpp
             "${_generated_resources}"
     )
-
-    # The icon font is assembled into the executable from its file, as the Windows resource script
-    # embeds it; the object depends on the file so a new font is not left behind a stale object.
-    set(_icon_font "${CMAKE_SOURCE_DIR}/src/Res/FluentSystemIcons-Resizable.ttf")
-    set_source_files_properties(src/platform_linux_app.cpp PROPERTIES
-            COMPILE_DEFINITIONS "DIFFRACTOR_ICON_FONT=\"${_icon_font}\""
-            OBJECT_DEPENDS "${_icon_font}")
 endif ()
 
 add_executable(diffractor
@@ -381,8 +376,8 @@ target_include_directories(diffractor PRIVATE
         src
 )
 
-# The resource script carries the app's icons, icon font, manifest and version, and includes
-# libdesktop-render's own script, whose shaders that module compiles.
+# The resource script carries Diffractor's icon, manifest and version. Libdesktop's
+# platform and render assets are embedded in their respective libraries.
 if (WIN32)
     # The .rc embeds these by name, and the generator only tracks the .rc itself: editing one of them
     # otherwise leaves the compiled resource stale and the binary silently running the old copy. That
@@ -396,7 +391,6 @@ if (WIN32)
 
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/platform_win_res.rc"
             PROPERTIES OBJECT_DEPENDS "${_rc_embedded_resources}")
-    libdesktop_render_resources("${CMAKE_SOURCE_DIR}/src/platform_win_res.rc")
 endif ()
 
 # Every resolved dependency is named here rather than relying on one library to pull in another.
@@ -418,7 +412,7 @@ endforeach ()
 # naming them here is what puts them inside the rescan group below.
 get_property(_grouped_archives GLOBAL PROPERTY DIFFRACTOR_GROUPED_ARCHIVES)
 list(APPEND DIFFRACTOR_LINK_DEPENDENCIES ${_grouped_archives})
-list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::render libdesktop::text lib8bit::lib8bit)
+list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::ui lib8bit::lib8bit)
 
 if (MSVC)
     target_link_libraries(diffractor PRIVATE ${DIFFRACTOR_LINK_DEPENDENCIES})
@@ -432,9 +426,6 @@ else ()
 endif ()
 
 diffractor_apply_app_policy(diffractor)
-
-# The entry point is libdesktop's, linked as an object so that no archive's main can take its place.
-target_link_libraries(diffractor PRIVATE libdesktop::render_main)
 
 find_package(Threads REQUIRED)
 target_link_libraries(diffractor PRIVATE Threads::Threads)

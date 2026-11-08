@@ -79,7 +79,7 @@ public:
 		return _frame ? _frame : ui::no_frame();
 	}
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
 		return {cx, cx};
 	}
@@ -89,7 +89,7 @@ public:
 		return _frame;
 	}
 
-	void on_window_layout(ui::measure_context& mc, const sizei extent, const bool is_minimized) override
+	void on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized) override
 	{
 		const bool extent_changed = _extent != extent;
 		_extent = extent;
@@ -129,7 +129,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_start_loc = loc;
 		_panned = false;
@@ -137,7 +137,7 @@ public:
 			_engine->pan_start();
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		if (_engine)
 		{
@@ -186,7 +186,7 @@ public:
 		}
 	}
 
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
 		if (_engine)
 		{
@@ -213,12 +213,12 @@ public:
 	{
 	}
 
-	bool key_down(const int c, const ui::key_state keys) override
+	bool key_down(const int c, const platform::key_state keys) override
 	{
 		return false;
 	}
 
-	void on_window_paint(ui::draw_context& dc) override
+	void on_window_paint(render::draw_context& dc) override
 	{
 		if (_engine)
 		{

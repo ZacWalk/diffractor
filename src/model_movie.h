@@ -24,7 +24,7 @@ enum class movie_transition
 // is held for and `start` is always zero; a video is trimmed to [start, end) of its source.
 struct movie_clip
 {
-	df::file_path path;
+	core::file_path path;
 	bool is_photo = false;
 	// True until the source has been probed and found. The project readers do no I/O, so a freshly
 	// read project starts with every clip missing and the view resolves them; a clip that stays
@@ -164,13 +164,13 @@ movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_s
 
 // Builds a clip from a path. The duration and extent come from the caller because probing is I/O;
 // a photo is given the settings' default hold.
-movie_clip make_movie_clip(df::file_path path, const movie_settings& settings);
+movie_clip make_movie_clip(core::file_path path, const movie_settings& settings);
 
 // True when a proposed output path names one of the clips the render reads. The render replaces the
 // output only after its last read, so an output that names a source destroys that source silently
 // and leaves the timeline pointing at a file that is now the movie. Compared by path, which is the
 // identity every other destination-writing operation uses.
-bool movie_output_names_a_clip(const std::vector<movie_clip>& clips, df::file_path output);
+bool movie_output_names_a_clip(const std::vector<movie_clip>& clips, core::file_path output);
 
 enum class movie_load_status
 {
@@ -204,13 +204,13 @@ struct movie_load_result
 // The native project format is OpenTimelineIO. Paths are written relative to the project folder
 // when they share a root, so a project and its sources move together.
 std::string write_otio(const std::vector<movie_clip>& clips, const movie_settings& settings,
-                       df::folder_path project_folder);
-movie_load_result read_otio(std::string_view json, df::folder_path project_folder);
+                       core::folder_path project_folder);
+movie_load_result read_otio(std::string_view json, core::folder_path project_folder);
 
 // Windows Live Movie Maker. The format is undocumented, so the reader scrapes rather than
 // validates: see the note on the implementation. A relative media path is relative to the folder
 // the project is in.
-movie_load_result read_wlmp(std::string_view xml, df::folder_path project_folder);
+movie_load_result read_wlmp(std::string_view xml, core::folder_path project_folder);
 
 // How a source a project names was resolved: where the project stored it, found again by name
 // under a search folder or the collection, or not at all. docs/movie.md#6-project-files owns the
@@ -235,7 +235,7 @@ struct movie_source_choice
 {
 	movie_source_match match = movie_source_match::missing;
 	// Empty unless one candidate was chosen.
-	df::file_path path;
+	core::file_path path;
 };
 
 // `candidates[i]` lists the files under the search folder named as `stored[i]` is, and
@@ -243,10 +243,10 @@ struct movie_source_choice
 // answers a candidate's length, or zero when it has none to measure; it is the one place I/O can
 // enter, so the rules are tested with a stand-in and no disk. It is asked only about the candidates
 // of a source with a recorded length.
-std::vector<movie_source_choice> choose_movie_sources(const std::vector<df::file_path>& stored,
-                                                      const std::vector<std::vector<df::file_path>>& candidates,
+std::vector<movie_source_choice> choose_movie_sources(const std::vector<core::file_path>& stored,
+                                                      const std::vector<std::vector<core::file_path>>& candidates,
                                                       const std::vector<double>& recorded_seconds,
-                                                      const std::function<double(df::file_path)>& measure_seconds);
+                                                      const std::function<double(core::file_path)>& measure_seconds);
 
 // Which control an edit came from, where that control reports one gesture as a stream of values: a
 // slider dragged across fifty values, or a length typed a digit at a time. Edits naming the same group
@@ -271,7 +271,7 @@ public:
 
 	const std::vector<movie_clip>& clips() const { return _clips; }
 	const movie_settings& settings() const { return _settings; }
-	df::file_path path() const { return _path; }
+	core::file_path path() const { return _path; }
 	bool is_modified() const { return _modified; }
 	// Advances on every change to the document, including the probe filling in what it measured.
 	uint64_t revision() const { return _revision; }
@@ -332,8 +332,8 @@ public:
 	// a step of its own.
 	void end_edit_group();
 
-	void reset(std::vector<movie_clip> clips, const movie_settings& s, df::file_path path);
-	void mark_saved(df::file_path path, uint64_t edit_revision);
+	void reset(std::vector<movie_clip> clips, const movie_settings& s, core::file_path path);
+	void mark_saved(core::file_path path, uint64_t edit_revision);
 
 	// A timeline just built from a selection has no state before itself, so there is nothing to
 	// undo back to and nothing yet for the user to have changed.
@@ -367,7 +367,7 @@ private:
 	std::vector<movie_clip> _clips;
 	movie_settings _settings;
 	std::vector<undo_entry> _undo;
-	df::file_path _path;
+	core::file_path _path;
 	std::vector<size_t> _selected;
 	size_t _current = 0;
 	size_t _anchor = 0;
@@ -391,5 +391,5 @@ enum class movie_entry
 	seed,
 };
 
-movie_entry decide_movie_entry(const movie_project& project, const std::vector<df::file_path>& selection,
-                               const std::vector<df::file_path>& built_from);
+movie_entry decide_movie_entry(const movie_project& project, const std::vector<core::file_path>& selection,
+                               const std::vector<core::file_path>& built_from);

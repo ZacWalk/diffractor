@@ -25,8 +25,8 @@ public:
 	// A dump of bytes this control holds itself.
 	document_control(std::vector<uint8_t> bytes, const view_element_options& style_in) noexcept;
 
-	sizei measure(ui::measure_context& mc, int width_limit) const override;
-	void render(ui::draw_context& dc, pointi element_offset) const override;
+	sizei measure(render::measure_context& mc, int width_limit) const override;
+	void render(render::draw_context& dc, pointi element_offset) const override;
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 	                                             hit_test_context& ctx) override;
 
@@ -41,7 +41,7 @@ public:
 		return _display;
 	}
 
-	df::cspan bytes() const;
+	core::cspan bytes() const;
 
 	// The position under a point. Above the document is its start and below it its end, so a drag
 	// that leaves the document still selects to the edge it left by. With character set, the
@@ -56,7 +56,7 @@ private:
 	display_state_ptr _display;
 	std::vector<uint8_t> _bytes;
 	std::shared_ptr<document_state> _document;
-	ui::style::font_face _font = ui::style::font_face::code;
+	render::font_face _font = render::font_face::code;
 
 	mutable int _line_height = 0;
 	mutable double _char_width = 0.0;

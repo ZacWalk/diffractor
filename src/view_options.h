@@ -47,8 +47,8 @@ options_leave_choice ask_to_save_options(const ui::frame_ptr& parent);
 
 // The folders whose library type the page offers: the collection's local folders that are ticked, the other
 // folders it names by path, and any folder given a type before. Device labels and exclusions have no type.
-std::vector<df::folder_path> library_type_folders(const settings_t::index_t& collection,
-                                                  const local_folders_result& local);
+std::vector<core::folder_path> library_type_folders(const settings_t::index_t& collection,
+                                                  const platform::local_folders_result& local);
 
 // Copies what the Options view edits from `from` to `to`, and nothing else: what the app changed while the
 // page was open - window state, recent lists, the fields a task remembers - keeps its newer value.
@@ -66,7 +66,7 @@ public:
 	{
 		settings_t settings;
 		std::string more_folders;
-		std::vector<std::pair<df::folder_path, prop::library_kind>> library_types;
+		std::vector<std::pair<core::folder_path, prop::library_kind>> library_types;
 		std::vector<std::string> library_type_names;
 		std::string language_name;
 		std::string subtitle_language_name;

@@ -6,14 +6,11 @@
 // License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
 // This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
 
-// Purpose: The application's own Windows resource identifiers: the manifest and the executable's icon.
-// The desktop UI's - its shaders, shadow and cursors, and the window icon and icon font it asks the
-// application for - are platform_win_render_res.h's.
+// Purpose: Diffractor's own Windows resource identifiers. Libdesktop's platform and render assets are
+// linked into their libraries and are not part of this executable resource script.
 
-#define IDR_MANIFEST   1
-#define IDR_DIFFRACTOR   100
-
-#include "libdesktop/platform_win_render_res.h"
+#define IDI_APP_ICON   1
+#define IDR_MANIFEST   2
 
 
 // Next default values for new objects

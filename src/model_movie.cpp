@@ -33,15 +33,15 @@ static constexpr int otio_project_version = 2;
 
 static bool is_qualified_path(const std::string_view s)
 {
-	if constexpr (!df::windows_path_semantics)
+	if constexpr (!core::windows_path_semantics)
 	{
-		return !s.empty() && df::is_path_sep(s[0]);
+		return !s.empty() && core::is_path_sep(s[0]);
 	}
 	else
 	{
 		if (s.size() < 3) return false;
-		if (df::is_path_sep(s[0]) && df::is_path_sep(s[1])) return true;
-		return s[1] == ':' && df::is_path_sep(s[2]);
+		if (core::is_path_sep(s[0]) && core::is_path_sep(s[1])) return true;
+		return s[1] == ':' && core::is_path_sep(s[2]);
 	}
 }
 
@@ -217,7 +217,7 @@ movie_output derive_movie_output(const std::vector<movie_clip>& clips)
 	return result;
 }
 
-movie_clip make_movie_clip(df::file_path path, const movie_settings& settings)
+movie_clip make_movie_clip(core::file_path path, const movie_settings& settings)
 {
 	movie_clip result;
 	result.path = path;
@@ -234,13 +234,13 @@ movie_clip make_movie_clip(df::file_path path, const movie_settings& settings)
 	return result;
 }
 
-bool movie_output_names_a_clip(const std::vector<movie_clip>& clips, const df::file_path output)
+bool movie_output_names_a_clip(const std::vector<movie_clip>& clips, const core::file_path output)
 {
 	if (output.is_empty()) return false;
 
 	return std::ranges::any_of(clips, [output](const movie_clip& clip)
 	{
-		return !clip.path.is_empty() && df::compare_path_key(clip.path.pack(), output.pack()) == 0;
+		return !clip.path.is_empty() && core::compare_path_key(clip.path.pack(), output.pack()) == 0;
 	});
 }
 
@@ -253,7 +253,7 @@ bool movie_output_names_a_clip(const std::vector<movie_clip>& clips, const df::f
 // between the file this platform writes and the one the other reads. A '%' is escaped: the reader
 // decodes percent escapes, as a URL wants, so a name holding "%20" came back naming another file
 // and one holding "50%" did not come back at all.
-static std::string to_url(const df::file_path path, const df::folder_path project_folder)
+static std::string to_url(const core::file_path path, const core::folder_path project_folder)
 {
 	const auto escape_percent = [](const std::string_view text)
 	{
@@ -335,13 +335,13 @@ static std::optional<std::string> decode_url_path(const std::string_view url)
 // together. The caller has already put the separators in the form this platform reads. Empty for a
 // path the process code page cannot convert, a byte that is not UTF-8 among it: that names no file
 // here, and its clip is reported as having none rather than the whole project being refused.
-static df::file_path resolve_in_project_folder(const std::string_view relative, const df::folder_path project_folder)
+static core::file_path resolve_in_project_folder(const std::string_view relative, const core::folder_path project_folder)
 {
 	try
 	{
 		const auto resolved = (std::filesystem::path(project_folder.text().sv()) / std::filesystem::path(relative))
 			.lexically_normal();
-		return df::file_path(resolved.string());
+		return core::file_path(resolved.string());
 	}
 	catch (const std::exception&)
 	{
@@ -349,14 +349,14 @@ static df::file_path resolve_in_project_folder(const std::string_view relative, 
 	}
 }
 
-static df::file_path from_url(const std::string_view url, const df::folder_path project_folder)
+static core::file_path from_url(const std::string_view url, const core::folder_path project_folder)
 {
 	if (url.empty()) return {};
 
 	auto encoded = url;
 	auto file_uri = false;
 
-	if (url.size() >= 5 && str::icmp(url.substr(0, 5), "file:") == 0)
+	if (url.size() >= 5 && core::icmp(url.substr(0, 5), "file:") == 0)
 	{
 		file_uri = true;
 		encoded.remove_prefix(5);
@@ -377,21 +377,21 @@ static df::file_path from_url(const std::string_view url, const df::folder_path 
 		const auto authority = native.substr(0, slash);
 		native = slash == std::string::npos ? std::string{} : native.substr(slash);
 
-		if (!authority.empty() && str::icmp(authority, "localhost") != 0)
+		if (!authority.empty() && core::icmp(authority, "localhost") != 0)
 		{
 			native = "//" + authority + native;
 		}
 	}
 
-	if constexpr (df::windows_path_semantics)
+	if constexpr (core::windows_path_semantics)
 	{
 		if (file_uri && native.size() >= 3 && native[0] == '/' && native[2] == ':') native.erase(0, 1);
 	}
 
-	if (is_qualified_path(native)) return df::file_path(native);
+	if (is_qualified_path(native)) return core::file_path(native);
 	if (project_folder.is_empty()) return {};
 
-	for (auto&& c : native) if (c == '/') c = df::preferred_path_sep;
+	for (auto&& c : native) if (c == '/') c = core::preferred_path_sep;
 	return resolve_in_project_folder(native, project_folder);
 }
 
@@ -417,7 +417,7 @@ static void write_rational_time(json_writer& w, const double seconds)
 }
 
 std::string write_otio(const std::vector<movie_clip>& clips, const movie_settings& settings,
-                       const df::folder_path project_folder)
+                       const core::folder_path project_folder)
 {
 	rapidjson::StringBuffer buffer;
 	json_writer w(buffer);
@@ -631,7 +631,7 @@ static bool is_schema(const json_value& v, const std::string_view prefix)
 
 	const auto found = v.FindMember("OTIO_SCHEMA");
 	if (found == v.MemberEnd() || !found->value.IsString()) return false;
-	return str::starts(found->value.GetString(), prefix);
+	return core::starts(found->value.GetString(), prefix);
 }
 
 void movie_load_result::omit(const std::string_view name, const int count)
@@ -655,12 +655,12 @@ void movie_load_result::omit(const std::string_view name, const int count)
 // map with the key of the one in use; earlier versions wrote the one reference alone.
 static const json_value& clip_media_reference(const json_value& clip)
 {
-	const auto& references = df::util::json::safe_object(clip, "media_references");
+	const auto& references = core::json::safe_object(clip, "media_references");
 
 	if (references.MemberCount() > 0)
 	{
-		const auto key = df::util::json::safe_string(clip, "active_media_reference_key");
-		const auto& active = df::util::json::safe_object(references, key.empty() ? "DEFAULT_MEDIA" : key.c_str());
+		const auto key = core::json::safe_string(clip, "active_media_reference_key");
+		const auto& active = core::json::safe_object(references, key.empty() ? "DEFAULT_MEDIA" : key.c_str());
 		if (active.MemberCount() > 0) return active;
 
 		// A key that names no reference is a broken file, and the media there is beats none.
@@ -670,19 +670,19 @@ static const json_value& clip_media_reference(const json_value& clip)
 		}
 	}
 
-	return df::util::json::safe_object(clip, "media_reference");
+	return core::json::safe_object(clip, "media_reference");
 }
 
 // Where the media's own time begins. An editor states a range in timecoded media in that time, from
 // its first frame's timecode rather than from zero, and Movie counts from the first frame.
 static double media_start_time(const json_value& reference)
 {
-	const auto& available = df::util::json::safe_object(reference, "available_range");
+	const auto& available = core::json::safe_object(reference, "available_range");
 	const auto start = available.FindMember("start_time");
 	return start != available.MemberEnd() ? std::max(0.0, read_rational_time(start->value)) : 0.0;
 }
 
-movie_load_result read_otio(const std::string_view json, const df::folder_path project_folder)
+movie_load_result read_otio(const std::string_view json, const core::folder_path project_folder)
 {
 	movie_load_result result;
 
@@ -693,7 +693,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 
 	if (doc.HasParseError() || !doc.IsObject()) return result;
 
-	const auto& stack = df::util::json::safe_object(doc, "tracks");
+	const auto& stack = core::json::safe_object(doc, "tracks");
 	const auto children = stack.IsObject() ? stack.FindMember("children") : stack.MemberEnd();
 
 	if (children == stack.MemberEnd() || !children->value.IsArray())
@@ -711,9 +711,9 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 	{
 		if (!is_schema(child, "Track")) continue;
 
-		const auto kind = df::util::json::safe_string(child, "kind");
+		const auto kind = core::json::safe_string(child, "kind");
 
-		if (!track && (kind.empty() || str::icmp(kind, "Video") == 0))
+		if (!track && (kind.empty() || core::icmp(kind, "Video") == 0))
 		{
 			track = &child;
 		}
@@ -729,13 +729,13 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 		return result;
 	}
 
-	const auto& metadata = df::util::json::safe_object(doc, "metadata");
-	const auto& doc_meta = df::util::json::safe_object(metadata, "diffractor");
+	const auto& metadata = core::json::safe_object(doc, "metadata");
+	const auto& doc_meta = core::json::safe_object(metadata, "diffractor");
 
 	const auto has_diffractor_settings = metadata.IsObject() && metadata.HasMember("diffractor") &&
 		metadata["diffractor"].IsObject();
 	result.settings.transition = has_diffractor_settings &&
-		str::icmp(df::util::json::safe_string(doc_meta, "transition"), "crossfade") == 0
+		core::icmp(core::json::safe_string(doc_meta, "transition"), "crossfade") == 0
 		                             ? movie_transition::crossfade
 		                             : movie_transition::cut;
 	result.settings.transition_seconds = read_bounded_double(doc_meta, "transition_seconds", 1.0, 0.0,
@@ -814,7 +814,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 			cut_transition transition;
 			transition.in_offset = in != child.MemberEnd() ? read_rational_time(in->value) : 0.0;
 			transition.out_offset = out != child.MemberEnd() ? read_rational_time(out->value) : 0.0;
-			transition.is_dissolve = str::icmp(df::util::json::safe_string(child, "transition_type"),
+			transition.is_dissolve = core::icmp(core::json::safe_string(child, "transition_type"),
 			                                   "SMPTE_Dissolve") == 0 && transition.in_offset >= 0 &&
 				transition.out_offset >= 0 && transition.in_offset + transition.out_offset > 0;
 
@@ -837,7 +837,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 
 		if (!is_schema(child, "Clip"))
 		{
-			const auto schema = df::util::json::safe_string(child, "OTIO_SCHEMA");
+			const auto schema = core::json::safe_string(child, "OTIO_SCHEMA");
 			leave_out(schema.empty() ? "unknown element"sv : std::string_view(schema));
 			continue;
 		}
@@ -850,7 +850,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 		}
 
 		const auto& reference = clip_media_reference(child);
-		const auto path = from_url(df::util::json::safe_string(reference, "target_url"), project_folder);
+		const auto path = from_url(core::json::safe_string(reference, "target_url"), project_folder);
 
 		if (path.is_empty())
 		{
@@ -864,7 +864,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 		// A clip with no range is OpenTimelineIO's whole media, and one saved before its source was
 		// measured has a range of no length. Either is kept with no length, for the probe to give it
 		// the length of its source, as a clip just added is.
-		const auto& range = df::util::json::safe_object(child, "source_range");
+		const auto& range = core::json::safe_object(child, "source_range");
 		const auto start = range.FindMember("start_time");
 		const auto duration = range.FindMember("duration");
 
@@ -883,7 +883,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 			continue;
 		}
 
-		const auto& clip_meta = df::util::json::safe_object(df::util::json::safe_object(child, "metadata"),
+		const auto& clip_meta = core::json::safe_object(core::json::safe_object(child, "metadata"),
 		                                                   "diffractor");
 
 		const auto mt = files::file_type_from_name(path);
@@ -899,7 +899,7 @@ movie_load_result read_otio(const std::string_view json, const df::folder_path p
 		{
 			for (const auto& effect : effects->value.GetArray())
 			{
-				const auto schema = df::util::json::safe_string(effect, "OTIO_SCHEMA");
+				const auto schema = core::json::safe_string(effect, "OTIO_SCHEMA");
 				result.omit(schema.empty() ? "effect"sv : std::string_view(schema));
 			}
 		}
@@ -1024,7 +1024,7 @@ namespace
 		{
 			for (const auto& [k, v] : attributes)
 			{
-				if (str::icmp(k, key) == 0) return &v;
+				if (core::icmp(k, key) == 0) return &v;
 			}
 
 			return nullptr;
@@ -1054,24 +1054,24 @@ namespace
 			}
 
 			const auto name_start = i;
-			while (i < text.size() && !str::is_white_space(text[i]) && text[i] != '>' && text[i] != '/') ++i;
+			while (i < text.size() && !core::is_white_space(text[i]) && text[i] != '>' && text[i] != '/') ++i;
 
 			xml_element element;
 			element.name = text.substr(name_start, i - name_start);
 
 			while (i < text.size() && text[i] != '>')
 			{
-				while (i < text.size() && (str::is_white_space(text[i]) || text[i] == '/')) ++i;
+				while (i < text.size() && (core::is_white_space(text[i]) || text[i] == '/')) ++i;
 				if (i >= text.size() || text[i] == '>') break;
 
 				const auto key_start = i;
-				while (i < text.size() && text[i] != '=' && text[i] != '>' && !str::is_white_space(text[i])) ++i;
+				while (i < text.size() && text[i] != '=' && text[i] != '>' && !core::is_white_space(text[i])) ++i;
 				const auto key = text.substr(key_start, i - key_start);
 
-				while (i < text.size() && str::is_white_space(text[i])) ++i;
+				while (i < text.size() && core::is_white_space(text[i])) ++i;
 				if (i >= text.size() || text[i] != '=') continue;
 				++i;
-				while (i < text.size() && str::is_white_space(text[i])) ++i;
+				while (i < text.size() && core::is_white_space(text[i])) ++i;
 				if (i >= text.size()) break;
 
 				const auto quote = text[i];
@@ -1117,21 +1117,21 @@ namespace
 
 	bool is_named(const xml_element& element, const std::string_view name)
 	{
-		return str::icmp(element.name, name) == 0;
+		return core::icmp(element.name, name) == 0;
 	}
 
 	// Movie Maker ran on Windows, so a drive letter or a UNC prefix is absolute wherever the file is
 	// read, and either separator divides a relative path. A relative path is how it records media
 	// kept beneath the project's own folder.
-	df::file_path wlmp_media_path(const std::string_view text, const df::folder_path project_folder)
+	core::file_path wlmp_media_path(const std::string_view text, const core::folder_path project_folder)
 	{
-		const auto drive = text.size() >= 3 && text[1] == ':' && df::is_path_sep(text[2]);
-		const auto unc = text.size() >= 2 && df::is_path_sep(text[0]) && df::is_path_sep(text[1]);
-		if (drive || unc || is_qualified_path(text)) return df::file_path(text);
+		const auto drive = text.size() >= 3 && text[1] == ':' && core::is_path_sep(text[2]);
+		const auto unc = text.size() >= 2 && core::is_path_sep(text[0]) && core::is_path_sep(text[1]);
+		if (drive || unc || is_qualified_path(text)) return core::file_path(text);
 		if (project_folder.is_empty()) return {};
 
 		auto relative = std::string(text);
-		for (auto&& c : relative) if (df::is_path_sep(c)) c = df::preferred_path_sep;
+		for (auto&& c : relative) if (core::is_path_sep(c)) c = core::preferred_path_sep;
 		return resolve_in_project_folder(relative, project_folder);
 	}
 
@@ -1144,14 +1144,14 @@ namespace
 
 		for (const auto prefix : ignored)
 		{
-			if (name.size() >= prefix.size() && str::icmp(name.substr(0, prefix.size()), prefix) == 0) return true;
+			if (name.size() >= prefix.size() && core::icmp(name.substr(0, prefix.size()), prefix) == 0) return true;
 		}
 
 		return false;
 	}
 }
 
-movie_load_result read_wlmp(const std::string_view xml, const df::folder_path project_folder)
+movie_load_result read_wlmp(const std::string_view xml, const core::folder_path project_folder)
 {
 	movie_load_result result;
 
@@ -1160,17 +1160,17 @@ movie_load_result read_wlmp(const std::string_view xml, const df::folder_path pr
 
 	struct wlmp_media
 	{
-		df::file_path path;
+		core::file_path path;
 		double recorded_seconds = 0;
 	};
 
-	df::hash_map<std::string, wlmp_media, df::ihash, df::ieq> media;
+	core::hash_map<std::string, wlmp_media, core::ihash, core::ieq> media;
 	const std::string* main_track = nullptr;
 
 	for (const auto& element : elements)
 	{
 		if (const auto placeholder = element.find("placeholderID");
-			placeholder && str::icmp(*placeholder, "Main") == 0)
+			placeholder && core::icmp(*placeholder, "Main") == 0)
 		{
 			main_track = element.find("extentID");
 		}
@@ -1229,7 +1229,7 @@ movie_load_result read_wlmp(const std::string_view xml, const df::folder_path pr
 
 			if (is_named(element, "ExtentSelector"))
 			{
-				owner_is_main_track = main_track && str::icmp(*extent_id, *main_track) == 0;
+				owner_is_main_track = main_track && core::icmp(*extent_id, *main_track) == 0;
 				has_main_track = has_main_track || owner_is_main_track;
 				continue;
 			}
@@ -1255,8 +1255,8 @@ movie_load_result read_wlmp(const std::string_view xml, const df::folder_path pr
 
 			movie_clip clip;
 			clip.path = found->second.path;
-			clip.is_photo = str::contains(element.name, "image") || str::contains(element.name, "photo") ||
-				(!str::contains(element.name, "video") && photo_by_name);
+			clip.is_photo = core::contains(element.name, "image") || core::contains(element.name, "photo") ||
+				(!core::contains(element.name, "video") && photo_by_name);
 			clip.photo_duration_is_default = false;
 
 			const auto start = std::max(0.0, parse_seconds(element.find("inTime")));
@@ -1320,7 +1320,7 @@ movie_load_result read_wlmp(const std::string_view xml, const df::folder_path pr
 		{
 			// Movie draws its own crossfade between every pair of clips. That stands in for Movie
 			// Maker's crossfades, but not for its other transitions, and no effect has an equivalent.
-			if (!in_transitions || !str::contains(*effect, "crossfade")) omitted.emplace_back(*effect);
+			if (!in_transitions || !core::contains(*effect, "crossfade")) omitted.emplace_back(*effect);
 			continue;
 		}
 
@@ -1329,15 +1329,15 @@ movie_load_result read_wlmp(const std::string_view xml, const df::folder_path pr
 
 		const auto value = element.find("Value");
 
-		if (str::icmp(*setting, "rotateStepNinety") == 0 && parse_number(value, 0.0) != 0.0)
+		if (core::icmp(*setting, "rotateStepNinety") == 0 && parse_number(value, 0.0) != 0.0)
 		{
 			omitted.emplace_back("rotateStepNinety");
 		}
-		else if (str::icmp(*setting, "Mute") == 0 && value && str::icmp(*value, "true") == 0)
+		else if (core::icmp(*setting, "Mute") == 0 && value && core::icmp(*value, "true") == 0)
 		{
 			omitted.emplace_back("Mute");
 		}
-		else if (str::icmp(*setting, "Volume") == 0 && std::abs(parse_number(value, 1.0) - 1.0) > 0.0001)
+		else if (core::icmp(*setting, "Volume") == 0 && std::abs(parse_number(value, 1.0) - 1.0) > 0.0001)
 		{
 			omitted.emplace_back("Volume");
 		}
@@ -1349,7 +1349,7 @@ movie_load_result read_wlmp(const std::string_view xml, const df::folder_path pr
 	{
 		// The main track is the timeline. A clip it does not place is one Movie Maker kept but no
 		// longer showed; a title it places was counted where it was read.
-		df::hash_map<std::string, size_t, df::ihash, df::ieq> by_id;
+		core::hash_map<std::string, size_t, core::ihash, core::ieq> by_id;
 		for (size_t i = 0; i < clips.size(); ++i) by_id.try_emplace(clips[i].id, i);
 
 		std::vector<bool> placed(clips.size(), false);
@@ -1417,7 +1417,7 @@ static size_t shared_trailing_components(const std::string_view left, const std:
 		const auto left_begin = left_sep == std::string_view::npos ? 0 : left_sep + 1;
 		const auto right_begin = right_sep == std::string_view::npos ? 0 : right_sep + 1;
 
-		if (str::icmp(left.substr(left_begin, left_end - left_begin),
+		if (core::icmp(left.substr(left_begin, left_end - left_begin),
 		              right.substr(right_begin, right_end - right_begin)) != 0) break;
 
 		++shared;
@@ -1429,7 +1429,7 @@ static size_t shared_trailing_components(const std::string_view left, const std:
 	return shared;
 }
 
-static std::string folder_move_key(const df::folder_path from, const df::folder_path to)
+static std::string folder_move_key(const core::folder_path from, const core::folder_path to)
 {
 	auto key = std::string(from.text());
 	key += '\n';
@@ -1437,14 +1437,14 @@ static std::string folder_move_key(const df::folder_path from, const df::folder_
 	return key;
 }
 
-std::vector<movie_source_choice> choose_movie_sources(const std::vector<df::file_path>& stored,
-                                                      const std::vector<std::vector<df::file_path>>& candidates,
+std::vector<movie_source_choice> choose_movie_sources(const std::vector<core::file_path>& stored,
+                                                      const std::vector<std::vector<core::file_path>>& candidates,
                                                       const std::vector<double>& recorded_seconds,
-                                                      const std::function<double(df::file_path)>& measure_seconds)
+                                                      const std::function<double(core::file_path)>& measure_seconds)
 {
 	std::vector<movie_source_choice> result(stored.size());
 	// What is left to choose between once a recorded length has ruled files out.
-	std::vector<std::vector<df::file_path>> remaining(stored.size());
+	std::vector<std::vector<core::file_path>> remaining(stored.size());
 
 	for (size_t i = 0; i < stored.size() && i < candidates.size(); ++i)
 	{
@@ -1462,7 +1462,7 @@ std::vector<movie_source_choice> choose_movie_sources(const std::vector<df::file
 		{
 			const auto before = found.size();
 
-			std::erase_if(found, [&measure_seconds, recorded](const df::file_path path)
+			std::erase_if(found, [&measure_seconds, recorded](const core::file_path path)
 			{
 				const auto measured = measure_seconds(path);
 				return measured > 0 && std::abs(measured - recorded) > movie_source_length_tolerance;
@@ -1517,7 +1517,7 @@ std::vector<movie_source_choice> choose_movie_sources(const std::vector<df::file
 
 	// Files kept together are usually moved together, so every source settled above is a vote for
 	// where the folder it was stored in went. Only a clear winner settles a tie between same names.
-	df::hash_map<std::string, int, df::ihash, df::ieq> votes;
+	core::hash_map<std::string, int, core::ihash, core::ieq> votes;
 
 	for (size_t i = 0; i < result.size(); ++i)
 	{
@@ -1906,7 +1906,7 @@ void movie_project::end_edit_group()
 	_open_group = movie_edit_group::none;
 }
 
-void movie_project::reset(std::vector<movie_clip> clips, const movie_settings& s, const df::file_path path)
+void movie_project::reset(std::vector<movie_clip> clips, const movie_settings& s, const core::file_path path)
 {
 	_clips = std::move(clips);
 	_settings = s;
@@ -1918,7 +1918,7 @@ void movie_project::reset(std::vector<movie_clip> clips, const movie_settings& s
 	select_only(0);
 }
 
-void movie_project::mark_saved(const df::file_path path, const uint64_t edit_revision)
+void movie_project::mark_saved(const core::file_path path, const uint64_t edit_revision)
 {
 	_path = path;
 
@@ -1965,8 +1965,8 @@ void movie_project::undo()
 	if (_current >= _clips.size()) _current = _clips.empty() ? 0 : _clips.size() - 1;
 }
 
-movie_entry decide_movie_entry(const movie_project& project, const std::vector<df::file_path>& selection,
-                               const std::vector<df::file_path>& built_from)
+movie_entry decide_movie_entry(const movie_project& project, const std::vector<core::file_path>& selection,
+                               const std::vector<core::file_path>& built_from)
 {
 	// A pristine empty timeline with no file behind it has nothing to return to. One that was opened or
 	// saved empty is a document like any other, and the rules below answer for it.

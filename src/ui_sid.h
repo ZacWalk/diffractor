@@ -61,7 +61,7 @@ std::array<float, sid_register_count> sid_register_activity(const sid_frame_stat
 // filter's meters and lamps, the volume and the register grid's highlight - drawn through a vertex buffer, so a
 // playing tune is presented every frame without its scene being rebuilt. The monitor places the parts each time
 // it draws; the display brings them up to the session's position for every present in between.
-class sid_monitor_motion final : df::no_copy
+class sid_monitor_motion final : core::no_copy
 {
 public:
 	struct voice_parts
@@ -98,9 +98,9 @@ public:
 	render_valid update(const std::shared_ptr<sid_tune_render>& sid, double position, double time_now);
 
 	// The geometry for a playback position, as update hands it to the vertex buffer. Exposed for the tests.
-	const std::vector<ui::vertex_rect>& build(double position);
+	const std::vector<render::vertex_rect>& build(double position);
 
-	ui::vertices_ptr _verts;
+	render::vertices_ptr _verts;
 
 private:
 	parts _parts;
@@ -108,7 +108,7 @@ private:
 	sid_voice_mix _mix;
 	float _alpha = 1.0f;
 	double _built_position = -1.0;
-	std::vector<ui::vertex_rect> _rects;
+	std::vector<render::vertex_rect> _rects;
 
 	// The frame the monitor's text was last drawn from, and when.
 	sid_frame_state _text_state;
@@ -120,8 +120,8 @@ class sid_monitor_control final : public view_element, public std::enable_shared
 public:
 	sid_monitor_control(view_state& state, display_state_ptr display, view_host_ptr host) noexcept;
 
-	sizei measure(ui::measure_context& mc, int width_limit) const override;
-	void render(ui::draw_context& dc, pointi element_offset) const override;
+	sizei measure(render::measure_context& mc, int width_limit) const override;
+	void render(render::draw_context& dc, pointi element_offset) const override;
 	void dispatch_event(const view_element_event& event) override;
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 	                                             hit_test_context& ctx) override;

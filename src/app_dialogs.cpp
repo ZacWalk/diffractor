@@ -86,13 +86,13 @@ bool ui::browse_for_term(view_state& vs, const frame_ptr& parent, std::string& r
 
 	if (dlg->show_modal(controls) == close_result::ok)
 	{
-		if (str::is_empty(str::trim(scope)) || str::icmp(str::trim(scope), "any") == 0)
+		if (core::is_empty(core::trim(scope)) || core::icmp(core::trim(scope), "any") == 0)
 		{
 			result = text;
 		}
 		else
 		{
-			result = std::format("{}:{}", scope, str::quote_if_white_space(text));
+			result = std::format("{}:{}", scope, core::quote_if_white_space(text));
 		}
 
 		return true;
@@ -116,7 +116,7 @@ struct advanced_search_location_state
 	};
 
 	std::weak_ptr<map_control> map;
-	std::vector<df::file_path> marker_paths;
+	std::vector<core::file_path> marker_paths;
 	std::vector<marker_place_state> marker_place_states;
 	std::vector<uint32_t> marker_place_view_generations;
 	std::vector<std::string> marker_place_names;
@@ -130,9 +130,9 @@ struct advanced_search_location_state
 	uint32_t pick_generation = 0;
 	std::function<void(std::string name, gps_coordinate centre, double radius_km)> apply_place;
 
-	df::file_path hover_path;
+	core::file_path hover_path;
 	df::item_element_ptr hover_item;
-	df::unique_paths thumbnail_requests;
+	core::unique_paths thumbnail_requests;
 
 	// Bounded number of bubble rebuilds spent waiting for a hover thumbnail, so a marker
 	// whose thumbnail never decodes does not rebuild its bubble forever.
@@ -165,8 +165,8 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	static bool search_date_original = false;
 	static bool search_date_created = false;
 	static bool search_date_modified = false;
-	static df::date_t from_val;
-	static df::date_t until_val;
+	static core::date_t from_val;
+	static core::date_t until_val;
 
 	static location_and_distance_t location{{}, location_default_search_km};
 	static std::string location_name;
@@ -184,8 +184,8 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 
 	// An empty date picker cannot be read or compared, so a range starts on today and the
 	// user narrows from there.
-	if (!from_val.is_valid()) from_val = platform::now();
-	if (!until_val.is_valid()) until_val = platform::now();
+	if (!from_val.is_valid()) from_val = core::utc_now();
+	if (!until_val.is_valid()) until_val = core::utc_now();
 
 	auto search_collection_radio = std::make_shared<ui::check_control>(dlg->_frame, tt.search_collection,
 	                                                                   search_collection, true);
@@ -278,7 +278,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 			search_collection_radio, search_folder_ratio](
 		const std::string& name, const gps_coordinate centre, const double radius_km)
 		{
-			df::assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 
 			location_name = name;
 			location.position = centre;
@@ -300,7 +300,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	// the search reads as `loc:Tokyo, 100km` rather than a pair of numbers.
 	map->marker_picked = [&state, ls](const gps_coordinate coord, const double radius_km, int)
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		selected_location = coord;
 		ls->apply_place({}, coord, radius_km);
@@ -363,7 +363,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 			auto matrix = state.item_index.build_location_matrix(params);
 
 			std::vector<map_engine::marker> markers;
-			std::vector<df::file_path> paths;
+			std::vector<core::file_path> paths;
 			markers.reserve(matrix.cells.size());
 			paths.reserve(matrix.cells.size());
 
@@ -544,7 +544,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 			                     : place_name.empty()
 			                     ? format_plural_text(tt.map_items_here_fmt, count)
 			                     : str_format(tt.map_items_close_to_fmt.sv(),
-			                                  platform::format_number(str::to_string(count)), place_name);
+			                                  platform::format_number(core::to_string(count)), place_name);
 
 		elements->add(std::make_shared<text_element>(caption, flex_item::center | flex_item::new_line));
 
@@ -566,12 +566,12 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	criteria_col->add(std::make_shared<divider_element>());
 	// "Created" and "Modified" mean nothing on their own, so the block says what the boxes
 	// are about before the user reads them.
-	criteria_col->add(set_margin(std::make_shared<text_element>(tt.dates_title, ui::style::font_face::title)));
+	criteria_col->add(set_margin(std::make_shared<text_element>(tt.dates_title, render::font_face::title)));
 	criteria_col->add(set_margin(date_type_control));
 	criteria_col->add(set_margin(from_check));
 	criteria_col->add(set_margin(until_check));
 	criteria_col->add(std::make_shared<divider_element>());
-	criteria_col->add(set_margin(std::make_shared<text_element>(tt.media_metadata_title, ui::style::font_face::title)));
+	criteria_col->add(set_margin(std::make_shared<text_element>(tt.media_metadata_title, render::font_face::title)));
 	criteria_col->add(set_margin(file_type_control));
 	criteria_col->add(std::make_shared<divider_element>());
 	criteria_col->add(set_margin(location_check));
@@ -612,9 +612,9 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	{
 		df::search_t new_search;
 
-		if (search_folder && !str::is_empty(selected_folder))
+		if (search_folder && !core::is_empty(selected_folder))
 		{
-			new_search.add_selector(df::item_selector(df::folder_path(selected_folder), search_sub_folders));
+			new_search.add_selector(core::item_selector(core::folder_path(selected_folder), search_sub_folders));
 		}
 
 		if (search_location && location.position.is_valid())
@@ -745,9 +745,9 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 
 		if (response.status_code == 200)
 		{
-			df::util::json::json_doc json;
+			core::json::json_doc json;
 			json.Parse(response.body);
-			version = df::util::json::safe_string(json, "current_version");
+			version = core::json::safe_string(json, "current_version");
 		}
 
 		const auto failed = version.empty();
@@ -781,7 +781,7 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 
 	// Phase 2. Being up to date is news, not a decision, so it is reported as a message rather
 	// than as a list of choices; only the upgrade path offers buttons.
-	if (df::version(s_app_version) >= df::version(setting.available_version))
+	if (core::version(s_app_version) >= core::version(setting.available_version))
 	{
 		dlg->show_message(icon_index::lightbulb, title, str_format(tt.update_up_to_date_fmt.sv(), s_app_version));
 		return;
@@ -798,7 +798,7 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 	controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, icon_index::time, tt.update_not_now,
 	                                                           tt.update_not_now_help, [&s, f = dlg->_frame]
 	                                                           {
-		                                                           setting.min_show_update_day = platform::now().
+		                                                           setting.min_show_update_day = core::utc_now().
 			                                                           to_days() + 7;
 		                                                           s.invalidate_view(
 			                                                           view_invalid::view_layout |
@@ -828,11 +828,11 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 			// Set on the UI thread when the download reported a result, so a dialog that closed itself
 			// can be told apart from one the user dismissed.
 			bool completed = false;
-			df::file_path path;
+			core::file_path path;
 		};
 
 		auto state = std::make_shared<download_state>();
-		auto download_complete = [&s, weak_dlg, state](const df::file_path download_path)
+		auto download_complete = [&s, weak_dlg, state](const core::file_path download_path)
 		{
 			s.queue_ui([weak_dlg, state, download_path]
 			{
@@ -861,7 +861,7 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 
 			if (install_result.failed())
 			{
-				dlg->show_message(icon_index::error, s_app_name, install_result.format_error(tt.update_failed));
+				dlg->show_message(icon_index::error, core::app_name(), install_result.format_error(tt.update_failed));
 			}
 		}
 		else
@@ -912,7 +912,7 @@ static void add_keyboard_section(std::vector<keyboard_ref_section>& sections, co
 
 	std::ranges::sort(items, [](auto&& left, auto&& right)
 	{
-		return str::icmp(left->text, right->text) < 0;
+		return core::icmp(left->text, right->text) < 0;
 	});
 
 	keyboard_ref_section section;
@@ -927,117 +927,6 @@ static void add_keyboard_section(std::vector<keyboard_ref_section>& sections, co
 	sections.emplace_back(std::move(section));
 }
 
-std::string_view keys::format(const char32_t key)
-{
-	if (key == BACK) return tt.keyboard_back;
-	if (key == BROWSER_BACK) return tt.keyboard_browser_back;
-	if (key == BROWSER_FAVORITES) return tt.keyboard_browser_favorites;
-	if (key == BROWSER_FORWARD) return tt.keyboard_browser_forward;
-	if (key == BROWSER_HOME) return tt.keyboard_browser_home;
-	if (key == BROWSER_REFRESH) return tt.keyboard_browser_refresh;
-	if (key == BROWSER_SEARCH) return tt.keyboard_browser_search;
-	if (key == BROWSER_STOP) return tt.keyboard_browser_stop;
-	if (key == DEL) return tt.keyboard_del;
-	if (key == DOWN) return tt.keyboard_down;
-	if (key == END) return tt.keyboard_end;
-	if (key == ESCAPE) return tt.keyboard_escape;
-	if (key == F1) return tt.keyboard_f1;
-	if (key == F10) return tt.keyboard_f10;
-	if (key == F11) return tt.keyboard_f11;
-	if (key == F2) return tt.keyboard_f2;
-	if (key == F3) return tt.keyboard_f3;
-	if (key == F4) return tt.keyboard_f4;
-	if (key == F5) return tt.keyboard_f5;
-	if (key == F6) return tt.keyboard_f6;
-	if (key == F7) return tt.keyboard_f7;
-	if (key == F8) return tt.keyboard_f8;
-	if (key == F9) return tt.keyboard_f9;
-	if (key == HOME) return tt.keyboard_home;
-	if (key == INSERT) return tt.keyboard_insert;
-	if (key == LEFT) return tt.keyboard_left;
-	if (key == MEDIA_NEXT_TRACK) return tt.keyboard_media_next_track;
-	if (key == MEDIA_PLAY_PAUSE) return tt.keyboard_media_play_pause;
-	if (key == MEDIA_PREV_TRACK) return tt.keyboard_media_prev_track;
-	if (key == MEDIA_STOP) return tt.keyboard_media_stop;
-	if (key == NEXT) return tt.keyboard_next;
-	if (key == OEM_4) return tt.keyboard_oem_4;
-	if (key == OEM_6) return tt.keyboard_oem_6;
-	if (key == OEM_MINUS) return tt.keyboard_oem_minus;
-	if (key == OEM_PLUS) return tt.keyboard_oem_plus;
-	if (key == PRIOR) return tt.keyboard_prior;
-	if (key == RETURN) return tt.keyboard_enter;
-	if (key == RIGHT) return tt.keyboard_right;
-	if (key == SPACE) return tt.keyboard_space;
-	if (key == TAB) return tt.keyboard_tab;
-	if (key == UP) return tt.keyboard_up;
-	if (key == VOLUME_DOWN) return tt.keyboard_volume_down;
-	if (key == VOLUME_MUTE) return tt.keyboard_volume_mute;
-	if (key == VOLUME_UP) return tt.keyboard_volume_up;
-	return "?";
-}
-
-static bool is_not_virt_key(const int key)
-{
-	return (key >= '0' && key <= '9') ||
-		(key >= 'A' && key <= 'Z');
-}
-
-std::string format_keyboard_accelerator(const std::vector<keyboard_accelerator_t>& keyboard_accelerators)
-{
-	constexpr auto control = keyboard_accelerator_t::control;
-	constexpr auto shift = keyboard_accelerator_t::shift;
-	constexpr auto alt = keyboard_accelerator_t::alt;
-
-	std::string result;
-
-	for (const auto& ac : keyboard_accelerators)
-	{
-		// Add Accelerator
-		if (!result.empty())
-		{
-			result += std::format(" {} ", tt.keyboard_or);
-		}
-
-		if (ac.key_state & alt)
-		{
-			result += std::format("{}+", tt.keyboard_alt);
-		}
-		if (ac.key_state & control)
-		{
-			result += std::format("{}+", tt.keyboard_control);
-		}
-		if (ac.key_state & shift)
-		{
-			result += std::format("{}+", tt.keyboard_shift);
-		}
-
-		if (ac.key == keys::RETURN)
-		{
-			result += tt.keyboard_enter;
-		}
-		else if (ac.key == keys::BACK)
-		{
-			result += tt.keyboard_backspace;
-		}
-		else if (ac.key == keys::OEM_PLUS || ac.key == keys::OEM_MINUS)
-		{
-			// Quoted so the key is not read as the modifier separator.
-			result += std::format("'{}'", keys::format(ac.key));
-		}
-		else if (is_not_virt_key(ac.key))
-		{
-			const char szTemp[2] = {static_cast<char>(ac.key), 0};
-			result += szTemp;
-		}
-		else
-		{
-			result += keys::format(ac.key);
-		}
-	}
-
-	return result;
-}
-
 // The keyboard reference is read top to bottom, so the sections follow the order a user meets
 // them rather than the column packing the old layout needed.
 static std::vector<keyboard_ref_section> build_keyboard_reference(const commands_map& commands)
@@ -1046,27 +935,31 @@ static std::vector<keyboard_ref_section> build_keyboard_reference(const commands
 
 	keyboard_ref_section basics;
 	basics.title = tt.keyboard_basics_title;
-	basics.rows.emplace_back(format_keyboard_accelerator({keyboard_accelerator_t{keys::RETURN}}),
+	basics.rows.emplace_back(platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::RETURN}}),
 	                         std::string(tt.keyboard_enter_desc.sv()));
-	basics.rows.emplace_back(format_keyboard_accelerator({keyboard_accelerator_t{keys::SPACE}}),
+	basics.rows.emplace_back(platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::SPACE}}),
 	                         std::string(tt.keyboard_space_desc.sv()));
-	basics.rows.emplace_back(format_keyboard_accelerator({keyboard_accelerator_t{keys::ESCAPE}}),
+	basics.rows.emplace_back(platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::ESCAPE}}),
 	                         std::string(tt.keyboard_escape_desc.sv()));
 	basics.rows.emplace_back(
-		format_keyboard_accelerator({keyboard_accelerator_t{keys::LEFT}, keyboard_accelerator_t{keys::RIGHT}}),
+		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::LEFT},
+			platform::keyboard_accelerator_t{platform::keys::RIGHT}}),
 		std::string(tt.keyboard_left_right_desc.sv()));
 	basics.rows.emplace_back(
-		format_keyboard_accelerator({keyboard_accelerator_t{keys::UP}, keyboard_accelerator_t{keys::DOWN}}),
+		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::UP},
+			platform::keyboard_accelerator_t{platform::keys::DOWN}}),
 		std::string(tt.keyboard_up_down_desc.sv()));
 	basics.rows.emplace_back(
-		format_keyboard_accelerator({keyboard_accelerator_t{keys::HOME}, keyboard_accelerator_t{keys::END}}),
+		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::HOME},
+			platform::keyboard_accelerator_t{platform::keys::END}}),
 		std::string(tt.keyboard_home_end_desc.sv()));
 	basics.rows.emplace_back(
-		format_keyboard_accelerator({keyboard_accelerator_t{keys::OEM_PLUS}, keyboard_accelerator_t{keys::OEM_MINUS}}),
+		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::OEM_PLUS},
+			platform::keyboard_accelerator_t{platform::keys::OEM_MINUS}}),
 		std::string(tt.keyboard_zoom_keys_desc.sv()));
-	basics.rows.emplace_back(format_keyboard_accelerator({
-		                         keyboard_accelerator_t{keys::LEFT, keyboard_accelerator_t::control},
-		                         keyboard_accelerator_t{keys::RIGHT, keyboard_accelerator_t::control}
+	basics.rows.emplace_back(platform::format_keyboard_accelerator({
+		                         platform::keyboard_accelerator_t{platform::keys::LEFT, platform::keyboard_accelerator_t::control},
+		                         platform::keyboard_accelerator_t{platform::keys::RIGHT, platform::keyboard_accelerator_t::control}
 	                         }), std::string(tt.keyboard_ctrl_left_right_desc.sv()));
 	sections.emplace_back(std::move(basics));
 
@@ -1179,12 +1072,12 @@ void send_info(const view_state& s, const ui::frame_ptr& parent)
 
 	s.queue_async(async_queue::web, [results, info = message.str()]
 	{
-		const auto log_file_path = df::log_path;
-		const auto previous_log_path = df::previous_log_path;
+		const auto log_file_path = platform::log_path;
+		const auto previous_log_path = platform::previous_log_path;
 		const auto crash_zip_path = platform::temp_file();
 		const auto log_file_copy = platform::temp_file();
 
-		if (log_file_path.exists())
+		if (platform::exists(log_file_path))
 		{
 			platform::copy_file(log_file_path, log_file_copy, true, true);
 		}
@@ -1194,8 +1087,8 @@ void send_info(const view_state& s, const ui::frame_ptr& parent)
 
 		if (zip.create(crash_zip_path))
 		{
-			if (log_file_copy.exists()) zip.add(log_file_copy, "diffractor.log");
-			if (previous_log_path.exists()) zip.add(previous_log_path);
+			if (platform::exists(log_file_copy)) zip.add(log_file_copy, "diffractor.log");
+			if (platform::exists(previous_log_path)) zip.add(previous_log_path);
 			has_zip = zip.close();
 		}
 
@@ -1222,8 +1115,8 @@ void send_info(const view_state& s, const ui::frame_ptr& parent)
 		const auto response = send_request(con, req);
 		const auto sent = response.status_code >= 200 && response.status_code < 300;
 
-		if (log_file_copy.exists()) platform::delete_file(log_file_copy);
-		if (crash_zip_path.exists()) platform::delete_file(crash_zip_path);
+		if (platform::exists(log_file_copy)) platform::delete_file(log_file_copy);
+		if (platform::exists(crash_zip_path)) platform::delete_file(crash_zip_path);
 
 		// A send that failed is reported. Silence used to be indistinguishable from success.
 		if (sent)
@@ -1245,10 +1138,10 @@ void about_invoke(view_state& s, const ui::frame_ptr& parent, commands_map& comm
 	auto dlg_parent = dlg->_frame;
 
 	std::vector<view_element_ptr> controls;
-	controls.emplace_back(create_app_logo_element(s, ui::style::font_face::mega, false, false, 1.6,
+	controls.emplace_back(create_app_logo_element(s, render::font_face::mega, false, false, 1.6,
 	                                              flex_item::center));
-	controls.emplace_back(std::make_shared<text_element>(df::format_version(false), ui::style::font_face::dialog,
-	                                                     ui::style::text_style::single_line_center,
+	controls.emplace_back(std::make_shared<text_element>(df::format_version(false), render::font_face::dialog,
+	                                                     render::text_style::single_line_center,
 	                                                     flex_item::center));
 	controls.emplace_back(std::make_shared<divider_element>());
 
@@ -1288,8 +1181,8 @@ std::string format_index_text(const view_state& s)
 {
 	const auto file_types = s.item_index.file_types();
 	const auto total = file_types.total_items();
-	const auto num = platform::format_number(str::to_string(total.count));
-	const auto database_size = df::format_size(s.item_index.stats.database_size);
+	const auto num = platform::format_number(core::to_string(total.count));
+	const auto database_size = platform::format_size(s.item_index.stats.database_size);
 	const auto text = str_format(tt.index_size_fmt.sv(), database_size, num);
 	return text;
 }
@@ -1297,26 +1190,26 @@ std::string format_index_text(const view_state& s)
 class path_text_element final : public std::enable_shared_from_this<path_text_element>, public view_element
 {
 	std::string _text;
-	df::file_path _path;
-	ui::style::font_face _font = ui::style::font_face::dialog;
-	ui::style::text_style _text_style = ui::style::text_style::multiline;
+	core::file_path _path;
+	render::font_face _font = render::font_face::dialog;
+	render::text_style _text_style = render::text_style::multiline;
 
 public:
-	path_text_element(const df::file_path path) noexcept : view_element(
+	path_text_element(const core::file_path path) noexcept : view_element(
 		                                                       view_element_style::has_tooltip |
 		                                                       view_element_style::can_invoke), _text(path.str()),
 	                                                       _path(path)
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg = calc_background_color(dc);
-		dc.draw_text(_text, logical_bounds, _font, _text_style, ui::color(dc.colors.foreground, dc.colors.alpha), bg);
+		dc.draw_text(_text, logical_bounds, _font, _text_style, core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		sizei result;
 
@@ -1339,8 +1232,8 @@ public:
 	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
 	{
 		result.elements->add(make_icon_element(icon_index::data, flex_item::no_break));
-		result.elements->add(std::make_shared<text_element>(_text, ui::style::font_face::title,
-		                                                    ui::style::text_style::multiline,
+		result.elements->add(std::make_shared<text_element>(_text, render::font_face::title,
+		                                                    render::text_style::multiline,
 		                                                    flex_item::line_break));
 		result.active_bounds = result.window_bounds = bounds.offset(element_offset);
 	}
@@ -1388,7 +1281,7 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 		}
 		catch (const std::exception& e)
 		{
-			error = str::utf8_cast(e.what());
+			error = core::utf8_cast(e.what());
 		}
 
 		s.queue_ui([weak_dlg, check_result, has_errors, error = std::move(error)]
@@ -1426,7 +1319,7 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 	if (check_result->has_errors)
 	{
 		controls.emplace_back(set_margin(set_padding(
-			std::make_shared<text_element>(tt.index_maintenance_reset_recommended, ui::style::text_style::multiline), 8,
+			std::make_shared<text_element>(tt.index_maintenance_reset_recommended, render::text_style::multiline), 8,
 			8)));
 	}
 
@@ -1434,7 +1327,7 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 	{
 		dlg->show_status(icon_index::star, is_reset ? tt.resetting : tt.defragmenting);
 		const auto maintenance_result = std::make_shared<database_result>();
-		const auto finished = std::make_shared<platform::thread_event>(true, false);
+		const auto finished = std::make_shared<core::thread_event>(true, false);
 
 		s._async.queue_database([&s, maintenance_result, finished, is_reset](database& db)
 		{
@@ -1446,7 +1339,7 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 			}
 			catch (const std::exception& e)
 			{
-				error = str::utf8_cast(e.what());
+				error = core::utf8_cast(e.what());
 			}
 
 			s.queue_ui([maintenance_result, finished, error = std::move(error)]
@@ -1480,7 +1373,7 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 };
 
 // The share sheet needs a title. One file is named; several are counted.
-static std::string share_sheet_title(const std::vector<df::file_path>& paths)
+static std::string share_sheet_title(const std::vector<core::file_path>& paths)
 {
 	return paths.size() == 1
 		       ? paths.front().name().str()
@@ -1490,7 +1383,7 @@ static std::string share_sheet_title(const std::vector<df::file_path>& paths)
 // MAPI shows the mail client's own modal UI, so the draft is created on the UI thread despite
 // blocking it. The progress dialog stays up meanwhile, saying what it is waiting for.
 static void email_outgoing_files(view_state& s, const item_results_ptr& results,
-                                 const std::vector<df::file_path>& file_paths, const outgoing_options& outgoing)
+                                 const std::vector<core::file_path>& file_paths, const outgoing_options& outgoing)
 {
 	s.queue_async(async_queue::work, [&s, results, file_paths, outgoing]
 	{
@@ -1577,7 +1470,7 @@ void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_ba
 			auto title_control = std::make_shared<ui::title_control2>(
 				dlg->_frame, icon, title,
 				format_plural_text(use_sheet ? tt.share_info_fmt : tt.email_info_fmt, items),
-				std::vector<ui::const_surface_ptr>{}, items.size());
+				std::vector<core::const_surface_ptr>{}, items.size());
 			title_control->selection_async(items.thumbs(), items.size(), s._async);
 			controls.emplace_back(set_margin(title_control));
 			controls.emplace_back(std::make_shared<divider_element>());

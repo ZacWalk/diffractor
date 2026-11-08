@@ -19,7 +19,7 @@
 
 namespace df
 {
-	std::function<void(file_path source, file_path destination)> rename_after_move_for_test;
+	std::function<void(core::file_path source, core::file_path destination)> rename_after_move_for_test;
 	std::function<void(std::string_view message)> rename_recovery_report_for_test;
 }
 #include "ui_controllers.h"
@@ -49,7 +49,7 @@ static df::group_key media_type_index(const df::item_element_ptr& i)
 
 	result.order1 = ft->group->id;
 	result.type = group_key;
-	result.text1 = str::cache(ft->display_name(true));
+	result.text1 = core::cache(ft->display_name(true));
 	result.group = ft->group;
 	return result;
 }
@@ -70,7 +70,7 @@ static df::group_key extension_key(const df::item_element_ptr& i)
 	{
 		result.type = group_key_type::grouped_value;
 		if (ext.front() == L'.') ext = ext.substr(1);
-		result.text1 = str::cache(ext);
+		result.text1 = core::cache(ext);
 	}
 
 	return result;
@@ -237,7 +237,7 @@ static df::group_key related_key(const df::item_element_ptr& i)
 	df::group_key result;
 	result.type = group_key_type::grouped_value;
 	result.order1 = static_cast<int32_t>(axis);
-	result.text1 = str::cache(related_axis_text(axis));
+	result.text1 = core::cache(related_axis_text(axis));
 	result.icon = related_axis_icon(axis);
 	return result;
 }
@@ -247,7 +247,7 @@ static df::group_key size_key(const df::item_element_ptr& i)
 	df::group_key result;
 	const auto size_bucket = prop::size_bucket(i->file_size().to_int64());
 	if (size_bucket == 0) return {group_key_type::grouped_no_value};
-	result.order1 = df::round(std::sqrt(size_bucket));
+	result.order1 = core::round(std::sqrt(size_bucket));
 	result.type = group_key_type::grouped_value;
 	return result;
 }
@@ -291,10 +291,10 @@ static df::group_key rating_key(const df::item_element_ptr& i)
 
 uint32_t local_today_days()
 {
-	return platform::now().system_to_local().to_days();
+	return platform::utc_to_local(core::utc_now()).to_days();
 }
 
-df::group_key date_group_key(const df::date_t when, const uint32_t today)
+df::group_key date_group_key(const core::date_t when, const uint32_t today)
 {
 	df::group_key result;
 	result.type = group_key_type::grouped_value;
@@ -322,7 +322,7 @@ df::group_key date_group_key(const df::date_t when, const uint32_t today)
 	return result;
 }
 
-static df::group_key date_key(const df::date_t when, const df::item_element_ptr& i, const uint32_t today)
+static df::group_key date_key(const core::date_t when, const df::item_element_ptr& i, const uint32_t today)
 {
 	if (i->is_folder()) return {group_key_type::folder};
 	return date_group_key(when, today);
@@ -349,17 +349,17 @@ static df::group_key resolution_key(const df::item_element_ptr& i)
 			{
 				result.type = group_key_type::grouped_value;
 				result.order1 = ft->group->id;
-				result.order2 = 1 + df::round(std::sqrt(extent.cx * extent.cy));
-				result.text1 = str::cache(display_name);
-				result.text2 = str::cache(video_res);
+				result.order2 = 1 + core::round(std::sqrt(extent.cx * extent.cy));
+				result.text1 = core::cache(display_name);
+				result.text2 = core::cache(video_res);
 				return result;
 			}
 
 			result.type = group_key_type::grouped_value;
 			result.order1 = ft->group->id;
-			result.order2 = 1 + df::round(std::sqrt(extent.cx * extent.cy));
-			result.text1 = str::cache(display_name);
-			result.text2 = str::cache(std::format("{}x{}", extent.cx, extent.cy));
+			result.order2 = 1 + core::round(std::sqrt(extent.cx * extent.cy));
+			result.text1 = core::cache(display_name);
+			result.text2 = core::cache(std::format("{}x{}", extent.cx, extent.cy));
 		}
 		else
 		{
@@ -368,19 +368,19 @@ static df::group_key resolution_key(const df::item_element_ptr& i)
 				result.type = group_key_type::grouped_value;
 				result.order1 = 1;
 				result.order2 = 0;
-				result.text1 = str::cache(display_name);
+				result.text1 = core::cache(display_name);
 				result.text2 = "icon size"_c;
 			}
 			else
 			{
-				const auto mp = ui::calc_mega_pixels(extent.cx, extent.cy);
+				const auto mp = core::calc_mega_pixels(extent.cx, extent.cy);
 
 				if (mp < 0.9)
 				{
 					result.type = group_key_type::grouped_value;
 					result.order1 = 1;
 					result.order2 = 1;
-					result.text1 = str::cache(display_name);
+					result.text1 = core::cache(display_name);
 					result.text2 = "small size"_c;
 				}
 				else
@@ -388,9 +388,9 @@ static df::group_key resolution_key(const df::item_element_ptr& i)
 					const auto n = prop::exp_round(mp);
 					result.type = group_key_type::grouped_value;
 					result.order1 = 1;
-					result.order2 = 1 + df::round(std::sqrt(n));
-					result.text1 = str::cache(display_name);
-					result.text2 = str::cache(std::format("{} megapixels", n));
+					result.order2 = 1 + core::round(std::sqrt(n));
+					result.text1 = core::cache(display_name);
+					result.text2 = core::cache(std::format("{} megapixels", n));
 				}
 			}
 		}
@@ -468,12 +468,12 @@ static df::group_key aspect_ratio_key(const df::item_element_ptr& i)
 		if (aspect_group.bucket == label.bucket)
 		{
 			result.order2 = label.order;
-			result.text1 = str::cache(aspect_group.is_portrait ? label.portrait : label.landscape);
+			result.text1 = core::cache(aspect_group.is_portrait ? label.portrait : label.landscape);
 			return result;
 		}
 	}
 
-	result.text1 = str::cache(aspect_group.is_portrait
+	result.text1 = core::cache(aspect_group.is_portrait
 		                          ? tt.aspect_ratio_other_portrait.sv()
 		                          : tt.aspect_ratio_other_landscape.sv());
 	return result;
@@ -494,14 +494,14 @@ public:
 	{
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		render_background(dc, element_offset);
-		const auto clr = ui::color(link_foreground_color(), dc.colors.alpha);
+		const auto clr = core::color(link_foreground_color(), dc.colors.alpha);
 		xdraw_icon(dc, _icon, bounds.offset(element_offset), clr, {});
 	}
 
-	sizei measure(ui::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -563,8 +563,8 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 	{
 		const auto lmd = l->metadata();
 		const auto rmd = r->metadata();
-		const auto ll = lmd ? ui::calc_mega_pixels(lmd->width, lmd->height) : 0;
-		const auto rr = rmd ? ui::calc_mega_pixels(rmd->width, rmd->height) : 0;
+		const auto ll = lmd ? core::calc_mega_pixels(lmd->width, lmd->height) : 0;
+		const auto rr = rmd ? core::calc_mega_pixels(rmd->width, rmd->height) : 0;
 		return ll == rr ? icmp(l->name(), r->name()) < 0 : ll > rr;
 	};
 
@@ -578,7 +578,7 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 
 	constexpr auto name_sorter = [](const df::item_element_ptr& l, const df::item_element_ptr& r)
 	{
-		return str::icmp_natural(l->name(), r->name()) < 0;
+		return core::icmp_natural(l->name(), r->name()) < 0;
 	};
 
 	// Inside a relation group the order is closeness to the item the search started at.
@@ -587,7 +587,7 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 		const auto ll = l->search().distance;
 		const auto rr = r->search().distance;
 		if (ll != rr) return ll < rr;
-		return str::icmp_natural(l->name(), r->name()) < 0;
+		return core::icmp_natural(l->name(), r->name()) < 0;
 	};
 
 	// A show plays in season and episode order, a special ahead of its season's first episode and a dated
@@ -614,7 +614,7 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 		const auto ll = sequence_key(l);
 		const auto rr = sequence_key(r);
 		if (ll != rr) return ll < rr;
-		return str::icmp_natural(l->name(), r->name()) < 0;
+		return core::icmp_natural(l->name(), r->name()) < 0;
 	};
 
 	const auto sorts_by_date = group_mode != group_by::related &&
@@ -845,9 +845,9 @@ df::item_set_info df::item_set::info() const
 			if (i->is_media())
 			{
 				if (md->tags.is_empty()) result.untagged += 1;
-				if (str::is_empty(md->location_country)) result.unlocated += 1;
+				if (core::is_empty(md->location_country)) result.unlocated += 1;
 				if (md->rating == 0) result.unrated += 1;
-				if (str::is_empty(md->copyright_credit)) result.uncredited += 1;
+				if (core::is_empty(md->copyright_credit)) result.uncredited += 1;
 			}
 		}
 
@@ -897,27 +897,27 @@ static df::group_key presence_key(const item_presence& pr)
 	switch (pr)
 	{
 	case item_presence::this_in:
-		result.text1 = str::cache(tt.presence_this_in);
+		result.text1 = core::cache(tt.presence_this_in);
 		result.icon = icon_index::check;
 		break;
 	case item_presence::similar_in:
-		result.text1 = str::cache(tt.presence_similar_in);
+		result.text1 = core::cache(tt.presence_similar_in);
 		result.icon = icon_index::compare;
 		break;
 	case item_presence::not_in:
-		result.text1 = str::cache(tt.presence_not_in);
+		result.text1 = core::cache(tt.presence_not_in);
 		result.icon = icon_index::del;
 		break;
 	case item_presence::newer_in:
-		result.text1 = str::cache(tt.presence_newer_in);
+		result.text1 = core::cache(tt.presence_newer_in);
 		result.icon = icon_index::add2;
 		break;
 	case item_presence::older_in:
-		result.text1 = str::cache(tt.presence_older_in);
+		result.text1 = core::cache(tt.presence_older_in);
 		result.icon = icon_index::remove2;
 		break;
 	default:
-		result.text1 = str::cache(tt.presence_loading);
+		result.text1 = core::cache(tt.presence_loading);
 		result.icon = icon_index::unknown;
 		break;
 	}
@@ -933,7 +933,7 @@ static int calc_item_line_height()
 std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const view_host_base_ptr& view,
                                                            const item_group_ptr& g)
 {
-	assert_true(ui::is_ui_thread());
+	assert_true(platform::is_ui_thread());
 
 	const auto order = s.effective_group_order();
 	const auto generation = s.group_title_generation();
@@ -947,7 +947,7 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 	}
 
 	auto result = std::make_shared<group_title_control>();
-	constexpr auto font = ui::style::font_face::title;
+	constexpr auto font = render::font_face::title;
 
 	g->_scroll_tooltip_text.clear();
 
@@ -958,7 +958,7 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 	{
 		if (search.is_empty())
 		{
-			const auto link = std::make_shared<text_element>(title, font, ui::style::text_style::multiline,
+			const auto link = std::make_shared<text_element>(title, font, render::text_style::multiline,
 			                                                 view_element_style::none);
 			link->margin(4);
 			link->padding(4);
@@ -978,14 +978,14 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 			};
 
 			const auto link = std::make_shared<link_element>(title, command, tooltip, font,
-			                                                 ui::style::text_style::multiline,
+			                                                 render::text_style::multiline,
 			                                                 view_element_style::none);
 			link->margin(4);
 			link->padding(4);
 			result->elements.emplace_back(link);
 		}
 
-		if constexpr (font == ui::style::font_face::title)
+		if constexpr (font == render::font_face::title)
 		{
 			g->_scroll_tooltip_text.emplace_back(title);
 		}
@@ -1058,12 +1058,12 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 
 				if (min_size == max_size)
 				{
-					add_title_link(df::format_size(min_size), {});
+					add_title_link(platform::format_size(min_size), {});
 				}
 				else
 				{
-					const auto text = str_format(tt.group_title_size_range_fmt.sv(), df::format_size(min_size),
-					                             df::format_size(max_size));
+					const auto text = str_format(tt.group_title_size_range_fmt.sv(), platform::format_size(min_size),
+					                             platform::format_size(max_size));
 					add_title_link(text, {});
 				}
 			}
@@ -1152,13 +1152,13 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 
 			if (key.order1 == 0)
 			{
-				const auto today = df::date_t::from_days(local_today_days()).date();
+				const auto today = core::date_t::from_days(local_today_days()).date();
 				add_title_link(tt.group_title_today,
 				               search_t(current_search).day(today.day, today.month, today.year, target));
 			}
 			else if (key.order1 == 1)
 			{
-				const auto yesterday = df::date_t::from_days(local_today_days()).previous_day().date();
+				const auto yesterday = core::date_t::from_days(local_today_days()).previous_day().date();
 				add_title_link(tt.group_title_yesterday,
 				               search_t(current_search).day(yesterday.day, yesterday.month, yesterday.year, target));
 			}
@@ -1167,7 +1167,7 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 				const auto month = 100 - key.order2;
 				const auto year = 3000 - key.order1;
 
-				add_title_link(std::format("{} {}", str::month(month, true), year),
+				add_title_link(std::format("{} {}", core::month(month, true), year),
 				               search_t(current_search).day(0, month, year, target));
 			}
 		}
@@ -1339,7 +1339,7 @@ void df::item_group::update_scroll_info(const group_by order)
 
 				if (rating != 0)
 				{
-					scroll_text = str::to_string(rating);
+					scroll_text = core::to_string(rating);
 				}
 			}
 		}
@@ -1356,7 +1356,7 @@ void df::item_group::update_scroll_info(const group_by order)
 			}
 			else
 			{
-				scroll_text = str::to_string(3000 - _key.order1); // year
+				scroll_text = core::to_string(3000 - _key.order1); // year
 			}
 		}
 		else if (order == group_by::resolution)
@@ -1463,7 +1463,7 @@ void view_state::update_item_groups()
 					break;
 
 				case group_by::date_modified:
-					groups[date_key(i->file_modified().system_to_local(), i, today)].emplace_back(i);
+					groups[date_key(platform::utc_to_local(i->file_modified()), i, today)].emplace_back(i);
 					break;
 
 				case group_by::shuffle:
@@ -1508,7 +1508,7 @@ void view_state::update_item_groups()
 					break;
 
 				case group_by::date_modified:
-					groups[date_key(i->file_modified().system_to_local(), i, today)].emplace_back(i);
+					groups[date_key(platform::utc_to_local(i->file_modified()), i, today)].emplace_back(i);
 					break;
 
 				case group_by::resolution:
@@ -1662,9 +1662,9 @@ void view_state::update_item_groups()
 // whole rather than filled in field by field.
 void view_state::refresh_visits()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
-	df::cancel_token token(_visits_generation);
+	core::cancel_token token(_visits_generation);
 	const auto generation = _visits_generation.load(std::memory_order_relaxed);
 
 	df::visit_request request(std::move(token));
@@ -1714,7 +1714,7 @@ void view_state::refresh_visits()
 	});
 }
 
-sizei df::item_group::measure(ui::measure_context& mc, const int width_limit) const
+sizei df::item_group::measure(render::measure_context& mc, const int width_limit) const
 {
 	_layout_bounds.resize(_items.size());
 
@@ -1732,7 +1732,7 @@ sizei df::item_group::measure(ui::measure_context& mc, const int width_limit) co
 
 		if (_display == item_group_display::detail)
 		{
-			const auto line_height = mc.text_line_height(ui::style::font_face::dialog);
+			const auto line_height = mc.text_line_height(render::font_face::dialog);
 
 			for (auto i = 0; i < item_count; ++i)
 			{
@@ -1742,8 +1742,8 @@ sizei df::item_group::measure(ui::measure_context& mc, const int width_limit) co
 				const auto line_count = 1 + (_show_folder ? 1 : 0) + (has_title ? 1 : 0);
 
 				const auto height = element_padding.cy * 2 + line_height * line_count;
-				_layout_bounds[i] = recti(element_padding.cx, round(y + element_padding.cy),
-				                          width_limit - element_padding.cx, round(y + height - element_padding.cy));
+				_layout_bounds[i] = recti(element_padding.cx, core::round(y + element_padding.cy),
+				                          width_limit - element_padding.cx, core::round(y + height - element_padding.cy));
 				y_max = y + height;
 				y += height;
 			}
@@ -1883,7 +1883,7 @@ sizei df::item_group::measure(ui::measure_context& mc, const int width_limit) co
 					{
 						const auto cx = dst_widths[nn];
 						_layout_bounds[line_start + nn] =
-							recti(round(xx), round(y), round(xx + cx), round(y + cy_line));
+							recti(core::round(xx), core::round(y), core::round(xx + cx), core::round(y + cy_line));
 						xx += cx + x_gap;
 					}
 
@@ -1895,7 +1895,7 @@ sizei df::item_group::measure(ui::measure_context& mc, const int width_limit) co
 		}
 	}
 
-	return {width_limit, round(y_max)};
+	return {width_limit, core::round(y_max)};
 }
 
 static bool can_show_flag(const df::item_display_info& info)
@@ -1903,17 +1903,17 @@ static bool can_show_flag(const df::item_display_info& info)
 	return !is_empty(info.label) || info.rating == -1;
 }
 
-static void draw_flag(ui::draw_context& dc, const df::item_display_info& info, const recti logical_bounds,
+static void draw_flag(render::draw_context& dc, const df::item_display_info& info, const recti logical_bounds,
                       const float a)
 {
 	draw_rate_label_badge(dc, info.label.sv(), info.rating, logical_bounds, a);
 }
 
-void draw_rate_label_badge(ui::draw_context& dc, const std::string_view label, const int rating,
+void draw_rate_label_badge(render::draw_context& dc, const std::string_view label, const int rating,
                            const recti logical_bounds, const float a)
 {
 	auto icon = icon_index::flag;
-	ui::color32 label_clr = 0;
+	core::color32 label_clr = 0;
 
 	if (!label.empty())
 	{
@@ -1926,7 +1926,7 @@ void draw_rate_label_badge(ui::draw_context& dc, const std::string_view label, c
 		}
 		else
 		{
-			label_clr = ui::average(dc.colors.foreground, dc.colors.background);
+			label_clr = core::average(dc.colors.foreground, dc.colors.background);
 		}
 	}
 
@@ -1939,23 +1939,23 @@ void draw_rate_label_badge(ui::draw_context& dc, const std::string_view label, c
 
 	const bool has_clr = label_clr != 0;
 	const auto alpha = has_clr ? a : a / 4.0f;
-	ui::color bg;
+	core::color bg;
 
 	if (has_clr)
 	{
-		bg = ui::color(label_clr, a);
+		bg = core::color(label_clr, a);
 	}
 
-	xdraw_icon(dc, icon, logical_bounds, ui::color(dc.colors.foreground, alpha), bg);
+	xdraw_icon(dc, icon, logical_bounds, core::color(dc.colors.foreground, alpha), bg);
 }
 
-void draw_pin_badge(ui::draw_context& dc, const recti logical_bounds, const float alpha)
+void draw_pin_badge(render::draw_context& dc, const recti logical_bounds, const float alpha)
 {
-	xdraw_icon(dc, icon_index::pinned, logical_bounds, ui::color(dc.colors.foreground, alpha),
-	           ui::color(ui::style::colors.important_background, alpha));
+	xdraw_icon(dc, icon_index::pinned, logical_bounds, core::color(dc.colors.foreground, alpha),
+	           core::color(ui::style::colors.important_background, alpha));
 }
 
-void df::item_group::layout(ui::measure_context& mc, const recti bounds_in)
+void df::item_group::layout(render::measure_context& mc, const recti bounds_in)
 {
 	bounds = bounds_in;
 
@@ -1995,7 +1995,7 @@ void df::item_group::toggle_display()
 	setting.set_detail_display(_key.type, _display == item_group_display::detail);
 }
 
-void df::item_group::update_row_layout(const ui::measure_context& mc) const
+void df::item_group::update_row_layout(const render::measure_context& mc) const
 {
 	_row_draw_info.icon.width = _row_draw_info.icon.extent;
 	_row_draw_info.disk.width = _row_draw_info.disk.val_max > 1 ? _row_draw_info.disk.extent : 0;
@@ -2017,7 +2017,7 @@ void df::item_group::update_row_layout(const ui::measure_context& mc) const
 	_row_draw_info.modified.width = _row_draw_info.modified.extent;
 	_row_draw_info.created.width = _row_draw_info.created.extent;
 
-	const auto text_padding = round(item_draw_info::_text_padding * mc.scale_factor);
+	const auto text_padding = core::round(item_draw_info::_text_padding * mc.scale_factor);
 	const auto width_avail = bounds.width() - mc.padding1 * 5;
 	const auto half_width_avail = width_avail / 2;
 	const auto expendable_title_width = _row_draw_info.title.width > half_width_avail
@@ -2049,7 +2049,7 @@ void df::item_group::update_row_layout(const ui::measure_context& mc) const
 	}
 }
 
-void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_element_ptr& i,
+void df::item_group::update_detail_row_layout(render::draw_context& dc, const item_element_ptr& i,
                                               const bool has_related) const
 {
 	const auto info = i->populate_info();
@@ -2058,12 +2058,12 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 
 	if (info.disk != 0)
 	{
-		_row_draw_info.disk.update_extent(dc, str::to_string(info.disk));
+		_row_draw_info.disk.update_extent(dc, core::to_string(info.disk));
 	}
 
 	if (info.track != 0)
 	{
-		_row_draw_info.track.update_extent(dc, str::to_string(info.track), info.track);
+		_row_draw_info.track.update_extent(dc, core::to_string(info.track), info.track);
 	}
 
 	if (!info.episode.is_empty())
@@ -2073,7 +2073,7 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 
 	if (info.year != 0)
 	{
-		_row_draw_info.year.update_extent(dc, str::to_string(info.year));
+		_row_draw_info.year.update_extent(dc, core::to_string(info.year));
 	}
 
 	_row_draw_info.title.update_extent(dc, combine2(info.title, info.name));
@@ -2085,22 +2085,22 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 
 	if (!has_related && can_show_duplicates(info))
 	{
-		_row_draw_info.presence.update_extent(dc, str::format_count(info.duplicates));
+		_row_draw_info.presence.update_extent(dc, core::format_count(info.duplicates));
 	}
 
 	if (info.sidecars > 0)
 	{
-		_row_draw_info.sidecars.update_extent(dc, str::format_count(info.sidecars));
+		_row_draw_info.sidecars.update_extent(dc, core::format_count(info.sidecars));
 	}
 
-	if (!str::is_empty(info.info))
+	if (!core::is_empty(info.info))
 	{
 		_row_draw_info.info.update_extent(dc, info.info);
 	}
 
 	if (info.items > 0)
 	{
-		_row_draw_info.items.update_extent(dc, str::format_count(info.items), info.items);
+		_row_draw_info.items.update_extent(dc, core::format_count(info.items), info.items);
 	}
 
 	if (info.duration > 0)
@@ -2110,7 +2110,7 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 
 	if (!info.size.is_empty())
 	{
-		_row_draw_info.file_size.update_extent(dc, df::format_size(info.size),
+		_row_draw_info.file_size.update_extent(dc, platform::format_size(info.size),
 		                                       static_cast<double>(info.size.to_int64()));
 	}
 
@@ -2148,7 +2148,7 @@ void df::item_group::update_detail_row_layout(ui::draw_context& dc, const item_e
 	i->row_layout_valid = true;
 }
 
-void df::item_group::render(ui::draw_context& dc, const pointi element_offset) const
+void df::item_group::render(render::draw_context& dc, const pointi element_offset) const
 {
 }
 
@@ -2185,10 +2185,10 @@ void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_ele
 			if (i->has_thumb())
 			{
 				if (!_scroll_tooltip_staging_item || _scroll_tooltip_staging_item == i ||
-				!_scroll_tooltip_staging_item->is_staging_thumbnail_surface())
+					!_scroll_tooltip_staging_item->is_staging_thumbnail_surface())
 				{
-				_scroll_tooltip_staging_item = i;
-				i->stage_thumbnail_surface(async, false, true);
+					_scroll_tooltip_staging_item = i;
+					i->stage_thumbnail_surface(async, false, true);
 				}
 				break;
 			}
@@ -2203,7 +2203,7 @@ void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_ele
 
 	for (const auto& t : _scroll_tooltip_text)
 	{
-		elements->add(std::make_shared<text_element>(t, ui::style::font_face::dialog, ui::style::text_style::multiline,
+		elements->add(std::make_shared<text_element>(t, render::font_face::dialog, render::text_style::multiline,
 		                                             flex_item::center | flex_item::new_line));
 	}
 }
@@ -2332,12 +2332,12 @@ void df::index_file_item::calc_search_presence() const
 	fold_duplicates_bit(search_presence, duplicates);
 }
 
-void df::item_element::render_bg(ui::draw_context& dc, const item_group&, const pointi element_offset) const
+void df::item_element::render_bg(render::draw_context& dc, const item_group&, const pointi element_offset) const
 {
 	render_background(dc, element_offset);
 }
 
-void df::item_element::render(ui::draw_context& dc, const item_group& group, const pointi element_offset) const
+void df::item_element::render(render::draw_context& dc, const item_group& group, const pointi element_offset) const
 {
 	const auto& s = group._state;
 	const auto display = group.display();
@@ -2346,7 +2346,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 	const auto info = populate_info();
 	const auto has_related = s.search().has_related();
 
-	const auto text_padding = round(item_draw_info::_text_padding * dc.scale_factor);
+	const auto text_padding = core::round(item_draw_info::_text_padding * dc.scale_factor);
 	const auto device_bounds = bounds.offset(element_offset);
 
 	const auto* const ft = file_type();
@@ -2365,7 +2365,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 	const auto is_error = this->is_error();
 	const auto show_folder = group._show_folder;
 
-	constexpr auto text_font = ui::style::font_face::dialog;
+	constexpr auto text_font = render::font_face::dialog;
 	const auto text_line_height = dc.text_line_height(text_font);
 	const auto cxy_flag = std::max(dc.icon_cxy + text_padding, text_line_height + text_padding);
 
@@ -2375,18 +2375,18 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 	if (alt_background)
 	{
-		dc.draw_rounded_rect(device_bounds.inflate(pad.cx, pad.cy), ui::color(0, 0.1f), dc.padding1);
+		dc.draw_rounded_rect(device_bounds.inflate(pad.cx, pad.cy), core::color(0, 0.1f), dc.padding1);
 	}
 
 	if (display == item_group_display::detail)
 	{
 		const auto alpha = dc.colors.alpha;
-		const auto text_color = ui::color(dc.colors.foreground, alpha);
-		const auto group_text_color = ui::color(ft->text_color(dc.colors.foreground), alpha).emphasize(
+		const auto text_color = core::color(dc.colors.foreground, alpha);
+		const auto group_text_color = core::color(ft->text_color(dc.colors.foreground), alpha).emphasize(
 			background_is_highlighted);
-		const auto bg_disk = ui::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.77f);
-		const auto bg_dups = ui::color(app_colors::duplicate_background, dc.colors.alpha * 0.77f);
-		const auto bg_sidecars = ui::color(app_colors::sidecar_background, dc.colors.alpha * 0.77f);
+		const auto bg_disk = core::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.77f);
+		const auto bg_dups = core::color(app_colors::duplicate_background, dc.colors.alpha * 0.77f);
+		const auto bg_sidecars = core::color(app_colors::sidecar_background, dc.colors.alpha * 0.77f);
 
 		if (device_bounds.width() > 100)
 		{
@@ -2423,9 +2423,9 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				folder_rect.top = text_rect.bottom -= line_height;
 			}
 
-			auto text_style = ui::style::text_style::single_line;
-			auto text_style_far = ui::style::text_style::single_line_far;
-			auto text_style_center = ui::style::text_style::single_line_center;
+			auto text_style = render::text_style::single_line;
+			auto text_style_far = render::text_style::single_line_far;
+			auto text_style_center = render::text_style::single_line_center;
 			auto text_x = text_rect.left;
 			auto text_y = pad.cy;
 
@@ -2434,7 +2434,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (info.disk != 0)
 				{
 					const auto bb = widths.disk.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.disk.draw(dc, str::to_string(info.disk), ui::color{}, bb, text_font, text_style_far,
+					widths.disk.draw(dc, core::to_string(info.disk), core::color{}, bb, text_font, text_style_far,
 					                 text_color);
 				}
 				text_x += widths.disk.width + text_padding;
@@ -2445,7 +2445,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (info.track != 0)
 				{
 					const auto bb = widths.track.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.track.draw(dc, str::to_string(info.track), ui::color{}, bb, text_font, text_style_far,
+					widths.track.draw(dc, core::to_string(info.track), core::color{}, bb, text_font, text_style_far,
 					                  text_color);
 				}
 				text_x += widths.track.width + text_padding;
@@ -2456,7 +2456,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!info.episode.is_empty())
 				{
 					const auto bb = widths.episode.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.episode.draw(dc, info.episode.sv(), ui::color{}, bb, text_font, text_style, text_color);
+					widths.episode.draw(dc, info.episode.sv(), core::color{}, bb, text_font, text_style, text_color);
 				}
 				text_x += widths.episode.width + text_padding;
 			}
@@ -2466,7 +2466,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (info.year != 0)
 				{
 					const auto bb = widths.year.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.year.draw(dc, str::to_string(info.year), ui::color{}, bb, text_font, text_style_far,
+					widths.year.draw(dc, core::to_string(info.year), core::color{}, bb, text_font, text_style_far,
 					                 text_color);
 				}
 				text_x += widths.year.width + text_padding;
@@ -2523,7 +2523,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!has_related && can_show_duplicates(info))
 				{
 					const auto bb = widths.presence.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.presence.draw(dc, str::format_count(info.duplicates), bg_dups, bb, text_font,
+					widths.presence.draw(dc, core::format_count(info.duplicates), bg_dups, bb, text_font,
 					                     text_style_center, text_color);
 				}
 				text_x += widths.presence.width + text_padding;
@@ -2534,7 +2534,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (info.sidecars > 0)
 				{
 					const auto bb = widths.sidecars.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.sidecars.draw(dc, str::format_count(info.sidecars), bg_sidecars, bb, text_font,
+					widths.sidecars.draw(dc, core::format_count(info.sidecars), bg_sidecars, bb, text_font,
 					                     text_style_center, text_color);
 				}
 				text_x += widths.sidecars.width + text_padding;
@@ -2545,7 +2545,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (info.items > 0)
 				{
 					const auto bb = widths.items.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.items.draw(dc, str::format_count(info.items), info.items, bb, text_font, text_style_far,
+					widths.items.draw(dc, core::format_count(info.items), info.items, bb, text_font, text_style_far,
 					                  text_color);
 				}
 				text_x += widths.items.width + text_padding;
@@ -2567,7 +2567,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!info.size.is_empty())
 				{
 					const auto bb = widths.file_size.calc_bounds(text_rect, text_x, text_y, text_padding);
-					const auto text = df::format_size(info.size);
+					const auto text = platform::format_size(info.size);
 					widths.file_size.draw(dc, text, static_cast<double>(info.size.to_int64()), bb, text_font,
 					                      text_style_far, text_color);
 				}
@@ -2579,7 +2579,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!prop::is_null(info.bitrate))
 				{
 					const auto bb = widths.bitrate.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.bitrate.draw(dc, info.bitrate, ui::color{}, bb, text_font, text_style_far, text_color);
+					widths.bitrate.draw(dc, info.bitrate, core::color{}, bb, text_font, text_style_far, text_color);
 				}
 				text_x += widths.bitrate.width + text_padding;
 			}
@@ -2589,7 +2589,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!prop::is_null(info.info))
 				{
 					const auto bb = widths.info.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.info.draw(dc, info.info, ui::color{}, bb, text_font, text_style_far, text_color);
+					widths.info.draw(dc, info.info, core::color{}, bb, text_font, text_style_far, text_color);
 				}
 				text_x += widths.info.width + text_padding;
 			}
@@ -2600,7 +2600,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				{
 					const auto bb = widths.dimensions.calc_bounds(text_rect, text_x, text_y, text_padding);
 					const auto text = prop::format_pixels(info.dimensions, file_type());
-					widths.dimensions.draw(dc, text, ui::color{}, bb, text_font, text_style_far, text_color);
+					widths.dimensions.draw(dc, text, core::color{}, bb, text_font, text_style_far, text_color);
 				}
 				text_x += widths.dimensions.width + text_padding;
 			}
@@ -2610,7 +2610,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				if (!is_empty(info.pixel_format))
 				{
 					const auto bb = widths.pixel_format.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.pixel_format.draw(dc, info.pixel_format, ui::color{}, bb, text_font, text_style, text_color);
+					widths.pixel_format.draw(dc, info.pixel_format, core::color{}, bb, text_font, text_style, text_color);
 				}
 				text_x += widths.pixel_format.width + text_padding;
 			}
@@ -2621,7 +2621,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				{
 					const auto bb = widths.audio_sample_rate.calc_bounds(text_rect, text_x, text_y, text_padding);
 					const auto text = prop::format_audio_sample_rate(info.audio_sample_rate);
-					widths.audio_sample_rate.draw(dc, text, ui::color{}, bb, text_font, text_style_far, text_color);
+					widths.audio_sample_rate.draw(dc, text, core::color{}, bb, text_font, text_style_far, text_color);
 				}
 				text_x += widths.audio_sample_rate.width + text_padding;
 			}
@@ -2634,7 +2634,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				{
 					const auto bb = widths.created.calc_bounds(text_rect, text_x, text_y, text_padding);
 					const auto text = platform::format_date_time(shown);
-					widths.created.draw(dc, text, ui::color{}, bb, text_font, text_style_far, text_color);
+					widths.created.draw(dc, text, core::color{}, bb, text_font, text_style_far, text_color);
 				}
 				text_x += widths.created.width + text_padding;
 			}
@@ -2645,7 +2645,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				{
 					const auto bb = widths.modified.calc_bounds(text_rect, text_x, text_y, text_padding);
 					const auto text = platform::format_date_time(info.modified);
-					widths.modified.draw(dc, text, ui::color{}, bb, text_font, text_style_far, text_color);
+					widths.modified.draw(dc, text, core::color{}, bb, text_font, text_style_far, text_color);
 				}
 				text_x += widths.modified.width + text_padding;
 			}
@@ -2668,7 +2668,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto show_text = is_hover || !thumb_is_valid || is_folder || is_focus;
 		const auto expand_text = (is_hover || is_focus) && thumb_is_valid;
 		const auto show_stars = show_text && group_order != group_by::rating_label;
-		const auto show_info = (is_folder || is_hover) && !str::is_empty(info.info);
+		const auto show_info = (is_folder || is_hover) && !core::is_empty(info.info);
 		const auto show_size = show_text && !is_folder && (group_order == group_by::size || sort_order ==
 			sort_by::size);
 		const auto show_created = show_text && !is_folder && (group_order == group_by::date_created ||
@@ -2680,28 +2680,28 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		const auto show_modified = show_text && !is_folder && (group_order == group_by::date_modified || sort_order ==
 			sort_by::date_modified);
 		const auto show_selected = !(is_focus || is_hover) && (is_selected || is_highlight);
-		constexpr auto text_style = ui::style::text_style::single_line_center;
+		constexpr auto text_style = render::text_style::single_line_center;
 		const auto stars_line_height = std::max(text_line_height, dc.icon_cxy) + dc.padding2;
-		const auto extra_padding = round((is_focus || is_hover ? 4 : 0) * dc.scale_factor);
+		const auto extra_padding = core::round((is_focus || is_hover ? 4 : 0) * dc.scale_factor);
 		const auto bg_padding = sizei(pad.cx + extra_padding, pad.cy + extra_padding);
 		const auto bg_bounds = device_bounds.inflate(bg_padding.cx, bg_padding.cy);
 		const auto text_alpha = thumb_is_valid && !show_text ? bg_color.a * dc.colors.alpha : dc.colors.alpha;
-		const auto text_color = ui::color(dc.colors.foreground, text_alpha);
-		const auto fallback_text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
-		const auto group_text_color = ui::color(ft->text_color(dc.colors.foreground), text_alpha).emphasize(
+		const auto text_color = core::color(dc.colors.foreground, text_alpha);
+		const auto fallback_text_color = core::color(dc.colors.foreground, dc.colors.alpha);
+		const auto group_text_color = core::color(ft->text_color(dc.colors.foreground), text_alpha).emphasize(
 			background_is_highlighted);
-		const auto bg_disk = ui::color(ui::style::colors.view_selected_background, text_alpha * 0.77f);
-		const auto bg_dups = ui::color(app_colors::duplicate_background, text_alpha * 0.77f);
-		const auto bg_sidecars = ui::color(app_colors::sidecar_background, text_alpha * 0.77f);
-		const auto thumb_padding = round(item_draw_info::_thumb_padding * dc.scale_factor);
-		auto title_style = ui::style::text_style::single_line_center;
+		const auto bg_disk = core::color(ui::style::colors.view_selected_background, text_alpha * 0.77f);
+		const auto bg_dups = core::color(app_colors::duplicate_background, text_alpha * 0.77f);
+		const auto bg_sidecars = core::color(app_colors::sidecar_background, text_alpha * 0.77f);
+		const auto thumb_padding = core::round(item_draw_info::_thumb_padding * dc.scale_factor);
+		auto title_style = render::text_style::single_line_center;
 		auto title_line_height2 = dc.text_line_height(info.title_font);
 		auto title_line_height1 = is_empty(info.caption) ? 0 : title_line_height2;
 		auto title_text_extra_width = 0;
 
 		if (is_focus || is_hover)
 		{
-			title_style = ui::style::text_style::multiline_center;
+			title_style = render::text_style::multiline_center;
 			auto avail_width = is_hover ? mul_div(bg_bounds.width(), 7, 4) : bg_bounds.width();
 			const auto title_extent1 = is_empty(info.caption)
 				                           ? sizei{}
@@ -2785,20 +2785,20 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 			if (ft->has_trait(file_traits::thumbnail))
 			{
-				dc.draw_rect(icon_rect, ui::color(ui::style::colors.group_background, alpha * 0.72f));
+				dc.draw_rect(icon_rect, core::color(ui::style::colors.group_background, alpha * 0.72f));
 			}
 
 			auto ext = _name.substr(find_ext(_name));
 			if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
 
-			if (str::is_empty(ext))
+			if (core::is_empty(ext))
 			{
 				xdraw_icon(dc, info.icon, icon_rect, fallback_text_color.aa(alpha), {});
 			}
 			else
 			{
-				dc.draw_text(str::to_lower(ext), icon_rect, ui::style::font_face::dialog,
-				             ui::style::text_style::single_line_center, fallback_text_color.aa(alpha * 0.68f), {});
+				dc.draw_text(core::to_lower(ext), icon_rect, render::font_face::dialog,
+				             render::text_style::single_line_center, fallback_text_color.aa(alpha * 0.68f), {});
 			}
 		};
 
@@ -2827,9 +2827,9 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				const auto t = dc.create_texture();
 				const auto surface = use_cover_art ? _cover_art_surface : _thumbnail_surface;
 
-				if (t && surface && t->update(surface) != ui::texture_update_result::failed)
+				if (t && surface && t->update(surface) != render::texture_update_result::failed)
 				{
-					bump(ui_perf.texture_uploads);
+					bump(render::ui_perf.texture_uploads);
 					set_thumbnail_state(thumbnail_state::texture_is_cover_art, use_cover_art);
 					_texture = t;
 					tex = t;
@@ -2847,7 +2847,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				thumbnail_drawn = true;
 				const auto thumbnail_alpha = _thumbnail_alpha.val();
 				const auto texture_dimensions = tex->dimensions();
-				const auto pad3 = round(3 * dc.scale_factor);
+				const auto pad3 = core::round(3 * dc.scale_factor);
 				const auto flip = setting.show_rotated && flips_xy(orientation);
 				const auto rect_draw = rectd(device_bounds.left, device_bounds.top, device_bounds.width(),
 				                             device_bounds.height()).inflate(show_selected ? -pad3 : 0);
@@ -2892,12 +2892,12 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		// A recording started and not finished shows how far it got, along the foot of its tile.
 		if (info.progress > 0.0 && !is_folder)
 		{
-			const auto bar_height = std::max(2, round(3 * dc.scale_factor));
+			const auto bar_height = std::max(2, core::round(3 * dc.scale_factor));
 			auto bar = icon_rect;
 			bar.top = bar.bottom - bar_height;
-			dc.draw_rect(bar, ui::color(ui::style::colors.view_background, dc.colors.alpha * 0.75f));
+			dc.draw_rect(bar, core::color(ui::style::colors.view_background, dc.colors.alpha * 0.75f));
 			bar.right = bar.left + static_cast<int>(std::lround(bar.width() * info.progress));
-			dc.draw_rect(bar, ui::color(ui::style::colors.view_selected_background, dc.colors.alpha));
+			dc.draw_rect(bar, core::color(ui::style::colors.view_selected_background, dc.colors.alpha));
 		}
 
 		auto y = text_rect.top;
@@ -2908,7 +2908,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 			text_bg_bounds.left = std::min(bg_bounds.left, text_rect.left);
 			text_bg_bounds.right = std::max(bg_bounds.right, text_rect.right);
 
-			dc.draw_rounded_rect(text_bg_bounds, ui::color(ui::style::colors.view_background, text_alpha * 0.888f),
+			dc.draw_rounded_rect(text_bg_bounds, core::color(ui::style::colors.view_background, text_alpha * 0.888f),
 			                     dc.padding1);
 
 			recti title_rect(text_rect.left, y, text_rect.right, y + title_line_height1 + title_line_height2);
@@ -2944,7 +2944,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 
 			if (show_size)
 			{
-				text = df::format_size(info.size);
+				text = platform::format_size(info.size);
 			}
 			else if (show_created)
 			{
@@ -2955,7 +2955,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 				text = prop::format_date(info.modified);
 			}
 
-			dc.draw_text(text, order_text_rect, text_font, ui::style::text_style::single_line_center, text_color, {});
+			dc.draw_text(text, order_text_rect, text_font, render::text_style::single_line_center, text_color, {});
 			y += text_line_height;
 		}
 
@@ -2979,7 +2979,7 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 			{
 				recti label_bounds(text_rect.left, y, text_rect.right, y + stars_line_height);
 				dc.draw_text(tt.command_rate_rejected, label_bounds, text_font,
-				             ui::style::text_style::single_line_center, ui::color(color_rate_rejected, text_alpha), {});
+				             render::text_style::single_line_center, core::color(color_rate_rejected, text_alpha), {});
 			}
 
 			y += stars_line_height;
@@ -3013,23 +3013,23 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 		{
 			if (!has_related && can_show_duplicates(info))
 			{
-				const auto text = str::format_count(info.duplicates);
-				const auto cx = std::max(cxy_flag, dc.measure_text(text, ui::style::font_face::dialog,
-				                                                   ui::style::text_style::single_line_center, 100).cx);
+				const auto text = core::format_count(info.duplicates);
+				const auto cx = std::max(cxy_flag, dc.measure_text(text, render::font_face::dialog,
+				                                                   render::text_style::single_line_center, 100).cx);
 				const recti bb(x_flag, y_flag, x_flag + cx, y_flag + cxy_flag);
-				dc.draw_text(text, bb, ui::style::font_face::dialog, ui::style::text_style::single_line_center,
+				dc.draw_text(text, bb, render::font_face::dialog, render::text_style::single_line_center,
 				             text_color, bg_dups);
 				x_flag += cx;
 			}
 
 			if (info.sidecars > 0)
 			{
-				const auto text = str::format_count(info.sidecars);
-				const auto cx = std::max(cxy_flag, dc.measure_text(text, ui::style::font_face::dialog,
-				                                                   ui::style::text_style::single_line_center, 100).cx);
+				const auto text = core::format_count(info.sidecars);
+				const auto cx = std::max(cxy_flag, dc.measure_text(text, render::font_face::dialog,
+				                                                   render::text_style::single_line_center, 100).cx);
 				const recti bb(x_flag, y_flag, x_flag + cx, y_flag + cxy_flag);
 
-				dc.draw_text(text, bb, ui::style::font_face::dialog, ui::style::text_style::single_line_center,
+				dc.draw_text(text, bb, render::font_face::dialog, render::text_style::single_line_center,
 				             text_color, bg_sidecars);
 				x_flag += cx;
 			}
@@ -3047,11 +3047,11 @@ void df::item_element::render(ui::draw_context& dc, const item_group& group, con
 void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool invalidate_on_complete,
                                                const bool tooltip_on_complete) const
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 	bump(thumbnail_perf.stage_requests);
 
 	if ((_thumbnail_state && thumbnail_state::surface_cached) ||
-		(!ui::is_valid(_thumbnail) && !ui::is_valid(_cover_art)))
+		(!core::is_valid(_thumbnail) && !core::is_valid(_cover_art)))
 	{
 		bump(thumbnail_perf.stage_skipped);
 
@@ -3091,16 +3091,16 @@ void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool
 	const auto thumbnail = _thumbnail;
 	const auto cover_art = _cover_art;
 	// Read here rather than on the worker: the backend owns it and only changes it on this thread.
-	const auto can_use_yuv = ui::yuv_textures_enabled;
+	const auto can_use_yuv = render::yuv_textures_enabled;
 
 	async.queue_async(async_queue::render,
 	                  [weak, generation, thumbnail, cover_art, can_use_yuv, &async]() mutable
 	                  {
 		                  files ff;
-		                  auto thumbnail_surface = ui::is_valid(thumbnail)
+		                  auto thumbnail_surface = core::is_valid(thumbnail)
 			                                           ? ff.image_to_surface(thumbnail, {}, can_use_yuv)
 			                                           : nullptr;
-		                  auto cover_art_surface = ui::is_valid(cover_art)
+		                  auto cover_art_surface = core::is_valid(cover_art)
 			                                           ? ff.image_to_surface(cover_art, {}, can_use_yuv)
 			                                           : nullptr;
 
@@ -3111,7 +3111,7 @@ void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool
 				                  const auto item = weak.lock();
 				                  if (!item) return;
 
-				                  df::assert_true(ui::is_ui_thread());
+				                  core::assert_true(platform::is_ui_thread());
 				                  item->set_thumbnail_state(thumbnail_state::staging_surface, false);
 				                  const auto was_current = generation == item->_thumbnail_surface_generation;
 				                  if (was_current)
@@ -3190,13 +3190,13 @@ void df::item_element::start_thumbnail_animation(view_state& state) const
 	state.invalidate_view(view_invalid::animations | view_invalid::view_redraw);
 }
 
-sizei df::item_element::measure(ui::measure_context& mc, const int width_limit) const
+sizei df::item_element::measure(render::measure_context& mc, const int width_limit) const
 {
 	assert_true(false);
 	return {0, 0};
 }
 
-void df::item_element::layout(ui::measure_context& mc, const recti bounds_in)
+void df::item_element::layout(render::measure_context& mc, const recti bounds_in)
 {
 	bounds = bounds_in;
 	_interactive_bounds = bounds_in;
@@ -3219,7 +3219,7 @@ view_controller_ptr df::item_element::controller_from_location(const view_host_p
 
 size_t df::trim_thumbnail_blobs(const item_elements& items, const recti viewport, const size_t budget_bytes)
 {
-	assert_true(ui::is_ui_thread());
+	assert_true(platform::is_ui_thread());
 
 	// Distance from an empty viewport says nothing, and answering it anyway would rank every item as
 	// maximally far and dump the whole set whenever Items is not the laid-out view.
@@ -3272,9 +3272,9 @@ size_t df::trim_thumbnail_blobs(const item_elements& items, const recti viewport
 	return freed;
 }
 
-std::vector<ui::const_image_ptr> df::item_set::thumbs(const size_t max, const item_element_ptr& skip_this) const
+std::vector<core::const_image_ptr> df::item_set::thumbs(const size_t max, const item_element_ptr& skip_this) const
 {
-	std::vector<ui::const_image_ptr> results;
+	std::vector<core::const_image_ptr> results;
 
 	for (const auto& i : _items)
 	{
@@ -3290,10 +3290,10 @@ std::vector<ui::const_image_ptr> df::item_set::thumbs(const size_t max, const it
 	return results;
 }
 
-std::vector<ui::const_surface_ptr> df::item_set::thumbnail_surfaces(const size_t max,
+std::vector<core::const_surface_ptr> df::item_set::thumbnail_surfaces(const size_t max,
                                                                     const item_element_ptr& skip_this) const
 {
-	std::vector<ui::const_surface_ptr> results;
+	std::vector<core::const_surface_ptr> results;
 
 	for (const auto& i : _items)
 	{
@@ -3414,13 +3414,13 @@ df::item_display_info df::item_element::populate_info() const
 	{
 		result.icon = _path.folder().is_drive() ? icon_index::disk : icon_index::folder;
 		result.name = _name;
-		result.title_font = ui::style::font_face::title;
+		result.title_font = render::font_face::title;
 
 		result.title = _info->volume;
 		result.caption = result.title;
 		result.items = static_cast<int>(_total_count);
 		result.size = _size;
-		result.modified = _modified.system_to_local();
+		result.modified = platform::utc_to_local(_modified);
 		result.created = media_created();
 	}
 	else
@@ -3463,7 +3463,7 @@ df::item_display_info df::item_element::populate_info() const
 			}
 
 			result.icon = mt->icon;
-			result.modified = _modified.system_to_local();
+			result.modified = platform::utc_to_local(_modified);
 			result.created = media_created();
 			result.file_created = file_or_metadata_created();
 		}
@@ -3492,7 +3492,7 @@ void df::item_element::open(view_state& s, const view_host_base_ptr& view) const
 
 void df::item_element::refresh_layout_dims()
 {
-	assert_true(ui::is_ui_thread());
+	assert_true(platform::is_ui_thread());
 
 	if (_ft == file_type::folder) return;
 
@@ -3620,24 +3620,24 @@ bool df::item_element::update(const file_path path, const index_file_item& info)
 	return changed;
 }
 
-static void notify_rename_after_move(const df::file_path source, const df::file_path destination)
+static void notify_rename_after_move(const core::file_path source, const core::file_path destination)
 {
 	if (df::rename_after_move_for_test) df::rename_after_move_for_test(source, destination);
 }
 
-static platform::file_op_result rename_recovery_failed(const df::file_path expected_path,
-                                                       const df::file_path surviving_path,
+static platform::file_op_result rename_recovery_failed(const core::file_path expected_path,
+                                                       const core::file_path surviving_path,
                                                        platform::file_op_result result)
 {
 	result.code = platform::file_op_result_code::FAILED;
 	result.error_message = std::format("Could not restore {}; surviving path is {}. {}",
 	                                   expected_path.str(), surviving_path.str(), result.format_error());
 	if (df::rename_recovery_report_for_test) df::rename_recovery_report_for_test(result.error_message);
-	df::log(__FUNCTION__, result.error_message);
+	core::log(__FUNCTION__, result.error_message);
 	return result;
 }
 
-static platform::file_op_result rename_file(const df::file_path source, const df::file_path destination)
+static platform::file_op_result rename_file(const core::file_path source, const core::file_path destination)
 {
 	if (source.icmp(destination) != 0 || source.pack() == destination.pack())
 	{
@@ -3692,8 +3692,8 @@ platform::file_op_result df::item_element::rename(index_state& index, const std:
 
 		if (result.success())
 		{
-			notify_rename_after_move(df::file_path(path_src.parent(), path_src.name()),
-			                         df::file_path(path_dst.parent(), path_dst.name()));
+			notify_rename_after_move(core::file_path(path_src.parent(), path_src.name()),
+			                         core::file_path(path_dst.parent(), path_dst.name()));
 			_path.folder(path_dst);
 			_name = path_dst.name();
 		}
@@ -3742,7 +3742,7 @@ platform::file_op_result df::item_element::rename(index_state& index, const std:
 			}
 			if (first_rollback_failure.failed())
 			{
-				index.queue_scan_folders(df::unique_folders{path_src.folder(), path_dst.folder()});
+				index.queue_scan_folders(core::unique_folders{path_src.folder(), path_dst.folder()});
 				return first_rollback_failure;
 			}
 			return result;
@@ -3769,7 +3769,7 @@ platform::file_op_result df::item_element::rename(index_state& index, const std:
 		}
 		if (first_rollback_failure.failed())
 		{
-			index.queue_scan_folders(df::unique_folders{path_src.folder(), path_dst.folder()});
+			index.queue_scan_folders(core::unique_folders{path_src.folder(), path_dst.folder()});
 			return first_rollback_failure;
 		}
 	}

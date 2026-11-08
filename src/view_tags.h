@@ -38,8 +38,8 @@ class tags_view final :
 	std::vector<std::string_view> _favorite_words;
 	std::vector<std::string_view> _common_words;
 	std::vector<std::string_view> _existing_words;
-	df::string_counts _common_counts;
-	df::string_counts _existing_counts;
+	core::string_counts _common_counts;
+	core::string_counts _existing_counts;
 
 	std::shared_ptr<ui::multi_line_edit_control> _edit;
 	ui::recommended_words_control::refresh_group _word_refresh;
@@ -94,7 +94,7 @@ public:
 
 	std::string_view title() override
 	{
-		_title = std::format("{}: {}", s_app_name, tt.tag_add_remove);
+		_title = std::format("{}: {}", core::app_name(), tt.tag_add_remove);
 		return _title;
 	}
 

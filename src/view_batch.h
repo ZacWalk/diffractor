@@ -35,20 +35,20 @@ class batch_tool_view final : public list_view, public std::enable_shared_from_t
 	uint64_t _plan_generation = 0;
 	// What a result summary calls each reviewed row, in row order.
 	std::vector<std::string> _row_names;
-	df::date_t _original_start;
-	df::date_t _new_start;
+	core::date_t _original_start;
+	core::date_t _new_start;
 	bool _new_start_seeded = false;
 	std::string _metadata_title;
 	std::string _metadata_comment;
 	std::string _metadata_synopsis;
 	int _metadata_rating = 0;
 	int _metadata_year = 0;
-	df::date_t _metadata_date_original;
-	df::date_t _metadata_date_created;
-	df::xy8 _metadata_episode = {0, 0};
+	core::date_t _metadata_date_original;
+	core::date_t _metadata_date_created;
+	core::xy8 _metadata_episode = {0, 0};
 	int _metadata_season = 0;
-	df::xy8 _metadata_track = {0, 0};
-	df::xy8 _metadata_disk = {0, 0};
+	core::xy8 _metadata_track = {0, 0};
+	core::xy8 _metadata_disk = {0, 0};
 	metadata_edits metadata_changes() const;
 	void update_date_start();
 	void refresh_convert();

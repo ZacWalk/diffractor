@@ -43,7 +43,7 @@ void md5::initialise()
 // operation, processing another message block, and updating the
 // context.
 
-void md5::update(const df::cspan data)
+void md5::update(const core::cspan data)
 {
 	if (_finalized)
 	{
@@ -122,9 +122,9 @@ void md5::finalize()
 	Encode(digest, state, 16);
 
 	// Zeroize sensitive information (volatile writes prevent compiler optimization)
-	platform::secure_zero(buffer, sizeof(buffer));
-	platform::secure_zero(state, sizeof(state));
-	platform::secure_zero(count, sizeof(count));
+	core::secure_zero(buffer, sizeof(buffer));
+	core::secure_zero(state, sizeof(state));
+	core::secure_zero(count, sizeof(count));
 
 	_finalized = true;
 }
@@ -213,7 +213,7 @@ void md5::Transform(const uint8_t* block)
 {
 	uint32_t a = state[0], b = state[1], c = state[2], d = state[3], x[16];
 	Decode(x, {block, 64});
-	df::assert_true(!_finalized); // not just a user error, since the method is private
+	core::assert_true(!_finalized); // not just a user error, since the method is private
 
 	/* Round 1 */
 	FF(a, b, c, d, x[0], S11, 0xd76aa478); /* 1 */
@@ -293,7 +293,7 @@ void md5::Transform(const uint8_t* block)
 	state[3] += d;
 
 	// Zeroize sensitive information.
-	platform::secure_zero(x, sizeof(x));
+	core::secure_zero(x, sizeof(x));
 }
 
 // Encodes input (uint32_t) into output (uint8_t). Assumes len is
@@ -313,7 +313,7 @@ void md5::Encode(uint8_t* output, const uint32_t* input, const size_t len)
 
 // Decodes input (uint8_t) into output (uint32_t). Assumes len is
 // a multiple of 4.
-void md5::Decode(uint32_t* output, const df::cspan input)
+void md5::Decode(uint32_t* output, const core::cspan input)
 {
 	uint32_t i, j;
 

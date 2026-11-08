@@ -63,7 +63,7 @@ static void av_log(void*, const int level, const char* format, va_list argList)
 			const auto length = _vscprintf(format, argList);
 			std::string result(length + 1u, 0);
 			vsprintf_s(result.data(), length + 1u, format, argList);
-			platform::trace(result);
+			core::debug_output(result);
 		}
 	}
 #endif
@@ -180,8 +180,8 @@ static int64_t codec_working_bytes_per_pixel(const AVCodecID codec_id)
 
 static int64_t codec_pixel_ceiling(const AVCodecID codec_id)
 {
-	if (df::max_decode_bytes <= 0) return 0;
-	return std::max<int64_t>(1, df::max_decode_bytes / codec_working_bytes_per_pixel(codec_id));
+	if (render::max_decode_bytes <= 0) return 0;
+	return std::max<int64_t>(1, render::max_decode_bytes / codec_working_bytes_per_pixel(codec_id));
 }
 
 static void set_probe_decode_ceiling(AVDictionary** const opts, const AVCodecID codec_id)
@@ -192,7 +192,7 @@ static void set_probe_decode_ceiling(AVDictionary** const opts, const AVCodecID 
 
 static AVDictionary** alloc_stream_probe_options(const AVFormatContext* const fc)
 {
-	if (!fc || fc->nb_streams == 0 || df::max_decode_bytes <= 0) return nullptr;
+	if (!fc || fc->nb_streams == 0 || render::max_decode_bytes <= 0) return nullptr;
 
 	auto** result = static_cast<AVDictionary**>(av_calloc(fc->nb_streams, sizeof(AVDictionary*)));
 	if (!result) return nullptr;
@@ -220,13 +220,14 @@ static bool reject_over_budget_codec_working(load_diagnostic* const diagnostic, 
 
 	const auto bytes = static_cast<int64_t>(source_dimensions.cx) * source_dimensions.cy *
 		codec_working_bytes_per_pixel(codec_id);
-	if (bytes <= df::max_decode_bytes) return false;
+	if (bytes <= render::max_decode_bytes) return false;
 
 	if (diagnostic) diagnostic->over_budget = true;
 
-	df::log(__FUNCTION__, std::format("{} {} x {} needs {} of codec working storage, over the {} budget",
-	                                  format, source_dimensions.cx, source_dimensions.cy,
-	                                  df::file_size(bytes).str(), df::file_size(df::max_decode_bytes).str()));
+	core::log(__FUNCTION__,
+		std::format("{} {} x {} needs {} of codec working storage, over the {} budget", format, source_dimensions.cx,
+			source_dimensions.cy, platform::format_size(core::file_size(bytes)),
+			platform::format_size(core::file_size(render::max_decode_bytes))));
 	return true;
 }
 
@@ -298,25 +299,25 @@ static std::string normalize_still_extension_hint(const std::string_view extensi
 	return std::format(".{}", extension_hint);
 }
 
-static bool tga_declares_alpha(const df::cspan data, const std::string_view extension_hint)
+static bool tga_declares_alpha(const core::cspan data, const std::string_view extension_hint)
 {
-	if (str::icmp(extension_hint, ".tga") != 0 || data.size < 18) return true;
+	if (core::icmp(extension_hint, ".tga") != 0 || data.size < 18) return true;
 	if (data.data[16] != 32) return true;
 	return (data.data[17] & 0x0f) != 0;
 }
 
-static sizei hinted_tga_dimensions(const df::cspan data, const std::string_view extension_hint)
+static sizei hinted_tga_dimensions(const core::cspan data, const std::string_view extension_hint)
 {
-	if (str::icmp(extension_hint, ".tga") != 0 || data.size < 18) return {};
+	if (core::icmp(extension_hint, ".tga") != 0 || data.size < 18) return {};
 	return {
 		static_cast<int>(data.data[12] | (data.data[13] << 8)),
 		static_cast<int>(data.data[14] | (data.data[15] << 8))
 	};
 }
 
-static sizei hinted_bmp_dimensions(const df::cspan data, const std::string_view extension_hint)
+static sizei hinted_bmp_dimensions(const core::cspan data, const std::string_view extension_hint)
 {
-	if (str::icmp(extension_hint, ".bmp") != 0 || data.size < 26 || data.data[0] != 'B' || data.data[1] != 'M')
+	if (core::icmp(extension_hint, ".bmp") != 0 || data.size < 26 || data.data[0] != 'B' || data.data[1] != 'M')
 	{
 		return {};
 	}
@@ -328,7 +329,7 @@ static sizei hinted_bmp_dimensions(const df::cspan data, const std::string_view 
 	return {std::abs(width), std::abs(height)};
 }
 
-static bool reject_hinted_over_budget_still(load_diagnostic* const diagnostic, const df::cspan data,
+static bool reject_hinted_over_budget_still(load_diagnostic* const diagnostic, const core::cspan data,
                                             const std::string_view extension_hint)
 {
 	if (const auto tga_dimensions = hinted_tga_dimensions(data, extension_hint); !tga_dimensions.is_empty())
@@ -421,7 +422,7 @@ static const uint8_t* dv_find_vaux_pack(const uint8_t* frame, const size_t frame
 	return nullptr;
 }
 
-df::date_t dv_extract_rec_datetime(const uint8_t* frame, const size_t frame_size)
+core::date_t dv_extract_rec_datetime(const uint8_t* frame, const size_t frame_size)
 {
 	if (!frame) return {};
 
@@ -459,7 +460,7 @@ df::date_t dv_extract_rec_datetime(const uint8_t* frame, const size_t frame_size
 // Reads the first full DV video frame from the demuxer and extracts its embedded
 // recording date/time. Used for DVCAM / DV-in-AVI files, whose creation date is
 // stored inside the DV frames rather than the container.
-static df::date_t read_dv_rec_datetime(AVFormatContext* fc, const int video_stream_index)
+static core::date_t read_dv_rec_datetime(AVFormatContext* fc, const int video_stream_index)
 {
 	if (!fc || video_stream_index < 0 || video_stream_index >= static_cast<int>(fc->nb_streams)) return {};
 
@@ -473,7 +474,7 @@ static df::date_t read_dv_rec_datetime(AVFormatContext* fc, const int video_stre
 	// left the demuxer positioned mid-stream).
 	av_seek_frame(fc, -1, 0, AVSEEK_FLAG_BACKWARD);
 
-	df::date_t result;
+	core::date_t result;
 	auto* pkt = av_packet_alloc();
 
 	for (int tries = 0; tries < 64 && av_read_frame(fc, pkt) >= 0; ++tries)
@@ -511,17 +512,17 @@ static void populate_properties(const AVFormatContext* ctx, file_scan_result& re
 
 		while (with_tags && (tag = av_dict_get(ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
 		{
-			if (str::icmp(tag->key, "xmp") == 0 || str::icmp(tag->key, "id3v2_priv.XMP") == 0)
+			if (core::icmp(tag->key, "xmp") == 0 || core::icmp(tag->key, "id3v2_priv.XMP") == 0)
 			{
 				result.metadata.xmp = unescape_xmp(tag->value);
 			}
-			else if (is_mov && str::icmp(tag->key, "rating") == 0)
+			else if (is_mov && core::icmp(tag->key, "rating") == 0)
 			{
-				result.ffmpeg_metadata.emplace_back(std::string_view{"itunes_advisory"}, str::utf8_cast(tag->value));
+				result.ffmpeg_metadata.emplace_back(std::string_view{"itunes_advisory"}, core::utf8_cast(tag->value));
 			}
 			else
 			{
-				result.ffmpeg_metadata.emplace_back(tag->key, str::utf8_cast(tag->value));
+				result.ffmpeg_metadata.emplace_back(tag->key, core::utf8_cast(tag->value));
 			}
 		}
 	}
@@ -576,17 +577,17 @@ static prop::audio_sample_t to_sample_type(const AVSampleFormat format)
 
 // The orientation a turn shows the picture with, numbered as EXIF numbers it: a quarter turn exactly, as a
 // container states one, after the mirror when there is one; any other angle is shown unturned.
-static ui::orientation calc_orientation_impl(const display_turn& turn)
+static core::orientation calc_orientation_impl(const display_turn& turn)
 {
-	const auto rr = df::round(turn.rotation);
+	const auto rr = core::round(turn.rotation);
 	const auto quarter = rr == 90 || rr == 180 || rr == 270 ? rr : 0;
-	return static_cast<ui::orientation>(libfiles::orientation_from_turn(quarter, turn.mirrored));
+	return static_cast<core::orientation>(libfiles::orientation_from_turn(quarter, turn.mirrored));
 }
 
 // The codec in Diffractor's terms: FFmpeg's codec name, but "mpeg2" for "mpeg2video", "dv" for
 // "dvvideo" and "pcm" for every linear PCM layout, whose depth is the sample type - the names libfiles
 // gives the codecs it reads, so a file reads alike whichever described it.
-static str::cached short_codec_name(const AVCodecParameters* const codec)
+static core::cached short_codec_name(const AVCodecParameters* const codec)
 {
 	if (!codec || codec->codec_id == AV_CODEC_ID_NONE) return {};
 
@@ -602,12 +603,12 @@ static str::cached short_codec_name(const AVCodecParameters* const codec)
 
 	const std::string_view name = avcodec_get_name(codec->codec_id);
 	if (name.starts_with("pcm_")) return "pcm"_c;
-	return str::cache(name);
+	return core::cache(name);
 }
 
 // A pixel format as chroma and depth, as libfiles names a stream's: "yuv420", "yuv422 10bit", "gray",
 // "rgb". Empty when unset or unknown.
-static str::cached own_pixel_format(const int format)
+static core::cached own_pixel_format(const int format)
 {
 	const auto* const desc = format == AV_PIX_FMT_NONE
 		                         ? nullptr
@@ -647,7 +648,7 @@ static str::cached own_pixel_format(const int format)
 	}
 
 	if (desc->comp[0].depth > 8) name += std::format(" {}bit", desc->comp[0].depth);
-	return str::cache(name);
+	return core::cache(name);
 }
 
 // The audio sample type as the stream codes it: a depth for linear PCM and lossless codecs, none for a
@@ -676,7 +677,7 @@ static void populate_audio_properties(const AVStream* const s, file_scan_result&
 
 	if (codec && codec->codec_type == AVMEDIA_TYPE_AUDIO)
 	{
-		if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.audio_codec = name;
+		if (const auto name = short_codec_name(codec); !core::is_empty(name)) result.audio_codec = name;
 
 		result.audio_sample_rate = codec->sample_rate;
 		result.audio_channels = codec->ch_layout.nb_channels;
@@ -690,7 +691,7 @@ static void populate_video_properties(const AVStream* const s, file_scan_result&
 
 	if (codec && codec->codec_type == AVMEDIA_TYPE_VIDEO)
 	{
-		if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.video_codec = name;
+		if (const auto name = short_codec_name(codec); !core::is_empty(name)) result.video_codec = name;
 
 		result.width = codec->width;
 		result.height = codec->height;
@@ -708,11 +709,11 @@ static void populate_video_properties(const AVStream* const s, file_scan_result&
 		if (sar.num > 0 && sar.den > 0 && sar.num != sar.den && codec->width > 0 && codec->height > 0)
 		{
 			const auto w = static_cast<int64_t>(codec->width);
-			result.height = static_cast<uint32_t>(df::mul_div(
+			result.height = static_cast<uint32_t>(core::mul_div(
 				w, static_cast<int64_t>(sar.den) * codec->height, static_cast<int64_t>(sar.num) * w));
 		}
 
-		if (const auto name = own_pixel_format(codec->format); !str::is_empty(name))
+		if (const auto name = own_pixel_format(codec->format); !core::is_empty(name))
 		{
 			result.pixel_format = name;
 		}
@@ -750,12 +751,12 @@ static int hw_surface_format(const AVFrame& frame)
 ////////////////////////////////////////////////
 ////////////////////////////////////////////////
 
-class av_frame final : public ui::video_frame
+class av_frame final : public render::video_frame
 {
 public:
 	double time = 0.0;
 	int gen = 0;
-	ui::orientation orientation = ui::orientation::top_left;
+	core::orientation orientation = core::orientation::top_left;
 	bool eof = false;
 
 	// Allocated by FFmpeg rather than held by value: the struct's size is the library's to change,
@@ -764,11 +765,11 @@ public:
 
 	// The picture converted for upload on the decode thread, so presenting it is an upload and nothing
 	// more. Once this exists frm is released, so the queue holds the picture only once.
-	ui::const_surface_ptr surface;
+	core::const_surface_ptr surface;
 
 	// For an HDR picture the renderer shares straight from the decoder: the mapping to SDR its shader
 	// applies, made here on the decode thread because making it is far too slow for a paint.
-	ui::tone_map_lut_ptr tone_map;
+	core::tone_map_lut_ptr tone_map;
 
 	bool operator<(const av_frame& other) const
 	{
@@ -825,12 +826,12 @@ public:
 		return frm->width == 0 || frm->height == 0 || frm->data[0] == nullptr;
 	}
 
-	ui::const_surface_ptr prepared_surface() const override
+	core::const_surface_ptr prepared_surface() const override
 	{
 		return surface;
 	}
 
-	ui::video_picture picture() const override;
+	render::video_picture picture() const override;
 
 	void request_cpu_frames() const override
 	{
@@ -1019,7 +1020,7 @@ int64_t av_pts_correction::guess(const int64_t best_effort, const int64_t pts, c
 // Maps an AVFrame's signalled colour space + range onto the app's color_space enum.
 // When the matrix is unspecified (very common) it falls back to the standard
 // resolution heuristic: SD -> BT.601, HD -> BT.709, UHD -> BT.2020.
-static ui::color_space av_frame_color_space(const AVFrame& frm)
+static core::color_space av_frame_color_space(const AVFrame& frm)
 {
 	const bool full_range = frm.color_range == AVCOL_RANGE_JPEG;
 
@@ -1035,21 +1036,21 @@ static ui::color_space av_frame_color_space(const AVFrame& frm)
 	switch (matrix)
 	{
 	case AVCOL_SPC_BT709:
-		return full_range ? ui::color_space::rec709_full : ui::color_space::rec709_limited;
+		return full_range ? core::color_space::rec709_full : core::color_space::rec709_limited;
 	case AVCOL_SPC_BT2020_NCL:
 	case AVCOL_SPC_BT2020_CL:
-		return full_range ? ui::color_space::rec2020_full : ui::color_space::rec2020_limited;
+		return full_range ? core::color_space::rec2020_full : core::color_space::rec2020_limited;
 	case AVCOL_SPC_BT470BG:
 	case AVCOL_SPC_SMPTE170M:
 	case AVCOL_SPC_SMPTE240M:
 	default:
-		return full_range ? ui::color_space::rec601_full : ui::color_space::rec601_limited;
+		return full_range ? core::color_space::rec601_full : core::color_space::rec601_limited;
 	}
 }
 
-ui::video_picture av_frame::picture() const
+render::video_picture av_frame::picture() const
 {
-	ui::video_picture result;
+	render::video_picture result;
 	result.width = frm->width;
 	result.height = frm->height;
 	result.orientation = orientation;
@@ -1132,7 +1133,7 @@ video_info_t av_format_decoder::video_information() const
 		else
 		{
 			const auto width = static_cast<int64_t>(_video_context->width);
-			const auto height = df::mul_div(width, ar.den * static_cast<int64_t>(_video_context->height),
+			const auto height = core::mul_div(width, ar.den * static_cast<int64_t>(_video_context->height),
 			                                ar.num * width);
 			result.display_dimensions = {static_cast<int>(width), static_cast<int>(height)};
 		}
@@ -1244,7 +1245,7 @@ audio_info_t av_format_decoder::audio_info() const
 
 bool av_format_decoder::io_should_stop() const
 {
-	return df::is_closing || (_io_abandon && _io_abandon->is_cancelled());
+	return platform::is_closing || (_io_abandon && _io_abandon->is_cancelled());
 }
 
 av_format_decoder::stream_discard_scope::stream_discard_scope(AVStream* stream, const int discard) : _stream(stream)
@@ -1273,7 +1274,7 @@ av_format_decoder::stream_discard_scope av_format_decoder::discard_video_while_r
 
 int av_format_decoder::read_io(void* opaque, uint8_t* buf, const int buf_size)
 {
-	df::assert_true(buf_size != 0);
+	core::assert_true(buf_size != 0);
 
 	auto* const decoder = static_cast<av_format_decoder*>(opaque);
 	if (decoder->io_should_stop()) return AVERROR_EXIT;
@@ -1314,7 +1315,7 @@ int64_t av_format_decoder::seek_io(void* opaque, const int64_t offset, const int
 	}
 	else
 	{
-		df::assert_true(false);
+		core::assert_true(false);
 	}
 
 	return result;
@@ -1344,7 +1345,7 @@ bool av_format_decoder::seek(const double wanted) const
 
 	if (fc)
 	{
-		df::trace(std::format("av_format_decoder::seek {}", wanted));
+		core::trace(std::format("av_format_decoder::seek {}", wanted));
 
 		const auto to_ts = [](const double t) { return static_cast<int64_t>(t * AV_TIME_BASE); };
 
@@ -1374,7 +1375,7 @@ bool av_format_decoder::seek(const double wanted) const
 
 		if (_eof)
 		{
-			df::trace("av_format_decoder:seek end of stream");
+			core::trace("av_format_decoder:seek end of stream");
 		}
 
 		if (success)
@@ -1393,7 +1394,7 @@ void av_format_decoder::clear_sequential_frame_bracket() const
 	_sequential_next.reset();
 }
 
-bool av_format_decoder::scale_sequential_frame(ui::surface_ptr& dest_surface, const sizei max_dim,
+bool av_format_decoder::scale_sequential_frame(core::surface_ptr& dest_surface, const sizei max_dim,
                                                const av_frame& frame) const
 {
 	if (!_scaler)
@@ -1423,7 +1424,7 @@ av_packet_ptr av_format_decoder::read_packet() const
 	{
 		_eof = true;
 		result->eof = true;
-		df::trace("av_format_decoder:read_packet end of stream");
+		core::trace("av_format_decoder:read_packet end of stream");
 		return result;
 	}
 
@@ -1486,7 +1487,7 @@ void av_format_decoder::extract_metadata(file_scan_result& sr, const bool with_t
 			if (dv_date.is_valid())
 			{
 				// DV times are local wall-clock; store so created() round-trips it.
-				sr.created_utc = dv_date.local_to_system();
+				sr.created_utc = platform::local_to_utc(dv_date);
 			}
 		}
 
@@ -1494,12 +1495,12 @@ void av_format_decoder::extract_metadata(file_scan_result& sr, const bool with_t
 
 		if (bit_rate > 0)
 		{
-			sr.bitrate = str::cache(prop::format_bit_rate(bit_rate));
+			sr.bitrate = core::cache(prop::format_bit_rate(bit_rate));
 		}
 
 		if (fc->duration != AV_NOPTS_VALUE)
 		{
-			sr.duration = df::round(calc_duration(fc->duration, AV_NOPTS_VALUE));
+			sr.duration = core::round(calc_duration(fc->duration, AV_NOPTS_VALUE));
 		}
 
 		// _orientation is only established by init_streams, and a decoded frame may then correct it.
@@ -1590,7 +1591,7 @@ void av_format_decoder::close()
 	_cover_art.reset();
 	_start_time = 0;
 	_end_time = 0;
-	_orientation = ui::orientation::top_left;
+	_orientation = core::orientation::top_left;
 	_video_base = {};
 	_audio_base = {};
 	_video_stream_aspect_ratio = {};
@@ -1684,7 +1685,7 @@ std::string subtitle_text_as_utf8(const std::string_view bytes)
 	{
 		const auto c = static_cast<uint8_t>(ch);
 		const char32_t cp = c < 0x80 ? c : c < 0xA0 ? high[c - 0x80] : c;
-		str::char32_to_utf8(std::back_inserter(result), static_cast<uint32_t>(cp));
+		core::char32_to_utf8(std::back_inserter(result), static_cast<uint32_t>(cp));
 	}
 
 	return result;
@@ -1760,7 +1761,7 @@ static std::vector<subtitle_event> to_subtitle_events(const AVSubtitle& sub, con
 			else
 			{
 				text = parse_ass_dialogue({}, script.style({}));
-				platform::text_run run;
+				render::text_run run;
 				run.text = rect->text;
 				text.runs.push_back(std::move(run));
 			}
@@ -1850,7 +1851,7 @@ void av_format_decoder::flush_subtitles()
 	if (_subtitle_context) avcodec_flush_buffers(_subtitle_context);
 }
 
-subtitle_file decode_subtitle_file(const df::file_path path)
+subtitle_file decode_subtitle_file(const core::file_path path)
 {
 	subtitle_file result;
 
@@ -1864,7 +1865,7 @@ subtitle_file decode_subtitle_file(const df::file_path path)
 
 	if (avformat_open_input(&fc, url.c_str(), nullptr, nullptr) < 0) return result;
 
-	const df::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+	const core::scope_exit close_input([&fc] { avformat_close_input(&fc); });
 
 	if (avformat_find_stream_info(fc, nullptr) < 0) return result;
 
@@ -1874,7 +1875,7 @@ subtitle_file decode_subtitle_file(const df::file_path path)
 	auto* context = open_subtitle_decoder(fc->streams[index]);
 	if (!context) return result;
 
-	const df::scope_exit free_context([&context] { avcodec_free_context(&context); });
+	const core::scope_exit free_context([&context] { avcodec_free_context(&context); });
 
 	result.script = script_of(context);
 	sizei canvas{context->width, context->height};
@@ -1882,7 +1883,7 @@ subtitle_file decode_subtitle_file(const df::file_path path)
 	const auto* const stream = fc->streams[index];
 	const auto forced = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
 	auto* packet = av_packet_alloc();
-	const df::scope_exit free_packet([&packet] { av_packet_free(&packet); });
+	const core::scope_exit free_packet([&packet] { av_packet_free(&packet); });
 
 	// Enough for any film's dialogue; a file claiming more is not one.
 	constexpr size_t max_events = 100000;
@@ -2008,7 +2009,7 @@ static bool has_presentable_stream(const AVFormatContext* fc)
 	return false;
 }
 
-bool av_format_decoder::open(const df::file_path path, const media_intent intent)
+bool av_format_decoder::open(const core::file_path path, const media_intent intent)
 {
 	const auto file = open_file(path, platform::file_open_mode::read);
 
@@ -2017,12 +2018,12 @@ bool av_format_decoder::open(const df::file_path path, const media_intent intent
 		return false;
 	}
 
-	df::trace(std::format("av_format_decoder::open {}", path.name()));
+	core::trace(std::format("av_format_decoder::open {}", path.name()));
 
 	return open(file, path, intent);
 }
 
-bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path path, const media_intent intent)
+bool av_format_decoder::open(const platform::file_ptr& file, const core::file_path path, const media_intent intent)
 {
 	close();
 
@@ -2040,7 +2041,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 		if (!files::media_header_matches(path.extension(), {header, static_cast<size_t>(header_read)}))
 		{
-			df::trace(std::format("av_format_decoder::open header mismatch {}", path.name()));
+			core::trace(std::format("av_format_decoder::open header mismatch {}", path.name()));
 			return false;
 		}
 	}
@@ -2054,7 +2055,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 		if (_media_scan && !_media_scan->success) _media_scan.reset();
 	}
 
-	static constexpr int io_buffer_size = df::two_fifty_six_k;
+	static constexpr int io_buffer_size = core::two_fifty_six_k;
 	auto* io_buffer = static_cast<uint8_t*>(av_mallocz(io_buffer_size + 16));
 	auto* fc = io_buffer ? avformat_alloc_context() : nullptr;
 
@@ -2070,7 +2071,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 		if (fc) avformat_free_context(fc);
 		av_freep(&io_buffer);
 		_file.reset();
-		df::log(__FUNCTION__, "could not allocate the format context");
+		core::log(__FUNCTION__, "could not allocate the format context");
 		return false;
 	}
 
@@ -2085,7 +2086,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 	// listener, so a voice silenced in the SID monitor is heard to go quiet promptly.
 	if (is_sid_stream(file)) av_dict_set_int(&opts, "max_size", sid_stream_packet_bytes, 0);
 
-	if (avformat_open_input(&fc, str::utf8_to_a(path.str()).c_str(), nullptr, &opts) != 0)
+	if (avformat_open_input(&fc, platform::utf8_to_a(path.str()).c_str(), nullptr, &opts) != 0)
 	{
 		// avformat_open_input frees fc on failure and sets it to NULL,
 		// but pb and its buffer are not freed. We saved pb above.
@@ -2137,7 +2138,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 		// gets the full probe. Probe cost is roughly linear in bytes read, so probesize is the budget.
 		if (has_header_codec_parameters(fc))
 		{
-			fc->probesize = df::two_fifty_six_k * 2;
+			fc->probesize = core::two_fifty_six_k * 2;
 			fc->max_analyze_duration = AV_TIME_BASE;
 		}
 	}
@@ -2148,7 +2149,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 	if (!has_presentable_stream(fc))
 	{
-		df::log(__FUNCTION__, std::format("no media stream in {}", path.name()));
+		core::log(__FUNCTION__, std::format("no media stream in {}", path.name()));
 		close();
 		return false;
 	}
@@ -2173,17 +2174,17 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 			while (stream->metadata && (tag = av_dict_get(stream->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
 			{
-				if (is_key(tag->key, "title")) s.title = str::utf8_cast(tag->value);
-				if (is_key(tag->key, "codec")) s.codec = str::utf8_cast(tag->value);
-				if (is_key(tag->key, "FourCC")) s.fourcc = str::utf8_cast(tag->value);
-				if (is_key(tag->key, "language")) s.language = str::utf8_cast(tag->value);
-				s.metadata.emplace_back(tag->key, str::utf8_cast(tag->value));
+				if (is_key(tag->key, "title")) s.title = core::utf8_cast(tag->value);
+				if (is_key(tag->key, "codec")) s.codec = core::utf8_cast(tag->value);
+				if (is_key(tag->key, "FourCC")) s.fourcc = core::utf8_cast(tag->value);
+				if (is_key(tag->key, "language")) s.language = core::utf8_cast(tag->value);
+				s.metadata.emplace_back(tag->key, core::utf8_cast(tag->value));
 			}
 
 			s.is_commentary = (stream->disposition & AV_DISPOSITION_COMMENT) != 0;
 			s.is_audio_description = (stream->disposition & AV_DISPOSITION_VISUAL_IMPAIRED) != 0;
 			s.is_forced = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
-			s.rotation = df::round(get_display_turn(stream).rotation);
+			s.rotation = core::round(get_display_turn(stream).rotation);
 
 			if ((stream->disposition & AV_DISPOSITION_ATTACHED_PIC) && !_cover_art)
 			{
@@ -2197,7 +2198,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 				if (s.fourcc.empty() && stream->codecpar->codec_tag)
 				{
 					char name[AV_FOURCC_MAX_STRING_SIZE];
-					s.fourcc = str::utf8_cast(av_fourcc_make_string(name, stream->codecpar->codec_tag));
+					s.fourcc = core::utf8_cast(av_fourcc_make_string(name, stream->codecpar->codec_tag));
 				}
 
 				if (codec->codec_type == AVMEDIA_TYPE_VIDEO)
@@ -2206,7 +2207,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 
 					if (const auto* const profile = avcodec_profile_name(codec->codec_id, codec->profile))
 					{
-						s.profile = str::utf8_cast(profile);
+						s.profile = core::utf8_cast(profile);
 					}
 
 					if (const auto* const desc = codec->format == AV_PIX_FMT_NONE
@@ -2226,7 +2227,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 					s.audio_channels = codec->ch_layout.nb_channels;
 					s.audio_sample_type = coded_sample_type(codec);
 				}
-				const auto codec_name = std::string(str::utf8_cast(avcodec_get_name(codec->codec_id)));
+				const auto codec_name = std::string(core::utf8_cast(avcodec_get_name(codec->codec_id)));
 				if (s.codec.empty()) s.codec = std::string(short_codec_name(codec).sv());
 				s.metadata.emplace_back("codec"_c, codec_name);
 
@@ -2235,7 +2236,7 @@ bool av_format_decoder::open(const platform::file_ptr& file, const df::file_path
 					char name[AV_FOURCC_MAX_STRING_SIZE];
 					s.metadata.emplace_back("fourcc"_c,
 					                        std::string(
-						                        str::utf8_cast(av_fourcc_make_string(name, codec->codec_tag))));
+						                        core::utf8_cast(av_fourcc_make_string(name, codec->codec_tag))));
 				}
 
 				switch (codec->codec_type)
@@ -2289,11 +2290,11 @@ static AVPixelFormat get_hw_format(AVCodecContext* ctx,
 
 	if (desc && !(desc->flags & AV_PIX_FMT_FLAG_HWACCEL))
 	{
-		df::log(__FUNCTION__, std::format("hardware decode refused - decoding {} in software", desc->name));
+		core::log(__FUNCTION__, std::format("hardware decode refused - decoding {} in software", desc->name));
 		return software;
 	}
 
-	df::log(__FUNCTION__, "Failed to get hardware surface format");
+	core::log(__FUNCTION__, "Failed to get hardware surface format");
 	return AV_PIX_FMT_NONE;
 }
 
@@ -2322,14 +2323,14 @@ static const AVCodecHWConfig* find_hw_config(const AVCodec* codec, const av_hw_d
 // and the system reclaims it.
 static AVBufferRef* acquire_hw_decode_device(const int device_type)
 {
-	static platform::mutex mutex;
+	static mutex mutex;
 	static AVBufferRef* shared = nullptr;
 
-	platform::exclusive_lock lock(mutex);
+	core::exclusive_lock lock(mutex);
 
 	if (shared && !av_platform_hw_device_usable(shared))
 	{
-		df::log(__FUNCTION__, "hardware decode device was removed - creating another");
+		core::log(__FUNCTION__, "hardware decode device was removed - creating another");
 		av_buffer_unref(&shared);
 	}
 
@@ -2366,7 +2367,7 @@ static hw_decode_choice choose_hw_decode(const AVCodecParameters* par, const AVC
 
 	if (!av_platform_hw_decode_supported(device, par->codec_id, bit_depth, par->width, par->height))
 	{
-		df::log(__FUNCTION__, std::format("no {} {}-bit hardware decoder at {} x {} - decoding in software",
+		core::log(__FUNCTION__, std::format("no {} {}-bit hardware decoder at {} x {} - decoding in software",
 		                                  avcodec_get_name(par->codec_id), bit_depth, par->width, par->height));
 		av_buffer_unref(&device);
 		return {};
@@ -2535,7 +2536,7 @@ void av_format_decoder::init_streams(int video_track, int audio_track, const boo
 					{
 						platform::set_crash_guard(platform::crash_guard::hw_video_decode, true);
 					}
-					df::log(__FUNCTION__, "hardware video decode active");
+					core::log(__FUNCTION__, "hardware video decode active");
 				}
 			}
 		}
@@ -2677,7 +2678,7 @@ av_media_info av_format_decoder::info() const
 
 		while ((tag = av_dict_get(ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
 		{
-			if (str::icmp(tag->key, "id3v2_priv.XMP") == 0 || str::icmp(tag->key, "xmp") == 0)
+			if (core::icmp(tag->key, "id3v2_priv.XMP") == 0 || core::icmp(tag->key, "xmp") == 0)
 			{
 				const auto packet = unescape_xmp(tag->value);
 				bool parsed = false;
@@ -2694,7 +2695,7 @@ av_media_info av_format_decoder::info() const
 			}
 			else
 			{
-				kv.emplace_back(tag->key, str::utf8_cast(tag->value));
+				kv.emplace_back(tag->key, core::utf8_cast(tag->value));
 			}
 		}
 
@@ -2715,12 +2716,12 @@ av_media_info av_format_decoder::info() const
 				(stream->disposition & AV_DISPOSITION_ATTACHED_PIC) == 0 && !video_properties_set)
 			{
 				video_properties_set = true;
-				if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.video_codec = name;
-				if (const auto fmt = own_pixel_format(codec->format); !str::is_empty(fmt)) result.pixel_format = fmt;
+				if (const auto name = short_codec_name(codec); !core::is_empty(name)) result.video_codec = name;
+				if (const auto fmt = own_pixel_format(codec->format); !core::is_empty(fmt)) result.pixel_format = fmt;
 			}
 			else if (codec->codec_type == AVMEDIA_TYPE_AUDIO)
 			{
-				if (const auto name = short_codec_name(codec); !str::is_empty(name)) result.audio_codec = name;
+				if (const auto name = short_codec_name(codec); !core::is_empty(name)) result.audio_codec = name;
 
 				result.audio_sample_rate = codec->sample_rate;
 				result.audio_channels = codec->ch_layout.nb_channels;
@@ -2751,7 +2752,7 @@ av_media_info av_format_decoder::info() const
 }
 
 
-ui::orientation av_format_decoder::calc_orientation() const
+core::orientation av_format_decoder::calc_orientation() const
 {
 	return _orientation;
 }
@@ -2774,7 +2775,7 @@ void av_format_decoder::update_orientation(const AVFrame* const frame)
 	}
 }
 
-bool av_format_decoder::decode_frame(ui::surface_ptr& dest_surface, AVCodecContext* ctx, const AVPacket* packet,
+bool av_format_decoder::decode_frame(core::surface_ptr& dest_surface, AVCodecContext* ctx, const AVPacket* packet,
                                      const sizei max_dim)
 {
 	if (try_avcodec_send_packet(ctx, packet) != 0) return false;
@@ -2783,7 +2784,7 @@ bool av_format_decoder::decode_frame(ui::surface_ptr& dest_surface, AVCodecConte
 	// allocator is sized to the library actually linked.
 	auto* frame = av_frame_alloc();
 	if (!frame) return false;
-	const df::scope_exit free_frame([&frame] { av_frame_free(&frame); });
+	const core::scope_exit free_frame([&frame] { av_frame_free(&frame); });
 
 	if (avcodec_receive_frame(ctx, frame) != 0) return false;
 
@@ -2800,9 +2801,9 @@ bool av_format_decoder::decode_frame(ui::surface_ptr& dest_surface, AVCodecConte
 }
 
 
-bool av_format_decoder::decode_nearest_frame(ui::surface_ptr& dest_surface, const sizei max_dim,
+bool av_format_decoder::decode_nearest_frame(core::surface_ptr& dest_surface, const sizei max_dim,
                                              const double wanted_time, const double tolerance,
-                                             df::cancel_token abandon)
+                                             core::cancel_token abandon)
 {
 	if (!_has_video)
 	{
@@ -2875,7 +2876,7 @@ bool av_format_decoder::decode_nearest_frame(ui::surface_ptr& dest_surface, cons
 	// over a thousand - or the caller silently gets a frame short of the position it asked for.
 	constexpr int max_packets = 8192;
 
-	for (int i = 0; i < max_packets && !choice.reached && !df::is_closing; i++)
+	for (int i = 0; i < max_packets && !choice.reached && !platform::is_closing; i++)
 	{
 		const auto packet = read_packet();
 
@@ -2919,9 +2920,9 @@ bool av_format_decoder::decode_nearest_frame(ui::surface_ptr& dest_surface, cons
 	                                            calc_orientation(), _video_stream_aspect_ratio);
 }
 
-bool av_format_decoder::extract_seek_frame(ui::surface_ptr& dest_surface, const sizei max_dim,
+bool av_format_decoder::extract_seek_frame(core::surface_ptr& dest_surface, const sizei max_dim,
                                            const double pos_numerator,
-                                           const double pos_denominator, df::cancel_token abandon)
+                                           const double pos_denominator, core::cancel_token abandon)
 {
 	if (!_has_video)
 	{
@@ -2951,11 +2952,11 @@ bool av_format_decoder::extract_seek_frame(ui::surface_ptr& dest_surface, const 
 	return decode_nearest_frame(dest_surface, max_dim, wanted_time, 0.0, abandon);
 }
 
-bool av_format_decoder::extract_thumbnail(ui::surface_ptr& dest_surface, const sizei max_dim,
+bool av_format_decoder::extract_thumbnail(core::surface_ptr& dest_surface, const sizei max_dim,
                                           const double pos_numerator,
                                           const double pos_denominator,
                                           const bool exact_frame,
-                                          const double tolerance_fraction, df::cancel_token abandon)
+                                          const double tolerance_fraction, core::cancel_token abandon)
 {
 	auto success = false;
 
@@ -2998,7 +2999,7 @@ bool av_format_decoder::extract_thumbnail(ui::surface_ptr& dest_surface, const s
 				}
 				else
 				{
-					for (int i = 0; i < 1024 && !success && !df::is_closing; i++)
+					for (int i = 0; i < 1024 && !success && !platform::is_closing; i++)
 					{
 						const auto packet = read_packet();
 
@@ -3029,8 +3030,8 @@ bool av_format_decoder::extract_thumbnail(ui::surface_ptr& dest_surface, const s
 	return success;
 }
 
-bool av_format_decoder::extract_frame_at(ui::surface_ptr& dest_surface, const sizei max_dim, const double wanted_time,
-                                         const double tolerance_seconds, df::cancel_token abandon)
+bool av_format_decoder::extract_frame_at(core::surface_ptr& dest_surface, const sizei max_dim, const double wanted_time,
+                                         const double tolerance_seconds, core::cancel_token abandon)
 {
 	if (!_has_video || !_video_context)
 	{
@@ -3091,7 +3092,7 @@ bool av_format_decoder::extract_frame_at(ui::surface_ptr& dest_surface, const si
 		clear_sequential_frame_bracket();
 	}
 
-	ui::surface_ptr decoded;
+	core::surface_ptr decoded;
 
 	if (!decode_nearest_frame(decoded, max_dim, target, std::max(0.0, tolerance_seconds), abandon))
 	{
@@ -3194,7 +3195,7 @@ static void accumulate_audio_peaks(const AVFrame& frame, std::vector<uint8_t>& p
 	sample_index += samples;
 }
 
-std::vector<uint8_t> av_format_decoder::extract_audio_peaks(const int buckets, df::cancel_token abandon)
+std::vector<uint8_t> av_format_decoder::extract_audio_peaks(const int buckets, core::cancel_token abandon)
 {
 	if (!_has_audio || !_audio_context || buckets <= 0)
 	{
@@ -3217,7 +3218,7 @@ std::vector<uint8_t> av_format_decoder::extract_audio_peaks(const int buckets, d
 	int64_t sample_index = 0;
 
 	_io_abandon = &abandon;
-	const df::scope_exit end_abandon([this] { _io_abandon = nullptr; });
+	const core::scope_exit end_abandon([this] { _io_abandon = nullptr; });
 	const auto keep_video_unread = discard_video_while_reading_audio();
 
 	av_frame frame;
@@ -3232,13 +3233,13 @@ std::vector<uint8_t> av_format_decoder::extract_audio_peaks(const int buckets, d
 		}
 		if (status != AVERROR(EAGAIN) && status != AVERROR_EOF)
 		{
-			df::log_once(__FUNCTION__, std::format("Cannot decode waveform samples: {}", status));
+			core::log_once(__FUNCTION__, std::format("Cannot decode waveform samples: {}", status));
 		}
 	};
 
 	for (;;)
 	{
-		if (df::is_closing || abandon.is_cancelled())
+		if (platform::is_closing || abandon.is_cancelled())
 		{
 			return {};
 		}
@@ -3255,7 +3256,7 @@ std::vector<uint8_t> av_format_decoder::extract_audio_peaks(const int buckets, d
 			}
 			if (status < 0 && status != AVERROR_EOF)
 			{
-				df::log_once(__FUNCTION__, std::format("Cannot drain waveform decoder: {}", status));
+				core::log_once(__FUNCTION__, std::format("Cannot drain waveform decoder: {}", status));
 			}
 			else
 			{
@@ -3277,7 +3278,7 @@ std::vector<uint8_t> av_format_decoder::extract_audio_peaks(const int buckets, d
 		}
 		if (status < 0)
 		{
-			df::log_once(__FUNCTION__, std::format("Cannot submit waveform packet: {}", status));
+			core::log_once(__FUNCTION__, std::format("Cannot submit waveform packet: {}", status));
 			continue;
 		}
 		receive();
@@ -3298,13 +3299,13 @@ static constexpr int pcm_channels = 2;
 thread_local std::function<void(AVFrame&)> test_audio_pcm_frame;
 
 std::vector<int16_t> av_format_decoder::extract_audio_pcm(const int sample_rate, const double max_seconds,
-                                                          df::cancel_token abandon)
+                                                          core::cancel_token abandon)
 {
 	return extract_audio_pcm_range(sample_rate, 0, max_seconds, std::move(abandon));
 }
 
 std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample_rate, const double start_seconds,
-	const double duration_seconds, df::cancel_token abandon)
+	const double duration_seconds, core::cancel_token abandon)
 {
 	constexpr double max_range_seconds = 60.0;
 	constexpr int max_sample_rate = 384000;
@@ -3322,7 +3323,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 	if (!layout) return {};
 
 	SwrContext* swr = nullptr;
-	const df::scope_exit release_resampler([&swr] { swr_free(&swr); });
+	const core::scope_exit release_resampler([&swr] { swr_free(&swr); });
 	const auto stream_format = audio_info();
 	audio_info_t input_format;
 
@@ -3341,7 +3342,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 	std::optional<int64_t> next_destination_frame;
 
 	_io_abandon = &abandon;
-	const df::scope_exit end_abandon([this] { _io_abandon = nullptr; });
+	const core::scope_exit end_abandon([this] { _io_abandon = nullptr; });
 
 	// Sought before the video track is set aside: a demuxer that finds key frames by reading them
 	// needs that track to land the seek.
@@ -3358,7 +3359,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 		const auto capacity = swr_get_out_samples(swr, frame ? frame->nb_samples : 0);
 		if (capacity < 0)
 		{
-			df::log(__FUNCTION__, std::format("Cannot size PCM resampling output: {}", capacity));
+			core::log(__FUNCTION__, std::format("Cannot size PCM resampling output: {}", capacity));
 			failed = finished = true;
 			return 0;
 		}
@@ -3379,7 +3380,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 
 		if (produced < 0)
 		{
-			df::log(__FUNCTION__, std::format("Cannot resample PCM frame: {}", produced));
+			core::log(__FUNCTION__, std::format("Cannot resample PCM frame: {}", produced));
 			failed = finished = true;
 			return 0;
 		}
@@ -3454,7 +3455,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 					                   format.channel_layout.get(), to_AVSampleFormat(format.sample_fmt),
 					                   format.sample_rate, 0, nullptr) < 0 || !swr || swr_init(swr) < 0)
 				{
-					df::log(__FUNCTION__, "Cannot configure PCM resampling for decoded frame format");
+					core::log(__FUNCTION__, "Cannot configure PCM resampling for decoded frame format");
 					failed = finished = true;
 					break;
 				}
@@ -3469,13 +3470,13 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 		// A damaged packet leaves its own span silent; later frames are still placed by timestamp.
 		if (!finished && status != AVERROR(EAGAIN) && status != AVERROR_EOF)
 		{
-			df::log_once(__FUNCTION__, std::format("Cannot decode PCM samples: {}", status));
+			core::log_once(__FUNCTION__, std::format("Cannot decode PCM samples: {}", status));
 		}
 	};
 
 	while (!finished)
 	{
-		if (df::is_closing || abandon.is_cancelled())
+		if (platform::is_closing || abandon.is_cancelled())
 		{
 			return {};
 		}
@@ -3501,7 +3502,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 		}
 		if (status < 0)
 		{
-			df::log_once(__FUNCTION__, std::format("Cannot submit PCM packet: {}", status));
+			core::log_once(__FUNCTION__, std::format("Cannot submit PCM packet: {}", status));
 			continue;
 		}
 
@@ -3518,7 +3519,7 @@ std::vector<int16_t> av_format_decoder::extract_audio_pcm_range(const int sample
 		}
 		if (status < 0 && status != AVERROR_EOF)
 		{
-			df::log_once(__FUNCTION__, std::format("Cannot drain PCM decoder: {}", status));
+			core::log_once(__FUNCTION__, std::format("Cannot drain PCM decoder: {}", status));
 		}
 		receive();
 		drain_tail();
@@ -3543,7 +3544,7 @@ file_load_result av_format_decoder::render_frame(const av_frame_ptr& frame_in) c
 	// scale_surface sizes and allocates the destination and downloads a hardware
 	// frame itself, so doing either here would only duplicate the work (the readback
 	// this used to perform was a full GPU->CPU frame copy that was then thrown away).
-	const auto s = std::make_shared<ui::surface>();
+	const auto s = std::make_shared<core::surface>();
 
 	if (_scaler->scale_surface(frame_in, s))
 	{
@@ -3616,7 +3617,7 @@ void audio_resampler::flush()
 
 	if (swr_init(_aud_resampler) < 0)
 	{
-		df::log(__FUNCTION__, "Cannot reset audio resampler after discontinuity");
+		core::log(__FUNCTION__, "Cannot reset audio resampler after discontinuity");
 		swr_free(&_aud_resampler);
 	}
 }
@@ -3799,7 +3800,7 @@ void audio_resampler::resample(const AVFrame& frame, audio_buffer& audio_buffer,
 
 	if (out_samples < 0)
 	{
-		df::log(__FUNCTION__, "swr_convert failed");
+		core::log(__FUNCTION__, "swr_convert failed");
 		return;
 	}
 
@@ -3861,7 +3862,7 @@ namespace
 	}
 }
 
-ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const std::string_view extension_hint,
+core::surface_ptr av_decode_still(const core::cspan data, const sizei max_dim, const std::string_view extension_hint,
                                 load_diagnostic* const diagnostic)
 {
 	if (data.data == nullptr || data.size == 0) return {};
@@ -3877,7 +3878,7 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 
 	memory_source source{data.data, static_cast<int64_t>(data.size), 0};
 
-	static constexpr int io_buffer_size = df::sixty_four_k;
+	static constexpr int io_buffer_size = core::sixty_four_k;
 	auto* const io_buffer = static_cast<uint8_t*>(av_mallocz(io_buffer_size + 16));
 	if (!io_buffer) return {};
 
@@ -3915,7 +3916,7 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 		return {};
 	}
 
-	const df::scope_exit close_input([&fc, &pb]
+	const core::scope_exit close_input([&fc, &pb]
 	{
 		avformat_close_input(&fc);
 		if (pb) av_freep(&pb->buffer);
@@ -3925,7 +3926,7 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 	fc->max_streams = fc->nb_streams;
 	const auto opts_stream_count = fc->nb_streams;
 	AVDictionary** stream_opts = alloc_stream_probe_options(fc);
-	const df::scope_exit free_probe_options([&stream_opts, opts_stream_count]
+	const core::scope_exit free_probe_options([&stream_opts, opts_stream_count]
 	{
 		free_stream_probe_options(&stream_opts, opts_stream_count);
 	});
@@ -3982,7 +3983,7 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 	auto* cc = avcodec_alloc_context3(codec);
 	if (!cc) return {};
 
-	const df::scope_exit free_codec([&cc] { avcodec_free_context(&cc); });
+	const core::scope_exit free_codec([&cc] { avcodec_free_context(&cc); });
 
 	if (avcodec_parameters_to_context(cc, params) < 0) return {};
 
@@ -4002,7 +4003,7 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 	auto* frame = av_frame_alloc();
 	auto* packet = av_packet_alloc();
 
-	const df::scope_exit free_av([&frame, &packet]
+	const core::scope_exit free_av([&frame, &packet]
 	{
 		if (frame) av_frame_free(&frame);
 		if (packet) av_packet_free(&packet);
@@ -4014,17 +4015,17 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 	// and the still viewer both show.
 	while (av_read_frame(fc, packet) >= 0)
 	{
-		const df::scope_exit unref([packet] { av_packet_unref(packet); });
+		const core::scope_exit unref([packet] { av_packet_unref(packet); });
 
 		if (packet->stream_index != stream_index) continue;
 		if (avcodec_send_packet(cc, packet) != 0) continue;
 
 		if (avcodec_receive_frame(cc, frame) == 0)
 		{
-			ui::surface_ptr result;
+			core::surface_ptr result;
 			av_scaler scaler;
 
-			if (scaler.scale_frame(*frame, result, max_dim, 0.0, ui::orientation::top_left, {},
+			if (scaler.scale_frame(*frame, result, max_dim, 0.0, core::orientation::top_left, {},
 			                       still_can_use_alpha))
 			{
 				return result;
@@ -4043,26 +4044,26 @@ ui::surface_ptr av_decode_still(const df::cspan data, const sizei max_dim, const
 
 // swscale defaults to BT.601 limited range for any YUV source, which is wrong for most HD and for
 // anything full range, so the signalled matrix has to be pushed into the context explicitly.
-static void apply_colorspace_details(SwsContext* scaler, const ui::color_space cs)
+static void apply_colorspace_details(SwsContext* scaler, const core::color_space cs)
 {
 	int colorspace = SWS_CS_ITU601;
 	bool full_range = false;
 
 	switch (cs)
 	{
-	case ui::color_space::rec709_limited: colorspace = SWS_CS_ITU709;
+	case core::color_space::rec709_limited: colorspace = SWS_CS_ITU709;
 		break;
-	case ui::color_space::rec709_full: colorspace = SWS_CS_ITU709;
+	case core::color_space::rec709_full: colorspace = SWS_CS_ITU709;
 		full_range = true;
 		break;
-	case ui::color_space::rec2020_limited: colorspace = SWS_CS_BT2020;
+	case core::color_space::rec2020_limited: colorspace = SWS_CS_BT2020;
 		break;
-	case ui::color_space::rec2020_full: colorspace = SWS_CS_BT2020;
+	case core::color_space::rec2020_full: colorspace = SWS_CS_BT2020;
 		full_range = true;
 		break;
-	case ui::color_space::rec601_full: full_range = true;
+	case core::color_space::rec601_full: full_range = true;
 		break;
-	case ui::color_space::rec601_limited:
+	case core::color_space::rec601_limited:
 	default: break;
 	}
 
@@ -4194,7 +4195,7 @@ static double bt2390_eetf(const double signal, const double source_peak, const d
 	return rolled * source_peak;
 }
 
-static ui::tone_map_lut_ptr make_tone_map_lut(const AVFrame& frame)
+static core::tone_map_lut_ptr make_tone_map_lut(const AVFrame& frame)
 {
 	// 33 samples an axis is the size colour grading uses: fine enough that trilinear blending between
 	// samples stays well inside one 8-bit step of the mapping it approximates.
@@ -4204,7 +4205,7 @@ static ui::tone_map_lut_ptr make_tone_map_lut(const AVFrame& frame)
 	auto* dst = av_frame_alloc();
 	SwsContext* ctx = sws_alloc_context();
 
-	const df::scope_exit release([&src, &dst, &ctx]
+	const core::scope_exit release([&src, &dst, &ctx]
 	{
 		av_frame_free(&src);
 		av_frame_free(&dst);
@@ -4283,14 +4284,14 @@ static ui::tone_map_lut_ptr make_tone_map_lut(const AVFrame& frame)
 
 	if (sws_scale_frame(ctx, dst, src) < 0)
 	{
-		df::log(__FUNCTION__, "swscale could not map this HDR signal");
+		core::log(__FUNCTION__, "swscale could not map this HDR signal");
 		return {};
 	}
 
 	const auto source_peak = hlg ? 0.0 : pq::from_nits(pq_source_peak_nits(frame));
 	const auto target_peak = pq::from_nits(sdr_white_nits);
 
-	auto lut = std::make_shared<ui::tone_map_lut>();
+	auto lut = std::make_shared<core::tone_map_lut>();
 	lut->size = n;
 	lut->rgba.resize(static_cast<size_t>(n) * n * n * 4);
 
@@ -4343,17 +4344,17 @@ static ui::tone_map_lut_ptr make_tone_map_lut(const AVFrame& frame)
 
 // The mapping a clip's frames share, generated once per clip rather than per frame: swscale's colour
 // management is far too costly to run that often, and a paint must never wait on it.
-static ui::tone_map_lut_ptr tone_map_lut_for(const AVFrame& frame)
+static core::tone_map_lut_ptr tone_map_lut_for(const AVFrame& frame)
 {
-	static platform::mutex mutex;
-	static std::vector<std::pair<std::array<int, 21>, ui::tone_map_lut_ptr>> cache;
+	static mutex mutex;
+	static std::vector<std::pair<std::array<int, 21>, core::tone_map_lut_ptr>> cache;
 	constexpr size_t max_cached = 8;
 
 	const auto key = tone_map_key(frame);
 
 	{
-		platform::exclusive_lock lock(mutex);
-		const auto found = std::ranges::find(cache, key, &std::pair<std::array<int, 21>, ui::tone_map_lut_ptr>::first);
+		core::exclusive_lock lock(mutex);
+		const auto found = std::ranges::find(cache, key, &std::pair<std::array<int, 21>, core::tone_map_lut_ptr>::first);
 		if (found != cache.end()) return found->second;
 	}
 
@@ -4361,22 +4362,22 @@ static ui::tone_map_lut_ptr tone_map_lut_for(const AVFrame& frame)
 	auto lut = make_tone_map_lut(frame);
 	if (!lut) return {};
 
-	platform::exclusive_lock lock(mutex);
+	core::exclusive_lock lock(mutex);
 	if (cache.size() >= max_cached) cache.erase(cache.begin());
 	cache.emplace_back(key, lut);
 	return lut;
 }
 
 // R'G'B' signal rows, three 16-bit samples a pixel, through the cube into packed BGRA.
-static void tone_map_rows(const uint16_t* const signal, const sizei extent, const ui::tone_map_lut& lut,
-                          ui::surface& surface_out)
+static void tone_map_rows(const uint16_t* const signal, const sizei extent, const core::tone_map_lut& lut,
+                          core::surface& surface_out)
 {
 	const auto row_samples = static_cast<size_t>(extent.cx) * 3;
 
 	for (auto y = 0; y < extent.cy; ++y)
 	{
 		lut.apply(signal + row_samples * y, static_cast<size_t>(extent.cx),
-		          std::bit_cast<ui::color32*>(surface_out.pixels_line(y)));
+		          std::bit_cast<core::color32*>(surface_out.pixels_line(y)));
 	}
 }
 
@@ -4387,8 +4388,8 @@ uint16_t* av_scaler::hdr_signal_rows(const sizei extent)
 	return _hdr_signal.data();
 }
 
-bool av_scaler::convert_hdr(const AVFrame& frame, const ui::tone_map_lut& lut, const ui::surface_ptr& surface_out,
-                            const sizei dimensions_out, const double time, const ui::orientation orientation,
+bool av_scaler::convert_hdr(const AVFrame& frame, const core::tone_map_lut& lut, const core::surface_ptr& surface_out,
+                            const sizei dimensions_out, const double time, const core::orientation orientation,
                             const bool high_quality)
 {
 	// The YUV matrix alone, into 16-bit R'G'B' for the cube: the same two steps the renderer takes, so a
@@ -4410,31 +4411,31 @@ bool av_scaler::convert_hdr(const AVFrame& frame, const ui::tone_map_lut& lut, c
 		return false;
 	}
 
-	if (!surface_out->alloc(dimensions_out, ui::texture_format::RGB, orientation, time)) return false;
+	if (!surface_out->alloc(dimensions_out, core::texture_format::RGB, orientation, time)) return false;
 
 	tone_map_rows(signal, dimensions_out, lut, *surface_out);
 	return true;
 }
 
-bool av_scaler::scale_surface(const ui::const_surface_ptr& surface_in, ui::surface_ptr& surface_out,
+bool av_scaler::scale_surface(const core::const_surface_ptr& surface_in, core::surface_ptr& surface_out,
                               const sizei dimensions_out, const bool high_quality)
 {
 	const auto source_extent = surface_in->dimensions();
 	const auto fmt = surface_in->format();
-	const auto source_fmt = fmt == ui::texture_format::NV12
+	const auto source_fmt = fmt == core::texture_format::NV12
 		                        ? AV_PIX_FMT_NV12
-		                        : fmt == ui::texture_format::P010
+		                        : fmt == core::texture_format::P010
 		                        ? AV_PIX_FMT_P010LE
-		                        : fmt == ui::texture_format::RGB || fmt == ui::texture_format::ARGB
+		                        : fmt == core::texture_format::RGB || fmt == core::texture_format::ARGB
 		                        ? AV_PIX_FMT_BGRA
 		                        : AV_PIX_FMT_NONE;
 	if (source_fmt == AV_PIX_FMT_NONE) return false;
 
 	// Planes with a tone map hold HDR signal, which converted directly would read as SDR. They are
 	// taken through the cube first, as the renderer takes them.
-	if (surface_in->tone_map() && !ui::is_packed(fmt))
+	if (surface_in->tone_map() && !core::is_packed(fmt))
 	{
-		const auto mapped = std::make_shared<ui::surface>();
+		const auto mapped = std::make_shared<core::surface>();
 		if (!convert_yuv_surface(*surface_in, mapped)) return false;
 		return scale_surface(mapped, surface_out, dimensions_out, high_quality);
 	}
@@ -4445,8 +4446,8 @@ bool av_scaler::scale_surface(const ui::const_surface_ptr& surface_in, ui::surfa
 	// area filter when this is a reduction, and bilinear when an axis grows.
 	if (source_fmt == AV_PIX_FMT_BGRA)
 	{
-		if (ui::area_downscale(surface_in, surface_out, dimensions_out)) return true;
-		if (ui::bilinear_resize(surface_in, surface_out, dimensions_out)) return true;
+		if (core::area_downscale(surface_in, surface_out, dimensions_out)) return true;
+		if (core::bilinear_resize(surface_in, surface_out, dimensions_out)) return true;
 	}
 
 	constexpr auto output_fmt = AV_PIX_FMT_BGRA;
@@ -4460,10 +4461,10 @@ bool av_scaler::scale_surface(const ui::const_surface_ptr& surface_in, ui::surfa
 		// GPU sampler converts it as full range, so the same image shifts colour between scales.
 		apply_colorspace_details(_scaler, surface_in->color_space());
 
-		surface_out = std::make_shared<ui::surface>();
+		surface_out = std::make_shared<core::surface>();
 		// YUV carries no alpha, so a converted frame is opaque RGB - flagging it ARGB would force the
 		// software canvas down its per-pixel Porter-Duff path for every draw.
-		const auto destination_format = source_fmt == AV_PIX_FMT_BGRA ? fmt : ui::texture_format::RGB;
+		const auto destination_format = source_fmt == AV_PIX_FMT_BGRA ? fmt : core::texture_format::RGB;
 
 		if (!surface_out->alloc(dimensions_out.cx, dimensions_out.cy, destination_format, surface_in->orientation()))
 		{
@@ -4496,13 +4497,13 @@ bool av_scaler::scale_surface(const ui::const_surface_ptr& surface_in, ui::surfa
 	return false;
 }
 
-bool av_scaler::convert_yuv_surface(const ui::surface& surface_in, const ui::surface_ptr& surface_out)
+bool av_scaler::convert_yuv_surface(const core::surface& surface_in, const core::surface_ptr& surface_out)
 {
 	const auto source_extent = surface_in.dimensions();
 	const auto fmt = surface_in.format();
-	const auto source_fmt = fmt == ui::texture_format::NV12
+	const auto source_fmt = fmt == core::texture_format::NV12
 		                        ? AV_PIX_FMT_NV12
-		                        : fmt == ui::texture_format::P010
+		                        : fmt == core::texture_format::P010
 		                        ? AV_PIX_FMT_P010LE
 		                        : AV_PIX_FMT_NONE;
 	if (source_fmt == AV_PIX_FMT_NONE || !surface_out) return false;
@@ -4519,7 +4520,7 @@ bool av_scaler::convert_yuv_surface(const ui::surface& surface_in, const ui::sur
 
 	apply_colorspace_details(_scaler, surface_in.color_space());
 
-	if (!surface_out->alloc(source_extent, ui::texture_format::RGB, surface_in.orientation(), surface_in.time()))
+	if (!surface_out->alloc(source_extent, core::texture_format::RGB, surface_in.orientation(), surface_in.time()))
 	{
 		return false;
 	}
@@ -4571,15 +4572,15 @@ AVFrame* av_scaler::download(const AVFrame& frame)
 	if (!_hw_download_failure_logged)
 	{
 		_hw_download_failure_logged = true;
-		df::log(__FUNCTION__, "could not download the hardware frame");
+		core::log(__FUNCTION__, "could not download the hardware frame");
 	}
 
 	av_frame_free(&result);
 	return nullptr;
 }
 
-bool av_scaler::convert_frame(const AVFrame& frame, const ui::color_space cs, const ui::surface_ptr& surface_out,
-                              const double time, const ui::orientation orientation)
+bool av_scaler::convert_frame(const AVFrame& frame, const core::color_space cs, const core::surface_ptr& surface_out,
+                              const double time, const core::orientation orientation)
 {
 	// Without its cube an HDR picture is converted as SDR, as it always was, rather than not at all.
 	if (is_hdr(frame))
@@ -4602,7 +4603,7 @@ bool av_scaler::convert_frame(const AVFrame& frame, const ui::color_space cs, co
 
 	apply_colorspace_details(_scaler, cs);
 
-	if (!surface_out->alloc(src_extent, ui::texture_format::RGB, orientation, time)) return false;
+	if (!surface_out->alloc(src_extent, core::texture_format::RGB, orientation, time)) return false;
 
 	uint8_t* data[4] = {surface_out->pixels(), nullptr, nullptr, nullptr};
 	const int linesize[4] = {static_cast<int>(surface_out->stride()), 0, 0, 0};
@@ -4613,19 +4614,19 @@ bool av_scaler::convert_frame(const AVFrame& frame, const ui::color_space cs, co
 	// did convert. The sibling call sites require the full height for the same reason.
 	if (ret != src_extent.cy)
 	{
-		df::log(__FUNCTION__, std::format("sws_scale converted {} of {} rows", ret, src_extent.cy));
+		core::log(__FUNCTION__, std::format("sws_scale converted {} of {} rows", ret, src_extent.cy));
 		return false;
 	}
 
 	return true;
 }
 
-bool av_scaler::scale_surface(const av_frame_ptr& frame_in, const ui::surface_ptr& surface_out)
+bool av_scaler::scale_surface(const av_frame_ptr& frame_in, const core::surface_ptr& surface_out)
 {
-	return scale_surface(static_cast<const ui::video_frame&>(*frame_in), surface_out);
+	return scale_surface(static_cast<const render::video_frame&>(*frame_in), surface_out);
 }
 
-bool av_scaler::scale_surface(const ui::video_frame& source, const ui::surface_ptr& surface_out)
+bool av_scaler::scale_surface(const render::video_frame& source, const core::surface_ptr& surface_out)
 {
 	// The application hands the renderers only its own frames, so this is one of them.
 	const auto& frame_in = static_cast<const av_frame&>(source);
@@ -4633,7 +4634,7 @@ bool av_scaler::scale_surface(const ui::video_frame& source, const ui::surface_p
 	// A picture the decode thread already prepared needs copying, or converting out of its planes.
 	if (const auto& prepared = frame_in.surface)
 	{
-		if (!ui::is_packed(prepared->format())) return convert_yuv_surface(*prepared, surface_out);
+		if (!core::is_packed(prepared->format())) return convert_yuv_surface(*prepared, surface_out);
 		if (!surface_out->alloc(prepared->dimensions(), prepared->format(), prepared->orientation(), prepared->time()))
 		{
 			return false;
@@ -4651,7 +4652,7 @@ bool av_scaler::scale_surface(const ui::video_frame& source, const ui::surface_p
 
 	const AVFrame* frame = frame_in.frm;
 	AVFrame* downloaded = nullptr;
-	const df::scope_exit free_downloaded([&downloaded] { av_frame_free(&downloaded); });
+	const core::scope_exit free_downloaded([&downloaded] { av_frame_free(&downloaded); });
 
 	if (frame->hw_frames_ctx)
 	{
@@ -4666,10 +4667,10 @@ bool av_scaler::scale_surface(const ui::video_frame& source, const ui::surface_p
 // NV12 and P010 are one allocation: the full-height luma plane, then the half-height interleaved
 // chroma plane at stride * height. These copy a decoder's 4:2:0 planes into that layout, in the surface
 // they are given.
-static ui::surface_ptr copy_to_nv12(const AVFrame& frame, const ui::color_space cs, const double time,
-                                    const ui::orientation orientation, ui::surface_ptr result)
+static core::surface_ptr copy_to_nv12(const AVFrame& frame, const core::color_space cs, const double time,
+                                    const core::orientation orientation, core::surface_ptr result)
 {
-	if (!result || !result->alloc(frame.width, frame.height, ui::texture_format::NV12, orientation, time)) return {};
+	if (!result || !result->alloc(frame.width, frame.height, core::texture_format::NV12, orientation, time)) return {};
 	result->color_space(cs);
 
 	const auto width = static_cast<size_t>(frame.width);
@@ -4707,10 +4708,10 @@ static ui::surface_ptr copy_to_nv12(const AVFrame& frame, const ui::color_space 
 
 // P010 keeps its 10 bits at the top of each 16-bit sample, where a decoder's planar 10-bit output
 // keeps them at the bottom.
-static ui::surface_ptr copy_to_p010(const AVFrame& frame, const ui::color_space cs, const double time,
-                                    const ui::orientation orientation, ui::surface_ptr result)
+static core::surface_ptr copy_to_p010(const AVFrame& frame, const core::color_space cs, const double time,
+                                    const core::orientation orientation, core::surface_ptr result)
 {
-	if (!result || !result->alloc(frame.width, frame.height, ui::texture_format::P010, orientation, time)) return {};
+	if (!result || !result->alloc(frame.width, frame.height, core::texture_format::P010, orientation, time)) return {};
 	result->color_space(cs);
 
 	const auto width = static_cast<size_t>(frame.width);
@@ -4751,12 +4752,12 @@ static ui::surface_ptr copy_to_p010(const AVFrame& frame, const ui::color_space 
 	return result;
 }
 
-ui::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const double time,
-                                               const ui::orientation orientation)
+core::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const double time,
+                                               const core::orientation orientation)
 {
 	const AVFrame* frame = &frame_in;
 	AVFrame* downloaded = nullptr;
-	const df::scope_exit free_downloaded([&downloaded] { av_frame_free(&downloaded); });
+	const core::scope_exit free_downloaded([&downloaded] { av_frame_free(&downloaded); });
 
 	if (frame->hw_frames_ctx)
 	{
@@ -4771,21 +4772,21 @@ ui::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const do
 	// The YUV textures are 4:2:0 at an even size: D3D11 refuses NV12 and P010 any other way.
 	const auto even = frame->width > 0 && frame->height > 0 && frame->width % 2 == 0 && frame->height % 2 == 0;
 
-	if (ui::yuv_textures_enabled && even)
+	if (render::yuv_textures_enabled && even)
 	{
 		// HDR planes go up only as P010 with the cube that maps them to SDR. Without a cube, for the
 		// rare 8-bit HDR stream, or on a device that samples no P010, the picture is tone mapped here,
 		// into BGRA, instead.
 		const auto hdr = is_hdr(*frame);
-		ui::surface_ptr planes;
+		core::surface_ptr planes;
 
 		if (format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P || format == AV_PIX_FMT_NV12)
 		{
 			if (!hdr) planes = copy_to_nv12(*frame, cs, time, orientation, reusable_surface());
 		}
-		else if ((format == AV_PIX_FMT_YUV420P10LE || format == AV_PIX_FMT_P010LE) && ui::p010_textures_enabled)
+		else if ((format == AV_PIX_FMT_YUV420P10LE || format == AV_PIX_FMT_P010LE) && render::p010_textures_enabled)
 		{
-			const auto lut = hdr ? tone_map_lut_for(*frame) : ui::tone_map_lut_ptr{};
+			const auto lut = hdr ? tone_map_lut_for(*frame) : core::tone_map_lut_ptr{};
 
 			if (!hdr || lut)
 			{
@@ -4801,7 +4802,7 @@ ui::surface_ptr av_scaler::presentable_surface(const AVFrame& frame_in, const do
 	return convert_frame(*frame, cs, result, time, orientation) ? result : nullptr;
 }
 
-ui::surface_ptr av_scaler::reusable_surface()
+core::surface_ptr av_scaler::reusable_surface()
 {
 	for (const auto& s : _presentation_surfaces)
 	{
@@ -4811,12 +4812,12 @@ ui::surface_ptr av_scaler::reusable_surface()
 		{
 			std::atomic_thread_fence(std::memory_order_acquire);
 			// Written over as a new one would be; alloc resets the rest.
-			s->color_space(ui::color_space::rec601_limited);
+			s->color_space(color_space::rec601_limited);
 			return s;
 		}
 	}
 
-	auto result = std::make_shared<ui::surface>();
+	auto result = std::make_shared<core::surface>();
 
 	// As many as the read-ahead queue can hold, the picture on screen and the one being made. Past that a
 	// picture is allocated as before and freed once it is done with.
@@ -4824,8 +4825,8 @@ ui::surface_ptr av_scaler::reusable_surface()
 	return result;
 }
 
-bool av_scaler::scale_frame(const AVFrame& frame, ui::surface_ptr& surface, const sizei max_dim, const double time,
-                            const ui::orientation orientation, const av_rational container_sar,
+bool av_scaler::scale_frame(const AVFrame& frame, core::surface_ptr& surface, const sizei max_dim, const double time,
+                            const core::orientation orientation, const av_rational container_sar,
                             const bool preserve_alpha)
 {
 	bool success = false;
@@ -4847,17 +4848,17 @@ bool av_scaler::scale_frame(const AVFrame& frame, ui::surface_ptr& surface, cons
 	if (sar.num > 0 && sar.den > 0 && sar.num != sar.den && frame.width > 0 && frame.height > 0)
 	{
 		const auto w = static_cast<int64_t>(frame.width);
-		disp_dims.cy = static_cast<int>(df::mul_div(
+		disp_dims.cy = static_cast<int>(core::mul_div(
 			w, static_cast<int64_t>(sar.den) * frame.height, static_cast<int64_t>(sar.num) * w));
 	}
 
-	const auto dst_dims = ui::scale_dimensions(disp_dims, max_dim);
+	const auto dst_dims = core::scale_dimensions(disp_dims, max_dim);
 
 	if (is_hdr(frame))
 	{
 		if (const auto lut = tone_map_lut_for(frame))
 		{
-			surface = std::make_shared<ui::surface>();
+			surface = std::make_shared<core::surface>();
 			if (convert_hdr(frame, *lut, surface, dst_dims, time, orientation, true)) return true;
 			surface.reset();
 			return false;
@@ -4871,11 +4872,11 @@ bool av_scaler::scale_frame(const AVFrame& frame, ui::surface_ptr& surface, cons
 	{
 		apply_colorspace_details(_scaler, av_frame_color_space(frame));
 
-		surface = std::make_shared<ui::surface>();
+		surface = std::make_shared<core::surface>();
 
 		const auto destination_format = preserve_alpha && av_frame_uses_alpha(frame)
-			                                ? ui::texture_format::ARGB
-			                                : ui::texture_format::RGB;
+			                                ? core::texture_format::ARGB
+			                                : core::texture_format::RGB;
 
 		if (!surface->alloc(dst_dims.cx, dst_dims.cy, destination_format, orientation, time))
 		{
@@ -4890,14 +4891,14 @@ bool av_scaler::scale_frame(const AVFrame& frame, ui::surface_ptr& surface, cons
 
 		if (!success)
 		{
-			df::log(__FUNCTION__, "sws_scale failed");
+			core::log(__FUNCTION__, "sws_scale failed");
 		}
 	}
 
 	return success;
 }
 
-void av_session::process_io(const platform::thread_event& video_event, const platform::thread_event& audio_event)
+void av_session::process_io(const core::thread_event& video_event, const core::thread_event& audio_event)
 {
 	// The open-time snapshots, not the decoder: these are read before the lock is taken.
 	const auto has_audio = _has_audio.load();
@@ -4908,7 +4909,7 @@ void av_session::process_io(const platform::thread_event& video_event, const pla
 	auto loop_iteration = 0;
 
 	// Lines near the playhead are rasterised here, on the read thread, so the UI thread only uploads them.
-	const df::scope_exit prepare_subtitles([this] { _subtitles.prepare(pos(df::now())); });
+	const core::scope_exit prepare_subtitles([this] { _subtitles.prepare(pos(core::now())); });
 
 	while ((has_audio && _audio_packets.should_receive()) || (has_video && _video_packets.should_receive()))
 	{
@@ -4919,7 +4920,7 @@ void av_session::process_io(const platform::thread_event& video_event, const pla
 			break;
 		}
 
-		platform::shared_lock lock(_decoder_rw);
+		core::shared_lock lock(_decoder_rw);
 		const auto packet = _decoder.read_packet();
 
 		if (packet)
@@ -4978,7 +4979,7 @@ void av_session::process_io(const platform::thread_event& video_event, const pla
 			break;
 		}
 
-		if (_state == av_play_state::closed || df::is_closing || ++loop_iteration > max_loop_iteration)
+		if (_state == av_play_state::closed || platform::is_closing || ++loop_iteration > max_loop_iteration)
 		{
 			break;
 		}
@@ -5032,17 +5033,17 @@ void av_request_cpu_video_frames(const int surface_format)
 	if (!cpu_video_format(surface_format).exchange(true))
 	{
 		const auto* const name = av_get_pix_fmt_name(static_cast<AVPixelFormat>(surface_format));
-		df::log(__FUNCTION__, std::format("{} hardware frames will be downloaded on the decode thread",
+		core::log(__FUNCTION__, std::format("{} hardware frames will be downloaded on the decode thread",
 		                                  name ? name : "unnamed"));
 	}
 }
 
-ui::const_surface_ptr av_frame_surface(const av_frame_ptr& f)
+core::const_surface_ptr av_frame_surface(const av_frame_ptr& f)
 {
 	return f ? f->surface : nullptr;
 }
 
-ui::video_frame_ptr av_video_frame(const av_frame_ptr& f)
+render::video_frame_ptr av_video_frame(const av_frame_ptr& f)
 {
 	return f;
 }
@@ -5132,7 +5133,7 @@ void av_format_decoder::receive_frames(av_packet_queue& packets, av_frame_queue&
 		frames.clear();
 		pts->clear();
 		avcodec_flush_buffers(c);
-		df::trace(std::format("av_format_decoder::receive_frames avcodec_flush_buffers {}", stream_name));
+		core::trace(std::format("av_format_decoder::receive_frames avcodec_flush_buffers {}", stream_name));
 		return;
 	}
 
@@ -5183,7 +5184,7 @@ void av_session::seek(const double pos, const bool scrubbing, const bool force)
 	}
 
 	{
-		platform::shared_lock lock(_decoder_rw);
+		core::shared_lock lock(_decoder_rw);
 
 		if (_decoder.seek(pos))
 		{

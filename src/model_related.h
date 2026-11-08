@@ -52,7 +52,7 @@ namespace df
 		struct entry
 		{
 			int64_t distance = 0;
-			file_path path;
+			core::file_path path;
 			T value = {};
 		};
 
@@ -83,7 +83,7 @@ namespace df
 			return _heap.empty();
 		}
 
-		void offer(const int64_t distance, const file_path path, T value)
+		void offer(const int64_t distance, const core::file_path path, T value)
 		{
 			if (_limit == 0) return;
 
@@ -124,7 +124,7 @@ namespace df
 			for (auto& axis : _axes) axis.limit(v);
 		}
 
-		void offer(const related_match& match, const file_path path, T value)
+		void offer(const related_match& match, const core::file_path path, T value)
 		{
 			_axes[static_cast<size_t>(match.axis)].offer(match.distance, path, std::move(value));
 		}

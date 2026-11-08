@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include "libdesktop/util_kdtree.h"
+#include "libdesktop/core/kdtree.h"
 #include "model_location.h"
 
 class database;
@@ -23,19 +23,19 @@ static constexpr auto max_country_alt_names = 16;
 constexpr uint32_t to_code2(const std::string_view s)
 {
 	uint32_t result = 0;
-	for (const auto c : s) result = result << 8 | str::to_upper(c);
+	for (const auto c : s) result = result << 8 | core::to_upper(c);
 	return result;
 }
 
 struct country_loc
 {
 	uint32_t code = {};
-	str::cached name = {};
+	core::cached name = {};
 	gps_coordinate centroid = {};
 };
 
-str::cached normalize_county_abbreviation(str::cached country);
-str::cached normalize_county_name(str::cached country);
+core::cached normalize_county_abbreviation(core::cached country);
+core::cached normalize_county_name(core::cached country);
 
 // True when the token is an ISO 3166-1 country code (or a well-known alias such as UK).
 // Used to recognise a country qualifier in unquoted location search input, where the
@@ -56,14 +56,14 @@ int location_localized_name_offset(uint32_t langmask, int lang_bit);
 class country_t
 {
 	char _code[3]{};
-	str::cached _name = {};
-	std::vector<str::cached> _alt_names;
-	df::hash_map<uint32_t, str::cached> _states;
+	core::cached _name = {};
+	std::vector<core::cached> _alt_names;
+	core::hash_map<uint32_t, core::cached> _states;
 	gps_coordinate _centroid;
 
 	// Issue #119: localized country names ordered by language bit index, one per set bit in
 	// _langmask (mirrors the place-name scheme). Empty when no translations were available.
-	std::vector<str::cached> _localized;
+	std::vector<core::cached> _localized;
 	uint32_t _langmask = 0;
 
 public:
@@ -76,9 +76,9 @@ public:
 	country_t(country_t&&) noexcept = default;
 	country_t& operator=(country_t&&) noexcept = default;
 
-	country_t(const std::string_view code, const str::cached name,
-	          std::vector<str::cached> alt_names, const uint32_t langmask = 0,
-	          std::vector<str::cached> localized = {}) noexcept
+	country_t(const std::string_view code, const core::cached name,
+	          std::vector<core::cached> alt_names, const uint32_t langmask = 0,
+	          std::vector<core::cached> localized = {}) noexcept
 		: _name(name), _alt_names(std::move(alt_names)), _localized(std::move(localized)), _langmask(langmask)
 	{
 		_code[0] = code[0];
@@ -86,7 +86,7 @@ public:
 		_code[2] = 0;
 	}
 
-	void state(const std::string_view code, const str::cached name)
+	void state(const std::string_view code, const core::cached name)
 	{
 		_states[to_code2(code)] = name;
 	}
@@ -101,32 +101,32 @@ public:
 		return to_code2(_code);
 	}
 
-	const str::cached name() const
+	const core::cached name() const
 	{
 		return _name;
 	}
 
 	// Issue #119: country name in the given display-language bit, or the default name when the
 	// language has no translation (or none is selected, i.e. lang_bit < 0).
-	str::cached localized_name(const int lang_bit) const
+	core::cached localized_name(const int lang_bit) const
 	{
 		const auto offset = location_localized_name_offset(_langmask, lang_bit);
 		if (offset == 0 || offset > static_cast<int>(_localized.size())) return _name;
 		const auto localized = _localized[offset - 1];
-		return str::is_empty(localized) ? _name : localized;
+		return core::is_empty(localized) ? _name : localized;
 	}
 
-	const std::vector<str::cached>& alt_names() const
+	const std::vector<core::cached>& alt_names() const
 	{
 		return _alt_names;
 	}
 
-	const std::vector<str::cached>& localized_names() const
+	const std::vector<core::cached>& localized_names() const
 	{
 		return _localized;
 	}
 
-	str::cached state(const uint32_t code) const
+	core::cached state(const uint32_t code) const
 	{
 		const auto found = _states.find(code);
 		if (found != _states.cend()) return found->second;
@@ -165,8 +165,8 @@ constexpr int location_cache_default_name_col = 8;
 
 struct location_match_part
 {
-	str::cached text;
-	std::vector<str::part_t> highlights;
+	core::cached text;
+	std::vector<core::part_t> highlights;
 };
 
 struct location_match
@@ -180,12 +180,12 @@ struct location_match
 
 using location_matches = std::vector<location_match>;
 
-class location_cache final : public df::no_copy
+class location_cache final : public core::no_copy
 {
-	mutable platform::mutex _rw;
+	mutable core::mutex _rw;
 	_Guarded_by_(_rw) kd_tree _tree;
-	_Guarded_by_(_rw) df::hash_map<uint32_t, country_t> _countries;
-	_Guarded_by_(_rw) const df::file_path _locations_path;
+	_Guarded_by_(_rw) core::hash_map<uint32_t, country_t> _countries;
+	_Guarded_by_(_rw) const core::file_path _locations_path;
 
 	struct location_id_and_offset
 	{
@@ -222,7 +222,7 @@ class location_cache final : public df::no_copy
 
 			while (p_out < p_out_limit && p_in < p_in_limit)
 			{
-				*p_out++ = str::normalize_for_compare(str::pop_utf8_char(p_in, p_in_limit));
+				*p_out++ = core::normalize_for_compare(core::pop_utf8_char(p_in, p_in_limit));
 			}
 
 			while (p_out < p_out_limit)
@@ -385,7 +385,7 @@ public:
 
 	const country_t& find_country(const uint32_t code) const
 	{
-		platform::shared_lock lock(_rw);
+		core::shared_lock lock(_rw);
 		return find_country_locked(code);
 	}
 };

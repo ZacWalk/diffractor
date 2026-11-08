@@ -95,8 +95,8 @@ public:
 		if (depth) *depth = z;
 
 		return pointi{
-			_center.x + df::round(x * _radius),
-			_center.y - df::round(y * _radius)
+			_center.x + core::round(x * _radius),
+			_center.y - core::round(y * _radius)
 		};
 	}
 
@@ -210,10 +210,10 @@ public:
 // of the source cover the compression toward the limb.
 class globe_renderer
 {
-	std::vector<ui::const_surface_ptr> _levels;
+	std::vector<core::const_surface_ptr> _levels;
 
 public:
-	void set_source(ui::const_surface_ptr source);
+	void set_source(core::const_surface_ptr source);
 	bool is_ready() const { return !_levels.empty(); }
-	bool render(ui::surface& destination, const globe_projection& projection) const;
+	bool render(core::surface& destination, const globe_projection& projection) const;
 };

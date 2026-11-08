@@ -236,7 +236,7 @@ read on its own, never combined with an incomplete embedded declaration.
 
 ## Where this lives
 
-- libdesktop's [platform_win.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_win.cpp) and [platform_linux.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/system/platform_linux.cpp):
+- libdesktop's [win/platform.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/platform.cpp) and [linux/platform.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/linux/platform.cpp):
   date-sensitive conversion between UTC and local wall time.
 
 - [model_dates.h](../src/model_dates.h): date sources, retained candidates, and resolution.

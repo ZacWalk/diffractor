@@ -52,13 +52,13 @@ df_assert_movable(file_load_result);
 
 std::string file_group::display_name(const bool is_plural) const
 {
-	const auto result = is_plural && !str::is_empty(plural_name) ? plural_name : name;
+	const auto result = is_plural && !core::is_empty(plural_name) ? plural_name : name;
 	return tt.translate_text(std::string(result));
 }
 
-ui::const_surface_ptr file_type::default_thumbnail() const
+core::const_surface_ptr file_type::default_thumbnail() const
 {
-	return platform::create_icon_surface(static_cast<char32_t>(group->icon));
+	return render::create_icon_surface(static_cast<char32_t>(group->icon));
 }
 
 struct file_type_config
@@ -77,14 +77,14 @@ struct file_type_config
 
 static file_type_config s_config;
 
-bool file_tool::invoke(const df::file_path path) const
+bool file_tool::invoke(const core::file_path path) const
 {
 	if (exe_path.is_empty()) return false;
 
 	auto substitute = [&](std::ostringstream& result, const std::string_view token)
 	{
-		if (token == "item-path") result << str::quote_if_white_space(path.str());
-		else if (token == "exe-path") result << str::quote_if_white_space(exe_path.str());
+		if (token == "item-path") result << core::quote_if_white_space(path.str());
+		else if (token == "exe-path") result << core::quote_if_white_space(exe_path.str());
 	};
 
 	return platform::run(exe_path, replace_tokens(invoke_text, substitute));
@@ -120,7 +120,7 @@ void register_file_group_spellings()
 	{
 		const auto add = [g, &groups](const std::string_view name)
 		{
-			if (!str::is_empty(name)) groups->try_emplace(str::cache(name), g);
+			if (!core::is_empty(name)) groups->try_emplace(core::cache(name), g);
 		};
 
 		add(g->plural_name);
@@ -159,7 +159,7 @@ bool is_subtitle_extension(std::string_view ext)
 {
 	if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
 
-	static const df::hash_set<std::string_view, df::ihash, df::ieq> extensions{
+	static const core::hash_set<std::string_view, core::ihash, core::ieq> extensions{
 		"srt", "vtt", "ass", "ssa", "smi", "sub", "idx", "sup", "mpl2"
 	};
 
@@ -168,17 +168,17 @@ bool is_subtitle_extension(std::string_view ext)
 
 bool is_subtitle_suffix(const std::string_view word)
 {
-	static const df::hash_set<std::string_view, df::ihash, df::ieq> flags{"forced", "sdh", "cc"};
+	static const core::hash_set<std::string_view, core::ihash, core::ieq> flags{"forced", "sdh", "cc"};
 	return flags.contains(word) || is_language_word(word);
 }
 
-df::file_path moved_sidecar_path(const df::file_path primary, const df::file_path destination, const df::file_path sidecar)
+core::file_path moved_sidecar_path(const core::file_path primary, const core::file_path destination, const core::file_path sidecar)
 {
 	const auto stem = primary.file_name_without_extension();
 	const auto name = sidecar.name().sv();
 	// A sidecar named for another file - the RAW an XMP describes - keeps only its extension, as it always has.
 	const auto after_stem = name.size() > stem.size() && name[stem.size()] == '.' &&
-		str::icmp(name.substr(0, stem.size()), stem) == 0;
+		core::icmp(name.substr(0, stem.size()), stem) == 0;
 	const auto tail = after_stem ? name.substr(stem.size()) : sidecar.extension();
 	return destination.folder().combine_file(std::string(destination.file_name_without_extension()).append(tail));
 }
@@ -643,9 +643,9 @@ void load_file_types()
 
 		if (!ft.extension.empty())
 		{
-			str::split2(ft.extension, true, [pft = &ft](const std::string_view ext)
+			core::split2(ft.extension, true, [pft = &ft](const std::string_view ext)
 			{
-				s_config.types_by_name.insert_or_assign(str::cache(ext), pft);
+				s_config.types_by_name.insert_or_assign(core::cache(ext), pft);
 			});
 		}
 	}
@@ -662,12 +662,12 @@ namespace
 	// junction from recursing forever.
 	constexpr int max_tool_scan_depth = 4;
 
-	using exe_path_by_name = df::hash_map<std::string_view, df::file_path, df::ihash, df::ieq>;
+	using exe_path_by_name = core::hash_map<std::string_view, core::file_path, core::ihash, core::ieq>;
 
 	// Only the executables named in the config are retained, so memory stays proportional to the
 	// config and not to the number of programs installed.
-	void find_executables(const df::folder_path folder, const int depth,
-	                      const df::hash_set<std::string_view, df::ihash, df::ieq>& wanted,
+	void find_executables(const core::folder_path folder, const int depth,
+	                      const core::hash_set<std::string_view, core::ihash, core::ieq>& wanted,
 	                      exe_path_by_name& found)
 	{
 		if (found.size() >= wanted.size()) return;
@@ -678,7 +678,7 @@ namespace
 		{
 			const auto path = folder.combine_file(f.name);
 
-			if (str::icmp(path.extension(), ".exe") == 0)
+			if (core::icmp(path.extension(), ".exe") == 0)
 			{
 				const auto match = wanted.find(path.file_name_without_extension());
 
@@ -702,23 +702,23 @@ namespace
 	// the config would otherwise be a way to launch an arbitrary program from a menu click.
 	bool is_web_url(const std::string_view url)
 	{
-		return str::starts(url, "https://") || str::starts(url, "http://");
+		return core::starts(url, "https://") || core::starts(url, "http://");
 	}
 
 	std::vector<file_map_link> built_in_map_links()
 	{
 		return {
-			{str::cache("Google Maps"), str::cache("https://www.google.com/maps/place/{latitude},{longitude}")},
-			{str::cache("Google Earth"), str::cache("https://earth.google.com/web/search/{latitude},{longitude}")},
-			{str::cache("Bing Maps"), str::cache("https://www.bing.com/maps?cp={latitude}~{longitude}&lvl=17&style=h")},
+			{core::cache("Google Maps"), core::cache("https://www.google.com/maps/place/{latitude},{longitude}")},
+			{core::cache("Google Earth"), core::cache("https://earth.google.com/web/search/{latitude},{longitude}")},
+			{core::cache("Bing Maps"), core::cache("https://www.bing.com/maps?cp={latitude}~{longitude}&lvl=17&style=h")},
 			{
-				str::cache("OpenStreetMap"),
-				str::cache(
+				core::cache("OpenStreetMap"),
+				core::cache(
 					"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}#map=17/{latitude}/{longitude}")
 			},
 			{
-				str::cache("Apple Maps"),
-				str::cache("https://maps.apple.com/?ll={latitude},{longitude}&q=Photo%20Location")
+				core::cache("Apple Maps"),
+				core::cache("https://maps.apple.com/?ll={latitude},{longitude}&q=Photo%20Location")
 			},
 		};
 	}
@@ -727,21 +727,21 @@ namespace
 file_tools_result scan_tools()
 {
 	file_tools_result result;
-	std::vector<df::folder_path> tool_paths;
+	std::vector<core::folder_path> tool_paths;
 	std::vector<file_tool_ptr> tools;
 
 	try
 	{
-		const auto json = blob_from_file(df::probe_data_file("diffractor-tools.json"));
+		const auto json = platform::blob_from_file(platform::probe_data_file("diffractor-tools.json"));
 
 		if (!json.empty())
 		{
-			df::util::json::json_doc document;
+			core::json::json_doc document;
 			document.Parse(std::bit_cast<const char*>(json.data()), json.size());
 
 			if (document.HasParseError())
 			{
-				df::log(__FUNCTION__, std::format("diffractor-tools.json is not valid json (offset {})",
+				core::log(__FUNCTION__, std::format("diffractor-tools.json is not valid json (offset {})",
 				                                  document.GetErrorOffset()));
 			}
 			else if (document.IsObject())
@@ -752,7 +752,7 @@ file_tools_result scan_tools()
 				{
 					for (const auto& m : tools_member->value.GetObject())
 					{
-						if (str::icmp(m.name.GetString(), "folders") == 0)
+						if (core::icmp(m.name.GetString(), "folders") == 0)
 						{
 							if (m.value.IsArray())
 							{
@@ -760,13 +760,13 @@ file_tools_result scan_tools()
 								{
 									if (folder.IsString())
 									{
-										tool_paths.emplace_back(df::folder_path(folder.GetString()));
+										tool_paths.emplace_back(core::folder_path(folder.GetString()));
 									}
 								}
 							}
 						}
 
-						if (str::icmp(m.name.GetString(), "apps") == 0)
+						if (core::icmp(m.name.GetString(), "apps") == 0)
 						{
 							if (m.value.IsArray())
 							{
@@ -780,16 +780,16 @@ file_tools_result scan_tools()
 										{
 											if (!a.value.IsString()) continue;
 
-											if (str::icmp(a.name.GetString(), "exe") == 0)
-												tool->exe = str::cache(a.value.GetString());
-											if (str::icmp(a.name.GetString(), "invoke") == 0)
-												tool->invoke_text = str::cache(a.value.GetString());
-											if (str::icmp(a.name.GetString(), "text") == 0)
-												tool->text = str::cache(a.value.GetString());
-											if (str::icmp(a.name.GetString(), "extensions") == 0)
-												tool->extensions = str::cache(a.value.GetString());
-											if (str::icmp(a.name.GetString(), "group") == 0)
-												tool->group = str::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "exe") == 0)
+												tool->exe = core::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "invoke") == 0)
+												tool->invoke_text = core::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "text") == 0)
+												tool->text = core::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "extensions") == 0)
+												tool->extensions = core::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "group") == 0)
+												tool->group = core::cache(a.value.GetString());
 										}
 
 										if (!tool->exe.is_empty() && !tool->invoke_text.is_empty())
@@ -801,7 +801,7 @@ file_tools_result scan_tools()
 							}
 						}
 
-						if (str::icmp(m.name.GetString(), "maps") == 0)
+						if (core::icmp(m.name.GetString(), "maps") == 0)
 						{
 							if (m.value.IsArray())
 							{
@@ -815,13 +815,13 @@ file_tools_result scan_tools()
 										{
 											if (!a.value.IsString()) continue;
 
-											if (str::icmp(a.name.GetString(), "text") == 0)
-												link.text = str::cache(a.value.GetString());
-											if (str::icmp(a.name.GetString(), "url") == 0)
-												link.url = str::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "text") == 0)
+												link.text = core::cache(a.value.GetString());
+											if (core::icmp(a.name.GetString(), "url") == 0)
+												link.url = core::cache(a.value.GetString());
 										}
 
-										if (!str::is_empty(link.text) && is_web_url(link.url.sv()))
+										if (!core::is_empty(link.text) && is_web_url(link.url.sv()))
 										{
 											result.map_links.emplace_back(link);
 										}
@@ -836,10 +836,10 @@ file_tools_result scan_tools()
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
-	df::hash_set<std::string_view, df::ihash, df::ieq> wanted;
+	core::hash_set<std::string_view, core::ihash, core::ieq> wanted;
 
 	for (const auto& tool : tools)
 	{
@@ -864,9 +864,9 @@ file_tools_result scan_tools()
 
 		tool->exe_path = found->second;
 
-		str::split2(tool->extensions, true, [&result, &tool](const std::string_view ext)
+		core::split2(tool->extensions, true, [&result, &tool](const std::string_view ext)
 		{
-			result.by_extension[str::cache(ext)].emplace_back(tool);
+			result.by_extension[core::cache(ext)].emplace_back(tool);
 		});
 
 		if (!tool->group.is_empty())
@@ -893,7 +893,7 @@ void apply_tools(file_tools_result result)
 
 		if (!ft.extension.empty())
 		{
-			str::split2(ft.extension, true, [&ft, &result](const std::string_view ext)
+			core::split2(ft.extension, true, [&ft, &result](const std::string_view ext)
 			{
 				const auto found = result.by_extension.find(ext);
 
@@ -958,17 +958,17 @@ namespace
 
 	// Bumped from every queue that touches a file and read once at shutdown. Each bump accompanies
 	// an open, a decode or a swap, so one short lock costs nothing against the I/O it sits beside.
-	platform::mutex file_op_mutex;
-	_Guarded_by_(file_op_mutex) df::hash_map<file_type_ref, file_op_row> file_op_stats;
+	core::mutex file_op_mutex;
+	_Guarded_by_(file_op_mutex) core::hash_map<file_type_ref, file_op_row> file_op_stats;
 }
 
-std::function<void(df::file_path destination)> test_before_file_update_publish;
+std::function<void(core::file_path destination)> test_before_file_update_publish;
 
 void record_file_op(const file_type_ref ft, const file_op_stat stat)
 {
 	if (!ft) return;
 
-	platform::exclusive_lock lock(file_op_mutex);
+	core::exclusive_lock lock(file_op_mutex);
 	file_op_stats[ft][static_cast<size_t>(stat)] += 1;
 }
 
@@ -977,7 +977,7 @@ void log_file_op_summary()
 	std::vector<std::pair<file_type_ref, file_op_row>> rows;
 
 	{
-		platform::exclusive_lock lock(file_op_mutex);
+		core::exclusive_lock lock(file_op_mutex);
 		rows.assign(file_op_stats.begin(), file_op_stats.end());
 	}
 
@@ -1024,7 +1024,7 @@ void log_file_op_summary()
 
 	report += std::format("| **Total** | - | {} | {} | {} | {} | {} |\n", totals[0], totals[1], totals[2],
 	                      totals[3], totals[4]);
-	df::log("perf file types", report);
+	core::log("perf file types", report);
 }
 
 namespace
@@ -1051,7 +1051,7 @@ namespace
 			{
 				// A picture that could not be decoded is not a picture to offer: an empty frame on the
 				// clipboard would report the copy as having worked.
-				df::log(__FUNCTION__, "clipboard image could not be decoded");
+				core::log(__FUNCTION__, "clipboard image could not be decoded");
 				throw std::invalid_argument("Invalid clipboard image");
 			}
 
@@ -1063,7 +1063,7 @@ namespace
 
 			if (pixels_in == nullptr)
 			{
-				df::log(__FUNCTION__, "Invalid pixel buffer pointers");
+				core::log(__FUNCTION__, "Invalid pixel buffer pointers");
 				throw std::invalid_argument("Invalid pixel buffers");
 			}
 
@@ -1075,7 +1075,7 @@ namespace
 				// Bounds checking for buffer operations
 				if (src_offset + copy_len > s->size() || dest_offset + copy_len > pixels.size())
 				{
-					df::log(__FUNCTION__, "Buffer bounds exceeded");
+					core::log(__FUNCTION__, "Buffer bounds exceeded");
 					throw std::invalid_argument("Invalid pixel buffer size");
 				}
 
@@ -1101,8 +1101,8 @@ sizei file_load_result::dimensions() const
 	return {};
 }
 
-ui::const_surface_ptr file_load_result::to_surface(const sizei scale_hint, const bool can_use_yuv,
-                                                   const df::cancel_token& token, const decode_intent intent) const
+core::const_surface_ptr file_load_result::to_surface(const sizei scale_hint, const bool can_use_yuv,
+                                                   const core::cancel_token& token, const decode_intent intent) const
 {
 	if (success)
 	{
@@ -1122,7 +1122,7 @@ ui::const_surface_ptr file_load_result::to_surface(const sizei scale_hint, const
 	return {};
 }
 
-ui::pixel_difference_result file_load_result::calc_pixel_difference(const file_load_result& other) const
+core::pixel_difference_result file_load_result::calc_pixel_difference(const file_load_result& other) const
 {
 	constexpr sizei scale_hint = {1024 * 4, 1024 * 4};
 	const auto s1 = to_surface(scale_hint);
@@ -1133,11 +1133,11 @@ ui::pixel_difference_result file_load_result::calc_pixel_difference(const file_l
 		return s1->pixel_difference(s2);
 	}
 
-	return ui::pixel_difference_result::unknown;
+	return core::pixel_difference_result::unknown;
 }
 
 
-file_type_ref files::file_type_from_name(const df::file_path path)
+file_type_ref files::file_type_from_name(const core::file_path path)
 {
 	return file_type_from_name(path.name());
 }
@@ -1152,8 +1152,8 @@ namespace
 	{
 		if (!ext.empty() && ext.front() == '.') ext = ext.substr(1);
 
-		return str::icmp(ext, "ts") == 0 || str::icmp(ext, "m2t") == 0 ||
-			str::icmp(ext, "m2ts") == 0 || str::icmp(ext, "mts") == 0;
+		return core::icmp(ext, "ts") == 0 || core::icmp(ext, "m2t") == 0 ||
+			core::icmp(ext, "m2ts") == 0 || core::icmp(ext, "mts") == 0;
 	}
 
 	// A transport stream is a run of fixed-size packets, each opening with the 0x47 sync byte: 188
@@ -1161,7 +1161,7 @@ namespace
 	// run is found rather than assumed to start at zero, because a partial capture or a PVR dump can
 	// begin mid-packet or behind a prefix. Requiring four aligned packet starts is what separates a
 	// stream from a TypeScript file that happens to contain 'G'.
-	bool is_mpeg_transport_stream(const df::cspan header)
+	bool is_mpeg_transport_stream(const core::cspan header)
 	{
 		constexpr size_t packet_sizes[] = {188, 192, 204};
 		constexpr size_t max_packet_size = 204;
@@ -1195,7 +1195,7 @@ bool files::has_media_header_rule(const std::string_view extension)
 	return is_transport_stream_extension(extension);
 }
 
-bool files::media_header_matches(const std::string_view extension, const df::cspan header)
+bool files::media_header_matches(const std::string_view extension, const core::cspan header)
 {
 	if (is_transport_stream_extension(extension))
 	{
@@ -1207,9 +1207,9 @@ bool files::media_header_matches(const std::string_view extension, const df::csp
 
 file_type_ref files::file_type_from_name(const std::string_view name)
 {
-	if (!str::is_empty(name))
+	if (!core::is_empty(name))
 	{
-		auto ext = name.substr(df::find_ext(name));
+		auto ext = name.substr(core::find_ext(name));
 
 		if (!ext.empty())
 		{
@@ -1293,7 +1293,7 @@ quadd image_edits::effective_crop_bounds(const sizei size) const
 			{
 				const auto start = (*polygon)[edge];
 				const auto end = (*polygon)[(edge + 1) % 4];
-				if (y < (std::min)(start.Y, end.Y) || y > (std::max)(start.Y, end.Y) || df::equiv(start.Y, end.Y))
+				if (y < (std::min)(start.Y, end.Y) || y > (std::max)(start.Y, end.Y) || core::equiv(start.Y, end.Y))
 					continue;
 				const auto x = start.X + (y - start.Y) * (end.X - start.X) / (end.Y - start.Y);
 				polygon_left = (std::min)(polygon_left, x);
@@ -1347,7 +1347,7 @@ double image_edits::rotation_angle() const
 	return _crop.angle();
 }
 
-bool files::can_save(const df::file_path path)
+bool files::can_save(const core::file_path path)
 {
 	const auto ext = path.extension();
 	return can_save_extension(ext);
@@ -1355,7 +1355,7 @@ bool files::can_save(const df::file_path path)
 
 bool files::can_save_extension(const std::string_view ext)
 {
-	static const df::hash_set<std::string_view, df::ihash, df::ieq> save_extensions = {
+	static const core::hash_set<std::string_view, core::ihash, core::ieq> save_extensions = {
 		{".jpg"},
 		{".jpeg"},
 		{".jpe"},
@@ -1373,7 +1373,7 @@ bool files::can_save_extension(const std::string_view ext)
 	return save_extensions.contains(ext);
 }
 
-bool files::is_raw(const df::file_path path)
+bool files::is_raw(const core::file_path path)
 {
 	const auto* const mt = file_type_from_name(path);
 	return (mt->traits & file_traits::raw) != file_traits::none;
@@ -1385,16 +1385,16 @@ bool files::is_raw(const std::string_view name)
 	return (mt->traits & file_traits::raw) != file_traits::none;
 }
 
-bool files::is_jpeg(const df::file_path path)
+bool files::is_jpeg(const core::file_path path)
 {
 	const auto ext = path.extension();
-	return str::icmp(ext, ".jpg") == 0 || str::icmp(ext, ".jpeg") == 0 || str::icmp(ext, ".jpe") == 0;
+	return core::icmp(ext, ".jpg") == 0 || core::icmp(ext, ".jpeg") == 0 || core::icmp(ext, ".jpe") == 0;
 }
 
 bool files::is_jpeg(const std::string_view name)
 {
-	const auto ext = name.substr(df::find_ext(name));
-	return str::icmp(ext, ".jpg") == 0 || str::icmp(ext, ".jpeg") == 0 || str::icmp(ext, ".jpe") == 0;
+	const auto ext = name.substr(core::find_ext(name));
+	return core::icmp(ext, ".jpg") == 0 || core::icmp(ext, ".jpeg") == 0 || core::icmp(ext, ".jpe") == 0;
 }
 
 files::files()
@@ -1406,27 +1406,27 @@ files::~files()
 	_scaler.reset();
 }
 
-ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                                            const file_encode_params& params, const ui::image_format format)
+core::const_image_ptr files::surface_to_image(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+                                            const file_encode_params& params, const core::image_format format)
 {
-	ui::const_image_ptr result;
+	core::const_image_ptr result;
 
 	// save_png and the jpeg encoder both walk the surface as four-byte pixels, so a planar one would
 	// be written out as its luma plane read as BGRX - grey and tiled rather than a visible failure.
-	if (is_valid(surface_in) && ui::is_packed(surface_in->format()))
+	if (is_valid(surface_in) && core::is_packed(surface_in->format()))
 	{
-		const auto has_alpha = surface_in->format() == ui::texture_format::ARGB;
+		const auto has_alpha = surface_in->format() == core::texture_format::ARGB;
 
-		if (format == ui::image_format::PNG ||
-			(format == ui::image_format::Unknown && has_alpha))
+		if (format == core::image_format::PNG ||
+			(format == core::image_format::Unknown && has_alpha))
 		{
 			result = save_png(surface_in, metadata);
 		}
-		else if (format == ui::image_format::WEBP)
+		else if (format == core::image_format::WEBP)
 		{
 			result = save_webp(surface_in, metadata, params);
 		}
-		else if (format == ui::image_format::JXL)
+		else if (format == core::image_format::JXL)
 		{
 			result = save_jxl(surface_in, metadata, params);
 		}
@@ -1442,7 +1442,7 @@ ui::const_image_ptr files::surface_to_image(const ui::const_surface_ptr& surface
 // Thumbnails are a rebuildable cache, so the format is chosen for bytes rather than fidelity. A
 // lossy WebP is materially smaller than the JPEG or PNG it replaces at the same measured quality,
 // and libwebp drops the alpha plane itself for a surface that turns out to be opaque.
-ui::const_image_ptr files::surface_to_thumbnail(const ui::const_surface_ptr& surface_in)
+core::const_image_ptr files::surface_to_thumbnail(const core::const_surface_ptr& surface_in)
 {
 	if (!is_valid(surface_in)) return {};
 
@@ -1452,18 +1452,18 @@ ui::const_image_ptr files::surface_to_thumbnail(const ui::const_surface_ptr& sur
 	params.webp_lossy_alpha = true;
 	params.webp_fast = true;
 
-	ui::const_image_ptr result = save_webp(surface_in, {}, params);
+	core::const_image_ptr result = save_webp(surface_in, {}, params);
 
 	// The fallbacks below encode packed pixels only, so a planar surface the WebP encoder would not
 	// take - a video frame carrying a rec709 matrix, say - is converted rather than dropped.
-	if (!is_valid(result) && !ui::is_packed(surface_in->format()))
+	if (!is_valid(result) && !core::is_packed(surface_in->format()))
 	{
-		const auto packed = std::make_shared<ui::surface>();
+		const auto packed = std::make_shared<core::surface>();
 
-		if (scaler().convert_yuv_surface(*surface_in, packed) && ui::is_valid(packed))
+		if (scaler().convert_yuv_surface(*surface_in, packed) && core::is_valid(packed))
 		{
 			result = save_webp(packed, {}, params);
-			if (!is_valid(result)) result = surface_to_image(packed, {}, params, ui::image_format::Unknown);
+			if (!is_valid(result)) result = surface_to_image(packed, {}, params, core::image_format::Unknown);
 		}
 
 		return result;
@@ -1472,7 +1472,7 @@ ui::const_image_ptr files::surface_to_thumbnail(const ui::const_surface_ptr& sur
 	// save_webp accepts packed pixels and the NV12 planes VP8 encodes natively, so anything else
 	// falls back to what the thumbnail store held before WebP: PNG when the surface carries alpha,
 	// JPEG otherwise.
-	if (!is_valid(result)) result = surface_to_image(surface_in, {}, params, ui::image_format::Unknown);
+	if (!is_valid(result)) result = surface_to_image(surface_in, {}, params, core::image_format::Unknown);
 
 	return result;
 }
@@ -1497,11 +1497,11 @@ Ptr files::fit_within_impl(Ptr surface_in, const sizei ceiling)
 
 	const auto dimensions_out = [&]
 	{
-		auto fitted = ui::scale_dimensions(surface_in->dimensions(), ceiling, true);
+		auto fitted = core::scale_dimensions(surface_in->dimensions(), ceiling, true);
 
 		// NV12 carries one chroma pair per 2x2 luma block, so a fitted extent has to be even for the
 		// planar reduction to take it. Rounding down keeps it inside the ceiling.
-		if (surface_in->format() == ui::texture_format::NV12)
+		if (surface_in->format() == core::texture_format::NV12)
 		{
 			fitted = {std::max(2, fitted.cx & ~1), std::max(2, fitted.cy & ~1)};
 		}
@@ -1511,13 +1511,13 @@ Ptr files::fit_within_impl(Ptr surface_in, const sizei ceiling)
 
 	if (dimensions_out == surface_in->dimensions()) return surface_in;
 
-	ui::surface_ptr reduced;
+	core::surface_ptr reduced;
 
-	if (ui::area_downscale(surface_in, reduced, dimensions_out)) return reduced;
+	if (core::area_downscale(surface_in, reduced, dimensions_out)) return reduced;
 
 	// What the area filter will not take - P010, or a planar surface whose fitted extent lands odd -
 	// still has to come back reduced, and swscale converts it to packed on the way.
-	ui::surface_ptr converted;
+	core::surface_ptr converted;
 
 	if (scaler().scale_surface(surface_in, converted, dimensions_out) && is_valid(converted))
 	{
@@ -1528,18 +1528,18 @@ Ptr files::fit_within_impl(Ptr surface_in, const sizei ceiling)
 	return surface_in;
 }
 
-ui::surface_ptr files::fit_within(ui::surface_ptr surface_in, const sizei ceiling)
+core::surface_ptr files::fit_within(core::surface_ptr surface_in, const sizei ceiling)
 {
 	return fit_within_impl(std::move(surface_in), ceiling);
 }
 
-ui::const_surface_ptr files::fit_within(ui::const_surface_ptr surface_in, const sizei ceiling)
+core::const_surface_ptr files::fit_within(core::const_surface_ptr surface_in, const sizei ceiling)
 {
 	return fit_within_impl(std::move(surface_in), ceiling);
 }
 
-ui::pixel_difference_result files::pixel_difference(const ui::const_image_ptr& expected,
-                                                    const ui::const_image_ptr& actual)
+core::pixel_difference_result files::pixel_difference(const core::const_image_ptr& expected,
+                                                    const core::const_image_ptr& actual)
 {
 	if (!is_empty(expected) || !is_empty(actual))
 	{
@@ -1552,7 +1552,7 @@ ui::pixel_difference_result files::pixel_difference(const ui::const_image_ptr& e
 		}
 	}
 
-	return ui::pixel_difference_result::unknown;
+	return core::pixel_difference_result::unknown;
 }
 
 
@@ -1570,13 +1570,13 @@ namespace
 	// that said tens of megabytes.
 	class jpeg_surface_sink final : public libfiles::image_sink
 	{
-		const std::optional<ui::orientation> _orientation_override;
-		const df::cancel_token& _token;
+		const std::optional<core::orientation> _orientation_override;
+		const core::cancel_token& _token;
 
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
-		jpeg_surface_sink(const std::optional<ui::orientation> orientation_override, const df::cancel_token& token) :
+		jpeg_surface_sink(const std::optional<core::orientation> orientation_override, const core::cancel_token& token) :
 			_orientation_override(orientation_override), _token(token)
 		{
 		}
@@ -1588,29 +1588,29 @@ namespace
 				(scale * scale);
 			const auto decode_bytes = scaled_output_bytes + static_cast<int64_t>(frame.working_bytes);
 
-			if (decode_bytes > df::max_decode_bytes)
+			if (decode_bytes > render::max_decode_bytes)
 			{
-				df::log("files::decode_jpeg", std::format("decode of {} x {} needs {}, over the {} budget",
+				core::log("files::decode_jpeg", std::format("decode of {} x {} needs {}, over the {} budget",
 				                                          frame.source_width, frame.source_height,
-				                                          df::file_size(decode_bytes).str(),
-				                                          df::file_size(df::max_decode_bytes).str()));
+				                                          platform::format_size(core::file_size(decode_bytes)),
+				                                          platform::format_size(core::file_size(render::max_decode_bytes))));
 				return {};
 			}
 
 			// The decoder reads the EXIF orientation by libfiles' one rule, the scan's and parse's.
 			const auto orientation = _orientation_override
 				                         ? *_orientation_override
-				                         : static_cast<ui::orientation>(frame.orientation);
+				                         : static_cast<core::orientation>(frame.orientation);
 			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
-			auto s = std::make_shared<ui::surface>();
+			auto s = std::make_shared<core::surface>();
 
 			if (frame.format == libfiles::pixel_format::nv12)
 			{
 				// JPEG/JFIF is full-range BT.601, which the shader applies through rec601_full.
-				if (!s->alloc(dimensions, ui::texture_format::NV12, orientation)) return {};
-				s->color_space(ui::color_space::rec601_full);
+				if (!s->alloc(dimensions, core::texture_format::NV12, orientation)) return {};
+				s->color_space(color_space::rec601_full);
 			}
-			else if (!s->alloc(dimensions, ui::texture_format::RGB, orientation))
+			else if (!s->alloc(dimensions, core::texture_format::RGB, orientation))
 			{
 				return {};
 			}
@@ -1629,9 +1629,9 @@ namespace
 // The JPEG decode both image_to_surface overloads share. Returns an unscaled surface; an NV12 one is
 // flagged through is_yuv, because the GPU sampler resizes it at draw time. Without an
 // orientation_override, the orientation is the one the file's EXIF gives.
-ui::surface_ptr files::decode_jpeg(const df::cspan data, const sizei target_extent, const bool can_use_yuv,
-                                   const std::optional<ui::orientation> orientation_override, bool& is_yuv,
-                                   const df::cancel_token& token, const decode_intent intent)
+core::surface_ptr files::decode_jpeg(const core::cspan data, const sizei target_extent, const bool can_use_yuv,
+                                   const std::optional<core::orientation> orientation_override, bool& is_yuv,
+                                   const core::cancel_token& token, const decode_intent intent)
 {
 	is_yuv = false;
 
@@ -1650,7 +1650,7 @@ ui::surface_ptr files::decode_jpeg(const df::cspan data, const sizei target_exte
 
 		if (!result.success)
 		{
-			if (!result.error.empty()) df::log(__FUNCTION__, result.error);
+			if (!result.error.empty()) core::log(__FUNCTION__, result.error);
 			return {};
 		}
 
@@ -1659,13 +1659,13 @@ ui::surface_ptr files::decode_jpeg(const df::cspan data, const sizei target_exte
 	}
 	catch (const std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return {};
 }
 
-ui::surface_ptr files_test_hooks::decode_jpeg(files& ff, const df::cspan data, const sizei target_extent,
+core::surface_ptr files_test_hooks::decode_jpeg(files& ff, const core::cspan data, const sizei target_extent,
                                               const bool can_use_yuv, const decode_intent intent, bool& is_yuv)
 {
 	return ff.decode_jpeg(data, target_extent, can_use_yuv, {}, is_yuv, {}, intent);
@@ -1676,17 +1676,17 @@ int64_t files::estimate_decode_bytes(const sizei source_dimensions)
 	return static_cast<int64_t>(source_dimensions.cx) * source_dimensions.cy * 4;
 }
 
-int64_t files::estimate_decode_bytes(const ui::const_image_ptr& image, const sizei scale_hint)
+int64_t files::estimate_decode_bytes(const core::const_image_ptr& image, const sizei scale_hint)
 {
 	if (!is_valid(image)) return 0;
 
 	const auto dims = image->dimensions();
 	auto pixels = static_cast<int64_t>(dims.cx) * dims.cy;
 
-	if (image->format() == ui::image_format::JPEG)
+	if (image->format() == core::image_format::JPEG)
 	{
 		// Mirrors what image_to_surface hands libjpeg, so the estimate tracks the real allocation.
-		const auto factor = ui::calc_scale_down_factor(dims, scale_hint);
+		const auto factor = core::calc_scale_down_factor(dims, scale_hint);
 		pixels /= static_cast<int64_t>(factor) * factor;
 	}
 
@@ -1695,12 +1695,12 @@ int64_t files::estimate_decode_bytes(const ui::const_image_ptr& image, const siz
 
 bool files::exceeds_decode_budget(const sizei source_dimensions)
 {
-	return estimate_decode_bytes(source_dimensions) > df::max_decode_bytes;
+	return estimate_decode_bytes(source_dimensions) > render::max_decode_bytes;
 }
 
-bool files::exceeds_decode_budget(const ui::const_image_ptr& image, const sizei scale_hint)
+bool files::exceeds_decode_budget(const core::const_image_ptr& image, const sizei scale_hint)
 {
-	return estimate_decode_bytes(image, scale_hint) > df::max_decode_bytes;
+	return estimate_decode_bytes(image, scale_hint) > render::max_decode_bytes;
 }
 
 bool reject_over_budget_source(load_diagnostic* const diagnostic, const sizei source_dimensions,
@@ -1710,36 +1710,36 @@ bool reject_over_budget_source(load_diagnostic* const diagnostic, const sizei so
 
 	const auto bytes = files::estimate_decode_bytes(source_dimensions);
 
-	if (bytes <= df::max_decode_bytes) return false;
+	if (bytes <= render::max_decode_bytes) return false;
 
 	if (diagnostic) diagnostic->over_budget = true;
 
-	df::log(__FUNCTION__, std::format("{} {} x {} needs {} to decode, over the {} budget", format,
-	                                  source_dimensions.cx, source_dimensions.cy, df::file_size(bytes).str(),
-	                                  df::file_size(df::max_decode_bytes).str()));
+	core::log(__FUNCTION__, std::format("{} {} x {} needs {} to decode, over the {} budget", format,
+	                                  source_dimensions.cx, source_dimensions.cy, platform::format_size(core::file_size(bytes)),
+	                                  platform::format_size(core::file_size(render::max_decode_bytes))));
 	return true;
 }
 
-ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const sizei target_extent,
-                                        const bool can_use_yuv, const df::cancel_token& token,
+core::surface_ptr files::image_to_surface(const core::const_image_ptr& image, const sizei target_extent,
+                                        const bool can_use_yuv, const core::cancel_token& token,
                                         const decode_intent intent)
 {
-	ui::surface_ptr surface_result;
+	core::surface_ptr surface_result;
 
 	// Nothing downstream can produce a smaller frame than the codec does, so refusing here is what
 	// keeps a huge image from exhausting memory on whichever worker asked for it.
 	if (exceeds_decode_budget(image, target_extent))
 	{
-		df::log(__FUNCTION__, std::format("decode of {} x {} needs {}, over the {} budget",
+		core::log(__FUNCTION__, std::format("decode of {} x {} needs {}, over the {} budget",
 		                                  image->dimensions().cx, image->dimensions().cy,
-		                                  df::file_size(estimate_decode_bytes(image, target_extent)).str(),
-		                                  df::file_size(df::max_decode_bytes).str()));
+		                                  platform::format_size(core::file_size(estimate_decode_bytes(image, target_extent))),
+		                                  platform::format_size(core::file_size(render::max_decode_bytes))));
 		return surface_result;
 	}
 
-	df::bump(df::file_perf.decodes);
-	df::bump(df::file_perf.decode_bytes, is_valid(image) ? image->data().size() : 0u);
-	df::perf_timer timer(df::file_perf.decode_us, &df::file_perf.decode_max_us);
+	core::bump(df::file_perf.decodes);
+	core::bump(df::file_perf.decode_bytes, is_valid(image) ? image->data().size() : 0u);
+	core::perf_timer timer(df::file_perf.decode_us, &df::file_perf.decode_max_us);
 
 	try
 	{
@@ -1747,7 +1747,7 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 		{
 			const auto format = image->format();
 
-			if (format == ui::image_format::JPEG)
+			if (format == core::image_format::JPEG)
 			{
 				bool is_yuv = false;
 				auto decoded = decode_jpeg(image->data(), target_extent, can_use_yuv, image->orientation(), is_yuv,
@@ -1761,7 +1761,7 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 						                 : fit_within(std::move(decoded), target_extent);
 				}
 			}
-			else if (format == ui::image_format::PNG)
+			else if (format == core::image_format::PNG)
 			{
 				try
 				{
@@ -1774,10 +1774,10 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 				}
 				catch (std::exception& e)
 				{
-					df::log(__FUNCTION__, e.what());
+					core::log(__FUNCTION__, e.what());
 				}
 			}
-			else if (format == ui::image_format::WEBP)
+			else if (format == core::image_format::WEBP)
 			{
 				try
 				{
@@ -1790,10 +1790,10 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 				}
 				catch (std::exception& e)
 				{
-					df::log(__FUNCTION__, e.what());
+					core::log(__FUNCTION__, e.what());
 				}
 			}
-			else if (format == ui::image_format::JXL)
+			else if (format == core::image_format::JXL)
 			{
 				mem_read_stream stream(image->data());
 				auto loaded = load_jxl(stream);
@@ -1807,16 +1807,16 @@ ui::surface_ptr files::image_to_surface(const ui::const_image_ptr& image, const 
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return surface_result;
 }
 
-ui::surface_ptr files::image_to_surface(const df::cspan image_buffer_in, const sizei target_extent,
+core::surface_ptr files::image_to_surface(const core::cspan image_buffer_in, const sizei target_extent,
                                         const bool can_use_yuv, const decode_intent intent)
 {
-	ui::surface_ptr surface_result;
+	core::surface_ptr surface_result;
 
 	try
 	{
@@ -1839,7 +1839,7 @@ ui::surface_ptr files::image_to_surface(const df::cspan image_buffer_in, const s
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return surface_result;
@@ -1847,23 +1847,23 @@ ui::surface_ptr files::image_to_surface(const df::cspan image_buffer_in, const s
 
 // Reduces a decoded picture to the grayscale square the hash consumes. Separated from hashing so
 // the four orientations share one decode and one reduction.
-static bool build_phash_gray(const ui::const_surface_ptr& surface, std::array<uint8_t, crypto::phash_pixels>& gray);
+static bool build_phash_gray(const core::const_surface_ptr& surface, std::array<uint8_t, crypto::phash_pixels>& gray);
 
-uint64_t files::calc_perceptual_hash(const ui::const_surface_ptr& surface)
+uint64_t files::calc_perceptual_hash(const core::const_surface_ptr& surface)
 {
 	std::array<uint8_t, crypto::phash_pixels> gray{};
 	if (!build_phash_gray(surface, gray)) return 0;
 	return crypto::perceptual_hash(gray.data(), gray.size());
 }
 
-crypto::phash_rotations files::calc_perceptual_hash_rotations(const ui::const_surface_ptr& surface)
+crypto::phash_rotations files::calc_perceptual_hash_rotations(const core::const_surface_ptr& surface)
 {
 	std::array<uint8_t, crypto::phash_pixels> gray{};
 	if (!build_phash_gray(surface, gray)) return {};
 	return crypto::perceptual_hash_rotations(gray.data(), gray.size());
 }
 
-static bool build_phash_gray(const ui::const_surface_ptr& surface, std::array<uint8_t, crypto::phash_pixels>& gray)
+static bool build_phash_gray(const core::const_surface_ptr& surface, std::array<uint8_t, crypto::phash_pixels>& gray)
 {
 	if (!is_valid(surface))
 	{
@@ -1874,7 +1874,7 @@ static bool build_phash_gray(const ui::const_surface_ptr& surface, std::array<ui
 	// are never what a still decodes to here.
 	const auto format = surface->format();
 
-	if (format != ui::texture_format::RGB && format != ui::texture_format::ARGB)
+	if (format != core::texture_format::RGB && format != core::texture_format::ARGB)
 	{
 		return false;
 	}
@@ -1911,13 +1911,13 @@ static bool build_phash_gray(const ui::const_surface_ptr& surface, std::array<ui
 
 			for (auto y = y0; y < y1 && y < height; ++y)
 			{
-				const auto* const line = std::bit_cast<const ui::color32*>(surface->pixels_line(y));
+				const auto* const line = std::bit_cast<const core::color32*>(surface->pixels_line(y));
 
 				for (auto x = x0; x < x1 && x < width; ++x)
 				{
 					const auto c = line[x];
 					// Rec.601 luma in integer form; the hash needs a consistent gray, not colorimetry.
-					sum += (ui::get_r(c) * 77 + ui::get_g(c) * 151 + ui::get_b(c) * 28) >> 8;
+					sum += (core::get_r(c) * 77 + core::get_g(c) * 151 + core::get_b(c) * 28) >> 8;
 					count += 1;
 				}
 			}
@@ -1929,14 +1929,14 @@ static bool build_phash_gray(const ui::const_surface_ptr& surface, std::array<ui
 	return true;
 }
 
-crypto::phash_rotations files::calc_perceptual_hash_rotations(const df::cspan encoded)
+crypto::phash_rotations files::calc_perceptual_hash_rotations(const core::cspan encoded)
 {
 	constexpr auto decode_extent = 128;
 	return calc_perceptual_hash_rotations(image_to_surface(encoded, {decode_extent, decode_extent}, false,
 	                                                       decode_intent::thumbnail));
 }
 
-uint64_t files::calc_perceptual_hash(const df::cspan encoded)
+uint64_t files::calc_perceptual_hash(const core::cspan encoded)
 {
 	// Decoded well above the hash extent so the reduction has real pixels to average, and still far
 	// enough below native size that a JPEG scales in the DCT domain rather than decoding in full.
@@ -1971,14 +1971,14 @@ void file_read_stream::read_through(const uint64_t pos, uint8_t* buffer, const s
 	if (_h->seek(pos, platform::file::whence::begin) != pos)
 	{
 		const auto message = std::format("invalid read_through seek: {} {}", pos, _h->path());
-		df::log(__FUNCTION__, message);
+		core::log(__FUNCTION__, message);
 		throw app_exception(message);
 	}
 
 	if (_h->read(buffer, len) != len)
 	{
 		const auto message = std::format("invalid read_through read: {} {}", len, _h->path());
-		df::log(__FUNCTION__, message);
+		core::log(__FUNCTION__, message);
 		throw app_exception(message);
 	}
 }
@@ -1989,7 +1989,7 @@ void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 	if (pos > _file_size || len > _file_size - pos)
 	{
 		const auto message = std::format("invalid read past end of file: {}", _h->path());
-		df::log(__FUNCTION__, message);
+		core::log(__FUNCTION__, message);
 		throw app_exception(message);
 	}
 
@@ -2006,7 +2006,7 @@ void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 		if (new_buffer_size != new_window)
 		{
 			const auto message = std::format("buffer window too large: {} {}", new_window, _h->path());
-			df::log(__FUNCTION__, message);
+			core::log(__FUNCTION__, message);
 			throw std::bad_alloc();
 		}
 
@@ -2026,7 +2026,7 @@ void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 			if (!new_buffer)
 			{
 				const auto message = std::format("buffer alloc failed: {}", _h->path());
-				df::log(__FUNCTION__, message);
+				core::log(__FUNCTION__, message);
 				throw std::bad_alloc();
 			}
 
@@ -2037,14 +2037,14 @@ void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 		if (_h->seek(new_start_pos, platform::file::whence::begin) != new_start_pos)
 		{
 			const auto message = std::format("invalid load_buffer seek: {} {}", new_start_pos, _h->path());
-			df::log(__FUNCTION__, message);
+			core::log(__FUNCTION__, message);
 			throw app_exception(message);
 		}
 
 		if (_h->read(_buffer, new_buffer_size) != new_buffer_size)
 		{
 			const auto message = std::format("invalid load_buffer read: {} {}", new_buffer_size, _h->path());
-			df::log(__FUNCTION__, message);
+			core::log(__FUNCTION__, message);
 			throw app_exception(message);
 		}
 
@@ -2053,7 +2053,7 @@ void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 	}
 }
 
-bool file_read_stream::open(const df::file_path path)
+bool file_read_stream::open(const core::file_path path)
 {
 	return open(open_file(path, platform::file_open_mode::sequential_scan));
 }
@@ -2097,7 +2097,7 @@ bool file_read_stream::open(platform::file_ptr h)
 	if (_h)
 	{
 		_file_size = _h->size();
-		_block_size = df::sixty_four_k; // platform::calc_optimal_read_size(path);
+		_block_size = core::sixty_four_k; // platform::calc_optimal_read_size(path);
 		return true;
 	}
 
@@ -2125,7 +2125,7 @@ file_read_stream::~file_read_stream()
 	close();
 }
 
-df::blob file_read_stream::read_all()
+core::blob file_read_stream::read_all()
 {
 	// Parenthesised: the Windows max macro is in scope here.
 	if (_file_size > (std::numeric_limits<size_t>::max)())
@@ -2136,15 +2136,15 @@ df::blob file_read_stream::read_all()
 	// allocates to match it. Answered empty rather than thrown: one file that cannot be held must
 	// not abandon the batch that was scanning it, and every caller already treats an empty view as
 	// a file it could not read.
-	if (_file_size > df::max_blob_size)
+	if (_file_size > core::max_blob_size)
 	{
-		df::log(__FUNCTION__, std::format("{} is too large to read whole ({})", _h->path(),
-		                                  df::file_size(_file_size).str()));
+		core::log(__FUNCTION__, std::format("{} is too large to read whole ({})", _h->path(),
+		                                  platform::format_size(core::file_size(_file_size))));
 		return {};
 	}
 
 	const auto len = static_cast<size_t>(_file_size);
-	df::blob result(len);
+	core::blob result(len);
 
 	if (len != 0)
 	{
@@ -2154,14 +2154,14 @@ df::blob file_read_stream::read_all()
 		if (_h->seek(0, platform::file::whence::begin) != 0)
 		{
 			const auto message = std::format("invalid read_all seek: {}", _h->path());
-			df::log(__FUNCTION__, message);
+			core::log(__FUNCTION__, message);
 			throw app_exception(message);
 		}
 
 		if (_h->read(result.data(), len) != len)
 		{
 			const auto message = std::format("invalid read_all read: {} {}", len, _h->path());
-			df::log(__FUNCTION__, message);
+			core::log(__FUNCTION__, message);
 			throw app_exception(message);
 		}
 	}
@@ -2169,10 +2169,10 @@ df::blob file_read_stream::read_all()
 	return result;
 }
 
-bool files::save(const df::file_path path, const file_load_result& loaded)
+bool files::save(const core::file_path path, const file_load_result& loaded)
 {
 	const auto save_format = extension_to_format(path.extension());
-	ui::const_image_ptr saved;
+	core::const_image_ptr saved;
 
 	if (is_valid(loaded.i) && loaded.i->format() == save_format)
 	{
@@ -2189,14 +2189,14 @@ bool files::save(const df::file_path path, const file_load_result& loaded)
 		saved = surface_to_image(loaded.to_surface(), {}, encode_params, save_format);
 	}
 
-	return is_valid(saved) && blob_save_to_file(saved->data(), path);
+	return is_valid(saved) && platform::blob_save_to_file(saved->data(), path);
 }
 
 // The most folder art read from one file before it is passed over: art kept beside music is bounded as the art
 // embedded in it is.
 constexpr uint64_t max_folder_art_bytes = 16ull * 1024ull * 1024ull;
 
-static ui::image_ptr read_folder_art_file(const df::file_path path)
+static core::image_ptr read_folder_art_file(const core::file_path path)
 {
 	if (!platform::exists(path)) return nullptr;
 
@@ -2206,7 +2206,7 @@ static ui::image_ptr read_folder_art_file(const df::file_path path)
 	const auto len = f->size();
 	if (len < 16 || len > max_folder_art_bytes) return nullptr;
 
-	df::blob data(static_cast<size_t>(len));
+	core::blob data(static_cast<size_t>(len));
 	if (f->read(data.data(), len) != len) return nullptr;
 
 	auto image = load_image_file(data);
@@ -2218,12 +2218,12 @@ static ui::image_ptr read_folder_art_file(const df::file_path path)
 // when the folder holds that film alone, named for it. Elsewhere - home videos beside Explorer's folder.jpg, a
 // folder of many films, a season of episodes - folder art would make every video look the same. The folder's own
 // art is remembered briefly, so an album read track by track reads it once.
-static ui::image_ptr load_folder_art(const df::file_path path, const file_type_ref ft)
+static core::image_ptr load_folder_art(const core::file_path path, const file_type_ref ft)
 {
-	static platform::mutex cache_mutex;
-	static df::folder_path cached_folder;
+	static core::mutex cache_mutex;
+	static core::folder_path cached_folder;
 	static bool cached_is_audio = false;
-	static ui::image_ptr cached_art;
+	static core::image_ptr cached_art;
 	static int64_t cached_ms = 0;
 	constexpr int64_t cache_ms = 60 * 1000;
 
@@ -2241,10 +2241,10 @@ static ui::image_ptr load_folder_art(const df::file_path path, const file_type_r
 		if (!is_named_for_its_folder(stem, folder.name())) return nullptr;
 	}
 
-	const auto now = df::now_ms();
+	const auto now = core::now_ms();
 
 	{
-		platform::exclusive_lock lock(cache_mutex);
+		core::exclusive_lock lock(cache_mutex);
 		if (cached_folder == folder && cached_is_audio == is_audio && now - cached_ms < cache_ms) return cached_art;
 	}
 
@@ -2256,7 +2256,7 @@ static ui::image_ptr load_folder_art(const df::file_path path, const file_type_r
 		"poster.jpg", "Poster.jpg", "poster.png", "folder.jpg", "Folder.jpg", "cover.jpg", "movie.jpg",
 	};
 
-	ui::image_ptr art;
+	core::image_ptr art;
 
 	for (const auto name : is_audio ? std::span<const std::string_view>(album_names) : std::span<const std::string_view>(film_names))
 	{
@@ -2265,7 +2265,7 @@ static ui::image_ptr load_folder_art(const df::file_path path, const file_type_r
 	}
 
 	{
-		platform::exclusive_lock lock(cache_mutex);
+		core::exclusive_lock lock(cache_mutex);
 		cached_folder = folder;
 		cached_is_audio = is_audio;
 		cached_art = art;
@@ -2275,7 +2275,7 @@ static ui::image_ptr load_folder_art(const df::file_path path, const file_type_r
 	return art;
 }
 
-file_scan_result files::scan_file(const df::file_path path, const bool load_thumb, const file_type_ref ft,
+file_scan_result files::scan_file(const core::file_path path, const bool load_thumb, const file_type_ref ft,
                                   const std::string_view xmp_sidecar, const sizei max_thumb_size,
                                   const libfiles::scan_intent intent, const bool want_image)
 {
@@ -2293,14 +2293,14 @@ file_scan_result files::scan_file(const df::file_path path, const bool load_thum
 // instead of a fresh (possibly stale over SMB) by-name open. Note: the RAW branch (scan_raw) and
 // the XMP sidecar are still read BY PATH - the handle only covers the primary media stream, and is
 // null for RAW.
-file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path, const bool load_thumb,
+file_scan_result files::scan_file(platform::file_ptr f, const core::file_path path, const bool load_thumb,
                                   const file_type_ref ft, const std::string_view xmp_sidecar,
                                   const sizei max_thumb_size, const libfiles::scan_intent intent, const bool want_image)
 {
 	file_scan_result result;
-	df::bump(df::file_perf.scans);
+	core::bump(df::file_perf.scans);
 	record_file_op(ft, file_op_stat::read);
-	df::perf_timer timer(df::file_perf.scan_us, &df::file_perf.scan_max_us);
+	core::perf_timer timer(df::file_perf.scan_us, &df::file_perf.scan_max_us);
 
 	try
 	{
@@ -2313,14 +2313,14 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 			f->seek(0, platform::file::whence::begin);
 			const auto file_len = f->size();
 			const bool is_bitmap = ft->has_trait(file_traits::bitmap);
-			const auto is_small_file = file_len < df::two_fifty_six_k;
+			const auto is_small_file = file_len < core::two_fifty_six_k;
 			const auto load_from_mem = load_thumb && is_bitmap;
 			// blob sizes are size_t; a longer file would be read past the end of a truncated buffer.
 			const auto fits_in_memory = file_len == static_cast<size_t>(file_len);
 
-			df::blob data;
+			core::blob data;
 
-			const auto can_load_whole_file = fits_in_memory && file_len <= df::max_blob_size;
+			const auto can_load_whole_file = fits_in_memory && file_len <= core::max_blob_size;
 
 			if ((is_small_file || load_from_mem) && can_load_whole_file)
 			{
@@ -2373,10 +2373,10 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 
 					if (stream.open(f))
 					{
-						if (load_from_mem && file_len > df::max_blob_size)
+						if (load_from_mem && file_len > core::max_blob_size)
 						{
-							df::log(__FUNCTION__, std::format("{} is too large to thumbnail ({})", path.name(),
-							                                  df::file_size(file_len).str()));
+							core::log(__FUNCTION__, std::format("{} is too large to thumbnail ({})", path.name(),
+							                                  platform::format_size(core::file_size(file_len))));
 							result = scan_photo(stream, intent, false, this);
 						}
 						else
@@ -2430,7 +2430,7 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 								pos_numerator = 0;
 							}
 
-							ui::surface_ptr thumbnail_surface;
+							core::surface_ptr thumbnail_surface;
 
 							if (decoder.extract_thumbnail(thumbnail_surface, max_thumb_size, pos_numerator,
 							                              pos_denominator, false))
@@ -2448,9 +2448,9 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 				// MPEG-1/2 program streams, which the Adobe XMP SDK supports via a .xmp sidecar
 				// only. If the demuxer surfaced no embedded XMP, merge the sidecar so its
 				// tags/ratings/labels are shown and indexed. (#230)
-				if (result.metadata.xmp.empty() && !str::is_empty(xmp_sidecar))
+				if (result.metadata.xmp.empty() && !core::is_empty(xmp_sidecar))
 				{
-					const auto sidecar = blob_from_file(path.folder().combine_file(xmp_sidecar));
+					const auto sidecar = platform::blob_from_file(path.folder().combine_file(xmp_sidecar));
 					result.metadata.xmp.assign(sidecar.begin(), sidecar.end());
 				}
 
@@ -2471,21 +2471,21 @@ file_scan_result files::scan_file(platform::file_ptr f, const df::file_path path
 
 			if (!data.empty())
 			{
-				result.crc32c = df::crc32c(data.data(), data.size());
+				result.crc32c = crc32c(data.data(), data.size());
 			}
 		}
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return result;
 }
 
-ui::image_ptr load_image_file(df::cspan file)
+core::image_ptr load_image_file(core::cspan file)
 {
-	ui::image_ptr result;
+	core::image_ptr result;
 	mem_read_stream stream(file);
 
 	if (stream.size() > 16)
@@ -2499,9 +2499,9 @@ ui::image_ptr load_image_file(df::cspan file)
 			// and scan_jpg carries a 64K buffer per frame, so that ends in a blown stack.
 			const auto info = scan_photo(stream);
 			const auto* const still = find_still_format(info.format);
-			const auto format = still ? still->encoded : ui::image_format::Unknown;
+			const auto format = still ? still->encoded : core::image_format::Unknown;
 
-			result = std::make_shared<ui::image>(file, info.dimensions(), format, info.orientation);
+			result = std::make_shared<core::image>(file, info.dimensions(), format, info.orientation);
 		}
 		else if (detected != libfiles::image_format::unknown)
 		{
@@ -2515,11 +2515,11 @@ ui::image_ptr load_image_file(df::cspan file)
 }
 
 
-file_load_result files::load(const df::file_path path, const bool can_load_preview)
+file_load_result files::load(const core::file_path path, const bool can_load_preview)
 {
 	df::last_loaded_path.store(path, std::memory_order_relaxed);
-	df::bump(df::file_perf.loads);
-	df::perf_timer timer(df::file_perf.load_us, &df::file_perf.load_max_us);
+	core::bump(df::file_perf.loads);
+	core::perf_timer timer(df::file_perf.load_us, &df::file_perf.load_max_us);
 
 	file_load_result result;
 	const auto* const mt = file_type_from_name(path);
@@ -2543,15 +2543,15 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 				// the original. Named as a property of the file, so it is not retried.
 				const auto attributes = platform::file_attributes(path);
 
-				if (attributes.size > static_cast<uint64_t>(df::max_blob_size))
+				if (attributes.size > static_cast<uint64_t>(core::max_blob_size))
 				{
-					df::log(__FUNCTION__, std::format("{} is too large to load ({})", path.name(),
-					                                  df::file_size(attributes.size).str()));
+					core::log(__FUNCTION__, std::format("{} is too large to load ({})", path.name(),
+					                                  platform::format_size(core::file_size(attributes.size))));
 					result.reason = file_load_result::failure::too_large;
 					return result;
 				}
 
-				const auto file = blob_from_file(path);
+				const auto file = platform::blob_from_file(path);
 
 				if (!file.empty())
 				{
@@ -2619,7 +2619,7 @@ file_load_result files::load(const df::file_path path, const bool can_load_previ
 	}
 	catch (const std::exception& e)
 	{
-		df::log(__FUNCTION__, std::format("{}: {}", path.name(), e.what()));
+		core::log(__FUNCTION__, std::format("{}: {}", path.name(), e.what()));
 		result = {};
 		result.reason = file_load_result::failure::unreadable;
 	}
@@ -2631,39 +2631,39 @@ static simple_transform angle_to_transform(const int a)
 {
 	if (a == -90 || a == 270)
 	{
-		return simple_transform::rot_90;
+		return core::simple_transform::rot_90;
 	}
 
 	if (a == 90 || a == -270)
 	{
-		return simple_transform::rot_270;
+		return core::simple_transform::rot_270;
 	}
 
 	if (a == 180 || a == -180)
 	{
-		return simple_transform::rot_180;
+		return core::simple_transform::rot_180;
 	}
 
-	return simple_transform::none;
+	return core::simple_transform::none;
 }
 
 
-ui::image_format extension_to_format(const std::string_view ext)
+core::image_format extension_to_format(const std::string_view ext)
 {
-	static const df::hash_map<std::string_view, ui::image_format, df::ihash, df::ieq> extensions =
+	static const core::hash_map<std::string_view, core::image_format, core::ihash, core::ieq> extensions =
 	{
-		{".jpg", ui::image_format::JPEG},
-		{".jpeg", ui::image_format::JPEG},
-		{".jpe", ui::image_format::JPEG},
-		{".png", ui::image_format::PNG},
-		{".webp", ui::image_format::WEBP},
-		{".jxl", ui::image_format::JXL},
-		{"jpg", ui::image_format::JPEG},
-		{"jpeg", ui::image_format::JPEG},
-		{"jpe", ui::image_format::JPEG},
-		{"png", ui::image_format::PNG},
-		{"webp", ui::image_format::WEBP},
-		{"jxl", ui::image_format::JXL},
+		{".jpg", core::image_format::JPEG},
+		{".jpeg", core::image_format::JPEG},
+		{".jpe", core::image_format::JPEG},
+		{".png", core::image_format::PNG},
+		{".webp", core::image_format::WEBP},
+		{".jxl", core::image_format::JXL},
+		{"jpg", core::image_format::JPEG},
+		{"jpeg", core::image_format::JPEG},
+		{"jpe", core::image_format::JPEG},
+		{"png", core::image_format::PNG},
+		{"webp", core::image_format::WEBP},
+		{"jxl", core::image_format::JXL},
 	};
 
 	const auto found = extensions.find(ext);
@@ -2673,25 +2673,25 @@ ui::image_format extension_to_format(const std::string_view ext)
 		return found->second;
 	}
 
-	return ui::image_format::Unknown;
+	return core::image_format::Unknown;
 }
 
-ui::image_ptr save_surface(const ui::image_format& format, const ui::const_surface_ptr& surface,
+core::image_ptr save_surface(const core::image_format& format, const core::const_surface_ptr& surface,
                            const libfiles::metadata_blocks& metadata, const file_encode_params& params)
 {
-	if (format == ui::image_format::JPEG)
+	if (format == core::image_format::JPEG)
 	{
 		return save_jpeg(surface, metadata, params);
 	}
-	if (format == ui::image_format::PNG)
+	if (format == core::image_format::PNG)
 	{
 		return save_png(surface, metadata);
 	}
-	if (format == ui::image_format::WEBP)
+	if (format == core::image_format::WEBP)
 	{
 		return save_webp(surface, metadata, params);
 	}
-	if (format == ui::image_format::JXL)
+	if (format == core::image_format::JXL)
 	{
 		return save_jxl(surface, metadata, params);
 	}
@@ -2710,7 +2710,7 @@ static libfiles::metadata_blocks upright_save_metadata(const libfiles::metadata_
 	result.icc = source.icc;
 	result.photoshop = source.photoshop;
 
-	df::blob exif;
+	core::blob exif;
 	if (!is_exif_signature(source.exif)) exif.assign(exif_signature.begin(), exif_signature.end());
 	exif.insert(exif.end(), source.exif.begin(), source.exif.end());
 
@@ -2723,25 +2723,25 @@ static libfiles::metadata_blocks upright_save_metadata(const libfiles::metadata_
 // rather than the EXIF. An edited surface does not say reliably - a resize draws onto a fresh canvas -
 // so it is the orientation the file ends with: the edit's, else the EXIF's carried over, which is where
 // the other formats keep it, else the surface's, which they write when there is no EXIF.
-static ui::orientation written_orientation(const metadata_edits& edits, const libfiles::metadata_blocks& metadata,
-                                           const ui::const_surface_ptr& surface)
+static core::orientation written_orientation(const metadata_edits& edits, const libfiles::metadata_blocks& metadata,
+                                           const core::const_surface_ptr& surface)
 {
-	if (edits.orientation.has_value() && *edits.orientation != ui::orientation::none) return *edits.orientation;
+	if (edits.orientation.has_value() && *edits.orientation != core::orientation::none) return *edits.orientation;
 
 	if (!metadata.exif.empty())
 	{
 		const auto skip = is_exif_signature(metadata.exif) ? exif_signature.size() : 0u;
 		const auto summary = libfiles::summarize_exif({metadata.exif.data() + skip, metadata.exif.size() - skip});
 		return summary.orientation && *summary.orientation >= 1 && *summary.orientation <= 8
-			       ? static_cast<ui::orientation>(*summary.orientation)
-			       : ui::orientation::top_left;
+			       ? static_cast<core::orientation>(*summary.orientation)
+			       : core::orientation::top_left;
 	}
 
 	return surface->orientation();
 }
 
 
-platform::file_op_result files::update_impl(const df::file_path path_src, const df::file_path path_dst,
+platform::file_op_result files::update_impl(const core::file_path path_src, const core::file_path path_dst,
                                             const metadata_edits& metadata_edits, const image_edits& photo_edits,
                                             const file_encode_params& params, const bool create_original,
                                             const std::string_view src_xmp_name, const std::string_view dst_xmp_name,
@@ -2763,7 +2763,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 	// Set only once a write path is entered, so a no-op update records nothing and a failure is
 	// attributed to the path that actually produced it.
 	file_type_ref op_type = nullptr;
-	const df::scope_exit record_write_failure([&result, &op_type]
+	const core::scope_exit record_write_failure([&result, &op_type]
 	{
 		if (result.failed() && op_type) record_file_op(op_type, file_op_stat::write_failed);
 	});
@@ -2779,7 +2779,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 		bool has_photo_edits = false;
 
 		const auto* const mt = file_type_from_name(path_src);
-		const auto extension_change = str::icmp(path_dst.extension(), path_src.extension()) != 0;
+		const auto extension_change = core::icmp(path_dst.extension(), path_src.extension()) != 0;
 		const auto path_change = path_dst != path_src;
 		const auto reencode = params.reencode && path_change;
 
@@ -2881,7 +2881,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			auto committed = false;
 
 			// Nothing outside this scope knows the staged path, so a throw would strand it.
-			const df::scope_exit discard_stage([path_temp_xmp, &committed]
+			const core::scope_exit discard_stage([path_temp_xmp, &committed]
 			{
 				if (!committed) platform::delete_file(path_temp_xmp);
 			});
@@ -2909,7 +2909,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 		// would only uncompress it, or be refused in one whose JPEG it keeps has no room for the packet as
 		// it is written now.
 		const auto copied_as_is = !has_photo_edits && !metadata_edits.has_changes() &&
-			extension_to_format(path_dst.extension()) == ui::image_format::JXL;
+			extension_to_format(path_dst.extension()) == core::image_format::JXL;
 
 		if (has_photo_edits)
 		{
@@ -2925,16 +2925,16 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 			{
 				const auto dimensions_in = loaded.dimensions();
 				const auto dst_path_is_jpeg = is_jpeg(path_dst);
-				const auto jpeg_to_jpeg = ui::is_jpeg(loaded.i) && dst_path_is_jpeg;
+				const auto jpeg_to_jpeg = core::is_jpeg(loaded.i) && dst_path_is_jpeg;
 
-				df::blob transformed;
+				core::blob transformed;
 				auto rotate_over_budget = false;
 
 				if (jpeg_to_jpeg && !reencode && photo_edits.is_no_loss(dimensions_in) && params.jpeg_save_quality >= 75)
 				{
 					// Empty when the rotation would not be lossless, which the re-encode below handles.
 					transformed = turn_jpeg_losslessly(_jpeg_transformer, _jpeg_encoder, loaded.i->data(),
-					                                   angle_to_transform(df::round(photo_edits.rotation_angle())),
+					                                   angle_to_transform(core::round(photo_edits.rotation_angle())),
 					                                   &rotate_over_budget);
 				}
 
@@ -2952,7 +2952,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 					// beside the user's photo for the indexer to find.
 					temp_file_created = true;
 
-					if (!blob_save_to_file(transformed, path_temp))
+					if (!platform::blob_save_to_file(transformed, path_temp))
 					{
 						result.code = platform::file_op_result_code::FAILED;
 					}
@@ -2961,7 +2961,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 				{
 					const auto surface_in = loaded.to_surface();
 					const auto temp_surface = is_empty(surface_in)
-						                          ? ui::const_surface_ptr{}
+						                          ? core::const_surface_ptr{}
 						                          : apply_image_edits(surface_in, photo_edits);
 
 					if (is_empty(temp_surface))
@@ -2981,7 +2981,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 						const auto& source_meta = scan_result.save_metadata(save_meta);
 						libfiles::metadata_blocks upright_meta;
 						const auto reset_orientation = metadata_edits.orientation.has_value() &&
-							*metadata_edits.orientation == ui::orientation::top_left && !source_meta.exif.empty();
+							*metadata_edits.orientation == core::orientation::top_left && !source_meta.exif.empty();
 						if (reset_orientation)
 						{
 							upright_meta = upright_save_metadata(source_meta, temp_surface->dimensions());
@@ -2994,7 +2994,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 						// over - rather than encoded bare and then updated: libjxl writes the boxes in
 						// the one pass, and the metadata update below is skipped.
 						libfiles::metadata_blocks packet_meta;
-						const auto encodes_packet = save_format == ui::image_format::JXL;
+						const auto encodes_packet = save_format == core::image_format::JXL;
 
 						if (encodes_packet)
 						{
@@ -3023,7 +3023,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 							// Claimed before the write, for the same reason as the branch above.
 							temp_file_created = true;
 
-							if (!blob_save_to_file(saved->data(), path_temp))
+							if (!platform::blob_save_to_file(saved->data(), path_temp))
 							{
 								result.code = platform::file_op_result_code::FAILED;
 							}
@@ -3077,7 +3077,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 
 		if (result.success() && temp_file_created)
 		{
-			const auto destination_existed = path_dst.exists();
+			const auto destination_existed = platform::exists(path_dst);
 			if (!xmp_result.xmp_path.is_empty() && destination_existed)
 			{
 				const auto rollback_copy = platform::copy_file(path_dst, path_rollback, true, false);
@@ -3133,7 +3133,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 
 						if (rollback_holds_sole_original)
 						{
-							df::log(__FUNCTION__, std::format("could not restore {}; original retained as {}",
+							core::log(__FUNCTION__, std::format("could not restore {}; original retained as {}",
 							                                  path_dst, path_rollback));
 						}
 					}
@@ -3154,10 +3154,10 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 
 		result.code = platform::file_op_result_code::FAILED;
-		result.error_message = str::utf8_cast(e.what());
+		result.error_message = core::utf8_cast(e.what());
 	}
 
 	if (result.failed())
@@ -3180,7 +3180,7 @@ platform::file_op_result files::update_impl(const df::file_path path_src, const 
 	return result;
 }
 
-file_update_result files::update(const df::file_path path_src, const df::file_path path_dst,
+file_update_result files::update(const core::file_path path_src, const core::file_path path_dst,
                                  const metadata_edits& metadata_edits, const image_edits& photo_edits,
                                  const file_encode_params& params, const bool create_original,
                                  const std::string_view src_xmp_name, const std::string_view dst_xmp_name,
@@ -3213,7 +3213,7 @@ file_update_result files::update(const df::file_path path_src, const df::file_pa
 			const auto path_xmp = dst_xmp_name.empty()
 				                      ? path_dst.extension(".xmp")
 				                      : path_dst.folder().combine_file(dst_xmp_name);
-			if (path_xmp.exists()) xmp_sidecar = path_xmp.name();
+			if (platform::exists(path_xmp)) xmp_sidecar = path_xmp.name();
 		}
 
 		result.coherent = handle != nullptr;
@@ -3257,23 +3257,23 @@ static int archive_read_open_native(archive* a, const std::string& path, const s
 	return archive_read_open_filename(a, path.c_str(), block_size);
 }
 
-static df::date_t archive_entry_created(archive_entry* entry)
+static core::date_t archive_entry_created(archive_entry* entry)
 {
 	if (!archive_entry_ctime_is_set(entry)) return {};
 	const auto seconds = static_cast<int64_t>(archive_entry_ctime(entry));
 	const auto nanos = archive_entry_ctime_nsec(entry);
-	constexpr auto ticks = df::date_t::intervals_per_second;
-	constexpr auto epoch_seconds = static_cast<int64_t>(df::date_t::offset_1970 / ticks);
+	constexpr auto ticks = core::date_t::intervals_per_second;
+	constexpr auto epoch_seconds = static_cast<int64_t>(core::date_t::offset_1970 / ticks);
 	if (nanos < 0 || nanos >= 1000000000 || seconds < -epoch_seconds ||
 		seconds > static_cast<int64_t>((UINT64_MAX - 9999999) / ticks) - epoch_seconds)
 	{
-		df::log_once(__FUNCTION__, "Archive timestamp is outside the supported range");
+		core::log_once(__FUNCTION__, "Archive timestamp is outside the supported range");
 		return {};
 	}
-	return df::date_t(static_cast<uint64_t>(seconds + epoch_seconds) * ticks + static_cast<uint64_t>(nanos) / 100);
+	return core::date_t(static_cast<uint64_t>(seconds + epoch_seconds) * ticks + static_cast<uint64_t>(nanos) / 100);
 }
 
-std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
+std::vector<archive_item> files::list_archive(const core::file_path zip_file_path)
 {
 	std::vector<archive_item> results;
 	auto* const a = archive_read_new();
@@ -3284,9 +3284,9 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 	// Entries are attacker-controlled; a crafted archive can declare millions of them.
 	constexpr size_t max_entries = 100 * 1000;
 
-	// RAII so a throw from str::utf8_cast or emplace_back cannot leak the handle
+	// RAII so a throw from core::utf8_cast or emplace_back cannot leak the handle
 	// and libarchive's decompression buffers.
-	const df::scope_exit free_archive([a] { archive_read_free(a); });
+	const core::scope_exit free_archive([a] { archive_read_free(a); });
 
 	archive_read_support_filter_all(a);
 	archive_read_support_format_all(a);
@@ -3295,7 +3295,7 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 
 	if (archive_read_open_native(a, native, 10240) == ARCHIVE_OK)
 	{
-		const df::scope_exit close_archive([a] { archive_read_close(a); });
+		const core::scope_exit close_archive([a] { archive_read_close(a); });
 
 		archive_entry* entry = nullptr;
 
@@ -3306,12 +3306,12 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 			if (status != ARCHIVE_OK)
 			{
 				const auto* error = archive_error_string(a);
-				df::log_once(__FUNCTION__, error ? error : "Cannot read archive entry");
+				core::log_once(__FUNCTION__, error ? error : "Cannot read archive entry");
 				if (status != ARCHIVE_WARN) break;
 			}
 			if (!entry)
 			{
-				df::log_once(__FUNCTION__, "Archive reader returned no entry");
+				core::log_once(__FUNCTION__, "Archive reader returned no entry");
 				break;
 			}
 
@@ -3323,8 +3323,8 @@ std::vector<archive_item> files::list_archive(const df::file_path zip_file_path)
 				continue;
 
 			archive_item result_info;
-			result_info.filename = str::utf8_cast(pathname);
-			result_info.uncompressed_size = df::file_size(archive_entry_size(entry));
+			result_info.filename = core::utf8_cast(pathname);
+			result_info.uncompressed_size = core::file_size(archive_entry_size(entry));
 			result_info.created = archive_entry_created(entry);
 			results.emplace_back(std::move(result_info));
 		}
@@ -3352,7 +3352,7 @@ bool language_matches_ui(const std::string_view iso639, const std::string_view u
 
 	for (const auto& m : map)
 	{
-		if (str::icmp(ui_language, m.ui2) == 0 && str::icmp(iso639, m.iso3) == 0)
+		if (core::icmp(ui_language, m.ui2) == 0 && core::icmp(iso639, m.iso3) == 0)
 			return true;
 	}
 
@@ -3401,7 +3401,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 	struct text_key
 	{
 		std::string_view key;
-		str::cached prop::item_metadata::* field;
+		core::cached prop::item_metadata::* field;
 	};
 
 	static constexpr text_key text_keys[] = {
@@ -3443,13 +3443,13 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 			if (priority >= best)
 			{
 				best = priority;
-				result.*(text->field) = str::strip_and_cache(kv.value);
+				result.*(text->field) = core::strip_and_cache(kv.value);
 			}
 
 			continue;
 		}
 
-		if (is_key(kv.key, "comment") || str::starts(kv.key, "comment-") || is_key(base_key, "comment"))
+		if (is_key(kv.key, "comment") || core::starts(kv.key, "comment-") || is_key(base_key, "comment"))
 		{
 			// Pick the best single comment: plain/untagged > current UI language > any other.
 			const auto priority = is_key(kv.key, "comment")
@@ -3461,15 +3461,15 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 			if (priority > comment_priority)
 			{
 				comment_priority = priority;
-				result.comment = str::strip_and_cache(kv.value);
+				result.comment = core::strip_and_cache(kv.value);
 			}
 		}
 		else if (is_key(kv.key, "creation_time") || is_key(kv.key, "date") || is_key(
 			kv.key, "com.apple.quicktime.creationdate"))
 		{
-			if (kv.value.size() == 4 || str::ends(kv.value, "00-00"))
+			if (kv.value.size() == 4 || core::ends(kv.value, "00-00"))
 			{
-				const auto year = str::to_int(kv.value);
+				const auto year = core::to_int(kv.value);
 
 				if (year > 1800 && year < 2100)
 				{
@@ -3478,7 +3478,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 			}
 			else
 			{
-				const auto date = df::date_t::from(kv.value);
+				const auto date = core::date_t::from(kv.value);
 
 				if (date.is_valid())
 				{
@@ -3489,7 +3489,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		}
 		else if (is_key(kv.key, "date-eng") || is_key(kv.key, "Rip date"))
 		{
-			const auto date = df::date_t::from(kv.value);
+			const auto date = core::date_t::from(kv.value);
 			if (date.is_valid())
 			{
 				// A wall-clock reading like TDOR below, not an instant: a rip tag carries no zone, so
@@ -3504,37 +3504,37 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		else if (is_key(kv.key, "TDOR") || is_key(kv.key, "TORY") ||
 			is_key(kv.key, "originalyear") || is_key(kv.key, "original_year"))
 		{
-			const auto date = df::date_t::from(kv.value);
+			const auto date = core::date_t::from(kv.value);
 			if (date.is_valid())
 			{
 				result.dates.add(prop::date_source::id3_original_release, date);
 			}
-			else if (kv.value.size() == 4 && str::is_num(kv.value))
+			else if (kv.value.size() == 4 && core::is_num(kv.value))
 			{
-				const auto year = str::to_int(kv.value);
+				const auto year = core::to_int(kv.value);
 				if (year > 1800 && year < 2100) result.dates.add(prop::date_source::id3_original_release,
-				                                                df::date_t(year, 1, 1, 0, 0, 0));
+				                                                core::date_t(year, 1, 1, 0, 0, 0));
 			}
 		}
 		else if (is_key(kv.key, "maker") || is_key(kv.key, "make") || is_key(kv.key, "com.apple.quicktime.make"))
 		{
 			// AVI normalises to "maker", MP4/MOV to "make"; both mean camera manufacturer.
-			result.camera_manufacturer = str::strip_and_cache(kv.value);
+			result.camera_manufacturer = core::strip_and_cache(kv.value);
 		}
 		else if (is_key(kv.key, "model") || is_key(kv.key, "com.apple.quicktime.model") || is_key(
 			kv.key, "model-eng"))
 		{
-			result.camera_model = str::strip_and_cache(kv.value);
+			result.camera_model = core::strip_and_cache(kv.value);
 		}
-		else if (is_key(kv.key, "year")) result.year = str::to_int(kv.value);
-		else if (is_key(kv.key, "disk") || is_key(kv.key, "disc")) result.disk = df::xy8::parse(kv.value);
-		else if (is_key(kv.key, "track")) result.track = df::xy8::parse(kv.value);
-		else if (is_key(kv.key, "variant_bitrate")) result.bitrate = str::strip_and_cache(kv.value);
-		else if (is_key(kv.key, "episode_sort")) result.episode = df::xy8::parse(kv.value);
-		else if (is_key(kv.key, "season_number")) result.season = str::to_int(kv.value);
+		else if (is_key(kv.key, "year")) result.year = core::to_int(kv.value);
+		else if (is_key(kv.key, "disk") || is_key(kv.key, "disc")) result.disk = core::xy8::parse(kv.value);
+		else if (is_key(kv.key, "track")) result.track = core::xy8::parse(kv.value);
+		else if (is_key(kv.key, "variant_bitrate")) result.bitrate = core::strip_and_cache(kv.value);
+		else if (is_key(kv.key, "episode_sort")) result.episode = core::xy8::parse(kv.value);
+		else if (is_key(kv.key, "season_number")) result.season = core::to_int(kv.value);
 		else if (is_key(kv.key, "song") && prop::is_null(result.title))
 			result.title =
-				str::strip_and_cache(kv.value);
+				core::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "compatible_brands") || is_key(kv.key, "minor_version"))
 		{
 			// compatible_brands: 3gp4, avc1isom, isomavc1, isomiso2avc1mp41, isomiso2mp41, isommp42, M4A mp42isom, mp41isom, mp42mp41isomavc1, qt
@@ -3542,31 +3542,31 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		}
 		else if (is_key(kv.key, "rating"))
 		{
-			result.rating = std::clamp(str::to_int(kv.value), 0, 5);
+			result.rating = std::clamp(core::to_int(kv.value), 0, 5);
 		}
 		else if (is_key(kv.key, "WM/SharedUserRating"))
 		{
 			// Windows System.Rating is a 0-99 scale (Explorer / Media Player); map it to
 			// Diffractor's 0-5 stars. A corresponding XMP property, when present, is
 			// parsed afterwards and remains authoritative.
-			const auto r = str::to_int(kv.value);
+			const auto r = core::to_int(kv.value);
 			if (r > 0)
 				result.rating = (r <= 12) ? 1 : (r <= 37) ? 2 : (r <= 62) ? 3 : (r <= 87) ? 4 : 5;
 		}
 		else if (is_key(kv.key, "keywords"))
 		{
-			str::split2(kv.value, true, [this](const std::string_view text)
+			core::split2(kv.value, true, [this](const std::string_view text)
 			{
-				keywords.emplace_back(str::cache(text));
+				keywords.emplace_back(core::cache(text));
 			});
 		}
 		else if (is_key(kv.key, "WM/Category"))
 		{
 			// Windows Explorer / Media Player tags (MP4 'Xtra' atom, ASF 'WM/*').
 			// Values are ';'-delimited and may contain spaces, so split only on ';'.
-			str::split2(kv.value, true, [this](const std::string_view text)
+			core::split2(kv.value, true, [this](const std::string_view text)
 			            {
-				            windows_categories.emplace_back(str::cache(str::trim(text)));
+				            windows_categories.emplace_back(core::cache(core::trim(text)));
 			            }, [](const char c) { return c == ';'; });
 		}
 		else if (is_key(kv.key, "location-eng") || is_key(kv.key, "location") || is_key(
@@ -3640,9 +3640,9 @@ static prop::panorama_projection panorama_of(const libfiles::panorama_projection
 static void add_dated(prop::item_metadata& md, const libfiles::dated& d)
 {
 	const auto& w = d.when;
-	df::date_t value;
-	if (!value.date(df::day_t{w.year, w.month, w.day, w.hour, w.minute, w.second})) return;
-	if (w.nanoseconds != 0) value = df::date_t(value.to_int64() + static_cast<uint64_t>(w.nanoseconds / 100));
+	core::date_t value;
+	if (!value.date(core::day_t{w.year, w.month, w.day, w.hour, w.minute, w.second})) return;
+	if (w.nanoseconds != 0) value = core::date_t(value.to_int64() + static_cast<uint64_t>(w.nanoseconds / 100));
 
 	const auto offset = w.zone == libfiles::date::time_zone::utc
 		                    ? prop::date_pack::utc_instant
@@ -3656,9 +3656,9 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 {
 	using libfiles::property;
 
-	const auto text = [&p](str::cached& field, const std::string& value, const property id)
+	const auto text = [&p](core::cached& field, const std::string& value, const property id)
 	{
-		if (p.states(id)) field = str::cache(value);
+		if (p.states(id)) field = core::cache(value);
 	};
 
 	text(md.title, p.title, property::title);
@@ -3686,10 +3686,10 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 	text(md.label, p.label, property::label);
 	text(md.raw_file_name, p.raw_file_name, property::raw_file_name);
 
-	if (p.states(property::comments)) md.comment = p.comments.empty() ? str::cached{} : str::cache(p.comments.front().text);
-	if (p.states(property::creators)) md.copyright_creator = str::cache(str::combine(p.creators));
+	if (p.states(property::comments)) md.comment = p.comments.empty() ? core::cached{} : core::cache(p.comments.front().text);
+	if (p.states(property::creators)) md.copyright_creator = core::cache(core::combine(p.creators));
 	// A tag of more than one word is quoted, so the item's tags split back into what the file named.
-	if (p.states(property::keywords)) md.tags = str::cache(str::combine(p.keywords));
+	if (p.states(property::keywords)) md.tags = core::cache(core::combine(p.keywords));
 	if (p.states(property::rating) && p.rating) md.rating = static_cast<int16_t>(*p.rating);
 	if (p.states(property::year)) md.year = static_cast<uint16_t>(p.year);
 	if (p.states(property::track)) md.track = prop::number_pair(p.track, p.track_count);
@@ -3704,7 +3704,7 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 	if (p.states(property::iso_speed)) md.iso_speed = static_cast<uint16_t>(p.iso_speed);
 	if (p.states(property::altitude) && p.altitude) md.altitude = static_cast<float>(*p.altitude);
 	if (p.states(property::speed)) md.gps_speed = static_cast<float>(p.speed);
-	if (p.states(property::orientation) && p.orientation) md.orientation = static_cast<ui::orientation>(*p.orientation);
+	if (p.states(property::orientation) && p.orientation) md.orientation = static_cast<core::orientation>(*p.orientation);
 	if (p.states(property::panorama)) md.panorama = panorama_of(p.panorama);
 
 	// A position the index cannot hold pins the item nowhere rather than somewhere wrong.
@@ -3768,7 +3768,7 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	if (prop::is_null(result->video_codec)) result->video_codec = video_codec;
 	if (prop::is_null(result->copyright_notice)) result->copyright_notice = copyright_notice;
 	if (prop::is_null(result->title)) result->title = title;
-	if (prop::is_null(result->duration)) result->duration = df::round(duration);
+	if (prop::is_null(result->duration)) result->duration = core::round(duration);
 	if (prop::is_null(result->audio_codec)) result->audio_codec = audio_codec;
 	if (prop::is_null(result->audio_channels)) result->audio_channels = audio_channels;
 	if (prop::is_null(result->audio_sample_type)) result->audio_sample_type = static_cast<uint16_t>(audio_sample_type);
@@ -3798,15 +3798,15 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 			tags.insert(tags.end(), windows_categories.begin(), windows_categories.end());
 		}
 
-		std::ranges::sort(tags, str::iless());
-		tags.erase(std::ranges::unique(tags, df::ieq()).begin(), tags.end());
-		result->tags = str::cache(str::combine(tags));
+		std::ranges::sort(tags, core::iless());
+		tags.erase(std::ranges::unique(tags, core::ieq()).begin(), tags.end());
+		result->tags = core::cache(core::combine(tags));
 	}
 
 	if (!prop::is_null(width)) result->width = to_u16(width);
 	if (!prop::is_null(height)) result->height = to_u16(height);
 	if (!prop::is_null(pixel_format)) result->pixel_format = pixel_format;
-	if (orientation_applied || orientation != ui::orientation::top_left) result->orientation = orientation;
+	if (orientation_applied || orientation != core::orientation::top_left) result->orientation = orientation;
 
 	return result;
 }
@@ -3830,7 +3830,7 @@ void add_structure_bytes(metadata_kv_list& kv, const std::string_view key, std::
 	if (payload && payload_len > 0)
 	{
 		// Only as much as a dump would ever list is kept, so an oversized payload costs no more.
-		const auto kept = std::min(payload_len, str::max_hex_dump_bytes);
+		const auto kept = std::min(payload_len, core::max_hex_dump_bytes);
 		row.detail = metadata_binary_detail{std::vector<uint8_t>(payload, payload + kept)};
 	}
 }
@@ -3888,7 +3888,7 @@ static void decode_embedded_images(metadata_kv_list& kv)
 		// budget: this is a row in a properties pane, not a reason to take a gigabyte. A header this
 		// cannot read is not waved through - every decoder image_to_surface can reach carries the same
 		// budget refusal, including the ffmpeg fallback.
-		const df::cspan bytes{binary->bytes.data(), binary->bytes.size()};
+		const core::cspan bytes{binary->bytes.data(), binary->bytes.size()};
 		mem_read_stream header_stream(bytes);
 		const auto scanned = scan_photo(header_stream);
 		const sizei scanned_dimensions{static_cast<int>(scanned.width), static_cast<int>(scanned.height)};
@@ -3897,7 +3897,7 @@ static void decode_embedded_images(metadata_kv_list& kv)
 
 		auto surface = ff.image_to_surface(bytes, preview_limit, false, decode_intent::thumbnail);
 
-		if (ui::is_valid(surface))
+		if (core::is_valid(surface))
 		{
 			row.detail = metadata_image_detail{std::move(surface)};
 			// An image is the point of the row, so it is shown without being asked for.
@@ -3906,7 +3906,7 @@ static void decode_embedded_images(metadata_kv_list& kv)
 		else
 		{
 			binary->is_image = false;
-			if (binary->bytes.size() > str::max_hex_dump_bytes) binary->bytes.resize(str::max_hex_dump_bytes);
+			if (binary->bytes.size() > core::max_hex_dump_bytes) binary->bytes.resize(core::max_hex_dump_bytes);
 		}
 	}
 }
@@ -3987,15 +3987,15 @@ av_media_info file_scan_result::to_info() const
 
 namespace
 {
-	ui::surface_ptr fitted(files& ff, ui::surface_ptr loaded, const still_decode_request& request)
+	core::surface_ptr fitted(files& ff, core::surface_ptr loaded, const still_decode_request& request)
 	{
-		return is_valid(loaded) ? ff.fit_within(std::move(loaded), request.target_extent) : ui::surface_ptr{};
+		return is_valid(loaded) ? ff.fit_within(std::move(loaded), request.target_extent) : core::surface_ptr{};
 	}
 
 	// These decoders report a malformed file by throwing. The failure is logged and answered with
 	// nothing, so the caller still offers the bytes to ffmpeg.
 	template <typename Decode>
-	ui::surface_ptr decode_or_log(Decode&& decode)
+	core::surface_ptr decode_or_log(Decode&& decode)
 	{
 		try
 		{
@@ -4003,7 +4003,7 @@ namespace
 		}
 		catch (const std::exception& e)
 		{
-			df::log("files::image_to_surface", e.what());
+			core::log("files::image_to_surface", e.what());
 			return {};
 		}
 	}
@@ -4018,7 +4018,7 @@ namespace
 			.traits = xmp_edit,
 			.scan = scan_photo_libfiles,
 			.load = [](read_stream& s, load_diagnostic* const d) { return load_psd(s, d); },
-			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			.decode = [](files& ff, const core::cspan data, const still_decode_request& r)
 			{
 				mem_read_stream stream(data);
 				return fitted(ff, load_psd(stream), r);
@@ -4038,7 +4038,7 @@ namespace
 			.traits = xmp_edit | file_traits::no_photo_edit,
 			.scan = scan_jxl_libfiles,
 			.load = [](read_stream& s, load_diagnostic* const d) { return load_jxl(s, d); },
-			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			.decode = [](files& ff, const core::cspan data, const still_decode_request& r)
 			{
 				return decode_or_log([&ff, data, &r]
 				{
@@ -4051,9 +4051,9 @@ namespace
 			.format = libfiles::image_format::webp,
 			.extensions = "webp",
 			.traits = xmp_edit,
-			.encoded = ui::image_format::WEBP,
+			.encoded = core::image_format::WEBP,
 			.scan = scan_photo_libfiles,
-			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			.decode = [](files& ff, const core::cspan data, const still_decode_request& r)
 			{
 				return decode_or_log([&ff, data, &r]
 				{
@@ -4066,7 +4066,7 @@ namespace
 			.extensions = "jpeg,jpg,jpe,jfif",
 			.description = "Joint Photographic Experts Group",
 			.traits = xmp_edit,
-			.encoded = ui::image_format::JPEG,
+			.encoded = core::image_format::JPEG,
 			.scan = scan_photo_libfiles,
 			.decode = decode_still_jpeg,
 		},
@@ -4081,9 +4081,9 @@ namespace
 			.extensions = "png",
 			.description = "Portable Network Graphic",
 			.traits = xmp_edit,
-			.encoded = ui::image_format::PNG,
+			.encoded = core::image_format::PNG,
 			.scan = scan_photo_libfiles,
-			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			.decode = [](files& ff, const core::cspan data, const still_decode_request& r)
 			{
 				return decode_or_log([&ff, data, &r] { return fitted(ff, load_png(data), r); });
 			},
@@ -4102,7 +4102,7 @@ namespace
 			.traits = file_traits::embedded_xmp,
 			.scan = scan_heif_libfiles,
 			.load = [](read_stream& s, load_diagnostic* const d) { return load_heif(s, d); },
-			.decode = [](files& ff, const df::cspan data, const still_decode_request& r)
+			.decode = [](files& ff, const core::cspan data, const still_decode_request& r)
 			{
 				return decode_or_log([&ff, data, &r]
 				{
@@ -4117,7 +4117,7 @@ namespace
 // A JPEG decodes at a reduced scale already. Planar YUV for display goes to the sampler as it is,
 // which resizes at draw time; a thumbnail is about to be encoded, so it is reduced here - and stays
 // planar, because that is the form VP8 wants.
-ui::surface_ptr decode_still_jpeg(files& ff, const df::cspan data, const still_decode_request& request)
+core::surface_ptr decode_still_jpeg(files& ff, const core::cspan data, const still_decode_request& request)
 {
 	bool is_yuv = false;
 	auto decoded = ff.decode_jpeg(data, request.target_extent, request.can_use_yuv, {}, is_yuv, {}, request.intent);
@@ -4148,7 +4148,7 @@ const still_format* find_still_format(const libfiles::image_format format)
 file_type still_file_type(const libfiles::image_format format)
 {
 	const auto* const f = find_still_format(format);
-	df::assert_true(f != nullptr);
+	core::assert_true(f != nullptr);
 	return f ? file_type(file_group::photo, f->extensions, f->description, f->traits) : file_type::other;
 }
 
@@ -4160,7 +4160,7 @@ file_type still_file_type(const libfiles::image_format format)
 
 // Reached only for an embedded thumbnail whose format load_image_file cannot wrap, which needs a
 // files instance to decode. Borrows the caller's rather than building a second libjpeg context.
-static ui::surface_ptr decode_thumbnail(files* const decoder, const df::cspan data)
+static core::surface_ptr decode_thumbnail(files* const decoder, const core::cspan data)
 {
 	if (decoder) return decoder->image_to_surface(data, {}, false, decode_intent::thumbnail);
 	files ff;
@@ -4202,7 +4202,7 @@ namespace
 {
 
 	// An embedded thumbnail: JPEG, PNG and WebP stay encoded, anything else recognisable is decoded.
-	void load_thumbnail(file_scan_result& result, const df::cspan data, files* const decoder)
+	void load_thumbnail(file_scan_result& result, const core::cspan data, files* const decoder)
 	{
 		const auto detected = libfiles::detect_image_format(data);
 		if (detected == libfiles::image_format::unknown) return;
@@ -4234,7 +4234,7 @@ namespace
 		// The decoder already turned the pixels for a transform the container stored.
 		if (result.orientation_applied)
 		{
-			result.orientation = ui::orientation::top_left;
+			result.orientation = core::orientation::top_left;
 		}
 	}
 }
@@ -4264,7 +4264,7 @@ file_scan_result scan_still_libfiles(read_stream& s, const libfiles::scan_intent
 		if (!scanned.error.empty())
 		{
 			// A fault discards the whole scan, as a throw from a scanner always has.
-			df::log(__FUNCTION__, scanned.error);
+			core::log(__FUNCTION__, scanned.error);
 			return result;
 		}
 
@@ -4275,8 +4275,8 @@ file_scan_result scan_still_libfiles(read_stream& s, const libfiles::scan_intent
 
 		result.width = scanned.width;
 		result.height = scanned.height;
-		if (!scanned.pixel_format.empty()) result.pixel_format = str::cache(scanned.pixel_format);
-		if (scanned.orientation) result.orientation = static_cast<ui::orientation>(*scanned.orientation);
+		if (!scanned.pixel_format.empty()) result.pixel_format = core::cache(scanned.pixel_format);
+		if (scanned.orientation) result.orientation = static_cast<core::orientation>(*scanned.orientation);
 
 		result.metadata = std::move(scanned.metadata);
 		result.tiff_metadata = std::move(scanned.tiff_metadata);
@@ -4319,7 +4319,7 @@ file_scan_result scan_still_libfiles(read_stream& s, const libfiles::scan_intent
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return result;
@@ -4350,7 +4350,7 @@ file_scan_result scan_photo(read_stream& s, const libfiles::scan_intent intent, 
 	}
 	catch (std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	return result;
@@ -4385,9 +4385,9 @@ namespace
 
 	// The container's turn and mirror, numbered as EXIF numbers an orientation, as the player reads them from
 	// FFmpeg's display matrix.
-	ui::orientation orientation_of(const libfiles::video_format& v)
+	core::orientation orientation_of(const libfiles::video_format& v)
 	{
-		return static_cast<ui::orientation>(v.orientation());
+		return static_cast<core::orientation>(v.orientation());
 	}
 
 	// The height a non-square pixel displays at, as the FFmpeg path computes it for anamorphic video.
@@ -4396,11 +4396,11 @@ namespace
 		const auto num = v.pixel_aspect_width;
 		const auto den = v.pixel_aspect_height;
 		if (num == 0 || den == 0 || num == den || v.width == 0 || v.height == 0) return v.height;
-		return static_cast<uint32_t>(df::mul_div(static_cast<int64_t>(v.height), static_cast<int64_t>(den),
+		return static_cast<uint32_t>(core::mul_div(static_cast<int64_t>(v.height), static_cast<int64_t>(den),
 		                                         static_cast<int64_t>(num)));
 	}
 
-	df::date_t to_date(const libfiles::media_date& d)
+	core::date_t to_date(const libfiles::media_date& d)
 	{
 		if (!d.valid() || d.month == 0) return {};
 		return {d.year, d.month, d.day == 0 ? 1 : d.day, d.hour, d.minute, d.second};
@@ -4499,7 +4499,7 @@ media_scan_read scan_media_file(const platform::file_ptr& f, const libfiles::sca
 		// A format libfiles does not read is FFmpeg's to describe, which is no fault.
 		if (!scan->error.empty() && scan->format != libfiles::media_format::unknown)
 		{
-			df::log(__FUNCTION__, scan->error);
+			core::log(__FUNCTION__, scan->error);
 		}
 
 		if (want_cover_art && scan->success)
@@ -4523,7 +4523,7 @@ media_scan_read scan_media_file(const platform::file_ptr& f, const libfiles::sca
 	}
 	catch (const std::exception& e)
 	{
-		df::log(__FUNCTION__, e.what());
+		core::log(__FUNCTION__, e.what());
 	}
 
 	// FFmpeg reads the handle from where it stands, so a decoder opened next must find it at the start.
@@ -4542,21 +4542,21 @@ void apply_media_scan(file_scan_result& result, media_scan_read&& read, const bo
 	if (stream_facts)
 	{
 		result.nb_streams = static_cast<uint32_t>(scan.streams.size());
-		result.duration = df::round(scan.duration);
-		if (scan.bit_rate > 0) result.bitrate = str::cache(prop::format_bit_rate(static_cast<int64_t>(scan.bit_rate)));
+		result.duration = core::round(scan.duration);
+		if (scan.bit_rate > 0) result.bitrate = core::cache(prop::format_bit_rate(static_cast<int64_t>(scan.bit_rate)));
 
 		if (const auto* const v = first_stream(scan, libfiles::media_stream_kind::video))
 		{
-			if (!v->codec.empty()) result.video_codec = str::cache(v->codec);
+			if (!v->codec.empty()) result.video_codec = core::cache(v->codec);
 			result.width = v->video.width;
 			result.height = display_height(v->video);
-			if (const auto name = v->video.pixel_format(); !name.empty()) result.pixel_format = str::cache(name);
+			if (const auto name = v->video.pixel_format(); !name.empty()) result.pixel_format = core::cache(name);
 			result.orientation = orientation_of(v->video);
 		}
 
 		if (const auto* const a = first_stream(scan, libfiles::media_stream_kind::audio))
 		{
-			if (!a->codec.empty()) result.audio_codec = str::cache(a->codec);
+			if (!a->codec.empty()) result.audio_codec = core::cache(a->codec);
 			result.audio_sample_rate = static_cast<int>(a->audio.sample_rate);
 			result.audio_channels = static_cast<int>(a->audio.channels);
 			result.audio_sample_type = coded_sample_type(a->audio.bits_per_sample, a->audio.float_samples);
@@ -4570,9 +4570,9 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 {
 	const auto& p = media->properties;
 
-	const auto set = [](str::cached& to, const std::string& value)
+	const auto set = [](core::cached& to, const std::string& value)
 	{
-		if (!value.empty()) to = str::strip_and_cache(value);
+		if (!value.empty()) to = core::strip_and_cache(value);
 	};
 
 	set(result.album, p.album);
@@ -4599,10 +4599,10 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 	{
 		const auto priority = c.language.empty() ? 3 : language_matches_ui(c.language, setting.language) ? 2 : 1;
 
-		if (priority > comment_priority && !str::is_empty(c.text))
+		if (priority > comment_priority && !core::is_empty(c.text))
 		{
 			comment_priority = priority;
-			result.comment = str::strip_and_cache(c.text);
+			result.comment = core::strip_and_cache(c.text);
 		}
 	}
 
@@ -4625,14 +4625,15 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 	// A tag giving only a year - ©day "1998", TYER, WM/Year - dates its track or film to that year, rather than
 	// leaving it to the day the file was copied.
 	const auto year_only = p.created.valid() ? (p.created.month == 0 ? p.created.year : 0) : p.year;
-	if (year_only > 1800 && year_only < 2100) result.dates.add(prop::date_source::container_created, df::date_t(year_only, 1, 1, 0, 0, 0));
+	if (year_only > 1800 && year_only < 2100)
+		result.dates.add(prop::date_source::container_created, core::date_t(year_only, 1, 1, 0, 0, 0));
 
 	if (p.original_release.valid())
 	{
 		if (p.original_release.month == 0)
 		{
 			if (p.original_release.year > 1800 && p.original_release.year < 2100)
-				result.dates.add(prop::date_source::id3_original_release, df::date_t(p.original_release.year, 1, 1, 0, 0, 0));
+				result.dates.add(prop::date_source::id3_original_release, core::date_t(p.original_release.year, 1, 1, 0, 0, 0));
 		}
 		else
 		{
@@ -4643,16 +4644,16 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 	// A rip tag is a wall-clock reading: nobody wrote a zone for it.
 	for (const auto& tag : media->tags)
 	{
-		if (str::icmp(tag.key, "TXXX:Rip date") == 0)
+		if (core::icmp(tag.key, "TXXX:Rip date") == 0)
 		{
-			const auto date = df::date_t::from(tag.value);
+			const auto date = core::date_t::from(tag.value);
 			if (date.is_valid()) result.dates.add(prop::date_source::rip_date, date);
 		}
 	}
 
 	for (const auto& k : p.keywords)
 	{
-		if (!k.empty()) keywords.emplace_back(str::cache(k));
+		if (!k.empty()) keywords.emplace_back(core::cache(k));
 	}
 
 	if (p.location)
@@ -4676,7 +4677,7 @@ void add_media_blocks(const libfiles::media_scan_result& scan, av_media_info& in
 	if (with_xmp && !scan.xmp.empty())
 	{
 		bool parsed = false;
-		const df::cspan packet{scan.xmp.data(), scan.xmp.size()};
+		const core::cspan packet{scan.xmp.data(), scan.xmp.size()};
 		auto kv = metadata_xmp::to_info(packet, parsed);
 
 		constexpr size_t max_raw_bytes = 256 * 1024;
@@ -4722,8 +4723,8 @@ void describe_media_streams(const libfiles::media_scan_result& scan, av_media_in
 
 	if (v)
 	{
-		info.video_codec = str::cache(v->codec);
-		info.pixel_format = str::cache(v->video.pixel_format());
+		info.video_codec = core::cache(v->codec);
+		info.pixel_format = core::cache(v->video.pixel_format());
 		info.video_frame_rate = v->video.frame_rate;
 		info.render_dimensions = {static_cast<int>(v->video.width), static_cast<int>(v->video.height)};
 		info.display_dimensions = {static_cast<int>(v->video.width), static_cast<int>(display_height(v->video))};
@@ -4732,7 +4733,7 @@ void describe_media_streams(const libfiles::media_scan_result& scan, av_media_in
 
 	if (a)
 	{
-		info.audio_codec = str::cache(a->codec);
+		info.audio_codec = core::cache(a->codec);
 		info.audio_sample_rate = static_cast<int>(a->audio.sample_rate);
 		info.audio_channels = static_cast<int>(a->audio.channels);
 		info.audio_sample_type = coded_sample_type(a->audio.bits_per_sample, a->audio.float_samples);
@@ -4785,13 +4786,13 @@ void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& 
 
 	if (const auto* const v = first_stream(scan, libfiles::media_stream_kind::video))
 	{
-		if (!v->codec.empty()) info.video_codec = str::cache(v->codec);
-		if (const auto name = v->video.pixel_format(); !name.empty()) info.pixel_format = str::cache(name);
+		if (!v->codec.empty()) info.video_codec = core::cache(v->codec);
+		if (const auto name = v->video.pixel_format(); !name.empty()) info.pixel_format = core::cache(name);
 	}
 
 	if (const auto* const a = first_stream(scan, libfiles::media_stream_kind::audio))
 	{
-		if (!a->codec.empty()) info.audio_codec = str::cache(a->codec);
+		if (!a->codec.empty()) info.audio_codec = core::cache(a->codec);
 		info.audio_sample_type = coded_sample_type(a->audio.bits_per_sample, a->audio.float_samples);
 	}
 
@@ -4824,7 +4825,7 @@ namespace
 
 	std::string element_text(std::string_view content)
 	{
-		content = str::trim(content);
+		content = core::trim(content);
 
 		constexpr std::string_view cdata_open = "<![CDATA[";
 		constexpr std::string_view cdata_close = "]]>";
@@ -4925,16 +4926,16 @@ namespace
 
 	int to_int(const std::string_view s, const int fallback)
 	{
-		const auto trimmed = str::trim(s);
+		const auto trimmed = core::trim(s);
 		auto value = fallback;
 		const auto [ptr, ec] = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), value);
 		return ec == std::errc{} ? value : fallback;
 	}
 
 	// 2019-05-01, as every media manager writes a date; or the year alone.
-	df::date_t nfo_date(const std::string_view s)
+	core::date_t nfo_date(const std::string_view s)
 	{
-		const auto parts = str::split(str::trim(s), false, [](const char c) { return c == '-' || c == '/'; });
+		const auto parts = core::split(core::trim(s), false, [](const char c) { return c == '-' || c == '/'; });
 		if (parts.empty()) return {};
 
 		const auto year = to_int(parts[0], 0);
@@ -4942,13 +4943,13 @@ namespace
 		const auto day = parts.size() > 2 ? to_int(parts[2], 0) : 0;
 
 		if (year <= 1800 || year >= 2100) return {};
-		if (month < 1 || month > 12 || day < 1 || day > 31) return df::date_t(year, 1, 1, 0, 0, 0);
+		if (month < 1 || month > 12 || day < 1 || day > 31) return core::date_t(year, 1, 1, 0, 0, 0);
 
-		const df::date_t result(year, month, day, 0, 0, 0);
-		return result.is_valid() ? result : df::date_t(year, 1, 1, 0, 0, 0);
+		const core::date_t result(year, month, day, 0, 0, 0);
+		return result.is_valid() ? result : core::date_t(year, 1, 1, 0, 0, 0);
 	}
 
-	std::string read_nfo_text(const df::file_path path)
+	std::string read_nfo_text(const core::file_path path)
 	{
 		const auto f = platform::open_file(path, platform::file_open_mode::read);
 		if (!f) return {};
@@ -4964,7 +4965,7 @@ namespace
 		return subtitle_text_as_utf8(text);
 	}
 
-	nfo_details read_nfo_file(const df::file_path path)
+	nfo_details read_nfo_file(const core::file_path path)
 	{
 		if (path.is_empty() || !platform::exists(path)) return {};
 		return parse_nfo(read_nfo_text(path));
@@ -4972,18 +4973,18 @@ namespace
 
 	// The show a season of episodes belongs to, from the tvshow.nfo in its folder or the one above. Remembered
 	// briefly, so a season scanned episode by episode reads it once.
-	std::string show_title(const df::folder_path folder)
+	std::string show_title(const core::folder_path folder)
 	{
-		static platform::mutex cache_mutex;
-		static df::folder_path cached_folder;
+		static core::mutex cache_mutex;
+		static core::folder_path cached_folder;
 		static std::string cached_title;
 		static int64_t cached_ms = 0;
 		constexpr int64_t cache_ms = 60 * 1000;
 
-		const auto now = df::now_ms();
+		const auto now = core::now_ms();
 
 		{
-			platform::exclusive_lock lock(cache_mutex);
+			core::exclusive_lock lock(cache_mutex);
 			if (cached_folder == folder && now - cached_ms < cache_ms) return cached_title;
 		}
 
@@ -5002,7 +5003,7 @@ namespace
 			}
 		}
 
-		platform::exclusive_lock lock(cache_mutex);
+		core::exclusive_lock lock(cache_mutex);
 		cached_folder = folder;
 		cached_title = title;
 		cached_ms = now;
@@ -5014,7 +5015,7 @@ bool is_named_for_its_folder(const std::string_view stem, const std::string_view
 {
 	const auto film = scan_info_from_title(stem);
 	const auto named = scan_info_from_title(folder);
-	if (film.title.empty() || str::icmp(film.title, named.title) != 0) return false;
+	if (film.title.empty() || core::icmp(film.title, named.title) != 0) return false;
 	return film.year == 0 || named.year == 0 || film.year == named.year;
 }
 
@@ -5023,10 +5024,10 @@ nfo_details parse_nfo(const std::string_view text)
 	nfo_details result;
 	const auto [root, elements] = read_nfo_elements(text);
 
-	if (str::icmp(root, "movie") == 0) result.type = nfo_details::kind::film;
-	else if (str::icmp(root, "episodedetails") == 0) result.type = nfo_details::kind::episode;
-	else if (str::icmp(root, "tvshow") == 0) result.type = nfo_details::kind::show;
-	else if (str::icmp(root, "musicvideo") == 0) result.type = nfo_details::kind::music_video;
+	if (core::icmp(root, "movie") == 0) result.type = nfo_details::kind::film;
+	else if (core::icmp(root, "episodedetails") == 0) result.type = nfo_details::kind::episode;
+	else if (core::icmp(root, "tvshow") == 0) result.type = nfo_details::kind::show;
+	else if (core::icmp(root, "musicvideo") == 0) result.type = nfo_details::kind::music_video;
 	else return result;
 
 	std::vector<std::string> genres;
@@ -5036,16 +5037,16 @@ nfo_details parse_nfo(const std::string_view text)
 	{
 		if (value.empty()) continue;
 
-		if (str::icmp(name, "title") == 0 && result.title.empty()) result.title = value;
-		else if (str::icmp(name, "showtitle") == 0 && result.show.empty()) result.show = value;
-		else if (str::icmp(name, "plot") == 0 && result.plot.empty()) result.plot = value;
-		else if (str::icmp(name, "outline") == 0 && outline.empty()) outline = value;
-		else if (str::icmp(name, "genre") == 0) genres.emplace_back(value);
-		else if (str::icmp(name, "studio") == 0 && result.studio.empty()) result.studio = value;
-		else if (str::icmp(name, "year") == 0) result.year = std::clamp(to_int(value, 0), 0, 9999);
-		else if (str::icmp(name, "season") == 0) result.season = to_int(value, -1);
-		else if (str::icmp(name, "episode") == 0) result.episode = to_int(value, -1);
-		else if ((str::icmp(name, "premiered") == 0 || str::icmp(name, "aired") == 0) && !result.released.is_valid())
+		if (core::icmp(name, "title") == 0 && result.title.empty()) result.title = value;
+		else if (core::icmp(name, "showtitle") == 0 && result.show.empty()) result.show = value;
+		else if (core::icmp(name, "plot") == 0 && result.plot.empty()) result.plot = value;
+		else if (core::icmp(name, "outline") == 0 && outline.empty()) outline = value;
+		else if (core::icmp(name, "genre") == 0) genres.emplace_back(value);
+		else if (core::icmp(name, "studio") == 0 && result.studio.empty()) result.studio = value;
+		else if (core::icmp(name, "year") == 0) result.year = std::clamp(to_int(value, 0), 0, 9999);
+		else if (core::icmp(name, "season") == 0) result.season = to_int(value, -1);
+		else if (core::icmp(name, "episode") == 0) result.episode = to_int(value, -1);
+		else if ((core::icmp(name, "premiered") == 0 || core::icmp(name, "aired") == 0) && !result.released.is_valid())
 			result.released = nfo_date(value);
 	}
 
@@ -5058,11 +5059,11 @@ nfo_details parse_nfo(const std::string_view text)
 	// A show's .nfo names the show as its title.
 	if (result.type == nfo_details::kind::show) result.show = result.title;
 
-	result.genre = str::combine(genres, ", ", false);
+	result.genre = core::combine(genres, ", ", false);
 	return result;
 }
 
-nfo_details read_video_nfo(const df::file_path video)
+nfo_details read_video_nfo(const core::file_path video)
 {
 	const auto folder = video.folder();
 	const auto stem = video.file_name_without_extension();
@@ -5097,15 +5098,15 @@ void apply_nfo(prop::item_metadata& md, const nfo_details& nfo)
 {
 	if (nfo.is_empty() || nfo.type == nfo_details::kind::show) return;
 
-	if (!nfo.title.empty()) md.title = str::strip_and_cache(nfo.title);
-	if (!nfo.plot.empty()) md.synopsis = str::strip_and_cache(nfo.plot);
-	if (!nfo.genre.empty()) md.genre = str::strip_and_cache(nfo.genre);
-	if (!nfo.studio.empty()) md.publisher = str::strip_and_cache(nfo.studio);
+	if (!nfo.title.empty()) md.title = core::strip_and_cache(nfo.title);
+	if (!nfo.plot.empty()) md.synopsis = core::strip_and_cache(nfo.plot);
+	if (!nfo.genre.empty()) md.genre = core::strip_and_cache(nfo.genre);
+	if (!nfo.studio.empty()) md.publisher = core::strip_and_cache(nfo.studio);
 	if (nfo.year != 0) md.year = static_cast<uint16_t>(nfo.year);
 
 	if (nfo.type == nfo_details::kind::episode)
 	{
-		if (!nfo.show.empty()) md.show = str::strip_and_cache(nfo.show);
+		if (!nfo.show.empty()) md.show = core::strip_and_cache(nfo.show);
 		if (nfo.season >= 0) md.season = static_cast<uint16_t>(nfo.season);
 		if (nfo.episode > 0) md.episode = prop::number_pair(nfo.episode, 0);
 	}
@@ -5114,7 +5115,7 @@ void apply_nfo(prop::item_metadata& md, const nfo_details& nfo)
 	if (nfo.type == nfo_details::kind::music_video) return;
 
 	if (nfo.released.is_valid()) md.dates.add(prop::date_source::media_manager, nfo.released);
-	else if (nfo.year != 0) md.dates.add(prop::date_source::media_manager, df::date_t(nfo.year, 1, 1, 0, 0, 0));
+	else if (nfo.year != 0) md.dates.add(prop::date_source::media_manager, core::date_t(nfo.year, 1, 1, 0, 0, 0));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5146,17 +5147,17 @@ namespace
 	// any marker - goes to the log.
 	void log_notes(const libfiles::jpeg_encoder& encoder)
 	{
-		for (const auto& note : encoder.notes()) df::log("jpeg_encoder", note);
+		for (const auto& note : encoder.notes()) core::log("jpeg_encoder", note);
 	}
 
 	[[noreturn]] void fail(const std::string_view where, const libfiles::encode_error& e)
 	{
-		df::log(where, e.what());
+		core::log(where, e.what());
 		throw app_exception(e.what());
 	}
 }
 
-df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, libfiles::jpeg_encoder& encoder,
+core::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, libfiles::jpeg_encoder& encoder,
                               const std::span<const uint8_t> src, const simple_transform transform,
                               bool* const over_budget)
 {
@@ -5166,18 +5167,18 @@ df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, lib
 	{
 		// simple_transform counts from none at 0, where the EXIF orientation libfiles takes counts from 1.
 		const auto orientation = static_cast<uint16_t>(static_cast<int>(transform) + 1);
-		const auto budget = static_cast<uint64_t>(std::max<int64_t>(df::max_decode_bytes, 0));
+		const auto budget = static_cast<uint64_t>(std::max<int64_t>(render::max_decode_bytes, 0));
 		auto turned = transformer.turn(src, encoder, orientation, budget);
 
 		if (turned.over_budget)
 		{
-			df::log(__FUNCTION__, std::format("rotate of {} x {} needs {}, over the {} budget", turned.width,
-			                                  turned.height, df::file_size(turned.workspace_bytes).str(),
-			                                  df::file_size(df::max_decode_bytes).str()));
+			core::log(__FUNCTION__, std::format("rotate of {} x {} needs {}, over the {} budget", turned.width,
+			                                  turned.height, platform::format_size(core::file_size(turned.workspace_bytes)),
+			                                  platform::format_size(core::file_size(render::max_decode_bytes))));
 			if (over_budget) *over_budget = true;
 		}
 
-		return df::blob(std::move(turned.data));
+		return core::blob(std::move(turned.data));
 	}
 	catch (const libfiles::encode_error& e)
 	{
@@ -5185,7 +5186,7 @@ df::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, lib
 	}
 }
 
-ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+core::image_ptr save_jpeg(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
                         const file_encode_params& encoder_params, libfiles::jpeg_encoder* const encoder)
 {
 	const auto dimensions_in = surface_in->dimensions();
@@ -5204,9 +5205,9 @@ ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const libfiles:
 		                           static_cast<uint16_t>(orientation_in), metadata, options);
 		log_notes(e);
 
-		return std::make_shared<ui::image>(df::blob(std::move(data)),
+		return std::make_shared<core::image>(core::blob(std::move(data)),
 		                                   sizei{static_cast<int>(e.width()), static_cast<int>(e.height())},
-		                                   ui::image_format::JPEG, orientation_in);
+		                                   core::image_format::JPEG, orientation_in);
 	}
 	catch (const libfiles::encode_error& ex)
 	{
@@ -5218,7 +5219,7 @@ ui::image_ptr save_jpeg(const ui::const_surface_ptr& surface_in, const libfiles:
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // PNG files: decoded into a surface and encoded by libfiles, with their ICC profile, EXIF and XMP.
 
-ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata)
+core::image_ptr save_png(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata)
 {
 	if (!is_valid(surface_in)) return {};
 
@@ -5230,7 +5231,7 @@ ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const libfiles::
 	view.width = static_cast<uint32_t>(dims.cx);
 	view.height = static_cast<uint32_t>(dims.cy);
 	// Anything but RGB is written with its fourth byte as alpha.
-	view.format = surface_in->format() == ui::texture_format::RGB
+	view.format = surface_in->format() == core::texture_format::RGB
 		              ? libfiles::pixel_format::bgrx8
 		              : libfiles::pixel_format::bgra8;
 
@@ -5240,14 +5241,14 @@ ui::image_ptr save_png(const ui::const_surface_ptr& surface_in, const libfiles::
 		                                    metadata);
 
 		// libpng's warnings go to the quiet debug log rather than the console and the test output.
-		for (const auto& note : encoded.notes) df::log_once("libpng", note);
+		for (const auto& note : encoded.notes) core::log_once("libpng", note);
 
-		return std::make_shared<ui::image>(df::blob(std::move(encoded.data)), dims,
-		                                   ui::image_format::PNG, surface_in->orientation());
+		return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dims,
+		                                   core::image_format::PNG, surface_in->orientation());
 	}
 	catch (const libfiles::encode_error& e)
 	{
-		df::log_once(__FUNCTION__, e.what());
+		core::log_once(__FUNCTION__, e.what());
 		throw app_exception(e.what());
 	}
 }
@@ -5259,7 +5260,7 @@ namespace
 	class png_surface_sink final : public libfiles::image_sink
 	{
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 		bool over_budget = false;
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
@@ -5274,15 +5275,15 @@ namespace
 				return {};
 			}
 
-			surface = std::make_shared<ui::surface>();
-			auto* const pixels = surface->alloc(dimensions, ui::texture_format::ARGB);
+			surface = std::make_shared<core::surface>();
+			auto* const pixels = surface->alloc(dimensions, core::texture_format::ARGB);
 			if (!pixels) return {};
 			return {pixels, surface->stride()};
 		}
 	};
 }
 
-ui::surface_ptr load_png(const df::cspan data)
+core::surface_ptr load_png(const core::cspan data)
 {
 	static constexpr uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
 
@@ -5297,18 +5298,18 @@ ui::surface_ptr load_png(const df::cspan data)
 
 	// libpng's warnings - an iTXt with a damaged CRC, say - go to the quiet debug log rather than the
 	// console, where they are still there for diagnosis.
-	for (const auto& warning : result.warnings) df::log_once("libpng", warning);
+	for (const auto& warning : result.warnings) core::log_once("libpng", warning);
 
 	if (sink.over_budget) return {};
 
 	if (!result.error.empty())
 	{
-		if (!result.truncated) df::log_once("load_png", result.error);
+		if (!result.truncated) core::log_once("load_png", result.error);
 		throw app_exception(result.error);
 	}
 
 	// A surface that could not be allocated is returned empty, as it always was.
-	if (sink.surface) sink.surface->orientation(static_cast<ui::orientation>(result.frame.orientation));
+	if (sink.surface) sink.surface->orientation(static_cast<core::orientation>(result.frame.orientation));
 	return sink.surface;
 }
 
@@ -5329,7 +5330,7 @@ namespace
 	class webp_surface_sink final : public libfiles::image_sink
 	{
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
@@ -5337,23 +5338,23 @@ namespace
 			if (reject_over_budget_source(nullptr, source, "WEBP")) return {};
 
 			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
-			auto s = std::make_shared<ui::surface>();
+			auto s = std::make_shared<core::surface>();
 			uint8_t* pixels = nullptr;
 
 			if (frame.format == libfiles::pixel_format::nv12)
 			{
 				// libfiles crops an odd edge, as decode_jpeg does, so an odd-sized image still reaches the
 				// GPU as NV12: a 320x213 thumbnail would otherwise cost 4 bytes a pixel rather than 1.5.
-				pixels = s->alloc(dimensions, ui::texture_format::NV12);
-				s->color_space(frame.limited_range ? ui::color_space::rec601_limited : ui::color_space::rec601_full);
+				pixels = s->alloc(dimensions, core::texture_format::NV12);
+				s->color_space(frame.limited_range ? color_space::rec601_limited : color_space::rec601_full);
 			}
 			else
 			{
 				// Opaque images decode into the ignored X byte, so tag them RGB and let the renderer skip
 				// blending.
 				pixels = s->alloc(dimensions, frame.format == libfiles::pixel_format::bgra8
-					                              ? ui::texture_format::ARGB
-					                              : ui::texture_format::RGB);
+					                              ? core::texture_format::ARGB
+					                              : core::texture_format::RGB);
 			}
 
 			if (!pixels) return {};
@@ -5364,10 +5365,10 @@ namespace
 }
 
 // libwebp rescales inside the decoder, so a reduced decode comes back at the size the caller asked for
-// rather than at the file's size with a downscale still owed: the size ui::scale_dimensions gives, which
+// rather than at the file's size with a downscale still owed: the size core::scale_dimensions gives, which
 // files::fit_within uses, so it is a drop-in for decode-then-scale. NV12 is the caller's choice, and a
 // reduced decode is packed regardless: NV12 exists to hand the renderer native planes.
-ui::surface_ptr load_webp(const df::cspan data, const bool can_use_yuv, const sizei target_extent)
+core::surface_ptr load_webp(const core::cspan data, const bool can_use_yuv, const sizei target_extent)
 {
 	libfiles::reader r(std::span(data.data, data.size));
 	webp_surface_sink sink;
@@ -5380,11 +5381,11 @@ ui::surface_ptr load_webp(const df::cspan data, const bool can_use_yuv, const si
 	const auto result = libfiles::decode(r, sink, options);
 	if (!result.success) return {};
 
-	sink.surface->orientation(static_cast<ui::orientation>(result.frame.orientation));
+	sink.surface->orientation(static_cast<core::orientation>(result.frame.orientation));
 	return sink.surface;
 }
 
-ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
+core::image_ptr save_webp(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
                         const file_encode_params& params)
 {
 	if (!is_valid(surface_in)) return {};
@@ -5400,17 +5401,17 @@ ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const libfiles:
 
 	switch (surface_in->format())
 	{
-	case ui::texture_format::RGB:
+	case core::texture_format::RGB:
 		view.format = libfiles::pixel_format::bgrx8;
 		break;
-	case ui::texture_format::ARGB:
+	case core::texture_format::ARGB:
 		view.format = libfiles::pixel_format::bgra8;
 		break;
-	case ui::texture_format::NV12:
+	case core::texture_format::NV12:
 		// Only the matrix VP8 assumes: a rec709 or rec2020 frame would be encoded as if it were 601.
-		if (cs != ui::color_space::rec601_full && cs != ui::color_space::rec601_limited) return {};
+		if (cs != core::color_space::rec601_full && cs != core::color_space::rec601_limited) return {};
 		view.format = libfiles::pixel_format::nv12;
-		view.limited_range = cs == ui::color_space::rec601_limited;
+		view.limited_range = cs == core::color_space::rec601_limited;
 		break;
 	default:
 		return {};
@@ -5424,11 +5425,11 @@ ui::image_ptr save_webp(const ui::const_surface_ptr& surface_in, const libfiles:
 
 	auto encoded = libfiles::encode_webp(view, static_cast<uint16_t>(surface_in->orientation()),
 	                                           metadata, options);
-	for (const auto& note : encoded.notes) df::log(__FUNCTION__, note);
+	for (const auto& note : encoded.notes) core::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};
 
-	return std::make_shared<ui::image>(df::blob(std::move(encoded.data)), dimensions,
-	                                   ui::image_format::WEBP, surface_in->orientation());
+	return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dimensions,
+	                                   core::image_format::WEBP, surface_in->orientation());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5444,7 +5445,7 @@ namespace
 		const std::string_view _format;
 
 	public:
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 
 		surface_sink(load_diagnostic* const diagnostic, const std::string_view format) : _diagnostic(diagnostic),
 			_format(format)
@@ -5458,15 +5459,15 @@ namespace
 			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
 			if (reject_over_budget_source(_diagnostic, dimensions, _format)) return {};
 
-			auto s = std::make_shared<ui::surface>();
-			if (!s->alloc(dimensions, ui::texture_format::RGB)) return {};
+			auto s = std::make_shared<core::surface>();
+			if (!s->alloc(dimensions, core::texture_format::RGB)) return {};
 			surface = std::move(s);
 			return {surface->pixels(), surface->stride()};
 		}
 	};
 }
 
-ui::surface_ptr load_psd(read_stream& s, load_diagnostic* const diagnostic)
+core::surface_ptr load_psd(read_stream& s, load_diagnostic* const diagnostic)
 {
 	read_stream_source source(s);
 	libfiles::reader r(source);
@@ -5475,7 +5476,7 @@ ui::surface_ptr load_psd(read_stream& s, load_diagnostic* const diagnostic)
 
 	// A file cut short throws, as this loader always has, so a damaged PSD is not offered to ffmpeg.
 	if (result.truncated) throw app_exception(result.error);
-	return result.success ? std::move(sink.surface) : ui::surface_ptr{};
+	return result.success ? std::move(sink.surface) : core::surface_ptr{};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5488,20 +5489,20 @@ namespace
 	// follows. Anything else - "198? Unknown", "(C) Hewson" - is all publisher.
 	std::pair<int, std::string_view> split_sid_release(const std::string_view released)
 	{
-		if (released.size() >= 4 && str::is_num(released.substr(0, 4)))
+		if (released.size() >= 4 && core::is_num(released.substr(0, 4)))
 		{
-			const auto year = str::to_int(released.substr(0, 4));
+			const auto year = core::to_int(released.substr(0, 4));
 
 			if (year >= 1980 && year < 2100)
 			{
 				auto rest = released.substr(4);
 				const auto range_end = rest.find_first_not_of("-0123456789");
 				rest = range_end == std::string_view::npos ? std::string_view{} : rest.substr(range_end);
-				return {year, str::trim(rest)};
+				return {year, core::trim(rest)};
 			}
 		}
 
-		return {0, str::trim(released)};
+		return {0, core::trim(released)};
 	}
 
 	std::string sid_address(const uint16_t address)
@@ -5510,24 +5511,24 @@ namespace
 	}
 }
 
-ui::const_surface_ptr files::c64_listing_surface(const libfiles::c64_listing& listing, const uint32_t fg,
+core::const_surface_ptr files::c64_listing_surface(const libfiles::c64_listing& listing, const uint32_t fg,
                                                  const uint32_t bg)
 {
 	if (listing.rows.empty() || listing.columns == 0) return {};
 
-	auto surface = std::make_shared<ui::surface>();
+	auto surface = std::make_shared<core::surface>();
 	auto* const pixels = surface->alloc(static_cast<int>(listing.width()), static_cast<int>(listing.height()),
-	                                    ui::texture_format::RGB);
+	                                    core::texture_format::RGB);
 	if (!pixels) return {};
 
 	// RGB textures upload as B8G8R8X8, the order libfiles draws in, given its colours as 0xRRGGBB. A
 	// listing is a whole number of eight-pixel cells wide, so its rows fill their stride, and no padding
 	// goes to the GPU unwritten.
-	libfiles::draw_c64_listing(listing, {pixels, surface->stride()}, ui::bgr(fg), ui::bgr(bg));
+	libfiles::draw_c64_listing(listing, {pixels, surface->stride()}, core::bgr(fg), core::bgr(bg));
 	return surface;
 }
 
-file_scan_result files::scan_sid(const df::cspan data)
+file_scan_result files::scan_sid(const core::cspan data)
 {
 	file_scan_result result;
 	sid_tune_info info;
@@ -5553,7 +5554,7 @@ file_scan_result files::scan_sid(const df::cspan data)
 	kv.emplace_back("system", "Commodore 64");
 
 	result.duration = sid_tune_seconds;
-	result.audio_codec = str::cache(chip);
+	result.audio_codec = core::cache(chip);
 	result.audio_sample_rate = sid_sample_rate;
 	result.audio_channels = 1;
 	result.audio_sample_type = prop::audio_sample_t::signed_16bit;

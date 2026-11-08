@@ -8,8 +8,8 @@
 
 // Purpose: The application's Linux glue: no hardware video decode for FFmpeg to use - the counterpart
 // of platform_win_av.cpp - no platform tests to register, since the Windows-only subject file is not
-// built here, and the icon font, compiled into the executable as the Windows build carries it in its
-// resources. The entry point is libdesktop's, which runs the application as wWinMain does on Windows.
+// built here. The entry point and generated icon-font registration are shared in app.cpp, which calls
+// libdesktop's UI runner on both platforms.
 
 #include "pch.h"
 #include "av_format.h"
@@ -48,7 +48,7 @@ AVBufferRef* av_platform_create_hw_device(int)
 }
 
 // No hardware picture is decoded here, so there is no device lock to lend.
-void av_platform_decode_lock(const AVHWFramesContext*, ui::video_picture&)
+void av_platform_decode_lock(const AVHWFramesContext*, render::video_picture&)
 {
 }
 
@@ -59,25 +59,3 @@ void av_platform_decode_lock(const AVHWFramesContext*, ui::video_picture&)
 void register_platform_tests(view_state&, test_registry&)
 {
 }
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// The icon font. The text stack reads it from ui::icon_font_data, set before anything draws.
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-__asm__(".section .rodata\n"
-	".global diffractor_icon_font\n"
-	".balign 16\n"
-	"diffractor_icon_font:\n"
-	".incbin \"" DIFFRACTOR_ICON_FONT "\"\n"
-	".global diffractor_icon_font_end\n"
-	"diffractor_icon_font_end:\n"
-	".previous\n");
-
-extern "C" const uint8_t diffractor_icon_font[];
-extern "C" const uint8_t diffractor_icon_font_end[];
-
-static const bool icon_font_installed = []
-{
-	ui::icon_font_data = {diffractor_icon_font, static_cast<size_t>(diffractor_icon_font_end - diffractor_icon_font)};
-	return true;
-}();

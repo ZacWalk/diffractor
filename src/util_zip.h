@@ -24,14 +24,14 @@ namespace df
 		zip_file() = default;
 		~zip_file();
 
-		bool create(file_path path);
+		bool create(core::file_path path);
 		bool close();
 
-		bool add(file_path path, std::string_view name, date_t modified) const;
-		bool add(file_path path, std::string_view name) const;
-		bool add(file_path path);
+		bool add(core::file_path path, std::string_view name, core::date_t modified) const;
+		bool add(core::file_path path, std::string_view name) const;
+		bool add(core::file_path path);
 
-		static std::vector<archive_item> list(file_path zip_file_path);
+		static std::vector<archive_item> list(core::file_path zip_file_path);
 	};
 
 	// Whether an entry starting at this archive offset and holding this many bytes needs ZIP64 headers.

@@ -20,7 +20,7 @@
 // frame and the edit view, where they used to be defined.
 
 std::string format_plural_text(const plural_text& fmt, const std::string_view first_name, const int64_t count,
-                               const df::file_size size, const int64_t of_total)
+                               const core::file_size size, const int64_t of_total)
 {
 	// Select the plural form for the active language. Form 0 is the singular
 	// (fmt.one), form 1 the general plural (fmt.plural), forms >= 2 the extra
@@ -42,7 +42,7 @@ std::string format_plural_text(const plural_text& fmt, const std::string_view fi
 		template_text = extra.empty() ? std::string_view(fmt.plural) : extra;
 	}
 
-	const auto number = [](const int64_t n) { return platform::format_number(str::to_string(n)); };
+	const auto number = [](const int64_t n) { return platform::format_number(core::to_string(n)); };
 
 	auto substitute = [&](std::ostringstream& result, const std::string_view token)
 	{
@@ -50,10 +50,10 @@ std::string format_plural_text(const plural_text& fmt, const std::string_view fi
 		else if (token == "count" || token.empty()) result << number(count);
 		else if (token == "other") result << number(count - 1);
 		else if (token == "total") result << number(of_total);
-		else if (token == "size") result << df::format_size(size);
+		else if (token == "size") result << platform::format_size(size);
 	};
 
-	return str::replace_tokens(template_text, substitute);
+	return core::replace_tokens(template_text, substitute);
 }
 
 std::string format_plural_text(const plural_text& fmt, const int64_t count, const int64_t of_total)
@@ -82,7 +82,7 @@ std::string format_invalid_name_message(const std::string_view name)
 
 std::string language_name(const std::string_view code)
 {
-	static const df::hash_map<std::string_view, std::string_view> code_to_name = {
+	static const core::hash_map<std::string_view, std::string_view> code_to_name = {
 		{"en", "English"},
 		{"eng", "English"},
 		{"de", "Deutsch (German)"},
@@ -195,7 +195,7 @@ std::string format_subtitle_name(const subtitle_offer& offer, const int subtitle
 	if (offer.forced) parts.emplace_back(tt.subtitle_forced.sv());
 	if (parts.empty()) parts.emplace_back(str_format(tt.subtitle_track_fmt.sv(), subtitle_number));
 
-	return str::combine(parts, " - ", false);
+	return core::combine(parts, " - ", false);
 }
 
 static std::string un_escape(const std::string_view text)
@@ -300,7 +300,7 @@ static std::optional<int> parse_msgstr_plural_index(const std::string& line, std
 	}
 
 	auto tail = std::string_view(line).substr(close + 1);
-	tail = str::trim(tail);
+	tail = core::trim(tail);
 	if (!tail.empty() && tail.front() != '"')
 	{
 		errors.emplace_back(line_number, "Malformed msgstr plural index");
@@ -310,7 +310,7 @@ static std::optional<int> parse_msgstr_plural_index(const std::string& line, std
 	return form;
 }
 
-po_load_result load_po_report(const df::file_path lang_file)
+po_load_result load_po_report(const core::file_path lang_file)
 {
 	po_load_result result;
 	std::ifstream fs(platform::to_stream_path(lang_file));
@@ -347,7 +347,7 @@ po_load_result load_po_report(const df::file_path lang_file)
 		{
 			try
 			{
-				if (str::starts(line, "msgstr["))
+				if (core::starts(line, "msgstr["))
 				{
 					// Parse the form index N from msgstr[N]. Forms 0 and 1 map to
 					// str/str_plural; forms >= 2 (Slavic "many" etc.) go to str_extra.
@@ -367,9 +367,9 @@ po_load_result load_po_report(const df::file_path lang_file)
 					}
 					else parse_state = parse_po_state::ignore;
 				}
-				else if (str::starts(line, "msgid_plural")) parse_state = parse_po_state::id_plural;
-				else if (str::starts(line, "msgstr")) parse_state = parse_po_state::str;
-				else if (str::starts(line, "msgid")) parse_state = parse_po_state::id;
+				else if (core::starts(line, "msgid_plural")) parse_state = parse_po_state::id_plural;
+				else if (core::starts(line, "msgstr")) parse_state = parse_po_state::str;
+				else if (core::starts(line, "msgid")) parse_state = parse_po_state::id;
 
 				if (parse_state == parse_po_state::id && !entry.is_empty() && line[0] != u8'\"')
 				{
@@ -401,12 +401,12 @@ po_load_result load_po_report(const df::file_path lang_file)
 	return result;
 }
 
-std::vector<po_entry> load_po(const df::file_path lang_file)
+std::vector<po_entry> load_po(const core::file_path lang_file)
 {
 	auto result = load_po_report(lang_file);
 	for (const auto& error : result.errors)
 	{
-		df::log(__FUNCTION__, std::format("{}:{}: {}", lang_file.name(), error.line, error.message));
+		core::log(__FUNCTION__, std::format("{}:{}: {}", lang_file.name(), error.line, error.message));
 	}
 	return std::move(result.entries);
 }
@@ -500,8 +500,8 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 	if (dot != std::string_view::npos) code = code.substr(0, dot);
 	_plural_rule = plural_rule_for(code);
 
-	df::hash_map<std::string_view, std::string_view> text_map;
-	df::hash_map<std::string_view, const std::vector<std::string>*> extra_map;
+	core::hash_map<std::string_view, std::string_view> text_map;
+	core::hash_map<std::string_view, const std::vector<std::string>*> extra_map;
 
 	for (const auto& entry : entries)
 	{
@@ -545,7 +545,7 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 		else
 		{
 			++missing;
-			df::trace(std::format("{} missing: msgid \"{}\"", lang_file, t.get().text));
+			core::trace(std::format("{} missing: msgid \"{}\"", lang_file, t.get().text));
 			t.get().clear();
 		}
 	}
@@ -562,7 +562,7 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 		else
 		{
 			++missing;
-			df::trace(std::format("{} missing: msgid \"{}\"", lang_file, p.get().one.text));
+			core::trace(std::format("{} missing: msgid \"{}\"", lang_file, p.get().one.text));
 			p.get().one.clear();
 		}
 
@@ -575,7 +575,7 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 		else
 		{
 			++missing;
-			df::trace(std::format("{} missing: msgid_plural \"{}\"", lang_file, p.get().plural.text));
+			core::trace(std::format("{} missing: msgid_plural \"{}\"", lang_file, p.get().plural.text));
 			p.get().plural.clear();
 		}
 
@@ -587,7 +587,7 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 		                          std::memory_order_release);
 	}
 
-	df::log(__FUNCTION__, std::format("{}: {} of {} strings translated", lang_file, total - missing, total));
+	core::log(__FUNCTION__, std::format("{}: {} of {} strings translated", lang_file, total - missing, total));
 }
 
 void app_text_t::clear()
@@ -1302,75 +1302,76 @@ void app_text_t::calc_text_mapping()
 		platform_text.jxl_best,
 		keyboard,
 		keyboard_accelerator_press,
-		keyboard_alt,
-		keyboard_back,
-		keyboard_backspace,
+		platform_text.keyboard_alt,
+		platform_text.keyboard_back,
+		platform_text.keyboard_backspace,
 		keyboard_basics_title,
-		keyboard_browser_back,
-		keyboard_browser_favorites,
-		keyboard_browser_forward,
-		keyboard_browser_home,
-		keyboard_browser_refresh,
-		keyboard_browser_search,
-		keyboard_browser_stop,
-		keyboard_control,
+		platform_text.keyboard_browser_back,
+		platform_text.keyboard_browser_favorites,
+		platform_text.keyboard_browser_forward,
+		platform_text.keyboard_browser_home,
+		platform_text.keyboard_browser_refresh,
+		platform_text.keyboard_browser_search,
+		platform_text.keyboard_browser_stop,
+		platform_text.keyboard_control,
 		keyboard_ctrl_left_right_desc,
-		keyboard_del,
-		keyboard_down,
+		platform_text.keyboard_del,
+		platform_text.keyboard_down,
 		keyboard_edit_title,
-		keyboard_end,
-		keyboard_enter,
+		platform_text.keyboard_end,
+		platform_text.keyboard_enter,
 		keyboard_enter_desc,
-		keyboard_escape,
+		platform_text.keyboard_escape,
 		keyboard_escape_desc,
-		keyboard_f1,
-		keyboard_f10,
-		keyboard_f11,
-		keyboard_f2,
-		keyboard_f3,
-		keyboard_f4,
-		keyboard_f5,
-		keyboard_f6,
-		keyboard_f7,
-		keyboard_f8,
-		keyboard_f9,
+		platform_text.keyboard_f1,
+		platform_text.keyboard_f10,
+		platform_text.keyboard_f11,
+		platform_text.keyboard_f12,
+		platform_text.keyboard_f2,
+		platform_text.keyboard_f3,
+		platform_text.keyboard_f4,
+		platform_text.keyboard_f5,
+		platform_text.keyboard_f6,
+		platform_text.keyboard_f7,
+		platform_text.keyboard_f8,
+		platform_text.keyboard_f9,
 		keyboard_file_management_title,
 		keyboard_group_title,
 		keyboard_help_title,
-		keyboard_home,
+		platform_text.keyboard_home,
 		keyboard_home_end_desc,
-		keyboard_insert,
-		keyboard_left,
+		platform_text.keyboard_insert,
+		platform_text.keyboard_left,
 		keyboard_left_right_desc,
-		keyboard_media_next_track,
-		keyboard_media_play_pause,
-		keyboard_media_prev_track,
-		keyboard_media_stop,
+		platform_text.keyboard_media_next_track,
+		platform_text.keyboard_media_play_pause,
+		platform_text.keyboard_media_prev_track,
+		platform_text.keyboard_media_stop,
 		keyboard_navigation_title,
-		keyboard_next,
-		keyboard_oem_4,
-		keyboard_oem_6,
-		keyboard_oem_minus,
-		keyboard_oem_plus,
+		platform_text.keyboard_next,
+		platform_text.keyboard_oem_4,
+		platform_text.keyboard_oem_6,
+		platform_text.keyboard_oem_minus,
+		platform_text.keyboard_oem_plus,
 		keyboard_open_title,
 		options_title,
-		keyboard_or,
+		platform_text.keyboard_or,
 		keyboard_playback_title,
-		keyboard_prior,
+		platform_text.keyboard_prior,
 		keyboard_rate_label_title,
 		keyboard_ref_title,
-		keyboard_right,
+		platform_text.keyboard_right,
 		keyboard_selection_title,
-		keyboard_shift,
-		keyboard_space,
+		platform_text.keyboard_shift,
+		platform_text.keyboard_space,
 		keyboard_space_desc,
-		keyboard_tab,
+		platform_text.keyboard_tab,
 		keyboard_tools_title,
-		keyboard_up,
+		platform_text.keyboard_up,
 		keyboard_up_down_desc,
-		keyboard_volume_down,
-		keyboard_volume_mute,
-		keyboard_volume_up,
+		platform_text.keyboard_volume_down,
+		platform_text.keyboard_volume_mute,
+		platform_text.keyboard_volume_up,
 		keyboard_zoom_keys_desc,
 		km_from,
 		learn_more_diffractor_com,
@@ -1978,10 +1979,10 @@ std::string app_text_t::translate_text(const std::string& text, const std::strin
 		       : std::string(tt_prep(text));
 }
 
-std::vector<std::string> app_text_t::add_translate_text(const std::vector<str::cached>& text,
+std::vector<std::string> app_text_t::add_translate_text(const std::vector<core::cached>& text,
                                                         const std::string_view scope) const
 {
-	df::hash_set<std::string, df::ihash, df::ieq> result;
+	core::hash_set<std::string, core::ihash, core::ieq> result;
 	result.reserve(text.size() * 2);
 
 	for (const auto& t : text)
@@ -2074,7 +2075,7 @@ std::vector<std::string> app_text_t::known_genres(const genre_kind kinds) const
 		}
 	}
 
-	std::ranges::sort(result, str::iless());
+	std::ranges::sort(result, core::iless());
 	return result;
 }
 
@@ -2083,4 +2084,4 @@ app_text_t tt;
 
 // The foundation and the platform layer write their words and messages with tt's translations of them.
 [[maybe_unused]] static const auto s_text_installed =
-	(str::install_words(&tt.words), platform::install_text(&tt.platform_text), true);
+	(core::install_words(&tt.words), platform::install_text(&tt.platform_text), true);

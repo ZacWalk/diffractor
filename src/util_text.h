@@ -13,7 +13,7 @@
 
 namespace str
 {
-	void count_ranges(df::dense_string_counts& counts, std::string_view text);
+	void count_ranges(core::dense_string_counts& counts, std::string_view text);
 
 	// XML text with its references decoded: the five named ones and numeric ones. Anything else is left as
 	// written, and a reference naming no character is dropped.

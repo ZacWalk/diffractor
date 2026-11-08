@@ -15,7 +15,7 @@
 class selector_view final : public view_base, public std::enable_shared_from_this<selector_view>
 {
 public:
-	using select_item_fn = std::function<void(const df::item_element_ptr&, ui::key_state)>;
+	using select_item_fn = std::function<void(const df::item_element_ptr&, platform::key_state)>;
 	using item_filter_fn = std::function<bool(const df::item_element_ptr&)>;
 
 private:
@@ -23,11 +23,11 @@ private:
 	{
 		df::item_element_ptr item;
 		recti bounds;
-		ui::const_image_ptr image;
-		ui::texture_ptr texture;
+		core::const_image_ptr image;
+		render::texture_ptr texture;
 		// Decoded on a worker and published here; the texture is created on the next paint because a
 		// device resource may only be made on the UI thread.
-		ui::surface_ptr surface;
+		core::surface_ptr surface;
 		bool decode_pending = false;
 		// Terminal: a decode that returned nothing will return nothing again for the same image, and
 		// paint is what asks. Without this the strip re-requests on every frame it repaints.
@@ -87,14 +87,14 @@ private:
 	                                            std::vector<selector_item>& items);
 	static size_t retire_off_band_resources(std::vector<selector_item>& items, recti logical_bounds);
 	static bool publish_decoded_surface(std::vector<selector_item>& items, recti logical_bounds,
-	                                    const df::item_element_ptr& item, const ui::const_image_ptr& image,
-	                                    uint64_t request, ui::surface_ptr surface);
+	                                    const df::item_element_ptr& item, const core::const_image_ptr& image,
+	                                    uint64_t request, core::surface_ptr surface);
 	void clamp_scroll();
 	void update_visible_items();
 	recti resource_logical_bounds() const;
 	void retire_off_band_resources();
-	bool publish_decoded_surface(const df::item_element_ptr& item, const ui::const_image_ptr& image,
-	                             uint64_t request, ui::surface_ptr surface);
+	bool publish_decoded_surface(const df::item_element_ptr& item, const core::const_image_ptr& image,
+	                             uint64_t request, core::surface_ptr surface);
 	selector_item* item_from_location(pointi loc);
 	const selector_item* item_from_location(pointi loc) const;
 
@@ -104,7 +104,7 @@ public:
 	void reset_selection_anchor() { _selection_anchor.reset(); }
 	void selection_anchor(df::item_element_ptr item) { _selection_anchor = std::move(item); }
 	df::item_elements selection_range(const df::item_element_ptr& item) const;
-	static quadd thumbnail_destination(sizei texture_dimensions, recti image_bounds, ui::orientation orientation,
+	static quadd thumbnail_destination(sizei texture_dimensions, recti image_bounds, core::orientation orientation,
 	                                   bool show_rotated);
 
 	void activate(sizei extent) override;
@@ -112,9 +112,9 @@ public:
 	void refresh() override;
 	void items_changed(bool path_changed) override;
 	void display_changed() override;
-	void layout(ui::measure_context& mc, sizei extent) override;
-	void render(ui::draw_context& dc, view_controller_ptr controller) override;
-	bool mouse_wheel(pointi loc, ui::wheel_notch notch) override;
+	void layout(render::measure_context& mc, sizei extent) override;
+	void render(render::draw_context& dc, view_controller_ptr controller) override;
+	bool mouse_wheel(pointi loc, platform::wheel_notch notch) override;
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 	void broadcast_event(const view_element_event& event) const override;
 

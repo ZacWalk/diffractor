@@ -36,7 +36,7 @@ class search_auto_complete final : public std::enable_shared_from_this<search_au
 	view_state& _state;
 	// Writes accepted text back into the native address bar.
 	std::function<void(std::string)> _set_text;
-	df::string_counts _known;
+	core::string_counts _known;
 	ui::auto_complete_match_ptr _selected;
 	std::atomic_uint64_t _search_generation = 0;
 	// Raised by each keystroke on the UI thread, which stops the counting a superseded pass is doing.
@@ -75,17 +75,17 @@ public:
 		_state.recent_folders.count_strings(_known, 1);
 		_state.recent_tags.count_strings(_known, 1, "#");
 		_state.recent_tags.count_strings(_known, 1);
-		if (!setting.write_folder.empty()) ++_known[str::cache(setting.write_folder)];
+		if (!setting.write_folder.empty()) ++_known[core::cache(setting.write_folder)];
 
 		for (const auto& ks : prop::key_scopes())
 		{
-			++_known[str::cache(std::format("with:{}", ks.scope))];
-			++_known[str::cache(std::format("without:{}", ks.scope))];
+			++_known[core::cache(std::format("with:{}", ks.scope))];
+			++_known[core::cache(std::format("without:{}", ks.scope))];
 		}
 	}
 
 	static int calc_auto_complete_word_weight(const index_state::auto_complete_word& word,
-	                                          const df::string_counts& known)
+	                                          const core::string_counts& known)
 	{
 		auto result = 1 + std::min(word.occurrences, 10);
 		const auto found = known.find(word.text);
@@ -94,12 +94,12 @@ public:
 	}
 
 	static int calc_auto_complete_word_weight(const index_state::auto_complete_folder& path,
-	                                          const std::string_view query, const df::string_counts& known)
+	                                          const std::string_view query, const core::string_counts& known)
 	{
 		auto result = 1;
 		const auto found = known.find(path.path.text());
 		if (found != known.end()) result += found->second;
-		if (str::icmp(path.path.name().sv(), query) == 0) result += 5;
+		if (core::icmp(path.path.name().sv(), query) == 0) result += 5;
 		return result;
 	}
 
@@ -118,10 +118,10 @@ public:
 	// on a share that has gone away would hold the list until the network gave up.
 	static std::optional<df::search_t> prediction_search(const ui::auto_complete_match& match)
 	{
-		if (const auto* const folder = dynamic_cast<const folder_match*>(&match); folder && str::is_empty(folder->lead))
+		if (const auto* const folder = dynamic_cast<const folder_match*>(&match); folder && core::is_empty(folder->lead))
 		{
 			df::search_t result;
-			result.add_selector(df::item_selector(folder->folder));
+			result.add_selector(core::item_selector(folder->folder));
 			return result;
 		}
 
@@ -141,24 +141,24 @@ public:
 	// the search index is asked, within a budget, and a newer keystroke stops the pass, so a prediction
 	// left uncounted keeps its place rather than waiting on a scan. Answers false for a superseded pass.
 	bool count_predictions(ui::auto_complete_results& found, const uint64_t search_generation, const bool rank,
-	                       const df::cancel_token& token)
+	                       const core::cancel_token& token)
 	{
 		// Likeliest first, so the budget is spent where it decides the most, and each text counted once.
 		std::ranges::stable_sort(found, [](const auto& a, const auto& b) { return a->weight > b->weight; });
 
-		df::hash_set<std::string, df::ihash, df::ieq> seen;
+		core::hash_set<std::string, core::ihash, core::ieq> seen;
 		std::erase_if(found, [&seen](const auto& candidate)
 		{
 			return !seen.emplace(candidate->edit_text()).second;
 		});
 
 		search_counter counter(_state.item_index);
-		const auto deadline = df::now_us() + prediction_count_budget_us;
+		const auto deadline = core::now_us() + prediction_count_budget_us;
 
 		for (const auto& match : found)
 		{
 			if (_search_generation != search_generation || token.is_cancelled()) return false;
-			if (df::now_us() > deadline) break;
+			if (core::now_us() > deadline) break;
 
 			if (const auto search = prediction_search(*match))
 			{
@@ -198,7 +198,7 @@ public:
 		if (scope.kind == df::search_scope_kind::tag && !scope.lead.empty())
 		{
 			std::vector<std::string> context_tags;
-			for (const auto part : str::split(scope.lead, true))
+			for (const auto part : core::split(scope.lead, true))
 			{
 				if (part.size() > 1 && part.front() == '#') context_tags.emplace_back(part.substr(1));
 			}
@@ -217,7 +217,7 @@ public:
 			for (const auto& ks : prop::key_scopes())
 			{
 				if (found.size() >= max_predictions) break;
-				if (scope.value.empty() || str::starts(ks.scope, scope.value))
+				if (scope.value.empty() || core::starts(ks.scope, scope.value))
 				{
 					found.emplace_back(vocabulary_match(scope.format(ks.scope), scope.lead, ui::match_highlights{},
 					                                    scope_weight, search_icon(scope.format(ks.scope))));
@@ -256,9 +256,9 @@ public:
 	void search(const std::string& query, std::function<void(const ui::auto_complete_results&)> complete) override
 	{
 		const auto search_generation = ++_search_generation;
-		const auto known = std::make_shared<const df::string_counts>(_known);
+		const auto known = std::make_shared<const core::string_counts>(_known);
 		// Taken here, on the UI thread, so this keystroke stops any counting the last one is still doing.
-		const df::cancel_token count_token(_count_version);
+		const core::cancel_token count_token(_count_version);
 
 		// The active search and the recent-search list are UI-thread owned and are mutated by
 		// view_state::open while a prediction is still running, so snapshot them here.
@@ -273,8 +273,8 @@ public:
 		                          {
 			                          ui::auto_complete_results found;
 
-			                          const auto query_parts = str::split(query, true);
-			                          const auto trimmed_query = str::trim(query);
+			                          const auto query_parts = core::split(query, true);
+			                          const auto trimmed_query = core::trim(query);
 			                          bool scoped = false;
 
 			                          if (!query.empty())
@@ -284,7 +284,7 @@ public:
 					                          search_icon(query)));
 			                          }
 
-			                          if (query_parts.empty() || str::icmp(query, current_search_text) == 0)
+			                          if (query_parts.empty() || core::icmp(query, current_search_text) == 0)
 			                          {
 				                          // Recent searches are arbitrary query text, so only the ones that really are
 				                          // paths may be presented (and normalized) as folders.
@@ -293,14 +293,14 @@ public:
 					                          // Only a folder that is there is presented as a folder; one that has gone
 					                          // stays a recent query. A network location is not checked: confirming
 					                          // it could wait out a dropped share with every prediction queued behind.
-					                          const auto folder_is_offered = df::is_path(recent) &&
-						                          (platform::is_network_location(df::folder_path(recent)) ||
-							                          df::folder_path(recent).exists());
+					                          const auto folder_is_offered = core::is_path(recent) &&
+						                          (platform::is_network_location(core::folder_path(recent)) ||
+							                          platform::exists(core::folder_path(recent)));
 
 					                          if (folder_is_offered)
 					                          {
 						                          found.emplace_back(
-							                          std::make_shared<folder_match>(*this, df::folder_path(recent)));
+							                          std::make_shared<folder_match>(*this, core::folder_path(recent)));
 					                          }
 					                          else
 					                          {
@@ -315,16 +315,16 @@ public:
 			                          {
 				                          scoped = add_scope_completions(query, found);
 
-				                          if (found.size() < max_predictions && df::is_path(str::trim(query)))
+				                          if (found.size() < max_predictions && core::is_path(core::trim(query)))
 				                          {
-					                          df::folder_path folder(query);
+					                          core::folder_path folder(query);
 
-					                          if (!folder.exists())
+					                          if (!platform::exists(folder))
 					                          {
 						                          folder = folder.parent();
 					                          }
 
-					                          const df::item_selector selector(folder);
+					                          const core::item_selector selector(folder);
 
 					                          for (const auto& fi : platform::select_folders(
 						                               selector, setting.show_hidden))
@@ -385,7 +385,7 @@ public:
 				                          // places that need it.
 				                          if (!scoped && !trimmed_query.empty() &&
 					                          trimmed_query.front() != '#' && trimmed_query.front() != '@' &&
-					                          !df::is_path(trimmed_query))
+					                          !core::is_path(trimmed_query))
 				                          {
 					                          for (const auto& location : _state.item_index.auto_complete_locations(
 						                               trimmed_query, 5))
@@ -427,7 +427,7 @@ public:
 				                          }
 			                          }
 
-			                          if (found.size() < max_predictions && !query.empty() && str::is_white_space(
+			                          if (found.size() < max_predictions && !query.empty() && core::is_white_space(
 				                          query.back()))
 			                          {
 				                          std::vector<std::string> context_tags;
@@ -486,7 +486,7 @@ public:
 			                          {
 				                          for (const auto& k : *known)
 				                          {
-					                          if (str::starts(k.first, trimmed_query) &&
+					                          if (core::starts(k.first, trimmed_query) &&
 						                          found.size() < max_predictions)
 					                          {
 						                          found.emplace_back(
@@ -500,7 +500,7 @@ public:
 			                          // matches), then by how many items each finds, preserving discovery order for equal weights.
 			                          // Recent searches keep their order: how recent a search is, is why it is offered.
 			                          const auto showing_recents = query_parts.empty() ||
-				                          str::icmp(query, current_search_text) == 0;
+				                          core::icmp(query, current_search_text) == 0;
 
 			                          if (!count_predictions(found, search_generation, !showing_recents, count_token))
 			                          {

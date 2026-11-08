@@ -8,7 +8,7 @@
 
 // Purpose: Session-aggregate performance diagnostics: what thumbnails, the database, queries, files, the
 // index and the worker queues cost this session, summarised once at exit with what painting and
-// Direct3D cost, which the render layer counts (platform_render.h).
+// Direct3D cost, which the render layer counts (libdesktop/render.h).
 
 #pragma once
 

@@ -35,7 +35,7 @@ class command_status final : public std::enable_shared_from_this<command_status>
 
 	bool _closed = false;
 	std::atomic<bool> _completed = false;
-	platform::mutex _publication_mutex;
+	core::mutex _publication_mutex;
 
 	enum class completion_type
 	{
@@ -102,7 +102,7 @@ public:
 
 	void total(const size_t t)
 	{
-		platform::exclusive_lock lock(_publication_mutex);
+		core::exclusive_lock lock(_publication_mutex);
 		_total = t;
 	}
 
@@ -149,7 +149,7 @@ public:
 
 	bool has_failures() const override
 	{
-		platform::shared_lock lock(_publication_mutex);
+		core::shared_lock lock(_publication_mutex);
 		return _failed_count > 0;
 	}
 
@@ -166,7 +166,7 @@ public:
 
 	void end_item(const std::string_view name, const item_status status) override
 	{
-		platform::exclusive_lock lock(_publication_mutex);
+		core::exclusive_lock lock(_publication_mutex);
 		if (status == item_status::success)
 		{
 			if (_processed_first_name.empty()) _processed_first_name = name;
@@ -229,7 +229,7 @@ private:
 	{
 		auto queue_callback = false;
 		{
-			platform::exclusive_lock lock(_publication_mutex);
+			core::exclusive_lock lock(_publication_mutex);
 			update(_pending_publication);
 			if (!_ui_callback_pending)
 			{
@@ -246,11 +246,11 @@ private:
 
 	void drain_publication()
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 
 		pending_publication pending;
 		{
-			platform::exclusive_lock lock(_publication_mutex);
+			core::exclusive_lock lock(_publication_mutex);
 			pending = std::move(_pending_publication);
 			_pending_publication = {};
 			_ui_callback_pending = false;
@@ -284,7 +284,7 @@ private:
 		std::string ignore_first_name;
 		std::string canceled_first_name;
 		{
-			platform::shared_lock lock(_publication_mutex);
+			core::shared_lock lock(_publication_mutex);
 			total = _total;
 			processed_count = _processed_count;
 			failed_count = _failed_count;
@@ -299,13 +299,13 @@ private:
 		std::string result;
 		const auto processed_status = total
 			                              ? format_plural_text(tt.processed_x_of_x_fmt, processed_first_name,
-			                                                   processed_count, df::file_size{}, total)
+			                                                   processed_count, core::file_size{}, total)
 			                              : format_plural_text(tt.processed_fmt, processed_first_name,
 			                                                   processed_count, {}, total);
 
 		if (_dlg->is_canceled())
 		{
-			result = str::replace_tokens(tt.cancel_was_pressed_after,
+			result = core::replace_tokens(tt.cancel_was_pressed_after,
 			                             [&](std::ostringstream& result, const std::string_view token)
 			                             {
 				                             if (token.empty()) result << processed_status;
@@ -339,10 +339,10 @@ private:
 
 	void show_results_or_close()
 	{
-		df::assert_true(ui::is_ui_thread());
+		core::assert_true(platform::is_ui_thread());
 		bool has_item_failures;
 		{
-			platform::shared_lock lock(_publication_mutex);
+			core::shared_lock lock(_publication_mutex);
 			has_item_failures = _failed_count > 0 || _canceled_count > 0;
 		}
 

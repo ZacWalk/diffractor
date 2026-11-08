@@ -1,17 +1,17 @@
 # This file is part of the Diffractor photo and video organizer
 # Copyright 2026  Zac Walker
 #
-# Purpose: Bring in libdesktop's system, render and text modules - the foundation (df::, str::), the
-# OS services (platform::), the desktop UI (ui::) Diffractor is written in, and the syntax highlighters
-# the panel's document colours text with - at its pinned commit. A sibling checkout at ../libdesktop
-# is used instead when one exists, so a libdesktop change can be built and tested here before it is
-# committed there - but then this tree builds whatever that checkout holds, not the pin. CI and a
-# fresh clone always build the pin.
+# Purpose: Bring in libdesktop's core, platform, render and UI libraries - the foundation (core::), the
+# OS services (platform::), the drawing contexts (render::) and the desktop UI (ui::) Diffractor is written
+# in, with the syntax highlighters the panel's document colours text with - at its pinned commit. A sibling
+# checkout at ../libdesktop is used instead when one exists, so a libdesktop change can be built and tested
+# here before it is committed there - but then this tree builds whatever that checkout holds, not the pin.
+# CI and a fresh clone always build the pin.
 
 include_guard(GLOBAL)
 include(FetchContent)
 
-set(DIFFRACTOR_LIBDESKTOP_REVISION 0627c8f5601bfa87cf50be9fce4072edf9592f77)
+set(DIFFRACTOR_LIBDESKTOP_REVISION 04109ee82a500db38d439fa281bbc3f43124adfe)
 
 if (NOT DEFINED FETCHCONTENT_SOURCE_DIR_LIBDESKTOP AND EXISTS "${CMAKE_SOURCE_DIR}/../libdesktop/CMakeLists.txt")
     set(FETCHCONTENT_SOURCE_DIR_LIBDESKTOP "${CMAKE_SOURCE_DIR}/../libdesktop" CACHE PATH
@@ -24,10 +24,7 @@ if (FETCHCONTENT_SOURCE_DIR_RAPIDJSON STREQUAL "${CMAKE_SOURCE_DIR}/third-party/
     unset(FETCHCONTENT_SOURCE_DIR_RAPIDJSON CACHE)
 endif ()
 
-# The system, render and text modules only: libdesktop-core's window model is not Diffractor's, so
-# nothing else in libdesktop is built. libdesktop-text is standard C++ and always defined.
-set(LIBDESKTOP_SYSTEM ON)
-set(LIBDESKTOP_RENDER ON)
+# A Store build builds libdesktop's platform library for the Store package too, which defines WINSTORE.
 set(LIBDESKTOP_STORE_PACKAGE ${DIFFRACTOR_WINSTORE})
 
 FetchContent_Declare(libdesktop

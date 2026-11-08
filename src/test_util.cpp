@@ -13,11 +13,11 @@
 #include "test.h"
 #include "app_command_line.h"
 #include "crypto.h"
-#include "libdesktop/util_base64.h"
+#include "libdesktop/core/base64.h"
 #include "crypto_sha.h"
-#include "libdesktop/util_json.h"
-#include "libdesktop/util_kdtree.h"
-#include "libdesktop/util_simd.h"
+#include "libdesktop/core/json.h"
+#include "libdesktop/core/kdtree.h"
+#include "libdesktop/core/simd.h"
 #include "util_top.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
@@ -44,9 +44,9 @@ static void should_name_files_after_the_application()
 	// The foundation and the platform layer derive their file, folder and key names from the
 	// application's name. These are the names Diffractor always used, so existing logs, settings
 	// and caches are still found.
-	assert_equal("diffractor"sv, df::app_file_stem(), "file stem");
-	assert_equal("diffractor.log"sv, df::log_path.name(), "log");
-	assert_equal("diffractor.previous.log"sv, df::previous_log_path.name(), "previous log");
+	assert_equal("diffractor"sv, core::app_file_stem(), "file stem");
+	assert_equal("diffractor.log"sv, platform::log_path.name(), "log");
+	assert_equal("diffractor.previous.log"sv, platform::previous_log_path.name(), "previous log");
 }
 
 static void should_complete_result_scope()
@@ -84,7 +84,7 @@ static void should_detect_utf16_either_way_round()
 	const auto is_utf16 = [](const std::initializer_list<uint8_t> bytes)
 	{
 		const std::vector<uint8_t> v(bytes);
-		return str::is_utf16(v.data(), static_cast<int>(v.size()));
+		return core::is_utf16(v.data(), static_cast<int>(v.size()));
 	};
 
 	// "Hi" with no mark, each way round.
@@ -109,7 +109,7 @@ static void should_detect_utf16_either_way_round()
 	const auto decode = [](const std::initializer_list<uint8_t> bytes)
 	{
 		const std::vector<uint8_t> v(bytes);
-		return str::utf16_from_bytes(v.data(), static_cast<int>(v.size()));
+		return core::utf16_from_bytes(v.data(), static_cast<int>(v.size()));
 	};
 
 	assert_equal(true, decode({'H', 0, 'i', 0}) == u"Hi", "unmarked little-endian decodes");
@@ -122,116 +122,116 @@ static void should_icmp_natural()
 {
 	// Test basic numeric comparison - the key bug fix
 	// Files like 43_100 should come after 43_99, not between 43_10 and 43_11
-	assert_equal(true, str::icmp_natural("43_09", "43_10") < 0, "43_09 < 43_10");
-	assert_equal(true, str::icmp_natural("43_10", "43_11") < 0, "43_10 < 43_11");
-	assert_equal(true, str::icmp_natural("43_10", "43_100") < 0, "43_10 < 43_100");
-	assert_equal(true, str::icmp_natural("43_99", "43_100") < 0, "43_99 < 43_100");
-	assert_equal(true, str::icmp_natural("43_100", "43_101") < 0, "43_100 < 43_101");
+	assert_equal(true, core::icmp_natural("43_09", "43_10") < 0, "43_09 < 43_10");
+	assert_equal(true, core::icmp_natural("43_10", "43_11") < 0, "43_10 < 43_11");
+	assert_equal(true, core::icmp_natural("43_10", "43_100") < 0, "43_10 < 43_100");
+	assert_equal(true, core::icmp_natural("43_99", "43_100") < 0, "43_99 < 43_100");
+	assert_equal(true, core::icmp_natural("43_100", "43_101") < 0, "43_100 < 43_101");
 
 	// Verify the order reported in the bug is fixed
-	assert_equal(true, str::icmp_natural("43_09", "43_100") < 0, "43_09 < 43_100");
-	assert_equal(true, str::icmp_natural("43_11", "43_100") < 0, "43_11 < 43_100");
+	assert_equal(true, core::icmp_natural("43_09", "43_100") < 0, "43_09 < 43_100");
+	assert_equal(true, core::icmp_natural("43_11", "43_100") < 0, "43_11 < 43_100");
 
 	// Test equality
-	assert_equal(0, str::icmp_natural("file10", "file10"), "equal strings");
-	assert_equal(0, str::icmp_natural("", ""), "empty strings");
+	assert_equal(0, core::icmp_natural("file10", "file10"), "equal strings");
+	assert_equal(0, core::icmp_natural("", ""), "empty strings");
 
 	// Test case insensitivity
-	assert_equal(0, str::icmp_natural("File10", "file10"), "case insensitive");
-	assert_equal(0, str::icmp_natural("FILE10", "file10"), "case insensitive upper");
+	assert_equal(0, core::icmp_natural("File10", "file10"), "case insensitive");
+	assert_equal(0, core::icmp_natural("FILE10", "file10"), "case insensitive upper");
 
 	// Test basic natural ordering
-	assert_equal(true, str::icmp_natural("file1", "file2") < 0, "file1 < file2");
-	assert_equal(true, str::icmp_natural("file2", "file10") < 0, "file2 < file10");
-	assert_equal(true, str::icmp_natural("file9", "file10") < 0, "file9 < file10");
-	assert_equal(true, str::icmp_natural("file10", "file11") < 0, "file10 < file11");
-	assert_equal(true, str::icmp_natural("file19", "file20") < 0, "file19 < file20");
+	assert_equal(true, core::icmp_natural("file1", "file2") < 0, "file1 < file2");
+	assert_equal(true, core::icmp_natural("file2", "file10") < 0, "file2 < file10");
+	assert_equal(true, core::icmp_natural("file9", "file10") < 0, "file9 < file10");
+	assert_equal(true, core::icmp_natural("file10", "file11") < 0, "file10 < file11");
+	assert_equal(true, core::icmp_natural("file19", "file20") < 0, "file19 < file20");
 	// Issue #197: "43_100" sorted between "43_10" and "43_11" (lexicographic instead of numeric).
-	assert_equal(true, str::icmp_natural("file99", "file100") < 0, "file99 < file100");
-	assert_equal(true, str::icmp_natural("file100", "file1000") < 0, "file100 < file1000");
+	assert_equal(true, core::icmp_natural("file99", "file100") < 0, "file99 < file100");
+	assert_equal(true, core::icmp_natural("file100", "file1000") < 0, "file100 < file1000");
 
 	// Test reverse ordering
-	assert_equal(true, str::icmp_natural("file10", "file9") > 0, "file10 > file9");
-	assert_equal(true, str::icmp_natural("file100", "file99") > 0, "file100 > file99");
+	assert_equal(true, core::icmp_natural("file10", "file9") > 0, "file10 > file9");
+	assert_equal(true, core::icmp_natural("file100", "file99") > 0, "file100 > file99");
 
 	// Test with different prefixes
-	assert_equal(true, str::icmp_natural("a10", "b1") < 0, "a10 < b1");
-	assert_equal(true, str::icmp_natural("img001", "img002") < 0, "img001 < img002");
-	assert_equal(true, str::icmp_natural("img009", "img010") < 0, "img009 < img010");
+	assert_equal(true, core::icmp_natural("a10", "b1") < 0, "a10 < b1");
+	assert_equal(true, core::icmp_natural("img001", "img002") < 0, "img001 < img002");
+	assert_equal(true, core::icmp_natural("img009", "img010") < 0, "img009 < img010");
 
 	// Test numbers at the start
-	assert_equal(true, str::icmp_natural("1file", "2file") < 0, "1file < 2file");
-	assert_equal(true, str::icmp_natural("9file", "10file") < 0, "9file < 10file");
-	assert_equal(true, str::icmp_natural("10file", "100file") < 0, "10file < 100file");
+	assert_equal(true, core::icmp_natural("1file", "2file") < 0, "1file < 2file");
+	assert_equal(true, core::icmp_natural("9file", "10file") < 0, "9file < 10file");
+	assert_equal(true, core::icmp_natural("10file", "100file") < 0, "10file < 100file");
 
 	// Test multiple number groups
-	assert_equal(true, str::icmp_natural("file1-1", "file1-2") < 0, "file1-1 < file1-2");
-	assert_equal(true, str::icmp_natural("file1-9", "file1-10") < 0, "file1-9 < file1-10");
-	assert_equal(true, str::icmp_natural("file1-10", "file2-1") < 0, "file1-10 < file2-1");
+	assert_equal(true, core::icmp_natural("file1-1", "file1-2") < 0, "file1-1 < file1-2");
+	assert_equal(true, core::icmp_natural("file1-9", "file1-10") < 0, "file1-9 < file1-10");
+	assert_equal(true, core::icmp_natural("file1-10", "file2-1") < 0, "file1-10 < file2-1");
 
 	// Test leading zeros
-	assert_equal(true, str::icmp_natural("file007", "file7") > 0, "file007 > file7 (more leading zeros)");
-	assert_equal(true, str::icmp_natural("file07", "file007") < 0,
+	assert_equal(true, core::icmp_natural("file007", "file7") > 0, "file007 > file7 (more leading zeros)");
+	assert_equal(true, core::icmp_natural("file07", "file007") < 0,
 	             "file07 < file007 (fewer leading zeros)");
-	assert_equal(0, str::icmp_natural("file007", "file007"), "same with leading zeros");
+	assert_equal(0, core::icmp_natural("file007", "file007"), "same with leading zeros");
 
 	// Test purely numeric strings
-	assert_equal(true, str::icmp_natural("1", "2") < 0, "1 < 2");
-	assert_equal(true, str::icmp_natural("9", "10") < 0, "9 < 10");
-	assert_equal(true, str::icmp_natural("99", "100") < 0, "99 < 100");
-	assert_equal(true, str::icmp_natural("999", "1000") < 0, "999 < 1000");
+	assert_equal(true, core::icmp_natural("1", "2") < 0, "1 < 2");
+	assert_equal(true, core::icmp_natural("9", "10") < 0, "9 < 10");
+	assert_equal(true, core::icmp_natural("99", "100") < 0, "99 < 100");
+	assert_equal(true, core::icmp_natural("999", "1000") < 0, "999 < 1000");
 
 	// Test strings with no numbers
-	assert_equal(true, str::icmp_natural("abc", "abd") < 0, "abc < abd");
-	assert_equal(true, str::icmp_natural("abc", "abcd") < 0, "abc < abcd");
-	assert_equal(0, str::icmp_natural("abc", "ABC"), "abc == ABC (case insensitive)");
+	assert_equal(true, core::icmp_natural("abc", "abd") < 0, "abc < abd");
+	assert_equal(true, core::icmp_natural("abc", "abcd") < 0, "abc < abcd");
+	assert_equal(0, core::icmp_natural("abc", "ABC"), "abc == ABC (case insensitive)");
 
 	// Test image sequence patterns (common use case)
-	assert_equal(true, str::icmp_natural("DSC_0001.jpg", "DSC_0002.jpg") < 0, "DSC sequence");
-	assert_equal(true, str::icmp_natural("DSC_0099.jpg", "DSC_0100.jpg") < 0, "DSC sequence 99-100");
-	assert_equal(true, str::icmp_natural("IMG_9999.png", "IMG_10000.png") < 0, "IMG sequence overflow");
+	assert_equal(true, core::icmp_natural("DSC_0001.jpg", "DSC_0002.jpg") < 0, "DSC sequence");
+	assert_equal(true, core::icmp_natural("DSC_0099.jpg", "DSC_0100.jpg") < 0, "DSC sequence 99-100");
+	assert_equal(true, core::icmp_natural("IMG_9999.png", "IMG_10000.png") < 0, "IMG sequence overflow");
 
 	// A run longer than nineteen digits does not fit a uint64_t. Accumulating the value wrapped it,
 	// and the wrapped result compared as something small - so a long serial number, a hash or a
 	// phone-camera timestamp landed at an arbitrary point in the listing. Leading zeros have
 	// already been consumed by this point, so the longer run is simply the larger number.
-	assert_equal(true, str::icmp_natural("id_99999999999999999999", "id_100000000000000000000") < 0,
+	assert_equal(true, core::icmp_natural("id_99999999999999999999", "id_100000000000000000000") < 0,
 	             "twenty digits beats twenty");
-	assert_equal(true, str::icmp_natural("id_18446744073709551615", "id_18446744073709551616") < 0,
+	assert_equal(true, core::icmp_natural("id_18446744073709551615", "id_18446744073709551616") < 0,
 	             "one past the widest value a uint64 holds still orders after it");
-	assert_equal(true, str::icmp_natural("id_9", "id_99999999999999999999999999") < 0,
+	assert_equal(true, core::icmp_natural("id_9", "id_99999999999999999999999999") < 0,
 	             "a short run orders before a very long one");
-	assert_equal(0, str::icmp_natural("id_99999999999999999999", "id_99999999999999999999"),
+	assert_equal(0, core::icmp_natural("id_99999999999999999999", "id_99999999999999999999"),
 	             "and two of the same are equal");
 
 	// 2^64 wraps to zero, so any comparison that forms the value puts it below a bare 1.
-	assert_equal(true, str::icmp_natural("id_1", "id_18446744073709551616") < 0,
+	assert_equal(true, core::icmp_natural("id_1", "id_18446744073709551616") < 0,
 	             "two to the sixty-four is larger than one, not smaller");
-	assert_equal(true, str::icmp_natural("id_18446744073709551616", "id_1") > 0, "and the reverse holds");
+	assert_equal(true, core::icmp_natural("id_18446744073709551616", "id_1") > 0, "and the reverse holds");
 }
 
 static void should_follow_the_filesystem_for_path_identity()
 {
 	// The subject is identity, not spelling, so the literals use the running platform's root.
-	const auto root = df::folder_path(df::windows_path_semantics ? "c:\\photos" : "/photos");
-	const auto root_upper = df::folder_path(df::windows_path_semantics ? "C:\\PHOTOS" : "/PHOTOS");
+	const auto root = core::folder_path(core::windows_path_semantics ? "c:\\photos" : "/photos");
+	const auto root_upper = core::folder_path(core::windows_path_semantics ? "C:\\PHOTOS" : "/PHOTOS");
 	const auto lower = root.combine_file("holiday.jpg");
 	const auto upper = root.combine_file("HOLIDAY.JPG");
 	const auto other = root.combine_file("apple.jpg");
 
 	// Case-folded where the filesystem folds, and two distinct files where it does not.
-	constexpr auto same = df::case_insensitive_path_identity;
+	constexpr auto same = core::case_insensitive_path_identity;
 	assert_equal(same, root.compare(root_upper) == 0, "folder identity");
 	assert_equal(same, lower.icmp(upper) == 0, "file identity");
 	assert_equal(same, lower == upper, "file equality follows the comparison");
 
 	// A hash that disagreed with the comparison would leave one file in two buckets.
-	const df::ihash hash;
+	const core::ihash hash;
 	assert_equal(same, hash(lower) == hash(upper), "file hash agrees with file identity");
 	assert_equal(same, hash(root) == hash(root_upper), "folder hash agrees with folder identity");
 	assert_equal(true, hash(lower) == hash(root.combine_file("holiday.jpg")), "one path, one hash");
 
-	df::hash_set<df::file_path, df::ihash, df::ieq> paths;
+	core::hash_set<core::file_path, core::ihash, core::ieq> paths;
 	paths.emplace(lower);
 	paths.emplace(upper);
 	assert_equal(same ? 1 : 2, static_cast<int>(paths.size()), "a set holds one entry per file");
@@ -244,34 +244,34 @@ static void should_follow_the_filesystem_for_path_identity()
 
 	// Type is a different question and never follows the filesystem: an upper-case extension names
 	// the same format on every platform.
-	assert_equal(0, str::icmp(lower.extension(), upper.extension()), "extension matching stays folded");
+	assert_equal(0, core::icmp(lower.extension(), upper.extension()), "extension matching stays folded");
 	const auto ft_lower = files::file_type_from_name(lower);
 	const auto ft_upper = files::file_type_from_name(upper);
 	assert_equal(true, ft_lower == ft_upper, "file type does not follow path identity");
 
 	const auto accented_acute = root.parent().combine("album-é");
 	const auto accented_grave = root.parent().combine("album-è");
-	assert_equal(false, df::folder_contains(accented_acute.text(), accented_grave.combine("child").text()),
+	assert_equal(false, core::folder_contains(accented_acute.text(), accented_grave.combine("child").text()),
 	             "accented sibling folders are distinct");
-	assert_equal(true, df::folder_contains(accented_acute.text(), accented_acute.combine("child").text()),
+	assert_equal(true, core::folder_contains(accented_acute.text(), accented_acute.combine("child").text()),
 	             "a real child is contained");
-	assert_equal(false, df::folder_contains(root.text(), root.parent().combine("photoshop").text()),
+	assert_equal(false, core::folder_contains(root.text(), root.parent().combine("photoshop").text()),
 	             "prefix matches stop at a separator boundary");
-	assert_equal(same, df::folder_contains(root_upper.text(), root.combine("child").text()),
+	assert_equal(same, core::folder_contains(root_upper.text(), root.combine("child").text()),
 	             "case aliases follow filesystem identity only");
 
 	// A key held as a string has to answer the same way, or the rename planner disagrees with the
 	// index about whether a destination is occupied.
-	assert_equal(same, df::compare_path_key(lower.pack(), upper.pack()) == 0, "packed key identity");
-	assert_equal(same, df::path_text_starts(root_upper.text(), root.text()), "prefix match identity");
-	assert_equal(true, df::path_text_starts(root.text(), root.text()), "a path contains itself");
+	assert_equal(same, core::compare_path_key(lower.pack(), upper.pack()) == 0, "packed key identity");
+	assert_equal(same, core::path_text_starts(root_upper.text(), root.text()), "prefix match identity");
+	assert_equal(true, core::path_text_starts(root.text(), root.text()), "a path contains itself");
 }
 
 static void should_parse_files_directly_under_the_root()
 {
-	const auto root = df::folder_path(df::windows_path_semantics ? "c:\\" : "/");
-	const auto direct_text = df::windows_path_semantics ? "c:\\photo.jpg" : "/photo.jpg";
-	const auto direct = df::file_path(direct_text);
+	const auto root = core::folder_path(core::windows_path_semantics ? "c:\\" : "/");
+	const auto direct_text = core::windows_path_semantics ? "c:\\photo.jpg" : "/photo.jpg";
+	const auto direct = core::file_path(direct_text);
 	const auto combined = root.combine_file("photo.jpg");
 
 	assert_equal(root.text(), direct.folder().text(), "root folder is preserved");
@@ -279,7 +279,7 @@ static void should_parse_files_directly_under_the_root()
 	assert_equal(".jpg", direct.extension(), "root child keeps its extension");
 	assert_equal(direct_text, direct.pack(), "root child packs without a trailing folder separator");
 	assert_equal(true, direct == combined, "direct and combined root children are equal");
-	const df::ihash hash;
+	const core::ihash hash;
 	assert_equal(hash(combined), hash(direct), "direct and combined root children hash alike");
 
 	auto reused = root.combine_file("old-name.txt");
@@ -296,31 +296,31 @@ static void should_group_elements_by_folder()
 {
 	struct element
 	{
-		df::folder_path folder;
+		core::folder_path folder;
 		int id = 0;
 		bool skip = false;
 	};
 
 	// The subject is grouping, not path spelling, so the literals use the running platform's root.
-	constexpr auto a = df::windows_path_semantics ? "c:\\a" : "/a";
-	constexpr auto b = df::windows_path_semantics ? "c:\\b" : "/b";
-	constexpr auto c = df::windows_path_semantics ? "c:\\c" : "/c";
-	constexpr auto a_upper = df::windows_path_semantics ? "C:\\A" : "/A";
+	constexpr auto a = core::windows_path_semantics ? "c:\\a" : "/a";
+	constexpr auto b = core::windows_path_semantics ? "c:\\b" : "/b";
+	constexpr auto c = core::windows_path_semantics ? "c:\\c" : "/c";
+	constexpr auto a_upper = core::windows_path_semantics ? "C:\\A" : "/A";
 
 	const std::vector<element> elements{
-		{df::folder_path(a), 1},
-		{df::folder_path(b), 2},
-		{df::folder_path(a), 3},
-		{df::folder_path(b), 4, true},
-		{df::folder_path(a_upper), 5},
-		{df::folder_path(c), 6},
+		{core::folder_path(a), 1},
+		{core::folder_path(b), 2},
+		{core::folder_path(a), 3},
+		{core::folder_path(b), 4, true},
+		{core::folder_path(a_upper), 5},
+		{core::folder_path(c), 6},
 	};
 
 	// Path identity follows the filesystem, so the case variant is a fourth folder where two
 	// spellings are two places and a member of the first group where they are one.
-	constexpr auto expected_groups = df::case_insensitive_path_identity ? 3 : 4;
+	constexpr auto expected_groups = core::case_insensitive_path_identity ? 3 : 4;
 
-	df::folder_groups groups;
+	core::folder_groups groups;
 	groups.build(elements,
 	             [](const element& e) { return e.folder; },
 	             [](const element& e) { return !e.skip; });
@@ -339,7 +339,7 @@ static void should_group_elements_by_folder()
 		return result;
 	};
 
-	assert_equal(df::case_insensitive_path_identity ? "135" : "13", ids(0), "case variant follows path identity");
+	assert_equal(core::case_insensitive_path_identity ? "135" : "13", ids(0), "case variant follows path identity");
 	assert_equal("2", ids(1), "excluded element is dropped");
 	assert_equal("6", ids(expected_groups - 1), "single element group");
 
@@ -352,7 +352,7 @@ static void should_group_elements_by_folder()
 	std::vector<element> many;
 	const auto numbered = [](const int i)
 	{
-		return df::folder_path(df::windows_path_semantics ? std::format("c:\\f{}", i) : std::format("/f{}", i));
+		return core::folder_path(core::windows_path_semantics ? std::format("c:\\f{}", i) : std::format("/f{}", i));
 	};
 	for (auto i = 0; i < 500; ++i) many.emplace_back(numbered(i), i);
 	for (auto i = 0; i < 500; ++i) many.emplace_back(numbered(i), i);
@@ -372,13 +372,13 @@ static void should_group_elements_by_folder()
 static void should_cancel_superseded_tokens()
 {
 	std::atomic_int version = 0;
-	const df::cancel_token first(version);
+	const core::cancel_token first(version);
 	const auto first_copy = first;
 
 	assert_equal(false, first.is_cancelled(), "current token is active");
 	assert_equal(false, first_copy.is_cancelled(), "copied current token is active");
 
-	const df::cancel_token second(version);
+	const core::cancel_token second(version);
 	assert_equal(true, first.is_cancelled(), "new generation cancels previous token");
 	assert_equal(true, first_copy.is_cancelled(), "new generation cancels copies of previous token");
 	assert_equal(false, second.is_cancelled(), "new generation remains active");
@@ -400,26 +400,26 @@ static void should_calc_hashes()
 	             "SHA256");
 
 	const auto crc_data = "hello world"s;
-	const auto crc_result = df::crc32c(crc_data.data(), crc_data.size());
+	const auto crc_result = core::crc32c(crc_data.data(), crc_data.size());
 	assert_equal(0xc99465aa, crc_result, "crc32");
-	assert_equal(0xe3069283, df::crc32c("123456789"sv), "crc32 standard vector");
+	assert_equal(0xe3069283, core::crc32c("123456789"sv), "crc32 standard vector");
 
-	const auto crc_c = ~calc_crc32c_c(df::crc32c_init, crc_data.data(), crc_data.size());
+	const auto crc_c = ~calc_crc32c_c(core::crc32c_init, crc_data.data(), crc_data.size());
 	assert_equal(0xc99465aa, crc_c, "crc32 c");
-	assert_equal(0xe3069283, ~calc_crc32c_c(df::crc32c_init, "123456789", 9), "crc32 c standard vector");
+	assert_equal(0xe3069283, ~calc_crc32c_c(core::crc32c_init, "123456789", 9), "crc32 c standard vector");
 
-	if (platform::crc32_supported)
+	if (core::crc32_supported)
 	{
-		const auto crc_x86 = ~calc_crc32c_x86(df::crc32c_init, crc_data.data(), crc_data.size());
+		const auto crc_x86 = ~calc_crc32c_x86(core::crc32c_init, crc_data.data(), crc_data.size());
 		assert_equal(0xc99465aa, crc_x86, "crc32 x86");
-		assert_equal(0xe3069283, ~calc_crc32c_x86(df::crc32c_init, "123456789", 9), "crc32 x86 standard vector");
+		assert_equal(0xe3069283, ~calc_crc32c_x86(core::crc32c_init, "123456789", 9), "crc32 x86 standard vector");
 	}
 
-	if (platform::arm_crc32_supported)
+	if (core::arm_crc32_supported)
 	{
-		const auto crc_neon = ~calc_crc32c_arm(df::crc32c_init, crc_data.data(), crc_data.size());
+		const auto crc_neon = ~calc_crc32c_arm(core::crc32c_init, crc_data.data(), crc_data.size());
 		assert_equal(0xc99465aa, crc_neon, "crc32 neon");
-		assert_equal(0xe3069283, ~calc_crc32c_arm(df::crc32c_init, "123456789", 9), "crc32 arm standard vector");
+		assert_equal(0xe3069283, ~calc_crc32c_arm(core::crc32c_init, "123456789", 9), "crc32 arm standard vector");
 	}
 
 	alignas(16) std::array<uint8_t, 96> boundary_data;
@@ -433,22 +433,22 @@ static void should_calc_hashes()
 		for (auto len = 0u; len <= 80u; ++len)
 		{
 			const auto* const data = boundary_data.data() + offset;
-			const auto expected = calc_crc32c_c(df::crc32c_init, data, len);
-			assert_equal(~expected, df::crc32c(data, len), "crc32 dispatched boundary");
+			const auto expected = calc_crc32c_c(core::crc32c_init, data, len);
+			assert_equal(~expected, core::crc32c(data, len), "crc32 dispatched boundary");
 
-			if (platform::crc32_supported)
+			if (core::crc32_supported)
 			{
-				assert_equal(expected, calc_crc32c_x86(df::crc32c_init, data, len), "crc32 x86 boundary");
+				assert_equal(expected, calc_crc32c_x86(core::crc32c_init, data, len), "crc32 x86 boundary");
 				const auto split = len / 2;
-				const auto first = calc_crc32c_x86(df::crc32c_init, data, split);
+				const auto first = calc_crc32c_x86(core::crc32c_init, data, split);
 				assert_equal(expected, calc_crc32c_x86(first, data + split, len - split), "crc32 x86 continuation");
 			}
 
-			if (platform::arm_crc32_supported)
+			if (core::arm_crc32_supported)
 			{
-				assert_equal(expected, calc_crc32c_arm(df::crc32c_init, data, len), "crc32 arm boundary");
+				assert_equal(expected, calc_crc32c_arm(core::crc32c_init, data, len), "crc32 arm boundary");
 				const auto split = len / 2;
-				const auto first = calc_crc32c_arm(df::crc32c_init, data, split);
+				const auto first = calc_crc32c_arm(core::crc32c_init, data, split);
 				assert_equal(expected, calc_crc32c_arm(first, data + split, len - split), "crc32 arm continuation");
 			}
 		}
@@ -519,9 +519,9 @@ static uint64_t phash_of_file(const std::string_view name)
 {
 	files ff;
 	file_read_stream stream;
-	if (!stream.open(test_files_folder.combine_file(name))) return 0;
+	if (!stream.open(test_files_folder().combine_file(name))) return 0;
 
-	df::blob owner;
+	core::blob owner;
 	return ff.calc_perceptual_hash(stream.view_all(owner));
 }
 
@@ -529,9 +529,9 @@ static crypto::phash_rotations phash_rotations_of_file(const std::string_view na
 {
 	files ff;
 	file_read_stream stream;
-	if (!stream.open(test_files_folder.combine_file(name))) return {};
+	if (!stream.open(test_files_folder().combine_file(name))) return {};
 
-	df::blob owner;
+	core::blob owner;
 	return ff.calc_perceptual_hash_rotations(stream.view_all(owner));
 }
 
@@ -624,26 +624,26 @@ static void should_convert_utf8()
 	for (const auto src : strings)
 	{
 		assert_equal(src, platform::utf16_to_utf8(platform::utf8_to_utf16(src)), "platform conversions");
-		assert_equal(platform::utf8_to_utf16(src), str::utf8_to_utf16(src), "to utf16");
-		assert_equal(src, str::utf16_to_utf8(platform::utf8_to_utf16(src)), "to utf8");
-		assert_equal(src, str::utf16_to_utf8(str::utf8_to_utf16(src)), "internal conversions");
+		assert_equal(platform::utf8_to_utf16(src), core::utf8_to_utf16(src), "to utf16");
+		assert_equal(src, core::utf16_to_utf8(platform::utf8_to_utf16(src)), "to utf8");
+		assert_equal(src, core::utf16_to_utf8(core::utf8_to_utf16(src)), "internal conversions");
 	}
 
 	constexpr wchar_t icon_text[2] = {static_cast<wchar_t>(icon_index::fit), 0};
-	const auto icon_text_converted = str::utf8_to_utf16(str::utf16_to_utf8(icon_text));
+	const auto icon_text_converted = core::utf8_to_utf16(core::utf16_to_utf8(icon_text));
 	assert_equal(icon_text, icon_text_converted, "icon to utf8");
 
 	// Verify icon_to_utf8 matches the old wchar_t + utf16_to_utf8 approach
 	const auto icon_new = icon_to_utf8(icon_index::fit);
 	constexpr wchar_t icon_old_text[2] = {static_cast<wchar_t>(icon_index::fit), 0};
-	const auto icon_old = str::utf16_to_utf8(icon_old_text);
+	const auto icon_old = core::utf16_to_utf8(icon_old_text);
 	assert_equal(icon_old, icon_new, "icon_to_utf8 matches old approach");
 	assert_equal(true, icon_index::rotate_clockwise != icon_index::rotate_anticlockwise,
 	             "the two rotations are different glyphs");
 
 	// Verify char32_to_utf8 round-trips for icon code points
 	std::string char32_result;
-	str::char32_to_utf8(std::back_inserter(char32_result), static_cast<uint32_t>(icon_index::fit) & 0xFFFF);
+	core::char32_to_utf8(std::back_inserter(char32_result), static_cast<uint32_t>(icon_index::fit) & 0xFFFF);
 	assert_equal(icon_old, char32_result, "char32_to_utf8 for icon");
 
 	// Verify every icon in the icon_index enum round-trips correctly through UTF-8
@@ -676,7 +676,7 @@ static void should_convert_utf8()
 		}
 
 		// Round-trip: UTF-8 -> UTF-16 should recover the original code point
-		const auto round_tripped_utf16 = str::utf8_to_utf16(actual_utf8);
+		const auto round_tripped_utf16 = core::utf8_to_utf16(actual_utf8);
 		assert_equal(1, static_cast<int>(round_tripped_utf16.size()),
 		             std::format("icon round-trip UTF-16 length for 0x{:X}", icon_val));
 		assert_equal(static_cast<int>(icon_val), round_tripped_utf16[0],
@@ -692,16 +692,16 @@ static void should_convert_utf8()
 static void should_split()
 {
 	constexpr auto to_be_split = "H:\\2-Archief VIDEO privé\\Eigen video's\nF:\\1-Archief FOTOGRAFIE privé";
-	const auto parts = str::split(to_be_split, false, [](const char c) { return c == '\n' || c == '\r'; });
+	const auto parts = core::split(to_be_split, false, [](const char c) { return c == '\n' || c == '\r'; });
 
 	assert_equal("H:\\2-Archief VIDEO privé\\Eigen video's", parts[0], "Split 1");
 	assert_equal("F:\\1-Archief FOTOGRAFIE privé", parts[1], "Split 2");
 
 	constexpr auto to_be_split2 = "aaa 'bbb ccc' ddd \"ee ff \"";
-	const auto parts2 = str::split(to_be_split2, true);
+	const auto parts2 = core::split(to_be_split2, true);
 
 	constexpr auto to_be_split3 = "Доброго ранку!";
-	const auto parts3 = str::split(to_be_split3, true);
+	const auto parts3 = core::split(to_be_split3, true);
 
 	assert_equal("aaa", parts2[0], "Split 1");
 	assert_equal("bbb ccc", parts2[1], "Split 2");
@@ -709,70 +709,70 @@ static void should_split()
 	assert_equal("ee ff ", parts2[3], "Split 4");
 	assert_equal("ранку!", parts3[1], "Split 5");
 
-	const auto internal_quote = str::split("Jane O'Brien; Alex", true, str::is_artist_separator);
+	const auto internal_quote = core::split("Jane O'Brien; Alex", true, core::is_artist_separator);
 	assert_equal(2_z, internal_quote.size(), "internal apostrophe does not merge names");
 	assert_equal("Jane O'Brien", internal_quote[0], "internal apostrophe is preserved");
 	assert_equal(" Alex", internal_quote[1], "separator policy still owns surrounding spaces");
 
-	const auto quoted_separators = str::split("'Jane; O\\'Brien';\"Alex, Pat\";Sam", true,
-	                                          str::is_artist_separator);
+	const auto quoted_separators = core::split("'Jane; O\\'Brien';\"Alex, Pat\";Sam", true,
+	                                          core::is_artist_separator);
 	assert_equal(3_z, quoted_separators.size(), "outer quotes protect separators");
 	assert_equal("Jane; O\\'Brien", quoted_separators[0], "single-quoted separator");
 	assert_equal("Alex, Pat", quoted_separators[1], "double-quoted separator");
 	assert_equal("Sam", quoted_separators[2], "unquoted tail");
 
-	const auto spaced_quote = str::split("Jane; \"Smith; Pat\"", true, str::is_artist_separator);
+	const auto spaced_quote = core::split("Jane; \"Smith; Pat\"", true, core::is_artist_separator);
 	assert_equal(2_z, spaced_quote.size(), "quote after separator whitespace wraps");
 	assert_equal("Smith; Pat", spaced_quote[1], "separator whitespace is outside the wrapping quote");
 
-	const auto quoted_prefix = str::split("\"Weird Al\" Yankovic; Madonna", true, str::is_artist_separator);
+	const auto quoted_prefix = core::split("\"Weird Al\" Yankovic; Madonna", true, core::is_artist_separator);
 	assert_equal(2_z, quoted_prefix.size(), "quoted prefix does not swallow artist separator");
 	assert_equal("\"Weird Al\" Yankovic", quoted_prefix[0], "quoted prefix stays literal");
 	assert_equal(" Madonna", quoted_prefix[1], "quoted prefix tail splits");
 
-	const auto quote_with_space_before_separator = str::split("\"Doe, Jane\" ; Alex", true, str::is_artist_separator);
+	const auto quote_with_space_before_separator = core::split("\"Doe, Jane\" ; Alex", true, core::is_artist_separator);
 	assert_equal(2_z, quote_with_space_before_separator.size(), "space before separator keeps wrapping quote");
 	assert_equal("Doe, Jane", quote_with_space_before_separator[0], "wrapped token before spaced separator");
 	assert_equal(" Alex", quote_with_space_before_separator[1], "spaced separator tail splits");
 
-	const auto quote_with_trailing_space = str::split("\"Doe, Jane\" ", true, str::is_artist_separator);
+	const auto quote_with_trailing_space = core::split("\"Doe, Jane\" ", true, core::is_artist_separator);
 	assert_equal(1_z, quote_with_trailing_space.size(), "trailing whitespace keeps wrapping quote");
 	assert_equal("Doe, Jane", quote_with_trailing_space[0], "trailing whitespace outside quote");
 
 	// A tab separates artists and genres while a space does not; skipping whitespace after a closing
 	// quote must stop at that separator rather than carry on past it.
-	for (const auto& pred : {std::function<bool(char)>(str::is_artist_separator),
-	                         std::function<bool(char)>(str::is_genre_separator)})
+	for (const auto& pred : {std::function<bool(char)>(core::is_artist_separator),
+	                         std::function<bool(char)>(core::is_genre_separator)})
 	{
-		const auto quote_space_tab = str::split("\"Doe, Jane\" \tAlex", true, pred);
+		const auto quote_space_tab = core::split("\"Doe, Jane\" \tAlex", true, pred);
 		assert_equal(2_z, quote_space_tab.size(), "space then tab after a closing quote ends the token");
 		assert_equal("Doe, Jane", quote_space_tab[0], "quoted token before a space and tab separator");
 		assert_equal("Alex", quote_space_tab[1], "token after a space and tab separator");
 	}
 
-	const auto quoted_first_word = str::split("Jane Doe; 'Bud' Abbott; Lou Costello", true,
-	                                         str::is_artist_separator);
+	const auto quoted_first_word = core::split("Jane Doe; 'Bud' Abbott; Lou Costello", true,
+	                                         core::is_artist_separator);
 	assert_equal(3_z, quoted_first_word.size(), "quoted first word does not swallow later separators");
 	assert_equal(" 'Bud' Abbott", quoted_first_word[1], "quoted first word stays literal");
 	assert_equal(" Lou Costello", quoted_first_word[2], "tail after quoted first word splits");
 
-	const auto unmatched_leading_quote = str::split("Alex; 'Til Tuesday; Bob", true, str::is_artist_separator);
+	const auto unmatched_leading_quote = core::split("Alex; 'Til Tuesday; Bob", true, core::is_artist_separator);
 	assert_equal(3_z, unmatched_leading_quote.size(), "unmatched leading quote does not swallow later separators");
 	assert_equal(" 'Til Tuesday", unmatched_leading_quote[1], "unmatched leading quote stays literal");
 	assert_equal(" Bob", unmatched_leading_quote[2], "tail after unmatched quote splits");
 
-	const auto collection_roots = str::split("\"C:\\Photos\"\n\"D:\\\"", true,
+	const auto collection_roots = core::split("\"C:\\Photos\"\n\"D:\\\"", true,
 	                                         [](const char c) { return c == '\n' || c == '\r'; });
 	assert_equal(2_z, collection_roots.size(), "quoted collection roots split");
 	assert_equal("C:\\Photos", collection_roots[0], "quoted collection root");
 	assert_equal("D:\\", collection_roots[1], "quoted drive root keeps trailing slash");
 
-	const auto command_line_drive = str::split("\"D:\\\" -no-gpu", true, str::is_white_space);
+	const auto command_line_drive = core::split("\"D:\\\" -no-gpu", true, core::is_white_space);
 	assert_equal(2_z, command_line_drive.size(), "quoted drive-root argument splits from switch");
 	assert_equal("D:\\", command_line_drive[0], "quoted drive-root argument");
 	assert_equal("-no-gpu", command_line_drive[1], "switch after quoted drive-root");
 
-	const auto command_line_trailing_slash = str::split("\"C:\\My Photos\\\" -no-gpu", true, str::is_white_space);
+	const auto command_line_trailing_slash = core::split("\"C:\\My Photos\\\" -no-gpu", true, core::is_white_space);
 	assert_equal(2_z, command_line_trailing_slash.size(), "quoted trailing-slash path splits from switch");
 	assert_equal("C:\\My Photos\\", command_line_trailing_slash[0], "quoted trailing-slash path");
 	assert_equal("-no-gpu", command_line_trailing_slash[1], "switch after quoted trailing-slash path");
@@ -784,7 +784,7 @@ static void should_split()
 		if (i != 0) long_escaped_artist += '\\';
 		long_escaped_artist += "'a";
 	}
-	const auto long_escaped_artist_parts = str::split(long_escaped_artist, true, str::is_artist_separator);
+	const auto long_escaped_artist_parts = core::split(long_escaped_artist, true, core::is_artist_separator);
 	assert_equal(static_cast<size_t>(escaped_artist_count), long_escaped_artist_parts.size(),
 	             "long escaped-quote artist text splits");
 	assert_equal("'a", long_escaped_artist_parts.front(), "long escaped-quote first token");
@@ -798,7 +798,7 @@ static void should_split()
 	// quote, which the scan caches instead of rescanning to it once per token (linearity was verified
 	// separately; this asserts the tokens).
 	const auto stopped_chain = long_escaped_artist + "'b";
-	const auto stopped_chain_parts = str::split(stopped_chain, true, str::is_artist_separator);
+	const auto stopped_chain_parts = core::split(stopped_chain, true, core::is_artist_separator);
 	assert_equal(static_cast<size_t>(escaped_artist_count), stopped_chain_parts.size(),
 	             "escaped-quote chain ending in an unclosed quote splits");
 	assert_equal("'a", stopped_chain_parts.front(), "stopped chain first token");
@@ -807,14 +807,14 @@ static void should_split()
 	std::string long_blank = "A;";
 	long_blank.append(200'000, ' ');
 	long_blank += 'B';
-	const auto long_blank_parts = str::split(long_blank, true, str::is_artist_separator);
+	const auto long_blank_parts = core::split(long_blank, true, core::is_artist_separator);
 	assert_equal(2_z, long_blank_parts.size(), "long whitespace-prefix token splits");
 	assert_equal("A", long_blank_parts[0], "long whitespace first token");
 	assert_equal(200'001_z, long_blank_parts[1].size(), "long whitespace token length");
 	assert_equal(' ', long_blank_parts[1].front(), "long whitespace token starts with space");
 	assert_equal('B', long_blank_parts[1].back(), "long whitespace token keeps tail");
 
-	const auto mixed_quotes = str::split("\"Jane 'JJ' Doe\" 'Alex \"Ace\" Roe' \"unmatched", true);
+	const auto mixed_quotes = core::split("\"Jane 'JJ' Doe\" 'Alex \"Ace\" Roe' \"unmatched", true);
 	assert_equal(3_z, mixed_quotes.size(), "mixed quote characters split into tokens");
 	assert_equal("Jane 'JJ' Doe", mixed_quotes[0], "inner single quotes preserved");
 	assert_equal("Alex \"Ace\" Roe", mixed_quotes[1], "inner double quotes preserved");
@@ -841,7 +841,7 @@ static void should_split()
 
 	for (const auto& src : strings)
 	{
-		str::split_count(src, true);
+		core::split_count(src, true);
 	}
 }
 
@@ -849,28 +849,28 @@ static void should_split_genre()
 {
 	// Genre values use ';' as the multi-value separator. Multi-word genres and
 	// genres containing '&' or '/' must survive splitting intact.
-	const auto parts = str::split("Rock; Pop ; Hip Hop", false, str::is_genre_separator);
+	const auto parts = core::split("Rock; Pop ; Hip Hop", false, core::is_genre_separator);
 	assert_equal(size_t{3}, parts.size(), "genre part count");
-	assert_equal("Rock", str::trim(parts[0]), "genre 1");
-	assert_equal("Pop", str::trim(parts[1]), "genre 2");
-	assert_equal("Hip Hop", str::trim(parts[2]), "genre 3");
+	assert_equal("Rock", core::trim(parts[0]), "genre 1");
+	assert_equal("Pop", core::trim(parts[1]), "genre 2");
+	assert_equal("Hip Hop", core::trim(parts[2]), "genre 3");
 
-	const auto parts2 = str::split("Action & Adventure; R&B/Soul", false, str::is_genre_separator);
+	const auto parts2 = core::split("Action & Adventure; R&B/Soul", false, core::is_genre_separator);
 	assert_equal(size_t{2}, parts2.size(), "genre part count 2");
-	assert_equal("Action & Adventure", str::trim(parts2[0]), "genre with ampersand");
-	assert_equal("R&B/Soul", str::trim(parts2[1]), "genre with slash");
+	assert_equal("Action & Adventure", core::trim(parts2[0]), "genre with ampersand");
+	assert_equal("R&B/Soul", core::trim(parts2[1]), "genre with slash");
 
-	const auto parts3 = str::split("Jazz", false, str::is_genre_separator);
+	const auto parts3 = core::split("Jazz", false, core::is_genre_separator);
 	assert_equal(size_t{1}, parts3.size(), "single genre part count");
-	assert_equal("Jazz", str::trim(parts3[0]), "single genre");
+	assert_equal("Jazz", core::trim(parts3[0]), "single genre");
 }
 
 static void should_parse_dates()
 {
 	const auto parsed = [](const std::string_view text)
 	{
-		df::date_t d;
-		return d.parse(text) ? d.date() : df::day_t{0};
+		core::date_t d;
+		return d.parse(text) ? d.date() : core::day_t{0};
 	};
 
 	assert_equal(2006, parsed("2006-01-14 15:51:31").year, "an ISO date parses");
@@ -880,7 +880,7 @@ static void should_parse_dates()
 
 	// The seconds field is read with %lg, which accepts "inf", "nan" and an overflowing exponent.
 	// Converting any of those to int is undefined, so they fail the parse instead of reaching it.
-	df::date_t d;
+	core::date_t d;
 	assert_equal(false, d.parse("2006-01-14 15:51:inf"), "infinite seconds is not a date");
 	assert_equal(false, d.parse("2006-01-14 15:51:nan"), "seconds that are not a number is not a date");
 	assert_equal(false, d.parse("2006-01-14 15:51:1e400"), "an overflowing seconds exponent is not a date");
@@ -895,10 +895,10 @@ static void should_convert_local_dates_with_date_specific_rules()
 	assert_equal(uint64_t{0}, platform::utc_to_local(0), "an absent UTC timestamp remains absent");
 	assert_equal(uint64_t{0}, platform::local_to_utc(0), "an absent local timestamp remains absent");
 	const std::array days = {
-		df::day_t{2024, 1, 15, 12, 0, 0},
-		df::day_t{2024, 7, 15, 12, 0, 0},
-		df::day_t{2024, 3, 10, 3, 30, 0},
-		df::day_t{2024, 11, 3, 3, 30, 0}
+		core::day_t{2024, 1, 15, 12, 0, 0},
+		core::day_t{2024, 7, 15, 12, 0, 0},
+		core::day_t{2024, 3, 10, 3, 30, 0},
+		core::day_t{2024, 11, 3, 3, 30, 0}
 	};
 	for (const auto& day : days)
 	{
@@ -912,7 +912,7 @@ static void should_convert_local_dates_with_date_specific_rules()
 		const auto unix_time = std::mktime(&local);
 		constexpr uint64_t fraction = 1234567;
 		const auto expected = (static_cast<int64_t>(unix_time) + 11644473600ll) * 10000000ll + fraction;
-		const auto wall = df::date_t(day.year, day.month, day.day, day.hour, day.minute, 0).to_int64() + fraction;
+		const auto wall = core::date_t(day.year, day.month, day.day, day.hour, day.minute, 0).to_int64() + fraction;
 		assert_equal(expected, platform::local_to_utc(wall), "local conversion matches the date-specific timezone rule");
 	}
 }
@@ -926,62 +926,62 @@ static void should_extract_url()
 	constexpr auto input4 =
 		"Quite nice  <a href=\"http://bighugelabs.com/flickr/onblack.php?id=1397504988\"> On Black</a>";
 
-	assert_equal("https://www.example.com", df::url_extract(input1), "extract url");
-	assert_equal("http://anotherexample.org/article", df::url_extract(input2), "extract url");
-	assert_equal("", df::url_extract(input3), "extract url");
-	assert_equal("", df::url_extract(input3), "extract url");
-	assert_equal("http://bighugelabs.com/flickr/onblack.php?id=1397504988", df::url_extract(input4),
+	assert_equal("https://www.example.com", core::url_extract(input1), "extract url");
+	assert_equal("http://anotherexample.org/article", core::url_extract(input2), "extract url");
+	assert_equal("", core::url_extract(input3), "extract url");
+	assert_equal("", core::url_extract(input3), "extract url");
+	assert_equal("http://bighugelabs.com/flickr/onblack.php?id=1397504988", core::url_extract(input4),
 	             "extract url");
 
 	// A description panel offering a choice of links needs every distinct one, in reading order.
-	const auto all = df::url_extract_all(
+	const auto all = core::url_extract_all(
 		"See https://example.com/a and https://example.com/b then https://example.com/a again.");
 	assert_equal(size_t{2}, all.size(), "repeated url listed once");
 	assert_equal("https://example.com/a", all[0], "first url in source order");
 	assert_equal("https://example.com/b", all[1], "second url in source order");
-	assert_equal(size_t{0}, df::url_extract_all(input3).size(), "no urls found");
+	assert_equal(size_t{0}, core::url_extract_all(input3).size(), "no urls found");
 }
 
 static void should_match_wildcard()
 {
-	assert_equal(true, str::wildcard_icmp("", ""));
-	assert_equal(true, str::wildcard_icmp("", "*"));
-	assert_equal(true, str::wildcard_icmp(" ", "*"));
-	assert_equal(true, str::wildcard_icmp(" ", " *"));
-	assert_equal(false, str::wildcard_icmp(" ", "  *"));
+	assert_equal(true, core::wildcard_icmp("", ""));
+	assert_equal(true, core::wildcard_icmp("", "*"));
+	assert_equal(true, core::wildcard_icmp(" ", "*"));
+	assert_equal(true, core::wildcard_icmp(" ", " *"));
+	assert_equal(false, core::wildcard_icmp(" ", "  *"));
 
-	assert_equal(true, str::wildcard_icmp("hello world", "hello world"));
-	assert_equal(true, str::wildcard_icmp("hello ?! world", "hello * world"));
-	assert_equal(true, str::wildcard_icmp("hello-xx-world", "hello*world"));
-	assert_equal(false, str::wildcard_icmp("hello-xx-world", "hello *world"));
-	assert_equal(true, str::wildcard_icmp("hello-xx-world", "*world"));
-	assert_equal(true, str::wildcard_icmp("hello-xx-world", "hello*"));
+	assert_equal(true, core::wildcard_icmp("hello world", "hello world"));
+	assert_equal(true, core::wildcard_icmp("hello ?! world", "hello * world"));
+	assert_equal(true, core::wildcard_icmp("hello-xx-world", "hello*world"));
+	assert_equal(false, core::wildcard_icmp("hello-xx-world", "hello *world"));
+	assert_equal(true, core::wildcard_icmp("hello-xx-world", "*world"));
+	assert_equal(true, core::wildcard_icmp("hello-xx-world", "hello*"));
 
-	assert_equal(true, str::wildcard_icmp("HELLO-XX-WORLD", "hello*"));
-	assert_equal(true, str::wildcard_icmp("HELLO-XX-WORLD", "hello*world"));
+	assert_equal(true, core::wildcard_icmp("HELLO-XX-WORLD", "hello*"));
+	assert_equal(true, core::wildcard_icmp("HELLO-XX-WORLD", "hello*world"));
 
 
-	assert_equal(0, str::icmp("ДОБРОГО РАНКУ", "Доброго ранку"));
-	assert_equal(0, str::icmp("ARABIC مرحبا العالم", "Arabic مرحبا العالم"));
-	assert_equal(0, str::icmp("JAPANESE こんにちは世界", "Japanese こんにちは世界"));
-	assert_equal(0, str::icmp("💉💎👦🏻👓⚡", "💉💎👦🏻👓⚡"));
+	assert_equal(0, core::icmp("ДОБРОГО РАНКУ", "Доброго ранку"));
+	assert_equal(0, core::icmp("ARABIC مرحبا العالم", "Arabic مرحبا العالم"));
+	assert_equal(0, core::icmp("JAPANESE こんにちは世界", "Japanese こんにちは世界"));
+	assert_equal(0, core::icmp("💉💎👦🏻👓⚡", "💉💎👦🏻👓⚡"));
 
-	assert_equal(true, str::wildcard_icmp("Доброго ранку", "Доброго*"));
-	assert_equal(true, str::wildcard_icmp("ДОБРОГО РАНКУ", "Доброго*"));
-	assert_equal(true, str::wildcard_icmp("ДОБРОГО РАНКУ", "*ранку"));
-	assert_equal(true, str::wildcard_icmp("💉💎👦🏻👓⚡", "*💎*"));
-	assert_equal(true, str::wildcard_icmp("💉💎👦🏻👓⚡", "💉*"));
-	assert_equal(true, str::wildcard_icmp("Οδός", "οδ*"));
-	assert_equal(false, str::wildcard_icmp("Οδός", "sd*"));
+	assert_equal(true, core::wildcard_icmp("Доброго ранку", "Доброго*"));
+	assert_equal(true, core::wildcard_icmp("ДОБРОГО РАНКУ", "Доброго*"));
+	assert_equal(true, core::wildcard_icmp("ДОБРОГО РАНКУ", "*ранку"));
+	assert_equal(true, core::wildcard_icmp("💉💎👦🏻👓⚡", "*💎*"));
+	assert_equal(true, core::wildcard_icmp("💉💎👦🏻👓⚡", "💉*"));
+	assert_equal(true, core::wildcard_icmp("Οδός", "οδ*"));
+	assert_equal(false, core::wildcard_icmp("Οδός", "sd*"));
 }
 
 static void should_detect_wildcard()
 {
-	assert_equal(false, str::is_wildcard(""));
-	assert_equal(false, str::is_wildcard("abcdef"));
-	assert_equal(true, str::is_wildcard("abc*"));
-	assert_equal(false, str::is_wildcard("abc\\*"));
-	assert_equal(false, str::is_wildcard("abc\\*ef"));
+	assert_equal(false, core::is_wildcard(""));
+	assert_equal(false, core::is_wildcard("abcdef"));
+	assert_equal(true, core::is_wildcard("abc*"));
+	assert_equal(false, core::is_wildcard("abc\\*"));
+	assert_equal(false, core::is_wildcard("abc\\*ef"));
 }
 
 static void should_parse_command_line()
@@ -993,17 +993,17 @@ static void should_parse_command_line()
 	assert_equal(false, cl1.no_indexing, "no_indexing");
 
 	command_line_t cl2;
-	cl2.parse(test_files_folder.text());
+	cl2.parse(test_files_folder().text());
 
 	assert_equal(false, cl2.folder_path.is_empty(), "folder_path");
 	assert_equal(std::string_view{}, cl2.selection.name(), "selection name");
-	assert_equal(test_files_folder.text(), cl2.folder_path.folder().text(), "folder path");
+	assert_equal(test_files_folder().text(), cl2.folder_path.folder().text(), "folder path");
 	assert_equal(false, cl2.no_gpu, "no_gpu");
 	assert_equal(false, cl2.no_indexing, "no_indexing");
 
 
 	// The fixture's own spelling: a case-folded name only resolves on a case-insensitive volume.
-	const auto path3 = test_files_folder.combine_file("Test.jpg");
+	const auto path3 = test_files_folder().combine_file("Test.jpg");
 	command_line_t cl3;
 	cl3.parse(std::format("{} -no-indexing", path3));
 
@@ -1027,8 +1027,8 @@ static void should_parse_command_line()
 	cl5.parse("----- --no-gpu");
 	assert_equal(true, cl5.no_gpu, "no_gpu");
 
-	const auto root_path = df::windows_path_semantics
-		                       ? std::string(test_files_folder.text().sv().substr(0, 3))
+	const auto root_path = core::windows_path_semantics
+		                       ? std::string(test_files_folder().text().sv().substr(0, 3))
 		                       : "/"s;
 	command_line_t cl_drive_root;
 	cl_drive_root.parse(std::format("\"{}\" -no-gpu", root_path));
@@ -1088,11 +1088,11 @@ static void should_parse_command_line()
 	assert_equal(true, cl_no_movie.movie_batch.projects.empty(), "a movie switch with no path starts no batch");
 
 	// AutoPlay passes the inserted volume with "**", the address box's spelling for its subfolders.
-	const auto recursive_text = std::string(test_files_folder.text()) + df::preferred_path_sep + "**";
+	const auto recursive_text = std::string(test_files_folder().text()) + core::preferred_path_sep + "**";
 	command_line_t cl_recursive;
 	cl_recursive.parse(std::format("\"{}\"", recursive_text));
 	assert_equal(true, cl_recursive.folder_path.is_recursive(), "a trailing ** opens the subfolders too");
-	assert_equal(test_files_folder.text(), cl_recursive.folder_path.folder().text(), "of the named folder");
+	assert_equal(test_files_folder().text(), cl_recursive.folder_path.folder().text(), "of the named folder");
 
 	command_line_t cl_recursive_root;
 	cl_recursive_root.parse(std::format("\"{}**\" -no-gpu", root_path));
@@ -1100,7 +1100,7 @@ static void should_parse_command_line()
 	assert_equal(true, cl_recursive_root.no_gpu, "and the rest of the line still parses");
 
 	command_line_t cl_missing_recursive;
-	cl_missing_recursive.parse(std::format("\"{}\"", std::string(spaced.text()) + "-missing" + df::preferred_path_sep + "**"));
+	cl_missing_recursive.parse(std::format("\"{}\"", std::string(spaced.text()) + "-missing" + core::preferred_path_sep + "**"));
 	assert_equal(true, cl_missing_recursive.folder_path.is_empty(), "a folder that does not exist opens nothing");
 
 	command_line_t cl_stars_only;
@@ -1108,7 +1108,7 @@ static void should_parse_command_line()
 	assert_equal(true, cl_stars_only.folder_path.is_empty(), "stars alone name no folder");
 	assert_equal(true, cl_stars_only.no_gpu, "and do not stop the rest of the line");
 
-	if constexpr (df::windows_path_semantics)
+	if constexpr (core::windows_path_semantics)
 	{
 		command_line_t cl_bare_drive;
 		cl_bare_drive.parse(root_path.substr(0, 2) + "**");
@@ -1120,9 +1120,9 @@ static void should_parse_command_line()
 
 static void should_trim_strings()
 {
-	assert_equal("xxx", str::trim_and_cache("xxx\n"), "remove cr lf");
-	assert_equal("xxx", str::trim_and_cache("\rxxx\r"), "remove lf");
-	assert_equal("xxx", str::trim_and_cache("   xxx\t\t "), "remove space");
+	assert_equal("xxx", core::trim_and_cache("xxx\n"), "remove cr lf");
+	assert_equal("xxx", core::trim_and_cache("\rxxx\r"), "remove lf");
+	assert_equal("xxx", core::trim_and_cache("   xxx\t\t "), "remove space");
 }
 
 static void should_format_text()
@@ -1140,14 +1140,14 @@ static void should_format_text()
 	assert_equal_strict("-test-", std::format("-{}-", std::string_view("test")), "string_view");
 	assert_equal_strict("33 {} {test}", std::format("{} {{}} {{test}}", 33), "string_view");
 	assert_equal_strict("22 x 33", std::format("{} x {}", 22, 33), "string_view");
-	assert_equal_strict("0", str::to_hex(uint32_t{0}), "zero hex has one digit");
-	assert_equal_strict("10", str::to_hex(uint32_t{0x10}), "interior zero nibble preserved");
-	assert_equal_strict("1001", str::to_hex(uint32_t{0x1001}), "interior zero byte preserved");
-	assert_equal_strict("100000000", str::to_hex(uint64_t{0x100000000ull}), "64-bit scalar width");
-	assert_equal_strict("F0", str::to_hex(uint32_t{0xF0}), "trailing zero nibble preserved");
-	assert_equal(0x1001u, str::hex_to_num(str::to_hex(uint32_t{0x1001})), "scalar hex round-trips");
+	assert_equal_strict("0", core::to_hex(uint32_t{0}), "zero hex has one digit");
+	assert_equal_strict("10", core::to_hex(uint32_t{0x10}), "interior zero nibble preserved");
+	assert_equal_strict("1001", core::to_hex(uint32_t{0x1001}), "interior zero byte preserved");
+	assert_equal_strict("100000000", core::to_hex(uint64_t{0x100000000ull}), "64-bit scalar width");
+	assert_equal_strict("F0", core::to_hex(uint32_t{0xF0}), "trailing zero nibble preserved");
+	assert_equal(0x1001u, core::hex_to_num(core::to_hex(uint32_t{0x1001})), "scalar hex round-trips");
 	const uint8_t fixed_width[] = {0x00, 0x10};
-	assert_equal_strict("0010", str::to_hex(fixed_width, 2, false, false), "fixed-width hex is unchanged");
+	assert_equal_strict("0010", core::to_hex(fixed_width, 2, false, false), "fixed-width hex is unchanged");
 }
 
 static void should_reject_invalid_assertion_inputs()
@@ -1156,31 +1156,31 @@ static void should_reject_invalid_assertion_inputs()
 	                       "NaN actual is rejected");
 	assert_assertion_fails([] { assert_near(1.0, 1.0, std::numeric_limits<double>::quiet_NaN()); },
 	                       "NaN tolerance is rejected");
-	assert_assertion_fails([] { assert_equal(df::date_t(100), df::date_t(110)); },
+	assert_assertion_fails([] { assert_equal(core::date_t(100), core::date_t(110)); },
 	                       "distinct invalid dates compare by value");
 }
 
-// str::to_string(double) used a 128-byte buffer, and _fcvt_s ends the process - through the CRT's
+// core::to_string(double) used a 128-byte buffer, and _fcvt_s ends the process - through the CRT's
 // invalid-parameter fail-fast, which no crash report records - when the fixed form of the value does
 // not fit, from about 1e120 up. A RAW file's maker notes can state a value that large. Restoring the
 // short buffer makes this test terminate the run instead of failing an assertion.
 static void should_format_a_double_of_any_magnitude()
 {
-	const auto huge = str::to_string(1e300, 3);
+	const auto huge = core::to_string(1e300, 3);
 	assert_equal(305_z, huge.size(), "301 integer digits, the point and three decimals");
 	assert_equal(true, huge.starts_with('1'), "led by the value's first digit");
 	assert_equal(true, huge.ends_with(".000"), "and closed by the decimals asked for");
 
-	const auto lowest = str::to_string(std::numeric_limits<double>::lowest(), 2);
+	const auto lowest = core::to_string(std::numeric_limits<double>::lowest(), 2);
 	assert_equal(313_z, lowest.size(), "the sign, all 309 integer digits, the point and two decimals");
 	assert_equal(true, lowest.starts_with("-17976931348623157"), "the most negative double formats whole");
 
-	assert_equal("2.5", str::to_string(2.5, -1), "an ordinary value is unchanged");
+	assert_equal("2.5", core::to_string(2.5, -1), "an ordinary value is unchanged");
 }
 
 static std::string find_and_format_result(const std::string_view text, const std::string_view sub_string)
 {
-	const auto r = str::ifind2(text, sub_string, 0);
+	const auto r = core::ifind2(text, sub_string, 0);
 	auto result = std::string(text);
 
 	if (r.found)
@@ -1205,24 +1205,24 @@ static void should_find_text()
 
 	// Offsets are byte positions of a character start - a match following multi-byte characters
 	// must not land on a continuation byte, or the renderer drops the highlight.
-	const auto cyrillic = str::ifind2("\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", "\xd0\xb2\xd0\xb5", 0);
+	const auto cyrillic = core::ifind2("\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", "\xd0\xb2\xd0\xb5", 0);
 	assert_equal(true, cyrillic.found, "cyrillic match found");
 	assert_equal(6, static_cast<int>(cyrillic.parts[0].offset), "cyrillic match byte offset");
 
-	assert_equal(true, str::ifind2("Οδός", "οδ", 0).found, "Greek case folds consistently");
-	assert_equal(true, str::ifind2("crème brûlée", "creme brulee", 0).found,
+	assert_equal(true, core::ifind2("Οδός", "οδ", 0).found, "Greek case folds consistently");
+	assert_equal(true, core::ifind2("crème brûlée", "creme brulee", 0).found,
 	             "Latin accent folding remains intentional");
-	assert_equal(false, str::ifind2("Οδός", "sd", 0).found, "Greek omicron is not ASCII s");
+	assert_equal(false, core::ifind2("Οδός", "sd", 0).found, "Greek omicron is not ASCII s");
 }
 
 static void should_compare_versions()
 {
-	const df::version current_version(s_app_version);
+	const core::version current_version(s_app_version);
 	assert_equal(s_app_version, current_version.to_string(), "Can parse and to_string current version");
 
-	const df::version test_version1("123.45");
-	const df::version test_version1b("123.45");
-	const df::version test_version2("456.1");
+	const core::version test_version1("123.45");
+	const core::version test_version1b("123.45");
+	const core::version test_version2("456.1");
 
 	assert_equal("123.45", test_version1.to_string(), "Can parse and to_string test version 1");
 	assert_equal("456.1", test_version2.to_string(), "Can parse and to_string test version 2");
@@ -1240,33 +1240,33 @@ static void should_compare_versions()
 // deduplication under concurrent interning from multiple threads.
 static void should_intern_strings()
 {
-	const auto a = str::cache("interned-example");
-	const auto b = str::cache(std::string("interned-example"));
+	const auto a = core::cache("interned-example");
+	const auto b = core::cache(std::string("interned-example"));
 	assert_equal(true, a == b, "same content -> same handle");
 	assert_equal(true, a.id == b.id, "identity is handle equality");
 	assert_equal("interned-example"s, a.str(), "round-trips content");
-	assert_equal(false, str::cache("interned-example") == str::cache("interned-different"),
+	assert_equal(false, core::cache("interned-example") == core::cache("interned-different"),
 	             "different content -> different handle");
-	assert_equal(true, str::cache(std::string_view{}).is_empty(), "empty interns to empty");
+	assert_equal(true, core::cache(std::string_view{}).is_empty(), "empty interns to empty");
 
-	const std::string largest(platform::memory_pool::block_size -
-	                          offsetof(str::cached_string_storage_t, sz) - 1, 'x');
-	assert_equal(largest.size(), str::cache(largest).size(), "largest pool record is interned");
+	const std::string largest(core::memory_pool::block_size -
+	                          offsetof(core::cached_string_storage_t, sz) - 1, 'x');
+	assert_equal(largest.size(), core::cache(largest).size(), "largest pool record is interned");
 	const std::string too_large(largest.size() + 1, 'x');
-	assert_equal(true, str::cache(too_large).is_empty(), "oversized pool record is rejected");
+	assert_equal(true, core::cache(too_large).is_empty(), "oversized pool record is rejected");
 
 	// Many distinct strings force table growth / rehash; handles stay valid, unique and stable.
 	constexpr int n = 5000;
-	std::vector<str::cached> handles;
+	std::vector<core::cached> handles;
 	handles.reserve(n);
-	for (auto i = 0; i < n; ++i) handles.emplace_back(str::cache(std::format("intern-word-{}", i)));
+	for (auto i = 0; i < n; ++i) handles.emplace_back(core::cache(std::format("intern-word-{}", i)));
 
-	df::hash_set<uint32_t> seen;
+	core::hash_set<uint32_t> seen;
 	for (auto i = 0; i < n; ++i)
 	{
 		const auto w = std::format("intern-word-{}", i);
 		assert_equal(w, handles[i].str(), "content preserved after growth");
-		assert_equal(true, str::cache(w) == handles[i], "re-intern returns the same handle");
+		assert_equal(true, core::cache(w) == handles[i], "re-intern returns the same handle");
 		seen.insert(handles[i].id);
 	}
 	assert_equal(n, static_cast<int>(seen.size()), "each distinct string interned exactly once");
@@ -1274,7 +1274,7 @@ static void should_intern_strings()
 	// Concurrent interning of an overlapping set must still yield one handle per string.
 	constexpr int thread_count = 8;
 	constexpr int word_count = 500;
-	std::vector<std::vector<str::cached>> per_thread(thread_count);
+	std::vector<std::vector<core::cached>> per_thread(thread_count);
 	std::vector<std::thread> threads;
 
 	for (auto t = 0; t < thread_count; ++t)
@@ -1283,7 +1283,7 @@ static void should_intern_strings()
 		{
 			auto& out = per_thread[t];
 			out.reserve(word_count);
-			for (auto i = 0; i < word_count; ++i) out.emplace_back(str::cache(std::format("shared-word-{}", i)));
+			for (auto i = 0; i < word_count; ++i) out.emplace_back(core::cache(std::format("shared-word-{}", i)));
 		});
 	}
 
@@ -1358,30 +1358,30 @@ static void should_save_a_blob_without_truncating_the_destination()
 	const auto scratch = _temps.next_folder("blob-save");
 	const auto path = scratch.combine_file("payload.bin");
 
-	const df::blob whole = {1, 2, 3, 4};
-	assert_equal(true, df::blob_save_to_file(whole, path), "a blob is saved");
+	const core::blob whole = {1, 2, 3, 4};
+	assert_equal(true, platform::blob_save_to_file(whole, path), "a blob is saved");
 	assert_equal(uint64_t{4}, platform::file_attributes(path).size, "and lands whole");
 
-	const df::blob empty;
-	assert_equal(true, df::blob_save_to_file(empty, path), "an empty blob replaces it");
+	const core::blob empty;
+	assert_equal(true, platform::blob_save_to_file(empty, path), "an empty blob replaces it");
 	assert_equal(uint64_t{0}, platform::file_attributes(path).size, "with an empty file");
 
 	// Nothing can be written here, so nothing is reported as written.
 	const auto missing = scratch.combine("no-such-folder").combine_file("payload.bin");
-	assert_equal(false, df::blob_save_to_file(whole, missing), "an unwritable destination fails");
-	assert_equal(false, df::blob_save_to_file(empty, missing), "and does so for an empty blob too");
+	assert_equal(false, platform::blob_save_to_file(whole, missing), "an unwritable destination fails");
+	assert_equal(false, platform::blob_save_to_file(empty, missing), "and does so for an empty blob too");
 
 	// The staging file is moved into place, not left beside it.
 	const auto contents = platform::iterate_file_items(scratch, true);
 	assert_equal(1_z, contents.files.size(), "the save leaves only the destination behind");
 }
 
-static std::string replace_file_bytes(const df::file_path path, const std::string_view initial, const int64_t start,
+static std::string replace_file_bytes(const core::file_path path, const std::string_view initial, const int64_t start,
                                       const int64_t replace, const std::string_view replacement)
 {
 	write_test_file(path, initial);
 	{
-		df::file file(platform::open_file(path, platform::file_open_mode::read_write));
+		platform::buffered_file file(platform::open_file(path, platform::file_open_mode::read_write));
 		assert_equal(true, file.insert(std::bit_cast<const uint8_t*>(replacement.data()),
 		                               static_cast<int64_t>(replacement.size()), start, replace),
 		             "replacement succeeds");
@@ -1408,8 +1408,8 @@ static void should_replace_bytes_in_files()
 	             "append with empty tail");
 
 	std::string large;
-	large.reserve(df::sixty_four_k + 32);
-	for (auto i = 0; i < static_cast<int>(df::sixty_four_k) + 32; ++i) large += static_cast<char>('A' + i % 26);
+	large.reserve(core::sixty_four_k + 32);
+	for (auto i = 0; i < static_cast<int>(core::sixty_four_k) + 32; ++i) large += static_cast<char>('A' + i % 26);
 	const auto large_actual = replace_file_bytes(path, large, 8, 3, "x");
 	auto large_expected = large;
 	large_expected.replace(8, 3, "x");
@@ -1417,7 +1417,7 @@ static void should_replace_bytes_in_files()
 
 	write_test_file(path, "0123456789");
 	{
-		df::file file(platform::open_file(path, platform::file_open_mode::read_write));
+		platform::buffered_file file(platform::open_file(path, platform::file_open_mode::read_write));
 		assert_equal(false, file.insert(reinterpret_cast<const uint8_t*>("X"), 1, 20, 1), "invalid range fails");
 	}
 	assert_equal("0123456789", read_test_file(path), "failed replacement leaves bytes unchanged");
@@ -1495,7 +1495,7 @@ static void should_clean_temporary_fixtures()
 #ifdef _WIN32
 	const auto blocked = temps.delete_temps();
 	assert_equal(true, !blocked.empty(), "cleanup reports denied deletion");
-	assert_equal(true, locked.exists(), "denied file remains owned for retry");
+	assert_equal(true, platform::exists(locked), "denied file remains owned for retry");
 
 	locked_handle.reset();
 	const auto cleaned = temps.delete_temps();
@@ -1505,9 +1505,9 @@ static void should_clean_temporary_fixtures()
 	assert_equal(0, static_cast<int>(cleaned.size()), "POSIX cleanup can unlink an open file");
 	locked_handle.reset();
 #endif
-	assert_equal(false, scratch.exists(), "owned subfolder is removed");
-	assert_equal(false, tracked.exists(), "tracked file is removed");
-	assert_equal(false, tracked.extension(".xmp").exists(), "derived sidecar is removed");
+	assert_equal(false, platform::exists(scratch), "owned subfolder is removed");
+	assert_equal(false, platform::exists(tracked), "tracked file is removed");
+	assert_equal(false, platform::exists(tracked.extension(".xmp")), "derived sidecar is removed");
 
 	const auto preexisting = _temps.next_folder("cleanup-preexisting");
 	const auto unrelated = preexisting.combine_file("unrelated.txt");
@@ -1522,9 +1522,9 @@ static void should_clean_temporary_fixtures()
 
 	const auto unowned_cleanup = unowned.delete_temps();
 	assert_equal(0, static_cast<int>(unowned_cleanup.size()), "unowned cleanup reports registered-file success");
-	assert_equal(false, registered.exists(), "registered file in pre-existing folder is removed");
-	assert_equal(true, unrelated.exists(), "pre-existing folder file is preserved");
-	assert_equal(true, unrelated_child.exists(), "pre-existing child folder is preserved");
+	assert_equal(false, platform::exists(registered), "registered file in pre-existing folder is removed");
+	assert_equal(true, platform::exists(unrelated), "pre-existing folder file is preserved");
+	assert_equal(true, platform::exists(unrelated_child), "pre-existing child folder is preserved");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1539,47 +1539,47 @@ static void should_handle_cyrillic_case_folding()
 	constexpr auto lower_ha = "\u0445"; // х
 
 	// to_lower should convert uppercase Cyrillic to lowercase
-	assert_equal_strict(lower_ha, str::to_lower(upper_ha), "Cyrillic to_lower");
+	assert_equal_strict(lower_ha, to_lower(upper_ha), "Cyrillic to_lower");
 
 	// Case-insensitive comparison should treat them as equal
-	assert_equal(0, str::icmp(upper_ha, lower_ha), "Cyrillic icmp");
+	assert_equal(0, icmp(upper_ha, lower_ha), "Cyrillic icmp");
 
 	// Additional Cyrillic pairs
-	assert_equal(0, str::icmp("\u0410", "\u0430"), "А == а"); // А/а
-	assert_equal(0, str::icmp("\u0411", "\u0431"), "Б == б"); // Б/б
-	assert_equal(0, str::icmp("\u042F", "\u044F"), "Я == я"); // Я/я
+	assert_equal(0, core::icmp("\u0410", "\u0430"), "А == а"); // А/а
+	assert_equal(0, core::icmp("\u0411", "\u0431"), "Б == б"); // Б/б
+	assert_equal(0, core::icmp("\u042F", "\u044F"), "Я == я"); // Я/я
 
 	// Mixed Cyrillic text comparison (was failing due to towlower() locale dependency)
 	// Test individual characters from "Текст" to isolate failures
 	// Use \u escapes to avoid source-file encoding issues
-	assert_equal(0, str::icmp("\u0422", "\u0442"), "T == t cyrillic"); // Т/т U+0422/U+0442
+	assert_equal(0, core::icmp("\u0422", "\u0442"), "T == t cyrillic"); // Т/т U+0422/U+0442
 
 	// Текст = U+0422 U+0435 U+043A U+0441 U+0442
 	// текст = U+0442 U+0435 U+043A U+0441 U+0442
 	constexpr auto cyrillic_upper = "\u0422\u0435\u043a\u0441\u0442"; // Текст
 	constexpr auto cyrillic_lower = "\u0442\u0435\u043a\u0441\u0442"; // текст
-	const auto upper_text = str::to_lower(cyrillic_upper);
+	const auto upper_text = core::to_lower(cyrillic_upper);
 	assert_equal_strict(cyrillic_lower, upper_text, "to_lower cyrillic word");
 
-	assert_equal(0, str::icmp(cyrillic_upper, cyrillic_lower), "mixed Cyrillic icmp");
+	assert_equal(0, icmp(cyrillic_upper, cyrillic_lower), "mixed Cyrillic icmp");
 	// МОСКВА = U+041C U+041E U+0421 U+041A U+0412 U+0410
 	// москва = U+043C U+043E U+0441 U+043A U+0432 U+0430
-	assert_equal(true, str::icmp("\u041c\u041e\u0421\u041a\u0412\u0410",
+	assert_equal(true, core::icmp("\u041c\u041e\u0421\u041a\u0412\u0410",
 	                             "\u043c\u043e\u0441\u043a\u0432\u0430") == 0, "MOSKVA icmp");
 
 	// Greek omicron must case-fold as Greek, not as an unrelated ASCII letter.
-	assert_equal(0, str::icmp("\u039f", "\u03bf"), "Greek omicron case-folds");
-	assert_equal(false, str::icmp("\u039f", "s") == 0, "Greek omicron is not ASCII s");
-	assert_equal(false, str::icmp("\u03bf", "y") == 0, "Greek omicron is not ASCII y");
-	assert_equal(str::normalize_for_compare(0x03bf), str::normalize_for_compare(0x039f),
+	assert_equal(0, core::icmp("\u039f", "\u03bf"), "Greek omicron case-folds");
+	assert_equal(false, core::icmp("\u039f", "s") == 0, "Greek omicron is not ASCII s");
+	assert_equal(false, core::icmp("\u03bf", "y") == 0, "Greek omicron is not ASCII y");
+	assert_equal(core::normalize_for_compare(0x03bf), core::normalize_for_compare(0x039f),
 	             "Greek omicron normalizes consistently");
-	assert_equal(false, str::normalize_for_compare(0x039f) == 's', "Greek omicron does not normalize to ASCII s");
-	assert_equal(false, str::normalize_for_compare(0x03bf) == 'y', "Greek omicron does not normalize to ASCII y");
+	assert_equal(false, core::normalize_for_compare(0x039f) == 's', "Greek omicron does not normalize to ASCII s");
+	assert_equal(false, core::normalize_for_compare(0x03bf) == 'y', "Greek omicron does not normalize to ASCII y");
 
 	// Latin Extended pairs
-	assert_equal(0, str::icmp("\u00C0", "\u00E0"), "A-grave icmp");
-	assert_equal(0, str::icmp("\u00D6", "\u00F6"), "O-umlaut icmp");
-	assert_equal(0, str::icmp("\u00D8", "\u00F8"), "O-stroke icmp");
+	assert_equal(0, icmp("\u00C0", "\u00E0"), "A-grave icmp");
+	assert_equal(0, icmp("\u00D6", "\u00F6"), "O-umlaut icmp");
+	assert_equal(0, icmp("\u00D8", "\u00F8"), "O-stroke icmp");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1591,20 +1591,20 @@ static void should_case_fold_korean()
 {
 	// Hangul has no case - normalisation/lowercasing must be identity.
 	constexpr auto family = "\uAC00\uC871"; // 가족
-	assert_equal_strict(family, str::to_lower(family), "Korean to_lower identity");
-	assert_equal(0, str::icmp(family, family), "Korean icmp equal");
+	assert_equal_strict(family, to_lower(family), "Korean to_lower identity");
+	assert_equal(0, icmp(family, family), "Korean icmp equal");
 
 	// A single Hangul syllable normalises to itself for comparison.
-	assert_equal(0xAC00, str::normalize_for_compare(0xAC00), "Hangul normalise identity");
+	assert_equal(0xAC00, core::normalize_for_compare(0xAC00), "Hangul normalise identity");
 
 	// Different Korean words must not compare equal.
-	assert_equal(true, str::icmp(family, "\uC5EC\uD589") != 0, "different Korean words differ");
+	assert_equal(true, core::icmp(family, "\uC5EC\uD589") != 0, "different Korean words differ");
 }
 
 static void should_parse_facebook_json()
 {
-	const auto path_status = test_files_folder.combine_file("place.json");
-	const auto json = df::util::json::json_from_file(path_status);
+	const auto path_status = test_files_folder().combine_file("place.json");
+	const auto json = platform::json_from_file(path_status);
 
 	auto& result = json["result"];
 	auto& address_components = result["address_components"];
@@ -1660,10 +1660,10 @@ static void should_rotate_points()
 	const pointd point(2, 3);
 
 	const auto zero = point.rotate(0.0, origin);
-	assert_equal(true, df::equiv(point.X, zero.X) && df::equiv(point.Y, zero.Y), "zero-angle identity");
+	assert_equal(true, core::equiv(point.X, zero.X) && core::equiv(point.Y, zero.Y), "zero-angle identity");
 
 	const auto quarter = pointd(2, 0).rotate(quarter_turn, origin);
-	assert_equal(true, df::equiv(0.0, quarter.X) && df::equiv(2.0, quarter.Y), "quarter turn");
+	assert_equal(true, core::equiv(0.0, quarter.X) && core::equiv(2.0, quarter.Y), "quarter turn");
 
 	const pointd center(10, 10);
 	const auto full = point.rotate(quarter_turn * 4.0, center);
@@ -1679,38 +1679,38 @@ static void should_rotate_points()
 	const auto dy_before = point.Y - center.Y;
 	const auto dx_after = rotated.X - center.X;
 	const auto dy_after = rotated.Y - center.Y;
-	assert_equal(true, df::equiv(dx_before * dx_before + dy_before * dy_before,
+	assert_equal(true, core::equiv(dx_before * dx_before + dy_before * dy_before,
 	                             dx_after * dx_after + dy_after * dy_after), "distance preserved");
 }
 
 static void should_intersect_rectangle_bounds()
 {
 	rectd out;
-	assert_equal(true, rectd::intersect(out, rectd(0, 0, 2, 2), rectd(1, 1, 2, 2)), "overlap intersects");
-	assert_equal(true, df::equiv(1.0, out.X) && df::equiv(1.0, out.Y) &&
-	             df::equiv(1.0, out.Width) && df::equiv(1.0, out.Height), "overlap result");
+	assert_equal(true, core::rectd::intersect(out, rectd(0, 0, 2, 2), rectd(1, 1, 2, 2)), "overlap intersects");
+	assert_equal(true, core::equiv(1.0, out.X) && core::equiv(1.0, out.Y) &&
+	             core::equiv(1.0, out.Width) && core::equiv(1.0, out.Height), "overlap result");
 
-	assert_equal(false, rectd::intersect(out, rectd(0, 0, 1, 1), rectd(2, 2, 1, 1)), "separated");
+	assert_equal(false, core::rectd::intersect(out, rectd(0, 0, 1, 1), rectd(2, 2, 1, 1)), "separated");
 	assert_equal(true, out.is_empty(), "separated result is empty");
 
-	assert_equal(true, rectd::intersect(out, rectd(0, 0, 4, 4), rectd(1, 1, 1, 1)), "contained");
-	assert_equal(true, df::equiv(1.0, out.X) && df::equiv(1.0, out.Y) &&
-	             df::equiv(1.0, out.Width) && df::equiv(1.0, out.Height), "contained result");
+	assert_equal(true, core::rectd::intersect(out, rectd(0, 0, 4, 4), rectd(1, 1, 1, 1)), "contained");
+	assert_equal(true, core::equiv(1.0, out.X) && core::equiv(1.0, out.Y) &&
+	             core::equiv(1.0, out.Width) && core::equiv(1.0, out.Height), "contained result");
 
-	assert_equal(false, rectd::intersect(out, rectd(0, 0, 1, 1), rectd(1, 0, 1, 1)), "touching edge");
-	assert_equal(false, rectd::intersect(out, rectd(0, 0, 0, 1), rectd(0, 0, 1, 1)), "zero-size input");
+	assert_equal(false, core::rectd::intersect(out, rectd(0, 0, 1, 1), rectd(1, 0, 1, 1)), "touching edge");
+	assert_equal(false, core::rectd::intersect(out, rectd(0, 0, 0, 1), rectd(0, 0, 1, 1)), "zero-size input");
 
 	rectd symmetric;
-	assert_equal(true, rectd::intersect(out, rectd(1, 1, 3, 2), rectd(2, 0, 1, 4)), "asymmetric overlap");
-	assert_equal(true, rectd::intersect(symmetric, rectd(2, 0, 1, 4), rectd(1, 1, 3, 2)), "symmetric overlap");
-	assert_equal(true, df::equiv(out.X, symmetric.X) && df::equiv(out.Y, symmetric.Y) &&
-	             df::equiv(out.Width, symmetric.Width) && df::equiv(out.Height, symmetric.Height),
+	assert_equal(true, core::rectd::intersect(out, rectd(1, 1, 3, 2), rectd(2, 0, 1, 4)), "asymmetric overlap");
+	assert_equal(true, core::rectd::intersect(symmetric, rectd(2, 0, 1, 4), rectd(1, 1, 3, 2)), "symmetric overlap");
+	assert_equal(true, core::equiv(out.X, symmetric.X) && core::equiv(out.Y, symmetric.Y) &&
+	             core::equiv(out.Width, symmetric.Width) && core::equiv(out.Height, symmetric.Height),
 	             "intersection is symmetric");
 
 	rectd aliased(0, 0, 2, 2);
 	assert_equal(true, aliased.intersect(rectd(1, 1, 2, 2)), "aliased output");
-	assert_equal(true, df::equiv(1.0, aliased.X) && df::equiv(1.0, aliased.Y) &&
-	             df::equiv(1.0, aliased.Width) && df::equiv(1.0, aliased.Height), "aliased result");
+	assert_equal(true, core::equiv(1.0, aliased.X) && core::equiv(1.0, aliased.Y) &&
+	             core::equiv(1.0, aliased.Width) && core::equiv(1.0, aliased.Height), "aliased result");
 }
 
 static void should_find_the_closest_kdtree_point()
@@ -1763,8 +1763,8 @@ static void should_find_the_closest_kdtree_point()
 		// The build reorders coordinates and record fields in lockstep, so the record that comes
 		// back must still be the one that owns the coordinate it came back with.
 		assert_equal(true, found.id < expected.size(), "record identifies a point", "kd closest");
-		assert_equal(true, df::equiv(found.x, expected[found.id].first) &&
-		             df::equiv(found.y, expected[found.id].second), "record travels with its coordinate",
+		assert_equal(true, core::equiv(found.x, expected[found.id].first) &&
+		             core::equiv(found.y, expected[found.id].second), "record travels with its coordinate",
 		             "kd closest");
 		assert_equal(static_cast<int>(found.id * 3 + 1), static_cast<int>(found.offset),
 		             "every record field travels together", "kd closest");
@@ -1849,11 +1849,11 @@ static void should_signal_and_replace_pending_queue_work()
 
 static void should_bucket_performance_latency()
 {
-	df::latency_counters counters;
-	df::record_latency(counters, 16'666);
-	df::record_latency(counters, 16'667);
-	df::record_latency(counters, 50'000);
-	df::record_latency(counters, 100'000);
+	core::latency_counters counters;
+	core::record_latency(counters, 16'666);
+	core::record_latency(counters, 16'667);
+	core::record_latency(counters, 50'000);
+	core::record_latency(counters, 100'000);
 
 	assert_equal(3, static_cast<int>(counters.over_16ms.load()), "the frame-budget boundary is inclusive");
 	assert_equal(2, static_cast<int>(counters.over_50ms.load()), "fifty millisecond stalls are counted");
@@ -1897,7 +1897,7 @@ static void should_round_trip_base64()
 // off-by-one limit is directly visible to the user.
 static void should_rank_the_most_common_values()
 {
-	df::string_counts counts;
+	core::string_counts counts;
 	counts["alpha"] = 3;
 	counts["bravo"] = 11;
 	counts["charlie"] = 7;
@@ -1919,7 +1919,7 @@ static void should_rank_the_most_common_values()
 	assert_equal(0, static_cast<int>(top_map(counts, -1).size()), "a negative limit returns nothing");
 	assert_equal(0, static_cast<int>(top_map({}, 5).size()), "no counts returns nothing");
 
-	df::string_counts tied;
+	core::string_counts tied;
 	std::vector<std::string> tied_names;
 	tied_names.reserve(203);
 	for (auto i = 0; i < 200; ++i)

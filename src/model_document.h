@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ui/syntax.h"
+#include "libdesktop/ui/syntax.h"
 
 enum class document_encoding : uint8_t
 {
@@ -46,7 +46,7 @@ struct document_text
 	};
 
 	document_encoding encoding = document_encoding::binary;
-	pf::ui::syntax::language language = pf::ui::syntax::language::plain;
+	ui::syntax::language language = ui::syntax::language::plain;
 	// UTF-8 without its line breaks; lines index into it.
 	std::string text;
 	std::vector<line_span> lines;
@@ -68,7 +68,7 @@ struct document_text
 // Reads the head of a file as text. Bytes that do not read as text - or text_allowed false - leave the
 // encoding binary and the text empty, and the document is a hex dump of the bytes themselves. The
 // extension, with or without its dot, chooses the highlighter.
-document_text decode_document(df::cspan bytes, std::string_view extension, bool text_allowed);
+document_text decode_document(core::cspan bytes, std::string_view extension, bool text_allowed);
 
 // The columns a code point takes in a monospaced font: two for the wide East Asian ranges and emoji,
 // none for combining marks, joiners and variation selectors, one for anything else.
@@ -124,19 +124,19 @@ public:
 	}
 
 	size_t row_count() const;
-	document_row_text row_text(size_t row, df::cspan bytes) const;
+	document_row_text row_text(size_t row, core::cspan bytes) const;
 	// The document line a row shows: its own index in a dump.
 	int row_line(size_t row) const;
 	size_t row_of(document_position pos) const;
 
 	// The position nearest a column of a row, rounding to the closer side of the character it lands on.
-	document_position position_at(size_t row, double column, df::cspan bytes) const;
+	document_position position_at(size_t row, double column, core::cspan bytes) const;
 	// The character a column of a row falls on - what a double click selects the word of - where
 	// position_at gives the gap nearest it. Past the end of the row, its last character.
-	document_position character_at(size_t row, double column, df::cspan bytes) const;
+	document_position character_at(size_t row, double column, core::cspan bytes) const;
 
 	// The drawn text of one row of a dump: the offset, then the bytes in hex, then the bytes as ASCII.
-	static std::string dump_row(df::cspan bytes, int bytes_per_row, size_t row);
+	static std::string dump_row(core::cspan bytes, int bytes_per_row, size_t row);
 	static int dump_ascii_column(int bytes_per_row);
 	static int dump_row_chars(int bytes_per_row);
 
@@ -167,9 +167,9 @@ public:
 		anchor = caret = {};
 	}
 
-	void select_all(df::cspan bytes);
-	void select_word(document_position at, df::cspan bytes);
-	std::string selected_text(df::cspan bytes) const;
+	void select_all(core::cspan bytes);
+	void select_word(document_position at, core::cspan bytes);
+	std::string selected_text(core::cspan bytes) const;
 
 private:
 	struct text_row
@@ -184,6 +184,6 @@ private:
 	int _columns = 0;
 	size_t _byte_count = 0;
 
-	std::string_view line_text(int line, df::cspan bytes, std::string& dump) const;
-	int line_count(df::cspan bytes) const;
+	std::string_view line_text(int line, core::cspan bytes, std::string& dump) const;
+	int line_count(core::cspan bytes) const;
 };

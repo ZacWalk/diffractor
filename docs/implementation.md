@@ -9,7 +9,8 @@ metadata, rendering, locations, zoom, and selection controls. Source owns exact 
 Diffractor is a C++20 media organizer with a custom retained UI. SQLite stores a rebuildable index and
 thumbnail cache. Media files and sidecars remain authoritative. libfiles reads still images and
 audio/video containers; FFmpeg decodes audio and video; format libraries decode still images;
-platform modules contain operating-system integration.
+libdesktop's platform layer supplies operating-system integration, while Diffractor's `platform*`
+files retain application-specific hardware decoding and Linux hooks.
 
 ## Source Organization
 
@@ -20,11 +21,11 @@ platform modules contain operating-system integration.
 | `view*`, `ui*` | Views, controls, layout, input, and backend-neutral drawing |
 | `files*`, `metadata*` | Format dispatch, decode/encode, scanning, EXIF/IPTC/XMP/ICC |
 | `av*`, `render*` | Audio/video sessions, surfaces, color, transforms, software rendering |
-| `platform*` | Files, threads, windows, graphics, audio, settings, network, shell |
+| `platform*` | Application-specific Windows/Linux glue: FFmpeg hardware decoding, resources and Linux hooks |
 | `util*` | Shared value types and bounded helpers |
 | `test*` | Embedded unit and regression tests |
 
-System APIs and Windows types stay in `platform*`; SQLite calls stay in database owners. Keep each
+Application-specific system APIs and Windows types stay in `platform*`; generic OS services come from libdesktop. SQLite calls stay in database owners. Keep each
 source file's `// Purpose:` comment accurate when modifying it.
 
 ## State And Views
@@ -129,10 +130,10 @@ UI/sidebar readers; paired total/remaining counters must be read together, and h
 call through the index queue or posting a UI callback for each scanned file would either block Paint
 on Source work or create unbounded invalidation traffic.
 `view_state` owns the visit timeline on the UI thread, while `_visits_generation` is atomic only so
-the location worker can observe superseded visit derivations through `df::cancel_token`; the worker
+the location worker can observe superseded visit derivations through `core::cancel_token`; the worker
 still publishes a complete detached `visit_timeline` back to the UI thread before the UI-owned value
 is replaced. The address box's `_count_version` is atomic for the same reason: each keystroke raises
-it on the UI thread, and the auto-complete worker observes it through `df::cancel_token` to stop
+it on the UI thread, and the auto-complete worker observes it through `core::cancel_token` to stop
 counting a superseded pass, which then publishes nothing.
 
 The search index is an index cache published as one immutable snapshot. Its own queue builds it with
@@ -199,7 +200,7 @@ answers once per group. Date terms compare only the day each of an item's date k
 `date_term_keys_of` and `date_term_found`, which the matcher uses too, decide them with each day
 compared once. A term no table can answer, such as a size comparison, is answered by `match_term` over
 each item's captured metadata. An answer from the index is therefore the answer a scan gives, and the
-index tests compare the two over about 130 searches.
+index tests compare the two over representative searches.
 
 Each folder entry keeps the folder node and search revision it was read from. A folder changed since
 is scanned on top of the snapshot. Duplicates, checksums, picture hashes and presence are always read
@@ -257,7 +258,7 @@ a SID tune, which has no visualizer, `update_for_present` marks it (`av_session:
 
 The monitor is drawn as the audio visualizer is, so a playing tune does not rebuild the view's scene for
 every frame. Its waveforms, meters, lamps and the register grid's highlight are flat rectangles in a
-`ui::vertices` the scene draws by reference: the monitor places them when it draws (`sid_monitor_motion`),
+`render::vertices` the scene draws by reference: the monitor places them when it draws (`sid_monitor_motion`),
 and `update_for_present` brings them up to the session's position, after which the frame presents the
 scene again. The values, notes and register contents beside them are text, which only rebuilding the
 scene redraws, so they are redrawn ten times a second while they change - and not at all once the monitor
@@ -322,13 +323,15 @@ repository lint, build, embedded tests, and translation validation. Focused test
   [model_index_summary.cpp](../src/model_index_summary.cpp): the summary, its vocabulary, and
   auto-complete.
 - [model_tile_cache.cpp](../src/model_tile_cache.cpp): separately owned map tile database.
-- libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): operating-system abstraction;
-  libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h): the platform services the window layer implements.
+- libdesktop's [core.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core.h): shared vocabulary and utilities;
+  [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): operating-system services, tasks and the application loop.
+- libdesktop's [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h): draw and measure contexts, rendering backends and textures;
+  [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h): frames, the element tree, controls, menus and text views.
 - [av_sid.cpp](../src/av_sid.cpp) and [ui_sid.cpp](../src/ui_sid.cpp): SID tunes played through
   lib8bit, and the SID monitor.
 - [av_subtitle.cpp](../src/av_subtitle.cpp): subtitles - styling, placement, the events a session
   keeps, and the choice of track.
 - [ui_view.h](../src/ui_view.h), [ui_elements.h](../src/ui_elements.h), and
   [ui_controllers.h](../src/ui_controllers.h): view framework, on libdesktop's element tree
-  ([ui_elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui_elements.h)).
+  ([ui/elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui/elements.h)).
 - [util_crash_files_db.h](../src/util_crash_files_db.h): media crash-loop protection.

@@ -17,7 +17,7 @@ namespace crypto
 	{
 	public:
 		sha1();
-		void update(df::cspan cs);
+		void update(core::cspan cs);
 		void final(uint8_t* digest);
 
 		static constexpr uint32_t DIGEST_SIZE = 5 * 4;
@@ -42,7 +42,7 @@ namespace crypto
 	{
 	public:
 		sha256();
-		void update(df::cspan cs);
+		void update(core::cspan cs);
 		void final(uint8_t* digest);
 
 		static constexpr uint32_t DIGEST_SIZE = 256 / 8;
@@ -68,7 +68,7 @@ namespace crypto
 		uint8_t digest[sha1::DIGEST_SIZE];
 		checksum.final(digest);
 
-		return str::to_hex(digest, sha1::DIGEST_SIZE, false);
+		return core::to_hex(digest, sha1::DIGEST_SIZE, false);
 	}
 
 	inline std::string to_sha256(const std::string_view input)
@@ -79,6 +79,6 @@ namespace crypto
 		uint8_t digest[sha256::DIGEST_SIZE];
 		checksum.final(digest);
 
-		return str::to_hex(digest, sha256::DIGEST_SIZE, false);
+		return core::to_hex(digest, sha256::DIGEST_SIZE, false);
 	}
 }

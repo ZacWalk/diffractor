@@ -121,8 +121,8 @@ function(diffractor_apply_app_policy target)
         # case-insensitive filesystem and reports every declaration in it as a redefinition.
         target_precompile_headers(${target} PRIVATE "${CMAKE_SOURCE_DIR}/src/pch.h")
 
-        # SubSystem Windows. The entry point is libdesktop-render's wWinMain, which lives in a library,
-        # where the linker does not look when it picks the CRT's startup: named, the startup pulls it in.
+        # SubSystem Windows. The entry point is Diffractor's wWinMain in src/app.cpp; the explicit CRT
+        # startup option keeps the Windows subsystem entrypoint unambiguous.
         set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE ON)
         target_link_options(${target} PRIVATE /ENTRY:wWinMainCRTStartup)
 

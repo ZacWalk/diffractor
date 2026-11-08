@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "libdesktop/util_geometry.h"
+#include "libdesktop/core/geometry.h"
 
 namespace df
 {
@@ -160,7 +160,7 @@ namespace df
 		{
 			// Exact != on doubles would call a source "changed" for a difference no pixel can show.
 			const auto source_changed = _source.Width > 0.0 && _source.Height > 0.0 &&
-				(!df::equiv(_source.Width, source.Width) || !df::equiv(_source.Height, source.Height));
+				(!core::equiv(_source.Width, source.Width) || !core::equiv(_source.Height, source.Height));
 			_source = source;
 
 			if (_mode == zoom_scale_mode::explicit_scale && (source_changed || _carried_fit))

@@ -170,7 +170,7 @@ namespace df
 	// kept, tested (see should_query_inverted_index), as the building block for whole-word terms.
 	class inverted_index
 	{
-		df::hash_map<std::string, posting_list, df::ihash, df::ieq> _terms;
+		core::hash_map<std::string, posting_list, core::ihash, core::ieq> _terms;
 		uint32_t _doc_count = 0;
 
 	public:
@@ -219,7 +219,7 @@ namespace df
 
 		while (p < end)
 		{
-			const auto c = static_cast<char32_t>(str::normalize_for_compare(static_cast<int>(str::pop_utf8_char(p, end))));
+			const auto c = static_cast<char32_t>(core::normalize_for_compare(static_cast<int>(core::pop_utf8_char(p, end))));
 
 			if (filled >= 2)
 			{
@@ -238,7 +238,7 @@ namespace df
 	// A substring-search accelerator: maps each case-folded trigram to the posting list of item
 	// ids whose text contains it. `candidates(q)` intersects the posting lists of q's trigrams
 	// to produce a superset of the true substring matches; the caller then verifies each
-	// candidate with str::contains, so results are identical to a full scan - only faster.
+	// candidate with core::contains, so results are identical to a full scan - only faster.
 	// Queries shorter than three code points cannot be indexed and return nullopt (scan).
 	//
 	// Two phases: add() every document, then freeze() once. Freezing collapses the whole index

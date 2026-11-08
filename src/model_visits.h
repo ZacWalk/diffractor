@@ -14,7 +14,7 @@
 
 #include "model_location.h"
 #include "model_search.h"
-#include "libdesktop/util_date.h"
+#include "libdesktop/core/date.h"
 
 class location_cache;
 
@@ -25,9 +25,9 @@ namespace df
 	{
 		uint32_t days = 0;
 		gps_coordinate coordinate;
-		str::cached place = {};
-		str::cached state = {};
-		str::cached country = {};
+		core::cached place = {};
+		core::cached state = {};
+		core::cached country = {};
 	};
 
 	enum class visit_kind : uint8_t
@@ -39,8 +39,8 @@ namespace df
 	struct visit_node
 	{
 		std::string name;
-		date_t first;
-		date_t last;
+		core::date_t first;
+		core::date_t last;
 		uint32_t count = 0;
 		uint32_t active_days = 0;
 		double radius_km = 0.0;
@@ -60,9 +60,9 @@ namespace df
 		std::string name;
 
 		// The level-scoped terms that reproduce exactly the items counted here.
-		str::cached place;
-		str::cached state;
-		str::cached country;
+		core::cached place;
+		core::cached state;
+		core::cached country;
 		uint32_t count = 0;
 	};
 
@@ -89,10 +89,10 @@ namespace df
 	struct visit_request
 	{
 		visit_request() = default;
-		explicit visit_request(cancel_token value) : token(std::move(value)) {}
+		explicit visit_request(core::cancel_token value) : token(std::move(value)) {}
 
 		std::vector<visit_sample> samples;
-		cancel_token token;
+		core::cancel_token token;
 		visit_work_counters* counters = nullptr;
 
 		// locations.md 6.2 step 6: an era is revealed only when the query names its place.

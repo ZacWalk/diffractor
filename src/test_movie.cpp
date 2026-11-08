@@ -16,15 +16,15 @@
 #include "model.h"
 #include "model_movie.h"
 #include "test_runner.h"
-#include "libdesktop/util_json.h"
+#include "libdesktop/core/json.h"
 #include "view_movie.h"
 
-static df::folder_path movie_test_folder()
+static core::folder_path movie_test_folder()
 {
-	return df::folder_path(df::windows_path_semantics ? "c:\\movie" : "/movie");
+	return core::folder_path(core::windows_path_semantics ? "c:\\movie" : "/movie");
 }
 
-static df::file_path movie_test_path(const std::string_view name)
+static core::file_path movie_test_path(const std::string_view name)
 {
 	return movie_test_folder().combine_file(name);
 }
@@ -429,7 +429,7 @@ static void should_refuse_a_deeply_nested_movie_project()
 
 static void should_bound_movie_project_durations()
 {
-	const auto url = str::replace(movie_test_path("a.mp4").pack(), "\\", "/");
+	const auto url = core::replace(movie_test_path("a.mp4").pack(), "\\", "/");
 
 	const auto project_with = [&url](const std::string_view photo_seconds, const std::string_view transition_seconds)
 	{
@@ -482,7 +482,7 @@ static void should_bound_movie_project_durations()
 	// the frame arithmetic and the displayed clock unbounded, so one enormous clip still overflowed.
 	const auto clip_project = [](const std::string_view file, const std::string_view duration_value)
 	{
-		const auto clip_url = str::replace(movie_test_path(file).pack(), "\\", "/");
+		const auto clip_url = core::replace(movie_test_path(file).pack(), "\\", "/");
 
 		return std::format(R"({{
 			"OTIO_SCHEMA": "Timeline.1",
@@ -509,7 +509,7 @@ static void should_bound_movie_project_durations()
 		}})", duration_value, clip_url);
 	};
 
-	// Compared rather than formatted: str::to_string cannot hold an unbounded value, so a regression
+	// Compared rather than formatted: core::to_string cannot hold an unbounded value, so a regression
 	// here would take the whole run down instead of failing this test.
 	const auto enormous_photo = read_otio(clip_project("b.jpg", "1e308"), movie_test_folder());
 	assert_equal(1_z, enormous_photo.clips.size(), "an enormous still is still read");
@@ -546,10 +546,10 @@ static void should_round_trip_a_movie_project()
 
 	const auto json = write_otio(clips, settings, movie_test_folder());
 
-	assert_equal(true, str::contains(json, "\"OTIO_SCHEMA\":\"Timeline.1\""), "the file declares its schema");
-	assert_equal(true, str::contains(json, "\"target_url\":\"a.mp4\""),
+	assert_equal(true, core::contains(json, "\"OTIO_SCHEMA\":\"Timeline.1\""), "the file declares its schema");
+	assert_equal(true, core::contains(json, "\"target_url\":\"a.mp4\""),
 	             "a source beside the project is stored relative to it");
-	assert_equal(true, str::contains(json, "SMPTE_Dissolve"), "the crossfade is written where other tools read it");
+	assert_equal(true, core::contains(json, "SMPTE_Dissolve"), "the crossfade is written where other tools read it");
 
 	const auto read = read_otio(json, movie_test_folder());
 
@@ -577,9 +577,9 @@ static void should_round_trip_a_movie_project()
 	// resolve when the project is read from a different folder. It is forward-slashed so the JSON
 	// carries no escaped separators.
 	const auto elsewhere = write_otio(clips, settings, {});
-	assert_equal(true, str::contains(elsewhere, str::replace(video.path.pack(), "\\", "/")),
+	assert_equal(true, core::contains(elsewhere, core::replace(video.path.pack(), "\\", "/")),
 	             "a distant source is stored absolute");
-	assert_equal(false, str::contains(elsewhere, "\\\\"), "and with no escaped separators");
+	assert_equal(false, core::contains(elsewhere, "\\\\"), "and with no escaped separators");
 	assert_equal(video.path.pack(), read_otio(elsewhere, {}).clips[0].path.pack(), "and resolves without a root");
 
 	const auto project_folder = movie_test_folder().combine("projects");
@@ -587,7 +587,7 @@ static void should_round_trip_a_movie_project()
 	auto sibling = video;
 	sibling.path = sibling_path;
 	const auto sibling_json = write_otio({sibling}, settings, project_folder);
-	assert_equal(true, str::contains(sibling_json, "../media/sibling.mp4"),
+	assert_equal(true, core::contains(sibling_json, "../media/sibling.mp4"),
 	             "a same-root sibling source is stored relative");
 	assert_equal(sibling_path.pack(), read_otio(sibling_json, project_folder).clips[0].path.pack(),
 	             "and the sibling relative path resolves back");
@@ -615,7 +615,7 @@ static void should_round_trip_percent_signs_in_clip_paths()
 
 	// A project written before the sign was escaped still opens: a '%' that begins no escape is the
 	// character itself rather than a reason to drop the clip.
-	const auto legacy = read_otio(str::replace(json, "50%25", "50%"), movie_test_folder());
+	const auto legacy = read_otio(core::replace(json, "50%25", "50%"), movie_test_folder());
 	assert_equal(2_z, legacy.clips.size(), "an older project keeps both clips");
 	assert_equal(clips[0].path.pack(), legacy.clips[0].path.pack(), "with the name it was given");
 }
@@ -673,9 +673,9 @@ static void should_read_a_movie_project_it_did_not_write()
 	assert_equal(false, read.settings.fade_out, "or a fade out");
 
 	const auto spaced_path = movie_test_path("clip one.mp4");
-	auto spaced_url = str::replace(spaced_path.pack(), "\\", "/");
-	spaced_url = str::replace(spaced_url, " ", "%20");
-	spaced_url = std::string(df::windows_path_semantics ? "file:///" : "file://") + spaced_url;
+	auto spaced_url = core::replace(spaced_path.pack(), "\\", "/");
+	spaced_url = core::replace(spaced_url, " ", "%20");
+	spaced_url = std::string(core::windows_path_semantics ? "file:///" : "file://") + spaced_url;
 	const auto file_uri_json = std::format(R"({{
 		"OTIO_SCHEMA": "Timeline.1",
 		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
@@ -725,7 +725,7 @@ static void should_import_a_movie_maker_project()
 
 	// The ampersand is here to prove the attribute decoder: a raw & would leave the name as
 	// "b&amp;c.jpg" and the clip would point at a file that cannot exist.
-	const auto image_attribute = str::replace(image, "&", "&amp;");
+	const auto image_attribute = core::replace(image, "&", "&amp;");
 
 	const auto xml = std::format(R"(<?xml version="1.0" encoding="utf-8"?>
 <Project version="9.0">
@@ -937,7 +937,7 @@ static void should_find_moved_movie_sources()
 	const auto august = collection.combine("2010").combine("2010-08-28");
 	const auto march = collection.combine("2005").combine("2005-03-26");
 
-	const std::vector<df::file_path> stored{
+	const std::vector<core::file_path> stored{
 		park.combine_file("IMG_0737.MOV"),
 		park.combine_file("IMG_0738.MOV"),
 		park.combine_file("IMG_0754.MOV"),
@@ -949,7 +949,7 @@ static void should_find_moved_movie_sources()
 		park.combine_file("IMG_0099.MOV"),
 	};
 
-	const std::vector<std::vector<df::file_path>> candidates{
+	const std::vector<std::vector<core::file_path>> candidates{
 		{january.combine_file("IMG_0737.MOV")},
 		{january.combine_file("IMG_0738.MOV")},
 		{december.combine_file("IMG_0754.MOV"), january.combine_file("IMG_0754.MOV")},
@@ -963,7 +963,7 @@ static void should_find_moved_movie_sources()
 
 	const std::vector<double> recorded{20.0, 20.0, 0.0, 0.0, 0.0, 0.0, 12.5, 12.5, 27.8};
 
-	const df::hash_map<df::file_path, double, df::ihash, df::ieq> lengths{
+	const core::hash_map<core::file_path, double, core::ihash, core::ieq> lengths{
 		{january.combine_file("IMG_0737.MOV"), 20.0},
 		{january.combine_file("IMG_0738.MOV"), 20.2},
 		{january.combine_file("IMG_0760.MOV"), 30.0},
@@ -973,8 +973,8 @@ static void should_find_moved_movie_sources()
 		{march.combine_file("IMG_0099.MOV"), 116.6},
 	};
 
-	std::vector<df::file_path> measured;
-	const auto measure = [&measured, &lengths](const df::file_path path)
+	std::vector<core::file_path> measured;
+	const auto measure = [&measured, &lengths](const core::file_path path)
 	{
 		measured.emplace_back(path);
 		const auto found = lengths.find(path);
@@ -1016,10 +1016,10 @@ static void should_find_moved_movie_sources()
 	assert_equal(7_z, measured.size(), "only the candidates of a source with a recorded length are measured");
 
 	// Neighbours that went two ways settle nothing.
-	const std::vector<df::file_path> split_stored{
+	const std::vector<core::file_path> split_stored{
 		park.combine_file("a.mov"), park.combine_file("b.mov"), park.combine_file("c.mov")
 	};
-	const std::vector<std::vector<df::file_path>> split_candidates{
+	const std::vector<std::vector<core::file_path>> split_candidates{
 		{january.combine_file("a.mov")},
 		{december.combine_file("b.mov")},
 		{january.combine_file("c.mov"), december.combine_file("c.mov")},
@@ -1057,7 +1057,7 @@ static void should_decide_what_entering_movie_does()
 {
 	const std::vector first{movie_test_path("a.mp4"), movie_test_path("b.mp4")};
 	const std::vector second{movie_test_path("c.mp4"), movie_test_path("d.mp4"), movie_test_path("e.mp4")};
-	const std::vector<df::file_path> none;
+	const std::vector<core::file_path> none;
 
 	movie_project project;
 	assert_equal(true, decide_movie_entry(project, first, none) == movie_entry::seed,
@@ -1337,7 +1337,7 @@ static void should_refuse_an_output_that_names_a_clip()
 	assert_equal(true, movie_output_names_a_clip(clips, movie_test_path("a.mp4")),
 	             "an output naming a video clip is refused");
 	// On Linux B.JPG and b.jpg are two files, and writing one leaves the other intact.
-	assert_equal(df::case_insensitive_path_identity, movie_output_names_a_clip(clips, movie_test_path("B.JPG")),
+	assert_equal(core::case_insensitive_path_identity, movie_output_names_a_clip(clips, movie_test_path("B.JPG")),
 	             "the comparison folds case where the platform's paths do, as every other destination check does");
 	assert_equal(false, movie_output_names_a_clip(clips, movie_test_path("movie.mp4")),
 	             "an output naming nothing in the timeline is allowed");
@@ -1350,19 +1350,19 @@ static void should_refuse_an_output_that_names_a_clip()
 static void should_let_cancel_and_publication_decide_each_other()
 {
 	// The defect this fixes: the render's cancel source doubled as its publication claim, and
-	// df::cancel_token's version constructor increments what it is handed. The claim was already 1
+	// core::cancel_token's version constructor increments what it is handed. The claim was already 1
 	// before a frame was drawn, so Cancel's compare-exchange from 0 did nothing and publication's
 	// compare-exchange from 0 failed - every completed render was deleted as cancelled.
 	{
 		movie_render_control control;
-		const auto token = df::cancel_token(control.cancelled);
+		const auto token = core::cancel_token(control.cancelled);
 		assert_equal(false, token.is_cancelled(), "a fresh render is not already cancelled");
 		assert_equal(true, control.claim_publication(), "an uncancelled render publishes its output");
 	}
 
 	{
 		movie_render_control control;
-		const auto token = df::cancel_token(control.cancelled);
+		const auto token = core::cancel_token(control.cancelled);
 		control.cancel();
 		assert_equal(true, token.is_cancelled(), "cancel reaches the worker's token");
 		assert_equal(false, control.claim_publication(), "a cancelled render does not publish");
@@ -1380,7 +1380,7 @@ static void should_let_cancel_and_publication_decide_each_other()
 
 static std::string movie_test_url(const std::string_view name)
 {
-	return str::replace(movie_test_path(name).pack(), "\\", "/");
+	return core::replace(movie_test_path(name).pack(), "\\", "/");
 }
 
 // The source range of each clip a written project lays on its track, as (start, duration) seconds.
@@ -1388,7 +1388,7 @@ static std::vector<std::pair<double, double>> otio_clip_ranges(const std::string
 {
 	std::vector<std::pair<double, double>> result;
 
-	df::util::json::json_doc doc;
+	core::json::json_doc doc;
 	doc.Parse(json.data(), json.size());
 	if (doc.HasParseError() || !doc.IsObject()) return result;
 
@@ -1396,7 +1396,7 @@ static std::vector<std::pair<double, double>> otio_clip_ranges(const std::string
 
 	for (const auto& child : doc["tracks"]["children"][0]["children"].GetArray())
 	{
-		if (!str::starts(child["OTIO_SCHEMA"].GetString(), "Clip")) continue;
+		if (!core::starts(child["OTIO_SCHEMA"].GetString(), "Clip")) continue;
 		const auto& range = child["source_range"];
 		result.emplace_back(seconds(range["start_time"]), seconds(range["duration"]));
 	}

@@ -46,7 +46,7 @@ public:
 		return match.location.str();
 	}
 
-	void render(ui::draw_context& dc, const pointi element_offset) const override
+	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
 		const auto bg = calc_background_color(dc);
@@ -58,7 +58,7 @@ public:
 
 		auto rr = logical_bounds.inflate(-dc.padding1, 0);
 
-		const auto clr = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		const auto city_text = match.city.text.sv();
 		const auto state_text = match.state.text.sv();
@@ -66,10 +66,10 @@ public:
 
 		if (!city_text.empty())
 		{
-			const auto city_extent = dc.measure_text(city_text, ui::style::font_face::dialog,
-			                                         ui::style::text_style::single_line, rr.width());
-			dc.draw_text(city_text, rr, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line, clr, {});
+			const auto city_extent = dc.measure_text(city_text, render::font_face::dialog,
+			                                         render::text_style::single_line, rr.width());
+			dc.draw_text(city_text, rr, render::font_face::dialog,
+			             render::text_style::single_line, clr, {});
 			rr.left += city_extent.cx + dc.padding2;
 		}
 
@@ -83,15 +83,15 @@ public:
 
 		if (!sub.empty())
 		{
-			dc.draw_text(sub, rr, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line,
-			             ui::color(dc.colors.foreground, dc.colors.alpha * 0.6f), {});
+			dc.draw_text(sub, rr, render::font_face::dialog,
+			             render::text_style::single_line,
+			             core::color(dc.colors.foreground, dc.colors.alpha * 0.6f), {});
 		}
 	}
 
-	sizei measure(ui::measure_context& mc, const int cx) const override
+	sizei measure(render::measure_context& mc, const int cx) const override
 	{
-		const auto line_height = mc.text_line_height(ui::style::font_face::dialog);
+		const auto line_height = mc.text_line_height(render::font_face::dialog);
 		return {cx, line_height + mc.padding1};
 	}
 
@@ -168,7 +168,7 @@ public:
 	{
 		const auto generation = ++_search_generation;
 
-		if (str::is_empty(query))
+		if (core::is_empty(query))
 		{
 			_state.queue_ui([t = shared_from_this(), generation, complete = std::move(complete)]
 			{
@@ -252,11 +252,11 @@ public:
 	}
 
 	// The search and its results fill the panel, which does not scroll.
-	void layout_controls(ui::measure_context& mc) override
+	void layout_controls(render::measure_context& mc) override
 	{
 		if (_controls.empty()) return;
 
-		const auto layout_padding = df::round(mc.padding1 / mc.scale_factor);
+		const auto layout_padding = core::round(mc.padding1 / mc.scale_factor);
 		const auto avail_bounds = _bounds.inflate(-layout_padding);
 		mc.col_widths = {};
 		flex_container_layout column;
@@ -320,12 +320,12 @@ void locate_view::activate(const sizei extent)
 
 void locate_view::rebuild_markers()
 {
-	df::assert_true(ui::is_ui_thread());
+	core::assert_true(platform::is_ui_thread());
 
 	std::vector<map_engine::marker> markers;
 	std::vector<marker_item> marker_items;
 	_thumbnail_requests.clear();
-	auto excluded = std::make_shared<df::unique_paths>();
+	auto excluded = std::make_shared<core::unique_paths>();
 
 	for (const auto& item : _state.selected_items().items())
 	{
@@ -360,7 +360,7 @@ void locate_view::rebuild_markers()
 		                   params.zoom = zoom;
 		                   auto matrix = state.item_index.build_location_matrix(params, *excluded);
 
-		                   std::vector<df::file_path> paths;
+		                   std::vector<core::file_path> paths;
 		                   paths.reserve(matrix.cells.size());
 
 		                   for (auto& cell : matrix.cells)
@@ -485,8 +485,8 @@ void locate_view::on_map_panned(const gps_coordinate& new_center)
 	}
 
 	// Skip work if the centre has not actually moved (zero-distance click).
-	if (df::equiv(_location->latitude, new_center.latitude()) &&
-		df::equiv(_location->longitude, new_center.longitude()))
+	if (core::equiv(_location->latitude, new_center.latitude()) &&
+		core::equiv(_location->longitude, new_center.longitude()))
 	{
 		return;
 	}
@@ -633,8 +633,8 @@ void locate_view::refresh()
 		// The coordinate is always true; the place name is appended only when the gazetteer
 		// had one to give, so an empty answer reads as a coordinate rather than as blanks.
 		_status = std::format("{} {}",
-		                      str::to_string(_location->latitude, 5),
-		                      str::to_string(_location->longitude, 5));
+		                      core::to_string(_location->latitude, 5),
+		                      core::to_string(_location->longitude, 5));
 
 		if (!_place_label.empty()) _status += std::format(" | {}", _place_label);
 		if (!_bearing.empty()) _status += std::format(" | {}", _bearing);
@@ -669,7 +669,7 @@ bool locate_view::run(detach_file_handles& detach)
 	// as a recent-location entry.
 	if (_location->id != 0)
 	{
-		_state.recent_locations.add(str::to_string(_location->id));
+		_state.recent_locations.add(core::to_string(_location->id));
 	}
 
 	const auto results = std::make_shared<command_status>(_state._async, dlg, icon, title,

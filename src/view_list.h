@@ -160,8 +160,8 @@ public:
 		list_view& _view;
 		std::string _text[max_col_count];
 		icon_index _icons[max_col_count] = {};
-		ui::color _bg_row;
-		ui::color32 _text_color[max_col_count] = {0, 0, 0, 0};
+		core::color _bg_row;
+		core::color32 _text_color[max_col_count] = {0, 0, 0, 0};
 		int _order = 0;
 		// This row's index into whatever vector the run reports against - the plan for the batch views,
 		// the dense work list for the others - or -1 when the run never reports this row at all. The
@@ -174,7 +174,7 @@ public:
 		{
 		}
 
-		void render(ui::draw_context& dc, const pointi element_offset) const override
+		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
 			const auto bg_alpha = dc.colors.alpha * dc.colors.bg_alpha;
 			const auto logical_bounds = bounds.offset(element_offset);
@@ -188,7 +188,7 @@ public:
 
 				for (int i = 0; i < _view.col_count; i++)
 				{
-					const auto text_color = ui::color(_text_color[i] != 0 ? _text_color[i] : dc.colors.foreground,
+					const auto text_color = core::color(_text_color[i] != 0 ? _text_color[i] : dc.colors.foreground,
 					                                  dc.colors.alpha);
 					const std::string_view text = _text[i];
 					const recti bounds(x, logical_bounds.top, x + _view.col_widths[i], logical_bounds.bottom);
@@ -198,7 +198,7 @@ public:
 					}
 					else
 					{
-						dc.draw_text(text, bounds, ui::style::font_face::dialog, ui::style::text_style::single_line,
+						dc.draw_text(text, bounds, render::font_face::dialog, render::text_style::single_line,
 						             text_color, {});
 					}
 					x += _view.col_widths[i] + dc.padding2;
@@ -206,9 +206,9 @@ public:
 			}
 		}
 
-		sizei measure(ui::measure_context& mc, int width_limit) const override
+		sizei measure(render::measure_context& mc, int width_limit) const override
 		{
-			const auto row_height = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+			const auto row_height = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 			return {width_limit, row_height};
 		}
 
@@ -315,7 +315,7 @@ public:
 		const auto& row = _rows[row_index];
 		_active_row = row;
 		_progress.position = static_cast<int64_t>(work_position);
-		row->_bg_color = ui::color(ui::style::colors.important_background, 1.0f);
+		row->_bg_color = core::color(ui::style::colors.important_background, 1.0f);
 
 		const auto client_height = _scroller.client_bounds().height();
 		auto reserve_top = _band_height + _band_margin;
@@ -551,7 +551,7 @@ public:
 		{
 			std::ranges::sort(_rows, [col_num](const auto& left, const auto& right)
 			{
-				return str::icmp(left->_text[col_num], right->_text[col_num]) < 0;
+				return core::icmp(left->_text[col_num], right->_text[col_num]) < 0;
 			});
 		}
 		else
@@ -562,7 +562,7 @@ public:
 		_state.invalidate_view(view_invalid::controller | view_invalid::view_layout);
 	}
 
-	void layout(ui::measure_context& mc, const sizei extent) override
+	void layout(render::measure_context& mc, const sizei extent) override
 	{
 		_extent = extent;
 
@@ -570,7 +570,7 @@ public:
 		const recti scroll_bounds{_extent.cx - mc.scroll_width, 0, _extent.cx, _extent.cy};
 		const recti client_bounds{0, 0, std::max(0, _extent.cx - mc.scroll_width), _extent.cy};
 
-		const auto line_height = mc.text_line_height(ui::style::font_face::dialog);
+		const auto line_height = mc.text_line_height(render::font_face::dialog);
 		_band_margin = line_height;
 		_band_height = line_height + mc.padding2 * 2;
 
@@ -587,7 +587,7 @@ public:
 
 		if (!_rows.empty())
 		{
-			const auto row_height = mc.text_line_height(ui::style::font_face::dialog) + mc.padding2;
+			const auto row_height = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 			auto y = row_height + mc.padding2 * 2;
 
 			for (const auto& r : _rows)
@@ -612,7 +612,7 @@ public:
 		auto total = 0;
 		auto shrink_col_total = 0;
 		_scale_factor = mc.scale_factor;
-		_min_col_width = std::max(mc.icon_cxy + mc.padding2, df::round(32 * mc.scale_factor));
+		_min_col_width = std::max(mc.icon_cxy + mc.padding2, core::round(32 * mc.scale_factor));
 		// The table starts a margin in from the view's left edge however little it holds - never centred in
 		// the view - so its text does not run up against the window's frame, and runs to the right edge half a
 		// gap in, with a gap between each column and the next.
@@ -622,12 +622,12 @@ public:
 
 		for (int i = 0; i < col_count; i++)
 		{
-			auto content_width = mc.measure_text(longest_text[i], ui::style::font_face::dialog,
-			                                     ui::style::text_style::single_line, client_bounds.width()).cx +
+			auto content_width = mc.measure_text(longest_text[i], render::font_face::dialog,
+			                                     render::text_style::single_line, client_bounds.width()).cx +
 				mc.padding2;
 			if (has_icon[i]) content_width = std::max(content_width, mc.icon_cxy + mc.padding2);
 			_content_col_widths[i] = content_width;
-			col_widths[i] = is_user_sized(i) ? df::round(_user_col_widths[i] * mc.scale_factor) : content_width;
+			col_widths[i] = is_user_sized(i) ? core::round(_user_col_widths[i] * mc.scale_factor) : content_width;
 			total += col_widths[i];
 			if (i > 0 && !is_user_sized(i)) shrink_col_total += col_widths[i];
 		}
@@ -650,7 +650,7 @@ public:
 				const auto shrink_avail = cx_avail - fixed_width;
 				for (int i = 1; i < col_count; i++)
 				{
-					if (!is_user_sized(i)) col_widths[i] = df::mul_div(shrink_avail, col_widths[i], shrink_col_total);
+					if (!is_user_sized(i)) col_widths[i] = core::mul_div(shrink_avail, col_widths[i], shrink_col_total);
 				}
 			}
 			else
@@ -658,7 +658,7 @@ public:
 				const auto unshrunk = total;
 				for (int i = 0; i < col_count; i++)
 				{
-					col_widths[i] = df::mul_div(cx_avail, col_widths[i], unshrunk);
+					col_widths[i] = core::mul_div(cx_avail, col_widths[i], unshrunk);
 				}
 			}
 		}
@@ -673,7 +673,7 @@ public:
 		}
 
 		// Each divider sits in the middle of the gap between two columns, a grip either side of it.
-		const auto grip = std::max(mc.padding2 / 2, df::round(4 * mc.scale_factor));
+		const auto grip = std::max(mc.padding2 / 2, core::round(4 * mc.scale_factor));
 		auto column_x = coll_offset;
 
 		for (int i = 0; i < max_col_count - 1; i++)
@@ -786,17 +786,17 @@ public:
 	}
 
 
-	void render_headers(ui::draw_context& dc)
+	void render_headers(render::draw_context& dc)
 	{
 		const auto titles = col_titles();
-		const auto cy = dc.text_line_height(ui::style::font_face::dialog) + dc.padding2 * 2;
+		const auto cy = dc.text_line_height(render::font_face::dialog) + dc.padding2 * 2;
 		const auto bg_alpha = dc.colors.alpha * 0.77f;
-		const auto text_color = ui::color(dc.colors.foreground, dc.colors.alpha);
+		const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		constexpr int y = 0;
 		auto x = coll_offset;
 
-		const ui::color header_bg(ui::darken(dc.colors.background, 0.33f), bg_alpha);
+		const core::color header_bg(core::darken(dc.colors.background, 0.33f), bg_alpha);
 
 		if (!_header_active)
 		{
@@ -827,21 +827,21 @@ public:
 
 			if (_header_active)
 			{
-				const ui::color bg(ui::darken(_header_active_num == i
+				const core::color bg(core::darken(_header_active_num == i
 					                              ? ui::style::colors.dialog_selected_background
 					                              : dc.colors.background, 0.33f), bg_alpha);
 				dc.draw_rect(col_header_bounds, bg);
 			}
 
-			dc.draw_text(titles[i], col_header_text_bounds, ui::style::font_face::dialog,
-			             ui::style::text_style::single_line, text_color, {});
+			dc.draw_text(titles[i], col_header_text_bounds, render::font_face::dialog,
+			             render::text_style::single_line, text_color, {});
 
 			_col_header_bounds[i] = col_header_bounds;
 			x += cx + dc.padding2;
 		}
 
 		// The dividers are drawn so the columns read as resizable: faintly, and plainly under the pointer.
-		const auto line_width = std::max(1, df::round(dc.scale_factor));
+		const auto line_width = std::max(1, core::round(dc.scale_factor));
 
 		for (int i = 0; i < col_count - 1; ++i)
 		{
@@ -852,11 +852,11 @@ public:
 			const auto width = active ? line_width * 2 : line_width;
 			const auto mid = (divider.left + divider.right) / 2;
 			const recti line(mid - width / 2, y + dc.padding1, mid - width / 2 + width, y + cy - dc.padding1);
-			dc.draw_rect(line, ui::color(dc.colors.foreground, dc.colors.alpha * (active ? 0.9f : 0.3f)));
+			dc.draw_rect(line, core::color(dc.colors.foreground, dc.colors.alpha * (active ? 0.9f : 0.3f)));
 		}
 	}
 
-	void render(ui::draw_context& rc, view_controller_ptr controller) override
+	void render(render::draw_context& rc, view_controller_ptr controller) override
 	{
 		const auto offset = -_scroller.scroll_offset();
 
@@ -879,14 +879,14 @@ public:
 
 			if (!message.empty())
 			{
-				const auto text_color = ui::color(rc.colors.foreground, rc.colors.alpha);
-				rc.draw_text(message, recti(_extent), ui::style::font_face::dialog,
-				             ui::style::text_style::single_line_center, text_color, {});
+				const auto text_color = core::color(rc.colors.foreground, rc.colors.alpha);
+				rc.draw_text(message, recti(_extent), render::font_face::dialog,
+				             render::text_style::single_line_center, text_color, {});
 			}
 		}
 	}
 
-	bool mouse_wheel(const pointi loc, const ui::wheel_notch notch) override
+	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
 	{
 		if (!notch.is_vertical()) return false;
 		_scroller.offset(_host, 0, -notch.delta);
@@ -917,7 +917,7 @@ class view_command_status final : public df::status_i, public std::enable_shared
 	std::atomic_size_t _position = 0;
 	std::atomic_bool _has_failures = false;
 	std::atomic_bool _is_complete = false;
-	platform::mutex _progress_mutex;
+	core::mutex _progress_mutex;
 	_Guarded_by_(_progress_mutex) size_t _pending_position = 0;
 	_Guarded_by_(_progress_mutex) bool _progress_callback_pending = false;
 	_Guarded_by_(_progress_mutex) std::vector<view_operation_result> _results;
@@ -937,7 +937,7 @@ public:
 		const auto position = _position.fetch_add(1);
 		auto queue_callback = false;
 		{
-			platform::exclusive_lock lock(_progress_mutex);
+			core::exclusive_lock lock(_progress_mutex);
 			_pending_position = position;
 			if (!_progress_callback_pending)
 			{
@@ -955,7 +955,7 @@ public:
 	void end_item(const std::string_view name, const item_status status) override
 	{
 		if (status == item_status::fail) _has_failures = true;
-		platform::exclusive_lock lock(_progress_mutex);
+		core::exclusive_lock lock(_progress_mutex);
 		_results.emplace_back(std::string(name), status);
 	}
 
@@ -984,7 +984,7 @@ private:
 	{
 		size_t position;
 		{
-			platform::exclusive_lock lock(_progress_mutex);
+			core::exclusive_lock lock(_progress_mutex);
 			position = _pending_position;
 			_progress_callback_pending = false;
 		}
@@ -997,7 +997,7 @@ private:
 		if (_is_complete.exchange(true)) return;
 		std::vector<view_operation_result> results;
 		{
-			platform::exclusive_lock lock(_progress_mutex);
+			core::exclusive_lock lock(_progress_mutex);
 			results = std::move(_results);
 		}
 		_async.queue_ui(
@@ -1044,10 +1044,10 @@ public:
 	// up by its scroll.
 	recti _bounds;
 	std::vector<view_element_ptr> _controls;
-	ui::color _clr = ui::color(ui::style::colors.dialog_text);
+	core::color _clr = core::color(ui::style::colors.dialog_text);
 	int _layout_height = 0;
 	int _layout_width = 0;
-	ui::column_widths _label_width;
+	render::column_widths _label_width;
 	// Set by a view whose panel exists to be typed into. Applied after the first layout, which is when
 	// the panel's frame first finds its controls.
 	std::function<void()> initial_focus;
@@ -1065,11 +1065,11 @@ public:
 		return -_scroller.scroll_offset();
 	}
 
-	virtual void layout_controls(ui::measure_context& mc)
+	virtual void layout_controls(render::measure_context& mc)
 	{
 		if (_controls.empty()) return;
 
-		const auto layout_padding = df::round(mc.padding1 / mc.scale_factor);
+		const auto layout_padding = core::round(mc.padding1 / mc.scale_factor);
 		auto avail_bounds = _bounds;
 		avail_bounds.right -= mc.scroll_width + layout_padding;
 
@@ -1091,7 +1091,7 @@ public:
 	}
 
 	// Laid out by the view's frame, in the part of it bounds says.
-	void layout_panel(ui::measure_context& mc, const recti bounds)
+	void layout_panel(render::measure_context& mc, const recti bounds)
 	{
 		_bounds = bounds;
 		layout_controls(mc);
@@ -1104,7 +1104,7 @@ public:
 		}
 	}
 
-	void render_panel(ui::draw_context& dc) const
+	void render_panel(render::draw_context& dc) const
 	{
 		if (_bounds.is_empty()) return;
 
@@ -1115,8 +1115,8 @@ public:
 		dc.col_widths = _label_width;
 
 		{
-			ui::scoped_clip clip(dc, _bounds);
-			dc.draw_rect(_bounds, ui::color(dc.colors.background, 1.0f));
+			render::scoped_clip clip(dc, _bounds);
+			dc.draw_rect(_bounds, core::color(dc.colors.background, 1.0f));
 
 			const auto offset = elements_offset();
 
@@ -1164,11 +1164,11 @@ public:
 	}
 
 	// Drawn by the view's frame, never laid out or painted as a frame of its own.
-	void on_window_layout(ui::measure_context& mc, const sizei extent, bool is_minimized) override
+	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override
 	{
 	}
 
-	void on_window_paint(ui::draw_context& dc) override
+	void on_window_paint(render::draw_context& dc) override
 	{
 	}
 
@@ -1180,7 +1180,7 @@ public:
 	{
 	}
 
-	bool key_down(const int c, const ui::key_state keys) override
+	bool key_down(const int c, const platform::key_state keys) override
 	{
 		return false;
 	}
@@ -1236,7 +1236,7 @@ public:
 
 	// A wheel over something in the panel that scrolls - a list of results - turns that; elsewhere it
 	// scrolls the panel.
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
 		const auto offset = elements_offset();
 
@@ -1335,16 +1335,16 @@ public:
 		_parent._header_active = false;
 	}
 
-	void draw(ui::draw_context& rc) override
+	void draw(render::draw_context& rc) override
 	{
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::link;
+		return platform::cursor::link;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 		_parent._header_tracking = true;
@@ -1356,7 +1356,7 @@ public:
 		_last_loc = loc;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
 
@@ -1415,12 +1415,12 @@ public:
 		_host->frame()->invalidate();
 	}
 
-	ui::style::cursor cursor() const override
+	platform::cursor cursor() const override
 	{
-		return ui::style::cursor::left_right;
+		return platform::cursor::left_right;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		_tracking = true;
 		_moved = false;
@@ -1436,13 +1436,13 @@ public:
 		_parent.resize_column(_col, _start_width + loc.x - _start_x);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		on_mouse_move(loc);
 		_tracking = false;
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
 	{
 		_tracking = false;
 		_parent.fit_column(_col);

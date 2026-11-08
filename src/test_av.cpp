@@ -159,9 +159,9 @@ public:
 	void reset() override {}
 	void start() override {}
 	void stop() override {}
-	void wait_for_buffer(const platform::thread_event&, uint32_t) override {}
+	void wait_for_buffer(const core::thread_event&, uint32_t) override {}
 
-	size_t write(const df::cspan samples) override
+	size_t write(const core::cspan samples) override
 	{
 		const auto frames = std::min(samples.size / frame_bytes, room_frames);
 		const auto bytes = frames * frame_bytes;
@@ -198,7 +198,7 @@ static void should_hand_an_endpoint_the_samples_it_has_room_for()
 	buffer.write_to(endpoint);
 	assert_equal(12u, static_cast<uint32_t>(endpoint.written.size()), "the endpoint takes the frames it has room for");
 	assert_equal(28u, buffer.used_bytes(), "and the rest stays queued");
-	assert_equal(true, df::equiv(buffer.start_time(), 5.3), "from the time the endpoint reached");
+	assert_equal(true, core::equiv(buffer.start_time(), 5.3), "from the time the endpoint reached");
 
 	buffer.write_to(endpoint);
 	assert_equal(28u, buffer.used_bytes(), "a full endpoint takes nothing");
@@ -370,7 +370,7 @@ void should_keep_visualizer_frequency_bins_stable_across_sessions()
 			update_changed.notify_all();
 		}
 	});
-	const df::scope_exit stop_worker([&]
+	const core::scope_exit stop_worker([&]
 	{
 		stop = true;
 		update_changed.notify_all();
@@ -450,7 +450,7 @@ static void should_extract_dv_datetime()
 	time_pack[4] = (1 << 4) | 4; // 14 hours
 
 	const auto actual = dv_extract_rec_datetime(frame.data(), frame.size());
-	assert_equal(df::date_t(2003, 7, 15, 14, 30, 45), actual, "dv rec datetime");
+	assert_equal(core::date_t(2003, 7, 15, 14, 30, 45), actual, "dv rec datetime");
 
 	// A frame without recording packs must yield an invalid (absent) date.
 	const std::vector<uint8_t> empty_frame(12000, 0);
@@ -541,7 +541,7 @@ static void should_drain_delayed_video_frames_for_nearest_eof_choice()
 	assert_equal(true, choice.consider(1.16, wanted, 0.0), "first delayed frame improves the choice");
 	assert_equal(true, choice.consider(1.20, wanted, 0.0), "final delayed frame is nearest");
 
-	assert_equal(true, df::equiv(1.20, choice.best_time),
+	assert_equal(true, core::equiv(1.20, choice.best_time),
 	             std::format("delayed final frame wins nearest choice (got {:.2f})", choice.best_time));
 }
 
@@ -556,7 +556,7 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 		     "Byzantium.avi", "Colorblind.mp3"
 	     })
 	{
-		const auto path = test_files_folder.combine_file(name);
+		const auto path = test_files_folder().combine_file(name);
 		const auto* const ft = files::file_type_from_name(path);
 
 		files ff;
@@ -601,10 +601,10 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 	assert_equal(3, fixtures_carrying_xmp, "fixtures carrying a trailing xmp packet");
 }
 
-static df::blob make_tga(const uint16_t width, const uint16_t height, const uint8_t bits_per_pixel,
+static core::blob make_tga(const uint16_t width, const uint16_t height, const uint8_t bits_per_pixel,
                          const std::vector<uint8_t>& pixels, const uint8_t alpha_bits = 8)
 {
-	df::blob result(18, 0);
+	core::blob result(18, 0);
 	result[2] = 2; // uncompressed true-colour image
 	result[12] = static_cast<uint8_t>(width & 0xff);
 	result[13] = static_cast<uint8_t>(width >> 8);
@@ -616,9 +616,9 @@ static df::blob make_tga(const uint16_t width, const uint16_t height, const uint
 	return result;
 }
 
-static df::blob make_gif(const bool transparent)
+static core::blob make_gif(const bool transparent)
 {
-	df::blob result{
+	core::blob result{
 		'G', 'I', 'F', '8', '9', 'a',
 		1, 0, 1, 0,
 		0x80, 0x00, 0x00,
@@ -643,13 +643,13 @@ static df::blob make_gif(const bool transparent)
 	return result;
 }
 
-static df::blob make_bmp(const uint32_t width, const uint32_t height)
+static core::blob make_bmp(const uint32_t width, const uint32_t height)
 {
 	const auto stride = (width * 3 + 3) & ~3u;
 	const auto pixel_bytes = stride * height;
 	const auto file_bytes = 14u + 40u + pixel_bytes;
 
-	df::blob result(file_bytes);
+	core::blob result(file_bytes);
 	result[0] = 'B';
 	result[1] = 'M';
 	result[2] = static_cast<uint8_t>(file_bytes & 0xff);
@@ -676,10 +676,10 @@ static df::blob make_bmp(const uint32_t width, const uint32_t height)
 	return result;
 }
 
-static uint8_t composite_over_green(const ui::const_surface_ptr& surface, const int x)
+static uint8_t composite_over_green(const core::const_surface_ptr& surface, const int x)
 {
 	const auto* const p = surface->pixels_line(0) + x * 4;
-	const auto alpha = surface->format() == ui::texture_format::ARGB ? p[3] / 255.0f : 1.0f;
+	const auto alpha = surface->format() == core::texture_format::ARGB ? p[3] / 255.0f : 1.0f;
 	return static_cast<uint8_t>(std::clamp(static_cast<int>(p[1] * alpha + 255.0f * (1.0f - alpha) + 0.5f),
 	                                      0, 255));
 }
@@ -696,19 +696,19 @@ static void should_preserve_alpha_when_decoding_ffmpeg_stills()
 	frame.linesize[0] = 8;
 
 	av_scaler scaler;
-	ui::surface_ptr with_alpha;
-	assert_equal(true, scaler.scale_frame(frame, with_alpha, {}, 0.0, ui::orientation::top_left, {}, true),
+	core::surface_ptr with_alpha;
+	assert_equal(true, scaler.scale_frame(frame, with_alpha, {}, 0.0, core::orientation::top_left, {}, true),
 	             "alpha frame converted");
-	assert_equal(static_cast<int>(ui::texture_format::ARGB), static_cast<int>(with_alpha->format()),
+	assert_equal(static_cast<int>(core::texture_format::ARGB), static_cast<int>(with_alpha->format()),
 	             "alpha frame keeps alpha-capable surface format");
 	assert_equal(0, static_cast<int>(composite_over_green(with_alpha, 0)), "opaque red covers green background");
 	assert_equal(255, static_cast<int>(composite_over_green(with_alpha, 1)),
 	             "transparent pixel reveals green background");
 
-	ui::surface_ptr opaque;
-	assert_equal(true, scaler.scale_frame(frame, opaque, {}, 0.0, ui::orientation::top_left),
+	core::surface_ptr opaque;
+	assert_equal(true, scaler.scale_frame(frame, opaque, {}, 0.0, core::orientation::top_left),
 	             "opaque video frame converted");
-	assert_equal(static_cast<int>(ui::texture_format::RGB), static_cast<int>(opaque->format()),
+	assert_equal(static_cast<int>(core::texture_format::RGB), static_cast<int>(opaque->format()),
 	             "opaque video frames keep the opaque fast path");
 
 	std::array<uint8_t, 2> palette_indices{0, 1};
@@ -724,18 +724,18 @@ static void should_preserve_alpha_when_decoding_ffmpeg_stills()
 	palette_frame.linesize[0] = static_cast<int>(palette_indices.size());
 	palette_frame.data[1] = std::bit_cast<uint8_t*>(palette.data());
 
-	ui::surface_ptr opaque_palette;
-	assert_equal(true, scaler.scale_frame(palette_frame, opaque_palette, {}, 0.0, ui::orientation::top_left, {}, true),
+	core::surface_ptr opaque_palette;
+	assert_equal(true, scaler.scale_frame(palette_frame, opaque_palette, {}, 0.0, core::orientation::top_left, {}, true),
 	             "opaque palette frame converted");
-	assert_equal(static_cast<int>(ui::texture_format::RGB), static_cast<int>(opaque_palette->format()),
+	assert_equal(static_cast<int>(core::texture_format::RGB), static_cast<int>(opaque_palette->format()),
 	             "opaque palette frames keep the opaque fast path");
 
 	palette[1] = 0x000000ffu;
-	ui::surface_ptr transparent_palette;
-	assert_equal(true, scaler.scale_frame(palette_frame, transparent_palette, {}, 0.0, ui::orientation::top_left, {},
+	core::surface_ptr transparent_palette;
+	assert_equal(true, scaler.scale_frame(palette_frame, transparent_palette, {}, 0.0, core::orientation::top_left, {},
 	                                      true),
 	             "transparent palette frame converted");
-	assert_equal(static_cast<int>(ui::texture_format::ARGB), static_cast<int>(transparent_palette->format()),
+	assert_equal(static_cast<int>(core::texture_format::ARGB), static_cast<int>(transparent_palette->format()),
 	             "transparent palette frames keep alpha");
 }
 
@@ -745,7 +745,7 @@ static void should_decode_zero_alpha_tga_as_opaque()
 	const auto tga = make_tga(1, 1, 32, {0, 0, 255, 0}, 0);
 	const auto decoded = av_decode_still(tga, {}, "tga");
 	assert_equal(true, is_valid(decoded), "zero-alpha tga decoded");
-	assert_equal(static_cast<int>(ui::texture_format::RGB), static_cast<int>(decoded->format()),
+	assert_equal(static_cast<int>(core::texture_format::RGB), static_cast<int>(decoded->format()),
 	             "zero-alpha tga remains opaque");
 	assert_equal(0, static_cast<int>(composite_over_green(decoded, 0)), "opaque red covers green background");
 }
@@ -755,7 +755,7 @@ static void should_decode_opaque_gif_palette_as_rgb()
 {
 	const auto opaque = av_decode_still(make_gif(false), {}, ".gif");
 	assert_equal(true, is_valid(opaque), "opaque gif decoded");
-	assert_equal(static_cast<int>(ui::texture_format::RGB), static_cast<int>(opaque->format()),
+	assert_equal(static_cast<int>(core::texture_format::RGB), static_cast<int>(opaque->format()),
 	             "opaque palette gif remains RGB");
 }
 
@@ -766,9 +766,9 @@ static void should_refuse_over_budget_stills_during_probe()
 	constexpr uint16_t height = 16;
 	const auto bmp = make_bmp(width, height);
 
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
-	df::max_decode_bytes = static_cast<int64_t>(width) * height * 4 - 1;
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
+	render::max_decode_bytes = static_cast<int64_t>(width) * height * 4 - 1;
 
 	load_diagnostic diagnostic;
 	const auto refused = av_decode_still(bmp, {}, ".bmp", &diagnostic);
@@ -781,15 +781,15 @@ static void should_refuse_over_budget_stills_during_probe()
 // MEDIA-012 - MJPEG admission accounts for codec working storage, not only BGRA source pixels.
 static void should_refuse_mjpeg_when_codec_working_storage_exceeds_budget()
 {
-	const auto data = df::blob_from_file(test_files_folder.combine_file("Test.jpg"));
+	const auto data = platform::blob_from_file(test_files_folder().combine_file("Test.jpg"));
 	const auto control = av_decode_still(data, {}, ".jpg");
 	assert_equal(true, is_valid(control), "jpeg decodes through ffmpeg control path");
 
 	const auto source_bytes = static_cast<int64_t>(control->dimensions().cx) * control->dimensions().cy * 4;
-	const auto restore_budget = df::max_decode_bytes;
-	const df::scope_exit restore([restore_budget] { df::max_decode_bytes = restore_budget; });
+	const auto restore_budget = render::max_decode_bytes;
+	const core::scope_exit restore([restore_budget] { render::max_decode_bytes = restore_budget; });
 
-	df::max_decode_bytes = source_bytes * 2;
+	render::max_decode_bytes = source_bytes * 2;
 	const auto refused = av_decode_still(data, {}, ".jpg");
 	assert_equal(false, is_valid(refused), "codec working storage is budgeted separately from source pixels");
 }
@@ -799,13 +799,13 @@ static void should_refuse_mjpeg_when_codec_working_storage_exceeds_budget()
 // stream whatsoever. The scan must report that as a failure rather than publish an empty video.
 static void should_reject_a_non_media_file()
 {
-	const auto path = test_files_folder.combine("excluded1").combine_file("not-media.ts");
+	const auto path = test_files_folder().combine("excluded1").combine_file("not-media.ts");
 	const auto* const ft = files::file_type_from_name(path);
 
 	// The extension alone still says video; only the header settles it.
-	assert_equal(true, path.exists(), "fixture is present");
+	assert_equal(true, platform::exists(path), "fixture is present");
 	assert_equal(true, ft->has_trait(file_traits::av), "ts is an av extension");
-	assert_equal(false, files::media_header_matches(path.extension(), df::blob_head_from_file(path, 1024)),
+	assert_equal(false, files::media_header_matches(path.extension(), platform::blob_head_from_file(path, 1024)),
 	             "the header rule refuses it before the demuxer sees it");
 
 	av_format_decoder decoder;
@@ -822,7 +822,7 @@ static void should_reject_a_non_media_file()
 // rather than the stored frame size (640x480).
 static void should_apply_video_aspect_ratio()
 {
-	const auto load_path = test_files_folder.combine_file("anamorphic.mp4");
+	const auto load_path = test_files_folder().combine_file("anamorphic.mp4");
 
 	files ff;
 	const auto actual = ff_scan_file(ff, load_path);
@@ -841,7 +841,7 @@ static void should_apply_video_aspect_ratio()
 // leaving the 4:3 pasp box as the only surviving declaration.
 static void should_apply_container_aspect_ratio_to_decoded_frames()
 {
-	const auto load_path = test_files_folder.combine_file("anamorphic-pasp.mp4");
+	const auto load_path = test_files_folder().combine_file("anamorphic-pasp.mp4");
 
 	files ff;
 	const auto md = ff_scan_file(ff, load_path).to_props();
@@ -856,14 +856,14 @@ static void should_apply_container_aspect_ratio_to_decoded_frames()
 	constexpr sizei max_dim(256, 256);
 
 	// 640x480 stored, 16:9 displayed: bounded by 256 the thumbnail is 256x144, not 256x192.
-	ui::surface_ptr thumbnail;
+	core::surface_ptr thumbnail;
 	assert_equal(true, decoder.extract_thumbnail(thumbnail, max_dim, 1, 100), "thumbnail decoded");
 	assert_equal(true, is_valid(thumbnail), "thumbnail valid");
 	assert_equal(256, thumbnail->dimensions().cx, "thumbnail width");
 	assert_equal(144, thumbnail->dimensions().cy, "thumbnail height");
 
 	// The hover preview over the timeline decodes through a different entry point.
-	ui::surface_ptr preview;
+	core::surface_ptr preview;
 	assert_equal(true, decoder.extract_seek_frame(preview, max_dim, 50, 100), "seek frame decoded");
 	assert_equal(true, is_valid(preview), "seek frame valid");
 	assert_equal(256, preview->dimensions().cx, "seek frame width");
@@ -876,7 +876,7 @@ static void should_apply_container_aspect_ratio_to_decoded_frames()
 // looked right while the thumbnail and the timeline hover preview stayed at the stored shape.
 static void should_apply_aspect_ratio_to_broadcast_video_thumbnails()
 {
-	const auto load_path = test_files_folder.combine_file("tvp.mp4");
+	const auto load_path = test_files_folder().combine_file("tvp.mp4");
 
 	files ff;
 	const auto md = ff_scan_file(ff, load_path).to_props();
@@ -891,13 +891,13 @@ static void should_apply_aspect_ratio_to_broadcast_video_thumbnails()
 	constexpr sizei max_dim(256, 256);
 
 	// 4:3 displayed, so bounded by 256 the thumbnail is 256x192, not the stored 241x256.
-	ui::surface_ptr thumbnail;
+	core::surface_ptr thumbnail;
 	assert_equal(true, decoder.extract_thumbnail(thumbnail, max_dim, 1, 100), "thumbnail decoded");
 	assert_equal(true, is_valid(thumbnail), "thumbnail valid");
 	assert_equal(256, thumbnail->dimensions().cx, "thumbnail width");
 	assert_equal(192, thumbnail->dimensions().cy, "thumbnail height");
 
-	ui::surface_ptr preview;
+	core::surface_ptr preview;
 	assert_equal(true, decoder.extract_seek_frame(preview, max_dim, 5, 10), "seek frame decoded");
 	assert_equal(true, is_valid(preview), "seek frame valid");
 	assert_equal(256, preview->dimensions().cx, "seek frame width");
@@ -911,7 +911,7 @@ static void should_apply_aspect_ratio_to_broadcast_video_thumbnails()
 // scenario) and asserts the two frames differ.
 static void should_flush_decoder_on_thumbnail_seek()
 {
-	const auto load_path = test_files_folder.combine_file("gizmo.mp4");
+	const auto load_path = test_files_folder().combine_file("gizmo.mp4");
 
 	av_format_decoder decoder;
 	assert_equal(true, decoder.open(load_path, media_intent::thumbnail), "open gizmo.mp4");
@@ -920,13 +920,13 @@ static void should_flush_decoder_on_thumbnail_seek()
 
 	constexpr sizei max_dim(256, 256);
 
-	ui::surface_ptr early;
+	core::surface_ptr early;
 	assert_equal(true, decoder.extract_thumbnail(early, max_dim, 1, 100), "early thumbnail decoded");
 	assert_equal(true, is_valid(early), "early thumbnail valid");
 
 	// Reuse the same decoder; the seek to 95% must flush the frames buffered by the
 	// early extraction above rather than replaying one of them.
-	ui::surface_ptr late;
+	core::surface_ptr late;
 	assert_equal(true, decoder.extract_thumbnail(late, max_dim, 95, 100), "late thumbnail decoded");
 	assert_equal(true, is_valid(late), "late thumbnail valid");
 
@@ -943,7 +943,7 @@ static void should_flush_decoder_on_thumbnail_seek()
 // two have to agree or the same file is correct as a tile and wrong as a video.
 static void should_report_container_aspect_ratio_to_the_player()
 {
-	const auto load_path = test_files_folder.combine_file("anamorphic-pasp.mp4");
+	const auto load_path = test_files_folder().combine_file("anamorphic-pasp.mp4");
 
 	files ff;
 	const auto scanned = ff_scan_file(ff, load_path).to_props();
@@ -969,17 +969,17 @@ static void should_report_container_aspect_ratio_to_the_player()
 // a portrait video draw a portrait tile and then play back landscape, or the reverse.
 static void should_report_container_rotation_to_the_player()
 {
-	const auto load_path = test_files_folder.combine("excluded1").combine_file("rotated90.mp4");
+	const auto load_path = test_files_folder().combine("excluded1").combine_file("rotated90.mp4");
 
 	files ff;
 	const auto scanned = ff_scan_file(ff, load_path).to_props();
-	assert_equal(ui::orientation::right_top, scanned->orientation, "scan reads the display matrix");
+	assert_equal(core::orientation::right_top, scanned->orientation, "scan reads the display matrix");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
 	                             false, false), "session opened");
 
-	assert_equal(ui::orientation::right_top, ses->info().display_orientation, "player agrees with the scan");
+	assert_equal(core::orientation::right_top, ses->info().display_orientation, "player agrees with the scan");
 
 	ses->close(false);
 }
@@ -992,7 +992,7 @@ static void should_report_container_rotation_to_the_player()
 // three quarters (8).
 static void should_report_a_mirrored_container_to_the_player()
 {
-	const auto original = read_test_file(test_files_folder.combine("excluded1").combine_file("rotated90.mp4"));
+	const auto original = read_test_file(test_files_folder().combine("excluded1").combine_file("rotated90.mp4"));
 
 	// The matrix's first four entries, 16.16 fixed point, of the track rotated90.mp4 turns a quarter.
 	constexpr uint32_t one = 0x00010000u;
@@ -1026,12 +1026,12 @@ static void should_report_a_mirrored_container_to_the_player()
 		const char* name;
 		// The matrix's a, b, c and d; the projection entry u between b and c keeps its value.
 		uint32_t a, b, c, d;
-		ui::orientation expected;
+		core::orientation expected;
 	};
 
 	const variant variants[] = {
-		{"mirrored", minus_one, 0, 0, one, ui::orientation::top_right},
-		{"mirrored, then turned a quarter", 0, minus_one, minus_one, 0, ui::orientation::right_bottom},
+		{"mirrored", minus_one, 0, 0, one, core::orientation::top_right},
+		{"mirrored, then turned a quarter", 0, minus_one, minus_one, 0, core::orientation::right_bottom},
 	};
 
 	for (const auto& v : variants)
@@ -1071,7 +1071,7 @@ static void should_report_a_mirrored_container_to_the_player()
 // is far wider than the tolerance here.
 static void should_seek_to_the_frame_at_the_requested_time()
 {
-	const auto load_path = test_files_folder.combine_file("indy.mp4");
+	const auto load_path = test_files_folder().combine_file("indy.mp4");
 
 	av_format_decoder decoder;
 	assert_equal(true, decoder.open(load_path, media_intent::thumbnail), "open indy.mp4");
@@ -1087,7 +1087,7 @@ static void should_seek_to_the_frame_at_the_requested_time()
 	constexpr double denominator = 100;
 	const auto wanted = start + floor(numerator * len / denominator);
 
-	ui::surface_ptr s;
+	core::surface_ptr s;
 	assert_equal(true, decoder.extract_seek_frame(s, max_dim, numerator, denominator), "seek frame decoded");
 	assert_equal(true, is_valid(s), "seek frame valid");
 	assert_equal(true, fabs(s->time() - wanted) < 1.0,
@@ -1099,7 +1099,7 @@ static void should_seek_to_the_frame_at_the_requested_time()
 // shorter than twenty - silently thumbnailed those from frame zero instead of the tenth asked for.
 static void should_seek_short_video_thumbnails()
 {
-	const auto path = test_files_folder.combine_file("StPauls.MOV");
+	const auto path = test_files_folder().combine_file("StPauls.MOV");
 
 	av_format_decoder dec;
 	assert_equal(true, dec.open(path, media_intent::thumbnail), "decoder opened");
@@ -1109,7 +1109,7 @@ static void should_seek_short_video_thumbnails()
 	const auto duration = dec.end_time() - dec.start_time();
 	assert_equal(true, duration > 2.0 && duration < 20.0, "the clip is short enough to have skipped the seek");
 
-	ui::surface_ptr thumbnail;
+	core::surface_ptr thumbnail;
 	assert_equal(true, dec.extract_thumbnail(thumbnail, {256, 256}, 10, 100, false), "thumbnail decoded");
 	assert_equal(true, is_valid(thumbnail), "thumbnail surface");
 
@@ -1130,11 +1130,11 @@ static void should_seek_short_video_thumbnails()
 // was never consumed and the clip could only end on the two-second hard fallback.
 static void should_end_a_silent_clip_at_the_stream_end()
 {
-	df::file_path silent_path;
+	core::file_path silent_path;
 
 	for (const auto* const name : {"anamorphic.mp4", "gizmo.mp4", "tagged.mkv", "tagged.webm"})
 	{
-		const auto candidate = test_files_folder.combine_file(name);
+		const auto candidate = test_files_folder().combine_file(name);
 
 		av_format_decoder probe;
 		if (!probe.open(candidate, media_intent::playback)) continue;
@@ -1157,13 +1157,13 @@ static void should_end_a_silent_clip_at_the_stream_end()
 	const auto media_end = ses->info().end;
 	assert_equal(true, media_end > 0.0, "the test clip declares a duration");
 
-	auto now = df::now();
+	auto now = core::now();
 	assert_equal(false, ses->has_ended(now), "a freshly opened clip has not ended");
 
 	// Drive the demux, decode and present work the player threads normally own.
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
 	auto ended_at = -1.0;
 
@@ -1191,9 +1191,9 @@ static void should_end_a_silent_clip_at_the_stream_end()
 // would before the first present.
 static void prime_video_only_session(const std::shared_ptr<av_session>& ses, const int passes)
 {
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
 	for (auto i = 0; i < passes; ++i)
 	{
@@ -1202,7 +1202,7 @@ static void prime_video_only_session(const std::shared_ptr<av_session>& ses, con
 	}
 }
 
-static bool is_signalled(platform::thread_event& e)
+static bool is_signalled(core::thread_event& e)
 {
 	return platform::wait_for({e}, 1, false) == 0;
 }
@@ -1213,17 +1213,17 @@ static bool is_signalled(platform::thread_event& e)
 // poll itself.
 static void should_wake_the_decoder_when_the_presenter_takes_a_frame()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
-	const auto wake = std::make_shared<platform::thread_event>(false, false);
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
+	const auto wake = std::make_shared<core::thread_event>(false, false);
 	const auto ses = make_test_session_with_decode_wake(wake);
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, true, true),
 	             "the video opens without its audio");
-	const df::scope_exit close([ses] { ses->close(false); });
+	const core::scope_exit close([ses] { ses->close(false); });
 
 	prime_video_only_session(ses, 8);
 	assert_equal(false, is_signalled(*wake), "decoding alone does not wake the decoder");
 
-	auto now = df::now();
+	auto now = core::now();
 	auto presented = false;
 
 	for (auto i = 0; i < 50 && !presented; ++i)
@@ -1241,17 +1241,17 @@ static void should_wake_the_decoder_when_the_presenter_takes_a_frame()
 // cloud file - throttled the picture to one packet per wake.
 static void should_decode_queued_packets_without_waiting_on_the_reader()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, true, true),
 	             "the video opens without its audio");
-	const df::scope_exit close([ses] { ses->close(false); });
+	const core::scope_exit close([ses] { ses->close(false); });
 
 	prime_video_only_session(ses, 1);
 
 	// Nothing decodes from here: every frame presented below came from that single pass.
 	const auto interval = ses->video_frame_interval();
-	auto now = df::now();
+	auto now = core::now();
 	auto presented = 0;
 
 	for (auto i = 0; i < 40; ++i)
@@ -1269,16 +1269,16 @@ static void should_decode_queued_packets_without_waiting_on_the_reader()
 // left the picture behind its clock for good.
 static void should_present_the_nearest_frame_when_the_clock_passes_several()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, true, true),
 	             "the video opens without its audio");
-	const df::scope_exit close([ses] { ses->close(false); });
+	const core::scope_exit close([ses] { ses->close(false); });
 
 	prime_video_only_session(ses, 8);
 
 	const auto interval = ses->video_frame_interval();
-	auto now = df::now();
+	auto now = core::now();
 	auto presented = false;
 
 	for (auto i = 0; i < 50 && !presented; ++i)
@@ -1308,13 +1308,13 @@ static void should_present_the_nearest_frame_when_the_clock_passes_several()
 // queue fills, so a session whose audio nothing drains stalls its own video and delivers nothing.
 static void should_open_a_session_without_its_audio()
 {
-	df::file_path path;
+	core::file_path path;
 
 	// Short, so driving it to the end is a test rather than a wait, and with sound, because opening
 	// it without that sound is the whole claim.
 	for (const auto* const name : {"StPauls.MOV", "tvp.mp4", "gizmo.mp4", "indy.mp4"})
 	{
-		const auto candidate = test_files_folder.combine_file(name);
+		const auto candidate = test_files_folder().combine_file(name);
 
 		av_format_decoder probe;
 		if (!probe.open(candidate, media_intent::metadata)) continue;
@@ -1344,11 +1344,11 @@ static void should_open_a_session_without_its_audio()
 	// Drive the demux, decode and present work the player threads normally own. Reaching the end of
 	// the stream is the claim: an undrained audio queue stops the reader, so a stalled session runs
 	// out of frames part way through and never gets there.
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
-	auto now = df::now();
+	auto now = core::now();
 	auto presented = 0;
 	auto ended = false;
 	auto ended_at = -1.0;
@@ -1380,7 +1380,7 @@ static void should_open_a_session_without_its_audio()
 // has to be consumed or it back-pressures demux and the video queue eventually runs dry.
 static void should_keep_video_moving_when_audio_output_is_unavailable()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
@@ -1394,11 +1394,11 @@ static void should_keep_video_moving_when_audio_output_is_unavailable()
 	assert_equal(false, should_drain_audio_while_output_unavailable(true, true),
 	             "available output keeps audio for playback");
 
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
-	auto now = df::now();
+	auto now = core::now();
 	auto presented = 0;
 	auto last_presented = 0.0;
 
@@ -1428,13 +1428,13 @@ static void should_keep_video_moving_when_audio_output_is_unavailable()
 // snapping playback back to the accepted seek position.
 static void should_not_reanchor_playback_time_on_repeated_audio_output_failures()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
 	                             false, false), "session opened");
 
-	const auto start = df::now();
+	const auto start = core::now();
 	ses->mark_audio_output_unavailable(start);
 	assert_equal(1.0, ses->pos(start + 1.0), "first failure starts the wall clock");
 
@@ -1449,13 +1449,13 @@ static void should_not_reanchor_playback_time_on_repeated_audio_output_failures(
 // before process_io, rather than seeking immediately from the audio path.
 static void should_queue_audio_recovery_seek_for_the_read_thread()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
 	                             false, false), "session opened");
 
-	const auto now = df::now();
+	const auto now = core::now();
 	assert_equal(0.0, ses->pos(now), "opened session is still at the accepted start");
 
 	ses->request_audio_recovery_seek(now);
@@ -1472,13 +1472,13 @@ static void should_queue_audio_recovery_seek_for_the_read_thread()
 // queued user seek runs before the read thread processes recovery, the stale request is ignored.
 static void should_drop_stale_audio_recovery_seek()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
 	                             false, false), "session opened");
 
-	const auto now = df::now();
+	const auto now = core::now();
 	ses->request_audio_recovery_seek(now);
 	ses->seek(4.0, false);
 
@@ -1492,13 +1492,13 @@ static void should_drop_stale_audio_recovery_seek()
 // overwrite the resume point they set by actually watching it, silently and on every scrub.
 static void should_not_save_a_position_for_borrowed_playback()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 	const auto file_type = files::file_type_from_name(path);
 
-	auto saved_for = df::file_path{};
+	auto saved_for = core::file_path{};
 	auto save_count = 0;
 
-	const auto record = [&saved_for, &save_count](const df::file_path p, double)
+	const auto record = [&saved_for, &save_count](const core::file_path p, double)
 	{
 		saved_for = p;
 		++save_count;
@@ -1524,7 +1524,7 @@ static void should_not_save_a_position_for_borrowed_playback()
 // times the frame. The budget is stated in bytes now, and this holds the queue to it.
 static void should_bound_video_read_ahead_by_bytes()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 
 	av_format_decoder dec;
 	assert_equal(true, dec.open(path, media_intent::playback), "decoder opened");
@@ -1591,7 +1591,7 @@ static void should_bound_video_read_ahead_by_bytes()
 // frame until the clock catches back up. That freeze is what a scrub used to produce.
 static void should_land_audio_and_video_on_the_sought_position()
 {
-	const auto load_path = test_files_folder.combine_file("gizmo.mp4");
+	const auto load_path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
@@ -1615,11 +1615,11 @@ static void should_land_audio_and_video_on_the_sought_position()
 	playback_buffer.init(fmt);
 	vis_buffer.init(fmt);
 
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
-	auto now = df::now();
+	auto now = core::now();
 
 	for (auto i = 0; i < 200; ++i)
 	{
@@ -1643,23 +1643,23 @@ static void should_land_audio_and_video_on_the_sought_position()
 	ses->close(false);
 }
 
-class playback_time_test_texture final : public ui::texture
+class playback_time_test_texture final : public render::texture
 {
 public:
-	ui::texture_update_result update(const ui::video_frame_ptr& frame) override
+	render::texture_update_result update(const render::video_frame_ptr& frame) override
 	{
-		return frame ? ui::texture_update_result::tex_updated : ui::texture_update_result::failed;
+		return frame ? render::texture_update_result::tex_updated : render::texture_update_result::failed;
 	}
 
-	ui::texture_update_result update(const ui::const_surface_ptr&) override
+	render::texture_update_result update(const core::const_surface_ptr&) override
 	{
-		return ui::texture_update_result::failed;
+		return render::texture_update_result::failed;
 	}
 
-	ui::texture_update_result update(sizei, ui::texture_format, ui::orientation,
+	render::texture_update_result update(sizei, core::texture_format, core::orientation,
 	                                 const uint8_t*, size_t, size_t) override
 	{
-		return ui::texture_update_result::failed;
+		return render::texture_update_result::failed;
 	}
 
 	bool is_valid() const override { return true; }
@@ -1674,7 +1674,7 @@ static void should_refresh_paused_media_time_after_seeking()
 	view_state state(ss, as, index, make_test_player());
 	const view_host_base_ptr view;
 	state.view_mode(view_type::items);
-	state.open(view, df::search_t().add_selector(test_files_folder).with("gizmo.mp4"), {});
+	state.open(view, df::search_t().add_selector(test_files_folder()).with("gizmo.mp4"), {});
 	state.update_item_groups();
 	const auto item = state.find_displayed_item_by_name("gizmo.mp4");
 	assert_equal(true, item != nullptr, "the video is visible");
@@ -1683,19 +1683,19 @@ static void should_refresh_paused_media_time_after_seeking()
 	const auto display = state.display_state();
 	assert_equal(true, display != nullptr, "selection has a display");
 
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto session = make_test_session();
 	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1,
 	                                false, false, false), "paused session opened");
-	const df::scope_exit close([session] { session->close(false); });
+	const core::scope_exit close([session] { session->close(false); });
 	session->mark_audio_output_unavailable();
 	display->update_av_session(session);
 
 	const auto texture = std::make_shared<playback_time_test_texture>();
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
-	auto now = df::now();
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
+	auto now = core::now();
 
 	for (const auto target : {0.0, 3.0, 1.0})
 	{
@@ -1713,7 +1713,7 @@ static void should_refresh_paused_media_time_after_seeking()
 		assert_equal(false, session->is_playing(), "seeking does not resume playback");
 		if (target == 0.0) display->update_scrubber();
 		state.tick(view, now);
-		assert_equal(str::format_seconds(df::round(session->last_frame_time())), display->_time,
+		assert_equal(core::format_seconds(core::round(session->last_frame_time())), display->_time,
 		             "paused elapsed text follows the presented frame without a hover callback");
 	}
 }
@@ -1736,20 +1736,20 @@ static void should_repaint_the_scrubber_only_while_the_controls_show()
 	common_display_state_t common;
 	const auto display = std::make_shared<display_state_t>(as, common);
 
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto session = make_test_session();
 	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1,
 	                                false, false, false), "paused session opened");
-	const df::scope_exit close([session] { session->close(false); });
+	const core::scope_exit close([session] { session->close(false); });
 	session->mark_audio_output_unavailable();
 	display->update_av_session(session);
 	display->_scrubber_width = 1000;
 
 	const auto texture = std::make_shared<playback_time_test_texture>();
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
-	auto now = df::now();
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
+	auto now = core::now();
 
 	const auto present_at = [&](const double target)
 	{
@@ -1770,13 +1770,13 @@ static void should_repaint_the_scrubber_only_while_the_controls_show()
 	present_at(3.0);
 	as.invalids = view_invalid::none;
 	display->update_scrubber(false);
-	assert_equal(str::format_seconds(df::round(session->last_frame_time())), display->_time,
+	assert_equal(core::format_seconds(core::round(session->last_frame_time())), display->_time,
 	             "hidden controls still follow the presented frame");
 	assert_equal(false, as.invalids && view_invalid::view_redraw, "but do not repaint the view");
 
 	present_at(1.0);
 	display->update_scrubber(true);
-	assert_equal(str::format_seconds(df::round(session->last_frame_time())), display->_time,
+	assert_equal(core::format_seconds(core::round(session->last_frame_time())), display->_time,
 	             "shown controls follow the presented frame");
 	assert_equal(true, as.invalids && view_invalid::view_redraw, "and repaint the view when they move");
 }
@@ -1785,7 +1785,7 @@ static void should_repaint_the_scrubber_only_while_the_controls_show()
 // away from a settled target, asking for that target again is a real seek.
 static void should_seek_to_the_same_position_after_playback_has_advanced()
 {
-	const auto load_path = test_files_folder.combine_file("gizmo.mp4");
+	const auto load_path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
@@ -1796,11 +1796,11 @@ static void should_seek_to_the_same_position_after_playback_has_advanced()
 	constexpr auto wanted = 3.0;
 	ses->seek(wanted, false);
 
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
-	auto now = df::now();
+	auto now = core::now();
 
 	for (auto i = 0; i < 300 && std::abs(ses->time() - wanted) > 0.75; ++i)
 	{
@@ -1884,18 +1884,18 @@ static void should_play_streams_the_hardware_path_cannot_decode()
 {
 	for (const auto* const name : {"h264-10bit.mp4", "hevc-422-10bit.mp4"})
 	{
-		const auto path = test_files_folder.combine("excluded1").combine_file(name);
+		const auto path = test_files_folder().combine("excluded1").combine_file(name);
 
 		const auto ses = make_test_session();
 		assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, true, false,
 		                             true, true), std::format("{} opened with hardware decode allowed", name));
 
-		const platform::thread_event video_event(false, false);
-		const platform::thread_event audio_event(false, false);
-		const platform::thread_event read_event(false, false);
+		const core::thread_event video_event(false, false);
+		const core::thread_event audio_event(false, false);
+		const core::thread_event read_event(false, false);
 
 		auto presented = false;
-		auto now = df::now();
+		auto now = core::now();
 
 		for (auto i = 0; i < 200 && !presented; ++i)
 		{
@@ -1911,7 +1911,7 @@ static void should_play_streams_the_hardware_path_cannot_decode()
 }
 
 // The first picture a playback decoder hands the presenter, prepared for upload as playback prepares it.
-static av_frame_ptr first_presented_picture(const df::file_path path)
+static av_frame_ptr first_presented_picture(const core::file_path path)
 {
 	av_format_decoder decoder;
 	av_frame_ptr result;
@@ -1944,7 +1944,7 @@ static av_frame_ptr first_presented_picture(const df::file_path path)
 static void should_reuse_a_prepared_picture_once_it_is_let_go()
 {
 	auto* frame = av_frame_alloc();
-	const df::scope_exit free_frame([&frame] { av_frame_free(&frame); });
+	const core::scope_exit free_frame([&frame] { av_frame_free(&frame); });
 	assert_equal(true, frame != nullptr, "a frame");
 	if (!frame) return;
 
@@ -1960,18 +1960,18 @@ static void should_reuse_a_prepared_picture_once_it_is_let_go()
 	}
 
 	av_scaler scaler;
-	auto first = scaler.presentable_surface(*frame, 1.0, ui::orientation::top_left);
+	auto first = scaler.presentable_surface(*frame, 1.0, core::orientation::top_left);
 	assert_equal(true, first != nullptr, "a picture is prepared");
 	if (!first) return;
 
 	const auto* const first_surface = first.get();
 	const auto* const first_pixels = first->pixels();
 
-	const auto held = scaler.presentable_surface(*frame, 2.0, ui::orientation::top_left);
+	const auto held = scaler.presentable_surface(*frame, 2.0, core::orientation::top_left);
 	assert_equal(true, held && held.get() != first_surface, "one still held is not written over");
 
 	first.reset();
-	const auto again = scaler.presentable_surface(*frame, 3.0, ui::orientation::top_left);
+	const auto again = scaler.presentable_surface(*frame, 3.0, core::orientation::top_left);
 	assert_equal(true, again.get() == first_surface, "one let go is");
 	assert_equal(true, again && again->pixels() == first_pixels, "in the block it had");
 	assert_equal(3.0, again ? again->time() : 0.0, "as the new picture");
@@ -1985,15 +1985,15 @@ static void should_reuse_a_prepared_picture_once_it_is_let_go()
 // would never be shown, so it gets BGRA.
 static void should_prepare_decoded_pictures_for_upload()
 {
-	const auto yuv_before = ui::yuv_textures_enabled;
-	const auto p010_before = ui::p010_textures_enabled;
-	const df::scope_exit restore_yuv([yuv_before, p010_before]
+	const auto yuv_before = render::yuv_textures_enabled;
+	const auto p010_before = render::p010_textures_enabled;
+	const core::scope_exit restore_yuv([yuv_before, p010_before]
 	{
-		ui::yuv_textures_enabled = yuv_before;
-		ui::p010_textures_enabled = p010_before;
+		render::yuv_textures_enabled = yuv_before;
+		render::p010_textures_enabled = p010_before;
 	});
 
-	const auto close_to = [](const ui::color32 a, const ui::color32 b)
+	const auto close_to = [](const core::color32 a, const core::color32 b)
 	{
 		for (auto shift = 0; shift < 24; shift += 8)
 		{
@@ -2003,27 +2003,27 @@ static void should_prepare_decoded_pictures_for_upload()
 		return true;
 	};
 
-	for (const auto& [name, planar] : {std::pair{"anamorphic.mp4", ui::texture_format::NV12},
-	                                  std::pair{"excluded1/h264-10bit.mp4", ui::texture_format::P010}})
+	for (const auto& [name, planar] : {std::pair{"anamorphic.mp4", core::texture_format::NV12},
+	                                  std::pair{"excluded1/h264-10bit.mp4", core::texture_format::P010}})
 	{
 		const auto path = std::string_view(name).starts_with("excluded1/")
-			                  ? test_files_folder.combine("excluded1").combine_file(std::string_view(name).substr(10))
-			                  : test_files_folder.combine_file(name);
+			                  ? test_files_folder().combine("excluded1").combine_file(std::string_view(name).substr(10))
+			                  : test_files_folder().combine_file(name);
 
-		ui::yuv_textures_enabled = false;
-		ui::p010_textures_enabled = false;
+		render::yuv_textures_enabled = false;
+		render::p010_textures_enabled = false;
 		const auto packed = av_frame_surface(first_presented_picture(path));
-		assert_equal(true, packed && packed->format() == ui::texture_format::RGB,
+		assert_equal(true, packed && packed->format() == core::texture_format::RGB,
 		             std::format("{} is prepared as BGRA for a renderer without YUV", name));
 
-		ui::yuv_textures_enabled = true;
+		render::yuv_textures_enabled = true;
 		const auto nv12_only = av_frame_surface(first_presented_picture(path));
-		const auto nv12_only_format = planar == ui::texture_format::NV12 ? planar : ui::texture_format::RGB;
+		const auto nv12_only_format = planar == core::texture_format::NV12 ? planar : core::texture_format::RGB;
 		assert_equal(true, nv12_only && nv12_only->format() == nv12_only_format,
 		             std::format("{} is prepared as {} for a device that samples NV12 but not P010", name,
 		                         to_string(nv12_only_format)));
 
-		ui::p010_textures_enabled = true;
+		render::p010_textures_enabled = true;
 		const auto planes = av_frame_surface(first_presented_picture(path));
 		assert_equal(true, planes && planes->format() == planar,
 		             std::format("{} is prepared as {} for a renderer that samples it", name, to_string(planar)));
@@ -2033,7 +2033,7 @@ static void should_prepare_decoded_pictures_for_upload()
 		assert_equal(true, packed->dimensions() == planes->dimensions(), "at the picture's own size");
 
 		av_scaler scaler;
-		const auto unpacked = std::make_shared<ui::surface>();
+		const auto unpacked = std::make_shared<core::surface>();
 		assert_equal(true, scaler.convert_yuv_surface(*planes, unpacked), "the planes convert back");
 
 		const auto size = packed->dimensions();
@@ -2078,14 +2078,14 @@ static void should_decode_av1_without_hardware()
 	assert_equal(true, avcodec_find_decoder_by_name("av1") != nullptr,
 	             "and FFmpeg's own decoder stays registered for the hardware path");
 
-	const auto path = test_files_folder.combine("excluded1").combine_file("av1.mp4");
+	const auto path = test_files_folder().combine("excluded1").combine_file("av1.mp4");
 
 	av_format_decoder decoder;
 	assert_equal(true, decoder.open(path, media_intent::thumbnail), "AV1 file opened");
 	decoder.init_streams(-1, -1, false, true, false);
 	assert_equal(true, decoder.has_video(), "an AV1 decoder exists without the GPU");
 
-	ui::surface_ptr thumbnail;
+	core::surface_ptr thumbnail;
 	assert_equal(true, decoder.extract_thumbnail(thumbnail, {64, 64}, 1, 100), "AV1 thumbnail decoded");
 	assert_equal(true, is_valid(thumbnail), "with pixels");
 }
@@ -2108,8 +2108,8 @@ static void should_describe_a_video_stream_profile_depth_and_transfer()
 	                      expected_stream{"excluded1/hdr-hlg.mp4", "Main 10", 10, "HLG"}})
 	{
 		const auto path = e.name.starts_with("excluded1/")
-			                  ? test_files_folder.combine("excluded1").combine_file(e.name.substr(10))
-			                  : test_files_folder.combine_file(e.name);
+			                  ? test_files_folder().combine("excluded1").combine_file(e.name.substr(10))
+			                  : test_files_folder().combine_file(e.name);
 
 		av_format_decoder decoder;
 		assert_equal(true, decoder.open(path, media_intent::thumbnail), std::format("{} opened", e.name));
@@ -2142,15 +2142,15 @@ static void should_describe_a_video_stream_profile_depth_and_transfer()
 // video, whose HLG lies mostly above reference white.
 static void should_tone_map_hdr_video_for_an_sdr_display()
 {
-	const auto yuv_before = ui::yuv_textures_enabled;
-	const auto p010_before = ui::p010_textures_enabled;
-	const df::scope_exit restore_yuv([yuv_before, p010_before]
+	const auto yuv_before = render::yuv_textures_enabled;
+	const auto p010_before = render::p010_textures_enabled;
+	const core::scope_exit restore_yuv([yuv_before, p010_before]
 	{
-		ui::yuv_textures_enabled = yuv_before;
-		ui::p010_textures_enabled = p010_before;
+		render::yuv_textures_enabled = yuv_before;
+		render::p010_textures_enabled = p010_before;
 	});
 
-	const auto centre = [](const ui::const_surface_ptr& s)
+	const auto centre = [](const core::const_surface_ptr& s)
 	{
 		const auto px = s->get_pixel(s->dimensions().cx / 2, s->dimensions().cy / 2);
 		return std::array{static_cast<int>(px >> 16 & 0xff), static_cast<int>(px >> 8 & 0xff), static_cast<int>(px & 0xff)};
@@ -2173,13 +2173,13 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 			return std::ranges::min(rgb) >= e.lowest && std::ranges::max(rgb) <= e.highest;
 		};
 
-		const auto path = test_files_folder.combine("excluded1").combine_file(name);
+		const auto path = test_files_folder().combine("excluded1").combine_file(name);
 
 		av_format_decoder decoder;
 		assert_equal(true, decoder.open(path, media_intent::thumbnail), std::format("{} opened", name));
 		decoder.init_streams(-1, -1, false, true, false);
 
-		ui::surface_ptr thumbnail;
+		core::surface_ptr thumbnail;
 		assert_equal(true, decoder.extract_thumbnail(thumbnail, {64, 64}, 0, 100, false) && is_valid(thumbnail),
 		             std::format("{} thumbnail decoded", name));
 		if (!is_valid(thumbnail)) continue;
@@ -2189,16 +2189,16 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 		                                                         name, e.shown, thumbnail_rgb[0], thumbnail_rgb[1],
 		                                                         thumbnail_rgb[2]));
 
-		ui::yuv_textures_enabled = false;
-		ui::p010_textures_enabled = false;
+		render::yuv_textures_enabled = false;
+		render::p010_textures_enabled = false;
 		const auto packed = av_frame_surface(first_presented_picture(path));
-		assert_equal(true, packed && packed->format() == ui::texture_format::RGB,
+		assert_equal(true, packed && packed->format() == core::texture_format::RGB,
 		             std::format("{} is prepared as BGRA for a renderer without YUV", name));
 
-		ui::yuv_textures_enabled = true;
-		ui::p010_textures_enabled = true;
+		render::yuv_textures_enabled = true;
+		render::p010_textures_enabled = true;
 		const auto planes = av_frame_surface(first_presented_picture(path));
-		assert_equal(true, planes && planes->format() == ui::texture_format::P010 && planes->tone_map(),
+		assert_equal(true, planes && planes->format() == core::texture_format::P010 && planes->tone_map(),
 		             std::format("{} is prepared as P010 planes with the cube that maps them", name));
 
 		if (!packed || !planes) continue;
@@ -2208,7 +2208,7 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 		                                                     name, e.shown, packed_rgb[0], packed_rgb[1], packed_rgb[2]));
 
 		av_scaler scaler;
-		const auto mapped = std::make_shared<ui::surface>();
+		const auto mapped = std::make_shared<core::surface>();
 		assert_equal(true, scaler.convert_yuv_surface(*planes, mapped), std::format("{} planes convert", name));
 
 		const auto mapped_rgb = centre(mapped);
@@ -2226,13 +2226,13 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 // left that clip with no thumbnail at all.
 static void should_thumbnail_a_clip_whose_only_picture_comes_at_the_end()
 {
-	const auto path = test_files_folder.combine("excluded1").combine_file("single-frame.mp4");
+	const auto path = test_files_folder().combine("excluded1").combine_file("single-frame.mp4");
 
 	av_format_decoder decoder;
 	assert_equal(true, decoder.open(path, media_intent::thumbnail), "one-picture clip opened");
 	decoder.init_streams(-1, -1, false, true, false);
 
-	ui::surface_ptr thumbnail;
+	core::surface_ptr thumbnail;
 	assert_equal(true, decoder.extract_thumbnail(thumbnail, {64, 64}, 0, 100, false), "thumbnail decoded");
 	assert_equal(true, is_valid(thumbnail), "with pixels");
 }
@@ -2241,7 +2241,7 @@ static void should_thumbnail_a_clip_whose_only_picture_comes_at_the_end()
 // decoder does not read the soundtrack, and an audio walk does not read the picture.
 static void should_not_read_streams_nothing_decodes()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	av_format_decoder video_only;
 	assert_equal(true, video_only.open(path, media_intent::thumbnail), "fixture opened");
@@ -2314,12 +2314,12 @@ static void should_not_read_streams_nothing_decodes()
 // turn left the picture trailing the pointer.
 static void should_make_only_the_latest_of_the_waiting_seeks()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto player = make_test_player();
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false, false, false),
 	             "the video opens");
-	const df::scope_exit close([ses] { ses->close(false); });
+	const core::scope_exit close([ses] { ses->close(false); });
 
 	const auto before = ses->seek_generation();
 	player->seek(ses, 1.0, false);
@@ -2328,7 +2328,7 @@ static void should_make_only_the_latest_of_the_waiting_seeks()
 	assert_equal(true, player->run_queued_commands(), "the read thread's queue runs");
 
 	assert_equal(before + 1, ses->seek_generation(), "one seek is made");
-	assert_equal(3.0, ses->pos(df::now()), "to where the pointer stopped");
+	assert_equal(3.0, ses->pos(core::now()), "to where the pointer stopped");
 
 	player->seek(ses, 1.0, false);
 	assert_equal(true, player->run_queued_commands(), "and a seek on its own");
@@ -2383,7 +2383,7 @@ static void should_correct_a_settled_frame_only_when_it_is_past_the_target()
 // earlier target it falls -- and a step forward must not restart the decoder to get there.
 static void should_land_merged_scrub_seeks_on_their_own_frame()
 {
-	const auto path = test_files_folder.combine_file("gizmo.mp4");
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false,
@@ -2393,11 +2393,11 @@ static void should_land_merged_scrub_seeks_on_their_own_frame()
 	assert_equal(true, rate > 0.0, "fixture declares a frame rate");
 	const auto half_frame = 0.5 / rate;
 
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
-	const platform::thread_event read_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
+	const core::thread_event read_event(false, false);
 
-	auto now = df::now();
+	auto now = core::now();
 
 	// Pumps until the presented frame stops moving. Stopping as soon as it came near the target would
 	// catch a frame the presenter was only walking past on its way somewhere else.
@@ -2416,7 +2416,7 @@ static void should_land_merged_scrub_seeks_on_their_own_frame()
 			ses->update_for_present(now);
 
 			const auto t = ses->time();
-			stable = df::equiv(t, last) ? stable + 1 : 0;
+			stable = core::equiv(t, last) ? stable + 1 : 0;
 			last = t;
 		}
 
@@ -2498,7 +2498,7 @@ static void should_reject_stale_video_generations_while_settling()
 // frame everywhere looks exactly like a preview that has stopped working.
 static void should_preview_video_frames_at_hover_positions()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 
 	media_preview_state preview;
 	assert_equal(true, preview.open1(path), "preview decoder opened");
@@ -2510,7 +2510,7 @@ static void should_preview_video_frames_at_hover_positions()
 
 	for (const auto pos : {10, 45, 80})
 	{
-		auto surface = std::make_shared<ui::surface>();
+		auto surface = std::make_shared<core::surface>();
 
 		assert_equal(true, preview.decoder1->extract_seek_frame(surface, {256, 256}, pos, 100),
 		             std::format("seek preview decoded at {}%", pos));
@@ -2529,7 +2529,7 @@ static void should_preview_video_frames_at_hover_positions()
 	// start after it has been left near the end is what proves it seeks: every frame where it was
 	// left is already past the requested time, so a decoder that walks forward without seeking
 	// answers with the frame it happens to be sitting on.
-	auto thumbnail = std::make_shared<ui::surface>();
+	auto thumbnail = std::make_shared<core::surface>();
 	assert_equal(true, preview.decoder1->extract_thumbnail(thumbnail, {256, 256}, 1, 100),
 	             "hover thumbnail decoded from the reused decoder");
 	assert_equal(true, is_valid(thumbnail), "hover thumbnail surface");
@@ -2545,7 +2545,7 @@ static void should_preview_video_frames_at_hover_positions()
 // more than the preview itself. It is also what makes an abandoned walk safe to retry.
 static void should_reuse_the_preview_decoder_across_hovers()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 
 	media_preview_state preview;
 	assert_equal(true, preview.open1(path), "preview decoder opened");
@@ -2558,7 +2558,7 @@ static void should_reuse_the_preview_decoder_across_hovers()
 		assert_equal(true, first == preview.decoder1.get(),
 		             std::format("hover at {}% reused the open decoder rather than reopening", pos));
 
-		auto surface = std::make_shared<ui::surface>();
+		auto surface = std::make_shared<core::surface>();
 		assert_equal(true, preview.decoder1->extract_seek_frame(surface, {256, 256}, pos, 100),
 		             std::format("preview decoded at {}%", pos));
 	}
@@ -2568,7 +2568,7 @@ static void should_reuse_the_preview_decoder_across_hovers()
 	std::atomic_bool superseded = true;
 	preview.superseded = &superseded;
 
-	auto abandoned = std::make_shared<ui::surface>();
+	auto abandoned = std::make_shared<core::surface>();
 	assert_equal(true,
 	             preview.decoder1->extract_seek_frame(abandoned, {256, 256}, 60, 100, preview.abandon_token()),
 	             "an abandoned walk still answers with the frame it reached");
@@ -2582,7 +2582,7 @@ static void should_reuse_the_preview_decoder_across_hovers()
 // seek already landed on qualifies, so the walk stops there instead of decoding the rest of the GOP.
 static void should_allow_tolerance_for_hover_thumbnails()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 
 	av_format_decoder dec;
 	assert_equal(true, dec.open(path, media_intent::thumbnail), "decoder opened");
@@ -2593,13 +2593,13 @@ static void should_allow_tolerance_for_hover_thumbnails()
 	constexpr auto pos = 10.0;
 	const auto wanted = duration * pos / 100.0;
 
-	ui::surface_ptr key_frame;
+	core::surface_ptr key_frame;
 	assert_equal(true, dec.extract_thumbnail(key_frame, {256, 256}, pos, 100, false), "key frame decoded");
 
-	ui::surface_ptr exact;
+	core::surface_ptr exact;
 	assert_equal(true, dec.extract_thumbnail(exact, {256, 256}, pos, 100, true, 0.0), "exact frame decoded");
 
-	ui::surface_ptr toleranced;
+	core::surface_ptr toleranced;
 	assert_equal(true, dec.extract_thumbnail(toleranced, {256, 256}, pos, 100, true, 0.02),
 	             "toleranced frame decoded");
 
@@ -2608,7 +2608,7 @@ static void should_allow_tolerance_for_hover_thumbnails()
 	assert_equal(true, std::abs(key_frame->time() - wanted) <= duration * 0.02,
 	             "the key frame is inside the tolerance this test asks for");
 
-	assert_equal(true, df::equiv(toleranced->time(), key_frame->time()),
+	assert_equal(true, core::equiv(toleranced->time(), key_frame->time()),
 	             std::format("the walk stopped at the key frame ({:.2f}s, key {:.2f}s, exact {:.2f}s)",
 	                         toleranced->time(), key_frame->time(), exact->time()));
 
@@ -2650,8 +2650,8 @@ static void should_reject_superseded_av_session()
 static void should_key_video_uploads_by_destination_texture()
 {
 	av_texture_upload_state state;
-	ui::texture* first = std::bit_cast<ui::texture*>(static_cast<uintptr_t>(0x1000));
-	ui::texture* second = std::bit_cast<ui::texture*>(static_cast<uintptr_t>(0x2000));
+	render::texture* first = std::bit_cast<render::texture*>(static_cast<uintptr_t>(0x1000));
+	render::texture* second = std::bit_cast<render::texture*>(static_cast<uintptr_t>(0x2000));
 
 	assert_equal(true, should_upload_video_frame(state, first, false, 4.0),
 	             "an empty destination needs the held frame");
@@ -2713,7 +2713,7 @@ static void should_save_the_accepted_target_while_synchronizing()
 // the request is behind it.
 static void should_walk_video_frames_forward()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 
 	av_format_decoder dec;
 	assert_equal(true, dec.open(path, media_intent::thumbnail), "decoder opened");
@@ -2729,7 +2729,7 @@ static void should_walk_video_frames_forward()
 	{
 		const auto wanted = start + 0.2 + step * 0.08;
 
-		ui::surface_ptr s;
+		core::surface_ptr s;
 		assert_equal(true, dec.extract_frame_at(s, {256, 256}, wanted, 0.02),
 		             std::format("frame decoded at {:.2f}s", wanted));
 		assert_equal(true, is_valid(s), "frame surface");
@@ -2750,7 +2750,7 @@ static void should_walk_video_frames_forward()
 	// request, so every frame it reaches is late and it hands back the first one it sees.
 	const auto back_wanted = start + 0.2;
 
-	ui::surface_ptr back;
+	core::surface_ptr back;
 	assert_equal(true, dec.extract_frame_at(back, {256, 256}, back_wanted, 0.02), "frame decoded behind the walk");
 	assert_equal(true, std::abs(back->time() - back_wanted) < 0.5,
 	             std::format("a request behind the decoder seeks (wanted {:.2f}s, got {:.2f}s)",
@@ -2766,7 +2766,7 @@ static void should_walk_video_frames_forward()
 // target. A sequential extractor must retain that bounded bracket rather than walking past it.
 static void should_reuse_the_nearest_frame_from_the_sequential_bracket()
 {
-	const auto path = test_files_folder.combine_file("indy.mp4");
+	const auto path = test_files_folder().combine_file("indy.mp4");
 
 	av_format_decoder dec;
 	assert_equal(true, dec.open(path, media_intent::thumbnail), "decoder opened");
@@ -2776,19 +2776,19 @@ static void should_reuse_the_nearest_frame_from_the_sequential_bracket()
 	const auto start = dec.start_time();
 	const auto target = start + 0.35;
 
-	ui::surface_ptr first;
+	core::surface_ptr first;
 	assert_equal(true, dec.extract_frame_at(first, {256, 256}, target, 0.0), "first frame decoded");
 	assert_equal(true, is_valid(first), "first frame surface");
 
-	ui::surface_ptr repeated;
+	core::surface_ptr repeated;
 	assert_equal(true, dec.extract_frame_at(repeated, {256, 256}, first->time(), 0.0),
 	             "exact repeated timestamp decoded");
 	assert_equal(true, is_valid(repeated), "repeated frame surface");
-	assert_equal(true, df::equiv(repeated->time(), first->time()),
+	assert_equal(true, core::equiv(repeated->time(), first->time()),
 	             std::format("repeating {:.3f}s reuses that frame instead of walking to {:.3f}s",
 	                         first->time(), repeated->time()));
 
-	ui::surface_ptr next;
+	core::surface_ptr next;
 	const auto near_next = first->time() + 0.02;
 	assert_equal(true, dec.extract_frame_at(next, {256, 256}, near_next, 0.0),
 	             "nearby forward frame decoded");
@@ -2823,7 +2823,7 @@ static void should_choose_the_retained_frame_when_it_is_nearest_to_a_forward_req
 // next forward request must seek rather than trying to walk from an already-drained decoder.
 static void should_extract_threaded_video_frames_sequentially_to_eof()
 {
-	const auto path = test_files_folder.combine_file("StPauls.MOV");
+	const auto path = test_files_folder().combine_file("StPauls.MOV");
 
 	av_format_decoder dec;
 	assert_equal(true, dec.open(path, media_intent::thumbnail), "decoder opened");
@@ -2841,7 +2841,7 @@ static void should_extract_threaded_video_frames_sequentially_to_eof()
 
 	for (auto target = start; target < end; target += step)
 	{
-		ui::surface_ptr frame;
+		core::surface_ptr frame;
 		assert_equal(true, dec.extract_frame_at(frame, {256, 256}, target, step / 2.0),
 		             std::format("threaded frame decoded at {:.3f}s", target));
 		assert_equal(true, is_valid(frame), "threaded frame surface");
@@ -2866,7 +2866,7 @@ static void should_extract_threaded_video_frames_sequentially_to_eof()
 // what a seek to the same time already answered.
 static void should_answer_with_the_last_frame_past_the_end_of_the_picture()
 {
-	const auto path = test_files_folder.combine("excluded1").combine_file("h264-10bit.mp4");
+	const auto path = test_files_folder().combine("excluded1").combine_file("h264-10bit.mp4");
 
 	for (const auto threads : {false, true})
 	{
@@ -2880,17 +2880,17 @@ static void should_answer_with_the_last_frame_past_the_end_of_the_picture()
 
 		for (auto target = dec.start_time(); target <= end; target += step)
 		{
-			ui::surface_ptr frame;
+			core::surface_ptr frame;
 			assert_equal(true, dec.extract_frame_at(frame, {256, 256}, target, step / 2.0),
 			             std::format("a frame is answered at {:.3f}s of {:.3f}s, threads {}", target, end, threads));
 			if (!is_valid(frame)) break;
 			last = frame->time();
 		}
 
-		ui::surface_ptr past;
+		core::surface_ptr past;
 		assert_equal(true, dec.extract_frame_at(past, {256, 256}, end, step / 2.0),
 		             std::format("the container's end is answered, threads {}", threads));
-		assert_equal(true, is_valid(past) && df::equiv(last, past->time()), "with the last frame there is");
+		assert_equal(true, is_valid(past) && core::equiv(last, past->time()), "with the last frame there is");
 	}
 }
 
@@ -2900,11 +2900,11 @@ static void should_answer_with_the_last_frame_past_the_end_of_the_picture()
 // measurement that answers the same number everywhere draws a flat line and says nothing.
 static void should_measure_audio_peaks()
 {
-	df::file_path voiced_path;
+	core::file_path voiced_path;
 
 	for (const auto* const name : {"indy.mp4", "gizmo.mp4", "tagged.mkv", "tagged.webm", "anamorphic.mp4"})
 	{
-		const auto candidate = test_files_folder.combine_file(name);
+		const auto candidate = test_files_folder().combine_file(name);
 
 		av_format_decoder probe;
 		if (!probe.open(candidate, media_intent::metadata)) continue;
@@ -2950,11 +2950,11 @@ static void should_measure_audio_peaks()
 // long clip spending hundreds of megabytes on a preview.
 static void should_decode_audio_into_a_buffer()
 {
-	df::file_path voiced_path;
+	core::file_path voiced_path;
 
 	for (const auto* const name : {"indy.mp4", "gizmo.mp4", "tagged.mkv", "tagged.webm", "anamorphic.mp4"})
 	{
-		const auto candidate = test_files_folder.combine_file(name);
+		const auto candidate = test_files_folder().combine_file(name);
 
 		av_format_decoder probe;
 		if (!probe.open(candidate, media_intent::metadata)) continue;
@@ -3022,11 +3022,11 @@ static void should_decode_audio_into_a_buffer()
 // after it. One such error used to discard the whole waveform and the whole PCM range.
 static void should_keep_audio_around_a_damaged_packet()
 {
-	df::file_path voiced_path;
+	core::file_path voiced_path;
 
 	for (const auto* const name : {"indy.mp4", "gizmo.mp4", "tagged.mkv", "tagged.webm", "anamorphic.mp4"})
 	{
-		const auto candidate = test_files_folder.combine_file(name);
+		const auto candidate = test_files_folder().combine_file(name);
 		av_format_decoder probe;
 		if (!probe.open(candidate, media_intent::metadata)) continue;
 		probe.init_streams(-1, -1, false, false, false);
@@ -3045,7 +3045,7 @@ static void should_keep_audio_around_a_damaged_packet()
 	{
 		return status == 0 && ++received == 1 ? AVERROR_INVALIDDATA : status;
 	};
-	const df::scope_exit restore([] { test_audio_receive_status = {}; });
+	const core::scope_exit restore([] { test_audio_receive_status = {}; });
 
 	constexpr int buckets = 64;
 	av_format_decoder waveform;
@@ -3078,11 +3078,11 @@ static void should_keep_audio_around_a_damaged_packet()
 // opened on an attenuated stretch: a dip at every window boundary and at the start of every clip.
 static void should_read_an_audio_range_as_the_stream_holds_it()
 {
-	df::file_path voiced_path;
+	core::file_path voiced_path;
 
 	for (const auto* const name : {"indy.mp4", "gizmo.mp4", "tagged.mkv", "tagged.webm", "anamorphic.mp4"})
 	{
-		const auto candidate = test_files_folder.combine_file(name);
+		const auto candidate = test_files_folder().combine_file(name);
 
 		av_format_decoder probe;
 		if (!probe.open(candidate, media_intent::metadata)) continue;
@@ -3149,7 +3149,7 @@ static void should_read_an_audio_range_as_the_stream_holds_it()
 	                         ratio, boundary));
 }
 
-static df::file_path write_resampling_wave(const int input_rate, const bool step)
+static core::file_path write_resampling_wave(const int input_rate, const bool step)
 {
 	const auto path = _temps.next_path(".wav");
 	std::string wave;
@@ -3190,7 +3190,7 @@ static void should_reset_audio_resampling_after_a_seek()
 	output.sample_rate = 48000;
 	auto* frame = av_frame_alloc();
 	assert_equal(true, frame != nullptr, "audio frame allocated");
-	const df::scope_exit release([&frame] { av_frame_free(&frame); });
+	const core::scope_exit release([&frame] { av_frame_free(&frame); });
 	frame->format = AV_SAMPLE_FMT_S16;
 	frame->sample_rate = source.sample_rate;
 	frame->nb_samples = 441;
@@ -3235,7 +3235,7 @@ static void should_follow_midstream_pcm_sample_rate()
 		const auto* source = reinterpret_cast<const int16_t*>(frame.data[0]);
 		auto* replacement = av_frame_alloc();
 		assert_equal(true, replacement != nullptr, "replacement frame allocated");
-		const df::scope_exit release([&replacement] { av_frame_free(&replacement); });
+		const core::scope_exit release([&replacement] { av_frame_free(&replacement); });
 		assert_equal(0, av_frame_copy_props(replacement, &frame), "timestamps retained across rate change");
 		replacement->format = AV_SAMPLE_FMT_S16P;
 		replacement->sample_rate = frame.sample_rate * 2;
@@ -3252,7 +3252,7 @@ static void should_follow_midstream_pcm_sample_rate()
 		av_frame_unref(&frame);
 		av_frame_move_ref(&frame, replacement);
 	};
-	const df::scope_exit restore([] { test_audio_pcm_frame = {}; });
+	const core::scope_exit restore([] { test_audio_pcm_frame = {}; });
 	const auto pcm = decoder.extract_audio_pcm_range(48000, 0, 0.5);
 	assert_equal(true, frames > 2, "fixture crossed a real decoded-frame format boundary");
 	assert_equal(48000_z, pcm.size(), "requested stereo duration is retained");
@@ -3301,10 +3301,10 @@ static void should_keep_resampled_audio_continuous()
 // SID tunes
 //
 
-static df::file_path write_test_sid_tune(const std::vector<uint8_t>& tune)
+static core::file_path write_test_sid_tune(const std::vector<uint8_t>& tune)
 {
 	const auto path = _temps.next_path(".sid");
-	assert_equal(true, df::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
+	assert_equal(true, platform::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
 	return path;
 }
 
@@ -3495,7 +3495,7 @@ static void should_read_ass_script_headers()
 
 	const auto& d = script.style("Default");
 	assert_equal("Verdana", d.font, "font");
-	assert_equal(true, df::equiv(60.0, d.size), "size");
+	assert_equal(true, core::equiv(60.0, d.size), "size");
 	assert_equal(0xFF00FFFFu, d.primary, "yellow, where ASS's alpha 00 is opaque");
 	assert_equal(0xFF101010u, d.outline_color, "outline colour");
 	assert_equal(true, d.bold, "-1 is true");
@@ -3532,8 +3532,8 @@ static void should_style_ass_dialogue()
 
 	const auto sign = parse_ass_dialogue("{\\an8\\pos(320,40)\\fad(200,200)}Sign{\\alpha&H80&} faded", style);
 	assert_equal(8, sign.alignment, "\\an");
-	assert_equal(true, sign.position.has_value() && df::equiv(sign.position->X, 320.0) &&
-	             df::equiv(sign.position->Y, 40.0), "\\pos");
+	assert_equal(true, sign.position.has_value() && core::equiv(sign.position->X, 320.0) &&
+	             core::equiv(sign.position->Y, 40.0), "\\pos");
 	assert_equal(0x7Fu, sign.runs.back().color >> 24, "\\alpha");
 	assert_equal("Sign faded", sign.plain_text(), "overrides it does not draw are dropped");
 
@@ -3559,7 +3559,7 @@ static void should_place_subtitles_on_the_picture()
 
 	const auto expect = [](const rectd r, const double x, const double y, const std::string_view what)
 	{
-		assert_equal(true, df::equiv(r.X, x, 0.01) && df::equiv(r.Y, y, 0.01),
+		assert_equal(true, core::equiv(r.X, x, 0.01) && core::equiv(r.Y, y, 0.01),
 		             std::format("{} at {:.1f},{:.1f}", what, r.X, r.Y));
 	};
 
@@ -3579,8 +3579,8 @@ static void should_place_subtitles_on_the_picture()
 
 static void should_lay_subtitles_out_on_the_picture()
 {
-	const auto surface = std::make_shared<ui::surface>();
-	surface->alloc(4, 4, ui::texture_format::ARGB, ui::orientation::top_left);
+	const auto surface = std::make_shared<core::surface>();
+	surface->alloc(4, 4, core::texture_format::ARGB, core::orientation::top_left);
 
 	const auto line = [&surface](const uint64_t id, const rectd bounds)
 	{
@@ -3668,8 +3668,8 @@ static void should_keep_subtitle_events_by_playhead()
 	if (!shown.empty() && !shown.front().bitmaps.empty())
 	{
 		const auto b = shown.front().bitmaps.front().bounds;
-		assert_equal(true, df::equiv(b.X, 20.0) && df::equiv(b.Y, 40.0) && df::equiv(b.Width, 8.0) &&
-		             df::equiv(b.Height, 4.0), "scaled from its canvas to the video");
+		assert_equal(true, core::equiv(b.X, 20.0) && core::equiv(b.Y, 40.0) && core::equiv(b.Width, 8.0) &&
+		             core::equiv(b.Height, 4.0), "scaled from its canvas to the video");
 	}
 
 	assert_equal(0_z, events.at(4.0, 1, false).size(), "nothing between lines");
@@ -3732,7 +3732,7 @@ static void should_show_one_picture_subtitle_at_a_time()
 	events.prepare(4.5);
 	const auto late = events.at(4.5, 1, false);
 	assert_equal(1_z, late.size(), "a picture read after the one that replaced it");
-	assert_equal(true, !late.empty() && df::equiv(late.front().end, 5.0), "ends where that one starts");
+	assert_equal(true, !late.empty() && core::equiv(late.front().end, 5.0), "ends where that one starts");
 
 	subtitle_event clear;
 	clear.start = 3.0;
@@ -3745,9 +3745,9 @@ static void should_show_one_picture_subtitle_at_a_time()
 
 	if (file.size() == 3)
 	{
-		assert_equal(true, df::equiv(file[0].start, 1.0) && df::equiv(file[0].end, 2.0), "the next picture ends the first");
-		assert_equal(true, df::equiv(file[1].end, 3.0), "the clear ends the second");
-		assert_equal(true, df::equiv(file[2].end, 6.0), "and the last keeps the end it states");
+		assert_equal(true, core::equiv(file[0].start, 1.0) && core::equiv(file[0].end, 2.0), "the next picture ends the first");
+		assert_equal(true, core::equiv(file[1].end, 3.0), "the clear ends the second");
+		assert_equal(true, core::equiv(file[2].end, 6.0), "and the last keeps the end it states");
 	}
 }
 
@@ -3772,8 +3772,8 @@ static void should_lay_subtitles_out_for_the_picture_shape()
 	if (!shown.empty() && !shown.front().bitmaps.empty())
 	{
 		const auto b = shown.front().bitmaps.front().bounds;
-		assert_equal(true, df::equiv(b.X, 10.0) && df::equiv(b.Y, 80.0) && df::equiv(b.Width, 4.0) &&
-		             df::equiv(b.Height, 8.0), "on that shape");
+		assert_equal(true, core::equiv(b.X, 10.0) && core::equiv(b.Y, 80.0) && core::equiv(b.Width, 4.0) &&
+		             core::equiv(b.Height, 8.0), "on that shape");
 	}
 
 	events.layout({100, 200});
@@ -3792,7 +3792,7 @@ static void should_choose_subtitles_by_language_and_mode()
 	};
 
 	subtitle_offer german;
-	german.choice.sidecar = df::file_path(R"(C:\films\Movie.de.srt)");
+	german.choice.sidecar = core::file_path(R"(C:\films\Movie.de.srt)");
 	german.language = "de";
 
 	const std::vector offers = {offer(2, "eng", false), offer(3, "eng", true), offer(4, "fre", false), german};
@@ -3830,13 +3830,13 @@ static void should_choose_subtitles_by_language_and_mode()
 	             "only the words after it count");
 	assert_equal("", read_sidecar_subtitle_name("English.srt", "Movie.mkv").language, "nor does a file of another name");
 
-	const auto video = df::file_path(R"(C:\films\Movie.mkv)");
+	const auto video = core::file_path(R"(C:\films\Movie.mkv)");
 	const auto sidecars = sidecar_subtitle_offers(video, R"(Movie.en.srt Movie.nfo Movie.idx Movie.sub "Movie.de forced.ass" Other.sub)");
 	assert_equal(4_z, sidecars.size(), "every subtitle but the .sub read through its .idx");
 
 	if (sidecars.size() == 4)
 	{
-		assert_equal(true, sidecars[0].choice.sidecar == df::file_path(R"(C:\films\Movie.en.srt)"), "beside the video");
+		assert_equal(true, sidecars[0].choice.sidecar == core::file_path(R"(C:\films\Movie.en.srt)"), "beside the video");
 		assert_equal("en", sidecars[0].language, "its language");
 		assert_equal("Movie.idx", sidecars[1].title, "a VobSub by its .idx");
 		assert_equal(true, sidecars[2].forced && sidecars[2].language == "de", "a quoted name");
@@ -3872,7 +3872,7 @@ static void should_decode_subtitle_sidecars()
 	if (from_srt.events.size() == 2)
 	{
 		const auto& first = from_srt.events[0];
-		assert_equal(true, df::equiv(first.start, 1.0, 0.001) && df::equiv(first.end, 2.5, 0.001), "timed");
+		assert_equal(true, core::equiv(first.start, 1.0, 0.001) && core::equiv(first.end, 2.5, 0.001), "timed");
 		assert_equal(true, first.text.has_value(), "text");
 		assert_equal("Hello world", first.text ? first.text->plain_text() : "", "its tags read as styles");
 		assert_equal(true, first.text && first.text->runs.back().italic, "italic");
@@ -3908,7 +3908,7 @@ static void should_decode_subtitle_sidecars()
 		assert_equal(8, line.alignment, "its style's alignment");
 		assert_equal("Sign text", line.plain_text(), "its text");
 		assert_equal(true, line.runs.front().bold, "and overrides");
-		assert_equal(true, df::equiv(from_ass.events[0].end, 3.0, 0.001), "its end");
+		assert_equal(true, core::equiv(from_ass.events[0].end, 3.0, 0.001), "its end");
 	}
 
 	assert_equal(0_z, decode_subtitle_file(folder.combine_file("missing.srt")).events.size(), "no file, no lines");
@@ -3974,7 +3974,7 @@ static void should_read_picture_subtitles_from_a_sup_file()
 	const auto path = _temps.next_path(".sup");
 	const auto bytes = pgs_display_set(1.0, 0, {720, 480}, pointi(100, 400)) +
 		pgs_display_set(2.0, 1, {1920, 1080}, pointi(900, 1000)) + pgs_display_set(3.0, 2, {1920, 1080}, {});
-	assert_equal(true, df::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
+	assert_equal(true, platform::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
 	             "the file is written");
 
 	const auto file = decode_subtitle_file(path);
@@ -3983,9 +3983,9 @@ static void should_read_picture_subtitles_from_a_sup_file()
 
 	const auto& first = file.events[0];
 	const auto& second = file.events[1];
-	assert_equal(true, df::equiv(first.start, 1.0, 0.001) && df::equiv(first.end, 2.0, 0.001),
+	assert_equal(true, core::equiv(first.start, 1.0, 0.001) && core::equiv(first.end, 2.0, 0.001),
 	             "the next picture ends the first");
-	assert_equal(true, df::equiv(second.start, 2.0, 0.001) && df::equiv(second.end, 3.0, 0.001),
+	assert_equal(true, core::equiv(second.start, 2.0, 0.001) && core::equiv(second.end, 3.0, 0.001),
 	             "and the clear the second");
 	assert_equal(true, first.canvas == sizei(720, 480), "each on the canvas its presentation states");
 	assert_equal(true, second.canvas == sizei(1920, 1080), "which can change");
@@ -4047,7 +4047,7 @@ static void should_decode_an_embedded_subtitle_track()
 {
 	const auto path = _temps.next_path(".mkv");
 	const auto bytes = make_subtitle_mkv();
-	assert_equal(true, df::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
+	assert_equal(true, platform::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
 	             "the file is written");
 
 	av_format_decoder dec;
@@ -4074,20 +4074,20 @@ static void should_decode_an_embedded_subtitle_track()
 	assert_equal(2_z, events.size(), "both lines");
 	if (events.size() != 2) return;
 
-	assert_equal(true, df::equiv(events[0].start, 1.0, 0.001), "the first starts at its block");
-	assert_equal(true, df::equiv(events[0].end, 2.5, 0.001), "and ends after its duration");
+	assert_equal(true, core::equiv(events[0].start, 1.0, 0.001), "the first starts at its block");
+	assert_equal(true, core::equiv(events[0].end, 2.5, 0.001), "and ends after its duration");
 	assert_equal("Hello there", events[0].text ? events[0].text->plain_text() : "", "its text");
 	assert_equal(true, events[0].text && events[0].text->runs.back().italic, "its tags read as styles");
 	assert_equal(true, events[0].forced, "forced");
 	assert_equal(7, events[0].gen, "decoded in the session's seek generation");
-	assert_equal(true, df::equiv(events[1].start, 3.0, 0.001), "the second");
+	assert_equal(true, core::equiv(events[1].start, 3.0, 0.001), "the second");
 }
 
 static void should_open_a_video_with_its_sidecar_subtitles()
 {
 	const auto folder = _temps.next_folder("sidecar-subtitles");
 	const auto video = folder.combine_file("Clip.mp4");
-	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), video, false, false);
+	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), video, false, false);
 	write_test_file(folder.combine_file("Clip.en.srt"), "1\n00:00:00,000 --> 00:00:30,000\nA line\n\n");
 
 	subtitle_request request;
@@ -4109,11 +4109,11 @@ static void should_open_a_video_with_its_sidecar_subtitles()
 		             "and offered");
 	}
 
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
 	ses->process_io(video_event, audio_event);
 
-	const auto now = df::now();
+	const auto now = core::now();
 	assert_equal(1_z, ses->subtitles(now).size(), "the line is on show from the start");
 	assert_equal(true, ses->subtitles_key(now) != 0, "with a key");
 
@@ -4136,7 +4136,7 @@ static void should_rebuild_the_scene_once_for_each_subtitle_change()
 {
 	const auto folder = _temps.next_folder("subtitle-repaint");
 	const auto video = folder.combine_file("Clip.mp4");
-	platform::copy_file(test_files_folder.combine_file("gizmo.mp4"), video, false, false);
+	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), video, false, false);
 	write_test_file(folder.combine_file("Clip.en.srt"), "1\n00:00:00,000 --> 00:00:30,000\nA line\n\n");
 
 	subtitle_request request;
@@ -4147,18 +4147,18 @@ static void should_rebuild_the_scene_once_for_each_subtitle_change()
 	const auto ses = make_test_session();
 	assert_equal(true, ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
 	                             false, {}, request), "the video opens");
-	const df::scope_exit close([ses] { ses->close(false); });
+	const core::scope_exit close([ses] { ses->close(false); });
 
 	null_async_strategy as;
 	common_display_state_t common;
 	const auto display = std::make_shared<display_state_t>(as, common);
 	display->update_av_session(ses);
 
-	const platform::thread_event video_event(false, false);
-	const platform::thread_event audio_event(false, false);
+	const core::thread_event video_event(false, false);
+	const core::thread_event audio_event(false, false);
 	ses->process_io(video_event, audio_event);
 
-	const auto now = df::now();
+	const auto now = core::now();
 
 	assert_equal(true, ses->subtitles_key(now) != 0, "a line is on show");
 	assert_equal(true, display->update_for_present(now) == render_valid::invalid,

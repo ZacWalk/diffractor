@@ -276,14 +276,14 @@ is in [model.h](../src/model.h); application entry, shutdown and command availab
 
 The command line batch is [app_movie_batch.cpp](../src/app_movie_batch.cpp). Its switches are parsed
 in [app.cpp](../src/app.cpp) into [app_command_line.h](../src/app_command_line.h), and
-libdesktop's [platform_win_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_ui.cpp) runs it in place of the window.
+libdesktop's [platform::run](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/app.cpp) runs it in place of the window.
 
 Frame and audio extraction are in [av_format.h](../src/av_format.h),
 [av_format.cpp](../src/av_format.cpp) and [av_player.h](../src/av_player.h). The audio endpoint the
-preview mixes into and the platform writer contract are in libdesktop's [platform_render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform_render.h),
-with the Windows implementations in libdesktop's [platform_win_sound.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_sound.cpp) and
-[platform_win_encode.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_win_encode.cpp) and the unavailable-platform answers in
-libdesktop's [platform_linux_ui.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/platform_linux_ui.cpp).
+preview mixes into and the platform writer contract are in libdesktop's [platform/media.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform/media.h),
+with the Windows implementations in libdesktop's [sound.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/sound.cpp) and
+[movie_writer.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/movie_writer.cpp) and the unavailable-platform answers in
+libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/platform/linux).
 
 Tests are in [test_movie.cpp](../src/test_movie.cpp), [test_view.cpp](../src/test_view.cpp),
 [test_av.cpp](../src/test_av.cpp), [test_platform_win.cpp](../src/test_platform_win.cpp) and, for the

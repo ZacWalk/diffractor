@@ -118,8 +118,8 @@ form or command target.
 - [view_items.cpp](../src/view_items.cpp): Items presentation and `layout_media_column`.
 - [view_media.h](../src/view_media.h): fullscreen media presentation.
 - [model_property.cpp](../src/model_property.cpp): descriptive-field ordering and de-duplication.
-- libdesktop's [ui_elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui_elements.h)
-  and [ui_flex.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/ui_flex.cpp): the element
+- libdesktop's [ui/elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui/elements.h)
+  and [flex.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/ui/flex.cpp): the element
   tree the panel is built from and its responsive layout; [ui_controls.h](../src/ui_controls.h): the
   panel's own elements.
 - [model_document.h](../src/model_document.h): a file's head decoded as text or kept as a dump, its

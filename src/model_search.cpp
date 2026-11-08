@@ -39,27 +39,27 @@ void df::search_t::clear_date_properties()
 }
 
 // The file a path names by its spelling: a name after the last separator, in a folder that is a path.
-static std::optional<df::file_path> file_named_by(const std::string_view text)
+static std::optional<core::file_path> file_named_by(const std::string_view text)
 {
-	const auto last_slash = df::find_last_slash(text);
+	const auto last_slash = core::find_last_slash(text);
 	const auto has_file_name = last_slash != std::string_view::npos && last_slash + 1 < text.size();
 	const auto parent = has_file_name ? text.substr(0, last_slash) : std::string_view{};
 	const auto has_drive_parent = parent.size() == 2 && parent[1] == ':';
 
-	if (!has_file_name || (!df::is_path(parent) && !has_drive_parent))
+	if (!has_file_name || (!core::is_path(parent) && !has_drive_parent))
 	{
 		return std::nullopt;
 	}
 
-	const df::file_path file(text);
+	const core::file_path file(text);
 	if (!file.is_valid()) return std::nullopt;
 	return file;
 }
 
-static df::search_t file_search(const df::file_path& file)
+static df::search_t file_search(const core::file_path& file)
 {
 	df::search_t result;
-	result.add_selector(df::item_selector(file.folder())).with(file.name());
+	result.add_selector(core::item_selector(file.folder())).with(file.name());
 	return result;
 }
 
@@ -75,12 +75,12 @@ enum class unc_root
 
 static unc_root unc_root_of(const std::string_view trimmed)
 {
-	if (trimmed.size() < 2 || !df::is_path_sep(trimmed[0]) || !df::is_path_sep(trimmed[1])) return unc_root::none;
+	if (trimmed.size() < 2 || !core::is_path_sep(trimmed[0]) || !core::is_path_sep(trimmed[1])) return unc_root::none;
 
 	const auto share_separator = trimmed.find_first_of("\\/", 2);
 	if (trimmed.size() == 2 || share_separator == 2) return unc_root::nothing;
 	if (share_separator != std::string_view::npos && share_separator + 1 != trimmed.size()) return unc_root::none;
-	return df::windows_path_semantics ? unc_root::server : unc_root::nothing;
+	return core::windows_path_semantics ? unc_root::server : unc_root::nothing;
 }
 
 df::search_t df::search_t::parse_path(const std::string_view text)
@@ -89,7 +89,7 @@ df::search_t df::search_t::parse_path(const std::string_view text)
 
 	// A server is no folder, so asking the file system whether it exists would only wait on the network to
 	// say no. It is a place all the same, and opening it lists its shares.
-	if (const auto trimmed = str::trim(text); unc_root_of(trimmed) == unc_root::server)
+	if (const auto trimmed = core::trim(text); unc_root_of(trimmed) == unc_root::server)
 	{
 		result.add_selector(item_selector(trimmed));
 		return result;
@@ -97,11 +97,11 @@ df::search_t df::search_t::parse_path(const std::string_view text)
 
 	const folder_path folder(text);
 
-	if (folder.is_drive() || folder.exists())
+	if (folder.is_drive() || platform::exists(folder))
 	{
 		result.add_selector(item_selector(folder));
 	}
-	else if (const auto file = file_named_by(text); file && file->exists())
+	else if (const auto file = file_named_by(text); file && platform::exists(*file))
 	{
 		result = file_search(*file);
 	}
@@ -110,7 +110,7 @@ df::search_t df::search_t::parse_path(const std::string_view text)
 }
 
 // Issue #139: a path that contains spaces is wrapped in double quotes so it reads (and re-parses)
-// as a single search term. Only whitespace forces quotes - str::need_quotes also fires on the colon
+// as a single search term. Only whitespace forces quotes - core::need_quotes also fires on the colon
 // in every Windows drive path, and quoting those would change what the address box shows for input
 // that never needed it. Already-quoted text is returned unchanged.
 std::string df::quote_path_term(const std::string_view path)
@@ -128,9 +128,9 @@ std::string df::quote_path_term(const std::string_view path)
 
 static std::string auto_quote_search_input(const std::string_view text)
 {
-	const auto trimmed = str::trim(text);
+	const auto trimmed = core::trim(text);
 
-	if (!df::is_path(trimmed)) return std::string(text);
+	if (!core::is_path(trimmed)) return std::string(text);
 
 	auto quoted = df::quote_path_term(trimmed);
 
@@ -158,7 +158,7 @@ df::search_t df::search_t::parse_from_input(const std::string_view text) const
 		}
 	}
 
-	if (has_selector && str::starts(text, "*."))
+	if (has_selector && core::starts(text, "*."))
 	{
 		auto a = *this;
 		const auto s = a.selectors().front();
@@ -184,15 +184,15 @@ namespace
 		if (i == 0 || i == token.size()) return false;
 
 		const auto unit = token.substr(i);
-		return str::icmp(unit, "km") == 0 || str::icmp(unit, "m") == 0 || str::icmp(unit, "mi") == 0 ||
-			str::icmp(unit, "mile") == 0 || str::icmp(unit, "miles") == 0;
+		return core::icmp(unit, "km") == 0 || core::icmp(unit, "m") == 0 || core::icmp(unit, "mi") == 0 ||
+			core::icmp(unit, "mile") == 0 || core::icmp(unit, "miles") == 0;
 	}
 
 	bool is_size_unit_token(const std::string_view token)
 	{
 		// Every unit format_size writes, since format_term writes it apart from its number.
-		return str::icmp(token, "kb") == 0 || str::icmp(token, "mb") == 0 || str::icmp(token, "gb") == 0 ||
-			str::icmp(token, "tb") == 0;
+		return core::icmp(token, "kb") == 0 || core::icmp(token, "mb") == 0 || core::icmp(token, "gb") == 0 ||
+			core::icmp(token, "tb") == 0;
 	}
 }
 
@@ -210,7 +210,7 @@ std::vector<search_part> df::coalesce_parts(std::vector<search_part> parts)
 			// "size: 1 MB" is the canonical form format_terms emits, so the unit has to survive being
 			// tokenized away from its number; otherwise re-running an unchanged query reads it as bytes.
 			if (prop::from_prefix(previous.scope) == prop::file_size && !part.literal &&
-				is_size_unit_token(part.term) && str::is_probably_num(previous.term))
+				is_size_unit_token(part.term) && core::is_probably_num(previous.term))
 			{
 				previous.term += part.term;
 				continue;
@@ -241,18 +241,18 @@ std::vector<search_part> df::coalesce_parts(std::vector<search_part> parts)
 // alone keeps the text it was read from, so it shows as typed.
 static df::search_t parse_parts(const std::string_view text, const bool probe)
 {
-	const auto trimmed = str::trim(text);
+	const auto trimmed = core::trim(text);
 	df::search_t result;
-	if (!df::is_path(trimmed)) result.raw_text(text);
+	if (!core::is_path(trimmed)) result.raw_text(text);
 
 	search_tokenizer t;
 	const auto parts = df::coalesce_parts(t.parse(trimmed));
 
 	for (const auto& part : parts)
 	{
-		if (part.scope.empty() && (probe ? df::item_selector::can_iterate(part.term) : df::is_path(part.term)))
+		if (part.scope.empty() && (probe ? core::item_selector::can_iterate(part.term) : core::is_path(part.term)))
 		{
-			result.add_selector(df::item_selector(part.term));
+			result.add_selector(core::item_selector(part.term));
 		}
 		else
 		{
@@ -265,14 +265,14 @@ static df::search_t parse_parts(const std::string_view text, const bool probe)
 	if (!result.has_selector())
 	{
 		std::string_view path;
-		if (df::is_path(trimmed)) path = trimmed;
-		else if (parts.size() == 1 && parts.front().scope.empty() && df::is_path(parts.front().term))
+		if (core::is_path(trimmed)) path = trimmed;
+		else if (parts.size() == 1 && parts.front().scope.empty() && core::is_path(parts.front().term))
 			path = parts.front().term;
 
 		if (!path.empty())
 		{
 			result = {};
-			result.add_selector(df::item_selector(path));
+			result.add_selector(core::item_selector(path));
 		}
 	}
 
@@ -281,7 +281,7 @@ static df::search_t parse_parts(const std::string_view text, const bool probe)
 
 df::search_t df::search_t::parse(const std::string_view text)
 {
-	const auto trimmed = str::trim(text);
+	const auto trimmed = core::trim(text);
 	search_t result;
 	result.raw_text(text);
 
@@ -312,7 +312,7 @@ df::search_t df::search_t::parse(const std::string_view text)
 
 df::search_t df::search_t::parse_without_probing(const std::string_view text)
 {
-	if (unc_root_of(str::trim(text)) == unc_root::nothing)
+	if (unc_root_of(core::trim(text)) == unc_root::nothing)
 	{
 		search_t result;
 		result.raw_text(text);
@@ -324,7 +324,7 @@ df::search_t df::search_t::parse_without_probing(const std::string_view text)
 
 bool df::search_t::can_be_read_from(const std::string_view text) const
 {
-	const auto trimmed = str::trim(text);
+	const auto trimmed = core::trim(text);
 
 	if (is_empty() || unc_root_of(trimmed) == unc_root::nothing)
 	{
@@ -374,8 +374,8 @@ static std::string term_quote(const std::string_view term_text)
 
 	// The tokenizer reads a bare "and" or "or" as the operator, so a term that is one of those words
 	// has to be written quoted to read back as the text it is.
-	if (!has_special_char && (str::icmp(term_text, "and") == 0 || str::icmp(term_text, "or") == 0 ||
-		str::icmp(term_text, tt.query_and) == 0 || str::icmp(term_text, tt.query_or) == 0))
+	if (!has_special_char && (core::icmp(term_text, "and") == 0 || core::icmp(term_text, "or") == 0 ||
+		core::icmp(term_text, tt.query_and) == 0 || core::icmp(term_text, tt.query_or) == 0))
 	{
 		has_special_char = true;
 	}
@@ -466,10 +466,10 @@ static std::string quote_location_value(const std::string_view prefix, const std
 	return term_quote(value);
 }
 
-static std::string format_xy(const df::xy16 xy)
+static std::string format_xy(const core::xy16 xy)
 {
 	if (xy.y) return std::format("{}/{}", xy.x, xy.y);
-	return str::to_string(xy.x);
+	return core::to_string(xy.x);
 }
 
 
@@ -481,18 +481,18 @@ static std::string format_term_value(const df::search_term& term)
 	const auto xy = term.xy_val;
 	const auto n64 = term.int64_val;
 
-	if (t->data_type == prop::data_type::string || !str::is_empty(term.text)) return term.text;
-	if (t->data_type == prop::data_type::date) return prop::format_date(df::date_t::from_days(n));
+	if (t->data_type == prop::data_type::string || !core::is_empty(term.text)) return term.text;
+	if (t->data_type == prop::data_type::date) return prop::format_date(core::date_t::from_days(n));
 	if (t == prop::f_number) return prop::format_f_num(d);
-	if (t == prop::megapixels) return str::print("%1.1f", d);
+	if (t == prop::megapixels) return core::print("%1.1f", d);
 	if (t == prop::dimensions) return prop::format_dimensions({xy.x, xy.y});
 	if (t == prop::duration) return prop::format_duration(n);
 	if (t == prop::exposure_time) return format_search_number(static_cast<float>(d)) + "s";
 	if (t == prop::iso_speed) return prop::format_iso(n);
 	if (t == prop::latitude) return prop::format_gps(d);
 	if (t == prop::longitude) return prop::format_gps(d);
-	if (t == prop::rating) return str::to_string(n);
-	if (t == prop::audio_sample_rate) return str::to_string(n);
+	if (t == prop::rating) return core::to_string(n);
+	if (t == prop::audio_sample_rate) return core::to_string(n);
 	if (t == prop::audio_channels) return prop::format_audio_channels(n);
 	if (t == prop::audio_sample_type) return format_audio_sample_type(static_cast<prop::audio_sample_t>(n));
 	if (t == prop::streams) return prop::format_streams(n);
@@ -502,24 +502,24 @@ static std::string format_term_value(const df::search_term& term)
 	}
 	if (t == prop::orientation)
 	{
-		return str::to_string(n);
+		return core::to_string(n);
 	}
 	if (t == prop::year)
 	{
-		return str::to_string(n);
+		return core::to_string(n);
 	}
 	if (t == prop::focal_length) return format_search_number(static_cast<float>(d)) + "mm";
-	if (t == prop::file_size) return df::format_size(df::file_size(n64));
+	if (t == prop::file_size) return platform::format_size(core::file_size(n64));
 	if (t->data_type == prop::data_type::int32)
 	{
-		return str::to_string(n);
+		return core::to_string(n);
 	}
 	if (t->data_type == prop::data_type::uint32)
 	{
-		return str::to_string(static_cast<uint32_t>(n));
+		return core::to_string(static_cast<uint32_t>(n));
 	}
 
-	df::assert_true(false);
+	core::assert_true(false);
 	return {};
 }
 
@@ -610,7 +610,7 @@ std::string df::format_term(const search_term& term)
 					result << ":";
 				}
 
-				result << str::to_string(term.date_val.age);
+				result << core::to_string(term.date_val.age);
 			}
 			else
 			{
@@ -619,7 +619,7 @@ std::string df::format_term(const search_term& term)
 
 				if (term.date_val.year != 0)
 				{
-					result << str::to_string(term.date_val.year);
+					result << core::to_string(term.date_val.year);
 					is_cat = true;
 				}
 
@@ -627,15 +627,15 @@ std::string df::format_term(const search_term& term)
 				{
 					if (is_cat) result << "-";
 					result << (is_month_only
-						           ? str::month(term.date_val.month, true)
-						           : str::short_month(term.date_val.month, true));
+						           ? month(term.date_val.month, true)
+						           : core::short_month(term.date_val.month, true));
 					is_cat = true;
 				}
 
 				if (term.date_val.day != 0)
 				{
 					if (is_cat) result << "-";
-					result << str::to_string(term.date_val.day);
+					result << core::to_string(term.date_val.day);
 				}
 			}
 		}
@@ -780,7 +780,7 @@ std::string df::search_t::format_terms() const
 
 std::string df::search_t::text() const
 {
-	return !str::is_empty(_raw) ? _raw : format_terms();
+	return !core::is_empty(_raw) ? _raw : format_terms();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -990,16 +990,16 @@ search_presence_mask df::search_t::calc_required_presence() const
 df::date_parts month_and_day(const std::string_view s)
 {
 	df::date_parts result;
-	const auto parts = str::split(
+	const auto parts = core::split(
 		s, true, [](const char c) { return c == '-' || c == '/' || c == '\\' || c == '.'; });
 
 	if (parts.size() == 2)
 	{
-		const auto month = str::month(parts[0]);
+		const auto month = core::month(parts[0]);
 
-		if (month != 0 && str::is_num(parts[1]))
+		if (month != 0 && core::is_num(parts[1]))
 		{
-			const auto d = str::to_int(parts[1]);
+			const auto d = core::to_int(parts[1]);
 
 			if (d >= 1 && d <= 31)
 			{
@@ -1015,16 +1015,16 @@ df::date_parts month_and_day(const std::string_view s)
 df::date_parts year_and_month(const std::string_view s)
 {
 	df::date_parts result;
-	const auto parts = str::split(
+	const auto parts = core::split(
 		s, true, [](const char c) { return c == '-' || c == '/' || c == '\\' || c == '.'; });
 
 	if (parts.size() == 2)
 	{
-		const auto month = str::month(parts[1]);
+		const auto month = core::month(parts[1]);
 
-		if (month != 0 && str::is_num(parts[0]))
+		if (month != 0 && core::is_num(parts[0]))
 		{
-			const auto y = str::to_int(parts[0]);
+			const auto y = core::to_int(parts[0]);
 
 			if (y > 1900 && y < 2999)
 			{
@@ -1051,7 +1051,7 @@ namespace
 	place_query split_place_query(const std::string_view text)
 	{
 		place_query result;
-		result.name.assign(str::trim(text));
+		result.name.assign(core::trim(text));
 		if (result.name.empty()) return result;
 
 		const auto tail = std::string_view(result.name);
@@ -1062,9 +1062,9 @@ namespace
 		const auto unit = tail.substr(unit_start);
 		double scale = 0.0;
 
-		if (str::icmp(unit, "km") == 0) scale = 1.0;
-		else if (str::icmp(unit, "m") == 0) scale = 0.001;
-		else if (str::icmp(unit, "mi") == 0 || str::icmp(unit, "mile") == 0 || str::icmp(unit, "miles") == 0)
+		if (core::icmp(unit, "km") == 0) scale = 1.0;
+		else if (core::icmp(unit, "m") == 0) scale = 0.001;
+		else if (core::icmp(unit, "mi") == 0 || core::icmp(unit, "mile") == 0 || core::icmp(unit, "miles") == 0)
 			scale = 1.609344;
 		else return result;
 
@@ -1081,7 +1081,7 @@ namespace
 		const auto separator = tail[number_start - 1];
 		if (separator != ',' && !std::isspace(static_cast<unsigned char>(separator))) return result;
 
-		const auto value = str::to_double(tail.substr(number_start, number_end - number_start));
+		const auto value = core::to_double(tail.substr(number_start, number_end - number_start));
 		if (value <= 0.0) return result;
 
 		result.km = value * scale;
@@ -1101,8 +1101,8 @@ namespace
 		const auto comma = text.find(',');
 		if (comma == std::string_view::npos) return false;
 
-		const auto lat_text = str::trim(text.substr(0, comma));
-		const auto lon_text = str::trim(text.substr(comma + 1));
+		const auto lat_text = core::trim(text.substr(0, comma));
+		const auto lon_text = core::trim(text.substr(comma + 1));
 		if (lat_text.empty() || lon_text.empty()) return false;
 
 		const auto is_number = [](const std::string_view v)
@@ -1124,8 +1124,8 @@ namespace
 
 		if (!is_number(lat_text) || !is_number(lon_text)) return false;
 
-		const auto lat = str::to_double(lat_text);
-		const auto lon = str::to_double(lon_text);
+		const auto lat = core::to_double(lat_text);
+		const auto lon = core::to_double(lon_text);
 		if (std::fabs(lat) > 90.0 || std::fabs(lon) > 180.0) return false;
 
 		coord = gps_coordinate(lat, lon);
@@ -1150,8 +1150,8 @@ void df::search_t::parse_part(const search_part& part)
 
 	if (type == prop::null)
 	{
-		const auto is_with = str::icmp(part.scope, "with") == 0 || str::icmp(part.scope, tt.query_with) == 0;
-		const auto is_without = str::icmp(part.scope, "without") == 0 || str::icmp(part.scope, tt.query_without) == 0;
+		const auto is_with = core::icmp(part.scope, "with") == 0 || core::icmp(part.scope, tt.query_with) == 0;
+		const auto is_without = core::icmp(part.scope, "without") == 0 || core::icmp(part.scope, tt.query_without) == 0;
 
 		if (is_with || is_without)
 		{
@@ -1161,7 +1161,7 @@ void df::search_t::parse_part(const search_part& part)
 			auto mods = part.modifier;
 			mods.positive = part.modifier.positive == is_with;
 
-			if (str::icmp(part.term, "location") == 0)
+			if (core::icmp(part.term, "location") == 0)
 			{
 				_terms.emplace_back(search_term_type::has_location, mods);
 				return;
@@ -1176,7 +1176,7 @@ void df::search_t::parse_part(const search_part& part)
 				return;
 			}
 		}
-		if (str::icmp(part.scope, "related") == 0 || str::icmp(part.scope, tt.query_related) == 0)
+		if (core::icmp(part.scope, "related") == 0 || core::icmp(part.scope, tt.query_related) == 0)
 		{
 			_related.path = file_path(part.term);
 			return;
@@ -1184,9 +1184,9 @@ void df::search_t::parse_part(const search_part& part)
 	}
 
 	date_t date;
-	auto n = str::to_int(part.term);
-	auto d = str::to_double(part.term);
-	auto is_num = str::is_num(part.term);
+	auto n = core::to_int(part.term);
+	auto d = core::to_double(part.term);
+	auto is_num = core::is_num(part.term);
 	auto is_date = date.parse(part.term) && date.is_valid();
 	double d1, d2;
 	int n1, n2, n3;
@@ -1229,7 +1229,7 @@ void df::search_t::parse_part(const search_part& part)
 	{
 		// locations.md 3.5: the guessable spelling of a built-in class is accepted and
 		// canonicalizes to the `@` form, so there is only ever one vocabulary to learn.
-		if (str::icmp(part.term, sv_remote) == 0)
+		if (core::icmp(part.term, sv_remote) == 0)
 		{
 			result = search_term(search_term_type::remote, part.modifier);
 		}
@@ -1263,22 +1263,22 @@ void df::search_t::parse_part(const search_part& part)
 		result.float_val = pq.km;
 		result.level = location->level;
 	}
-	else if (str::icmp(part.scope, "area") == 0)
+	else if (core::icmp(part.scope, "area") == 0)
 	{
 		result = search_term(search_term_type::area, part.term, part.modifier);
 	}
-	else if (str::icmp(part.scope, "ext") == 0 ||
-		str::icmp(part.scope, "extension") == 0 ||
-		str::icmp(part.scope, "type") == 0)
+	else if (core::icmp(part.scope, "ext") == 0 ||
+		core::icmp(part.scope, "extension") == 0 ||
+		core::icmp(part.scope, "type") == 0)
 	{
 		result = search_term(search_term_type::extension, part.term, part.modifier);
 	}
-	else if (str::icmp(part.scope, "volume") == 0 ||
-		str::icmp(part.scope, "vol") == 0)
+	else if (core::icmp(part.scope, "volume") == 0 ||
+		core::icmp(part.scope, "vol") == 0)
 	{
 		result = search_term(search_term_type::volume, part.term, part.modifier);
 	}
-	else if (str::icmp(part.scope, "age") == 0 || str::icmp(part.scope, tt.query_age) == 0)
+	else if (core::icmp(part.scope, "age") == 0 || core::icmp(part.scope, tt.query_age) == 0)
 	{
 		date_parts dd;
 		dd.age = n;
@@ -1289,7 +1289,7 @@ void df::search_t::parse_part(const search_part& part)
 	{
 		if (_snscanf_s(std::bit_cast<const char*>(part.term.data()), part.term.size(), "%d:%d", &n1, &n2) == 2)
 		{
-			result = search_term(prop::duration, round(n1 * 60.0 + n2), part.modifier);
+			result = search_term(prop::duration, core::round(n1 * 60.0 + n2), part.modifier);
 		}
 		else if (!month_and_day(part.term).is_empty())
 		{
@@ -1315,10 +1315,10 @@ void df::search_t::parse_part(const search_part& part)
 			dd.year = n;
 			result = search_term(search_term_type::date, dd, part.modifier);
 		}
-		else if (str::month(part.term) != 0)
+		else if (core::month(part.term) != 0)
 		{
 			date_parts dd;
-			dd.month = str::month(part.term);
+			dd.month = core::month(part.term);
 			result = search_term(search_term_type::date, dd, part.modifier);
 		}
 		else if (_snscanf_s(std::bit_cast<const char*>(part.term.data()), part.term.size(), "f/%lf", &d1) == 1
@@ -1391,10 +1391,10 @@ void df::search_t::parse_part(const search_part& part)
 			dd.target = target;
 			result = search_term(search_term_type::date, dd, part.modifier);
 		}
-		else if (str::month(part.term) != 0)
+		else if (core::month(part.term) != 0)
 		{
 			date_parts dd;
-			dd.month = str::month(part.term);
+			dd.month = core::month(part.term);
 			dd.target = target;
 			result = search_term(search_term_type::date, dd, part.modifier);
 		}
@@ -1444,7 +1444,7 @@ void df::search_t::parse_part(const search_part& part)
 	{
 		auto rate = n;
 
-		if (str::ends(part.term, "khz"))
+		if (core::ends(part.term, "khz"))
 		{
 			rate = static_cast<int>(d * 1000);
 		}
@@ -1521,15 +1521,15 @@ void df::search_t::parse_part(const search_part& part)
 		}
 		else
 		{
-			if (str::ends(part.term, "m"))
+			if (core::ends(part.term, "m"))
 			{
 				duration = n * 60;
 			}
-			else if (str::ends(part.term, "h"))
+			else if (core::ends(part.term, "h"))
 			{
 				duration = n * 60 * 60;
 			}
-			else if (str::ends(part.term, "d"))
+			else if (core::ends(part.term, "d"))
 			{
 				duration = n * 60 * 60 * 24;
 			}
@@ -1551,7 +1551,7 @@ void df::search_t::parse_part(const search_part& part)
 			if (!std::isfinite(bytes) || bytes <= 0.0) return 0;
 
 			constexpr auto limit = static_cast<double>(std::numeric_limits<uint64_t>::max());
-			// std::round, not df::round: that one answers an int32 and turned every size at or above
+			// std::round, not core::round: that one answers an int32 and turned every size at or above
 			// two gigabytes into a negative number, which then widened to an enormous unsigned one.
 			return bytes >= limit ? std::numeric_limits<uint64_t>::max() : static_cast<uint64_t>(std::round(bytes));
 		};
@@ -1563,10 +1563,10 @@ void df::search_t::parse_part(const search_part& part)
 
 		uint64_t size = 0;
 
-		if (str::ends(part.term, "tb")) size = scaled(tb);
-		else if (str::ends(part.term, "gb")) size = scaled(gb);
-		else if (str::ends(part.term, "mb")) size = scaled(mb);
-		else if (str::ends(part.term, "kb")) size = scaled(kb);
+		if (core::ends(part.term, "tb")) size = scaled(tb);
+		else if (core::ends(part.term, "gb")) size = scaled(gb);
+		else if (core::ends(part.term, "mb")) size = scaled(mb);
+		else if (core::ends(part.term, "kb")) size = scaled(kb);
 		else size = scaled(1.0);
 
 		result = search_term(type, size, part.modifier);
@@ -1598,10 +1598,10 @@ void df::search_t::parse_part(const search_part& part)
 				// dimensions query came back matching every image of that width whatever its
 				// height, which is broader than what the user asked for and than what was shown.
 				const auto sep = part.term.find_first_of("/xX");
-				const auto x = static_cast<int16_t>(str::to_int(part.term.substr(0, sep)));
+				const auto x = static_cast<int16_t>(core::to_int(part.term.substr(0, sep)));
 				const auto y = sep == std::string_view::npos
 					               ? int16_t{0}
-					               : static_cast<int16_t>(str::to_int(part.term.substr(sep + 1)));
+					               : static_cast<int16_t>(core::to_int(part.term.substr(sep + 1)));
 				result = search_term(type, xy16::make(x, y), part.modifier);
 			}
 			break;
@@ -1691,7 +1691,7 @@ void df::search_matcher::resolve_location_centres()
 		{
 			// A region or country name has extent rather than a centre, so it is resolved for the
 			// radius rule but never granted a reach of its own.
-			const auto reach = str::is_empty(resolved.place) || resolved.is_extent()
+			const auto reach = core::is_empty(resolved.place) || resolved.is_extent()
 				                   ? 0.0
 				                   : location_attribution_radius_km(resolved.population);
 			_resolved_centres[t.text] = {resolved.position, reach};
@@ -1717,7 +1717,7 @@ df::search_matcher::attributed_location df::search_matcher::attributed(const gps
 	attributed_location result;
 	result.place = resolved.place.place;
 	result.state = resolved.place.state;
-	result.country = str::is_empty(country.name) ? resolved.place.country : country.name;
+	result.country = core::is_empty(country.name) ? resolved.place.country : country.name;
 	result.attribution = resolved.attribution;
 	result.reach_km = resolved.attribution == location_attribution::at ||
 	                  resolved.attribution == location_attribution::near
@@ -1741,7 +1741,7 @@ struct compare_result
 {
 	bool match = false;
 	int com = 0;
-	str::cached val_matched = {};
+	core::cached val_matched = {};
 };
 
 static bool modifier_match(const compare_result cmp, const df::search_term_modifier& modifiers)
@@ -1780,14 +1780,14 @@ static compare_result compare_term(const df::search_term& term, const int rr)
 
 static compare_result compare_file_size(const df::search_term& term, const uint64_t r)
 {
-	const auto ll = df::round_size(term.int64_val).total();
-	const auto rr = df::round_size(r).total();
+	const auto ll = core::round_size(term.int64_val).total();
+	const auto rr = core::round_size(r).total();
 
 	const auto res = ll < rr ? -1 : ll > rr ? 1 : 0;
 	return {true, res};
 }
 
-static compare_result compare_term(const df::search_term& term, const df::date_t r)
+static compare_result compare_term(const df::search_term& term, const core::date_t r)
 {
 	if (!r.is_valid()) return {};
 
@@ -1805,7 +1805,7 @@ static compare_result compare_term(const df::search_term& term, const df::date_t
 // matching - never to file-path comparisons, which must stay byte-exact.
 static std::string_view nfc_view(const std::string_view text, std::string& buf)
 {
-	if (str::is_ascii(text)) return text;
+	if (core::is_ascii(text)) return text;
 	buf = platform::normalize_nfc(text);
 	return buf;
 }
@@ -1816,7 +1816,7 @@ static std::string_view nfc_query(const df::search_term& term)
 	return term._nfc_text.empty() ? std::string_view(term.text) : std::string_view(term._nfc_text);
 }
 
-static compare_result compare_term(const df::search_term& term, const str::cached r)
+static compare_result compare_term(const df::search_term& term, const core::cached r)
 {
 	std::string rb;
 	const auto q = nfc_query(term);
@@ -1824,11 +1824,11 @@ static compare_result compare_term(const df::search_term& term, const str::cache
 
 	if (term._is_wildcard)
 	{
-		const auto cmp = str::wildcard_icmp(rr, q);
+		const auto cmp = core::wildcard_icmp(rr, q);
 		return {cmp, 0, r};
 	}
 
-	const auto cmp = str::icmp(q, rr);
+	const auto cmp = core::icmp(q, rr);
 	return {cmp == 0, 0, r};
 }
 
@@ -1837,8 +1837,8 @@ static compare_result compare_term(const df::search_term& term, const std::strin
 	std::string rb;
 	const auto q = nfc_query(term);
 	const auto rr = nfc_view(r, rb);
-	const auto match = term._is_wildcard ? str::wildcard_icmp(rr, q) : str::icmp(q, rr) == 0;
-	return {match, 0, match ? str::cache(r) : str::cached{}};
+	const auto match = term._is_wildcard ? core::wildcard_icmp(rr, q) : core::icmp(q, rr) == 0;
+	return {match, 0, match ? core::cache(r) : core::cached{}};
 }
 
 static compare_result compare_aperture(const df::search_term& term, const double f_number)
@@ -1856,7 +1856,7 @@ static compare_result compare_aperture(const df::search_term& term, const double
 		rr = prop::closest_fstop(f_number);
 	}
 
-	if (df::equiv(ll, rr)) return {true, 0};
+	if (core::equiv(ll, rr)) return {true, 0};
 	const auto res = ll < rr ? -1 : ll > rr ? 1 : 0;
 	return {true, res};
 }
@@ -1874,9 +1874,9 @@ static double mp_round(const double mp)
 static compare_result compare_megapixels(const df::search_term& term, const int w, const int h)
 {
 	const auto ll = mp_round(term.float_val);
-	const auto rr = mp_round(ui::calc_mega_pixels(w, h));
+	const auto rr = mp_round(core::calc_mega_pixels(w, h));
 
-	if (df::equiv(ll, rr)) return {true, 0};
+	if (core::equiv(ll, rr)) return {true, 0};
 	const auto res = ll < rr ? -1 : ll > rr ? 1 : 0;
 	return {true, res};
 }
@@ -1901,12 +1901,12 @@ static compare_result compare_exposure_time(const df::search_term& term, const d
 	const double ll = query < 1.0f ? -1.0 / query : query;
 	const double rr = r < 1.0 ? -1.0 / r : r;
 
-	if (df::equiv(ll, rr, 0.00001)) return {true, 0};
+	if (core::equiv(ll, rr, 0.00001)) return {true, 0};
 	const auto res = ll > rr ? -1 : ll < rr ? 1 : 0;
 	return {true, res};
 }
 
-static compare_result compare_term(const df::search_term& term, const df::xy8 r)
+static compare_result compare_term(const df::search_term& term, const core::xy8 r)
 {
 	const auto l = term.xy_val;
 
@@ -1919,7 +1919,7 @@ static compare_result compare_term(const df::search_term& term, const df::xy8 r)
 	return {true, res};
 }
 
-static compare_result compare_term(const df::search_term& term, const df::xy16 r)
+static compare_result compare_term(const df::search_term& term, const core::xy16 r)
 {
 	const auto l = term.xy_val;
 
@@ -1940,10 +1940,10 @@ inline bool contains_term(const std::string_view text, const df::search_term& te
 
 	if (term._is_wildcard)
 	{
-		return str::wildcard_icmp(t, q);
+		return core::wildcard_icmp(t, q);
 	}
 
-	return str::contains(t, q);
+	return core::contains(t, q);
 }
 
 inline bool same_term(const std::string_view text, const df::search_term& term)
@@ -1954,10 +1954,10 @@ inline bool same_term(const std::string_view text, const df::search_term& term)
 
 	if (term._is_wildcard)
 	{
-		return str::wildcard_icmp(t, q);
+		return core::wildcard_icmp(t, q);
 	}
 
-	return str::same(t, q);
+	return core::same(t, q);
 }
 
 static uint64_t pack_dimensions(const prop::item_metadata& md)
@@ -2067,19 +2067,19 @@ static const df::text_format_field text_format_table[] = {
 	},
 	{
 		&prop::year,
-		[](const prop::item_metadata& md, file_type_ref) { return str::to_string(md.year); },
+		[](const prop::item_metadata& md, file_type_ref) { return core::to_string(md.year); },
 		[](const prop::item_metadata& md, file_type_ref) { return uint64_t{md.year}; }
 	},
 };
 
 static bool split_on_separator(const char c)
 {
-	return str::is_separator(c);
+	return core::is_separator(c);
 }
 
 static bool split_on_artist_separator(const char c)
 {
-	return str::is_artist_separator(c);
+	return core::is_artist_separator(c);
 }
 
 // The lists a free-text term matches one entry of exactly, in the order compare_text reports them.
@@ -2131,7 +2131,7 @@ std::string df::search_fold_key(const std::string_view text)
 
 	while (p < end)
 	{
-		const auto c = static_cast<uint32_t>(str::to_lower(str::pop_utf8_char(p, end)));
+		const auto c = static_cast<uint32_t>(core::to_lower(core::pop_utf8_char(p, end)));
 		result.push_back(static_cast<char>(c & 0xff));
 		result.push_back(static_cast<char>(c >> 8 & 0xff));
 		result.push_back(static_cast<char>(c >> 16 & 0xff));
@@ -2145,7 +2145,7 @@ df::search_result compare_text(const df::search_term& term, const df::index_file
                                const prop::item_metadata* const md)
 {
 	if (contains_term(file.name, term)) return {df::search_result_type::match_prop, prop::file_name};
-	if (same_term(df::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
+	if (same_term(platform::format_size(file.size), term)) return {df::search_result_type::match_prop, prop::file_size};
 
 	if (md)
 	{
@@ -2202,14 +2202,14 @@ static compare_result compare_val(const df::search_term& term, const df::index_f
 			{
 				if (!comp_result.match)
 				{
-					comp_result = compare_term(term, str::trim(part));
+					comp_result = compare_term(term, core::trim(part));
 				}
 			};
 
 			if (term.key == prop::tag) split2(md->tags, true, cmp);
-			else if (term.key == prop::artist) split2(md->artist, true, cmp, str::is_artist_separator);
-			else if (term.key == prop::album_artist) split2(md->album_artist, true, cmp, str::is_artist_separator);
-			else if (term.key == prop::genre) split2(md->genre, true, cmp, str::is_genre_separator);
+			else if (term.key == prop::artist) split2(md->artist, true, cmp, core::is_artist_separator);
+			else if (term.key == prop::album_artist) split2(md->album_artist, true, cmp, core::is_artist_separator);
+			else if (term.key == prop::genre) split2(md->genre, true, cmp, core::is_genre_separator);
 
 			return comp_result;
 		}
@@ -2240,7 +2240,7 @@ static compare_result compare_val(const df::search_term& term, const df::index_f
 		if (t == prop::pixel_format && !prop::is_null(md->pixel_format)) return compare_term(term, md->pixel_format);
 		if (t == prop::bitrate && !prop::is_null(md->bitrate)) return compare_term(term, md->bitrate);
 		if (t == prop::orientation) return compare_term(term, static_cast<int>(md->orientation));
-		if (t == prop::dimensions) return compare_term(term, df::xy16::make(md->width, md->height));
+		if (t == prop::dimensions) return compare_term(term, core::xy16::make(md->width, md->height));
 		if (t == prop::megapixels) return compare_megapixels(term, md->width, md->height);
 		if (t == prop::year && !prop::is_null(md->year)) return compare_term(term, md->year);
 		if (t == prop::rating && !prop::is_null(md->rating)) return compare_term(term, md->rating);
@@ -2334,7 +2334,7 @@ static bool has_type(const prop::key_ref t, const df::index_file_item& file, con
 		// top_left is the default and none means nothing was recorded, so neither is an orientation
 		// anyone asked for. This is the same test the packer and the presence bit apply.
 		if (t == prop::orientation)
-			return md->orientation != ui::orientation::top_left && md->orientation != ui::orientation::none;
+			return md->orientation != core::orientation::top_left && md->orientation != core::orientation::none;
 		if (t == prop::dimensions) return !prop::is_null(md->width);
 		if (t == prop::megapixels) return !prop::is_null(md->width);
 		if (t == prop::year) return !prop::is_null(md->year);
@@ -2380,7 +2380,7 @@ static bool has_type(const prop::key_ref t, const df::index_file_item& file, con
 	return false;
 }
 
-static bool is_date_match(const df::date_parts& term, const df::date_t d, const df::search_term_modifier& modifiers,
+static bool is_date_match(const df::date_parts& term, const core::date_t d, const df::search_term_modifier& modifiers,
                           const uint32_t now_days)
 {
 	if (!d.is_valid())
@@ -2456,7 +2456,7 @@ df::date_term_keys df::date_term_keys_of(const date_parts_prop target, const ind
 
 	if (target == date_parts_prop::original || target == date_parts_prop::created || is_any)
 	{
-		const auto file_stamp = file.file_created.system_to_local();
+		const auto file_stamp = platform::utc_to_local(file.file_created);
 
 		if (target == date_parts_prop::original || is_any)
 		{
@@ -2473,7 +2473,7 @@ df::date_term_keys df::date_term_keys_of(const date_parts_prop target, const ind
 
 	if (target == date_parts_prop::modified || is_any)
 	{
-		result.modified = file.file_modified.load().system_to_local();
+		result.modified = platform::utc_to_local(file.file_modified.load());
 	}
 
 	return result;
@@ -2485,7 +2485,7 @@ static bool is_date_match(const df::search_term& term, const df::index_file_item
 	const auto target = term.date_val.target;
 	const auto keys = df::date_term_keys_of(target, file, md);
 
-	return df::date_term_found(target, keys.original, keys.created, keys.modified, [&term, now_days](const df::date_t key)
+	return df::date_term_found(target, keys.original, keys.created, keys.modified, [&term, now_days](const core::date_t key)
 	{
 		return is_date_match(term.date_val, key, term.modifiers, now_days);
 	});
@@ -2507,7 +2507,7 @@ bool df::search_t::is_match(const prop::key& key, const date_t date) const
 		if (term.is_date())
 		{
 			static constexpr search_term_modifier mod;
-			const auto now_days = platform::now().to_days();
+			const auto now_days = core::utc_now().to_days();
 
 			date_term_count += 1;
 
@@ -2562,23 +2562,23 @@ static bool eq_ext(std::string_view ext1, std::string_view ext2)
 {
 	if (!ext1.empty() && ext1[0] == '.') ext1 = ext1.substr(1);
 	if (!ext2.empty() && ext2[0] == '.') ext2 = ext2.substr(1);
-	return str::icmp(ext1, ext2) == 0;
+	return core::icmp(ext1, ext2) == 0;
 }
 
 // locations.md 2.3/3.5: a completion commits the gazetteer's qualified name, which drops the region
 // for a place qualified to its country, so "London, United Kingdom" has to match an item the index
 // knows as London / England / United Kingdom. Every part must name one of the three fields, which
 // is what still keeps "London, Ontario" off a London, England item.
-static bool matches_qualified_name(const std::string_view query, const str::cached place, const str::cached state,
-                                   const str::cached country)
+static bool matches_qualified_name(const std::string_view query, const core::cached place, const core::cached state,
+                                   const core::cached country)
 {
 	if (query.empty()) return false;
 
 	const auto names_a_field = [place, state, country](const std::string_view part)
 	{
-		return (!str::is_empty(place) && str::icmp(part, place.sv()) == 0) ||
-			(!str::is_empty(state) && str::icmp(part, state.sv()) == 0) ||
-			(!str::is_empty(country) && str::icmp(part, country.sv()) == 0);
+		return (!core::is_empty(place) && core::icmp(part, place.sv()) == 0) ||
+			(!core::is_empty(state) && core::icmp(part, state.sv()) == 0) ||
+			(!core::is_empty(country) && core::icmp(part, country.sv()) == 0);
 	};
 
 	size_t pos = 0;
@@ -2587,7 +2587,7 @@ static bool matches_qualified_name(const std::string_view query, const str::cach
 	{
 		const auto comma = query.find(',', pos);
 		const auto end = comma == std::string_view::npos ? query.size() : comma;
-		const auto part = str::trim(query.substr(pos, end - pos));
+		const auto part = core::trim(query.substr(pos, end - pos));
 
 		if (part.empty() || !names_a_field(part)) return false;
 		if (comma == std::string_view::npos) return true;
@@ -2595,12 +2595,12 @@ static bool matches_qualified_name(const std::string_view query, const str::cach
 	}
 }
 
-bool df::match_volume_label(const std::string_view folder_name, const hash_map<char, str::cached>& drive_labels,
+bool df::match_volume_label(const std::string_view folder_name, const hash_map<char, core::cached>& drive_labels,
                             const search_term& term)
 {
 	if (folder_name.size() >= 2 && folder_name[1] == ':')
 	{
-		const auto drive_letter = static_cast<char>(str::to_upper(static_cast<unsigned char>(folder_name[0])));
+		const auto drive_letter = static_cast<char>(core::to_upper(static_cast<unsigned char>(folder_name[0])));
 		const auto found = drive_labels.find(drive_letter);
 
 		if (found != drive_labels.end())
@@ -2612,21 +2612,21 @@ bool df::match_volume_label(const std::string_view folder_name, const hash_map<c
 	return false;
 }
 
-df::search_result df::search_matcher::match_term(const str::cached folder_name, const index_file_item& file,
+df::search_result df::search_matcher::match_term(const core::cached folder_name, const index_file_item& file,
                                                  const search_term& term) const
 {
 	const auto md = file.metadata.load();
 	return match_term(folder_name, file, md.get(), term);
 }
 
-bool df::search_matcher::text_term_matches_folder(const search_term& term, const str::cached folder_name) const
+bool df::search_matcher::text_term_matches_folder(const search_term& term, const core::cached folder_name) const
 {
 	return can_match_folder &&
-		str::contains(term.text, "**") &&
-		str::wildcard_icmp(folder_name.sv(), term.text);
+		core::contains(term.text, "**") &&
+		core::wildcard_icmp(folder_name.sv(), term.text);
 }
 
-df::search_result df::search_matcher::match_term(const str::cached folder_name, const index_file_item& file,
+df::search_result df::search_matcher::match_term(const core::cached folder_name, const index_file_item& file,
                                                  const prop::item_metadata* const md, const search_term& term) const
 {
 	search_result result;
@@ -2677,9 +2677,9 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 		// locations.md 3.6: no location can be determined at all, which is distinct
 		// from `without:place` asking whether the stored field is populated.
 		const bool has_location = md && (md->coordinate.is_valid() ||
-			!str::is_empty(md->location_place) ||
-			!str::is_empty(md->location_state) ||
-			!str::is_empty(md->location_country));
+			!core::is_empty(md->location_place) ||
+			!core::is_empty(md->location_state) ||
+			!core::is_empty(md->location_country));
 
 		if (has_location == term.modifiers.positive)
 		{
@@ -2714,18 +2714,18 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 			// locations.md 2.5: bounded attribution, so a mid-ocean item is never matched
 			// by the name of a city it is nowhere near. Remote still yields its country.
 			if (_locations && md->coordinate.is_valid() &&
-				(str::is_empty(place) || str::is_empty(state) || str::is_empty(country_name)))
+				(core::is_empty(place) || core::is_empty(state) || core::is_empty(country_name)))
 			{
 				const auto resolved = attributed(md->coordinate);
 
-				if (str::is_empty(place)) place = resolved.place;
-				if (str::is_empty(state)) state = resolved.state;
-				if (str::is_empty(country_name)) country_name = resolved.country;
+				if (core::is_empty(place)) place = resolved.place;
+				if (core::is_empty(state)) state = resolved.state;
+				if (core::is_empty(country_name)) country_name = resolved.country;
 			}
 
-			const auto equals = [&term](const str::cached value)
+			const auto equals = [&term](const core::cached value)
 			{
-				return !str::is_empty(value) && str::icmp(term.text, value.sv()) == 0;
+				return !core::is_empty(value) && core::icmp(term.text, value.sv()) == 0;
 			};
 
 			switch (term.level)
@@ -2779,8 +2779,8 @@ df::search_result df::search_matcher::match_term(const str::cached folder_name, 
 		// locations.md 2.5 step 5: nothing significant enough is close enough to name. A stored
 		// place name is the user's own answer, so an item that carries one is never remote.
 		const bool is_remote = _locations && md && md->coordinate.is_valid() &&
-			str::is_empty(md->location_place) &&
-			str::is_empty(md->location_state) &&
+			core::is_empty(md->location_place) &&
+			core::is_empty(md->location_state) &&
 			attributed(md->coordinate).attribution == location_attribution::remote;
 
 		if (is_remote == term.modifiers.positive)
@@ -2941,7 +2941,7 @@ std::optional<df::related_match> df::search_matcher::evaluate_related(const file
 
 	// The same film in another file: graded by whether its year agrees, or only one side gives a year. Films of
 	// one title and different years - a remake - are different films.
-	if (related.kind == prop::media_kind::film && md->kind == prop::media_kind::film && !str::is_empty(related.title) &&
+	if (related.kind == prop::media_kind::film && md->kind == prop::media_kind::film && !core::is_empty(related.title) &&
 		same_title(md->title.sv(), related.title.sv()) &&
 		(related.year == 0 || md->year == 0 || related.year == md->year))
 	{
@@ -2949,10 +2949,10 @@ std::optional<df::related_match> df::search_matcher::evaluate_related(const file
 		return related_match{related_axis::film, year_agrees ? 0 : 1};
 	}
 
-	if (!str::is_empty(related.album) && icmp(md->album, related.album) == 0)
+	if (!core::is_empty(related.album) && icmp(md->album, related.album) == 0)
 	{
 		// Two artists can both have a "Greatest Hits", so a named artist on both sides has to agree.
-		const auto artist_agrees = str::is_empty(related.album_artist) || str::is_empty(md->album_artist) ||
+		const auto artist_agrees = core::is_empty(related.album_artist) || core::is_empty(md->album_artist) ||
 			icmp(md->album_artist, related.album_artist) == 0;
 
 		if (artist_agrees)
@@ -2962,7 +2962,7 @@ std::optional<df::related_match> df::search_matcher::evaluate_related(const file
 		}
 	}
 
-	if (!str::is_empty(related.show) && icmp(md->show, related.show) == 0)
+	if (!core::is_empty(related.show) && icmp(md->show, related.show) == 0)
 	{
 		const auto ordinal = static_cast<int64_t>(md->season) * 100000 + md->episode.x;
 		return related_match{related_axis::series, std::abs(ordinal - related.episode_ordinal())};
@@ -3041,13 +3041,13 @@ df::search_result df::search_matcher::match_item(const file_path path, const ind
 	return match_all_terms(path.folder().text(), file);
 }
 
-df::search_result df::search_matcher::match_all_terms(const str::cached folder_name, const index_file_item& file) const
+df::search_result df::search_matcher::match_all_terms(const core::cached folder_name, const index_file_item& file) const
 {
 	const auto md = file.metadata.load();
 	return match_all_terms(folder_name, file, md.get());
 }
 
-df::search_result df::search_matcher::match_all_terms(const str::cached folder_name, const index_file_item& file,
+df::search_result df::search_matcher::match_all_terms(const core::cached folder_name, const index_file_item& file,
                                                       const prop::item_metadata* const md) const
 {
 	if (_search._terms.size() == 1)
@@ -3066,7 +3066,7 @@ df::search_result df::search_matcher::match_all_terms(const str::cached folder_n
 	return {matched ? search_result_type::match_multiple : search_result_type::no_match};
 }
 
-df::search_result df::search_matcher::match_folder(const str::cached folder_name, const str::cached name) const
+df::search_result df::search_matcher::match_folder(const core::cached folder_name, const core::cached name) const
 {
 	if (has_related)
 	{

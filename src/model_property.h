@@ -21,7 +21,7 @@ class file_group;
 using file_type_ref = const file_type*;
 using file_group_ref = const file_group*;
 
-namespace ui
+namespace core
 {
 	class surface;
 	class image;
@@ -233,8 +233,8 @@ namespace prop
 
 		uint16_t id = 0;
 		icon_index icon = {};
-		str::cached short_name = {};
-		str::cached name = {};
+		core::cached short_name = {};
+		core::cached name = {};
 		text_t& text_key;
 		data_type data_type = {};
 		uint32_t flags = 0;
@@ -338,12 +338,12 @@ namespace prop
 
 	constexpr bool is_null(const std::string_view s)
 	{
-		return str::is_empty(s);
+		return core::is_empty(s);
 	}
 
 	constexpr bool is_null(const float n)
 	{
-		return df::is_zero(n);
+		return core::is_zero(n);
 	}
 
 	constexpr bool is_null(const int n)
@@ -356,7 +356,7 @@ namespace prop
 		return n == 0;
 	}
 
-	inline bool is_null(const df::date_t d)
+	inline bool is_null(const core::date_t d)
 	{
 		return !d.is_valid();
 	}
@@ -366,22 +366,22 @@ namespace prop
 		return s.is_empty();
 	}
 
-	constexpr bool is_null(const df::xy32 xy)
+	constexpr bool is_null(const core::xy32 xy)
 	{
 		return xy.is_empty();
 	}
 
 	// A number with an optional total - track 3, or 3 of 12. Only a missing number is null: a track or episode
 	// with no total is still that track or episode.
-	constexpr bool is_null(const df::xy8 xy)
+	constexpr bool is_null(const core::xy8 xy)
 	{
 		return xy.x == 0;
 	}
 
-	// The number and total that df::xy8 holds in 16 bits each; its constructor takes bytes.
-	constexpr df::xy8 number_pair(const int n, const int of)
+	// The number and total that core::xy8 holds in 16 bits each; its constructor takes bytes.
+	constexpr core::xy8 number_pair(const int n, const int of)
 	{
-		df::xy8 result{0, 0};
+		core::xy8 result{0, 0};
 		result.x = static_cast<int16_t>(std::clamp(n, 0, static_cast<int>(INT16_MAX)));
 		result.y = static_cast<int16_t>(std::clamp(of, 0, static_cast<int>(INT16_MAX)));
 		return result;
@@ -451,41 +451,41 @@ namespace prop
 
 		sizei dimensions() const { return {width, height}; }
 
-		str::cached album;
-		str::cached album_artist;
-		str::cached artist;
-		str::cached audio_codec;
-		str::cached bitrate;
-		str::cached camera_manufacturer;
-		str::cached camera_model;
-		str::cached comment;
-		str::cached composer;
-		str::cached copyright_creator;
-		str::cached copyright_credit;
-		str::cached copyright_url;
-		str::cached copyright_notice;
-		str::cached copyright_source;
-		str::cached description;
-		str::cached encoder;
-		str::cached file_name;
-		str::cached genre;
-		str::cached lens;
-		str::cached location_place;
-		str::cached location_country;
-		str::cached location_state;
-		str::cached performer;
-		str::cached pixel_format;
-		str::cached publisher;
-		str::cached show;
-		str::cached synopsis;
-		str::cached title;
-		str::cached video_codec;
-		str::cached raw_file_name;
-		str::cached tags;
-		str::cached game;
-		str::cached system;
-		str::cached label;
-		str::cached doc_id;
+		core::cached album;
+		core::cached album_artist;
+		core::cached artist;
+		core::cached audio_codec;
+		core::cached bitrate;
+		core::cached camera_manufacturer;
+		core::cached camera_model;
+		core::cached comment;
+		core::cached composer;
+		core::cached copyright_creator;
+		core::cached copyright_credit;
+		core::cached copyright_url;
+		core::cached copyright_notice;
+		core::cached copyright_source;
+		core::cached description;
+		core::cached encoder;
+		core::cached file_name;
+		core::cached genre;
+		core::cached lens;
+		core::cached location_place;
+		core::cached location_country;
+		core::cached location_state;
+		core::cached performer;
+		core::cached pixel_format;
+		core::cached publisher;
+		core::cached show;
+		core::cached synopsis;
+		core::cached title;
+		core::cached video_codec;
+		core::cached raw_file_name;
+		core::cached tags;
+		core::cached game;
+		core::cached system;
+		core::cached label;
+		core::cached doc_id;
 
 		gps_coordinate coordinate;
 
@@ -512,10 +512,10 @@ namespace prop
 		uint16_t year = 0;
 		uint16_t season = 0;
 		panorama_projection panorama = panorama_projection::none;
-		ui::orientation orientation = ui::orientation::top_left;
-		df::xy8 disk = {0, 0};
-		df::xy8 episode = {0, 0};
-		df::xy8 track = {0, 0};
+		core::orientation orientation = core::orientation::top_left;
+		core::xy8 disk = {0, 0};
+		core::xy8 episode = {0, 0};
+		core::xy8 track = {0, 0};
 
 		// prop::from_name bits: the values read from the name, which are never stored.
 		uint8_t from_name = 0;
@@ -525,12 +525,12 @@ namespace prop
 
 		double media_position = 0.0;
 
-		str::cached sidecars;
-		str::cached xmp;
+		core::cached sidecars;
+		core::cached xmp;
 
 		// The one date shown where there is room for one. docs/metadata.md#dates owns the ladder;
 		// this is the only place it is implemented.
-		df::date_t created() const
+		core::date_t created() const
 		{
 			return dates.best();
 		}
@@ -586,7 +586,7 @@ namespace prop
 	{
 		std::string_view id; // stable across display languages, unlike name
 		std::string_view name;
-		str::cached text;
+		core::cached text;
 		bool duplicate = false;
 	};
 
@@ -609,7 +609,7 @@ namespace prop
 	int64_t exp_round(double d);
 
 	std::string format_f_num(double d);
-	std::string format_date(df::date_t d);
+	std::string format_date(core::date_t d);
 
 	std::string format_duration(int d);
 	std::string format_exposure(double d);
@@ -623,7 +623,7 @@ namespace prop
 	std::string format_audio_sample_rate(uint16_t v);
 	std::string format_audio_sample_type(audio_sample_t v);
 	std::string format_audio_channels(int v);
-	std::string format_magnitude(const df::file_size& s);
+	std::string format_magnitude(const core::file_size& s);
 	std::string format_streams(int s);
 
 	std::string format_rating(int i);
@@ -634,15 +634,15 @@ namespace prop
 	std::string format_video_resolution(sizei v);
 
 	std::string replace_tokens(std::string_view name_template, const item_metadata_const_ptr& md,
-	                           std::string_view name, df::date_t created);
+	                           std::string_view name, core::date_t created);
 
 	// An episode's place in its show as a library names it - S01E02, S03E00 for a special, E426 numbered without
 	// a season, 2 / 6 for a part, or the day it aired - interned, as it is drawn for every visible item. Empty
 	// for anything that is no episode.
-	str::cached episode_label(const item_metadata& md);
+	core::cached episode_label(const item_metadata& md);
 	// What a library titles an item: "S01E02 · Pilot" for an episode, "Dont Look Up (2021)" for a film, and the
 	// title alone for anything else.
-	str::cached library_caption(const item_metadata& md);
+	core::cached library_caption(const item_metadata& md);
 
 	inline double aperture_to_fstop(const double d)
 	{

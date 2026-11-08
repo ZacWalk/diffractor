@@ -134,7 +134,7 @@ namespace df
 	{
 		for (const auto& s : location_scopes)
 		{
-			if (str::icmp(scope, s.name) == 0) return &s;
+			if (core::icmp(scope, s.name) == 0) return &s;
 		}
 
 		return nullptr;
@@ -160,7 +160,7 @@ namespace df
 		// free, and every axis distance (seconds, metres, track and episode gaps) fits comfortably.
 		int32_t distance = 0;
 		prop::key_ref key = prop::null;
-		str::cached text = {};
+		core::cached text = {};
 
 		// Constructors rather than aggregate initialisation, so that placing `distance` in the
 		// padding after `type` costs the existing `{type}`, `{type, key}` and `{type, key, text}`
@@ -175,7 +175,7 @@ namespace df
 		{
 		}
 
-		search_result(const search_result_type t, const prop::key_ref k, const str::cached x) noexcept :
+		search_result(const search_result_type t, const prop::key_ref k, const core::cached x) noexcept :
 			type(t), key(k), text(x)
 		{
 		}
@@ -207,7 +207,7 @@ namespace df
 
 	inline bool is_probably_selector(const std::string_view text)
 	{
-		return item_selector::can_iterate(text) &&
+		return core::item_selector::can_iterate(text) &&
 			text.find(" #") == std::string::npos &&
 			text.find(" @") == std::string::npos &&
 			text.find(" *") == std::string::npos &&
@@ -265,7 +265,7 @@ namespace df
 			{
 			case search_scope_kind::tag:
 				return tag_as_scope
-					       ? std::format("tag:{}", str::starts(candidate, "#") ? candidate.substr(1) : candidate)
+					       ? std::format("tag:{}", core::starts(candidate, "#") ? candidate.substr(1) : candidate)
 					       : std::string(candidate);
 			case search_scope_kind::with:
 				return std::format("with:{}", candidate);
@@ -297,7 +297,7 @@ namespace df
 		{
 			const auto prefix = std::string(scope.name) + ':';
 
-			if (str::starts(token, prefix))
+			if (core::starts(token, prefix))
 			{
 				result.kind = search_scope_kind::location;
 				result.level = scope.level;
@@ -306,7 +306,7 @@ namespace df
 			}
 		}
 
-		if (str::starts(token, "tag:"))
+		if (core::starts(token, "tag:"))
 		{
 			result.kind = search_scope_kind::tag;
 			result.tag_as_scope = true;
@@ -322,12 +322,12 @@ namespace df
 			result.kind = search_scope_kind::group;
 			result.value = std::string(token.substr(1));
 		}
-		else if (str::starts(token, "without:"))
+		else if (core::starts(token, "without:"))
 		{
 			result.kind = search_scope_kind::without;
 			result.value = std::string(token.substr(8));
 		}
-		else if (str::starts(token, "with:"))
+		else if (core::starts(token, "with:"))
 		{
 			result.kind = search_scope_kind::with;
 			result.value = std::string(token.substr(5));
@@ -421,7 +421,7 @@ namespace df
 		date_parts(date_parts&&) noexcept = default;
 		date_parts& operator=(date_parts&&) noexcept = default;
 
-		date_parts(const day_t& dd, const date_parts_prop isc = date_parts_prop::any) noexcept : year(dd.year),
+		date_parts(const core::day_t& dd, const date_parts_prop isc = date_parts_prop::any) noexcept : year(dd.year),
 			month(dd.month), day(dd.day), target(isc)
 		{
 		}
@@ -441,7 +441,7 @@ namespace df
 	// query per field per item. Empty when the text is ASCII, which is already NFC.
 	inline std::string nfc_for_match(const std::string_view text)
 	{
-		return str::is_ascii(text) ? std::string{} : platform::normalize_nfc(text);
+		return core::is_ascii(text) ? std::string{} : platform::normalize_nfc(text);
 	}
 
 	struct search_term
@@ -461,7 +461,7 @@ namespace df
 		pointi location_cell = {};
 		int location_cell_span = 0;
 		location_level level = location_level::any;
-		xy16 xy_val = {0, 0};
+		core::xy16 xy_val = {0, 0};
 		file_group_ref fg_val = nullptr;
 		date_parts date_val;
 
@@ -482,7 +482,7 @@ namespace df
 			modifiers(mods),
 			text(v),
 			_nfc_text(nfc_for_match(text)),
-			_is_wildcard(str::is_wildcard(text))
+			_is_wildcard(core::is_wildcard(text))
 		{
 		}
 
@@ -510,7 +510,7 @@ namespace df
 			key(k),
 			text(v),
 			_nfc_text(nfc_for_match(text)),
-			_is_wildcard(str::is_wildcard(text))
+			_is_wildcard(core::is_wildcard(text))
 		{
 		}
 
@@ -534,7 +534,7 @@ namespace df
 		{
 		}
 
-		explicit search_term(const prop::key_ref k, const xy16 v, const search_term_modifier& mods) noexcept :
+		explicit search_term(const prop::key_ref k, const core::xy16 v, const search_term_modifier& mods) noexcept :
 			type(search_term_type::value), modifiers(mods), key(k), xy_val(v)
 		{
 		}
@@ -544,7 +544,7 @@ namespace df
 			modifiers(mods),
 			text(v),
 			_nfc_text(nfc_for_match(text)),
-			_is_wildcard(str::is_wildcard(text))
+			_is_wildcard(core::is_wildcard(text))
 		{
 		}
 
@@ -702,7 +702,7 @@ namespace df
 	// Returns true when folder_name is on a drive whose volume label matches the
 	// term text (case-insensitive, wildcards supported). drive_labels maps an
 	// upper-case drive letter to its current volume label.
-	bool match_volume_label(std::string_view folder_name, const hash_map<char, str::cached>& drive_labels,
+	bool match_volume_label(std::string_view folder_name, const core::hash_map<char, core::cached>& drive_labels,
 	                        const search_term& term);
 
 	// locations.md 3.1: merges the tokens that follow a location scope into its term when they
@@ -712,19 +712,19 @@ namespace df
 
 	struct related_info
 	{
-		file_path path = {};
+		core::file_path path = {};
 		gps_coordinate gps = {};
-		date_t metadata_created = {};
-		date_t file_created = {};
-		str::cached name = {};
-		str::cached album = {};
-		str::cached album_artist = {};
-		str::cached show = {};
-		str::cached title = {};
+		core::date_t metadata_created = {};
+		core::date_t file_created = {};
+		core::cached name = {};
+		core::cached album = {};
+		core::cached album_artist = {};
+		core::cached show = {};
+		core::cached title = {};
 		uint16_t year = 0;
 		prop::media_kind kind = prop::media_kind::none;
 		uint32_t crc32c = 0;
-		file_size size = {};
+		core::file_size size = {};
 		file_type_ref ft = nullptr;
 		uint32_t group = 0;
 		uint32_t exact_group = 0;
@@ -733,19 +733,19 @@ namespace df
 		crypto::phash_rotations phash{};
 		sizei dimensions;
 		uint16_t season = 0;
-		xy8 episode = {0, 0};
-		xy8 disk = {0, 0};
-		xy8 track = {0, 0};
+		core::xy8 episode = {0, 0};
+		core::xy8 disk = {0, 0};
+		core::xy8 track = {0, 0};
 
 		bool is_loaded = false;
 
-		date_t created() const
+		core::date_t created() const
 		{
 			if (metadata_created.is_valid()) return metadata_created;
 
 			// file_created is the index's instant. It is compared against
 			// index_file_item::created(), which converts the same stamp.
-			return file_created.is_valid() ? file_created.system_to_local() : date_t{};
+			return file_created.is_valid() ? platform::utc_to_local(file_created) : core::date_t{};
 		}
 
 		// Position within an album or a series, used to answer with the neighbouring tracks or
@@ -781,7 +781,7 @@ namespace df
 
 	class search_t
 	{
-		std::vector<item_selector> _selectors;
+		std::vector<core::item_selector> _selectors;
 		std::vector<search_term> _terms;
 		related_info _related;
 		std::string _raw;
@@ -911,7 +911,7 @@ namespace df
 			{
 				if (s.is_recursive())
 				{
-					s = item_selector(s.folder(), false, s.wildcard());
+					s = core::item_selector(s.folder(), false, s.wildcard());
 				}
 			}
 
@@ -924,7 +924,7 @@ namespace df
 			{
 				if (s.is_recursive() != recursive)
 				{
-					s = item_selector(s.folder(), recursive, s.wildcard());
+					s = core::item_selector(s.folder(), recursive, s.wildcard());
 				}
 			}
 
@@ -940,7 +940,7 @@ namespace df
 		{
 			for (const auto& t : _terms)
 			{
-				if (t.type == search_term_type::text && str::contains(t.text, "**"))
+				if (t.type == search_term_type::text && core::contains(t.text, "**"))
 				{
 					return true;
 				}
@@ -984,7 +984,7 @@ namespace df
 			return *this;
 		}
 
-		search_t& with(const prop::key_ref k, xy16 v)
+		search_t& with(const prop::key_ref k, core::xy16 v)
 		{
 			_terms.emplace_back(k, v, search_term_modifier(true));
 			_raw.clear();
@@ -1191,7 +1191,7 @@ namespace df
 		// locations.md 6.3: a timeline node refines the query to its own bounds. Two bracketing
 		// comparisons express the range, so the query the node runs returns exactly the items the
 		// node counted rather than a coarser month or year around them.
-		search_t& date_range(const day_t& from, const day_t& to,
+		search_t& date_range(const core::day_t& from, const core::day_t& to,
 		                     const date_parts_prop target = date_parts_prop::original)
 		{
 			search_term_modifier not_before;
@@ -1220,7 +1220,7 @@ namespace df
 			for (auto& term : _terms)
 			{
 				if (term.type == search_term_type::area && term.location_cell_span == 0 &&
-					str::icmp(term.text, area.name) == 0)
+					core::icmp(term.text, area.name) == 0)
 				{
 					term.location_cell = area.cell;
 					term.location_cell_span = area.cell_span;
@@ -1280,7 +1280,7 @@ namespace df
 			return *this;
 		}
 
-		search_t& add_selector(const item_selector& f)
+		search_t& add_selector(const core::item_selector& f)
 		{
 			_selectors.emplace_back(f);
 			_raw.clear();
@@ -1289,7 +1289,7 @@ namespace df
 
 		search_t& add_selector(const std::string_view sv)
 		{
-			_selectors.emplace_back(item_selector(sv));
+			_selectors.emplace_back(core::item_selector(sv));
 			_raw.clear();
 			return *this;
 		}
@@ -1342,7 +1342,7 @@ namespace df
 
 		void clear_date_properties();
 
-		const std::vector<item_selector>& selectors() const
+		const std::vector<core::item_selector>& selectors() const
 		{
 			return _selectors;
 		}
@@ -1358,7 +1358,7 @@ namespace df
 				_terms.end();
 		}
 
-		bool is_match(const prop::key& key, date_t date) const;
+		bool is_match(const prop::key& key, core::date_t date) const;
 		bool is_match(const prop::key& key, int val) const;
 
 		search_presence_mask calc_required_presence() const;
@@ -1422,7 +1422,7 @@ namespace df
 	{
 		search_t parent;
 		std::string name;
-		paths selection;
+		core::paths selection;
 	};
 
 	// How a search's terms combine: AND by default, OR where written, nested by parentheses. Generic in
@@ -1518,7 +1518,7 @@ namespace df
 	// search index builds from the same tables, so what it finds cannot drift from what matches.
 	struct text_contains_field
 	{
-		str::cached prop::item_metadata::* member;
+		core::cached prop::item_metadata::* member;
 		prop::key_ref key;
 	};
 
@@ -1532,7 +1532,7 @@ namespace df
 
 	struct text_split_field
 	{
-		str::cached prop::item_metadata::* member;
+		core::cached prop::item_metadata::* member;
 		prop::key_ref key;
 		bool (*separator)(char);
 	};
@@ -1552,7 +1552,7 @@ namespace df
 	bool text_term_equals_part(const search_term& term, std::string_view part);
 
 	// The form two texts share exactly when term matching calls them equal - NFC normalised, then each
-	// code point lower-cased as str::icmp compares it - written four bytes a code point so that no two
+	// code point lower-cased as core::icmp compares it - written four bytes a code point so that no two
 	// different sequences can share one.
 	std::string search_fold_key(std::string_view text);
 
@@ -1562,9 +1562,9 @@ namespace df
 	// `target` compares are filled; `any` fills all three.
 	struct date_term_keys
 	{
-		date_t original;
-		date_t created;
-		date_t modified;
+		core::date_t original;
+		core::date_t created;
+		core::date_t modified;
 	};
 
 	date_term_keys date_term_keys_of(date_parts_prop target, const index_file_item& file,
@@ -1598,7 +1598,7 @@ namespace df
 		const search_presence_mask _required_presence;
 		const uint32_t _now_days = 0;
 		const location_cache* _locations = nullptr;
-		hash_map<char, str::cached> _drive_labels;
+		core::hash_map<char, core::cached> _drive_labels;
 
 		struct resolved_place
 		{
@@ -1609,13 +1609,13 @@ namespace df
 		};
 
 		// Resolved once per search, never per item (locations.md §3.3).
-		hash_map<std::string, resolved_place, ihash, ieq> _resolved_centres;
+		core::hash_map<std::string, resolved_place, core::ihash, core::ieq> _resolved_centres;
 
 		struct attributed_location
 		{
-			str::cached place;
-			str::cached state;
-			str::cached country;
+			core::cached place;
+			core::cached state;
+			core::cached country;
 			// The reach locations.md 2.5 grants the record that named this coordinate, and so how far
 			// a more significant place may stand over it.
 			double reach_km = 0.0;
@@ -1628,7 +1628,7 @@ namespace df
 		attributed_location attributed(gps_coordinate coord) const;
 
 	public:
-		search_matcher(const search_t& s, const uint32_t now_days = platform::now().to_days(),
+		search_matcher(const search_t& s, const uint32_t now_days = core::utc_now().to_days(),
 		               const location_cache* locations = nullptr) :
 			_search(s),
 			_required_presence(s.calc_required_presence()),
@@ -1645,10 +1645,10 @@ namespace df
 				// term can match items by the label of the drive they live on.
 				for (const auto& d : platform::scan_drives())
 				{
-					if (!d.name.empty() && !str::is_empty(d.vol_name))
+					if (!d.name.empty() && !core::is_empty(d.vol_name))
 					{
-						_drive_labels[static_cast<char>(str::to_upper(static_cast<unsigned char>(d.name[0])))] =
-							str::cache(d.vol_name);
+						_drive_labels[static_cast<char>(core::to_upper(static_cast<unsigned char>(d.name[0])))] =
+							core::cache(d.vol_name);
 					}
 				}
 			}
@@ -1690,18 +1690,18 @@ namespace df
 			return _required_presence;
 		}
 
-		search_result match_term(str::cached folder_name, const index_file_item& file, const search_term& term) const;
+		search_result match_term(core::cached folder_name, const index_file_item& file, const search_term& term) const;
 		// The same answers for an item whose metadata the caller already holds, null when it has none, so
 		// a search reads each item's metadata once rather than once per term.
-		search_result match_term(str::cached folder_name, const index_file_item& file, const prop::item_metadata* md,
+		search_result match_term(core::cached folder_name, const index_file_item& file, const prop::item_metadata* md,
 		                         const search_term& term) const;
-		search_result match_all_terms(str::cached folder_name, const index_file_item& file) const;
-		search_result match_all_terms(str::cached folder_name, const index_file_item& file,
+		search_result match_all_terms(core::cached folder_name, const index_file_item& file) const;
+		search_result match_all_terms(core::cached folder_name, const index_file_item& file,
 		                              const prop::item_metadata* md) const;
 		// A positive free-text term holding `**` matches every item in a folder its path matches.
-		bool text_term_matches_folder(const search_term& term, str::cached folder_name) const;
+		bool text_term_matches_folder(const search_term& term, core::cached folder_name) const;
 		// Whether a date term's date compares true against one date key, today being the matcher's today.
-		bool date_key_matches(const search_term& term, date_t key) const;
+		bool date_key_matches(const search_term& term, core::date_t key) const;
 
 		const search_t& search() const
 		{
@@ -1710,9 +1710,9 @@ namespace df
 
 		// The strongest relation this item has to the item the search started at, or nothing when it
 		// has none. Axis priority resolves an item that qualifies several ways, so it appears once.
-		std::optional<related_match> evaluate_related(file_path path, const index_file_item& file) const;
+		std::optional<related_match> evaluate_related(core::file_path path, const index_file_item& file) const;
 
-		search_result match_item(file_path path, const index_file_item& file) const;
-		search_result match_folder(str::cached folder_name, str::cached name) const;
+		search_result match_item(core::file_path path, const index_file_item& file) const;
+		search_result match_folder(core::cached folder_name, core::cached name) const;
 	};
 }

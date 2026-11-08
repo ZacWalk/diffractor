@@ -30,17 +30,17 @@ namespace database_test_seams
 	void fail_next_journal_probe(int sqlite_result);
 	size_t folder_thumbnail_visit_budget();
 	void visit_folder_thumbnail_candidates(
-		const df::folder_path& root,
-		const std::function<bool(const df::folder_path&)>& visit,
-		const std::function<std::vector<df::folder_path>(const df::folder_path&)>& enumerate);
+		const core::folder_path& root,
+		const std::function<bool(const core::folder_path&)>& visit,
+		const std::function<std::vector<core::folder_path>(const core::folder_path&)>& enumerate);
 }
 
 struct item_import
 {
-	str::cached name = {};
-	df::date_t modified = {};
-	df::file_size size = {};
-	df::date_t imported = {};
+	core::cached name = {};
+	core::date_t modified = {};
+	core::file_size size = {};
+	core::date_t imported = {};
 
 	int compare(const item_import& other) const
 	{
@@ -70,12 +70,12 @@ struct item_import_eq
 	}
 };
 
-using item_import_set = df::hash_set<item_import, item_import_hash, item_import_eq>;
+using item_import_set = core::hash_set<item_import, item_import_hash, item_import_eq>;
 
-class database final : public df::no_copy
+class database final : public core::no_copy
 {
 	index_state& _state;
-	df::file_path _db_path;
+	core::file_path _db_path;
 	uint32_t _db_thread_id = 0;
 	sqlite3* _db = nullptr;
 
@@ -99,13 +99,13 @@ public:
 	struct thumbnail_request
 	{
 		std::weak_ptr<df::item_element> lifetime;
-		df::file_path path;
-		df::folder_path folder;
+		core::file_path path;
+		core::folder_path folder;
 		uint64_t generation = 0;
 		bool is_folder = false;
 		bool has_thumbnail = false;
 
-		thumbnail_request(std::weak_ptr<df::item_element> lifetime, df::file_path path, df::folder_path folder,
+		thumbnail_request(std::weak_ptr<df::item_element> lifetime, core::file_path path, core::folder_path folder,
 		                  const uint64_t generation, const bool is_folder, const bool has_thumbnail) noexcept;
 	};
 
@@ -114,9 +114,9 @@ public:
 
 	struct db_thumbnail
 	{
-		ui::const_image_ptr thumb;
-		ui::const_image_ptr cover_art;
-		df::date_t last_indexed;
+		core::const_image_ptr thumb;
+		core::const_image_ptr cover_art;
+		core::date_t last_indexed;
 
 		db_thumbnail() noexcept = default;
 		db_thumbnail(const db_thumbnail&) = delete;
@@ -142,13 +142,13 @@ public:
 
 	void close();
 
-	void clean(const std::vector<df::file_path>& indexed_items) const;
-	db_thumbnail load_thumbnail(df::file_path id) const;
-	db_thumbnail load_folder_thumbnail(str::cached folder) const;
+	void clean(const std::vector<core::file_path>& indexed_items) const;
+	db_thumbnail load_thumbnail(core::file_path id) const;
+	db_thumbnail load_folder_thumbnail(core::cached folder) const;
 	static thumbnail_requests make_thumbnail_requests(const df::item_set& items);
 	void load_thumbnails(const index_state& index, const thumbnail_requests& requests) const;
 	void open();
-	void open(df::folder_path folder, std::string_view file_name);
+	void open(core::folder_path folder, std::string_view file_name);
 	void upgrade_cached_metadata();
 	bool invalidate_cached_metadata() const;
 	bool request_date_pack_rescan() const;

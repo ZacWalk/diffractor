@@ -21,24 +21,24 @@ static void should_parse_translated_short_month()
 	const auto* const saved_oct = tt.words.month_short_oct.published();
 	const auto* const saved_jan = tt.words.month_short_jan.published();
 
-	// Storage that outlives the reads below, which is the contract text_t::publish states.
+	// Storage that outlives the reads below, which is the contract core::text_t::publish states.
 	const std::string oct_ru = "\xd0\xbe\xd0\xba\xd1\x82"; // ru, 6 bytes
 	const std::string jan_fr = "janv"; // fr, 4 bytes
 
 	tt.words.month_short_oct.publish(&oct_ru);
 	tt.words.month_short_jan.publish(&jan_fr);
 
-	const auto oct = str::month("\xd0\xbe\xd0\xba\xd1\x82");
-	const auto jan = str::month("JANV");
+	const auto oct = core::month("\xd0\xbe\xd0\xba\xd1\x82");
+	const auto jan = core::month("JANV");
 
 	tt.words.month_short_oct.publish(saved_oct);
 	tt.words.month_short_jan.publish(saved_jan);
 
 	assert_equal(10, oct, "6 byte translated short month");
 	assert_equal(1, jan, "4 byte translated short month, case insensitive");
-	assert_equal(3, str::month("mar"), "ascii short month");
-	assert_equal(5, str::month("May"), "long month");
-	assert_equal(0, str::month("nope"), "non month");
+	assert_equal(3, month("mar"), "ascii short month");
+	assert_equal(5, month("May"), "long month");
+	assert_equal(0, month("nope"), "non month");
 }
 
 static void should_format_plural_text()
@@ -181,7 +181,7 @@ static void should_clear_duplicate_text_instances()
 
 static void should_reject_unsupported_plural_indices()
 {
-	const auto write_catalog = [](const df::file_path path, const std::string_view indexed_line)
+	const auto write_catalog = [](const core::file_path path, const std::string_view indexed_line)
 	{
 		std::ofstream fs(platform::to_stream_path(path));
 		fs << "msgid \"one apple\"\n";
@@ -232,8 +232,8 @@ static void should_check_spelling()
 	auto& checker = spell();
 	checker.lazy_load();
 
-	const auto dictionary_present = known_path(platform::known_folder::running_app_folder)
-	                                .combine("dictionaries").combine_file("en_US.dic").exists();
+	const auto dictionary_present = platform::exists(
+		known_path(platform::known_folder::running_app_folder).combine("dictionaries").combine_file("en_US.dic"));
 
 	assert_equal(true, checker.is_word_valid("photograph"), "a dictionary word is valid");
 
@@ -274,11 +274,11 @@ static void should_keep_the_custom_dictionary_where_it_can_be_written()
 	                 "the custom dictionary is not written into the install folder");
 
 	// The shipped dictionary is still readable from where it actually is.
-	assert_equal(true, install_folder.combine_file("en_US.aff").exists(),
+	assert_equal(true, platform::exists(install_folder.combine_file("en_US.aff")),
 	             "the shipped dictionary is where the read fallback looks");
 }
 
-static void write_minimal_dictionary(df::folder_path folder, bool include_dic);
+static void write_minimal_dictionary(core::folder_path folder, bool include_dic);
 
 static void should_load_spelling_dictionaries_asynchronously()
 {
@@ -294,7 +294,7 @@ static void should_load_spelling_dictionaries_asynchronously()
 	checker.clear_test_hooks();
 	checker.set_load_gate_for_tests([&load_started] { load_started = true; });
 	checker.configure_async(&async);
-	const df::scope_exit restore([&checker]
+	const core::scope_exit restore([&checker]
 	{
 		checker.configure_async(nullptr);
 		checker.clear_test_hooks();
@@ -315,7 +315,7 @@ static void should_load_spelling_dictionaries_asynchronously()
 	assert_equal(false, checker.is_ready(), "a stale dictionary load completion is ignored");
 }
 
-static void write_minimal_dictionary(const df::folder_path folder, const bool include_dic)
+static void write_minimal_dictionary(const core::folder_path folder, const bool include_dic)
 {
 	write_test_file(folder.combine_file("en_US.aff"), "SET UTF-8\nTRY abcdefghijklmnopqrstuvwxyz\n");
 	if (include_dic)
@@ -336,7 +336,7 @@ static void should_reload_spelling_after_dictionary_download()
 	checker.configure_paths_for_tests(shipped_folder, user_folder);
 	checker.clear_test_hooks();
 	checker.configure_async(&async);
-	const df::scope_exit restore([&checker]
+	const core::scope_exit restore([&checker]
 	{
 		checker.configure_async(nullptr);
 		checker.clear_test_hooks();
@@ -369,7 +369,7 @@ static void should_report_custom_dictionary_persistence_results()
 	checker.configure_paths_for_tests(shipped_folder, user_folder);
 	checker.clear_test_hooks();
 	checker.configure_async(&async);
-	const df::scope_exit restore([&checker]
+	const core::scope_exit restore([&checker]
 	{
 		checker.configure_async(nullptr);
 		checker.clear_test_hooks();
@@ -390,9 +390,9 @@ static void should_report_custom_dictionary_persistence_results()
 	assert_equal(1_z, results.size(), "the persisted result is published");
 	assert_equal(static_cast<int>(custom_dictionary_add_status::persisted), static_cast<int>(results.back().status),
 	             "append and flush succeeded");
-	assert_equal(true, checker.custom_dictionary_path().exists(), "the test custom dictionary was written");
+	assert_equal(true, platform::exists(checker.custom_dictionary_path()), "the test custom dictionary was written");
 
-	checker.set_custom_dictionary_writer_for_tests([](const df::file_path&, std::string_view)
+	checker.set_custom_dictionary_writer_for_tests([](const core::file_path&, std::string_view)
 	{
 		return custom_dictionary_add_result{custom_dictionary_add_status::failed, "flush failed"};
 	});
@@ -430,7 +430,7 @@ static void should_flush_pending_custom_dictionary_words_on_shutdown()
 	checker.configure_paths_for_tests(shipped_folder, user_folder);
 	checker.clear_test_hooks();
 	checker.configure_async(&async);
-	const df::scope_exit restore([&checker]
+	const core::scope_exit restore([&checker]
 	{
 		checker.configure_async(nullptr);
 		checker.clear_test_hooks();
@@ -446,7 +446,7 @@ static void should_flush_pending_custom_dictionary_words_on_shutdown()
 	assert_equal(1_z, async.pending_worker_count(async_queue::work), "the custom dictionary write is queued");
 	checker.flush_pending_custom_words();
 
-	assert_equal(true, checker.custom_dictionary_path().exists(),
+	assert_equal(true, platform::exists(checker.custom_dictionary_path()),
 	             "shutdown flush writes a word that the worker queue has not reached");
 	assert_equal(0_z, results.size(), "worker completion is not faked by the shutdown flush");
 }

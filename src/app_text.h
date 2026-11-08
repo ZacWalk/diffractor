@@ -11,6 +11,8 @@
 
 #pragma once
 
+namespace df { class item_set; }
+
 struct av_stream_info;
 struct subtitle_offer;
 
@@ -20,7 +22,7 @@ std::string format_audio_stream_name(const av_stream_info& stream, int audio_tra
 std::string format_subtitle_name(const subtitle_offer& offer, int subtitle_number);
 
 
-using text_mapping = df::hash_map<std::string_view, std::reference_wrapper<text_t>>;
+using text_mapping = core::hash_map<std::string_view, std::reference_wrapper<text_t>>;
 
 struct plural_text
 {
@@ -88,12 +90,12 @@ struct po_load_result
 	std::vector<po_parse_error> errors;
 };
 
-po_load_result load_po_report(df::file_path lang_file);
-std::vector<po_entry> load_po(df::file_path lang_file);
+po_load_result load_po_report(core::file_path lang_file);
+std::vector<po_entry> load_po(core::file_path lang_file);
 
 std::string format_plural_text(const plural_text& fmt, int64_t count, int64_t of_total = 0);
 std::string format_plural_text(const plural_text& fmt, std::string_view first_name, int64_t count,
-                               df::file_size size, int64_t of_total = 0);
+                               core::file_size size, int64_t of_total = 0);
 std::string format_plural_text(const plural_text& fmt, const df::item_set& items);
 std::string format_plural_text(const plural_text& fmt, const std::vector<std::string>& result);
 
@@ -163,7 +165,7 @@ struct app_text_t
 	void calc_text_mapping();
 
 	std::string translate_text(const std::string& text, std::string_view scope = {}) const;
-	std::vector<std::string> add_translate_text(const std::vector<str::cached>& text,
+	std::vector<std::string> add_translate_text(const std::vector<core::cached>& text,
 	                                            std::string_view scope = {}) const;
 	// Translated, sorted names of the built-in genres that apply to kinds.
 	std::vector<std::string> known_genres(genre_kind kinds) const;
@@ -596,7 +598,7 @@ struct app_text_t
 	text_t album_artist = "Album Artist";
 	text_t copyright_title = "Copyright";
 	// Month names and booleans: the foundation's words, which this text translates and installs.
-	str::words words;
+	words words;
 	// The platform layer's messages, which this text translates and installs.
 	platform::messages platform_text;
 	text_t compare = "Compare";
@@ -777,53 +779,9 @@ struct app_text_t
 	text_t keyboard_edit_title = "Editing";
 	text_t options_title = "Options";
 	text_t keyboard_ref_title = "Keyboard reference";
-	text_t keyboard_enter = "enter";
 	text_t keyboard_enter_desc = "Opens an image full screen.";
-	text_t keyboard_space = "space";
 	text_t keyboard_space_desc = "Plays or pauses video and audio. Stops a running slideshow.";
-	text_t keyboard_escape = "escape";
 	text_t keyboard_escape_desc = "Gets you out of full screen, zoom or other modes.";
-	text_t keyboard_left = "left";
-	text_t keyboard_right = "right";
-	text_t keyboard_back = "back";
-	text_t keyboard_browser_back = "browser-back";
-	text_t keyboard_browser_favorites = "browser-favorites";
-	text_t keyboard_browser_forward = "browser-forward";
-	text_t keyboard_browser_home = "browser-home";
-	text_t keyboard_browser_refresh = "browser-refresh";
-	text_t keyboard_browser_search = "browser-search";
-	text_t keyboard_browser_stop = "browser-stop";
-	text_t keyboard_del = "del";
-	text_t keyboard_down = "down";
-	text_t keyboard_home = "home";
-	text_t keyboard_end = "end";
-	text_t keyboard_f1 = "F1";
-	text_t keyboard_f10 = "F10";
-	text_t keyboard_f11 = "F11";
-	text_t keyboard_f2 = "F2";
-	text_t keyboard_f3 = "F3";
-	text_t keyboard_f4 = "F4";
-	text_t keyboard_f5 = "F5";
-	text_t keyboard_f6 = "F6";
-	text_t keyboard_f7 = "F7";
-	text_t keyboard_f8 = "F8";
-	text_t keyboard_f9 = "F9";
-	text_t keyboard_insert = "insert";
-	text_t keyboard_media_next_track = "media-next-track";
-	text_t keyboard_media_play_pause = "media-play-pause";
-	text_t keyboard_media_prev_track = "media-prev-track";
-	text_t keyboard_media_stop = "media-stop";
-	text_t keyboard_next = "page-down";
-	text_t keyboard_oem_4 = "[";
-	text_t keyboard_oem_6 = "]";
-	text_t keyboard_oem_plus = "+";
-	text_t keyboard_oem_minus = "-";
-	text_t keyboard_prior = "page-up";
-	text_t keyboard_tab = "tab";
-	text_t keyboard_up = "up";
-	text_t keyboard_volume_down = "volume-down";
-	text_t keyboard_volume_mute = "volume-mute";
-	text_t keyboard_volume_up = "volume-up";
 	text_t keyboard_left_right_desc = "Move to the next or previous item.";
 	text_t keyboard_ctrl_left_right_desc = "Extend the current item selection and allow comparing of items.";
 	text_t keyboard_up_down_desc = "Move up or down a row of items. Pans a zoomed image.";
@@ -926,11 +884,6 @@ struct app_text_t
 	text_t share_zip = "Send the files as one zip file";
 	text_t button_share = "&Share";
 	text_t share_failed = "The files could not be shared.";
-	text_t keyboard_or = "OR";
-	text_t keyboard_alt = "alt";
-	text_t keyboard_control = "ctrl";
-	text_t keyboard_shift = "shift";
-	text_t keyboard_backspace = "backspace";
 	text_t open_with_fmt = "Open with {}";
 	text_t open_with_title = "Open";
 	text_t open_with_failed = "Failed to open selected items.";

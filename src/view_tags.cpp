@@ -28,7 +28,7 @@ std::vector<tag_action> parse_tag_actions(const std::string_view text)
 
 	const auto skip_separator = [&]
 	{
-		while (pos < text.size() && str::is_separator(text[pos])) ++pos;
+		while (pos < text.size() && core::is_separator(text[pos])) ++pos;
 	};
 
 	const auto read_quoted = [&](const char quote_char)
@@ -64,7 +64,7 @@ std::vector<tag_action> parse_tag_actions(const std::string_view text)
 	const auto read_bare = [&]
 	{
 		const auto start = pos;
-		while (pos < text.size() && !str::is_separator(text[pos])) ++pos;
+		while (pos < text.size() && !core::is_separator(text[pos])) ++pos;
 		return std::string(text.substr(start, pos - start));
 	};
 
@@ -88,7 +88,7 @@ std::vector<tag_action> parse_tag_actions(const std::string_view text)
 
 		const auto found = std::ranges::find_if(result, [&tag](const tag_action& action)
 		{
-			return str::icmp(action.first, tag) == 0;
+			return core::icmp(action.first, tag) == 0;
 		});
 
 		if (found == result.end())
@@ -104,15 +104,15 @@ static bool tag_action_needs_quote(const std::string_view tag)
 {
 	if (tag.empty()) return true;
 	if (tag.front() == '-' || tag.front() == '!') return true;
-	if (str::icmp(tag, "and") == 0 || str::icmp(tag, "or") == 0 ||
-		str::icmp(tag, tt.query_and) == 0 || str::icmp(tag, tt.query_or) == 0)
+	if (core::icmp(tag, "and") == 0 || core::icmp(tag, "or") == 0 ||
+		core::icmp(tag, tt.query_and) == 0 || core::icmp(tag, tt.query_or) == 0)
 	{
 		return true;
 	}
 
 	return std::ranges::any_of(tag, [](const char c)
 	{
-		return str::is_separator(c) || c == '\'' || c == '"' || search_tokenizer::is_delimiter_char(c);
+		return core::is_separator(c) || c == '\'' || c == '"' || search_tokenizer::is_delimiter_char(c);
 	});
 }
 
@@ -144,7 +144,7 @@ std::string serialize_tag_actions(const std::vector<tag_action>& actions)
 		parts.emplace_back(positive ? std::move(text) : std::format("-{}", text));
 	}
 
-	return str::combine(parts, " ", false);
+	return core::combine(parts, " ", false);
 }
 
 void tags_view::parse_tags()
@@ -162,7 +162,7 @@ void tags_view::parse_tags()
 bool tags_view::contains_action(const std::string_view tag, const bool positive) const
 {
 	const auto& list = positive ? _adds : _removes;
-	return std::ranges::any_of(list, [tag](const std::string& t) { return str::icmp(t, tag) == 0; });
+	return std::ranges::any_of(list, [tag](const std::string& t) { return core::icmp(t, tag) == 0; });
 }
 
 void tags_view::toggle_action(const std::string_view tag, const bool positive)
@@ -171,7 +171,7 @@ void tags_view::toggle_action(const std::string_view tag, const bool positive)
 
 	const auto found = std::ranges::find_if(actions, [tag](const tag_action& action)
 	{
-		return str::icmp(action.first, tag) == 0;
+		return core::icmp(action.first, tag) == 0;
 	});
 
 	if (found == actions.end())
@@ -217,8 +217,8 @@ void tags_view::refresh()
 
 	const tag_set add_tags(_adds);
 	const tag_set remove_tags(_removes);
-	const auto unchanged_color = ui::darken(ui::style::colors.view_text, 0.22f);
-	const auto changed_color = ui::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+	const auto unchanged_color = core::darken(ui::style::colors.view_text, 0.22f);
+	const auto changed_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
 
 	std::vector<row_element_ptr> rows;
 	rows.reserve(items.size());
@@ -341,9 +341,9 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	// options and favourite-tag commands, which do not rebuild these controls.
 	_favorite_words.clear();
 
-	for (const auto& part : str::split(setting.favorite_tags, true))
+	for (const auto& part : core::split(setting.favorite_tags, true))
 	{
-		_favorite_words.emplace_back(str::cache(part).sv());
+		_favorite_words.emplace_back(core::cache(part).sv());
 	}
 
 	if (_favorite_words.size() > recommended_tag_limit)
@@ -355,7 +355,7 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
 		controls.emplace_back(std::make_shared<text_element>(
-			tt.tags_favorite_label, ui::style::font_face::title, ui::style::text_style::multiline,
+			tt.tags_favorite_label, render::font_face::title, render::text_style::multiline,
 			view_element_options{}));
 		controls.emplace_back(std::make_shared<ui::recommended_words_control>(
 			frame, _favorite_words, add_tag, is_add, _word_refresh));
@@ -383,7 +383,7 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
 		controls.emplace_back(std::make_shared<text_element>(
-			tt.tags_common_label, ui::style::font_face::title, ui::style::text_style::multiline,
+			tt.tags_common_label, render::font_face::title, render::text_style::multiline,
 			view_element_options{}));
 		controls.emplace_back(std::make_shared<ui::recommended_words_control>(
 			frame, _common_words, add_tag, is_add, _word_refresh));
@@ -396,7 +396,7 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
 		controls.emplace_back(std::make_shared<text_element>(
-			tt.tags_remove_label, ui::style::font_face::title, ui::style::text_style::multiline,
+			tt.tags_remove_label, render::font_face::title, render::text_style::multiline,
 			view_element_options{}));
 		controls.emplace_back(std::make_shared<ui::recommended_words_control>(
 			frame, _existing_words, remove_tag, is_remove, _word_refresh));

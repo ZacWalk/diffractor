@@ -45,7 +45,7 @@ bool is_app_installed();
 inline float command_progress_alpha(const bool active, const int64_t total, const uint64_t tick_count)
 {
 	if (!active || total != 0) return 1.0f;
-	if (!ui::animations_enabled) return 0.65f;
+	if (!render::animations_enabled) return 0.65f;
 
 	constexpr int64_t period_ms = 1200;
 	constexpr double pi = 3.14159265358979323846;
@@ -55,7 +55,7 @@ inline float command_progress_alpha(const bool active, const int64_t total, cons
 
 inline bool command_progress_needs_animation(const bool active, const int64_t total)
 {
-	return ui::animations_enabled && active && total == 0;
+	return render::animations_enabled && active && total == 0;
 }
 
 // What each tick repaints on the status's behalf: the status bar while an open-ended run pulses in it,
@@ -107,14 +107,14 @@ bar_arrangement arrange_bar(recti bounds, const std::vector<bar_slot>& slots, in
                             bar_alignment alignment = bar_alignment::trailing);
 
 // Defined in app.cpp so callers do not need the whole sidebar header for the logo lockup.
-view_element_ptr create_app_logo_element(view_state& s, ui::style::font_face font, bool interactive,
+view_element_ptr create_app_logo_element(view_state& s, render::font_face font, bool interactive,
                                          bool show_plasma, double logo_scale,
                                          const view_element_options& options);
 
 
 class view_frame;
 
-class shell_file_operation_ui final : df::no_copy
+class shell_file_operation_ui final : core::no_copy
 {
 	view_frame& _view;
 	ui::frame_ptr _main_frame;
@@ -185,13 +185,13 @@ public:
 	// A device reporting whole detents and one reporting fractions of them reach the view as the same
 	// thing: both remainders are carried, so a touchpad accumulates instead of being divided to
 	// nothing, and neither answer can be rounded away twice on the way through.
-	bool dispatch_wheel(const pointi loc, const int delta, const ui::key_state keys, const ui::wheel_axis axis,
+	bool dispatch_wheel(const pointi loc, const int delta, const platform::key_state keys, const platform::wheel_axis axis,
 	                    wheel_accumulator& pending)
 	{
-		const ui::wheel_notch notch{
+		const platform::wheel_notch notch{
 			axis,
-			ui::accumulate_wheel_steps(pending.steps, delta),
-			ui::accumulate_wheel_steps(pending.scroll, delta / 2.0, 1.0),
+			platform::accumulate_wheel_steps(pending.steps, delta),
+			platform::accumulate_wheel_steps(pending.scroll, delta / 2.0, 1.0),
 			keys
 		};
 
@@ -228,7 +228,7 @@ public:
 	// which there is no key event at all.
 	void sync_modifier_cursor()
 	{
-		const auto control_down = ui::current_key_state().control;
+		const auto control_down = platform::current_key_state().control;
 		if (_control_down == control_down) return;
 		_control_down = control_down;
 		if (_hover && _active_controller) update_cursor();
@@ -270,35 +270,35 @@ public:
 		return !in_panel(loc) && !_splitter.bounds.contains(loc);
 	}
 
-	void on_window_layout(ui::measure_context& mc, sizei extent, bool is_minimized) override;
-	void on_window_paint(ui::draw_context& dc) override;
+	void on_window_layout(render::measure_context& mc, sizei extent, bool is_minimized) override;
+	void on_window_paint(render::draw_context& dc) override;
 
 	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override;
-	void on_mouse_wheel(pointi loc, int delta, ui::key_state keys, bool& was_handled) override;
+	void on_mouse_wheel(pointi loc, int delta, platform::key_state keys, bool& was_handled) override;
 
-	void on_mouse_hwheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
+	void on_mouse_hwheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
-		if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, ui::wheel_axis::horizontal, _wheel_horizontal);
+		if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, platform::wheel_axis::horizontal, _wheel_horizontal);
 		update_controller(loc);
 	}
 
 	void on_pinch(const pointi loc, const int delta, const bool begins, bool& was_handled) override
 	{
 		if (begins) _wheel_pending_pinch = 0.0;
-		const auto steps = ui::accumulate_wheel_steps(_wheel_pending_pinch, delta);
+		const auto steps = platform::accumulate_wheel_steps(_wheel_pending_pinch, delta);
 		if (steps != 0 && in_view(loc)) was_handled = _view->pinch(loc, steps);
 		update_controller(loc);
 	}
 
 	// The view sees the press before the controller does, so it can release text focus the press
 	// did not land in. A rendered edit that kept focus would swallow every keyboard command.
-	void on_mouse_left_button_down(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
 		if (in_view(loc)) _view->mouse_down(loc);
 		view_host::on_mouse_left_button_down(loc, keys);
 	}
 
-	bool key_down(const int c, const ui::key_state keys) override
+	bool key_down(const int c, const platform::key_state keys) override
 	{
 		return false;
 	}
@@ -329,15 +329,15 @@ public:
 		return in_view(location) && _view->touch_double_tap(location);
 	}
 
-	void on_mouse_other_button_up(const ui::other_mouse_button& button, const pointi loc,
-	                              const ui::key_state keys) override
+	void on_mouse_other_button_up(const platform::other_mouse_button& button, const pointi loc,
+	                              const platform::key_state keys) override
 	{
 		switch (button)
 		{
-		case ui::other_mouse_button::xb1:
+		case platform::other_mouse_button::xb1:
 			_state.browse_back(shared_from_this());
 			break;
-		case ui::other_mouse_button::xb2:
+		case platform::other_mouse_button::xb2:
 			_state.browse_forward(shared_from_this());
 			break;
 		default:
@@ -398,10 +398,10 @@ public:
 
 	void update_status(std::string_view title, std::string_view text, int padding = 8);
 	void clear_status();
-	void draw_status(ui::draw_context& dc) const;
+	void draw_status(render::draw_context& dc) const;
 	void redraw_now() const { frame()->redraw_now(); }
 
-	platform::drop_effect drag_over(const platform::clipboard_data& data, const ui::key_state keys,
+	platform::drop_effect drag_over(const platform::clipboard_data& data, const platform::key_state keys,
 	                                const pointi loc) override
 	{
 		auto result = platform::drop_effect::none;
@@ -462,7 +462,7 @@ public:
 		return result;
 	}
 
-	platform::drop_effect drag_drop(platform::clipboard_data& data, const ui::key_state keys, const pointi loc) override
+	platform::drop_effect drag_drop(platform::clipboard_data& data, const platform::key_state keys, const pointi loc) override
 	{
 		auto result = platform::drop_effect::none;
 
@@ -576,13 +576,13 @@ public:
 		return _frame ? _frame : ui::no_frame();
 	}
 
-	void on_window_layout(ui::measure_context& mc, sizei extent, bool is_minimized) override;
-	void on_window_paint(ui::draw_context& dc) override;
+	void on_window_layout(render::measure_context& mc, sizei extent, bool is_minimized) override;
+	void on_window_paint(render::draw_context& dc) override;
 	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override;
 	bool is_caption_area(pointi loc) const override;
 	void on_mouse_move(pointi loc, bool is_tracking) override;
 	void on_mouse_leave(pointi loc) override;
-	void on_mouse_left_button_up(pointi loc, ui::key_state keys) override;
+	void on_mouse_left_button_up(pointi loc, platform::key_state keys) override;
 	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
 	void command_hover(const ui::command_ptr& c, recti window_bounds) override;
 	std::vector<ui::command_ptr> menu(pointi loc) override;
@@ -605,9 +605,9 @@ struct lerp_animate
 		return false;
 	}
 
-	ui::color32 lerp(const ui::color32& c1, const ui::color32& c2) const
+	core::color32 lerp(const core::color32& c1, const core::color32& c2) const
 	{
-		return val == 0 ? c1 : ui::lerp(c1, c2, val);
+		return val == 0 ? c1 : core::lerp(c1, c2, val);
 	}
 };
 
@@ -630,7 +630,6 @@ public:
 	movie_view_state _movie_view_state;
 	database _db;
 	tile_cache_db _tile_db;
-	const ui::plat_app_ptr _pa;
 	platform::setting_file_ptr _settings;
 
 	platform::queue<platform::task_queue::task_t> _ui_queue;
@@ -752,7 +751,7 @@ public:
 	ui::bubble_window_ptr _bubble;
 
 	int _frame_delay = 0;
-	// Previous prepare_frame timestamp, for the elapsed time alpha fades advance by.
+	// Previous frame_tick timestamp, for the elapsed time alpha fades advance by.
 	int64_t _last_prepare_us = 0;
 	lerp_animate _search_color_lerp;
 	group_by _starting_group_order = group_by::file_type;
@@ -785,7 +784,7 @@ public:
 	// Time of the most recent folder-watch notification that has not yet produced a response, and the
 	// folders that signalled during that burst. UI thread only.
 	double _folder_change_time = 0.0;
-	df::unique_folders _folders_changed;
+	core::unique_folders _folders_changed;
 	std::string saved_current_search;
 	bool _is_active = false;
 
@@ -835,14 +834,14 @@ public:
 
 	view_hover_element _hover;
 
-	app_frame(ui::plat_app_ptr pa);
+	app_frame();
 	~app_frame() override;
 
 	void free_graphics_resources(bool items_only, bool offscreen_only) override;
 	void track_menu(const ui::frame_ptr& parent, recti bounds, const std::vector<ui::command_ptr>& commands) override;
 	void idle() override;
 	void hide_search_predictions();
-	bool key_down(char32_t key, ui::key_state keys) override;
+	bool key_down(char32_t key, platform::key_state keys) override;
 	bool text_input(std::string_view text) override;
 	ui::focus_mode focus_mode() const override;
 	void create_toolbars();
@@ -851,11 +850,11 @@ public:
 	const frame_bar& bar(const std::vector<bar_entry>& entries);
 	// What a running task's status bar offers in place of its view's own commands.
 	static const std::vector<bar_entry>& running_task_bar();
-	std::vector<bar_slot> measure_bar(ui::measure_context& mc, const frame_bar& b, int control_height) const;
-	void draw_status_bar(ui::draw_context& dc);
+	std::vector<bar_slot> measure_bar(render::measure_context& mc, const frame_bar& b, int control_height) const;
+	void draw_status_bar(render::draw_context& dc);
 	void status_tooltip(view_hover_element& hover) const;
 	void update_status_hover(pointi loc);
-	bool filter_key_down(char32_t key, ui::key_state keys);
+	bool filter_key_down(char32_t key, platform::key_state keys);
 	void filter_text_changed(std::string_view text);
 	void set_filter_edit_text(std::string_view text);
 	void focus_filter(bool has_focus);
@@ -863,8 +862,8 @@ public:
 	void cancel_filter_edit();
 	void item_size_changed(int pos, bool tracking);
 	void update_item_size_slider() const;
-	void crash(df::file_path dump_file_path) override;
-	std::string restart_cmd_line() override;
+	void crash(core::file_path dump_file_path) override;
+	std::string restart_command_line() override;
 	void save_recovery_state() override;
 	void invalidate_view(view_invalid invalid) override;
 	void invoke(commands id) override;
@@ -872,23 +871,23 @@ public:
 	void toggle_full_screen() override;
 	bool can_open_search(const df::search_t& path) override;
 	void report_scope_unavailable(const df::search_t& path) override;
-	void folder_changed(df::folder_path folder) override;
+	void folder_changed(core::folder_path folder) override;
 	void dpi_changed() override;
-	void on_window_layout(ui::measure_context& mc, sizei extent, bool is_minimized) override;
-	void on_window_paint(ui::draw_context& dc) override;
+	void on_window_layout(render::measure_context& mc, sizei extent, bool is_minimized) override;
+	void on_window_paint(render::draw_context& dc) override;
 	void visit_elements(const std::function<void(const view_element_ptr&, pointi)>& visit) override;
 
 	// The bars, each in its own coordinates.
-	void layout_title_bar(ui::measure_context& mc, sizei extent, std::vector<ui::control_ptr>& shown);
-	void layout_status_bar(ui::measure_context& mc, sizei extent, std::vector<ui::control_ptr>& shown);
-	void paint_title_bar(ui::draw_context& dc);
+	void layout_title_bar(render::measure_context& mc, sizei extent, std::vector<ui::control_ptr>& shown);
+	void layout_status_bar(render::measure_context& mc, sizei extent, std::vector<ui::control_ptr>& shown);
+	void paint_title_bar(render::draw_context& dc);
 	void title_bar_mouse_move(pointi loc);
 	void title_bar_mouse_leave();
 	void title_bar_click(pointi loc);
-	int title_bar_height(ui::measure_context& mc);
-	int status_bar_height(ui::measure_context& mc);
+	int title_bar_height(render::measure_context& mc);
+	int status_bar_height(render::measure_context& mc);
 	void activate(bool is_active) override;
-	void app_fail(std::string_view message, std::string_view more_text) override;
+	void fail(std::string_view message, std::string_view more_text) override;
 	void invalidate_status() const;
 	void update_overlay();
 	void tick() override;
@@ -896,7 +895,7 @@ public:
 	void run_test_action(std::string_view action);
 	void tick_screenshot();
 #endif
-	void prepare_frame() override;
+	void frame_tick() override;
 	void update_tooltip();
 	void item_focus_changed(const df::item_element_ptr& focus, const df::item_element_ptr& previous) override;
 
@@ -910,13 +909,13 @@ public:
 	};
 
 	selector_strip selector_strip_for_view(view_type m) const;
-	void select_from_selector(const df::item_element_ptr& item, ui::key_state keys);
+	void select_from_selector(const df::item_element_ptr& item, platform::key_state keys);
 	void reset_selector_selection_anchor();
 	void make_visible(const df::item_element_ptr& i) override;
 	bool is_command_checked(commands cmd) override;
 	void element_broadcast(const view_element_event& event) override;
 	recti calc_search_popup_bounds() const;
-	void layout(ui::measure_context& mc);
+	void layout(render::measure_context& mc);
 	void complete_pending_events();
 	bool load_settings(const platform::setting_file_ptr& store) override;
 	void load_options(const platform::setting_file_ptr& store);
@@ -980,21 +979,21 @@ public:
 	void init_search();
 	void final_exit() override;
 	void exit() override;
-	void system_event(ui::os_event_type ost) override;
+	void system_event(platform::os_event_type ost) override;
 	void search_enter();
 	void cancel_search_edit();
 	bool search_accept_selected();
 
-	void on_mouse_wheel(const pointi loc, const int delta, const ui::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const ui::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
 	{
 	}
 
-	void on_mouse_other_button_up(const ui::other_mouse_button& button, const pointi loc,
-	                              const ui::key_state keys) override
+	void on_mouse_other_button_up(const platform::other_mouse_button& button, const pointi loc,
+	                              const platform::key_state keys) override
 	{
 	}
 
@@ -1059,7 +1058,7 @@ public:
 			{
 				const auto path = _display->_item1->path();
 
-				if (path.exists())
+				if (platform::exists(path))
 				{
 					_state._player->play(_display->_session);
 				}

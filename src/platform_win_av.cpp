@@ -13,8 +13,8 @@
 
 #include "pch.h"
 
-#include "libdesktop/platform_win.h"
-#include "libdesktop/platform_win_render.h"
+#include "libdesktop/platform/win32.h"
+#include "libdesktop/render/win32.h"
 
 // Before FFmpeg's header, which includes it inside extern "C", where its C++ operators cannot be declared.
 #include <d3d11.h>
@@ -165,18 +165,18 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 	{
 		if (auto* const ref = wrap_decode_device(device))
 		{
-			df::log(__FUNCTION__, "hardware decode on the render device");
+			core::log(__FUNCTION__, "hardware decode on the render device");
 			return ref;
 		}
 
-		df::log(__FUNCTION__, "the render device has no video interfaces - decoding on a device of its own");
+		core::log(__FUNCTION__, "the render device has no video interfaces - decoding on a device of its own");
 	}
 
 	if (const auto adapter = find_adapter_by_luid(render_adapter()))
 	{
 		DXGI_ADAPTER_DESC1 desc = {};
 		adapter->GetDesc1(&desc);
-		const auto name = str::utf16_to_utf8(desc.Description);
+		const auto name = core::utf16_to_utf8(desc.Description);
 
 		// What FFmpeg's own creation asks for: the video interfaces, at the default feature levels.
 		ComPtr<ID3D11Device> device;
@@ -188,16 +188,16 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 		{
 			if (auto* const ref = wrap_decode_device(device))
 			{
-				df::log(__FUNCTION__, "hardware decode device on " + name);
+				core::log(__FUNCTION__, "hardware decode device on " + name);
 				return ref;
 			}
 
-			df::log(__FUNCTION__, std::format("FFmpeg refused the decode device on {} - using the default adapter",
+			core::log(__FUNCTION__, std::format("FFmpeg refused the decode device on {} - using the default adapter",
 			                                  name));
 		}
 		else
 		{
-			df::log(__FUNCTION__, std::format("no decode device on {} ({:x}) - using the default adapter", name,
+			core::log(__FUNCTION__, std::format("no decode device on {} ({:x}) - using the default adapter", name,
 			                                  static_cast<uint32_t>(hr)));
 		}
 	}
@@ -208,7 +208,7 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 
 // FFmpeg's D3D11VA device takes its lock around every use of its pictures, decoding included, and the
 // renderer holds it while it copies one out.
-void av_platform_decode_lock(const AVHWFramesContext* frames, ui::video_picture& picture)
+void av_platform_decode_lock(const AVHWFramesContext* frames, render::video_picture& picture)
 {
 	auto* const hwctx = frames && frames->device_ctx
 		                    ? static_cast<AVD3D11VADeviceContext*>(frames->device_ctx->hwctx)

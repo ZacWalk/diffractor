@@ -140,8 +140,8 @@ inline double calc_thumb_scale(const sizei dimensions, const sizei limit, const 
 
 std::string format_invalid_name_message(std::string_view name);
 std::string_view item_presence_text(item_presence v, bool long_text);
-void parse_more_folders(df::index_roots& result, std::string_view more_folders);
-void parse_more_folders(df::index_roots& result, std::string_view more_folders, const platform::drives& drives);
+void parse_more_folders(core::index_roots& result, std::string_view more_folders);
+void parse_more_folders(core::index_roots& result, std::string_view more_folders, const platform::drives& drives);
 
 namespace df
 {
@@ -154,7 +154,7 @@ namespace df
 
 	struct item_row_draw_info;
 
-	extern std::function<void(file_path source, file_path destination)> rename_after_move_for_test;
+	extern std::function<void(core::file_path source, core::file_path destination)> rename_after_move_for_test;
 	extern std::function<void(std::string_view message)> rename_recovery_report_for_test;
 
 	using item_element_ptr = std::shared_ptr<item_element>;
@@ -166,13 +166,13 @@ namespace df
 	using item_groups = std::vector<item_group_ptr>;
 	using item_elements = std::vector<item_element_ptr>;
 
-	using unique_item_elements = hash_map<file_path, item_element_ptr, ihash, ieq>;
+	using unique_item_elements = core::hash_map<core::file_path, item_element_ptr, core::ihash, core::ieq>;
 
 	using index_folder_item_ptr = std::shared_ptr<index_folder_item>;
 	using index_folder_info_const_ptr = std::shared_ptr<const index_folder_item>;
-	using index_item_info_map = hash_map<str::cached, index_file_item, ihash, ieq>;
+	using index_item_info_map = core::hash_map<core::cached, index_file_item, core::ihash, core::ieq>;
 	using index_item_infos = std::vector<index_file_item>;
-	using index_folder_info_map = hash_map<folder_path, index_folder_item_ptr, ihash, ieq>;
+	using index_folder_info_map = core::hash_map<core::folder_path, index_folder_item_ptr, core::ihash, core::ieq>;
 	using index_folder_infos = std::vector<index_folder_item_ptr>;
 
 	enum class item_group_display
@@ -286,16 +286,16 @@ namespace df
 	{
 		std::string info = {};
 
-		str::cached name = {};
-		str::cached title = {};
+		core::cached name = {};
+		core::cached title = {};
 		// What a tile is titled: the title, or for a film or an episode the title as a library names it -
 		// "S01E02 · Pilot", "Dont Look Up (2021)".
-		str::cached caption = {};
+		core::cached caption = {};
 		// An episode's place in its show - S01E02, S03E00, E426, the day it aired - and a film's year: the
 		// columns a detail row adds beside disc and track.
-		str::cached episode = {};
-		str::cached folder = {};
-		str::cached label = {};
+		core::cached episode = {};
+		core::cached folder = {};
+		core::cached label = {};
 
 		icon_index icon = icon_index::document;
 
@@ -310,23 +310,23 @@ namespace df
 		// How far through the recording its saved playback position stands, 0 to 1.
 		double progress = 0.0;
 
-		str::cached bitrate = {};
-		str::cached pixel_format = {};
+		core::cached bitrate = {};
+		core::cached pixel_format = {};
 		sizei dimensions = {};
 		uint16_t audio_channels = 0;
 		uint32_t audio_sample_rate = 0;
 		uint16_t audio_sample_type = 0;
 
-		file_size size = {};
-		date_t created = {};
+		core::file_size size = {};
+		core::date_t created = {};
 		// The file-creation concept, which is what Group by Created keys on. Kept beside `created`
 		// rather than replacing it: a tile that showed one date under a header made from the other
 		// is the same mismatch #184 reported.
-		date_t file_created = {};
-		date_t modified = {};
+		core::date_t file_created = {};
+		core::date_t modified = {};
 
 		item_online_status online_status = item_online_status::disk;
-		ui::style::font_face title_font = ui::style::font_face::dialog;
+		render::font_face title_font = render::font_face::dialog;
 		item_presence presence = item_presence::unknown;
 	};
 
@@ -370,10 +370,10 @@ namespace df
 
 	struct duplicate_info2 : duplicate_info
 	{
-		date_t group_modified;
+		core::date_t group_modified;
 		bool group_has_modifications = false;
 
-		void record(const date_t modified, const uint32_t dup_group)
+		void record(const core::date_t modified, const uint32_t dup_group)
 		{
 			++count;
 
@@ -467,20 +467,20 @@ namespace df
 		mutable df::picture_hashes_aptr phash;
 
 		file_type_ref ft = nullptr;
-		file_size size;
-		date_t file_created;
+		core::file_size size;
+		core::date_t file_created;
 		// Mutable and atomic for the same reason as metadata_scanned: a coherent write advances the
 		// file's modified time while the folder's file list (index_folder_item::files) is const, so the
 		// record has to be corrected in place rather than by rebuilding the node. Written on the work
 		// queue by index_state::apply_scan_now and on the scan queue by folder enumeration; read from
 		// the UI, database and search contexts.
-		mutable std::atomic<date_t> file_modified;
-		mutable std::atomic<date_t> metadata_scanned;
+		mutable std::atomic<core::date_t> file_modified;
+		mutable std::atomic<core::date_t> metadata_scanned;
 		mutable std::atomic<duplicate_info> duplicates;
 		mutable std::atomic<uint32_t> exact_duplicate_group = 0;
 
 		index_item_flags flags = index_item_flags::none;
-		str::cached name;
+		core::cached name;
 		mutable std::atomic<search_presence_mask> search_presence;
 		mutable std::atomic<uint32_t> crc32c = 0;
 
@@ -564,9 +564,9 @@ namespace df
 			return *this;
 		}
 
-		date_t created() const
+		core::date_t created() const
 		{
-			date_t d;
+			core::date_t d;
 			const auto md = metadata.load();
 
 			if (md)
@@ -578,7 +578,7 @@ namespace df
 
 			// A metadata date is a wall clock and the index stamp is an instant. This is compared
 			// against item_element::media_created(), which converts the same stamp.
-			return file_created.is_valid() ? file_created.system_to_local() : date_t{};
+			return file_created.is_valid() ? platform::utc_to_local(file_created) : core::date_t{};
 		}
 
 		item_online_status calc_online_status() const
@@ -603,13 +603,13 @@ namespace df
 			return result;
 		}
 
-		str::cached xmp() const
+		core::cached xmp() const
 		{
 			const auto md = metadata.load();
-			return md ? md->xmp : str::cached{};
+			return md ? md->xmp : core::cached{};
 		}
 
-		bool operator<(const str::cached other) const
+		bool operator<(const core::cached other) const
 		{
 			return icmp(name, other) < 0;
 		}
@@ -624,7 +624,7 @@ namespace df
 			return icmp(name, other.name) < 0;
 		}
 
-		bool operator==(const str::cached other) const
+		bool operator==(const core::cached other) const
 		{
 			return icmp(name, other) == 0;
 		}
@@ -648,11 +648,11 @@ namespace df
 		std::atomic<std::shared_ptr<const index_folder_infos>> child_folders =
 			std::make_shared<const index_folder_infos>();
 
-		date_t created = {};
-		date_t modified = {};
+		core::date_t created = {};
+		core::date_t modified = {};
 
-		str::cached volume = {};
-		str::cached name = {};
+		core::cached volume = {};
+		core::cached name = {};
 
 		// OR-summary of item presence masks. Missing bits reject the whole folder;
 		// extra stale bits are safe because item masks and exact matching follow.
@@ -681,8 +681,8 @@ namespace df
 		explicit index_folder_item(index_item_infos f, index_folder_infos g = {}) noexcept : files(std::move(f)),
 			child_folders(std::make_shared<const index_folder_infos>(std::move(g)))
 		{
-			assert_true(files.size() == files.capacity());
-			assert_true(child_folders.load()->size() == child_folders.load()->capacity());
+			core::assert_true(files.size() == files.capacity());
+			core::assert_true(child_folders.load()->size() == child_folders.load()->capacity());
 		}
 
 		std::shared_ptr<const index_folder_infos> folders_snapshot() const
@@ -711,7 +711,7 @@ namespace df
 			content_revision.store(revision, std::memory_order_release);
 		}
 
-		void replace_child(const str::cached folder_name, const index_folder_item_ptr& replacement)
+		void replace_child(const core::cached folder_name, const index_folder_item_ptr& replacement)
 		{
 			auto existing = child_folders.load();
 
@@ -777,8 +777,8 @@ namespace df
 
 		static pointi calc_map_loc(const gps_coordinate coord)
 		{
-			const auto x = round(coord.longitude() / 180.0 * (map_width / 2.0) + map_width / 2.0);
-			const auto y = round(coord.latitude() / 90.0 * (map_height / 2.0) + map_height / 2.0);
+			const auto x = core::round(coord.longitude() / 180.0 * (map_width / 2.0) + map_width / 2.0);
+			const auto y = core::round(coord.latitude() / 90.0 * (map_height / 2.0) + map_height / 2.0);
 			const auto xx = std::clamp(x, 0, static_cast<int>(map_width) - 1);
 			const auto yy = static_cast<int>(map_height) - 1 - std::clamp(y, 0, static_cast<int>(map_height) - 1);
 			return {xx, yy};
@@ -807,8 +807,8 @@ namespace df
 		return thumbnail_representative_rank(file, metadata.get());
 	}
 
-	inline bool should_replace_thumbnail_representative(const file_path& candidate, const uint8_t candidate_rank,
-	                                                    const file_path& current, const uint8_t current_rank)
+	inline bool should_replace_thumbnail_representative(const core::file_path& candidate, const uint8_t candidate_rank,
+	                                                    const core::file_path& current, const uint8_t current_rank)
 	{
 		return candidate_rank > 0 && (candidate_rank > current_rank ||
 			(candidate_rank == current_rank && (current.is_empty() || candidate.icmp(current) < 0)));
@@ -862,10 +862,10 @@ namespace df
 	struct date_histogram
 	{
 		std::array<date_counts, 12 * max_history_years> dates{};
-		std::array<file_path, 12 * max_history_years> representative_paths{};
+		std::array<core::file_path, 12 * max_history_years> representative_paths{};
 		std::array<uint8_t, 12 * max_history_years> representative_ranks{};
 
-		void record_representative(const size_t index, const index_file_item& file, const file_path& path)
+		void record_representative(const size_t index, const index_file_item& file, const core::file_path& path)
 		{
 			const auto rank = thumbnail_representative_rank(file);
 			if (should_replace_thumbnail_representative(
@@ -882,12 +882,12 @@ namespace df
 		uint8_t _representative_rank = 0;
 
 	public:
-		std::array<count_and_size, file_group::max_count> counts{};
-		file_path representative_path;
+		std::array<core::count_and_size, file_group::max_count> counts{};
+		core::file_path representative_path;
 
-		count_and_size total_items() const
+		core::count_and_size total_items() const
 		{
-			count_and_size result;
+			core::count_and_size result;
 			for (auto i = 1; i < file_group::max_count; i++)
 			{
 				result.size += counts[i].size;
@@ -896,7 +896,7 @@ namespace df
 			return result;
 		}
 
-		count_and_size total_folders() const
+		core::count_and_size total_folders() const
 		{
 			return counts[file_group::folder.id];
 		}
@@ -928,12 +928,12 @@ namespace df
 			counts[ii].size += info.size;
 		}
 
-		void record(const index_file_item& info, const file_path& path)
+		void record(const index_file_item& info, const core::file_path& path)
 		{
 			record(info, path, thumbnail_representative_rank(info));
 		}
 
-		void record(const index_file_item& info, const file_path& path, const uint8_t rank)
+		void record(const index_file_item& info, const core::file_path& path, const uint8_t rank)
 		{
 			record(info);
 			if (should_replace_thumbnail_representative(path, rank, representative_path, _representative_rank))
@@ -943,7 +943,7 @@ namespace df
 			}
 		}
 
-		void record(const file_type_ref mt, const file_size& size)
+		void record(const file_type_ref mt, const core::file_size& size)
 		{
 			const auto ii = mt->group->id;
 			counts[ii].count += 1;
@@ -990,11 +990,11 @@ namespace df
 		// then items_view restages visible items without rescanning their files or database rows.
 		// Workers publish encoded images through queue_ui. Encoded images remain atomic only while
 		// scan/database code still reads their status; decoded surfaces and textures are UI-owned.
-		ui::const_image_ptr _thumbnail;
-		ui::const_image_ptr _cover_art;
-		mutable ui::texture_ptr _texture;
-		mutable ui::const_surface_ptr _thumbnail_surface;
-		mutable ui::const_surface_ptr _cover_art_surface;
+		core::const_image_ptr _thumbnail;
+		core::const_image_ptr _cover_art;
+		mutable render::texture_ptr _texture;
+		mutable core::const_surface_ptr _thumbnail_surface;
+		mutable core::const_surface_ptr _cover_art_surface;
 
 		mutable recti _interactive_bounds;
 		// Logical, unoffset. Empty unless the last render drew the pin badge for this item.
@@ -1010,20 +1010,20 @@ namespace df
 		double _media_position = 0.0;
 
 		file_type_ref _ft = file_type::other;
-		file_size _size = {};
-		date_t _thumbnail_timestamp = {};
-		date_t _modified = {};
-		date_t _created = {};
-		date_t _media_created = {};
+		core::file_size _size = {};
+		core::date_t _thumbnail_timestamp = {};
+		core::date_t _modified = {};
+		core::date_t _created = {};
+		core::date_t _media_created = {};
 		duplicate_info _duplicates = {};
 		mutable ui::animate_alpha _thumbnail_alpha{1.0f};
 
-		file_path _path = {};
+		core::file_path _path = {};
 		// The intrinsic media size that decides this item's tile geometry. Seeded from indexed
 		// metadata, which is stable for the life of the file, and only falls back to a decoded
 		// image's pixel size while no metadata dimensions are known.
 		sizei _layout_dims = {};
-		str::cached _name = {};
+		core::cached _name = {};
 		int _random = 0;
 		uint32_t _crc32c = 0;
 		uint32_t _shell_retry_count = 0;
@@ -1031,7 +1031,7 @@ namespace df
 		item_presence _presence = item_presence::unknown;
 		item_online_status _online_status = item_online_status::offline;
 
-		ui::orientation _layout_orientation = ui::orientation::top_left;
+		core::orientation _layout_orientation = core::orientation::top_left;
 		// Armed before a write that cannot change what is drawn, consumed by the update that publishes
 		// the modified time that write produced. UI thread only.
 		bool _retain_thumbnail_on_modify = false;
@@ -1050,13 +1050,13 @@ namespace df
 		bool alt_background = false;
 		bool row_layout_valid = true;
 
-		item_element(const file_path id, const index_file_item& info) noexcept : view_element(
+		item_element(const core::file_path id, const index_file_item& info) noexcept : view_element(
 				view_element_style::can_invoke), _random(rand())
 		{
 			update(id, info);
 		}
 
-		item_element(const folder_path path, index_folder_item_ptr info) noexcept : _info(std::move(info)), _path(path)
+		item_element(const core::folder_path path, index_folder_item_ptr info) noexcept : _info(std::move(info)), _path(path)
 		{
 			_is_read_only = _info->is_read_only;
 			_name = path.name();
@@ -1068,7 +1068,7 @@ namespace df
 
 		// Returns whether anything the layout depends on changed, so the caller can ask for the layout
 		// pass rather than leaving the tile at its previous geometry.
-		bool update(file_path path, const index_file_item& info) noexcept;
+		bool update(core::file_path path, const index_file_item& info) noexcept;
 
 		// Shapes the tile from the image it actually draws. Cover art wins because that is what is
 		// shown; the media's own indexed size is next; a thumbnail is only a guess until one of those
@@ -1083,19 +1083,19 @@ namespace df
 
 		void duplicates(const duplicate_info d)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			_duplicates = d;
 		}
 
 		duplicate_info duplicates() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _duplicates;
 		}
 
-		date_t thumbnail_timestamp() const
+		core::date_t thumbnail_timestamp() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_timestamp;
 		}
 
@@ -1103,18 +1103,18 @@ namespace df
 		// produces must not send a thumbnail that is still correct back through a reload.
 		void retain_thumbnail_across_next_write()
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			_retain_thumbnail_on_modify = true;
 		}
 
-		str::cached name() const { return _name; }
+		core::cached name() const { return _name; }
 		file_type_ref file_type() const { return _ft; }
 
 		std::string_view extension() const
 		{
 			if (is_folder()) return {};
 			const std::string_view sv = _name;
-			const auto ext = find_ext(sv);
+			const auto ext = core::find_ext(sv);
 			return sv.substr(ext);
 		}
 
@@ -1130,48 +1130,48 @@ namespace df
 
 		bool has_title() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& m = _metadata;
-			return m && !is_empty(m->title);
+			return m && !core::is_empty(m->title);
 		}
 
-		str::cached title() const
+		core::cached title() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& m = _metadata;
-			return !m || is_empty(m->title) ? _name : m->title;
+			return !m || core::is_empty(m->title) ? _name : m->title;
 		}
 
 		int rating() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
 			return md ? md->rating : 0;
 		}
 
 		std::string_view label() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
 			return md ? md->label : std::string_view{};
 		}
 
 		bool has_gps() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
 			return md && md->has_gps();
 		}
 
 		uint32_t crc32c() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _crc32c;
 		}
 
 		void crc32c(const uint32_t crc)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			_crc32c = crc;
 		}
 
@@ -1179,22 +1179,22 @@ namespace df
 
 		bool has_thumb() const
 		{
-			assert_true(ui::is_ui_thread());
-			return is_valid(_thumbnail);
+			core::assert_true(platform::is_ui_thread());
+			return core::is_valid(_thumbnail);
 		}
 
 		bool has_cover_art() const
 		{
-			assert_true(ui::is_ui_thread());
-			return is_valid(_cover_art);
+			core::assert_true(platform::is_ui_thread());
+			return core::is_valid(_cover_art);
 		}
 
 		size_t thumbnail_blob_bytes() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			size_t bytes = 0;
-			if (is_valid(_thumbnail)) bytes += _thumbnail->data().size();
-			if (is_valid(_cover_art)) bytes += _cover_art->data().size();
+			if (core::is_valid(_thumbnail)) bytes += _thumbnail->data().size();
+			if (core::is_valid(_cover_art)) bytes += _cover_art->data().size();
 			return bytes;
 		}
 
@@ -1204,7 +1204,7 @@ namespace df
 		// recomputing them here would reflow the row for nothing. Returns the bytes released.
 		size_t clear_thumbnail_blob()
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 
 			if (_is_visible || is_selected() || _is_folder || is_loading_thumbnail()) return 0;
 
@@ -1223,24 +1223,24 @@ namespace df
 			return bytes;
 		}
 
-		ui::const_image_ptr thumbnail() const
+		core::const_image_ptr thumbnail() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail;
 		}
 
-		ui::const_image_ptr cover_art() const
+		core::const_image_ptr cover_art() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _cover_art;
 		}
 
 		// Decoded by the render worker and published through queue_ui, so a caller that wants pixels
 		// reads this rather than decoding the encoded blob again. Empty until it has been staged, and
 		// empty again after resource cleanup until the visible-items pass restages it.
-		ui::const_surface_ptr cover_art_surface() const
+		core::const_surface_ptr cover_art_surface() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _cover_art_surface;
 		}
 
@@ -1288,16 +1288,16 @@ namespace df
 
 		void info(index_folder_item_ptr info)
 		{
-			assert_true(ui::is_ui_thread());
-			assert_true(is_folder());
+			core::assert_true(platform::is_ui_thread());
+			core::assert_true(is_folder());
 			_info = std::move(info);
 			_is_read_only = _info->is_read_only;
 		}
 
-		void update_folder(index_folder_item_ptr info, const count_and_size total)
+		void update_folder(index_folder_item_ptr info, const core::count_and_size total)
 		{
-			assert_true(ui::is_ui_thread());
-			assert_true(is_folder());
+			core::assert_true(platform::is_ui_thread());
+			core::assert_true(is_folder());
 			_info = std::move(info);
 			_is_read_only = _info->is_read_only;
 			_size = total.size;
@@ -1307,13 +1307,13 @@ namespace df
 
 		sizei layout_dims() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _layout_dims;
 		}
 
-		ui::orientation layout_orientation() const
+		core::orientation layout_orientation() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _layout_orientation;
 		}
 
@@ -1322,19 +1322,19 @@ namespace df
 		// from the row's solved height instead of holding a nominal width.
 		bool layout_aspect_known() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _layout_aspect_known;
 		}
 
-		void thumbnail(ui::const_image_ptr i, ui::const_image_ptr ca, const date_t timestamp = date_t::null,
+		void thumbnail(core::const_image_ptr i, core::const_image_ptr ca, const core::date_t timestamp = core::date_t::null,
 		               const bool fade_in = false)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			++_thumbnail_request_generation;
 			set_thumbnail_state(thumbnail_state::shell_pending, false);
 			_thumbnail_timestamp = timestamp;
-			const auto had_visual = is_valid(_thumbnail) || is_valid(_cover_art);
-			const auto has_visual = is_valid(i) || is_valid(ca);
+			const auto had_visual = core::is_valid(_thumbnail) || core::is_valid(_cover_art);
+			const auto has_visual = core::is_valid(i) || core::is_valid(ca);
 
 			_thumbnail = std::move(i);
 			_cover_art = std::move(ca);
@@ -1352,7 +1352,7 @@ namespace df
 
 		uint64_t begin_thumbnail_load()
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			set_thumbnail_state(thumbnail_state::loading, true);
 			_thumbnail_load_generation = ++_thumbnail_request_generation;
 			return _thumbnail_load_generation;
@@ -1360,32 +1360,32 @@ namespace df
 
 		uint64_t begin_thumbnail_request()
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			set_thumbnail_state(thumbnail_state::shell_pending, true);
 			return ++_thumbnail_request_generation;
 		}
 
 		bool is_current_thumbnail_request(const uint64_t generation) const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return generation == _thumbnail_request_generation;
 		}
 
 		bool is_current_thumbnail_load(const uint64_t generation) const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return generation == _thumbnail_load_generation;
 		}
 
 		uint64_t thumbnail_request_generation() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_request_generation;
 		}
 
 		void clear_cached_surface() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 
 			// Not surface_cached: a surface awaiting replacement is still held but no longer current.
 			if (!_texture && !_thumbnail_surface && !_cover_art_surface &&
@@ -1404,21 +1404,21 @@ namespace df
 
 		bool has_cached_surface() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_state && thumbnail_state::surface_cached;
 		}
 
 		bool is_staging_thumbnail_surface() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_state && thumbnail_state::staging_surface;
 		}
 
 		// The decoded thumbnail, where the browser has already staged one. Handed to the display so it can
 		// show something the moment an item is selected instead of decoding the same pixels again.
-		const ui::const_surface_ptr& thumbnail_surface() const
+		const core::const_surface_ptr& thumbnail_surface() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_surface;
 		}
 
@@ -1426,8 +1426,8 @@ namespace df
 		                             bool tooltip_on_complete = false) const;
 		void start_thumbnail_animation(view_state& state) const;
 
-		void render_bg(ui::draw_context& dc, const item_group& group, pointi element_offset) const;
-		void render(ui::draw_context& dc, const item_group& group, pointi element_offset) const;
+		void render_bg(render::draw_context& dc, const item_group& group, pointi element_offset) const;
+		void render(render::draw_context& dc, const item_group& group, pointi element_offset) const;
 
 		recti interactive_bounds() const
 		{
@@ -1439,8 +1439,8 @@ namespace df
 			return _pin_badge_bounds;
 		}
 
-		sizei measure(ui::measure_context& mc, int width_limit) const override;
-		void layout(ui::measure_context& mc, recti bounds_in) override;
+		sizei measure(render::measure_context& mc, int width_limit) const override;
+		void layout(render::measure_context& mc, recti bounds_in) override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 		                                             hit_test_context& ctx) override;
 
@@ -1453,8 +1453,8 @@ namespace df
 		}
 
 		void add_to(item_set& results);
-		void add_to(paths& paths);
-		void add_to(unique_paths& paths);
+		void add_to(core::paths& paths);
+		void add_to(core::unique_paths& paths);
 		void open(view_state& s, const view_host_base_ptr& view) const;
 
 		search_t containing() const
@@ -1465,7 +1465,7 @@ namespace df
 
 		bool is_read_only() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _is_read_only;
 		}
 
@@ -1481,48 +1481,48 @@ namespace df
 
 		prop::item_metadata_const_ptr metadata() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _metadata;
 		}
 
-		file_size file_size() const
+		core::file_size file_size() const
 		{
 			return _size;
 		}
 
-		date_t file_created() const
+		core::date_t file_created() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _created;
 		}
 
-		date_t file_modified() const
+		core::date_t file_modified() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _modified;
 		}
 
-		date_t media_created() const
+		core::date_t media_created() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _media_created;
 		}
 
-		date_t calc_media_created() const
+		core::date_t calc_media_created() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
 
 			if (!md)
 			{
-				return _created.system_to_local();
+				return platform::utc_to_local(_created);
 			}
 
 			auto d = md->created();
 
 			if (!d.is_valid())
 			{
-				d = _created.system_to_local();
+				d = platform::utc_to_local(_created);
 			}
 
 			return d;
@@ -1530,49 +1530,49 @@ namespace df
 
 		// When this file came to be, as distinct from when its content was made. Metadata answers
 		// it when the file carries a creation tag; the filesystem is the fallback, not the source.
-		date_t file_or_metadata_created() const
+		core::date_t file_or_metadata_created() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
-			const auto d = md ? md->dates.created() : date_t::null;
-			return d.is_valid() ? d : _created.system_to_local();
+			const auto d = md ? md->dates.created() : core::date_t::null;
+			return d.is_valid() ? d : platform::utc_to_local(_created);
 		}
 
-		str::cached sidecars() const
+		core::cached sidecars() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
-			return md ? md->sidecars : str::cached{};
+			return md ? md->sidecars : core::cached{};
 		}
 
-		str::cached xmp() const
+		core::cached xmp() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			const auto& md = _metadata;
-			return md ? md->xmp : str::cached{};
+			return md ? md->xmp : core::cached{};
 		}
 
 		size_t sidecars_count() const
 		{
-			return split_count(sidecars(), true);
+			return core::split_count(sidecars(), true);
 		}
 
 		double media_position() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _media_position;
 		}
 
 		void media_position(const double d)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			_media_position = d;
 			_media_position_changed = true;
 		}
 
 		bool should_load_thumbnail() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			if (is_folder())
 				return false;
 
@@ -1588,7 +1588,7 @@ namespace df
 			if (_thumbnail_state && thumbnail_state::load_blocked)
 				return false;
 
-			if (is_empty(_thumbnail))
+			if (core::is_empty(_thumbnail))
 				return true;
 
 			if (_thumbnail_timestamp != _modified)
@@ -1612,7 +1612,7 @@ namespace df
 		// shell thumbnail is reused instead of re-fetched from the shell/network.
 		bool should_load_shell_thumbnail() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			if (is_folder())
 				return false;
 
@@ -1625,7 +1625,7 @@ namespace df
 			if (_thumbnail_state && (thumbnail_state::load_blocked | thumbnail_state::shell_retry_pending))
 				return false;
 
-			return is_empty(_thumbnail);
+			return core::is_empty(_thumbnail);
 		}
 
 		void add_if_shell_thumbnail_needed(item_elements& items)
@@ -1638,13 +1638,13 @@ namespace df
 
 		bool shell_thumbnail_pending() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_state && thumbnail_state::shell_pending;
 		}
 
 		void shell_thumbnail_pending(const bool v)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			set_thumbnail_state(thumbnail_state::shell_pending, v);
 		}
 
@@ -1653,13 +1653,13 @@ namespace df
 		// periodically until the real thumbnail becomes available.
 		bool shell_thumbnail_retry_pending() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_state && thumbnail_state::shell_retry_pending;
 		}
 
 		void shell_thumbnail_retry_pending(const bool v, const bool counted = true)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 
 			// Bounded: a provider that never produces a thumbnail (common for video) returns its generic
 			// icon forever, which would otherwise re-fetch over the network every retry tick for the whole
@@ -1681,43 +1681,43 @@ namespace df
 		// grinding through a stale screenful.
 		bool is_visible() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _is_visible;
 		}
 
 		void is_visible(const bool v)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			_is_visible = v;
 		}
 
 		bool is_loading_thumbnail() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_state && thumbnail_state::loading;
 		}
 
 		void is_loading_thumbnail(const bool v)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			set_thumbnail_state(thumbnail_state::loading, v);
 		}
 
 		bool failed_loading_thumbnail() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _thumbnail_state && thumbnail_state::load_failed;
 		}
 
 		void failed_loading_thumbnail(const bool v)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			set_thumbnail_state(thumbnail_state::load_failed, v);
 		}
 
 		item_online_status online_status() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _online_status;
 		}
 
@@ -1733,29 +1733,29 @@ namespace df
 
 		void presence(const item_presence presence)
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			_presence = presence;
 		}
 
 		item_presence presence() const
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			return _presence;
 		}
 
-		file_path path() const
+		core::file_path path() const
 		{
 			return _path;
 		}
 
-		folder_path folder() const
+		core::folder_path folder() const
 		{
 			return _path.folder();
 		}
 
 		uint64_t begin_db_thumbnail_query()
 		{
-			assert_true(ui::is_ui_thread());
+			core::assert_true(platform::is_ui_thread());
 			if (!(_thumbnail_state && thumbnail_state::db_query_pending)) return 0;
 			set_thumbnail_state(thumbnail_state::db_query_pending, false);
 			return ++_thumbnail_request_generation;
@@ -1766,14 +1766,14 @@ namespace df
 	{
 		unique_item_elements _items;
 
-		item_element_ptr find(const folder_path path_in) const
+		item_element_ptr find(const core::folder_path path_in) const
 		{
-			const file_path search_path(path_in);
+			const core::file_path search_path(path_in);
 			const auto found = _items.find(search_path);
 			return found != _items.end() ? found->second : nullptr;
 		}
 
-		item_element_ptr find(const file_path id) const
+		item_element_ptr find(const core::file_path id) const
 		{
 			const auto found = _items.find(id);
 			return found != _items.end() ? found->second : nullptr;
@@ -1806,7 +1806,7 @@ namespace df
 	{
 		process_result_code code = process_result_code::ok;
 		size_t items_count = 0;
-		str::cached first_file_name;
+		core::cached first_file_name;
 		std::string first_file_extension;
 
 		std::string to_string() const
@@ -1861,7 +1861,7 @@ namespace df
 			if (code == process_result_code::ok || code == result_code)
 			{
 				code = result_code;
-				if (is_empty(first_file_name))
+				if (core::is_empty(first_file_name))
 				{
 					first_file_name = i->name();
 					first_file_extension = i->extension();
@@ -1979,7 +1979,7 @@ namespace df
 
 			for (const auto& i : _items)
 			{
-				if (str::icmp(ext, i->extension()) != 0)
+				if (core::icmp(ext, i->extension()) != 0)
 				{
 					return false;
 				}
@@ -1999,9 +1999,9 @@ namespace df
 			return _items;
 		}
 
-		paths ids() const
+		core::paths ids() const
 		{
-			paths result;
+			core::paths result;
 			for (const auto& i : _items)
 			{
 				if (i->is_folder())
@@ -2048,11 +2048,11 @@ namespace df
 			return ft;
 		}
 
-		std::vector<ui::const_image_ptr> thumbs(size_t max = max_thumbnails_to_display,
+		std::vector<core::const_image_ptr> thumbs(size_t max = core::max_thumbnails_to_display,
 		                                        const item_element_ptr& skip_this = nullptr) const;
-		std::vector<ui::const_surface_ptr> thumbnail_surfaces(size_t max = max_thumbnails_to_display,
+		std::vector<core::const_surface_ptr> thumbnail_surfaces(size_t max = core::max_thumbnails_to_display,
 		                                                      const item_element_ptr& skip_this = nullptr) const;
-		void stage_thumbnail_surfaces(async_strategy& async, size_t max = max_thumbnails_to_display,
+		void stage_thumbnail_surfaces(async_strategy& async, size_t max = core::max_thumbnails_to_display,
 		                              const item_element_ptr& skip_this = nullptr) const;
 
 		process_result can_process(process_items_type file_types, bool mark_errors,
@@ -2065,7 +2065,7 @@ namespace df
 			return result;
 		}
 
-		str::cached first_name() const
+		core::cached first_name() const
 		{
 			for (const auto& i : _items) return i->name();
 			return {};
@@ -2077,15 +2077,15 @@ namespace df
 			return nullptr;
 		}
 
-		item_element_ptr find(const file_path id) const
+		item_element_ptr find(const core::file_path id) const
 		{
 			for (const auto& i : _items) if (i->path() == id) return i;
 			return nullptr;
 		}
 
-		item_element_ptr find(const folder_path id) const
+		item_element_ptr find(const core::folder_path id) const
 		{
-			const file_path search_path(id);
+			const core::file_path search_path(id);
 			for (const auto& i : _items) if (i->path() == search_path) return i;
 			return nullptr;
 		}
@@ -2102,9 +2102,9 @@ namespace df
 			return nullptr;
 		}
 
-		file_size file_size() const
+		core::file_size file_size() const
 		{
-			df::file_size result;
+			core::file_size result;
 			for (const auto& i : _items) result += i->file_size();
 			return result;
 		}
@@ -2122,9 +2122,9 @@ namespace df
 			for (const auto& i : _items) results._items.insert_or_assign(i->path(), i);
 		}
 
-		std::vector<folder_path> folder_paths() const
+		std::vector<core::folder_path> folder_paths() const
 		{
-			std::vector<folder_path> result;
+			std::vector<core::folder_path> result;
 			for (const auto& i : _items)
 			{
 				if (i->is_folder())
@@ -2135,9 +2135,9 @@ namespace df
 			return result;
 		}
 
-		std::vector<file_path> file_paths(const bool include_sidecars = true) const
+		std::vector<core::file_path> file_paths(const bool include_sidecars = true) const
 		{
-			hash_set<file_path, ihash, ieq> result;
+			core::hash_set<core::file_path, core::ihash, core::ieq> result;
 
 			for (const auto& i : _items)
 			{
@@ -2181,21 +2181,21 @@ namespace df
 			*this = {};
 		}
 
-		void update_extent(ui::draw_context& dc, const std::string_view text, const double val)
+		void update_extent(render::draw_context& dc, const std::string_view text, const double val)
 		{
-			const auto max_width = round(_max_width * dc.scale_factor);
+			const auto max_width = core::round(_max_width * dc.scale_factor);
 
-			extent = std::max(extent, dc.measure_text(text, ui::style::font_face::dialog,
-			                                          ui::style::text_style::single_line, max_width).cx);
+			extent = std::max(extent, dc.measure_text(text, render::font_face::dialog,
+			                                          render::text_style::single_line, max_width).cx);
 			val_max = std::max(val_max, val);
 			val_min = std::min(val_min, val);
 		}
 
-		void update_extent(ui::draw_context& dc, const std::string_view text)
+		void update_extent(render::draw_context& dc, const std::string_view text)
 		{
-			const auto max_width = round(_max_width * dc.scale_factor);
-			extent = std::max(extent, dc.measure_text(text, ui::style::font_face::dialog,
-			                                          ui::style::text_style::single_line, max_width).cx);
+			const auto max_width = core::round(_max_width * dc.scale_factor);
+			extent = std::max(extent, dc.measure_text(text, render::font_face::dialog,
+			                                          render::text_style::single_line, max_width).cx);
 		}
 
 		recti calc_bounds(const recti row_bounds, const int text_x, const int text_y, const int text_padding) const
@@ -2206,26 +2206,26 @@ namespace df
 			return bounds;
 		}
 
-		void draw(ui::draw_context& rc, const std::string_view text, const double val, const recti bounds,
-		          const ui::style::font_face text_font, const ui::style::text_style text_style,
-		          const ui::color color) const
+		void draw(render::draw_context& rc, const std::string_view text, const double val, const recti bounds,
+		          const render::font_face text_font, const render::text_style text_style,
+		          const core::color color) const
 		{
-			ui::color rank_color;
+			core::color rank_color;
 
 			if (val_min < val_max && setting.highlight_large_items)
 			{
 				const auto importance_alpha = std::min(
 					color.a, static_cast<float>(0.7 * (val - val_min) / (val_max - val_min)));
-				rank_color = ui::color(app_colors::rank_background, importance_alpha);
+				rank_color = core::color(app_colors::rank_background, importance_alpha);
 			}
 
 			draw(rc, text, rank_color, bounds, text_font, text_style, color);
 		}
 
-		static void draw(ui::draw_context& rc, const std::string_view text, const ui::color bg_color,
+		static void draw(render::draw_context& rc, const std::string_view text, const core::color bg_color,
 		                 const recti bounds,
-		                 const ui::style::font_face text_font, const ui::style::text_style text_style,
-		                 const ui::color color)
+		                 const render::font_face text_font, const render::text_style text_style,
+		                 const core::color color)
 		{
 			rc.draw_text(text, bounds, text_font, text_style, color, bg_color);
 		}
@@ -2313,9 +2313,9 @@ namespace df
 		int32_t order2 = 0;
 		int32_t order3 = 0;
 
-		str::cached text1 = {};
-		str::cached text2 = {};
-		str::cached text3 = {};
+		core::cached text1 = {};
+		core::cached text2 = {};
+		core::cached text3 = {};
 
 
 		group_key() noexcept = default;
@@ -2397,8 +2397,8 @@ namespace df
 		}
 
 		void toggle_display();
-		void update_row_layout(const ui::measure_context& mc) const;
-		void update_detail_row_layout(ui::draw_context& dc, const item_element_ptr& i, bool has_related) const;
+		void update_row_layout(const render::measure_context& mc) const;
+		void update_detail_row_layout(render::draw_context& dc, const item_element_ptr& i, bool has_related) const;
 		void display(item_group_display d);
 
 		void items(item_elements items)
@@ -2413,9 +2413,9 @@ namespace df
 			return _items;
 		}
 
-		void render(ui::draw_context& dc, pointi element_offset) const override;
-		sizei measure(ui::measure_context& mc, int width_limit) const override;
-		void layout(ui::measure_context& mc, recti bounds_in) override;
+		void render(render::draw_context& dc, pointi element_offset) const override;
+		sizei measure(render::measure_context& mc, int width_limit) const override;
+		void layout(render::measure_context& mc, recti bounds_in) override;
 		void scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements, async_strategy& async) const;
 		void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
@@ -2448,4 +2448,4 @@ std::string format_selection_summary(const df::item_set& selected);
 // zone, and file times are converted to local before they are grouped.
 uint32_t local_today_days();
 // The date group a day falls in: Today (order 0), Yesterday (order 1), or its month.
-df::group_key date_group_key(df::date_t when, uint32_t today);
+df::group_key date_group_key(core::date_t when, uint32_t today);

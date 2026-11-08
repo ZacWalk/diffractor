@@ -24,7 +24,7 @@ namespace
 	// it, as Diffractor's own panels do, so the monitor sits on whatever the view draws behind it.
 	struct shade
 	{
-		ui::color32 rgb;
+		core::color32 rgb;
 		float alpha;
 	};
 
@@ -37,15 +37,15 @@ namespace
 		constexpr shade raised{0xFFFFFF, 0.12f};
 		constexpr shade line{0xFFFFFF, 0.1f};
 
-		ui::color32 text() { return ui::style::colors.view_text; }
-		ui::color32 text_muted() { return ui::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.35f); }
-		ui::color32 text_faint() { return ui::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.6f); }
-		ui::color32 accent() { return ui::style::colors.view_selected_background; }
-		ui::color32 accent_light() { return ui::lerp(ui::style::colors.view_selected_background, ui::style::colors.view_text, 0.4f); }
-		ui::color32 information() { return ui::style::colors.info_background; }
-		ui::color32 green() { return ui::style::colors.success_background; }
-		ui::color32 orange() { return ui::style::colors.important_background; }
-		ui::color32 red() { return ui::style::colors.warning_background; }
+		core::color32 text() { return ui::style::colors.view_text; }
+		core::color32 text_muted() { return core::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.35f); }
+		core::color32 text_faint() { return core::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.6f); }
+		core::color32 accent() { return ui::style::colors.view_selected_background; }
+		core::color32 accent_light() { return core::lerp(ui::style::colors.view_selected_background, ui::style::colors.view_text, 0.4f); }
+		core::color32 information() { return ui::style::colors.info_background; }
+		core::color32 green() { return ui::style::colors.success_background; }
+		core::color32 orange() { return ui::style::colors.important_background; }
+		core::color32 red() { return ui::style::colors.warning_background; }
 	}
 
 	// A silenced voice is drawn faded, as the tune goes on playing it.
@@ -88,9 +88,9 @@ namespace
 		{
 		}
 
-		ui::style::cursor cursor() const override { return ui::style::cursor::link; }
+		platform::cursor cursor() const override { return platform::cursor::link; }
 
-		void on_mouse_left_button_up(const pointi loc, const ui::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 		{
 			if (_bounds.contains(loc)) _invoke();
 		}
@@ -104,56 +104,56 @@ namespace
 	{
 		std::string text;
 		recti bounds;
-		ui::color colour;
-		ui::style::text_style style = ui::style::text_style::single_line;
+		core::color colour;
+		render::text_style style = render::text_style::single_line;
 	};
 
 	// What the monitor draws with: the context, the alpha everything fades by, the display scale, and the
 	// text it holds back until the moving parts are drawn.
 	struct painter
 	{
-		ui::draw_context& dc;
+		render::draw_context& dc;
 		float alpha;
 		double scale;
 		std::vector<queued_text>& texts;
 
-		int px(const double v) const { return std::max(1, df::round(v * scale)); }
-		ui::color c(const ui::color32 rgb, const float a = 1.0f) const { return {rgb, alpha * a}; }
-		ui::color c(const shade s, const float a = 1.0f) const { return {s.rgb, alpha * a * s.alpha}; }
+		int px(const double v) const { return std::max(1, core::round(v * scale)); }
+		core::color c(const core::color32 rgb, const float a = 1.0f) const { return {rgb, alpha * a}; }
+		core::color c(const shade s, const float a = 1.0f) const { return {s.rgb, alpha * a * s.alpha}; }
 
-		void fill(const recti r, const ui::color colour, const int radius) const
+		void fill(const recti r, const core::color colour, const int radius) const
 		{
 			dc.draw_rounded_rect(r, colour, radius);
 		}
 
-		void text(const std::string_view s, const recti r, const ui::color32 colour, const float a = 1.0f,
-		          const ui::style::text_style style = ui::style::text_style::single_line) const
+		void text(const std::string_view s, const recti r, const core::color32 colour, const float a = 1.0f,
+		          const render::text_style style = render::text_style::single_line) const
 		{
 			texts.push_back({std::string(s), r, c(colour, a), style});
 		}
 
 		int text_width(const std::string_view s) const
 		{
-			return dc.measure_text(s, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx;
+			return dc.measure_text(s, render::font_face::code, render::text_style::single_line, 10000).cx;
 		}
 
-		void badge(const std::string_view s, const recti r, const ui::color fill_colour, const ui::color32 colour,
+		void badge(const std::string_view s, const recti r, const core::color fill_colour, const core::color32 colour,
 		           const float a = 1.0f) const
 		{
 			fill(r, fill_colour, px(3));
-			text(s, r, colour, a, ui::style::text_style::single_line_center);
+			text(s, r, colour, a, render::text_style::single_line_center);
 		}
 	};
 
-	void add_rect(std::vector<ui::vertex_rect>& out, const recti r, const ui::color colour)
+	void add_rect(std::vector<render::vertex_rect>& out, const recti r, const core::color colour)
 	{
 		if (!r.is_empty() && colour.a > 0.0f) out.push_back({r, colour});
 	}
 
 	// The vertex buffer draws rectangles, not lines, so a trace is narrow columns, each joined to the one
 	// before it. ys holds one height per column.
-	void add_trace(std::vector<ui::vertex_rect>& out, const recti r, const std::vector<int>& ys, const int thickness,
-	               const ui::color colour)
+	void add_trace(std::vector<render::vertex_rect>& out, const recti r, const std::vector<int>& ys, const int thickness,
+	               const core::color colour)
 	{
 		if (ys.empty()) return;
 
@@ -163,8 +163,8 @@ namespace
 		{
 			const auto y = ys[i];
 			const auto previous = i > 0 ? ys[i - 1] : y;
-			const auto left = r.left + df::round(i * column);
-			const auto right = std::max(left + 1, r.left + df::round((i + 1) * column));
+			const auto left = r.left + core::round(i * column);
+			const auto right = std::max(left + 1, r.left + core::round((i + 1) * column));
 			const auto top = std::min(y, previous) - thickness / 2;
 			const auto bottom = std::max(y, previous) + (thickness + 1) / 2;
 			add_rect(out, recti(left, top, right, bottom), colour);
@@ -172,13 +172,13 @@ namespace
 	}
 
 	// A meter's fill, inside its track.
-	void add_meter(std::vector<ui::vertex_rect>& out, const recti track, const double fraction, const int inset,
-	               const ui::color colour)
+	void add_meter(std::vector<render::vertex_rect>& out, const recti track, const double fraction, const int inset,
+	               const core::color colour)
 	{
 		if (track.is_empty()) return;
 
 		const auto inner = track.inflate(-inset);
-		const auto width = df::round(inner.width() * std::clamp(fraction, 0.0, 1.0));
+		const auto width = core::round(inner.width() * std::clamp(fraction, 0.0, 1.0));
 		if (width > 0) add_rect(out, recti(inner.left, inner.top, inner.left + width, inner.bottom), colour);
 	}
 
@@ -231,7 +231,7 @@ namespace
 			else if (v.control & 0x20) level = phase * 2.0 - 1.0;
 			else if (v.control & 0x10) level = phase < 0.5 ? phase * 4.0 - 1.0 : 3.0 - phase * 4.0;
 
-			ys[x] = mid - df::round(level * amplitude);
+			ys[x] = mid - core::round(level * amplitude);
 		}
 
 		return ys;
@@ -266,7 +266,7 @@ namespace
 				level = std::clamp(samples[at] / 32768.0 * 2.5, -1.0, 1.0);
 			}
 
-			ys[x] = mid - df::round(level * half);
+			ys[x] = mid - core::round(level * half);
 		}
 
 		return ys;
@@ -281,7 +281,7 @@ namespace
 sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, const int songs, const int line_height,
                                       const int detail, const int button_text)
 {
-	const auto px = [scale](const double v) { return std::max(1, df::round(v * scale)); };
+	const auto px = [scale](const double v) { return std::max(1, core::round(v * scale)); };
 	const auto lh = std::max(line_height, px(10));
 	const auto pad = px(12);
 	const auto gap = px(10);
@@ -514,15 +514,15 @@ int sid_monitor_control::song_count() const
 	return 1;
 }
 
-sizei sid_monitor_control::measure(ui::measure_context& mc, const int width_limit) const
+sizei sid_monitor_control::measure(render::measure_context& mc, const int width_limit) const
 {
 	const auto songs = song_count();
 	_measured_songs = songs;
 	const auto button_text = std::max(
-		mc.measure_text(tt.command_volume0, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx,
-		mc.measure_text(tt.sid_solo, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx);
+		mc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
+		mc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
 	const auto l = layout_sid_monitor(recti(0, 0, width_limit, 0), mc.scale_factor, songs,
-	                                  mc.text_line_height(ui::style::font_face::code), 4, button_text);
+	                                  mc.text_line_height(render::font_face::code), 4, button_text);
 	return {width_limit, l.height};
 }
 
@@ -591,15 +591,15 @@ view_controller_ptr sid_monitor_control::controller_from_location(const view_hos
 	return view_element::controller_from_location(host, loc, element_offset, ctx);
 }
 
-void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offset) const
+void sid_monitor_control::render(render::draw_context& dc, const pointi element_offset) const
 {
 	// Advances the session's clock, as the audio control does, so the monitor shows what is heard.
 	_display->update_for_present(dc.time_now);
 
-	const auto line_height = dc.text_line_height(ui::style::font_face::code);
+	const auto line_height = dc.text_line_height(render::font_face::code);
 	const auto button_text = std::max(
-		dc.measure_text(tt.command_volume0, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx,
-		dc.measure_text(tt.sid_solo, ui::style::font_face::code, ui::style::text_style::single_line, 10000).cx);
+		dc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
+		dc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
 	const auto logical = bounds.offset(element_offset);
 	auto scale = dc.scale_factor;
 	const auto l = fit_sid_monitor(logical, dc.scale_factor, song_count(), line_height, button_text, scale);
@@ -625,7 +625,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 	const painter p{dc, dc.colors.alpha, scale, texts};
 	// The last resort when even the heading and voices do not fit: what is left over is cut off rather
 	// than drawn over the element below.
-	const ui::scoped_clip clip(dc, logical);
+	const render::scoped_clip clip(dc, logical);
 	const auto lh = std::max(line_height, p.px(10));
 	const auto pad = p.px(12);
 	const auto& sid = _display->_sid;
@@ -675,7 +675,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 			p.badge("<", l.previous_tune, p.c(palette::raised), palette::text_muted());
 			p.badge(">", l.next_tune, p.c(palette::raised), palette::text_muted());
 			p.text(std::format("{} / {}", details.song, details.songs), l.tune_counter, palette::text(), 1.0f,
-			       ui::style::text_style::single_line_center);
+			       render::text_style::single_line_center);
 		}
 	}
 
@@ -714,7 +714,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 			const recti track(x0 + label_w, bar_top, x1 - value_w, bar_top + bar_h);
 			p.fill(track, p.c(palette::raised, a), p.px(2));
 			p.text(std::to_string(value), recti(x1 - value_w, y, x1, y + lh), palette::text(), a,
-			       ui::style::text_style::single_line_far);
+			       render::text_style::single_line_far);
 			y += lh + p.px(6);
 			return track;
 		};
@@ -771,7 +771,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 		const auto& r = l.output;
 		p.fill(r, p.c(palette::sunken), p.px(4));
 		p.text(tt.sid_output, recti(r.left, r.top + pad, r.right, r.top + pad + lh), palette::text_muted(), 1.0f,
-		       ui::style::text_style::single_line_center);
+		       render::text_style::single_line_center);
 
 		parts.scope = recti(r.left + pad, r.top + pad + lh + p.px(8), r.right - pad, r.bottom - pad);
 		const auto mid = (parts.scope.top + parts.scope.bottom) / 2;
@@ -789,7 +789,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 		p.fill(r, p.c(palette::sunken), p.px(4));
 		auto y = r.top + pad;
 		p.text(tt.sid_filter, recti(r.left, y, r.right, y + lh), palette::text_muted(), 1.0f,
-		       ui::style::text_style::single_line_center);
+		       render::text_style::single_line_center);
 		y += lh + p.px(8);
 
 		// CUTOFF and RES first, then the filter's modes and the voices it filters, wrapping below the meters
@@ -858,7 +858,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 		p.fill(r, p.c(palette::sunken), p.px(4));
 		auto y = r.top + pad;
 		p.text(tt.sid_register_writes, recti(r.left, y, r.right, y + lh), palette::text_muted(), 1.0f,
-		       ui::style::text_style::single_line_center);
+		       render::text_style::single_line_center);
 		y += lh + p.px(8);
 
 		const auto x0 = r.left + pad;
@@ -876,9 +876,9 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 
 			p.fill(cell, p.c(palette::raised), p.px(2));
 			p.text(register_names[i], recti(cell.left, cell.top + p.px(4), cell.right, cell.top + p.px(4) + lh),
-			       palette::text_muted(), 1.0f, ui::style::text_style::single_line_center);
+			       palette::text_muted(), 1.0f, render::text_style::single_line_center);
 			p.text(hex2(state.regs[i]), recti(cell.left, cell.top + p.px(4) + lh, cell.right, cell.bottom - p.px(4)),
-			       palette::text(), 1.0f, ui::style::text_style::single_line_center);
+			       palette::text(), 1.0f, render::text_style::single_line_center);
 		}
 	}
 
@@ -891,7 +891,7 @@ void sid_monitor_control::render(ui::draw_context& dc, const pointi element_offs
 
 	for (const auto& t : texts)
 	{
-		dc.draw_text(t.text, t.bounds, ui::style::font_face::code, t.style, t.colour, {});
+		dc.draw_text(t.text, t.bounds, render::font_face::code, t.style, t.colour, {});
 	}
 }
 
@@ -940,7 +940,7 @@ render_valid sid_monitor_motion::update(const std::shared_ptr<sid_tune_render>& 
 	return result;
 }
 
-const std::vector<ui::vertex_rect>& sid_monitor_motion::build(const double position)
+const std::vector<render::vertex_rect>& sid_monitor_motion::build(const double position)
 {
 	_built_position = position;
 	_rects.clear();
@@ -949,7 +949,7 @@ const std::vector<ui::vertex_rect>& sid_monitor_motion::build(const double posit
 	sid_frame_state frames[activity_frames + 1];
 	const auto frame_count = _sid->frames_before(position, frames, std::size(frames));
 	const auto state = frame_count ? frames[frame_count - 1] : sid_frame_state{};
-	const auto colour = [this](const ui::color32 rgb, const float a = 1.0f) { return ui::color(rgb, _alpha * a); };
+	const auto colour = [this](const core::color32 rgb, const float a = 1.0f) { return core::color(rgb, _alpha * a); };
 
 	for (int v = 0; v < 3; ++v)
 	{

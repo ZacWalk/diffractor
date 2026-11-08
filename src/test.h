@@ -51,7 +51,7 @@ static void assert_equal(const std::string_view expected, const std::string_view
 {
 	++test_assert_count;
 
-	if (str::icmp(actual, expected) != 0)
+	if (core::icmp(actual, expected) != 0)
 	{
 		throw test_assert_exception(
 			std::format("{} - {}: expected '{}', got '{}' at {}", message, name, expected, actual,
@@ -65,7 +65,7 @@ static void assert_not_equal(const std::string_view expected, const std::string_
 {
 	++test_assert_count;
 
-	if (str::icmp(actual, expected) == 0)
+	if (core::icmp(actual, expected) == 0)
 	{
 		throw test_assert_exception(std::format("{} - {}: expected '{}' not to equal '{}' at {}", message, name,
 		                                        expected, actual, test_assert_where(loc)));
@@ -90,31 +90,31 @@ static void assert_equal(const std::wstring_view expected, const std::wstring_vi
                          const std::string_view name = {}, const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(str::utf16_to_utf8(expected), str::utf16_to_utf8(actual), name, message, loc);
+	assert_equal(core::utf16_to_utf8(expected), core::utf16_to_utf8(actual), name, message, loc);
 }
 
 static void assert_equal(const int expected, const int actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(str::to_string(expected), str::to_string(actual), name, message, loc);
+	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
 static void assert_equal(const uint32_t expected, const uint32_t actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(str::to_string(expected), str::to_string(actual), name, message, loc);
+	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
 static void assert_equal(const uint64_t expected, const uint64_t actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(str::to_string(expected), str::to_string(actual), name, message, loc);
+	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
-static void assert_equal(const ui::const_image_ptr& expected, const ui::const_image_ptr& actual,
+static void assert_equal(const core::const_image_ptr& expected, const core::const_image_ptr& actual,
                          const std::string_view name = {}, const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -123,14 +123,14 @@ static void assert_equal(const ui::const_image_ptr& expected, const ui::const_im
 
 	files ff;
 	const auto diff = ff.pixel_difference(expected, actual);
-	assert_equal(true, diff == ui::pixel_difference_result::equal, name, message, loc);
+	assert_equal(true, diff == core::pixel_difference_result::equal, name, message, loc);
 }
 
 static void assert_equal(const bool expected, const bool actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(str::to_string(expected), str::to_string(actual), name, message, loc);
+	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
 // Note: assert_true/assert_false are reserved: util.h already defines assert_true as a runtime
@@ -140,7 +140,7 @@ static void assert_equal(const double expected, const double actual, const std::
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
-	assert_equal(str::to_string(expected, 5), str::to_string(actual, 5), name, message, loc);
+	assert_equal(core::to_string(expected, 5), core::to_string(actual, 5), name, message, loc);
 }
 
 static void assert_near(const double expected, const double actual, const double tolerance,
@@ -158,7 +158,7 @@ static void assert_near(const double expected, const double actual, const double
 	}
 }
 
-static void assert_equal(const df::date_t expected, const df::date_t actual, const std::string_view name = {},
+static void assert_equal(const core::date_t expected, const core::date_t actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -183,7 +183,7 @@ static void assert_equal(const gps_coordinate expected, const gps_coordinate act
 	             gps_coordinate::decimal_to_dms_str(actual.longitude(), false), name, message, loc);
 }
 
-static void assert_equal(const df::xy8 expected, const df::xy8 actual, const std::string_view name = {},
+static void assert_equal(const core::xy8 expected, const core::xy8 actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {

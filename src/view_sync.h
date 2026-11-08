@@ -80,7 +80,7 @@ public:
 
 	std::string_view title() override
 	{
-		_title = std::format("{}: {}", s_app_name, tt.command_sync);
+		_title = std::format("{}: {}", core::app_name(), tt.command_sync);
 		return _title;
 	}
 

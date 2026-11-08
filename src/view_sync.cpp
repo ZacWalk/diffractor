@@ -65,13 +65,13 @@ uint32_t count_sync_actions(const sync_analysis_result& analysis, const sync_act
 	return result;
 }
 
-static auto calc_sync_source(const df::index_roots& roots, const bool select_other_folder)
+static auto calc_sync_source(const core::index_roots& roots, const bool select_other_folder)
 {
-	df::index_roots result;
+	core::index_roots result;
 
 	if (select_other_folder)
 	{
-		result.folders.emplace(df::folder_path(setting.sync.local_path));
+		result.folders.emplace(core::folder_path(setting.sync.local_path));
 	}
 	else
 	{
@@ -197,9 +197,9 @@ view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 
 void sync_view::update_rows(const sync_analysis_result& analysis_result)
 {
-	const auto blue_text_color = ui::lighten(ui::style::colors.dialog_selected_background, 0.55f);
-	const auto gray_text_color = ui::darken(ui::style::colors.view_text, 0.22f);
-	const auto orange_text_color = ui::lighten(ui::style::colors.important_background, 0.55f);
+	const auto blue_text_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+	const auto gray_text_color = core::darken(ui::style::colors.view_text, 0.22f);
+	const auto orange_text_color = core::lighten(ui::style::colors.important_background, 0.55f);
 
 	std::vector<row_element_ptr> rows;
 
@@ -350,7 +350,7 @@ void sync_view::run()
 	const auto processing_generation = this->processing_generation();
 	_run_generation = processing_generation;
 	const auto cancel_source = processing_cancel_source();
-	auto token = df::cancel_token(*cancel_source);
+	auto token = core::cancel_token(*cancel_source);
 	_status = std::string(tt.processing.sv());
 	const auto detach = std::make_shared<detach_file_handles>(_state);
 	const auto view = shared_from_this();
@@ -376,7 +376,7 @@ void sync_view::run()
 void sync_view::analyze()
 {
 	const auto sync_source = calc_sync_source(_state.item_index.index_roots(), _select_other_folder);
-	const df::folder_path remote_path(setting.sync.remote_path);
+	const core::folder_path remote_path(setting.sync.remote_path);
 	const auto local_remote = setting.sync.sync_local_remote;
 	const auto remote_local = setting.sync.sync_remote_local;
 	const auto delete_local = setting.sync.sync_delete_local;
@@ -385,7 +385,7 @@ void sync_view::analyze()
 	begin_processing(0);
 	const auto processing_generation = this->processing_generation();
 	const auto cancel_source = processing_cancel_source();
-	auto token = df::cancel_token(*cancel_source);
+	auto token = core::cancel_token(*cancel_source);
 	_status = std::string(tt.analyzing.sv());
 
 	// The token points into cancel_source without owning it, and the next Analyze replaces the view's
@@ -403,7 +403,7 @@ void sync_view::analyze()
 		                   }
 		                   catch (const std::exception& e)
 		                   {
-			                   s.queue_ui([t, processing_generation, error = str::utf8_cast(e.what())]
+			                   s.queue_ui([t, processing_generation, error = core::utf8_cast(e.what())]
 			                   {
 				                   if (!t->is_processing_generation(processing_generation)) return;
 				                   t->end_processing();
