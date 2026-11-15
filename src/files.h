@@ -438,7 +438,10 @@ enum class decode_intent : uint8_t
 	// For an edit to work on: as display, at sixteen bits a channel where the file holds more than eight -
 	// a 16-bit PNG, a raw file developed - and the budget holds it at that, so the edit's resampling and
 	// colour are worked out at the precision the picture has and rounded once, when it is saved.
-	edit
+	edit,
+	// Read by code and never drawn, so it takes the planar path on its own terms rather than through
+	// the display's YUV switch.
+	analysis
 };
 
 struct file_load_result

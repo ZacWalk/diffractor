@@ -21,8 +21,7 @@ function(diffractor_fetch NAME)
 
     string(JSON _sha256 GET "${_pins}" dependencies ${NAME} sha256)
 
-    # The recipes build the archive's sources themselves; upstream's own CMakeLists, where there is
-    # one, is never configured.
+    # Configuration belongs to the owned recipe, not to this acquisition step.
     FetchContent_Declare(${NAME}
             URL "${_url}"
             URL_HASH SHA256=${_sha256}

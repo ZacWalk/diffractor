@@ -1,7 +1,7 @@
 # Diffractor Product Design
 
 This document owns durable user concepts and observable behavior. Specialized documents own the
-details of collections, locations, zoom, selection controls, metadata, file I/O, and Movie
+details of collections, locations, faces, zoom, selection controls, metadata, file I/O, and Movie
 mixer. [Implementation](implementation.md) owns architecture; GitHub owns plans and issue status.
 
 ## Primary Design Drivers
@@ -99,7 +99,7 @@ nearest where it was; a part its own press removes at once hands the keyboard ba
 
 ### Naming Views, Modes, And Presentation Choices
 
-Top-level views are Items, Fullscreen, Edit, Movie mixer, Tags, Locate, Rename, Convert, Metadata,
+Top-level views are Items, Fullscreen, Faces, Edit, Movie mixer, Tags, Locate, Rename, Convert, Metadata,
 Date, Import, Sync, and Options. “Media view” names the internal Fullscreen renderer, not another user
 view.
 

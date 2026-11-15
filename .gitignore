@@ -55,3 +55,9 @@ exe/tiles/*.png
 *.appxsym
 # Store artwork from running tools/generate_store_assets.py by hand; packaging writes its own to dist/.
 /exe/Assets/
+
+# Face experiment inputs and outputs stay outside the checkout.
+/exe/test/excluded1/faces/
+/src/Res/models/
+/face-report*.txt
+/face-report*.json

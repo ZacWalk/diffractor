@@ -65,7 +65,8 @@ enum class view_type
 	locate,
 	tags,
 	// Every setting, on one page; not a task, and not reached from one.
-	options
+	options,
+	faces
 };
 
 enum class repeat_mode
@@ -181,6 +182,9 @@ enum class async_queue
 	// Reads the collection into the search index. Its own thread, so a build never waits behind, or
 	// holds up, the indexing, search, sidebar and summary queues.
 	index_search_single,
+	// Detection owns the engine; collection-wide grouping cannot block that worker.
+	index_faces,
+	index_face_groups,
 	web,
 	map_tile,
 	// A running Commodore 64: one task for as long as it runs, so its own thread, started on first use.

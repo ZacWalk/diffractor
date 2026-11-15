@@ -1,4 +1,4 @@
-# Purpose: Check SDK SymStore discovery and symbol-publishing failures without touching a real store.
+# Purpose: Check release notices, SDK SymStore discovery and symbol-publishing failures without a real store.
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -7,7 +7,7 @@ $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
     (Join-Path $repo 'dd.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw "dd.ps1 has syntax errors: $errors" }
-foreach ($name in 'Get-SymStore', 'Add-ToSymbolStore') {
+foreach ($name in 'Get-SymStore', 'Add-ToSymbolStore', 'Copy-LicenceTexts') {
     $definition = @($ast.FindAll({
         param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -29,6 +29,14 @@ $fixture = Join-Path (Join-Path $repo 'tmp') ('release-tools-' + [guid]::NewGuid
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 $previousLocalAppData = $env:LOCALAPPDATA
 try {
+    $ScriptDir = $repo
+    $notices = Join-Path $fixture 'notices'
+    [IO.Directory]::CreateDirectory($notices) | Out-Null
+    Copy-LicenceTexts -Destination $notices
+    $sourceNotice = [IO.File]::ReadAllText((Join-Path $repo 'licences/ncnn.txt'))
+    $packagedNotice = [IO.File]::ReadAllText((Join-Path $notices 'COPYING.ncnn.txt'))
+    if ($sourceNotice -cne $packagedNotice) { throw 'The packaged ncnn notice changed or was omitted.' }
+
     $env:LOCALAPPDATA = Join-Path $fixture 'local'
     $SdkRoot = Join-Path $fixture 'Windows Kits\10\bin'
     $ToolsDir = Join-Path $fixture 'tools'
@@ -84,5 +92,5 @@ finally {
     $env:LOCALAPPDATA = $previousLocalAppData
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
-Write-Host 'PASS: machine/per-user SDK SymStore, version order, missing SDK/input, quoted paths, failed publish and packaging preflights.'
+Write-Host 'PASS: release notices, machine/per-user SDK SymStore, version order, missing SDK/input, quoted paths, failed publish and packaging preflights.'
 exit 0

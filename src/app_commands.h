@@ -18,6 +18,11 @@ namespace ui
 	class complete_strategy_t;
 }
 
+namespace faces
+{
+	struct palette_entry;
+}
+
 enum class commands
 {
 	none = 0,
@@ -122,6 +127,7 @@ enum class commands
 	options_help,
 	options_save,
 	options_sidebar,
+	options_faces,
 	pin_item,
 	play,
 	playback_auto_play,
@@ -255,3 +261,7 @@ using destination_folder_enumerator = std::function<core::folder_paths(const cor
 std::shared_ptr<ui::complete_strategy_t> make_destination_folder_auto_complete_for_test(
 	view_state& state, const std::shared_ptr<void>& picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
 	destination_folder_enumerator enumerate_child_folders = {});
+
+// docs/faces.md owns the face view. It is reached from the sidebar, so it lives with the other
+// options entry points rather than inside the element that opens it.
+void faces_options_invoke(view_state& s, const ui::frame_ptr& parent);

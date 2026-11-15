@@ -45,6 +45,7 @@
 #include "view_sync.h"
 #include "view_tags.h"
 #include "view_options.h"
+#include "view_faces.h"
 
 #include "app_sidebar.h"
 #include "app_commands.h"
@@ -477,6 +478,14 @@ void command_line_t::parse(const std::string_view command_line_text)
 			else if (switch_value(op, "movie-out:", value)) movie_batch.output = value;
 			else if (is_switch(op, "movie-overwrite")) movie_batch.overwrite = true;
 			else if (is_switch(op, "movie-skip-missing")) movie_batch.skip_missing = true;
+			else if (switch_value(op, "face-report:", value))
+			{
+				face_report = true;
+				face_report_list = value;
+			}
+			else if (switch_value(op, "face-report-out:", value)) face_report_output = value;
+			else if (switch_value(op, "face-report-scan:", value)) face_report_scan = value;
+			else if (switch_value(op, "face-report-scan-variant:", value)) face_report_scan_variant = value;
 #ifdef _DEBUG
 			else if (is_switch(op, "test-reset-graphics")) test_action = "reset-graphics";
 			else if (is_switch(op, "test-crash")) test_action = "crash";
@@ -1084,6 +1093,7 @@ app_frame::app_frame() :
 	{ select_language(code); }, [this] { index_maintenance_invoke(_state, _app_frame); }, [this] {
 		return std::static_pointer_cast<void>(std::make_shared<pause_media>(_state));
 	}, [this] { return ask_to_save_options(_app_frame); }});
+	_view_faces = std::make_shared<faces_view>(_state, _view_frame);
 	_view_import = std::make_shared<import_view>(_state, _view_frame);
 	_view_locate = std::make_shared<locate_view>(_state, _view_frame);
 	_view_rename = std::make_shared<rename_view>(_state, _view_frame);
@@ -1594,6 +1604,7 @@ void app_frame::tick_screenshot()
 				update_button_state(false);
 				invoke(commands::tool_movie);
 			}
+			else if (core::icmp(scene, "faces") == 0) invoke(commands::options_faces);
 			else
 			{
 				core::log(__FUNCTION__, std::format("Unknown screenshot scene: {}", scene));
@@ -2371,6 +2382,16 @@ void app_frame::complete_pending_events()
 				_view_items->sidebar()->queue_update_predictions();
 			}
 
+			if (pop_invalid_flag(_invalids, view_invalid::sidebar_faces))
+			{
+				_view_items->sidebar()->populate_face_palette();
+			}
+
+			if (pop_invalid_flag(_invalids, view_invalid::faces_view))
+			{
+				if (_state.view_mode() == view_type::faces) _view_faces->refresh();
+			}
+
 			if (pop_invalid_flag(_invalids, view_invalid::index_summary))
 			{
 				_state.invalidate_day_counts();
@@ -3142,7 +3163,7 @@ void app_frame::reload()
 	_has_burner.reset();
 	invalidate_view(view_invalid::view_layout | view_invalid::group_layout | view_invalid::index |
 	                view_invalid::refresh_items | view_invalid::item_scan | view_invalid::sidebar_drives |
-	                view_invalid::command_state);
+	                view_invalid::sidebar_faces | view_invalid::command_state);
 }
 
 void app_frame::view_changed(const view_type m)
@@ -3234,6 +3255,10 @@ void app_frame::view_changed(const view_type m)
 	case view_type::options:
 		v = _view_options;
 		vc = _view_options->controls(_view_frame->frame());
+		break;
+	case view_type::faces:
+		v = _view_faces;
+		vc = _view_faces->controls(_view_frame->frame());
 		break;
 	default: break;
 	}
@@ -3994,6 +4019,8 @@ bool app_frame::pre_init()
 int run_console_tests(std::string_view test_filter);
 int generate_wiki_docs(std::string_view output_folder);
 int validate_po_files();
+int run_face_report(std::string_view list_text, std::string_view scan_text, std::string_view scan_variant_text,
+                    std::string_view output_text);
 
 bool app_frame::parse_command_line(const std::string_view command_line_text)
 {
@@ -4013,7 +4040,7 @@ bool app_frame::parse_command_line(const std::string_view command_line_text)
 #endif
 
 	return command_line.console_test || command_line.gen_docs || command_line.validate_po || command_line.dup_report ||
-	       !command_line.movie_batch.projects.empty();
+	       command_line.face_report || !command_line.movie_batch.projects.empty();
 }
 
 int app_frame::run_console_mode()
@@ -4027,6 +4054,9 @@ int app_frame::run_console_mode()
 	if (command_line.validate_po) return validate_po_files();
 	if (command_line.dup_report)
 		return run_duplicate_report(command_line.dup_report_folder, command_line.dup_report_output);
+	if (command_line.face_report)
+		return run_face_report(command_line.face_report_list, command_line.face_report_scan,
+		                       command_line.face_report_scan_variant, command_line.face_report_output);
 	return run_movie_batch(command_line.movie_batch);
 }
 

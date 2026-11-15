@@ -24,6 +24,7 @@
 #include "view_items.h"
 #include "view_sync.h"
 #include "view_tags.h"
+#include "view_faces.h"
 #include "view_import.h"
 #include "view_rename.h"
 #include "view_batch.h"
@@ -137,8 +138,9 @@ void app_frame::create_toolbars()
 
 	// Every bar a view can declare is built now, before the first layout, so switching views only
 	// shows and hides controls that already exist.
-	const std::shared_ptr<view_base> views[] = {_view_items, _view_media,  _view_edit, _view_movie,  _view_rename,
-	                                            _view_batch, _view_import, _view_sync, _view_locate, _view_tags};
+	const std::shared_ptr<view_base> views[] = {_view_items,  _view_media, _view_edit,   _view_movie,
+	                                            _view_rename, _view_batch, _view_import, _view_sync,
+	                                            _view_locate, _view_tags,  _view_faces};
 
 	for (const auto& v : views)
 	{
@@ -812,6 +814,7 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::option_toggle_details]->enable = is_items_view;
 	_commands[commands::option_toggle_item_size]->enable = is_items_view;
 	_commands[commands::options]->enable = is_media_or_items_view;
+	_commands[commands::options_faces]->enable = is_media_or_items_view;
 	_commands[commands::options_sidebar]->enable = is_media_or_items_view;
 	_commands[commands::options_save]->enable = view_mode == view_type::options;
 	_commands[commands::options_cancel]->enable = view_mode == view_type::options;
@@ -1346,6 +1349,8 @@ void app_frame::update_command_text()
 	            tt.command_highlight_large_items);
 	def_command(commands::tool_import, command_group::tools, icon_index::import, tt.command_import);
 	def_command(commands::tool_sync, command_group::tools, icon_index::sync, tt.command_sync);
+	def_command(commands::options_faces, command_group::options, icon_index::person, tt.face_search,
+	            tt.face_search_tooltip);
 	def_command(commands::keyboard, command_group::help, icon_index::keyboard, tt.command_keyboard);
 	def_command(commands::tool_locate, command_group::tools, icon_index::location, tt.command_locate);
 	def_command(commands::view_maximize, command_group::help, icon_index::maximize, tt.command_maximize);

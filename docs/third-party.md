@@ -17,6 +17,9 @@ installer, the portable zip and the Store package - carries them beside the exec
 Diffractor's own licence, as the LGPL requires of each copy. They stay out of the repository root
 and out of a top-level `LICENSES` folder, where GitHub would read them as Diffractor's own licence.
 
+ncnn's BSD notice is retained in [licences/ncnn.txt](../licences/ncnn.txt) and
+travels with each binary package as `COPYING.ncnn.txt`.
+
 FFmpeg is configured without GPL, version-3, or LGPL-v3-only components, so it remains usable under
 LGPL 2.1. Enabling a GPL component changes the outbound license of the combined binary and is not an
 ordinary build option.
@@ -73,6 +76,7 @@ branch or the API version left in its headers.
 | LibRaw | 0.22.3 | Fetched by libfiles | Release archive by SHA-256 | [LibRaw releases](https://github.com/LibRaw/LibRaw/releases). libfiles pins the archive and builds its library's sources with the DNG SDK and libjpeg, as `libfiles::raw`, and loads raw files with it - their preview, or their raw data developed - and scans them - their metadata, the info pane's listing and a thumbnail; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::raw`, which Diffractor links for libfiles without calling it |
 | libwebp | 1.6.0 | Fetched by libfiles | Release archive by SHA-256 | [libwebp tags](https://github.com/webmproject/libwebp/tags). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds its decoder, encoder, sharpyuv, mux and demux as one library, `libfiles::webp`, and decodes still WebPs and encodes WebPs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::webp`, which the tests link |
 | minizip-ng | 4.2.2 | Fetched | Tag archive by SHA-256 | [minizip-ng releases](https://github.com/zlib-ng/minizip-ng/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [minizip.cmake](../cmake/vendored/minizip.cmake) builds it unchanged, the `compat/` API included, with the `mz_config.h` kept in `cmake/vendored/minizip/` |
+| ncnn | 20261020 | Fetched | Tag archive by SHA-256, BSD-3-Clause | [Tencent/ncnn](https://github.com/Tencent/ncnn). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [ncnn.cmake](../cmake/vendored/ncnn.cmake) drives its own build with CPU dispatch and the model's layer subset, without Vulkan, OpenMP, tools or bundled model weights |
 | RapidJSON | `297637bc0a0f00dc504dbc1a47ebdaa577f8ae19` | Fetched by libdesktop | Commit archive by SHA-256 | [Tencent/rapidjson](https://github.com/Tencent/rapidjson). libdesktop pins the archive in its `cmake/dd-dependencies.json` and gives its headers to `libdesktop::core`'s consumers; Diffractor's own sources include none of it, and nothing of it is built |
 | SDL3 | 3.4.20 | Fetched by libdesktop, on Linux | Release archive by SHA-256 | [libsdl-org/SDL releases](https://github.com/libsdl-org/SDL/releases). libdesktop pins the archive in its `cmake/dd-dependencies.json` and links it statically into its Linux platform and render backends; the Windows build does not use it |
 | skcms | `074a8d439d75df5bff2746458306f7760ee74dd8` | Fetched by libfiles | Git commit | [Skia upstream](https://skia.googlesource.com/skcms/). It makes no releases, and Skia's generated archives differ from one download to the next, so libfiles pins the commit, clones it, and builds its baseline, Haswell and Skylake units as `libfiles::skcms`, which libjxl's colour management uses |
@@ -255,6 +259,23 @@ compiled in from `src/facedetectcnn-data.cpp`. A new commit pin keeps these:
   builds. `/test:*detect*face*` holds what Diffractor finds to what that entry point finds, over the
   photographs at `mobile/Android/FaceDetection/app/src/main/assets/` in the fetched archive; an
   upgrade that moves them moves the tests' path in [test_faces.cpp](../src/test_faces.cpp).
+### ncnn
+
+ncnn runs MobileFaceNet inference from the unmodified release archive pinned by
+SHA-256 in [dd-dependencies.json](../cmake/dd-dependencies.json). Its own CMake
+build generates the source set and architecture dispatch. Vulkan and OpenMP are
+disabled: Diffractor owns graphics-device lifetime and worker concurrency. The
+owned recipe enables only the layers required directly or indirectly by the
+model, without deleting upstream source files. `NCNN_STATIC_DEFINE` must
+propagate to consumers.
+Upstream headers are system includes, keeping their diagnostics separate from the application's
+warning policy.
+
+No embedding model weights are distributed in this tree. A licensed MobileFaceNet model pair may
+be supplied from outside the checkout through `DIFFRACTOR_FACE_MODEL_DIR`; CMake embeds it through
+the application's generated resources on both platforms. A model's weights need their own
+redistribution grant: neither ncnn's licence nor the licence on code that loads a model grants
+rights to its weights. See [experiment inputs](faces.md#experiment-inputs).
 
 ## Assets
 
@@ -283,7 +304,8 @@ packaged data, not source dependencies, but the same redistribution rule applies
   ([files_heif.cpp](../src/files_heif.cpp), [files_jxl.cpp](../src/files_jxl.cpp) and
   [files_raw.cpp](../src/files_raw.cpp)), [av_format.cpp](../src/av_format.cpp),
   [metadata.cpp](../src/metadata.cpp), [util_spell.cpp](../src/util_spell.cpp),
-  [util_zip.cpp](../src/util_zip.cpp) and [model_faces_detect.cpp](../src/model_faces_detect.cpp):
+  [util_zip.cpp](../src/util_zip.cpp), [model_faces_detect.cpp](../src/model_faces_detect.cpp)
+  and [model_faces_engine.cpp](../src/model_faces_engine.cpp):
   application-owned wrappers.
 - `tools/compare_ffmpeg_config.py` and `tools/fluent_icons.py`:
   reproducible integration checks and generators.

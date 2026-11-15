@@ -36,6 +36,11 @@
       "sha256": "40c3a642922a8d0220a68527772e3346fddcd3c5fa03b8a4613db93a4e22e9bf",
       "method": "application"
     },
+    "ncnn": {
+      "url": "https://github.com/Tencent/ncnn/archive/refs/tags/20261020.tar.gz",
+      "sha256": "968d8d8e65ccadc803322f8238736176e0f9c929fcf484895f58a63e6b227127",
+      "method": "application"
+    },
     "openmpt": {
       "url": "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.10+release.autotools.tar.gz",
       "sha256": "976d259288c40cd285771f77d09eff3d02514511d5677ecfcfb53be5013317e2",

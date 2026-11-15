@@ -333,11 +333,12 @@ Section "Diffractor"
 	File "..\exe\diffractor-tools.json"
 
 	; Diffractor is MPL-2.0; the LGPL libraries it links need their texts, and the GPL-3.0 the LGPL-3.0
-	; incorporates, beside every copy. dd.ps1 desktop stages all four into exe\ before this is compiled.
+	; incorporates, beside every copy, along with ncnn's BSD notice.
 	File "..\exe\LICENSE.txt"
 	File "..\exe\COPYING.LGPLv3.txt"
 	File "..\exe\COPYING.GPLv3.txt"
 	File "..\exe\COPYING.LGPLv2.1.txt"
+	File "..\exe\COPYING.ncnn.txt"
 
 	File "..\exe\${PRODUCT32_EXE}"
 	File "..\exe\${PRODUCT64_EXE}"
@@ -488,6 +489,7 @@ Section "Uninstall"
 	Delete "$INSTDIR\COPYING.LGPLv3.txt"
 	Delete "$INSTDIR\COPYING.GPLv3.txt"
 	Delete "$INSTDIR\COPYING.LGPLv2.1.txt"
+	Delete "$INSTDIR\COPYING.ncnn.txt"
 	Delete "$INSTDIR\diffractor.log"
 	Delete "$INSTDIR\diffractor.previous.log"
 	Delete "$INSTDIR\languages\*.po"

@@ -547,8 +547,7 @@ function Clear-IncrementalLink {
 function Copy-LicenceTexts {
     # Diffractor is MPL-2.0, and the binary statically links LGPL libraries - libheif and libde265
     # (LGPL-3.0-or-later, which incorporates the GPL-3.0) and FFmpeg (LGPL-2.1-or-later) - whose texts
-    # must travel with every copy. The installer, the zip and the Store package each carry all four,
-    # renamed .txt so they open from Explorer.
+    # must travel with every copy. Each package also carries ncnn's BSD notice.
     param(
         [string]$Destination
     )
@@ -557,6 +556,7 @@ function Copy-LicenceTexts {
     Copy-Item (Join-Path $ScriptDir "licences/LGPL-3.0.txt") (Join-Path $Destination "COPYING.LGPLv3.txt") -Force
     Copy-Item (Join-Path $ScriptDir "licences/GPL-3.0.txt") (Join-Path $Destination "COPYING.GPLv3.txt") -Force
     Copy-Item (Join-Path $ScriptDir "licences/LGPL-2.1.txt") (Join-Path $Destination "COPYING.LGPLv2.1.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "licences/ncnn.txt") (Join-Path $Destination "COPYING.ncnn.txt") -Force
 }
 
 function Build-Desktop {
@@ -651,6 +651,7 @@ function Build-Desktop {
         "COPYING.LGPLv3.txt",
         "COPYING.GPLv3.txt",
         "COPYING.LGPLv2.1.txt",
+        "COPYING.ncnn.txt",
         "location-countries.txt",
         "location-places.txt",
         "location-states.txt",

@@ -5343,7 +5343,7 @@ static void should_record_a_bit_for_every_view()
 
 	uint64_t seen = 0;
 
-	for (auto v = static_cast<int>(view_type::items); v <= static_cast<int>(view_type::options); ++v)
+	for (auto v = static_cast<int>(view_type::items); v <= static_cast<int>(view_type::faces); ++v)
 	{
 		const auto bit = features::view_bit(static_cast<view_type>(v));
 		assert_equal(1, std::popcount(bit), std::format("view {} records one bit", v));

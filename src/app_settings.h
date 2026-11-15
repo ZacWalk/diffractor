@@ -108,6 +108,7 @@ namespace features
 	// for the draft that Share falls back to where the system has no share sheet.
 	constexpr uint64_t share = 1ull << 58;
 	constexpr uint64_t view_options = 1ull << 59;
+	constexpr uint64_t view_faces = 1ull << 60;
 
 	constexpr uint64_t view_bit(const view_type v)
 	{
@@ -124,6 +125,7 @@ namespace features
 		case view_type::locate: return view_locate;
 		case view_type::tags: return view_tags;
 		case view_type::options: return view_options;
+		case view_type::faces: return view_faces;
 		case view_type::none: break;
 		}
 		return 0;
@@ -443,6 +445,14 @@ public:
 
 		bool operator==(const index_t&) const = default;
 	} collection;
+
+	// docs/faces.md: off, and absent, until the user turns it on. Off does not mean hidden - with
+	// this clear the application computes no vectors, stores none, and shows no faces anywhere.
+	// There is no quiet pre-computation "so it is ready if they enable it".
+	struct faces_t
+	{
+		bool enabled = false;
+	} faces;
 
 	struct search_t
 	{

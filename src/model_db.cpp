@@ -220,6 +220,13 @@ public:
 		}
 	}
 
+	void exec_checked() const
+	{
+		while (read_checked())
+		{
+		}
+	}
+
 	int int32(const int i) const
 	{
 		if (_handle != nullptr)
@@ -900,6 +907,9 @@ bool database::prepare_database(const bool can_replace)
 	load_index_values();
 	core::log(__FUNCTION__, std::format("Loaded index in {} ms", _state.stats.index_load_ms));
 
+	// After the items, because a face row is published onto the index record the load above created.
+	load_face_values(_state.face_generation());
+
 	find_web_request = std::make_unique<db_statement>(_db, "select value from web_service_cache where key=?"s);
 	find_folder_thumbnail = std::make_unique<db_statement>(
 		_db, "select bitmap, cover_art, last_scanned from item_thumbnails where folder=?"s);
@@ -955,6 +965,7 @@ void database::open()
 		// Leaving it unreported strands everything gated on is_init_complete - the item totals and the
 		// sidebar counts would both wait for a cache that is never coming.
 		_state.cache_load_complete();
+		if (_state.face_search_enabled()) load_face_values(_state.face_generation());
 		return;
 	}
 
@@ -1395,6 +1406,113 @@ void database::load_index_values() const
 	_state.cache_load_complete();
 }
 
+// Faces are read only when face search is on. With it off nothing is loaded, nothing is computed
+// and nothing is shown, which is what docs/faces.md means by absent rather than hidden.
+void database::load_face_values(const uint64_t generation) const
+{
+	core::assert_true(is_db_thread());
+
+	if (!_state.face_search_enabled() || generation != _state.face_generation()) return;
+	if (!is_open())
+	{
+		_state.face_rows_loaded(generation);
+		return;
+	}
+
+	// Ordered by folder so the index node is found once per folder rather than once per file, the
+	// same shape the item load uses.
+	core::folder_path last_folder;
+	std::vector<std::pair<core::cached, df::face_set_ptr>> pending;
+
+	const db_statement
+		rows(_db, "select folder, name, properties from item_properties where properties is not null order by folder"s);
+
+	while (rows.read_checked() && !platform::is_closing)
+	{
+		const auto folder = core::folder_path(rows.text(0));
+
+		if (last_folder != folder)
+		{
+			if (!pending.empty()) _state.merge_folder_faces(last_folder, pending, generation);
+			pending.clear();
+			last_folder = folder;
+		}
+
+		std::optional<core::cspan> stored;
+		try
+		{
+			stored = metadata_find_blob_property(rows.data_checked(2), prop::cache::faces);
+		}
+		catch (const metadata_property_error& error)
+		{
+			core::log(__FUNCTION__, std::format("Invalid cached face-property framing: {}", error.what()));
+			continue;
+		}
+		if (!stored) continue;
+		auto fs = std::make_shared<df::face_set>(df::decode_faces(*stored));
+		if (!fs->is_current()) continue;
+		pending.emplace_back(core::cache(rows.text(1)), std::move(fs));
+	}
+
+	if (!pending.empty()) _state.merge_folder_faces(last_folder, pending, generation);
+
+	_state.face_rows_loaded(generation);
+}
+
+// Off means absent: every derived face row goes. All of it is rebuilt by reading the collection
+// again, so there is nothing here to ask a second question about. See docs/faces.md.
+void database::drop_faces() const
+{
+	core::assert_true(is_db_thread());
+
+	if (!is_open()) return;
+
+	transaction t(_db);
+	if (!t.acquired()) throw app_exception("Failed to begin face deletion"s);
+	const core::scope_exit rollback([&t] { t.rollback(); });
+
+	const db_statement
+		rows(_db, "select folder, name, properties from item_properties "
+	              "where properties is not null and (folder, name) > (?, ?) order by folder, name limit 128"s);
+	const db_statement update(_db, "update item_properties set properties=? where folder=? and name=?"s);
+	std::string last_folder;
+	std::string last_name;
+	struct rewritten_property
+	{
+		std::string folder;
+		std::string name;
+		core::blob properties;
+	};
+	for (;;)
+	{
+		std::vector<rewritten_property> rewritten;
+		auto count = 0;
+		rows.bind(1, last_folder);
+		rows.bind(2, last_name);
+		while (rows.read_checked())
+		{
+			last_folder = rows.text(0);
+			last_name = rows.text(1);
+			++count;
+			const auto properties = rows.data_checked(2);
+			if (metadata_find_blob_property(properties, prop::cache::faces))
+				rewritten.push_back({last_folder, last_name,
+				                     metadata_replace_blob_property(properties, prop::cache::faces, std::nullopt)});
+		}
+		rows.reset();
+		if (count == 0) break;
+		for (const auto& item : rewritten)
+		{
+			update.bind(1, core::cspan(item.properties));
+			update.bind(2, item.folder);
+			update.bind(3, item.name);
+			update.exec_checked();
+			update.reset();
+		}
+	}
+
+	if (!t.commit()) throw app_exception("Failed to commit face deletion"s);
+}
 database::db_thumbnail database::load_thumbnail(const core::file_path id) const
 {
 	core::assert_true(is_db_thread());
@@ -1687,6 +1805,10 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 	const db_statement insert_thumbnails(
 		_db,
 		"insert or replace into item_thumbnails (folder, name, bitmap, cover_art, last_scanned) values (?, ?, ?, ?, ?)"s);
+	const db_statement insert_face_property(
+		_db, "insert into item_properties (folder, name, properties, last_indexed) values (?, ?, ?, ?) "
+			 "on conflict(folder, name) do update set properties=excluded.properties"s);
+
 	metadata_packer packer;
 
 	for (auto&& write : writes)
@@ -1822,6 +1944,34 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 
 			core::bump(df::db_perf.thumbs_written);
 			++_state.stats.thumbs_saved;
+		}
+
+		if (write.faces.has_value())
+		{
+			const auto& fs = write.faces.value();
+			core::blob encoded;
+			if (fs) encoded = df::encode_faces(*fs);
+
+			previous_properties.bind(1, path.folder().text());
+			previous_properties.bind(2, path.name());
+			const auto exists = previous_properties.read_checked();
+			const auto previous = exists ? previous_properties.data_checked(0) : core::cspan{};
+			if (!fs && !metadata_find_blob_property(previous, prop::cache::faces))
+			{
+				previous_properties.reset();
+				continue;
+			}
+			const auto value = fs ? std::optional<core::cspan>{core::cspan(encoded)} : std::nullopt;
+			const auto properties = metadata_replace_blob_property(previous, prop::cache::faces, value);
+			previous_properties.reset();
+
+			// A completed empty set is stored too, so a faceless picture is not decoded every launch.
+			insert_face_property.bind(1, path.folder().text());
+			insert_face_property.bind(2, path.name());
+			insert_face_property.bind(3, core::cspan(properties));
+			insert_face_property.bind(4, today);
+			insert_face_property.exec_checked();
+			insert_face_property.reset();
 		}
 	}
 
