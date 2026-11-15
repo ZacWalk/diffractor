@@ -396,7 +396,7 @@ try {
     }
 
     $rules['one-build-description'] = @{
-        Why   = 'docs/linux.md "Retiring MSBuild": CMake is the only description of the tree, and two descriptions drift.'
+        Why   = 'docs/linux.md "One build description": CMake is the only description of the tree, and two descriptions drift.'
         Check = {
             $tracked = @(git ls-files '*.sln' '*.vcxproj' '*.vcxproj.filters' 2>$null) |
                 Where-Object { $_ }

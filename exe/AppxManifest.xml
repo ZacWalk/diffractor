@@ -71,7 +71,7 @@
     <Resource Language="JA"/>
     <Resource Language="KO"/>
     <Resource Language="PL"/>
-    <Resource Language="PT"/>
+    <Resource Language="pt-BR"/>
     <Resource Language="RU"/>
     <Resource Language="TR"/>
     <Resource Language="UK"/>
@@ -129,14 +129,17 @@
                    excluded on purpose. -->
               <uap:FileType>.arw</uap:FileType>
               <uap:FileType>.avi</uap:FileType>
+              <uap:FileType>.avif</uap:FileType>
               <uap:FileType>.bmp</uap:FileType>
               <uap:FileType>.cr2</uap:FileType>
               <uap:FileType>.cr3</uap:FileType>
               <uap:FileType>.dng</uap:FileType>
               <uap:FileType>.gif</uap:FileType>
               <uap:FileType>.heic</uap:FileType>
+              <uap:FileType>.heif</uap:FileType>
               <uap:FileType>.jpeg</uap:FileType>
               <uap:FileType>.jpg</uap:FileType>
+              <uap:FileType>.jxl</uap:FileType>
               <uap:FileType>.m4a</uap:FileType>
               <uap:FileType>.mkv</uap:FileType>
               <uap:FileType>.mov</uap:FileType>

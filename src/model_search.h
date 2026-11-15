@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Search query parsing and matching. Parses search expressions into terms,
 // handles property filters, date ranges, location queries, duplicate and related-item
@@ -96,7 +95,96 @@ namespace df
 		episode,
 		// A recording started and not finished, spelled `@inprogress`.
 		in_progress,
+		// What an item is by its type or by what its file says of itself - `@raw`, `@hdr`, `@portrait` - an
+		// item_feature in int_val, taking no argument.
+		feature,
 	};
+
+	// A kind of item a `@` word asks for, read from its file type or its record and never stored as itself:
+	// the word is the query's spelling of a question the record already answers.
+	enum class item_feature : uint8_t
+	{
+		// A camera's raw file.
+		raw,
+		// A picture or video its file says is HDR: PQ, HLG, or a photo carrying a gain map.
+		hdr,
+		// A picture that is the first of several an animation shows.
+		animated,
+		// A picture with an alpha channel.
+		transparent,
+		// Shown taller than it is wide, wider than it is tall, or within 3% of square, as aspect ratio
+		// grouping counts square.
+		portrait,
+		landscape,
+		square,
+		// Shown at least twice as wide as it is tall: a panorama, declared or not, or a wide strip of anything.
+		wide,
+		// A video recorded at 100 frames a second or more, as phones record slow motion.
+		slow_motion,
+	};
+
+	inline constexpr int item_feature_count = static_cast<int>(item_feature::slow_motion) + 1;
+
+	struct feature_word
+	{
+		std::string_view word;
+		item_feature feature;
+	};
+
+	// Every spelling a feature is asked for by. The first for each feature is the one a formatted query writes
+	// and the vocabulary offers.
+	inline constexpr feature_word feature_words[] = {
+		{"raw", item_feature::raw},
+		{"hdr", item_feature::hdr},
+		{"animated", item_feature::animated},
+		{"animation", item_feature::animated},
+		{"animations", item_feature::animated},
+		{"transparent", item_feature::transparent},
+		{"transparency", item_feature::transparent},
+		{"alpha", item_feature::transparent},
+		{"portrait", item_feature::portrait},
+		{"vertical", item_feature::portrait},
+		{"landscape", item_feature::landscape},
+		{"horizontal", item_feature::landscape},
+		{"square", item_feature::square},
+		{"wide", item_feature::wide},
+		{"panoramic", item_feature::wide},
+		{"slowmo", item_feature::slow_motion},
+		{"slowmotion", item_feature::slow_motion},
+	};
+
+	inline const feature_word* find_feature_word(const std::string_view word)
+	{
+		for (const auto& w : feature_words)
+		{
+			if (core::icmp(word, w.word) == 0) return &w;
+		}
+
+		return nullptr;
+	}
+
+	constexpr std::string_view feature_name(const item_feature feature)
+	{
+		for (const auto& w : feature_words)
+		{
+			if (w.feature == feature) return w.word;
+		}
+
+		return {};
+	}
+
+	// Whether an item is of a kind: by its file type for a camera's raw, by its record for the rest. The search
+	// matcher and the vocabulary's counts both ask this, so a word is offered only for items it finds.
+	bool has_feature(item_feature feature, file_type_ref ft, const prop::item_metadata* md);
+
+	// The canonical spellings of the `@` words that ask what an item is beyond its media type, as a formatted
+	// query writes them and the vocabulary offers them.
+	inline constexpr std::string_view word_duplicates = "duplicates";
+	inline constexpr std::string_view word_remote = "remote";
+	inline constexpr std::string_view word_panorama = "panorama";
+	inline constexpr std::string_view word_movie = "movie";
+	inline constexpr std::string_view word_episode = "episode";
+	inline constexpr std::string_view word_in_progress = "inprogress";
 
 	// Specificity a location term is constrained to; `any` matches place, region or country.
 	enum class location_level : uint8_t
@@ -167,33 +255,24 @@ namespace df
 		// call sites nothing.
 		constexpr search_result() noexcept = default;
 
-		constexpr search_result(const search_result_type t) noexcept : type(t)
-		{
-		}
+		constexpr search_result(const search_result_type t) noexcept : type(t) {}
 
-		constexpr search_result(const search_result_type t, const prop::key_ref k) noexcept : type(t), key(k)
-		{
-		}
+		constexpr search_result(const search_result_type t, const prop::key_ref k) noexcept : type(t), key(k) {}
 
 		search_result(const search_result_type t, const prop::key_ref k, const core::cached x) noexcept :
 			type(t), key(k), text(x)
 		{
 		}
 
-		bool is_match() const
-		{
-			return type != search_result_type::no_match;
-		}
+		bool is_match() const { return type != search_result_type::no_match; }
 
 		bool is_match(const prop::key_ref find_key) const
 		{
 			if (type == search_result_type::match_location)
 			{
-				return find_key == prop::longitude ||
-					find_key == prop::latitude ||
-					find_key == prop::location_country ||
-					find_key == prop::location_place ||
-					find_key == prop::location_state;
+				return find_key == prop::longitude || find_key == prop::latitude ||
+				       find_key == prop::location_country || find_key == prop::location_place ||
+				       find_key == prop::location_state;
 			}
 
 			return find_key == key;
@@ -207,15 +286,11 @@ namespace df
 
 	inline bool is_probably_selector(const std::string_view text)
 	{
-		return core::item_selector::can_iterate(text) &&
-			text.find(" #") == std::string::npos &&
-			text.find(" @") == std::string::npos &&
-			text.find(" *") == std::string::npos &&
-			text.find("** ") == std::string::npos &&
-			text.find("**\\ ") == std::string::npos &&
-			text.find("**/ ") == std::string::npos &&
-			text.find("\\ ") == std::string::npos &&
-			text.find("/ ") == std::string::npos;
+		return core::item_selector::can_iterate(text) && text.find(" #") == std::string::npos &&
+		       text.find(" @") == std::string::npos && text.find(" *") == std::string::npos &&
+		       text.find("** ") == std::string::npos && text.find("**\\ ") == std::string::npos &&
+		       text.find("**/ ") == std::string::npos && text.find("\\ ") == std::string::npos &&
+		       text.find("/ ") == std::string::npos;
 	}
 
 	// Scope-aware search auto-completion helpers (Issue #157). These classify the active
@@ -236,8 +311,8 @@ namespace df
 	struct search_scope_completion
 	{
 		search_scope_kind kind = search_scope_kind::none;
-		std::string lead; // text before the active token, including trailing separator
-		std::string value; // fragment typed after the scope prefix (may be empty)
+		std::string lead;          // text before the active token, including trailing separator
+		std::string value;         // fragment typed after the scope prefix (may be empty)
 		bool tag_as_scope = false; // true when written as "tag:" rather than "#"
 
 		// Specificity the typed location scope constrains its completions to.
@@ -265,16 +340,13 @@ namespace df
 			{
 			case search_scope_kind::tag:
 				return tag_as_scope
-					       ? std::format("tag:{}", core::starts(candidate, "#") ? candidate.substr(1) : candidate)
-					       : std::string(candidate);
-			case search_scope_kind::with:
-				return std::format("with:{}", candidate);
-			case search_scope_kind::without:
-				return std::format("without:{}", candidate);
+				           ? std::format("tag:{}", core::starts(candidate, "#") ? candidate.substr(1) : candidate)
+				           : std::string(candidate);
+			case search_scope_kind::with: return std::format("with:{}", candidate);
+			case search_scope_kind::without: return std::format("without:{}", candidate);
 			case search_scope_kind::group:
 			case search_scope_kind::location:
-			default:
-				return std::string(candidate);
+			default: return std::string(candidate);
 			}
 		}
 	};
@@ -284,9 +356,8 @@ namespace df
 		search_scope_completion result;
 
 		const auto last_space = query.find_last_of(" \t");
-		result.lead = last_space == std::string_view::npos
-			              ? std::string{}
-			              : std::string(query.substr(0, last_space + 1));
+		result.lead = last_space == std::string_view::npos ? std::string{}
+		                                                   : std::string(query.substr(0, last_space + 1));
 		const auto token = last_space == std::string_view::npos ? query : query.substr(last_space + 1);
 
 		if (token.empty()) return result;
@@ -359,23 +430,14 @@ namespace df
 		search_term_modifier(const search_term_modifier&) noexcept = default;
 		search_term_modifier(search_term_modifier&&) noexcept = default;
 
-		search_term_modifier(const bool pos) noexcept : positive(pos)
-		{
-		}
+		search_term_modifier(const bool pos) noexcept : positive(pos) {}
 
-		search_term_modifier(const bool pos, bool /*fuz*/) noexcept : positive(pos)
-		{
-		}
+		search_term_modifier(const bool pos, bool /*fuz*/) noexcept : positive(pos) {}
 
 		bool is_defaults() const
 		{
-			return positive &&
-				logical_op == search_term_modifier_bool::none &&
-				!less_than &&
-				!greater_than &&
-				!equals &&
-				begin_group == 0 &&
-				end_group == 0;
+			return positive && logical_op == search_term_modifier_bool::none && !less_than && !greater_than &&
+			       !equals && begin_group == 0 && end_group == 0;
 		}
 
 		friend auto operator<=>(const search_term_modifier&, const search_term_modifier&) = default;
@@ -421,20 +483,14 @@ namespace df
 		date_parts(date_parts&&) noexcept = default;
 		date_parts& operator=(date_parts&&) noexcept = default;
 
-		date_parts(const core::day_t& dd, const date_parts_prop isc = date_parts_prop::any) noexcept : year(dd.year),
-			month(dd.month), day(dd.day), target(isc)
+		date_parts(const core::day_t& dd, const date_parts_prop isc = date_parts_prop::any) noexcept :
+			year(dd.year), month(dd.month), day(dd.day), target(isc)
 		{
 		}
 
 		friend auto operator<=>(const date_parts&, const date_parts&) = default;
 
-		bool is_empty() const
-		{
-			return age == 0 &&
-				year == 0 &&
-				month == 0 &&
-				day == 0;
-		}
+		bool is_empty() const { return age == 0 && year == 0 && month == 0 && day == 0; }
 	};
 
 	// NFC form of a term's text, computed once at construction so matching never re-normalises the
@@ -471,45 +527,39 @@ namespace df
 		search_term(search_term&&) noexcept = default;
 		search_term& operator=(search_term&&) noexcept = default;
 
-		explicit search_term(const search_term_type tt,
-		                     const search_term_modifier& mods) noexcept : type(tt), modifiers(mods)
+		explicit search_term(const search_term_type term_type, const search_term_modifier& mods) noexcept :
+			type(term_type), modifiers(mods)
 		{
 		}
 
-		explicit search_term(const search_term_type tt, const std::string_view v,
-		                     const search_term_modifier& mods) noexcept :
-			type(tt),
-			modifiers(mods),
-			text(v),
-			_nfc_text(nfc_for_match(text)),
+		// The constructors that copy text are not noexcept: a failed allocation must reach the
+		// search's catch rather than terminate.
+		explicit search_term(const search_term_type term_type, const std::string_view v,
+		                     const search_term_modifier& mods) :
+			type(term_type), modifiers(mods), text(v), _nfc_text(nfc_for_match(text)),
 			_is_wildcard(core::is_wildcard(text))
 		{
 		}
 
-		explicit search_term(const search_term_type tt, const date_parts& v,
-		                     const search_term_modifier& mods) noexcept : type(tt), modifiers(mods), date_val(v)
+		explicit search_term(const search_term_type term_type, const date_parts& v,
+		                     const search_term_modifier& mods) noexcept : type(term_type), modifiers(mods), date_val(v)
 		{
 		}
 
-		explicit search_term(const search_term_type tt, const gps_coordinate coord, const double v,
-		                     const search_term_modifier& mods) noexcept : type(tt), modifiers(mods), float_val(v),
-		                                                                  coord_val(coord)
+		explicit search_term(const search_term_type term_type, const gps_coordinate coord, const double v,
+		                     const search_term_modifier& mods) noexcept :
+			type(term_type), modifiers(mods), float_val(v), coord_val(coord)
 		{
 		}
 
-		explicit search_term(const map_location_area& area, const search_term_modifier& mods) noexcept :
+		explicit search_term(const map_location_area& area, const search_term_modifier& mods) :
 			type(search_term_type::area), modifiers(mods), text(area.name), location_cell(area.cell),
 			location_cell_span(area.cell_span)
 		{
 		}
 
-		explicit search_term(const prop::key_ref k, const std::string_view v,
-		                     const search_term_modifier& mods) noexcept :
-			type(search_term_type::value),
-			modifiers(mods),
-			key(k),
-			text(v),
-			_nfc_text(nfc_for_match(text)),
+		explicit search_term(const prop::key_ref k, const std::string_view v, const search_term_modifier& mods) :
+			type(search_term_type::value), modifiers(mods), key(k), text(v), _nfc_text(nfc_for_match(text)),
 			_is_wildcard(core::is_wildcard(text))
 		{
 		}
@@ -539,11 +589,8 @@ namespace df
 		{
 		}
 
-		explicit search_term(const std::string_view v, const search_term_modifier& mods) noexcept :
-			type(search_term_type::text),
-			modifiers(mods),
-			text(v),
-			_nfc_text(nfc_for_match(text)),
+		explicit search_term(const std::string_view v, const search_term_modifier& mods) :
+			type(search_term_type::text), modifiers(mods), text(v), _nfc_text(nfc_for_match(text)),
 			_is_wildcard(core::is_wildcard(text))
 		{
 		}
@@ -558,139 +605,86 @@ namespace df
 		{
 		}
 
-		bool is_empty() const
+		explicit search_term(const item_feature feature, const search_term_modifier& mods) noexcept :
+			type(search_term_type::feature), modifiers(mods), int_val(static_cast<int>(feature))
 		{
-			return type == search_term_type::empty;
 		}
 
-		bool no_modifiers() const
-		{
-			return modifiers.is_defaults();
-		}
+		bool is_empty() const { return type == search_term_type::empty; }
+
+		bool no_modifiers() const { return modifiers.is_defaults(); }
 
 		bool is_date() const
 		{
 			return type == search_term_type::date ||
-				(type == search_term_type::value && key->data_type == prop::data_type::date);
+			       (type == search_term_type::value && key->data_type == prop::data_type::date);
 		}
 
-		bool is_int() const
-		{
-			return type == search_term_type::value && key->data_type == prop::data_type::int32;
-		}
+		bool is_int() const { return type == search_term_type::value && key->data_type == prop::data_type::int32; }
 
-		bool is_media_type() const
-		{
-			return type == search_term_type::media_type;
-		}
+		bool is_media_type() const { return type == search_term_type::media_type; }
+
+		item_feature feature() const { return static_cast<item_feature>(int_val); }
 
 		bool needs_metadata() const
 		{
-			return type == search_term_type::text ||
-				type == search_term_type::value ||
-				type == search_term_type::has_type ||
-				type == search_term_type::date ||
-				type == search_term_type::location ||
-				type == search_term_type::has_location ||
-				type == search_term_type::remote ||
-				type == search_term_type::area ||
-				type == search_term_type::duplicate ||
-				type == search_term_type::panorama ||
-				type == search_term_type::film ||
-				type == search_term_type::episode ||
-				type == search_term_type::in_progress;
+			return type == search_term_type::text || type == search_term_type::value ||
+			       type == search_term_type::has_type || type == search_term_type::date ||
+			       type == search_term_type::location || type == search_term_type::has_location ||
+			       type == search_term_type::remote || type == search_term_type::area ||
+			       type == search_term_type::duplicate || type == search_term_type::panorama ||
+			       type == search_term_type::film || type == search_term_type::episode ||
+			       type == search_term_type::in_progress ||
+			       // A camera's raw file is known by its type alone.
+			       (type == search_term_type::feature && feature() != item_feature::raw);
 		}
 
 		friend bool operator==(const search_term& lhs, const search_term& rhs)
 		{
-			return lhs.type == rhs.type
-				&& lhs.modifiers == rhs.modifiers
-				&& lhs.key == rhs.key
-				&& lhs.text == rhs.text
-				&& lhs.int_val == rhs.int_val
-				&& lhs.int64_val == rhs.int64_val
-				&& equiv(lhs.float_val, rhs.float_val)
-				&& lhs.coord_val == rhs.coord_val
-				&& lhs.location_cell == rhs.location_cell
-				&& lhs.location_cell_span == rhs.location_cell_span
-				&& lhs.level == rhs.level
-				&& lhs.xy_val == rhs.xy_val
-				&& lhs.fg_val == rhs.fg_val
-				&& lhs.date_val == rhs.date_val;
+			return lhs.type == rhs.type && lhs.modifiers == rhs.modifiers && lhs.key == rhs.key &&
+			       lhs.text == rhs.text && lhs.int_val == rhs.int_val && lhs.int64_val == rhs.int64_val &&
+			       equiv(lhs.float_val, rhs.float_val) && lhs.coord_val == rhs.coord_val &&
+			       lhs.location_cell == rhs.location_cell && lhs.location_cell_span == rhs.location_cell_span &&
+			       lhs.level == rhs.level && lhs.xy_val == rhs.xy_val && lhs.fg_val == rhs.fg_val &&
+			       lhs.date_val == rhs.date_val;
 		}
 
-		friend bool operator!=(const search_term& lhs, const search_term& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const search_term& lhs, const search_term& rhs) { return !(lhs == rhs); }
 
 		friend bool operator<(const search_term& lhs, const search_term& rhs)
 		{
-			if (lhs.type < rhs.type)
-				return true;
-			if (rhs.type < lhs.type)
-				return false;
-			if (lhs.modifiers < rhs.modifiers)
-				return true;
-			if (rhs.modifiers < lhs.modifiers)
-				return false;
-			if (lhs.key < rhs.key)
-				return true;
-			if (rhs.key < lhs.key)
-				return false;
-			if (lhs.text < rhs.text)
-				return true;
-			if (rhs.text < lhs.text)
-				return false;
-			if (lhs._is_wildcard < rhs._is_wildcard)
-				return true;
-			if (rhs._is_wildcard < lhs._is_wildcard)
-				return false;
-			if (lhs.int_val < rhs.int_val)
-				return true;
-			if (rhs.int_val < lhs.int_val)
-				return false;
-			if (lhs.int64_val < rhs.int64_val)
-				return true;
-			if (rhs.int64_val < lhs.int64_val)
-				return false;
-			if (lhs.float_val < rhs.float_val)
-				return true;
-			if (rhs.float_val < lhs.float_val)
-				return false;
-			if (lhs.coord_val < rhs.coord_val)
-				return true;
-			if (rhs.coord_val < lhs.coord_val)
-				return false;
-			if (lhs.level < rhs.level)
-				return true;
-			if (rhs.level < lhs.level)
-				return false;
-			if (lhs.xy_val < rhs.xy_val)
-				return true;
-			if (rhs.xy_val < lhs.xy_val)
-				return false;
-			if (lhs.fg_val < rhs.fg_val)
-				return true;
-			if (rhs.fg_val < lhs.fg_val)
-				return false;
+			if (lhs.type < rhs.type) return true;
+			if (rhs.type < lhs.type) return false;
+			if (lhs.modifiers < rhs.modifiers) return true;
+			if (rhs.modifiers < lhs.modifiers) return false;
+			if (lhs.key < rhs.key) return true;
+			if (rhs.key < lhs.key) return false;
+			if (lhs.text < rhs.text) return true;
+			if (rhs.text < lhs.text) return false;
+			if (lhs._is_wildcard < rhs._is_wildcard) return true;
+			if (rhs._is_wildcard < lhs._is_wildcard) return false;
+			if (lhs.int_val < rhs.int_val) return true;
+			if (rhs.int_val < lhs.int_val) return false;
+			if (lhs.int64_val < rhs.int64_val) return true;
+			if (rhs.int64_val < lhs.int64_val) return false;
+			if (lhs.float_val < rhs.float_val) return true;
+			if (rhs.float_val < lhs.float_val) return false;
+			if (lhs.coord_val < rhs.coord_val) return true;
+			if (rhs.coord_val < lhs.coord_val) return false;
+			if (lhs.level < rhs.level) return true;
+			if (rhs.level < lhs.level) return false;
+			if (lhs.xy_val < rhs.xy_val) return true;
+			if (rhs.xy_val < lhs.xy_val) return false;
+			if (lhs.fg_val < rhs.fg_val) return true;
+			if (rhs.fg_val < lhs.fg_val) return false;
 			return lhs.date_val < rhs.date_val;
 		}
 
-		friend bool operator<=(const search_term& lhs, const search_term& rhs)
-		{
-			return !(rhs < lhs);
-		}
+		friend bool operator<=(const search_term& lhs, const search_term& rhs) { return !(rhs < lhs); }
 
-		friend bool operator>(const search_term& lhs, const search_term& rhs)
-		{
-			return rhs < lhs;
-		}
+		friend bool operator>(const search_term& lhs, const search_term& rhs) { return rhs < lhs; }
 
-		friend bool operator>=(const search_term& lhs, const search_term& rhs)
-		{
-			return !(lhs < rhs);
-		}
+		friend bool operator>=(const search_term& lhs, const search_term& rhs) { return !(lhs < rhs); }
 	};
 
 	std::string format_term(const search_term& term);
@@ -708,7 +702,6 @@ namespace df
 	// locations.md 3.1: merges the tokens that follow a location scope into its term when they
 	// are recognisably part of the place - a country code, a distance, or comma-bound text.
 	std::vector<search_part> coalesce_parts(std::vector<search_part> parts);
-
 
 	struct related_info
 	{
@@ -750,15 +743,9 @@ namespace df
 
 		// Position within an album or a series, used to answer with the neighbouring tracks or
 		// episodes rather than with whichever ones happen to be first.
-		int64_t track_ordinal() const
-		{
-			return static_cast<int64_t>(disk.x) * 1000 + track.x;
-		}
+		int64_t track_ordinal() const { return static_cast<int64_t>(disk.x) * 1000 + track.x; }
 
-		int64_t episode_ordinal() const
-		{
-			return static_cast<int64_t>(season) * 100000 + episode.x;
-		}
+		int64_t episode_ordinal() const { return static_cast<int64_t>(season) * 100000 + episode.x; }
 
 		related_info() noexcept = default;
 		related_info(const related_info&) noexcept = default;
@@ -766,15 +753,9 @@ namespace df
 		related_info(related_info&&) noexcept = default;
 		related_info& operator=(related_info&&) noexcept = default;
 
-		friend bool operator==(const related_info& lhs, const related_info& rhs)
-		{
-			return lhs.path == rhs.path;
-		}
+		friend bool operator==(const related_info& lhs, const related_info& rhs) { return lhs.path == rhs.path; }
 
-		friend bool operator!=(const related_info& lhs, const related_info& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const related_info& lhs, const related_info& rhs) { return !(lhs == rhs); }
 
 		void load(const item_element_ptr& i);
 	};
@@ -795,37 +776,26 @@ namespace df
 		search_t(search_t&&) noexcept = default;
 		search_t& operator=(search_t&&) noexcept = default;
 
-		bool is_empty() const
-		{
-			return _selectors.empty() &&
-				_related.path.is_empty() &&
-				_terms.empty();
-		}
+		bool is_empty() const { return _selectors.empty() && _related.path.is_empty() && _terms.empty(); }
 
 		bool has_volume_term() const
 		{
-			return std::ranges::find_if(_terms, [](auto&& v)
-			{
-				return v.type == search_term_type::volume;
-			}) != _terms.end();
+			return std::ranges::find_if(_terms, [](auto&& v) { return v.type == search_term_type::volume; }) !=
+			       _terms.end();
 		}
 
 		// A named place has to be resolved to coordinates before matching, whether the query gave a
 		// radius or leaves the place's own attribution reach to stand for it.
 		bool has_named_location() const
 		{
-			return std::ranges::find_if(_terms, [](auto&& v)
-			{
+			return std::ranges::find_if(_terms, [](auto&& v) {
 				return v.type == search_term_type::location && !v.coord_val.is_valid() && !v.text.empty();
 			}) != _terms.end();
 		}
 
 		// A named place with a radius has to be resolved to coordinates before matching.
 
-		const std::vector<search_term>& terms() const
-		{
-			return _terms;
-		}
+		const std::vector<search_term>& terms() const { return _terms; }
 
 		// locations.md 4.1: the distance slider controls a search only when exactly one location
 		// term names a place. A coordinate term or a second place has no single radius to show.
@@ -873,24 +843,14 @@ namespace df
 			return *this;
 		}
 
-		bool is_showing_folder() const
-		{
-			return _selectors.size() == 1 &&
-				!_selectors[0].is_recursive();
-		}
+		bool is_showing_folder() const { return _selectors.size() == 1 && !_selectors[0].is_recursive(); }
 
-		bool has_selector() const
-		{
-			return !_selectors.empty();
-		}
+		bool has_selector() const { return !_selectors.empty(); }
 
 		// True when this is a plain folder browse: one or more folder selectors with
 		// no search terms. Used to distinguish browsing an empty folder ("Empty Folder")
 		// from a search that matched nothing ("Nothing found").
-		bool is_folder() const
-		{
-			return has_selector() && !has_terms();
-		}
+		bool is_folder() const { return has_selector() && !has_terms(); }
 
 		bool has_recursive_selector() const
 		{
@@ -931,10 +891,7 @@ namespace df
 			_raw.clear();
 		}
 
-		bool has_terms() const
-		{
-			return !_terms.empty();
-		}
+		bool has_terms() const { return !_terms.empty(); }
 
 		bool can_match_folder() const
 		{
@@ -951,10 +908,7 @@ namespace df
 
 		bool needs_metadata() const;
 
-		bool has_related() const
-		{
-			return !_related.path.is_empty();
-		}
+		bool has_related() const { return !_related.path.is_empty(); }
 
 		search_t& with(const prop::key_ref k, std::string_view v)
 		{
@@ -1220,7 +1174,7 @@ namespace df
 			for (auto& term : _terms)
 			{
 				if (term.type == search_term_type::area && term.location_cell_span == 0 &&
-					core::icmp(term.text, area.name) == 0)
+				    core::icmp(term.text, area.name) == 0)
 				{
 					term.location_cell = area.cell;
 					term.location_cell_span = area.cell_span;
@@ -1272,9 +1226,7 @@ namespace df
 		search_t& remove_location_terms_below(const location_level level)
 		{
 			const auto removed = std::erase_if(_terms, [level](const search_term& t)
-			{
-				return t.type == search_term_type::location && t.level != location_level::any && t.level < level;
-			});
+			{ return t.type == search_term_type::location && t.level != location_level::any && t.level < level; });
 
 			if (removed > 0) _raw.clear();
 			return *this;
@@ -1301,14 +1253,15 @@ namespace df
 			return *this;
 		}
 
-		bool has_term_type(const search_term_type& tt) const
+		bool has_term_type(const search_term_type& term_type) const
 		{
-			return std::ranges::find_if(_terms, [tt](const search_term& t) { return t.type == tt; }) != _terms.end();
+			return std::ranges::find_if(_terms, [term_type](const search_term& t) { return t.type == term_type; }) !=
+			       _terms.end();
 		}
 
-		void clear_term_type(const search_term_type& tt)
+		void clear_term_type(const search_term_type& term_type)
 		{
-			std::erase_if(_terms, [tt](auto&& t) { return t.type == tt; });
+			std::erase_if(_terms, [term_type](auto&& t) { return t.type == term_type; });
 			_raw.clear();
 		}
 
@@ -1342,20 +1295,14 @@ namespace df
 
 		void clear_date_properties();
 
-		const std::vector<core::item_selector>& selectors() const
-		{
-			return _selectors;
-		}
+		const std::vector<core::item_selector>& selectors() const { return _selectors; }
 
-		const related_info& related() const
-		{
-			return _related;
-		}
+		const related_info& related() const { return _related; }
 
 		bool contains(const prop::key_ref k, const std::string_view v) const
 		{
 			return std::find_if(_terms.begin(), _terms.end(), [k, v](auto&& t) { return t.key == k && t.text == v; }) !=
-				_terms.end();
+			       _terms.end();
 		}
 
 		bool is_match(const prop::key& key, core::date_t date) const;
@@ -1385,10 +1332,7 @@ namespace df
 		std::string text() const;
 		std::string format_terms() const;
 
-		bool has_type() const
-		{
-			return first_type() != prop::null;
-		}
+		bool has_type() const { return first_type() != prop::null; }
 
 		prop::key_ref first_type() const
 		{
@@ -1404,16 +1348,11 @@ namespace df
 
 		friend bool operator==(const search_t& lhs, const search_t& rhs)
 		{
-			return lhs._selectors == rhs._selectors
-				&& lhs._terms == rhs._terms
-				&& lhs._related == rhs._related
-				&& lhs._raw == rhs._raw;
+			return lhs._selectors == rhs._selectors && lhs._terms == rhs._terms && lhs._related == rhs._related &&
+			       lhs._raw == rhs._raw;
 		}
 
-		friend bool operator!=(const search_t& lhs, const search_t& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const search_t& lhs, const search_t& rhs) { return !(lhs == rhs); }
 
 		friend class search_matcher;
 	};
@@ -1583,8 +1522,7 @@ namespace df
 
 		if (by_original && matches(original)) return true;
 
-		if ((target == date_parts_prop::created || is_any) && !(by_original && created == original) &&
-			matches(created))
+		if ((target == date_parts_prop::created || is_any) && !(by_original && created == original) && matches(created))
 		{
 			return true;
 		}
@@ -1630,13 +1568,8 @@ namespace df
 	public:
 		search_matcher(const search_t& s, const uint32_t now_days = core::utc_now().to_days(),
 		               const location_cache* locations = nullptr) :
-			_search(s),
-			_required_presence(s.calc_required_presence()),
-			_now_days(now_days),
-			_locations(locations),
-			has_terms(s.has_terms()),
-			need_metadata(s.needs_metadata()),
-			can_match_folder(_search.can_match_folder()),
+			_search(s), _required_presence(s.calc_required_presence()), _now_days(now_days), _locations(locations),
+			has_terms(s.has_terms()), need_metadata(s.needs_metadata()), can_match_folder(_search.can_match_folder()),
 			has_related(s.has_related())
 		{
 			if (s.has_volume_term())
@@ -1685,10 +1618,7 @@ namespace df
 		bool can_contain(const search_presence_mask& available_presence) const;
 
 		// The presence bits every match must carry, or none when the search cannot promise any.
-		const search_presence_mask& required_presence() const
-		{
-			return _required_presence;
-		}
+		const search_presence_mask& required_presence() const { return _required_presence; }
 
 		search_result match_term(core::cached folder_name, const index_file_item& file, const search_term& term) const;
 		// The same answers for an item whose metadata the caller already holds, null when it has none, so
@@ -1703,10 +1633,7 @@ namespace df
 		// Whether a date term's date compares true against one date key, today being the matcher's today.
 		bool date_key_matches(const search_term& term, core::date_t key) const;
 
-		const search_t& search() const
-		{
-			return _search;
-		}
+		const search_t& search() const { return _search; }
 
 		// The strongest relation this item has to the item the search started at, or nothing when it
 		// has none. Axis priority resolves an item that qualifies several ways, so it appears once.

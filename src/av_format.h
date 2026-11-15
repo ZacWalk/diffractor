@@ -1,20 +1,20 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: FFmpeg-based media format decoder. Handles video/audio stream parsing, codec management,
-// frame extraction, seeking, and format conversion using libavformat and libavcodec, and decodes the
-// subtitles of a stream or of a sidecar file.
+// frame extraction, seeking, and format conversion using libavformat and libavcodec, decodes the
+// subtitles of a stream or of a sidecar file, and copies an audio or video file's packets into a new
+// file of its own format, or an MP4, for Edit's lossless trims, sound removal, turns and repairs, with an MP4's
+// index moved before its media when asked.
 
 #pragma once
 
 #include "av_sound.h"
 #include "av_subtitle.h"
-
 
 struct SwsContext;
 struct AVFormatContext;
@@ -58,12 +58,19 @@ struct load_diagnostic;
 
 // These cannot be forward-declared: an opaque enum declaration is an MSVC extension, and giving
 // them a fixed underlying type here would contradict FFmpeg's own definition.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244) // FFmpeg's C clipping helpers in libavutil/common.h narrow an int implicitly
+#endif
 extern "C"
 {
 #include <libavutil/pixfmt.h>
 #include <libavutil/samplefmt.h>
 #include <libavcodec/codec_id.h>
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // Whether FFmpeg can hand this stream to the platform's hardware decoder at all. It offers hardware
 // surfaces only for 4:2:0 -- 8-bit for H.264, MPEG-2 and VC-1, and 10-bit as well for HEVC, VP9 and
@@ -80,14 +87,11 @@ inline bool av_hw_decode_eligible(const AVCodecID codec, const AVPixelFormat for
 	case AV_CODEC_ID_H264:
 	case AV_CODEC_ID_MPEG2VIDEO:
 	case AV_CODEC_ID_VC1:
-	case AV_CODEC_ID_WMV3:
-		return any || eight_bit_420;
+	case AV_CODEC_ID_WMV3: return any || eight_bit_420;
 	case AV_CODEC_ID_HEVC:
 	case AV_CODEC_ID_VP9:
-	case AV_CODEC_ID_AV1:
-		return any || eight_bit_420 || format == AV_PIX_FMT_YUV420P10LE;
-	default:
-		return false;
+	case AV_CODEC_ID_AV1: return any || eight_bit_420 || format == AV_PIX_FMT_YUV420P10LE;
+	default: return false;
 	}
 }
 
@@ -122,7 +126,6 @@ bool av_platform_hw_device_usable(AVBufferRef* device);
 // and each would be copied through system memory. Null when no device can be made, and the stream then
 // decodes in software.
 AVBufferRef* av_platform_create_hw_device(int device_type);
-
 
 using av_packet_ptr = std::shared_ptr<av_packet>;
 using av_frame_ptr = std::shared_ptr<av_frame>;
@@ -163,8 +166,7 @@ inline bool should_drain_delayed_video_frames_at_eof(const av_nearest_frame_choi
 inline bool should_use_kept_sequential_frame(const double kept_time, const double decoded_time,
                                              const double target_time)
 {
-	return !core::equiv(kept_time, decoded_time) &&
-		fabs(kept_time - target_time) <= fabs(decoded_time - target_time);
+	return !core::equiv(kept_time, decoded_time) && fabs(kept_time - target_time) <= fabs(decoded_time - target_time);
 }
 
 inline bool is_key(const std::string_view l, const std::string_view r)
@@ -186,7 +188,7 @@ enum class av_codec_media_type
 
 struct av_codec_doc
 {
-	std::string name; // short codec name, e.g. "h264"
+	std::string name;      // short codec name, e.g. "h264"
 	std::string long_name; // human readable name, e.g. "H.264 / AVC / MPEG-4 AVC"
 	av_codec_media_type media_type = av_codec_media_type::other;
 };
@@ -232,6 +234,22 @@ core::const_surface_ptr av_frame_surface(const av_frame_ptr& f);
 // holds one converts it here.
 render::video_frame_ptr av_video_frame(const av_frame_ptr& f);
 
+// The matrix a video's YCbCr is converted by, as an ITU-T H.273 code point, and whether it was assumed: the one the
+// video states, else the one players assume of an untagged picture - BT.2020's where its primaries or transfer are
+// BT.2020's or HDR's, BT.709's for anything larger than standard definition, UHD included, and BT.601's for standard
+// definition. The renderer converts by it, and the info pane names it, so the two cannot disagree.
+struct av_matrix
+{
+	int code = 1;
+	bool assumed = false;
+};
+
+av_matrix av_video_matrix(int matrix, int primaries, int transfer, sizei size);
+// The matrix and range a frame's YCbCr is decoded with: its matrix as av_video_matrix finds it.
+core::color_space av_frame_color_space(const AVFrame& frame);
+// Where a frame's chroma lies, from its AVChromaLocation: left-sited where the stream does not say.
+core::chroma_siting av_chroma_siting(int chroma_location);
+
 // Asked by a renderer that cannot share the decoder's hardware surfaces of this layout - the AVPixelFormat
 // the hardware frames hold - so from then on the decode thread downloads and converts those rather than the
 // thread that presents them. Surfaces of other layouts are still shared.
@@ -241,8 +259,10 @@ double av_audio_frame_duration(const av_frame_ptr& f);
 bool av_is_frame_empty(const av_frame_ptr& f);
 
 // Bytes a queued item charges against the queue's read-ahead budget.
-template <typename T>
-size_t av_queued_payload_bytes(const std::shared_ptr<T>&) { return 0; }
+template <typename T> size_t av_queued_payload_bytes(const std::shared_ptr<T>&)
+{
+	return 0;
+}
 
 size_t av_queued_payload_bytes(const av_packet_ptr& p);
 
@@ -275,7 +295,6 @@ struct av_rational
 	int den = 0;
 };
 
-
 struct video_info_t
 {
 	sizei display_dimensions;
@@ -284,7 +303,6 @@ struct video_info_t
 	AVPixelFormat format = {};
 	bool is_yuv = false;
 };
-
 
 class audio_resampler final : core::no_copy
 {
@@ -332,6 +350,8 @@ class av_scaler final : public render::surface_scaler, core::no_copy
 	// have let them go: at a video frame's size a fresh block is fresh pages to fault in and clear, every
 	// frame. Only the thread presentable_surface runs on touches it.
 	std::vector<core::surface_ptr> _presentation_surfaces;
+	// An interlaced frame scale_frame was given, made whole: kept between calls, as the frame it came from is.
+	AVFrame* _progressive = nullptr;
 
 	// A surface for the next prepared picture: one held here alone when there is one, else a new one.
 	core::surface_ptr reusable_surface();
@@ -339,8 +359,6 @@ class av_scaler final : public render::surface_scaler, core::no_copy
 	// Rows of three 16-bit samples a pixel for a picture of this extent, in _hdr_signal.
 	uint16_t* hdr_signal_rows(sizei extent);
 
-	// A hardware frame's pixels in system memory, with the frame's properties copied across, or null.
-	AVFrame* download(const AVFrame& frame);
 	// Converts a software frame at its own size into packed BGRA.
 	bool convert_frame(const AVFrame& frame, core::color_space cs, const core::surface_ptr& surface_out, double time,
 	                   core::orientation orientation);
@@ -352,15 +370,22 @@ class av_scaler final : public render::surface_scaler, core::no_copy
 public:
 	~av_scaler() override;
 
+	// A hardware frame's pixels in system memory, with the frame's properties copied across, or null. The
+	// caller frees it.
+	AVFrame* download(const AVFrame& frame);
+
 	bool scale_surface(const core::const_surface_ptr& surface_in, core::surface_ptr& surface_out, sizei dimensions_out,
 	                   bool high_quality = true) override;
 	bool convert_yuv_surface(const core::surface& surface_in, const core::surface_ptr& surface_out) override;
 	bool scale_surface(const render::video_frame& frame, const core::surface_ptr& surface_out) override;
 	bool scale_surface(const av_frame_ptr& frame, const core::surface_ptr& surface_out);
 	// container_sar carries the demuxer's stream aspect ratio, which is the only place an MP4 pasp
-	// box surfaces - FFmpeg never copies it onto the codec parameters or the decoded frame.
+	// box surfaces - FFmpeg never copies it onto the codec parameters or the decoded frame. An interlaced
+	// frame is shown as one of its fields made whole: the first, or the second where that is the one wanted,
+	// with what moved since previous - the frame before it, where the caller has one.
 	bool scale_frame(const AVFrame& frame, core::surface_ptr& surface, sizei max_dim, double time,
-	                 core::orientation orientation, av_rational container_sar = {}, bool preserve_alpha = false);
+	                 core::orientation orientation, av_rational container_sar = {}, bool preserve_alpha = false,
+	                 const AVFrame* previous = nullptr, bool second_field = false);
 
 	// The picture exactly as the renderer will upload it, made on the decode thread: NV12 or P010 for a
 	// renderer that samples YUV - the planes hardware-decoded frames arrive in - and packed BGRA for
@@ -375,11 +400,9 @@ public:
 // TGA, SGI, the portable pixmaps and DPX have no signature worth probing, so a caller that knows the
 // file name passes its extension: that is the only thing that can name the format for those.
 core::surface_ptr av_decode_still(core::cspan data, sizei max_dim, std::string_view extension_hint = {},
-                                load_diagnostic* diagnostic = nullptr);
+                                  load_diagnostic* diagnostic = nullptr);
 
-
-template <typename T>
-class av_queue final : public core::no_copy
+template <typename T> class av_queue final : public core::no_copy
 {
 	// Depth at which a producer stops reading ahead. Deep enough to absorb decode
 	// jitter, shallow enough that a seek discards little work - and bounded by
@@ -402,10 +425,7 @@ class av_queue final : public core::no_copy
 public:
 	av_queue() = default;
 
-	~av_queue() override
-	{
-		clear();
-	}
+	~av_queue() override { clear(); }
 
 	void clear()
 	{
@@ -414,8 +434,7 @@ public:
 		_bytes = 0;
 	}
 
-	template <typename U>
-	void push(U&& packet)
+	template <typename U> void push(U&& packet)
 	{
 		core::exclusive_lock lock(_mutex);
 		_bytes += av_queued_payload_bytes(packet);
@@ -478,6 +497,17 @@ enum class av_stream_type
 	subtitle
 };
 
+// How a video's pictures are scanned, as far as the stream says: progressive, or interlaced with the top or bottom
+// field shown first, or interlaced in an order it does not say.
+enum class av_scan : uint8_t
+{
+	unknown,
+	progressive,
+	interlaced,
+	top_field_first,
+	bottom_field_first,
+};
+
 struct av_stream_info
 {
 	int index = 0;
@@ -494,6 +524,15 @@ struct av_stream_info
 	int bit_depth = 0;
 	// The HDR transfer a video stream is tagged with - "PQ" or "HLG" - or empty for SDR.
 	std::string hdr_transfer;
+	// A video stream's colour as ITU-T H.273 code points - 2, unspecified, where it states none, and the matrix 0,
+	// RGB's own, for an RGB or grey stream, which no matrix converts - whether its range is full, where it says, and
+	// its pictures' size, by which av_video_matrix assumes a matrix it does not state.
+	int color_primaries = 2;
+	int color_transfer = 2;
+	int color_matrix = 2;
+	std::optional<bool> full_range;
+	sizei coded_size;
+	av_scan scan = av_scan::unknown;
 	int audio_sample_rate = 0;
 	int audio_channels = 0;
 	prop::audio_sample_t audio_sample_type = prop::audio_sample_t::none;
@@ -505,6 +544,13 @@ struct av_stream_info
 
 	metadata_kv_list metadata;
 };
+
+// A video stream's colour as the info pane names it - "BT.709", "BT.601 full range", "BT.709 (assumed)" where the
+// stream states no matrix - or empty for an RGB or grey stream, or an untagged one of no known size.
+std::string av_colour_text(const av_stream_info& stream);
+// "interlaced, top field first", "interlaced, bottom field first" or "interlaced"; empty for a stream that is
+// progressive or does not say.
+std::string av_scan_text(const av_stream_info& stream);
 
 enum class metadata_standard
 {
@@ -531,13 +577,11 @@ struct metadata_block
 
 	metadata_block() = default;
 
-	metadata_block(const metadata_standard s, metadata_kv_list v) noexcept : standard(s), values(std::move(v))
-	{
-	}
+	metadata_block(const metadata_standard s, metadata_kv_list v) noexcept : standard(s), values(std::move(v)) {}
 
 	metadata_block(const metadata_standard s, metadata_kv_list v, const uint64_t b, const bool p,
-	               std::string r = {}) noexcept : standard(s), values(std::move(v)), bytes(b), parsed(p),
-	                                              raw(std::move(r))
+	               std::string r = {}) noexcept :
+		standard(s), values(std::move(v)), bytes(b), parsed(p), raw(std::move(r))
 	{
 	}
 };
@@ -579,7 +623,7 @@ public:
 // timestamp when the stream supplies none, and repairing one that fails to advance.
 struct av_pts_correction
 {
-	int64_t last_output; /// Last timestamp returned (keeps the output monotonic)
+	int64_t last_output;    /// Last timestamp returned (keeps the output monotonic)
 	int64_t frame_interval; /// Smallest positive step seen (synthesis fallback)
 
 	av_pts_correction();
@@ -588,7 +632,6 @@ struct av_pts_correction
 	// duration is AVFrame::duration (0 if unknown). Result is in stream time-base units.
 	int64_t guess(int64_t best_effort, int64_t pts, int64_t dts, int64_t duration = 0);
 };
-
 
 class av_format_decoder final : public core::no_copy
 {
@@ -608,10 +651,7 @@ public:
 
 	std::unique_ptr<audio_resampler> make_audio_resampler() const;
 
-	const core::file_path path() const
-	{
-		return _path;
-	}
+	const core::file_path path() const { return _path; }
 
 	bool open(core::file_path path, media_intent intent);
 	bool open(const platform::file_ptr& file, core::file_path path, media_intent intent);
@@ -741,6 +781,19 @@ private:
 	// presenting it does no conversion. A hardware frame the renderer can share is left as it is.
 	void prepare_for_presentation(av_frame& frame);
 
+	// An interlaced frame holds two pictures a field period apart. Each is made whole and prepared, the first in
+	// frame itself and the second in the frame returned, timed a field period after it, for the caller to queue
+	// after frame. Null for a progressive frame, or one that cannot be made progressive, which the caller
+	// prepares as it is.
+	av_frame_ptr prepare_fields(av_frame& frame, av_rational base);
+	// A field period, in seconds: half the frame's duration, or of the stream's frame period.
+	double field_period(const AVFrame& frame, av_rational base) const;
+	// The frame before the one being prepared, kept for prepare_fields to see what moved; let go at a seek, at
+	// the end of the stream and wherever the stream turns progressive, which leaves the next field nothing to
+	// compare.
+	av_frame_ptr _field_history;
+	int _field_history_gen = -1;
+
 	// Decode forward from the current (freshly seeked) position to the frame
 	// nearest wanted_time, scaling that frame into dest_surface. Shared by thumbnail
 	// and scrubber-preview extraction so both land on the pointed-at frame rather
@@ -756,29 +809,19 @@ private:
 	friend class av_session;
 
 public:
-	bool has_audio() const
-	{
-		return _has_audio;
-	}
+	bool has_audio() const { return _has_audio; }
 
-	bool has_video() const
-	{
-		return _has_video;
-	}
+	bool has_video() const { return _has_video; }
 
-	int video_stream_id() const
-	{
-		return _video_stream_index;
-	}
+	int video_stream_id() const { return _video_stream_index; }
 
-	int audio_stream_id() const
-	{
-		return _audio_stream_index;
-	}
-
+	int audio_stream_id() const { return _audio_stream_index; }
 
 	video_info_t video_information() const;
 	double video_frame_rate() const;
+	// The mean rate over the stream: its frames divided by its length. A phone's variable-rate video can
+	// declare a rate several times the one its frames come at. Zero when the container does not say.
+	double video_average_frame_rate() const;
 	audio_info_t audio_info() const;
 
 	bool extract_seek_frame(core::surface_ptr& dest_surface, sizei max_dim, double pos_numerator = 10,
@@ -787,8 +830,8 @@ public:
 	// the duration. Zero decodes to the exact frame; a caller that only needs a sense of the content
 	// asks for slack and gets an answer a whole GOP sooner.
 	bool extract_thumbnail(core::surface_ptr& dest_surface, sizei max_dim, double pos_numerator = 10,
-	                       double pos_denominator = 100, bool exact_frame = true,
-	                       double tolerance_fraction = 0.0, core::cancel_token abandon = {});
+	                       double pos_denominator = 100, bool exact_frame = true, double tolerance_fraction = 0.0,
+	                       core::cancel_token abandon = {});
 	// The frame nearest `wanted_time`, decoding forward from wherever this decoder already sits and
 	// seeking only when the target is behind it or far enough ahead that walking there costs more.
 	// A caller stepping through a clip in order therefore keeps one decoder open across frames
@@ -808,7 +851,7 @@ public:
 	// Decodes only the retained presentation interval. Samples are placed by timestamp, so a stream
 	// offset becomes silence rather than shifting the soundtrack against the picture.
 	std::vector<int16_t> extract_audio_pcm_range(int sample_rate, double start_seconds, double duration_seconds,
-	                                           core::cancel_token abandon = {});
+	                                             core::cancel_token abandon = {});
 	file_load_result render_frame(const av_frame_ptr& frame_in) const;
 	void receive_frames(av_packet_queue& packets, av_frame_queue& frames);
 
@@ -834,3 +877,122 @@ subtitle_file decode_subtitle_file(core::file_path path);
 // A subtitle file's text in UTF-8: one already in it, or with a byte-order mark FFmpeg reads, is left alone;
 // any other is read as Windows-1252, which most older SRT files were saved in.
 std::string subtitle_text_as_utf8(std::string_view bytes);
+
+// Edit's lossless audio and video edits. The file's own packets are copied into a new file - of the same format, or an
+// MP4 - by FFmpeg's muxer for it, so nothing is decoded or encoded; docs/design.md owns what Edit offers.
+struct av_edits
+{
+	// Seconds on the timeline the player shows, which starts at 0. An end of 0 keeps the rest.
+	double start = 0.0;
+	double end = 0.0;
+	bool remove_audio = false;
+	// Clockwise quarter turns added to the turn the file already declares.
+	int quarter_turns = 0;
+	// How the copy is written, which changes nothing it shows. An MP4 or a QuickTime file is written with its index
+	// before its media, so it can play while it is still downloading; one that had it there keeps it there either way.
+	bool index_first = false;
+	// A damaged file is copied as far as it can be read, and what cannot be is left out rather than failing the copy.
+	bool repair = false;
+
+	bool is_trimmed() const { return start > 0.0 || end > 0.0; }
+	bool is_turned() const { return quarter_turns % 4 != 0; }
+	bool has_changes() const { return is_trimmed() || remove_audio || is_turned(); }
+	bool operator==(const av_edits&) const = default;
+};
+
+// What a lossless edit can do to one file, copied in one format, and what its copy would leave out.
+struct av_edit_plan
+{
+	// FFmpeg could open the file and read what it holds. A file it cannot is neither edited nor repaired by a copy.
+	bool readable = false;
+	bool can_edit = false;
+	bool has_video = false;
+	bool has_audio = false;
+	// The MP4 and QuickTime family, whose track turn every player honours.
+	bool can_rotate = false;
+	// The container hides what a copy keeps before a trimmed start, with an MP4 edit list; elsewhere the
+	// copy starts at the key frame before it.
+	bool exact_start = false;
+	// The MP4 and QuickTime family, whose index - the movie box - can be written before the media.
+	bool can_index_first = false;
+	double duration = 0.0;
+	// The streams this format's writer cannot hold, and so the copy leaves out, named for the panel.
+	std::vector<std::string> dropped;
+};
+
+// The extension a copy of a video or a sound file is saved under in a format other than its own: MP4, which Save As
+// offers every file Edit copies, and the format a file whose own has no writer here is saved in.
+constexpr std::string_view av_mp4_extension = "mp4";
+
+// The FFmpeg muxer that writes a file of this extension back, or empty for a format Edit does not rewrite.
+std::string_view av_edit_muxer(std::string_view extension);
+
+// What Save As offers a copy in a format: the format's own name, not translated, and every extension it is written
+// under, this one first. Empty for a format Edit does not write.
+struct av_edit_format
+{
+	std::string_view name;
+	std::vector<std::string_view> extensions;
+};
+av_edit_format av_edit_format_of(std::string_view extension);
+// Opens the file to see what a lossless edit can do to it, copied into a file of `extension`: its own format, or
+// MP4. With none, its own where Edit writes it back, and MP4 where Edit does not. Reads the file, so on a worker.
+av_edit_plan av_plan_edits(core::file_path path, std::string_view extension = {});
+
+enum class av_remux_status
+{
+	done,
+	cancelled,
+	failed
+};
+
+// What a repairing copy left out of a damaged file. A copy made in full leaves nothing out.
+struct av_remux_repairs
+{
+	// Damaged parts skipped: reads that failed, and packets whose timing the copy could not hold.
+	int skipped = 0;
+	// Where the copy ends, in seconds on the timeline, when the file could be read no further; negative when it was
+	// read to its end.
+	double ended_at = -1.0;
+
+	bool any() const { return skipped > 0 || ended_at >= 0.0; }
+};
+
+struct av_remux_result
+{
+	av_remux_status status = av_remux_status::failed;
+	// FFmpeg's or the file layer's own words, for the log.
+	std::string error;
+	av_remux_repairs repairs;
+};
+
+// Writes `edits` of `source` to `destination`, a new file in the format its extension names: the source's own, or an
+// MP4, which starts where the source's timeline does. A trim keeps every picture from a key frame of its own at or
+// before its start; a format with an edit list starts playing at the start itself. Nothing is written to `source`,
+// and a failed or cancelled copy leaves `destination` incomplete for the caller to remove. A repairing copy takes a
+// read the source fails for damage, and a packet the copy cannot hold for one to leave out, and says what it left
+// out; any other copy fails on either.
+av_remux_result av_remux(core::file_path source, core::file_path destination, const av_edits& edits,
+                         const core::cancel_token& cancel);
+
+// Whether an MP4's or a QuickTime file's index - its movie box - comes before its media, as in a file made to
+// play while it downloads. False for any other file.
+bool av_index_first(core::file_path path);
+
+enum class av_index_move
+{
+	unchanged,
+	moved,
+	cancelled,
+	failed
+};
+
+// Writes `path`, an MP4 or a QuickTime file whose index follows its media, to `moved` with the index moved before
+// the media and the media's offsets in it moved to match; nothing else changes. Unchanged, with nothing written, for
+// a file whose index is already first, any other file, or one whose offsets would no longer fit. The caller removes
+// `moved` when it is not used.
+av_index_move av_move_index_first(core::file_path path, core::file_path moved, const core::cancel_token& cancel);
+
+// Test seam: whether the copy's read at this position of its source fails, which the file layer reports by
+// reading nothing, so a test can fail one part-way through a file.
+extern std::function<bool(uint64_t position)> test_remux_read_fails;

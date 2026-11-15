@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Shared test infrastructure, helper classes, and utility functions
 // used across every test file. The taxonomy is documented in docs/testing.md.
@@ -61,43 +60,25 @@ public:
 	int abort_count = 0;
 	int complete_count = 0;
 
-	void start_item(const std::string_view name) override
-	{
-	}
+	void start_item(const std::string_view /*name*/) override {}
 
-	void end_item(const std::string_view name, const item_status status) override
-	{
-	}
+	void end_item(const std::string_view /*name*/, const item_status /*status*/) override {}
 
 	bool has_failures() const override { return false; }
 
-	void abort(const std::string_view error_message) override
-	{
-		++abort_count;
-	}
+	void abort(const std::string_view /*error_message*/) override { ++abort_count; }
 
-	void complete(const std::string_view message) override
-	{
-		++complete_count;
-	}
+	void complete(const std::string_view /*message*/) override { ++complete_count; }
 
-	void show_errors() override
-	{
-	}
+	void show_errors() override {}
 
-	void message(const std::string_view message, int64_t pos, int64_t total) override
-	{
-	}
+	void message(const std::string_view /*message*/, int64_t /*pos*/, int64_t /*total*/) override {}
 
-	void show_message(const std::string_view message) override
-	{
-	}
+	void show_message(const std::string_view /*message*/) override {}
 
 	bool is_canceled() const override { return false; }
 
-	void wait_for_complete() const override
-	{
-	}
+	void wait_for_complete() const override {}
 };
 
 // Not final: a test that needs one member answered differently derives from it rather than
@@ -109,73 +90,44 @@ public:
 
 	explicit null_state_strategy() = default;
 
-	void toggle_full_screen() override
-	{
-		++toggle_full_screen_count;
-	}
+	void toggle_full_screen() override { ++toggle_full_screen_count; }
 
-	bool can_open_search(const df::search_t& path) override { return true; }
+	bool can_open_search(const df::search_t& /*path*/) override { return true; }
 
-	void report_scope_unavailable(const df::search_t& path) override
-	{
-	}
+	void report_scope_unavailable(const df::search_t& /*path*/) override {}
 
-	void element_broadcast(const view_element_event& event) override
-	{
-	}
+	void element_broadcast(const view_element_event& /*event*/) override {}
 
-	void item_focus_changed(const df::item_element_ptr& focus, const df::item_element_ptr& previous) override
-	{
-	}
+	void item_focus_changed(const df::item_element_ptr& /*focus*/, const df::item_element_ptr& /*previous*/) override {}
 
-	void display_changed() override
-	{
-	}
+	void display_changed() override {}
 
-	void view_changed(view_type m) override
-	{
-	}
+	void view_changed(view_type /*m*/) override {}
 
-	void search_complete(const df::search_t& path, bool path_changed) override
-	{
-	}
+	void search_complete(const df::search_t& /*path*/, bool /*path_changed*/) override {}
 
-	void invoke(const commands id) override
-	{
-	}
+	void invoke(const commands /*id*/) override {}
 
-	void make_visible(const df::item_element_ptr& i) override
+	void make_visible(const df::item_element_ptr& /*i*/) override {}
+
+	void command_hover(const ui::command_ptr& /*c*/, const recti /*window_bounds*/) override {}
+
+	bool is_command_checked(const commands /*cmd*/) override { return false; }
+
+	ui::command_ptr find_command(const commands /*cmd*/) const override { return nullptr; }
+
+	void focus_view() override {}
+
+	void delete_items(const df::item_set& /*items*/) override {}
+
+	void invalidate_view(const view_invalid /*invalid*/) override {}
+
+	void track_menu(const ui::frame_ptr& /*parent*/, const recti /*bounds*/,
+	                const std::vector<ui::command_ptr>& /*commands*/) override
 	{
 	}
 
-	void command_hover(const ui::command_ptr& c, const recti window_bounds) override
-	{
-	}
-
-	bool is_command_checked(const commands cmd) override { return false; }
-
-	ui::command_ptr find_command(const commands cmd) const override { return nullptr; }
-
-	void focus_view() override
-	{
-	}
-
-	void delete_items(const df::item_set& items) override
-	{
-	}
-
-	void invalidate_view(const view_invalid invalid) override
-	{
-	}
-
-	void track_menu(const ui::frame_ptr& parent, const recti bounds,
-	                const std::vector<ui::command_ptr>& commands) override
-	{
-	}
-
-	void free_graphics_resources(const bool items_only, const bool offscreen_only) override
-	{
-	}
+	void free_graphics_resources(const bool /*items_only*/, const bool /*offscreen_only*/) override {}
 };
 
 // The one gazetteer shared by every test: loading a 24 MB index per context is not affordable.
@@ -186,21 +138,15 @@ location_cache& test_locations();
 class flex_test_measure_context final : public render::measure_context
 {
 public:
-	sizei measure_text(std::string_view text, render::font_face font, render::text_style style, int cx,
-	                   int cy = 0) override
+	sizei measure_text(std::string_view /*text*/, render::font_face /*font*/, render::text_style /*style*/, int /*cx*/,
+	                   int /*cy*/ = 0) override
 	{
 		return {};
 	}
 
-	int text_line_height(render::font_face font) override
-	{
-		return 0;
-	}
+	int text_line_height(render::font_face /*font*/) override { return 0; }
 
-	render::text_layout_ptr create_text_layout(render::font_face font) override
-	{
-		return {};
-	}
+	render::text_layout_ptr create_text_layout(render::font_face /*font*/) override { return {}; }
 };
 
 class flex_test_element final : public view_element
@@ -208,12 +154,9 @@ class flex_test_element final : public view_element
 	sizei _desired;
 
 public:
-	explicit flex_test_element(const sizei desired) : _desired(desired)
-	{
-		padding(0);
-	}
+	explicit flex_test_element(const sizei desired) : _desired(desired) { padding(0); }
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& /*mc*/, const int width_limit) const override
 	{
 		return {std::min(_desired.cx, width_limit), _desired.cy};
 	}
@@ -226,30 +169,20 @@ public:
 
 	void queue_ui(const std::function<void()> f) override { f(); }
 
-	void queue_media_preview(std::function<void(media_preview_state&)>, bool) override
-	{
-	}
+	void queue_media_preview(std::function<void(media_preview_state&)>, bool) override {}
 
-	void queue_database(const std::function<void(database&)> f) override
-	{
-	}
+	void queue_database(const std::function<void(database&)> /*f*/) override {}
 
-	void queue_tile_db(const std::function<void(tile_cache_db&)> f) override
-	{
-	}
+	void queue_tile_db(const std::function<void(tile_cache_db&)> /*f*/) override {}
 
-	void web_service_cache(std::string key, std::function<void(const std::string&)> f) override
-	{
-	}
+	void web_service_cache(std::string /*key*/, std::function<void(const std::string&)> /*f*/) override {}
 
-	void web_service_cache(std::string key, std::string value) override
-	{
-	}
+	void web_service_cache(std::string /*key*/, std::string /*value*/) override {}
 
-	void queue_async(async_queue q, const std::function<void()> f) override { f(); }
+	void queue_async(async_queue /*q*/, const std::function<void()> f) override { f(); }
 
 	// The delay is a scheduling concession to the running application; a test wants the result.
-	void queue_async_after(async_queue q, uint32_t, const std::function<void()> f) override { f(); }
+	void queue_async_after(async_queue /*q*/, uint32_t, const std::function<void()> f) override { f(); }
 
 	void queue_location(const std::function<void(location_cache&)> f) override
 	{
@@ -257,9 +190,7 @@ public:
 		f(locations);
 	}
 
-	void invalidate_view(const view_invalid invalid) override
-	{
-	}
+	void invalidate_view(const view_invalid /*invalid*/) override {}
 };
 
 class deferred_async_strategy final : public null_async_strategy
@@ -269,15 +200,17 @@ class deferred_async_strategy final : public null_async_strategy
 	view_invalid _invalids = view_invalid::none;
 
 public:
-	void queue_ui(const std::function<void()> f) override
+	// The database a test wants its database tasks run against, at once; with none they are dropped.
+	database* db = nullptr;
+
+	void queue_database(const std::function<void(database&)> f) override
 	{
-		_ui.emplace_back(f);
+		if (db) f(*db);
 	}
 
-	void queue_async(const async_queue q, const std::function<void()> f) override
-	{
-		_workers.emplace_back(q, f);
-	}
+	void queue_ui(const std::function<void()> f) override { _ui.emplace_back(f); }
+
+	void queue_async(const async_queue q, const std::function<void()> f) override { _workers.emplace_back(q, f); }
 
 	// Deferred like any other worker task; run_next drives it, so the debounce is not a test's problem.
 	void queue_async_after(const async_queue q, uint32_t, const std::function<void()> f) override
@@ -285,10 +218,7 @@ public:
 		_workers.emplace_back(q, f);
 	}
 
-	void invalidate_view(const view_invalid invalid) override
-	{
-		_invalids |= invalid;
-	}
+	void invalidate_view(const view_invalid invalid) override { _invalids |= invalid; }
 
 	void drain_ui()
 	{
@@ -300,20 +230,16 @@ public:
 		}
 	}
 
-	size_t pending_ui_count() const
-	{
-		return _ui.size();
-	}
+	size_t pending_ui_count() const { return _ui.size(); }
 
 	size_t pending_worker_count(const async_queue q) const
 	{
 		return std::ranges::count(_workers, q, &std::pair<async_queue, std::function<void()>>::first);
 	}
 
-	bool was_invalidated(const view_invalid invalid) const
-	{
-		return (_invalids & invalid) != view_invalid::none;
-	}
+	bool was_invalidated(const view_invalid invalid) const { return (_invalids & invalid) != view_invalid::none; }
+
+	void clear_invalidated() { _invalids = view_invalid::none; }
 
 	bool run_next(const async_queue q)
 	{
@@ -384,14 +310,9 @@ class temp_files
 public:
 	temp_files() = default;
 
-	explicit temp_files(const core::folder_path existing_folder) : _folder(existing_folder)
-	{
-	}
+	explicit temp_files(const core::folder_path existing_folder) : _folder(existing_folder) {}
 
-	~temp_files()
-	{
-		delete_temps();
-	}
+	~temp_files() { delete_temps(); }
 
 	temp_files(const temp_files& other) noexcept = delete;
 	temp_files(temp_files&& other) noexcept = delete;
@@ -438,10 +359,7 @@ public:
 		return errors;
 	}
 
-	core::folder_path folder() const
-	{
-		return resolve_folder();
-	}
+	core::folder_path folder() const { return resolve_folder(); }
 
 	core::file_path next_path(const std::string_view ext = ".jpg")
 	{
@@ -492,13 +410,41 @@ struct metadata_type
 // Shared mutable globals (defined in test_runner.cpp)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-extern temp_files _temps;
+extern temp_files test_temps;
 extern std::atomic_int test_version;
 extern core::cancel_token test_token;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Shared fixtures built in memory
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+inline std::vector<uint8_t> make_test_tracker_module(const int speed = 1)
+{
+	std::vector<uint8_t> bytes(1084 + 1024 + 64);
+	memcpy(bytes.data(), "Diffractor tracker", 18);
+	memcpy(bytes.data() + 20, "Triangle", 8);
+	bytes[43] = 32;
+	bytes[45] = 64;
+	bytes[49] = 32;
+	bytes[950] = 1;
+	bytes[951] = 0x7F;
+	memcpy(bytes.data() + 1080, "M.K.", 4);
+	for (const auto& [row, period] : {std::pair{0, 428}, std::pair{32, 339}})
+	{
+		const auto at = 1084 + row * 16;
+		bytes[at] = static_cast<uint8_t>(period >> 8);
+		bytes[at + 1] = static_cast<uint8_t>(period);
+		bytes[at + 2] = 0x10;
+	}
+	bytes[1084 + 6] = 0x0F;
+	bytes[1084 + 7] = static_cast<uint8_t>(speed);
+	for (auto i = 0; i < 64; ++i)
+	{
+		const auto level = i < 32 ? -96 + i * 6 : 96 - (i - 32) * 6;
+		bytes[1084 + 1024 + i] = static_cast<uint8_t>(static_cast<int8_t>(level));
+	}
+	return bytes;
+}
 
 // A SID tune small enough to write out in full. Its init routine sets voice 1 sawing at 440Hz at full
 // volume, and its play routine nudges that voice's frequency every frame, so the tune sounds, and its
@@ -507,22 +453,26 @@ extern core::cancel_token test_token;
 inline std::vector<uint8_t> make_test_sid_tune()
 {
 	std::vector<uint8_t> t(0x7C, 0);
-	const auto text = [&t](const size_t at, const std::string_view s) { std::ranges::copy(s, t.begin() + at); };
+	const auto text = [&t](const size_t at, const std::string_view s)
+	{
+		std::ranges::copy(s, t.begin() + at);
+	};
 
 	text(0x00, "PSID");
-	t[0x05] = 2; // version
+	t[0x05] = 2;    // version
 	t[0x07] = 0x7C; // data offset; the load address is the data's first two bytes
 	t[0x0A] = 0x10; // init at $1000
 	t[0x0C] = 0x10;
 	t[0x0D] = 0x20; // play at $1020
-	t[0x0F] = 3; // tunes
-	t[0x11] = 2; // the tune it starts on
+	t[0x0F] = 3;    // tunes
+	t[0x11] = 2;    // the tune it starts on
 	text(0x16, "Diffractor Test Tune");
 	text(0x36, "Test Author");
 	text(0x56, "1987 Test Publisher");
 	t[0x77] = 0x14; // a 6581, PAL
 
 	const uint8_t program[] = {
+		// clang-format off
 		0x00, 0x10, // loads at $1000
 		0xA9, 0x0F, 0x8D, 0x18, 0xD4, // LDA #$0F, STA $D418: full volume
 		0xA9, 0x45, 0x8D, 0x00, 0xD4, // voice 1 frequency $1D45: A4 on a PAL machine
@@ -536,10 +486,96 @@ inline std::vector<uint8_t> make_test_sid_tune()
 		0xA5, 0xFB, // LDA $FB
 		0x8D, 0x00, 0xD4, // STA $D400
 		0x60, // RTS
+		// clang-format on
 	};
 
 	t.insert(t.end(), std::begin(program), std::end(program));
 	return t;
+}
+
+// A C64 BASIC program as a .prg: its load address, $0801, then 10 PRINT "<text>". The text is upper-case
+// ASCII, which PETSCII spells the same, so it appears on the screen as the program runs.
+inline std::vector<uint8_t> make_test_c64_program(const std::string_view text)
+{
+	constexpr uint16_t basic_start = 0x0801;
+	const auto next_line = static_cast<uint16_t>(basic_start + 9 + text.size());
+
+	std::vector<uint8_t> prg = {
+		// clang-format off
+		0x01, 0x08, // loads at $0801
+		static_cast<uint8_t>(next_line), static_cast<uint8_t>(next_line >> 8), // the link to the end
+		10, 0, // line 10
+		0x99, ' ', '"', // PRINT "
+		// clang-format on
+	};
+	prg.insert(prg.end(), text.begin(), text.end());
+	prg.push_back('"');
+	prg.push_back(0); // the end of the line
+	prg.push_back(0); // and of the program
+	prg.push_back(0);
+	return prg;
+}
+
+// A file for make_test_d64: its PETSCII name, its directory type byte - $82 a program, $81 a sequential
+// file - and its bytes.
+struct test_c64_file
+{
+	std::string name;
+	uint8_t type = 0x82;
+	std::vector<uint8_t> bytes;
+};
+
+// A 35-track D64 holding the files given, in its directory's first sector, each stored in a chain of
+// sectors on track 1. At most eight files, and 21 sectors of them between them.
+inline std::vector<uint8_t> make_test_d64(const std::vector<test_c64_file>& files)
+{
+	constexpr size_t sector_size = 256;
+	std::vector<uint8_t> disk(174848, 0);
+	// Tracks 1 to 17 hold 21 sectors each, so the directory track begins after 357 of them.
+	const auto offset = [](const int track, const int sector)
+	{
+		return (track == 18 ? 357 + sector : (track - 1) * 21 + sector) * sector_size;
+	};
+	const auto put_name = [](uint8_t* at, const std::string_view name)
+	{
+		std::fill_n(at, 16, static_cast<uint8_t>(0xA0));
+		std::copy_n(name.begin(), std::min<size_t>(name.size(), 16), at);
+	};
+
+	auto* const bam = disk.data() + offset(18, 0);
+	bam[0] = 18; // the directory's first sector
+	bam[1] = 1;
+	bam[2] = 'A';
+	put_name(bam + 0x90, "TEST DISK");
+
+	auto* const dir = disk.data() + offset(18, 1);
+	dir[1] = 0xFF; // the last directory sector
+	auto sector = 0;
+
+	for (size_t i = 0; i < files.size() && i < 8; ++i)
+	{
+		const auto& file = files[i];
+		auto* const entry = dir + i * 32;
+		const auto blocks = std::max<size_t>(1, (file.bytes.size() + 253) / 254);
+		entry[2] = file.type;
+		entry[3] = 1;
+		entry[4] = static_cast<uint8_t>(sector);
+		put_name(entry + 5, file.name);
+		entry[30] = static_cast<uint8_t>(blocks);
+
+		for (size_t b = 0; b < blocks; ++b, ++sector)
+		{
+			auto* const block = disk.data() + offset(1, sector);
+			const auto begin = b * 254;
+			const auto count = std::min<size_t>(254, file.bytes.size() - std::min(begin, file.bytes.size()));
+			const auto last = b + 1 == blocks;
+			block[0] = last ? 0 : 1;
+			block[1] = static_cast<uint8_t>(last ? count + 1 : sector + 1);
+			std::copy_n(file.bytes.begin() + static_cast<ptrdiff_t>(begin), count, block + 2);
+		}
+	}
+
+	return disk;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -556,9 +592,7 @@ struct shared_test_context
 	index_state empty_index;
 	bool loaded = false;
 
-	shared_test_context() : test_index(as, locations), empty_index(as, locations)
-	{
-	}
+	shared_test_context() : test_index(as, locations), empty_index(as, locations) {}
 
 	void lazy_load_index();
 };
@@ -575,8 +609,20 @@ rescan_spec ff_inspect_rescan(core::file_path path);
 // The result of that scan, falling back to a by-name scan if the write produced none.
 file_scan_result ff_scan_after_update(files& ff, file_update_result& result, core::file_path path,
                                       std::string_view xmp_sidecar = {});
-file_scan_result ff_scan_and_load_thumb(files& ff, core::file_path path,
-                                        std::string_view xmp_sidecar = {});
+file_scan_result ff_scan_and_load_thumb(files& ff, core::file_path path, std::string_view xmp_sidecar = {});
+// The file turned where it lies as the Rotate command turns it: the picture it shows given the quarter turn t, and any
+// orientation it holds reset.
+file_update_result ff_turn(files& ff, core::file_path path, simple_transform t);
+// What a file shows: its decode, turned as the orientation the decode reports says.
+core::const_surface_ptr ff_shown_picture(files& ff, core::file_path path);
+// How far apart two pictures of one size are: the mean difference of their colour channels, 0 to 255.
+double mean_channel_difference(const core::const_surface_ptr& a, const core::const_surface_ptr& b);
+// An RGB display profile as a phone or camera embeds one, since no test file holds one libfiles maps: its colorants -
+// red's X, Y and Z, then green's, then blue's, adapted to D50 - and sRGB's tone curve. Display P3's colours, which
+// libfiles maps to sRGB, and sRGB's own, which it need not.
+std::vector<uint8_t> matrix_icc_profile(const std::array<double, 9>& colorants);
+std::vector<uint8_t> display_p3_profile();
+std::vector<uint8_t> srgb_profile();
 void assert_metadata(const prop::item_metadata& expected, const prop::item_metadata& actual,
                      std::string_view message = {});
 prop::item_metadata_ptr extract_properties(core::file_path path, uint32_t t = metadata_type::ALL);
@@ -598,6 +644,44 @@ std::shared_ptr<av_session> make_test_session_with_decode_wake(std::shared_ptr<c
 // The gazetteer costs seconds to load, so every test that needs real place data shares one
 // loaded instance. A test that mutates it (set_display_language) must restore it before returning.
 location_cache& test_locations();
+
+// A headless window's state browsing a folder - the test folder unless told otherwise - as the items view shows it.
+struct browsing_fixture
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	view_host_base_ptr view;
+	location_cache locations;
+	index_state index;
+	view_state state;
+
+	explicit browsing_fixture(const core::folder_path folder = test_files_folder()) :
+		index(as, locations), state(ss, as, index, make_test_player())
+	{
+		state.view_mode(view_type::items);
+		state.open(view, df::search_t().add_selector(folder), {});
+		state.update_item_groups();
+		state.update_selection();
+	}
+
+	df::item_element_ptr find(const std::string_view name) const { return state.find_displayed_item_by_name(name); }
+
+	// What the listing shows, in its order, folders left out.
+	df::item_elements files() const
+	{
+		df::item_elements result;
+
+		for (const auto& g : state.groups())
+		{
+			for (const auto& i : g->items())
+			{
+				if (!i->is_folder()) result.emplace_back(i);
+			}
+		}
+
+		return result;
+	}
+};
 
 inline void write_test_file(const core::file_path path, const std::string_view text)
 {
@@ -621,10 +705,7 @@ class prop_test
 	uint32_t now_days = core::date_t(2000, 1, 1).to_days();
 
 public:
-	prop_test()
-	{
-		_f.ft = files::file_type_from_name("test.jpg");
-	}
+	prop_test() { _f.ft = files::file_type_from_name("test.jpg"); }
 
 	prop_test& tag(const std::string_view s)
 	{
@@ -754,6 +835,13 @@ public:
 		return *this;
 	}
 
+	// Any other part of the record, set directly.
+	template <typename Set> prop_test& md(const Set& set)
+	{
+		set(*_f.safe_ps());
+		return *this;
+	}
+
 	prop_test& is_match(const std::string_view query)
 	{
 		const auto search = df::search_t::parse(query);
@@ -777,14 +865,13 @@ public:
 // Additional assert_equal overloads for test files
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void assert_equal(const core::orientation expected, const core::orientation actual,
-                         const std::string_view name = {},
-                         const std::string_view message = {})
+inline void assert_equal(const core::orientation expected, const core::orientation actual,
+                         const std::string_view name = {}, const std::string_view message = {})
 {
 	assert_equal(orientation_to_string(expected), orientation_to_string(actual), name, message);
 }
 
-static void assert_equal(df::search_term_modifier_bool expected, df::search_term_modifier_bool actual,
+inline void assert_equal(df::search_term_modifier_bool expected, df::search_term_modifier_bool actual,
                          const std::string_view name = {}, const std::string_view message = {})
 {
 	assert_equal(static_cast<int>(expected), static_cast<int>(actual), name, message);

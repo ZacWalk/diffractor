@@ -1,5 +1,5 @@
 ---
-description: Upgrade a fetched dependency without losing an integration patch.
+description: Upgrade a fetched dependency without losing an integration constraint.
 ---
 
 # Upgrade a dependency
@@ -21,23 +21,28 @@ Ask which dependency and which target version if not already stated.
    Several are invisible until one specific test fails — that is the point of the list, and it is the
    thing an upgrade silently drops.
 
-3. **Regenerate, then re-apply.** For FFmpeg, the Windows configuration in
-   `cmake/vendored/ffmpeg-windows` is regenerated for the new version and compared with Linux's by
-   `tools/compare_ffmpeg_config.py`, which CI runs. The guard is not "no divergence" but "no
-   divergence that has not been accounted for": record any new platform switch beside the Windows
-   configuration.
+3. **Move the pin, regenerate, then re-apply.** Put the new archive's URL and SHA-256 in
+   `cmake/dd-dependencies.json` - or in libfiles' or libdesktop's, for a library one of them fetches,
+   and the new commit in its `cmake/Diffractor*.cmake` module for libfiles, libdesktop or lib64
+   themselves. For FFmpeg, the Windows configuration in `cmake/vendored/ffmpeg-windows` is
+   regenerated for the new version and compared with Linux's by `tools/compare_ffmpeg_config.py`,
+   which CI runs. The guard is not "no divergence" but "no divergence that has not been accounted
+   for": record any new platform switch beside the Windows configuration.
 
 4. **Prove it through the wrapper, not the library.** The library's own suite says nothing about
-   Diffractor's integration. Run `/test:*metadata*`, `/test:*video*`, `/test:*audio*` and the format
-   tests in [test_files.cpp](../../src/test_files.cpp), plus anything the patch list named.
+   Diffractor's integration. Build Debug with `python tools\dd.py build`, then run
+   `/test:*metadata*`, `/test:*video*`, `/test:*audio*` and the format tests in
+   [test_files.cpp](../../src/test_files.cpp), plus any test the constraint inventory named, as
+   `.\exe\diffractor64-d.exe /test:*metadata* | Out-Host`.
 
-5. **Move the pin and update the document.** Put the new archive's URL and SHA-256 in
-   `cmake/dd-dependencies.json`, and record the new version, any constraint that changed shape, and
-   any that is no longer needed because upstream took it.
+5. **Update the document.** Record the new version in [third-party.md](../../docs/third-party.md),
+   with any constraint that changed shape and any that is no longer needed because upstream took it.
 
-6. **Full validation**, because a dependency change has no narrow blast radius:
+6. **Full validation**, because a dependency change has no narrow blast radius. `.\dd.ps1 test`
+   rebuilds only when a file under `src/` is newer than the binary, so build Release first:
 
    ```powershell
+   python tools\dd.py build --config Release
    .\dd.ps1 test
    ```
 

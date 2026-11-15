@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Pure image zoom scale, source-space center, anchoring, bounds geometry,
 // and navigator visibility timing.
@@ -48,26 +47,26 @@ namespace df
 		bool _carried_fit = false;
 		bool _has_explicit = false;
 
+		// clang-format off
 		static constexpr std::array<double, 19> scale_ladder{
 			0.05, 0.07, 0.10, 0.15, 0.20, 0.25, 0.33, 0.50, 0.67, 0.75,
 			1.00, 1.50, 2.00, 3.00, 4.00, 6.00, 8.00, 12.00, 16.00
 		};
+		// clang-format on
 
 		static pointd clamp_center(const pointd center, const sized source, const sized viewport,
 		                           const double scale) noexcept
 		{
-			const auto clamp_axis = [scale](const double value, const double source_extent,
-			                                const double viewport_extent)
+			const auto clamp_axis =
+				[scale](const double value, const double source_extent, const double viewport_extent)
 			{
 				if (source_extent <= 0.0 || source_extent * scale <= viewport_extent) return 0.5;
 				const auto half_visible = viewport_extent / (2.0 * source_extent * scale);
 				return std::clamp(value, half_visible, 1.0 - half_visible);
 			};
 
-			return {
-				clamp_axis(center.X, source.Width, viewport.Width),
-				clamp_axis(center.Y, source.Height, viewport.Height)
-			};
+			return {clamp_axis(center.X, source.Width, viewport.Width),
+			        clamp_axis(center.Y, source.Height, viewport.Height)};
 		}
 
 	public:
@@ -117,10 +116,8 @@ namespace df
 
 		static pointd navigator_center(const pointd location, const sized extent) noexcept
 		{
-			return {
-				std::clamp(location.X / std::max(1.0, extent.Width), 0.0, 1.0),
-				std::clamp(location.Y / std::max(1.0, extent.Height), 0.0, 1.0)
-			};
+			return {std::clamp(location.X / std::max(1.0, extent.Width), 0.0, 1.0),
+			        std::clamp(location.Y / std::max(1.0, extent.Height), 0.0, 1.0)};
 		}
 
 		// zoom.md: looking around. The pointer maps onto the source-space centre, so crossing the
@@ -135,10 +132,8 @@ namespace df
 			const auto horizontal_has_travel = source.Width * scale > viewport.Width + 1.0;
 			const auto vertical_has_travel = source.Height * scale > viewport.Height + 1.0;
 
-			return {
-				horizontal_has_travel ? std::clamp(local.X / viewport.Width, 0.0, 1.0) : 0.5,
-				vertical_has_travel ? std::clamp(local.Y / viewport.Height, 0.0, 1.0) : 0.5
-			};
+			return {horizontal_has_travel ? std::clamp(local.X / viewport.Width, 0.0, 1.0) : 0.5,
+			        vertical_has_travel ? std::clamp(local.Y / viewport.Height, 0.0, 1.0) : 0.5};
 		}
 
 		static constexpr int navigator_dip = 160;
@@ -146,21 +141,16 @@ namespace df
 		// Sized for navigator_dip at the highest display scaling we support, so the overview stays sharp.
 		static constexpr sizei navigator_surface_extent{512, 512};
 
-		double effective_scale(const double fit) const noexcept
-		{
-			return is_fit() || _carried_fit ? fit : _scale;
-		}
+		double effective_scale(const double fit) const noexcept { return is_fit() || _carried_fit ? fit : _scale; }
 
-		bool is_magnified(const double fit) const noexcept
-		{
-			return effective_scale(fit) > fit + 0.000001;
-		}
+		bool is_magnified(const double fit) const noexcept { return effective_scale(fit) > fit + 0.000001; }
 
 		void update_source(const sized source, const double fit) noexcept
 		{
 			// Exact != on doubles would call a source "changed" for a difference no pixel can show.
 			const auto source_changed = _source.Width > 0.0 && _source.Height > 0.0 &&
-				(!core::equiv(_source.Width, source.Width) || !core::equiv(_source.Height, source.Height));
+			                            (!core::equiv(_source.Width, source.Width) ||
+			                             !core::equiv(_source.Height, source.Height));
 			_source = source;
 
 			if (_mode == zoom_scale_mode::explicit_scale && (source_changed || _carried_fit))
@@ -241,14 +231,10 @@ namespace df
 			// centre sat outside its clamped range into a pivot about a point the user is not
 			// looking at, and the picture slid out from under the pointer.
 			const auto center = clamp_center(_center, source, viewport, old_scale);
-			const auto source_anchor = pointd{
-				center.X * source.Width + (anchor.X - viewport_center.X) / old_scale,
-				center.Y * source.Height + (anchor.Y - viewport_center.Y) / old_scale
-			};
-			const auto new_center = pointd{
-				(source_anchor.X - (anchor.X - viewport_center.X) / scale) / source.Width,
-				(source_anchor.Y - (anchor.Y - viewport_center.Y) / scale) / source.Height
-			};
+			const auto source_anchor = pointd{center.X * source.Width + (anchor.X - viewport_center.X) / old_scale,
+			                                  center.Y * source.Height + (anchor.Y - viewport_center.Y) / old_scale};
+			const auto new_center = pointd{(source_anchor.X - (anchor.X - viewport_center.X) / scale) / source.Width,
+			                               (source_anchor.Y - (anchor.Y - viewport_center.Y) / scale) / source.Height};
 
 			_mode = zoom_scale_mode::explicit_scale;
 			_scale = scale;
@@ -269,10 +255,8 @@ namespace df
 			// names the source point under a screen point, and what is under a screen point is
 			// decided by what geometry() drew.
 			const auto center = clamp_center(_center, source, viewport, scale);
-			return {
-				center.X * source.Width + (anchor.X - viewport_center.X) / scale,
-				center.Y * source.Height + (anchor.Y - viewport_center.Y) / scale
-			};
+			return {center.X * source.Width + (anchor.X - viewport_center.X) / scale,
+			        center.Y * source.Height + (anchor.Y - viewport_center.Y) / scale};
 		}
 
 		void center_source_point_at(const pointd source_point, const sized source, const sized viewport,
@@ -281,10 +265,8 @@ namespace df
 			const auto scale = effective_scale(fit);
 			if (is_fit() || source.Width <= 0.0 || source.Height <= 0.0 || scale <= 0.0) return;
 			const pointd viewport_center{viewport.Width / 2.0, viewport.Height / 2.0};
-			_center = {
-				std::clamp((source_point.X - (anchor.X - viewport_center.X) / scale) / source.Width, 0.0, 1.0),
-				std::clamp((source_point.Y - (anchor.Y - viewport_center.Y) / scale) / source.Height, 0.0, 1.0)
-			};
+			_center = {std::clamp((source_point.X - (anchor.X - viewport_center.X) / scale) / source.Width, 0.0, 1.0),
+			           std::clamp((source_point.Y - (anchor.Y - viewport_center.Y) / scale) / source.Height, 0.0, 1.0)};
 			_last_explicit_center = _center;
 		}
 
@@ -308,15 +290,14 @@ namespace df
 			const auto scale = effective_scale(fit);
 			if (source.Width <= 0.0 || source.Height <= 0.0 || scale <= 0.0) return;
 			const auto center = clamp_center(_center, source, viewport, scale);
-			_center = clamp_center({center.X + delta.X / source.Width, center.Y + delta.Y / source.Height},
-			                       source, viewport, scale);
+			_center = clamp_center({center.X + delta.X / source.Width, center.Y + delta.Y / source.Height}, source,
+			                       viewport, scale);
 			if (_mode == zoom_scale_mode::explicit_scale) _last_explicit_center = _center;
 		}
 
 		void zoom_region(const rectd region, const sized source, const sized viewport, const double fit) noexcept
 		{
-			if (region.Width <= 0.0 || region.Height <= 0.0 || source.Width <= 0.0 || source.Height <= 0.0)
-				return;
+			if (region.Width <= 0.0 || region.Height <= 0.0 || source.Width <= 0.0 || source.Height <= 0.0) return;
 			const auto first = source_point_at(source, viewport, fit, {region.X, region.Y});
 			const auto last = source_point_at(source, viewport, fit, region.bottom_right());
 			const auto left = std::clamp(std::min(first.X, last.X), 0.0, source.Width);
@@ -388,11 +369,9 @@ namespace df
 			const auto center = clamp_center(_center, source, viewport, scale);
 			const auto extent = source * scale;
 			const pointd viewport_center{viewport.Width / 2.0, viewport.Height / 2.0};
-			return {
-				{viewport_center.X - center.X * extent.Width, viewport_center.Y - center.Y * extent.Height,
-				 extent.Width, extent.Height},
-				center
-			};
+			return {{viewport_center.X - center.X * extent.Width, viewport_center.Y - center.Y * extent.Height,
+			         extent.Width, extent.Height},
+			        center};
 		}
 	};
 
@@ -431,10 +410,8 @@ namespace df
 		const auto scale_x = image_bounds.Width / source.Width;
 		const auto scale_y = image_bounds.Height / source.Height;
 
-		return {
-			image_bounds.X + source_rect.X * scale_x, image_bounds.Y + source_rect.Y * scale_y,
-			source_rect.Width * scale_x, source_rect.Height * scale_y
-		};
+		return {image_bounds.X + source_rect.X * scale_x, image_bounds.Y + source_rect.Y * scale_y,
+		        source_rect.Width * scale_x, source_rect.Height * scale_y};
 	}
 
 	// Dragging inside the rectangle moves it, and it stops at the edge of the picture rather than
@@ -465,10 +442,8 @@ namespace df
 
 		if (destination.Width - width < 1.0 && destination.Height - height < 1.0) return destination;
 
-		return {
-			destination.X + (destination.Width - width) / 2.0, destination.Y + (destination.Height - height) / 2.0,
-			width, height
-		};
+		return {destination.X + (destination.Width - width) / 2.0, destination.Y + (destination.Height - height) / 2.0,
+		        width, height};
 	}
 
 	// The two panes always show the same scale and center, so switching between them is a blink comparison.
@@ -506,17 +481,13 @@ namespace df
 		zoom_view_state& active_state() noexcept { return state(_active); }
 		const zoom_view_state& active_state() const noexcept { return state(_active); }
 
-		template <class Mutator>
-		void mutate(Mutator&& mutator)
+		template <class Mutator> void mutate(Mutator&& mutator)
 		{
 			mutator(active_state());
 			inactive_state() = active_state();
 		}
 
 	private:
-		zoom_view_state& inactive_state() noexcept
-		{
-			return state(other(_active));
-		}
+		zoom_view_state& inactive_state() noexcept { return state(other(_active)); }
 	};
 }

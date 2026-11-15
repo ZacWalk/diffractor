@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The Options view: every setting the user can change, on one page that fills the window, in the
 // sections a user looks for - the collection first, then viewing and playback, the sidebar, editing and
@@ -28,16 +27,16 @@ namespace
 	constexpr int radio_group_repeat = 21;
 	constexpr int radio_group_navigator = 22;
 
-	constexpr prop::library_kind all_library_kinds[] = {
-		prop::library_kind::automatic, prop::library_kind::personal, prop::library_kind::films_tv,
-		prop::library_kind::music
-	};
+	constexpr prop::library_kind all_library_kinds[] = {prop::library_kind::automatic, prop::library_kind::personal,
+	                                                    prop::library_kind::films_tv, prop::library_kind::music};
 
 	// Offered for subtitles beyond the app's own languages: the languages films are most often subtitled in.
+	// clang-format off
 	constexpr std::string_view subtitle_languages[] = {
 		"en", "ar", "cs", "da", "de", "el", "es", "fi", "fr", "he", "hi", "hu", "it", "ja", "ko", "nl", "no", "pl",
 		"pt", "ro", "ru", "sv", "tr", "uk", "zh"
 	};
+	// clang-format on
 
 	std::string_view library_kind_name(const prop::library_kind kind)
 	{
@@ -109,18 +108,18 @@ namespace
 				if (!c->is_visible()) continue;
 
 				const auto column = static_cast<int>(std::ranges::min_element(heights) - heights.begin());
-				const auto margin = c->margin * mc.scale_factor;
-				const auto extent = c->measure(mc, width - margin.cx * 2);
+				const auto child_margin = c->margin * mc.scale_factor;
+				const auto extent = c->measure(mc, width - child_margin.cx * 2);
 				const auto left = area.left + column * (width + gap);
 				const auto top = area.top + heights[column];
 
 				if (place)
 				{
-					c->layout(mc, recti(left + margin.cx, top + margin.cy, left + width - margin.cx,
-					                    top + margin.cy + extent.cy));
+					c->layout(mc, recti(left + child_margin.cx, top + child_margin.cy, left + width - child_margin.cx,
+					                    top + child_margin.cy + extent.cy));
 				}
 
-				heights[column] += extent.cy + margin.cy * 2 + gap;
+				heights[column] += extent.cy + child_margin.cy * 2 + gap;
 			}
 
 			const auto tallest = std::ranges::max(heights);
@@ -138,10 +137,7 @@ namespace
 		std::string _info;
 		mutable sizei _title_extent;
 
-		static int inset(const render::measure_context& mc)
-		{
-			return core::round(12 * mc.scale_factor);
-		}
+		static int inset(const render::measure_context& mc) { return core::round(12 * mc.scale_factor); }
 
 	public:
 		options_section_header(const icon_index icon, const std::string_view title, const std::string_view info) :
@@ -157,8 +153,8 @@ namespace
 			const auto text_width = std::max(0, width_limit - inset(mc) * 2 - mc.icon_cxy * 2);
 			_title_extent = mc.measure_text(_title, render::font_face::title, render::text_style::multiline,
 			                                text_width);
-			const auto info_extent = mc.measure_text(_info, render::font_face::dialog,
-			                                         render::text_style::multiline, text_width);
+			const auto info_extent = mc.measure_text(_info, render::font_face::dialog, render::text_style::multiline,
+			                                         text_width);
 			return {width_limit, _title_extent.cy + info_extent.cy + inset(mc) * 2};
 		}
 
@@ -178,8 +174,8 @@ namespace
 			const auto title_bottom = content.top + _title_extent.cy;
 
 			xdraw_icon(dc, _icon, recti(content.left, content.top, text_left, title_bottom), clr, {});
-			dc.draw_text(_title, recti(text_left, content.top, content.right, title_bottom),
-			             render::font_face::title, render::text_style::multiline, clr, {});
+			dc.draw_text(_title, recti(text_left, content.top, content.right, title_bottom), render::font_face::title,
+			             render::text_style::multiline, clr, {});
 			dc.draw_text(_info, recti(text_left, title_bottom, content.right, content.bottom),
 			             render::font_face::dialog, render::text_style::multiline, clr, {});
 		}
@@ -193,9 +189,9 @@ namespace
 	}
 
 	// A choice of one value from a menu, with what is chosen beside the button that opens it.
-	std::shared_ptr<ui::select_control> make_chooser(const ui::frame_ptr& frame, std::string& text,
-	                                                 std::function<std::vector<ui::command_ptr>(
-		                                                 const std::shared_ptr<ui::select_control>&)> commands)
+	std::shared_ptr<ui::select_control> make_chooser(
+		const ui::frame_ptr& frame, std::string& text,
+		std::function<std::vector<ui::command_ptr>(const std::shared_ptr<ui::select_control>&)> commands)
 	{
 		return std::make_shared<ui::select_control>(frame, std::string_view{}, text, std::move(commands),
 		                                            icon_index::down);
@@ -203,7 +199,7 @@ namespace
 }
 
 std::vector<core::folder_path> library_type_folders(const settings_t::index_t& collection,
-                                                  const platform::local_folders_result& local)
+                                                    const platform::local_folders_result& local)
 {
 	std::vector<core::folder_path> result;
 
@@ -235,8 +231,7 @@ std::vector<core::folder_path> library_type_folders(const settings_t::index_t& c
 
 // Every setting the page edits, in pairs: a field of `from` and the same field of `to`. Saving copies each pair
 // and asking whether anything changed compares each, so neither can miss a setting the other has.
-template <typename To, typename Visit>
-static void visit_edited_options(const settings_t& from, To& to, Visit&& visit)
+template <typename To, typename Visit> static void visit_edited_options(const settings_t& from, To& to, Visit&& visit)
 {
 	// Viewing
 	visit(from.show_rotated, to.show_rotated);
@@ -251,6 +246,7 @@ static void visit_edited_options(const settings_t& from, To& to, Visit&& visit)
 
 	// Application
 	visit(from.show_hidden, to.show_hidden);
+	visit(from.reuse_existing_window, to.reuse_existing_window);
 	visit(from.confirm_deletions, to.confirm_deletions);
 	visit(from.confirm_rotations, to.confirm_rotations);
 	visit(from.show_help_tooltips, to.show_help_tooltips);
@@ -292,6 +288,8 @@ static void visit_edited_options(const settings_t& from, To& to, Visit&& visit)
 	visit(from.webp_lossless, to.webp_lossless);
 	visit(from.jxl_quality, to.jxl_quality);
 	visit(from.jxl_lossless, to.jxl_lossless);
+	visit(from.avif_quality, to.avif_quality);
+	visit(from.avif_lossless, to.avif_lossless);
 
 	// Updates and advanced
 #ifndef WINSTORE
@@ -314,9 +312,7 @@ bool edited_options_differ(const settings_t& a, const settings_t& b)
 {
 	auto differ = false;
 	visit_edited_options(a, b, [&differ](const auto& field_a, const auto& field_b)
-	{
-		differ = differ || !(field_a == field_b);
-	});
+	{ differ = differ || !(field_a == field_b); });
 	return differ;
 }
 
@@ -326,16 +322,12 @@ static settings_t stored_form(const options_view::edit_state& edit)
 	auto result = edit.settings;
 	result.collection.more_folders = core::combine(split_collection_folders(edit.more_folders), "\n", true);
 	result.collection.library_types = format_library_types(edit.library_types);
-	result.subtitles = edit.subtitles_off
-		                   ? subtitle_mode::off
-		                   : edit.subtitles_always
-		                   ? subtitle_mode::always
-		                   : subtitle_mode::foreign;
-	result.repeat = edit.repeat_one
-		                ? repeat_mode::repeat_one
-		                : edit.repeat_all
-		                ? repeat_mode::repeat_all
-		                : repeat_mode::repeat_none;
+	result.subtitles = edit.subtitles_off      ? subtitle_mode::off
+	                   : edit.subtitles_always ? subtitle_mode::always
+	                                           : subtitle_mode::foreign;
+	result.repeat = edit.repeat_one   ? repeat_mode::repeat_one
+	                : edit.repeat_all ? repeat_mode::repeat_all
+	                                  : repeat_mode::repeat_none;
 	result.zoom_navigator = edit.navigator_off ? zoom_navigator_mode::off : zoom_navigator_mode::auto_hide;
 	return result;
 }
@@ -361,7 +353,8 @@ void options_view::open(const options_section section)
 	}
 
 	// Sized once, before any control binds to an element.
-	for (const auto& [folder, kind] : edit->library_types) edit->library_type_names.emplace_back(library_kind_name(kind));
+	for (const auto& [folder, kind] : edit->library_types)
+		edit->library_type_names.emplace_back(library_kind_name(kind));
 
 	edit->language_name = language_name(s.language);
 	edit->subtitle_language_name = subtitle_language_name(s.subtitle_language);
@@ -415,20 +408,20 @@ options_leave_choice ask_to_save_options(const ui::frame_ptr& parent)
 
 	const std::vector<view_element_ptr> controls = {
 		set_margin(std::make_shared<ui::title_control2>(frame, icon_index::settings, tt.options_title,
-		                                               tt.options_unsaved_prompt)),
+	                                                    tt.options_unsaved_prompt)),
 		std::make_shared<divider_element>(),
 		std::make_shared<ui::button_control>(frame, icon_index::save, tt.command_options_save, std::string_view{},
-		                                     [answer, frame]
-		                                     {
-			                                     *answer = options_leave_choice::save;
-			                                     frame->close(false);
-		                                     }),
+	                                         [answer, frame]
+	{
+		*answer = options_leave_choice::save;
+		frame->close(false);
+	}),
 		std::make_shared<ui::button_control>(frame, icon_index::del, tt.close_without_saving, std::string_view{},
-		                                     [answer, frame]
-		                                     {
-			                                     *answer = options_leave_choice::discard;
-			                                     frame->close(false);
-		                                     }),
+	                                         [answer, frame]
+	{
+		*answer = options_leave_choice::discard;
+		frame->close(false);
+	}),
 		std::make_shared<divider_element>(),
 		std::make_shared<ui::close_control>(frame, true, tt.button_cancel),
 	};
@@ -453,14 +446,14 @@ void options_view::save()
 	const auto edited = stored_form(*_edit);
 
 	const auto collection_changed = edited.collection.pictures != setting.collection.pictures ||
-		edited.collection.video != setting.collection.video ||
-		edited.collection.music != setting.collection.music ||
-		edited.collection.drop_box != setting.collection.drop_box ||
-		edited.collection.onedrive_pictures != setting.collection.onedrive_pictures ||
-		edited.collection.onedrive_video != setting.collection.onedrive_video ||
-		edited.collection.onedrive_music != setting.collection.onedrive_music ||
-		edited.collection.more_folders != setting.collection.more_folders ||
-		edited.collection.library_types != setting.collection.library_types;
+	                                edited.collection.video != setting.collection.video ||
+	                                edited.collection.music != setting.collection.music ||
+	                                edited.collection.drop_box != setting.collection.drop_box ||
+	                                edited.collection.onedrive_pictures != setting.collection.onedrive_pictures ||
+	                                edited.collection.onedrive_video != setting.collection.onedrive_video ||
+	                                edited.collection.onedrive_music != setting.collection.onedrive_music ||
+	                                edited.collection.more_folders != setting.collection.more_folders ||
+	                                edited.collection.library_types != setting.collection.library_types;
 	const auto language_changed = edited.language != setting.language;
 	const auto sound_device_changed = edited.sound_device != setting.sound_device;
 	const auto read_nfo_changed = edited.read_nfo != setting.read_nfo;
@@ -544,6 +537,9 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 		return result;
 	}));
 	application->add(std::make_shared<ui::check_control>(frame, tt.options_show_hidden, s.show_hidden));
+	if (platform::can_receive_instance_requests())
+		application->add(
+			std::make_shared<ui::check_control>(frame, tt.options_reuse_existing_window, s.reuse_existing_window));
 	application->add(std::make_shared<ui::check_control>(frame, tt.options_show_help_tooltips, s.show_help_tooltips));
 
 	// Confirmations
@@ -600,27 +596,26 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	subtitles->add(std::make_shared<text_element>(tt.subtitle_language_label));
 	subtitles->add(make_chooser(frame, edit->subtitle_language_name,
 	                            [edit](const std::shared_ptr<ui::select_control>& sel)
-	                            {
-		                            std::vector<ui::command_ptr> result;
-		                            std::vector<std::string_view> codes = {{}};
-		                            codes.insert(codes.end(), std::begin(subtitle_languages),
-		                                         std::end(subtitle_languages));
+	{
+		std::vector<ui::command_ptr> result;
+		std::vector<std::string_view> codes = {{}};
+		codes.insert(codes.end(), std::begin(subtitle_languages), std::end(subtitle_languages));
 
-		                            for (const auto code : codes)
-		                            {
-			                            auto c = std::make_shared<ui::command>();
-			                            c->text = subtitle_language_name(code);
-			                            c->checked = edit->settings.subtitle_language == code;
-			                            c->invoke = [edit, sel, code = std::string(code)]
-			                            {
-				                            edit->settings.subtitle_language = code;
-				                            sel->update_text(subtitle_language_name(code));
-			                            };
-			                            result.emplace_back(std::move(c));
-		                            }
+		for (const auto code : codes)
+		{
+			auto c = std::make_shared<ui::command>();
+			c->text = subtitle_language_name(code);
+			c->checked = edit->settings.subtitle_language == code;
+			c->invoke = [edit, sel, code = std::string(code)]
+			{
+				edit->settings.subtitle_language = code;
+				sel->update_text(subtitle_language_name(code));
+			};
+			result.emplace_back(std::move(c));
+		}
 
-		                            return result;
-	                            }));
+		return result;
+	}));
 
 	// Collection folders
 	const auto folders = make_section(tt.collection_options_local_folders_title);
@@ -631,14 +626,14 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	folders->add(std::make_shared<ui::check_control>(frame, local.music.text(), s.collection.music));
 
 	if (platform::exists(local.onedrive_pictures))
-		folders->add(std::make_shared<ui::check_control>(frame, local.onedrive_pictures.text(),
-		                                                 s.collection.onedrive_pictures));
+		folders->add(
+			std::make_shared<ui::check_control>(frame, local.onedrive_pictures.text(), s.collection.onedrive_pictures));
 	if (platform::exists(local.onedrive_video))
-		folders->add(std::make_shared<ui::check_control>(frame, local.onedrive_video.text(),
-		                                                 s.collection.onedrive_video));
+		folders->add(
+			std::make_shared<ui::check_control>(frame, local.onedrive_video.text(), s.collection.onedrive_video));
 	if (platform::exists(local.onedrive_music))
-		folders->add(std::make_shared<ui::check_control>(frame, local.onedrive_music.text(),
-		                                                 s.collection.onedrive_music));
+		folders->add(
+			std::make_shared<ui::check_control>(frame, local.onedrive_music.text(), s.collection.onedrive_music));
 	if (platform::exists(local.dropbox_photos))
 		folders->add(std::make_shared<ui::check_control>(frame, local.dropbox_photos.text(), s.collection.drop_box));
 
@@ -663,24 +658,24 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 		library->add(std::make_shared<text_element>(edit->library_types[i].first.text()));
 		library->add(make_chooser(frame, edit->library_type_names[i],
 		                          [edit, i](const std::shared_ptr<ui::select_control>& sel)
-		                          {
-			                          std::vector<ui::command_ptr> result;
+		{
+			std::vector<ui::command_ptr> result;
 
-			                          for (const auto kind : all_library_kinds)
-			                          {
-				                          auto c = std::make_shared<ui::command>();
-				                          c->text = library_kind_name(kind);
-				                          c->checked = edit->library_types[i].second == kind;
-				                          c->invoke = [edit, sel, i, kind]
-				                          {
-					                          edit->library_types[i].second = kind;
-					                          sel->update_text(library_kind_name(kind));
-				                          };
-				                          result.emplace_back(std::move(c));
-			                          }
+			for (const auto kind : all_library_kinds)
+			{
+				auto c = std::make_shared<ui::command>();
+				c->text = library_kind_name(kind);
+				c->checked = edit->library_types[i].second == kind;
+				c->invoke = [edit, sel, i, kind]
+				{
+					edit->library_types[i].second = kind;
+					sel->update_text(library_kind_name(kind));
+				};
+				result.emplace_back(std::move(c));
+			}
 
-			                          return result;
-		                          }));
+			return result;
+		}));
 	}
 
 	if (!edit->library_types.empty())
@@ -706,11 +701,11 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_show_history, s.sidebar.show_history));
 	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_show_world_map, s.sidebar.show_world_map));
 	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_show_drives, s.sidebar.show_drives));
-	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_show_searches,
-	                                                 s.sidebar.show_favorite_searches));
+	sidebar->add(
+		std::make_shared<ui::check_control>(frame, tt.customize_show_searches, s.sidebar.show_favorite_searches));
 	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_show_tags, s.sidebar.show_tags));
-	sidebar->add(std::make_shared<ui::check_control>(frame, tt.option_favorite_tags,
-	                                                 s.sidebar.show_favorite_tags_only));
+	sidebar->add(
+		std::make_shared<ui::check_control>(frame, tt.option_favorite_tags, s.sidebar.show_favorite_tags_only));
 	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_ratings, s.sidebar.show_ratings));
 	sidebar->add(std::make_shared<ui::check_control>(frame, tt.customize_labels, s.sidebar.show_labels));
 	sidebar->add(std::make_shared<text_element>(tt.customize_history_start_year));
@@ -718,8 +713,8 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 
 	// Favorite searches and tags
 	const auto searches = make_section(tt.customise_searches_title);
-	searches->add(std::make_shared<ui::two_col_table_control>(frame, s.search.title, s.search.path,
-	                                                          settings_t::search_t::count));
+	searches->add(
+		std::make_shared<ui::two_col_table_control>(frame, s.search.title, s.search.path, settings_t::search_t::count));
 
 	const auto tags = make_section(tt.customise_tags_title);
 	tags->add(std::make_shared<text_element>(tt.customise_tags_help));
@@ -738,6 +733,9 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	saving->add(std::make_shared<text_element>(tt.options_jxl_quality));
 	saving->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, s.jxl_quality, 1, 100));
 	saving->add(std::make_shared<ui::check_control>(frame, tt.lossless_compression, s.jxl_lossless));
+	saving->add(std::make_shared<text_element>(tt.options_avif_quality));
+	saving->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, s.avif_quality, 1, 100));
+	saving->add(std::make_shared<ui::check_control>(frame, tt.lossless_compression, s.avif_lossless));
 
 	// Advanced
 	const auto advanced = make_section(tt.options_advanced);
@@ -751,8 +749,7 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 
 	// The page is in the sections a user looks for, each under a shaded header that names it and says what it
 	// covers, with its cards in columns below. The collection comes first: it is the first thing to set up.
-	const auto add_section = [&result](const icon_index icon, const std::string_view title,
-	                                   const std::string_view info,
+	const auto add_section = [&result](const icon_index icon, const std::string_view title, const std::string_view info,
 	                                   const std::initializer_list<std::shared_ptr<ui::group_control>> cards)
 	{
 		auto header = std::make_shared<options_section_header>(icon, title, info);
@@ -778,7 +775,8 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	{
 		result->initial_focus = [weak = std::weak_ptr<view_controls_host>(result), start = sidebar_header]
 		{
-			if (const auto host = weak.lock()) host->_scroller.scroll_offset(host, 0, std::max(0, start->bounds.top - 8));
+			if (const auto host = weak.lock())
+				host->_scroller.scroll_offset(host, 0, std::max(0, start->bounds.top - 8));
 		};
 	}
 

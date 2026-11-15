@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Spell checking integration. Wraps Hunspell library for
 // spell checking user input in metadata fields.
@@ -50,8 +49,8 @@ class spell_check
 	_Guarded_by_(_rw) mutable std::vector<pending_custom_word> _pending_custom_words;
 	_Guarded_by_(_rw) df::async_i* _async = nullptr;
 	_Guarded_by_(_rw) std::function<void()> _load_gate;
-	_Guarded_by_(_rw) std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)>
-		_custom_dictionary_writer;
+	_Guarded_by_(_rw)
+		std::function<custom_dictionary_add_result(const core::file_path&, std::string_view)> _custom_dictionary_writer;
 
 	core::file_path _custom_dic_path;
 

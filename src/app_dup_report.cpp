@@ -1,19 +1,18 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Implements the /dup-report command line option. Measures, over a real library, what the
+// Purpose: The duplicate_report tool (app_dup_report.h). Measures, over a real library, what the
 // perceptual-hash stage of index_state::update_predictions would group together: capture-time bucket
 // sizes, accepted edge distances, and - the part a pairwise threshold does not constrain - the size
 // and Hamming diameter of the transitively closed components a union produces. Read-only: it opens
 // no database, writes no file except the report, and changes no application behaviour.
 
 #include "pch.h"
-#include "app_command_line.h"
+#include "app_dup_report.h"
 #include "crypto.h"
 #include "files.h"
 #include "libdesktop/platform.h"
@@ -54,10 +53,11 @@ namespace
 	{
 		platform::file_ptr file;
 		bool write_failed = false;
+		const std::function<void(std::string_view)>* print = nullptr;
 
 		void line(const std::string_view text) const
 		{
-			printf("%.*s\n", static_cast<int>(text.size()), text.data());
+			(*print)(text);
 			if (file)
 			{
 				const auto line = std::format("{}\n", text);
@@ -94,10 +94,7 @@ namespace
 		std::vector<size_t> parents;
 		std::vector<uint8_t> ranks;
 
-		explicit union_find(const size_t n) : parents(n), ranks(n, 0)
-		{
-			std::iota(parents.begin(), parents.end(), 0u);
-		}
+		explicit union_find(const size_t n) : parents(n), ranks(n, 0) { std::iota(parents.begin(), parents.end(), 0u); }
 
 		size_t root(size_t item)
 		{
@@ -213,8 +210,8 @@ namespace
 				for (size_t b = a + 1; b < matched.size(); ++b)
 				{
 					result.worst_diameter = std::max(result.worst_diameter,
-					                                crypto::phash_distance(photos[matched[a]].phash[0],
-					                                                       photos[matched[b]].phash));
+					                                 crypto::phash_distance(photos[matched[a]].phash[0],
+					                                                        photos[matched[b]].phash));
 				}
 			}
 		}
@@ -245,7 +242,8 @@ duplicate_report_anchor_stats calc_duplicate_report_anchor_stats_for_tests(
 	return {stats.sets, stats.grouped_photos, stats.declined_capture_times};
 }
 
-int run_duplicate_report(const std::string_view folder_text, const std::string_view output_text)
+int run_duplicate_report(const std::string_view folder_text, const std::string_view output_text,
+                         const std::function<void(std::string_view)>& print)
 {
 	load_file_types();
 
@@ -253,22 +251,22 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 
 	if (!platform::exists(folder))
 	{
-		printf("dup-report: folder not found: %.*s\n", static_cast<int>(folder_text.size()), folder_text.data());
+		print(std::format("duplicate_report: folder not found: {}", folder_text));
 		return 1;
 	}
 
 	report_writer out;
+	out.print = &print;
 
 	if (!output_text.empty())
 	{
 		const auto output_path = core::find_last_slash(output_text) == std::string_view::npos
-			                         ? core::file_path(core::folder_path("."), output_text)
-			                         : core::file_path(output_text);
+		                             ? core::file_path(core::folder_path("."), output_text)
+		                             : core::file_path(output_text);
 		out.file = platform::open_file(output_path, platform::file_open_mode::create);
 		if (!out.file)
 		{
-			printf("dup-report: could not open output file: %.*s\n", static_cast<int>(output_text.size()),
-			       output_text.data());
+			print(std::format("duplicate_report: could not open output file: {}", output_text));
 			return 1;
 		}
 	}
@@ -278,10 +276,10 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	out.line(std::format("  shipped threshold : {}", shipped_threshold));
 	out.line("");
 
-	printf("Enumerating photos...\n");
+	print("Enumerating photos...");
 	std::vector<core::file_path> paths;
 	collect_photos(folder, paths);
-	printf("  %zu photos found\n", paths.size());
+	print(std::format("  {} photos found", paths.size()));
 
 	// Pass 1: capture time only. The perceptual stage never sees a file whose capture time is unique,
 	// so hashing before bucketing would decode the whole library for nothing.
@@ -294,7 +292,7 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 
 	for (size_t i = 0; i < paths.size(); ++i)
 	{
-		if ((i % 500) == 0) printf("  scanning %zu / %zu\r", i, paths.size());
+		if ((i % 500) == 0) print(std::format("  scanning {} / {}", i, paths.size()));
 
 		const auto path = paths[i];
 		const auto ft = files::file_type_from_name(path);
@@ -330,7 +328,7 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 		photos.emplace_back(entry);
 	}
 
-	printf("  scanning complete            \n");
+	print("  scanning complete");
 
 	// Bucket by exact capture time - the gate update_predictions applies via shares_capture_time.
 	std::map<uint64_t, std::vector<size_t>> buckets;
@@ -345,7 +343,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	std::vector<const std::vector<size_t>*> oversized_buckets;
 	size_t exif_dated = 0;
 
-	for (const auto& p : photos) if (p.created_from_exif) ++exif_dated;
+	for (const auto& p : photos)
+		if (p.created_from_exif) ++exif_dated;
 
 	for (const auto& [key, members] : buckets)
 	{
@@ -363,14 +362,14 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	}
 
 	// Pass 2: hash only the photos the gate would actually hand to the perceptual stage.
-	printf("Hashing %zu candidates...\n", to_hash.size());
+	print(std::format("Hashing {} candidates...", to_hash.size()));
 
 	size_t declined = 0;
 	size_t hash_failed = 0;
 
 	for (size_t i = 0; i < to_hash.size(); ++i)
 	{
-		if ((i % 200) == 0) printf("  hashing %zu / %zu\r", i, to_hash.size());
+		if ((i % 200) == 0) print(std::format("  hashing {} / {}", i, to_hash.size()));
 
 		auto& entry = photos[to_hash[i]];
 		file_read_stream stream;
@@ -385,7 +384,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 		else if (!crypto::phash_is_usable(entry.phash[0])) ++declined;
 	}
 
-	printf("  hashing complete            \n\n");
+	print("  hashing complete");
+	print("");
 
 	// Every pair the perceptual stage would judge, with the distance it would judge it on.
 	std::vector<candidate_pair> pairs;
@@ -490,9 +490,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 			{
 				for (size_t b = a + 1; b < members.size(); ++b)
 				{
-					worst_diameter = std::max(worst_diameter,
-					                          crypto::phash_distance(photos[members[a]].phash[0],
-					                                                 photos[members[b]].phash));
+					worst_diameter = std::max(worst_diameter, crypto::phash_distance(photos[members[a]].phash[0],
+					                                                                 photos[members[b]].phash));
 				}
 			}
 		}
@@ -522,15 +521,15 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 					for (size_t b = a + 1; b < members.size(); ++b)
 					{
 						diameter = std::max(diameter, crypto::phash_distance(photos[members[a]].phash[0],
-						                                                    photos[members[b]].phash));
+						                                                     photos[members[b]].phash));
 					}
 				}
 
 				if (diameter <= threshold) continue;
 				if (++listed > 40) break;
 
-				out.line(std::format("        {} photos, diameter {}, captured {}",
-				                     members.size(), diameter, photos[members.front()].created));
+				out.line(std::format("        {} photos, diameter {}, captured {}", members.size(), diameter,
+				                     photos[members.front()].created));
 
 				for (const auto member : members)
 				{
@@ -546,8 +545,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	if (!oversized_buckets.empty())
 	{
 		out.line("");
-		out.line(std::format("Skipped {} capture times holding more than {} photos each:",
-		                     oversized_buckets.size(), max_bucket_for_pairs));
+		out.line(std::format("Skipped {} capture times holding more than {} photos each:", oversized_buckets.size(),
+		                     max_bucket_for_pairs));
 
 		for (const auto* const members : oversized_buckets)
 		{
@@ -594,9 +593,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 			{
 				for (size_t b = a + 1; b < members.size(); ++b)
 				{
-					worst_diameter = std::max(worst_diameter,
-					                          crypto::phash_distance(photos[members[a]].phash[0],
-					                                                 photos[members[b]].phash));
+					worst_diameter = std::max(worst_diameter, crypto::phash_distance(photos[members[a]].phash[0],
+					                                                                 photos[members[b]].phash));
 				}
 			}
 		}
@@ -611,8 +609,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	// The shipped model: sets are anchored on one item rather than closed over transitively, and a
 	// capture time whose anchor answers with a crowd is declined in full.
 	out.line("");
-	out.line(std::format("Anchored sets with the crowd rule (threshold {}, crowd limit {})",
-	                     shipped_threshold, max_similar_pictures_at_one_capture_time));
+	out.line(std::format("Anchored sets with the crowd rule (threshold {}, crowd limit {})", shipped_threshold,
+	                     max_similar_pictures_at_one_capture_time));
 
 	{
 		const auto stats = calc_anchor_stats(photos, buckets);
@@ -631,8 +629,7 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 
 	if (out.write_failed)
 	{
-		printf("dup-report: could not write output file: %.*s\n", static_cast<int>(output_text.size()),
-		       output_text.data());
+		print(std::format("duplicate_report: could not write output file: {}", output_text));
 		return 1;
 	}
 

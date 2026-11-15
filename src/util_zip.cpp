@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: ZIP archive handling. Creates and extracts ZIP files, lists archive
 // contents, and provides zlib compression/decompression.
@@ -46,11 +45,8 @@ namespace
 	{
 		auto ft = platform::utc_to_local(modified).date();
 
-		if (ft.month < 1 || ft.month > 12 ||
-			ft.day < 1 || ft.day > days_in_month(ft.year, ft.month) ||
-			ft.hour < 0 || ft.hour > 23 ||
-			ft.minute < 0 || ft.minute > 59 ||
-			ft.second < 0 || ft.second > 59)
+		if (ft.month < 1 || ft.month > 12 || ft.day < 1 || ft.day > days_in_month(ft.year, ft.month) || ft.hour < 0 ||
+		    ft.hour > 23 || ft.minute < 0 || ft.minute > 59 || ft.second < 0 || ft.second > 59)
 		{
 			return false;
 		}
@@ -129,7 +125,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 			return false;
 		}
 
-		//const auto wpath = platform::to_file_system_path(path)
+		// const auto wpath = platform::to_file_system_path(path)
 
 		zip_fileinfo zi = {};
 
@@ -144,10 +140,9 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 		const auto archive = std::any_cast<zipFile>(_handle);
 		const auto offset = mz_stream_tell(zipGetStream_MZ(archive));
 		const auto zip64 = offset < 0 || zip_entry_needs_zip64(static_cast<uint64_t>(offset), attributes.size);
-		auto err = zipOpenNewFileInZip4_64(archive, name.c_str(), &zi, nullptr, 0,
-		                                  nullptr, 0, nullptr, Z_DEFLATED, Z_BEST_COMPRESSION, 0, -MAX_WBITS, 8,
-		                                  Z_DEFAULT_STRATEGY, nullptr, 0, MZ_VERSION_MADEBY, MZ_ZIP_FLAG_UTF8,
-		                                  zip64 ? 1 : 0);
+		auto err = zipOpenNewFileInZip4_64(archive, name.c_str(), &zi, nullptr, 0, nullptr, 0, nullptr, Z_DEFLATED,
+		                                   Z_BEST_COMPRESSION, 0, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY, nullptr, 0,
+		                                   MZ_VERSION_MADEBY, MZ_ZIP_FLAG_UTF8, zip64 ? 1 : 0);
 
 		if (err != ZIP_OK)
 		{
@@ -172,7 +167,7 @@ bool df::zip_file::add(const file_path path, const std::string_view name_in, con
 
 			if (err != ZIP_OK)
 			{
-				//We could not write the file in the ZIP-File for whatever reason.
+				// We could not write the file in the ZIP-File for whatever reason.
 				core::log(__FUNCTION__, std::format("error writing {} in zip file", name));
 				zipCloseFileInZip(std::any_cast<zipFile>(_handle));
 				return false;
@@ -223,8 +218,7 @@ std::vector<archive_item> df::zip_file::list(const file_path zip_file_path)
 		unz_global_info64 info;
 		unz_file_info64 file;
 
-		if (UNZ_OK == unzGetGlobalInfo64(hz, &info) &&
-			UNZ_OK == unzGoToFirstFile(hz))
+		if (UNZ_OK == unzGetGlobalInfo64(hz, &info) && UNZ_OK == unzGoToFirstFile(hz))
 		{
 			do
 			{
@@ -232,7 +226,8 @@ std::vector<archive_item> df::zip_file::list(const file_path zip_file_path)
 				{
 					if (file.size_filename > UINT16_MAX)
 					{
-						core::log(__FUNCTION__, std::format("zip entry name is too long: {} bytes", file.size_filename));
+						core::log(__FUNCTION__,
+						          std::format("zip entry name is too long: {} bytes", file.size_filename));
 						results.clear();
 						break;
 					}
@@ -241,10 +236,10 @@ std::vector<archive_item> df::zip_file::list(const file_path zip_file_path)
 					filename.resize(static_cast<size_t>(file.size_filename));
 
 					const auto name_result = filename.empty()
-						                         ? UNZ_OK
-						                         : unzGetCurrentFileInfo64(hz, &file, filename.data(),
-						                                                   static_cast<uint16_t>(filename.size()),
-						                                                   nullptr, 0, nullptr, 0);
+					                             ? UNZ_OK
+					                             : unzGetCurrentFileInfo64(hz, &file, filename.data(),
+					                                                       static_cast<uint16_t>(filename.size()),
+					                                                       nullptr, 0, nullptr, 0);
 
 					if (name_result != UNZ_OK)
 					{
@@ -257,12 +252,11 @@ std::vector<archive_item> df::zip_file::list(const file_path zip_file_path)
 					result_info.filename = core::utf8_cast(std::string_view(filename.data(), filename.size()));
 					result_info.uncompressed_size = file.uncompressed_size;
 					result_info.compressed_size = file.compressed_size;
-					result_info.created = platform::dos_date_to_ts(static_cast<uint16_t>(file.dosDate >> 16),
-					                                               static_cast<uint16_t>(file.dosDate));
+					result_info.modified = platform::dos_date_to_ts(static_cast<uint16_t>(file.dosDate >> 16),
+					                                                static_cast<uint16_t>(file.dosDate));
 					results.emplace_back(result_info);
 				}
-			}
-			while (UNZ_OK == unzGoToNextFile(hz));
+			} while (UNZ_OK == unzGoToNextFile(hz));
 		}
 
 		unzClose(hz);

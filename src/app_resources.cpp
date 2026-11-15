@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The application's embedded assets - the index database's schema and the world map - linked
 // in from arrays the build generates from src/Res, the same bytes on every platform, and its mark,
@@ -23,8 +22,7 @@ core::blob load_app_resource(const app_resource r)
 {
 	switch (r)
 	{
-	case app_resource::sql:
-		return {diffractor_resource_sql, diffractor_resource_sql + diffractor_resource_sql_size};
+	case app_resource::sql: return {diffractor_resource_sql, diffractor_resource_sql + diffractor_resource_sql_size};
 	case app_resource::map_png:
 		return {diffractor_resource_map_png, diffractor_resource_map_png + diffractor_resource_map_png_size};
 	}
@@ -119,10 +117,8 @@ void fill_app_logo(core::surface& surface)
 	logo_draw_square(buffer.data(), n, yellow, size, border_width, no_clip);
 
 	const auto half = size / 2.0;
-	const recti green_patch{
-		core::round(green.cx - half - border_width), core::round(green.cy),
-		core::round(green.cx), core::round(green.cy + half + border_width)
-	};
+	const recti green_patch{core::round(green.cx - half - border_width), core::round(green.cy), core::round(green.cx),
+	                        core::round(green.cy + half + border_width)};
 	logo_draw_square(buffer.data(), n, green, size, border_width, green_patch);
 
 	const auto left = (cx - extent) / 2;
@@ -162,9 +158,7 @@ void fill_app_logo(core::surface& surface)
 			}
 
 			// Channels are averaged in storage order, so this stays blue first like its source.
-			line[x] = opaque == 0
-				          ? 0
-				          : core::rgba(r / opaque, g / opaque, b / opaque, opaque * 255 / samples);
+			line[x] = opaque == 0 ? 0 : core::rgba(r / opaque, g / opaque, b / opaque, opaque * 255 / samples);
 		}
 	}
 }

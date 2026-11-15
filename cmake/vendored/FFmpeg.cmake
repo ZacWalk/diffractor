@@ -68,7 +68,7 @@ set(_ff_openmpt "")
 
 if (TARGET diffractor_openmpt)
     set(_ff_openmpt --enable-libopenmpt)
-    _ff_describe_vendored(libopenmpt diffractor_openmpt 0.8.9
+    _ff_describe_vendored(libopenmpt diffractor_openmpt 0.8.10
             "${openmpt_SOURCE_DIR}" "-lstdc++ -lm")
 endif ()
 
@@ -127,10 +127,11 @@ endif ()
 # organizer opens a socket, and it removes the RTP, RTSP, SAP and SDP demuxers from the attack
 # surface along with the protocol layer beneath them.
 #
-# Diffractor is a broad-support reader: every decoder and demuxer is wanted, and nothing that writes
-# a media stream is. The encoder, muxer, filter, device and protocol switches below are the Windows
-# configure line from docs/third-party.md, which this had not been matching -- the whole encoder and
-# muxer set was being compiled in here. file is the one intentional protocol, and there is no muxer.
+# Diffractor is a broad-support reader: every decoder and demuxer is wanted, and no encoder is. The
+# encoder, muxer, filter, device and protocol switches below are the Windows configure line from
+# docs/third-party.md, which this had not been matching -- the whole encoder and muxer set was being
+# compiled in here. file is the one intentional protocol. The muxers named are the containers Edit's
+# lossless audio and video edits copy a file back into, packets as they are; no other is built.
 #
 # --enable-small is deliberately absent. It buys a smaller binary by stripping codec and profile
 # names and by sending H.264 macroblocks, MPEG motion compensation and swscale output down their
@@ -149,6 +150,7 @@ ExternalProject_Add(ffmpeg_external
         --disable-network
         --disable-encoders
         --disable-muxers
+        --enable-muxer=mov,mp4,ipod,tgp,tg2,matroska,webm,mpegts,avi,asf,flv,mp3,flac,ogg,oga,opus,wav,aiff,adts
         --disable-devices
         --disable-filters
         --disable-protocols

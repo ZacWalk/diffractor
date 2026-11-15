@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The application's side of the element tree, which is libdesktop UI's: the names it
 // has here, the application's invalidation flags and the host that maps an element's requests onto
-// them, the views and what a view declares for the frame's title bar and status bar. The drawn
+// them, the views and what a view declares for the frame's title bar, status bar, context menu and
+// keyboard, and the parts the keyboard reaches among drawn elements that are not controls. The drawn
 // controls are elements of the tree, so their header comes with it.
 
 #pragma once
@@ -63,8 +63,8 @@ using ui::link_foreground_color;
 using ui::draw_splitter_handle;
 
 inline core::color view_handle_color(const bool selected, const bool hover, const bool tracking,
-                                   const bool view_has_focus, const bool text_over,
-                                   const core::color bg_clr = core::color(ui::style::colors.group_background))
+                                     const bool view_has_focus, const bool text_over,
+                                     const core::color bg_clr = core::color(ui::style::colors.group_background))
 {
 	return ui::handle_color(selected, hover, tracking, view_has_focus, text_over, bg_clr);
 }
@@ -80,15 +80,6 @@ inline void xdraw_icon(render::draw_context& dc, const icon_index i, const recti
 constexpr int radio_group_scope = 1;
 constexpr int radio_group_format = 2;
 constexpr int radio_group_collision = 3;
-
-enum class menu_type
-{
-	view,
-	sidebar,
-	media,
-	items,
-	movie
-};
 
 enum class view_invalid
 {
@@ -129,29 +120,16 @@ enum class view_invalid
 	// Re-enumerate volumes and rebuild with the result. Only a drive event earns this: the scan blocks
 	// on unreachable network mappings, so it must not ride along with every index invalidation.
 	sidebar_drives = 1 << 29,
+	// A listed item's count of copies changed, which can move it into or out of a search for copies.
+	duplicate_counts = 1 << 30,
 
 	// No sidebar flag: these change how the sidebar is drawn, not what it says. font_size already
 	// re-measures it, and a recount here would query the index once per row for an unchanged answer.
-	visual_options = view_layout |
-	group_layout |
-	app_layout |
-	options_save |
-	command_state |
-	tooltip |
-	address |
-	font_size |
-	media_elements,
+	visual_options = view_layout | group_layout | app_layout | options_save | command_state | tooltip | address |
+	                 font_size | media_elements,
 
-	options = view_layout |
-	group_layout |
-	app_layout |
-	options_save |
-	sidebar |
-	command_state |
-	tooltip |
-	refresh_items |
-	address |
-	font_size,
+	options = view_layout | group_layout | app_layout | options_save | sidebar | command_state | tooltip |
+	          refresh_items | address | font_size,
 };
 
 constexpr view_invalid operator|(const view_invalid a, const view_invalid b)
@@ -195,17 +173,14 @@ class view_host : public ui::element_host
 public:
 	virtual void invalidate_view(view_invalid invalid) = 0;
 
-	void invalidate(const ui::host_invalid what) final
-	{
-		invalidate_view(to_view_invalid(what));
-	}
+	void invalidate(ui::host_invalid what) final { invalidate_view(to_view_invalid(what)); }
 };
 
 // The controls a bar can carry that are not toolbar buttons. The frame owns one of each.
 enum class bar_control
 {
 	item_filter, // the box that filters the items by name
-	item_size, // the thumbnail size slider
+	item_size,   // the thumbnail size slider
 	item_totals, // the item count and size; hovering shows the breakdown by type
 };
 
@@ -232,6 +207,105 @@ struct view_bars
 // The bars every task view shows: the window buttons and Close above, the task's own commands below.
 view_bars task_view_bars(std::vector<bar_entry> bottom);
 
+// What a right-click on a view offers. As with its bars, a view only names the commands and the frame builds the
+// menu: `row` opens it as a row of buttons - the commonest commands on what the menu acts on, each named under its
+// icon - then `own`, commands made for the one thing under the pointer, such as a sidebar row, and `list` follows,
+// commands::none between its groups. A view that names nothing leaves the frame's own menu.
+struct view_menu
+{
+	std::vector<commands> row;
+	std::vector<ui::command_ptr> own;
+	std::vector<commands> list;
+
+	bool empty() const { return row.empty() && own.empty() && list.empty(); }
+};
+
+// The menu on the item a view shows, as Items' media pane and the media view show it.
+const view_menu& media_view_menu();
+// The menu on what Items' media pane shows about the item beside its picture: its details and metadata, or the
+// summary of a selection of several.
+const view_menu& media_details_menu();
+
+// The keyboard among drawn elements that are not controls. An element that acts when clicked is a part the
+// keyboard can be on, and one that acts on several parts of itself - the stars of a rating, a monitor's buttons -
+// names them as a keyboard_parts_source. Tab reaches a group of parts as one stop, the arrows move between them,
+// and Enter or Space presses the one the keyboard is on as a click at its centre does, through the controller the
+// pointer gets there, so a part does from the keyboard just what it does when clicked.
+class keyboard_parts_source
+{
+public:
+	virtual ~keyboard_parts_source() = default;
+
+	// Where each part is, in the element's content coordinates, in the order the keyboard steps through them. None
+	// for an element that is only pointed into - a picture, a slider - which the keyboard passes over.
+	virtual std::vector<recti> keyboard_parts() const = 0;
+
+	// Presses part index as a click on it does, for an element that finds what a click is on from what it drew
+	// rather than from a rectangle. False to have the part clicked at its centre.
+	virtual bool press_keyboard_part(const int /*index*/, const view_host_ptr& /*host*/) { return false; }
+};
+
+// What the keyboard passes over: an element only pointed into - a picture, a slider, a chart - where what a click
+// does depends on the point, and has a key of its own or another way in.
+class no_keyboard_parts : public keyboard_parts_source
+{
+public:
+	std::vector<recti> keyboard_parts() const override { return {}; }
+};
+
+// One part the keyboard can be on: which part of which element, and where it is drawn in its frame.
+struct keyboard_part
+{
+	view_element_ptr element;
+	int index = 0;
+	recti bounds;
+
+	bool is(const keyboard_part& other) const { return element == other.element && index == other.index; }
+};
+
+// What the keyboard can be on in what roots hold, drawn with their content coordinates moved by offset, in the
+// order they are drawn: each control, which takes the focus itself, and each part of everything else that acts.
+// Anything hidden or disabled is passed over with all it holds.
+using keyboard_target = std::variant<ui::control_ptr, keyboard_part>;
+std::vector<keyboard_target> find_keyboard_targets(const std::vector<view_element_ptr>& roots, pointi offset);
+// The parts alone.
+std::vector<keyboard_part> find_keyboard_parts(const std::vector<view_element_ptr>& roots, pointi offset);
+
+// The part an arrow key moves the keyboard to from parts[from]: Left and Right to the part before or after it, Up
+// and Down to the nearest part above or below it, Home and End to the first and the last. -1 for any other key.
+int step_keyboard_part(const std::vector<keyboard_part>& parts, int from, char32_t key);
+
+// Presses a part as a click at its centre does, through the controller host offers there.
+void press_keyboard_part(const view_host_ptr& host, const keyboard_part& part);
+
+// The ring around what the keyboard is on, where nothing else shows it: just outside bounds, or inside them for
+// what fills its space - a whole view.
+void draw_keyboard_ring(render::draw_context& dc, recti bounds, bool inside = false);
+
+// Scrolls what scroller shows so bounds, where it is drawn now, is in view.
+void scroll_into_view(view_scroller& scroller, const view_host_ptr& host, recti bounds);
+
+// Where in a view's frame the keyboard can be besides a control, in the order Tab visits them: the view's own
+// content, and the groups of drawn parts around it.
+enum class keyboard_area
+{
+	sidebar, // Items' sidebar, before its listing
+	view,    // the view's own content
+	listing, // the links of Items' listing: its headers, the titles of its groups and its footer
+	media,   // the media pane, or the panels over a picture shown full screen
+	panel,   // a task's panel, where each link or group of parts is a stop of its own, as each control is
+};
+
+// A group of drawn parts a view shows around its own content.
+struct keyboard_region
+{
+	keyboard_area area = keyboard_area::view;
+	std::vector<view_element_ptr> roots;
+	pointi offset;                     // where the roots' content coordinates are drawn in the frame
+	recti clip;                        // where the region is drawn; the ring is kept within it
+	std::function<void(recti)> reveal; // scrolls the region so a part, where it is drawn now, is in view
+};
+
 class view_base : public core::no_copy
 {
 public:
@@ -252,191 +326,115 @@ public:
 	virtual void deactivate() = 0;
 	virtual void refresh() = 0;
 
-	virtual void refresh_from_source()
-	{
-		refresh();
-	}
+	virtual void refresh_from_source() { refresh(); }
 
-	virtual void reload()
-	{
-	};
+	virtual void reload() {};
 
-	virtual void update_media_elements()
-	{
-	}
+	virtual void update_media_elements() {}
 
-	virtual view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                                     hit_test_context& ctx)
+	virtual view_controller_ptr controller_from_location(const view_host_ptr& /*host*/, const pointi /*loc*/,
+	                                                     hit_test_context& /*ctx*/)
 	{
 		return nullptr;
 	}
 
-	virtual bool can_exit()
-	{
-		return true;
-	}
+	virtual bool can_exit() { return true; }
 
-	virtual bool can_scroll(const pointi loc) const
-	{
-		return false;
-	}
+	virtual bool can_scroll(const pointi /*loc*/) const { return false; }
 
-	virtual menu_type context_menu(const pointi loc)
-	{
-		return menu_type::view;
-	}
+	// What a right-click at loc, in view coordinates, offers. A view with a menu of its own names it there; by
+	// default the menu is the commands the view names for its status bar, then Close.
+	virtual view_menu context_menu(pointi loc);
 
 	// Files dropped on this view, in view coordinates. A view that answers true has consumed the
 	// drop; the default is false, which leaves the frame's own handling - opening the first item, or
 	// copying into the folder being shown - alone.
-	virtual bool drop_paths(const std::vector<core::file_path>& paths, const pointi loc)
-	{
-		return false;
-	}
+	virtual bool drop_paths(const std::vector<core::file_path>& /*paths*/, const pointi /*loc*/) { return false; }
 
 	// Files from outside are being dragged over this view at `loc`, in view coordinates, or have left
 	// it, ended or dropped when empty. A view that inserts a drop at a position shows that position
 	// while the drag lasts.
-	virtual void drag_paths_over(const std::optional<pointi> loc)
-	{
-	}
+	virtual void drag_paths_over(const std::optional<pointi> /*loc*/) {}
 
-	virtual bool escape()
-	{
-		return false;
-	}
+	virtual bool escape() { return false; }
 
-	virtual void render(render::draw_context& rc, view_controller_ptr controller)
-	{
-	}
+	// NOLINTNEXTLINE(performance-unnecessary-value-param): the overrides share this signature
+	virtual void render(render::draw_context& /*rc*/, view_controller_ptr /*controller*/) {}
 
 	// Events
-	virtual void layout(render::measure_context& mc, const sizei extent)
-	{
-	}
+	virtual void layout(render::measure_context& /*mc*/, const sizei /*extent*/) {}
 
 	// One entry point for both wheel axes. The pointer chooses the surface and the modifier chooses
 	// which of that surface's axes moves; a second virtual for the horizontal axis was a half every
 	// view forgot to write. Returns whether the notch meant anything here, so an unconsumed one can
 	// fall through instead of being silently swallowed.
-	virtual bool mouse_wheel(const pointi loc, const platform::wheel_notch notch)
-	{
-		return false;
-	}
+	virtual bool mouse_wheel(const pointi /*loc*/, const platform::wheel_notch /*notch*/) { return false; }
 
 	// Whole detents of a pinch, positive to magnify.
-	virtual bool pinch(const pointi loc, const int steps)
-	{
-		return false;
-	}
+	virtual bool pinch(const pointi /*loc*/, const int /*steps*/) { return false; }
 
 	// Raised before a left button press is dispatched to a controller, so a view can release text
 	// focus the press did not land in. Keyboard commands are inert while a rendered edit holds
 	// focus, so that focus must not survive a press somewhere else in the view.
-	virtual void mouse_down(const pointi loc)
-	{
-	}
+	virtual void mouse_down(const pointi /*loc*/) {}
 
-	virtual bool key_down(char32_t key, platform::key_state keys)
-	{
-		return false;
-	}
+	virtual bool key_down(char32_t /*key*/, platform::key_state /*keys*/) { return false; }
 
-	virtual bool text_input(std::string_view text)
-	{
-		return false;
-	}
+	// The groups of drawn parts the view shows around its own content, each a stop of the keyboard's own: Items'
+	// sidebar, the links of its listing and its media pane. None by default.
+	virtual std::vector<keyboard_region> keyboard_regions() { return {}; }
 
-	virtual ui::focus_mode focus_mode() const
-	{
-		return ui::focus_mode::view;
-	}
+	// Where what the keyboard acts on in the view's own content is, in view coordinates - the focused item, the
+	// clip being edited - which the ring goes around and the keyboard's menu opens beside. Empty for the whole view.
+	virtual recti keyboard_bounds() const { return {}; }
 
-	virtual bool is_caption_area(const pointi loc) const
-	{
-		return false;
-	}
+	virtual bool text_input(std::string_view /*text*/) { return false; }
 
-	virtual void pan_start(const pointi start_loc)
-	{
-	}
+	virtual ui::focus_mode focus_mode() const { return ui::focus_mode::view; }
 
-	virtual void pan(const pointi start_loc, const pointi current_loc)
-	{
-	}
+	virtual bool is_caption_area(const pointi /*loc*/) const { return false; }
 
-	virtual void pan_end(const pointi start_loc, const pointi final_loc)
-	{
-	}
+	virtual void pan_start(const pointi /*start_loc*/) {}
+
+	virtual void pan(const pointi /*start_loc*/, const pointi /*current_loc*/) {}
+
+	virtual void pan_end(const pointi /*start_loc*/, const pointi /*final_loc*/) {}
 
 	// Returns false when the tap has no touch-specific meaning, so the caller runs the normal double-click.
-	virtual bool touch_double_tap(const pointi location)
-	{
-		return false;
-	}
+	virtual bool touch_double_tap(const pointi /*location*/) { return false; }
 
-	virtual void focus(const bool has_focus)
-	{
-		_view_has_focus = has_focus;
-	}
+	virtual void focus(const bool has_focus) { _view_has_focus = has_focus; }
 
-	virtual void items_changed(bool path_changed)
-	{
-	}
+	virtual void items_changed(bool /*path_changed*/) {}
 
-	virtual void display_changed()
-	{
-	}
+	virtual void display_changed() {}
 
-	virtual bool is_over_items(const pointi loc) const
-	{
-		return false;
-	}
+	virtual bool is_over_items(const pointi /*loc*/) const { return false; }
 
-	virtual void broadcast_event(const view_element_event& event) const
-	{
-	}
+	virtual void broadcast_event(const view_element_event& /*event*/) const {}
 
-	virtual void exit()
-	{
-	}
+	virtual void exit() {}
 
 	// Stops any task the view is running and leaves the view open. Distinct from exit().
-	virtual void cancel_operation()
-	{
-	}
+	virtual void cancel_operation() {}
 
 	// Human name of the task this view runs, used when reporting that it is still running.
-	virtual std::string_view operation_name() const
-	{
-		return {};
-	}
+	virtual std::string_view operation_name() const { return {}; }
 
-	// Asked before the application closes. Unlike can_exit() this may prompt the user.
-	virtual bool confirm_exit()
-	{
-		return can_exit();
-	}
+	// Asked before the application closes. A view whose can_exit() asks the user - Edit, Options - needs nothing
+	// more; one that refuses quietly while it works asks here instead.
+	virtual bool confirm_exit() { return can_exit(); }
 
-	virtual std::string_view title()
-	{
-		return {};
-	}
+	virtual std::string_view title() { return {}; }
 
-	virtual std::string_view status()
-	{
-		return {};
-	}
+	virtual std::string_view status() { return {}; }
 
-	virtual progress_state progress() const
-	{
-		return {};
-	}
+	virtual progress_state progress() const { return {}; }
 
-	virtual view_bars bars() const
-	{
-		return {};
-	}
+	// The review a task shows is still being worked out, off the progress its run reports. The run waits for it.
+	virtual bool reviewing() const { return false; }
+
+	virtual view_bars bars() const { return {}; }
 };
 
 class scrubber_element;

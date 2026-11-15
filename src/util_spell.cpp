@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Spell checking integration. Uses Hunspell library for spell checking,
 // suggestions, and custom dictionary management.
@@ -30,18 +29,16 @@ namespace
 
 		bool is_word_valid(const std::string_view word) const override { return spell().is_word_valid(word); }
 
-		std::vector<std::string> suggest(const std::string_view word) const override
-		{
-			return spell().suggest(word);
-		}
+		std::vector<std::string> suggest(const std::string_view word) const override { return spell().suggest(word); }
 
 		void add_word(const std::string_view word, std::function<void()> done) override
 		{
-			spell().add_word(word, [done = std::move(done)](const custom_dictionary_add_result& result)
+			spell().add_word(word, [done = std::move(done),
+			                        function = __FUNCTION__](const custom_dictionary_add_result& result)
 			{
 				if (result.status == custom_dictionary_add_status::failed)
 				{
-					core::log(__FUNCTION__, result.message);
+					core::log(function, result.message);
 				}
 
 				if (done) done();
@@ -92,6 +89,9 @@ static void download_dic(df::async_i& async, const core::file_path path, spell_c
 {
 	// example https://diffractor.com/static/dictionaries/en_GB.aff
 
+	// An agent session reaches the network only where it was started to.
+	if (!df::network_allowed) return;
+
 	const auto temp_path = platform::temp_file(path.extension());
 
 	platform::web_request req;
@@ -113,46 +113,11 @@ static void download_dic(df::async_i& async, const core::file_path path, spell_c
 
 void spell_check::lazy_download(df::async_i& async)
 {
-	const std::unordered_set<std::string_view, core::ihash, core::ieq> known_dics =
-	{
-		"bg_BG",
-		"ca_ES",
-		"cs_CZ",
-		"cy_GB",
-		"da_DK",
-		"de_DE",
-		"el_GR",
-		"en_AU",
-		"en_CA",
-		"en_GB",
-		"en_US",
-		"es_ES",
-		"et_EE",
-		"fa_IR",
-		"fr_FR",
-		"he_IL",
-		"hi_IN",
-		"hr_HR",
-		"hu_HU",
-		"id_ID",
-		"it_IT",
-		"ja_JP",
-		"lt_LT",
-		"lv_LV",
-		"nb_NO",
-		"nl_NL",
-		"pl_PL",
-		"pt_BR",
-		"pt_PT",
-		"ro_RO",
-		"ru_RU",
-		"sk_SK",
-		"sl_SI",
-		"sv_SE",
-		"ta_IN",
-		"tg_TJ",
-		"uk_UA",
-		"vi_VN",
+	const std::unordered_set<std::string_view, core::ihash, core::ieq> known_dics = {
+		"bg_BG", "ca_ES", "cs_CZ", "cy_GB", "da_DK", "de_DE", "el_GR", "en_AU", "en_CA", "en_GB",
+		"en_US", "es_ES", "et_EE", "fa_IR", "fr_FR", "he_IL", "hi_IN", "hr_HR", "hu_HU", "id_ID",
+		"it_IT", "ja_JP", "lt_LT", "lv_LV", "nb_NO", "nl_NL", "pl_PL", "pt_BR", "pt_PT", "ro_RO",
+		"ru_RU", "sk_SK", "sl_SI", "sv_SE", "ta_IN", "tg_TJ", "uk_UA", "vi_VN",
 	};
 
 	const auto language = platform::user_language();
@@ -278,7 +243,7 @@ void spell_check::queue_load(df::async_i& async)
 		paths = {_shipped_folder, _user_folder, _custom_dic_path, _load_gate};
 	}
 
-	async.queue_async(async_queue::work, [this, generation, paths, &async]
+	async.queue_async(async_queue::work, [this, generation, paths, &async, function = __FUNCTION__]
 	{
 		auto result = std::make_shared<spell_load_result>();
 
@@ -288,7 +253,7 @@ void spell_check::queue_load(df::async_i& async)
 		}
 		catch (const std::exception& e)
 		{
-			core::log(__FUNCTION__, std::format("failed to load dictionary: {}", e.what()));
+			core::log(function, std::format("failed to load dictionary: {}", e.what()));
 		}
 
 		async.queue_ui([this, generation, result]
@@ -338,8 +303,7 @@ void spell_check::configure_async(df::async_i* async)
 bool spell_check::is_word_valid(const std::string_view word) const
 {
 	// Add input validation
-	if (word.empty())
-		return true;
+	if (word.empty()) return true;
 
 	core::shared_lock lock(_rw);
 	if (!_hunspell) return true;
@@ -349,8 +313,7 @@ bool spell_check::is_word_valid(const std::string_view word) const
 std::vector<std::string> spell_check::suggest(const std::string_view word) const
 {
 	// Add input validation
-	if (word.empty())
-		return {};
+	if (word.empty()) return {};
 
 	core::shared_lock lock(_rw);
 	if (!_hunspell) return {};
@@ -359,9 +322,7 @@ std::vector<std::string> spell_check::suggest(const std::string_view word) const
 
 	std::vector<std::string> result;
 	result.reserve(suggestions.size()); // Reserve space for better performance
-	std::transform(suggestions.begin(),
-	               suggestions.end(),
-	               std::back_inserter(result),
+	std::transform(suggestions.begin(), suggestions.end(), std::back_inserter(result),
 	               [](const std::string& s) { return core::utf8_cast2(s); });
 
 	return result;
@@ -370,8 +331,8 @@ std::vector<std::string> spell_check::suggest(const std::string_view word) const
 namespace
 {
 	custom_dictionary_add_result persist_custom_dictionary_word(const core::file_path path,
-	                                                           const core::folder_path user_folder,
-	                                                           const std::string_view word)
+	                                                            const core::folder_path user_folder,
+	                                                            const std::string_view word)
 	{
 		if (!platform::exists(user_folder) && !platform::create_folder(user_folder).success())
 		{
@@ -446,60 +407,55 @@ void spell_check::add_word(const std::string_view word,
 	{
 		core::exclusive_lock lock(_rw);
 		pending_id = ++_next_custom_word_id;
-		_pending_custom_words.emplace_back(pending_custom_word{pending_id, word_copy, custom_dic_path, user_folder,
-		                                                       writer});
+		_pending_custom_words.emplace_back(
+			pending_custom_word{pending_id, word_copy, custom_dic_path, user_folder, writer});
 	}
 
-	async->queue_async(async_queue::work,
-	                   [this, async, generation, custom_dic_path, user_folder, word_copy, writer, pending_id,
-		                   complete = std::move(complete)]
-	                   {
-		                   custom_dictionary_add_result result;
+	async->queue_async(async_queue::work, [this, async, generation, custom_dic_path, user_folder, word_copy, writer,
+	                                       pending_id, complete = std::move(complete), function = __FUNCTION__]
+	{
+		custom_dictionary_add_result result;
 
-		                   try
-		                   {
-			                   result = writer
-				                            ? writer(custom_dic_path, word_copy)
-				                            : persist_custom_dictionary_word(custom_dic_path, user_folder, word_copy);
-		                   }
-		                   catch (const std::exception& e)
-		                   {
-			                   result = {custom_dictionary_add_status::failed,
-			                             std::format("failed to persist custom word: {}", e.what())};
-		                   }
+		try
+		{
+			result = writer ? writer(custom_dic_path, word_copy)
+			                : persist_custom_dictionary_word(custom_dic_path, user_folder, word_copy);
+		}
+		catch (const std::exception& e)
+		{
+			result = {custom_dictionary_add_status::failed, std::format("failed to persist custom word: {}", e.what())};
+		}
 
-		                   {
-			                   core::exclusive_lock lock(_rw);
-			                   std::erase_if(_pending_custom_words, [pending_id](const pending_custom_word& pending)
-			                   {
-				                   return pending.id == pending_id;
-			                   });
-		                   }
+		{
+			core::exclusive_lock lock(_rw);
+			std::erase_if(_pending_custom_words,
+			              [pending_id](const pending_custom_word& pending) { return pending.id == pending_id; });
+		}
 
-		                   if (result.status == custom_dictionary_add_status::failed)
-		                   {
-			                   core::log(__FUNCTION__, result.message);
-		                   }
+		if (result.status == custom_dictionary_add_status::failed)
+		{
+			core::log(function, result.message);
+		}
 
-		                   async->queue_ui([this, generation, word_copy, result, complete]() mutable
-		                   {
-			                   auto final_result = result;
+		async->queue_ui([this, generation, word_copy, result, complete]() mutable
+		{
+			auto final_result = result;
 
-			                   {
-				                   core::exclusive_lock lock(_rw);
-				                   if (generation != _generation)
-				                   {
-					                   final_result = {custom_dictionary_add_status::stale, {}};
-				                   }
-				                   else if (final_result.persisted() && _hunspell)
-				                   {
-					                   _hunspell->add(core::utf8_cast2(word_copy));
-				                   }
-			                   }
+			{
+				core::exclusive_lock lock(_rw);
+				if (generation != _generation)
+				{
+					final_result = {custom_dictionary_add_status::stale, {}};
+				}
+				else if (final_result.persisted() && _hunspell)
+				{
+					_hunspell->add(core::utf8_cast2(word_copy));
+				}
+			}
 
-			                   if (complete) complete(final_result);
-		                   });
-	                   });
+			if (complete) complete(final_result);
+		});
+	});
 }
 
 void spell_check::flush_pending_custom_words() const
@@ -518,9 +474,8 @@ void spell_check::flush_pending_custom_words() const
 
 		try
 		{
-			result = word.writer
-				         ? word.writer(word.path, word.word)
-				         : persist_custom_dictionary_word(word.path, word.user_folder, word.word);
+			result = word.writer ? word.writer(word.path, word.word)
+			                     : persist_custom_dictionary_word(word.path, word.user_folder, word.word);
 		}
 		catch (const std::exception& e)
 		{

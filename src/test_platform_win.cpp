@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for Windows platform integration. These are the only tests whose subject is the
 // operating system itself -- extended path syntax, DXGI device loss, adapter classification and the
@@ -23,7 +22,8 @@
 
 #include <mmreg.h>
 
-extern "C" {
+extern "C"
+{
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_d3d11va.h"
 }
@@ -39,7 +39,7 @@ static void should_recognise_network_locations()
 
 static void should_preserve_writability_probe_collisions()
 {
-	const auto folder = _temps.next_folder("write-probe");
+	const auto folder = test_temps.next_folder("write-probe");
 	const auto name = std::format("df-write-probe-{:08x}.tmp", static_cast<uint32_t>(GetCurrentProcessId()));
 	const auto collision = folder.combine_file(name);
 	write_test_file(collision, "existing file");
@@ -112,8 +112,8 @@ namespace
 	uint64_t stamp(const int month, const int day, const int hour, const int minute, const int second = 0,
 	               const int ms = 0)
 	{
-		return core::date_t(2024, month, day, hour, minute, second).to_int64() + static_cast<uint64_t>(ms) *
-			test_ticks_per_ms;
+		return core::date_t(2024, month, day, hour, minute, second).to_int64() +
+		       static_cast<uint64_t>(ms) * test_ticks_per_ms;
 	}
 
 	std::vector<uint64_t> samples_around(const std::vector<uint64_t>& changes, const bool include_gap_edges)
@@ -129,18 +129,16 @@ namespace
 			const auto at = [change](const int64_t minutes, const int64_t ms)
 			{
 				return static_cast<uint64_t>(static_cast<int64_t>(change) +
-					minutes * static_cast<int64_t>(test_ticks_per_minute) +
-					ms * static_cast<int64_t>(test_ticks_per_ms));
+				                             minutes * static_cast<int64_t>(test_ticks_per_minute) +
+				                             ms * static_cast<int64_t>(test_ticks_per_ms));
 			};
 
-			for (auto minute = -180; minute <= 180; ++minute)
-				result.push_back(at(minute, 0));
+			for (auto minute = -180; minute <= 180; ++minute) result.push_back(at(minute, 0));
 
 			const auto edges = include_gap_edges ? std::vector<int>{-60, -30, 0, 30, 60} : std::vector<int>{0};
 			for (const auto edge : edges)
 			{
-				for (auto ms = -3; ms <= 3; ++ms)
-					result.push_back(at(edge, ms) + 4321);
+				for (auto ms = -3; ms <= 3; ++ms) result.push_back(at(edge, ms) + 4321);
 			}
 		}
 
@@ -156,23 +154,22 @@ namespace
 static void should_tabulate_time_zone_offsets_like_the_system()
 {
 	const std::vector<tabulation_case> cases = {
-		{
-			"northern", make_zone(300, -60, {0, 3, 0, 2, 2, 0, 0, 0}, {0, 11, 0, 1, 2, 0, 0, 0}),
-			{stamp(3, 10, 7, 0), stamp(11, 3, 6, 0)}, {stamp(3, 10, 2, 0), stamp(11, 3, 2, 0)}
-		},
-		{
-			"southern", make_zone(-600, -60, {0, 10, 0, 1, 2, 0, 0, 0}, {0, 4, 0, 1, 3, 0, 0, 0}),
-			{stamp(4, 6, 16, 0), stamp(10, 5, 16, 0)}, {stamp(4, 7, 3, 0), stamp(10, 6, 2, 0)}
-		},
-		{
-			"half-hour daylight", make_zone(-630, -30, {0, 10, 0, 1, 2, 0, 0, 0}, {0, 4, 0, 1, 2, 0, 0, 0}),
-			{stamp(4, 6, 15, 0), stamp(10, 5, 15, 30)}, {stamp(4, 7, 2, 0), stamp(10, 6, 2, 0)}
-		},
-		{
-			"before midnight", make_zone(-120, -60, {0, 3, 4, 5, 23, 59, 59, 999}, {0, 10, 5, 5, 1, 0, 0, 0}),
-			{stamp(3, 28, 21, 59, 59, 999), stamp(10, 24, 22, 0)},
-			{stamp(3, 28, 23, 59, 59, 999), stamp(10, 25, 1, 0)}
-		},
+		{"northern",
+	     make_zone(300, -60, {0, 3, 0, 2, 2, 0, 0, 0}, {0, 11, 0, 1, 2, 0, 0, 0}),
+	     {stamp(3, 10, 7, 0), stamp(11, 3, 6, 0)},
+	     {stamp(3, 10, 2, 0), stamp(11, 3, 2, 0)}},
+		{"southern",
+	     make_zone(-600, -60, {0, 10, 0, 1, 2, 0, 0, 0}, {0, 4, 0, 1, 3, 0, 0, 0}),
+	     {stamp(4, 6, 16, 0), stamp(10, 5, 16, 0)},
+	     {stamp(4, 7, 3, 0), stamp(10, 6, 2, 0)}},
+		{"half-hour daylight",
+	     make_zone(-630, -30, {0, 10, 0, 1, 2, 0, 0, 0}, {0, 4, 0, 1, 2, 0, 0, 0}),
+	     {stamp(4, 6, 15, 0), stamp(10, 5, 15, 30)},
+	     {stamp(4, 7, 2, 0), stamp(10, 6, 2, 0)}},
+		{"before midnight",
+	     make_zone(-120, -60, {0, 3, 4, 5, 23, 59, 59, 999}, {0, 10, 5, 5, 1, 0, 0, 0}),
+	     {stamp(3, 28, 21, 59, 59, 999), stamp(10, 24, 22, 0)},
+	     {stamp(3, 28, 23, 59, 59, 999), stamp(10, 25, 1, 0)}},
 		{"no daylight", make_zone(-330, 0, {}, {}), {}, {}},
 	};
 
@@ -181,8 +178,9 @@ static void should_tabulate_time_zone_offsets_like_the_system()
 		for (const auto instant : c.instants)
 		{
 			const auto earlier = instant - test_ticks_per_ms;
-			assert_equal(true, platform::utc_to_local(earlier, &c.zone) - earlier !=
-			             platform::utc_to_local(instant, &c.zone) - instant,
+			assert_equal(true,
+			             platform::utc_to_local(earlier, &c.zone) - earlier !=
+			                 platform::utc_to_local(instant, &c.zone) - instant,
 			             std::format("{}: the system changes offset at the stated instant", c.name));
 		}
 
@@ -195,15 +193,15 @@ static void should_tabulate_time_zone_offsets_like_the_system()
 
 			for (auto i = 0u; i < stamps.size(); ++i)
 			{
-				const auto expected = to_local
-					                      ? platform::utc_to_local(stamps[i], &c.zone)
-					                      : platform::local_to_utc(stamps[i], &c.zone);
+				const auto expected = to_local ? platform::utc_to_local(stamps[i], &c.zone)
+				                               : platform::local_to_utc(stamps[i], &c.zone);
 				if (tabulated[i] != expected && mismatches++ == 0)
 					first = std::format(" first at {}: {} != {}", stamps[i], tabulated[i], expected);
 			}
 
-			assert_equal(0, mismatches, std::format("{} {} tabulation matches the system{}", c.name,
-			                                        to_local ? "UTC-to-local" : "local-to-UTC", first));
+			assert_equal(0, mismatches,
+			             std::format("{} {} tabulation matches the system{}", c.name,
+			                         to_local ? "UTC-to-local" : "local-to-UTC", first));
 		}
 	}
 }
@@ -263,7 +261,7 @@ static void should_tabulate_local_time_once_per_year()
 
 static void should_initialize_unicode_ini_settings()
 {
-	const auto folder = _temps.next_folder("unicode-ini");
+	const auto folder = test_temps.next_folder("unicode-ini");
 	const auto ini = folder.combine_file("diffractor.ini");
 	const auto settings = platform::create_ini_file_settings(folder);
 	const std::string value = "C:\\\xe6\x9d\xb1\xe4\xba\xac\\\xf0\x9f\x8e\xac.mp4";
@@ -298,7 +296,7 @@ static void should_convert_utf8_to_ansi()
 	// bytes. An output sized at two bytes per UTF-16 unit truncated a name that is more CJK than
 	// ASCII, and a truncated conversion answers empty - so the file could not be opened by name.
 	const std::string cjk = "D:\\\xe5\x8b\x95\xe7\x94\xbb\\\xe6\x9d\xb1\xe4\xba\xac\xe6\x97\x85\xe8\xa1\x8c"
-		"\xe3\x81\xae\xe6\x80\x9d\xe3\x81\x84\xe5\x87\xba.mp4";
+							"\xe3\x81\xae\xe6\x80\x9d\xe3\x81\x84\xe5\x87\xba.mp4";
 	assert_equal(cjk, platform::utf8_to_a(cjk), "a name of three-byte characters converts whole");
 }
 
@@ -357,8 +355,8 @@ static void should_use_screen_coordinates_for_saved_window_placement()
 	assert_equal(800, top_taskbar.width(), "conversion does not resize the window");
 	const auto left_taskbar = platform::placement_to_screen(placement, {0, 0, 1920, 1080}, {48, 0, 1920, 1080});
 	assert_equal(148, left_taskbar.left, "workspace origin is beside a left taskbar");
-	const auto secondary = platform::placement_to_screen({-1800, 100, -1000, 700},
-	                                                    {-1920, 0, 0, 1080}, {-1920, 40, 0, 1080});
+	const auto secondary = platform::placement_to_screen({-1800, 100, -1000, 700}, {-1920, 0, 0, 1080},
+	                                                     {-1920, 40, 0, 1080});
 	assert_equal(-1800, secondary.left, "secondary-monitor screen origin is retained");
 	assert_equal(140, secondary.top, "secondary-monitor work offset is applied once");
 
@@ -405,8 +403,10 @@ static void should_need_sampling_for_planar_video()
 	assert_equal(false, can_sample_texture_format(D3D11_FORMAT_SUPPORT_SHADER_SAMPLE),
 	             "nor is sampling a format that cannot be a 2D texture");
 	assert_equal(false, can_sample_texture_format(0), "nothing supported");
-	assert_equal(true, can_sample_texture_format(D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
-		             D3D11_FORMAT_SUPPORT_DECODER_OUTPUT), "a device that samples it");
+	assert_equal(true,
+	             can_sample_texture_format(D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
+	                                       D3D11_FORMAT_SUPPORT_DECODER_OUTPUT),
+	             "a device that samples it");
 }
 
 // Intel parts report the 128MB carved out at boot as dedicated memory, and allocate textures from shared
@@ -422,7 +422,8 @@ static void should_count_shared_memory_for_an_integrated_gpu()
 		return static_cast<uint64_t>(calc_texture_budget(gpu_bytes, total_phys));
 	};
 
-	assert_equal(128 * mb + 8 * gb, gpu_texture_memory(128 * mb, 8 * gb, true), "an integrated part uses shared memory");
+	assert_equal(128 * mb + 8 * gb, gpu_texture_memory(128 * mb, 8 * gb, true),
+	             "an integrated part uses shared memory");
 	assert_equal(8 * gb, gpu_texture_memory(8 * gb, 16 * gb, false), "a discrete card uses its own");
 	assert_equal(8 * gb, gpu_texture_memory(0, 8 * gb, false), "an adapter with none of its own still has somewhere");
 
@@ -480,7 +481,7 @@ static LUID adapter_of(const AVBufferRef* hw_device)
 	DXGI_ADAPTER_DESC desc = {};
 
 	if (hwctx->device && SUCCEEDED(hwctx->device->QueryInterface(IID_PPV_ARGS(&dxgi_device))) &&
-		SUCCEEDED(dxgi_device->GetAdapter(&adapter)) && SUCCEEDED(adapter->GetDesc(&desc)))
+	    SUCCEEDED(dxgi_device->GetAdapter(&adapter)) && SUCCEEDED(adapter->GetDesc(&desc)))
 	{
 		return desc.AdapterLuid;
 	}
@@ -546,10 +547,11 @@ static void should_decode_on_the_render_device_when_it_carries_video()
 
 	const auto adapter = find_adapter_by_luid(video->luid);
 	ComPtr<ID3D11Device> render;
-	assert_equal(true, adapter && SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
-		                                                      D3D11_CREATE_DEVICE_BGRA_SUPPORT |
-		                                                      D3D11_CREATE_DEVICE_VIDEO_SUPPORT, nullptr, 0,
-		                                                      D3D11_SDK_VERSION, &render, nullptr, nullptr)),
+	assert_equal(true,
+	             adapter &&
+	                 SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+	                                             D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+	                                             nullptr, 0, D3D11_SDK_VERSION, &render, nullptr, nullptr)),
 	             "a render device with the video interfaces");
 	if (!render) return;
 
@@ -586,8 +588,14 @@ static void should_lend_the_renderer_the_decode_device_lock()
 
 	auto held = 0;
 	auto* const hwctx = static_cast<AVD3D11VADeviceContext*>(reinterpret_cast<AVHWDeviceContext*>(device->data)->hwctx);
-	hwctx->lock = [](void* context) { ++*static_cast<int*>(context); };
-	hwctx->unlock = [](void* context) { --*static_cast<int*>(context); };
+	hwctx->lock = [](void* context)
+	{
+		++*static_cast<int*>(context);
+	};
+	hwctx->unlock = [](void* context)
+	{
+		--*static_cast<int*>(context);
+	};
 	hwctx->lock_ctx = &held;
 
 	auto* frames = av_hwframe_ctx_alloc(device);
@@ -675,8 +683,8 @@ static ComPtr<ID3D11Device> create_warp_device(ComPtr<ID3D11DeviceContext>& cont
 {
 	ComPtr<ID3D11Device> device;
 
-	if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr,
-	                             0, D3D11_SDK_VERSION, &device, nullptr, &context)))
+	if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+	                             D3D11_SDK_VERSION, &device, nullptr, &context)))
 	{
 		return {};
 	}
@@ -773,7 +781,7 @@ static bool texture_holds(ID3D11Device* device, ID3D11DeviceContext* context, ID
 	for (UINT y = 0; y < desc.Height && holds; ++y)
 	{
 		const auto* const row = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(mapped.pData) +
-			static_cast<size_t>(mapped.RowPitch) * y);
+		                                                          static_cast<size_t>(mapped.RowPitch) * y);
 		holds = std::all_of(row, row + desc.Width, [bgra](const uint32_t px) { return px == bgra; });
 	}
 
@@ -808,9 +816,11 @@ static void should_overwrite_a_recycled_texture_with_the_new_picture()
 
 	{
 		const auto first = d3d11_create_texture(f);
-		assert_equal(true, first->update(dims, core::texture_format::ARGB, core::orientation::top_left,
-		                                 reinterpret_cast<const uint8_t*>(first_picture.data()), stride, bytes) ==
-		             render::texture_update_result::tex_created, "the first picture makes a texture");
+		assert_equal(true,
+		             first->update(dims, core::texture_format::ARGB, core::orientation::top_left,
+		                           reinterpret_cast<const uint8_t*>(first_picture.data()), stride,
+		                           bytes) == render::texture_update_result::tex_created,
+		             "the first picture makes a texture");
 	}
 
 	assert_equal(1_z, f->texture_pool->size(), "which is kept when it is released");
@@ -820,9 +830,11 @@ static void should_overwrite_a_recycled_texture_with_the_new_picture()
 
 	{
 		const auto second = d3d11_create_texture(f);
-		assert_equal(true, second->update(dims, core::texture_format::ARGB, core::orientation::top_left,
-		                                  reinterpret_cast<const uint8_t*>(second_picture.data()), stride, bytes) ==
-		             render::texture_update_result::tex_created, "a texture taken from the pool is new to its caller");
+		assert_equal(true,
+		             second->update(dims, core::texture_format::ARGB, core::orientation::top_left,
+		                            reinterpret_cast<const uint8_t*>(second_picture.data()), stride,
+		                            bytes) == render::texture_update_result::tex_created,
+		             "a texture taken from the pool is new to its caller");
 		assert_equal(0_z, f->texture_pool->size(), "the second picture took it");
 	}
 
@@ -864,7 +876,8 @@ public:
 	}
 };
 
-static std::function<std::unique_ptr<render::surface_scaler>()> make_fake_frame_scaler(std::shared_ptr<int> frames)
+static std::function<std::unique_ptr<render::surface_scaler>()> make_fake_frame_scaler(
+	const std::shared_ptr<int>& frames)
 {
 	return [frames]() -> std::unique_ptr<render::surface_scaler>
 	{
@@ -905,7 +918,8 @@ static void should_present_a_video_frame_through_its_interface()
 	render::make_surface_scaler = make_fake_frame_scaler(frames_converted);
 
 	const auto texture = d3d11_create_texture(f);
-	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == render::texture_update_result::tex_created,
+	assert_equal(true,
+	             texture->update(make_prepared_video_frame({64, 48})) == render::texture_update_result::tex_created,
 	             "a prepared picture is uploaded");
 	assert_equal(true, texture->dimensions() == sizei{64, 48}, "as it was prepared");
 	assert_equal(0, *frames_converted, "with nothing converted");
@@ -941,7 +955,8 @@ static void should_present_a_video_frame_in_software_through_its_interface()
 
 	const auto renderer = create_software_draw_context(nullptr, nullptr, false, render::default_font_size);
 	const auto texture = renderer->create_texture();
-	assert_equal(true, texture->update(make_prepared_video_frame({64, 48})) == render::texture_update_result::tex_created,
+	assert_equal(true,
+	             texture->update(make_prepared_video_frame({64, 48})) == render::texture_update_result::tex_created,
 	             "a prepared picture is copied");
 	assert_equal(true, texture->dimensions() == sizei{64, 48}, "as it was prepared");
 	assert_equal(0, *frames_converted, "with nothing converted");
@@ -962,8 +977,7 @@ static void should_present_a_video_frame_in_software_through_its_interface()
 	assert_equal(1, hardware->cpu_requests, "and the decoder is asked for pictures in system memory");
 
 	render::make_surface_scaler = nullptr;
-	assert_equal(true,
-	             renderer->create_texture()->update(unprepared) == render::texture_update_result::failed,
+	assert_equal(true, renderer->create_texture()->update(unprepared) == render::texture_update_result::failed,
 	             "with no scaler a picture in system memory cannot be presented");
 }
 
@@ -972,9 +986,7 @@ static void should_suppress_gpu_for_recovery_session()
 	platform::suppress_crash_guard(platform::crash_guard::gpu_render, true);
 	// Suppression is process-global; a failing assertion below must not leave it on.
 	const core::scope_exit restore_guard([]
-	{
-		platform::suppress_crash_guard(platform::crash_guard::gpu_render, false);
-	});
+	{ platform::suppress_crash_guard(platform::crash_guard::gpu_render, false); });
 	assert_equal(true, platform::crash_guard_suppressed(platform::crash_guard::gpu_render),
 	             "GPU suppressed during recovery");
 	assert_equal(false, platform::crash_guard_suppressed(platform::crash_guard::hw_video_decode),
@@ -1078,18 +1090,12 @@ public:
 		_root_w = core::utf8_to_utf16(_root);
 	}
 
-	~registry_test_root()
-	{
-		RegDeleteTreeW(HKEY_CURRENT_USER, _root_w.c_str());
-	}
+	~registry_test_root() { RegDeleteTreeW(HKEY_CURRENT_USER, _root_w.c_str()); }
 
 	registry_test_root(const registry_test_root&) = delete;
 	registry_test_root& operator=(const registry_test_root&) = delete;
 
-	const std::string& path() const
-	{
-		return _root;
-	}
+	const std::string& path() const { return _root; }
 
 	std::wstring subkey(const std::string_view section) const
 	{
@@ -1103,12 +1109,8 @@ static void should_persist_to_registry()
 	const auto archive = platform::create_registry_settings(root.path());
 
 	const std::vector<std::string> vals = {
-		"Hello World"s,
-		"\r\n\t hello"s,
-		"Доброго ранку!"s,
-		"Japanese こんにちは世界"s,
-		"Доброго ранку!"s,
-		std::string(64, 'x')
+		"Hello World"s,    "\r\n\t hello"s,      "Доброго ранку!"s, "Japanese こんにちは世界"s,
+		"Доброго ранку!"s, std::string(64, 'x'),
 	};
 
 	for (const auto& expected : vals)
@@ -1131,7 +1133,10 @@ static void should_validate_registry_value_types_and_sizes()
 	             static_cast<int>(RegCreateKeyExW(HKEY_CURRENT_USER, sectionW.c_str(), 0, nullptr,
 	                                              REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &key, nullptr)),
 	             "create registry test section");
-	const core::scope_exit close_key([&key] { if (key) RegCloseKey(key); });
+	const core::scope_exit close_key([&key]
+	{
+		if (key) RegCloseKey(key);
+	});
 
 	constexpr wchar_t text[] = L"text";
 	constexpr uint16_t short_number = 42;
@@ -1142,13 +1147,11 @@ static void should_validate_registry_value_types_and_sizes()
 	             "write wrong-number-type");
 	assert_equal(static_cast<int>(ERROR_SUCCESS),
 	             static_cast<int>(RegSetValueExW(key, L"short-number", 0, REG_DWORD,
-	                                             reinterpret_cast<const BYTE*>(&short_number),
-	                                             sizeof(short_number))),
+	                                             reinterpret_cast<const BYTE*>(&short_number), sizeof(short_number))),
 	             "write short-number");
 	assert_equal(static_cast<int>(ERROR_SUCCESS),
 	             static_cast<int>(RegSetValueExW(key, L"unterminated-string", 0, REG_SZ,
-	                                             reinterpret_cast<const BYTE*>(unterminated),
-	                                             sizeof(unterminated))),
+	                                             reinterpret_cast<const BYTE*>(unterminated), sizeof(unterminated))),
 	             "write unterminated-string");
 	assert_equal(static_cast<int>(ERROR_SUCCESS),
 	             static_cast<int>(RegSetValueExW(key, L"wrong-binary-type", 0, REG_SZ,
@@ -1172,10 +1175,8 @@ static void should_validate_registry_value_types_and_sizes()
 
 		uint8_t binary[16] = {};
 		auto binary_size = std::size(binary);
-		assert_equal(false, archive->read(section, "wrong-binary-type", binary, binary_size),
-		             "reject binary type");
+		assert_equal(false, archive->read(section, "wrong-binary-type", binary, binary_size), "reject binary type");
 	}
-
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1327,11 +1328,20 @@ static void should_materialize_advertised_clipboard_images()
 	assert_equal(loaded.dimensions().cy, probe.bitmap_dimensions.cy, "bitmap height");
 	assert_equal(loaded.dimensions().cx, probe.dib_dimensions.cx, "DIB width");
 	assert_equal(loaded.dimensions().cy, probe.dib_dimensions.cy, "DIB height");
-	assert_equal(2, static_cast<int>(probe.image_formats.size()), "two image formats advertised");
+	assert_equal(3, static_cast<int>(probe.image_formats.size()), "three image formats advertised");
 	assert_equal(static_cast<uint32_t>(CF_BITMAP), probe.image_formats[0], "bitmap is first image offer");
 	assert_equal(static_cast<uint32_t>(TYMED_GDI), probe.image_tymed[0], "bitmap uses GDI medium");
 	assert_equal(static_cast<uint32_t>(CF_DIB), probe.image_formats[1], "DIB is second image offer");
 	assert_equal(static_cast<uint32_t>(TYMED_HGLOBAL), probe.image_tymed[1], "DIB uses global memory");
+	assert_equal(static_cast<uint32_t>(RegisterClipboardFormatW(L"PNG")), probe.image_formats[2],
+	             "PNG is third image offer");
+	assert_equal(true, probe.advertises_png, "captured image advertises PNG");
+
+	// The PNG holds the rows the bitmap does: the picture upright, at its size.
+	const auto png = load_png({probe.png.data(), probe.png.size()});
+	assert_equal(true, is_valid(png), "advertised PNG decodes");
+	assert_equal(loaded.dimensions().cx, is_valid(png) ? png->dimensions().cx : 0, "PNG width");
+	assert_equal(loaded.dimensions().cy, is_valid(png) ? png->dimensions().cy : 0, "PNG height");
 }
 
 static void should_preserve_clipboard_format_contracts()
@@ -1353,13 +1363,10 @@ static void should_pass_bare_save_dialog_extensions()
 
 static void should_publish_pasted_bitmap_after_closing_stage()
 {
-	const auto folder = _temps.folder().combine(std::format("pasted-bitmap-{}", core::tick_count()));
+	const auto folder = test_temps.folder().combine(std::format("pasted-bitmap-{}", core::tick_count()));
 	assert_equal(true, platform::create_folder(folder).success(), "create bitmap paste temp folder");
 
-	const uint32_t pixels[] = {
-		0xffff0000, 0xff00ff00,
-		0xff0000ff, 0xffffffff
-	};
+	const uint32_t pixels[] = {0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffffff};
 	const auto bitmap = CreateBitmap(2, 2, 1, 32, pixels);
 	assert_equal(true, bitmap != nullptr, "create test bitmap");
 	const core::scope_exit delete_bitmap([bitmap] { DeleteObject(bitmap); });
@@ -1398,17 +1405,6 @@ static void should_reject_unusable_file_names()
 	assert_equal(false, platform::is_valid_file_name("CON"), "a device name is not usable");
 	assert_equal(false, platform::is_valid_file_name("con.txt"), "a device name with an extension is not usable");
 	assert_equal(false, platform::is_valid_file_name("Lpt9.jpeg"), "device names are case insensitive");
-}
-
-// The chrome's embedded PNGs decode with the application's decoder, which it installs before any
-// backend loads one, so both backends draw the same shadow with or without WIC.
-static void should_decode_embedded_chrome_images()
-{
-	assert_equal(true, static_cast<bool>(render::decode_embedded_image), "the application installed its decoder");
-
-	const auto shadow = render::load_shadow_art();
-	assert_equal(true, shadow != nullptr, "the shadow decodes");
-	assert_equal(true, shadow && !shadow->dimensions().is_empty(), "to an image with pixels");
 }
 
 static void should_offer_the_maximize_caption_button_only_on_a_resizable_frame()
@@ -1464,11 +1460,12 @@ static void should_answer_hit_tests_on_the_maximize_toolbar_button_as_the_captio
 
 static void should_read_coherent_number_format_snapshots()
 {
-	platform::set_number_format_probe_snapshots({
-		                                            {L".", L",", 1, 1},
-		                                            {L",", L".", 1, 1},
-	                                            },
-	                                            true);
+	platform::set_number_format_probe_snapshots(
+		{
+			{L".", L",", 1, 1},
+			{L",", L".", 1, 1},
+		},
+		true);
 	const core::scope_exit restore([] { platform::clear_number_format_probe_snapshots(); });
 
 	assert_equal("1,234", platform::format_number("1234"), "the first format uses one complete snapshot");
@@ -1493,7 +1490,9 @@ static void should_translate_highlight_spans_to_utf16_clusters()
 {
 	const auto highlight = core::color(1.0f, 0.0f, 0.0f, 1.0f);
 	const auto plain = core::color(0.0f, 0.0f, 1.0f, 1.0f);
-	const std::string text = "\xf0\x9f\x98\x80" "caf\xc3\xa9" "X";
+	const std::string text = "\xf0\x9f\x98\x80"
+							 "caf\xc3\xa9"
+							 "X";
 	const auto converted = render::utf8_to_utf16(text, {{4, 5, highlight}});
 
 	assert_equal(7_z, converted.text.size(), "emoji is preserved as a surrogate pair");
@@ -1593,7 +1592,7 @@ static void should_refuse_an_impossible_movie()
 	assert_equal(answer, platform::can_write_movies(), "the encoder probe answers the same way twice");
 
 	platform::movie_writer_request request;
-	request.path = _temps.next_path(".mp4");
+	request.path = test_temps.next_path(".mp4");
 	request.extent = {0, 0};
 	request.frame_rate = 30;
 	request.video_bitrate = 6000000;
@@ -1609,7 +1608,7 @@ static void should_refuse_an_impossible_movie()
 	assert_equal(false, platform::exists(request.path), "and still leaves nothing behind");
 }
 
-void register_platform_tests(view_state& state, test_registry& tests)
+void register_platform_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should preserve writability probe collisions"s, should_preserve_writability_probe_collisions);
 	tests.add("Should convert dates with their own DST offset"s, should_convert_dates_with_their_own_dst_offset);
@@ -1617,7 +1616,8 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	tests.add("Should convert the current zone like the system"s, should_convert_the_current_zone_like_the_system);
 	tests.add("Should tabulate local time once per year"s, should_tabulate_local_time_once_per_year);
 	tests.add("Should initialize Unicode INI settings"s, should_initialize_unicode_ini_settings);
-	tests.add("Should use screen coordinates for saved window placement"s, should_use_screen_coordinates_for_saved_window_placement);
+	tests.add("Should use screen coordinates for saved window placement"s,
+	          should_use_screen_coordinates_for_saved_window_placement);
 	tests.add("Should not treat pointer wheel IDs as modifiers"s, should_not_treat_pointer_wheel_ids_as_modifiers);
 	tests.add("Should snap GPU text in pixel coordinates"s, should_snap_gpu_text_in_pixel_coordinates);
 	tests.add("Should preserve clipboard format contracts"s, should_preserve_clipboard_format_contracts);
@@ -1637,23 +1637,23 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	          should_decode_on_the_render_device_when_it_carries_video);
 	tests.add("Should lend the renderer the decode device's lock"s, should_lend_the_renderer_the_decode_device_lock);
 	tests.add("Should describe a WASAPI mix format"s, should_describe_a_wasapi_mix_format);
-	tests.add("Should recycle a texture only when nothing draws it"s, should_recycle_a_texture_only_when_nothing_draws_it);
+	tests.add("Should recycle a texture only when nothing draws it"s,
+	          should_recycle_a_texture_only_when_nothing_draws_it);
 	tests.add("Should overwrite a recycled texture with the new picture"s,
 	          should_overwrite_a_recycled_texture_with_the_new_picture);
-	tests.add("Should present a video frame through its interface"s, should_present_a_video_frame_through_its_interface);
+	tests.add("Should present a video frame through its interface"s,
+	          should_present_a_video_frame_through_its_interface);
 	tests.add("Should present a video frame in software through its interface"s,
 	          should_present_a_video_frame_in_software_through_its_interface);
 	tests.add("Should suppress GPU for one recovery session"s, should_suppress_gpu_for_recovery_session);
 	tests.add("Issue #219: Should fall back for missing glyphs"s, should_fall_back_for_missing_glyphs);
-	tests.add("Issue #232/#189: Should cache font faces per face and size"s,
-	          should_cache_font_faces_per_face_and_size);
+	tests.add("Issue #232/#189: Should cache font faces per face and size"s, should_cache_font_faces_per_face_and_size);
 	tests.add("Issue #189: Should key glyph cache by size"s, should_key_glyph_cache_by_size);
 	tests.add("Should persist strings in registry"s, should_persist_to_registry);
 	tests.add("Should validate registry value types and sizes"s, should_validate_registry_value_types_and_sizes);
 	tests.add("Premiere dup: drag offers each format once"s, should_offer_each_drag_format_once);
 	// PLAT-002 - shell destination double-NUL.
-	tests.add("Should double-terminate shell destination buffers"s,
-	          should_double_terminate_shell_destination_buffers);
+	tests.add("Should double-terminate shell destination buffers"s, should_double_terminate_shell_destination_buffers);
 	// PLAT-003 - shell aborted flag sequencing.
 	tests.add("Should classify an aborted shell operation as cancelled"s,
 	          should_classify_an_aborted_shell_operation_as_cancelled);
@@ -1665,7 +1665,6 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	// PLAT-006 - pasted bitmap stages close before publication and cleanup.
 	tests.add("Should publish pasted bitmap after closing stage"s, should_publish_pasted_bitmap_after_closing_stage);
 	tests.add("Should reject unusable file names"s, should_reject_unusable_file_names);
-	tests.add("Should decode embedded chrome images"s, should_decode_embedded_chrome_images);
 	// Windows 11 snap layouts appear over the button a window reports as its maximize caption button.
 	tests.add("Should offer the maximize caption button only on a resizable frame"s,
 	          should_offer_the_maximize_caption_button_only_on_a_resizable_frame);
@@ -1676,7 +1675,8 @@ void register_platform_tests(view_state& state, test_registry& tests)
 	tests.add("Should bound the software buffer as the client grows"s,
 	          should_bound_the_software_buffer_as_the_client_grows);
 	// UI-006 - Unicode highlights must be translated to the UTF-16 clusters DirectWrite draws.
-	tests.add("Should translate highlight spans to utf16 clusters"s, should_translate_highlight_spans_to_utf16_clusters);
+	tests.add("Should translate highlight spans to utf16 clusters"s,
+	          should_translate_highlight_spans_to_utf16_clusters);
 	// UI-006 - cluster spans are computed once for the run instead of scanning for each glyph.
 	tests.add("Should build text cluster spans once per run"s, should_build_text_cluster_spans_once_per_run);
 	// PLAT-015 - DirectWrite positive ascender offsets are upward in screen coordinates.

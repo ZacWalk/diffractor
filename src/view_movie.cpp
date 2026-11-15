@@ -1,14 +1,14 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Implements the Movie task view -- the timeline strip, the composed preview and its
-// transport, the two-halved settings panel, source frames, and the project I/O and render workers
-// shared with the command line. The document's rules live in model_movie.
+// transport, the panel that edits the selected item, source frames and text screens, the measure of
+// each clip's sound where a crossfade brings it in, and the project I/O and render workers shared with
+// the command line. The document's rules live in model_movie.
 
 #include "pch.h"
 #include "view_movie.h"
@@ -16,9 +16,11 @@
 #include "app_commands.h"
 #include "app_text.h"
 #include "av_format.h"
+#include "av_sid.h"
 #include "files.h"
 #include "model_index.h"
 #include "ui_elements.h"
+#include "view_movie_audio.h"
 
 namespace
 {
@@ -104,11 +106,8 @@ namespace
 				case prop::audio_sample_t::signed_16bit:
 					std::bit_cast<int16_t*>(dest)[index] = static_cast<int16_t>(value);
 					break;
-				case prop::audio_sample_t::signed_32bit:
-					std::bit_cast<int32_t*>(dest)[index] = value << 16;
-					break;
-				default:
-					break;
+				case prop::audio_sample_t::signed_32bit: std::bit_cast<int32_t*>(dest)[index] = value << 16; break;
+				default: break;
 				}
 			}
 		}
@@ -123,21 +122,43 @@ namespace
 	{
 		// std::max answers 0 for a NaN, and the upper bound keeps the conversion defined for a
 		// duration no clock can show.
-		const auto total = static_cast<int>(std::min(std::max(0.0, seconds),
-		                                             static_cast<double>(std::numeric_limits<int>::max())));
+		const auto total = static_cast<int>(
+			std::min(std::max(0.0, seconds), static_cast<double>(std::numeric_limits<int>::max())));
 		return std::format("{}:{:02}", total / 60, total % 60);
 	}
 
-	// Movie takes photos and videos and nothing else, wherever they come from.
+	// Movie takes photos, videos and audio files and nothing else, wherever they come from.
 	std::vector<core::file_path> media_paths(const df::item_set& items)
 	{
 		std::vector<core::file_path> result;
 
 		for (const auto& i : items.items())
 		{
-			const auto* const mt = i->file_type();
-			if (!mt || (mt->group != file_group::photo && mt->group != file_group::video)) continue;
+			if (!is_movie_source(i->file_type())) continue;
 			result.emplace_back(i->path());
+		}
+
+		return result;
+	}
+
+	// The same rule as the Add dialog's filter: every extension of every type Movie takes.
+	std::string movie_source_patterns()
+	{
+		std::string result;
+
+		for (const auto* const type : all_file_types())
+		{
+			if (!is_movie_source(type)) continue;
+
+			for (const auto part : core::split(type->extension, false, [](const char c) { return c == ','; }))
+			{
+				const auto extension = core::trim(part);
+				if (extension.empty()) continue;
+
+				if (!result.empty()) result += ';';
+				result += "*.";
+				result += extension;
+			}
 		}
 
 		return result;
@@ -149,15 +170,15 @@ namespace
 		double end = 0;
 	};
 
-	// The stretch of a clip's sound the preview reads to hear `source_time`. Windows start on whole
-	// multiples of the window length from the in point, so every caller asking about one moment
-	// names the same window and finds it already read.
-	audio_window preview_audio_window(const movie_clip& clip, const double source_time)
+	// The stretch of an item's sound the preview reads to hear `sound_time`. Windows start on whole multiples
+	// of the window length from where the sound begins, so every caller asking about one moment names the same
+	// window and finds it already read.
+	audio_window preview_audio_window(const movie_sound& sound, const double sound_time)
 	{
-		const auto offset = std::max(0.0, source_time - clip.start);
-		const auto start = clip.start + std::floor(offset / preview_audio_window_seconds) *
-			preview_audio_window_seconds;
-		return {start, std::min(clip.end, start + preview_audio_window_seconds + preview_audio_window_overlap)};
+		const auto offset = std::max(0.0, sound_time - sound.start);
+		const auto start = sound.start +
+		                   std::floor(offset / preview_audio_window_seconds) * preview_audio_window_seconds;
+		return {start, std::min(sound.end, start + preview_audio_window_seconds + preview_audio_window_overlap)};
 	}
 }
 
@@ -180,10 +201,12 @@ struct movie_frame_key
 	core::file_path path;
 	int time_ms = 0;
 	int max_dim = 0;
+	// The tune of a SID file, which is a source of its own.
+	int song = 0;
 
 	bool operator==(const movie_frame_key& other) const
 	{
-		return time_ms == other.time_ms && max_dim == other.max_dim && path == other.path;
+		return time_ms == other.time_ms && max_dim == other.max_dim && song == other.song && path == other.path;
 	}
 };
 
@@ -193,21 +216,34 @@ struct movie_frame_key_hash
 {
 	size_t operator()(const movie_frame_key& k) const noexcept
 	{
-		return core::ihash{}(k.path) ^ (static_cast<size_t>(k.time_ms) * 2654435761u) ^ (k.max_dim * 40503u);
+		return core::ihash{}(k.path) ^ (static_cast<size_t>(k.time_ms) * 2654435761u) ^ (k.max_dim * 40503u) ^
+		       (static_cast<size_t>(k.song) * 97u);
 	}
 };
 
-// The decoders the preview slots keep open. Reached through a shared_ptr, but only ever touched
-// from inside a task on the render queue, which one thread serves: tasks there run one after
-// another, so this is single-context state and needs no lock of its own.
+// The decoders the preview slots keep open, and for an audio clip the pictures drawn in its place. Reached
+// through a shared_ptr, but only ever touched from inside a task on the render queue, which one thread serves:
+// tasks there run one after another, so this is single-context state and needs no lock of its own.
 class movie_slot_decoders
 {
 public:
-	core::const_surface_ptr frame(const size_t slot, const core::file_path path, const double time, const int max_dim,
-	                            const double tolerance)
+	core::const_surface_ptr frame(const size_t slot, const core::file_path path, const int song, const double time,
+	                              const int max_dim, const double tolerance)
 	{
 		if (slot >= _decoders.size()) return {};
 
+		// An audio clip has no frames to decode. Its pictures are drawn, carrying on from the slot's last.
+		if (is_movie_audio(path))
+		{
+			_decoders[slot].reset();
+
+			auto& frames = _audio[slot];
+			if (!frames || frames->path() != path || frames->song() != song)
+				frames = std::make_unique<movie_audio_frames>(path, song);
+			return frames->frame(time, {max_dim, max_dim});
+		}
+
+		_audio[slot].reset();
 		auto& decoder = _decoders[slot];
 
 		if (!decoder || decoder->path() != path)
@@ -237,18 +273,18 @@ public:
 	void close()
 	{
 		for (auto& decoder : _decoders) decoder.reset();
+		for (auto& frames : _audio) frames.reset();
 	}
 
 private:
 	std::array<std::unique_ptr<av_format_decoder>, slot_count> _decoders;
+	std::array<std::unique_ptr<movie_audio_frames>, slot_count> _audio;
 };
 
 class movie_source_cache final : public std::enable_shared_from_this<movie_source_cache>
 {
 public:
-	explicit movie_source_cache(view_state& s) : _state(s), _decoders(std::make_shared<movie_slot_decoders>())
-	{
-	}
+	explicit movie_source_cache(view_state& s) : _state(s), _decoders(std::make_shared<movie_slot_decoders>()) {}
 
 	~movie_source_cache()
 	{
@@ -262,12 +298,13 @@ public:
 	// Answers from the cache when it can, and asks for the frame when it cannot. A miss returns
 	// null and the caller draws nothing there until the answer arrives and invalidates the view.
 	// `urgent` marks the frame the user is looking at, which jumps the queue of thumbnails behind it.
-	core::const_surface_ptr fetch(const core::file_path path, const bool is_photo, const double time, const int max_dim,
-	                            const bool urgent = false)
+	core::const_surface_ptr fetch(const core::file_path path, const int song, const bool is_photo, const double time,
+	                              const int max_dim, const bool urgent = false)
 	{
 		if (path.is_empty() || max_dim <= 0) return {};
 
-		const movie_frame_key key{path, is_photo ? 0 : static_cast<int>(std::lround(quantize(time) * 1000)), max_dim};
+		const movie_frame_key key{path, is_photo ? 0 : static_cast<int>(std::lround(quantize(time) * 1000)), max_dim,
+		                          song};
 
 		if (const auto found = _cache.find(key); found != _cache.end())
 		{
@@ -287,8 +324,8 @@ public:
 	// that until the one asked for arrives, so a preview waiting on a decode holds its picture
 	// instead of blinking to black between frames. `period` is one frame of the clip's source: a slot
 	// shows the frame at the time asked, so it is keyed to the millisecond and decoded to the nearest.
-	core::const_surface_ptr slot_frame(const size_t slot, const core::file_path path, const bool is_photo,
-	                                 const double time, const int max_dim, const double period)
+	core::const_surface_ptr slot_frame(const size_t slot, const core::file_path path, const int song,
+	                                   const bool is_photo, const double time, const int max_dim, const double period)
 	{
 		if (slot >= _slots.size() || path.is_empty() || max_dim <= 0) return {};
 
@@ -296,9 +333,10 @@ public:
 
 		// A slot that has moved to another clip must not go on showing the last one: at a cut that
 		// draws the wrong source for as long as the decode takes.
-		if (state.path != path)
+		if (state.path != path || state.song != song)
 		{
 			state.path = path;
+			state.song = song;
 			state.shown = {};
 			state.surface.reset();
 		}
@@ -312,7 +350,7 @@ public:
 			const movie_frame_key key{path, 0, max_dim};
 			if (state.shown == key && is_valid(state.surface)) return state.surface;
 
-			if (auto surface = fetch(path, true, 0, max_dim, true); is_valid(surface))
+			if (auto surface = fetch(path, 0, true, 0, max_dim, true); is_valid(surface))
 			{
 				state.shown = key;
 				state.surface = std::move(surface);
@@ -321,7 +359,7 @@ public:
 			return state.surface;
 		}
 
-		const movie_frame_key key{path, static_cast<int>(std::lround(time * 1000)), max_dim};
+		const movie_frame_key key{path, static_cast<int>(std::lround(time * 1000)), max_dim, song};
 
 		if (state.shown == key && is_valid(state.surface)) return state.surface;
 
@@ -333,18 +371,19 @@ public:
 		return state.surface;
 	}
 
-	// Peak audio levels across the whole of `path`: empty while they are being measured, and empty
-	// for a file that carries no audio. Measured once per source and kept, because the control that
-	// draws them repaints on every pointer move.
-	const std::vector<uint8_t>& audio_peaks(const core::file_path path)
+	// Peak audio levels across the whole of `path` - a SID file's tune - empty while they are being measured, and
+	// empty for a file that carries no audio. Measured once per source and kept, because the control that draws
+	// them repaints on every pointer move.
+	const std::vector<uint8_t>& audio_peaks(const core::file_path path, const int song)
 	{
 		static const std::vector<uint8_t> none;
 
 		if (path.is_empty()) return none;
 
-		if (const auto found = _peaks.find(path); found != _peaks.end()) return found->second;
+		const movie_frame_key source{path, 0, 0, song};
+		if (const auto found = _peaks.find(source); found != _peaks.end()) return found->second;
 
-		if (_peaks_path != path) request_peaks(path);
+		if (!(_peaks_source == source)) request_peaks(source);
 		return none;
 	}
 
@@ -387,6 +426,7 @@ private:
 	struct slot_state
 	{
 		core::file_path path;
+		int song = 0;
 		movie_frame_key shown;
 		core::const_surface_ptr surface;
 	};
@@ -414,7 +454,7 @@ private:
 
 				// The slot may have moved to another clip while this was decoding, and a frame of
 				// the clip it left is not an answer to what it is asking now.
-				if (state.path == req.key.path)
+				if (state.path == req.key.path && state.song == req.key.song)
 				{
 					state.shown = req.key;
 					state.surface = std::move(surface);
@@ -475,9 +515,8 @@ private:
 			return;
 		}
 
-		if (req.slot == no_slot && std::find_if(_queue.begin(), _queue.end(),
-		                                        [&req](const request_state& q) { return q.key == req.key; }) !=
-			_queue.end())
+		if (req.slot == no_slot && std::find_if(_queue.begin(), _queue.end(), [&req](const request_state& q)
+		{ return q.key == req.key; }) != _queue.end())
 		{
 			return;
 		}
@@ -508,9 +547,9 @@ private:
 		_state.queue_async(async_queue::render, [weak, req, decoders, generation, &s = _state]
 		{
 			auto surface = req.slot == no_slot
-				               ? decode(req.key, req.is_photo)
-				               : decoders->frame(req.slot, req.key.path, req.key.time_ms / 1000.0, req.key.max_dim,
-				                                 req.tolerance);
+			                   ? decode(req.key, req.is_photo)
+			                   : decoders->frame(req.slot, req.key.path, req.key.song, req.key.time_ms / 1000.0,
+			                                     req.key.max_dim, req.tolerance);
 
 			s.queue_ui([weak, req, generation, surface = std::move(surface)]() mutable
 			{
@@ -526,8 +565,9 @@ private:
 	// the preview's sound -- and the Items view's media, once Movie is left -- on the second.
 	//
 	// The level track is drawn for one clip at a time, so asking for another clip's levels cancels the
-	// scan for the last where it stands, rather than letting it read a file nobody is looking at.
-	void request_peaks(const core::file_path path)
+	// scan for the last where it stands, rather than letting it read a file nobody is looking at. A source is a
+	// file, and for a SID file one of its tunes.
+	void request_peaks(const movie_frame_key& source)
 	{
 		cancel_peaks();
 
@@ -535,16 +575,16 @@ private:
 		const auto generation = _generation;
 		const auto cancelled = std::make_shared<std::atomic_bool>(false);
 
-		_peaks_path = path;
+		_peaks_source = source;
 		_peaks_cancel = cancelled;
 
-		_state.queue_async(async_queue::work, [weak, path, generation, cancelled, &s = _state]
+		_state.queue_async(async_queue::work, [weak, source, generation, cancelled, &s = _state]
 		{
 			std::vector<uint8_t> peaks;
 			const core::cancel_token token(*cancelled);
 			av_format_decoder decoder;
 
-			if (!token.is_cancelled() && decoder.open(path, media_intent::playback))
+			if (!token.is_cancelled() && open_movie_audio(decoder, source.path, media_intent::playback, source.song))
 			{
 				decoder.init_streams(-1, -1, false, false, false);
 				peaks = decoder.extract_audio_peaks(audio_peak_buckets, token);
@@ -552,11 +592,11 @@ private:
 
 			const auto completed = !token.is_cancelled();
 
-			s.queue_ui([weak, path, generation, cancelled, completed, peaks = std::move(peaks)]() mutable
+			s.queue_ui([weak, source, generation, cancelled, completed, peaks = std::move(peaks)]() mutable
 			{
 				if (const auto self = weak.lock())
 				{
-					self->publish_peaks(path, std::move(peaks), generation, cancelled, completed);
+					self->publish_peaks(source, std::move(peaks), generation, cancelled, completed);
 				}
 			});
 		});
@@ -566,10 +606,10 @@ private:
 	{
 		if (_peaks_cancel) _peaks_cancel->store(true);
 		_peaks_cancel.reset();
-		_peaks_path.clear();
+		_peaks_source = {};
 	}
 
-	void publish_peaks(const core::file_path path, std::vector<uint8_t> peaks, const uint64_t generation,
+	void publish_peaks(const movie_frame_key& source, std::vector<uint8_t> peaks, const uint64_t generation,
 	                   const std::shared_ptr<std::atomic_bool>& request, const bool completed)
 	{
 		// A file with no audio answers with an empty result, and that answer is kept: without it the
@@ -581,12 +621,12 @@ private:
 		if (decision.clear_pending)
 		{
 			_peaks_cancel.reset();
-			_peaks_path.clear();
+			_peaks_source = {};
 		}
 
 		if (!decision.store) return;
 
-		_peaks.insert_or_assign(path, std::move(peaks));
+		_peaks.insert_or_assign(source, std::move(peaks));
 		_state.invalidate_view(view_invalid::view_redraw);
 		if (on_answered) on_answered();
 	}
@@ -599,6 +639,11 @@ private:
 		{
 			const auto loaded = files{}.load(key.path, true);
 			return loaded.success ? upright_movie_frame(loaded.to_surface(max_dim)) : nullptr;
+		}
+
+		if (is_movie_audio(key.path))
+		{
+			return movie_audio_frames(key.path, key.song).frame(key.time_ms / 1000.0, max_dim);
 		}
 
 		av_format_decoder decoder;
@@ -614,19 +659,19 @@ private:
 		core::surface_ptr surface;
 		const auto wanted = std::clamp(key.time_ms / 1000.0, 0.0, duration);
 
-		return decoder.extract_thumbnail(surface, max_dim, wanted, duration, true, 0.0)
-			       ? upright_movie_frame(surface)
-			       : nullptr;
+		return decoder.extract_thumbnail(surface, max_dim, wanted, duration, true, 0.0) ? upright_movie_frame(surface)
+		                                                                                : nullptr;
 	}
 
 	view_state& _state;
 	std::shared_ptr<movie_slot_decoders> _decoders;
 	core::hash_map<movie_frame_key, core::const_surface_ptr, movie_frame_key_hash> _cache;
 	core::hash_set<movie_frame_key, movie_frame_key_hash> _failed;
-	core::hash_map<core::file_path, std::vector<uint8_t>, core::ihash, core::ieq> _peaks;
+	// By source: a file, or a tune of a SID file, keyed with no time or size.
+	core::hash_map<movie_frame_key, std::vector<uint8_t>, movie_frame_key_hash> _peaks;
 	// The one source whose levels are being measured, and the flag that cancels that scan. The flag is
 	// shared with the scan, which outlives this object's interest in it.
-	core::file_path _peaks_path;
+	movie_frame_key _peaks_source;
 	std::shared_ptr<std::atomic_bool> _peaks_cancel;
 	std::array<slot_state, slot_count> _slots;
 	std::vector<movie_frame_key> _order;
@@ -646,8 +691,8 @@ private:
 class movie_timeline_element final : public view_element, public std::enable_shared_from_this<movie_timeline_element>
 {
 public:
-	movie_timeline_element(view_state& s, movie_view* view) : view_element(view_element_style::can_invoke),
-	                                                          _state(s), _view(view)
+	movie_timeline_element(view_state& s, movie_view* view) :
+		view_element(view_element_style::can_invoke), _state(s), _view(view)
 	{
 		padding = {4, 4};
 	}
@@ -656,10 +701,8 @@ public:
 	{
 		// The scrollbar's row is always reserved, so a timeline that grows past the width does not
 		// push the strip, and the preview above it, upwards.
-		return {
-			cx, core::round(timeline_tile_cy * mc.scale_factor) + mc.padding2 * 3 +
-			mc.text_line_height(render::font_face::dialog) + scrollbar_row_cy(mc)
-		};
+		return {cx, core::round(timeline_tile_cy * mc.scale_factor) + mc.padding2 * 3 +
+		                mc.text_line_height(render::font_face::dialog) + scrollbar_row_cy(mc)};
 	}
 
 	void layout(render::measure_context& mc, const recti bounds_in) override
@@ -712,19 +755,32 @@ public:
 
 				// Selection is the set a command acts on; focus is the one the panel describes. They
 				// are drawn differently because they are different facts.
-				dc.draw_rect(tile, core::color(is_selected
-					                             ? ui::style::colors.dialog_selected_background
-					                             : ui::style::colors.dialog_background,
-				                             dc.colors.alpha * (dragging && is_selected ? 0.5f : 1.0f)));
+				dc.draw_rect(tile, core::color(is_selected ? ui::style::colors.dialog_selected_background
+				                                           : ui::style::colors.dialog_background,
+				                               dc.colors.alpha * (dragging && is_selected ? 0.5f : 1.0f)));
 
 				draw_thumbnail(dc, clip, i, tile.inflate(-dc.padding1));
+
+				// A caption is shown under its clip's picture, as a storyboard shows one: its first line,
+				// on a band dark enough to read over any thumbnail.
+				if (!clip.is_text && !clip.text.empty())
+				{
+					const auto inner = tile.inflate(-dc.padding1);
+					const recti band{inner.left, std::max(inner.top, inner.bottom - text_cy), inner.right,
+					                 inner.bottom};
+					const auto line = std::string_view(clip.text).substr(0, clip.text.find('\n'));
+
+					dc.draw_rect(band, core::color(0, dc.colors.alpha * 0.6f));
+					dc.draw_text(line, band.inflate(-dc.padding1, 0), render::font_face::dialog,
+					             render::text_style::single_line_center, core::color(1.0f, 1.0f, 1.0f, dc.colors.alpha),
+					             {});
+				}
 
 				if (is_focus)
 				{
 					// Focus is one clip and the selection is a set, so focus is an outline over the
 					// selected fill rather than another fill.
-					dc.draw_border(tile.inflate(-dc.padding1), tile,
-					               core::color(dc.colors.foreground, dc.colors.alpha),
+					dc.draw_border(tile.inflate(-dc.padding1), tile, core::color(dc.colors.foreground, dc.colors.alpha),
 					               core::color(dc.colors.foreground, 0.0f));
 				}
 
@@ -736,9 +792,8 @@ public:
 				}
 
 				const recti label{tile.left, tile.bottom, tile.right, tile.bottom + text_cy};
-				const auto text = clip.is_trimmed()
-					                  ? std::format("{} *", format_clock(clip.duration()))
-					                  : format_clock(clip.duration());
+				const auto text = clip.is_trimmed() ? std::format("{} *", format_clock(clip.duration()))
+				                                    : format_clock(clip.duration());
 
 				dc.draw_text(text, label, render::font_face::dialog, render::text_style::single_line_center,
 				             core::color(dc.colors.foreground, dc.colors.alpha), {});
@@ -779,6 +834,16 @@ public:
 		return index < static_cast<int>(_view->project().size()) ? index : -1;
 	}
 
+	// The current clip's tile as much of it as the strip shows; empty when none of it is.
+	recti current_tile_bounds() const
+	{
+		const auto& project = _view->project();
+		if (project.size() == 0) return {};
+
+		const auto tile = tile_bounds(project.current(), bounds);
+		return tile.intersects(bounds) ? tile.intersection(bounds) : recti{};
+	}
+
 	// The region a controller made for `loc` should claim. It has to be the tile, not the strip: the
 	// framework only rebuilds a controller once the pointer leaves its bounds, so a controller that
 	// claimed the whole strip went on answering for whichever tile the pointer first entered over,
@@ -814,10 +879,7 @@ public:
 		return std::clamp((offset + step / 2) / step, 0, static_cast<int>(_view->project().size()));
 	}
 
-	void scroll_by(const int dx)
-	{
-		set_scroll(_scroll + dx);
-	}
+	void scroll_by(const int dx) { set_scroll(_scroll + dx); }
 
 	// Brings a tile fully into view. Asked before the first layout there are no bounds to fit it
 	// into, so the request waits for them rather than scrolling against a width of nothing.
@@ -836,18 +898,12 @@ public:
 		else if (right + _pad > _scroll + bounds.width()) set_scroll(right + _pad - bounds.width());
 	}
 
-	bool can_scroll() const
-	{
-		return bounds.width() > 0 && content_width() > bounds.width();
-	}
+	bool can_scroll() const { return bounds.width() > 0 && content_width() > bounds.width(); }
 
 	// The row reserved for the scrollbar beneath the clip lengths. The whole row answers for the
 	// scrollbar, not only the track painted inside it, so no sliver between the track and the tiles
 	// belongs to neither.
-	recti scrollbar_row() const
-	{
-		return {bounds.left, bounds.bottom - _scrollbar_cy, bounds.right, bounds.bottom};
-	}
+	recti scrollbar_row() const { return {bounds.left, bounds.bottom - _scrollbar_cy, bounds.right, bounds.bottom}; }
 
 	// The painted track, inset within its row.
 	recti scrollbar_bounds() const
@@ -879,15 +935,9 @@ public:
 
 	// A wheel or touchpad delta, in the units the frame accumulates them in, scaled with the tiles so
 	// one detent moves the strip the same distance on screen at any display scale.
-	void scroll_by_wheel(const int delta)
-	{
-		scroll_by(core::mul_div(delta, _tile_cx, timeline_tile_cx));
-	}
+	void scroll_by_wheel(const int delta) { scroll_by(core::mul_div(delta, _tile_cx, timeline_tile_cx)); }
 
-	bool is_dragging() const
-	{
-		return _drag_from >= 0 && _drag_to >= 0;
-	}
+	bool is_dragging() const { return _drag_from >= 0 && _drag_to >= 0; }
 
 	// Files dragged in from outside are shown where they would land, as a block dragged within the
 	// strip is: the drop inserts at the boundary under the pointer, and nothing said which one that was.
@@ -979,22 +1029,13 @@ private:
 	}
 
 	// Every tile and the gap after it, plus the gap before the first.
-	int content_width() const
-	{
-		return static_cast<int>(_view->project().size()) * (_tile_cx + _pad) + _pad;
-	}
+	int content_width() const { return static_cast<int>(_view->project().size()) * (_tile_cx + _pad) + _pad; }
 
-	int max_scroll() const
-	{
-		return std::max(0, content_width() - bounds.width());
-	}
+	int max_scroll() const { return std::max(0, content_width() - bounds.width()); }
 
 	// Where the tile columns end: above the scrollbar's row while there is a scrollbar, and at the
 	// strip's foot when there is not, where that row is only margin.
-	int tiles_bottom() const
-	{
-		return can_scroll() ? bounds.bottom - _scrollbar_cy : bounds.bottom;
-	}
+	int tiles_bottom() const { return can_scroll() ? bounds.bottom - _scrollbar_cy : bounds.bottom; }
 
 	// Every change of scroll goes through here. The tile under a resting pointer is a different clip
 	// afterwards, so the controller made for the old one is retired rather than left to act on the
@@ -1008,10 +1049,7 @@ private:
 		_state.invalidate_view(view_invalid::view_redraw | view_invalid::controller);
 	}
 
-	void clamp_scroll()
-	{
-		set_scroll(_scroll);
-	}
+	void clamp_scroll() { set_scroll(_scroll); }
 
 	int clip_at_playhead() const
 	{
@@ -1024,8 +1062,21 @@ private:
 		return static_cast<int>(movie_step_origin(project.timing().starts, 0, true, _view->movie_state().playhead));
 	}
 
-	void draw_thumbnail(render::draw_context& dc, const movie_clip& clip, const size_t index, const recti target) const
+	void draw_thumbnail(render::draw_context& dc, const movie_clip& clip, const size_t /*index*/,
+	                    const recti target) const
 	{
+		// A text screen is its words on black, as the movie shows it, small enough for the tile. One with no
+		// words yet says what it is, dimmed, so it is not mistaken for a gap.
+		if (clip.is_text)
+		{
+			dc.draw_rect(target, core::color(0, dc.colors.alpha));
+			const auto empty = clip.text.empty();
+			dc.draw_text(empty ? tt.movie_screen_title.sv() : std::string_view(clip.text), target.inflate(-dc.padding1),
+			             render::font_face::dialog, render::text_style::multiline_center,
+			             core::color(1.0f, 1.0f, 1.0f, dc.colors.alpha * (empty ? 0.45f : 1.0f)), {});
+			return;
+		}
+
 		// A clip whose source was not found has nothing to draw and nothing to ask for. The probe
 		// owns that answer, so the strip states it rather than decoding to rediscover it -- and it
 		// states it only once the probe has answered, since a clip nobody has looked for yet is not
@@ -1043,12 +1094,11 @@ private:
 		}
 
 		const auto max_dim = std::max(target.width(), target.height());
-		const auto surface = _view->sources()->fetch(clip.path, clip.is_photo, clip.start, max_dim);
+		const auto surface = _view->sources()->fetch(clip.path, clip.song, clip.is_photo, clip.start, max_dim);
 
 		if (!is_valid(surface))
 		{
-			dc.draw_text(clip.path.name().sv(), target, render::font_face::dialog,
-			             render::text_style::multiline_center,
+			dc.draw_text(clip.path.name().sv(), target, render::font_face::dialog, render::text_style::multiline_center,
 			             core::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
 			return;
 		}
@@ -1056,7 +1106,7 @@ private:
 		// Keyed on what the surface is of, not on where it happens to live: an address freed by the
 		// source cache and handed back for a different frame would otherwise draw a stale texture.
 		const movie_frame_key key{clip.path, clip.is_photo ? 0 : static_cast<int>(std::lround(clip.start * 1000)),
-		                          max_dim};
+		                          max_dim, clip.song};
 		_drawn.emplace_back(key);
 
 		auto& entry = _textures[key];
@@ -1071,8 +1121,7 @@ private:
 		// Fitted, never stretched: the movie letterboxes mixed aspect ratios and so does the strip
 		// that stands for it.
 		const auto fitted = core::scale_dimensions(surface->dimensions(), target.extent(), false);
-		dc.draw_texture(entry.second, recti(fitted).offset(target.center() - recti(fitted).center()),
-		                dc.colors.alpha);
+		dc.draw_texture(entry.second, recti(fitted).offset(target.center() - recti(fitted).center()), dc.colors.alpha);
 	}
 
 	// The texture map holds its surfaces alive, so it has to shrink to what is actually on screen.
@@ -1081,9 +1130,7 @@ private:
 		if (_textures.size() <= _drawn.size()) return;
 
 		std::erase_if(_textures, [this](const auto& entry)
-		{
-			return std::find(_drawn.begin(), _drawn.end(), entry.first) == _drawn.end();
-		});
+		{ return std::find(_drawn.begin(), _drawn.end(), entry.first) == _drawn.end(); });
 	}
 
 	view_state& _state;
@@ -1098,10 +1145,10 @@ private:
 	int64_t _edge_scroll_tick = 0;
 	double _edge_scroll_carry = 0;
 	mutable std::vector<movie_frame_key> _drawn;
-	mutable core::hash_map<movie_frame_key, std::pair<core::const_surface_ptr, render::texture_ptr>, movie_frame_key_hash>
-	_textures;
+	mutable core::hash_map<movie_frame_key, std::pair<core::const_surface_ptr, render::texture_ptr>,
+	                       movie_frame_key_hash>
+		_textures;
 };
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // The trim control: one track, two handles, the frame at each end, and where the sound is.
@@ -1136,11 +1183,8 @@ public:
 		// A photo has no trim, no sound and no player, so the control is only its frame.
 		if (is_photo()) return {cx, frame_cy};
 
-		return {
-			cx,
-			frame_cy + mc.padding1 + level_track_cy(mc.padding1) +
-			mc.text_line_height(render::font_face::dialog)
-		};
+		return {cx,
+		        frame_cy + mc.padding1 + level_track_cy(mc.padding1) + mc.text_line_height(render::font_face::dialog)};
 	}
 
 	void layout(render::measure_context& mc, const recti bounds_in) override
@@ -1183,8 +1227,8 @@ public:
 		draw_handle(dc, track, _end, clr);
 
 		const recti label{r.left, track.bottom, r.right, r.bottom};
-		dc.draw_text(std::format("{} - {}", format_clock(_start), format_clock(_end)), label,
-		             render::font_face::dialog, render::text_style::single_line_center, clr, {});
+		dc.draw_text(std::format("{} - {}", format_clock(_start), format_clock(_end)), label, render::font_face::dialog,
+		             render::text_style::single_line_center, clr, {});
 
 		if (can_play())
 		{
@@ -1210,19 +1254,20 @@ public:
 	bool can_reset() const
 	{
 		const auto* const clip = _view->project().current_clip();
-		return clip && !clip->is_photo && !clip->is_missing && clip->is_trimmed();
+		return clip && !clip->is_photo && !clip->is_text && !clip->is_missing && clip->is_trimmed();
 	}
 
 	bool can_play() const
 	{
 		const auto* const clip = _view->project().current_clip();
-		return clip && !clip->is_photo && !clip->is_missing && clip->duration() > 0;
+		return clip && !clip->is_photo && !clip->is_text && !clip->is_missing && clip->duration() > 0;
 	}
 
+	// A photo has nothing to trim, and neither has a text screen, whose panel hides this control.
 	bool is_photo() const
 	{
 		const auto* const clip = _view->project().current_clip();
-		return clip && clip->is_photo;
+		return clip && (clip->is_photo || clip->is_text);
 	}
 
 	recti reset_bounds(const recti r) const
@@ -1287,10 +1332,7 @@ private:
 	};
 
 	// Tall enough that a spoken word is a visible bump rather than a flicker on a hairline.
-	static int level_track_cy(const int padding1)
-	{
-		return std::max(12, padding1 * 6);
-	}
+	static int level_track_cy(const int padding1) { return std::max(12, padding1 * 6); }
 
 	recti track_bounds(const recti r) const
 	{
@@ -1320,7 +1362,7 @@ private:
 
 		dc.draw_rect(target, core::color(ui::style::colors.group_background, dc.colors.alpha));
 
-		if (!clip || clip->is_missing) return;
+		if (!clip || clip->is_missing || clip->is_text) return;
 
 		const auto max_dim = std::max(target.width(), target.height());
 
@@ -1328,7 +1370,7 @@ private:
 		// uses rather than from a slot decoder, and it needs no handle to choose it.
 		if (clip->is_photo)
 		{
-			const auto surface = _view->sources()->fetch(clip->path, true, 0, max_dim, true);
+			const auto surface = _view->sources()->fetch(clip->path, 0, true, 0, max_dim, true);
 			if (is_valid(surface)) draw_fitted(dc, target, surface, _in);
 			return;
 		}
@@ -1338,8 +1380,9 @@ private:
 		const auto playing = _view->clip_position();
 
 		// While the clip player runs the picture comes from its session, which reads ahead and is
-		// timed by the audio device. The decoded frame below is for a handle being dragged.
-		if (playing && clip->extent.cx > 0 && clip->extent.cy > 0)
+		// timed by the audio device. The decoded frame below is for a handle being dragged - and for an
+		// audio file, whose session has no picture to give but its cover, at the player's position.
+		if (playing && !clip->is_audio && clip->extent.cx > 0 && clip->extent.cy > 0)
 		{
 			if (const auto tex = _view->clip_texture(dc))
 			{
@@ -1359,7 +1402,7 @@ private:
 		const auto slot = at_end ? slot_trim_out : slot_trim_in;
 		auto& held = at_end ? _out : _in;
 
-		const auto surface = _view->sources()->slot_frame(slot, clip->path, false, time, max_dim,
+		const auto surface = _view->sources()->slot_frame(slot, clip->path, clip->song, false, time, max_dim,
 		                                                  movie_frame_period(*clip));
 		if (is_valid(surface)) draw_fitted(dc, target, surface, held);
 	}
@@ -1386,9 +1429,9 @@ private:
 	void draw_levels(render::draw_context& dc, const recti track) const
 	{
 		const auto* const clip = _view->project().current_clip();
-		if (!clip || clip->is_photo || clip->is_missing) return;
+		if (!clip || clip->is_photo || clip->is_text || clip->is_missing) return;
 
-		const auto& peaks = _view->sources()->audio_peaks(clip->path);
+		const auto& peaks = _view->sources()->audio_peaks(clip->path, clip->song);
 		const auto cx = track.width();
 		if (peaks.empty() || cx <= 0) return;
 
@@ -1407,7 +1450,7 @@ private:
 		for (auto x = track.left; x < track.right; x += step)
 		{
 			const auto bucket = static_cast<size_t>(static_cast<int64_t>(x - track.left) *
-				static_cast<int64_t>(peaks.size()) / cx);
+			                                        static_cast<int64_t>(peaks.size()) / cx);
 			const auto level = peaks[std::min(bucket, peaks.size() - 1)] / 255.0;
 			const auto cy = core::round(half_cy * level);
 			if (cy <= 0) continue;
@@ -1430,8 +1473,9 @@ private:
 
 namespace
 {
-	// A press that runs one action on release, for the transport steps and the trim reset. Running on
-	// release is what lets a press the user changes their mind about and drags away from be abandoned.
+	// A press that runs one action on release, for the transport steps, the trim reset and the tunes. Running on
+	// release is what lets a press the user changes their mind about and drags away from be abandoned; and a release
+	// with no press of its own - the one after a press that closed a menu - does nothing.
 	class movie_click_controller final : public view_controller
 	{
 	public:
@@ -1442,13 +1486,19 @@ namespace
 
 		platform::cursor cursor() const override { return platform::cursor::link; }
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 		{
-			if (_bounds.contains(loc)) _invoke();
+			_pressed = true;
+		}
+
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+		{
+			if (std::exchange(_pressed, false) && _bounds.contains(loc)) _invoke();
 		}
 
 	private:
 		std::function<void()> _invoke;
+		bool _pressed = false;
 	};
 
 	class timeline_controller final : public view_controller
@@ -1460,10 +1510,7 @@ namespace
 		{
 		}
 
-		~timeline_controller() override
-		{
-			_strip->end_drag();
-		}
+		~timeline_controller() override { _strip->end_drag(); }
 
 		platform::cursor cursor() const override { return platform::cursor::link; }
 
@@ -1483,7 +1530,7 @@ namespace
 			// would be impossible: the press that starts the drag would have unselected the rest.
 			// The collapse happens on release instead, if no drag followed.
 			if (!keys.control && !keys.shift && _view->project().is_selected(index) &&
-				_view->project().selected().size() > 1)
+			    _view->project().selected().size() > 1)
 			{
 				_collapse_on_release = true;
 				_view->set_focus(index);
@@ -1497,8 +1544,9 @@ namespace
 		void on_mouse_move(const pointi loc) override
 		{
 			// A controller is made on hover, so without this the strip reorders itself under a pointer
-			// that is only passing over it.
-			if (!_held || _index < 0) return;
+			// that is only passing over it. A render works from the timeline as it stood when it began, so
+			// nothing moves under it.
+			if (!_held || _index < 0 || _view->progress().active) return;
 			if (_strip->_drag_from < 0 && std::abs(loc.x - _start_loc.x) < drag_threshold) return;
 
 			_collapse_on_release = false;
@@ -1507,7 +1555,7 @@ namespace
 			_host->frame()->invalidate();
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_up(const pointi /*loc*/, const platform::key_state /*keys*/) override
 		{
 			if (_strip->is_dragging())
 			{
@@ -1579,7 +1627,7 @@ namespace
 			if (_tracking) scroll_to(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 		{
 			if (_tracking) scroll_to(loc);
 			_tracking = false;
@@ -1630,7 +1678,7 @@ namespace
 			if (_held) seek(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_up(const pointi /*loc*/, const platform::key_state /*keys*/) override
 		{
 			_held = false;
 		}
@@ -1711,7 +1759,7 @@ namespace
 			if (_held) move(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_up(const pointi /*loc*/, const platform::key_state /*keys*/) override
 		{
 			if (!_held) return;
 
@@ -1765,9 +1813,8 @@ namespace
 			const auto* const clip = _view->project().current_clip();
 			if (!clip) return;
 
-			const auto preview_time = _handle == 0
-				                          ? _trim->_start
-				                          : movie_last_kept_frame_time(*clip, _trim->_start, _trim->_end);
+			const auto preview_time = _handle == 0 ? _trim->_start
+			                                       : movie_last_kept_frame_time(*clip, _trim->_start, _trim->_end);
 			_view->seek_preview_only(preview_time);
 			_host->frame()->invalidate();
 		}
@@ -1784,8 +1831,7 @@ namespace
 }
 
 view_controller_ptr movie_trim_control::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                                 const pointi element_offset,
-                                                                 hit_test_context& ctx)
+                                                                 const pointi element_offset, hit_test_context& /*ctx*/)
 {
 	const auto local = loc - element_offset;
 
@@ -1811,49 +1857,174 @@ view_controller_ptr movie_trim_control::controller_from_location(const view_host
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// The document's bound settings
+// The tune a SID clip plays
+//
+// A SID file holds tunes - a game's title music, its levels', its high-score table's - and a clip plays one.
+// For a file with more than one, the panel offers them under the trim as the monitor does while the file
+// plays: numbered chips, the clip's lit, or a step back and forth through them when there are too many to show.
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+class movie_song_control final : public view_element
+{
+public:
+	explicit movie_song_control(movie_view* view) : _view(view) { padding = {2, 6}; }
+
+	sizei measure(render::measure_context& mc, const int cx) const override
+	{
+		return {cx, arrange(mc, recti(0, 0, cx, 0)).height};
+	}
+
+	void layout(render::measure_context& mc, const recti bounds_in) override
+	{
+		bounds = bounds_in;
+		_parts = arrange(mc, bounds);
+	}
+
+	void render(render::draw_context& dc, const pointi element_offset) const override
+	{
+		const auto* const clip = _view->project().current_clip();
+		if (!clip) return;
+
+		const auto text = core::color(dc.colors.foreground, dc.colors.alpha);
+		const auto radius = std::max(1, core::round(3 * dc.scale_factor));
+		const auto chip = [&](const recti r, const std::string_view label, const bool lit)
+		{
+			dc.draw_rounded_rect(r.offset(element_offset),
+			                     core::color(lit ? ui::style::colors.dialog_selected_background
+			                                     : ui::style::colors.button_background,
+			                                 dc.colors.alpha),
+			                     radius);
+			dc.draw_text(label, r.offset(element_offset), render::font_face::dialog,
+			             render::text_style::single_line_center,
+			             lit ? core::color(ui::style::colors.dialog_selected_text, dc.colors.alpha) : text, {});
+		};
+
+		dc.draw_text(tt.prop_name_track, _parts.label.offset(element_offset), render::font_face::dialog,
+		             render::text_style::single_line, text, {});
+
+		for (auto i = 0_z; i < _parts.chips.size(); ++i)
+		{
+			chip(_parts.chips[i], std::to_string(i + 1), static_cast<int>(i) + 1 == clip->song);
+		}
+
+		if (!_parts.counter.is_empty())
+		{
+			chip(_parts.previous, "<", false);
+			chip(_parts.next, ">", false);
+			dc.draw_text(std::format("{} / {}", clip->song, clip->songs), _parts.counter.offset(element_offset),
+			             render::font_face::dialog, render::text_style::single_line_center, text, {});
+		}
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
+	                                             const pointi element_offset, hit_test_context& /*ctx*/) override
+	{
+		const auto* const clip = _view->project().current_clip();
+		if (!clip) return nullptr;
+
+		const auto local = loc - element_offset;
+		const auto choose = [&](const recti r, const int song)
+		{
+			return std::make_shared<movie_click_controller>(host, r.offset(element_offset),
+			                                                [view = _view, song] { view->choose_song(song); });
+		};
+
+		for (auto i = 0_z; i < _parts.chips.size(); ++i)
+		{
+			if (_parts.chips[i].contains(local)) return choose(_parts.chips[i], static_cast<int>(i) + 1);
+		}
+
+		if (_parts.previous.contains(local)) return choose(_parts.previous, std::max(1, clip->song - 1));
+		if (_parts.next.contains(local)) return choose(_parts.next, std::min(clip->songs, clip->song + 1));
+		return nullptr;
+	}
+
+private:
+	struct parts
+	{
+		recti label;
+		std::vector<recti> chips; // the first tune's first; empty when there are too many to show
+		recti previous;           // used instead of chips when there are too many
+		recti counter;
+		recti next;
+		int height = 0;
+	};
+
+	// The label, then the chips in rows across what is left, up to three of them.
+	parts arrange(render::measure_context& mc, const recti r) const
+	{
+		parts p;
+		const auto* const clip = _view->project().current_clip();
+		const auto songs = clip ? clip->songs : 1;
+		const auto px = [&mc](const int v)
+		{
+			return core::round(v * mc.scale_factor);
+		};
+		const auto line = mc.text_line_height(render::font_face::dialog);
+		const auto chip_h = line + px(6);
+		const auto chip_w = std::max(px(30), line * 2);
+		const auto gap = px(4);
+		const auto label_w = mc.measure_text(tt.prop_name_track, render::font_face::dialog,
+		                                     render::text_style::single_line, r.width())
+		                         .cx +
+		                     mc.padding2;
+
+		p.label = recti(r.left, r.top, r.left + label_w, r.top + chip_h);
+		const auto left = p.label.right + gap;
+		const auto per_row = std::max(1, (r.right - left + gap) / (chip_w + gap));
+		const auto rows = (songs + per_row - 1) / per_row;
+
+		if (rows <= 3)
+		{
+			for (auto i = 0; i < songs; ++i)
+			{
+				const auto x = left + (i % per_row) * (chip_w + gap);
+				const auto y = r.top + (i / per_row) * (chip_h + gap);
+				p.chips.emplace_back(x, y, x + chip_w, y + chip_h);
+			}
+
+			p.height = rows * chip_h + (rows - 1) * gap;
+		}
+		else
+		{
+			p.previous = recti(left, r.top, left + chip_w, r.top + chip_h);
+			p.counter = recti(p.previous.right + gap, r.top, p.previous.right + gap + chip_w * 3, r.top + chip_h);
+			p.next = recti(p.counter.right + gap, r.top, p.counter.right + gap + chip_w, r.top + chip_h);
+			p.height = chip_h;
+		}
+
+		return p;
+	}
+
+	movie_view* _view;
+	parts _parts;
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// The focused item's bound values
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 void movie_view_state::read_from_project()
 {
-	const auto& s = project.settings();
+	const auto* const clip = project.current_clip();
 
-	crossfade = s.transition == movie_transition::crossfade;
-	cut = !crossfade;
-	transition_tenths = std::clamp(core::round(s.transition_seconds * 10), 0, 100);
-	fade_in = s.fade_in;
-	fade_out = s.fade_out;
-	photo_tenths = std::clamp(core::round(s.photo_seconds * 10), 1, 600);
-
-	if (const auto* const clip = project.current_clip(); clip && clip->is_photo)
+	if (!clip)
 	{
-		clip_hold_tenths = std::clamp(core::round(clip->duration() * 10), 1, 600);
-		clip_hold_is_default = clip->photo_duration_is_default;
+		item_text.clear();
+		stabilize = false;
+		return;
 	}
+
+	item_text = clip->text;
+	stabilize = clip->stabilize;
+	if (clip->is_photo || clip->is_text) hold_tenths = std::clamp(core::round(clip->duration() * 10), 1, 600);
 }
 
-movie_settings movie_view_state::to_settings() const
+// Text pasted from elsewhere can carry carriage returns, which a line of drawn text would show.
+static std::string panel_text(std::string text)
 {
-	movie_settings result = project.settings();
-
-	result.transition = crossfade ? movie_transition::crossfade : movie_transition::cut;
-	result.fade_in = fade_in;
-	result.fade_out = fade_out;
-
-	// The panel speaks tenths. A length it is still showing is the document's own and is kept exactly --
-	// another tool's 0.75 s crossfade shows as 0.8 -- so choosing a setting again changes nothing. A
-	// length typed in is held to the bounds any document is.
-	if (core::round(result.transition_seconds * 10) != transition_tenths)
-	{
-		result.transition_seconds = std::clamp(transition_tenths / 10.0, 0.0, movie_max_transition_seconds);
-	}
-
-	if (core::round(result.photo_seconds * 10) != photo_tenths)
-	{
-		result.photo_seconds = std::clamp(photo_tenths / 10.0, movie_min_photo_seconds, movie_max_photo_seconds);
-	}
-
-	return result;
+	std::erase(text, '\r');
+	return text;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1862,75 +2033,34 @@ movie_settings movie_view_state::to_settings() const
 
 void movie_view_controls::create_controls()
 {
-	auto settled = [this] { _view->end_edit_group(); };
+	auto settled = [this]
+	{
+		_view->end_edit_group();
+	};
 
 	_info = create_view_info_element(tt.movie_info);
-
 	_movie_title = std::make_shared<ui::title_control>(icon_index::video, tt.movie_settings_title);
-	_crossfade_check = std::make_shared<ui::check_control>(_frame, tt.movie_crossfade, _movie_state.crossfade, true,
-	                                                       false, [this](const bool checked)
-	                                                       {
-		                                                       // A radio button notifies only the one
-		                                                       // that was turned on, so its partner is
-		                                                       // set here or the two disagree.
-		                                                       _movie_state.crossfade = checked;
-		                                                       _movie_state.cut = !checked;
-		                                                       _view->settings_changed();
-	                                                       });
-	_cut_check = std::make_shared<ui::check_control>(_frame, tt.movie_cut, _movie_state.cut, true, false,
-	                                                 [this](const bool checked)
-	                                                 {
-		                                                 _movie_state.cut = checked;
-		                                                 _movie_state.crossfade = !checked;
-		                                                 _view->settings_changed();
-	                                                 });
-	_transition_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_transition_length,
-	                                                          _movie_state.transition_tenths, 0, 50,
-	                                                          [this]
-	                                                          {
-		                                                          _view->settings_changed(
-			                                                          movie_edit_group::transition_length);
-	                                                          }, settled);
-	_fade_in_check = std::make_shared<ui::check_control>(_frame, tt.movie_fade_in, _movie_state.fade_in, false, false,
-	                                                     [this](bool) { _view->settings_changed(); });
-	_fade_out_check = std::make_shared<ui::check_control>(_frame, tt.movie_fade_out, _movie_state.fade_out, false,
-	                                                      false, [this](bool) { _view->settings_changed(); });
-	_photo_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_photo_duration, _movie_state.photo_tenths, 1,
-	                                                     300,
-	                                                     [this]
-	                                                     {
-		                                                     _view->settings_changed(movie_edit_group::photo_duration);
-	                                                     }, settled);
 	_output_text = std::make_shared<text_element>(std::string_view{}, render::text_style::multiline);
 
 	_clip_divider = std::make_shared<divider_element>();
 	_clip_title = std::make_shared<ui::title_control>(icon_index::edit, tt.movie_clip_title);
 	_clip_text = std::make_shared<text_element>(std::string_view{}, render::text_style::multiline);
 	_trim = std::make_shared<movie_trim_control>(_view.get());
-	_clip_hold_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_clip_duration,
-	                                                         _movie_state.clip_hold_tenths, 1, 300,
-	                                                         [this] { _view->hold_changed(movie_edit_group::clip_hold); },
-	                                                         settled);
-	_clip_hold_default_check = std::make_shared<ui::check_control>(_frame, tt.movie_use_default,
-	                                                               _movie_state.clip_hold_is_default, false, false,
-	                                                               [this](bool) { _view->hold_changed(); });
+	_song = std::make_shared<movie_song_control>(_view.get());
+	// The document's bounds, a tenth of a second to a minute, so any length it holds can be shown and typed, in seconds.
+	_hold_slider = std::make_shared<ui::slider_control>(_frame, tt.movie_text_length, _movie_state.hold_tenths, 1, 600,
+	                                                    [this] { _view->hold_changed(movie_edit_group::hold); },
+	                                                    settled, ui::slider_units::tenths);
+	_text_label = std::make_shared<text_element>(tt.movie_caption_title);
+	// Return starts a new line, as a screen's lines and a caption's are their own.
+	_text_edit = std::make_shared<ui::multi_line_edit_control>(_frame, _movie_state.item_text, 3, true,
+	                                                           [this](std::string_view) { _view->text_changed(); });
+	_stabilize_check = std::make_shared<ui::check_control>(_frame, tt.movie_stabilize, _movie_state.stabilize, false,
+	                                                       false, [this](bool) { _view->stabilize_changed(); });
 
 	_controls = {
-		_info,
-		_movie_title,
-		_crossfade_check,
-		_cut_check,
-		_transition_slider,
-		_fade_in_check,
-		_fade_out_check,
-		_photo_slider,
-		_output_text,
-		_clip_divider,
-		_clip_title,
-		_clip_text,
-		_trim,
-		_clip_hold_slider,
-		_clip_hold_default_check,
+		_info, _movie_title, _output_text, _clip_divider, _clip_title, _clip_text,
+		_trim, _song,        _hold_slider, _text_label,   _text_edit,  _stabilize_check,
 	};
 
 	_clr = core::color(ui::style::colors.dialog_text);
@@ -1947,8 +2077,8 @@ bool movie_view_controls::update_for_document()
 
 	// Text that gains or loses lines changes the panel's height as surely as a control appearing does.
 	auto text_changed = false;
-	const auto show_text = [&text_changed](const std::shared_ptr<text_element>& element, std::string& shown,
-	                                       const std::string& text)
+	const auto show_text =
+		[&text_changed](const std::shared_ptr<text_element>& element, std::string& shown, const std::string& text)
 	{
 		if (shown != text) text_changed = true;
 		shown = text;
@@ -1967,34 +2097,27 @@ bool movie_view_controls::update_for_document()
 	// translating, and a user choosing a destination needs the order of magnitude before they run.
 	if (timing.duration > 0)
 	{
-		const auto bytes = static_cast<uint64_t>((output.video_bitrate + output.audio_bitrate) / 8.0 *
-			timing.duration);
+		const auto bytes = static_cast<uint64_t>((output.video_bitrate + output.audio_bitrate) / 8.0 * timing.duration);
 		output_text += "\n~ ";
 		output_text += platform::format_size(core::file_size(bytes));
 	}
 
 	show_text(_output_text, _shown_output_text, output_text);
 
-	// What the view is holding that the user did not ask for and cannot see anywhere else: elements
-	// an imported project carried that Movie dropped, clips the import pointed at other files than the
-	// project named, and clips whose source has gone. They are stated here rather than in a dialog,
-	// because none is a thing to dismiss.
+	// What the view is holding that the user did not ask for and cannot see anywhere else: lines of an
+	// opened project that could not be read, and clips whose source or sound file has gone. They are stated
+	// here rather than in a dialog, because neither is a thing to dismiss.
 	std::string info(tt.movie_info.sv());
 
-	if (_movie_state.import_ignored > 0)
+	if (_movie_state.load_problems > 0)
 	{
 		info += "\n\n";
-		info += format_plural_text(tt.movie_ignored_fmt, _movie_state.import_ignored);
-	}
-
-	if (_movie_state.import_relinked > 0)
-	{
-		info += "\n\n";
-		info += format_plural_text(tt.movie_relink_fmt, _movie_state.import_relinked);
+		info += format_plural_text(tt.movie_skipped_lines_fmt, _movie_state.load_problems);
 	}
 
 	if (const auto missing = std::count_if(project.clips().begin(), project.clips().end(),
-	                                       [](const movie_clip& c) { return c.is_lost(); }); missing > 0)
+	                                       [](const movie_clip& c) { return c.is_lost() || c.is_sound_file_lost(); });
+	    missing > 0)
 	{
 		info += "\n\n";
 		info += format_plural_text(tt.movie_missing_fmt, missing);
@@ -2002,30 +2125,49 @@ bool movie_view_controls::update_for_document()
 
 	show_text(_info, _shown_info_text, info);
 
-	// One number sets the crossfade and the fades at the movie's ends. Hiding it under Cut left the
-	// fade length unreachable, so it is shown whenever either use is switched on and named for the
-	// one the current settings actually make.
-	const auto fades = _movie_state.fade_in || _movie_state.fade_out;
-	_transition_slider->is_visible(_movie_state.crossfade || fades);
-	_transition_slider->label(_movie_state.crossfade ? tt.movie_transition_length : tt.movie_fade_length);
-
 	const auto has_clip = clip != nullptr;
+	const auto is_text = has_clip && clip->is_text;
 	const auto is_photo = has_clip && clip->is_photo;
+	const auto is_video = has_clip && !clip->is_text && !clip->is_photo && !clip->is_audio;
+
+	// A text screen and a clip are edited in the same place under different names, and a name of a
+	// different length can wrap differently.
+	if (is_text != _shown_text_item)
+	{
+		_shown_text_item = is_text;
+		text_changed = true;
+	}
+
+	_clip_title->text(is_text ? tt.movie_screen_title : tt.movie_clip_title);
+	_text_label->text(is_text ? tt.movie_screen_text : tt.movie_caption_title);
 
 	_clip_divider->is_visible(has_clip);
 	_clip_title->is_visible(has_clip);
 	_clip_text->is_visible(has_clip);
 	// Shown for a photo too, where it is only the frame: the panel and the preview must never
-	// disagree about whether there is a picture to see.
-	_trim->is_visible(has_clip);
-	_clip_hold_slider->is_visible(is_photo && !_movie_state.clip_hold_is_default);
-	_clip_hold_default_check->is_visible(is_photo);
+	// disagree about whether there is a picture to see. A text screen's picture is the preview.
+	_trim->is_visible(has_clip && !is_text);
+	_song->is_visible(has_clip && clip->is_audio && clip->songs > 1);
+	_hold_slider->is_visible(is_photo || is_text);
+	_text_label->is_visible(has_clip);
+	_text_edit->is_visible(has_clip);
+	// Only a video can shake; a photo, an audio file's pictures and a text screen are drawn still.
+	_stabilize_check->is_visible(is_video);
+
+	// Another file's tunes may take another number of rows.
+	if (const auto songs = has_clip ? clip->songs : 0; songs != _shown_songs)
+	{
+		_shown_songs = songs;
+		text_changed = true;
+	}
 
 	if (has_clip)
 	{
-		auto text = str_format(tt.movie_clip_fmt.sv(), clip->path.name().sv(),
-		                       static_cast<int>(project.current()) + 1, static_cast<int>(project.size()),
-		                       format_clock(timing.starts[project.current()]));
+		const auto index = static_cast<int>(project.current()) + 1;
+		const auto count = static_cast<int>(project.size());
+		const auto starts = format_clock(timing.starts[project.current()]);
+		auto text = is_text ? str_format(tt.movie_screen_fmt.sv(), index, count, starts)
+		                    : str_format(tt.movie_clip_fmt.sv(), clip->path.name().sv(), index, count, starts);
 
 		// Two numbers and an x need no translating, and the panel has to say what shape the source
 		// is before the output line can be read as a consequence of it.
@@ -2045,7 +2187,7 @@ bool movie_view_controls::update_for_document()
 			_trim->_end = clip->end;
 			// A photo has no track, so it has no range: a limit would put grabbable handles under a
 			// control that draws none.
-			_trim->_limit = is_photo ? 0.0 : (clip->source_duration > 0 ? clip->source_duration : clip->end);
+			_trim->_limit = is_photo || is_text ? 0.0 : (clip->source_duration > 0 ? clip->source_duration : clip->end);
 		}
 	}
 
@@ -2066,25 +2208,15 @@ void movie_view_controls::layout_controls(render::measure_context& mc)
 	}
 }
 
-void movie_view_controls::show_document_values() const
+void movie_view_controls::show_item_values() const
 {
 	if (_controls.empty()) return;
 
-	_crossfade_check->show_bound_value();
-	_cut_check->show_bound_value();
-	_transition_slider->show_bound_value();
-	_fade_in_check->show_bound_value();
-	_fade_out_check->show_bound_value();
-	_photo_slider->show_bound_value();
-	show_clip_values();
-}
-
-void movie_view_controls::show_clip_values() const
-{
-	if (_controls.empty()) return;
-
-	_clip_hold_slider->show_bound_value();
-	_clip_hold_default_check->show_bound_value();
+	_hold_slider->show_bound_value();
+	// The text box is not written here. Populating the panel, which follows every read of the document,
+	// puts the item's words in only where they differ, so a probe landing while someone types leaves the
+	// caret where it is.
+	_stabilize_check->show_bound_value();
 }
 
 void movie_view_controls::options_changed()
@@ -2095,9 +2227,7 @@ void movie_view_controls::options_changed()
 	{
 		_info->text(tt.movie_info);
 		_movie_title->text(tt.movie_settings_title);
-		_photo_slider->label(tt.movie_photo_duration);
-		_clip_title->text(tt.movie_clip_title);
-		_clip_hold_slider->label(tt.movie_clip_duration);
+		_hold_slider->label(tt.movie_text_length);
 		update_for_document();
 	}
 }
@@ -2112,7 +2242,10 @@ movie_view::movie_view(view_state& s, view_host_ptr host, movie_view_state& ms) 
 	_sources = std::make_shared<movie_source_cache>(s);
 
 	// The cache is a member, so it cannot outlive the view, and this runs on the UI thread.
-	_sources->on_answered = [this] { invalidate_controls(); };
+	_sources->on_answered = [this]
+	{
+		invalidate_controls();
+	};
 }
 
 movie_view::~movie_view()
@@ -2172,6 +2305,10 @@ void movie_view::activate(const sizei extent)
 
 	read_document();
 	changed();
+
+	// The movie fades in from black, so a view opened at its start parks on the focused item's first frame, as picking
+	// it does, rather than showing that black.
+	if (_movie_state.playhead <= 0.0) show_focused_clip();
 }
 
 void movie_view::seed_from(const std::vector<core::file_path>& paths)
@@ -2179,9 +2316,8 @@ void movie_view::seed_from(const std::vector<core::file_path>& paths)
 	auto& project = _movie_state.project;
 
 	if (should_clear_movie_probe_retries_after_document_replace(true)) _probe_retries.clear();
-	project.reset({}, project.settings(), {});
-	_movie_state.import_ignored = 0;
-	_movie_state.import_relinked = 0;
+	project.reset({}, {});
+	_movie_state.load_problems = 0;
 	add_paths_at(paths, 0);
 	project.mark_seeded();
 	if (_timeline) _timeline->reveal(0);
@@ -2189,16 +2325,15 @@ void movie_view::seed_from(const std::vector<core::file_path>& paths)
 }
 
 // Discard on leaving throws the timeline away, so entering again starts from whatever is selected
-// then. The settings stay: they are how this user makes movies, not part of the one discarded.
+// then.
 void movie_view::discard_timeline()
 {
 	stop_playback();
 
 	auto& project = _movie_state.project;
 	if (should_clear_movie_probe_retries_after_document_replace(true)) _probe_retries.clear();
-	project.reset({}, project.settings(), {});
-	_movie_state.import_ignored = 0;
-	_movie_state.import_relinked = 0;
+	project.reset({}, {});
+	_movie_state.load_problems = 0;
 	_movie_state.playhead = 0;
 	_preview_override.reset();
 	_show_focus_frame = false;
@@ -2210,7 +2345,7 @@ void movie_view::discard_timeline()
 void movie_view::read_document()
 {
 	_movie_state.read_from_project();
-	if (_controls) _controls->show_document_values();
+	if (_controls) _controls->show_item_values();
 }
 
 void movie_view::deactivate()
@@ -2248,6 +2383,8 @@ void movie_view::broadcast_event(const view_element_event& event) const
 		_drawn_a.reset();
 		_drawn_b.reset();
 		_clip_texture.reset();
+		_caption_layer.texture.reset();
+		for (auto& screen : _screens) screen.texture.reset();
 		for (const auto& preview : _preview_sources) preview.texture.reset();
 	}
 
@@ -2261,13 +2398,12 @@ std::string_view movie_view::title()
 	return _title;
 }
 
+// Render is the task's own command, so it ends the bar as every task's Run does, and is the last to give way.
 view_bars movie_view::bars() const
 {
-	return task_view_bars({
-		commands::tool_movie_render, commands::tool_movie_add, commands::tool_movie_remove,
-		commands::tool_movie_relink, commands::tool_movie_open, commands::tool_movie_save,
-		commands::tool_movie_import
-	});
+	return task_view_bars({commands::tool_movie_add, commands::tool_movie_add_text, commands::tool_movie_remove,
+	                       commands::tool_movie_relink, commands::tool_movie_open, commands::tool_movie_save,
+	                       commands::tool_movie_render});
 }
 
 double movie_view::duration() const
@@ -2297,24 +2433,18 @@ void movie_view::layout(render::measure_context& mc, const sizei extent)
 	_transport_bounds = {outer.left, transport_top, outer.right, strip.top - mc.padding2};
 
 	const auto play_cx = mc.icon_cxy * 2;
-	_prev_bounds = {
-		_transport_bounds.left, _transport_bounds.top, _transport_bounds.left + play_cx, _transport_bounds.bottom
-	};
-	_play_bounds = {
-		_prev_bounds.right, _transport_bounds.top, _prev_bounds.right + play_cx, _transport_bounds.bottom
-	};
-	_next_bounds = {
-		_play_bounds.right, _transport_bounds.top, _play_bounds.right + play_cx, _transport_bounds.bottom
-	};
+	_prev_bounds = {_transport_bounds.left, _transport_bounds.top, _transport_bounds.left + play_cx,
+	                _transport_bounds.bottom};
+	_play_bounds = {_prev_bounds.right, _transport_bounds.top, _prev_bounds.right + play_cx, _transport_bounds.bottom};
+	_next_bounds = {_play_bounds.right, _transport_bounds.top, _play_bounds.right + play_cx, _transport_bounds.bottom};
 
-	const auto clock_cx = mc.measure_text("000:00 / 000:00", render::font_face::dialog,
-	                                      render::text_style::single_line, _transport_bounds.width()).cx;
+	const auto clock_cx = mc.measure_text("000:00 / 000:00", render::font_face::dialog, render::text_style::single_line,
+	                                      _transport_bounds.width())
+	                          .cx;
 
-	_scrubber_bounds = {
-		_next_bounds.right + mc.padding2, _transport_bounds.top,
-		std::max(_next_bounds.right + mc.padding2, _transport_bounds.right - clock_cx - mc.padding2),
-		_transport_bounds.bottom
-	};
+	_scrubber_bounds = {_next_bounds.right + mc.padding2, _transport_bounds.top,
+	                    std::max(_next_bounds.right + mc.padding2, _transport_bounds.right - clock_cx - mc.padding2),
+	                    _transport_bounds.bottom};
 
 	_preview_bounds = {outer.left, outer.top, outer.right, std::max(outer.top, _transport_bounds.top - mc.padding2)};
 
@@ -2336,7 +2466,95 @@ recti movie_view::calc_preview_target(const sizei source) const
 	return recti(fitted).offset(_preview_bounds.center() - recti(fitted).center());
 }
 
-void movie_view::render(render::draw_context& dc, view_controller_ptr controller)
+// Text is laid out on the movie's own frame, fitted into the preview as the render's frame would be,
+// so it wraps and sits where the render puts it. It is drawn at the preview's size rather than the
+// output's: a 4K caption shrunk to a window costs a hundred times the drawing for nothing seen.
+void movie_view::draw_preview_caption(render::draw_context& dc, const movie_frame_text& shown) const
+{
+	if (!shown.is_shown()) return;
+
+	const auto& project = _movie_state.project;
+	if (static_cast<size_t>(shown.index) >= project.size()) return;
+
+	const auto& text = project.clips()[shown.index].text;
+	const auto frame = calc_preview_target(project.output().extent);
+	if (text.empty() || frame.is_empty()) return;
+
+	auto& layer = _caption_layer;
+
+	if (layer.text != text || layer.frame != frame.extent())
+	{
+		layer.text = text;
+		layer.frame = frame.extent();
+		layer.drawn = draw_movie_text(text, movie_text_kind::caption, frame.extent());
+		layer.texture.reset();
+	}
+
+	if (!layer.drawn.surface) return;
+
+	if (!layer.texture)
+	{
+		layer.texture = dc.create_texture();
+
+		if (!layer.texture || layer.texture->update(layer.drawn.surface) == render::texture_update_result::failed)
+		{
+			layer.texture.reset();
+			return;
+		}
+	}
+
+	dc.draw_texture(layer.texture, recti(layer.drawn.at, layer.drawn.surface->dimensions()).offset(frame.top_left()),
+	                dc.colors.alpha * static_cast<float>(shown.opacity));
+}
+
+// A text screen is drawn whole at the size the preview shows it, as the render draws it at the
+// movie's: its words are laid out on that frame, so they wrap where the movie's do.
+render::texture_ptr movie_view::preview_screen_texture(render::draw_context& dc, const movie_clip& clip,
+                                                       const sizei frame) const
+{
+	if (frame.cx <= 0 || frame.cy <= 0) return {};
+
+	const auto stamp = ++_screens_drawn;
+	auto* oldest = &_screens.front();
+
+	for (auto& screen : _screens)
+	{
+		if (screen.surface && screen.text == clip.text && screen.frame == frame)
+		{
+			screen.drawn = stamp;
+
+			if (!screen.texture)
+			{
+				screen.texture = dc.create_texture();
+				if (screen.texture && screen.texture->update(screen.surface) == render::texture_update_result::failed)
+				{
+					screen.texture.reset();
+				}
+			}
+
+			return screen.texture;
+		}
+
+		if (screen.drawn < oldest->drawn) oldest = &screen;
+	}
+
+	*oldest = {};
+	oldest->text = clip.text;
+	oldest->frame = frame;
+	oldest->drawn = stamp;
+	oldest->surface = draw_movie_screen(clip.text, frame);
+	if (!oldest->surface) return {};
+
+	oldest->texture = dc.create_texture();
+	if (oldest->texture && oldest->texture->update(oldest->surface) == render::texture_update_result::failed)
+	{
+		oldest->texture.reset();
+	}
+
+	return oldest->texture;
+}
+
+void movie_view::render(render::draw_context& dc, view_controller_ptr /*controller*/)
 {
 	const auto& project = _movie_state.project;
 
@@ -2344,13 +2562,12 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 
 	if (project.is_empty())
 	{
-		dc.draw_text(tt.movie_empty, _preview_bounds, render::font_face::dialog,
-		             render::text_style::multiline_center,
+		dc.draw_text(tt.movie_empty, _preview_bounds, render::font_face::dialog, render::text_style::multiline_center,
 		             core::color(dc.colors.foreground, dc.colors.alpha), {});
 	}
 	else
 	{
-		auto frame = calc_movie_frame(project.clips(), project.settings(), _movie_state.playhead);
+		auto frame = project.frame(_movie_state.playhead);
 
 		// While a trim handle is captured the preview shows that handle's frame, so the user sets
 		// the trim by looking at it rather than by reading a number.
@@ -2367,8 +2584,12 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 			{
 				frame = {};
 				frame.a.index = static_cast<int>(project.current());
-				frame.a.source_time = clip->is_photo ? 0.0 : clip->start;
+				frame.a.source_time = clip->is_photo || clip->is_text ? 0.0 : clip->start;
 				frame.a.weight = 1.0;
+
+				// A clip picked to be looked at shows its caption too, which is where its caption is
+				// edited from.
+				if (!clip->is_text && !clip->text.empty()) frame.caption = {frame.a.index, 1.0};
 			}
 		}
 
@@ -2389,8 +2610,20 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 
 			const auto& clip = project.clips()[source.index];
 
+			// A text screen is drawn whole, its words on black, over the frame the movie's picture fills.
+			if (clip.is_text)
+			{
+				const auto target = calc_preview_target(project.output().extent);
+				const auto screen_texture = preview_screen_texture(dc, clip, target.extent());
+				if (!screen_texture) return {};
+
+				dc.draw_texture(screen_texture, target, dc.colors.alpha * weight);
+				return target;
+			}
+
 			// A video comes off a session the player is reading ahead for; a photo is one frame
-			// however long it is held, so it stays on the shared cache.
+			// however long it is held, so it stays on the shared cache, and so do the frames drawn for an
+			// audio file.
 			if (session_slot < av_max_frame_sessions)
 			{
 				update_preview_source(session_slot, source.index, clip, source.source_time);
@@ -2410,9 +2643,9 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 						if (preview.texture->is_valid())
 						{
 							const auto extent = clip.extent.cx > 0
-								                    ? clip.extent
-								                    : upright_movie_extent(preview.texture->dimensions(),
-								                                           preview.texture->_orientation);
+							                        ? clip.extent
+							                        : upright_movie_extent(preview.texture->dimensions(),
+							                                               preview.texture->_orientation);
 							const auto target = calc_preview_target(extent);
 							dc.draw_texture(preview.texture,
 							                upright_movie_destination(target, preview.texture->_orientation),
@@ -2424,10 +2657,10 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 				}
 			}
 
-			// Until the session has a picture -- while it opens, and for a photo, which has none --
-			// the frame cache stands in, so the preview never goes blank waiting for a decoder.
-			const auto surface = _sources->slot_frame(cache_slot, clip.path, clip.is_photo, source.source_time,
-			                                          max_dim, movie_frame_period(clip));
+			// Until the session has a picture -- while it opens, and for a photo or an audio file, which have
+			// none to decode -- the frame cache stands in, so the preview never goes blank waiting for a decoder.
+			const auto surface = _sources->slot_frame(cache_slot, clip.path, clip.song, clip.is_photo,
+			                                          source.source_time, max_dim, movie_frame_period(clip));
 			if (!is_valid(surface)) return {};
 
 			// One texture per slot, updated in place. A fresh texture per frame is a GPU allocation
@@ -2459,17 +2692,20 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 			}
 			else
 			{
-				dc.draw_rect({_preview_bounds.left, _preview_bounds.top, _preview_bounds.right, target_b.top}, attenuation);
-				dc.draw_rect({_preview_bounds.left, target_b.bottom, _preview_bounds.right, _preview_bounds.bottom}, attenuation);
+				dc.draw_rect({_preview_bounds.left, _preview_bounds.top, _preview_bounds.right, target_b.top},
+				             attenuation);
+				dc.draw_rect({_preview_bounds.left, target_b.bottom, _preview_bounds.right, _preview_bounds.bottom},
+				             attenuation);
 				dc.draw_rect({_preview_bounds.left, target_b.top, target_b.left, target_b.bottom}, attenuation);
 				dc.draw_rect({target_b.right, target_b.top, _preview_bounds.right, target_b.bottom}, attenuation);
 			}
 		}
 
+		draw_preview_caption(dc, frame.caption);
+
 		if (frame.fade_to_black > 0)
 		{
-			dc.draw_rect(_preview_bounds,
-			             core::color(0, dc.colors.alpha * static_cast<float>(frame.fade_to_black)));
+			dc.draw_rect(_preview_bounds, core::color(0, dc.colors.alpha * static_cast<float>(frame.fade_to_black)));
 		}
 	}
 
@@ -2488,8 +2724,8 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 
 	if (total > 0)
 	{
-		const auto x = _scrubber_bounds.left + core::round(
-			_scrubber_bounds.width() * std::clamp(_movie_state.playhead / total, 0.0, 1.0));
+		const auto x = _scrubber_bounds.left +
+		               core::round(_scrubber_bounds.width() * std::clamp(_movie_state.playhead / total, 0.0, 1.0));
 		dc.draw_rect({_scrubber_bounds.left, _scrubber_bounds.top, x, _scrubber_bounds.bottom},
 		             core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha));
 	}
@@ -2503,7 +2739,7 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr controller
 }
 
 view_controller_ptr movie_view::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                        hit_test_context& ctx)
+                                                         hit_test_context& ctx)
 {
 	if (ctx.occluded(_play_bounds))
 	{
@@ -2561,9 +2797,12 @@ bool movie_view::key_down(const char32_t key, const platform::key_state keys)
 		return true;
 	}
 
+	// A render works from the timeline as it stood when it began, so nothing changes the timeline under it.
+	const auto editable = !_progress.active;
+
 	if (key == platform::keys::DEL)
 	{
-		remove_current();
+		if (editable) remove_current();
 		return true;
 	}
 
@@ -2581,7 +2820,7 @@ bool movie_view::key_down(const char32_t key, const platform::key_state keys)
 
 	if (key == 'Z' && keys.control)
 	{
-		undo();
+		if (editable) undo();
 		return true;
 	}
 
@@ -2679,7 +2918,7 @@ bool movie_view::tick()
 
 		// The clip player runs over the kept region and stops at the out point, because what it is
 		// there to answer is "what is left".
-		if (!clip || clip->is_photo || clip->is_missing)
+		if (!clip || clip->is_photo || clip->is_text || clip->is_missing)
 		{
 			_movie_state.playing = movie_view_state::playing_t::nothing;
 			close_clip_session();
@@ -2720,9 +2959,8 @@ void movie_view::toggle_play()
 	if (_movie_state.project.is_empty()) return;
 
 	const auto was_playing_movie = _movie_state.playing == movie_view_state::playing_t::movie;
-	_movie_state.playing = was_playing_movie
-		                       ? movie_view_state::playing_t::nothing
-		                       : movie_view_state::playing_t::movie;
+	_movie_state.playing = was_playing_movie ? movie_view_state::playing_t::nothing
+	                                         : movie_view_state::playing_t::movie;
 	_last_tick = core::now();
 	_painted_frame = -1;
 
@@ -2745,7 +2983,7 @@ void movie_view::toggle_play_clip()
 {
 	const auto& project = _movie_state.project;
 	const auto* const clip = project.current_clip();
-	if (!clip || clip->is_photo || clip->is_missing || clip->duration() <= 0) return;
+	if (!clip || clip->is_photo || clip->is_text || clip->is_missing || clip->duration() <= 0) return;
 
 	if (_movie_state.playing == movie_view_state::playing_t::clip)
 	{
@@ -2765,7 +3003,7 @@ void movie_view::toggle_play_clip()
 			_movie_state.clip_playhead = clip->start;
 		}
 
-		open_clip_session(clip->path, _movie_state.clip_playhead);
+		open_clip_session(*clip, _movie_state.clip_playhead);
 	}
 
 	_last_tick = core::now();
@@ -2776,10 +3014,11 @@ void movie_view::toggle_play_clip()
 // The clip player is a real session, so it hears the file the ordinary way and the audio device
 // times it. It can take the application player's single slot only because it never runs at the same
 // time as the movie preview.
-void movie_view::open_clip_session(const core::file_path path, const double at)
+void movie_view::open_clip_session(const movie_clip& clip, const double at)
 {
 	close_clip_session();
 
+	const auto path = clip.path;
 	const auto* const file_type = files::file_type_from_name(path);
 
 	if (!_state._player || !file_type)
@@ -2791,19 +3030,31 @@ void movie_view::open_clip_session(const core::file_path path, const double at)
 
 	_clip_session_path = path;
 
+	// A SID tune is heard through a render the player reads as a stream, as the Items view plays one, spanning
+	// the length the probe measured; where it ends exactly is found apart and set on it.
+	platform::file_ptr file;
+
+	if (file_type->has_trait(file_traits::sid_tune))
+	{
+		auto render = std::make_shared<sid_tune_render>(path, clip.song,
+		                                                clip.source_duration > 0 ? clip.source_duration
+		                                                                         : sid_tune_seconds);
+		file = open_rendered_audio_stream(render);
+		_state.queue_async(async_queue::work, [render = std::weak_ptr(render)] { find_sid_tune_end(render); });
+	}
+
 	const auto weak = weak_from_this();
 	const auto request = ++_clip_session_request;
 
-	_state._player->open_detached(path, file_type, at, true,
-	                              [weak, path, request](std::shared_ptr<av_session> ses)
-	                              {
-		                              // Back on the UI thread before the view is touched: the weak
-		                              // pointer is a lifetime token, not a licence to work here.
-		                              if (const auto self = weak.lock())
-		                              {
-			                              self->clip_session_opened(path, request, std::move(ses));
-		                              }
-	                              });
+	_state._player->open_detached(path, file_type, at, true, [weak, path, request](std::shared_ptr<av_session> ses)
+	{
+		// Back on the UI thread before the view is touched: the weak
+		// pointer is a lifetime token, not a licence to work here.
+		if (const auto self = weak.lock())
+		{
+			self->clip_session_opened(path, request, std::move(ses));
+		}
+	}, std::move(file));
 }
 
 void movie_view::clip_session_opened(const core::file_path path, const uint64_t request,
@@ -2832,8 +3083,7 @@ void movie_view::clip_session_opened(const core::file_path path, const uint64_t 
 		invalidate_controls();
 		break;
 
-	case movie_clip_session_answer::ignore:
-		break;
+	case movie_clip_session_answer::ignore: break;
 	}
 }
 
@@ -2854,15 +3104,16 @@ void movie_view::close_clip_session()
 // down the warm, reading-ahead session that had just filled and reopen the same file in the other
 // slot. That reopen is a black gap in the middle of playback.
 //
-// Answers av_max_frame_sessions for a contributor no session can serve -- a photo, or a clip whose
-// source has gone -- which is the caller's signal to use the frame cache instead.
+// Answers av_max_frame_sessions for a contributor no session can serve -- a photo, an audio file whose
+// pictures are drawn rather than decoded, or a clip whose source has gone -- which is the caller's signal to
+// use the frame cache instead.
 size_t movie_view::preview_slot_for(const movie_frame_source& source, const std::vector<movie_clip>& clips,
                                     const size_t avoid)
 {
 	if (source.index < 0 || source.weight <= 0.0) return av_max_frame_sessions;
 
 	const auto& clip = clips[source.index];
-	if (clip.is_photo || clip.is_missing) return av_max_frame_sessions;
+	if (clip.is_photo || clip.is_text || clip.is_audio || clip.is_missing) return av_max_frame_sessions;
 
 	for (size_t slot = 0; slot < _preview_sources.size(); ++slot)
 	{
@@ -2889,8 +3140,7 @@ void movie_view::preopen_preview_source(const size_t used_slot)
 	if (_movie_state.playing != movie_view_state::playing_t::movie) return;
 
 	const auto& project = _movie_state.project;
-	const auto ahead = calc_movie_frame(project.clips(), project.settings(),
-	                                    _movie_state.playhead + preview_preopen_seconds);
+	const auto ahead = project.frame(_movie_state.playhead + preview_preopen_seconds);
 
 	// At a transition the incoming clip is b; away from one it is whatever a names, which may still
 	// be a clip the playhead has not reached.
@@ -2937,14 +3187,14 @@ bool movie_view::ensure_preview_source(const size_t slot, const int clip_index, 
 
 	_state._player->open_frames(slot, path, file_type, source_time,
 	                            [weak, slot, clip_index, path](std::shared_ptr<av_session> ses)
-	                            {
-		                            // Back on the UI thread before the view is touched: the weak
-		                            // pointer is a lifetime token, not a licence to work here.
-		                            if (const auto self = weak.lock())
-		                            {
-			                            self->preview_source_opened(slot, clip_index, path, std::move(ses));
-		                            }
-	                            });
+	{
+		// Back on the UI thread before the view is touched: the weak
+		// pointer is a lifetime token, not a licence to work here.
+		if (const auto self = weak.lock())
+		{
+			self->preview_source_opened(slot, clip_index, path, std::move(ses));
+		}
+	});
 
 	return false;
 }
@@ -2961,7 +3211,7 @@ void movie_view::update_preview_source(const size_t slot, const int clip_index, 
 	// handle is held, whose frame is the one wanted. Both clocks are the wall clock, so a clip that
 	// started in step with the movie stays in step with it.
 	const auto playing = _movie_state.playing == movie_view_state::playing_t::movie && !_preview_audio_priming &&
-		!_preview_override;
+	                     !_preview_override;
 
 	if (playing != preview.session->is_playing())
 	{
@@ -3047,7 +3297,7 @@ void movie_view::start_preview_audio()
 		// write_device_samples speaks float, 16-bit and 32-bit; an endpoint mixing in anything else
 		// is left silent rather than fed noise.
 		if (format.sample_rate == 0 || format.channel_count() == 0 || format.bytes_per_sample() == 0 ||
-			format.sample_fmt == prop::audio_sample_t::none)
+		    format.sample_fmt == prop::audio_sample_t::none)
 		{
 			_preview_device.reset();
 			return;
@@ -3126,10 +3376,9 @@ void movie_view::pump_preview_audio()
 	// the picture for the rest of the movie. The endpoint's own clock is not asked: a Bluetooth
 	// headset reports a latency that is not a drift, and an endpoint whose clock does not move would
 	// restart the sound for ever.
-	if (!_preview_audio_priming &&
-		(_preview_audio_time < _movie_state.playhead ||
-			_preview_audio_time > _movie_state.playhead + preview_audio_lead * 2 ||
-			_preview_audio_buffer.seconds() > preview_audio_lead))
+	if (!_preview_audio_priming && (_preview_audio_time < _movie_state.playhead ||
+	                                _preview_audio_time > _movie_state.playhead + preview_audio_lead * 2 ||
+	                                _preview_audio_buffer.seconds() > preview_audio_lead))
 	{
 		reset_preview_audio();
 	}
@@ -3153,19 +3402,26 @@ void movie_view::pump_preview_audio()
 		mixed.assign(frames * 2, 0);
 
 		// The same decision the picture is composed from, at the same instant, so the sound and the
-		// frame cannot disagree about which clips are playing or at what weight.
-		const auto frame = calc_movie_frame(project.clips(), project.settings(), _preview_audio_time);
+		// frame cannot disagree about which clips are playing or at what level. Each clip's level is
+		// ramped to where the decision has it at the chunk's end, so a crossfade and a sound letting go
+		// are smooth rather than a step every chunk.
+		const auto frame = project.frame(_preview_audio_time);
+		const auto next = project.frame(_preview_audio_time + static_cast<double>(frames) / _preview_audio_rate);
 		auto unread = false;
 
 		const auto mix = [&](const movie_frame_source& source)
 		{
-			if (source.index < 0 || source.weight <= 0.0) return;
+			// The fade at the movie's ends is a fade of the movie, not of its picture.
+			const auto from = source.sound * (1.0 - frame.fade_to_black);
+			const auto to = movie_sound_level(next, source.index);
+			if (source.index < 0 || (from <= 0.0 && to <= 0.0)) return;
 
 			const auto& clip = project.clips()[source.index];
-			if (clip.is_photo || clip.is_missing) return;
+			const auto sound = movie_clip_sound(clip);
+			if (clip.is_missing || sound.is_empty()) return;
 
 			auto window_start = 0.0;
-			const auto pcm = preview_pcm(clip, source.source_time, window_start);
+			const auto pcm = preview_pcm(sound, source.sound_time, window_start);
 
 			if (!pcm)
 			{
@@ -3173,16 +3429,16 @@ void movie_view::pump_preview_audio()
 				return;
 			}
 
-			// The fade at the movie's ends is a fade of the movie, not of its picture.
-			const auto weight = source.weight * (1.0 - frame.fade_to_black);
 			const auto first = static_cast<int64_t>(
-				std::llround((source.source_time - window_start) * _preview_audio_rate)) * 2;
+								   std::llround((source.sound_time - window_start) * _preview_audio_rate)) *
+			                   2;
 
 			for (size_t i = 0; i < mixed.size(); ++i)
 			{
 				const auto at = first + static_cast<int64_t>(i);
 				if (at < 0 || at >= static_cast<int64_t>(pcm->size())) continue;
 
+				const auto weight = from + (to - from) * static_cast<double>(i / 2) / static_cast<double>(frames);
 				mixed[i] += static_cast<int32_t>(std::lround((*pcm)[static_cast<size_t>(at)] * weight));
 			}
 		};
@@ -3228,30 +3484,31 @@ void movie_view::prefetch_preview_audio()
 		const auto ahead = _preview_audio_time + reach;
 		if (ahead >= total) break;
 
-		const auto frame = calc_movie_frame(project.clips(), project.settings(), ahead);
+		const auto frame = project.frame(ahead);
 
 		for (const auto& source : {frame.a, frame.b})
 		{
 			if (source.index < 0) continue;
 
 			const auto& clip = project.clips()[source.index];
-			if (clip.is_photo || clip.is_missing) continue;
+			const auto sound = movie_clip_sound(clip);
+			if (clip.is_missing || sound.is_empty()) continue;
 
 			auto window_start = 0.0;
-			preview_pcm(clip, source.source_time, window_start);
+			preview_pcm(sound, source.sound_time, window_start);
 		}
 	}
 }
 
-std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_clip& clip,
-                                                                    const double source_time, double& window_start)
+std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_sound& sound, const double sound_time,
+                                                                    double& window_start)
 {
 	if (_preview_audio_rate <= 0) return {};
 
-	const auto window = preview_audio_window(clip, source_time);
+	const auto window = preview_audio_window(sound, sound_time);
 	window_start = window.start;
 
-	// Nothing of the clip is left to hear at this instant. That is silence, not a read to wait for:
+	// Nothing of the item is left to hear at this instant. That is silence, not a read to wait for:
 	// answered as unread, it would hold the start of playback for the whole priming allowance.
 	if (window.end <= window.start)
 	{
@@ -3264,10 +3521,17 @@ std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_
 
 	for (auto& entry : _preview_audio)
 	{
-		if (entry.path == clip.path && entry.start == window.start && entry.end == window.end &&
-			entry.sample_rate == _preview_audio_rate)
+		if (entry.path == sound.path && entry.song == sound.song && entry.start == window.start &&
+		    entry.end == window.end && entry.sample_rate == _preview_audio_rate)
 		{
 			entry.wanted = stamp;
+
+			// An Undo can bring back a clip measured before; its first window is still here to judge.
+			if (entry.pcm && window.start == sound.start)
+			{
+				judge_opening_sound(sound.path, sound.song, sound.start, *entry.pcm);
+			}
+
 			return entry.pcm;
 		}
 
@@ -3275,14 +3539,16 @@ std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_
 	}
 
 	*oldest = {};
-	oldest->path = clip.path;
+	oldest->path = sound.path;
+	oldest->song = sound.song;
 	oldest->start = window.start;
 	oldest->end = window.end;
 	oldest->sample_rate = _preview_audio_rate;
 	oldest->wanted = stamp;
 
 	const auto weak = weak_from_this();
-	const auto path = clip.path;
+	const auto path = sound.path;
+	const auto song = sound.song;
 	const auto start = window.start;
 	const auto end = window.end;
 	const auto rate = _preview_audio_rate;
@@ -3291,24 +3557,24 @@ std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_
 
 	// Not the render queue: the preview's pictures must not wait behind sound the playhead has not
 	// reached yet.
-	_state.queue_async(async_queue::load, [weak, path, start, end, rate, source_generation, &s = _state]
+	_state.queue_async(async_queue::load, [weak, path, song, start, end, rate, source_generation, &s = _state]
 	{
 		std::vector<int16_t> pcm;
 		av_format_decoder decoder;
 
-		if (decoder.open(path, media_intent::playback))
+		if (open_movie_audio(decoder, path, media_intent::playback, song))
 		{
 			decoder.init_streams(-1, -1, false, false, false);
 			pcm = decoder.extract_audio_pcm_range(rate, start, end - start);
 		}
 
-		s.queue_ui([weak, path, start, end, rate, source_generation, pcm = std::move(pcm)]() mutable
+		s.queue_ui([weak, path, song, start, end, rate, source_generation, pcm = std::move(pcm)]() mutable
 		{
 			// The weak pointer is a lifetime token only; it is locked here, back on the thread
 			// that owns the view.
 			if (const auto self = weak.lock())
 			{
-				self->preview_pcm_loaded(path, start, end, rate, source_generation, std::move(pcm));
+				self->preview_pcm_loaded(path, song, start, end, rate, source_generation, std::move(pcm));
 			}
 		});
 	});
@@ -3316,7 +3582,7 @@ std::shared_ptr<const std::vector<int16_t>> movie_view::preview_pcm(const movie_
 	return {};
 }
 
-void movie_view::preview_pcm_loaded(const core::file_path path, const double start, const double end,
+void movie_view::preview_pcm_loaded(const core::file_path path, const int song, const double start, const double end,
                                     const int sample_rate, const int source_generation, std::vector<int16_t> pcm)
 {
 	if (!should_accept_movie_preview_pcm_loaded(_preview_audio_source_generation, source_generation)) return;
@@ -3325,12 +3591,35 @@ void movie_view::preview_pcm_loaded(const core::file_path path, const double sta
 	// is dropped rather than kept: lifetime is not currency here either.
 	for (auto& entry : _preview_audio)
 	{
-		if (!entry.pcm && entry.path == path && entry.start == start && entry.end == end &&
-			entry.sample_rate == sample_rate && entry.source_generation == source_generation)
+		if (!entry.pcm && entry.path == path && entry.song == song && entry.start == start && entry.end == end &&
+		    entry.sample_rate == sample_rate && entry.source_generation == source_generation)
 		{
 			entry.pcm = std::make_shared<const std::vector<int16_t>>(std::move(pcm));
+			judge_opening_sound(path, song, start, *entry.pcm);
 			return;
 		}
+	}
+}
+
+// The first window of an item's sound holds exactly what a crossfade bringing the clip in would mix, so
+// that is what is judged, rather than the file being read a second time to ask.
+void movie_view::judge_opening_sound(const core::file_path path, const int song, const double start,
+                                     const std::vector<int16_t>& pcm)
+{
+	auto& project = _movie_state.project;
+
+	for (size_t i = 0; i < project.size(); ++i)
+	{
+		const auto& clip = project.clips()[i];
+		if (clip.sound_checked_at == clip.start) continue;
+
+		const auto sound = movie_clip_sound(clip);
+		if (sound.is_empty() || sound.path != path || sound.song != song || sound.start != start) continue;
+
+		auto measured = clip;
+		measured.sound_checked_at = clip.start;
+		measured.sound_is_quiet = movie_opening_is_quiet(pcm, _preview_audio_rate);
+		project.replace_quietly(i, measured);
 	}
 }
 
@@ -3437,7 +3726,7 @@ void movie_view::select_clip(const size_t index, const bool extend, const bool t
 	if (_timeline) _timeline->reveal(_movie_state.project.current());
 	if (should_rewind_movie_clip_after_document_focus_change(true)) rewind_clip_player();
 	show_focused_clip();
-	read_focused_clip();
+	read_document();
 	changed(false);
 }
 
@@ -3447,16 +3736,8 @@ void movie_view::set_focus(const size_t index)
 	if (_timeline) _timeline->reveal(index);
 	if (should_rewind_movie_clip_after_document_focus_change(true)) rewind_clip_player();
 	show_focused_clip();
-	read_focused_clip();
+	read_document();
 	changed(false);
-}
-
-// Focus changes only what the clip half of the panel describes, so only that half is rewritten.
-// A movie setting the user is typing into keeps its text.
-void movie_view::read_focused_clip()
-{
-	_movie_state.read_from_project();
-	if (_controls) _controls->show_clip_values();
 }
 
 // The clip player belongs to the focused clip, so moving focus retires it. Without this a position
@@ -3502,9 +3783,10 @@ void movie_view::send_selection_to_end()
 	move_selection(_movie_state.project.size());
 }
 
-menu_type movie_view::context_menu(const pointi loc)
+// The timeline's menu is about its clips; anywhere else in Movie offers Movie's own commands.
+view_menu movie_view::context_menu(const pointi loc)
 {
-	if (!_timeline || !_timeline->bounds.contains(loc)) return menu_type::view;
+	if (!_timeline || !_timeline->bounds.contains(loc)) return view_base::context_menu(loc);
 
 	// Right-clicking outside the selection moves it, as everywhere else: the menu must act on what
 	// the user just pointed at, not on what happened to be selected before. Picking it stops playback
@@ -3515,7 +3797,23 @@ menu_type movie_view::context_menu(const pointi loc)
 		select_clip(static_cast<size_t>(index), false, false);
 	}
 
-	return menu_type::movie;
+	return {
+		.list =
+			{
+				commands::tool_movie_send_to_end,
+				commands::tool_movie_remove,
+				commands::tool_movie_relink,
+				commands::none,
+				commands::tool_movie_select_all,
+				commands::tool_movie_add,
+				commands::tool_movie_add_text,
+			},
+	};
+}
+
+recti movie_view::keyboard_bounds() const
+{
+	return _timeline ? _timeline->current_tile_bounds() : recti{};
 }
 
 void movie_view::changed(const bool relayout)
@@ -3533,7 +3831,7 @@ void movie_view::changed(const bool relayout)
 
 	invalidate_controls();
 	_state.invalidate_view(view_invalid::view_redraw | view_invalid::command_state |
-		(relayout ? view_invalid::view_layout : view_invalid::none));
+	                       (relayout ? view_invalid::view_layout : view_invalid::none));
 }
 
 // The panel is its own window with its own frame, so invalidating the view does not repaint it.
@@ -3543,10 +3841,31 @@ void movie_view::invalidate_controls() const
 	if (_controls) _controls->frame()->invalidate();
 }
 
-void movie_view::settings_changed(const movie_edit_group group)
+// What is typed is the document's at once, so the preview and the strip show it as it is typed. The item
+// is the focused one, which the preview is parked on unless the movie is playing.
+void movie_view::text_changed()
 {
-	_movie_state.project.settings(_movie_state.to_settings(), group);
-	changed();
+	auto& project = _movie_state.project;
+	if (!project.current_clip()) return;
+
+	project.text(project.current(), panel_text(_movie_state.item_text), movie_edit_group::text);
+	if (!_movie_state.is_playing()) show_focused_clip();
+
+	// A caption's words change how long it shows, which the movie's length does not depend on, so only
+	// the strip and the preview need drawing again.
+	changed(false);
+}
+
+void movie_view::stabilize_changed()
+{
+	auto& project = _movie_state.project;
+	const auto* const clip = project.current_clip();
+	if (!clip || clip->stabilize == _movie_state.stabilize) return;
+
+	auto updated = *clip;
+	updated.stabilize = _movie_state.stabilize;
+	project.replace(project.current(), updated);
+	changed(false);
 }
 
 void movie_view::end_edit_group()
@@ -3558,33 +3877,15 @@ void movie_view::hold_changed(const movie_edit_group group)
 {
 	auto& project = _movie_state.project;
 	const auto* const clip = project.current_clip();
-	if (!clip || !clip->is_photo) return;
+	if (!clip || !(clip->is_photo || clip->is_text)) return;
 
-	if (_movie_state.clip_hold_is_default)
-	{
-		auto updated = *clip;
-		updated.photo_duration_is_default = true;
-		updated.start = 0;
-		updated.end = project.settings().photo_seconds;
-		project.replace(project.current(), updated);
-	}
-	else
-	{
-		// Turning the default off keeps the length the photo already has. The slider that appears
-		// last showed whatever this photo held before it followed the default, and the movie default
-		// may have moved since.
-		if (clip->photo_duration_is_default)
-		{
-			_movie_state.clip_hold_tenths = std::clamp(core::round(clip->duration() * 10), 1, 600);
-			if (_controls) _controls->show_clip_values();
-		}
-
-		// A typed length is held to what any clip in a document may be.
-		project.trim(project.current(), 0,
-		             std::clamp(_movie_state.clip_hold_tenths / 10.0, movie_min_photo_seconds, movie_max_clip_seconds),
-		             group);
-	}
-
+	// The panel speaks tenths. A length it is still showing is the document's own and is kept exactly --
+	// a project's 4.25 s shows as 4.3 -- so choosing a value again changes nothing; one typed in is held
+	// to the bounds any document is.
+	const auto seconds = core::round(clip->duration() * 10) == _movie_state.hold_tenths
+	                         ? clip->duration()
+	                         : _movie_state.hold_tenths / 10.0;
+	project.trim(project.current(), 0, seconds, group);
 	changed();
 }
 
@@ -3599,10 +3900,30 @@ void movie_view::reset_trim()
 {
 	auto& project = _movie_state.project;
 	const auto* const clip = project.current_clip();
-	if (!clip || clip->is_photo) return;
+	if (!clip || clip->is_photo || clip->is_text) return;
 
 	_preview_override.reset();
 	project.trim(project.current(), 0, clip->source_duration > 0 ? clip->source_duration : clip->end);
+	changed();
+}
+
+void movie_view::choose_song(const int song)
+{
+	auto& project = _movie_state.project;
+	const auto* const clip = project.current_clip();
+	if (!clip || !clip->is_audio || song < 1 || song > clip->songs || song == clip->song) return;
+
+	// Another tune is another source, of another length, so what the clip kept of the last means nothing for it:
+	// it is measured again and takes the whole of the new one, as a clip just added does.
+	auto chosen = *clip;
+	chosen.song = song;
+	chosen.start = chosen.end = chosen.source_duration = 0;
+	chosen.is_probed = false;
+
+	stop_playback();
+	_preview_override.reset();
+	project.replace(project.current(), chosen);
+	probe_clips();
 	changed();
 }
 
@@ -3626,7 +3947,7 @@ void movie_view::add_paths_at(const std::vector<core::file_path>& paths, const s
 
 	for (const auto& path : paths)
 	{
-		clips.emplace_back(make_movie_clip(path, project.settings()));
+		clips.emplace_back(make_movie_clip(path));
 	}
 
 	// One Add, or one drop, is one undo step however many files it carried.
@@ -3641,21 +3962,23 @@ void movie_view::add_paths_at(const std::vector<core::file_path>& paths, const s
 
 bool movie_view::drop_paths(const std::vector<core::file_path>& paths, const pointi loc)
 {
+	// Taken and ignored under a render, which works from the timeline as it stood when it began; refused, it
+	// would fall through to the frame's own handling and copy the files into the folder Items shows.
+	if (_progress.active) return true;
+
 	std::vector<core::file_path> media;
 
 	for (const auto& path : paths)
 	{
-		const auto* const mt = files::file_type_from_name(path);
-		if (mt && (mt->group == file_group::photo || mt->group == file_group::video)) media.emplace_back(path);
+		if (is_movie_source(files::file_type_from_name(path))) media.emplace_back(path);
 	}
 
 	if (media.empty()) return false;
 
 	// Over the strip the drop lands where the marker showed it would; anywhere else there is no
 	// position being pointed at, so it appends.
-	const auto at = _timeline && _timeline->bounds.contains(loc)
-		                ? static_cast<size_t>(_timeline->drop_index(loc))
-		                : _movie_state.project.size();
+	const auto at = _timeline && _timeline->bounds.contains(loc) ? static_cast<size_t>(_timeline->drop_index(loc))
+	                                                             : _movie_state.project.size();
 
 	add_paths_at(media, at);
 	return true;
@@ -3663,7 +3986,8 @@ bool movie_view::drop_paths(const std::vector<core::file_path>& paths, const poi
 
 void movie_view::drag_paths_over(const std::optional<pointi> loc)
 {
-	if (_timeline) _timeline->external_drag_over(loc && _timeline->bounds.contains(*loc) ? loc : std::nullopt);
+	const auto inserts = loc && !_progress.active && _timeline && _timeline->bounds.contains(*loc);
+	if (_timeline) _timeline->external_drag_over(inserts ? loc : std::nullopt);
 }
 
 void movie_view::remove_current()
@@ -3676,6 +4000,26 @@ void movie_view::remove_current()
 	read_document();
 	rewind_clip_player();
 	changed();
+}
+
+// After the focused item, as a new page follows the one in view; the first item of an empty movie.
+// Focused, with its words ready to be typed, and shown in the preview as the movie will show it.
+void movie_view::add_text_screen()
+{
+	auto& project = _movie_state.project;
+	const auto at = project.is_empty() ? 0 : project.current() + 1;
+
+	if (should_retire_movie_clip_session_for_document_focus_change(true)) stop_playback();
+	project.insert(at, make_movie_text({}));
+	if (_timeline) _timeline->reveal(project.current());
+	read_document();
+	rewind_clip_player();
+	show_focused_clip();
+	changed();
+
+	// Its words are what a screen is for, so the box takes them straight away. It starts empty: a word
+	// put there for the user to replace is a word that ends up in a movie when they do not.
+	if (_controls && _controls->_text_edit) _controls->_text_edit->focus();
 }
 
 void movie_view::undo()
@@ -3693,21 +4037,34 @@ void movie_view::undo()
 }
 
 // Probing is I/O, so it runs on a worker and comes back as detached values matched to clips by
-// path. A clip whose source has moved keeps its stored times and stays marked missing.
-movie_probe_result probe_movie_source(const core::file_path path)
+// path, and tune. A clip whose source has moved keeps its stored times and stays marked missing.
+movie_probe_result probe_movie_source(const core::file_path path, const int song)
 {
 	const auto attributes_before = platform::file_attributes(path);
 	movie_probe_result probe;
 	probe.path = path;
+	probe.song = song;
 
 	const auto* const mt = files::file_type_from_name(path);
 	probe.is_photo = mt && mt->group == file_group::photo;
+	probe.is_audio = mt && mt->group == file_group::audio;
 
 	if (probe.is_photo)
 	{
 		const auto loaded = files{}.load(path, true);
 		probe.found = loaded.success;
 		probe.extent = upright_movie_extent(loaded.dimensions(), loaded.orientation());
+	}
+	else if (probe.is_audio)
+	{
+		// No picture of its own: Movie draws one, landscape, at a steady rate, for as long as the file plays.
+		const auto tunes = movie_audio_songs(path);
+		probe.songs = std::max(1, tunes.count);
+		probe.first_song = tunes.start;
+		probe.duration = movie_audio_seconds(path, song);
+		probe.found = probe.duration > 0;
+		probe.extent = movie_audio_extent;
+		probe.frame_rate = movie_audio_frame_rate;
 	}
 	else
 	{
@@ -3721,165 +4078,90 @@ movie_probe_result probe_movie_source(const core::file_path path)
 			probe.found = info.has_video;
 			probe.extent = upright_movie_extent(info.display_dimensions, info.display_orientation);
 			probe.duration = std::max(0.0, info.end - info.start);
-			probe.frame_rate = info.video_frame_rate;
+			probe.frame_rate = movie_source_frame_rate(info.video_frame_rate, decoder.video_average_frame_rate());
 		}
 	}
 
 	const auto attributes_after = platform::file_attributes(path);
 	probe.changed_during_probe = attributes_before.exists() != attributes_after.exists() ||
-		attributes_before.modified != attributes_after.modified ||
-		attributes_before.size != attributes_after.size;
+	                             attributes_before.modified != attributes_after.modified ||
+	                             attributes_before.size != attributes_after.size;
 	return probe;
 }
 
-movie_import import_movie_maker_project(const std::string_view xml, const core::folder_path project_folder,
-                                        const movie_source_finder& find)
+bool movie_opening_is_quiet(const std::vector<int16_t>& pcm, const int sample_rate)
 {
-	movie_import result;
-	result.loaded = read_wlmp(xml, project_folder);
-	if (!result.loaded) return result;
+	const auto heard = static_cast<size_t>(std::llround(movie_crossfade_seconds * std::max(0, sample_rate))) * 2;
+	return movie_sound_is_quiet(std::span<const int16_t>(pcm.data(), std::min(pcm.size(), heard)));
+}
 
-	auto& clips = result.loaded.clips;
-	const auto& recorded = result.loaded.recorded_seconds;
-	core::hash_map<core::file_path, size_t, core::ihash, core::ieq> source_index;
-
-	for (size_t i = 0; i < clips.size(); ++i)
-	{
-		if (!source_index.try_emplace(clips[i].path, result.sources.size()).second) continue;
-
-		movie_import_source source;
-		source.stored = clips[i].path;
-		source.path = clips[i].path;
-		source.recorded_seconds = i < recorded.size() ? recorded[i] : 0.0;
-		result.sources.emplace_back(std::move(source));
-	}
-
-	// Every probe the import makes, kept: a candidate measured to settle a choice is not opened
-	// again when its clip is measured.
-	core::hash_map<core::file_path, movie_probe_result, core::ihash, core::ieq> probes;
-
-	const auto probe = [&probes](const core::file_path path) -> const movie_probe_result&
-	{
-		const auto known = probes.find(path);
-		if (known != probes.end()) return known->second;
-		return probes.emplace(path, probe_movie_source(path)).first->second;
-	};
-
-	std::vector<size_t> missing_sources;
-	std::vector<core::file_path> missing;
-
-	for (size_t i = 0; i < result.sources.size(); ++i)
-	{
-		if (platform::exists(result.sources[i].stored)) continue;
-
-		missing_sources.emplace_back(i);
-		missing.emplace_back(result.sources[i].stored);
-	}
-
-	if (!missing.empty())
-	{
-		auto candidates = find ? find(missing) : std::vector<std::vector<core::file_path>>{};
-		candidates.resize(missing.size());
-
-		std::vector<double> lengths;
-		for (const auto i : missing_sources) lengths.emplace_back(result.sources[i].recorded_seconds);
-
-		const auto measure = [&probe](const core::file_path path)
-		{
-			const auto& measured = probe(path);
-			return measured.found && !measured.is_photo ? measured.duration : 0.0;
-		};
-
-		const auto choices = choose_movie_sources(missing, candidates, lengths, measure);
-
-		for (size_t j = 0; j < missing.size(); ++j)
-		{
-			auto& source = result.sources[missing_sources[j]];
-			source.match = choices[j].match;
-			if (!choices[j].path.is_empty()) source.path = choices[j].path;
-
-			for (const auto& candidate : candidates[j])
-			{
-				const auto measured = probes.find(candidate);
-				const auto seconds = measured != probes.end() && measured->second.found ? measured->second.duration : 0.0;
-				source.candidates.emplace_back(candidate, seconds);
-			}
-		}
-	}
-
-	for (auto& source : result.sources) source.probe = probe(source.path);
-
-	for (auto& clip : clips)
-	{
-		const auto& source = result.sources[source_index.at(clip.path)];
-
-		if (source.path != source.stored)
-		{
-			clip.path = source.path;
-			++result.relinked_clips;
-		}
-
-		// A reading taken while the file changed may already be wrong, so that clip is left for the
-		// caller's own probe, which retries a moving source.
-		if (!source.probe.changed_during_probe)
-		{
-			clip = apply_movie_probe(clip, source.probe, result.loaded.settings.photo_seconds);
-		}
-
-		// A clip that runs to the end of a source nothing could measure keeps the length the project
-		// recorded. Left at zero, the timeline would show it as nothing and a saved project would
-		// refuse it on reading, losing the clip a relink could still restore.
-		if (clip.is_lost() && !clip.is_photo && clip.duration() <= 0 && source.recorded_seconds > clip.start)
-		{
-			clip.end = source.recorded_seconds;
-			clip.source_duration = source.recorded_seconds;
-		}
-	}
-
-	return result;
+movie_sound_probe probe_movie_sound(const core::file_path path)
+{
+	movie_sound_probe probe;
+	probe.path = path;
+	// Whatever plays the file's sound for Movie measures it: a SID tune's own length, or the decoder's for any
+	// other file with a sound track. Zero for a file with no sound to play.
+	probe.duration = movie_audio_seconds(path);
+	probe.found = probe.duration > 0;
+	return probe;
 }
 
 void movie_view::probe_clips()
 {
-	std::vector<core::file_path> wanted;
+	// Each source once: a file, or for a SID file each of its tunes the timeline plays. And each sound file once.
+	std::vector<std::pair<core::file_path, int>> wanted;
+	std::vector<core::file_path> sounds;
 
 	for (const auto& clip : _movie_state.project.clips())
 	{
+		if (clip.has_sound_file() && !clip.sound_file_is_probed && !movie_path_list_contains(sounds, clip.sound_file))
+		{
+			sounds.emplace_back(clip.sound_file);
+		}
+
 		if (clip.is_probed) continue;
-		if (std::find(wanted.begin(), wanted.end(), clip.path) == wanted.end()) wanted.emplace_back(clip.path);
+		const std::pair source{clip.path, clip.song};
+		if (std::find(wanted.begin(), wanted.end(), source) == wanted.end()) wanted.emplace_back(source);
 	}
 
-	if (wanted.empty()) return;
+	if (wanted.empty() && sounds.empty()) return;
 
 	const auto weak = weak_from_this();
 	const auto generation = ++_probe_generation;
-	const auto revision = _movie_state.project.revision();
+	// What the user did, not what was measured: a clip's sound heard during playback changes the document
+	// too, and must not throw a probe's answers away again and again while the movie plays.
+	const auto revision = _movie_state.project.edit_revision();
 
-	_state.queue_async(async_queue::load, [weak, wanted, generation, revision, &s = _state]
+	_state.queue_async(async_queue::load, [weak, wanted, sounds, generation, revision, &s = _state]
 	{
 		std::vector<movie_probe_result> results;
 		results.reserve(wanted.size());
 
-		for (const auto& path : wanted)
+		for (const auto& [path, song] : wanted)
 		{
-			results.emplace_back(probe_movie_source(path));
+			results.emplace_back(probe_movie_source(path, song));
 		}
 
-		s.queue_ui([weak, generation, revision, results = std::move(results)]
+		std::vector<movie_sound_probe> heard;
+		heard.reserve(sounds.size());
+		for (const auto& path : sounds) heard.emplace_back(probe_movie_sound(path));
+
+		s.queue_ui([weak, generation, revision, results = std::move(results), heard = std::move(heard)]
 		{
 			const auto self = weak.lock();
 			if (!self || generation != self->_probe_generation) return;
-			if (revision != self->_movie_state.project.revision())
+			if (revision != self->_movie_state.project.edit_revision())
 			{
 				self->probe_clips();
 				return;
 			}
-			self->apply_probe(results);
+			self->apply_probe(results, heard);
 		});
 	});
 }
 
-void movie_view::apply_probe(const std::vector<movie_probe_result>& results)
+void movie_view::apply_probe(const std::vector<movie_probe_result>& results,
+                             const std::vector<movie_sound_probe>& sounds)
 {
 	auto& project = _movie_state.project;
 	auto changed_any = false;
@@ -3892,8 +4174,8 @@ void movie_view::apply_probe(const std::vector<movie_probe_result>& results)
 		const auto& clip = project.clips()[i];
 		if (clip.is_probed) continue;
 
-		const auto found = std::find_if(results.begin(), results.end(),
-		                                [&](const movie_probe_result& r) { return r.path == clip.path; });
+		const auto found = std::find_if(results.begin(), results.end(), [&](const movie_probe_result& r)
+		{ return r.path == clip.path && r.song == clip.song; });
 
 		if (found == results.end()) continue;
 
@@ -3916,7 +4198,21 @@ void movie_view::apply_probe(const std::vector<movie_probe_result>& results)
 		}
 
 		_probe_retries.erase(clip.path);
-		project.replace_quietly(i, apply_movie_probe(clip, *found, project.settings().photo_seconds));
+		project.replace_quietly(i, apply_movie_probe(clip, *found));
+		changed_any = true;
+	}
+
+	for (size_t i = 0; i < project.size(); ++i)
+	{
+		const auto& clip = project.clips()[i];
+		if (!clip.has_sound_file() || clip.sound_file_is_probed) continue;
+
+		const auto found = std::ranges::find_if(sounds, [&clip](const movie_sound_probe& r)
+		{ return r.path == clip.sound_file; });
+
+		if (found == sounds.end()) continue;
+
+		project.replace_quietly(i, apply_movie_sound_probe(clip, *found));
 		changed_any = true;
 	}
 
@@ -3928,7 +4224,7 @@ void movie_view::apply_probe(const std::vector<movie_probe_result>& results)
 	if (changed_any)
 	{
 		// A probe can only have measured clips, so only the clip half of the panel can have moved.
-		read_focused_clip();
+		read_document();
 		changed();
 	}
 
@@ -3942,7 +4238,7 @@ void movie_view::apply_probe(const std::vector<movie_probe_result>& results)
 std::vector<platform::file_dialog_filter> movie_project_filters()
 {
 	return {
-		{std::string(tt.movie_project_files.sv()), "*.otio"},
+		{std::string(tt.movie_project_files.sv()), "*.dfv"},
 	};
 }
 
@@ -3965,35 +4261,11 @@ namespace
 		result.resize(static_cast<size_t>(read));
 		return result;
 	}
-
-	// The collection files that carry each missing source's name. Answered from the index rather
-	// than the disk: it already lists every member, so the search is one pass over memory instead of
-	// a walk of the collection. Runs on the import's worker; the index publishes immutable folder
-	// snapshots for readers on any thread.
-	std::vector<std::vector<core::file_path>> find_in_collection(const index_state& index,
-	                                                           const std::vector<core::file_path>& missing)
-	{
-		core::hash_map<std::string, std::vector<size_t>, core::ihash, core::ieq> wanted;
-		for (size_t i = 0; i < missing.size(); ++i) wanted[std::string(missing[i].name())].emplace_back(i);
-
-		std::vector<std::vector<core::file_path>> result(missing.size());
-
-		for (const auto& path : index.all_indexed_items())
-		{
-			const auto found = wanted.find(std::string(path.name()));
-			if (found == wanted.end()) continue;
-
-			for (const auto i : found->second) result[i].emplace_back(path);
-		}
-
-		return result;
-	}
 }
 
-std::string write_movie_project_file(const core::file_path path, const std::string_view text,
-                                    const bool fail_if_exists)
+std::string write_movie_project_file(const core::file_path path, const std::string_view text, const bool fail_if_exists)
 {
-	const auto staged = platform::temp_file(".otio", path.folder());
+	const auto staged = platform::temp_file(".dfv", path.folder());
 	const auto cleanup = core::scope_exit([&staged] { platform::delete_file(staged); });
 
 	if (!platform::blob_save_to_file({std::bit_cast<const uint8_t*>(text.data()), text.size()}, staged))
@@ -4001,71 +4273,45 @@ std::string write_movie_project_file(const core::file_path path, const std::stri
 		return "could not write the staged project";
 	}
 
-	const auto moved = fail_if_exists
-		                   ? platform::move_file(staged, path, true)
-		                   : platform::replace_file(path, staged);
+	const auto moved = fail_if_exists ? platform::move_file(staged, path, true) : platform::replace_file(path, staged);
 	return moved.failed() ? moved.format_error() : std::string{};
 }
 
-void movie_view::load_project(const core::file_path path, const bool is_wlmp)
+void movie_view::load_project(const core::file_path path)
 {
 	if (_project_io_active) return;
 
 	const auto weak = weak_from_this();
-	if (!confirm_save_or_discard([weak, path, is_wlmp]
+	if (!confirm_save_or_discard([weak, path]
 	{
-		if (const auto self = weak.lock()) self->load_project(path, is_wlmp);
-	})) return;
+		if (const auto self = weak.lock()) self->load_project(path);
+	}))
+		return;
 
 	_project_io_active = true;
 	const auto generation = ++_project_io_generation;
 	const auto revision = _movie_state.project.edit_revision();
 	_state.invalidate_view(view_invalid::command_state);
 
-	// Importing measures every source, which for a long Movie Maker project takes seconds, so the
-	// wait is said rather than shown as nothing. A render's own status is left alone.
-	if (is_wlmp && !_progress.active)
-	{
-		_status = std::string(tt.loading.sv());
-		_state.invalidate_view(view_invalid::status);
-	}
-
-	_state.queue_async(async_queue::load,
-	                   [weak, path, is_wlmp, generation, revision, &index = _state.item_index, &s = _state]
+	_state.queue_async(async_queue::load, [weak, path, generation, revision, &s = _state, function = __FUNCTION__]
 	{
 		movie_load_result loaded;
-		auto relinked = 0;
 
 		try
 		{
 			const auto text = read_text_file(path);
-
-			if (!text.empty() && is_wlmp)
-			{
-				const auto find = [&index](const std::vector<core::file_path>& missing)
-				{
-					return find_in_collection(index, missing);
-				};
-
-				auto imported = import_movie_maker_project(text, path.folder(), find);
-				relinked = imported.relinked_clips;
-				loaded = std::move(imported.loaded);
-			}
-			else if (!text.empty())
-			{
-				loaded = read_otio(text, path.folder());
-			}
+			if (!text.empty()) loaded = read_dfv(text, path.folder());
 		}
 		catch (const std::exception& e)
 		{
-			core::log(__FUNCTION__, e.what());
+			core::log(function, e.what());
 		}
 		catch (...)
 		{
-			core::log(__FUNCTION__, "project read failed");
+			core::log(function, "project read failed");
 		}
 
-		s.queue_ui([weak, path, is_wlmp, generation, revision, relinked, loaded = std::move(loaded)]() mutable
+		s.queue_ui([weak, path, generation, revision, loaded = std::move(loaded)]() mutable
 		{
 			const auto self = weak.lock();
 			if (!self || generation != self->_project_io_generation) return;
@@ -4073,40 +4319,29 @@ void movie_view::load_project(const core::file_path path, const bool is_wlmp)
 			self->_project_io_active = false;
 			self->_state.invalidate_view(view_invalid::command_state);
 
-			if (!self->_progress.active && self->_status == tt.loading.sv())
-			{
-				self->_status.clear();
-				self->_state.invalidate_view(view_invalid::status);
-			}
-
 			if (!loaded)
 			{
-				make_dlg(self->_host->owner())->show_message(
-					icon_index::error, tt.movie_title,
-					str_format(tt.movie_open_failed_fmt.sv(), path.name().sv()));
+				make_dlg(self->_host->owner())
+					->show_message(icon_index::error, tt.movie_title,
+				                   str_format(tt.movie_open_failed_fmt.sv(), path.name().sv()));
 				return;
 			}
 
 			auto result = std::make_shared<movie_load_result>(std::move(loaded));
-			const auto apply = [weak, path, is_wlmp, relinked, result]
+			const auto apply = [weak, path, result]
 			{
 				const auto current = weak.lock();
 				if (!current) return;
 
-				// A Movie Maker project is imported, not opened: saving it proposes an OTIO sibling.
-				const auto project_path = is_wlmp ? path.extension(".otio") : path;
 				if (should_retire_movie_sources_after_project_change(true))
 				{
 					current->stop_playback();
 					current->retire_source_state();
 				}
-				current->_movie_state.project.reset(std::move(result->clips), result->settings, project_path);
-				current->_movie_state.import_ignored = result->ignored_elements;
-				current->_movie_state.import_relinked = relinked;
+				current->_movie_state.project.reset(std::move(result->clips), path);
+				current->_movie_state.load_problems = static_cast<int>(result->problems.size());
 				current->_probe_retries.clear();
 				current->read_document();
-				// An import arrives measured; this probes what it could not, and everything an opened
-				// project names.
 				current->probe_clips();
 				if (current->_timeline) current->_timeline->reveal(0);
 				if (should_rewind_movie_clip_after_document_focus_change(true)) current->rewind_clip_player();
@@ -4130,20 +4365,7 @@ void movie_view::open_project()
 	std::vector<core::file_path> paths;
 	if (!platform::prompt_for_open_paths(paths, movie_project_filters(), false) || paths.empty()) return;
 
-	load_project(paths.front(), false);
-}
-
-void movie_view::import_project()
-{
-	std::vector<core::file_path> paths;
-
-	const std::vector<platform::file_dialog_filter> filters{
-		{std::string(tt.movie_maker_files.sv()), "*.wlmp"}
-	};
-
-	if (!platform::prompt_for_open_paths(paths, filters, false) || paths.empty()) return;
-
-	load_project(paths.front(), true);
+	load_project(paths.front());
 }
 
 void movie_view::save_project()
@@ -4163,8 +4385,8 @@ void movie_view::save_project(std::function<void(bool)> complete)
 
 	if (path.is_empty())
 	{
-		path = core::folder_path(platform::known_path(platform::known_folder::video)).combine_file_ext(
-			std::string(tt.movie_title.sv()), ".otio");
+		path = core::folder_path(platform::known_path(platform::known_folder::video))
+		           .combine_file_ext(std::string(tt.movie_title.sv()), ".dfv");
 	}
 
 	if (!platform::prompt_for_save_path(path, movie_project_filters()))
@@ -4174,7 +4396,7 @@ void movie_view::save_project(std::function<void(bool)> complete)
 	}
 
 	const auto revision = _movie_state.project.edit_revision();
-	auto json = write_otio(_movie_state.project.clips(), _movie_state.project.settings(), path.folder());
+	auto text = write_dfv(_movie_state.project.clips(), path.folder());
 	const auto generation = ++_project_io_generation;
 	const auto weak = weak_from_this();
 	_project_save_complete = std::move(complete);
@@ -4184,13 +4406,13 @@ void movie_view::save_project(std::function<void(bool)> complete)
 	// Not the work queue: a render holds that one thread for its whole length, and a save queued
 	// behind it would leave Save, Open and leaving Movie disabled until the render ended.
 	_state.queue_async(async_queue::load,
-	                   [weak, path, revision, generation, json = std::move(json), &s = _state]() mutable
+	                   [weak, path, revision, generation, text = std::move(text), &s = _state]() mutable
 	{
 		std::string error;
 
 		try
 		{
-			error = write_movie_project_file(path, json);
+			error = write_movie_project_file(path, text);
 		}
 		catch (const std::exception& e)
 		{
@@ -4214,14 +4436,16 @@ void movie_view::save_project(std::function<void(bool)> complete)
 			if (saved)
 			{
 				self->_movie_state.project.mark_saved(path, revision);
+				// Saved is the whole of what the file now holds: a line the open skipped is gone.
+				self->_movie_state.load_problems = 0;
 				document_clean = !self->_movie_state.project.is_modified();
 				self->changed(false);
 			}
 			else
 			{
-				make_dlg(self->_host->owner())->show_message(
-					icon_index::error, tt.movie_title,
-					str_format(tt.movie_save_failed_fmt.sv(), path.name().sv()));
+				make_dlg(self->_host->owner())
+					->show_message(icon_index::error, tt.movie_title,
+				                   str_format(tt.movie_save_failed_fmt.sv(), path.name().sv()));
 			}
 
 			auto complete = std::move(self->_project_save_complete);
@@ -4235,8 +4459,7 @@ void movie_view::add_files()
 	std::vector<core::file_path> paths;
 
 	const std::vector<platform::file_dialog_filter> filters{
-		{std::string(tt.movie_media_files.sv()), "*.mp4;*.mov;*.avi;*.mkv;*.m4v;*.jpg;*.jpeg;*.png;*.heic;*.webp"}
-	};
+		{std::string(tt.movie_media_files.sv()), movie_source_patterns()}};
 
 	if (!platform::prompt_for_open_paths(paths, filters, true)) return;
 
@@ -4279,8 +4502,8 @@ void movie_view::relink_missing()
 	const auto weak = weak_from_this();
 	_state.invalidate_view(view_invalid::command_state);
 
-	_state.queue_async(async_queue::load,
-	                   [weak, generation, candidates = std::move(candidates), &s = _state]() mutable
+	_state.queue_async(async_queue::load, [weak, generation, candidates = std::move(candidates), &s = _state,
+	                                       function = __FUNCTION__]() mutable
 	{
 		auto failed = false;
 
@@ -4291,12 +4514,12 @@ void movie_view::relink_missing()
 		}
 		catch (const std::exception& e)
 		{
-			core::log(__FUNCTION__, e.what());
+			core::log(function, e.what());
 			failed = true;
 		}
 		catch (...)
 		{
-			core::log(__FUNCTION__, "relink probe failed");
+			core::log(function, "relink probe failed");
 			failed = true;
 		}
 
@@ -4309,7 +4532,8 @@ void movie_view::relink_missing()
 			self->_state.invalidate_view(view_invalid::command_state);
 			if (failed)
 			{
-				make_dlg(self->_host->owner())->show_message(icon_index::error, tt.movie_title, tt.platform_text.error_unknown);
+				make_dlg(self->_host->owner())
+					->show_message(icon_index::error, tt.movie_title, tt.platform_text.error_unknown);
 				return;
 			}
 
@@ -4330,8 +4554,7 @@ void movie_view::relink_missing()
 
 			if (replacements.empty())
 			{
-				make_dlg(self->_host->owner())->show_message(icon_index::error, tt.movie_title,
-				                                             tt.movie_relink_none);
+				make_dlg(self->_host->owner())->show_message(icon_index::error, tt.movie_title, tt.movie_relink_none);
 				return;
 			}
 
@@ -4372,22 +4595,24 @@ namespace
 	{
 	public:
 		movie_render_sources(const int frame_rate, core::cancel_token abandon) :
-			_abandon(std::move(abandon)), _frame_rate(std::max(1, frame_rate))
+			_abandon(abandon), _frame_rate(std::max(1, frame_rate))
 		{
 		}
 
 		// The frame `clip` contributes at `source_time`, decoded forward from where this slot's
 		// decoder already sits. The render walks the movie in order, so every request but the first
-		// of a clip is a step forward and costs no seek.
+		// of a clip is a step forward and costs no seek - and an audio clip's frames, drawn rather than
+		// decoded, carry its tune or its bars on from the last.
 		core::const_surface_ptr frame(const size_t slot, const movie_clip& clip, const double source_time,
-		                            const sizei max_dim)
+		                              const sizei max_dim)
 		{
 			if (slot >= _slots.size()) return {};
 
 			auto& state = _slots[slot];
-			if (state.path != clip.path) open(state, clip, max_dim);
+			if (state.path != clip.path || state.song != clip.song) open(state, clip, max_dim);
 
 			if (clip.is_photo) return state.photo;
+			if (state.audio_frames) return state.audio_frames->frame(source_time, max_dim, _abandon);
 			if (!state.decoder) return {};
 
 			core::surface_ptr surface;
@@ -4395,65 +4620,90 @@ namespace
 			// Half a frame of slack: refining past that costs another walk of the group of pictures
 			// for a picture that is the same one.
 			return state.decoder->extract_frame_at(surface, max_dim, source_time, 0.5 / _frame_rate, _abandon)
-			       ? upright_movie_frame(surface)
-			       : core::const_surface_ptr{};
+			           ? upright_movie_frame(surface)
+			           : core::const_surface_ptr{};
 		}
 
-		// One bounded source-time chunk at the output rate. Walking into the next chunk replaces it,
-		// so long clips keep complete audio without retaining their whole soundtrack.
+		// One bounded chunk of an item's sound (movie_clip_sound) at the output rate, around `sound_time`. Walking
+		// into the next chunk replaces it, so long clips keep complete audio without retaining their whole
+		// soundtrack. Kept apart from the slot's picture: a sound file is not the file the picture comes from,
+		// and asking for sound must not open the picture before frame() is asked for it.
 		const std::vector<int16_t>& audio(const size_t slot, const movie_clip& clip, const int sample_rate,
-		                                  const double source_time, double& buffer_start)
+		                                  const double sound_time, double& buffer_start)
 		{
 			static const std::vector<int16_t> none;
 			if (slot >= _slots.size()) return none;
 
 			auto& state = _slots[slot];
-			if (state.path != clip.path) open(state, clip, {});
-			const auto offset = std::max(0.0, source_time - clip.start);
-			const auto start = clip.start + std::floor(offset / movie_audio_cache_seconds) * movie_audio_cache_seconds;
-			const auto end = std::min(clip.end, start + movie_audio_cache_seconds + movie_audio_overlap_seconds);
+			auto& heard = state.sound;
+			const auto sound = movie_clip_sound(clip);
+
+			if (heard.path != sound.path || heard.song != sound.song)
+			{
+				heard = {};
+				heard.path = sound.path;
+				heard.song = sound.song;
+			}
+
+			const auto offset = std::max(0.0, sound_time - sound.start);
+			const auto start = sound.start + std::floor(offset / movie_audio_cache_seconds) * movie_audio_cache_seconds;
+			const auto end = std::min(sound.end, start + movie_audio_cache_seconds + movie_audio_overlap_seconds);
 			buffer_start = start;
 
-			if (!state.audio_read || state.audio_start != start || state.audio_end != end)
+			if (!heard.read || heard.start != start || heard.end != end)
 			{
-				state.audio_read = true;
-				state.audio_start = start;
-				state.audio_end = end;
-				state.pcm.clear();
+				heard.read = true;
+				heard.start = start;
+				heard.end = end;
+				heard.pcm.clear();
 
-				if (!clip.is_photo && end > start)
+				if (!sound.is_empty() && end > start)
 				{
 					// Its own decoder: this one reads the stream end to end, and the picture's is
 					// opened video-only and positioned wherever the playhead left it.
 					av_format_decoder decoder;
 
-					if (decoder.open(clip.path, media_intent::playback))
+					if (open_movie_audio(decoder, sound.path, media_intent::playback, sound.song))
 					{
 						decoder.init_streams(-1, -1, false, false, false);
-						state.pcm = decoder.extract_audio_pcm_range(sample_rate, start, end - start, _abandon);
+						heard.pcm = decoder.extract_audio_pcm_range(sample_rate, start, end - start, _abandon);
 					}
 				}
 			}
 
-			return state.pcm;
+			return heard.pcm;
 		}
 
 	private:
+		// The file a slot's sound is read from, and the chunk of it read last.
+		struct sound_state
+		{
+			core::file_path path;
+			int song = 0;
+			std::vector<int16_t> pcm;
+			bool read = false;
+			double start = 0;
+			double end = 0;
+		};
+
 		struct slot_state
 		{
 			core::file_path path;
+			int song = 0;
 			std::unique_ptr<av_format_decoder> decoder;
+			std::unique_ptr<movie_audio_frames> audio_frames;
 			core::const_surface_ptr photo;
-			std::vector<int16_t> pcm;
-			bool audio_read = false;
-			double audio_start = 0;
-			double audio_end = 0;
+			sound_state sound;
 		};
 
 		void open(slot_state& state, const movie_clip& clip, const sizei max_dim)
 		{
+			// The sound already read for the slot stays: it is keyed by its own file, not by the picture's.
+			auto sound = std::move(state.sound);
 			state = {};
+			state.sound = std::move(sound);
 			state.path = clip.path;
+			state.song = clip.song;
 
 			if (clip.is_photo)
 			{
@@ -4462,6 +4712,12 @@ namespace
 				if (max_dim.cx <= 0) return;
 				const auto loaded = files{}.load(clip.path, false);
 				if (loaded.success) state.photo = upright_movie_frame(loaded.to_surface(max_dim));
+				return;
+			}
+
+			if (clip.is_audio)
+			{
+				state.audio_frames = std::make_unique<movie_audio_frames>(clip.path, clip.song);
 				return;
 			}
 
@@ -4546,21 +4802,23 @@ namespace
 		}
 	}
 
-	// Adds one clip's samples into the chunk at the same weight its picture is drawn with. Reading
-	// past the end of a buffer is silence, which is what a clip whose audio is shorter than its
-	// picture contributes.
+	// Adds one clip's samples into the chunk, its level ramping from `from` at the chunk's first sample to
+	// `to` at its end, as the frame decision has it at either instant. Reading past the end of a buffer is
+	// silence, which is what a clip whose audio is shorter than its picture contributes.
 	void add_weighted_audio(std::vector<int16_t>& chunk, const std::vector<int16_t>& pcm, const double source_time,
-	                        const int sample_rate, const double weight)
+	                        const int sample_rate, const double from, const double to)
 	{
-		if (pcm.empty() || weight <= 0.0) return;
+		if (pcm.empty() || (from <= 0.0 && to <= 0.0)) return;
 
 		const auto first = static_cast<int64_t>(std::llround(source_time * sample_rate)) * 2;
+		const auto frames = std::max<size_t>(1, chunk.size() / 2);
 
 		for (size_t i = 0; i < chunk.size(); ++i)
 		{
 			const auto at = first + static_cast<int64_t>(i);
 			if (at < 0 || at >= static_cast<int64_t>(pcm.size())) continue;
 
+			const auto weight = from + (to - from) * static_cast<double>(i / 2) / static_cast<double>(frames);
 			const auto mixed = chunk[i] + static_cast<int32_t>(std::lround(pcm[static_cast<size_t>(at)] * weight));
 			chunk[i] = static_cast<int16_t>(std::clamp(mixed, -32768, 32767));
 		}
@@ -4573,16 +4831,169 @@ namespace
 		const auto fitted = core::scale_dimensions(source, canvas, false);
 		return recti(fitted).offset(recti(canvas).center() - recti(fitted).center());
 	}
+
+	// Text over the finished picture, at its own straight alpha scaled by how far it has faded in.
+	void blend_text(core::surface& canvas, const movie_text_layer& layer, const double opacity)
+	{
+		const auto scaled = static_cast<uint32_t>(std::lround(std::clamp(opacity, 0.0, 1.0) * 256.0));
+		if (!layer.surface || scaled == 0) return;
+
+		const auto& src = *layer.surface;
+		const auto canvas_cx = static_cast<int>(canvas.width());
+		const auto canvas_cy = static_cast<int>(canvas.height());
+		const auto src_cx = static_cast<int>(src.width());
+		const auto src_cy = static_cast<int>(src.height());
+
+		for (auto y = 0; y < src_cy; ++y)
+		{
+			const auto dst_y = layer.at.y + y;
+			if (dst_y < 0 || dst_y >= canvas_cy) continue;
+
+			const auto* const s = std::bit_cast<const uint32_t*>(src.pixels_line(y));
+			auto* const d = std::bit_cast<uint32_t*>(canvas.pixels_line(dst_y));
+
+			const auto first = std::max(0, -layer.at.x);
+			const auto last = std::min(src_cx, canvas_cx - layer.at.x);
+
+			for (auto x = first; x < last; ++x)
+			{
+				const auto in = s[x];
+				const auto a = ((in >> 24) * scaled) >> 8;
+				if (a == 0) continue;
+
+				const auto out = d[layer.at.x + x];
+				uint32_t result = 0xff000000u;
+
+				for (auto shift = 0; shift < 24; shift += 8)
+				{
+					const auto sv = (in >> shift) & 0xffu;
+					const auto dv = (out >> shift) & 0xffu;
+					result |= ((sv * a + dv * (255u - a) + 127u) / 255u) << shift;
+				}
+
+				d[layer.at.x + x] = result;
+			}
+		}
+	}
+
+	// The caption a render draws, kept while the same one shows, which is the seconds it runs over.
+	struct render_text_cache
+	{
+		int index = -1;
+		movie_text_layer layer;
+	};
+
+	// The text screens a render draws, each kept while it is on screen: two, for a crossfade between two.
+	struct render_screen_cache
+	{
+		int index = -1;
+		core::surface_ptr surface;
+	};
 }
 
-movie_render_result render_movie_to_file(const movie_render_request& request,
-                                         const std::function<void(double)>& report,
+// Text is sized to the frame's shorter side, so a portrait movie's text reads as well as a landscape
+// one's, and set in Segoe UI, a plain face that reads at any size; the text engine stands its own in
+// where a system has none.
+static constexpr double movie_screen_text_size = 1.0 / 12.0;
+static constexpr double movie_caption_text_size = 1.0 / 20.0;
+static constexpr double movie_min_text_px = 8.0;
+// How far up from the frame's bottom edge a caption sits, and how much of its width and height text may
+// take. Text larger than that, such as a screen of credits, is set smaller until it fits, so no line is
+// cut off.
+static constexpr double movie_caption_margin = 0.06;
+static constexpr double movie_text_width = 0.84;
+static constexpr double movie_text_height = 0.9;
+
+movie_text_layer draw_movie_text(const std::string_view text, const movie_text_kind kind, const sizei frame)
+{
+	movie_text_layer result;
+	if (text.find_first_not_of(" \t\r\n") == std::string_view::npos || kind == movie_text_kind::none || frame.cx <= 0 ||
+	    frame.cy <= 0)
+	{
+		return result;
+	}
+
+	const auto is_caption = kind == movie_text_kind::caption;
+	const auto side = std::min(frame.cx, frame.cy);
+	const auto room_cx = std::max(1, static_cast<int>(frame.cx * movie_text_width));
+	const auto room_cy = std::max(1, static_cast<int>(frame.cy * movie_text_height));
+	auto font_px = std::max(movie_min_text_px, side * (is_caption ? movie_caption_text_size : movie_screen_text_size));
+
+	render::styled_text spec;
+	spec.runs.push_back({std::string(text), !is_caption, false, 0xFFFFFFFFu});
+	spec.font_family = "Segoe UI";
+	spec.outline_color = 0xE0000000u;
+	spec.alignment = 1;
+	spec.wrap_width = room_cx;
+
+	// A smaller size wraps into fewer lines, so each attempt is measured again rather than scaled once. Text
+	// laid out larger than any surface may be comes back as nothing, and is set smaller and tried again.
+	for (auto attempt = 0; attempt < 8; ++attempt)
+	{
+		spec.font_px = static_cast<float>(font_px);
+		spec.outline_px = static_cast<float>(std::max(1.5, font_px / 16.0));
+		result.surface = render::render_styled_text(spec);
+
+		if (!result.surface)
+		{
+			if (font_px <= movie_min_text_px) return result;
+			font_px = std::max(movie_min_text_px, font_px / 2);
+			continue;
+		}
+
+		// Wrapped lines reach the wrap width plus their outline, so only a word too long to wrap
+		// makes text too wide.
+		const auto size = result.surface->dimensions();
+		if (size.cy <= room_cy && size.cx <= frame.cx) break;
+
+		// A word the text engine does not break - Pango keeps whole words, where DirectWrite breaks one
+		// wider than the line - is set as small as fitting across needs, below the usual floor: cut off
+		// at the frame's edge it would not read at all.
+		const auto floor = size.cx > frame.cx ? 1.0 : movie_min_text_px;
+		if (font_px <= floor) break;
+
+		const auto fit = std::min(static_cast<double>(room_cy) / size.cy, static_cast<double>(room_cx) / size.cx);
+		font_px = std::max(floor, font_px * std::min(fit, 1.0) * 0.98);
+	}
+
+	if (!result.surface) return result;
+
+	const auto size = result.surface->dimensions();
+	const auto top = is_caption ? frame.cy - static_cast<int>(std::lround(frame.cy * movie_caption_margin)) - size.cy
+	                            : (frame.cy - size.cy) / 2;
+	result.at = {std::max(0, (frame.cx - size.cx) / 2), std::max(0, top)};
+	return result;
+}
+
+core::surface_ptr draw_movie_screen(const std::string_view text, const sizei frame)
+{
+	if (frame.cx <= 0 || frame.cy <= 0) return {};
+
+	auto screen = std::make_shared<core::surface>();
+	if (!screen->alloc(frame, core::texture_format::RGB)) return {};
+
+	// Opaque black, so the screen covers what it crossfades with exactly as a photo would.
+	for (auto y = 0; y < frame.cy; ++y)
+	{
+		std::fill_n(std::bit_cast<uint32_t*>(screen->pixels_line(y)), frame.cx, 0xff000000u);
+	}
+
+	blend_text(*screen, draw_movie_text(text, movie_text_kind::screen, frame), 1.0);
+	return screen;
+}
+
+movie_render_result render_movie_to_file(const movie_render_request& request, const std::function<void(double)>& report,
                                          const core::cancel_token& token,
                                          const std::shared_ptr<movie_render_control>& control)
 {
 	movie_render_result result;
 
-	const auto timing = calc_movie_timing(request.clips, request.settings);
+	// The render's own copy, which learns as it goes whether each clip a crossfade brings in has any sound.
+	// It hears each one itself rather than trusting what the preview stored, which may come from a read
+	// that failed.
+	auto clips = request.clips;
+	for (auto& clip : clips) clip.sound_checked_at = -1;
+	const auto timing = calc_movie_timing(clips);
 	const auto frame_rate = std::max(1, request.output.frame_rate);
 	const auto sample_rate = std::max(8000, request.output.sample_rate);
 
@@ -4613,8 +5024,8 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 	writer_request.sample_rate = sample_rate;
 	writer_request.channels = request.output.channels;
 	writer_request.audio_bitrate = request.output.audio_bitrate;
-	writer_request.with_audio = std::any_of(request.clips.begin(), request.clips.end(),
-	                                        [](const movie_clip& c) { return !c.is_photo && !c.is_missing; });
+	writer_request.with_audio = std::any_of(clips.begin(), clips.end(), [](const movie_clip& c)
+	{ return c.has_sound_file() || (!c.is_photo && !c.is_text && !c.is_missing); });
 
 	const auto writer = platform::create_movie_writer(writer_request);
 
@@ -4638,6 +5049,8 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 
 	core::surface_ptr fitted;
 	std::vector<int16_t> chunk;
+	render_text_cache caption_text;
+	std::array<render_screen_cache, render_slot_count> screens;
 
 	const auto frames = std::ceil(timing.duration * frame_rate);
 
@@ -4662,15 +5075,58 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 		}
 
 		const auto time = static_cast<double>(i) / frame_rate;
-		const auto frame = calc_movie_frame(request.clips, request.settings, timing, time);
+		auto frame = calc_movie_frame(clips, timing, time);
+
+		// Whether the clip a crossfade brings in has sound of its own is heard from that sound, the first
+		// time a crossfade reaches it: the clip going out keeps its own up when there is none. The chunk
+		// read to hear it is the one the crossfade then mixes.
+		if (writer_request.with_audio && frame.b.index >= 0)
+		{
+			auto& incoming = clips[frame.b.index];
+
+			if (!incoming.has_no_sound() && incoming.sound_checked_at != incoming.start)
+			{
+				const auto opening = movie_clip_sound(incoming).start;
+				auto buffer_start = opening;
+				const auto& pcm = sources.audio(1, incoming, sample_rate, opening, buffer_start);
+				incoming.sound_checked_at = incoming.start;
+				incoming.sound_is_quiet = movie_opening_is_quiet(pcm, sample_rate);
+				frame = calc_movie_frame(clips, timing, time);
+			}
+		}
 
 		canvas->make_blank();
 
-		const auto draw = [&](const movie_frame_source& source, const size_t slot)
+		// A text screen is drawn once, whole, at the movie's size, and kept while it is on screen. Looked
+		// up by item rather than by slot, so the screen a crossfade hands from b to a is not drawn again.
+		const auto screen_for = [&](const int index, const int other) -> const core::surface_ptr&
+		{
+			for (const auto& cached : screens)
+			{
+				if (cached.index == index && cached.surface) return cached.surface;
+			}
+
+			auto& free = screens[0].index == other ? screens[1] : screens[0];
+			free.index = index;
+			free.surface = draw_movie_screen(clips[index].text, request.output.extent);
+			return free.surface;
+		};
+
+		const auto draw = [&](const movie_frame_source& source, const size_t slot, const int other)
 		{
 			if (source.index < 0 || source.weight <= 0.0) return true;
 
-			const auto& clip = request.clips[source.index];
+			const auto& clip = clips[source.index];
+
+			if (clip.is_text)
+			{
+				const auto& screen = screen_for(source.index, other);
+				if (!screen) return false;
+
+				add_weighted(*canvas, *screen, {}, source.weight);
+				return true;
+			}
+
 			if (clip.is_missing) return false;
 
 			// Square, on the output's longer side: the limit applies to the stored frame, and a quarter-
@@ -4689,8 +5145,8 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 		};
 
 		const movie_frame_source* failed = nullptr;
-		if (!draw(frame.a, 0)) failed = &frame.a;
-		else if (!draw(frame.b, 1)) failed = &frame.b;
+		if (!draw(frame.a, 0, frame.b.index)) failed = &frame.a;
+		else if (!draw(frame.b, 1, frame.a.index)) failed = &frame.b;
 
 		if (failed)
 		{
@@ -4703,12 +5159,25 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 			else
 			{
 				result.reason = movie_render_error::undecodable;
-				result.source = request.clips[failed->index].path;
+				result.source = clips[failed->index].path;
 				result.source_time = failed->source_time;
 				core::log(__FUNCTION__, std::format("no frame from {} at {:.3f}s", result.source, result.source_time));
 			}
 
 			return result;
+		}
+
+		// The caption goes over the pictures and under the fade, as the preview draws it.
+		if (frame.caption.is_shown())
+		{
+			if (caption_text.index != frame.caption.index)
+			{
+				caption_text.index = frame.caption.index;
+				caption_text.layer = draw_movie_text(clips[frame.caption.index].text, movie_text_kind::caption,
+				                                     request.output.extent);
+			}
+
+			blend_text(*canvas, caption_text.layer, frame.caption.opacity);
 		}
 
 		if (frame.fade_to_black > 0) darken(*canvas, frame.fade_to_black);
@@ -4726,33 +5195,37 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 			// Counted from the sample the last chunk ended on rather than from the frame index,
 			// so a rate that does not divide the frame rate cannot drift the sound off the
 			// picture over a long movie.
-			const auto next = static_cast<int64_t>(
-				std::llround(static_cast<double>(i + 1) / frame_rate * sample_rate));
-			const auto frames = std::max<int64_t>(0, next - samples_written);
+			const auto next = static_cast<int64_t>(std::llround(static_cast<double>(i + 1) / frame_rate * sample_rate));
+			const auto chunk_frames = std::max<int64_t>(0, next - samples_written);
 
-			chunk.assign(static_cast<size_t>(frames) * 2, 0);
+			chunk.assign(static_cast<size_t>(chunk_frames) * 2, 0);
+
+			// Each clip's level ramps across the chunk to where the decision has it at the next frame, so
+			// a crossfade, and a sound carried through one letting go, are smooth rather than stepped.
+			const auto after = calc_movie_frame(clips, timing, static_cast<double>(i + 1) / frame_rate);
 
 			const auto mix = [&](const movie_frame_source& source, const size_t slot)
 			{
-				if (source.index < 0 || source.weight <= 0.0) return;
-
-				const auto& clip = request.clips[source.index];
-				if (clip.is_photo || clip.is_missing) return;
-
 				// The fade at the movie's ends is a fade of the movie, not of its picture: an
 				// image fading to black over a soundtrack still at full level is the thing
 				// nobody means by "fade out".
-				auto buffer_start = source.source_time;
-				const auto& pcm = sources.audio(slot, clip, sample_rate, source.source_time, buffer_start);
-				add_weighted_audio(chunk, pcm, source.source_time - buffer_start,
-				                   sample_rate, source.weight * (1.0 - frame.fade_to_black));
+				const auto from = source.sound * (1.0 - frame.fade_to_black);
+				const auto to = movie_sound_level(after, source.index);
+				if (source.index < 0 || (from <= 0.0 && to <= 0.0)) return;
+
+				const auto& clip = clips[source.index];
+				if (clip.is_missing || movie_clip_sound(clip).is_empty()) return;
+
+				auto buffer_start = source.sound_time;
+				const auto& pcm = sources.audio(slot, clip, sample_rate, source.sound_time, buffer_start);
+				add_weighted_audio(chunk, pcm, source.sound_time - buffer_start, sample_rate, from, to);
 			};
 
 			mix(frame.a, 0);
 			mix(frame.b, 1);
 
-			if (!chunk.empty() && !writer->write_audio(chunk.data(), chunk.size(),
-			                                           static_cast<double>(samples_written) / sample_rate))
+			if (!chunk.empty() &&
+			    !writer->write_audio(chunk.data(), chunk.size(), static_cast<double>(samples_written) / sample_rate))
 			{
 				core::log(__FUNCTION__, writer->last_error());
 				result.reason = movie_render_error::encoder_failed;
@@ -4784,9 +5257,8 @@ movie_render_result render_movie_to_file(const movie_render_request& request,
 		return result;
 	}
 
-	const auto moved = request.fail_if_exists
-		                   ? platform::move_file(staged, request.path, true)
-		                   : platform::replace_file(request.path, staged);
+	const auto moved = request.fail_if_exists ? platform::move_file(staged, request.path, true)
+	                                          : platform::replace_file(request.path, staged);
 
 	if (moved.failed())
 	{
@@ -4807,14 +5279,13 @@ void movie_view::render_movie()
 	const auto& project = _movie_state.project;
 
 	auto path = project.path().is_empty()
-		            ? core::folder_path(platform::known_path(platform::known_folder::video)).combine_file_ext(
-			            std::string(tt.movie_title.sv()), ".mp4")
-		            : project.path().folder().combine_file_ext(
-			            std::string(project.path().file_name_without_extension()), ".mp4");
+	                ? core::folder_path(platform::known_path(platform::known_folder::video))
+	                      .combine_file_ext(std::string(tt.movie_title.sv()), ".mp4")
+	                : project.path().folder().combine_file_ext(std::string(
+																   project.path().file_name_without_extension()),
+	                                                           ".mp4");
 
-	const std::vector<platform::file_dialog_filter> filters{
-		{std::string(tt.movie_video_files.sv()), "*.mp4"}
-	};
+	const std::vector<platform::file_dialog_filter> filters{{std::string(tt.movie_video_files.sv()), "*.mp4"}};
 
 	if (!platform::prompt_for_save_path(path, filters)) return;
 
@@ -4824,7 +5295,6 @@ void movie_view::render_movie()
 
 	movie_render_request request;
 	request.clips = project.clips();
-	request.settings = project.settings();
 	request.output = project.output();
 	request.path = path;
 
@@ -4840,7 +5310,8 @@ void movie_view::render_movie()
 
 	_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
 
-	_state.queue_async(async_queue::work, [weak, request, token, control, generation, &s = _state]
+	_state.queue_async(async_queue::work,
+	                   [weak, request, token, control, generation, &s = _state, function = __FUNCTION__]
 	{
 		// Coalesced to whole percent: a queued UI message per frame is tens a second of work the UI
 		// thread has no use for.
@@ -4870,7 +5341,7 @@ void movie_view::render_movie()
 		{
 			// A codec that throws is a bad file, not a broken application: it stops this run and
 			// reports why.
-			core::log(__FUNCTION__, core::utf8_cast(e.what()));
+			core::log(function, core::utf8_cast(e.what()));
 			result.reason = movie_render_error::undecodable;
 		}
 
@@ -4893,8 +5364,7 @@ void movie_view::render_progress(const size_t generation, const int percent)
 }
 
 void movie_view::render_finished(const size_t generation, const bool ok, const bool cancelled,
-                                 const movie_render_error reason, const std::string& message,
-                                 const core::cached name)
+                                 const movie_render_error reason, const std::string& message, const core::cached name)
 {
 	if (generation != _render_generation) return;
 
@@ -4917,11 +5387,9 @@ void movie_view::render_finished(const size_t generation, const bool ok, const b
 		return message.empty() ? tt.platform_text.error_unknown.sv() : std::string_view(message);
 	}();
 
-	_status = cancelled
-		          ? std::string(tt.movie_render_cancelled.sv())
-		          : ok
-		          ? str_format(tt.movie_rendered_fmt.sv(), name.sv())
-		          : str_format(tt.movie_render_failed_fmt.sv(), why);
+	_status = cancelled ? std::string(tt.movie_render_cancelled.sv())
+	          : ok      ? str_format(tt.movie_rendered_fmt.sv(), name.sv())
+	                    : str_format(tt.movie_render_failed_fmt.sv(), why);
 
 	_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
 }
@@ -4971,13 +5439,10 @@ bool movie_view::confirm_render_cancel()
 	const auto busy = make_dlg(_host->owner());
 
 	const std::vector<view_element_ptr> controls = {
-		set_margin(std::make_shared<ui::title_control2>(busy->_frame, icon_index::question,
-		                                               tt.cancel_operation_title,
-		                                               str_format(tt.cancel_operation_fmt.sv(),
-		                                                          operation_name()))),
+		set_margin(std::make_shared<ui::title_control2>(busy->_frame, icon_index::question, tt.cancel_operation_title,
+	                                                    str_format(tt.cancel_operation_fmt.sv(), operation_name()))),
 		std::make_shared<divider_element>(),
-		std::make_shared<ui::ok_cancel_control>(busy->_frame, tt.button_cancel_operation,
-		                                       tt.button_keep_running),
+		std::make_shared<ui::ok_cancel_control>(busy->_frame, tt.button_cancel_operation, tt.button_keep_running),
 	};
 
 	if (busy->show_modal(controls, {44}, {33}) != ui::close_result::ok) return false;
@@ -5012,21 +5477,21 @@ bool movie_view::confirm_save_or_discard(std::function<void()> after_save)
 	const auto frame = dlg->_frame;
 
 	const std::vector<view_element_ptr> controls = {
-		set_margin(std::make_shared<ui::title_control2>(frame, icon_index::video, tt.movie_title,
-		                                               tt.movie_unsaved_prompt)),
+		set_margin(
+			std::make_shared<ui::title_control2>(frame, icon_index::video, tt.movie_title, tt.movie_unsaved_prompt)),
 		std::make_shared<divider_element>(),
 		std::make_shared<ui::button_control>(frame, icon_index::save, tt.command_movie_save, std::string_view{},
-		                                     [answer, frame]
-		                                     {
-			                                     *answer = exit_choice::save;
-			                                     frame->close(false);
-		                                     }),
+	                                         [answer, frame]
+	{
+		*answer = exit_choice::save;
+		frame->close(false);
+	}),
 		std::make_shared<ui::button_control>(frame, icon_index::del, tt.close_without_saving, std::string_view{},
-		                                     [answer, frame]
-		                                     {
-			                                     *answer = exit_choice::discard;
-			                                     frame->close(false);
-		                                     }),
+	                                         [answer, frame]
+	{
+		*answer = exit_choice::discard;
+		frame->close(false);
+	}),
 		std::make_shared<divider_element>(),
 		std::make_shared<ui::close_control>(frame, true, tt.button_cancel),
 	};

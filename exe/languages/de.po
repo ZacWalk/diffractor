@@ -100,6 +100,9 @@ msgstr "Audio"
 msgid "Audio"
 msgstr "Audio"
 
+msgid "AVIF - Small files, widely supported"
+msgstr "AVIF - Kleine Dateien, breit unterstützt"
+
 msgid "Before"
 msgstr "Vorher"
 
@@ -830,8 +833,8 @@ msgstr "Alle Fotos in JPEG konvertieren"
 msgid "Failed to send email using MAPI."
 msgstr "E-Mail konnte unter Verwendung von MAPI nicht gesendet werden."
 
-msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
-msgstr "Fotos auf eine maximale Dimension (in Pixel) begrenzen. Wird nur für JPEG- und PNG-Dateien unterstützt."
+msgid "Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG."
+msgstr "Fotos auf eine maximale Dimension (in Pixel) begrenzen. Ein Foto in einem Format, das Diffractor nicht schreibt, wird als JPEG gesendet."
 
 msgid "Processing {}"
 msgstr "Verarbeitung {}"
@@ -2141,8 +2144,8 @@ msgstr "Schreibgeschützte (readonly) Items werden nicht unterstützt."
 msgid "Cannot update metadata of readonly items."
 msgstr "Metadaten von schreibgeschützten (readonly) Items können nicht aktualisiert werden."
 
-msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
-msgstr "Diffractor kann nur JPG-, WEBP- und PNG-Bilddateien speichern oder aktualisieren."
+msgid "Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files."
+msgstr "Diffractor kann nur JPEG-, PNG-, WEBP-, JPEG-XL-, HEIC- und AVIF-Bilddateien drehen."
 
 msgid "Nothing found."
 msgstr "Nichts gefunden."
@@ -2189,8 +2192,8 @@ msgstr "Erweitert"
 msgid "Application options"
 msgstr "Applikationsoptionen"
 
-msgid "When overwriting a photo with irreversible changes make an original backup copy"
-msgstr "Beim Überschreiben eines Fotos mit irreversiblen Änderungen eine Backup-Kopie des Originals anfertigen"
+msgid "When overwriting a file with irreversible changes make an original backup copy"
+msgstr "Beim Überschreiben einer Datei mit irreversiblen Änderungen eine Backup-Kopie des Originals anfertigen"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "Bei Verbindung mit dem Internet nach Updates suchen"
@@ -2210,6 +2213,9 @@ msgstr "WEBP-Speicherqualität"
 msgid "JPEG XL save quality"
 msgstr "JPEG XL-Speicherqualität"
 
+msgid "AVIF save quality"
+msgstr "AVIF-Speicherqualität"
+
 msgid "When saving"
 msgstr "Beim Speichern"
 
@@ -2221,6 +2227,9 @@ msgstr "Informationen zum Debugging der Applikation zeigen (für die Programmier
 
 msgid "Show hidden files"
 msgstr "Versteckte Dateien zeigen"
+
+msgid "Reuse existing window when opening files"
+msgstr "Beim Öffnen von Dateien das vorhandene Fenster verwenden"
 
 msgid "Show photos rotated based on recorded camera orientation"
 msgstr "Fotos rotiert zeigen, basierend auf der aufgenommenen Kameraausrichtung"
@@ -2275,6 +2284,9 @@ msgstr "Andere"
 
 msgid "pasted"
 msgstr "Eingefügt"
+
+msgid "dropped"
+msgstr "Abgelegt"
 
 msgid "photo"
 msgstr "Foto"
@@ -2640,8 +2652,8 @@ msgstr "Retro"
 msgid "Saturation"
 msgstr "Sättigung"
 
-msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
-msgstr "Diffractor kann {} Dateien nicht zuschneiden, drehen oder kolorieren. Sie können die Datei als JPEG speichern?"
+msgid "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?"
+msgstr "Diffractor kann diese Änderungen nicht in {} Dateien schreiben. Das Foto stattdessen als JPEG speichern?"
 
 msgid "Save Changes"
 msgstr "Änderungen speichern"
@@ -2811,6 +2823,9 @@ msgstr "Horizontale und vertikale Linien automatisch gerade ausrichten"
 msgid "Show the final cropped image"
 msgstr "Das final zugeschnittene Bild zeigen"
 
+msgid "Drag across the photo to compare the edit with the original."
+msgstr "Ziehen Sie über das Foto, um die Bearbeitung mit dem Original zu vergleichen."
+
 msgid "Horizontal perspective"
 msgstr "Horizontale Perspektive"
 
@@ -2865,8 +2880,8 @@ msgstr "Lokale Dateien löschen, die rechnerfern (remote) nicht vorhanden sind"
 msgid "Delete remote files that do not exist locally"
 msgstr "Remote-Dateien löschen, die örtlich (lokal) nicht vorhanden sind"
 
-msgid "c:\\photos with \\\\nas\\\\backup"
-msgstr "c:\\photos mit \\\\nas\\\\backup"
+msgid "c:\\photos with \\\\nas\\backup"
+msgstr "c:\\photos mit \\\\nas\\backup"
 
 msgid "Local folders"
 msgstr "Lokale Ordner"
@@ -3560,8 +3575,8 @@ msgstr "Diffractor kann Ratings, Labels oder andere Metadaten nicht in {}-Dateie
 msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
 msgstr "Verwenden Sie ein Semikolon, um mehrere Genres anzugeben. Zum Beispiel: Rock; Blues"
 
-msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
-msgstr "Wählen Sie ein Foto zum Bearbeiten aus. Videos, Audio, Ordner und Formate, die Diffractor nicht speichern kann, werden nicht unterstützt."
+msgid "Select one photo, video or sound file to edit."
+msgstr "Wählen Sie ein Foto, ein Video oder eine Audiodatei zum Bearbeiten aus."
 
 msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
 msgstr "Aus: Fotos und Videos, die kleiner als das Fenster sind, werden in ihrer tatsächlichen Größe angezeigt. Ein: Sie werden auf die Fenstergröße vergrößert. Medien, die größer als das Fenster sind, werden immer passend verkleinert."
@@ -3671,8 +3686,8 @@ msgstr "Sortieren nach Originaldatum"
 msgid "Movie mixer"
 msgstr "Film-Mixer"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Fügen Sie die ausgewählten Fotos und Videos zu einem Video zusammen. Fügen Sie Clips im Streifen unten hinzu, entfernen und ordnen Sie sie neu, und schneiden Sie den ausgewählten Clip zu. Die Vorschau zeigt, was gerendert wird; es wird nichts geschrieben, bis Sie rendern oder speichern."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Fügen Sie die ausgewählten Fotos, Videos und Audiodateien zu einem Video zusammen, mit Texttafeln, wo Sie sie haben möchten. Fügen Sie Elemente im Streifen unten hinzu, entfernen und ordnen Sie sie neu, und bearbeiten Sie das ausgewählte Element hier. Die Vorschau zeigt, was gerendert wird; es wird nichts geschrieben, bis Sie rendern oder speichern."
 
 msgid "Movie"
 msgstr "Film"
@@ -3680,50 +3695,38 @@ msgstr "Film"
 msgid "Selected clip"
 msgstr "Ausgewählter Clip"
 
-msgid "Crossfade between clips"
-msgstr "Überblendung zwischen Clips"
+msgid "Text screen"
+msgstr "Texttafel"
 
-msgid "Cut between clips"
-msgstr "Harter Schnitt zwischen Clips"
+msgid "Text"
+msgstr "Text"
 
-msgid "Transition (tenths of a second)"
-msgstr "Übergang (Zehntelsekunden)"
+msgid "Caption"
+msgstr "Beschriftung"
 
-msgid "Fade (tenths of a second)"
-msgstr "Auf-/Abblenden (Zehntelsekunden)"
+msgid "Shown for (seconds)"
+msgstr "Anzeigedauer (in Sekunden)"
 
-msgid "Fade in from black"
-msgstr "Von Schwarz aufblenden"
+msgid "Stabilize (not applied yet)"
+msgstr "Stabilisieren (noch nicht angewendet)"
 
-msgid "Fade out to black"
-msgstr "Nach Schwarz abblenden"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Fotodauer (Zehntelsekunden)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Dieses Foto (Zehntelsekunden)"
-
-msgid "Use the movie default"
-msgstr "Filmstandard verwenden"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Fügen Sie Fotos und Videos hinzu, um einen Film zu erstellen."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Fügen Sie Fotos, Videos und Audiodateien hinzu, um einen Film zu erstellen."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Ausgabe {} x {} mit {} fps, Länge {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - Clip {} von {}, beginnt bei {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - Element {} von {}, beginnt bei {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Element {} von {}, beginnt bei {}."
 
 msgid "Movie project"
 msgstr "Filmprojekt"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker-Projekt"
-
-msgid "Photos and videos"
-msgstr "Fotos und Videos"
+msgid "Photos, videos and audio"
+msgstr "Fotos, Videos und Audio"
 
 msgid "Could not read the project {}."
 msgstr "Das Projekt {} konnte nicht gelesen werden."
@@ -3731,11 +3734,17 @@ msgstr "Das Projekt {} konnte nicht gelesen werden."
 msgid "Could not save the project {}."
 msgstr "Das Projekt {} konnte nicht gespeichert werden."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Fügt die ausgewählten Fotos und Videos zu einem Video zusammen."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Fügt die ausgewählten Fotos, Videos und Audiodateien zu einem Video zusammen."
 
 msgid "Add files"
 msgstr "Dateien hinzufügen"
+
+msgid "Add text screen"
+msgstr "Texttafel hinzufügen"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Fügt nach dem ausgewählten Element eine Tafel mit Text auf Schwarz hinzu."
 
 msgid "Remove from movie"
 msgstr "Aus Film entfernen"
@@ -3748,9 +3757,6 @@ msgstr "Projekt öffnen"
 
 msgid "Save project"
 msgstr "Projekt speichern"
-
-msgid "Import Movie Maker project"
-msgstr "Movie Maker-Projekt importieren"
 
 msgid "Video"
 msgstr "Video"
@@ -3806,24 +3812,52 @@ msgstr "Fehlende Dateien neu verknüpfen"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Verweist Clips, deren Quelldatei verschoben wurde, auf einen von Ihnen gewählten Ordner."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "1 Element des importierten Projekts wurde ausgelassen, weil Film es nicht abbilden kann."
-msgstr[1] "{count} Elemente des importierten Projekts wurden ausgelassen, weil Film sie nicht abbilden kann."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "1 Zeile des Projekts konnte nicht gelesen werden und wurde ausgelassen."
+msgstr[1] "{count} Zeilen des Projekts konnten nicht gelesen werden und wurden ausgelassen."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 Clip findet seine Quelldatei nicht."
 msgstr[1] "{count} Clips finden ihre Quelldateien nicht."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 Clip wurde neu verknüpft."
-msgstr[1] "{count} Clips wurden neu verknüpft."
 
+msgid "Pattern"
+msgstr "Pattern"
 
-msgid "SID monitor"
-msgstr "SID-Monitor"
+msgid "Row"
+msgstr "Zeile"
+
+msgid "Speed"
+msgstr "Geschwindigkeit"
+
+msgid "Samples"
+msgstr "Samples"
+
+msgid "Instruments"
+msgstr "Instrumente"
+
+msgid "Follow playback"
+msgstr "Wiedergabe folgen"
+
+msgid "Notes"
+msgstr "Noten"
+
+msgid "Range"
+msgstr "Tonumfang"
+
+msgid "Compressed"
+msgstr "Komprimiert"
+
+msgid "Codec"
+msgstr "Codec"
+
+msgid "Format"
+msgstr "Format"
+
+msgid "Sidecars"
+msgstr "Sidecars"
 
 msgid "Voice {}"
 msgstr "Stimme {}"
@@ -3842,6 +3876,21 @@ msgstr "Registerzugriffe"
 
 msgid "Solo"
 msgstr "Solo"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Auf einem emulierten Commodore 64 ausführen"
+
+msgid "Start"
+msgstr "Starten"
+
+msgid "Joystick port {}"
+msgstr "Joystick-Port {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Pfeiltasten und Leertaste: Joystick. Esc: zurück."
+
+msgid "This file could not be started."
+msgstr "Diese Datei konnte nicht gestartet werden."
 
 msgid "Same film"
 msgstr "Gleicher Film"
@@ -3937,3 +3986,135 @@ msgid "1 of the items shown"
 msgid_plural "{count} of the items shown"
 msgstr[0] "1 der angezeigten Elemente"
 msgstr[1] "{count} der angezeigten Elemente"
+
+msgid "Trim"
+msgstr "Kürzen"
+
+msgid "Keep all"
+msgstr "Alles behalten"
+
+msgid "This format plays a copy from the key frame before its start, so it may begin a moment early."
+msgstr "Dieses Format spielt eine Kopie ab dem Keyframe vor ihrem Anfang ab, daher kann sie einen Moment früher beginnen."
+
+msgid "Remove the sound"
+msgstr "Ton entfernen"
+
+msgid "Rotate"
+msgstr "Drehen"
+
+msgid "Saving leaves out what this format cannot hold: {}."
+msgstr "Beim Speichern wird weggelassen, was dieses Format nicht aufnehmen kann: {}."
+
+msgid "Saved as MP4, the copy leaves out what MP4 cannot hold: {}."
+msgstr "Beim Speichern als MP4 lässt die Kopie weg, was MP4 nicht aufnehmen kann: {}."
+
+msgid "A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4."
+msgstr "Eine Kopie eines Videos oder einer Audiodatei wird im Format der Datei gespeichert, aus der sie erstellt wurde, oder als MP4."
+
+msgid "This file cannot be copied without re-encoding it."
+msgstr "Diese Datei kann nicht kopiert werden, ohne sie neu zu kodieren."
+
+msgid "Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save."
+msgstr "Verlustfreie Bearbeitung durch Remuxing: Bild und Ton werden ohne Neukodierung in eine neue Datei desselben Formats oder in eine MP4-Datei kopiert, sodass nichts verloren geht. Beim Speichern wird die Struktur der Datei neu aufgebaut, daher erstellt „Speichern unter“ ohne Änderungen eine neu gemuxte Kopie, die eine Datei reparieren kann, die andere Player nicht abspielen. Es wird nichts auf die Festplatte geschrieben, bis Sie speichern."
+
+msgid "Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown."
+msgstr "Ziehen Sie die Griffe an beiden Enden der Zeitleiste, um festzulegen, was behalten wird, oder drücken Sie I und O, um beim angezeigten Frame zu beginnen oder zu enden."
+
+msgid "Rotate left"
+msgstr "Nach links drehen"
+
+msgid "Rotate right"
+msgstr "Nach rechts drehen"
+
+msgid "Start {}, end {}, length {}"
+msgstr "Anfang {}, Ende {}, Länge {}"
+
+msgid "Sound removed"
+msgstr "Ton entfernt"
+
+msgid "Rotated right"
+msgstr "Nach rechts gedreht"
+
+msgid "Upside down"
+msgstr "Auf den Kopf gestellt"
+
+msgid "Rotated left"
+msgstr "Nach links gedreht"
+
+msgid "No changes. Save As writes a re-muxed copy."
+msgstr "Keine Änderungen. „Speichern unter“ schreibt eine neu gemuxte Kopie."
+
+msgid "This file could not be read, so it cannot be copied or repaired."
+msgstr "Diese Datei konnte nicht gelesen werden und kann daher weder kopiert noch repariert werden."
+
+msgid "Write MP4s with their index at the front"
+msgstr "MP4-Dateien mit dem Index am Anfang schreiben"
+
+msgid "Attempt to fix damaged files (don't fail on file errors)"
+msgstr "Versuchen, beschädigte Dateien zu reparieren (bei Dateifehlern nicht abbrechen)"
+
+msgid "The file is damaged. The copy keeps what could be read."
+msgstr "Die Datei ist beschädigt. Die Kopie enthält, was gelesen werden konnte."
+
+msgid "Damaged parts left out: {}"
+msgstr "Ausgelassene beschädigte Teile: {}"
+
+msgid "The copy ends at {}, where the file could be read no further."
+msgstr "Die Kopie endet bei {}, wo die Datei nicht weiter gelesen werden konnte."
+
+msgid "The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options."
+msgstr "Die Datei ist beschädigt, und in der reparierten Kopie fehlt ein Teil davon. Um das Original zu behalten, speichern Sie die Kopie mit „Speichern unter“ oder aktivieren Sie die Backup-Kopie in den Speicheroptionen."
+
+msgid "Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?"
+msgstr "Diffractor kann diese Änderungen nicht in {} Dateien schreiben. Das Foto stattdessen als AVIF speichern, das HDR und Farbtiefe behält, die ein JPEG verlieren würde?"
+
+msgid "As &AVIF"
+msgstr "Als A&VIF"
+
+msgid "This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?"
+msgstr "Dieses Foto ist HDR und zu groß, um es in HDR zu bearbeiten. Die Änderungen als Kopie im Standard-Dynamikbereich speichern und das Foto unverändert lassen?"
+
+msgid "&Save a Copy"
+msgstr "Kopie &speichern"
+
+msgid "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} Dateien können kein HDR aufnehmen, daher wird die Kopie im Standard-Dynamikbereich gespeichert. Trotzdem speichern?"
+
+msgid "{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} Dateien können die Gain-Map dieses Fotos nicht aufnehmen, mit der es in HDR angezeigt wird, daher wird die Kopie im Standard-Dynamikbereich gespeichert. Trotzdem speichern?"
+
+msgid "This photo is HDR. It is shown here in standard range, and its edits keep its HDR."
+msgstr "Dieses Foto ist HDR. Es wird hier im Standard-Dynamikbereich angezeigt, und seine Bearbeitungen behalten das HDR."
+
+msgid "This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy."
+msgstr "Dieses Foto ist HDR, aber zu groß, um es in HDR zu bearbeiten. Es wird im Standard-Dynamikbereich bearbeitet, und Änderungen an seinen Pixeln werden als Kopie gespeichert."
+
+msgid "This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel."
+msgstr "Dieses Foto ist zu groß, um es in voller Farbtiefe zu bearbeiten, daher wird es mit 8 Bit pro Kanal bearbeitet und gespeichert."
+
+msgid "HDR photos are written in standard range, with a gain map that shows them in HDR where the display can."
+msgstr "HDR-Fotos werden im Standard-Dynamikbereich geschrieben, mit einer Gain-Map, die sie auf geeigneten Bildschirmen in HDR zeigt."
+
+msgid "HDR photos, and those with a gain map, are written in standard range."
+msgstr "HDR-Fotos und Fotos mit einer Gain-Map werden im Standard-Dynamikbereich geschrieben."
+
+msgid "HDR photos stay HDR, but gain maps are left out."
+msgstr "HDR-Fotos bleiben HDR, aber Gain-Maps werden weggelassen."
+
+msgid "HDR photos stay HDR, and gain maps are kept."
+msgstr "HDR-Fotos bleiben HDR, und Gain-Maps bleiben erhalten."
+
+msgid "Color profile"
+msgstr "Farbprofil"
+
+msgid "HDR"
+msgstr "HDR"
+
+msgid "Bit depth"
+msgstr "Bittiefe"
+
+msgid "Frame rate"
+msgstr "Bildrate"
+
+msgid "Contents"
+msgstr "Inhalt"

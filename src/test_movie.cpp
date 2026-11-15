@@ -1,22 +1,20 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Tests for the Movie document (model_movie) -- the derived output geometry, transition
-// and duration arithmetic, timeline edits and undo, what entering Movie does with the timeline it
-// holds, the OpenTimelineIO project file, the Windows Live Movie Maker reader, and the choice of a
-// moved source among same-named files. docs/movie.md owns the behaviour.
+// Purpose: Tests for the Movie document (model_movie) -- the derived output geometry, crossfade and duration
+// arithmetic, when captions show and how loud each sound plays, timeline edits and undo, what entering Movie
+// does with the timeline it holds, and the .dfv project file. docs/movie.md owns the behaviour.
 
 #include "pch.h"
 #include "test.h"
+#include "files.h"
 #include "model.h"
 #include "model_movie.h"
 #include "test_runner.h"
-#include "libdesktop/core/json.h"
 #include "view_movie.h"
 
 static core::folder_path movie_test_folder()
@@ -29,8 +27,7 @@ static core::file_path movie_test_path(const std::string_view name)
 	return movie_test_folder().combine_file(name);
 }
 
-static movie_clip make_video(const std::string_view name, const double duration, const sizei extent,
-                             const double rate)
+static movie_clip make_video(const std::string_view name, const double duration, const sizei extent, const double rate)
 {
 	movie_clip c;
 	c.path = movie_test_path(name);
@@ -53,6 +50,11 @@ static movie_clip make_photo(const std::string_view name, const double hold, con
 	return c;
 }
 
+static movie_clip make_hd(const std::string_view name, const double duration)
+{
+	return make_video(name, duration, {1920, 1080}, 30);
+}
+
 //
 // Output geometry
 //
@@ -62,149 +64,265 @@ static void should_derive_movie_output()
 	assert_equal(1920, derive_movie_output({}).extent.cx, "an empty timeline falls back to 1080p");
 	assert_equal(movie_default_frame_rate, derive_movie_output({}).frame_rate, "and to the default rate");
 
-	const auto mixed = derive_movie_output({
-		make_video("a.mp4", 10, {1280, 720}, 60),
-		make_video("b.mp4", 10, {1920, 1080}, 30)
-	});
+	const auto mixed = derive_movie_output(
+		{make_video("a.mp4", 10, {1280, 720}, 60), make_video("b.mp4", 10, {1920, 1080}, 30)});
 
 	assert_equal(1920, mixed.extent.cx, "the largest video decides the width");
 	assert_equal(1080, mixed.extent.cy, "the largest video decides the height");
-	assert_equal(60, mixed.frame_rate, "the highest source rate decides the rate");
-	assert_equal(12441600, mixed.video_bitrate, "bitrate follows frame size and rate");
+	assert_equal(30, mixed.frame_rate, "60 fps footage plays in a 30 fps movie");
+	assert_equal(6220800, mixed.video_bitrate, "bitrate follows frame size and rate");
 
 	// The rule that matters most: a 48-megapixel photo beside a 720p clip must not produce an
 	// 8000-pixel movie. Removing the have_video test makes this line fail with 8000.
-	const auto with_photo = derive_movie_output({
-		make_photo("big.jpg", 4, {8000, 6000}),
-		make_video("small.mp4", 10, {1280, 720}, 25)
-	});
+	const auto with_photo = derive_movie_output(
+		{make_photo("big.jpg", 4, {8000, 6000}), make_video("small.mp4", 10, {1280, 720}, 25)});
 
 	assert_equal(1280, with_photo.extent.cx, "a photo never drives the frame size when a video is present");
 	assert_equal(25, with_photo.frame_rate, "the only video decides the rate");
 
 	const auto photos_only = derive_movie_output({make_photo("big.jpg", 4, {8000, 6000})});
 
-	assert_equal(2880, photos_only.extent.cx, "a photo-only timeline is clamped inside 4K");
-	assert_equal(2160, photos_only.extent.cy, "and keeps its aspect ratio while clamped");
+	assert_equal(1440, photos_only.extent.cx, "a photo-only timeline is clamped inside HD");
+	assert_equal(1080, photos_only.extent.cy, "and keeps its aspect ratio while clamped");
 	assert_equal(movie_default_frame_rate, photos_only.frame_rate, "with no video there is no source rate");
 
-	const auto odd = derive_movie_output({make_video("odd.mp4", 10, {1921, 1081}, 30)});
+	// A movie is HD at most, so 4K clips among HD ones are scaled down rather than making every frame 4K.
+	const auto uhd = derive_movie_output({make_hd("a.mp4", 10), make_video("uhd.mp4", 10, {3840, 2160}, 60)});
+	assert_equal(true, uhd.extent == sizei{1920, 1080}, "4K sources make an HD movie");
+	assert_equal(6220800, uhd.video_bitrate, "at the bitrate HD takes");
 
-	assert_equal(1920, odd.extent.cx, "an odd width is rounded down");
-	assert_equal(1080, odd.extent.cy, "an odd height is rounded down");
+	const auto standing = derive_movie_output({make_video("phone.mp4", 10, {2160, 3840}, 30)});
+	assert_equal(true, standing.extent == sizei{1080, 1920}, "and a portrait one is HD standing up");
+
+	// The frame takes the shape most of the movie is in, so one larger 4:3 clip does not put black bars
+	// round every 16:9 one, nor one portrait clip at the start stand the whole movie up.
+	const auto mostly_wide = derive_movie_output(
+		{make_hd("a.mp4", 20), make_video("gopro.mp4", 2, {1920, 1440}, 60), make_hd("b.mp4", 20)});
+	assert_equal(true, mostly_wide.extent == sizei{1920, 1080}, "the shape most of the movie is in decides the frame");
+	assert_equal(30, mostly_wide.frame_rate, "as most of it decides the rate");
+
+	const auto upright_first = derive_movie_output(
+		{make_video("phone.mp4", 3, {1080, 1920}, 30), make_hd("a.mp4", 10)});
+	assert_equal(true, upright_first.extent == sizei{1920, 1080}, "a portrait clip first does not stand a movie up");
+
+	const auto upright = derive_movie_output({make_video("phone.mp4", 10, {1080, 1920}, 30), make_hd("a.mp4", 3)});
+	assert_equal(true, upright.extent == sizei{1080, 1920}, "but a movie mostly upright stands");
+
+	const auto odd = derive_movie_output({make_video("odd.mp4", 10, {1279, 719}, 30)});
+
+	assert_equal(1278, odd.extent.cx, "an odd width is rounded down");
+	assert_equal(718, odd.extent.cy, "an odd height is rounded down");
 
 	const auto fast = derive_movie_output({make_video("fast.mp4", 10, {1920, 1080}, 240)});
-	assert_equal(movie_max_frame_rate, fast.frame_rate, "an extreme source rate is clamped");
+	assert_equal(movie_max_frame_rate, fast.frame_rate, "an extreme source rate plays at a rate a movie is made at");
+
+	// A movie is made at 24, 25 or 30 fps: whichever most of its video was filmed for, by how long each clip
+	// shows, so a camera's 25 fps footage is not shown with a frame repeated five times a second.
+	const auto pal = derive_movie_output({make_hd("phone.mp4", 5), make_video("camera.mp4", 20, {1920, 1080}, 25)});
+	assert_equal(25, pal.frame_rate, "a movie filmed mostly at 25 fps is made at 25");
+	assert_equal(25, derive_movie_output({make_video("pal.mp4", 10, {1280, 720}, 50)}).frame_rate,
+	             "and 50 fps footage plays at 25");
+	assert_equal(24, derive_movie_output({make_video("film.mp4", 10, {1920, 1080}, 23.976)}).frame_rate, "film at 24");
+	assert_equal(30,
+	             derive_movie_output(
+					 {make_video("ntsc.mp4", 10, {1920, 1080}, 29.97), make_video("pal.mp4", 10, {1920, 1080}, 25)})
+	                 .frame_rate,
+	             "and an even split at 30");
+
+	// A phone's variable-rate video declares 120 while its frames come 30 a second. Counted at 120, one such
+	// clip would have every frame of the movie made twice over.
+	assert_equal(30.02, movie_source_frame_rate(120, 30.02),
+	             "a variable-rate video counts at the rate its frames come");
+	assert_equal(59.94, movie_source_frame_rate(59.94, 60), "one as fast as it declares keeps its rate");
+	assert_equal(25.0, movie_source_frame_rate(0, 25), "and one that declares none is taken at its average");
+
+	const auto paged = derive_movie_output({make_movie_text("Trip"), make_video("portrait.mp4", 10, {1080, 1920}, 30)});
+	assert_equal(1080, paged.extent.cx, "a text screen has no size of its own: the clips make the frame");
+	assert_equal(true, derive_movie_output({make_movie_text("Trip")}).extent == sizei{1920, 1080},
+	             "and a movie of text screens alone is drawn in 1080p");
 }
 
 //
 // Timing
 //
 
-static void should_time_movie_transitions()
+static void should_time_movie_crossfades()
 {
-	const std::vector clips{
-		make_video("a.mp4", 10, {1920, 1080}, 30),
-		make_video("b.mp4", 10, {1920, 1080}, 30),
-		make_video("c.mp4", 10, {1920, 1080}, 30)
-	};
+	const std::vector clips{make_hd("a.mp4", 10), make_hd("b.mp4", 10), make_hd("c.mp4", 10)};
 
-	movie_settings cut;
-	cut.transition = movie_transition::cut;
+	const auto timing = calc_movie_timing(clips);
+	assert_equal(28.0, timing.duration, "each crossfade shortens the movie by its length");
+	assert_equal(0.0, timing.starts[0], "the first clip starts at zero");
+	assert_equal(9.0, timing.starts[1], "the second clip starts a crossfade early");
+	assert_equal(18.0, timing.starts[2], "and the third two");
 
-	const auto cut_timing = calc_movie_timing(clips, cut);
-	assert_equal(30.0, cut_timing.duration, "cuts do not shorten the movie");
-	assert_equal(10.0, cut_timing.starts[1], "a cut starts the next clip where the last ended");
-	assert_equal(20.0, cut_timing.starts[2], "and so on");
+	// A crossfade longer than half the item it joins must shorten rather than consume it. Dropping the
+	// half-item ceiling in movie_overlap makes this 19, and the middle clip disappears.
+	const std::vector short_middle{make_hd("a.mp4", 10), make_hd("b.mp4", 1), make_hd("c.mp4", 10)};
 
-	movie_settings fade;
-	fade.transition = movie_transition::crossfade;
-	fade.transition_seconds = 1.0;
-
-	const auto fade_timing = calc_movie_timing(clips, fade);
-	assert_equal(28.0, fade_timing.duration, "each crossfade shortens the movie by its length");
-	assert_equal(0.0, fade_timing.starts[0], "the first clip starts at zero");
-	assert_equal(9.0, fade_timing.starts[1], "the second clip starts one transition early");
-	assert_equal(18.0, fade_timing.starts[2], "and the third two");
-
-	// A transition longer than the clip it joins must shorten rather than consume it. Dropping the
-	// half-clip ceiling in movie_overlap makes this 18, and the middle clip disappears.
-	const std::vector short_middle{
-		make_video("a.mp4", 10, {1920, 1080}, 30),
-		make_video("b.mp4", 2, {1920, 1080}, 30),
-		make_video("c.mp4", 10, {1920, 1080}, 30)
-	};
-
-	movie_settings long_fade;
-	long_fade.transition_seconds = 4.0;
-
-	const auto clamped = calc_movie_timing(short_middle, long_fade);
-	assert_equal(1.0, movie_overlap(short_middle[0], short_middle[1], long_fade),
-	             "the overlap is capped at half the shorter clip");
-	assert_equal(20.0, clamped.duration, "a two second clip survives a four second transition");
+	const auto clamped = calc_movie_timing(short_middle);
+	assert_equal(0.5, movie_overlap(short_middle[0], short_middle[1]),
+	             "the overlap is capped at half the shorter item");
+	assert_equal(20.0, clamped.duration, "a one second clip survives the crossfades on both its sides");
 	assert_equal(10.0, clamped.starts[2], "and still separates its neighbours");
 
-	assert_equal(0.0, calc_movie_timing({}, fade).duration, "an empty timeline has no duration");
-	assert_equal(10.0, calc_movie_timing({clips[0]}, fade).duration, "one clip has no transition to apply");
+	// A text screen is an item like a clip: the clips beside it crossfade out of and into it.
+	const auto paged = calc_movie_timing(
+		{make_movie_text("Trip", 5), make_hd("a.mp4", 10), make_movie_text("The End", 4)});
+	assert_equal(4.0, paged.starts[1], "a clip comes in out of the screen before it");
+	assert_equal(13.0, paged.starts[2], "and goes out into the screen after it");
+	assert_equal(17.0, paged.duration, "with each crossfade as long as any other");
+
+	assert_equal(0.0, calc_movie_timing({}).duration, "an empty timeline has no duration");
+	assert_equal(10.0, calc_movie_timing({clips[0]}).duration, "one item has nothing to crossfade with");
 }
 
 static void should_compose_a_movie_frame()
 {
-	const std::vector clips{
-		make_video("a.mp4", 10, {1920, 1080}, 30),
-		make_video("b.mp4", 10, {1920, 1080}, 30)
-	};
+	const std::vector clips{make_hd("a.mp4", 10), make_hd("b.mp4", 10)};
 
-	movie_settings settings;
-	settings.transition = movie_transition::crossfade;
-	settings.transition_seconds = 2.0;
-	settings.fade_in = false;
-	settings.fade_out = false;
-
-	// The movie is 18s: 0-8 is a alone, 8-10 is the crossfade, 10-18 is b alone.
-	const auto early = calc_movie_frame(clips, settings, 4.0);
-	assert_equal(0, early.a.index, "one clip carries the frame outside a transition");
+	// The movie is 19s: 0-9 is a alone, 9-10 is the crossfade, 10-19 is b alone.
+	const auto early = calc_movie_frame(clips, 4.0);
+	assert_equal(0, early.a.index, "one clip carries the frame outside a crossfade");
 	assert_equal(4.0, early.a.source_time, "at its own position in the source");
 	assert_equal(1.0, early.a.weight, "at full weight");
 	assert_equal(-1, early.b.index, "with nothing mixed into it");
 
-	const auto middle = calc_movie_frame(clips, settings, 9.0);
+	const auto middle = calc_movie_frame(clips, 9.5);
 	assert_equal(0, middle.a.index, "the outgoing clip is first");
 	assert_equal(1, middle.b.index, "the incoming clip is second");
-	assert_equal(0.5, middle.a.weight, "halfway through the transition they are equal");
+	assert_equal(0.5, middle.a.weight, "halfway through the crossfade they are equal");
 	assert_equal(0.5, middle.b.weight, "on both sides");
-	assert_equal(9.0, middle.a.source_time, "the outgoing clip is near its end");
-	assert_equal(1.0, middle.b.source_time, "and the incoming one just past its start");
+	assert_equal(9.5, middle.a.source_time, "the outgoing clip is near its end");
+	assert_equal(0.5, middle.b.source_time, "and the incoming one just past its start");
 
-	const auto late = calc_movie_frame(clips, settings, 14.0);
-	assert_equal(1, late.a.index, "after the transition only the incoming clip is left");
-	assert_equal(6.0, late.a.source_time, "at its own position");
+	const auto late = calc_movie_frame(clips, 14.0);
+	assert_equal(1, late.a.index, "after the crossfade only the incoming clip is left");
+	assert_equal(5.0, late.a.source_time, "at its own position");
 	assert_equal(-1, late.b.index, "with nothing mixed into it");
 
 	// The final instant must still draw. An exclusive end test here leaves the last frame empty,
 	// which is one black frame at the end of every movie.
-	const auto last = calc_movie_frame(clips, settings, 18.0);
-	assert_equal(1, last.a.index, "the final instant still draws a clip");
-	assert_equal(true, calc_movie_frame({}, settings, 0).is_empty(), "an empty timeline draws nothing");
+	assert_equal(1, calc_movie_frame(clips, 19.0).a.index, "the final instant still draws a clip");
+	assert_equal(true, calc_movie_frame({}, 0).is_empty(), "an empty timeline draws nothing");
 
 	// A trimmed clip reports positions in its source, not on the timeline.
 	auto trimmed_clips = clips;
 	trimmed_clips[0].start = 3;
 	trimmed_clips[0].end = 9;
-	assert_equal(5.0, calc_movie_frame(trimmed_clips, settings, 2.0).a.source_time,
+	assert_equal(5.0, calc_movie_frame(trimmed_clips, 2.0).a.source_time,
 	             "a trim offsets the position asked of the source");
 
-	assert_equal(0.0, calc_movie_frame({make_photo("p.jpg", 5, {4000, 3000})}, settings, 3.0).a.source_time,
+	assert_equal(0.0, calc_movie_frame({make_photo("p.jpg", 5, {4000, 3000})}, 3.0).a.source_time,
 	             "a photo has one frame however long it is held");
 
-	settings.fade_in = true;
-	settings.fade_out = true;
+	const auto out_of_screen = calc_movie_frame({make_movie_text("Trip", 5), make_hd("a.mp4", 10)}, 4.5);
+	assert_equal(0, out_of_screen.a.index, "a text screen is a picture the next clip crossfades out of");
+	assert_equal(0.5, out_of_screen.a.weight, "at the weight any outgoing item has");
+	assert_equal(0.0, out_of_screen.a.source_time, "and, like a photo, one picture however long it shows");
 
-	assert_equal(1.0, calc_movie_frame(clips, settings, 0.0).fade_to_black, "the movie opens black");
-	assert_equal(0.5, calc_movie_frame(clips, settings, 1.0).fade_to_black, "and fades up");
-	assert_equal(0.0, calc_movie_frame(clips, settings, 5.0).fade_to_black, "and is clear in the middle");
-	assert_equal(0.5, calc_movie_frame(clips, settings, 17.0).fade_to_black, "then fades down");
-	assert_equal(1.0, calc_movie_frame(clips, settings, 18.0).fade_to_black, "and closes black");
+	assert_equal(1.0, calc_movie_frame(clips, 0.0).fade_to_black, "the movie opens black");
+	assert_equal(0.5, calc_movie_frame(clips, 0.5).fade_to_black, "and fades up over a crossfade's length");
+	assert_equal(0.0, calc_movie_frame(clips, 5.0).fade_to_black, "and is clear in the middle");
+	assert_equal(0.5, calc_movie_frame(clips, 18.5).fade_to_black, "then fades down");
+	assert_equal(1.0, calc_movie_frame(clips, 19.0).fade_to_black, "and closes black");
+}
+
+// A caption shows for as long as it takes to read, once its clip has come in, and runs on over the clips
+// after it if its own is short -- but never on to a text screen, and never under the next caption.
+static void should_show_movie_captions_for_as_long_as_they_take_to_read()
+{
+	assert_equal(movie_caption_min_seconds, movie_caption_seconds("Lukla"), "a place's name shows for the least time");
+	assert_equal(6.0, movie_caption_seconds(std::string(60, 'x')),
+	             "a sentence for a moment more than it takes to read at fifteen characters a second");
+	assert_equal(movie_caption_max_seconds, movie_caption_seconds(std::string(600, 'x')),
+	             "and a paragraph for no longer than the most a caption shows");
+
+	std::string accented;
+	for (auto i = 0; i < 45; ++i) accented += "\xC5\x88";
+	assert_equal(5.0, movie_caption_seconds(accented), "counting characters, not the bytes that spell them");
+
+	auto clips = std::vector{make_hd("a.mp4", 10), make_hd("b.mp4", 10)};
+	clips[0].text = "Kathmandu";
+	clips[1].text = "Lukla";
+
+	const auto timing = calc_movie_timing(clips);
+	assert_equal(2_z, timing.captions.size(), "each caption has a span");
+	assert_equal(0.0, timing.captions[0].start, "the first clip's from the movie's start");
+	assert_equal(3.0, timing.captions[0].end, "for as long as it takes to read");
+	assert_equal(10.0, timing.captions[1].start, "a later one once its clip has crossfaded in");
+	assert_equal(13.0, timing.captions[1].end, "and for its own reading time");
+
+	const auto shown = calc_movie_frame(clips, 1.5);
+	assert_equal(0, shown.caption.index, "the caption showing names its clip");
+	assert_equal(1.0, shown.caption.opacity, "and is shown in full once it has faded in");
+	assert_equal(0.5, calc_movie_frame(clips, 0.25).caption.opacity, "having faded in over its first half second");
+	assert_equal(false, calc_movie_frame(clips, 5.0).caption.is_shown(), "and is gone once read");
+
+	// A long caption on a short clip runs on over the clip after it, and gives way to a text screen.
+	auto running = std::vector{make_hd("a.mp4", 2), make_hd("b.mp4", 10), make_movie_text("The End", 3)};
+	running[0].text = std::string(150, 'x');
+
+	const auto ran = calc_movie_timing(running);
+	assert_equal(1_z, ran.captions.size(), "the screen's words are no caption");
+	assert_equal(10.0, ran.captions[0].end, "a caption runs over the next clip and stops where a screen begins");
+
+	running[1].text = "Lukla";
+	assert_equal(2.0, calc_movie_timing(running).captions[0].end,
+	             "and gives way to the next caption once that one's clip has come in");
+
+	running[0].text.clear();
+	assert_equal(1_z, calc_movie_timing(running).captions.size(), "a clip with no words has no caption");
+}
+
+// Normally the sound going out fades as the picture does. A clip going out under an item with no sound
+// of its own keeps its sound at full volume, so what someone was saying as the crossfade began is heard.
+static void should_carry_a_clips_sound_over_an_item_with_none()
+{
+	const auto talking = make_hd("talking.mp4", 10);
+
+	const std::vector onto_photo{talking, make_photo("view.jpg", 4, {4000, 3000})};
+	const auto carried = calc_movie_frame(onto_photo, 9.5);
+	assert_equal(0.5, carried.a.weight, "the picture crossfades into a photo as usual");
+	assert_equal(1.0, carried.a.sound, "while the sound going out stays up");
+	assert_near(0.4, calc_movie_frame(onto_photo, 9.98).a.sound, 1e-9, "and lets go over the crossfade's last moment");
+
+	assert_equal(1.0, calc_movie_frame({talking, make_movie_text("The End", 4)}, 9.5).a.sound,
+	             "it stays up under a text screen too");
+
+	auto gone = make_hd("gone.mp4", 10);
+	gone.is_probed = true;
+	assert_equal(1.0, calc_movie_frame({talking, gone}, 9.5).a.sound, "and over a source that is gone");
+
+	auto view = make_hd("view.mp4", 10);
+	assert_equal(0.5, calc_movie_frame({talking, view}, 9.5).a.sound,
+	             "a clip coming in whose sound is not known crossfades with the one going out");
+
+	view.sound_checked_at = view.start;
+	view.sound_is_quiet = true;
+	const auto onto_quiet = calc_movie_frame({talking, view}, 9.5);
+	assert_equal(1.0, onto_quiet.a.sound, "one nearly silent where it comes in counts as having no sound");
+	assert_equal(0.5, onto_quiet.b.sound, "and its own sound still fades up");
+
+	view.start = 2;
+	assert_equal(0.5, calc_movie_frame({talking, view}, 9.5).a.sound,
+	             "a measure made at another in point is no longer known");
+
+	const auto ending = calc_movie_frame({talking}, 9.5);
+	assert_equal(0.5, movie_sound_level(ending, 0), "the movie's own fade takes the sound down with the picture");
+	assert_equal(0.0, movie_sound_level(ending, 1), "and an item not playing makes none");
+
+	assert_equal(true, movie_sound_is_quiet({}), "no samples at all are silence");
+	assert_equal(true, movie_sound_is_quiet(std::vector<int16_t>(9600, 100)), "a camera's hiss is nearly silent");
+	assert_equal(false, movie_sound_is_quiet(std::vector<int16_t>(9600, 3000)), "a voice is not");
+
+	// Only the opening a crossfade would mix is heard: a clip silent for its first second is quiet,
+	// whatever it says after.
+	std::vector<int16_t> speaks_later(48000 * 2 * 3, 0);
+	std::fill(speaks_later.begin() + 48000 * 2, speaks_later.end(), int16_t{3000});
+	assert_equal(true, movie_opening_is_quiet(speaks_later, 48000), "a clip that speaks a second in opens quiet");
+	assert_equal(false, movie_opening_is_quiet(std::vector<int16_t>(48000 * 2, 3000), 48000),
+	             "and one that speaks at once does not");
 }
 
 //
@@ -219,8 +337,8 @@ static void should_edit_the_movie_timeline()
 	assert_equal(false, project.can_undo(), "and has nothing to undo");
 	assert_equal(false, project.is_modified(), "and is unmodified");
 
-	project.append(make_video("a.mp4", 10, {1920, 1080}, 30));
-	project.append(make_video("b.mp4", 10, {1920, 1080}, 30));
+	project.append(make_hd("a.mp4", 10));
+	project.append(make_hd("b.mp4", 10));
 	project.append(make_photo("c.jpg", 4, {4000, 3000}));
 
 	assert_equal(3, static_cast<int>(project.size()), "three clips were appended");
@@ -229,11 +347,11 @@ static void should_edit_the_movie_timeline()
 
 	// The same source twice is the case a set-based selector could not express, and the reason the
 	// timeline is a document rather than a view of the selection.
-	project.append(make_video("a.mp4", 10, {1920, 1080}, 30));
+	project.append(make_hd("a.mp4", 10));
 	assert_equal(4, static_cast<int>(project.size()), "the same source can appear twice");
 	assert_equal("a.mp4", project.clips()[3].path.name().sv(), "and it is the same source");
 
-	project.insert(0, make_video("first.mp4", 5, {1920, 1080}, 30));
+	project.insert(0, make_hd("first.mp4", 5));
 	assert_equal("first.mp4", project.clips()[0].path.name().sv(), "insert places the clip at the index");
 	assert_equal(0, static_cast<int>(project.current()), "and makes it current");
 
@@ -246,7 +364,7 @@ static void should_edit_the_movie_timeline()
 	const auto stale_revision = project.edit_revision();
 	project.trim(0, 1, 4);
 	project.undo();
-	project.mark_saved(movie_test_path("movie.otio"), stale_revision);
+	project.mark_saved(movie_test_path("movie.dfv"), stale_revision);
 	assert_equal(true, project.is_modified(), "a save started before undo cannot clear the changed document");
 
 	project.current(1);
@@ -270,7 +388,7 @@ static void should_edit_the_movie_timeline()
 static void should_render_only_a_resolved_movie()
 {
 	movie_project project;
-	auto clip = make_video("a.mp4", 10, {1920, 1080}, 30);
+	auto clip = make_hd("a.mp4", 10);
 	project.append(clip);
 	assert_equal(false, project.is_ready_to_render(), "an unprobed clip cannot render");
 
@@ -285,12 +403,17 @@ static void should_render_only_a_resolved_movie()
 	clip.extent = {};
 	project.replace_quietly(0, clip);
 	assert_equal(false, project.is_ready_to_render(), "a source with no decodable dimensions cannot render");
+
+	movie_project screens;
+	screens.append(make_movie_text("Trip"));
+	assert_equal(true, screens.is_ready_to_render(), "a text screen needs no source to render");
+	assert_equal(false, movie_project{}.is_ready_to_render(), "and an empty timeline has nothing to render");
 }
 
 static void should_trim_movie_clips()
 {
 	movie_project project;
-	project.append(make_video("a.mp4", 10, {1920, 1080}, 30));
+	project.append(make_hd("a.mp4", 10));
 
 	project.trim(0, 2, 8);
 	assert_equal(2.0, project.clips()[0].start, "the in point is taken");
@@ -303,22 +426,19 @@ static void should_trim_movie_clips()
 	assert_equal(10.0, project.clips()[0].end, "a trim past the source is clamped");
 	assert_equal(false, project.clips()[0].is_trimmed(), "and a full-length clip is untrimmed");
 
-	movie_project photos;
-	movie_settings settings;
-	settings.photo_seconds = 4.0;
-	photos.reset({}, settings, {});
-	photos.append(make_photo("a.jpg", 4, {4000, 3000}));
-	photos.append(make_photo("b.jpg", 4, {4000, 3000}));
+	movie_project held;
+	held.append(make_photo("a.jpg", 4, {4000, 3000}));
+	held.append(make_movie_text("Trip", 5));
 
-	photos.trim(1, 0, 9);
-	assert_equal(9.0, photos.clips()[1].end, "a photo takes the duration it is given");
-	assert_equal(false, photos.clips()[1].photo_duration_is_default, "and stops following the default");
-
-	settings.photo_seconds = 6.0;
-	photos.settings(settings);
-
-	assert_equal(6.0, photos.clips()[0].end, "a photo still on the default follows it");
-	assert_equal(9.0, photos.clips()[1].end, "a photo the user set keeps its own length");
+	held.trim(0, 0, 9);
+	assert_equal(9.0, held.clips()[0].end, "a photo shows for the length it is given");
+	held.trim(1, 0, 2.5);
+	assert_equal(2.5, held.clips()[1].duration(), "and so does a text screen");
+	held.trim(1, 0, 1e9);
+	assert_equal(movie_max_hold_seconds, held.clips()[1].duration(), "held to the most either may show for");
+	held.trim(0, 0, 0);
+	assert_equal(movie_min_hold_seconds, held.clips()[0].duration(), "and to the least");
+	assert_equal(false, held.clips()[1].is_trimmed(), "a screen has no source to be trimmed from");
 }
 
 static void should_select_and_move_movie_clips()
@@ -327,7 +447,7 @@ static void should_select_and_move_movie_clips()
 
 	for (auto i = 0; i < 5; ++i)
 	{
-		project.append(make_video(std::format("{}.mp4", i), 10, {1920, 1080}, 30));
+		project.append(make_hd(std::format("{}.mp4", i), 10));
 	}
 
 	const auto names = [&]
@@ -387,7 +507,7 @@ static void should_select_and_move_movie_clips()
 	assert_equal(before, project.can_undo(), "a block dropped where it already is changes nothing");
 
 	movie_project no_history;
-	no_history.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30), make_video("b.mp4", 10, {1920, 1080}, 30)});
+	no_history.insert_many(0, {make_hd("a.mp4", 10), make_hd("b.mp4", 10)});
 	no_history.mark_seeded();
 	no_history.select(0, false, false);
 	no_history.move_selection(0);
@@ -407,634 +527,10 @@ static void should_select_and_move_movie_clips()
 	assert_equal(0, static_cast<int>(project.selected().size()), "leaving nothing selected");
 }
 
-//
-// The project file
-//
-
-// A project file is untrusted input. Its durations used to be read straight into the settings, and
-// a hold of 1e308 seconds reached the frame count as a number no integer can hold - the conversion
-// that walks it is undefined, which is not a thing a document should be able to ask for.
-// A project file is untrusted. Nesting followed on the stack overflowed it, which no handler can catch.
-static void should_refuse_a_deeply_nested_movie_project()
-{
-	constexpr size_t depth = 500'000;
-	std::string json = R"({"OTIO_SCHEMA":"Timeline.1","tracks":)";
-	json.append(depth, '[');
-	json.append(depth, ']');
-	json += "}";
-
-	const auto loaded = read_otio(json, movie_test_path("x.otio").folder());
-	assert_equal(true, loaded.clips.empty(), "a nested project loads no clips and the process survives");
-}
-
-static void should_bound_movie_project_durations()
-{
-	const auto url = core::replace(movie_test_path("a.mp4").pack(), "\\", "/");
-
-	const auto project_with = [&url](const std::string_view photo_seconds, const std::string_view transition_seconds)
-	{
-		return std::format(R"({{
-			"OTIO_SCHEMA": "Timeline.1",
-			"metadata": {{ "diffractor": {{
-				"transition": "crossfade",
-				"transition_seconds": {},
-				"photo_seconds": {}
-			}} }},
-			"tracks": {{
-				"OTIO_SCHEMA": "Stack.1",
-				"children": [
-					{{
-						"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-							{{
-								"OTIO_SCHEMA": "Clip.1",
-								"source_range": {{
-									"OTIO_SCHEMA": "TimeRange.1",
-									"start_time": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 24.0, "value": 0.0 }},
-									"duration": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 24.0, "value": 48.0 }}
-								}},
-								"media_reference": {{
-									"OTIO_SCHEMA": "ExternalReference.1", "target_url": "{}"
-								}}
-							}}
-						]
-					}}
-				]
-			}}
-		}})", transition_seconds, photo_seconds, url);
-	};
-
-	const auto enormous = read_otio(project_with("1e308", "1e308"), movie_test_folder());
-	assert_equal(true, static_cast<bool>(enormous), "the project still reads");
-	assert_equal(movie_max_photo_seconds, enormous.settings.photo_seconds, "an enormous hold is bounded");
-	assert_equal(movie_max_transition_seconds, enormous.settings.transition_seconds,
-	             "and so is an enormous transition");
-
-	const auto negative = read_otio(project_with("-5.0", "-5.0"), movie_test_folder());
-	assert_equal(movie_min_photo_seconds, negative.settings.photo_seconds, "a negative hold is bounded");
-	assert_equal(0.0, negative.settings.transition_seconds, "and a negative transition is no transition");
-
-	// A value the panel could have produced is left exactly as written.
-	const auto ordinary = read_otio(project_with("6.5", "2.25"), movie_test_folder());
-	assert_equal(6.5, ordinary.settings.photo_seconds, "an ordinary hold is untouched");
-	assert_equal(2.25, ordinary.settings.transition_seconds, "and so is an ordinary transition");
-
-	// Each clip's own range is held too. The settings above were bounded while a clip's range reached
-	// the frame arithmetic and the displayed clock unbounded, so one enormous clip still overflowed.
-	const auto clip_project = [](const std::string_view file, const std::string_view duration_value)
-	{
-		const auto clip_url = core::replace(movie_test_path(file).pack(), "\\", "/");
-
-		return std::format(R"({{
-			"OTIO_SCHEMA": "Timeline.1",
-			"tracks": {{
-				"OTIO_SCHEMA": "Stack.1",
-				"children": [
-					{{
-						"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-							{{
-								"OTIO_SCHEMA": "Clip.1",
-								"source_range": {{
-									"OTIO_SCHEMA": "TimeRange.1",
-									"start_time": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 1.0, "value": 0.0 }},
-									"duration": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 1.0, "value": {} }}
-								}},
-								"media_reference": {{
-									"OTIO_SCHEMA": "ExternalReference.1", "target_url": "{}"
-								}}
-							}}
-						]
-					}}
-				]
-			}}
-		}})", duration_value, clip_url);
-	};
-
-	// Compared rather than formatted: core::to_string cannot hold an unbounded value, so a regression
-	// here would take the whole run down instead of failing this test.
-	const auto enormous_photo = read_otio(clip_project("b.jpg", "1e308"), movie_test_folder());
-	assert_equal(1_z, enormous_photo.clips.size(), "an enormous still is still read");
-	assert_equal(true, enormous_photo.clips.front().duration() == movie_max_clip_seconds, "with its hold bounded");
-
-	const auto enormous_video = read_otio(clip_project("a.mp4", "1e308"), movie_test_folder());
-	assert_equal(1_z, enormous_video.clips.size(), "an enormous video range is still read");
-	assert_equal(true, enormous_video.clips.front().duration() == movie_max_clip_seconds, "with its range bounded");
-
-	const auto ordinary_photo = read_otio(clip_project("b.jpg", "120.0"), movie_test_folder());
-	assert_equal(1_z, ordinary_photo.clips.size(), "an ordinary still is read");
-	assert_equal(true, ordinary_photo.clips.front().duration() == 120.0, "a long but ordinary still keeps its hold");
-}
-
-static void should_round_trip_a_movie_project()
-{
-	std::vector<movie_clip> clips;
-
-	auto video = make_video("a.mp4", 12, {1920, 1080}, 30);
-	video.start = 1.5;
-	video.end = 8.25;
-	clips.emplace_back(video);
-
-	auto photo = make_photo("b.jpg", 5, {4000, 3000});
-	photo.photo_duration_is_default = false;
-	clips.emplace_back(photo);
-
-	movie_settings settings;
-	settings.transition = movie_transition::crossfade;
-	settings.transition_seconds = 1.5;
-	settings.fade_in = false;
-	settings.fade_out = true;
-	settings.photo_seconds = 7.0;
-
-	const auto json = write_otio(clips, settings, movie_test_folder());
-
-	assert_equal(true, core::contains(json, "\"OTIO_SCHEMA\":\"Timeline.1\""), "the file declares its schema");
-	assert_equal(true, core::contains(json, "\"target_url\":\"a.mp4\""),
-	             "a source beside the project is stored relative to it");
-	assert_equal(true, core::contains(json, "SMPTE_Dissolve"), "the crossfade is written where other tools read it");
-
-	const auto read = read_otio(json, movie_test_folder());
-
-	assert_equal(true, static_cast<bool>(read), "the project reads back");
-	assert_equal(2, static_cast<int>(read.clips.size()), "with both clips");
-	assert_equal(0, read.ignored_elements, "and nothing dropped");
-
-	assert_equal(video.path.pack(), read.clips[0].path.pack(), "the relative path resolves back");
-	assert_equal(1.5, read.clips[0].start, "the in point survives");
-	assert_equal(8.25, read.clips[0].end, "the out point survives");
-	assert_equal(12.0, read.clips[0].source_duration, "the source length survives");
-	assert_equal(false, read.clips[0].is_photo, "a video is still a video");
-
-	assert_equal(true, read.clips[1].is_photo, "a photo is still a photo");
-	assert_equal(5.0, read.clips[1].end, "its hold survives");
-	assert_equal(false, read.clips[1].photo_duration_is_default, "and so does its override");
-
-	assert_equal(true, read.settings.transition == movie_transition::crossfade, "the transition survives");
-	assert_equal(1.5, read.settings.transition_seconds, "its length survives");
-	assert_equal(false, read.settings.fade_in, "fade in survives");
-	assert_equal(true, read.settings.fade_out, "fade out survives");
-	assert_equal(7.0, read.settings.photo_seconds, "the photo default survives");
-
-	// An absolute path is written whole when the source is nowhere near the project, and must still
-	// resolve when the project is read from a different folder. It is forward-slashed so the JSON
-	// carries no escaped separators.
-	const auto elsewhere = write_otio(clips, settings, {});
-	assert_equal(true, core::contains(elsewhere, core::replace(video.path.pack(), "\\", "/")),
-	             "a distant source is stored absolute");
-	assert_equal(false, core::contains(elsewhere, "\\\\"), "and with no escaped separators");
-	assert_equal(video.path.pack(), read_otio(elsewhere, {}).clips[0].path.pack(), "and resolves without a root");
-
-	const auto project_folder = movie_test_folder().combine("projects");
-	const auto sibling_path = movie_test_folder().combine("media").combine_file("sibling.mp4");
-	auto sibling = video;
-	sibling.path = sibling_path;
-	const auto sibling_json = write_otio({sibling}, settings, project_folder);
-	assert_equal(true, core::contains(sibling_json, "../media/sibling.mp4"),
-	             "a same-root sibling source is stored relative");
-	assert_equal(sibling_path.pack(), read_otio(sibling_json, project_folder).clips[0].path.pack(),
-	             "and the sibling relative path resolves back");
-
-	const auto empty_json = write_otio({}, settings, movie_test_folder());
-	const auto empty_read = read_otio(empty_json, movie_test_folder());
-	assert_equal(true, static_cast<bool>(empty_read), "an empty Diffractor project is a valid project");
-	assert_equal(0_z, empty_read.clips.size(), "with no clips");
-	assert_equal(true, empty_read.settings.transition == movie_transition::crossfade,
-	             "and it keeps the saved settings");
-}
-
-// A '%' went into the project as it was and came back through the reader's percent decoding, so
-// "50% off.jpg" did not come back at all and "a%20b.jpg" came back naming "a b.jpg" instead.
-static void should_round_trip_percent_signs_in_clip_paths()
-{
-	const std::vector clips{make_photo("50% off.jpg", 5, {4000, 3000}), make_photo("a%20b.jpg", 5, {4000, 3000})};
-	const movie_settings settings;
-
-	const auto json = write_otio(clips, settings, movie_test_folder());
-	const auto read = read_otio(json, movie_test_folder());
-	assert_equal(2_z, read.clips.size(), "both clips come back");
-	assert_equal(clips[0].path.pack(), read.clips[0].path.pack(), "a bare percent sign survives");
-	assert_equal(clips[1].path.pack(), read.clips[1].path.pack(), "and so does one that reads like an escape");
-
-	// A project written before the sign was escaped still opens: a '%' that begins no escape is the
-	// character itself rather than a reason to drop the clip.
-	const auto legacy = read_otio(core::replace(json, "50%25", "50%"), movie_test_folder());
-	assert_equal(2_z, legacy.clips.size(), "an older project keeps both clips");
-	assert_equal(clips[0].path.pack(), legacy.clips[0].path.pack(), "with the name it was given");
-}
-
-static void should_read_a_movie_project_it_did_not_write()
-{
-	// One video track carrying a Gap, beside an audio track. Movie takes the clips it understands
-	// and counts the rest; refusing the file over an audio track would make interchange useless.
-	const auto path = movie_test_path("a.mp4").pack();
-	auto url = path;
-	for (auto&& c : url) if (c == '\\') c = '/';
-
-	const auto json = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{
-			"OTIO_SCHEMA": "Stack.1",
-			"children": [
-				{{
-					"OTIO_SCHEMA": "Track.1", "kind": "Video",
-					"children": [
-						{{
-							"OTIO_SCHEMA": "Clip.1", "name": "a.mp4",
-							"source_range": {{
-								"OTIO_SCHEMA": "TimeRange.1",
-								"start_time": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 24.0, "value": 24.0 }},
-								"duration": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 24.0, "value": 48.0 }}
-							}},
-							"media_reference": {{
-								"OTIO_SCHEMA": "ExternalReference.1", "target_url": "{}"
-							}}
-						}},
-						{{ "OTIO_SCHEMA": "Gap.1", "name": "gap" }},
-						{{
-							"OTIO_SCHEMA": "Transition.1", "transition_type": "SMPTE_Dissolve",
-							"in_offset": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 24.0, "value": 12.0 }},
-							"out_offset": {{ "OTIO_SCHEMA": "RationalTime.1", "rate": 24.0, "value": 12.0 }}
-						}}
-					]
-				}},
-				{{ "OTIO_SCHEMA": "Track.1", "kind": "Audio", "children": [] }}
-			]
-		}}
-	}})", url);
-
-	const auto read = read_otio(json, movie_test_folder());
-
-	assert_equal(true, static_cast<bool>(read), "a foreign project reads");
-	assert_equal(1, static_cast<int>(read.clips.size()), "with the clip it understands");
-	assert_equal(1.0, read.clips[0].start, "at the frame rate the file used");
-	assert_equal(3.0, read.clips[0].end, "and for the duration it stated");
-	assert_equal(3, read.ignored_elements, "and the audio track, gap and unusable transition are counted");
-	assert_equal(true, read.settings.transition == movie_transition::cut,
-	             "a foreign project does not gain transitions it did not define between clips");
-	assert_equal(false, read.settings.fade_in, "and does not gain a fade in");
-	assert_equal(false, read.settings.fade_out, "or a fade out");
-
-	const auto spaced_path = movie_test_path("clip one.mp4");
-	auto spaced_url = core::replace(spaced_path.pack(), "\\", "/");
-	spaced_url = core::replace(spaced_url, " ", "%20");
-	spaced_url = std::string(core::windows_path_semantics ? "file:///" : "file://") + spaced_url;
-	const auto file_uri_json = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [{{
-			"OTIO_SCHEMA": "Clip.1",
-			"source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-			"media_reference": {{ "target_url": "{}" }}
-		}}] }}] }}
-	}})", spaced_url);
-	const auto file_uri_read = read_otio(file_uri_json, movie_test_folder());
-	assert_equal(true, static_cast<bool>(file_uri_read), "a foreign file URI reads");
-	assert_equal(spaced_path.pack(), file_uri_read.clips[0].path.pack(),
-	             "file URI escapes and the local drive form resolve");
-
-	const auto duplicate_transitions = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{
-					"start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_reference": {{ "target_url": "{}" }} }},
-				{{ "OTIO_SCHEMA": "Transition.1", "transition_type": "SMPTE_Dissolve",
-					"in_offset": {{ "rate": 1, "value": 0.5 }}, "out_offset": {{ "rate": 1, "value": 0.5 }} }},
-				{{ "OTIO_SCHEMA": "Transition.1", "transition_type": "SMPTE_Dissolve",
-					"in_offset": {{ "rate": 1, "value": 0.5 }}, "out_offset": {{ "rate": 1, "value": 0.5 }} }},
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{
-					"start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_reference": {{ "target_url": "{}" }} }}
-			]
-		}}] }}
-	}})", url, url);
-	const auto duplicate_read = read_otio(duplicate_transitions, movie_test_folder());
-	assert_equal(true, duplicate_read.settings.transition == movie_transition::cut,
-	             "two dissolves at one boundary do not create transitions at every boundary");
-	assert_equal(2, duplicate_read.ignored_elements, "both misplaced dissolves are reported");
-
-	assert_equal(false, static_cast<bool>(read_otio("not json at all", {})), "junk is refused");
-	assert_equal(false, static_cast<bool>(read_otio("{}", {})), "an empty object is refused");
-	assert_equal(true, read_otio("{}", {}).status == movie_load_status::empty, "and says it held nothing");
-}
-
-static void should_import_a_movie_maker_project()
-{
-	const auto video = movie_test_path("a.mp4").pack();
-	const auto image = movie_test_path("b&c.jpg").pack();
-	const auto music = movie_test_path("track.mp3").pack();
-
-	// The ampersand is here to prove the attribute decoder: a raw & would leave the name as
-	// "b&amp;c.jpg" and the clip would point at a file that cannot exist.
-	const auto image_attribute = core::replace(image, "&", "&amp;");
-
-	const auto xml = std::format(R"(<?xml version="1.0" encoding="utf-8"?>
-<Project version="9.0">
-	<MediaItems>
-		<MediaItem id="1" filePath="{}" />
-		<MediaItem id="2" filePath="{}" />
-		<MediaItem id="3" filePath="{}" />
-	</MediaItems>
-	<Extents>
-		<VideoClip extentID="10" mediaItemID="1" position="6" inTime="2" outTime="7.5" />
-		<ImageExtent extentID="11" mediaItemID="2" position="0" duration="6" />
-		<AudioClip extentID="12" mediaItemID="3" inTime="0" outTime="60" />
-		<TitleClip extentID="13" mediaItemID="2" duration="3" />
-		<VideoClip extentID="14" mediaItemID="99" inTime="0" outTime="5" />
-		<Effect extentID="15" />
-		<Animation extentID="16" />
-	</Extents>
-</Project>)", video, image_attribute, music);
-
-	const auto read = read_wlmp(xml, movie_test_folder());
-
-	assert_equal(true, static_cast<bool>(read), "the project imports");
-	assert_equal(2, static_cast<int>(read.clips.size()), "with the video and the image only");
-
-	assert_equal(image, read.clips[0].path.pack(), "timeline position puts the image first");
-	assert_equal(true, read.clips[0].is_photo, "an image extent is a photo");
-	assert_equal(6.0, read.clips[0].end, "and is held for its stated duration");
-	assert_equal(false, read.clips[0].photo_duration_is_default, "an imported hold is not the default");
-
-	assert_equal(video, read.clips[1].path.pack(), "the later video path resolves");
-	assert_equal(false, read.clips[1].is_photo, "a video clip is a video");
-	assert_equal(2.0, read.clips[1].start, "its in point is taken");
-	assert_equal(7.5, read.clips[1].end, "and its out point");
-
-	// The music, title, missing clip, effect and animation.
-	assert_equal(5, read.ignored_elements, "everything it cannot represent is counted");
-
-	auto named = 0;
-	for (const auto& [name, count] : read.omitted) named += count;
-	assert_equal(read.ignored_elements, named, "and the breakdown names every one of them");
-
-	assert_equal(false, static_cast<bool>(read_wlmp("", movie_test_folder())), "an empty file is refused");
-	assert_equal(false, static_cast<bool>(read_wlmp("<Project><Extents /></Project>", movie_test_folder())),
-	             "a project with no media is refused");
-}
-
-static int omitted_count(const movie_load_result& read, const std::string_view name)
-{
-	const auto found = std::ranges::find_if(read.omitted, [name](const auto& entry) { return entry.first == name; });
-	return found == read.omitted.end() ? 0 : found->second;
-}
-
-// Laid out as Movie Maker 2012 writes a project: every extent in one flat list, the timeline in the
-// track bound to the "Main" placeholder, and an out point of zero on any clip the user did not
-// trim. A reader that took the list's order and wanted a positive out point dropped every
-// untrimmed clip and played the rest in the order they were first added.
-static void should_import_a_movie_maker_project_as_movie_maker_writes_it()
-{
-	const auto video = movie_test_path("a.mp4");
-	const auto photo = movie_test_path("b.jpg");
-	const auto music = movie_test_path("track.mp3");
-	const auto unplaced = movie_test_path("d.mp4");
-
-	const auto xml = std::format(R"(<?xml version="1.0" encoding="utf-8"?>
-<Project name="Trip" themeId="0" version="65538" templateID="SimpleProjectTemplate">
-  <MediaItems>
-    <MediaItem id="1" filePath="{}" arWidth="640" arHeight="480" duration="20" />
-    <MediaItem id="2" filePath="{}" arWidth="640" arHeight="480" duration="0" />
-    <MediaItem id="3" filePath="clips\c.mp4" arWidth="640" arHeight="480" duration="12" />
-    <MediaItem id="4" filePath="{}" duration="180" />
-    <MediaItem id="5" filePath="{}" duration="30" />
-  </MediaItems>
-  <Extents>
-    <VideoClip extentID="10" gapBefore="0" mediaItemID="1" inTime="0" outTime="0" speed="1">
-      <Effects />
-      <Transitions />
-      <BoundProperties>
-        <BoundPropertyBool Name="Mute" Value="false" />
-        <BoundPropertyInt Name="rotateStepNinety" Value="0" />
-        <BoundPropertyFloat Name="Volume" Value="1" />
-      </BoundProperties>
-    </VideoClip>
-    <ImageClip extentID="11" gapBefore="0" mediaItemID="2" duration="7">
-      <Effects>
-        <PanAndZoomShapeEffect effectTemplateID="PanAndZoomEffectAutomaticTemplate">
-          <BoundProperties><BoundPropertyInt Name="effectType" Value="5" /></BoundProperties>
-        </PanAndZoomShapeEffect>
-      </Effects>
-      <Transitions><ShapeEffect effectTemplateID="CrossfadeTransitionTemplate" duration="1.5"><BoundProperties /></ShapeEffect></Transitions>
-      <BoundProperties><BoundPropertyInt Name="rotateStepNinety" Value="2" /></BoundProperties>
-    </ImageClip>
-    <VideoClip extentID="12" gapBefore="0" mediaItemID="3" inTime="4.5" outTime="0" speed="4">
-      <Effects />
-      <Transitions><ShapeEffect effectTemplateID="BlurTransitionTemplate" duration="1.5"><BoundProperties /></ShapeEffect></Transitions>
-      <BoundProperties>
-        <BoundPropertyBool Name="Mute" Value="true" />
-        <BoundPropertyFloat Name="Volume" Value="0.5" />
-      </BoundProperties>
-    </VideoClip>
-    <VideoClip extentID="13" gapBefore="0" mediaItemID="5" inTime="0" outTime="0" speed="32">
-      <Effects />
-      <Transitions />
-      <BoundProperties />
-    </VideoClip>
-    <TitleClip extentID="14" gapBefore="0" duration="5">
-      <Effects><TextEffect effectTemplateID="TextEffectStretchTemplate" TextScriptId="1"><BoundProperties /></TextEffect></Effects>
-      <Transitions />
-      <BoundProperties />
-    </TitleClip>
-    <AudioClip extentID="15" gapBefore="0" mediaItemID="4" inTime="0" outTime="0">
-      <Effects />
-      <Transitions />
-      <BoundProperties><BoundPropertyFloat Name="Volume" Value="0.5" /></BoundProperties>
-    </AudioClip>
-    <VideoClip extentID="16" gapBefore="0" mediaItemID="1" inTime="2" outTime="9.25" speed="1">
-      <Effects />
-      <Transitions />
-      <BoundProperties />
-    </VideoClip>
-    <ExtentSelector extentID="1" gapBefore="0" primaryTrack="true">
-      <Effects />
-      <Transitions />
-      <BoundProperties />
-      <ExtentRefs>
-        <ExtentRef id="14" />
-        <ExtentRef id="16" />
-        <ExtentRef id="12" />
-        <ExtentRef id="11" />
-        <ExtentRef id="10" />
-      </ExtentRefs>
-    </ExtentSelector>
-    <ExtentSelector extentID="2" gapBefore="0" primaryTrack="false">
-      <Effects />
-      <Transitions />
-      <BoundProperties />
-      <ExtentRefs><ExtentRef id="15" /></ExtentRefs>
-    </ExtentSelector>
-    <ExtentSelector extentID="0" gapBefore="0" primaryTrack="false">
-      <Effects />
-      <Transitions />
-      <BoundProperties />
-      <ExtentRefs><ExtentRef id="13" /></ExtentRefs>
-    </ExtentSelector>
-  </Extents>
-  <BoundPlaceholders>
-    <BoundPlaceholder placeholderID="SingleExtentView" extentID="0" />
-    <BoundPlaceholder placeholderID="Main" extentID="1" />
-    <BoundPlaceholder placeholderID="SoundTrack" extentID="2" />
-  </BoundPlaceholders>
-  <BoundProperties>
-    <BoundPropertyFloat Name="SoundTrackMix" Value="0" />
-  </BoundProperties>
-</Project>)", video, photo, music, unplaced);
-
-	const auto read = read_wlmp(xml, movie_test_folder());
-
-	assert_equal(true, static_cast<bool>(read), "the project imports");
-	assert_equal(4, static_cast<int>(read.clips.size()), "with the four media clips the main track places");
-
-	const auto beside = movie_test_folder().combine("clips").combine_file("c.mp4");
-	assert_equal(video.pack(), read.clips[0].path.pack(), "the main track orders the timeline, not the list");
-	assert_equal(beside.pack(), read.clips[1].path.pack(), "a relative path is found beside the project");
-	assert_equal(photo.pack(), read.clips[2].path.pack(), "the photo is third on the track");
-	assert_equal(video.pack(), read.clips[3].path.pack(), "and the first clip added plays last");
-
-	assert_equal(2.0, read.clips[0].start, "a trimmed clip keeps its in point");
-	assert_equal(9.25, read.clips[0].end, "and its out point");
-
-	// End zero is what a newly added video has: the probe gives it the rest of its source.
-	assert_equal(4.5, read.clips[1].start, "a clip trimmed only at the start keeps its in point");
-	assert_equal(0.0, read.clips[1].end, "and runs to the end of its source");
-	assert_equal(0.0, read.clips[3].start, "an untrimmed clip starts at the start");
-	assert_equal(0.0, read.clips[3].end, "and is kept rather than dropped");
-	assert_equal(false, read.clips[3].is_trimmed(), "and is not shown as trimmed");
-
-	assert_equal(true, read.clips[2].is_photo, "an image clip is a photo");
-	assert_equal(7.0, read.clips[2].end, "held for its stated duration");
-
-	assert_equal(1, omitted_count(read, "TitleClip"), "the title on the main track is left out");
-	assert_equal(1, omitted_count(read, "AudioClip"), "and so is the music");
-	assert_equal(1, omitted_count(read, "clip off the main track"), "a clip the timeline does not place is left out");
-	assert_equal(1, omitted_count(read, "speed"), "only a placed clip's speed is counted");
-	assert_equal(1, omitted_count(read, "BlurTransitionTemplate"), "a transition Movie cannot draw is counted");
-	assert_equal(0, omitted_count(read, "CrossfadeTransitionTemplate"), "a crossfade is Movie's own transition");
-	assert_equal(1, omitted_count(read, "PanAndZoomEffectAutomaticTemplate"), "an effect on a clip is counted");
-	assert_equal(1, omitted_count(read, "rotateStepNinety"), "and so is a rotation");
-	assert_equal(1, omitted_count(read, "Mute"), "a muted clip");
-	assert_equal(1, omitted_count(read, "Volume"), "and a changed volume, but not the music's");
-	assert_equal(0, omitted_count(read, "Effects"), "an empty effect list is not an element left out");
-	assert_equal(0, omitted_count(read, "TextEffectStretchTemplate"), "nor is the inside of a title already counted");
-	assert_equal(9, read.ignored_elements, "and the total is the sum of what was named");
-
-	const auto without_folder = read_wlmp(xml, {});
-	assert_equal(3, static_cast<int>(without_folder.clips.size()), "a relative path needs the project's folder");
-	assert_equal(1, omitted_count(without_folder, "clip with no media file"), "and its clip says why it is gone");
-}
-
-// Movie Maker projects name their sources where they were years ago. The batch finds each by name
-// and must choose between same-named files the way a person would.
-static void should_find_moved_movie_sources()
-{
-	const auto old_root = movie_test_folder().combine("old");
-	const auto park = old_root.combine("Alfie in the park");
-	const auto dated = old_root.combine("Pictures").combine("2010").combine("2010-08-28");
-
-	const auto collection = movie_test_folder().combine("collection");
-	const auto january = collection.combine("2013").combine("2013-01-16");
-	const auto december = collection.combine("2012").combine("2012-12-26");
-	const auto august = collection.combine("2010").combine("2010-08-28");
-	const auto march = collection.combine("2005").combine("2005-03-26");
-
-	const std::vector<core::file_path> stored{
-		park.combine_file("IMG_0737.MOV"),
-		park.combine_file("IMG_0738.MOV"),
-		park.combine_file("IMG_0754.MOV"),
-		dated.combine_file("IMG_4823.JPG"),
-		park.combine_file("IMG_0001.MOV"),
-		park.combine_file("gone.mov"),
-		park.combine_file("IMG_0760.MOV"),
-		park.combine_file("IMG_0761.MOV"),
-		park.combine_file("IMG_0099.MOV"),
-	};
-
-	const std::vector<std::vector<core::file_path>> candidates{
-		{january.combine_file("IMG_0737.MOV")},
-		{january.combine_file("IMG_0738.MOV")},
-		{december.combine_file("IMG_0754.MOV"), january.combine_file("IMG_0754.MOV")},
-		{march.combine_file("IMG_4823.JPG"), august.combine_file("IMG_4823.JPG")},
-		{march.combine_file("IMG_0001.MOV"), august.combine_file("IMG_0001.MOV")},
-		{},
-		{january.combine_file("IMG_0760.MOV"), december.combine_file("IMG_0760.MOV")},
-		{january.combine_file("IMG_0761.MOV"), december.combine_file("IMG_0761.MOV")},
-		{march.combine_file("IMG_0099.MOV")},
-	};
-
-	const std::vector<double> recorded{20.0, 20.0, 0.0, 0.0, 0.0, 0.0, 12.5, 12.5, 27.8};
-
-	const core::hash_map<core::file_path, double, core::ihash, core::ieq> lengths{
-		{january.combine_file("IMG_0737.MOV"), 20.0},
-		{january.combine_file("IMG_0738.MOV"), 20.2},
-		{january.combine_file("IMG_0760.MOV"), 30.0},
-		{december.combine_file("IMG_0760.MOV"), 12.4},
-		{january.combine_file("IMG_0761.MOV"), 12.4},
-		{december.combine_file("IMG_0761.MOV"), 12.6},
-		{march.combine_file("IMG_0099.MOV"), 116.6},
-	};
-
-	std::vector<core::file_path> measured;
-	const auto measure = [&measured, &lengths](const core::file_path path)
-	{
-		measured.emplace_back(path);
-		const auto found = lengths.find(path);
-		return found == lengths.end() ? 0.0 : found->second;
-	};
-
-	const auto chosen = choose_movie_sources(stored, candidates, recorded, measure);
-	assert_equal(stored.size(), chosen.size(), "one answer per source");
-
-	assert_equal(true, chosen[0].match == movie_source_match::only_name, "the only file of that name");
-	assert_equal(candidates[0][0].pack(), chosen[0].path.pack(), "is the source when its length agrees");
-
-	assert_equal(true, chosen[3].match == movie_source_match::same_folders,
-	             "the one in folders named as the stored ones");
-	assert_equal(august.combine_file("IMG_4823.JPG").pack(), chosen[3].path.pack(), "beats an older namesake");
-
-	assert_equal(true, chosen[2].match == movie_source_match::siblings,
-	             "the one where its neighbours went");
-	assert_equal(january.combine_file("IMG_0754.MOV").pack(), chosen[2].path.pack(), "beats one elsewhere");
-
-	assert_equal(true, chosen[6].match == movie_source_match::same_length, "the one as long as the project recorded");
-	assert_equal(december.combine_file("IMG_0760.MOV").pack(), chosen[6].path.pack(),
-	             "outranks where its neighbours went");
-
-	assert_equal(true, chosen[7].match == movie_source_match::siblings, "a length both share settles nothing");
-	assert_equal(january.combine_file("IMG_0761.MOV").pack(), chosen[7].path.pack(), "so the neighbours do");
-
-	assert_equal(true, chosen[8].match == movie_source_match::other_length,
-	             "a lone namesake of another length is another file");
-	assert_equal(true, chosen[8].path.is_empty(), "and is never used in its place");
-
-	assert_equal(true, chosen[4].match == movie_source_match::ambiguous, "with no reason to prefer one");
-	assert_equal(true, chosen[4].path.is_empty(), "nothing is guessed");
-
-	assert_equal(true, chosen[5].match == movie_source_match::missing, "a name found nowhere is missing");
-	assert_equal(true, chosen[5].path.is_empty(), "and has no path");
-
-	// A probe per candidate is the expensive part, so only a source with a length to check pays.
-	assert_equal(7_z, measured.size(), "only the candidates of a source with a recorded length are measured");
-
-	// Neighbours that went two ways settle nothing.
-	const std::vector<core::file_path> split_stored{
-		park.combine_file("a.mov"), park.combine_file("b.mov"), park.combine_file("c.mov")
-	};
-	const std::vector<std::vector<core::file_path>> split_candidates{
-		{january.combine_file("a.mov")},
-		{december.combine_file("b.mov")},
-		{january.combine_file("c.mov"), december.combine_file("c.mov")},
-	};
-
-	const auto split = choose_movie_sources(split_stored, split_candidates, {}, {});
-	assert_equal(true, split[2].match == movie_source_match::ambiguous, "a tied vote is no answer");
-}
-
-// A timeline built from a selection is not an edit the user made: it has nothing to save and nothing
-// to undo, and the first change they make is what leaving Movie has to ask about.
 static void should_tell_a_seeded_timeline_from_an_edited_one()
 {
 	movie_project project;
-	project.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30), make_video("b.mp4", 10, {1920, 1080}, 30)});
+	project.insert_many(0, {make_hd("a.mp4", 10), make_hd("b.mp4", 10)});
 	project.mark_seeded();
 
 	assert_equal(false, project.is_modified(), "seeding is not an edit the user made");
@@ -1046,7 +542,7 @@ static void should_tell_a_seeded_timeline_from_an_edited_one()
 	project.undo();
 	assert_equal(false, project.is_modified(), "undoing back to the seed leaves nothing to lose");
 
-	project.reset({make_video("c.mp4", 10, {1920, 1080}, 30)}, {}, movie_test_path("p.otio"));
+	project.reset({make_hd("c.mp4", 10)}, movie_test_path("p.dfv"));
 	assert_equal(false, project.is_modified(), "a freshly opened project is unmodified");
 }
 
@@ -1065,7 +561,7 @@ static void should_decide_what_entering_movie_does()
 	assert_equal(true, decide_movie_entry(project, none, first) == movie_entry::seed,
 	             "and stays empty when nothing is selected");
 
-	project.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30), make_video("b.mp4", 10, {1920, 1080}, 30)});
+	project.insert_many(0, {make_hd("a.mp4", 10), make_hd("b.mp4", 10)});
 	project.mark_seeded();
 
 	assert_equal(true, decide_movie_entry(project, first, first) == movie_entry::resume,
@@ -1078,14 +574,14 @@ static void should_decide_what_entering_movie_does()
 	// A saved timeline is the work the user kept, so the selection that made it returns to it - and
 	// it is on disk, so another selection can replace it without losing anything.
 	project.trim(0, 1, 5);
-	project.mark_saved(movie_test_path("holiday.otio"), project.edit_revision());
+	project.mark_saved(movie_test_path("holiday.dfv"), project.edit_revision());
 	assert_equal(true, decide_movie_entry(project, first, first) == movie_entry::resume,
 	             "the selection that made a saved timeline returns to it, trims and all");
 	assert_equal(true, decide_movie_entry(project, second, first) == movie_entry::seed,
 	             "and a different selection replaces it");
 
 	// A project opened in Movie answers to the selection the timeline it replaced was built from.
-	project.reset({make_video("p.mp4", 10, {1920, 1080}, 30)}, {}, movie_test_path("p.otio"));
+	project.reset({make_hd("p.mp4", 10)}, movie_test_path("p.dfv"));
 	assert_equal(true, decide_movie_entry(project, first, first) == movie_entry::resume,
 	             "an opened project is returned to while the selection is unchanged");
 
@@ -1105,7 +601,7 @@ static void should_decide_what_entering_movie_does()
 	// An empty timeline that was opened or saved is a document like any other: the selection it answers
 	// to, or none, returns to it, where it used to be rebuilt from the selection and lose its file.
 	movie_project saved_empty;
-	saved_empty.reset({}, {}, movie_test_path("empty.otio"));
+	saved_empty.reset({}, movie_test_path("empty.dfv"));
 	assert_equal(true, decide_movie_entry(saved_empty, none, first) == movie_entry::resume,
 	             "an opened empty project is returned to when nothing is selected");
 	assert_equal(true, decide_movie_entry(saved_empty, first, first) == movie_entry::resume,
@@ -1120,14 +616,17 @@ static void should_decide_what_entering_movie_does()
 static void should_not_count_a_no_op_as_an_edit()
 {
 	movie_project project;
-	project.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30), make_photo("b.jpg", 4, {4000, 3000})});
+	project.insert_many(0, {make_hd("a.mp4", 10), make_photo("b.jpg", 4, {4000, 3000})});
 	project.mark_seeded();
-
-	project.settings(project.settings());
-	assert_equal(false, project.can_undo(), "settings set to what they already are are not an edit");
 
 	project.trim(0, 0, 10);
 	assert_equal(false, project.can_undo(), "a trim to the range already kept is not an edit");
+
+	project.trim(1, 0, 4);
+	assert_equal(false, project.can_undo(), "nor is a photo given the length it already shows for");
+
+	project.text(0, "");
+	assert_equal(false, project.can_undo(), "nor is a caption set to the words it already has");
 
 	project.replace(1, project.clips()[1]);
 	assert_equal(false, project.can_undo(), "replacing a clip with itself is not an edit");
@@ -1136,17 +635,11 @@ static void should_not_count_a_no_op_as_an_edit()
 	assert_equal(false, project.can_undo(), "nor is relinking every clip to where it already is");
 	assert_equal(false, project.is_modified(), "so the timeline holds nothing to save");
 
-	project.trim(1, 0, 4);
-	assert_equal(true, project.can_undo(), "a photo given its own length, even its current one, is an edit");
-	assert_equal(false, project.clips()[1].photo_duration_is_default, "because it stops following the default");
-
-	auto settings = project.settings();
-	settings.fade_in = !settings.fade_in;
-	project.settings(settings);
-	project.settings(settings);
+	project.text(0, "Lukla");
+	project.text(0, "Lukla");
 	project.undo();
-	assert_equal(true, settings.fade_in != project.settings().fade_in,
-	             "a setting reported twice is one edit, so one undo takes it back");
+	assert_equal(true, project.clips()[0].text.empty(),
+	             "words reported twice are one edit, so one undo takes them back");
 }
 
 // Undo returns to the state last saved, seeded or opened, and from there leaving has nothing to ask.
@@ -1154,11 +647,11 @@ static void should_not_count_a_no_op_as_an_edit()
 static void should_undo_back_to_an_unmodified_timeline()
 {
 	movie_project project;
-	project.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30), make_video("b.mp4", 10, {1920, 1080}, 30)});
+	project.insert_many(0, {make_hd("a.mp4", 10), make_hd("b.mp4", 10)});
 	project.mark_seeded();
 
 	project.trim(0, 1, 9);
-	project.mark_saved(movie_test_path("movie.otio"), project.edit_revision());
+	project.mark_saved(movie_test_path("movie.dfv"), project.edit_revision());
 	assert_equal(false, project.is_modified(), "a save settles the timeline");
 
 	project.trim(0, 2, 8);
@@ -1177,29 +670,29 @@ static void should_undo_back_to_an_unmodified_timeline()
 
 	// A save overtaken by an edit wrote a state no undo depth stands for.
 	movie_project overtaken;
-	overtaken.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30)});
+	overtaken.insert_many(0, {make_hd("a.mp4", 10)});
 	overtaken.mark_seeded();
 	const auto stale = overtaken.edit_revision();
 	overtaken.trim(0, 1, 9);
-	overtaken.mark_saved(movie_test_path("movie.otio"), stale);
+	overtaken.mark_saved(movie_test_path("movie.dfv"), stale);
 	overtaken.undo();
 	assert_equal(true, overtaken.is_modified(), "an overtaken save leaves the timeline needing another");
 
 	// An Undo that lands while a save runs can return to the earlier clean point, but the file on disk
 	// then holds the state that was undone, so the timeline still differs from it.
 	movie_project undone;
-	undone.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30)});
+	undone.insert_many(0, {make_hd("a.mp4", 10)});
 	undone.mark_seeded();
 	undone.trim(0, 1, 9);
 	const auto saving = undone.edit_revision();
 	undone.undo();
 	assert_equal(false, undone.is_modified(), "undo reaches the seeded state");
-	undone.mark_saved(movie_test_path("movie.otio"), saving);
+	undone.mark_saved(movie_test_path("movie.dfv"), saving);
 	assert_equal(true, undone.is_modified(), "a save overtaken by undo leaves the timeline unsaved");
 
 	// The bounded stack can drop the clean snapshot itself.
 	movie_project deep;
-	deep.insert_many(0, {make_video("a.mp4", 100, {1920, 1080}, 30)});
+	deep.insert_many(0, {make_hd("a.mp4", 100)});
 	deep.mark_seeded();
 
 	for (size_t i = 0; i <= movie_project::max_undo; ++i)
@@ -1217,7 +710,7 @@ static void should_undo_back_to_an_unmodified_timeline()
 static void should_not_treat_a_probe_result_as_an_edit_during_save()
 {
 	movie_project project;
-	auto clip = make_video("a.mp4", 10, {1920, 1080}, 30);
+	auto clip = make_hd("a.mp4", 10);
 	project.insert_many(0, {clip});
 	project.mark_seeded();
 	project.trim(0, 0, 5);
@@ -1235,7 +728,7 @@ static void should_not_treat_a_probe_result_as_an_edit_during_save()
 	assert_equal(true, project.revision() != revision_before, "the probe changes the document");
 	assert_equal(saving, project.edit_revision(), "but is not an edit the user made");
 
-	project.mark_saved(movie_test_path("movie.otio"), saving);
+	project.mark_saved(movie_test_path("movie.dfv"), saving);
 	assert_equal(false, project.is_modified(), "a save the probe landed during still settles the timeline");
 
 	const auto opening = project.edit_revision();
@@ -1247,13 +740,10 @@ static void should_not_treat_a_probe_result_as_an_edit_during_save()
 static void should_add_several_clips_as_one_edit()
 {
 	movie_project project;
-	project.append(make_video("a.mp4", 10, {1920, 1080}, 30));
+	project.append(make_hd("a.mp4", 10));
 	project.mark_seeded();
 
-	project.insert_many(1, {
-		                    make_video("b.mp4", 10, {1920, 1080}, 30), make_photo("c.jpg", 4, {4000, 3000}),
-		                    make_video("d.mp4", 10, {1920, 1080}, 30)
-	                    });
+	project.insert_many(1, {make_hd("b.mp4", 10), make_photo("c.jpg", 4, {4000, 3000}), make_hd("d.mp4", 10)});
 
 	assert_equal(4, static_cast<int>(project.size()), "every clip was inserted");
 	assert_equal("b.mp4", project.clips()[1].path.name().sv(), "at the drop point, in order");
@@ -1273,7 +763,7 @@ static void should_add_several_clips_as_one_edit()
 // in the explainer, and offered a relink.
 static void should_tell_an_unprobed_clip_from_a_lost_one()
 {
-	auto clip = make_video("a.mp4", 10, {1920, 1080}, 30);
+	auto clip = make_hd("a.mp4", 10);
 
 	assert_equal(true, clip.is_missing, "a clip starts unresolved");
 	assert_equal(false, clip.is_probed, "because nothing has looked for it yet");
@@ -1285,10 +775,12 @@ static void should_tell_an_unprobed_clip_from_a_lost_one()
 	clip.is_missing = false;
 	assert_equal(false, clip.is_lost(), "and a clip that was found is not");
 
+	assert_equal(false, make_movie_text("Trip").is_lost(), "a text screen has no source to lose");
+
 	// Relinking replaces where the work was aimed and keeps the work: the stored trim survives, and
 	// the clip goes back to unprobed so the new source is measured before the trim is clamped to it.
 	movie_project project;
-	auto trimmed = make_video("b.mp4", 10, {1920, 1080}, 30);
+	auto trimmed = make_hd("b.mp4", 10);
 	trimmed.is_probed = true;
 	project.append(trimmed);
 	project.trim(0, 2, 8);
@@ -1305,22 +797,118 @@ static void should_tell_an_unprobed_clip_from_a_lost_one()
 
 	project.undo();
 	assert_equal("b.mp4", project.clips()[0].path.name().sv(), "a relink is an edit, so it can be undone");
+}
 
-	auto second = make_video("c.mp4", 10, {1920, 1080}, 30);
-	second.is_probed = true;
-	project.append(second);
+// Dragging a slider reports every value it passes. Each was an undo step, so Undo walked a drag back one
+// value at a time, a long drag pushed the saved state out of the history, and a drag that ended where it
+// began still left the timeline asking to be saved.
+static void should_merge_one_gesture_into_one_undo_step()
+{
+	movie_project project;
+	project.insert_many(0, {make_hd("a.mp4", 10), make_photo("b.jpg", 4, {4000, 3000}), make_movie_text("Trip", 5)});
+	project.mark_seeded();
 
-	auto moved_first = project.clips()[0];
-	moved_first.path = movie_test_path("b-again.mp4");
-	auto moved_second = project.clips()[1];
-	moved_second.path = movie_test_path("c-moved.mp4");
-	project.replace_many({{0, moved_first}, {1, moved_second}});
+	for (auto tenths = 11; tenths <= 200; ++tenths)
+	{
+		project.trim(1, 0, tenths / 10.0, movie_edit_group::hold);
+	}
 
-	assert_equal("b-again.mp4", project.clips()[0].path.name().sv(), "a batch relink updates the first clip");
-	assert_equal("c-moved.mp4", project.clips()[1].path.name().sv(), "and the second clip");
+	assert_equal(true, project.is_modified(), "a drag is an edit");
 	project.undo();
-	assert_equal("b.mp4", project.clips()[0].path.name().sv(), "one undo restores the first clip");
-	assert_equal("c.mp4", project.clips()[1].path.name().sv(), "and the second clip together");
+	assert_equal(4.0, project.clips()[1].duration(), "one undo takes the whole drag back");
+	assert_equal(false, project.can_undo(), "in one step");
+	assert_equal(false, project.is_modified(), "to the state it started from");
+
+	project.trim(2, 0, 9, movie_edit_group::hold);
+	project.trim(2, 0, 5, movie_edit_group::hold);
+	assert_equal(false, project.is_modified(), "a drag that ends where it began is no edit");
+	assert_equal(false, project.can_undo(), "and costs no undo step");
+
+	// A settled drag is a step of its own, and so is the next.
+	project.trim(2, 0, 6, movie_edit_group::hold);
+	project.end_edit_group();
+	project.trim(2, 0, 7, movie_edit_group::hold);
+	project.undo();
+	assert_equal(6.0, project.clips()[2].duration(), "one settled drag is not merged into the next");
+
+	// One slider serves whichever item has focus, so the same gesture on another item is another step.
+	project.trim(1, 0, 3, movie_edit_group::hold);
+	project.trim(2, 0, 3, movie_edit_group::hold);
+	project.undo();
+	assert_equal(6.0, project.clips()[2].duration(), "undo takes back the drag on the second item");
+	assert_equal(3.0, project.clips()[1].duration(), "and leaves the first item's");
+
+	// So does a save: what comes after it is a change from what is on disk.
+	project.trim(1, 0, 8, movie_edit_group::hold);
+	project.mark_saved(movie_test_path("movie.dfv"), project.edit_revision());
+	project.trim(1, 0, 5, movie_edit_group::hold);
+	project.undo();
+	assert_equal(8.0, project.clips()[1].duration(), "undo returns to what was saved");
+	assert_equal(false, project.is_modified(), "which leaves nothing to save");
+}
+
+// A text box reports every keystroke. Each was a step, so Undo took a caption back a letter at a time;
+// and one box serves whichever item has focus, so typing after focus moved must not run on into the
+// last item's step.
+static void should_merge_typing_into_one_undo_step()
+{
+	movie_project project;
+	project.insert_many(0, {make_hd("a.mp4", 10), make_movie_text("", 5)});
+	project.mark_seeded();
+
+	std::string typed;
+
+	for (const auto c : "Lukla"sv)
+	{
+		typed += c;
+		project.text(0, typed, movie_edit_group::text);
+	}
+
+	assert_equal("Lukla"s, project.clips()[0].text, "every keystroke lands");
+
+	project.text(1, "T", movie_edit_group::text);
+	project.text(1, "The End", movie_edit_group::text);
+	project.undo();
+	assert_equal(true, project.clips()[1].text.empty(), "undo takes back the typing on the screen");
+	assert_equal("Lukla"s, project.clips()[0].text, "and leaves the clip's caption");
+	project.undo();
+	assert_equal(true, project.clips()[0].text.empty(), "one undo takes back a whole run of typing");
+	assert_equal(false, project.can_undo(), "in one step");
+	assert_equal(false, project.is_modified(), "to where it began");
+
+	project.text(1, "T", movie_edit_group::text);
+	project.text(1, "Tr", movie_edit_group::text);
+	project.text(1, "", movie_edit_group::text);
+	assert_equal(false, project.is_modified(), "typing words and deleting them again is no edit");
+	assert_equal(false, project.can_undo(), "and costs no step");
+
+	project.text(0, std::string(5000, 'x'));
+	assert_equal(movie_max_text_bytes, project.clips()[0].text.size(), "text is held to what a document keeps");
+}
+
+// The panel binds to the focused item's values. Moving focus must show that item's, never the last one's:
+// a caption carried from one clip to the next would be written into it at the next keystroke.
+static void should_show_the_focused_movie_item_in_the_panel()
+{
+	movie_view_state state;
+	auto captioned = make_hd("a.mp4", 10);
+	captioned.text = "Lukla";
+	auto shaky = make_hd("b.mp4", 10);
+	shaky.stabilize = true;
+	state.project.reset({captioned, make_movie_text("Trip", 7.25), shaky}, {});
+
+	state.read_from_project();
+	assert_equal("Lukla"s, state.item_text, "a clip's caption is in the box");
+
+	state.project.current(1);
+	state.read_from_project();
+	assert_equal("Trip"s, state.item_text, "a text screen's words are");
+	assert_equal(73, state.hold_tenths, "with how long it shows, in tenths");
+
+	state.project.current(2);
+	state.read_from_project();
+	assert_equal(true, state.item_text.empty(), "a clip with no caption shows an empty box");
+	assert_equal(true, state.stabilize, "and whether it is to be stabilized");
 }
 
 //
@@ -1329,10 +917,8 @@ static void should_tell_an_unprobed_clip_from_a_lost_one()
 
 static void should_refuse_an_output_that_names_a_clip()
 {
-	const std::vector clips{
-		make_video("a.mp4", 4, {1920, 1080}, 30),
-		make_photo("b.jpg", 3, {4000, 3000}),
-	};
+	const std::vector clips{make_video("a.mp4", 4, {1920, 1080}, 30), make_photo("b.jpg", 3, {4000, 3000}),
+	                        make_movie_text("Trip")};
 
 	assert_equal(true, movie_output_names_a_clip(clips, movie_test_path("a.mp4")),
 	             "an output naming a video clip is refused");
@@ -1341,8 +927,7 @@ static void should_refuse_an_output_that_names_a_clip()
 	             "the comparison folds case where the platform's paths do, as every other destination check does");
 	assert_equal(false, movie_output_names_a_clip(clips, movie_test_path("movie.mp4")),
 	             "an output naming nothing in the timeline is allowed");
-	assert_equal(false, movie_output_names_a_clip(clips, {}),
-	             "an empty output names no clip");
+	assert_equal(false, movie_output_names_a_clip(clips, {}), "an empty output names no clip");
 	assert_equal(false, movie_output_names_a_clip({}, movie_test_path("a.mp4")),
 	             "an empty timeline has no clip to name");
 }
@@ -1378,444 +963,420 @@ static void should_let_cancel_and_publication_decide_each_other()
 	}
 }
 
-static std::string movie_test_url(const std::string_view name)
+//
+// The project file
+//
+
+static void should_round_trip_a_movie_project()
 {
-	return core::replace(movie_test_path(name).pack(), "\\", "/");
+	auto video = make_hd("a.mp4", 12);
+	video.start = 1.5;
+	video.end = 8.25;
+	video.text = "Alfie's \"first\" day\nC:\\path";
+
+	auto shaky = make_hd("shaky.mp4", 20);
+	shaky.stabilize = true;
+
+	const auto far_path = core::folder_path(core::windows_path_semantics ? "d:\\other place" : "/other place")
+	                          .combine_file("far away.mp4");
+	auto far = make_hd("far.mp4", 30);
+	far.path = far_path;
+	far.end = 10;
+
+	const std::vector clips{make_movie_text("Hiking to\nEverest", 5), video, make_photo("50% off.jpg", 5, {4000, 3000}),
+	                        shaky, far};
+
+	const auto text = write_dfv(clips, movie_test_folder());
+
+	assert_equal(true, text.starts_with("# Diffractor video"), "the file says what it is, in a comment");
+	assert_equal(true, core::contains(text, "\nt 5 'Hiking to\\nEverest'\n"), "a text screen is its seconds and words");
+	assert_equal(true, core::contains(text, "\nc 1.5-8.25 a.mp4 'Alfie\\'s \"first\" day\\nC:\\\\path'\n"),
+	             "a clip is the part it plays, its file beside the project, and its caption escaped");
+	assert_equal(true, core::contains(text, "\nc -5 \"50% off.jpg\"\n"), "a photo is how long it shows");
+	assert_equal(true, core::contains(text, "\ns - shaky.mp4\n"), "a clip to stabilize is an s, and a whole clip -");
+	assert_equal(true, core::contains(text, std::format("\nc -10 \"{}\"\n", far_path.pack())),
+	             "a source outside the project's folder is named whole");
+
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(true, static_cast<bool>(read), "the project reads back");
+	assert_equal(true, read.problems.empty(), "every line of it");
+	assert_equal(5_z, read.clips.size(), "with every item");
+
+	assert_equal(true, read.clips[0].is_text, "a screen is still a screen");
+	assert_equal("Hiking to\nEverest"s, read.clips[0].text, "with its lines");
+	assert_equal(5.0, read.clips[0].duration(), "and its length");
+
+	assert_equal(video.path.pack(), read.clips[1].path.pack(), "a relative path resolves back");
+	assert_equal(1.5, read.clips[1].start, "the in point survives");
+	assert_equal(8.25, read.clips[1].end, "the out point survives");
+	assert_equal(video.text, read.clips[1].text, "and so does the caption, quotes and all");
+
+	assert_equal(true, read.clips[2].is_photo, "a photo is still a photo");
+	assert_equal(5.0, read.clips[2].end, "its hold survives");
+	assert_equal(clips[2].path.pack(), read.clips[2].path.pack(), "and so does a name a URL would have escaped");
+
+	assert_equal(true, read.clips[3].stabilize, "a clip to stabilize stays marked");
+	assert_equal(0.0, read.clips[3].end, "and an untrimmed one runs to the end of its source, once measured");
+	assert_equal(far_path.pack(), read.clips[4].path.pack(), "a distant source resolves without the project's folder");
+	assert_equal(10.0, read.clips[4].end, "with its out point");
+
+	const auto empty = read_dfv(write_dfv({}, movie_test_folder()), movie_test_folder());
+	assert_equal(true, static_cast<bool>(empty) && empty.clips.empty() && empty.problems.empty(),
+	             "an empty project is a valid project");
 }
 
-// The source range of each clip a written project lays on its track, as (start, duration) seconds.
-static std::vector<std::pair<double, double>> otio_clip_ranges(const std::string_view json)
+// The point of the format is that a person or an agent writes it. Everything the grammar allows reads,
+// however it is spaced, whatever ends its lines, and whichever of the forms of a clip's part it uses.
+static void should_read_a_movie_project_written_by_hand()
 {
-	std::vector<std::pair<double, double>> result;
+	const auto text = "\xEF\xBB\xBF# A trip, written by hand\r\n"
+					  "\r\n"
+					  "T 4 'Our trip'\r\n"
+					  "c 2.5-3.3 clips/a.mp4 'Lukla'\r\n"
+					  "c -3.3 clips/b.mp4\r\n"
+					  "\tc   2.5-   ../c.mp4  \r\n"
+					  "c - \"with space.mp4\"\r\n"
+					  "c #4 tune.sid\r\n"
+					  "c 1:02.5-1:10#2 tune.sid\r\n"
+					  "s 0:00:01-0:00:04 shaky.mp4\r\n"
+					  "c -4 a.jpg\r\n"
+					  "c - b.jpg\r\n"
+					  "c 2-6 c.jpg\r\n"
+					  "t 3\r\n"sv;
 
-	core::json::json_doc doc;
-	doc.Parse(json.data(), json.size());
-	if (doc.HasParseError() || !doc.IsObject()) return result;
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(true, static_cast<bool>(read), "a hand-written project reads");
+	assert_equal(true, read.problems.empty(), "every line of it");
+	assert_equal(12_z, read.clips.size(), "with an item for each instruction");
 
-	const auto seconds = [](const auto& time) { return time["value"].GetDouble() / time["rate"].GetDouble(); };
-
-	for (const auto& child : doc["tracks"]["children"][0]["children"].GetArray())
-	{
-		if (!core::starts(child["OTIO_SCHEMA"].GetString(), "Clip")) continue;
-		const auto& range = child["source_range"];
-		result.emplace_back(seconds(range["start_time"]), seconds(range["duration"]));
-	}
-
-	return result;
+	assert_equal(true, read.clips[0].is_text && read.clips[0].text == "Our trip" && read.clips[0].duration() == 4.0,
+	             "an instruction in capitals is the same instruction");
+	assert_equal(movie_test_folder().combine("clips").combine_file("a.mp4").pack(), read.clips[1].path.pack(),
+	             "a relative path is the project's folder's");
+	assert_near(2.5, read.clips[1].start, 1e-9, "from-to plays that part");
+	assert_near(3.3, read.clips[1].end, 1e-9, "of its source");
+	assert_equal("Lukla"s, read.clips[1].text, "with its caption");
+	assert_equal(true, read.clips[2].start == 0 && read.clips[2].end == 3.3, "-to plays from the start");
+	assert_equal(movie_test_folder().parent().combine_file("c.mp4").pack(), read.clips[3].path.pack(),
+	             "and may lead out of it");
+	assert_equal(true, read.clips[3].start == 2.5 && read.clips[3].end == 0, "from- plays to the end, once measured");
+	assert_equal(movie_test_path("with space.mp4").pack(), read.clips[4].path.pack(), "a quoted path keeps its space");
+	assert_equal(true, read.clips[5].is_audio && read.clips[5].song == 4 && read.clips[5].end == 0,
+	             "#track alone plays the whole of that tune");
+	assert_equal(true, read.clips[6].song == 2 && read.clips[6].start == 62.5 && read.clips[6].end == 70,
+	             "times may be minutes and seconds, with a tune");
+	assert_equal(true, read.clips[7].stabilize && read.clips[7].start == 1 && read.clips[7].end == 4,
+	             "s marks a clip to stabilize, and hours are allowed");
+	assert_equal(true, read.clips[8].is_photo && read.clips[8].duration() == 4.0, "-4 shows a photo for 4 s");
+	assert_equal(movie_photo_seconds, read.clips[9].duration(), "- shows it for the default length");
+	assert_equal(4.0, read.clips[10].duration(), "and from-to for as long as the part spans");
+	assert_equal(true, read.clips[11].is_text && read.clips[11].text.empty(), "a screen may have no words: black");
 }
 
-// Two four-second clips joined by one dissolve, under the document metadata given.
-static std::string dissolve_project(const std::string_view metadata, const double in_offset, const double out_offset,
-                                    const double second_start)
+// A line the reader cannot use is named, with its number and what is wrong, and the rest of the project
+// still reads: the view opens what it can and the command line refuses to render it, so either way the
+// writer is told.
+static void should_report_movie_project_lines_it_cannot_read()
 {
-	return std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"metadata": {{ {} }},
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{
-					"start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 4 }} }},
-					"media_reference": {{ "target_url": "{}" }} }},
-				{{ "OTIO_SCHEMA": "Transition.1", "transition_type": "SMPTE_Dissolve",
-					"in_offset": {{ "rate": 1, "value": {} }}, "out_offset": {{ "rate": 1, "value": {} }} }},
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{
-					"start_time": {{ "rate": 1, "value": {} }}, "duration": {{ "rate": 1, "value": 4 }} }},
-					"media_reference": {{ "target_url": "{}" }} }}
-			]
-		}}] }}
-	}})", metadata, movie_test_url("a.mp4"), in_offset, out_offset, second_start, movie_test_url("b.mp4"));
+	const auto text = "t 3 'Fine'\n"
+					  "x 2 'What'\n"
+					  "t 'no seconds'\n"
+					  "t 0 'zero'\n"
+					  "c 5 a.mp4\n"
+					  "c 3-2 a.mp4\n"
+					  "c -\n"
+					  "t 3 'not closed\n"
+					  "t 3 'run'into\n"
+					  "c - a.mp4 'cap' extra\n"
+					  "c 1:75-2:00 a.mp4\n"
+					  "c #x tune.sid\n"
+					  "c 1e3-2e3 a.mp4\n"
+					  "c -0 a.mp4\n"
+					  "c - b.mp4\n"sv;
+
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(true, static_cast<bool>(read), "a project with good lines still reads");
+	assert_equal(2_z, read.clips.size(), "taking every line it can");
+
+	std::vector<int> lines;
+	lines.reserve(read.problems.size());
+	for (const auto& problem : read.problems) lines.emplace_back(problem.line);
+	assert_equal(true, lines == std::vector{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
+	             "and naming every line it cannot, as an editor numbers them");
+	assert_equal(true,
+	             std::ranges::none_of(read.problems, [](const movie_load_problem& p) { return p.reason.empty(); }),
+	             "each with a reason");
+
+	assert_equal(false, static_cast<bool>(read_dfv("<html>not a project</html>\nnor this\n", movie_test_folder())),
+	             "a file every line of which is a problem is not a project");
+	const auto comments = read_dfv("# only a comment\n\n", movie_test_folder());
+	assert_equal(true, static_cast<bool>(comments) && comments.clips.empty(), "while one of comments is an empty one");
 }
 
-// OpenTimelineIO puts a transition across a cut and draws it from the media past each clip's range,
-// so a track lasts as long as its clips' ranges added together. Movie overlaps its clips instead.
-// Written as whole retained ranges, another tool played every crossfade over footage the user had
-// trimmed away, and the movie a transition longer at every join.
-static void should_write_transitions_as_otio_reads_them()
+// A project file is untrusted input: a length reaches the frame count, which no integer can hold past a
+// point, and text reaches a renderer that draws all of it.
+static void should_bound_movie_project_durations()
 {
-	auto first = make_video("a.mp4", 10, {1920, 1080}, 30);
-	first.start = 1;
-	const std::vector clips{first, make_photo("b.jpg", 5, {4000, 3000}), make_video("c.mp4", 8, {1920, 1080}, 30)};
+	const auto text = "t 99999 'long'\n"
+	                  "c -99999 still.jpg\n"
+	                  "c 99999999999- late.mp4\n"
+	                  "c -" +
+	                  std::string(400, '9') +
+	                  " huge.mp4\n"
+	                  "t 5 '" +
+	                  std::string(3000, 'x') + "'\n";
 
-	movie_settings settings;
-	settings.transition = movie_transition::crossfade;
-	settings.transition_seconds = 1.0;
-
-	const auto json = write_otio(clips, settings, movie_test_folder());
-	const auto ranges = otio_clip_ranges(json);
-
-	assert_equal(3_z, ranges.size(), "every clip is on the track");
-
-	auto track_seconds = 0.0;
-	for (const auto& range : ranges) track_seconds += range.second;
-
-	assert_near(calc_movie_timing(clips, settings).duration, track_seconds, 1e-9,
-	            "the track another tool lays out lasts as long as the movie");
-	assert_near(1.0, ranges[0].first, 1e-9, "the first clip starts at its in point");
-	assert_near(8.5, ranges[0].second, 1e-9, "and stops half a crossfade before its out point");
-	assert_near(0.5, ranges[1].first, 1e-9, "a clip after a crossfade starts half of it in");
-	assert_near(4.0, ranges[1].second, 1e-9, "and one between two gives up half of each");
-	assert_near(7.5, ranges[2].second, 1e-9, "the last clip runs to its out point");
-
-	const auto read = read_otio(json, movie_test_folder());
-	assert_equal(3_z, read.clips.size(), "the project reads back");
-	assert_equal(0, read.ignored_elements, "with its crossfades understood as Movie's own");
-
-	for (size_t i = 0; i < clips.size(); ++i)
-	{
-		assert_near(clips[i].start, read.clips[i].start, 1e-9, "each clip keeps its in point");
-		assert_near(clips[i].end, read.clips[i].end, 1e-9, "and its out point");
-	}
-
-	// Saved before the file said which convention its ranges follow, a project holds whole retained
-	// ranges, and reads as it was written.
-	const auto legacy = read_otio(
-		dissolve_project(R"("diffractor": { "transition": "crossfade", "transition_seconds": 1.0 })", 0.5, 0.5, 2),
-		movie_test_folder());
-	assert_equal(2_z, legacy.clips.size(), "an older project reads");
-	assert_equal(4.0, legacy.clips[0].end, "with its ranges as written");
-	assert_equal(2.0, legacy.clips[1].start, "on both sides of the crossfade");
-
-	// Another tool's dissolve reaches past the cut into both clips, unevenly if it likes. Adopted, it
-	// widens each clip by what it reaches into, so the movie is as long as that tool's track.
-	const auto foreign = read_otio(dissolve_project({}, 0.25, 0.75, 2), movie_test_folder());
-	assert_equal(true, foreign.settings.transition == movie_transition::crossfade, "a dissolve at every cut is adopted");
-	assert_near(1.0, foreign.settings.transition_seconds, 1e-9, "at its whole length");
-	assert_near(4.75, foreign.clips[0].end, 1e-9, "the outgoing clip runs on past the cut");
-	assert_near(1.75, foreign.clips[1].start, 1e-9, "and the incoming one starts before it");
-	assert_near(8.0, calc_movie_timing(foreign.clips, foreign.settings).duration, 1e-9,
-	            "and the movie is as long as the track");
-	assert_equal(0, foreign.ignored_elements, "nothing is left out");
-
-	// A clip the reader cannot use takes nothing else with it: each transition beside it still widens
-	// the clip on its own side, and not the clip beyond.
-	const auto broken_middle = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"metadata": {{ "diffractor": {{ "version": 2, "transition": "crossfade", "transition_seconds": 1.0 }} }},
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 3.5 }} }},
-					"media_reference": {{ "target_url": "{}" }} }},
-				{{ "OTIO_SCHEMA": "Transition.1", "transition_type": "SMPTE_Dissolve",
-					"in_offset": {{ "rate": 1, "value": 0.5 }}, "out_offset": {{ "rate": 1, "value": 0.5 }} }},
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{ "start_time": {{ "rate": 1, "value": 0.5 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_reference": {{ "target_url": "https://example.com/b.mp4" }} }},
-				{{ "OTIO_SCHEMA": "Transition.1", "transition_type": "SMPTE_Dissolve",
-					"in_offset": {{ "rate": 1, "value": 0.25 }}, "out_offset": {{ "rate": 1, "value": 0.25 }} }},
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{ "start_time": {{ "rate": 1, "value": 1 }}, "duration": {{ "rate": 1, "value": 3 }} }},
-					"media_reference": {{ "target_url": "{}" }} }}
-			]
-		}}] }}
-	}})", movie_test_url("a.mp4"), movie_test_url("c.mp4"));
-
-	const auto without_middle = read_otio(broken_middle, movie_test_folder());
-	assert_equal(2_z, without_middle.clips.size(), "the clips it can use are read");
-	assert_near(4.0, without_middle.clips[0].end, 1e-9, "the clip before keeps the media its transition reached into");
-	assert_near(0.75, without_middle.clips[1].start, 1e-9, "and the clip after keeps what its own transition did");
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(4_z, read.clips.size(), "every bounded line reads");
+	assert_equal(movie_max_hold_seconds, read.clips[0].duration(), "a screen shows for no more than a document allows");
+	assert_equal(movie_max_hold_seconds, read.clips[1].duration(), "and nor does a photo");
+	assert_equal(movie_max_clip_seconds, read.clips[2].start,
+	             "an in point no source can have is held to the longest movie");
+	assert_equal(1_z, read.problems.size(), "a number too large to read is a line that cannot be read");
+	assert_equal(movie_max_text_bytes, read.clips[3].text.size(), "and text is held to what a document keeps");
 }
 
-// OpenTimelineIO 0.15 and later write Clip.2: a clip names its media in a map of references with the
-// key of the one in use. Read only through the older single reference, every clip of a file from a
-// current tool had no media, and the project opened empty. A range in timecoded media counts from the
-// media's own first frame, and what the file asks for that Movie cannot do is reported.
-static void should_read_clips_as_current_otio_writes_them()
-{
-	const auto json = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.2",
-					"source_range": {{ "start_time": {{ "rate": 24, "value": 86424 }}, "duration": {{ "rate": 24, "value": 48 }} }},
-					"media_references": {{ "DEFAULT_MEDIA": {{ "OTIO_SCHEMA": "ExternalReference.1", "target_url": "{}",
-						"available_range": {{ "start_time": {{ "rate": 24, "value": 86400 }}, "duration": {{ "rate": 24, "value": 2400 }} }} }} }},
-					"active_media_reference_key": "DEFAULT_MEDIA" }},
-				{{ "OTIO_SCHEMA": "Clip.2",
-					"source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_references": {{
-						"high": {{ "OTIO_SCHEMA": "ExternalReference.1", "target_url": "{}" }},
-						"proxy": {{ "OTIO_SCHEMA": "ExternalReference.1", "target_url": "{}" }} }},
-					"active_media_reference_key": "proxy" }},
-				{{ "OTIO_SCHEMA": "Clip.2", "enabled": false,
-					"source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_references": {{ "DEFAULT_MEDIA": {{ "target_url": "{}" }} }},
-					"active_media_reference_key": "DEFAULT_MEDIA" }},
-				{{ "OTIO_SCHEMA": "Clip.2",
-					"source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"effects": [{{ "OTIO_SCHEMA": "LinearTimeWarp.1", "time_scalar": 2.0 }}],
-					"media_references": {{ "DEFAULT_MEDIA": {{ "target_url": "{}" }} }},
-					"active_media_reference_key": "DEFAULT_MEDIA" }},
-				{{ "OTIO_SCHEMA": "Clip.2",
-					"source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_references": {{ "only": {{ "target_url": "{}" }} }},
-					"active_media_reference_key": "gone" }}
-			]
-		}}] }}
-	}})", movie_test_url("timecode.mov"), movie_test_url("high.mov"), movie_test_url("proxy.mov"),
-	                              movie_test_url("disabled.mov"), movie_test_url("fast.mov"), movie_test_url("only.mov"));
-
-	const auto read = read_otio(json, movie_test_folder());
-
-	assert_equal(true, static_cast<bool>(read), "a project from a current OpenTimelineIO reads");
-	assert_equal(4_z, read.clips.size(), "with every enabled clip");
-	assert_equal(movie_test_path("timecode.mov").pack(), read.clips[0].path.pack(), "a clip finds its media");
-	assert_near(1.0, read.clips[0].start, 1e-9, "a range in timecoded media counts from the media's first frame");
-	assert_near(3.0, read.clips[0].end, 1e-9, "for the length it states");
-	assert_equal(movie_test_path("proxy.mov").pack(), read.clips[1].path.pack(), "the media in use is the active one");
-	assert_equal(movie_test_path("fast.mov").pack(), read.clips[2].path.pack(),
-	             "a clip with an effect Movie cannot apply keeps its place");
-	assert_equal(movie_test_path("only.mov").pack(), read.clips[3].path.pack(),
-	             "a key that names nothing falls back to the media there is");
-	assert_equal(1, omitted_count(read, "disabled clip"), "a disabled clip is left out and said so");
-	assert_equal(1, omitted_count(read, "LinearTimeWarp.1"), "and so is the effect");
-	assert_equal(2, read.ignored_elements, "and nothing else");
-}
-
-// A camera's clip is rarely a whole number of milliseconds long. Saved rounded to the millisecond
-// beside its exact source length, an untrimmed clip came back a fraction short and showed as trimmed.
-static void should_keep_an_untrimmed_clip_untrimmed_through_save()
+// A clip that runs to the end of its source is written "-", and given the rest of its source again by the
+// probe when it is read: untrimmed stays untrimmed, and a clip saved before it was measured is kept.
+static void should_keep_a_clip_running_to_its_sources_end_through_save()
 {
 	const auto camera = make_video("camera.mov", 12.3452, {1920, 1080}, 30);
-	const auto read = read_otio(write_otio({camera}, {}, movie_test_folder()), movie_test_folder());
-
-	assert_equal(1_z, read.clips.size(), "the clip reads back");
-	assert_equal(false, read.clips[0].is_trimmed(), "an untrimmed clip is still untrimmed");
-	assert_near(12.3452, read.clips[0].end, 1e-9, "and runs to the end of its source");
-
-	// A project an earlier build saved holds the length rounded; its clip opens untrimmed as well.
-	const auto legacy = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"metadata": {{ "diffractor": {{ "transition": "cut" }} }},
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1",
-					"source_range": {{ "start_time": {{ "rate": 1000, "value": 0 }}, "duration": {{ "rate": 1000, "value": 12345 }} }},
-					"media_reference": {{ "target_url": "{}" }},
-					"metadata": {{ "diffractor": {{ "photo": false, "source_duration": 12.3452 }} }} }}
-			]
-		}}] }}
-	}})", movie_test_url("camera.mov"));
-
-	const auto legacy_read = read_otio(legacy, movie_test_folder());
-	assert_equal(1_z, legacy_read.clips.size(), "an older project reads");
-	assert_equal(false, legacy_read.clips[0].is_trimmed(), "and its untrimmed clip opens untrimmed");
-}
-
-// A clip saved before its source was measured -- added a moment before, or gone by then -- has no
-// length yet, and OpenTimelineIO's null range means the whole of the media. Both were dropped when
-// the project was opened; they come back for the probe to measure.
-static void should_keep_an_unmeasured_clip_through_save()
-{
+	auto late_start = camera;
+	late_start.start = 2;
 	const auto pending = make_video("pending.mp4", 0, {}, 0);
-	const auto read = read_otio(write_otio({pending, make_photo("b.jpg", 4, {4000, 3000})}, {}, movie_test_folder()),
-	                            movie_test_folder());
 
-	assert_equal(2_z, read.clips.size(), "a clip not yet measured is kept");
-	assert_equal(0, read.ignored_elements, "and is not reported left out");
-	assert_equal(0.0, read.clips[0].duration(), "it still waits for its length");
+	const auto text = write_dfv({camera, late_start, pending}, movie_test_folder());
+	assert_equal(true, core::contains(text, "\nc - camera.mov\n"), "an untrimmed clip is written whole");
+	assert_equal(true, core::contains(text, "\nc 2- camera.mov\n"), "one trimmed at its start only runs to its end");
+	assert_equal(true, core::contains(text, "\nc - pending.mp4\n"), "and one not yet measured is kept");
 
+	const auto read = read_dfv(text, movie_test_folder());
 	movie_probe_result probe;
-	probe.path = read.clips[0].path;
+	probe.path = camera.path;
 	probe.found = true;
-	probe.duration = 9.0;
+	probe.duration = 12.3452;
 	probe.extent = {1920, 1080};
-	assert_equal(9.0, apply_movie_probe(read.clips[0], probe, 4.0).end, "which the probe gives it from the source");
 
-	const auto json = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": null, "media_reference": {{ "target_url": "{}" }} }},
-				{{ "OTIO_SCHEMA": "Clip.1", "media_reference": {{ "target_url": "{}" }} }}
-			]
-		}}] }}
-	}})", movie_test_url("whole.mp4"), movie_test_url("still.jpg"));
+	const auto measured = apply_movie_probe(read.clips[0], probe);
+	assert_equal(false, measured.is_trimmed(), "an untrimmed clip is still untrimmed");
+	assert_near(12.3452, measured.end, 1e-9, "and runs to the end of its source");
+	assert_equal(2.0, apply_movie_probe(read.clips[1], probe).start, "a late start survives");
 
-	const auto foreign = read_otio(json, movie_test_folder());
-	assert_equal(2_z, foreign.clips.size(), "a clip with no range is the whole of its media");
-	assert_equal(0.0, foreign.clips[0].duration(), "measured by the probe");
-	assert_equal(true, foreign.clips[1].is_photo, "a still with no range is kept");
-	assert_equal(foreign.settings.photo_seconds, foreign.clips[1].end, "and held for the default length");
-	assert_equal(true, foreign.clips[1].photo_duration_is_default, "which it follows");
+	probe.duration = 9.0;
+	assert_equal(9.0, apply_movie_probe(read.clips[2], probe).end, "and the probe gives an unmeasured clip its source");
 }
 
-// A file URI escapes a name byte by byte, and an older tool escaped Latin-1 rather than UTF-8, so
-// "caf%E9.mp4" decodes to a byte that is no UTF-8 character. Converting that through the process code
-// page threw, and Save -- or leaving Movie and choosing Save -- ended the application.
+// A name can hold a byte that is no UTF-8 character, which converting through the process code page
+// refused. Save used to end the application over one; it must write it, and opening must still read the
+// lines it can.
 static void should_save_clip_paths_that_are_not_utf8()
 {
-	const auto odd_path = movie_test_folder().combine_file("caf\xE9.mp4");
-	auto odd = make_video("x.mp4", 4, {1920, 1080}, 30);
-	odd.path = odd_path;
+	auto odd = make_hd("x.mp4", 4);
+	odd.path = movie_test_folder().combine_file("caf\xE9.mp4");
 
-	const auto json = write_otio({odd, make_video("plain.mp4", 4, {1920, 1080}, 30)}, {}, movie_test_folder());
-	const auto read = read_otio(json, movie_test_folder());
-	assert_equal(2_z, read.clips.size(), "both clips save and read back");
-	assert_equal(odd_path.pack(), read.clips[0].path.pack(), "with the name as it was read");
-
-	const auto relative = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_reference": {{ "target_url": "caf%E9.mp4" }} }},
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{ "start_time": {{ "rate": 1, "value": 0 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_reference": {{ "target_url": "plain.mp4" }} }}
-			]
-		}}] }}
-	}})");
-
-	const auto relative_read = read_otio(relative, movie_test_folder());
-	assert_equal(true, static_cast<bool>(relative_read), "a project naming such a file beside it still opens");
-	assert_equal(movie_test_path("plain.mp4").pack(), relative_read.clips.back().path.pack(),
-	             "with the clips it can name");
+	const auto text = write_dfv({odd, make_hd("plain.mp4", 4)}, movie_test_folder());
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(true, static_cast<bool>(read), "a project naming such a file beside it still opens");
+	assert_equal(movie_test_path("plain.mp4").pack(), read.clips.back().path.pack(), "with the clips it can name");
 }
 
-// A project file is untrusted input. An in point no source can have became an infinity the writer
-// could not express: the key went out with no value, Save reported success, and the project no longer
-// opened.
+// What Save writes always reads back, whatever the document holds: an in point no number can write, a
+// length that is not a number, and words with every character the grammar quotes.
 static void should_write_a_project_that_reads_back_whatever_it_holds()
 {
-	const auto json = std::format(R"({{
-		"OTIO_SCHEMA": "Timeline.1",
-		"tracks": {{ "OTIO_SCHEMA": "Stack.1", "children": [{{
-			"OTIO_SCHEMA": "Track.1", "kind": "Video", "children": [
-				{{ "OTIO_SCHEMA": "Clip.1", "source_range": {{ "start_time": {{ "rate": 1, "value": 1e306 }}, "duration": {{ "rate": 1, "value": 2 }} }},
-					"media_reference": {{ "target_url": "{}" }} }}
-			]
-		}}] }}
-	}})", movie_test_url("late.mp4"));
-
-	const auto late = read_otio(json, movie_test_folder());
-	assert_equal(1_z, late.clips.size(), "a clip starting impossibly late is read");
-	assert_equal(true, late.clips[0].start <= movie_max_clip_seconds, "with its in point bounded");
-	assert_equal(true, static_cast<bool>(read_otio(write_otio(late.clips, late.settings, movie_test_folder()),
-	                                               movie_test_folder())), "and saved as a project that opens");
-
-	auto broken = make_video("broken.mp4", 10, {1920, 1080}, 30);
+	auto broken = make_hd("broken.mp4", 10);
 	broken.start = std::numeric_limits<double>::infinity();
 	broken.source_duration = std::numeric_limits<double>::quiet_NaN();
-	assert_equal(true, static_cast<bool>(read_otio(write_otio({broken}, {}, movie_test_folder()), movie_test_folder())),
-	             "what Save writes always reads back");
+	broken.text = "it's \\ \"odd\"\r\nisn't it";
 
-	const auto xml = std::format(R"(<Project>
-  <MediaItems><MediaItem id="1" filePath="{}" duration="1e308" /></MediaItems>
-  <Extents><VideoClip extentID="10" mediaItemID="1" inTime="1e306" outTime="0" /></Extents>
-</Project>)", movie_test_path("long.mp4"));
-
-	const auto wlmp = read_wlmp(xml, movie_test_folder());
-	assert_equal(1_z, wlmp.recorded_seconds.size(), "a Movie Maker clip is read");
-	assert_equal(true, wlmp.recorded_seconds[0] <= movie_max_clip_seconds, "with the length it recorded bounded");
-	assert_equal(true, wlmp.clips[0].start <= movie_max_clip_seconds, "and its in point too");
+	const auto read = read_dfv(write_dfv({broken, make_movie_text("x\\'y #1 - 'z'", 2)}, movie_test_folder()),
+	                           movie_test_folder());
+	assert_equal(true, static_cast<bool>(read) && read.problems.empty(), "it reads back");
+	assert_equal(2_z, read.clips.size(), "every item of it");
+	assert_equal("it's \\ \"odd\"\nisn't it"s, read.clips[0].text,
+	             "a caption is what was typed, but for a carriage return");
+	assert_equal("x\\'y #1 - 'z'"s, read.clips[1].text, "and a screen's words are exactly what they were");
 }
 
-// A Movie Maker project is untrusted input too. A path of ampersands made the entity decoder look to
-// the end of the text from every one of them, and a clip carrying thousands of distinct effects made
-// the report search its whole list for each, so a crafted file held the import for hours.
-static void should_bound_what_a_movie_maker_project_costs()
+// An audio file has no picture of its own. Movie shows it as Diffractor plays it, on a landscape frame, so
+// it counts as a video of that frame's size and rate; and a project says which of a SID file's tunes it
+// plays.
+static void should_take_audio_files_into_a_movie()
 {
-	const std::string ampersands(20000, '&');
-	std::string effects;
-
-	for (auto i = 0; i < 200; ++i)
+	for (const auto name : {"song.mp3", "tune.sid", "module.mod"})
 	{
-		effects += std::format(R"(<ShapeEffect effectTemplateID="Effect{}" />)", i);
+		assert_equal(true, is_movie_source(files::file_type_from_name(std::string_view(name))),
+		             std::format("{} can go into a movie", name));
+		const auto clip = make_movie_clip(movie_test_path(name));
+		assert_equal(true, clip.is_audio && !clip.is_photo, std::format("{} becomes an audio clip", name));
 	}
 
-	const auto xml = std::format(R"(<Project>
-  <MediaItems><MediaItem id="1" filePath="{}" duration="4" /></MediaItems>
-  <Extents>
-    <VideoClip extentID="10" mediaItemID="1" inTime="0" outTime="4"><Effects>{}</Effects></VideoClip>
-  </Extents>
-</Project>)", movie_test_path(ampersands + "x.mp4"), effects);
+	assert_equal(true, is_movie_source(files::file_type_from_name(std::string_view("a.mp4"))), "a video can");
+	assert_equal(true, is_movie_source(files::file_type_from_name(std::string_view("a.jpg"))), "and a photo");
+	assert_equal(false, is_movie_source(files::file_type_from_name(std::string_view("a.txt"))), "but not a document");
+	assert_equal(false, make_movie_clip(movie_test_path("a.mp4")).is_audio, "a video is no audio clip");
 
-	const auto read = read_wlmp(xml, movie_test_folder());
-	assert_equal(1_z, read.clips.size(), "the clip is read");
-	assert_equal(ampersands + "x.mp4", std::string(read.clips[0].path.name()), "bare ampersands are kept as they are");
-	assert_equal(200, read.ignored_elements, "every effect left out is counted");
-	assert_equal(true, read.omitted.size() <= 33, "but the report names a bounded number of kinds");
-	assert_equal(1, omitted_count(read, "Effect0"), "naming the first it met");
+	movie_probe_result probe;
+	probe.path = movie_test_path("song.mp3");
+	probe.found = true;
+	probe.is_audio = true;
+	probe.extent = movie_audio_extent;
+	probe.frame_rate = movie_audio_frame_rate;
+	probe.duration = 200;
+	const auto song = apply_movie_probe(make_movie_clip(probe.path), probe);
+	assert_equal(200.0, song.duration(), "an audio clip plays the whole file");
+	assert_equal(true, song.is_audio, "and stays an audio clip once measured");
+
+	const auto output = derive_movie_output({song, make_photo("big.jpg", 4, {8000, 6000})});
+	assert_equal(movie_audio_extent.cx, output.extent.cx, "its landscape frame sizes the movie, as a video's does");
+	assert_equal(movie_audio_extent.cy, output.extent.cy, "both ways");
+	assert_equal(movie_audio_frame_rate, output.frame_rate, "and its rate is the movie's");
+
+	// A SID file holds several tunes and a clip plays one, named once the probe has found the file holds others.
+	movie_probe_result tunes = probe;
+	tunes.path = movie_test_path("tune.sid");
+	tunes.songs = 3;
+	tunes.first_song = 2;
+	const auto tune = apply_movie_probe(make_movie_clip(tunes.path), tunes);
+	assert_equal(true, tune.song == 2 && tune.songs == 3, "a tune is the one its file starts on, of those it holds");
+
+	auto third = tune;
+	third.song = 3;
+	const auto text = write_dfv({third, song}, movie_test_folder());
+	assert_equal(true, core::contains(text, "\nc -#3 tune.sid\n"), "a project names the tune a clip plays");
+
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(true,
+	             read.clips.size() == 2 && read.clips[0].is_audio && read.clips[0].song == 3 && read.clips[1].song == 0,
+	             "and keeps it, beside a clip that plays the file's own");
 }
 
-// Dragging a slider reports every value it passes. Each was an undo step, so Undo walked a drag back one
-// value at a time, a long drag pushed the saved state out of the history, and a drag that ended where it
-// began still left the timeline asking to be saved.
-static void should_merge_one_gesture_into_one_undo_step()
+// A clip may name a sound file, written after it with a !, which plays in place of its own sound. Quoted
+// after the ! when its path has a space, and either before or after the caption.
+static void should_read_and_write_a_clips_sound_file()
 {
+	const auto text = "c - scene.mp4 'Find anything' !narration/scene.wav\n"
+					  "c 2-6 b.mp4 !\"voice over.wav\"\n"
+					  "c -3 card.png !'it\\'s.wav' 'Title'\n"
+					  "c - c.mp4 !../music/song.mp3\n"
+					  "c - \"!intro.mp4\"\n"sv;
+
+	const auto read = read_dfv(text, movie_test_folder());
+	assert_equal(true, static_cast<bool>(read) && read.problems.empty(), "a project naming sound files reads");
+	assert_equal(5_z, read.clips.size(), "with an item for each line");
+	assert_equal(movie_test_folder().combine("narration").combine_file("scene.wav").pack(),
+	             read.clips[0].sound_file.pack(), "a sound file is beside the project, as a clip's file is");
+	assert_equal("Find anything"s, read.clips[0].text, "and the caption is still the caption");
+	assert_equal(movie_test_path("voice over.wav").pack(), read.clips[1].sound_file.pack(),
+	             "a quoted sound file keeps its space");
+	assert_equal(true, read.clips[1].start == 2 && read.clips[1].end == 6, "beside the part its clip plays");
+	assert_equal(movie_test_path("it's.wav").pack(), read.clips[2].sound_file.pack(), "and may be single-quoted");
+	assert_equal(true, read.clips[2].is_photo && read.clips[2].text == "Title",
+	             "a photo may have one, before its caption");
+	assert_equal(movie_test_folder().parent().combine("music").combine_file("song.mp3").pack(),
+	             read.clips[3].sound_file.pack(), "and lead out of the project's folder");
+	assert_equal(movie_test_path("!intro.mp4").pack(), read.clips[4].path.pack(), "a quoted ! is part of a name");
+	assert_equal(false, read.clips[4].has_sound_file(), "and names no sound");
+
+	const auto written = write_dfv(read.clips, movie_test_folder());
+	assert_equal(true, core::contains(written, "\nc - scene.mp4 'Find anything' !narration/scene.wav\n"),
+	             "a sound file is written after the caption, relative to the project");
+	assert_equal(true, core::contains(written, "\nc 2-6 b.mp4 !\"voice over.wav\"\n"),
+	             "and quoted when it has a space");
+	assert_equal(true, core::contains(written, "\nc - \"!intro.mp4\"\n"), "a file whose name starts with ! is quoted");
+
+	const auto again = read_dfv(written, movie_test_folder());
+	assert_equal(true, static_cast<bool>(again) && again.problems.empty() && again.clips.size() == read.clips.size(),
+	             "what is written reads back");
+
+	for (size_t i = 0; i < read.clips.size(); ++i)
+	{
+		assert_equal(read.clips[i].sound_file.pack(), again.clips[i].sound_file.pack(),
+		             std::format("item {} keeps its sound file", i + 1));
+	}
+
+	const auto mistakes = read_dfv("t 3 'Title' !voice.wav\n"
+	                               "c - a.mp4 !\n"
+	                               "c - a.mp4 !one.wav !two.wav\n"
+	                               "c !voice.wav a.mp4\n"
+	                               "!c - a.mp4\n"
+	                               "c - a.mp4 'one' 'two'\n"
+	                               "c - a.mp4 !voice.wav\n"sv,
+	                               movie_test_folder());
+
+	std::vector<int> lines;
+	lines.reserve(mistakes.problems.size());
+	for (const auto& problem : mistakes.problems) lines.emplace_back(problem.line);
+	assert_equal(true, lines == std::vector{1, 2, 3, 4, 5, 6},
+	             "a sound file on a text screen, a ! naming nothing, two sound files, one in place of the part or the "
+	             "instruction, and two captions are each a line that cannot be read");
+	assert_equal(1_z, mistakes.clips.size(), "while the good line still reads");
+}
+
+// A clip's sound file plays in place of its own sound: from the file's start as the clip begins, whatever the
+// clip's in point, and only while the clip shows. A photo with one has sound to cross into.
+static void should_play_a_clips_sound_file_in_place_of_its_own()
+{
+	auto trimmed = make_hd("scene.mp4", 30);
+	trimmed.start = 5;
+	trimmed.end = 15;
+	assert_equal(true, movie_clip_sound(trimmed).path == trimmed.path, "a clip with no sound file plays its own sound");
+	assert_equal(true, movie_clip_sound(trimmed).start == 5 && movie_clip_sound(trimmed).end == 15,
+	             "over the part it plays");
+	assert_equal(true, movie_clip_sound(make_photo("p.jpg", 4, {4000, 3000})).is_empty(), "a photo alone has none");
+	assert_equal(true, movie_clip_sound(make_movie_text("Title")).is_empty(), "and nor does a text screen");
+
+	auto narrated = trimmed;
+	narrated.sound_file = movie_test_path("narration.wav");
+	const auto sound = movie_clip_sound(narrated);
+	assert_equal(narrated.sound_file.pack(), sound.path.pack(), "a sound file is heard instead");
+	assert_equal(true, sound.start == 0 && sound.end == 10, "from its start, for as long as the clip shows");
+
+	const auto frame = calc_movie_frame({narrated}, 4.0);
+	assert_equal(9.0, frame.a.source_time, "the picture comes from the clip's own part");
+	assert_equal(4.0, frame.a.sound_time, "while its sound file is four seconds in");
+	assert_equal(9.0, calc_movie_frame({trimmed}, 4.0).a.sound_time, "and a clip's own sound is where its picture is");
+
+	const auto talking = make_hd("talking.mp4", 10);
+	auto card = make_photo("card.png", 4, {1920, 1080});
+	assert_equal(1.0, calc_movie_frame({talking, card}, 9.5).a.sound, "a clip's sound stays up over a silent photo");
+
+	card.sound_file = movie_test_path("intro.wav");
+	assert_equal(0.5, calc_movie_frame({talking, card}, 9.5).a.sound, "but crossfades into a photo with a sound file");
+	assert_equal(0.5, calc_movie_frame({talking, card}, 9.5).b.sound, "whose sound fades up as its picture does");
+
+	card.sound_file_is_probed = true;
+	assert_equal(true, card.is_sound_file_lost(), "a sound file the probe did not find is lost");
+	assert_equal(1.0, calc_movie_frame({talking, card}, 9.5).a.sound, "and leaves the clip before it its sound");
+
+	auto ready = make_hd("ready.mp4", 4);
+	ready.is_probed = true;
+	ready.is_missing = false;
+	ready.sound_file = movie_test_path("voice.wav");
 	movie_project project;
-	project.insert_many(0, {make_video("a.mp4", 10, {1920, 1080}, 30), make_photo("b.jpg", 4, {4000, 3000})});
-	project.mark_seeded();
-	const auto before = project.settings();
+	project.append(ready);
+	assert_equal(false, project.is_ready_to_render(), "a clip whose sound file is not yet probed cannot render");
 
-	auto settings = before;
+	movie_sound_probe heard;
+	heard.path = ready.sound_file;
+	heard.found = true;
+	heard.duration = 3.5;
+	const auto probed = apply_movie_sound_probe(ready, heard);
+	assert_equal(true,
+	             probed.sound_file_is_probed && !probed.sound_file_is_missing && probed.sound_file_duration == 3.5,
+	             "a probe that found the sound file measures it");
+	project.replace_quietly(0, probed);
+	assert_equal(true, project.is_ready_to_render(), "and a clip whose sound file was found can render");
 
-	for (auto tenths = 11; tenths <= 200; ++tenths)
-	{
-		settings.transition_seconds = tenths / 10.0;
-		project.settings(settings, movie_edit_group::transition_length);
-	}
+	heard.found = false;
+	project.replace_quietly(0, apply_movie_sound_probe(ready, heard));
+	assert_equal(false, project.is_ready_to_render(), "one whose sound file is gone cannot");
 
-	assert_equal(true, project.is_modified(), "a drag is an edit");
-	project.undo();
-	assert_equal(true, project.settings() == before, "one undo takes the whole drag back");
-	assert_equal(false, project.can_undo(), "in one step");
-	assert_equal(false, project.is_modified(), "to the state it started from");
-
-	settings = before;
-	settings.photo_seconds = 9;
-	project.settings(settings, movie_edit_group::photo_duration);
-	project.settings(before, movie_edit_group::photo_duration);
-	assert_equal(false, project.is_modified(), "a drag that ends where it began is no edit");
-	assert_equal(false, project.can_undo(), "and costs no undo step");
-
-	// A settled drag is a step of its own, and so is the next.
-	settings.photo_seconds = 6;
-	project.settings(settings, movie_edit_group::photo_duration);
-	project.end_edit_group();
-	settings.photo_seconds = 7;
-	project.settings(settings, movie_edit_group::photo_duration);
-	project.undo();
-	assert_equal(6.0, project.settings().photo_seconds, "one settled drag is not merged into the next");
-
-	// Any other edit closes the gesture.
-	project.trim(1, 0, 3, movie_edit_group::clip_hold);
-	project.trim(1, 0, 5, movie_edit_group::clip_hold);
-	project.trim(0, 1, 9);
-	project.undo();
-	project.undo();
-	assert_equal(true, project.clips()[1].photo_duration_is_default, "the held photo follows the default again");
-
-	// So does a save: what comes after it is a change from what is on disk.
-	settings.photo_seconds = 8;
-	project.settings(settings, movie_edit_group::photo_duration);
-	project.mark_saved(movie_test_path("movie.otio"), project.edit_revision());
-	settings.photo_seconds = 5;
-	project.settings(settings, movie_edit_group::photo_duration);
-	project.undo();
-	assert_equal(8.0, project.settings().photo_seconds, "undo returns to what was saved");
-	assert_equal(false, project.is_modified(), "which leaves nothing to save");
+	assert_equal(true, movie_output_names_a_clip({ready}, ready.sound_file),
+	             "and a movie may not be written over a sound file it reads");
 }
 
-// The panel shows lengths in tenths and takes whatever is typed into it. A length it is still showing is
-// the document's own and is kept exactly; a typed one is held to the document's bounds.
-static void should_hold_panel_settings_to_the_document()
-{
-	movie_view_state state;
-	auto settings = state.project.settings();
-	settings.transition_seconds = 0.75;
-	state.project.reset({}, settings, {});
-	state.read_from_project();
-
-	assert_equal(0.75, state.to_settings().transition_seconds, "a length shown rounded keeps its exact value");
-	assert_equal(true, state.to_settings() == state.project.settings(), "so choosing a setting again changes nothing");
-
-	state.transition_tenths = 150;
-	assert_equal(movie_max_transition_seconds, state.to_settings().transition_seconds, "a typed length is bounded");
-	state.photo_tenths = 0;
-	assert_equal(movie_min_photo_seconds, state.to_settings().photo_seconds, "so is a typed photo length");
-	state.photo_tenths = 100000;
-	assert_equal(movie_max_photo_seconds, state.to_settings().photo_seconds, "at both ends");
-}
-
-void register_movie_tests(view_state& state, test_registry& tests)
+void register_movie_tests(view_state& /*state*/, test_registry& tests)
 {
 	//
 	// Output
@@ -1828,8 +1389,12 @@ void register_movie_tests(view_state& state, test_registry& tests)
 	//
 	// Timing
 	//
-	tests.add("Should time movie transitions"s, should_time_movie_transitions);
+	tests.add("Should time movie crossfades"s, should_time_movie_crossfades);
 	tests.add("Should compose a movie frame"s, should_compose_a_movie_frame);
+	tests.add("Should show movie captions for as long as they take to read"s,
+	          should_show_movie_captions_for_as_long_as_they_take_to_read);
+	tests.add("Should carry a movie clip's sound over an item with none"s,
+	          should_carry_a_clips_sound_over_an_item_with_none);
 
 	//
 	// The timeline document
@@ -1846,10 +1411,10 @@ void register_movie_tests(view_state& state, test_registry& tests)
 	tests.add("Should not treat a movie probe result as an edit during save"s,
 	          should_not_treat_a_probe_result_as_an_edit_during_save);
 	tests.add("Should add several movie clips as one edit"s, should_add_several_clips_as_one_edit);
-	tests.add("Should tell an unprobed movie clip from a lost one"s,
-	          should_tell_an_unprobed_clip_from_a_lost_one);
+	tests.add("Should tell an unprobed movie clip from a lost one"s, should_tell_an_unprobed_clip_from_a_lost_one);
 	tests.add("Should merge one movie gesture into one undo step"s, should_merge_one_gesture_into_one_undo_step);
-	tests.add("Should hold movie panel settings to the document"s, should_hold_panel_settings_to_the_document);
+	tests.add("Should merge typing into one movie undo step"s, should_merge_typing_into_one_undo_step);
+	tests.add("Should show the focused movie item in the panel"s, should_show_the_focused_movie_item_in_the_panel);
 
 	//
 	// Entering Movie
@@ -1862,21 +1427,16 @@ void register_movie_tests(view_state& state, test_registry& tests)
 	//
 	// VIEW-015 - Save/Open support a valid empty Movie project.
 	tests.add("Should round trip a movie project"s, should_round_trip_a_movie_project);
-	tests.add("Should round trip percent signs in clip paths"s, should_round_trip_percent_signs_in_clip_paths);
+	tests.add("Should read a movie project written by hand"s, should_read_a_movie_project_written_by_hand);
+	tests.add("Should report movie project lines it cannot read"s, should_report_movie_project_lines_it_cannot_read);
 	tests.add("Should bound movie project durations"s, should_bound_movie_project_durations);
-	tests.add("Should refuse a deeply nested movie project"s, should_refuse_a_deeply_nested_movie_project);
-	tests.add("Should read a movie project it did not write"s, should_read_a_movie_project_it_did_not_write);
-	tests.add("Should write movie transitions as OTIO reads them"s, should_write_transitions_as_otio_reads_them);
-	tests.add("Should read movie clips as current OTIO writes them"s, should_read_clips_as_current_otio_writes_them);
-	tests.add("Should keep an untrimmed movie clip untrimmed through save"s,
-	          should_keep_an_untrimmed_clip_untrimmed_through_save);
-	tests.add("Should keep an unmeasured movie clip through save"s, should_keep_an_unmeasured_clip_through_save);
+	tests.add("Should keep a movie clip running to its source's end through save"s,
+	          should_keep_a_clip_running_to_its_sources_end_through_save);
 	tests.add("Should save movie clip paths that are not UTF-8"s, should_save_clip_paths_that_are_not_utf8);
 	tests.add("Should write a movie project that reads back whatever it holds"s,
 	          should_write_a_project_that_reads_back_whatever_it_holds);
-	tests.add("Should import a movie maker project"s, should_import_a_movie_maker_project);
-	tests.add("Should import a movie maker project as movie maker writes it"s,
-	          should_import_a_movie_maker_project_as_movie_maker_writes_it);
-	tests.add("Should bound what a Movie Maker project costs"s, should_bound_what_a_movie_maker_project_costs);
-	tests.add("Should find moved movie sources"s, should_find_moved_movie_sources);
+	tests.add("Should take audio files into a movie"s, should_take_audio_files_into_a_movie);
+	tests.add("Should read and write a movie clip's sound file"s, should_read_and_write_a_clips_sound_file);
+	tests.add("Should play a movie clip's sound file in place of its own"s,
+	          should_play_a_clips_sound_file_in_place_of_its_own);
 }

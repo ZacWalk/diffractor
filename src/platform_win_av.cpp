@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: FFmpeg's D3D11VA hardware decoding on Windows, the application's side of it: the one decoder
 // whose pictures the renderer can present, whether the driver decodes a stream, and the decode device -
@@ -21,7 +20,8 @@
 
 #include "av_format.h"
 
-extern "C" {
+extern "C"
+{
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_d3d11va.h"
 }
@@ -76,8 +76,7 @@ namespace
 		case AV_CODEC_ID_AV1:
 			if (bit_depth <= 10) return {profile_av1_0};
 			break;
-		default:
-			break;
+		default: break;
 		}
 
 		return {};
@@ -181,8 +180,8 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 		// What FFmpeg's own creation asks for: the video interfaces, at the default feature levels.
 		ComPtr<ID3D11Device> device;
 		const auto hr = D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
-		                                  D3D11_CREATE_DEVICE_VIDEO_SUPPORT, nullptr, 0, D3D11_SDK_VERSION,
-		                                  &device, nullptr, nullptr);
+		                                  D3D11_CREATE_DEVICE_VIDEO_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &device,
+		                                  nullptr, nullptr);
 
 		if (SUCCEEDED(hr))
 		{
@@ -192,13 +191,13 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 				return ref;
 			}
 
-			core::log(__FUNCTION__, std::format("FFmpeg refused the decode device on {} - using the default adapter",
-			                                  name));
+			core::log(__FUNCTION__,
+			          std::format("FFmpeg refused the decode device on {} - using the default adapter", name));
 		}
 		else
 		{
 			core::log(__FUNCTION__, std::format("no decode device on {} ({:x}) - using the default adapter", name,
-			                                  static_cast<uint32_t>(hr)));
+			                                    static_cast<uint32_t>(hr)));
 		}
 	}
 
@@ -210,9 +209,8 @@ AVBufferRef* av_platform_create_hw_device(const int device_type)
 // renderer holds it while it copies one out.
 void av_platform_decode_lock(const AVHWFramesContext* frames, render::video_picture& picture)
 {
-	auto* const hwctx = frames && frames->device_ctx
-		                    ? static_cast<AVD3D11VADeviceContext*>(frames->device_ctx->hwctx)
-		                    : nullptr;
+	auto* const hwctx = frames && frames->device_ctx ? static_cast<AVD3D11VADeviceContext*>(frames->device_ctx->hwctx)
+	                                                 : nullptr;
 	if (!hwctx) return;
 
 	picture.lock = hwctx->lock;

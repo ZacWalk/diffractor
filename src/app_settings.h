@@ -1,15 +1,16 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Application settings and configuration. Defines all persistent user preferences
 // including display options, collection folders, import/sync settings, and feature flags.
 
 #pragma once
+
+#include <optional>
 
 #include "model_location.h"
 #include "util_interfaces.h"
@@ -109,6 +110,9 @@ namespace features
 	// for the draft that Share falls back to where the system has no share sheet.
 	constexpr uint64_t share = 1ull << 58;
 	constexpr uint64_t view_options = 1ull << 59;
+	// A lossless trim, sound removal or turn saved from Edit, of a video and of a sound file.
+	constexpr uint64_t edit_video = 1ull << 61;
+	constexpr uint64_t edit_audio = 1ull << 62;
 
 	constexpr uint64_t view_bit(const view_type v)
 	{
@@ -143,7 +147,6 @@ void load_feature_use(uint64_t f);
 // Clears only the bits that were actually reported so features recorded while the report
 // was in flight survive to the next one.
 void clear_reported_feature_use(uint64_t reported);
-
 
 // Issue #227: the default sidebar (favorite) tags must be seeded only on the very first
 // run, never again. `favorite_tags` is persisted as a single string, so an empty saved
@@ -187,9 +190,11 @@ constexpr startup_history decide_startup(const bool owns_startup_scope, const ui
 	return {should_start_safe(unsettled_starts), true, unsettled_starts + 1};
 }
 
-
 class settings_t
 {
+	// A stale window closing must not undo a newer routing preference saved by another window.
+	mutable std::optional<bool> _saved_reuse_existing_window;
+
 public:
 	settings_t();
 
@@ -241,6 +246,8 @@ public:
 	bool webp_lossless = false;
 	int jxl_quality = 0;
 	bool jxl_lossless = false;
+	int avif_quality = 0;
+	bool avif_lossless = false;
 	uint32_t instantiations = 0;
 
 	std::string write_folder;
@@ -296,6 +303,7 @@ public:
 	void select_only_description();
 
 	bool show_hidden = false;
+	bool reuse_existing_window = true;
 	bool show_debug_info = false;
 	bool confirm_deletions = false;
 	// Only single-item rotations honour this; rotating several items is always confirmed.
@@ -305,6 +313,10 @@ public:
 	bool show_rotated = false;
 	bool show_results = false;
 	bool create_originals = false;
+	// How Edit writes a copy of a video or a sound file: an MP4 with its index before its media, and a damaged file as
+	// far as it can be read, rather than not at all.
+	bool media_index_first = false;
+	bool media_repair = false;
 #ifndef WINSTORE
 	bool check_for_updates = false;
 	bool send_crash_dumps = false;
@@ -412,11 +424,14 @@ public:
 		bool to_png = false;
 		bool to_webp = false;
 		bool to_jxl = false;
+		bool to_avif = false;
 		int jpeg_quality = 0;
 		int webp_quality = 0;
 		bool webp_lossless = false;
 		int jxl_quality = 0;
 		bool jxl_lossless = false;
+		int avif_quality = 0;
+		bool avif_lossless = false;
 		bool limit_dimension = false;
 		int max_side = 0;
 		collision_policy collision = collision_policy::block_run;
@@ -463,8 +478,19 @@ public:
 	bool locate_only_without_location = false;
 };
 
-
 extern settings_t setting;
+
+// Where settings are kept, and where the caches that can be rebuilt - the index and the map's tiles - are
+// written: the user's own, or with -profile:<folder>, that folder, so a tutorial or test run neither reads nor
+// changes the user's collection, settings or index.
+platform::setting_file_ptr app_settings_store();
+core::folder_path app_cache_folder();
+void use_profile_folder(core::folder_path folder);
+// From now on, settings are read from where they are kept and what changes them lasts as long as the process: an
+// agent session's (docs/agents.md).
+void keep_settings_to_session();
+// The store keep_settings_to_session puts in place: beneath's settings, with what is written kept in memory instead.
+platform::setting_file_ptr make_session_settings(platform::setting_file_ptr beneath);
 
 // Hands the renderer its YUV latch from setting.use_yuv, and keeps it there when a driver fault
 // clears it: a backend reads render::yuv_textures_allowed when it starts and calls render::on_yuv_fault.

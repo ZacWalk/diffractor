@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Folder synchronization view. Compares local folders against a remote folder, reviews
 // every copy and delete, and runs the reviewed plan.
@@ -56,11 +55,8 @@ uint32_t count_sync_actions(const sync_analysis_result& analysis, const sync_act
 	uint32_t result = 0;
 	for (const auto& folder : analysis)
 	{
-		result += static_cast<uint32_t>(std::ranges::count_if(folder.second,
-		                                                      [action](const auto& item)
-		                                                      {
-			                                                      return item.second.action == action;
-		                                                      }));
+		result += static_cast<uint32_t>(
+			std::ranges::count_if(folder.second, [action](const auto& item) { return item.second.action == action; }));
 	}
 	return result;
 }
@@ -87,9 +83,7 @@ bool sync_view::can_analyze() const
 
 	// Mirrors calc_sync_source: the collection branch answers from the indexed roots, the other
 	// branch from the folder the user picked.
-	return _select_other_folder
-		       ? !setting.sync.local_path.empty()
-		       : _state.item_index.has_index_roots();
+	return _select_other_folder ? !setting.sync.local_path.empty() : _state.item_index.has_index_roots();
 }
 
 void sync_view::invalidate_analysis()
@@ -99,7 +93,7 @@ void sync_view::invalidate_analysis()
 	_rows.clear();
 	_status.clear();
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	                       view_invalid::command_state);
 }
 
 view_bars sync_view::bars() const
@@ -116,9 +110,8 @@ view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 
 	// Sync compares two folder trees, so the item selection is not its target and showing it as one
 	// misstates what will be copied. The example belongs to the sentence that explains the view.
-	controls.emplace_back(create_view_info_element(std::format("{} {} {}",
-	                                                           tt.sync_info_1.sv(), tt.for_example.sv(),
-	                                                           tt.sync_info_2.sv())));
+	controls.emplace_back(create_view_info_element(
+		std::format("{} {} {}", tt.sync_info_1.sv(), tt.for_example.sv(), tt.sync_info_2.sv())));
 	controls.emplace_back(std::make_shared<text_element>(tt.sync_local));
 
 	// Initialise _select_other_folder from the persisted setting so analyze()
@@ -128,60 +121,54 @@ view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 	// Bind directly to the persisted setting and member field so toggle state
 	// survives the lifetime of this controls() call (the previous code bound
 	// the check to a stack-local bool, so changes were silently discarded).
-	auto collection_check = std::make_shared<ui::check_control>(
-		frame, tt.sync_collection, setting.sync.sync_collection, true, false,
-		[this](const bool checked)
+	auto collection_check = std::make_shared<ui::check_control>(frame, tt.sync_collection, setting.sync.sync_collection,
+	                                                            true, false, [this](const bool checked)
+	{
+		invalidate_analysis();
+		if (checked)
 		{
-			invalidate_analysis();
-			if (checked)
-			{
-				setting.sync.sync_collection = true;
-				_select_other_folder = false;
-			}
-		}, radio_group_scope);
+			setting.sync.sync_collection = true;
+			_select_other_folder = false;
+		}
+	}, radio_group_scope);
 	controls.emplace_back(collection_check);
 
-	auto other_folder_check = std::make_shared<ui::check_control>(
-		frame, tt.sync_other_folder, _select_other_folder, true, false,
-		[this](const bool checked)
+	auto other_folder_check = std::make_shared<ui::check_control>(frame, tt.sync_other_folder, _select_other_folder,
+	                                                              true, false, [this](const bool checked)
+	{
+		invalidate_analysis();
+		if (checked)
 		{
-			invalidate_analysis();
-			if (checked)
-			{
-				setting.sync.sync_collection = false;
-				_select_other_folder = true;
-			}
-		}, radio_group_scope);
+			setting.sync.sync_collection = false;
+			_select_other_folder = true;
+		}
+	}, radio_group_scope);
 	other_folder_check->child(std::make_shared<ui::folder_picker_control>(frame, setting.sync.local_path, false,
 	                                                                      [this](const std::string_view)
-	                                                                      {
-		                                                                      invalidate_analysis();
-	                                                                      }));
+	{ invalidate_analysis(); }));
 	controls.emplace_back(other_folder_check);
 
 	controls.emplace_back(std::make_shared<divider_element>());
 	controls.emplace_back(std::make_shared<text_element>(tt.sync_remote));
 	controls.emplace_back(std::make_shared<ui::folder_picker_control>(frame, setting.sync.remote_path, false,
 	                                                                  [this](const std::string_view)
-	                                                                  {
-		                                                                  invalidate_analysis();
-	                                                                  }));
+	{ invalidate_analysis(); }));
 
 	// These choose what sync does in each direction; without a break they read as options of the
 	// remote folder picker above them.
 	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(
-		std::make_shared<ui::check_control>(frame, tt.sync_local_remote, setting.sync.sync_local_remote,
-		                                    false, false, [this](const bool) { invalidate_analysis(); }));
-	controls.emplace_back(
-		std::make_shared<ui::check_control>(frame, tt.sync_remote_local, setting.sync.sync_remote_local,
-		                                    false, false, [this](const bool) { invalidate_analysis(); }));
-	controls.emplace_back(
-		std::make_shared<ui::check_control>(frame, tt.sync_delete_local, setting.sync.sync_delete_local,
-		                                    false, false, [this](const bool) { invalidate_analysis(); }));
-	controls.emplace_back(
-		std::make_shared<ui::check_control>(frame, tt.sync_delete_remote, setting.sync.sync_delete_remote,
-		                                    false, false, [this](const bool) { invalidate_analysis(); }));
+	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.sync_local_remote,
+	                                                          setting.sync.sync_local_remote, false, false,
+	                                                          [this](const bool) { invalidate_analysis(); }));
+	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.sync_remote_local,
+	                                                          setting.sync.sync_remote_local, false, false,
+	                                                          [this](const bool) { invalidate_analysis(); }));
+	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.sync_delete_local,
+	                                                          setting.sync.sync_delete_local, false, false,
+	                                                          [this](const bool) { invalidate_analysis(); }));
+	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.sync_delete_remote,
+	                                                          setting.sync.sync_delete_remote, false, false,
+	                                                          [this](const bool) { invalidate_analysis(); }));
 
 	for (const auto& c : controls)
 	{
@@ -285,15 +272,12 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 		}
 	}
 
-	_rows = std::move(rows);
+	review_rows(std::move(rows));
 	_analysis = analysis_result;
 	_analysis_valid = true;
-	_status = std::format("{} {}   {} {}   {} {}   {} {}   {} {}",
-	                      copy_local, tt.sync_copy_local_action,
-	                      copy_remote, tt.sync_copy_remote_action,
-	                      delete_local_count, tt.sync_delete_local_action,
-	                      delete_remote_count, tt.sync_delete_remote_action,
-	                      ignore, tt.ignore);
+	_status = std::format("{} {}   {} {}   {} {}   {} {}   {} {}", copy_local, tt.sync_copy_local_action, copy_remote,
+	                      tt.sync_copy_remote_action, delete_local_count, tt.sync_delete_local_action,
+	                      delete_remote_count, tt.sync_delete_remote_action, ignore, tt.ignore);
 	if (replace_count > 0)
 	{
 		_status += "   ";
@@ -301,9 +285,8 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 	}
 
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	                       view_invalid::command_state);
 }
-
 
 void sync_view::run()
 {
@@ -323,8 +306,8 @@ void sync_view::run()
 	{
 		const auto confirm = make_dlg(_host->owner());
 		std::vector<view_element_ptr> controls;
-		controls.emplace_back(set_margin(std::make_shared<ui::title_control2>(
-			confirm->_frame, icon, title, tt.sync_delete_warning)));
+		controls.emplace_back(
+			set_margin(std::make_shared<ui::title_control2>(confirm->_frame, icon, title, tt.sync_delete_warning)));
 		controls.emplace_back(set_margin(std::make_shared<text_element>(
 			str_format(tt.sync_delete_count_fmt.sv(), delete_local_count, delete_remote_count))));
 		controls.emplace_back(std::make_shared<divider_element>());
@@ -356,21 +339,20 @@ void sync_view::run()
 	const auto view = shared_from_this();
 	const auto results = make_run_status(view, processing_generation, cancel_source, completion_status);
 
-	_state.queue_async(async_queue::work, [results, analysis_result, token, detach,
-		                   &index = _state.item_index]
-	                   {
-		                   result_scope rr(results);
+	_state.queue_async(async_queue::work, [results, analysis_result, token, detach, &index = _state.item_index]
+	{
+		result_scope rr(results);
 
-		                   // Sync writes into and deletes from the collection, so the index has to be told what changed
-		                   // or the files it just copied stay invisible and the ones it deleted stay listed.
-		                   const auto run_result = sync_copy(results, analysis_result, token);
-		                   index.queue_scan_folders(run_result.folders_changed);
+		// Sync writes into and deletes from the collection, so the index has to be told what changed
+		// or the files it just copied stay invisible and the ones it deleted stay listed.
+		const auto run_result = sync_copy(results, analysis_result, token);
+		index.queue_scan_folders(run_result.folders_changed);
 
-		                   // A refused row is a file that moved on, not a disk error, and the two are
-		                   // indistinguishable from the row alone. Without this the user would read a
-		                   // partial run as a partly broken one.
-		                   rr.complete(run_result.refused > 0 ? tt.sync_analysis_changed.sv() : std::string_view{});
-	                   });
+		// A refused row is a file that moved on, not a disk error, and the two are
+		// indistinguishable from the row alone. Without this the user would read a
+		// partial run as a partly broken one.
+		rr.complete(run_result.refused > 0 ? tt.sync_analysis_changed.sv() : std::string_view{});
+	});
 }
 
 void sync_view::analyze()
@@ -390,67 +372,66 @@ void sync_view::analyze()
 
 	// The token points into cancel_source without owning it, and the next Analyze replaces the view's
 	// copy while this one may still be scanning, so the worker holds the source for as long as the token.
-	_state.queue_async(async_queue::work, [&s = _state, sync_source, remote_path,
-		                   local_remote, remote_local, delete_local, delete_remote, t = shared_from_this(), token,
-		                   cancel_source, processing_generation]
-	                   {
-		                   sync_analysis_result analysis_result;
-		                   try
-		                   {
-			                   analysis_result = sync_analysis(sync_source, remote_path,
-			                                                   local_remote, remote_local, delete_local, delete_remote,
-			                                                   token);
-		                   }
-		                   catch (const std::exception& e)
-		                   {
-			                   s.queue_ui([t, processing_generation, error = core::utf8_cast(e.what())]
-			                   {
-				                   if (!t->is_processing_generation(processing_generation)) return;
-				                   t->end_processing();
-				                   t->_analysis.clear();
-				                   t->_analysis_valid = false;
-				                   t->_status = error;
-				                   t->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
-			                   });
-			                   return;
-		                   }
+	_state.queue_async(async_queue::work,
+	                   [&s = _state, sync_source, remote_path, local_remote, remote_local, delete_local, delete_remote,
+	                    t = shared_from_this(), token, cancel_source, processing_generation]
+	{
+		sync_analysis_result analysis_result;
+		try
+		{
+			analysis_result = sync_analysis(sync_source, remote_path, local_remote, remote_local, delete_local,
+			                                delete_remote, token);
+		}
+		catch (const std::exception& e)
+		{
+			s.queue_ui([t, processing_generation, error = core::utf8_cast(e.what())]
+			{
+				if (!t->is_processing_generation(processing_generation)) return;
+				t->end_processing();
+				t->_analysis.clear();
+				t->_analysis_valid = false;
+				t->_status = error;
+				t->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
+			});
+			return;
+		}
 
-		                   if (!token.is_cancelled() && analysis_result.valid)
-		                   {
-			                   s.queue_ui([analysis_result, t, processing_generation]
-			                   {
-				                   if (!t->is_processing_generation(processing_generation)) return;
-				                   t->end_processing();
-				                   t->update_rows(analysis_result);
-			                   });
-		                   }
-		                   else if (!token.is_cancelled())
-		                   {
-			                   // Report why the inputs could not be analyzed. These are ordinary configuration
-			                   // mistakes, not an internal fault, so the message must name the cause.
-			                   s.queue_ui([t, processing_generation, error = sync_invalid_message(analysis_result)]
-			                   {
-				                   if (!t->is_processing_generation(processing_generation)) return;
-				                   t->end_processing();
-				                   t->_analysis.clear();
-				                   t->_analysis_valid = false;
-				                   t->_status = error;
-				                   t->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
-			                   });
-		                   }
-		                   else
-		                   {
-			                   s.queue_ui([t, processing_generation]
-			                   {
-				                   if (!t->is_processing_generation(processing_generation)) return;
-				                   t->end_processing();
-				                   t->_analysis.clear();
-				                   t->_analysis_valid = false;
-				                   t->_status = std::string(tt.error_analysis_cancelled.sv());
-				                   t->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
-			                   });
-		                   }
-	                   });
+		if (!token.is_cancelled() && analysis_result.valid)
+		{
+			s.queue_ui([analysis_result, t, processing_generation]
+			{
+				if (!t->is_processing_generation(processing_generation)) return;
+				t->end_processing();
+				t->update_rows(analysis_result);
+			});
+		}
+		else if (!token.is_cancelled())
+		{
+			// Report why the inputs could not be analyzed. These are ordinary configuration
+			// mistakes, not an internal fault, so the message must name the cause.
+			s.queue_ui([t, processing_generation, error = sync_invalid_message(analysis_result)]
+			{
+				if (!t->is_processing_generation(processing_generation)) return;
+				t->end_processing();
+				t->_analysis.clear();
+				t->_analysis_valid = false;
+				t->_status = error;
+				t->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
+			});
+		}
+		else
+		{
+			s.queue_ui([t, processing_generation]
+			{
+				if (!t->is_processing_generation(processing_generation)) return;
+				t->end_processing();
+				t->_analysis.clear();
+				t->_analysis_valid = false;
+				t->_status = std::string(tt.error_analysis_cancelled.sv());
+				t->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
+			});
+		}
+	});
 }
 
 void sync_view::refresh()

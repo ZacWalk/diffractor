@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The read-only document the selection panel shows for a file Diffractor has no viewer
 // for: the head of its bytes as text when they read as text, and as a hex dump when they do not,
@@ -15,6 +14,11 @@
 #pragma once
 
 #include "libdesktop/ui/syntax.h"
+
+namespace ui
+{
+	class doc_view;
+}
 
 enum class document_encoding : uint8_t
 {
@@ -47,6 +51,7 @@ struct document_text
 
 	document_encoding encoding = document_encoding::binary;
 	ui::syntax::language language = ui::syntax::language::plain;
+	bool csv = false;
 	// UTF-8 without its line breaks; lines index into it.
 	std::string text;
 	std::vector<line_span> lines;
@@ -54,10 +59,7 @@ struct document_text
 	// above it. Empty when the language carries no state from line to line.
 	std::vector<uint32_t> cookies;
 
-	bool is_text() const
-	{
-		return encoding != document_encoding::binary;
-	}
+	bool is_text() const { return encoding != document_encoding::binary; }
 
 	std::string_view line(const size_t i) const
 	{
@@ -104,24 +106,15 @@ public:
 
 	explicit document_state(document_text text = {});
 
-	const document_text& text() const
-	{
-		return _text;
-	}
+	const document_text& text() const { return _text; }
 
-	bool is_text() const
-	{
-		return _text.is_text();
-	}
+	bool is_text() const { return _text.is_text(); }
 
 	// Text: wraps to `columns` characters a row. Dump: `columns` bytes a row over byte_count bytes.
 	// A dump laid out at a new width loses its selection, whose columns no longer name the same bytes.
 	void layout(int columns, size_t byte_count);
 
-	int columns() const
-	{
-		return _columns;
-	}
+	int columns() const { return _columns; }
 
 	size_t row_count() const;
 	document_row_text row_text(size_t row, core::cspan bytes) const;
@@ -145,11 +138,10 @@ public:
 	// Set by a press on the document and cleared by any other press in the view. Copy and Select all
 	// act on the document only while it is set.
 	bool focused = false;
+	// UI-owned, like the selection: keep the common view and its column sizes when the panel rebuilds.
+	std::shared_ptr<ui::doc_view> formatted_view;
 
-	bool has_selection() const
-	{
-		return anchor != caret;
-	}
+	bool has_selection() const { return anchor != caret; }
 
 	std::pair<document_position, document_position> selection() const
 	{
@@ -162,10 +154,7 @@ public:
 		caret = to;
 	}
 
-	void clear_selection()
-	{
-		anchor = caret = {};
-	}
+	void clear_selection() { anchor = caret = {}; }
 
 	void select_all(core::cspan bytes);
 	void select_word(document_position at, core::cspan bytes);

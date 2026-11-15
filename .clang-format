@@ -1,0 +1,47 @@
+# The house C++ style: tabs, Allman braces, 120 columns. Shared by every repository in C:\code\apps.
+BasedOnStyle: Microsoft
+Language: Cpp
+Standard: c++20
+UseTab: AlignWithSpaces
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Allman
+NamespaceIndentation: All
+IndentExternBlock: NoIndent
+AccessModifierOffset: -4
+IndentCaseLabels: false
+IndentPPDirectives: None
+PointerAlignment: Left
+DerivePointerAlignment: false
+ReferenceAlignment: Pointer
+SortIncludes: Never
+IncludeBlocks: Preserve
+SortUsingDeclarations: Never
+FixNamespaceComments: false
+ReflowComments: IndentOnly
+BreakStringLiterals: false
+MaxEmptyLinesToKeep: 1
+KeepEmptyLines:
+  AtStartOfBlock: true
+  AtStartOfFile: true
+InsertNewlineAtEOF: true
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AlignAfterOpenBracket: Align
+LambdaBodyIndentation: OuterScope
+BreakConstructorInitializers: AfterColon
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortLambdasOnASingleLine: Inline
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+EmptyLineBeforeAccessModifier: Leave
+SpaceAfterTemplateKeyword: true
+PenaltyBreakAssignment: 200
+PenaltyBreakBeforeFirstCallParameter: 200
+BreakInheritanceList: AfterColon

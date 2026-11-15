@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for the shared utility layer (util*, crypto*) -- strings, wildcards, versions, natural compare, interning, cancellation tokens, result scopes, hashes and perceptual hashes, json parsing, file presence and memory-mapped files.
 
@@ -171,8 +170,7 @@ static void should_icmp_natural()
 
 	// Test leading zeros
 	assert_equal(true, core::icmp_natural("file007", "file7") > 0, "file007 > file7 (more leading zeros)");
-	assert_equal(true, core::icmp_natural("file07", "file007") < 0,
-	             "file07 < file007 (fewer leading zeros)");
+	assert_equal(true, core::icmp_natural("file07", "file007") < 0, "file07 < file007 (fewer leading zeros)");
 	assert_equal(0, core::icmp_natural("file007", "file007"), "same with leading zeros");
 
 	// Test purely numeric strings
@@ -308,12 +306,8 @@ static void should_group_elements_by_folder()
 	constexpr auto a_upper = core::windows_path_semantics ? "C:\\A" : "/A";
 
 	const std::vector<element> elements{
-		{core::folder_path(a), 1},
-		{core::folder_path(b), 2},
-		{core::folder_path(a), 3},
-		{core::folder_path(b), 4, true},
-		{core::folder_path(a_upper), 5},
-		{core::folder_path(c), 6},
+		{core::folder_path(a), 1},       {core::folder_path(b), 2},       {core::folder_path(a), 3},
+		{core::folder_path(b), 4, true}, {core::folder_path(a_upper), 5}, {core::folder_path(c), 6},
 	};
 
 	// Path identity follows the filesystem, so the case variant is a fourth folder where two
@@ -321,9 +315,7 @@ static void should_group_elements_by_folder()
 	constexpr auto expected_groups = core::case_insensitive_path_identity ? 3 : 4;
 
 	core::folder_groups groups;
-	groups.build(elements,
-	             [](const element& e) { return e.folder; },
-	             [](const element& e) { return !e.skip; });
+	groups.build(elements, [](const element& e) { return e.folder; }, [](const element& e) { return !e.skip; });
 
 	assert_equal(expected_groups, static_cast<int>(groups.groups().size()), "one group per distinct folder");
 
@@ -344,12 +336,12 @@ static void should_group_elements_by_folder()
 	assert_equal("6", ids(expected_groups - 1), "single element group");
 
 	groups.build(elements, [](const element& e) { return e.folder; });
-	assert_equal(expected_groups, static_cast<int>(groups.groups().size()),
-	             "rebuild replaces the previous grouping");
+	assert_equal(expected_groups, static_cast<int>(groups.groups().size()), "rebuild replaces the previous grouping");
 	assert_equal("24", ids(1), "no predicate includes every element");
 
 	// Enough distinct folders to force the lookup tables to grow and rehash.
 	std::vector<element> many;
+	many.reserve(1000);
 	const auto numbered = [](const int i)
 	{
 		return core::folder_path(core::windows_path_semantics ? std::format("c:\\f{}", i) : std::format("/f{}", i));
@@ -611,14 +603,8 @@ static void should_convert_utf8()
 	const auto stars = platform::utf16_to_utf8(stars_utf16);
 
 	std::string_view strings[] = {
-		"In vollen Zügen genießen",
-		"Nældens takvinge",
-		"💉💎👦🏻👓⚡",
-		"Žižkov",
-		"Доброго ранку!",
-		"Japanese こんにちは世界",
-		"Arabic مرحبا العالم",
-		stars
+		"In vollen Zügen genießen", "Nældens takvinge",        "💉💎👦🏻👓⚡",        "Žižkov",
+		"Доброго ранку!",           "Japanese こんにちは世界", "Arabic مرحبا العالم", stars,
 	};
 
 	for (const auto src : strings)
@@ -648,6 +634,7 @@ static void should_convert_utf8()
 
 	// Verify every icon in the icon_index enum round-trips correctly through UTF-8
 	constexpr icon_index all_icons[] = {
+		// clang-format off
 		icon_index::add, icon_index::remove, icon_index::audio, icon_index::camera,
 		icon_index::cancel, icon_index::check, icon_index::del, icon_index::edit,
 		icon_index::folder, icon_index::search, icon_index::star, icon_index::star_solid,
@@ -655,6 +642,7 @@ static void should_convert_utf8()
 		icon_index::photo, icon_index::video, icon_index::settings, icon_index::save,
 		icon_index::rotate_clockwise, icon_index::rotate_anticlockwise,
 		icon_index::fit, icon_index::zoom_in, icon_index::zoom_out,
+		// clang-format on
 	};
 
 	for (const auto icon : all_icons)
@@ -665,8 +653,7 @@ static void should_convert_utf8()
 
 		// icon_to_utf8 should produce correct UTF-8
 		const auto actual_utf8 = icon_to_utf8(icon);
-		assert_equal(expected_utf8, actual_utf8,
-		             std::format("icon_to_utf8 for 0x{:X}", static_cast<uint32_t>(icon)));
+		assert_equal(expected_utf8, actual_utf8, std::format("icon_to_utf8 for 0x{:X}", static_cast<uint32_t>(icon)));
 
 		// UTF-8 should be exactly 3 bytes for BMP icons >= 0x800
 		if (icon_val >= 0x800)
@@ -714,8 +701,7 @@ static void should_split()
 	assert_equal("Jane O'Brien", internal_quote[0], "internal apostrophe is preserved");
 	assert_equal(" Alex", internal_quote[1], "separator policy still owns surrounding spaces");
 
-	const auto quoted_separators = core::split("'Jane; O\\'Brien';\"Alex, Pat\";Sam", true,
-	                                          core::is_artist_separator);
+	const auto quoted_separators = core::split("'Jane; O\\'Brien';\"Alex, Pat\";Sam", true, core::is_artist_separator);
 	assert_equal(3_z, quoted_separators.size(), "outer quotes protect separators");
 	assert_equal("Jane; O\\'Brien", quoted_separators[0], "single-quoted separator");
 	assert_equal("Alex, Pat", quoted_separators[1], "double-quoted separator");
@@ -741,8 +727,8 @@ static void should_split()
 
 	// A tab separates artists and genres while a space does not; skipping whitespace after a closing
 	// quote must stop at that separator rather than carry on past it.
-	for (const auto& pred : {std::function<bool(char)>(core::is_artist_separator),
-	                         std::function<bool(char)>(core::is_genre_separator)})
+	for (const auto& pred :
+	     {std::function<bool(char)>(core::is_artist_separator), std::function<bool(char)>(core::is_genre_separator)})
 	{
 		const auto quote_space_tab = core::split("\"Doe, Jane\" \tAlex", true, pred);
 		assert_equal(2_z, quote_space_tab.size(), "space then tab after a closing quote ends the token");
@@ -750,8 +736,7 @@ static void should_split()
 		assert_equal("Alex", quote_space_tab[1], "token after a space and tab separator");
 	}
 
-	const auto quoted_first_word = core::split("Jane Doe; 'Bud' Abbott; Lou Costello", true,
-	                                         core::is_artist_separator);
+	const auto quoted_first_word = core::split("Jane Doe; 'Bud' Abbott; Lou Costello", true, core::is_artist_separator);
 	assert_equal(3_z, quoted_first_word.size(), "quoted first word does not swallow later separators");
 	assert_equal(" 'Bud' Abbott", quoted_first_word[1], "quoted first word stays literal");
 	assert_equal(" Lou Costello", quoted_first_word[2], "tail after quoted first word splits");
@@ -762,7 +747,7 @@ static void should_split()
 	assert_equal(" Bob", unmatched_leading_quote[2], "tail after unmatched quote splits");
 
 	const auto collection_roots = core::split("\"C:\\Photos\"\n\"D:\\\"", true,
-	                                         [](const char c) { return c == '\n' || c == '\r'; });
+	                                          [](const char c) { return c == '\n' || c == '\r'; });
 	assert_equal(2_z, collection_roots.size(), "quoted collection roots split");
 	assert_equal("C:\\Photos", collection_roots[0], "quoted collection root");
 	assert_equal("D:\\", collection_roots[1], "quoted drive root keeps trailing slash");
@@ -898,7 +883,7 @@ static void should_convert_local_dates_with_date_specific_rules()
 		core::day_t{2024, 1, 15, 12, 0, 0},
 		core::day_t{2024, 7, 15, 12, 0, 0},
 		core::day_t{2024, 3, 10, 3, 30, 0},
-		core::day_t{2024, 11, 3, 3, 30, 0}
+		core::day_t{2024, 11, 3, 3, 30, 0},
 	};
 	for (const auto& day : days)
 	{
@@ -913,7 +898,8 @@ static void should_convert_local_dates_with_date_specific_rules()
 		constexpr uint64_t fraction = 1234567;
 		const auto expected = (static_cast<int64_t>(unix_time) + 11644473600ll) * 10000000ll + fraction;
 		const auto wall = core::date_t(day.year, day.month, day.day, day.hour, day.minute, 0).to_int64() + fraction;
-		assert_equal(expected, platform::local_to_utc(wall), "local conversion matches the date-specific timezone rule");
+		assert_equal(expected, platform::local_to_utc(wall),
+		             "local conversion matches the date-specific timezone rule");
 	}
 }
 #endif
@@ -930,8 +916,7 @@ static void should_extract_url()
 	assert_equal("http://anotherexample.org/article", core::url_extract(input2), "extract url");
 	assert_equal("", core::url_extract(input3), "extract url");
 	assert_equal("", core::url_extract(input3), "extract url");
-	assert_equal("http://bighugelabs.com/flickr/onblack.php?id=1397504988", core::url_extract(input4),
-	             "extract url");
+	assert_equal("http://bighugelabs.com/flickr/onblack.php?id=1397504988", core::url_extract(input4), "extract url");
 
 	// A description panel offering a choice of links needs every distinct one, in reading order.
 	const auto all = core::url_extract_all(
@@ -959,7 +944,6 @@ static void should_match_wildcard()
 
 	assert_equal(true, core::wildcard_icmp("HELLO-XX-WORLD", "hello*"));
 	assert_equal(true, core::wildcard_icmp("HELLO-XX-WORLD", "hello*world"));
-
 
 	assert_equal(0, core::icmp("ДОБРОГО РАНКУ", "Доброго ранку"));
 	assert_equal(0, core::icmp("ARABIC مرحبا العالم", "Arabic مرحبا العالم"));
@@ -991,6 +975,11 @@ static void should_parse_command_line()
 
 	assert_equal(true, cl1.no_gpu, "no_gpu");
 	assert_equal(false, cl1.no_indexing, "no_indexing");
+	command_line_t independent;
+	independent.parse(core::windows_path_semantics ? "/new-window" : "-new-window");
+	assert_equal(true, independent.new_window, "new-window accepts the Explorer switch spelling");
+	assert_equal(true, independent.format_restart_cmd_line().find("-new-window") != std::string::npos,
+	             "an independent restart stays independent");
 
 	command_line_t cl2;
 	cl2.parse(test_files_folder().text());
@@ -1000,7 +989,6 @@ static void should_parse_command_line()
 	assert_equal(test_files_folder().text(), cl2.folder_path.folder().text(), "folder path");
 	assert_equal(false, cl2.no_gpu, "no_gpu");
 	assert_equal(false, cl2.no_indexing, "no_indexing");
-
 
 	// The fixture's own spelling: a case-folded name only resolves on a case-insensitive volume.
 	const auto path3 = test_files_folder().combine_file("Test.jpg");
@@ -1012,6 +1000,16 @@ static void should_parse_command_line()
 	assert_equal(path3.folder().text(), cl3.selection.folder().text(), "selection folder");
 	assert_equal(false, cl3.no_gpu, "no_gpu");
 	assert_equal(true, cl3.no_indexing, "no_indexing");
+	assert_equal(false, cl3.can_forward_file(), "explicit startup options are not lost to a handoff");
+	command_line_t file_open;
+	file_open.parse(std::format("\"{}\"", path3));
+	assert_equal(true, file_open.can_forward_file(), "a plain file launch can reuse the window");
+	file_open.parse("-new-window");
+	assert_equal(false, file_open.can_forward_file(), "new-window bypasses forwarding");
+	command_line_t headless_file;
+	headless_file.parse(std::format("-test \"{}\"", path3));
+	assert_equal(false, headless_file.can_forward_file(), "headless commands remain independent");
+	assert_equal(false, cl2.can_forward_file(), "folder and blank launches keep their own windows");
 
 	// The subject is that quotes hold a spaced path together as one part, so the folder is made
 	// here rather than borrowed from whatever the platform happens to install.
@@ -1027,9 +1025,8 @@ static void should_parse_command_line()
 	cl5.parse("----- --no-gpu");
 	assert_equal(true, cl5.no_gpu, "no_gpu");
 
-	const auto root_path = core::windows_path_semantics
-		                       ? std::string(test_files_folder().text().sv().substr(0, 3))
-		                       : "/"s;
+	const auto root_path = core::windows_path_semantics ? std::string(test_files_folder().text().sv().substr(0, 3))
+	                                                    : "/"s;
 	command_line_t cl_drive_root;
 	cl_drive_root.parse(std::format("\"{}\" -no-gpu", root_path));
 	assert_equal(true, cl_drive_root.no_gpu, "quoted drive root no_gpu");
@@ -1046,46 +1043,38 @@ static void should_parse_command_line()
 	assert_equal(true, cl6.no_gpu, "multiple options no_gpu");
 	assert_equal(true, cl6.no_indexing, "multiple options no_indexing");
 
-#ifdef _DEBUG
-	command_line_t cl7;
-	cl7.parse("-screenshot:edit \"-screenshot-output:C:\\temp\\edit.png\"");
-	assert_equal("edit"sv, cl7.screenshot_scene, "screenshot scene");
-	assert_equal("C:\\temp\\edit.png"sv, cl7.screenshot_output, "screenshot output");
+	command_line_t collection_open;
+	collection_open.parse(std::format("\"-collection:{}\" \"{}\"", test_files_folder(), path3));
+	assert_equal(false, collection_open.can_forward_file(), "an explicit collection is not lost to a handoff");
 
-	command_line_t cl8;
-	cl8.parse("-test-reset-graphics");
-	assert_equal("reset-graphics"sv, cl8.test_action, "test action");
-#endif
+	command_line_t cl_profile;
+	cl_profile.parse("\"-collection:C:\\tutorial\\my collection\" -profile:C:\\tutorial\\profile");
+	assert_equal("C:\\tutorial\\my collection"sv, cl_profile.collection_folder, "a collection of its own");
+	assert_equal("C:\\tutorial\\profile"sv, cl_profile.profile_folder, "settings and caches kept apart");
+
+	command_line_t cl_agent;
+	cl_agent.parse(std::format("-mcp -mcp-ui:offscreen -MCP-ALLOW:write,capture \"{}\"", path3));
+	assert_equal(true, cl_agent.agent, "an agent session");
+	assert_equal("offscreen"sv, cl_agent.agent_ui, "where its window is");
+	assert_equal("write,capture"sv, cl_agent.agent_allow, "what it may do beyond reading");
+	assert_equal(false, cl_agent.can_forward_file(), "an agent session is never handed to a running window");
+
+	command_line_t cl_tool;
+	cl_tool.parse("-tool:movie_check \"projects=C:\\my movies\\trip.dfv\" skip_missing=true -no-gpu");
+	assert_equal("movie_check"sv, cl_tool.tool, "a single tool call");
+	assert_equal(2_z, cl_tool.tool_arguments.size(), "its arguments are the parts after it");
+	assert_equal("projects=C:\\my movies\\trip.dfv"sv, cl_tool.tool_arguments.front(), "a quoted one keeps its space");
+	assert_equal(true, cl_tool.no_gpu, "and a switch among them still parses");
+	assert_equal(true, cl_tool.selection.is_empty(), "an argument naming a path is the tool's, not a file to open");
+
+	command_line_t cl_tool_file;
+	cl_tool_file.parse(std::format("\"{}\" -tool:status", path3));
+	assert_equal(false, cl_tool_file.can_forward_file(), "a tool call is never handed to a running window");
 
 	command_line_t cl9;
-	cl9.parse("-run-tests");
-	assert_equal(true, cl9.console_test, "run-tests alias");
-
-	command_line_t cl_movie_check;
-	cl_movie_check.parse(
-		"-movie-check:C:\\movies -movie-media:D:\\media \"-movie-out:E:\\rendered movies\" --movie-overwrite");
-	assert_equal("C:\\movies"sv, cl_movie_check.movie_batch.projects, "movie projects");
-	assert_equal(true, cl_movie_check.movie_batch.mode == movie_batch_mode::check, "a check only reports");
-	assert_equal("D:\\media"sv, cl_movie_check.movie_batch.media, "movie media folder");
-	assert_equal("E:\\rendered movies"sv, cl_movie_check.movie_batch.output, "a quoted output folder keeps its space");
-	assert_equal(true, cl_movie_check.movie_batch.overwrite, "movie overwrite");
-
-	command_line_t cl_movie_import;
-	cl_movie_import.parse("-movie-import:C:\\movies\\trip.wlmp");
-	assert_equal("C:\\movies\\trip.wlmp"sv, cl_movie_import.movie_batch.projects, "a project to import");
-	assert_equal(true, cl_movie_import.movie_batch.mode == movie_batch_mode::import, "import imports");
-
-	command_line_t cl_movie_render;
-	cl_movie_render.parse("-MOVIE-RENDER:C:\\movies\\trip.otio -movie-skip-missing");
-	assert_equal("C:\\movies\\trip.otio"sv, cl_movie_render.movie_batch.projects, "a single movie project");
-	assert_equal(true, cl_movie_render.movie_batch.mode == movie_batch_mode::render, "render renders");
-	assert_equal(false, cl_movie_render.movie_batch.overwrite, "and replaces nothing unless asked");
-	assert_equal(true, cl_movie_render.movie_batch.skip_missing, "skipping missing sources is asked for");
-	assert_equal(false, cl_movie_check.movie_batch.skip_missing, "and never assumed");
-
-	command_line_t cl_no_movie;
-	cl_no_movie.parse("-movie-check: -no-gpu");
-	assert_equal(true, cl_no_movie.movie_batch.projects.empty(), "a movie switch with no path starts no batch");
+	cl9.parse("-test:movie*");
+	assert_equal(true, cl9.console_test, "a test run");
+	assert_equal("movie*"sv, cl9.test_filter, "of the tests a filter names");
 
 	// AutoPlay passes the inserted volume with "**", the address box's spelling for its subfolders.
 	const auto recursive_text = std::string(test_files_folder().text()) + core::preferred_path_sep + "**";
@@ -1100,7 +1089,8 @@ static void should_parse_command_line()
 	assert_equal(true, cl_recursive_root.no_gpu, "and the rest of the line still parses");
 
 	command_line_t cl_missing_recursive;
-	cl_missing_recursive.parse(std::format("\"{}\"", std::string(spaced.text()) + "-missing" + core::preferred_path_sep + "**"));
+	cl_missing_recursive.parse(
+		std::format("\"{}\"", std::string(spaced.text()) + "-missing" + core::preferred_path_sep + "**"));
 	assert_equal(true, cl_missing_recursive.folder_path.is_empty(), "a folder that does not exist opens nothing");
 
 	command_line_t cl_stars_only;
@@ -1249,8 +1239,7 @@ static void should_intern_strings()
 	             "different content -> different handle");
 	assert_equal(true, core::cache(std::string_view{}).is_empty(), "empty interns to empty");
 
-	const std::string largest(core::memory_pool::block_size -
-	                          offsetof(core::cached_string_storage_t, sz) - 1, 'x');
+	const std::string largest(core::memory_pool::block_size - offsetof(core::cached_string_storage_t, sz) - 1, 'x');
 	assert_equal(largest.size(), core::cache(largest).size(), "largest pool record is interned");
 	const std::string too_large(largest.size() + 1, 'x');
 	assert_equal(true, core::cache(too_large).is_empty(), "oversized pool record is rejected");
@@ -1276,6 +1265,7 @@ static void should_intern_strings()
 	constexpr int word_count = 500;
 	std::vector<std::vector<core::cached>> per_thread(thread_count);
 	std::vector<std::thread> threads;
+	threads.reserve(thread_count);
 
 	for (auto t = 0; t < thread_count; ++t)
 	{
@@ -1303,7 +1293,7 @@ static void should_intern_strings()
 // "not there" must be able to tell a removed file from one it simply could not read.
 static void should_report_file_presence()
 {
-	const auto scratch = _temps.next_folder("file-presence");
+	const auto scratch = test_temps.next_folder("file-presence");
 	const auto present = scratch.combine_file("present.txt");
 	{
 		std::ofstream fs(platform::to_stream_path(present));
@@ -1338,10 +1328,9 @@ static void should_report_file_presence()
 	// Enumeration only ever reports what it found, so those records are never left unknown.
 	const auto contents = platform::iterate_file_items(scratch, false);
 	assert_equal(2, static_cast<int>(contents.files.size()), "both files enumerated");
-	assert_equal(true, std::ranges::all_of(contents.files, [](const platform::file_info& f)
-	             {
-		             return f.attributes.exists();
-	             }),
+	assert_equal(true,
+	             std::ranges::all_of(contents.files,
+	                                 [](const platform::file_info& f) { return f.attributes.exists(); }),
 	             "enumerated files are found");
 
 	assert_equal(false, platform::file_attributes_t{}.exists(), "unqueried attributes do not exist");
@@ -1355,7 +1344,7 @@ static void should_report_file_presence()
 // all because zero of zero bytes had been written.
 static void should_save_a_blob_without_truncating_the_destination()
 {
-	const auto scratch = _temps.next_folder("blob-save");
+	const auto scratch = test_temps.next_folder("blob-save");
 	const auto path = scratch.combine_file("payload.bin");
 
 	const core::blob whole = {1, 2, 3, 4};
@@ -1382,8 +1371,9 @@ static std::string replace_file_bytes(const core::file_path path, const std::str
 	write_test_file(path, initial);
 	{
 		platform::buffered_file file(platform::open_file(path, platform::file_open_mode::read_write));
-		assert_equal(true, file.insert(std::bit_cast<const uint8_t*>(replacement.data()),
-		                               static_cast<int64_t>(replacement.size()), start, replace),
+		assert_equal(true,
+		             file.insert(std::bit_cast<const uint8_t*>(replacement.data()),
+		                         static_cast<int64_t>(replacement.size()), start, replace),
 		             "replacement succeeds");
 	}
 	return read_test_file(path);
@@ -1391,21 +1381,16 @@ static std::string replace_file_bytes(const core::file_path path, const std::str
 
 static void should_replace_bytes_in_files()
 {
-	const auto scratch = _temps.next_folder("file-insert");
+	const auto scratch = test_temps.next_folder("file-insert");
 	const auto path = scratch.combine_file("payload.bin");
 
-	assert_equal("0123X789", replace_file_bytes(path, "0123456789", 4, 3, "X"),
-	             "shrinking keeps prefix and tail");
+	assert_equal("0123X789", replace_file_bytes(path, "0123456789", 4, 3, "X"), "shrinking keeps prefix and tail");
 	assert_equal("0123ABCDE789", replace_file_bytes(path, "0123456789", 4, 3, "ABCDE"),
 	             "growing keeps prefix and tail");
-	assert_equal("0123XYZ789", replace_file_bytes(path, "0123456789", 4, 3, "XYZ"),
-	             "equal-size replacement");
-	assert_equal("X3456789", replace_file_bytes(path, "0123456789", 0, 3, "X"),
-	             "replace at beginning");
-	assert_equal("012345X", replace_file_bytes(path, "0123456789", 6, 4, "X"),
-	             "replace through end");
-	assert_equal("012345X", replace_file_bytes(path, "012345", 6, 0, "X"),
-	             "append with empty tail");
+	assert_equal("0123XYZ789", replace_file_bytes(path, "0123456789", 4, 3, "XYZ"), "equal-size replacement");
+	assert_equal("X3456789", replace_file_bytes(path, "0123456789", 0, 3, "X"), "replace at beginning");
+	assert_equal("012345X", replace_file_bytes(path, "0123456789", 6, 4, "X"), "replace through end");
+	assert_equal("012345X", replace_file_bytes(path, "012345", 6, 0, "X"), "append with empty tail");
 
 	std::string large;
 	large.reserve(core::sixty_four_k + 32);
@@ -1425,7 +1410,7 @@ static void should_replace_bytes_in_files()
 
 static void should_map_files()
 {
-	const auto scratch = _temps.next_folder("map-file");
+	const auto scratch = test_temps.next_folder("map-file");
 	const auto path = scratch.combine_file("mapped.txt");
 
 	// Larger than one allocation granularity so a window can be placed past the first boundary.
@@ -1509,7 +1494,7 @@ static void should_clean_temporary_fixtures()
 	assert_equal(false, platform::exists(tracked), "tracked file is removed");
 	assert_equal(false, platform::exists(tracked.extension(".xmp")), "derived sidecar is removed");
 
-	const auto preexisting = _temps.next_folder("cleanup-preexisting");
+	const auto preexisting = test_temps.next_folder("cleanup-preexisting");
 	const auto unrelated = preexisting.combine_file("unrelated.txt");
 	write_test_file(unrelated, "unrelated");
 	const auto unrelated_child = preexisting.combine("unrelated-child");
@@ -1564,8 +1549,8 @@ static void should_handle_cyrillic_case_folding()
 	assert_equal(0, icmp(cyrillic_upper, cyrillic_lower), "mixed Cyrillic icmp");
 	// МОСКВА = U+041C U+041E U+0421 U+041A U+0412 U+0410
 	// москва = U+043C U+043E U+0441 U+043A U+0432 U+0430
-	assert_equal(true, core::icmp("\u041c\u041e\u0421\u041a\u0412\u0410",
-	                             "\u043c\u043e\u0441\u043a\u0432\u0430") == 0, "MOSKVA icmp");
+	assert_equal(true, core::icmp("\u041c\u041e\u0421\u041a\u0412\u0410", "\u043c\u043e\u0441\u043a\u0432\u0430") == 0,
+	             "MOSKVA icmp");
 
 	// Greek omicron must case-fold as Greek, not as an unrelated ASCII letter.
 	assert_equal(0, core::icmp("\u039f", "\u03bf"), "Greek omicron case-folds");
@@ -1624,8 +1609,8 @@ static void should_query_kdtree_bounds()
 	{
 		for (int gy = 0; gy < 10; ++gy)
 		{
-			pts.emplace_back(static_cast<float>(gx), static_cast<float>(gy),
-			                 static_cast<uint32_t>(gx * 10 + gy), 0, 0, 0.0f);
+			pts.emplace_back(static_cast<float>(gx), static_cast<float>(gy), static_cast<uint32_t>(gx * 10 + gy), 0, 0,
+			                 0.0f);
 		}
 	}
 
@@ -1679,23 +1664,28 @@ static void should_rotate_points()
 	const auto dy_before = point.Y - center.Y;
 	const auto dx_after = rotated.X - center.X;
 	const auto dy_after = rotated.Y - center.Y;
-	assert_equal(true, core::equiv(dx_before * dx_before + dy_before * dy_before,
-	                             dx_after * dx_after + dy_after * dy_after), "distance preserved");
+	assert_equal(true,
+	             core::equiv(dx_before * dx_before + dy_before * dy_before, dx_after * dx_after + dy_after * dy_after),
+	             "distance preserved");
 }
 
 static void should_intersect_rectangle_bounds()
 {
 	rectd out;
 	assert_equal(true, core::rectd::intersect(out, rectd(0, 0, 2, 2), rectd(1, 1, 2, 2)), "overlap intersects");
-	assert_equal(true, core::equiv(1.0, out.X) && core::equiv(1.0, out.Y) &&
-	             core::equiv(1.0, out.Width) && core::equiv(1.0, out.Height), "overlap result");
+	assert_equal(true,
+	             core::equiv(1.0, out.X) && core::equiv(1.0, out.Y) && core::equiv(1.0, out.Width) &&
+	                 core::equiv(1.0, out.Height),
+	             "overlap result");
 
 	assert_equal(false, core::rectd::intersect(out, rectd(0, 0, 1, 1), rectd(2, 2, 1, 1)), "separated");
 	assert_equal(true, out.is_empty(), "separated result is empty");
 
 	assert_equal(true, core::rectd::intersect(out, rectd(0, 0, 4, 4), rectd(1, 1, 1, 1)), "contained");
-	assert_equal(true, core::equiv(1.0, out.X) && core::equiv(1.0, out.Y) &&
-	             core::equiv(1.0, out.Width) && core::equiv(1.0, out.Height), "contained result");
+	assert_equal(true,
+	             core::equiv(1.0, out.X) && core::equiv(1.0, out.Y) && core::equiv(1.0, out.Width) &&
+	                 core::equiv(1.0, out.Height),
+	             "contained result");
 
 	assert_equal(false, core::rectd::intersect(out, rectd(0, 0, 1, 1), rectd(1, 0, 1, 1)), "touching edge");
 	assert_equal(false, core::rectd::intersect(out, rectd(0, 0, 0, 1), rectd(0, 0, 1, 1)), "zero-size input");
@@ -1703,14 +1693,17 @@ static void should_intersect_rectangle_bounds()
 	rectd symmetric;
 	assert_equal(true, core::rectd::intersect(out, rectd(1, 1, 3, 2), rectd(2, 0, 1, 4)), "asymmetric overlap");
 	assert_equal(true, core::rectd::intersect(symmetric, rectd(2, 0, 1, 4), rectd(1, 1, 3, 2)), "symmetric overlap");
-	assert_equal(true, core::equiv(out.X, symmetric.X) && core::equiv(out.Y, symmetric.Y) &&
-	             core::equiv(out.Width, symmetric.Width) && core::equiv(out.Height, symmetric.Height),
+	assert_equal(true,
+	             core::equiv(out.X, symmetric.X) && core::equiv(out.Y, symmetric.Y) &&
+	                 core::equiv(out.Width, symmetric.Width) && core::equiv(out.Height, symmetric.Height),
 	             "intersection is symmetric");
 
 	rectd aliased(0, 0, 2, 2);
 	assert_equal(true, aliased.intersect(rectd(1, 1, 2, 2)), "aliased output");
-	assert_equal(true, core::equiv(1.0, aliased.X) && core::equiv(1.0, aliased.Y) &&
-	             core::equiv(1.0, aliased.Width) && core::equiv(1.0, aliased.Height), "aliased result");
+	assert_equal(true,
+	             core::equiv(1.0, aliased.X) && core::equiv(1.0, aliased.Y) && core::equiv(1.0, aliased.Width) &&
+	                 core::equiv(1.0, aliased.Height),
+	             "aliased result");
 }
 
 static void should_find_the_closest_kdtree_point()
@@ -1738,10 +1731,12 @@ static void should_find_the_closest_kdtree_point()
 	tree.build(pts);
 
 	// Query points inside, at the corners of, and far outside the data extent.
+	// clang-format off
 	const std::vector<std::pair<float, float>> queries{
 		{0.0f, 0.0f}, {2.0f, 200.0f}, {3.9f, 399.0f}, {0.1f, 12.5f}, {-40.0f, -40.0f},
 		{900.0f, 900.0f}, {-1000.0f, 25.0f}, {2.0f, 100000.0f}
 	};
+	// clang-format on
 
 	for (const auto& [qx, qy] : queries)
 	{
@@ -1763,9 +1758,9 @@ static void should_find_the_closest_kdtree_point()
 		// The build reorders coordinates and record fields in lockstep, so the record that comes
 		// back must still be the one that owns the coordinate it came back with.
 		assert_equal(true, found.id < expected.size(), "record identifies a point", "kd closest");
-		assert_equal(true, core::equiv(found.x, expected[found.id].first) &&
-		             core::equiv(found.y, expected[found.id].second), "record travels with its coordinate",
-		             "kd closest");
+		assert_equal(true,
+		             core::equiv(found.x, expected[found.id].first) && core::equiv(found.y, expected[found.id].second),
+		             "record travels with its coordinate", "kd closest");
 		assert_equal(static_cast<int>(found.id * 3 + 1), static_cast<int>(found.offset),
 		             "every record field travels together", "kd closest");
 	}
@@ -1841,8 +1836,7 @@ static void should_signal_and_replace_pending_queue_work()
 	const auto ready_at = delayed.front().ready_at_us();
 	assert_equal(1'000'000, static_cast<int>(ready_at - delayed.front().queued_at_us()),
 	             "enqueue_after moves readiness by the requested delay");
-	assert_equal(0, static_cast<int>(delayed.front().wait_us(ready_at - 1)),
-	             "the intentional delay is not queue wait");
+	assert_equal(0, static_cast<int>(delayed.front().wait_us(ready_at - 1)), "the intentional delay is not queue wait");
 	assert_equal(250, static_cast<int>(delayed.front().wait_us(ready_at + 250)),
 	             "time after the deadline is queue wait");
 }
@@ -1882,8 +1876,7 @@ static void should_round_trip_base64()
 		const auto encoded = base64_encode(data);
 		const auto decoded = base64_decode(encoded);
 
-		assert_equal(static_cast<uint32_t>(length), static_cast<uint32_t>(decoded.size()),
-		             "decoded length matches");
+		assert_equal(static_cast<uint32_t>(length), static_cast<uint32_t>(decoded.size()), "decoded length matches");
 		assert_equal(true, decoded == data, "base64 round trips every length");
 	}
 
@@ -1942,7 +1935,7 @@ static void should_rank_the_most_common_values()
 	assert_equal("value-199", top_five[4], "highest non-tie retained");
 }
 
-void register_util_tests(view_state& state, test_registry& tests)
+void register_util_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should natural compare"s, should_icmp_natural);
 	tests.add("Should name files after the application"s, should_name_files_after_the_application);
@@ -1975,7 +1968,8 @@ void register_util_tests(view_state& state, test_registry& tests)
 	tests.add("Should extract url"s, should_extract_url);
 	tests.add("Should parse dates"s, should_parse_dates);
 #ifndef _WIN32
-	tests.add("Should convert local dates with date specific rules"s, should_convert_local_dates_with_date_specific_rules);
+	tests.add("Should convert local dates with date specific rules"s,
+	          should_convert_local_dates_with_date_specific_rules);
 #endif
 	tests.add("Should detect wildcard"s, should_detect_wildcard);
 	tests.add("Should match wildcard"s, should_match_wildcard);

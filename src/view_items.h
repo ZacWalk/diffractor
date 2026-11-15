@@ -1,15 +1,16 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Main thumbnail grid and list view. Displays file collections
 // with thumbnail rendering, selection, and navigation. Layout calculates one set of
 // disjoint regions (sidebar, chrome, splitters, scroll bars, media, items) that render,
 // hit testing and wheel routing all share. The media column's arrangement is a free function so
-// its stability contract can be tested without a window. The commands that decide what the list
+// its stability contract can be tested without a window, as is the stack of panels a selection is
+// presented as, which fullscreen shares. The commands that decide what the list
 // contains - the filter box, thumbnail size, type filters, totals and grouping - are declared for the
 // frame's status bar, which keeps them on screen however far the list scrolls.
 
@@ -34,7 +35,6 @@ struct metadata_tree_state
 
 using metadata_tree_state_ptr = std::shared_ptr<metadata_tree_state>;
 
-
 // The items preview media column: the media and its primary properties, then the detail that the
 // file's own metadata blocks fill in later. Free of the view so its arrangement is testable without a
 // window.
@@ -52,6 +52,34 @@ struct media_column_inputs
 // Returns the scrollable content height.
 int layout_media_column(const media_column_inputs& in, render::measure_context& mc);
 
+// Lays elements out one under another in the slots calc_flex_layout gave them from origin, closing up behind any
+// that took less height than its slot - a monitor that gave up a part to fit - so it leaves no gap under it.
+// Returns the height they took from origin, gaps included.
+int layout_stacked(const std::vector<view_element_ptr>& elements, const std::vector<recti>& slots,
+                   render::measure_context& mc, pointi origin);
+
+// What one selection is shown as, built once for the items view's media column and for fullscreen, so the two
+// present it alike: the picture, or the panels a monitor, the visualizer, the collage, a cartridge or a listing
+// is made of, above the selection panel; and the content the items view stacks below it.
+struct media_presentation
+{
+	// What play, zoom, comparison and the column's half-pane floor address; null when what stands above the
+	// panel is a listing, or nothing does.
+	view_element_ptr media;
+	// Above the selection panel, in order.
+	std::vector<view_element_ptr> above;
+	// Below the selection panel and the description: a tracker's sample bank, a program's dump, a document,
+	// an archive's listing. Fullscreen does not show it.
+	std::vector<view_element_ptr> below;
+	// A photo, a video, a running Commodore 64 or a comparison: fullscreen gives it the screen and floats the
+	// panel over it. Everything else is a stack of panels in fullscreen as in the items view.
+	bool picture = false;
+	// Content that can run on for screens: nothing is held above the fold, and the column scrolls as one.
+	bool scrolls = false;
+};
+
+media_presentation make_media_presentation(view_state& state, const display_state_ptr& display,
+                                           const view_host_ptr& host, bool fullscreen);
 
 struct item_and_group
 {
@@ -176,6 +204,10 @@ public:
 	std::vector<item_and_group> _draw_items;
 	bool _visible_items_valid = false;
 	double _next_thumbnail_retry = 0.0;
+	// Which way the listing last scrolled, so the band past that edge is read before the band behind.
+	// Down until the user says otherwise, since that is the way a listing is read.
+	int _visible_items_top = 0;
+	int _thumbnail_scroll_direction = 1;
 
 	items_view(view_state& s, view_host_ptr host);
 	~items_view() override;
@@ -187,7 +219,10 @@ public:
 
 	void render(render::draw_context& dc, view_controller_ptr controller) override;
 
-	menu_type context_menu(pointi loc) override;
+	view_menu context_menu(pointi loc) override;
+	// The sidebar before the listing, and the links among the listing and the media pane after it.
+	std::vector<keyboard_region> keyboard_regions() override;
+	recti keyboard_bounds() const override;
 	// A press anywhere but on the panel's document gives Copy and Select all back to the items.
 	void mouse_down(pointi loc) override;
 	void release_document() const;
@@ -208,19 +243,13 @@ public:
 	group_and_item scroll_loc_to_item(pointi loc) const;
 
 	// core::recti::contains is inclusive, so an empty (all-zero) region would otherwise claim the origin.
-	static bool region_hit(const recti r, const pointi loc)
-	{
-		return !r.is_empty() && r.contains(loc);
-	}
+	static bool region_hit(const recti r, const pointi loc) { return !r.is_empty() && r.contains(loc); }
 
 	// Deliberately the loose test rather than region_at: the scroll bar is drawn inside the grid's
 	// rectangle, and a file dropped on it is meant for the folder the grid is showing. The strict
 	// answer belongs to hit testing and the context menu, which have to tell the scroll bar apart from
 	// the items under it.
-	bool is_over_items(const pointi loc) const override
-	{
-		return region_hit(_regions.items, loc);
-	}
+	bool is_over_items(const pointi loc) const override { return region_hit(_regions.items, loc); }
 
 	int splitter_pos() const
 	{
@@ -232,10 +261,11 @@ public:
 		// being hit tested first it painted over the grid and swallowed its clicks.
 		const auto x_max = std::max(left, _client_extent.cx - _scroll_width * 3);
 		return std::clamp(left + core::mul_div(setting.item_splitter_pos, std::max(0, _client_extent.cx - left),
-		                                     settings_t::item_splitter_max), left, x_max);
+		                                       settings_t::item_splitter_max),
+		                  left, x_max);
 	}
 
-	void splitter_pos(const int x, bool tracking) const
+	void splitter_pos(const int x, bool /*tracking*/) const
 	{
 		if (_state.view_mode() == view_type::items)
 		{
@@ -243,7 +273,7 @@ public:
 			const auto width = std::max(0, _client_extent.cx - left);
 			const auto min_size = std::min(_scroll_width * 5, width / 2);
 			const auto s = core::mul_div(std::clamp(x - left, min_size, width - min_size),
-			                           settings_t::item_splitter_max, std::max(1, width));
+			                             settings_t::item_splitter_max, std::max(1, width));
 
 			if (s != setting.item_splitter_pos)
 			{
@@ -285,20 +315,11 @@ public:
 		_touch_pan_zoom_active = false;
 	}
 
-	recti calc_items_bounds() const
-	{
-		return _regions.items;
-	}
+	recti calc_items_bounds() const { return _regions.items; }
 
-	recti calc_logical_items_bounds() const
-	{
-		return _regions.items.offset(_items_scroller.scroll_offset());
-	}
+	recti calc_logical_items_bounds() const { return _regions.items.offset(_items_scroller.scroll_offset()); }
 
-	recti calc_media_bounds() const
-	{
-		return _regions.media;
-	}
+	recti calc_media_bounds() const { return _regions.media; }
 
 	recti calc_spliter_bounds() const { return _regions.splitter; }
 	void update_regions();
@@ -314,6 +335,8 @@ public:
 	void update_item_scroller_sections();
 	void items_changed(bool path_changed) override;
 	void display_changed() override;
+	// The media column starts again from its top, as it does for a new item.
+	void reset_media_scroll();
 	void update_media_elements() override;
 	bool escape() override;
 	void add_metadata_elements(std::vector<view_element_ptr>& elements, const metadata_block& block);

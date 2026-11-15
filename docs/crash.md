@@ -103,8 +103,8 @@ expand c:\code\symbols\diffractor64.pdb\<guid+age>\diffractor64.pd_ tmp\bin\diff
 
 <# Step 4: -i supplies the image and -y supplies symbols. #>
 & $cdb -z <dump> `
-  -y "c:\code\diffractor\tmp\bin;srv*c:\code\symbols*https://msdl.microsoft.com/download/symbols" `
-  -i "c:\code\diffractor\tmp\bin" `
+  -y "<checkout>\tmp\bin;srv*c:\code\symbols*https://msdl.microsoft.com/download/symbols" `
+  -i "<checkout>\tmp\bin" `
   -c ".lines -e; .reload /f; .ecxr; kv; q"
 ```
 
@@ -179,7 +179,7 @@ that says this configuration took that path. Two out of three is a hypothesis.
 | Minidump writing, and restart and recovery registration | libdesktop's [process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/process.cpp) |
 | The open-file list a fault records, and its bounds | [util_crash_files_db.h](../src/util_crash_files_db.h) |
 | The graphics crash guard and hardware-acceleration fallback | libdesktop's [settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
-| The degraded start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
+| The safe start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
 | Diagnostic log and session counters | libdesktop's [core/log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/log.h), [core/util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/util.h) and [platform/services.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform/services.h); [app_perf.h](../src/app_perf.h) |
 | SDK symbol-store discovery and publishing | `Get-SymStore` and `Add-ToSymbolStore` in [dd.ps1](../dd.ps1) |
 | Debugging a reproducible crash in Visual Studio (`dd.ps1 vs`) | `Open-VisualStudio` in [dd.ps1](../dd.ps1) |

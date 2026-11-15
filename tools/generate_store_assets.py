@@ -1,168 +1,59 @@
+"""Store artwork uses the same vector source as the desktop icon, without Pillow."""
+
 import os
 import sys
 import argparse
-from PIL import Image, ImageDraw
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+from generate_icon import draw
+from iconlib import Canvas, ICON_SIZES, ico, png
+
+Image = tuple[int, int, bytes]
 
 class DiffractorLogoGenerator:
-    def __init__(self):
-        # Official Colors (Approximate based on "Diffractor" visual identity)
-        # You can tweak these hex codes to match your exact brand colors
-        self.colors = {
-            'green':  {'fill': '#00b050', 'border': '#008a3e'}, # Top
-            'blue':   {'fill': '#0070c0', 'border': '#005490'}, # Right
-            'red':    {'fill': '#c00000', 'border': '#900000'}, # Bottom
-            'yellow': {'fill': '#ffc000', 'border': '#bf9000'}, # Left
-        }
-        self.bg_color = (255, 255, 255, 0) # Transparent background
+    def __init__(self, check=False):
+        self.check = check
+        self.failures = 0
+        self._logos = {}
 
-    def draw_square(self, draw, center_x, center_y, size, color_key, crop_mask=None):
-        """
-        Draws a single square with a border.
-        """
-        half = size / 2
-        x0, y0 = center_x - half, center_y - half
-        x1, y1 = center_x + half, center_y + half
-        
-        fill = self.colors[color_key]['fill']
-        border = self.colors[color_key]['border']
-        border_width = max(1, int(size * 0.08)) # 8% border thickness
+    def create_logo(self, canvas_size) -> Image:
+        if canvas_size not in self._logos:
+            canvas = Canvas(canvas_size)
+            draw(canvas)
+            self._logos[canvas_size] = (canvas_size, canvas_size, canvas.rgba())
+        return self._logos[canvas_size]
 
-        # Draw the main square
-        draw.rectangle([x0, y0, x1, y1], fill=fill, outline=border, width=border_width)
+    def _place(self, width, height, content_ratio) -> Image:
+        size = max(1, int(min(width, height) * content_ratio))
+        _, _, logo = self.create_logo(size)
+        pixels = bytearray(width * height * 4)
+        x, y = (width - size) // 2, (height - size) // 2
+        for row in range(size):
+            offset = ((y + row) * width + x) * 4
+            pixels[offset:offset + size * 4] = logo[row * size * 4:(row + 1) * size * 4]
+        return width, height, bytes(pixels)
 
-    def draw_partial_square(self, draw, center_x, center_y, size, color_key, region):
-        """
-        Draws only a specific quadrant of a square (used to create the interlock effect).
-        region: 'bottom-right', 'bottom-left', etc.
-        """
-        half = size / 2
-        x0, y0 = center_x - half, center_y - half
-        x1, y1 = center_x + half, center_y + half
-        
-        fill = self.colors[color_key]['fill']
-        border = self.colors[color_key]['border']
-        border_width = max(1, int(size * 0.08))
-        
-        # Calculate the crop box for the specific quadrant
-        # We draw the full square onto a temp image then crop it
-        # This is easier than calculating path coordinates for the border
-        temp_img = Image.new('RGBA', (int(size*2), int(size*2)), (0,0,0,0))
-        temp_draw = ImageDraw.Draw(temp_img)
-        
-        # Draw normally on temp (centered at size, size)
-        tx, ty = size, size
-        temp_draw.rectangle([tx-half, ty-half, tx+half, ty+half], fill=fill, outline=border, width=border_width)
-        
-        # Define crop box based on region relative to the temp center
-        # We want to keep the intersection part.
-        # Interlock logic:
-        # Green (Top) overlaps Blue (Right) -> Intersection is Green's Bottom-Right
-        
-        crop_box = None
-        paste_pos = None
-        if region == 'bottom-right':
-            # Keep x > center, y > center
-            crop_box = (tx, ty, tx+half+border_width, ty+half+border_width)
-            paste_pos = (int(center_x), int(center_y))
-        elif region == 'bottom-left':
-            # Keep x < center, y > center
-            crop_box = (tx-half-border_width, ty, tx, ty+half+border_width)
-            paste_pos = (int(center_x - half - border_width), int(center_y))
-            
-        cropped = temp_img.crop(crop_box)
-        return cropped, paste_pos
+    def create_wide_logo(self, width, height, content_ratio=0.9) -> Image:
+        return self._place(width, height, content_ratio)
 
-    def create_logo(self, canvas_size):
-        """
-        Generates the Diffractor logo at the specific canvas_size.
-        """
-        # High resolution canvas for anti-aliasing (draw 4x larger then resize)
-        scale_factor = 4 
-        img_size = canvas_size * scale_factor
-        img = Image.new('RGBA', (img_size, img_size), self.bg_color)
-        draw = ImageDraw.Draw(img)
+    def create_tile_logo(self, canvas_size, content_ratio) -> Image:
+        return self._place(canvas_size, canvas_size, content_ratio)
 
-        # Geometry Settings
-        # The logo is a cross shape. 
-        # Square size should be roughly 45% of the total canvas to leave room but fill space.
-        sq_size = img_size * 0.45
-        
-        # The Offset: How far the squares are shifted from the center.
-        # Push squares outward to the edges of the bounding area:
-        offset = sq_size * 1.11
-        
-        center = img_size / 2
-        
-        # Positions
-        # Green (Top)
-        pos_green = (center, center - offset/2)
-        # Blue (Right)
-        pos_blue = (center + offset/2, center)
-        # Red (Bottom)
-        pos_red = (center, center + offset/2)
-        # Yellow (Left)
-        pos_yellow = (center - offset/2, center)
+    def _write(self, path, content):
+        path = Path(path)
+        previous = path.read_bytes() if path.exists() else None
+        if self.check:
+            if previous != content:
+                print(f"STALE: {path}")
+                self.failures += 1
+        elif previous != content:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
 
-        # ---------------------------------------------------------
-        # THE INTERLOCK ALGORITHM (Painter's Algorithm with a twist)
-        # Cycle: Yellow > Green > Blue > Red > Yellow
-        # ---------------------------------------------------------
-        
-        # 1. Base Layer: Green
-        self.draw_square(draw, *pos_green, sq_size, 'green')
-        
-        # Blue 
-        self.draw_square(draw, *pos_blue, sq_size, 'blue')
-        
-        # Red 
-        self.draw_square(draw, *pos_red, sq_size, 'red')
-        
-        # Yellow 
-        self.draw_square(draw, *pos_yellow, sq_size, 'yellow')
-
-        
-        # THE FIX: Green must cover Blue.
-        # Currently, Green was drawn first (step 1), so Blue (step 4) covers it.
-        # We need to redraw the part of Green that overlaps Blue.
-        # Intersection of Green (Top) and Blue (Right) is the Bottom-Left of Green.
-        
-        patch, pos = self.draw_partial_square(draw, *pos_green, sq_size, 'green', region='bottom-left')
-        
-        # Paste the patch onto the main image
-        img.paste(patch, pos, patch)
-
-        # Resize down to actual size with high-quality resampling (Anti-aliasing)
-        img = img.resize((canvas_size, canvas_size), resample=Image.LANCZOS)
-        return img
-
-    def create_wide_logo(self, width, height, content_ratio=0.9):
-        """
-        Creates the Wide310x150 asset. 
-        Places the square logo in the center of a wide transparent canvas.
-        """
-        img = Image.new('RGBA', (width, height), self.bg_color)
-        
-        # Determine logo size (fit within height with padding)
-        logo_size = int(height * content_ratio)
-        logo = self.create_logo(logo_size)
-        
-        # Center the logo
-        x_pos = (width - logo_size) // 2
-        y_pos = (height - logo_size) // 2
-        
-        img.paste(logo, (x_pos, y_pos), logo)
-        return img
-
-    def create_tile_logo(self, canvas_size, content_ratio):
-        """
-        Creates a tile asset: the logo centered on a transparent canvas with a margin.
-        """
-        img = Image.new('RGBA', (canvas_size, canvas_size), self.bg_color)
-        logo_size = max(1, int(canvas_size * content_ratio))
-        logo = self.create_logo(logo_size)
-        offset = (canvas_size - logo_size) // 2
-        img.paste(logo, (offset, offset), logo)
-        return img
+    def _save(self, image: Image, path):
+        width, height, pixels = image
+        self._write(path, png(width, pixels, height))
 
     # Start tiles must not be filled edge to edge; Windows asks for at least a 16% margin per
     # side. Taskbar/app-list/Store/file icons are the opposite - they are meant to be full bleed.
@@ -179,9 +70,6 @@ class DiffractorLogoGenerator:
         return self.create_wide_logo(w, h, ratio)
 
     def generate_windows_assets(self, output_dir="DiffractorAssets"):
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
         # Standard Windows App SDK / UWP Asset List
         # Format: (Filename, Width, Height, Method)
         assets = [
@@ -191,7 +79,7 @@ class DiffractorLogoGenerator:
             ("StoreLogo.scale-150.png", 75, 75, "square"),
             ("StoreLogo.scale-200.png", 100, 100, "square"),
             ("StoreLogo.scale-400.png", 200, 200, "square"),
-            
+
             # App Icon (Square44x44 - used in Start Menu lists, Taskbar)
             # Scale variants
             ("Square44x44Logo.scale-100.png", 44, 44, "square"),
@@ -343,13 +231,12 @@ class DiffractorLogoGenerator:
             ("DiffractorFile.scale-400.png", 176, 176, "square"),
         ]
 
-        print(f"Generating assets in '{output_dir}'...")
+        print(f"{'Checking' if self.check else 'Generating'} assets in '{output_dir}'...")
 
         for filename, w, h, method in assets:
             img = self.render_asset(filename, w, h, method)
             save_path = os.path.join(output_dir, filename)
-            img.save(save_path, "PNG")
-            print(f"Generated: {filename}")
+            self._save(img, save_path)
 
         # Also generate base-named assets for Windows manifest compatibility
         # Windows looks for these when the manifest references e.g., "Assets\StoreLogo.png"
@@ -363,40 +250,29 @@ class DiffractorLogoGenerator:
             ("SplashScreen.png", 620, 300, "wide"),
             ("DiffractorFile.png", 44, 44, "square"),
         ]
-        
+
         for filename, w, h, method in base_assets:
             img = self.render_asset(filename, w, h, method)
             save_path = os.path.join(output_dir, filename)
-            img.save(save_path, "PNG")
-            print(f"Generated: {filename}")
+            self._save(img, save_path)
 
-        print("Done! All assets generated.")
+        print(f"{len(assets) + len(base_assets)} Store assets; {self.failures} stale")
 
     # Windows picks the nearest frame and scales down, so 256 is included to avoid ever scaling up.
-    APP_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+    APP_ICON_SIZES = ICON_SIZES
     APP_LOGOS = (("logo.png", 60), ("logo30.png", 30), ("logo15.png", 15))
 
     def generate_desktop_assets(self, res_dir):
-        if not os.path.exists(res_dir):
-            os.makedirs(res_dir)
-
         # Each frame is drawn at its target size rather than resampled from one large bitmap,
         # so the small frames keep the supersampled edges instead of a second round of scaling.
-        frames = [self.create_logo(size) for size in self.APP_ICON_SIZES]
+        frames = {size: self.create_logo(size)[2] for size in self.APP_ICON_SIZES}
         ico_path = os.path.join(res_dir, "app.ico")
-        frames[-1].save(
-            ico_path,
-            format="ICO",
-            sizes=[(size, size) for size in self.APP_ICON_SIZES],
-            append_images=frames[:-1],
-        )
-        print(f"Generated: app.ico ({', '.join(str(s) for s in self.APP_ICON_SIZES)})")
+        self._write(ico_path, ico(frames))
 
         for filename, size in self.APP_LOGOS:
-            self.create_logo(size).save(os.path.join(res_dir, filename), "PNG")
-            print(f"Generated: {filename}")
+            self._save(self.create_logo(size), os.path.join(res_dir, filename))
 
-        print("Done! Desktop artwork generated.")
+        print(f"{1 + len(self.APP_LOGOS)} desktop resources; {self.failures} stale")
 
 
 def main():
@@ -413,14 +289,16 @@ def main():
         help="Instead of Store assets, write the desktop app.ico and logo PNGs to this "
              "resource folder (e.g. src/Res)"
     )
+    parser.add_argument("--check", action="store_true", help="compare regenerated bytes without writing files")
     args = parser.parse_args()
 
-    generator = DiffractorLogoGenerator()
+    generator = DiffractorLogoGenerator(check=args.check)
     if args.res:
         generator.generate_desktop_assets(args.res)
     else:
         generator.generate_windows_assets(args.output)
+    return int(generator.failures != 0)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Batch file rename view. Provides template-based renaming with preview,
 // sequential numbering, metadata-driven naming patterns, and grouped sidecar recovery.
@@ -28,8 +27,8 @@ static platform::file_op_result rename_recovery_failed(const core::file_path exp
                                                        platform::file_op_result result)
 {
 	result.code = platform::file_op_result_code::FAILED;
-	result.error_message = std::format("Could not restore {}; surviving path is {}. {}",
-	                                   expected_path.str(), surviving_path.str(), result.format_error());
+	result.error_message = std::format("Could not restore {}; surviving path is {}. {}", expected_path.str(),
+	                                   surviving_path.str(), result.format_error());
 	core::log(__FUNCTION__, result.error_message);
 	return result;
 }
@@ -117,7 +116,7 @@ void rename_view::run()
 	const auto results = make_run_status(shared_from_this(), processing_generation, cancel_source, review_status,
 	                                     detach);
 
-	_state.queue_async(async_queue::work, [renames, results, &index = _state.item_index]
+	_state.queue_async(async_queue::work, [renames, results, &index = _state.item_index, function = __FUNCTION__]
 	{
 		result_scope rr(results);
 		core::unique_folders scan_folders;
@@ -128,34 +127,33 @@ void rename_view::run()
 		// are held to existence only: their contents change without the folder becoming another.
 		const auto reviewed_file = [](const core::file_path path, const platform::file_attributes_t& reviewed)
 		{
-			return reviewed.exists()
-				       ? unchanged_since_analysis(path, reviewed.modified, reviewed.size)
-				       : !platform::exists(path);
+			return reviewed.exists() ? unchanged_since_analysis(path, reviewed.modified, reviewed.size)
+			                         : !platform::exists(path);
 		};
 
 		for (const auto& rename : renames)
 		{
 			if (!rename_path_exists(rename.source, rename.is_folder) ||
-				rename_path_exists(rename.destination, rename.is_folder) != rename.destination_exists)
+			    rename_path_exists(rename.destination, rename.is_folder) != rename.destination_exists)
 			{
 				rr.complete(tt.sync_analysis_changed);
 				return;
 			}
 
-			if (!rename.is_folder &&
-				(!reviewed_file(rename.source, rename.source_attributes) ||
-					!reviewed_file(rename.destination, rename.destination_attributes)))
+			if (!rename.is_folder && (!reviewed_file(rename.source, rename.source_attributes) ||
+			                          !reviewed_file(rename.destination, rename.destination_attributes)))
 			{
 				rr.complete(tt.sync_analysis_changed);
 				return;
 			}
 
-			for (auto index = 0_z; index < rename.sidecars.size(); ++index)
+			for (auto sidecar_index = 0_z; sidecar_index < rename.sidecars.size(); ++sidecar_index)
 			{
-				const auto& [source, destination] = rename.sidecars[index];
-				if (!platform::exists(source) || platform::exists(destination) != rename.sidecar_destinations_exist[index] ||
-					!reviewed_file(source, rename.sidecar_source_attributes[index]) ||
-					!reviewed_file(destination, rename.sidecar_destination_attributes[index]))
+				const auto& [source, destination] = rename.sidecars[sidecar_index];
+				if (!platform::exists(source) ||
+				    platform::exists(destination) != rename.sidecar_destinations_exist[sidecar_index] ||
+				    !reviewed_file(source, rename.sidecar_source_attributes[sidecar_index]) ||
+				    !reviewed_file(destination, rename.sidecar_destination_attributes[sidecar_index]))
 				{
 					rr.complete(tt.sync_analysis_changed);
 					return;
@@ -173,7 +171,8 @@ void rename_view::run()
 		for (const auto& rename : renames)
 		{
 			const auto source_key = rename_path_key(rename.source, rename.is_folder);
-			if (rename.noop || core::compare_path_key(source_key, rename_path_key(rename.destination, rename.is_folder)) == 0)
+			if (rename.noop ||
+			    core::compare_path_key(source_key, rename_path_key(rename.destination, rename.is_folder)) == 0)
 				continue;
 
 			vacating.emplace(source_key);
@@ -212,7 +211,7 @@ void rename_view::run()
 
 		auto free_destination = [&](const core::file_path destination, const bool is_folder)
 		{
-			const platform::file_op_result nothing_to_do{platform::file_op_result_code::OK, {}, {}};
+			platform::file_op_result nothing_to_do{platform::file_op_result_code::OK, {}, {}};
 			const auto key = rename_path_key(destination, is_folder);
 
 			if (!vacating.contains(key) || parked.contains(key)) return nothing_to_do;
@@ -244,9 +243,9 @@ void rename_view::run()
 			core::unique_folders touched_folders;
 			touched_folders.emplace(rename.source.folder());
 			touched_folders.emplace(rename.destination.folder());
-			for (auto index = 0_z; index < rename.sidecars.size(); ++index)
+			for (auto sidecar_index = 0_z; sidecar_index < rename.sidecars.size(); ++sidecar_index)
 			{
-				const auto& [source, destination] = rename.sidecars[index];
+				const auto& [source, destination] = rename.sidecars[sidecar_index];
 				touched_folders.emplace(source.folder());
 				touched_folders.emplace(destination.folder());
 				result = free_destination(destination, false);
@@ -296,10 +295,8 @@ void rename_view::run()
 		for (const auto& rename : renames)
 		{
 			if (!parked.contains(rename_path_key(rename.source, rename.is_folder)) &&
-				std::ranges::none_of(rename.sidecars, [&parked](const auto& sidecar)
-				{
-					return parked.contains(rename_path_key(sidecar.first, false));
-				}))
+			    std::ranges::none_of(rename.sidecars, [&parked](const auto& sidecar)
+			{ return parked.contains(rename_path_key(sidecar.first, false)); }))
 			{
 				continue;
 			}
@@ -312,11 +309,10 @@ void rename_view::run()
 				bool is_folder;
 			};
 			const auto primary = rename.is_folder
-				                     ? core::file_path(rename.source.folder().parent(), rename.source.folder().name())
-				                     : rename.source;
+			                         ? core::file_path(rename.source.folder().parent(), rename.source.folder().name())
+			                         : rename.source;
 			std::vector<recovery_member> group{
-				{primary, current_path(rename.source, rename.is_folder), rename.destination, rename.is_folder}
-			};
+				{primary, current_path(rename.source, rename.is_folder), rename.destination, rename.is_folder}};
 			for (const auto& [source, destination] : rename.sidecars)
 				group.push_back({source, current_path(source, false), destination, false});
 
@@ -326,8 +322,8 @@ void rename_view::run()
 				{
 					const auto& member = group[i];
 					if (core::compare_path_key(rename_path_key(member.current, member.is_folder),
-					                         rename_path_key(destinations[i], member.is_folder)) != 0 &&
-						rename_path_exists(destinations[i], member.is_folder))
+					                           rename_path_key(destinations[i], member.is_folder)) != 0 &&
+					    rename_path_exists(destinations[i], member.is_folder))
 						return false;
 				}
 				return true;
@@ -339,7 +335,8 @@ void rename_view::run()
 				for (const auto& member : group)
 					if (!rename_path_exists(member.current, member.is_folder))
 						return platform::file_op_result{platform::file_op_result_code::FAILED,
-							std::format("Missing rename recovery source {}", member.current.str())};
+						                                std::format("Missing rename recovery source {}",
+						                                            member.current.str())};
 
 				std::vector<std::pair<size_t, core::file_path>> moved;
 				for (size_t i = 0; i < group.size(); ++i)
@@ -348,7 +345,8 @@ void rename_view::run()
 					scan_folders.emplace(member.current.folder());
 					scan_folders.emplace(destinations[i].folder());
 					if (rename_path_key(member.current, member.is_folder) ==
-						rename_path_key(destinations[i], member.is_folder)) continue;
+					    rename_path_key(destinations[i], member.is_folder))
+						continue;
 
 					recovery = move_rename_path(member.current, destinations[i], true, member.is_folder);
 					if (recovery.failed())
@@ -370,6 +368,7 @@ void rename_view::run()
 			};
 
 			std::vector<core::file_path> destinations;
+			destinations.reserve(group.size());
 			for (const auto& member : group) destinations.emplace_back(member.original);
 			auto recovery = recover(destinations);
 			if (recovery.failed())
@@ -381,12 +380,13 @@ void rename_view::run()
 			auto numbered = false;
 			if (recovery.failed())
 			{
-				const auto base = rename.is_folder ? std::string(primary.name()) :
-					std::string(primary.file_name_without_extension());
+				const auto base = rename.is_folder ? std::string(primary.name())
+				                                   : std::string(primary.file_name_without_extension());
 				const auto extension = rename.is_folder ? ""sv : primary.extension();
 				for (auto suffix = 2; suffix < 10000; ++suffix)
 				{
-					destinations[0] = core::file_path(primary.folder(), std::format("{} ({})", base, suffix), extension);
+					destinations[0] = core::file_path(primary.folder(), std::format("{} ({})", base, suffix),
+					                                  extension);
 					for (size_t i = 1; i < group.size(); ++i)
 						destinations[i] = destinations[0].extension(group[i].original.extension());
 					if (!destinations_free(destinations)) continue;
@@ -402,7 +402,7 @@ void rename_view::run()
 				if (numbered)
 				{
 					const auto message = std::format("Recovered {} as {}", primary.str(), destinations[0].str());
-					core::log(__FUNCTION__, message);
+					core::log(function, message);
 					remember_recovery_message(message);
 				}
 			}
@@ -411,7 +411,7 @@ void rename_view::run()
 				for (const auto& member : group)
 				{
 					if (auto found = parked.find(rename_path_key(member.original, member.is_folder));
-						found != parked.end())
+					    found != parked.end())
 						found->second.temporary = member.current;
 					remember_recovery_error(rename_recovery_failed(member.original, member.current, recovery));
 				}
@@ -436,10 +436,8 @@ std::string rename_view::run_blocked_reason() const
 
 	// A name the file system will not accept blocks the run whatever the collision policy is, and
 	// the row alone cannot say which character is at fault.
-	const auto unusable = std::ranges::find_if(_renames, [](const rename_item& item)
-	{
-		return !item.valid && !item.collides;
-	});
+	const auto unusable = std::ranges::find_if(_renames,
+	                                           [](const rename_item& item) { return !item.valid && !item.collides; });
 	if (unusable != _renames.end()) return str_format(tt.error_invalid_path_fmt.sv(), unusable->new_name);
 
 	// Block Run refuses a collision the other policies resolve, and a destination claimed twice by
@@ -468,65 +466,62 @@ void rename_view::refresh()
 	const auto completion_status = format_plural_text(tt.rename_fmt, items);
 	const auto generation = ++_analysis_generation;
 	_analysis_valid = false;
+	_reviewing = true;
 	_status = std::string(tt.analyzing.sv());
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	                       view_invalid::command_state);
 
 	const std::weak_ptr<rename_view> weak_view = shared_from_this();
-	_state.queue_async(async_queue::work,
-	                   [&s = _state, weak_view, sources, name_template, start_seq, policy, completion_status, generation
-	                   ]
-	                   {
-		                   auto renames = calc_item_renames(sources, name_template, start_seq, policy);
-		                   s.queue_ui([weak_view, renames = std::move(renames), completion_status, generation]() mutable
-		                   {
-			                   const auto view = weak_view.lock();
-			                   if (!view || generation != view->_analysis_generation) return;
+	_state.queue_async(async_queue::work, [&s = _state, weak_view, sources, name_template, start_seq, policy,
+	                                       completion_status, generation]
+	{
+		auto renames = calc_item_renames(sources, name_template, start_seq, policy);
+		s.queue_ui([weak_view, renames = std::move(renames), completion_status, generation]() mutable
+		{
+			const auto view = weak_view.lock();
+			if (!view || generation != view->_analysis_generation) return;
 
-			                   const auto error_text_color = core::lighten(ui::style::colors.warning_background, 0.55f);
-			                   const auto rename_text_color = core::lighten(
-				                   ui::style::colors.dialog_selected_background, 0.55f);
-			                   std::vector<row_element_ptr> rows;
-			                   rows.reserve(renames.size());
-			                   int count = 0;
-			                   for (const auto& rename : renames)
-			                   {
-				                   auto row = std::make_shared<row_element>(*view);
-				                   row->_text[0] = rename.original_name;
-				                   row->_text[2] = rename.new_name;
-				                   row->_text_color[2] = rename.valid ? rename_text_color : error_text_color;
-				                   if (rename.valid && !rename.noop) row->_icons[1] = icon_index::next;
-				                   row->_order = count++;
-				                   row->_work_index = row->_order;
-				                   rows.emplace_back(std::move(row));
-			                   }
+			const auto error_text_color = core::lighten(ui::style::colors.warning_background, 0.55f);
+			const auto rename_text_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+			std::vector<row_element_ptr> rows;
+			rows.reserve(renames.size());
+			int count = 0;
+			for (const auto& rename : renames)
+			{
+				auto row = std::make_shared<row_element>(*view);
+				row->_text[0] = rename.original_name;
+				row->_text[2] = rename.new_name;
+				row->_text_color[2] = rename.valid ? rename_text_color : error_text_color;
+				if (rename.valid && !rename.noop) row->_icons[1] = icon_index::next;
+				row->_order = count++;
+				row->_work_index = row->_order;
+				rows.emplace_back(std::move(row));
+			}
 
-			                   view->_rows = std::move(rows);
-			                   view->_renames = std::move(renames);
-			                   view->_analysis_valid = true;
-			                   view->_status = completion_status;
+			view->review_rows(std::move(rows));
+			view->_renames = std::move(renames);
+			view->_analysis_valid = true;
+			view->_reviewing = false;
+			view->_status = completion_status;
 
-			                   // A dimmed Run is only honest if the view says what would make it work,
-			                   // and a resolved collision is part of what Review promises.
-			                   const auto collisions = count_rename_collisions(
-				                   view->_renames, setting.rename.collision);
-			                   if (const auto summary = format_collision_summary(setting.rename.collision, collisions);
-				                   !summary.empty())
-			                   {
-				                   view->_status += "   ";
-				                   view->_status += summary;
-			                   }
-			                   else if (const auto blocked = view->run_blocked_reason(); !blocked.empty())
-			                   {
-				                   view->_status += "   ";
-				                   view->_status += blocked;
-			                   }
+			// A dimmed Run is only honest if the view says what would make it work,
+			// and a resolved collision is part of what Review promises.
+			const auto collisions = count_rename_collisions(view->_renames, setting.rename.collision);
+			if (const auto summary = format_collision_summary(setting.rename.collision, collisions); !summary.empty())
+			{
+				view->_status += "   ";
+				view->_status += summary;
+			}
+			else if (const auto blocked = view->run_blocked_reason(); !blocked.empty())
+			{
+				view->_status += "   ";
+				view->_status += blocked;
+			}
 
-			                   view->_state.invalidate_view(
-				                   view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-				                   view_invalid::command_state);
-		                   });
-	                   });
+			view->_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
+			                             view_invalid::command_state);
+		});
+	});
 }
 
 view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
@@ -536,8 +531,7 @@ view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 	const auto& items = _state.selected_items();
 	const auto& frame = owner;
 
-	std::vector<std::string> folder_structure_completes
-	{
+	std::vector<std::string> folder_structure_completes{
 		setting.rename.name_template,
 		"file-###"s,
 		"{created}-###"s,
@@ -555,9 +549,9 @@ view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 	const auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
 	selection_thumbnails->selection_async(items.thumbs(), items.size(), _state._async);
 
-	const auto name_template = std::make_shared<ui::edit_picker_control>(
-		frame, setting.rename.name_template, folder_structure_completes,
-		[this](std::string_view) { refresh(); });
+	const auto name_template = std::make_shared<ui::edit_picker_control>(frame, setting.rename.name_template,
+	                                                                     folder_structure_completes,
+	                                                                     [this](std::string_view) { refresh(); });
 
 	const std::vector<view_element_ptr> controls = {
 		create_view_info_element(tt.rename_info),
@@ -576,7 +570,7 @@ view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 		std::make_shared<text_element>(tt.rename_template_label),
 		name_template,
 		std::make_shared<ui::edit_control>(frame, tt.rename_template_start_label, setting.rename.start_seq,
-		                                   [this](std::string_view) { refresh(); }),
+	                                       [this](std::string_view) { refresh(); }),
 		std::make_shared<divider_element>(),
 		create_collision_policy_control(frame, setting.rename.collision, [this] { refresh(); }),
 	};
@@ -590,7 +584,10 @@ view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 	result->_controls = controls;
 	result->_frame = frame;
 	// The template is the one thing this view exists to edit, so it opens ready for typing.
-	result->initial_focus = [name_template] { name_template->focus(); };
+	result->initial_focus = [name_template]
+	{
+		name_template->focus();
+	};
 
 	return result;
 }

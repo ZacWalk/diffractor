@@ -1,17 +1,19 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Localized text strings and translations. Contains all user-visible text for
 // internationalization support with PO file loading and plural text formatting.
 
 #pragma once
 
-namespace df { class item_set; }
+namespace df
+{
+	class item_set;
+}
 
 struct av_stream_info;
 struct subtitle_offer;
@@ -21,14 +23,11 @@ std::string format_audio_stream_name(const av_stream_info& stream, int audio_tra
 // A subtitle in the playback menu: its title, language and whether it is forced, or its number in the list.
 std::string format_subtitle_name(const subtitle_offer& offer, int subtitle_number);
 
-
 using text_mapping = core::hash_map<std::string_view, std::reference_wrapper<text_t>>;
 
 struct plural_text
 {
-	plural_text(const std::string_view o, const std::string_view p) : one(o), plural(p)
-	{
-	}
+	plural_text(const std::string_view o, const std::string_view p) : one(o), plural(p) {}
 
 	text_t one;
 	text_t plural;
@@ -58,11 +57,7 @@ struct po_entry
 
 	bool is_empty() const
 	{
-		return id.empty() &&
-			str_plural.empty() &&
-			str.empty() &&
-			id_plural.empty() &&
-			str_extra.empty();
+		return id.empty() && str_plural.empty() && str.empty() && id_plural.empty() && str_extra.empty();
 	}
 
 	void clear()
@@ -94,8 +89,8 @@ po_load_result load_po_report(core::file_path lang_file);
 std::vector<po_entry> load_po(core::file_path lang_file);
 
 std::string format_plural_text(const plural_text& fmt, int64_t count, int64_t of_total = 0);
-std::string format_plural_text(const plural_text& fmt, std::string_view first_name, int64_t count,
-                               core::file_size size, int64_t of_total = 0);
+std::string format_plural_text(const plural_text& fmt, std::string_view first_name, int64_t count, core::file_size size,
+                               int64_t of_total = 0);
 std::string format_plural_text(const plural_text& fmt, const df::item_set& items);
 std::string format_plural_text(const plural_text& fmt, const std::vector<std::string>& result);
 
@@ -386,6 +381,7 @@ struct app_text_t
 	text_t edit_original = "Original";
 	text_t command_edit_preview = "Preview";
 	text_t tooltip_edit_preview = "Show the final cropped image";
+	text_t edit_compare_tooltip = "Drag across the photo to compare the edit with the original.";
 	text_t command_new_version = "New version available";
 	text_t command_check_for_updates = "Check for updates";
 	text_t searching_text = "Searching...";
@@ -415,9 +411,9 @@ struct app_text_t
 	text_t not_supported_readonly = "Readonly items are not supported.";
 	text_t not_supported_readonly_metadata = "Cannot update metadata of readonly items.";
 	text_t not_supported_photo = "Items must be a photo or image.";
-	text_t not_supported_photo_edit =
-		"Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported.";
-	text_t not_supported_save_format = "Diffractor can only save or update JPG, WEBP and PNG image files.";
+	text_t not_supported_photo_edit = "Select one photo, video or sound file to edit.";
+	text_t not_supported_save_format =
+		"Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files.";
 	text_t cannot_edit_fmt =
 		"Diffractor cannot write ratings, labels or other metadata into {} files, and does not write a sidecar for them.";
 	text_t not_supported_folder = "Folders are not supported.";
@@ -551,6 +547,12 @@ struct app_text_t
 	text_t prop_name_game = "Game//property";
 	text_t prop_name_label = "Label";
 	text_t prop_name_doc_id = "Document Id";
+	text_t prop_name_color_profile = "Color profile";
+	text_t prop_name_hdr = "HDR";
+	text_t prop_name_bit_depth = "Bit depth";
+	text_t prop_name_frame_rate = "Frame rate";
+	// The files a disk, tape or archive holds.
+	text_t prop_name_contents = "Contents";
 	text_t menu_move = "Move";
 	text_t error_analysis_cancelled = "The analysis was canceled.";
 	text_t indexing = "Indexing";
@@ -567,15 +569,27 @@ struct app_text_t
 	text_t button_save = "&Save";
 	text_t button_dont_save = "&Don't Save";
 	text_t save_changes = "Save Changes";
-	text_t save_as_jpeg_fmt = "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?";
+	text_t save_as_jpeg_fmt = "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?";
 	text_t button_save_as_jpeg = "As &JPEG";
+	text_t save_as_avif_fmt =
+		"Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?";
+	text_t button_save_as_avif = "As &AVIF";
+	// An HDR photo too large to edit in HDR is never replaced by the standard-range picture its edit was made on.
+	text_t edit_hdr_copy =
+		"This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?";
+	text_t button_save_copy = "&Save a Copy";
+	// What a copy saved in a format that cannot hold all of a photo's range loses, asked before it is written.
+	text_t edit_hdr_lost_fmt = "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?";
+	text_t edit_gain_map_lost_fmt =
+		"{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?";
 	text_t changes = "Changes";
 	text_t has_changes = "{} has modifications";
 	text_t saving_file_name = "Saving {}...";
-	text_t options_backup_copy = "When overwriting a photo with irreversible changes make an original backup copy";
+	text_t options_backup_copy = "When overwriting a file with irreversible changes make an original backup copy";
 	text_t options_jpeg_quality = "JPEG save quality";
 	text_t options_webp_quality = "WEBP save quality";
 	text_t options_jxl_quality = "JPEG XL save quality";
+	text_t options_avif_quality = "AVIF save quality";
 	text_t help_tag1 = "Separate each tag with a space: Australia holiday camping.";
 	text_t help_tag2 = "Join 2 words together in one tag using quotes: \"national park\".";
 	text_t help_artist = "Separate each artist with a comma ',' or slash '/'";
@@ -653,8 +667,7 @@ struct app_text_t
 	text_t folder_noun_plural = "folders";
 	text_t rename_help_template_1 = "When specifying a template:";
 	text_t rename_help_template_2 = "Use '#' to specify position of the numeric sequence";
-	text_t rename_help_template_3 =
-		"Use metadata templates '{property-name}' to include file properties in the name.";
+	text_t rename_help_template_3 = "Use metadata templates '{property-name}' to include file properties in the name.";
 	text_t for_example = "For example:";
 	text_t rename_help_template_example_2 = "photo-###";
 	text_t rename_help_template_example_3 = "{year}-{month}-###";
@@ -667,6 +680,7 @@ struct app_text_t
 	text_t rename_label = "New name:";
 	text_t open_properties_title = "Open Properties";
 	text_t pasted_file_name = "pasted";
+	text_t dropped_file_name = "dropped";
 	text_t open_dest = "Open destination folder afterwards";
 	text_t failed_to_create_folder_fmt = "Failed to create folder: {}";
 	text_t button_rotate = "&Rotate";
@@ -755,8 +769,7 @@ struct app_text_t
 	text_t update_please_wait = "Please wait while the update is downloaded...";
 	text_t update_failed = "Update failed.";
 	text_t donate = "Donate";
-	text_t donate_help =
-		"Diffractor can be used for free. If you find it useful, please help the project by donating.";
+	text_t donate_help = "Diffractor can be used for free. If you find it useful, please help the project by donating.";
 	text_t donate_link = "Donate online.";
 	text_t documentation = "Documentation";
 	text_t releases = "Releases - Diffractor";
@@ -785,8 +798,7 @@ struct app_text_t
 	text_t keyboard_left_right_desc = "Move to the next or previous item.";
 	text_t keyboard_ctrl_left_right_desc = "Extend the current item selection and allow comparing of items.";
 	text_t keyboard_up_down_desc = "Move up or down a row of items. Pans a zoomed image.";
-	text_t keyboard_home_end_desc =
-		"Move to the first or last item. Pans a zoomed image to the left or right edge.";
+	text_t keyboard_home_end_desc = "Move to the first or last item. Pans a zoomed image to the left or right edge.";
 	text_t keyboard_zoom_keys_desc = "Zoom a displayed image in or out. Press 0 to fit it to the window.";
 	text_t about_info =
 		"Diffractor organizes photos, videos and music where they already are. You choose the folders that make up your collection; indexing them adds fast search, duplicate detection and metadata editing without moving or copying anything.";
@@ -798,6 +810,7 @@ struct app_text_t
 	text_t index_maintenance_title = "Maintenance";
 	text_t options_show_rotated = "Show photos rotated based on recorded camera orientation";
 	text_t options_show_hidden = "Show hidden files";
+	text_t options_reuse_existing_window = "Reuse existing window when opening files";
 	text_t options_confirm_del = "Confirm when deleting items. Deleted items are moved to the recycle bin.";
 	text_t options_confirm_rotate = "Confirm when rotating one item. Rotating several items is always confirmed.";
 	text_t option_slideshow_delay = "Delay before showing the next item (in seconds)";
@@ -843,8 +856,7 @@ struct app_text_t
 	text_t audio_device_default = "The system's default";
 	text_t index_maintenance_help =
 		"Defragmenting or cleaning can improve performance. The index stores a copy of metadata from your media files. It can be rebuilt from the original files.";
-	text_t index_maintenance_reset_recommended =
-		"The index is reporting errors. Restarting Diffractor is recommended.";
+	text_t index_maintenance_reset_recommended = "The index is reporting errors. Restarting Diffractor is recommended.";
 	text_t collection_options_more_folders = "One folder per line.";
 	text_t collection_options_local_folders_title = "Collection folders";
 	text_t collection_options_custom_folders_title = "Other folders";
@@ -860,7 +872,8 @@ struct app_text_t
 	text_t customise_sidebar_desc = "Define what items are shown in the sidebar.";
 	text_t customize_show_total = "Show total items pie chart";
 	text_t customize_show_history = "Show history chart";
-	text_t customize_history_start_year = "Earliest year the history navigator offers. Empty works it out from your photos.";
+	text_t customize_history_start_year =
+		"Earliest year the history navigator offers. Empty works it out from your photos.";
 	text_t customize_show_world_map = "Show world map";
 	text_t customize_show_drives = "Show drives";
 	text_t customize_show_searches = "Show favorite searches";
@@ -872,15 +885,14 @@ struct app_text_t
 	text_t email_zip = "Zip files in the email";
 	text_t email_convert_to_jpeg = "Convert all photos to JPEG";
 	text_t email_limit_dimensions =
-		"Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files.";
+		"Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG.";
 	text_t button_send = "&Send";
 	text_t email_processing_fmt = "Processing {}";
 	text_t email_connecting_to_mapi = "Connecting to MAPI...";
 	text_t email_sending = "Sending email using MAPI...";
 	text_t email_canceled = "Email draft was canceled.";
 	text_t email_failed = "Failed to send email using MAPI.";
-	text_t share_small_help =
-		"Windows lists the apps that can receive the files. Originals are unchanged.";
+	text_t share_small_help = "Windows lists the apps that can receive the files. Originals are unchanged.";
 	text_t share_zip = "Send the files as one zip file";
 	text_t button_share = "&Share";
 	text_t share_failed = "The files could not be shared.";
@@ -1165,13 +1177,34 @@ struct app_text_t
 	text_t retro_title = "Retro";
 	// The SID monitor's headings and buttons. The chip's own abbreviations - FREQ, ENV, GATE, LP, the
 	// register names - are drawn as the data sheet prints them and are not translated.
-	text_t sid_monitor = "SID monitor";
 	text_t sid_voice_fmt = "Voice {}";
 	text_t sid_output = "Output";
 	text_t sid_filter = "Filter";
 	text_t sid_volume = "Volume";
 	text_t sid_register_writes = "Register writes";
 	text_t sid_solo = "Solo";
+	text_t tracker_pattern = "Pattern";
+	text_t tracker_row = "Row";
+	text_t tracker_speed = "Speed";
+	text_t tracker_samples = "Samples";
+	text_t tracker_instruments = "Instruments";
+	text_t tracker_follow = "Follow playback";
+	// Over the bank's columns: how many notes play a sample or instrument, and the lowest and highest of them.
+	text_t tracker_notes = "Notes";
+	text_t tracker_range = "Range";
+	// Table headings no property's own name gives: an archive entry's packed size, a stream's codec and format, and
+	// how many sidecar files travel with an item.
+	text_t table_compressed = "Compressed";
+	text_t table_codec = "Codec";
+	text_t table_format = "Format";
+	text_t table_sidecars = "Sidecars";
+	// A Commodore 64 disk, tape, cartridge or program run in the media pane: a listing's row runs what it names,
+	// a file holding one program or a cartridge has a Start button, and the running machine has its way back.
+	text_t c64_run_tooltip = "Run on an emulated Commodore 64";
+	text_t c64_start = "Start";
+	text_t c64_joystick_port_fmt = "Joystick port {}";
+	text_t c64_keys_help = "Arrow keys and Space: joystick. Esc: back.";
+	text_t c64_failed = "This file could not be started.";
 	text_t other = "other";
 	text_t others = "others";
 	text_t truncated_at_one_mb = "Truncated at 1MB";
@@ -1207,28 +1240,67 @@ struct app_text_t
 	text_t editing_title = "Editing";
 	text_t edit_info =
 		"Adjust the crop, rotation, perspective, and color of a photo. Nothing is written to disk until you save.";
+	text_t edit_av_info =
+		"Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save.";
+	text_t edit_trim_title = "Trim";
+	text_t edit_trim_hint =
+		"Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown.";
+	text_t edit_trim_clear = "Keep all";
+	text_t edit_trim_key_frame =
+		"This format plays a copy from the key frame before its start, so it may begin a moment early.";
+	text_t edit_remove_sound = "Remove the sound";
+	text_t edit_turn_title = "Rotate";
+	text_t edit_rotate_left = "Rotate left";
+	text_t edit_rotate_right = "Rotate right";
+	// The changes a save would make, in the status bar: where a trim starts and ends, and how long it keeps.
+	text_t edit_status_trim_fmt = "Start {}, end {}, length {}";
+	text_t edit_status_no_sound = "Sound removed";
+	text_t edit_status_rotated_right = "Rotated right";
+	text_t edit_status_upside_down = "Upside down";
+	text_t edit_status_rotated_left = "Rotated left";
+	text_t edit_status_unchanged = "No changes. Save As writes a re-muxed copy.";
+	// The streams a copy of this file leaves out, named by their kind and codec.
+	text_t edit_not_kept_fmt = "Saving leaves out what this format cannot hold: {}.";
+	// What a copy saved as an MP4, which Save As offers beside the file's own format, would leave out besides.
+	text_t edit_not_kept_mp4_fmt = "Saved as MP4, the copy leaves out what MP4 cannot hold: {}.";
+	text_t edit_av_same_format =
+		"A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4.";
+	text_t edit_av_unavailable = "This file cannot be copied without re-encoding it.";
+	text_t edit_av_unreadable = "This file could not be read, so it cannot be copied or repaired.";
+	// What the Edit panel says of a photo whose depth or range its edit keeps, or cannot keep.
+	text_t edit_hdr = "This photo is HDR. It is shown here in standard range, and its edits keep its HDR.";
+	text_t edit_hdr_too_large =
+		"This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy.";
+	text_t edit_too_large_for_depth =
+		"This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel.";
+	// How a copy of a video or a sound file is written, among the save options.
+	text_t edit_index_first = "Write MP4s with their index at the front";
+	text_t edit_repair = "Attempt to fix damaged files (don't fail on file errors)";
+	// What a repairing copy left out of a damaged file, said once the copy is saved.
+	text_t edit_repaired = "The file is damaged. The copy keeps what could be read.";
+	text_t edit_repair_skipped_fmt = "Damaged parts left out: {}";
+	text_t edit_repair_ended_fmt = "The copy ends at {}, where the file could be read no further.";
+	text_t edit_repair_needs_backup =
+		"The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options.";
 	text_t movie_title = "Movie mixer";
 	text_t movie_info =
-		"Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save.";
+		"Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save.";
 	text_t movie_settings_title = "Movie";
 	text_t movie_clip_title = "Selected clip";
-	text_t movie_crossfade = "Crossfade between clips";
-	text_t movie_cut = "Cut between clips";
-	text_t movie_transition_length = "Transition (tenths of a second)";
-	// The same number sets the crossfade and the fades at the movie's ends, so it is labelled for
-	// whichever of the two the current settings actually use.
-	text_t movie_fade_length = "Fade (tenths of a second)";
-	text_t movie_fade_in = "Fade in from black";
-	text_t movie_fade_out = "Fade out to black";
-	text_t movie_photo_duration = "Photo duration (tenths of a second)";
-	text_t movie_clip_duration = "This photo (tenths of a second)";
-	text_t movie_use_default = "Use the movie default";
-	text_t movie_empty = "Add photos and videos to build a movie.";
+	text_t movie_screen_title = "Text screen";
+	// Labels the box that holds a text screen's words; a clip's box is labelled as its caption.
+	text_t movie_screen_text = "Text";
+	text_t movie_caption_title = "Caption";
+	// The same words label how long a photo and a text screen show.
+	text_t movie_text_length = "Shown for (seconds)";
+	// The render does not stabilize yet, and a box that promised it would be a box that lied.
+	text_t movie_stabilize = "Stabilize (not applied yet)";
+	text_t movie_empty = "Add photos, videos and audio files to build a movie.";
 	text_t movie_output_fmt = "Output {} x {} at {} fps, {} long.";
-	text_t movie_clip_fmt = "{} - clip {} of {}, starting at {}.";
+	text_t movie_clip_fmt = "{} - item {} of {}, starting at {}.";
+	text_t movie_screen_fmt = "Item {} of {}, starting at {}.";
 	text_t movie_project_files = "Movie project";
-	text_t movie_maker_files = "Windows Movie Maker project";
-	text_t movie_media_files = "Photos and videos";
+	text_t movie_media_files = "Photos, videos and audio";
 	text_t movie_open_failed_fmt = "Could not read the project {}.";
 	text_t movie_save_failed_fmt = "Could not save the project {}.";
 	text_t movie_video_files = "Video";
@@ -1247,25 +1319,31 @@ struct app_text_t
 		"This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it.";
 	text_t close_without_saving = "Close without saving";
 	text_t command_movie = "Movie mixer";
-	text_t tooltip_movie = "Assemble the selected photos and videos into one video.";
+	text_t tooltip_movie = "Assemble the selected photos, videos and audio files into one video.";
 	text_t command_movie_render = "Render";
 	text_t tooltip_movie_render = "Write the movie to a video file.";
 	text_t command_movie_relink = "Relink missing files";
 	text_t tooltip_movie_relink = "Point clips whose source file has moved at a folder you choose.";
 	text_t command_movie_add = "Add files";
+	text_t command_movie_add_text = "Add text screen";
+	text_t tooltip_movie_add_text = "Add a screen of text on black after the selected item.";
 	text_t command_movie_remove = "Remove from movie";
 	text_t command_movie_send_to_end = "Send to the end";
 	text_t command_movie_open = "Open project";
 	text_t command_movie_save = "Save project";
-	text_t command_movie_import = "Import Movie Maker project";
 	text_t convert_info =
 		"Convert the selected photos to another format and optionally limit their size. The originals are kept and new files are written to the destination folder.";
+	// What each format Convert writes keeps of an HDR photo, or one with a gain map.
+	text_t convert_jpeg_hdr =
+		"HDR photos are written in standard range, with a gain map that shows them in HDR where the display can.";
+	text_t convert_webp_hdr = "HDR photos, and those with a gain map, are written in standard range.";
+	text_t convert_gain_map_left_out = "HDR photos stay HDR, but gain maps are left out.";
+	text_t convert_keeps_hdr = "HDR photos stay HDR, and gain maps are kept.";
 	text_t edit_metadata_info =
 		"Write the same metadata values to every selected item. Only the fields you check are changed; image and video data is untouched.";
 	text_t adjust_date_info =
 		"Shift the dates of the selected items so the earliest item starts at a new date and time. Only metadata is changed; image and video data is untouched.";
-	text_t tag_info =
-		"Add or remove tags across the selected items. Tags you do not mention are left in place.";
+	text_t tag_info = "Add or remove tags across the selected items. Tags you do not mention are left in place.";
 	text_t add_folder = "Add folder";
 	text_t items_identical = "Files are identical.";
 	text_t items_not_identical = "Files are different.";
@@ -1330,7 +1408,7 @@ struct app_text_t
 	text_t sync_local = "Local folders";
 	text_t sync_info_1 =
 		"Synchronize local folders with a remote or backup folder. Analyze first to review every copy and delete before you run.";
-	text_t sync_info_2 = "c:\\photos with \\\\nas\\\\backup";
+	text_t sync_info_2 = "c:\\photos with \\\\nas\\backup";
 	text_t sync_remote = "Remote folder";
 	text_t sync_copy_remote_action = "copy remote";
 	text_t sync_copy_local_action = "copy local";
@@ -1386,8 +1464,7 @@ struct app_text_t
 	text_t button_keep_running = "Keep running";
 
 	text_t scope_unavailable_title = "Location unavailable";
-	text_t scope_unavailable_fmt =
-		"{} could not be opened. It may be disconnected, renamed or removed.";
+	text_t scope_unavailable_fmt = "{} could not be opened. It may be disconnected, renamed or removed.";
 	text_t scope_unavailable_retry = "Try again";
 	text_t scope_unavailable_parent = "Go to the parent folder";
 	text_t scope_busy_fmt = "{} is still running. Close it before browsing somewhere else.";
@@ -1413,101 +1490,68 @@ struct app_text_t
 	text_t result_failed = "Failed";
 	text_t result_skipped = "Skipped";
 	text_t result_not_run = "Not run";
-	text_t run_needs_refresh = "These are the results of a finished run. Refresh to plan again with the current settings.";
+	text_t run_needs_refresh =
+		"These are the results of a finished run. Refresh to plan again with the current settings.";
 
-	plural_text rotate_info_fmt = {
-		"Rotate {first-name}.", "Rotate {count} selected items. Originals will be overwritten."
-	};
+	plural_text rotate_info_fmt = {"Rotate {first-name}.",
+	                               "Rotate {count} selected items. Originals will be overwritten."};
 	plural_text title_folder_count_fmt = {"1 folder", "{count} folders"};
 	plural_text title_item_count_fmt = {"{count} item", "{count} items"};
 	plural_text map_items_here_fmt = {"1 item here", "{count} items here"};
 	plural_text rating_set_fmt = {"Set rating to 1 star", "Set rating to {count} stars"};
-	plural_text cannot_process_fmt = {
-		"Cannot process {first-name}.", "Cannot process {first-name} and {other} other items."
-	};
-	plural_text rename_fmt = {
-		"{first-name} will be renamed.", "{count} items will be renamed."
-	};
+	plural_text cannot_process_fmt = {"Cannot process {first-name}.",
+	                                  "Cannot process {first-name} and {other} other items."};
+	plural_text rename_fmt = {"{first-name} will be renamed.", "{count} items will be renamed."};
 	plural_text dup_count_fmt = {"1 duplicate item", "{count} duplicate items"};
 	plural_text sidecar_count_fmt = {"1 sidecar item", "{count} sidecar items"};
-	plural_text processed_x_of_x_fmt = {
-		"{count} of 1 item was processed.", "{count} of {total} items were processed."
-	};
+	plural_text processed_x_of_x_fmt = {"{count} of 1 item was processed.", "{count} of {total} items were processed."};
 	plural_text processed_fmt = {"1 item was processed.", "{count} items were processed."};
 	plural_text failed_items_fmt = {"{first-name} failed.", "{count} items failed."};
 	plural_text ignored_fmt = {"{first-name} was ignored.", "{count} items were ignored."};
 	plural_text canceled_items_fmt = {"{first-name} was canceled.", "{count} items were canceled."};
-	plural_text ignored_exist_already_fmt = {
-		"{first-name} was ignored because it exists already in the destination location.",
-		"{count} items were ignored because they exist already in the destination location."
-	};
-	plural_text ignored_previous_fmt = {
-		"{first-name} was ignored because it was previously imported.",
-		"{count} items were ignored because they were previously imported."
-	};
-	plural_text import_date_unset_fmt = {
-		"1 item was imported but its created date could not be set.",
-		"{count} items were imported but their created date could not be set."
-	};
-	plural_text delete_info_fmt = {
-		"{first-name} will be moved to the recycle bin when Windows can recycle it.",
-		"{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."
-	};
-	plural_text delete_info_permanent_fmt = {
-		"{first-name} will be permanently deleted.",
-		"{count} items ({size}) will be permanently deleted."
-	};
-	plural_text delete_many_warning_fmt = {
-		"You are about to delete {count} item.",
-		"You are about to delete {count} items."
-	};
+	plural_text ignored_exist_already_fmt =
+		{"{first-name} was ignored because it exists already in the destination location.",
+	     "{count} items were ignored because they exist already in the destination location."};
+	plural_text ignored_previous_fmt = {"{first-name} was ignored because it was previously imported.",
+	                                    "{count} items were ignored because they were previously imported."};
+	plural_text import_date_unset_fmt = {"1 item was imported but its created date could not be set.",
+	                                     "{count} items were imported but their created date could not be set."};
+	plural_text delete_info_fmt =
+		{"{first-name} will be moved to the recycle bin when Windows can recycle it.",
+	     "{count} items ({size}) will be moved to the recycle bin when Windows can recycle them."};
+	plural_text delete_info_permanent_fmt = {"{first-name} will be permanently deleted.",
+	                                         "{count} items ({size}) will be permanently deleted."};
+	plural_text delete_many_warning_fmt = {"You are about to delete {count} item.",
+	                                       "You are about to delete {count} items."};
 	text_t delete_no_recycle_warning =
 		"These items are on a network path. They will be permanently deleted and cannot be recovered from the recycle bin.";
 	plural_text copy_fmt = {"{first-name} will be copied.", "{count} items ({size}) will be copied."};
 	plural_text move_fmt = {"{first-name} will be moved.", "{count} items ({size}) will be moved."};
 	plural_text be_updated_fmt = {"{first-name} will be updated.", "{count} items will be updated."};
-	plural_text edit_metadata_fmt = {
-		"Add or overwrite specific metadata in {first-name}.",
-		"Add or overwrite specific metadata in {count} items."
-	};
-	plural_text burn_info_fmt = {
-		"{first-name} will be staged for disc burning.",
-		"{count} selected items ({size}) will be staged for disc burning."
-	};
-	plural_text convert_info_fmt = {
-		"{first-name} will be converted and copied to a folder.",
-		"{count} items will be converted and copied to a folder."
-	};
-	plural_text tag_info_fmt = {
-		"{first-name} will have tags added or removed.", "{count} items will have tags added or removed."
-	};
-	plural_text adjust_date_info_fmt = {
-		"{first-name} will have the date adjusted.", "{count} items will have the date adjusted."
-	};
-	plural_text email_info_fmt = {
-		"A desktop email draft will be opened with {first-name} attached.",
-		"A desktop email draft will be opened with {count} selected items attached."
-	};
-	plural_text share_info_fmt = {
-		"{first-name} will be offered to the app you choose.",
-		"{count} selected items will be offered to the app you choose."
-	};
-	plural_text would_overwrite_fmt = {
-		"{first-name} already exists. Do you want to replace it?",
-		"{first-name} and {other} other items already exist. Do you want to replace them?"
-	};
-	plural_text gps_overwrite_count_fmt = {
-		"{first-name} will have existing GPS position metadata overwritten.",
-		"{first-name} and {other} other items will have existing GPS position metadata overwritten."
-	};
-	plural_text movie_ignored_fmt = {
-		"1 element of the imported project was left out because Movie cannot represent it.",
-		"{count} elements of the imported project were left out because Movie cannot represent them."
-	};
-	plural_text movie_missing_fmt = {
-		"1 clip cannot find its source file.", "{count} clips cannot find their source files."
-	};
-	plural_text movie_relink_fmt = {"1 clip was relinked.", "{count} clips were relinked."};
+	plural_text edit_metadata_fmt = {"Add or overwrite specific metadata in {first-name}.",
+	                                 "Add or overwrite specific metadata in {count} items."};
+	plural_text burn_info_fmt = {"{first-name} will be staged for disc burning.",
+	                             "{count} selected items ({size}) will be staged for disc burning."};
+	plural_text convert_info_fmt = {"{first-name} will be converted and copied to a folder.",
+	                                "{count} items will be converted and copied to a folder."};
+	plural_text tag_info_fmt = {"{first-name} will have tags added or removed.",
+	                            "{count} items will have tags added or removed."};
+	plural_text adjust_date_info_fmt = {"{first-name} will have the date adjusted.",
+	                                    "{count} items will have the date adjusted."};
+	plural_text email_info_fmt = {"A desktop email draft will be opened with {first-name} attached.",
+	                              "A desktop email draft will be opened with {count} selected items attached."};
+	plural_text share_info_fmt = {"{first-name} will be offered to the app you choose.",
+	                              "{count} selected items will be offered to the app you choose."};
+	plural_text would_overwrite_fmt =
+		{"{first-name} already exists. Do you want to replace it?",
+	     "{first-name} and {other} other items already exist. Do you want to replace them?"};
+	plural_text gps_overwrite_count_fmt =
+		{"{first-name} will have existing GPS position metadata overwritten.",
+	     "{first-name} and {other} other items will have existing GPS position metadata overwritten."};
+	plural_text movie_skipped_lines_fmt = {"1 line of the project could not be read and was left out.",
+	                                       "{count} lines of the project could not be read and were left out."};
+	plural_text movie_missing_fmt = {"1 clip cannot find its source file.",
+	                                 "{count} clips cannot find their source files."};
 	// A sidebar row's tooltip: how many of the items the view shows the row's search would keep.
 	plural_text sidebar_kept_fmt = {"1 of the items shown", "{count} of the items shown"};
 };

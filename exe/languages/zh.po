@@ -100,6 +100,9 @@ msgstr "音频"
 msgid "Audio"
 msgstr "音频"
 
+msgid "AVIF - Small files, widely supported"
+msgstr "AVIF - 文件小，支持广泛"
+
 msgid "Before"
 msgstr "调整前"
 
@@ -827,8 +830,8 @@ msgstr "将所有照片转换为 JPEG"
 msgid "Failed to send email using MAPI."
 msgstr "无法使用 MAPI 发送电子邮件。"
 
-msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
-msgstr "将照片限制为最大尺寸（以像素为单位）。仅支持 JPEG 和 PNG 文件。"
+msgid "Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG."
+msgstr "将照片限制为最大尺寸（以像素为单位）。Diffractor 无法写入的格式的照片将以 JPEG 格式发送。"
 
 msgid "Processing {}"
 msgstr "正在处理 {}"
@@ -1939,6 +1942,7 @@ msgstr "向下翻页"
 
 msgid "["
 msgstr "["
+
 msgid "]"
 msgstr "]"
 
@@ -2137,8 +2141,8 @@ msgstr "不支持只读项目。"
 msgid "Cannot update metadata of readonly items."
 msgstr "无法更新只读项目的元数据。"
 
-msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
-msgstr "Diffractor 只能保存或更新 JPG、WEBP 和 PNG 图像文件。"
+msgid "Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files."
+msgstr "Diffractor 只能旋转 JPEG、PNG、WEBP、JPEG XL、HEIC 和 AVIF 图像文件。"
 
 msgid "Nothing found."
 msgstr "什么也没找到。"
@@ -2185,8 +2189,8 @@ msgstr "高级"
 msgid "Application options"
 msgstr "应用选项"
 
-msgid "When overwriting a photo with irreversible changes make an original backup copy"
-msgstr "当用不可逆转的更改覆盖照片时，请制作原始备份副本"
+msgid "When overwriting a file with irreversible changes make an original backup copy"
+msgstr "当用不可逆转的更改覆盖文件时，请制作原始备份副本"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "通过连接到互联网检查更新"
@@ -2207,6 +2211,9 @@ msgstr "WEBP 保存质量"
 msgid "JPEG XL save quality"
 msgstr "JPEG XL 保存质量"
 
+msgid "AVIF save quality"
+msgstr "AVIF 保存质量"
+
 msgid "When saving"
 msgstr "保存时"
 
@@ -2218,6 +2225,9 @@ msgstr "显示应用程序调试信息（供程序员使用）。"
 
 msgid "Show hidden files"
 msgstr "显示隐藏文件"
+
+msgid "Reuse existing window when opening files"
+msgstr "打开文件时重用现有窗口"
 
 msgid "Show photos rotated based on recorded camera orientation"
 msgstr "显示根据记录的相机方向旋转的照片"
@@ -2272,6 +2282,9 @@ msgstr "其他"
 
 msgid "pasted"
 msgstr "粘贴的"
+
+msgid "dropped"
+msgstr "拖放的"
 
 msgid "photo"
 msgstr "照片"
@@ -2633,8 +2646,8 @@ msgstr "复古"
 msgid "Saturation"
 msgstr "饱和度"
 
-msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
-msgstr "Diffractor 无法对 {} 文件进行裁剪、旋转或着色。您可以将文件另存为 JPEG 吗？"
+msgid "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?"
+msgstr "Diffractor 无法将这些更改写入 {} 文件。是否改为将照片另存为 JPEG？"
 
 msgid "Save Changes"
 msgstr "保存更改"
@@ -2804,6 +2817,9 @@ msgstr "自动拉直水平线和垂直线"
 msgid "Show the final cropped image"
 msgstr "显示最终裁剪后的图像"
 
+msgid "Drag across the photo to compare the edit with the original."
+msgstr "在照片上拖动，可将编辑结果与原图进行比较。"
+
 msgid "Horizontal perspective"
 msgstr "水平透视"
 
@@ -2858,8 +2874,8 @@ msgstr "删除远程不存在的本地文件"
 msgid "Delete remote files that do not exist locally"
 msgstr "删除本地不存在的远程文件"
 
-msgid "c:\\photos with \\\\nas\\\\backup"
-msgstr "c:\\photos 与 \\\\nas\\\\backup"
+msgid "c:\\photos with \\\\nas\\backup"
+msgstr "c:\\photos 与 \\\\nas\\backup"
 
 msgid "Local folders"
 msgstr "本地文件夹"
@@ -3554,8 +3570,8 @@ msgstr "Diffractor 无法将等级、标签或其他元数据写入 {} 文件，
 msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
 msgstr "使用分号可列出多个流派。例如：Rock; Blues"
 
-msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
-msgstr "请选择一张要编辑的照片。视频、音频、文件夹以及 Diffractor 无法保存的格式均不受支持。"
+msgid "Select one photo, video or sound file to edit."
+msgstr "请选择一张照片、一个视频或一个声音文件进行编辑。"
 
 msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
 msgstr "关闭：小于窗口的照片和视频按实际大小显示。开启：将其放大以适应窗口。大于窗口的媒体始终会缩小以适应窗口。"
@@ -3665,8 +3681,8 @@ msgstr "按原始日期排序"
 msgid "Movie mixer"
 msgstr "影片混编"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "将选定的照片和视频合成为一个视频。在下方的胶片条中添加、移除和重新排列剪辑，并裁剪选定的剪辑。预览即为渲染结果；在渲染或保存之前不会写入任何内容。"
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "将选定的照片、视频和音频文件合成为一个视频，并可在任意位置加入文字画面。在下方的胶片条中添加、移除和重新排列条目，并在此处编辑选定的条目。预览即为渲染结果；在渲染或保存之前不会写入任何内容。"
 
 msgid "Movie"
 msgstr "影片"
@@ -3674,50 +3690,38 @@ msgstr "影片"
 msgid "Selected clip"
 msgstr "选定的剪辑"
 
-msgid "Crossfade between clips"
-msgstr "剪辑之间交叉淡化"
+msgid "Text screen"
+msgstr "文字画面"
 
-msgid "Cut between clips"
-msgstr "剪辑之间硬切"
+msgid "Text"
+msgstr "文本"
 
-msgid "Transition (tenths of a second)"
-msgstr "转场（十分之一秒）"
+msgid "Caption"
+msgstr "字幕"
 
-msgid "Fade (tenths of a second)"
-msgstr "淡入淡出（十分之一秒）"
+msgid "Shown for (seconds)"
+msgstr "显示时长（秒）"
 
-msgid "Fade in from black"
-msgstr "从黑场淡入"
+msgid "Stabilize (not applied yet)"
+msgstr "防抖（尚未应用）"
 
-msgid "Fade out to black"
-msgstr "淡出到黑场"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "照片时长（十分之一秒）"
-
-msgid "This photo (tenths of a second)"
-msgstr "此照片（十分之一秒）"
-
-msgid "Use the movie default"
-msgstr "使用影片默认值"
-
-msgid "Add photos and videos to build a movie."
-msgstr "添加照片和视频以创建影片。"
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "添加照片、视频和音频文件以创建影片。"
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "输出 {} x {}，{} fps，时长 {}。"
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - 第 {}/{} 个剪辑，开始于 {}。"
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - 第 {}/{} 个条目，开始于 {}。"
+
+msgid "Item {} of {}, starting at {}."
+msgstr "第 {}/{} 个条目，开始于 {}。"
 
 msgid "Movie project"
 msgstr "影片项目"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker 项目"
-
-msgid "Photos and videos"
-msgstr "照片和视频"
+msgid "Photos, videos and audio"
+msgstr "照片、视频和音频"
 
 msgid "Could not read the project {}."
 msgstr "无法读取项目 {}。"
@@ -3725,11 +3729,17 @@ msgstr "无法读取项目 {}。"
 msgid "Could not save the project {}."
 msgstr "无法保存项目 {}。"
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "将选定的照片和视频合成为一个视频。"
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "将选定的照片、视频和音频文件合成为一个视频。"
 
 msgid "Add files"
 msgstr "添加文件"
+
+msgid "Add text screen"
+msgstr "添加文字画面"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "在选定条目之后添加一个黑底文字画面。"
 
 msgid "Remove from movie"
 msgstr "从影片中移除"
@@ -3742,9 +3752,6 @@ msgstr "打开项目"
 
 msgid "Save project"
 msgstr "保存项目"
-
-msgid "Import Movie Maker project"
-msgstr "导入 Movie Maker 项目"
 
 msgid "Video"
 msgstr "视频"
@@ -3800,24 +3807,52 @@ msgstr "重新链接缺失的文件"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "将源文件已移动的剪辑指向您选择的文件夹。"
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "导入项目中有 1 个元素因影片无法表示而被略过。"
-msgstr[1] "导入项目中有 {count} 个元素因影片无法表示而被略过。"
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "项目中有 1 行无法读取，已略过。"
+msgstr[1] "项目中有 {count} 行无法读取，已略过。"
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "有 1 个剪辑找不到其源文件。"
 msgstr[1] "有 {count} 个剪辑找不到其源文件。"
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "已重新链接 1 个剪辑。"
-msgstr[1] "已重新链接 {count} 个剪辑。"
 
+msgid "Pattern"
+msgstr "乐段"
 
-msgid "SID monitor"
-msgstr "SID 监视器"
+msgid "Row"
+msgstr "行"
+
+msgid "Speed"
+msgstr "速度"
+
+msgid "Samples"
+msgstr "采样"
+
+msgid "Instruments"
+msgstr "乐器"
+
+msgid "Follow playback"
+msgstr "跟随播放"
+
+msgid "Notes"
+msgstr "音符"
+
+msgid "Range"
+msgstr "音域"
+
+msgid "Compressed"
+msgstr "压缩后"
+
+msgid "Codec"
+msgstr "编解码器"
+
+msgid "Format"
+msgstr "格式"
+
+msgid "Sidecars"
+msgstr "附属文件"
 
 msgid "Voice {}"
 msgstr "声部 {}"
@@ -3836,6 +3871,21 @@ msgstr "寄存器写入"
 
 msgid "Solo"
 msgstr "独奏"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "在模拟的 Commodore 64 上运行"
+
+msgid "Start"
+msgstr "启动"
+
+msgid "Joystick port {}"
+msgstr "摇杆端口 {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "方向键和空格键：摇杆。Esc：返回。"
+
+msgid "This file could not be started."
+msgstr "无法启动此文件。"
 
 msgid "Same film"
 msgstr "相同电影"
@@ -3931,3 +3981,135 @@ msgid "1 of the items shown"
 msgid_plural "{count} of the items shown"
 msgstr[0] "显示的项目中有 1 项"
 msgstr[1] "显示的项目中有 {count} 项"
+
+msgid "Trim"
+msgstr "修剪"
+
+msgid "Keep all"
+msgstr "全部保留"
+
+msgid "This format plays a copy from the key frame before its start, so it may begin a moment early."
+msgstr "此格式会从起点之前的关键帧开始播放副本，因此可能会稍早开始。"
+
+msgid "Remove the sound"
+msgstr "移除音频"
+
+msgid "Rotate"
+msgstr "旋转"
+
+msgid "Saving leaves out what this format cannot hold: {}."
+msgstr "保存时将略去此格式无法容纳的内容：{}。"
+
+msgid "Saved as MP4, the copy leaves out what MP4 cannot hold: {}."
+msgstr "保存为 MP4 时，副本将略去 MP4 无法容纳的内容：{}。"
+
+msgid "A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4."
+msgstr "视频或音频文件的副本将以其源文件的格式或 MP4 格式保存。"
+
+msgid "This file cannot be copied without re-encoding it."
+msgstr "此文件必须重新编码才能复制。"
+
+msgid "Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save."
+msgstr "通过重新封装进行无损编辑：视频和音频会被复制到相同格式的新文件或 MP4 中，而不会重新编码，因此不会有任何损失。保存会重建文件的结构，因此不做更改直接“另存为”会生成重新封装的副本，可以修复其他播放器无法播放的文件。在您保存之前，不会写入磁盘。"
+
+msgid "Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown."
+msgstr "拖动进度条两端的手柄来选择要保留的部分，或按 I 和 O 将当前显示的帧设为开始或结束。"
+
+msgid "Rotate left"
+msgstr "向左旋转"
+
+msgid "Rotate right"
+msgstr "向右旋转"
+
+msgid "Start {}, end {}, length {}"
+msgstr "开始 {}，结束 {}，时长 {}"
+
+msgid "Sound removed"
+msgstr "已移除音频"
+
+msgid "Rotated right"
+msgstr "已向右旋转"
+
+msgid "Upside down"
+msgstr "上下颠倒"
+
+msgid "Rotated left"
+msgstr "已向左旋转"
+
+msgid "No changes. Save As writes a re-muxed copy."
+msgstr "没有更改。“另存为”会写入重新封装的副本。"
+
+msgid "This file could not be read, so it cannot be copied or repaired."
+msgstr "无法读取此文件，因此无法复制或修复。"
+
+msgid "Write MP4s with their index at the front"
+msgstr "将 MP4 的索引写在文件开头"
+
+msgid "Attempt to fix damaged files (don't fail on file errors)"
+msgstr "尝试修复损坏的文件（遇到文件错误时不中止）"
+
+msgid "The file is damaged. The copy keeps what could be read."
+msgstr "文件已损坏。副本保留了能够读取的部分。"
+
+msgid "Damaged parts left out: {}"
+msgstr "已略去的损坏部分：{}"
+
+msgid "The copy ends at {}, where the file could be read no further."
+msgstr "副本在 {} 处结束，此后文件无法继续读取。"
+
+msgid "The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options."
+msgstr "文件已损坏，修复后的副本缺少其中一部分。若要保留原始文件，请使用“另存为”保存副本，或在保存选项中开启备份副本。"
+
+msgid "Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?"
+msgstr "Diffractor 无法将这些更改写入 {} 文件。是否改为将照片另存为 AVIF？AVIF 能保留 JPEG 会丢失的 HDR 和色深。"
+
+msgid "As &AVIF"
+msgstr "存为 AVIF(&A)"
+
+msgid "This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?"
+msgstr "此照片为 HDR，且过大，无法以 HDR 编辑。是否将更改保存为标准动态范围（SDR）副本，并保持照片不变？"
+
+msgid "&Save a Copy"
+msgstr "保存副本(&S)"
+
+msgid "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} 文件无法容纳 HDR，因此副本将为标准动态范围（SDR）。仍要保存吗？"
+
+msgid "{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} 文件无法容纳此照片用于以 HDR 显示的增益图，因此副本将为标准动态范围（SDR）。仍要保存吗？"
+
+msgid "This photo is HDR. It is shown here in standard range, and its edits keep its HDR."
+msgstr "此照片为 HDR。此处以标准动态范围显示，编辑会保留其 HDR。"
+
+msgid "This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy."
+msgstr "此照片为 HDR，但过大，无法以 HDR 编辑。它将以标准动态范围编辑，对像素的更改将保存为副本。"
+
+msgid "This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel."
+msgstr "此照片过大，无法以完整色深编辑，因此将以每通道 8 位进行编辑和保存。"
+
+msgid "HDR photos are written in standard range, with a gain map that shows them in HDR where the display can."
+msgstr "HDR 照片以标准动态范围写入，并附带增益图，在支持的显示器上以 HDR 显示。"
+
+msgid "HDR photos, and those with a gain map, are written in standard range."
+msgstr "HDR 照片以及带有增益图的照片均以标准动态范围写入。"
+
+msgid "HDR photos stay HDR, but gain maps are left out."
+msgstr "HDR 照片仍为 HDR，但会略去增益图。"
+
+msgid "HDR photos stay HDR, and gain maps are kept."
+msgstr "HDR 照片仍为 HDR，并保留增益图。"
+
+msgid "Color profile"
+msgstr "颜色配置文件"
+
+msgid "HDR"
+msgstr "HDR"
+
+msgid "Bit depth"
+msgstr "位深度"
+
+msgid "Frame rate"
+msgstr "帧速率"
+
+msgid "Contents"
+msgstr "内容"

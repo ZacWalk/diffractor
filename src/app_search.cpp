@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The address box. Search editing, focus, Enter, Cancel and accepting a prediction, and
 // the auto-complete that ranks history, recent folders, tags, index vocabulary and scoped values
@@ -29,9 +28,9 @@
 
 #include "app_match.h"
 
-
-class search_auto_complete final : public std::enable_shared_from_this<search_auto_complete>,
-                                   public ui::complete_strategy_t
+class search_auto_complete final :
+	public std::enable_shared_from_this<search_auto_complete>,
+	public ui::complete_strategy_t
 {
 	view_state& _state;
 	// Writes accepted text back into the native address bar.
@@ -47,10 +46,7 @@ class search_auto_complete final : public std::enable_shared_from_this<search_au
 	static constexpr int64_t prediction_count_budget_us = 40'000;
 
 public:
-	std::string no_results_message() override
-	{
-		return std::string(tt.type_to_search);
-	}
+	std::string no_results_message() override { return std::string(tt.type_to_search); }
 
 	void clear() override
 	{
@@ -67,7 +63,7 @@ public:
 		max_predictions = 25u;
 	}
 
-	void initialise(std::function<void(const ui::auto_complete_results&)> complete) override
+	void initialise(std::function<void(const ui::auto_complete_results&)> /*complete*/) override
 	{
 		_selected.reset();
 		_known.clear();
@@ -118,14 +114,15 @@ public:
 	// on a share that has gone away would hold the list until the network gave up.
 	static std::optional<df::search_t> prediction_search(const ui::auto_complete_match& match)
 	{
-		if (const auto* const folder = dynamic_cast<const folder_match*>(&match); folder && core::is_empty(folder->lead))
+		if (const auto* const folder = dynamic_cast<const folder_match*>(&match);
+		    folder && core::is_empty(folder->lead))
 		{
 			df::search_t result;
 			result.add_selector(core::item_selector(folder->folder));
 			return result;
 		}
 
-		const auto result = df::search_t::parse_without_probing(match.edit_text());
+		auto result = df::search_t::parse_without_probing(match.edit_text());
 		if (result.is_empty()) return std::nullopt;
 		return result;
 	}
@@ -147,10 +144,7 @@ public:
 		std::ranges::stable_sort(found, [](const auto& a, const auto& b) { return a->weight > b->weight; });
 
 		core::hash_set<std::string, core::ihash, core::ieq> seen;
-		std::erase_if(found, [&seen](const auto& candidate)
-		{
-			return !seen.emplace(candidate->edit_text()).second;
-		});
+		std::erase_if(found, [&seen](const auto& candidate) { return !seen.emplace(candidate->edit_text()).second; });
 
 		search_counter counter(_state.item_index);
 		const auto deadline = core::now_us() + prediction_count_budget_us;
@@ -203,8 +197,8 @@ public:
 				if (part.size() > 1 && part.front() == '#') context_tags.emplace_back(part.substr(1));
 			}
 
-			for (const auto& word : _state.item_index.auto_complete_tag_companions(context_tags, scope.value,
-				     max_predictions))
+			for (const auto& word :
+			     _state.item_index.auto_complete_tag_companions(context_tags, scope.value, max_predictions))
 			{
 				found.emplace_back(vocabulary_match(word.text, scope.lead, word.highlights,
 				                                    scope_weight + std::min(word.occurrences, 20), icon_index::tag));
@@ -228,8 +222,7 @@ public:
 		{
 			// locations.md 3.4: a location scope completes from the gazetteer, and the candidate
 			// is already the canonical term so committing it runs the search it displays.
-			for (const auto& loc : _state.item_index.auto_complete_locations(scope.value, max_predictions,
-			                                                                 scope.level))
+			for (const auto& loc : _state.item_index.auto_complete_locations(scope.value, max_predictions, scope.level))
 			{
 				if (found.size() >= max_predictions) break;
 				found.emplace_back(vocabulary_match(scope.format(loc.text), scope.lead, loc.highlights,
@@ -245,8 +238,8 @@ public:
 				if (found.size() >= max_predictions) break;
 				found.emplace_back(vocabulary_match(scope.format(w.text), scope.lead, w.highlights, scope_weight,
 				                                    scope.kind == df::search_scope_kind::tag
-					                                    ? icon_index::tag
-					                                    : search_icon(scope.format(w.text))));
+				                                        ? icon_index::tag
+				                                        : search_icon(scope.format(w.text))));
 			}
 		}
 
@@ -269,250 +262,241 @@ public:
 
 		_state._async.queue_async(async_queue::auto_complete,
 		                          [this, keep_alive = shared_from_this(), known, recents, current_search_text, query,
-			                          complete, search_generation, count_token]
-		                          {
-			                          ui::auto_complete_results found;
+		                           complete, search_generation, count_token]
+		{
+			ui::auto_complete_results found;
 
-			                          const auto query_parts = core::split(query, true);
-			                          const auto trimmed_query = core::trim(query);
-			                          bool scoped = false;
+			const auto query_parts = core::split(query, true);
+			const auto trimmed_query = core::trim(query);
+			bool scoped = false;
 
-			                          if (!query.empty())
-			                          {
-				                          found.emplace_back(std::make_shared<text_match>(*this, query, std::string{},
-					                          ui::match_highlights{}, literal_query_weight,
-					                          search_icon(query)));
-			                          }
+			if (!query.empty())
+			{
+				found.emplace_back(std::make_shared<text_match>(*this, query, std::string{}, ui::match_highlights{},
+				                                                literal_query_weight, search_icon(query)));
+			}
 
-			                          if (query_parts.empty() || core::icmp(query, current_search_text) == 0)
-			                          {
-				                          // Recent searches are arbitrary query text, so only the ones that really are
-				                          // paths may be presented (and normalized) as folders.
-				                          for (const auto& recent : *recents)
-				                          {
-					                          // Only a folder that is there is presented as a folder; one that has gone
-					                          // stays a recent query. A network location is not checked: confirming
-					                          // it could wait out a dropped share with every prediction queued behind.
-					                          const auto folder_is_offered = core::is_path(recent) &&
-						                          (platform::is_network_location(core::folder_path(recent)) ||
-							                          platform::exists(core::folder_path(recent)));
+			if (query_parts.empty() || core::icmp(query, current_search_text) == 0)
+			{
+				// Recent searches are arbitrary query text, so only the ones that really are
+				// paths may be presented (and normalized) as folders.
+				for (const auto& recent : *recents)
+				{
+					// Only a folder that is there is presented as a folder; one that has gone
+					// stays a recent query. A network location is not checked: confirming
+					// it could wait out a dropped share with every prediction queued behind.
+					const auto folder_is_offered = core::is_path(recent) &&
+					                               (platform::is_network_location(core::folder_path(recent)) ||
+					                                platform::exists(core::folder_path(recent)));
 
-					                          if (folder_is_offered)
-					                          {
-						                          found.emplace_back(
-							                          std::make_shared<folder_match>(*this, core::folder_path(recent)));
-					                          }
-					                          else
-					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, recent, std::string{},
-							                          ui::match_highlights{}, 1,
-							                          search_icon(recent)));
-					                          }
-				                          }
-			                          }
-			                          else
-			                          {
-				                          scoped = add_scope_completions(query, found);
+					if (folder_is_offered)
+					{
+						found.emplace_back(std::make_shared<folder_match>(*this, core::folder_path(recent)));
+					}
+					else
+					{
+						found.emplace_back(std::make_shared<text_match>(*this, recent, std::string{},
+						                                                ui::match_highlights{}, 1,
+						                                                search_icon(recent)));
+					}
+				}
+			}
+			else
+			{
+				scoped = add_scope_completions(query, found);
 
-				                          if (found.size() < max_predictions && core::is_path(core::trim(query)))
-				                          {
-					                          core::folder_path folder(query);
+				if (found.size() < max_predictions && core::is_path(core::trim(query)))
+				{
+					core::folder_path folder(query);
 
-					                          if (!platform::exists(folder))
-					                          {
-						                          folder = folder.parent();
-					                          }
+					if (!platform::exists(folder))
+					{
+						folder = folder.parent();
+					}
 
-					                          const core::item_selector selector(folder);
+					const core::item_selector selector(folder);
 
-					                          for (const auto& fi : platform::select_folders(
-						                               selector, setting.show_hidden))
-					                          {
-						                          ui::match_highlights m;
-						                          auto path = folder.combine(fi.name);
+					for (const auto& fi : platform::select_folders(selector, setting.show_hidden))
+					{
+						ui::match_highlights m;
+						auto path = folder.combine(fi.name);
 
-						                          if (find_auto_complete(query_parts, path.text(), true, m))
-						                          {
-							                          found.emplace_back(
-								                          std::make_shared<folder_match>(*this, path, m, 10));
-						                          }
-					                          }
-				                          }
+						if (find_auto_complete(query_parts, path.text(), true, m))
+						{
+							found.emplace_back(std::make_shared<folder_match>(*this, path, m, 10));
+						}
+					}
+				}
 
-				                          if (!scoped && found.size() < max_predictions)
-				                          {
-					                          const auto found_folders = _state.item_index.auto_complete_folders(
-						                          query, 6);
+				if (!scoped && found.size() < max_predictions)
+				{
+					const auto found_folders = _state.item_index.auto_complete_folders(query, 6);
 
-					                          for (const auto& path : found_folders)
-					                          {
-						                          found.emplace_back(std::make_shared<folder_match>(
-							                          *this, path.path, path.highlights,
-							                          calc_auto_complete_word_weight(path, query, *known)));
-					                          }
-				                          }
+					for (const auto& path : found_folders)
+					{
+						found.emplace_back(
+							std::make_shared<folder_match>(*this, path.path, path.highlights,
+						                                   calc_auto_complete_word_weight(path, query, *known)));
+					}
+				}
 
-				                          if (!scoped && found.size() < max_predictions)
-				                          {
-					                          // More than are shown: counting ranks them, and drops those that lead nowhere.
-					                          const auto found_words = _state.item_index.auto_complete_words(query, 12);
+				if (!scoped && found.size() < max_predictions)
+				{
+					// More than are shown: counting ranks them, and drops those that lead nowhere.
+					const auto found_words = _state.item_index.auto_complete_words(query, 12);
 
-					                          for (const auto& word : found_words)
-					                          {
-						                          found.emplace_back(vocabulary_match(
-							                          word.text, std::string{}, word.highlights,
-							                          calc_auto_complete_word_weight(word, *known), icon_index::search));
-					                          }
-				                          }
+					for (const auto& word : found_words)
+					{
+						found.emplace_back(vocabulary_match(word.text, std::string{}, word.highlights,
+						                                    calc_auto_complete_word_weight(word, *known),
+						                                    icon_index::search));
+					}
+				}
 
-				                          if (!scoped && query_parts.size() == 1 && !trimmed_query.empty() &&
-					                          trimmed_query.front() != '#' && trimmed_query.front() != '@')
-				                          {
-					                          for (const auto& word : _state.item_index.auto_complete_words(
-						                               std::format("#{}", trimmed_query), 8))
-					                          {
-						                          found.emplace_back(vocabulary_match(
-							                          word.text, std::string{}, word.highlights,
-							                          15 + std::min(word.occurrences, 10), icon_index::tag));
-					                          }
-				                          }
+				if (!scoped && query_parts.size() == 1 && !trimmed_query.empty() && trimmed_query.front() != '#' &&
+				    trimmed_query.front() != '@')
+				{
+					for (const auto& word : _state.item_index.auto_complete_words(std::format("#{}", trimmed_query), 8))
+					{
+						found.emplace_back(vocabulary_match(word.text, std::string{}, word.highlights,
+						                                    15 + std::min(word.occurrences, 10), icon_index::tag));
+					}
 
-				                          // locations.md 3.5: a bare place name is the most guessable spelling and the most
-				                          // misleading one, because a plain text search only sees stored place fields. The
-				                          // completion offers the resolved `loc:` term instead, and a multi-word name such as
-				                          // "new york" has to be offered too or the vocabulary is unreachable for half the
-				                          // places that need it.
-				                          if (!scoped && !trimmed_query.empty() &&
-					                          trimmed_query.front() != '#' && trimmed_query.front() != '@' &&
-					                          !core::is_path(trimmed_query))
-				                          {
-					                          for (const auto& location : _state.item_index.auto_complete_locations(
-						                               trimmed_query, 5))
-					                          {
-						                          found.emplace_back(vocabulary_match(
-							                          location.text, std::string{}, location.highlights,
-							                          12 + std::min(location.occurrences, 10), icon_index::location));
-					                          }
-				                          }
-			                          }
+					// A kind is asked for by its `@` word, which a plain word beginning one is offered: "pano" offers
+					// @panorama, "hd" @hdr and "commo" @commodore. One letter would offer too many.
+					if (trimmed_query.size() >= 2)
+					{
+						for (const auto& word :
+						     _state.item_index.auto_complete_words(std::format("@{}", trimmed_query), 4))
+						{
+							if (!core::starts(word.text, "@")) continue;
+							found.emplace_back(vocabulary_match(word.text, std::string{}, word.highlights,
+							                                    15 + std::min(word.occurrences, 10),
+							                                    search_icon(word.text)));
+						}
+					}
+				}
 
-			                          if (!scoped && found.size() < max_predictions && query_parts.size() > 1)
-			                          {
-				                          const auto query_back = query_parts.back();
-				                          const auto lead_text = query.substr(0, query.rfind(query_back));
-				                          const auto found_words = _state.item_index.auto_complete_words(
-					                          query_back, max_predictions);
+				// locations.md 3.5: a bare place name is the most guessable spelling and the most
+				// misleading one, because a plain text search only sees stored place fields. The
+				// completion offers the resolved `loc:` term instead, and a multi-word name such as
+				// "new york" has to be offered too or the vocabulary is unreachable for half the
+				// places that need it.
+				if (!scoped && !trimmed_query.empty() && trimmed_query.front() != '#' && trimmed_query.front() != '@' &&
+				    !core::is_path(trimmed_query))
+				{
+					for (const auto& location : _state.item_index.auto_complete_locations(trimmed_query, 5))
+					{
+						found.emplace_back(vocabulary_match(location.text, std::string{}, location.highlights,
+						                                    12 + std::min(location.occurrences, 10),
+						                                    icon_index::location));
+					}
+				}
+			}
 
-				                          // Counted with the terms before them, so a word that finds nothing alongside them
-				                          // is not offered whatever it finds alone.
-				                          for (const auto& word : found_words)
-				                          {
-					                          found.emplace_back(vocabulary_match(
-						                          word.text, lead_text, word.highlights,
-						                          calc_auto_complete_word_weight(word, *known), icon_index::search));
-				                          }
+			if (!scoped && found.size() < max_predictions && query_parts.size() > 1)
+			{
+				const auto query_back = query_parts.back();
+				const auto lead_text = query.substr(0, query.rfind(query_back));
+				const auto found_words = _state.item_index.auto_complete_words(query_back, max_predictions);
 
-				                          if (found.size() < max_predictions)
-				                          {
-					                          const auto found_folders = _state.item_index.auto_complete_folders(
-						                          query_back, max_predictions);
+				// Counted with the terms before them, so a word that finds nothing alongside them
+				// is not offered whatever it finds alone.
+				for (const auto& word : found_words)
+				{
+					found.emplace_back(vocabulary_match(word.text, lead_text, word.highlights,
+					                                    calc_auto_complete_word_weight(word, *known),
+					                                    icon_index::search));
+				}
 
-					                          for (const auto& path : found_folders)
-					                          {
-						                          found.emplace_back(std::make_shared<folder_match>(
-							                          *this, path.path, lead_text, path.highlights,
-							                          calc_auto_complete_word_weight(path, query, *known)));
-					                          }
-				                          }
-			                          }
+				if (found.size() < max_predictions)
+				{
+					const auto found_folders = _state.item_index.auto_complete_folders(query_back, max_predictions);
 
-			                          if (found.size() < max_predictions && !query.empty() && core::is_white_space(
-				                          query.back()))
-			                          {
-				                          std::vector<std::string> context_tags;
-				                          for (const auto part : query_parts)
-				                          {
-					                          if (part.size() > 1 && part.front() == '#') context_tags.emplace_back(
-						                          part.substr(1));
-				                          }
+					for (const auto& path : found_folders)
+					{
+						found.emplace_back(
+							std::make_shared<folder_match>(*this, path.path, lead_text, path.highlights,
+						                                   calc_auto_complete_word_weight(path, query, *known)));
+					}
+				}
+			}
 
-				                          for (const auto& word : _state.item_index.auto_complete_tag_companions(
-					                               context_tags, {}, 8))
-				                          {
-					                          found.emplace_back(vocabulary_match(
-						                          word.text, query, word.highlights,
-						                          30 + std::min(word.occurrences, 20), icon_index::tag));
-				                          }
+			if (found.size() < max_predictions && !query.empty() && core::is_white_space(query.back()))
+			{
+				std::vector<std::string> context_tags;
+				for (const auto part : query_parts)
+				{
+					if (part.size() > 1 && part.front() == '#') context_tags.emplace_back(part.substr(1));
+				}
 
-				                          if (found.size() < max_predictions)
-				                          {
-					                          for (const auto& word : *known)
-					                          {
-						                          found.emplace_back(std::make_shared<text_match>(
-							                          *this, std::string(word.first), query,
-							                          ui::match_highlights{}, word.second));
-					                          }
-				                          }
+				for (const auto& word : _state.item_index.auto_complete_tag_companions(context_tags, {}, 8))
+				{
+					found.emplace_back(vocabulary_match(word.text, query, word.highlights,
+					                                    30 + std::min(word.occurrences, 20), icon_index::tag));
+				}
 
-				                          if (found.size() < max_predictions)
-				                          {
-					                          const auto found_groups = _state.item_index.auto_complete_words(
-						                          "@", max_predictions);
+				if (found.size() < max_predictions)
+				{
+					for (const auto& word : *known)
+					{
+						found.emplace_back(std::make_shared<text_match>(*this, std::string(word.first), query,
+						                                                ui::match_highlights{}, word.second));
+					}
+				}
 
-					                          for (const auto& word : found_groups)
-					                          {
-						                          found.emplace_back(vocabulary_match(
-							                          word.text, query, word.highlights,
-							                          calc_auto_complete_word_weight(word, *known), icon_index::search));
-					                          }
-				                          }
+				if (found.size() < max_predictions)
+				{
+					const auto found_groups = _state.item_index.auto_complete_words("@", max_predictions);
 
-				                          if (found.size() < max_predictions)
-				                          {
-					                          const auto found_tags = _state.item_index.auto_complete_words(
-						                          "#", max_predictions);
+					for (const auto& word : found_groups)
+					{
+						found.emplace_back(vocabulary_match(word.text, query, word.highlights,
+						                                    calc_auto_complete_word_weight(word, *known),
+						                                    icon_index::search));
+					}
+				}
 
-					                          for (const auto& word : found_tags)
-					                          {
-						                          found.emplace_back(vocabulary_match(
-							                          word.text, query, word.highlights,
-							                          calc_auto_complete_word_weight(word, *known), icon_index::tag));
-					                          }
-				                          }
-			                          }
+				if (found.size() < max_predictions)
+				{
+					const auto found_tags = _state.item_index.auto_complete_words("#", max_predictions);
 
-			                          if (found.size() < max_predictions)
-			                          {
-				                          for (const auto& k : *known)
-				                          {
-					                          if (core::starts(k.first, trimmed_query) &&
-						                          found.size() < max_predictions)
-					                          {
-						                          found.emplace_back(
-							                          std::make_shared<text_match>(
-								                          *this, std::string(k.first), std::string{}));
-					                          }
-				                          }
-			                          }
+					for (const auto& word : found_tags)
+					{
+						found.emplace_back(vocabulary_match(word.text, query, word.highlights,
+						                                    calc_auto_complete_word_weight(word, *known),
+						                                    icon_index::tag));
+					}
+				}
+			}
 
-			                          // Rank higher-weight suggestions first (literal query, contextual/scoped values, exact/recent
-			                          // matches), then by how many items each finds, preserving discovery order for equal weights.
-			                          // Recent searches keep their order: how recent a search is, is why it is offered.
-			                          const auto showing_recents = query_parts.empty() ||
-				                          core::icmp(query, current_search_text) == 0;
+			if (found.size() < max_predictions)
+			{
+				for (const auto& k : *known)
+				{
+					if (core::starts(k.first, trimmed_query) && found.size() < max_predictions)
+					{
+						found.emplace_back(std::make_shared<text_match>(*this, std::string(k.first), std::string{}));
+					}
+				}
+			}
 
-			                          if (!count_predictions(found, search_generation, !showing_recents, count_token))
-			                          {
-				                          return;
-			                          }
+			// Rank higher-weight suggestions first (literal query, contextual/scoped values, exact/recent
+			// matches), then by how many items each finds, preserving discovery order for equal weights.
+			// Recent searches keep their order: how recent a search is, is why it is offered.
+			const auto showing_recents = query_parts.empty() || core::icmp(query, current_search_text) == 0;
 
-			                          if (found.size() > max_predictions) found.resize(max_predictions);
-			                          _state.queue_ui([keep_alive, complete, found, search_generation]
-			                          {
-				                          if (keep_alive->_search_generation == search_generation) complete(found);
-			                          });
-		                          });
+			if (!count_predictions(found, search_generation, !showing_recents, count_token))
+			{
+				return;
+			}
+
+			if (found.size() > max_predictions) found.resize(max_predictions);
+			_state.queue_ui([keep_alive, complete, found, search_generation]
+			{
+				if (keep_alive->_search_generation == search_generation) complete(found);
+			});
+		});
 	}
 
 	void selected(const ui::auto_complete_match_ptr& i, const select_type st) override
@@ -541,10 +525,7 @@ public:
 		_selected = i;
 	}
 
-	ui::auto_complete_match_ptr selected() const override
-	{
-		return _selected;
-	}
+	ui::auto_complete_match_ptr selected() const override { return _selected; }
 };
 
 std::shared_ptr<ui::complete_strategy_t> make_search_auto_complete(view_state& state,
@@ -573,10 +554,8 @@ void app_frame::focus_search(const bool has_focus)
 			ui::frame_style style;
 			style.child = false;
 			style.no_focus = true;
-			style.colors = {
-				ui::style::colors.toolbar_background, ui::style::colors.view_text,
-				ui::style::colors.view_selected_background
-			};
+			style.colors = {ui::style::colors.toolbar_background, ui::style::colors.view_text,
+			                ui::style::colors.view_selected_background};
 
 			_search_predictions_frame = std::make_shared<ui::list_frame>();
 			_search_predictions_frame->init(_app_frame, _search_completes, style);
@@ -586,9 +565,7 @@ void app_frame::focus_search(const bool has_focus)
 		{
 			_search_session.begin(_search_edit->window_text());
 			_search_completes->initialise([&p = _search_predictions_frame](const ui::auto_complete_results& results)
-			{
-				p->show_results(results);
-			});
+			{ p->show_results(results); });
 			_search_predictions_frame->selected(nullptr, ui::complete_strategy_t::select_type::init);
 			_search_predictions_frame->search({});
 			_search_predictions_frame->frame()->window_bounds(calc_search_popup_bounds(), true);
@@ -620,8 +597,8 @@ void app_frame::cancel_search_edit()
 	if (outcome.select_first_completion && _search_predictions_frame)
 	{
 		const auto& results = _search_predictions_frame->results();
-		_search_predictions_frame->selected(
-			results.empty() ? nullptr : results.front(), ui::complete_strategy_t::select_type::init);
+		_search_predictions_frame->selected(results.empty() ? nullptr : results.front(),
+		                                    ui::complete_strategy_t::select_type::init);
 	}
 
 	if (outcome.close_popup) hide_search_predictions();
@@ -655,8 +632,6 @@ void app_frame::preview_search_prediction(const std::string& text)
 
 void app_frame::init_search()
 {
-	_search_completes = make_search_auto_complete(_state, [this](std::string text)
-	{
-		preview_search_prediction(std::move(text));
-	});
+	_search_completes = make_search_auto_complete(_state,
+	                                              [this](const std::string& text) { preview_search_prediction(text); });
 }

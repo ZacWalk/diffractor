@@ -1,9 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: locations.md 6.2 -- the visit derivation. Filter, tally places, cluster, name, segment,
 // score, classify, select, publish. Every step is bounded by the result count and none of it
@@ -107,9 +107,7 @@ namespace
 
 	uint32_t place_mask(const df::visit_place_tally& t)
 	{
-		return (is_empty(t.place) ? 0u : 1u) |
-			(is_empty(t.state) ? 0u : 2u) |
-			(is_empty(t.country) ? 0u : 4u);
+		return (is_empty(t.place) ? 0u : 1u) | (is_empty(t.state) ? 0u : 2u) | (is_empty(t.country) ? 0u : 4u);
 	}
 
 	resolved_name_t resolve_stored_name(const df::visit_sample& s, const location_cache& locations,
@@ -341,9 +339,7 @@ namespace
 				}
 
 				std::ranges::sort(candidates, [](const candidate& l, const candidate& r)
-				{
-					return l.count == r.count ? l.key < r.key : l.count > r.count;
-				});
+				{ return l.count == r.count ? l.key < r.key : l.count > r.count; });
 
 				std::vector<bool> covered(tallies.size(), false);
 
@@ -378,9 +374,7 @@ namespace
 
 	std::string place_label(const df::visit_place_tally& t, const location_qualification level)
 	{
-		return qualified_name(location_t{
-			0, t.place, t.state, t.country, {}, 0.0, static_cast<uint32_t>(level)
-		});
+		return qualified_name(location_t{0, t.place, t.state, t.country, {}, 0.0, static_cast<uint32_t>(level)});
 	}
 
 	// locations.md 2.1 applied to the strip: the smallest name form that still tells the chips
@@ -470,7 +464,7 @@ namespace
 	};
 }
 
-df::visit_timeline df::compute_visits(visit_request request, const location_cache& locations)
+df::visit_timeline df::compute_visits(const visit_request& request, const location_cache& locations)
 {
 	visit_timeline result;
 	const auto& samples = request.samples;
@@ -494,7 +488,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		// result is placed - and the place breakdown below, which keys on the same fields, still
 		// listed it.
 		const auto has_location = s.coordinate.is_valid() || !is_empty(s.place) || !is_empty(s.state) ||
-			!is_empty(s.country);
+		                          !is_empty(s.country);
 
 		if (s.days == 0)
 		{
@@ -534,9 +528,8 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 			{
 				const attribution_cell cell(s.coordinate);
 				const auto found = attributed.find(cell);
-				const auto resolved = found != attributed.end()
-					                      ? found->second
-					                      : locations.find_attributed(s.coordinate);
+				const auto resolved = found != attributed.end() ? found->second
+				                                                : locations.find_attributed(s.coordinate);
 
 				if (found == attributed.end() && locations.is_index_loaded())
 				{
@@ -573,9 +566,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		if (!collapse_subsumed_places(tallies, request.token, request.counters)) return result;
 
 		std::ranges::stable_sort(tallies, [](const visit_place_tally& l, const visit_place_tally& r)
-		{
-			return l.count > r.count;
-		});
+		{ return l.count > r.count; });
 
 		if (tallies.size() > visit_max_places) tallies.resize(visit_max_places);
 
@@ -727,7 +718,8 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		// breakdown's benefit and would otherwise read as day zero.
 		auto& days = cluster_days[c];
 		days.reserve(clusters[c].members.size());
-		for (const auto i : clusters[c].members) if (samples[i].days != 0) days.emplace_back(samples[i].days);
+		for (const auto i : clusters[c].members)
+			if (samples[i].days != 0) days.emplace_back(samples[i].days);
 		std::ranges::sort(days);
 
 		if (days.empty()) continue;
@@ -745,9 +737,10 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 			if (days[d] / average_days_per_month != days[d - 1] / average_days_per_month) ++cluster_months;
 		}
 
-		const auto is_era = cluster_span > visit_era_min_span_days
-			&& cluster_months / std::max(1.0, cluster_span / average_days_per_month) > visit_era_month_occupancy
-			&& cluster_share > visit_era_collection_share;
+		const auto is_era = cluster_span > visit_era_min_span_days &&
+		                    cluster_months / std::max(1.0, cluster_span / average_days_per_month) >
+		                        visit_era_month_occupancy &&
+		                    cluster_share > visit_era_collection_share;
 
 		if (is_era)
 		{
@@ -779,8 +772,7 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 
 		for (size_t i = 1; i <= days.size(); ++i)
 		{
-			const auto split = i == days.size() ||
-				static_cast<int>(days[i] - days[i - 1]) > threshold;
+			const auto split = i == days.size() || static_cast<int>(days[i] - days[i - 1]) > threshold;
 
 			if (!split) continue;
 
@@ -824,31 +816,23 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		const auto threshold = static_cast<double>(std::max(1, cand.gap_threshold));
 
 		const auto density = static_cast<double>(cand.count) / std::max(1u, cand.active_days);
-		const auto neighbour = cand.gap_before == 0
-			                       ? cand.gap_after
-			                       : (cand.gap_after == 0
-				                          ? cand.gap_before
-				                          : std::min(cand.gap_before, cand.gap_after));
+		const auto neighbour = cand.gap_before == 0 ? cand.gap_after
+		                                            : (cand.gap_after == 0 ? cand.gap_before
+		                                                                   : std::min(cand.gap_before, cand.gap_after));
 		// locations.md 6.2: normalized by 4G, not G. Segmentation already split on every gap
 		// larger than G, so normalizing by G would clamp this to 1 for every candidate.
 		const auto separation = neighbour == 0 ? 1.0 : std::min(1.0, neighbour / (threshold * 4.0));
 		const auto rarity = 1.0 - std::min(1.0, cluster_count / std::max(1.0, located));
 
-		cand.score = visit_weight_items * std::log(1.0 + cand.count)
-			+ visit_weight_span * std::log(1.0 + span_days)
-			+ visit_weight_density * density
-			+ visit_weight_separation * separation
-			+ visit_weight_rarity * rarity;
+		cand.score = visit_weight_items * std::log(1.0 + cand.count) + visit_weight_span * std::log(1.0 + span_days) +
+		             visit_weight_density * density + visit_weight_separation * separation +
+		             visit_weight_rarity * rarity;
 	}
 
 	// 7. Select. Strongest first, then back into chronological order so the strip reads as time.
-	std::ranges::stable_sort(candidates, [](const candidate_t& l, const candidate_t& r)
-	{
-		return l.score > r.score;
-	});
+	std::ranges::stable_sort(candidates, [](const candidate_t& l, const candidate_t& r) { return l.score > r.score; });
 
-	const auto min_items = std::max(visit_min_node_items,
-	                                static_cast<uint32_t>(located * visit_min_node_share));
+	const auto min_items = std::max(visit_min_node_items, static_cast<uint32_t>(located * visit_min_node_share));
 
 	std::vector<candidate_t> selected;
 	selected.reserve(visit_max_nodes);
@@ -884,18 +868,16 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		auto& prev = selected[i - 1];
 		const auto& cur = selected[i];
 
-		if (prev.cluster == cur.cluster &&
-			static_cast<int>(cur.first_days - prev.last_days) < prev.gap_threshold)
+		if (prev.cluster == cur.cluster && static_cast<int>(cur.first_days - prev.last_days) < prev.gap_threshold)
 		{
 			// Both counts include their own first day and month, so a run that starts on the day
 			// or in the month the previous one ended shares one. Adding the totals outright would
 			// report more active days than the merged span contains, and the era test in 6.2
 			// reads active_months as a fraction of the span.
 			const auto shared_day = cur.first_days == prev.last_days ? 1u : 0u;
-			const auto shared_month = cur.first_days / average_days_per_month ==
-			                          prev.last_days / average_days_per_month
-				                          ? 1u
-				                          : 0u;
+			const auto shared_month = cur.first_days / average_days_per_month == prev.last_days / average_days_per_month
+			                              ? 1u
+			                              : 0u;
 
 			prev.last_days = std::max(prev.last_days, cur.last_days);
 			prev.count += cur.count;
@@ -952,15 +934,13 @@ df::visit_timeline df::compute_visits(visit_request request, const location_cach
 		// A text-only cluster has no coordinates at all. Any radius at all would turn the click
 		// into a radius search, and the matcher requires GPS for those, so the node would promise
 		// a count and then return nothing. Zero means "match by name".
-		node.radius_km = any_gps
-			                 ? std::max(furthest,
-			                            location_distance_at_detent(location_distance_detent_at_least(furthest)))
-			                 : 0.0;
+		node.radius_km = any_gps ? std::max(furthest,
+		                                    location_distance_at_detent(location_distance_detent_at_least(furthest)))
+		                         : 0.0;
 		result.nodes.emplace_back(std::move(node));
 	}
 
-	result.publish = result.nodes.size() >= 2 &&
-		static_cast<double>(covered) >= located * visit_publish_coverage;
+	result.publish = result.nodes.size() >= 2 && static_cast<double>(covered) >= located * visit_publish_coverage;
 
 	return result;
 }
@@ -1029,10 +1009,13 @@ df::search_t df::visit_place_search(const search_t& current, const visit_place_t
 
 std::string df::visit_place_detail(const visit_place_tally& place)
 {
-	return qualified_name(location_t{
-		0, place.place, place.state, place.country, {}, 0.0,
-		static_cast<uint32_t>(location_qualification::name_region_country)
-	});
+	return qualified_name(location_t{0,
+	                                 place.place,
+	                                 place.state,
+	                                 place.country,
+	                                 {},
+	                                 0.0,
+	                                 static_cast<uint32_t>(location_qualification::name_region_country)});
 }
 
 bool df::is_visit_node_selected(const search_t& current, const visit_node& node)

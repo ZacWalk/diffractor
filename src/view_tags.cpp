@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tagging workflow view. Previews the resulting tags for every selected item and
 // applies the add/remove actions using the shared run and progress model.
@@ -87,14 +86,10 @@ std::vector<tag_action> parse_tag_actions(const std::string_view text)
 		if (tag.empty()) continue;
 
 		const auto found = std::ranges::find_if(result, [&tag](const tag_action& action)
-		{
-			return core::icmp(action.first, tag) == 0;
-		});
+		{ return core::icmp(action.first, tag) == 0; });
 
-		if (found == result.end())
-			result.emplace_back(std::move(tag), positive);
-		else
-			found->second = positive;
+		if (found == result.end()) result.emplace_back(std::move(tag), positive);
+		else found->second = positive;
 	}
 
 	return result;
@@ -104,16 +99,14 @@ static bool tag_action_needs_quote(const std::string_view tag)
 {
 	if (tag.empty()) return true;
 	if (tag.front() == '-' || tag.front() == '!') return true;
-	if (core::icmp(tag, "and") == 0 || core::icmp(tag, "or") == 0 ||
-		core::icmp(tag, tt.query_and) == 0 || core::icmp(tag, tt.query_or) == 0)
+	if (core::icmp(tag, "and") == 0 || core::icmp(tag, "or") == 0 || core::icmp(tag, tt.query_and) == 0 ||
+	    core::icmp(tag, tt.query_or) == 0)
 	{
 		return true;
 	}
 
 	return std::ranges::any_of(tag, [](const char c)
-	{
-		return core::is_separator(c) || c == '\'' || c == '"' || search_tokenizer::is_delimiter_char(c);
-	});
+	{ return core::is_separator(c) || c == '\'' || c == '"' || search_tokenizer::is_delimiter_char(c); });
 }
 
 static std::string quote_tag_action_literal(const std::string_view tag)
@@ -170,16 +163,11 @@ void tags_view::toggle_action(const std::string_view tag, const bool positive)
 	auto actions = parse_tag_actions(_tags);
 
 	const auto found = std::ranges::find_if(actions, [tag](const tag_action& action)
-	{
-		return core::icmp(action.first, tag) == 0;
-	});
+	{ return core::icmp(action.first, tag) == 0; });
 
-	if (found == actions.end())
-		actions.emplace_back(tag, positive);
-	else if (found->second == positive)
-		actions.erase(found);
-	else
-		found->second = positive;
+	if (found == actions.end()) actions.emplace_back(tag, positive);
+	else if (found->second == positive) actions.erase(found);
+	else found->second = positive;
 
 	_tags = serialize_tag_actions(actions);
 	if (_edit) _edit->text(_tags);
@@ -253,7 +241,7 @@ void tags_view::refresh()
 		if (changed) ++changes;
 	}
 
-	_rows = std::move(rows);
+	review_rows(std::move(rows));
 
 	if (_adds.empty() && _removes.empty())
 	{
@@ -269,7 +257,7 @@ void tags_view::refresh()
 	// The tag field is what decides whether the run button answers, so editing it must refresh
 	// command state; otherwise the button waits for an unrelated event such as a selection change.
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	                       view_invalid::command_state);
 }
 
 void tags_view::run()
@@ -316,10 +304,22 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 
 	_word_refresh = std::make_shared<ui::recommended_words_control::refresh_group::element_type>();
 
-	const auto add_tag = [this](const std::string_view tag) { toggle_action(tag, true); };
-	const auto remove_tag = [this](const std::string_view tag) { toggle_action(tag, false); };
-	const auto is_add = [this](const std::string_view tag) { return contains_action(tag, true); };
-	const auto is_remove = [this](const std::string_view tag) { return contains_action(tag, false); };
+	const auto add_tag = [this](const std::string_view tag)
+	{
+		toggle_action(tag, true);
+	};
+	const auto remove_tag = [this](const std::string_view tag)
+	{
+		toggle_action(tag, false);
+	};
+	const auto is_add = [this](const std::string_view tag)
+	{
+		return contains_action(tag, true);
+	};
+	const auto is_remove = [this](const std::string_view tag)
+	{
+		return contains_action(tag, false);
+	};
 
 	std::vector<view_element_ptr> controls;
 	controls.emplace_back(create_view_info_element(tt.tag_info));
@@ -328,11 +328,11 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	controls.emplace_back(std::make_shared<divider_element>());
 	controls.emplace_back(std::make_shared<text_element>(tt.tag_add_or_remove_label));
 	controls.emplace_back(_edit = std::make_shared<ui::multi_line_edit_control>(frame, _tags, 6, false,
-		[this](const std::string_view)
-		{
-			refresh();
-			refresh_words();
-		}));
+	                                                                            [this](const std::string_view)
+	{
+		refresh();
+		refresh_words();
+	}));
 	controls.emplace_back(std::make_shared<text_element>(tt.help_tag1));
 	controls.emplace_back(std::make_shared<text_element>(tt.help_tag2));
 	controls.emplace_back(std::make_shared<text_element>(tt.help_tag_add_remove));
@@ -354,11 +354,10 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	if (!_favorite_words.empty())
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(std::make_shared<text_element>(
-			tt.tags_favorite_label, render::font_face::title, render::text_style::multiline,
-			view_element_options{}));
-		controls.emplace_back(std::make_shared<ui::recommended_words_control>(
-			frame, _favorite_words, add_tag, is_add, _word_refresh));
+		controls.emplace_back(std::make_shared<text_element>(tt.tags_favorite_label, render::font_face::title,
+		                                                     render::text_style::multiline, view_element_options{}));
+		controls.emplace_back(
+			std::make_shared<ui::recommended_words_control>(frame, _favorite_words, add_tag, is_add, _word_refresh));
 	}
 
 	controls.emplace_back(std::make_shared<link_element>(tt.configure_favorite_tags, commands::favorite_tags));
@@ -382,11 +381,10 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	if (!_common_words.empty())
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(std::make_shared<text_element>(
-			tt.tags_common_label, render::font_face::title, render::text_style::multiline,
-			view_element_options{}));
-		controls.emplace_back(std::make_shared<ui::recommended_words_control>(
-			frame, _common_words, add_tag, is_add, _word_refresh));
+		controls.emplace_back(std::make_shared<text_element>(tt.tags_common_label, render::font_face::title,
+		                                                     render::text_style::multiline, view_element_options{}));
+		controls.emplace_back(
+			std::make_shared<ui::recommended_words_control>(frame, _common_words, add_tag, is_add, _word_refresh));
 	}
 
 	_existing_counts = _state.selected_tags();
@@ -395,11 +393,10 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	if (!_existing_words.empty())
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(std::make_shared<text_element>(
-			tt.tags_remove_label, render::font_face::title, render::text_style::multiline,
-			view_element_options{}));
-		controls.emplace_back(std::make_shared<ui::recommended_words_control>(
-			frame, _existing_words, remove_tag, is_remove, _word_refresh));
+		controls.emplace_back(std::make_shared<text_element>(tt.tags_remove_label, render::font_face::title,
+		                                                     render::text_style::multiline, view_element_options{}));
+		controls.emplace_back(std::make_shared<ui::recommended_words_control>(frame, _existing_words, remove_tag,
+		                                                                      is_remove, _word_refresh));
 	}
 
 	for (const auto& c : controls)
@@ -411,6 +408,9 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	result->_controls = controls;
 	result->_frame = frame;
 	// The view exists to have tags typed into it, so it opens ready for typing.
-	result->initial_focus = [edit = _edit] { edit->focus(); };
+	result->initial_focus = [edit = _edit]
+	{
+		edit->focus();
+	};
 	return result;
 }

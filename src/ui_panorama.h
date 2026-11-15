@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The geometry of looking around inside an equirectangular panorama - the camera the user
 // turns, the field-of-view ladder that replaces the zoom ladder while projected, and where a
@@ -78,8 +77,8 @@ inline double panorama_center_latitude(const prop::panorama_geometry& g) noexcep
 // The source texel a direction lands on, in the file's own pixels, or false when the direction
 // points at sphere the file does not hold. Longitude is wrapped into the crop first, so a full
 // circle has no seam to fall through.
-inline bool panorama_texel_at(const prop::panorama_geometry& g, double longitude, const double latitude,
-                              double& u, double& v) noexcept
+inline bool panorama_texel_at(const prop::panorama_geometry& g, double longitude, const double latitude, double& u,
+                              double& v) noexcept
 {
 	const auto left = panorama_longitude_at_left(g);
 
@@ -105,9 +104,8 @@ inline constexpr double panorama_max_fov_deg = 120.0;
 // Coarse at the wide end where a step has to be large to be felt, fine at the narrow end where it
 // does not. The widest stop is the floor: stepping out from it leaves the projection entirely,
 // which is the same shape as zoom.md L2 stepping out to Fit.
-inline constexpr std::array panorama_fov_ladder_deg{
-	120.0, 100.0, 85.0, 70.0, 60.0, 50.0, 40.0, 32.0, 25.0, 20.0, 15.0, 12.0, 9.0
-};
+inline constexpr std::array panorama_fov_ladder_deg{120.0, 100.0, 85.0, 70.0, 60.0, 50.0, 40.0,
+                                                    32.0,  25.0,  20.0, 15.0, 12.0, 9.0};
 
 class panorama_view
 {
@@ -122,10 +120,7 @@ public:
 	double pitch() const noexcept { return _pitch; }
 	double fov() const noexcept { return _fov; }
 
-	double fov_degrees() const noexcept
-	{
-		return _fov * 180.0 / M_PI;
-	}
+	double fov_degrees() const noexcept { return _fov * 180.0 / M_PI; }
 
 	// Looking straight up and straight down are both reachable, and neither rolls past. Yaw is left
 	// unwrapped in the setter and normalised here, so a long drag does not accumulate a value that
@@ -191,8 +186,7 @@ public:
 
 		const auto radians_per_pixel = from._fov / viewport.Width;
 		_fov = from._fov;
-		look_at(from._yaw - client_delta.X * radians_per_pixel,
-		        from._pitch + client_delta.Y * radians_per_pixel);
+		look_at(from._yaw - client_delta.X * radians_per_pixel, from._pitch + client_delta.Y * radians_per_pixel);
 	}
 
 	// Positional traversal, for a held button: the viewport is a map of the whole file and the
@@ -229,8 +223,8 @@ public:
 	// The direction a viewport pixel looks along, as a unit vector. Square pixels: both axes are
 	// scaled by the same half-width, so the vertical field follows the viewport's shape instead of
 	// stretching to fill it.
-	void direction(const double x, const double y, const sized viewport, const camera_basis_t& camera,
-	               double& out_x, double& out_y, double& out_z) const noexcept
+	void direction(const double x, const double y, const sized viewport, const camera_basis_t& camera, double& out_x,
+	               double& out_y, double& out_z) const noexcept
 	{
 		const auto half = viewport.Width / 2.0;
 		const auto cam_x = (x - half) / half * camera.tan_half_fov;
@@ -279,13 +273,14 @@ public:
 		// The vertical field follows from the horizontal one through the tangent, not linearly: the
 		// camera is a pinhole, so a box computed as fov * height / width is short of what is really on
 		// screen, by a quarter at the widest stop.
-		const auto vertical_fov = 2.0 * std::atan(std::tan(_fov / 2.0) * viewport.Height /
-			std::max(1.0, viewport.Width));
+		const auto vertical_fov = 2.0 *
+		                          std::atan(std::tan(_fov / 2.0) * viewport.Height / std::max(1.0, viewport.Width));
 		const auto longitude_span = std::max(1e-9, panorama_longitude_span(geometry));
 		const auto latitude_span = std::max(1e-9, panorama_latitude_span(geometry));
 
 		const auto center_x = (std::remainder(_yaw - panorama_center_longitude(geometry), 2.0 * M_PI) +
-			longitude_span / 2.0) / longitude_span;
+		                       longitude_span / 2.0) /
+		                      longitude_span;
 		const auto top = std::clamp(_pitch + vertical_fov / 2.0, -M_PI / 2.0, M_PI / 2.0);
 		const auto bottom = std::clamp(_pitch - vertical_fov / 2.0, -M_PI / 2.0, M_PI / 2.0);
 		const auto top_y = (panorama_latitude_at_top(geometry) - top) / latitude_span;
@@ -312,7 +307,7 @@ struct panorama_request
 // at the left of the file lands at u 0, and one a full turn later at `full width / cropped width`,
 // so anything at or past 1 is sphere the file does not hold.
 inline render::panorama_params panorama_shader_params(const prop::panorama_geometry& geometry,
-                                                  const panorama_view& view, const sized viewport) noexcept
+                                                      const panorama_view& view, const sized viewport) noexcept
 {
 	render::panorama_params result;
 
@@ -326,12 +321,12 @@ inline render::panorama_params panorama_shader_params(const prop::panorama_geome
 	// leave the pixel or two a writer rounded away uncovered, and the join - the one place the
 	// tolerance exists to make seamless - would show a hairline of background.
 	result.u_scale = panorama_wraps_longitude(geometry)
-		                 ? 1.0f
-		                 : static_cast<float>(geometry.full_width /
-		                 	static_cast<double>(std::max(1, geometry.cropped_width)));
+	                     ? 1.0f
+	                     : static_cast<float>(geometry.full_width /
+	                                          static_cast<double>(std::max(1, geometry.cropped_width)));
 	result.latitude_top = static_cast<float>(panorama_latitude_at_top(geometry));
 	result.v_scale = static_cast<float>(geometry.full_height /
-		static_cast<double>(std::max(1, geometry.cropped_height)));
+	                                    static_cast<double>(std::max(1, geometry.cropped_height)));
 
 	result.wraps = panorama_wraps_longitude(geometry);
 

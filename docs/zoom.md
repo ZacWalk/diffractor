@@ -1,8 +1,8 @@
 # Zoom
 
 This document owns current image magnification, panning, comparison linking, panorama projection,
-input, and navigator behavior. [Rendering](rendering.md) owns backend implementation and
-[File I/O](file-io.md) owns the decoded representations zoom consumes.
+input, and navigator behavior. The draw backends are libdesktop's, [Rendering](rendering.md) owns
+image budgets, and [File I/O](file-io.md) owns the decoded representations zoom consumes.
 
 ## Model
 
@@ -40,7 +40,9 @@ fullscreen commands; commands whose target or effect is not visible are suppress
    interval; above 3x it also uses point sampling. Magnified stand-ins stay smooth until source
    pixels arrive. A video frame is never pre-scaled, so a picture drawn below three quarters of its
    decoded size on both axes is sampled bilinearly, and the choice is made from the fitted picture
-   rather than the pane it sits in.
+   rather than the pane it sits in. A picture or frame the GPU draws at less than half its size is
+   averaged over each pixel's footprint rather than read at one point, which would skip pixels and
+   shimmer as it moves; one the decode thread reduces is averaged by swscale's area filter.
 
 ## Rendering Tiers
 

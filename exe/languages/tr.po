@@ -100,6 +100,9 @@ msgstr "ses"
 msgid "Audio"
 msgstr "Ses"
 
+msgid "AVIF - Small files, widely supported"
+msgstr "AVIF - Küçük dosyalar, geniş destek"
+
 msgid "Before"
 msgstr "Önce"
 
@@ -827,8 +830,8 @@ msgstr "Tüm fotoğrafları JPEG biçimine dönüştür"
 msgid "Failed to send email using MAPI."
 msgstr "MAPI kullanılarak e-posta gönderilemedi."
 
-msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
-msgstr "Fotoğrafları maksimum boyutla (piksel cinsinden) sınırlayın. Yalnızca JPEG ve PNG dosyaları için desteklenir."
+msgid "Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG."
+msgstr "Fotoğrafları maksimum boyutla (piksel cinsinden) sınırlayın. Diffractor'ın yazmadığı bir biçimdeki fotoğraf JPEG olarak gönderilir."
 
 msgid "Processing {}"
 msgstr "{} işleniyor"
@@ -1939,6 +1942,7 @@ msgstr "sayfa aşağı"
 
 msgid "["
 msgstr "["
+
 msgid "]"
 msgstr "]"
 
@@ -2137,8 +2141,8 @@ msgstr "Salt okunur öğeler desteklenmez."
 msgid "Cannot update metadata of readonly items."
 msgstr "Salt okunur öğelerin meta verileri güncellenemiyor."
 
-msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
-msgstr "Diffractor yalnızca JPG, WEBP ve PNG görüntü dosyalarını kaydedebilir veya güncelleyebilir."
+msgid "Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files."
+msgstr "Diffractor yalnızca JPEG, PNG, WEBP, JPEG XL, HEIC ve AVIF görüntü dosyalarını döndürebilir."
 
 msgid "Nothing found."
 msgstr "Hiçbir şey bulunamadı."
@@ -2185,8 +2189,8 @@ msgstr "Gelişmiş"
 msgid "Application options"
 msgstr "Uygulama seçenekleri"
 
-msgid "When overwriting a photo with irreversible changes make an original backup copy"
-msgstr "Geri dönüşü olmayan değişiklikler içeren bir fotoğrafın üzerine yazarken orijinal bir yedek kopya oluşturun"
+msgid "When overwriting a file with irreversible changes make an original backup copy"
+msgstr "Geri dönüşü olmayan değişiklikler içeren bir dosyanın üzerine yazarken orijinal bir yedek kopya oluşturun"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "İnternete bağlanarak güncellemeleri kontrol edin"
@@ -2209,6 +2213,9 @@ msgstr "WEBP kayıt kalitesi"
 msgid "JPEG XL save quality"
 msgstr "JPEG XL kayıt kalitesi"
 
+msgid "AVIF save quality"
+msgstr "AVIF kayıt kalitesi"
+
 msgid "When saving"
 msgstr "Kaydederken"
 
@@ -2220,6 +2227,9 @@ msgstr "Uygulama hata ayıklama bilgilerini göster (programcılar için)."
 
 msgid "Show hidden files"
 msgstr "Gizli dosyaları göster"
+
+msgid "Reuse existing window when opening files"
+msgstr "Dosyaları açarken mevcut pencereyi yeniden kullan"
 
 msgid "Show photos rotated based on recorded camera orientation"
 msgstr "Kaydedilen kamera yönüne göre döndürülmüş fotoğrafları göster"
@@ -2274,6 +2284,9 @@ msgstr "diğerleri"
 
 msgid "pasted"
 msgstr "yapıştırıldı"
+
+msgid "dropped"
+msgstr "bırakıldı"
 
 msgid "photo"
 msgstr "fotoğraf"
@@ -2635,8 +2648,8 @@ msgstr "retro"
 msgid "Saturation"
 msgstr "Doygunluk"
 
-msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
-msgstr "Diffractor {} dosyalarını kırpamaz, döndüremez veya renklendiremez. Dosyayı JPEG olarak kaydedebilirsiniz?"
+msgid "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?"
+msgstr "Diffractor bu değişiklikleri {} dosyalarına yazamaz. Fotoğraf bunun yerine JPEG olarak kaydedilsin mi?"
 
 msgid "Save Changes"
 msgstr "Değişiklikleri Kaydet"
@@ -2806,6 +2819,9 @@ msgstr "Yatay ve dikey çizgileri otomatik olarak düzelt"
 msgid "Show the final cropped image"
 msgstr "Son kırpılmış görüntüyü göster"
 
+msgid "Drag across the photo to compare the edit with the original."
+msgstr "Düzenlemeyi orijinalle karşılaştırmak için fotoğrafın üzerinde sürükleyin."
+
 msgid "Horizontal perspective"
 msgstr "Yatay perspektif"
 
@@ -2860,8 +2876,8 @@ msgstr "Uzaktan var olmayan yerel dosyaları silin"
 msgid "Delete remote files that do not exist locally"
 msgstr "Yerel olarak bulunmayan uzak dosyaları silin"
 
-msgid "c:\\photos with \\\\nas\\\\backup"
-msgstr "c:\\photos ile \\\\nas\\\\backup"
+msgid "c:\\photos with \\\\nas\\backup"
+msgstr "c:\\photos ile \\\\nas\\backup"
 
 msgid "Local folders"
 msgstr "Yerel klasörler"
@@ -3556,8 +3572,8 @@ msgstr "Diffractor, {} dosyalarına derecelendirme, etiket veya diğer meta veri
 msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
 msgstr "Birden fazla tür belirtmek için noktalı virgül kullanın. Örneğin: Rock; Blues"
 
-msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
-msgstr "Düzenlemek için bir fotoğraf seçin. Video, ses, klasörler ve Diffractor'ın kaydedemediği biçimler desteklenmez."
+msgid "Select one photo, video or sound file to edit."
+msgstr "Düzenlemek için bir fotoğraf, video veya ses dosyası seçin."
 
 msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
 msgstr "Kapalı: pencereden küçük fotoğraflar ve videolar gerçek boyutunda gösterilir. Açık: pencereye sığacak şekilde büyütülür. Pencereden büyük ortamlar her zaman sığacak şekilde küçültülür."
@@ -3667,8 +3683,8 @@ msgstr "Orijinal tarihe göre sırala"
 msgid "Movie mixer"
 msgstr "Film karıştırıcı"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Seçili fotoğrafları ve videoları tek bir videoda birleştirin. Aşağıdaki şeritte klip ekleyin, kaldırın ve sıralarını değiştirin, seçili klibi kırpın. Önizleme, işlenecek olanın aynısıdır; siz işleyene veya kaydedene kadar hiçbir şey yazılmaz."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Seçili fotoğrafları, videoları ve ses dosyalarını, istediğiniz yerlere metin ekranları koyarak tek bir videoda birleştirin. Aşağıdaki şeritte öge ekleyin, kaldırın ve sıralarını değiştirin, seçili ögeyi burada düzenleyin. Önizleme, işlenecek olanın aynısıdır; siz işleyene veya kaydedene kadar hiçbir şey yazılmaz."
 
 msgid "Movie"
 msgstr "Film"
@@ -3676,50 +3692,38 @@ msgstr "Film"
 msgid "Selected clip"
 msgstr "Seçili klip"
 
-msgid "Crossfade between clips"
-msgstr "Klipler arasında çapraz geçiş"
+msgid "Text screen"
+msgstr "Metin ekranı"
 
-msgid "Cut between clips"
-msgstr "Klipler arasında kesme"
+msgid "Text"
+msgstr "Metin"
 
-msgid "Transition (tenths of a second)"
-msgstr "Geçiş (saniyenin onda biri)"
+msgid "Caption"
+msgstr "Altyazı"
 
-msgid "Fade (tenths of a second)"
-msgstr "Açılma/kararma (saniyenin onda biri)"
+msgid "Shown for (seconds)"
+msgstr "Gösterim süresi (saniye)"
 
-msgid "Fade in from black"
-msgstr "Siyahtan aç"
+msgid "Stabilize (not applied yet)"
+msgstr "Sabitle (henüz uygulanmıyor)"
 
-msgid "Fade out to black"
-msgstr "Siyaha karart"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Fotoğraf süresi (saniyenin onda biri)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Bu fotoğraf (saniyenin onda biri)"
-
-msgid "Use the movie default"
-msgstr "Film varsayılanını kullan"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Film oluşturmak için fotoğraf ve video ekleyin."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Film oluşturmak için fotoğraf, video ve ses dosyası ekleyin."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Çıktı {} x {}, {} fps, süre {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - klip {}/{}, başlangıç {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - öge {}/{}, başlangıç {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Öge {}/{}, başlangıç {}."
 
 msgid "Movie project"
 msgstr "Film projesi"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker projesi"
-
-msgid "Photos and videos"
-msgstr "Fotoğraflar ve videolar"
+msgid "Photos, videos and audio"
+msgstr "Fotoğraflar, videolar ve ses"
 
 msgid "Could not read the project {}."
 msgstr "{} projesi okunamadı."
@@ -3727,11 +3731,17 @@ msgstr "{} projesi okunamadı."
 msgid "Could not save the project {}."
 msgstr "{} projesi kaydedilemedi."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Seçili fotoğrafları ve videoları tek bir videoda birleştirir."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Seçili fotoğrafları, videoları ve ses dosyalarını tek bir videoda birleştirir."
 
 msgid "Add files"
 msgstr "Dosya ekle"
+
+msgid "Add text screen"
+msgstr "Metin ekranı ekle"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Seçili ögeden sonra siyah üzerine metin içeren bir ekran ekler."
 
 msgid "Remove from movie"
 msgstr "Filmden kaldır"
@@ -3744,9 +3754,6 @@ msgstr "Projeyi aç"
 
 msgid "Save project"
 msgstr "Projeyi kaydet"
-
-msgid "Import Movie Maker project"
-msgstr "Movie Maker projesini içe aktar"
 
 msgid "Video"
 msgstr "Video"
@@ -3802,24 +3809,52 @@ msgstr "Eksik dosyaları yeniden bağla"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Kaynak dosyası taşınmış klipleri seçtiğiniz bir klasöre yönlendirir."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "İçe aktarılan projenin 1 ögesi, Film onu temsil edemediği için dışarıda bırakıldı."
-msgstr[1] "İçe aktarılan projenin {count} ögesi, Film onları temsil edemediği için dışarıda bırakıldı."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "Projenin 1 satırı okunamadı ve dışarıda bırakıldı."
+msgstr[1] "Projenin {count} satırı okunamadı ve dışarıda bırakıldı."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 klip kaynak dosyasını bulamıyor."
 msgstr[1] "{count} klip kaynak dosyalarını bulamıyor."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 klip yeniden bağlandı."
-msgstr[1] "{count} klip yeniden bağlandı."
 
+msgid "Pattern"
+msgstr "Desen"
 
-msgid "SID monitor"
-msgstr "SID izleyici"
+msgid "Row"
+msgstr "Satır"
+
+msgid "Speed"
+msgstr "Hız"
+
+msgid "Samples"
+msgstr "Örnekler"
+
+msgid "Instruments"
+msgstr "Enstrümanlar"
+
+msgid "Follow playback"
+msgstr "Oynatmayı takip et"
+
+msgid "Notes"
+msgstr "Notalar"
+
+msgid "Range"
+msgstr "Ses aralığı"
+
+msgid "Compressed"
+msgstr "Sıkıştırılmış"
+
+msgid "Codec"
+msgstr "Codec"
+
+msgid "Format"
+msgstr "Format"
+
+msgid "Sidecars"
+msgstr "Yan dosyalar"
 
 msgid "Voice {}"
 msgstr "Ses {}"
@@ -3838,6 +3873,21 @@ msgstr "Yazmaç yazmaları"
 
 msgid "Solo"
 msgstr "Solo"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Öykünülen bir Commodore 64'te çalıştır"
+
+msgid "Start"
+msgstr "Başlat"
+
+msgid "Joystick port {}"
+msgstr "Joystick bağlantı noktası {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Ok tuşları ve Boşluk: joystick. Esc: geri."
+
+msgid "This file could not be started."
+msgstr "Bu dosya başlatılamadı."
 
 msgid "Same film"
 msgstr "Aynı film"
@@ -3933,3 +3983,135 @@ msgid "1 of the items shown"
 msgid_plural "{count} of the items shown"
 msgstr[0] "Gösterilen öğelerden 1"
 msgstr[1] "Gösterilen öğelerden {count}"
+
+msgid "Trim"
+msgstr "Kırpma"
+
+msgid "Keep all"
+msgstr "Tümünü koru"
+
+msgid "This format plays a copy from the key frame before its start, so it may begin a moment early."
+msgstr "Bu biçim, bir kopyayı başlangıcından önceki anahtar kareden oynatır; bu nedenle biraz erken başlayabilir."
+
+msgid "Remove the sound"
+msgstr "Sesi kaldır"
+
+msgid "Rotate"
+msgstr "Döndürme"
+
+msgid "Saving leaves out what this format cannot hold: {}."
+msgstr "Kaydetme, bu biçimin tutamayacağı öğeleri dışarıda bırakır: {}."
+
+msgid "Saved as MP4, the copy leaves out what MP4 cannot hold: {}."
+msgstr "MP4 olarak kaydedilen kopya, MP4'ün tutamayacağı öğeleri dışarıda bırakır: {}."
+
+msgid "A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4."
+msgstr "Bir videonun veya ses dosyasının kopyası, oluşturulduğu dosyanın biçiminde ya da MP4 olarak kaydedilir."
+
+msgid "This file cannot be copied without re-encoding it."
+msgstr "Bu dosya yeniden kodlanmadan kopyalanamaz."
+
+msgid "Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save."
+msgstr "Yeniden çoğullama ile kayıpsız düzenleme: video ve ses, yeniden kodlanmadan aynı biçimde yeni bir dosyaya veya bir MP4'e kopyalanır, böylece hiçbir şey kaybolmaz. Kaydetme dosyanın yapısını yeniden oluşturur; bu nedenle değişiklik yapmadan “Farklı kaydet”, diğer oynatıcıların oynatmadığı bir dosyayı onarabilen, yeniden çoğullanmış bir kopya oluşturur. Siz kaydedene kadar diske hiçbir şey yazılmaz."
+
+msgid "Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown."
+msgstr "Neyin korunacağını seçmek için oynatma çubuğunun iki ucundaki tutamaçları sürükleyin veya gösterilen karede başlamak ya da bitirmek için I ve O tuşlarına basın."
+
+msgid "Rotate left"
+msgstr "Sola döndür"
+
+msgid "Rotate right"
+msgstr "Sağa döndür"
+
+msgid "Start {}, end {}, length {}"
+msgstr "Başlangıç {}, bitiş {}, uzunluk {}"
+
+msgid "Sound removed"
+msgstr "Ses kaldırıldı"
+
+msgid "Rotated right"
+msgstr "Sağa döndürüldü"
+
+msgid "Upside down"
+msgstr "Baş aşağı"
+
+msgid "Rotated left"
+msgstr "Sola döndürüldü"
+
+msgid "No changes. Save As writes a re-muxed copy."
+msgstr "Değişiklik yok. “Farklı kaydet” yeniden çoğullanmış bir kopya yazar."
+
+msgid "This file could not be read, so it cannot be copied or repaired."
+msgstr "Bu dosya okunamadı; bu nedenle kopyalanamaz veya onarılamaz."
+
+msgid "Write MP4s with their index at the front"
+msgstr "MP4'leri dizinleri başta olacak şekilde yaz"
+
+msgid "Attempt to fix damaged files (don't fail on file errors)"
+msgstr "Hasarlı dosyaları onarmayı dene (dosya hatalarında durma)"
+
+msgid "The file is damaged. The copy keeps what could be read."
+msgstr "Dosya hasarlı. Kopya, okunabilen kısmı korur."
+
+msgid "Damaged parts left out: {}"
+msgstr "Dışarıda bırakılan hasarlı bölümler: {}"
+
+msgid "The copy ends at {}, where the file could be read no further."
+msgstr "Kopya, dosyanın daha fazla okunamadığı {} noktasında biter."
+
+msgid "The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options."
+msgstr "Dosya hasarlı ve onarılan kopya dosyanın bir kısmını dışarıda bırakıyor. Orijinali korumak için kopyayı “Farklı kaydet” ile kaydedin veya kaydetme seçeneklerinde yedek kopyayı açın."
+
+msgid "Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?"
+msgstr "Diffractor bu değişiklikleri {} dosyalarına yazamaz. Fotoğraf bunun yerine, JPEG'in kaybedeceği HDR'yi ve renk derinliğini koruyan AVIF olarak kaydedilsin mi?"
+
+msgid "As &AVIF"
+msgstr "&AVIF olarak"
+
+msgid "This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?"
+msgstr "Bu fotoğraf HDR ve HDR olarak düzenlenemeyecek kadar büyük. Değişiklikler standart dinamik aralıklı bir kopya olarak kaydedilsin ve fotoğraf olduğu gibi bırakılsın mı?"
+
+msgid "&Save a Copy"
+msgstr "&Kopya olarak kaydet"
+
+msgid "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} dosyaları HDR tutamaz, bu nedenle kopya standart dinamik aralıkta olacak. Yine de kaydedilsin mi?"
+
+msgid "{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} dosyaları, bu fotoğrafı HDR olarak gösteren kazanç haritasını tutamaz, bu nedenle kopya standart dinamik aralıkta olacak. Yine de kaydedilsin mi?"
+
+msgid "This photo is HDR. It is shown here in standard range, and its edits keep its HDR."
+msgstr "Bu fotoğraf HDR. Burada standart dinamik aralıkta gösterilir ve düzenlemeler HDR'sini korur."
+
+msgid "This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy."
+msgstr "Bu fotoğraf HDR, ancak HDR olarak düzenlenemeyecek kadar büyük. Standart dinamik aralıkta düzenlenir ve piksellerindeki değişiklikler bir kopya olarak kaydedilir."
+
+msgid "This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel."
+msgstr "Bu fotoğraf tam renk derinliğinde düzenlenemeyecek kadar büyük, bu nedenle kanal başına 8 bit ile düzenlenir ve kaydedilir."
+
+msgid "HDR photos are written in standard range, with a gain map that shows them in HDR where the display can."
+msgstr "HDR fotoğraflar, ekranın desteklediği yerlerde onları HDR olarak gösteren bir kazanç haritasıyla birlikte standart dinamik aralıkta yazılır."
+
+msgid "HDR photos, and those with a gain map, are written in standard range."
+msgstr "HDR fotoğraflar ve kazanç haritası olan fotoğraflar standart dinamik aralıkta yazılır."
+
+msgid "HDR photos stay HDR, but gain maps are left out."
+msgstr "HDR fotoğraflar HDR olarak kalır, ancak kazanç haritaları dışarıda bırakılır."
+
+msgid "HDR photos stay HDR, and gain maps are kept."
+msgstr "HDR fotoğraflar HDR olarak kalır ve kazanç haritaları korunur."
+
+msgid "Color profile"
+msgstr "Renk profili"
+
+msgid "HDR"
+msgstr "HDR"
+
+msgid "Bit depth"
+msgstr "Bit derinliği"
+
+msgid "Frame rate"
+msgstr "Kare hızı"
+
+msgid "Contents"
+msgstr "İçerik"

@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Property definitions and metadata types. Defines all displayable and searchable
 // properties like camera, date, dimensions, rating, and their formatting.
@@ -13,12 +12,12 @@
 #include "app_icons.h"
 #include "model_location.h"
 #include "model_items.h"
+#include "model_tags.h"
 
 df_assert_movable(prop::item_metadata);
 
 using property_map = core::hash_map<std::string_view, prop::key_ref, core::ihash, core::ieq>;
 static property_map all_props;
-
 
 int64_t prop::exp_round(const double d)
 {
@@ -65,9 +64,9 @@ core::xy8 core::xy8::parse(const std::string_view r)
 	return {0, 0};
 }
 
-prop::key::key(const uint16_t id, std::string_view sn, const std::string_view n, text_t& tx,
-               const icon_index i, const prop::data_type t, const uint32_t f, const uint32_t bit) : id(id), icon(i),
-	name(core::cache(n)), text_key(tx), data_type(t), flags(f), search_presence_bit(bit)
+prop::key::key(const uint16_t id, std::string_view /*sn*/, const std::string_view n, text_t& tx, const icon_index i,
+               const prop::data_type t, const uint32_t f, const uint32_t bit) :
+	id(id), icon(i), name(core::cache(n)), text_key(tx), data_type(t), flags(f), search_presence_bit(bit)
 {
 	core::assert_true(!all_props.contains(name));
 	all_props[name] = this;
@@ -82,9 +81,12 @@ static text_t prop_name_crc32c = "crc32c"sv;
 // Never displayed and never typed by a user - `@panorama` is the spelling they see - so it carries
 // a local name rather than a catalog entry in thirteen languages.
 static text_t prop_name_panorama = "panorama"sv;
+// The same: `@animated` and `@transparent` are what a user types.
+static text_t prop_name_picture_flags = "picture"sv;
 
 prop::key prop::album('al', "", "album", tt.prop_name_album, icon_index::star, data_type::string,
-                      prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::album);
+                      prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                      search_presence_mask::album);
 prop::key prop::show('sw', "", "show", tt.prop_name_show, icon_index::star, data_type::string,
                      prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
 prop::key prop::season('ss', "", "season", tt.prop_name_season, icon_index::star, data_type::int32,
@@ -92,106 +94,112 @@ prop::key prop::season('ss', "", "season", tt.prop_name_season, icon_index::star
 prop::key prop::episode('ep', "", "episode", tt.prop_name_episode, icon_index::star, data_type::int_pair,
                         prop::style::groupable | prop::style::sortable, 0);
 prop::key prop::artist('ar', "", "artist", tt.prop_name_artist, icon_index::person, data_type::string,
-                       prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::artist);
-prop::key prop::album_artist('aa', "", "album.artist", tt.prop_name_albumartist, icon_index::person,
-                             data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                       prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                       search_presence_mask::artist);
+prop::key prop::album_artist('aa', "", "album.artist", tt.prop_name_albumartist, icon_index::person, data_type::string,
+                             prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                              search_presence_mask::artist);
-prop::key prop::audio_codec('ac', "", "audio.codec", tt.prop_name_audiocodec, icon_index::audio,
-                            data_type::string,
-                            prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::codec);
+prop::key prop::audio_codec('ac', "", "audio.codec", tt.prop_name_audiocodec, icon_index::audio, data_type::string,
+                            prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                            search_presence_mask::codec);
 prop::key prop::bitrate('br', "", "bitrate", tt.prop_name_bitrate, icon_index::star, data_type::string,
-                        prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+                        prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                            prop::style::auto_complete,
+                        0);
 prop::key prop::camera_manufacturer('ca', "", "camera.manufacturer", tt.prop_name_cameramanufacturer,
                                     icon_index::camera, data_type::string,
                                     prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                                     search_presence_mask::camera);
 prop::key prop::camera_model('cm', "", "camera", tt.prop_name_camera, icon_index::camera, data_type::string,
-                             prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::camera);
-prop::key prop::audio_channels('ch', "", "audio.channels", tt.prop_name_channels, icon_index::star,
-                               data_type::int32, prop::style::sortable, search_presence_mask::audio_codec);
+                             prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                             search_presence_mask::camera);
+prop::key prop::audio_channels('ch', "", "audio.channels", tt.prop_name_channels, icon_index::star, data_type::int32,
+                               prop::style::sortable, search_presence_mask::audio_codec);
 prop::key prop::audio_sample_rate('sr', "", "audio.sample.rate", tt.prop_name_samplerate, icon_index::star,
-                                  data_type::int32, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                                  data_type::int32,
+                                  prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                                   search_presence_mask::audio_codec);
 prop::key prop::audio_sample_rate_full('sR', "", "audio.sample.rate.full", tt.prop_name_samplerate, icon_index::star,
                                        data_type::int32, prop::style::none, search_presence_mask::audio_codec);
 prop::key prop::audio_sample_type('sa', "", "audio.sample.type", tt.prop_name_sampletype, icon_index::star,
-                                  data_type::int32, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                                  data_type::int32,
+                                  prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                                   search_presence_mask::audio_codec);
 prop::key prop::location_place('ci', "", "place", tt.prop_name_place, icon_index::world, data_type::string,
                                prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                                search_presence_mask::location);
 prop::key prop::comment('ct', "", "comment", tt.prop_name_comment, icon_index::star, data_type::string2,
                         prop::style::none, search_presence_mask::text);
-prop::key prop::description('de', "", "description", tt.prop_name_description, icon_index::star,
-                            data_type::string2,
+prop::key prop::description('de', "", "description", tt.prop_name_description, icon_index::star, data_type::string2,
                             prop::style::none, search_presence_mask::text);
 prop::key prop::composer('co', "", "composer", tt.prop_name_composer, icon_index::star, data_type::string,
                          prop::style::sortable, search_presence_mask::artist);
-prop::key prop::copyright_credit('cd', "", "copyright.credit", tt.prop_name_copyrightcredit,
-                                 icon_index::copyright,
-                                 data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
-                                 search_presence_mask::credit);
-prop::key prop::copyright_source('cs', "", "copyright.source", tt.prop_name_copyrightsource,
-                                 icon_index::copyright,
-                                 data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
-                                 search_presence_mask::credit);
-prop::key prop::copyright_creator('cc', "", "copyright.creator", tt.prop_name_copyrightcreator,
-                                  icon_index::copyright, data_type::string,
-                                  prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
-                                  search_presence_mask::credit);
-prop::key prop::copyright_notice('cp', "", "copyright.notice", tt.prop_name_copyrightnotice,
-                                 icon_index::copyright,
-                                 data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
-                                 search_presence_mask::credit);
-prop::key prop::copyright_url('cw', "", "copyright.url", tt.prop_name_copyrighturl, icon_index::copyright,
-                              data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
-                              search_presence_mask::credit);
-prop::key prop::location_country('cn', "", "country", tt.prop_name_country, icon_index::world,
+prop::key prop::copyright_credit('cd', "", "copyright.credit", tt.prop_name_copyrightcredit, icon_index::copyright,
                                  data_type::string,
                                  prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                                 search_presence_mask::credit);
+prop::key prop::copyright_source('cs', "", "copyright.source", tt.prop_name_copyrightsource, icon_index::copyright,
+                                 data_type::string,
+                                 prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                                 search_presence_mask::credit);
+prop::key prop::copyright_creator('cc', "", "copyright.creator", tt.prop_name_copyrightcreator, icon_index::copyright,
+                                  data_type::string,
+                                  prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                                  search_presence_mask::credit);
+prop::key prop::copyright_notice('cp', "", "copyright.notice", tt.prop_name_copyrightnotice, icon_index::copyright,
+                                 data_type::string,
+                                 prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                                 search_presence_mask::credit);
+prop::key prop::copyright_url('cw', "", "copyright.url", tt.prop_name_copyrighturl, icon_index::copyright,
+                              data_type::string,
+                              prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                              search_presence_mask::credit);
+prop::key prop::location_country('cn', "", "country", tt.prop_name_country, icon_index::world, data_type::string,
+                                 prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                                  search_presence_mask::location);
-prop::key prop::created_exif('c', "", "original", tt.prop_name_original, icon_index::time,
-                             data_type::date,
-                             prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::created);
+prop::key prop::created_exif('c', "", "original", tt.prop_name_original, icon_index::time, data_type::date,
+                             prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                             search_presence_mask::created);
 // Registered only so a row written before the date pack can still be read; "digitized" as a search
 // word is aliased to the created date, which is the concept it merged into.
-prop::key prop::created_digitized('cz', "", "digitized", tt.prop_name_digitized, icon_index::time,
-                                  data_type::date, prop::style::none, search_presence_mask::created);
+prop::key prop::created_digitized('cz', "", "digitized", tt.prop_name_digitized, icon_index::time, data_type::date,
+                                  prop::style::none, search_presence_mask::created);
 prop::key prop::created_utc('cu', "", "created", tt.prop_name_created, icon_index::time, data_type::date,
-                            prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::created);
+                            prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                            search_presence_mask::created);
 prop::key prop::dates_packed('dp', "", "date.pack", tt.prop_name_created, icon_index::time, data_type::date,
                              prop::style::none, search_presence_mask::created);
 prop::key prop::disk_num('dk', "", "disk", tt.prop_name_disk, icon_index::star, data_type::int_pair,
                          prop::style::groupable | prop::style::sortable, 0);
-prop::key prop::dimensions('di', "", "dimensions", tt.prop_name_dimensions, icon_index::star,
-                           data_type::int_pair,
+prop::key prop::dimensions('di', "", "dimensions", tt.prop_name_dimensions, icon_index::star, data_type::int_pair,
                            prop::style::groupable | prop::style::sortable, 0);
 prop::key prop::duration('du', "", "duration", tt.prop_name_duration, icon_index::time, data_type::int32,
-                         prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                         prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                             prop::style::auto_complete,
                          search_presence_mask::duration);
 prop::key prop::encoder('en', "", "encoder", tt.prop_name_encoder, icon_index::star, data_type::string,
                         prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
-prop::key prop::encoding_tool('es', "", "encoding.tool", tt.prop_name_encodingtool, icon_index::star,
-                              data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
-prop::key prop::exposure_time('et', "", "exposure", tt.prop_name_exposure, icon_index::camera,
-                              data_type::float32,
-                              prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+prop::key prop::encoding_tool('es', "", "encoding.tool", tt.prop_name_encodingtool, icon_index::star, data_type::string,
+                              prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+prop::key prop::exposure_time('et', "", "exposure", tt.prop_name_exposure, icon_index::camera, data_type::float32,
+                              prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                                  prop::style::auto_complete,
                               search_presence_mask::camera_settings);
 prop::key prop::f_number('fs', "", "fnumber", tt.prop_name_fnumber, icon_index::star, data_type::float32,
                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                          search_presence_mask::camera_settings);
-prop::key prop::focal_length('fl', "", "focal.length", tt.prop_name_focallength, icon_index::star,
-                             data_type::float32,
-                             prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+prop::key prop::focal_length('fl', "", "focal.length", tt.prop_name_focallength, icon_index::star, data_type::float32,
+                             prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                                 prop::style::auto_complete,
                              search_presence_mask::camera_settings);
-prop::key prop::focal_length_35mm_equivalent('f3', "", "focal.length.35mm.equivalent",
-                                             tt.prop_name_35mmequivalent,
+prop::key prop::focal_length_35mm_equivalent('f3', "", "focal.length.35mm.equivalent", tt.prop_name_35mmequivalent,
                                              icon_index::star, data_type::int32, prop::style::none,
                                              search_presence_mask::camera_settings);
-prop::key prop::pixel_format('pf', "", "pixel.format", tt.prop_name_pixelformat, icon_index::star,
-                             data_type::string, prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+prop::key prop::pixel_format('pf', "", "pixel.format", tt.prop_name_pixelformat, icon_index::star, data_type::string,
+                             prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
 prop::key prop::genre('gn', "", "genre", tt.prop_name_genre, icon_index::star, data_type::string,
-                      prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::genre);
+                      prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                      search_presence_mask::genre);
 prop::key prop::iso_speed('is', "", "iso", tt.prop_name_iso, icon_index::star, data_type::int32,
                           prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                           search_presence_mask::camera_settings);
@@ -204,29 +212,35 @@ prop::key prop::altitude('la', "", "altitude", tt.prop_name_altitude, icon_index
 prop::key prop::gps_speed('lv', "", "gps.speed", tt.prop_name_gps_speed, icon_index::world, data_type::float32,
                           prop::style::none, search_presence_mask::location);
 prop::key prop::lens('lm', "", "lens", tt.prop_name_lens, icon_index::camera, data_type::string,
-                     prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::camera);
+                     prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                     search_presence_mask::camera);
 prop::key prop::longitude('ly', "", "longitude", tt.prop_name_longitude, icon_index::world, data_type::float32,
                           prop::style::none, search_presence_mask::location);
 prop::key prop::media_category('mc', "", "media.category", tt.prop_name_mediacategory, icon_index::star,
-                               data_type::int32, prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
-prop::key prop::megapixels('mp', "", "megapixels", tt.prop_name_megapixels, icon_index::star,
-                           data_type::float32,
-                           prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+                               data_type::int32,
+                               prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+prop::key prop::megapixels('mp', "", "megapixels", tt.prop_name_megapixels, icon_index::star, data_type::float32,
+                           prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                               prop::style::auto_complete,
+                           0);
 prop::key prop::modified('m', "", "modified", tt.prop_name_modified, icon_index::time, data_type::date,
                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
 prop::key prop::null(0, "", "null", tt.prop_name_null, icon_index::star, data_type::int32, prop::style::none, 0);
-prop::key prop::orientation('or', "", "orientation", tt.prop_name_orientation, icon_index::star,
-                            data_type::int32,
+prop::key prop::orientation('or', "", "orientation", tt.prop_name_orientation, icon_index::star, data_type::int32,
                             prop::style::none, search_presence_mask::camera_settings);
 prop::key prop::publisher('pb', "", "publisher", tt.prop_name_publisher, icon_index::star, data_type::string,
-                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::artist);
+                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                          search_presence_mask::artist);
 prop::key prop::performer('pm', "", "performer", tt.prop_name_performer, icon_index::star, data_type::string,
-                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::artist);
+                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                          search_presence_mask::artist);
 prop::key prop::rating('rt', "", "rating", tt.prop_name_rating, icon_index::star, data_type::int32,
                        prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                        search_presence_mask::rating_label);
 prop::key prop::file_size('s', "", "size", tt.prop_name_size, icon_index::star, data_type::size,
-                          prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+                          prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                              prop::style::auto_complete,
+                          0);
 prop::key prop::location_state('st', "", "state", tt.prop_name_state, icon_index::world, data_type::string,
                                prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
                                search_presence_mask::location);
@@ -235,25 +249,24 @@ prop::key prop::streams('sm', "", "streams", tt.prop_name_streams, icon_index::s
 prop::key prop::synopsis('sy', "", "synopsis", tt.prop_name_synopsis, icon_index::star, data_type::string,
                          prop::style::none, search_presence_mask::text);
 prop::key prop::tag('tg', "", "tag", tt.prop_name_tag, icon_index::tag, data_type::string,
-                    prop::style::groupable | prop::style::multi_value | prop::style::auto_complete, search_presence_mask::tag);
-prop::key prop::title('tt', "", "title", tt.prop_name_title, icon_index::star, data_type::string,
-                      prop::style::sortable,
+                    prop::style::groupable | prop::style::multi_value | prop::style::auto_complete,
+                    search_presence_mask::tag);
+prop::key prop::title('tt', "", "title", tt.prop_name_title, icon_index::star, data_type::string, prop::style::sortable,
                       search_presence_mask::text);
 prop::key prop::track_num('tr', "", "track", tt.prop_name_track, icon_index::star, data_type::int_pair,
                           prop::style::sortable, 0);
-prop::key prop::video_codec('vc', "", "video.codec", tt.prop_name_videocodec, icon_index::video,
-                            data_type::string,
-                            prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::codec);
+prop::key prop::video_codec('vc', "", "video.codec", tt.prop_name_videocodec, icon_index::video, data_type::string,
+                            prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                            search_presence_mask::codec);
 prop::key prop::year('yr', "", "year", tt.prop_name_year, icon_index::time, data_type::int32,
-                     prop::style::groupable | prop::style::sortable | prop::style::auto_complete, search_presence_mask::year);
-prop::key prop::unique_id('id', "", "id", tt.prop_name_id, icon_index::star, data_type::string2, prop::style::none,
-                          0);
+                     prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
+                     search_presence_mask::year);
+prop::key prop::unique_id('id', "", "id", tt.prop_name_id, icon_index::star, data_type::string2, prop::style::none, 0);
 prop::key prop::file_name('fn', "", "file.name", tt.prop_name_filename, icon_index::star, data_type::string,
                           prop::style::none, 0);
 prop::key prop::raw_file_name('rf', "", "raw.file", tt.prop_name_rawfile, icon_index::star, data_type::string,
                               prop::style::none, 0);
-prop::key prop::system('se', "", "system", tt.prop_name_system, icon_index::star, data_type::string,
-                       prop::style::none,
+prop::key prop::system('se', "", "system", tt.prop_name_system, icon_index::star, data_type::string, prop::style::none,
                        search_presence_mask::game);
 prop::key prop::game('gm', "", "game", tt.prop_name_game, icon_index::star, data_type::string, prop::style::none,
                      search_presence_mask::game);
@@ -266,9 +279,24 @@ prop::key prop::label('lb', "", "label", tt.prop_name_label, icon_index::flag, d
                       search_presence_mask::rating_label);
 prop::key prop::doc_id('ii', "", "document.id", tt.prop_name_doc_id, icon_index::star, data_type::int32,
                        prop::style::none, search_presence_mask::doc_id);
-prop::key prop::panorama('pj', "", "panorama.projection", prop_name_panorama, icon_index::world,
-                         data_type::int32, prop::style::none, search_presence_mask::panorama);
-
+prop::key prop::panorama('pj', "", "panorama.projection", prop_name_panorama, icon_index::world, data_type::int32,
+                         prop::style::none, search_presence_mask::panorama);
+prop::key prop::color_profile('cl', "", "color.profile", tt.prop_name_color_profile, icon_index::star,
+                              data_type::string,
+                              prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+// Searched by what makes the item HDR - `hdr:hlg` - and stored as the number that names it.
+prop::key prop::hdr('hd', "", "hdr", tt.prop_name_hdr, icon_index::star, data_type::string,
+                    prop::style::groupable | prop::style::sortable, 0);
+prop::key prop::bit_depth('bd', "", "bit.depth", tt.prop_name_bit_depth, icon_index::star, data_type::int32,
+                          prop::style::groupable | prop::style::sortable | prop::style::auto_complete, 0);
+prop::key prop::frame_rate('fr', "", "frame.rate", tt.prop_name_frame_rate, icon_index::video, data_type::float32,
+                           prop::style::fuzzy_search | prop::style::groupable | prop::style::sortable |
+                               prop::style::auto_complete,
+                           0);
+prop::key prop::contents('ls', "", "contents", tt.prop_name_contents, icon_index::star, data_type::string,
+                         prop::style::multi_value, 0);
+prop::key prop::picture_flags('pa', "", "picture.flags", prop_name_picture_flags, icon_index::star, data_type::int32,
+                              prop::style::none, 0);
 
 static core::hash_map<unsigned short, prop::key_ref> build_properties_by_id()
 {
@@ -283,7 +311,6 @@ static core::hash_map<unsigned short, prop::key_ref> build_properties_by_id()
 
 	return result;
 }
-
 
 static property_map build_properties_by_name()
 {
@@ -364,6 +391,21 @@ static property_map build_properties_by_name()
 	result["years"] = prop::year;
 	result["year"] = prop::year;
 
+	// The spellings a colour space, a depth and a frame rate are guessed by.
+	result["color"] = prop::color_profile;
+	result["colour"] = prop::color_profile;
+	result["colour.profile"] = prop::color_profile;
+	result["colorprofile"] = prop::color_profile;
+	result["colourprofile"] = prop::color_profile;
+	result["profile"] = prop::color_profile;
+	result["icc"] = prop::color_profile;
+	result["bits"] = prop::bit_depth;
+	result["bitdepth"] = prop::bit_depth;
+	result["depth"] = prop::bit_depth;
+	result["fps"] = prop::frame_rate;
+	result["framerate"] = prop::frame_rate;
+	result["content"] = prop::contents;
+
 	// single-letter shortcuts - note "y" is the year, not the longitude
 	result["y"] = prop::year;
 	result["m"] = prop::modified;
@@ -374,8 +416,7 @@ static property_map build_properties_by_name()
 
 std::vector<prop::prop_scope> prop::search_scopes()
 {
-	const std::unordered_set<const key*> exclusions
-	{
+	const std::unordered_set<const key*> exclusions{
 		comment,
 		description,
 		created_exif,
@@ -404,15 +445,14 @@ std::vector<prop::prop_scope> prop::search_scopes()
 		unique_id,
 		file_name,
 		raw_file_name,
-		system,
-		game,
 		crc32c,
 		doc_id,
 		// Internal storage, not vocabulary: neither has an arm in compare_val, so offering them in
 		// the picker gives the user a term that silently matches nothing. `@panorama` is the
-		// spelling a user sees for the second one.
+		// spelling a user sees for the second one, and `@animated` and `@transparent` for the third.
 		dates_packed,
 		panorama,
+		picture_flags,
 		// Registered as a name and never stored against an item, so any value the user types for it
 		// is compared against nothing.
 		encoding_tool,
@@ -432,15 +472,12 @@ std::vector<prop::prop_scope> prop::search_scopes()
 	}
 
 	std::ranges::sort(result, [](const prop_scope& left, const prop_scope& right)
-	{
-		return core::icmp(left.scope, right.scope) < 0;
-	});
+	{ return core::icmp(left.scope, right.scope) < 0; });
 
 	result.emplace(result.begin(), "any"s, null);
 
 	return result;
 }
-
 
 std::vector<prop::prop_scope> prop::key_scopes()
 {
@@ -448,20 +485,13 @@ std::vector<prop::prop_scope> prop::key_scopes()
 	// `date.pack` is the storage the three dates live in rather than a date anyone asks for, and
 	// `digitized` is the old spelling of the concept now called `created` - offering both teaches a
 	// fourth date that no longer exists. `panorama` has no arm in has_type for the same reason it has
-	// none in compare_val; `@panorama` is the spelling that answers. The rest below are names with no
+	// none in compare_val; `@panorama` is the spelling that answers, as `@animated` and `@transparent`
+	// are for `picture.flags`. The rest below are names with no
 	// stored value behind them, so `with:` would answer no and `without:` would answer the whole
 	// collection - and `null` is not a scope at all.
-	const std::unordered_set<const key*> exclusions
-	{
-		created_digitized,
-		dates_packed,
-		panorama,
-		null,
-		crc32c,
-		encoding_tool,
-		media_category,
-		streams,
-		unique_id,
+	const std::unordered_set<const key*> exclusions{
+		created_digitized, dates_packed,   panorama, picture_flags, null, crc32c,
+		encoding_tool,     media_category, streams,  unique_id,
 	};
 
 	std::vector<prop_scope> result;
@@ -477,9 +507,7 @@ std::vector<prop::prop_scope> prop::key_scopes()
 	}
 
 	std::ranges::sort(result, [](const prop_scope& left, const prop_scope& right)
-	{
-		return core::icmp(left.scope, right.scope) < 0;
-	});
+	{ return core::icmp(left.scope, right.scope) < 0; });
 
 	return result;
 }
@@ -586,7 +614,7 @@ std::string prop::item_metadata::format(const std::string_view name) const
 	if (icmp(prop::label.name, name) == 0) return label.str();
 	if (icmp(prop::video_codec.name, name) == 0) return video_codec.str();
 	if (icmp(prop::raw_file_name.name, name) == 0) return raw_file_name.str();
-
+	if (icmp(prop::color_profile.name, name) == 0) return color_profile.str();
 
 	return {};
 }
@@ -662,11 +690,13 @@ std::string prop::format_exposure(const double d)
 
 double prop::closest_fstop(const double fs)
 {
+	// clang-format off
 	static double stops[] = {
 		0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 2, 2.2, 2.4, 2.5, 2.6, 2.8, 3.2, 3.3, 3.4, 3.5, 3.7,
 		3.8, 4, 4.4, 4.5, 4.8, 5.0, 5.2, 5.6, 6.2, 6.3, 6.7, 7.1, 7.3, 8, 8.7, 9, 9.5, 10, 11, 12, 13, 14, 15, 16, 17,
 		18, 19, 20, 21, 22, 27
 	};
+	// clang-format on
 
 	constexpr auto count = std::size(stops);
 	auto* const end = stops + count;
@@ -689,8 +719,7 @@ std::string prop::format_focal_length(const double d, const int filmEquivalent)
 		{
 			return std::format("{:.1f}mm ({}mm film eq)", d, filmEquivalent);
 		}
-		if (d < 1)
-			return std::format("{:.1f}mm", d);
+		if (d < 1) return std::format("{:.1f}mm", d);
 		return std::format("{:.0f}mm", d);
 	}
 
@@ -704,14 +733,14 @@ std::string prop::format_rating(const int i)
 	return std::string(tt.none);
 }
 
-std::string prop::format_label(const std::string_view label)
+std::string prop::format_label(const std::string_view text)
 {
-	if (core::icmp(label, label_select_text) == 0) return std::string(tt.command_label_select);
-	if (core::icmp(label, label_second_text) == 0) return std::string(tt.command_label_second);
-	if (core::icmp(label, label_approved_text) == 0) return std::string(tt.command_label_approved);
-	if (core::icmp(label, label_review_text) == 0) return std::string(tt.command_label_review);
-	if (core::icmp(label, label_to_do_text) == 0) return std::string(tt.command_label_to_do);
-	return label.empty() ? std::string(tt.none) : std::string(label);
+	if (core::icmp(text, label_select_text) == 0) return std::string(tt.command_label_select);
+	if (core::icmp(text, label_second_text) == 0) return std::string(tt.command_label_second);
+	if (core::icmp(text, label_approved_text) == 0) return std::string(tt.command_label_approved);
+	if (core::icmp(text, label_review_text) == 0) return std::string(tt.command_label_review);
+	if (core::icmp(text, label_to_do_text) == 0) return std::string(tt.command_label_to_do);
+	return text.empty() ? std::string(tt.none) : std::string(text);
 }
 
 std::string prop::format_iso(const int i)
@@ -732,8 +761,7 @@ std::string prop::format_gps(const double d)
 
 std::string prop::format_gps(const double lat, const double lon)
 {
-	if (!core::equiv(lat, gps_coordinate::invalid_coordinate) &&
-		!core::equiv(lon, gps_coordinate::invalid_coordinate))
+	if (!core::equiv(lat, gps_coordinate::invalid_coordinate) && !core::equiv(lon, gps_coordinate::invalid_coordinate))
 	{
 		return std::format("{:.5f},{:.5f}", lat, lon);
 	}
@@ -746,11 +774,43 @@ std::string prop::format_streams(const int v)
 	return std::format("{}", v);
 }
 
+std::string_view prop::format_hdr(const hdr_kind v)
+{
+	switch (v)
+	{
+	case hdr_kind::pq: return "PQ";
+	case hdr_kind::hlg: return "HLG";
+	case hdr_kind::gain_map: return "gain map";
+	case hdr_kind::none: break;
+	}
+
+	return {};
+}
+
+// As a sample type and a pixel format say it: "16bit", "yuv420 10bit".
+std::string prop::format_bit_depth(const int v)
+{
+	return v > 0 ? std::format("{}bit", v) : std::string{};
+}
+
+// Two decimals at most, and none where the rate is whole: 25fps, 29.97fps, 23.976 as 23.98fps.
+std::string prop::format_frame_rate(const double v)
+{
+	if (!(v > 0.0) || v > 100000.0) return {};
+
+	const auto hundredths = std::llround(v * 100.0);
+	const auto whole = hundredths / 100;
+	const auto fraction = hundredths % 100;
+
+	if (fraction == 0) return std::format("{}fps", whole);
+	if (fraction % 10 == 0) return std::format("{}{}{}fps", whole, platform::number_dec_sep(), fraction / 10);
+	return std::format("{}{}{:02}fps", whole, platform::number_dec_sep(), fraction);
+}
+
 static constexpr int64_t KB = 1024;
 static constexpr int64_t MB = KB * 1024;
 static constexpr int64_t GB = MB * 1024;
 static constexpr int64_t TB = GB * 1024;
-
 
 std::string prop::format_bit_rate(const int64_t br)
 {
@@ -780,7 +840,6 @@ std::string prop::format_bit_rate(const int64_t br)
 	return std::format("{}{}{} {}", n, platform::number_dec_sep(), r, units);
 }
 
-
 struct magnitude
 {
 	int64_t n;
@@ -788,10 +847,7 @@ struct magnitude
 	char c;
 	std::string label;
 
-	bool operator<(const int64_t other) const
-	{
-		return n < other;
-	}
+	bool operator<(const int64_t other) const { return n < other; }
 };
 
 std::vector<magnitude> magnitudes{
@@ -844,14 +900,13 @@ magnitude find_magnitude(const int64_t n)
 	return magnitudes.back();
 }
 
-
 int64_t prop::size_bucket(const int64_t n)
 {
 	/*static std::array<int64_t, 12> buckets = {
-		KB, KB * 10, KB * 100,
-		MB, MB * 10, MB * 100,
-		GB, GB * 10, GB * 100,
-		TB, TB * 10, TB * 100,
+	    KB, KB * 10, KB * 100,
+	    MB, MB * 10, MB * 100,
+	    GB, GB * 10, GB * 100,
+	    TB, TB * 10, TB * 100,
 	};*/
 
 	return find_magnitude(n).n;
@@ -861,7 +916,6 @@ std::string prop::format_magnitude(const core::file_size& s)
 {
 	return find_magnitude(s.to_int64()).label;
 }
-
 
 std::string prop::format_audio_sample_rate(const int v)
 {
@@ -910,22 +964,14 @@ std::string prop::format_audio_channels(const int v)
 {
 	switch (v)
 	{
-	case 1:
-		return "mono"s;
-	case 2:
-		return "stereo"s;
-	case 3:
-		return "3.0 surround"s;
-	case 4:
-		return "quad"s;
-	case 5:
-		return "5.0 surround"s;
-	case 6:
-		return "5.1 surround"s;
-	case 8:
-		return "7.1 surround"s;
-	default:
-		return std::format("{} channels", v);
+	case 1: return "mono"s;
+	case 2: return "stereo"s;
+	case 3: return "3.0 surround"s;
+	case 4: return "quad"s;
+	case 5: return "5.0 surround"s;
+	case 6: return "5.1 surround"s;
+	case 8: return "7.1 surround"s;
+	default: return std::format("{} channels", v);
 	}
 }
 
@@ -1127,14 +1173,15 @@ std::string prop::replace_tokens(const std::string_view name_template, const ite
 		else if (md)
 		{
 			if (token == "artist")
-				result << text_or_default(
-					md->album_artist.is_empty() ? md->artist.sv() : md->album_artist.sv(), tt.unknown);
+				result << text_or_default(md->album_artist.is_empty() ? md->artist.sv() : md->album_artist.sv(),
+				                          tt.unknown);
 			else if (token == "album") result << text_or_default(md->album, tt.unknown);
 			else if (token == "show") result << text_or_default(md->show, tt.unknown);
 			// Two digits, as release names and media servers write them: S01E05, and E00 for a special.
 			else if (token == "season")
 			{
-				if (md->season != 0 || !prop::is_null(md->episode) || md->is_special) result << std::format("{:02}", md->season);
+				if (md->season != 0 || !prop::is_null(md->episode) || md->is_special)
+					result << std::format("{:02}", md->season);
 				else result << tt.unknown.sv();
 			}
 			else if (token == "episode")
@@ -1144,6 +1191,18 @@ std::string prop::replace_tokens(const std::string_view name_template, const ite
 				else result << tt.unknown.sv();
 			}
 			else if (token == "country") result << text_or_default(md->location_country, tt.unknown);
+			// The stars given, and the tags in order, as a file name can carry them (#17).
+			else if (token == "rating")
+			{
+				if (md->rating > 0) result << md->rating;
+				else result << tt.unknown.sv();
+			}
+			else if (token == "tags")
+			{
+				const tag_set tags(md->tags.sv());
+				if (tags.is_empty()) result << tt.unknown.sv();
+				else result << tags.to_string(", ", false);
+			}
 			else
 			{
 				result << text_or_default(md->format(token), tt.unknown);
@@ -1196,10 +1255,10 @@ core::cached prop::library_caption(const item_metadata& md)
 {
 	if (md.kind == media_kind::episode)
 	{
-		const auto label = episode_label(md);
-		if (label.is_empty()) return md.title;
-		if (md.title.is_empty()) return label;
-		return core::cache(std::format("{} \xC2\xB7 {}", label.sv(), md.title.sv()));
+		const auto episode_name = episode_label(md);
+		if (episode_name.is_empty()) return md.title;
+		if (md.title.is_empty()) return episode_name;
+		return core::cache(std::format("{} \xC2\xB7 {}", episode_name.sv(), md.title.sv()));
 	}
 
 	if (md.kind == media_kind::film && md.year != 0 && !md.title.is_empty())

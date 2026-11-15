@@ -1,14 +1,13 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Generates the "Formats and Codecs" wiki page from the live file type
-// and codec tables the application itself dispatches on. Invoked from the command
-// line via /gen-docs[:folder]. The metadata mapping is maintained by hand in
+// and codec tables the application itself dispatches on, for the generate_docs tool
+// (app_mcp_tools.cpp). The metadata mapping is maintained by hand in
 // docs/metadata.md because no single table in code describes it.
 
 #include "pch.h"
@@ -62,7 +61,8 @@ namespace
 	// between them is replaced with `block`. Otherwise the full `default_page`
 	// (narrative shell + markers + block) is written.
 	bool splice_and_save(const core::folder_path folder, const std::string_view file_name,
-	                     const std::string& default_page, const std::string& block)
+	                     const std::string& default_page, const std::string& block,
+	                     const std::function<void(std::string_view)>& print)
 	{
 		const auto path = folder.combine_file(file_name);
 		const auto existing = read_text_file(path);
@@ -77,20 +77,21 @@ namespace
 			out += "\n";
 			out += block;
 			out.append(existing, e, existing.size() - e);
-			printf("  spliced %s (preserved surrounding text)\n", std::string(path.str()).c_str());
+			print(std::format("  spliced {} (preserved surrounding text)", path));
 		}
 		else
 		{
 			out = default_page;
-			printf("  wrote %s (new page with markers)\n", std::string(path.str()).c_str());
+			print(std::format("  wrote {} (new page with markers)", path));
 		}
 
-		const auto saved = platform::blob_save_to_file(
-			core::cspan(reinterpret_cast<const uint8_t*>(out.data()), out.size()), path);
+		const auto saved = platform::blob_save_to_file(core::cspan(reinterpret_cast<const uint8_t*>(out.data()),
+		                                                           out.size()),
+		                                               path);
 
 		if (!saved)
 		{
-			printf("  ERROR: failed to write %s\n", std::string(path.str()).c_str());
+			print(std::format("  ERROR: failed to write {}", path));
 		}
 
 		return saved;
@@ -99,8 +100,8 @@ namespace
 	// Emits a markdown table of file types belonging to the given group, with an
 	// optional raw-trait filter, including only types with a description.
 	void write_format_table(std::string& md, const std::string_view section_title,
-	                        const std::vector<file_type_ref>& types, const file_group_ref group,
-	                        const bool require_raw, const bool exclude_raw)
+	                        const std::vector<file_type_ref>& types, const file_group_ref group, const bool require_raw,
+	                        const bool exclude_raw)
 	{
 		md += "## ";
 		md += section_title;
@@ -149,7 +150,7 @@ namespace
 		md += "\n\n";
 	}
 
-	bool generate_formats_page(const core::folder_path folder)
+	bool generate_formats_page(const core::folder_path folder, const std::function<void(std::string_view)>& print)
 	{
 		const auto types = all_file_types();
 		const auto codecs = av_supported_codecs();
@@ -171,17 +172,17 @@ namespace
 		default_page += k_end;
 		default_page += "\n";
 
-		return splice_and_save(folder, "Formats-and-Codecs.md", default_page, block);
+		return splice_and_save(folder, "Formats-and-Codecs.md", default_page, block, print);
 	}
 }
 
-int generate_wiki_docs(const std::string_view output_folder)
+int generate_wiki_docs(const std::string_view output_folder, const std::function<void(std::string_view)>& print)
 {
 	load_file_types();
 
 	const core::folder_path folder = output_folder.empty()
-		                               ? platform::known_path(platform::known_folder::running_app_folder)
-		                               : core::folder_path(output_folder);
+	                                     ? platform::known_path(platform::known_folder::running_app_folder)
+	                                     : core::folder_path(output_folder);
 
 	if (!platform::exists(folder))
 	{
@@ -190,18 +191,18 @@ int generate_wiki_docs(const std::string_view output_folder)
 
 	if (!platform::exists(folder))
 	{
-		printf("ERROR: output folder does not exist: %s\n", std::string(folder.text().sv()).c_str());
+		print(std::format("ERROR: output folder does not exist: {}", folder));
 		return 1;
 	}
 
-	printf("Generating wiki documentation in %s\n", std::string(folder.text().sv()).c_str());
+	print(std::format("Generating wiki documentation in {}", folder));
 
-	if (generate_formats_page(folder))
+	if (generate_formats_page(folder, print))
 	{
-		printf("Done.\n");
+		print("Done.");
 		return 0;
 	}
 
-	printf("Completed with errors.\n");
+	print("Completed with errors.");
 	return 1;
 }

@@ -1,20 +1,169 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Implements document_control: measuring the document into rows, drawing the rows the clip
-// meets with their colours and the selection, and the controller that selects with the mouse.
+// Purpose: Adapts the decoded document to the shared panel and formatted views, retaining the text and
+// dump source selection and their syntax colours while the owning pane scrolls them.
 
 #include "pch.h"
 #include "ui_document.h"
 #include "model_display.h"
+#include "libdesktop/ui/views.h"
 
 namespace
 {
+	// The formatted views read a colour's alpha from its high byte, which the shared palette leaves clear, as it
+	// holds RGB alone.
+	constexpr core::color32 opaque(const core::color32 rgb)
+	{
+		return core::rgba(core::get_r(rgb), core::get_g(rgb), core::get_b(rgb));
+	}
+
+	class document_theme final : public ui::view_theme
+	{
+	public:
+		core::color32 style_color(const ui::text_style style) const override
+		{
+			switch (style)
+			{
+			// None, so the panel's own background shows, as it does behind plain text.
+			case ui::text_style::normal_bkgnd: return 0;
+			case ui::text_style::normal_text: return opaque(ui::style::colors.view_text);
+			case ui::text_style::sel_bkgnd: return opaque(ui::style::colors.view_selected_background);
+			default: return view_theme::style_color(style);
+			}
+		}
+	};
+
+	const ui::view_theme& formatted_theme()
+	{
+		static const document_theme theme;
+		return theme;
+	}
+
+	template <typename View> class document_view_adapter final : public View
+	{
+		std::weak_ptr<document_state> _document;
+
+		void selection_from_model() const
+		{
+			if (const auto doc = _document.lock())
+			{
+				const ui::text_selection selection{doc->anchor.offset, doc->anchor.line, doc->caret.offset,
+				                                   doc->caret.line};
+				if (this->current_selection() != selection)
+					const_cast<document_view_adapter*>(this)->set_selection(selection);
+			}
+		}
+
+		void selection_to_model(const int before_height)
+		{
+			auto changed = false;
+			if (const auto doc = _document.lock())
+			{
+				const auto selection = this->current_selection();
+				const document_position anchor{selection._start.y, selection._start.x};
+				const document_position caret{selection._end.y, selection._end.x};
+				changed = doc->anchor != anchor || doc->caret != caret;
+				doc->select(anchor, caret);
+			}
+			if (changed) this->invalidate();
+			if (before_height != this->content_extent().cy)
+			{
+				if (const auto host = this->host())
+				{
+					if (const auto listener = std::dynamic_pointer_cast<ui::element_host>(host->listener()))
+						listener->invalidate(ui::host_invalid::layout | ui::host_invalid::redraw);
+				}
+			}
+		}
+
+	public:
+		explicit document_view_adapter(const std::shared_ptr<document_state>& document) :
+			View(formatted_theme()), _document(document)
+		{
+			auto buffer = std::make_shared<ui::text_buffer>(this->default_view_host());
+			buffer->set_text(document->text().text);
+			this->set_buffer(buffer, {});
+		}
+
+		render::font_face body_font() const override { return render::font_face::code; }
+		void paint(render::draw_context& dc, const bool focused) const override
+		{
+			selection_from_model();
+			View::paint(dc, focused);
+		}
+		void on_focus(const bool focused, const bool select_all) override
+		{
+			selection_from_model();
+			const auto height = this->content_extent().cy;
+			View::on_focus(focused, select_all);
+			if (const auto doc = _document.lock()) doc->focused = focused;
+			selection_to_model(height);
+		}
+		void on_mouse_down(const pointi point, const platform::key_state keys) override
+		{
+			selection_from_model();
+			const auto height = this->content_extent().cy;
+			if (const auto doc = _document.lock()) doc->focused = true;
+			View::on_mouse_down(point, keys);
+			selection_to_model(height);
+		}
+		void on_mouse_move(const pointi point, const bool captured) override
+		{
+			selection_from_model();
+			const auto height = this->content_extent().cy;
+			View::on_mouse_move(point, captured);
+			selection_to_model(height);
+		}
+		void on_mouse_up(const pointi point, const platform::key_state keys) override
+		{
+			selection_from_model();
+			const auto height = this->content_extent().cy;
+			View::on_mouse_up(point, keys);
+			selection_to_model(height);
+		}
+		void on_double_click(const pointi point, const platform::key_state keys) override
+		{
+			selection_from_model();
+			const auto height = this->content_extent().cy;
+			View::on_double_click(point, keys);
+			selection_to_model(height);
+		}
+		bool on_key(const char32_t key, const platform::key_state keys) override
+		{
+			selection_from_model();
+			const auto height = this->content_extent().cy;
+			const auto handled = View::on_key(key, keys);
+			selection_to_model(height);
+			return handled;
+		}
+	};
+
+	std::shared_ptr<ui::doc_view> formatted_document(const std::shared_ptr<document_state>& document)
+	{
+		if (!document->is_text()) return {};
+		if (document->formatted_view) return document->formatted_view;
+		if (document->text().csv)
+		{
+			document->formatted_view = std::make_shared<document_view_adapter<ui::csv_view>>(document);
+		}
+		else if (document->text().language == ui::syntax::language::markdown)
+		{
+			auto markdown = std::make_shared<document_view_adapter<ui::markdown_view>>(document);
+			markdown->set_link_handler([](const std::string_view target)
+			{
+				if (target.starts_with("https://") || target.starts_with("http://") || target.starts_with("mailto:"))
+					platform::open(target);
+			});
+			document->formatted_view = std::move(markdown);
+		}
+		return document->formatted_view;
+	}
+
 	// What a character is drawn in. Everything but base is a highlight over the view's text colour.
 	enum colour_slot : uint8_t
 	{
@@ -131,7 +280,7 @@ namespace
 
 	class document_select_controller final : public view_controller
 	{
-		std::shared_ptr<document_control> _control;
+		std::shared_ptr<document_content> _control;
 		pointi _element_offset;
 		bool _tracking = false;
 
@@ -144,16 +293,13 @@ namespace
 		}
 
 	public:
-		document_select_controller(const view_host_ptr& host, std::shared_ptr<document_control> control,
+		document_select_controller(const view_host_ptr& host, std::shared_ptr<document_content> control,
 		                           const recti bounds, const pointi element_offset) :
 			view_controller(host, bounds), _control(std::move(control)), _element_offset(element_offset)
 		{
 		}
 
-		platform::cursor cursor() const override
-		{
-			return platform::cursor::text_select;
-		}
+		platform::cursor cursor() const override { return platform::cursor::text_select; }
 
 		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 		{
@@ -185,7 +331,7 @@ namespace
 			}
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 		{
 			if (!_tracking) return;
 			on_mouse_move(loc);
@@ -194,7 +340,7 @@ namespace
 
 		// The word of the character under the pointer, not of the gap nearest it: the right half of a
 		// word's last letter is nearer the space after it.
-		void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_double_click(const pointi loc, const platform::key_state /*keys*/) override
 		{
 			auto& doc = _control->document();
 			doc.select_word(_control->position_from_point(loc, element_offset(), true), _control->bytes());
@@ -212,31 +358,38 @@ namespace
 	};
 }
 
-document_control::document_control(display_state_ptr display, const view_element_options& style_in) noexcept :
+document_content::document_content(display_state_ptr display, const view_element_options& style_in) noexcept :
 	view_element(style_in), _display(std::move(display))
 {
 	_document = _display && _display->_document ? _display->_document : std::make_shared<document_state>();
+	_formatted = formatted_document(_document);
 }
 
-document_control::document_control(std::vector<uint8_t> bytes, const view_element_options& style_in) noexcept :
+document_content::document_content(std::vector<uint8_t> bytes, const view_element_options& style_in) noexcept :
 	view_element(style_in), _bytes(std::move(bytes)), _document(std::make_shared<document_state>())
 {
 }
 
-core::cspan document_control::bytes() const
+core::cspan document_content::bytes() const
 {
 	if (_display) return _display->_selected_item_data;
 	return {_bytes.data(), _bytes.size()};
 }
 
-int document_control::text_left(const recti logical_bounds) const
+int document_content::text_left(const recti logical_bounds) const
 {
 	if (_document->is_text()) return logical_bounds.left;
 	return (logical_bounds.left + logical_bounds.right - _dump_width) / 2;
 }
 
-sizei document_control::measure(render::measure_context& mc, const int width_limit) const
+sizei document_content::measure(render::measure_context& mc, const int width_limit) const
 {
+	if (_formatted)
+	{
+		_formatted->bounds = {0, 0, std::max(64, width_limit), 1};
+		_formatted->on_placed(mc);
+		return {std::max(0, width_limit), _formatted->content_extent().cy};
+	}
 	auto& doc = *_document;
 	const auto data = bytes();
 
@@ -247,8 +400,8 @@ sizei document_control::measure(render::measure_context& mc, const int width_lim
 		// A pane with no width yet - a minimised window - would otherwise wrap every character onto
 		// a row of its own, which for a MiB of text is a million rows.
 		constexpr int min_columns = 8;
-		const auto extent = mc.measure_text(std::string(sample_chars, '0'), _font,
-		                                    render::text_style::single_line, sample_chars * 256);
+		const auto extent = mc.measure_text(std::string(sample_chars, '0'), _font, render::text_style::single_line,
+		                                    sample_chars * 256);
 		_char_width = std::max(1.0, extent.cx / static_cast<double>(sample_chars));
 		_line_height = extent.cy + padding;
 		doc.layout(std::max(min_columns, static_cast<int>(width_limit / _char_width)), data.size);
@@ -280,9 +433,14 @@ sizei document_control::measure(render::measure_context& mc, const int width_lim
 	return {width_limit, _line_height * static_cast<int>(doc.row_count())};
 }
 
-document_position document_control::position_from_point(const pointi loc, const pointi element_offset,
+document_position document_content::position_from_point(const pointi loc, const pointi element_offset,
                                                         const bool character) const
 {
+	if (_formatted)
+	{
+		const auto position = _formatted->text_at(loc - bounds.top_left() - element_offset);
+		return {position.y, position.x};
+	}
 	const auto& doc = *_document;
 	const auto rows = static_cast<int>(doc.row_count());
 	if (rows == 0 || _line_height <= 0) return {};
@@ -302,9 +460,10 @@ document_position document_control::position_from_point(const pointi loc, const 
 	return at(row, (loc.x - text_left(logical_bounds)) / _char_width);
 }
 
-view_controller_ptr document_control::controller_from_location(const view_host_ptr& host, const pointi loc,
+view_controller_ptr document_content::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                                const pointi element_offset, hit_test_context& ctx)
 {
+	if (_formatted) return view_element::controller_from_location(host, loc, element_offset, ctx);
 	// Only the display's document is selected: a metadata block's dump is rebuilt with the panel, and
 	// would lose its selection to the next late scan result.
 	if (!_display) return nullptr;
@@ -315,8 +474,13 @@ view_controller_ptr document_control::controller_from_location(const view_host_p
 	return std::make_shared<document_select_controller>(host, shared_from_this(), logical_bounds, element_offset);
 }
 
-void document_control::render(render::draw_context& dc, const pointi element_offset) const
+void document_content::render(render::draw_context& dc, const pointi element_offset) const
 {
+	if (_formatted)
+	{
+		render_children(dc, element_offset);
+		return;
+	}
 	const auto& doc = *_document;
 	const auto data = bytes();
 	const auto rows = static_cast<int>(doc.row_count());
@@ -334,14 +498,13 @@ void document_control::render(render::draw_context& dc, const pointi element_off
 	const auto left = text_left(logical_bounds);
 	const auto palette = make_palette(dc);
 	const auto selection_clr = core::color(ui::style::colors.view_selected_background,
-	                                     dc.colors.alpha * (doc.focused ? 0.85f : 0.4f));
+	                                       dc.colors.alpha * (doc.focused ? 0.85f : 0.4f));
 	const auto has_selection = doc.has_selection();
 	const auto [sel_from, sel_to] = doc.selection();
 
 	const auto& text = doc.text();
-	const auto highlight = text.language == ui::syntax::language::plain
-		                       ? ui::highlight_fn{}
-		                       : ui::syntax::for_language(text.language);
+	const auto highlight = text.language == ui::syntax::language::plain ? ui::highlight_fn{}
+	                                                                    : ui::syntax::for_language(text.language);
 
 	std::vector<colour_slot> slots;
 	std::vector<render::text_highlight_t> highlights;
@@ -406,7 +569,7 @@ void document_control::render(render::draw_context& dc, const pointi element_off
 
 			// The break at the end of a selected line shows as one more column after its last row.
 			const auto selects_break = !row.is_dump && row_end.offset == static_cast<int>(text.lines[line].length) &&
-				sel_from <= row_end && sel_to.line > line;
+			                           sel_from <= row_end && sel_to.line > line;
 			auto first = cells.size() - 1;
 			auto last = first;
 
@@ -420,8 +583,8 @@ void document_control::render(render::draw_context& dc, const pointi element_off
 			if (first < last || selects_break)
 			{
 				const auto x0 = left + static_cast<int>(std::lround(cells[first].column * _char_width));
-				const auto x1 = left + static_cast<int>(std::lround(
-					(cells[last].column + (selects_break ? 1 : 0)) * _char_width));
+				const auto x1 = left + static_cast<int>(
+										   std::lround((cells[last].column + (selects_break ? 1 : 0)) * _char_width));
 				dc.draw_rect(recti(x0, y, x1, y + _line_height), selection_clr);
 			}
 		}
@@ -445,4 +608,30 @@ void document_control::render(render::draw_context& dc, const pointi element_off
 		dc.draw_text(row.display, highlights, recti(left, y, logical_bounds.right, y + _line_height), _font,
 		             render::text_style::single_line, palette[base], {});
 	}
+}
+
+void document_content::layout(render::measure_context& mc, const recti bounds_in)
+{
+	view_element::layout(mc, bounds_in);
+	if (_formatted) _formatted->ui::control::layout(mc, bounds_in);
+}
+
+void document_content::visit_children(const std::function<void(const view_element_ptr&)>& visit) const
+{
+	if (_formatted) visit(_formatted);
+}
+
+document_control::document_control(std::shared_ptr<document_content> content, const view_element_options& options) :
+	ui::document_panel(content, options), _content(std::move(content))
+{
+}
+
+document_control::document_control(display_state_ptr display, const view_element_options& options) :
+	document_control(std::make_shared<document_content>(std::move(display), view_element_options{}), options)
+{
+}
+
+document_control::document_control(std::vector<uint8_t> bytes, const view_element_options& options) :
+	document_control(std::make_shared<document_content>(std::move(bytes), view_element_options{}), options)
+{
 }

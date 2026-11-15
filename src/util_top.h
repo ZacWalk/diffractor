@@ -1,19 +1,16 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Top-N tracking container. Maintains a sorted list of the
 // N largest or most frequent items for statistical summaries.
 
 #pragma once
 
-
-template <typename val_t, typename sorter_t>
-std::vector<val_t> top_vec(std::vector<std::pair<int, val_t>> all, int max)
+template <typename val_t, typename sorter_t> std::vector<val_t> top_vec(std::vector<std::pair<int, val_t>> all, int max)
 {
 	if (max <= 0 || all.empty()) return {};
 

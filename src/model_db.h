@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: SQLite database layer for persistent storage. Manages item thumbnails, metadata cache,
 // import history, and web service cache with efficient batch writes.
@@ -30,8 +29,7 @@ namespace database_test_seams
 	void fail_next_journal_probe(int sqlite_result);
 	size_t folder_thumbnail_visit_budget();
 	void visit_folder_thumbnail_candidates(
-		const core::folder_path& root,
-		const std::function<bool(const core::folder_path&)>& visit,
+		const core::folder_path& root, const std::function<bool(const core::folder_path&)>& visit,
 		const std::function<std::vector<core::folder_path>(const core::folder_path&)>& enumerate);
 }
 
@@ -64,10 +62,7 @@ struct item_import_hash
 
 struct item_import_eq
 {
-	bool operator()(const item_import& l, const item_import& r) const
-	{
-		return l.compare(r) == 0;
-	}
+	bool operator()(const item_import& l, const item_import& r) const { return l.compare(r) == 0; }
 };
 
 using item_import_set = core::hash_set<item_import, item_import_hash, item_import_eq>;
@@ -125,7 +120,6 @@ public:
 		db_thumbnail& operator=(db_thumbnail&&) noexcept = default;
 	};
 
-
 	database(index_state& s);
 	~database() override;
 
@@ -152,11 +146,16 @@ public:
 	void upgrade_cached_metadata();
 	bool invalidate_cached_metadata() const;
 	bool request_date_pack_rescan() const;
-	bool request_audio_metadata_rescan() const;
+	// Asks the rows whose names a predicate admits to be re-scanned, keeping what they hold to answer meanwhile.
+	bool request_rescan(const std::function<bool(std::string_view name)>& admits) const;
+	// Asks the files whose cached metadata a version after stored_version changed to be re-scanned.
+	bool request_rescan_since(int stored_version) const;
+	static bool is_audio_or_video_metadata(std::string_view name);
+	static bool is_tracker_module(std::string_view name);
+	static bool is_picture_or_video(std::string_view name);
 	void perform_writes();
 	void perform_writes(std::deque<item_db_write> writes) const;
 	void maintenance(bool is_reset);
-
 
 	friend class bucket;
 	friend class db_blob_builder;

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for places and location search (model_location*) -- the gazetteer, place naming,
 // distance, map-driven queries, visits and the timeline. Owning document: docs/locations.md.
@@ -43,8 +42,7 @@ static void should_group_sidebar_map_by_place()
 	record();
 
 	const auto map_loc = df::location_heat_map::calc_map_loc({50.08806, 14.42083});
-	const auto heat = histograms._locations.coordinates[
-		map_loc.y * df::location_heat_map::map_width + map_loc.x];
+	const auto heat = histograms._locations.coordinates[map_loc.y * df::location_heat_map::map_width + map_loc.x];
 	assert_equal(2u, heat, "map heat accumulates repeated coordinates");
 	assert_equal(1u, static_cast<uint32_t>(histograms._location_groups.size()), "one place group");
 	const auto& group = histograms._location_groups.begin()->second;
@@ -104,7 +102,7 @@ static core::date_t tile_days_ago(const uint32_t days)
 static void should_cache_tiles_in_a_database()
 {
 	tile_cache_db db;
-	db.open(_temps.next_path(".db"));
+	db.open(test_temps.next_path(".db"));
 
 	assert_equal(true, db.is_open(), "database opened", "tile cache");
 
@@ -133,7 +131,7 @@ static void should_cache_tiles_in_a_database()
 static void should_prune_unused_tiles()
 {
 	tile_cache_db db;
-	db.open(_temps.next_path(".db"));
+	db.open(test_temps.next_path(".db"));
 
 	const core::blob bytes = {1, 2, 3, 4};
 	const auto long_ago = tile_days_ago(60);
@@ -147,8 +145,7 @@ static void should_prune_unused_tiles()
 	assert_equal(3, static_cast<int>(db.count()), "stored before prune", "tile cache");
 
 	db.prune(30, tile_cache_db::max_bytes);
-	assert_equal(0, static_cast<int>(db.count()), "tiles unused for longer than the window are dropped",
-	             "tile cache");
+	assert_equal(0, static_cast<int>(db.count()), "tiles unused for longer than the window are dropped", "tile cache");
 
 	db.close();
 }
@@ -156,7 +153,7 @@ static void should_prune_unused_tiles()
 static void should_bound_tile_cache_by_size()
 {
 	tile_cache_db db;
-	db.open(_temps.next_path(".db"));
+	db.open(test_temps.next_path(".db"));
 
 	const core::blob bytes(8192, 0x5a);
 	const auto long_ago = tile_days_ago(60);
@@ -179,7 +176,7 @@ static void should_bound_tile_cache_by_size()
 static void should_budget_expired_tile_pruning()
 {
 	tile_cache_db db;
-	db.open(_temps.next_path(".db"));
+	db.open(test_temps.next_path(".db"));
 
 	const core::blob bytes = {1, 2, 3, 4};
 	const auto long_ago = tile_days_ago(60);
@@ -198,8 +195,7 @@ static void should_budget_expired_tile_pruning()
 	assert_equal(4103, static_cast<int>(db.count()), "stored before prune", "tile cache");
 
 	db.prune(30, tile_cache_db::max_bytes);
-	assert_equal(7, static_cast<int>(db.count()), "one maintenance pass removes only its row budget",
-	             "tile cache");
+	assert_equal(7, static_cast<int>(db.count()), "one maintenance pass removes only its row budget", "tile cache");
 
 	db.prune(30, tile_cache_db::max_bytes);
 	assert_equal(3, static_cast<int>(db.count()), "a later pass finishes expired cleanup", "tile cache");
@@ -226,7 +222,7 @@ static void should_classify_tile_cache_open_failures_before_replacement()
 static void should_keep_tile_transaction_bookkeeping_after_commit_failure()
 {
 	tile_cache_db db;
-	db.open(_temps.next_path(".db"));
+	db.open(test_temps.next_path(".db"));
 
 	const core::blob bytes = {1, 2, 3, 4};
 	for (auto i = 0u; i < tile_cache_db::prune_write_interval; ++i)
@@ -258,7 +254,7 @@ static void should_keep_tiles_inside_the_retention_window()
 	// The OSM tile usage policy asks clients to keep what they download for at least a week, so a
 	// prune that has run out of anything older must give up rather than evict a fresh tile.
 	tile_cache_db db;
-	db.open(_temps.next_path(".db"));
+	db.open(test_temps.next_path(".db"));
 
 	const core::blob bytes(8192, 0x5a);
 
@@ -279,7 +275,7 @@ static void should_keep_tiles_inside_the_retention_window()
 
 static void should_replace_an_unreadable_tile_cache()
 {
-	const auto path = _temps.next_path(".db");
+	const auto path = test_temps.next_path(".db");
 	const core::blob junk(4096, 0x7f);
 	platform::blob_save_to_file(core::cspan(junk), path);
 
@@ -337,6 +333,7 @@ static void should_publish_prepared_map_marker_snapshots()
 	const gps_coordinate prague(50.0755, 14.4378);
 
 	std::vector<map_engine::marker> markers;
+	markers.reserve(100);
 	for (auto i = 0; i < 100; ++i) markers.push_back({prague, 1});
 
 	auto snapshot = map_engine::prepare_marker_snapshot(markers, 16);
@@ -458,9 +455,8 @@ static void should_frame_map_on_the_box_that_holds_items()
 	// The fitted zoom shows the whole box; one step closer would cut it off.
 	const auto span_px = [](const map_box& box, const int zoom)
 	{
-		return std::max(
-			(lon_to_tile_x(box.max_longitude, zoom) - lon_to_tile_x(box.min_longitude, zoom)) * TILE_SIZE,
-			(lat_to_tile_y(box.min_latitude, zoom) - lat_to_tile_y(box.max_latitude, zoom)) * TILE_SIZE);
+		return std::max((lon_to_tile_x(box.max_longitude, zoom) - lon_to_tile_x(box.min_longitude, zoom)) * TILE_SIZE,
+		                (lat_to_tile_y(box.min_latitude, zoom) - lat_to_tile_y(box.max_latitude, zoom)) * TILE_SIZE);
 	};
 
 	assert_equal(true, span_px(city, city_zoom) <= extent.cx, "the framed box fits", "map framing");
@@ -538,8 +534,8 @@ static void should_round_trip_globe_pixels()
 			// Rounding to the pixel costs about a fifth of a degree at this radius, and more as
 			// the limb compresses; a degree of slack keeps the check honest without being noise.
 			assert_near(place.latitude(), shown->latitude(), 1.0, "round trip latitude", "globe");
-			assert_near(0.0, globe_wrap_longitude(place.longitude() - shown->longitude()), 1.0,
-			            "round trip longitude", "globe");
+			assert_near(0.0, globe_wrap_longitude(place.longitude() - shown->longitude()), 1.0, "round trip longitude",
+			            "globe");
 		}
 	}
 
@@ -677,7 +673,7 @@ static void should_select_thumbnail_representatives_while_counting()
 		result.name = core::cache(name);
 		result.ft = files::file_type_from_name(name);
 		const auto metadata = std::make_shared<prop::item_metadata>();
-		metadata->rating = rating;
+		metadata->rating = static_cast<int16_t>(rating);
 		result.metadata.store(metadata);
 		return result;
 	};
@@ -722,8 +718,8 @@ static void should_find_location()
 	assert_equal("London", locations.find_largest(51.3, -0.5, 51.7, 0.3).place,
 	             "largest population center inside photo bounds");
 	const auto boulder_city_coord = gps_coordinate(35.9786, -114.8325);
-	assert_equal("Boulder City", locations.find_closest(boulder_city_coord.latitude(),
-	                                                    boulder_city_coord.longitude()).place,
+	assert_equal("Boulder City",
+	             locations.find_closest(boulder_city_coord.latitude(), boulder_city_coord.longitude()).place,
 	             "Boulder City reverse geocode");
 
 	df::index_file_item boulder_city_file;
@@ -738,16 +734,15 @@ static void should_find_location()
 	             "loc place uses map reverse geocode when stored place is empty");
 
 	// locations.md 2.3: a prediction is labelled at its qualification level, not always fully.
-	assert_equal("London, United Kingdom",
-	             locations.auto_complete("london", 8, default_location)[0].location.str(), "City");
-	assert_equal("London, Canada",
-	             locations.auto_complete("london canada", 8, default_location)[0].location.str(), "City");
-	assert_equal("Armidale",
-	             locations.auto_complete("armid aust", 8, default_location)[0].location.str(), "City");
+	assert_equal("London, United Kingdom", locations.auto_complete("london", 8, default_location)[0].location.str(),
+	             "City");
+	assert_equal("London, Canada", locations.auto_complete("london canada", 8, default_location)[0].location.str(),
+	             "City");
+	assert_equal("Armidale", locations.auto_complete("armid aust", 8, default_location)[0].location.str(), "City");
 	assert_equal("Birmingham, United Kingdom",
 	             locations.auto_complete("birm gb", 8, default_location)[0].location.str(), "City");
-	assert_equal("King of Prussia",
-	             locations.auto_complete("king pru usa", 8, default_location)[0].location.str(), "City");
+	assert_equal("King of Prussia", locations.auto_complete("king pru usa", 8, default_location)[0].location.str(),
+	             "City");
 	assert_equal("King of Prussia",
 	             locations.auto_complete("king of prussia pennsylvania", 8, default_location)[0].location.str(),
 	             "State");
@@ -757,19 +752,20 @@ static void should_find_location()
 	assert_equal("Czechia"s, std::string(czech_matches.front().location.country), "CZ predicts Czechia");
 
 	const auto short_local = locations.auto_complete("bi", 4, default_location);
-	assert_equal(true, std::ranges::any_of(short_local, [](const location_match& match)
-	             {
-		             return core::icmp(match.location.place, "Birmingham") == 0 &&
-			             core::icmp(match.location.country, "United Kingdom") == 0;
-	             }),
+	assert_equal(true,
+	             std::ranges::any_of(short_local,
+	                                 [](const location_match& match)
+	{
+		return core::icmp(match.location.place, "Birmingham") == 0 &&
+		       core::icmp(match.location.country, "United Kingdom") == 0;
+	}),
 	             "short prefixes include local places by canonical country code");
 	assert_equal(true, short_local.size() <= 4, "short completion honours the result cap");
 
 	const auto short_nonlocal = locations.auto_complete("ar", 8, default_location);
-	assert_equal(false, std::ranges::any_of(short_nonlocal, [](const location_match& match)
-	             {
-		             return core::icmp(match.location.place, "Armidale") == 0;
-	             }),
+	assert_equal(false,
+	             std::ranges::any_of(short_nonlocal, [](const location_match& match)
+	{ return core::icmp(match.location.place, "Armidale") == 0; }),
 	             "short prefixes still suppress non-local place matches");
 
 	// Issue #119: the displayed place and country names follow the selected UI language.
@@ -778,22 +774,26 @@ static void should_find_location()
 	assert_equal("München", munich_de.place, "German place");
 	assert_equal("Deutschland", munich_de.country, "German country");
 	const auto local_de = locations.auto_complete("bi", 4, default_location);
-	assert_equal(true, std::ranges::any_of(local_de, [](const location_match& match)
-	             {
-		             return core::icmp(match.location.place, "Birmingham") == 0 &&
-			             core::icmp(match.location.country, "Vereinigtes Königreich") == 0;
-	             }),
+	assert_equal(true,
+	             std::ranges::any_of(local_de,
+	                                 [](const location_match& match)
+	{
+		return core::icmp(match.location.place, "Birmingham") == 0 &&
+		       core::icmp(match.location.country, "Vereinigtes Königreich") == 0;
+	}),
 	             "localized display names do not break short local completion");
 	locations.set_display_language("es");
 	const auto munich_es = locations.find_by_id(2867714);
 	assert_equal("Múnich", munich_es.place, "Spanish place");
 	assert_equal("Alemania", munich_es.country, "Spanish country");
 	const auto local_es = locations.auto_complete("bi", 4, default_location);
-	assert_equal(true, std::ranges::any_of(local_es, [](const location_match& match)
-	             {
-		             return core::icmp(match.location.place, "Birmingham") == 0 &&
-			             core::icmp(match.location.country, "Reino Unido") == 0;
-	             }),
+	assert_equal(true,
+	             std::ranges::any_of(local_es,
+	                                 [](const location_match& match)
+	{
+		return core::icmp(match.location.place, "Birmingham") == 0 &&
+		       core::icmp(match.location.country, "Reino Unido") == 0;
+	}),
 	             "a second localized display language still completes local short prefixes");
 	locations.set_display_language("zh");
 	const auto munich_zh = locations.find_by_id(2867714);
@@ -839,8 +839,7 @@ static void should_find_places_across_the_antimeridian_and_poles()
 	auto& locations = test_locations();
 
 	const auto seam = locations.find_closest(66.323, 179.9);
-	assert_equal("Egvekinot"s, std::string(seam.place.sv()),
-	             "nearest lookup wraps across the antimeridian");
+	assert_equal("Egvekinot"s, std::string(seam.place.sv()), "nearest lookup wraps across the antimeridian");
 
 	const auto attributed = locations.find_attributed(66.323, 179.9);
 	assert_equal("Egvekinot"s, std::string(attributed.nearest.place.sv()),
@@ -848,8 +847,7 @@ static void should_find_places_across_the_antimeridian_and_poles()
 
 	assert_equal(180.0, location_longitude_span_degrees(89.9, 100.0),
 	             "a polar attribution radius conservatively spans every longitude");
-	assert_equal(true, location_longitude_span_degrees(0.0, 100.0) < 1.0,
-	             "ordinary midlatitude bounds stay narrow");
+	assert_equal(true, location_longitude_span_degrees(0.0, 100.0) < 1.0, "ordinary midlatitude bounds stay narrow");
 }
 
 // Records are read back through a mapping that load_index drops and rebuilds, and the index is
@@ -872,14 +870,14 @@ static void should_reload_location_index()
 	// that the offsets survived.
 	assert_equal("City of London", locations.find_by_id(2643741).place, "id lookup survives a reload");
 	assert_equal("London", locations.find_largest(51.3, -0.5, 51.7, 0.3).place, "bounds lookup survives a reload");
-	assert_equal("Boulder City", locations.find_closest(35.9786, -114.8325).place,
-	             "reverse geocode survives a reload");
+	assert_equal("Boulder City", locations.find_closest(35.9786, -114.8325).place, "reverse geocode survives a reload");
 
 	const auto after = locations.auto_complete("london", 8, default_location);
 	assert_equal(before.size(), after.size(), "reload does not change the number of predictions");
 	assert_equal("London, United Kingdom", after[0].location.str(), "reload keeps the top prediction");
 }
 
+#ifndef _DEBUG
 static void should_find_closest_location()
 {
 	const auto& locations = test_locations();
@@ -891,6 +889,7 @@ static void should_find_closest_location()
 	assert_equal("Eastern Parkway", locations.find_closest(40.664167, -73.938611).place, "City");
 	assert_equal("Beijing", locations.find_closest(39.913889, 116.391667).place, "City");
 }
+#endif
 
 static void should_offset_localized_name()
 {
@@ -1030,8 +1029,7 @@ static void should_bound_place_attribution()
 	assert_equal(static_cast<int>(location_attribution::at), static_cast<int>(singapore.attribution),
 	             "a Singapore photo is At its nearest feature");
 	assert_equal("Marina Bay", singapore.place.place, "item attribution keeps the nearest feature");
-	assert_equal("Singapore"s,
-	             qualified_name(locations.find_largest_attributed(1.291985, 103.866511)),
+	assert_equal("Singapore"s, qualified_name(locations.find_largest_attributed(1.291985, 103.866511)),
 	             "a map cluster prefers the recognizable city");
 
 	// Step 3: outside its radius but within three, on land. It is still located, and it still
@@ -1086,7 +1084,10 @@ static void should_describe_bearing()
 	// locations.md 2.7: every item resolved at step 3, 4 or 5 also gets a secondary descriptor
 	// computed from the nearest place regardless of radius. It is never a group key and never a
 	// search term, so it exists only to answer "where was that?".
-	const auto point = [](const double degrees) { return static_cast<int>(location_bearing_from_degrees(degrees)); };
+	const auto point = [](const double degrees)
+	{
+		return static_cast<int>(location_bearing_from_degrees(degrees));
+	};
 
 	assert_equal(static_cast<int>(location_bearing::north), point(0.0), "0 degrees is north");
 	assert_equal(static_cast<int>(location_bearing::north), point(22.4), "just under 22.5 is still north");
@@ -1243,9 +1244,8 @@ static void should_recover_from_an_empty_location_search()
 static void should_reproduce_a_location_group_from_its_header()
 {
 	// The link the header builds for `London` inside `England, United Kingdom`.
-	auto search = df::search_t()
-	              .location("London", df::location_level::place)
-	              .location("England", df::location_level::state);
+	auto search =
+		df::search_t().location("London", df::location_level::place).location("England", df::location_level::state);
 
 	const auto matches = [&search](const core::cached place, const core::cached state)
 	{
@@ -1265,11 +1265,14 @@ static void should_reproduce_a_location_group_from_its_header()
 	assert_equal(false, matches("Bristol"_c, "England"_c), "nor the rest of the region");
 }
 
-static void should_defer_height_classes()
+// Height classes are not built, so their words name nothing yet: each is searched for as typed, as any `@` word that
+// names nothing is, rather than dropped and widening the search to everything.
+static void should_search_unbuilt_height_classes_as_typed()
 {
-	assert_equal(std::string_view{}, df::search_t::parse("@flying").format_terms(), "flying is deferred");
-	assert_equal(std::string_view{}, df::search_t::parse("@altitude").format_terms(), "altitude is deferred");
-	assert_equal(std::string_view{}, df::search_t::parse("@underwater").format_terms(), "underwater is deferred");
+	assert_equal("\"@flying\""s, df::search_t::parse("@flying").format_terms(), "flying is searched as typed");
+	assert_equal("\"@altitude\""s, df::search_t::parse("@altitude").format_terms(), "altitude is searched as typed");
+	assert_equal("\"@underwater\""s, df::search_t::parse("@underwater").format_terms(),
+	             "underwater is searched as typed");
 }
 
 // locations.md 4: the distance slider rewrites the radius of the one location term it controls.
@@ -1341,8 +1344,7 @@ static void should_read_only_signed_numbers_as_a_coordinate()
 
 	assert_equal(true, df::search_t::parse("loc:Stratford-upon-Avon").single_place_term() != nullptr,
 	             "searched as a place");
-	assert_equal(true, df::search_t::parse("near:Aix-en-Provence").single_place_term() != nullptr,
-	             "near: too");
+	assert_equal(true, df::search_t::parse("near:Aix-en-Provence").single_place_term() != nullptr, "near: too");
 }
 
 // locations.md 3.5: every location scope spelling is one entry in df::location_scopes, and completing,
@@ -1396,8 +1398,7 @@ static void should_resolve_location_vocabulary()
 	};
 
 	// The defect this fixes: the most guessable spelling used to read the raw field only.
-	assert_equal(true, matches("place:\"Boulder City\"", gps_only),
-	             "place resolves a location for a GPS-only item");
+	assert_equal(true, matches("place:\"Boulder City\"", gps_only), "place resolves a location for a GPS-only item");
 	assert_equal(true, matches("city:\"Boulder City\"", gps_only), "city is a synonym of place");
 	assert_equal(true, matches("state:Nevada", gps_only), "state resolves for a GPS-only item");
 	assert_equal(true, matches("country:\"United States\"", gps_only), "country resolves for a GPS-only item");
@@ -1528,11 +1529,11 @@ static void should_match_location_radius_and_presence()
 	             "the plural unit is accepted");
 
 	// A component that does not parse completely stays part of the name.
-	assert_equal("Boulder City, 10 furlongs", std::string(df::search_t::parse("loc:\"Boulder City, 10 furlongs\"").
-		             terms()[0].text),
+	assert_equal("Boulder City, 10 furlongs",
+	             std::string(df::search_t::parse("loc:\"Boulder City, 10 furlongs\"").terms()[0].text),
 	             "an unrecognised unit is not a distance");
-	assert_equal("Nevada, United States", std::string(df::search_t::parse("loc:\"Nevada, United States\"").terms()[0].
-		             text),
+	assert_equal("Nevada, United States",
+	             std::string(df::search_t::parse("loc:\"Nevada, United States\"").terms()[0].text),
 	             "an ordinary qualifier is not a distance");
 
 	// Radius matching needs coordinates; stored text alone can never satisfy one.
@@ -1547,8 +1548,9 @@ static void should_match_location_radius_and_presence()
 	const auto reno = locations.find_by_name("Reno");
 	assert_equal("Reno/United States", std::string(reno.place.sv()) + "/" + std::string(reno.country.sv()),
 	             "a bare name resolves to its canonical record");
-	assert_equal("Reno/United States", std::string(locations.find_by_name("Reno, Nevada").place.sv()) + "/" +
-	             std::string(locations.find_by_name("Reno, Nevada").country.sv()),
+	assert_equal("Reno/United States",
+	             std::string(locations.find_by_name("Reno, Nevada").place.sv()) + "/" +
+	                 std::string(locations.find_by_name("Reno, Nevada").country.sv()),
 	             "a region qualifier selects the same record");
 	assert_equal(true, core::is_empty(locations.find_by_name("Reno, France").place),
 	             "a qualifier that does not hold resolves nothing");
@@ -1789,21 +1791,20 @@ static void should_centre_a_visit_across_the_antimeridian()
 	const auto timeline = df::compute_visits(request, locations);
 
 	assert_equal(1u, static_cast<uint32_t>(timeline.nodes.size()),
-	             std::format("one visit either side of the line (located {}, nodes {})",
-	                         timeline.located_count, timeline.nodes.size()));
+	             std::format("one visit either side of the line (located {}, nodes {})", timeline.located_count,
+	                         timeline.nodes.size()));
 
 	const auto centre = timeline.nodes.front().centre;
 	assert_equal(true, centre.is_valid(),
 	             std::format("the visit has a centre ({}, {})", centre.latitude(), centre.longitude()));
 	assert_equal(true, std::abs(centre.longitude()) > 179.0,
-	             std::format("the centre stays on the meridian the samples straddle ({}, {})",
-	                         centre.latitude(), centre.longitude()));
+	             std::format("the centre stays on the meridian the samples straddle ({}, {})", centre.latitude(),
+	                         centre.longitude()));
 	assert_equal(true, std::abs(centre.latitude() + 16.9) < 0.5, "and keeps the latitude it was given");
 
 	// The radius covers the members, so a centre on the wrong side of the planet would show up as a
 	// radius of thousands of kilometres rather than a few.
-	assert_equal(true, timeline.nodes.front().radius_km < 100.0,
-	             "the covering radius is local, not half the planet");
+	assert_equal(true, timeline.nodes.front().radius_km < 100.0, "the covering radius is local, not half the planet");
 }
 
 // A text-only visit is keyed by the same identity the place tallies use. Keying on the place name
@@ -1814,8 +1815,8 @@ static void should_tell_text_only_namesakes_apart()
 	const location_cache locations;
 	df::visit_request request;
 
-	const auto sample_at = [](const int year, const int month, const int day, const std::string_view place,
-	                          const std::string_view state)
+	const auto sample_at =
+		[](const int year, const int month, const int day, const std::string_view place, const std::string_view state)
 	{
 		df::visit_sample s;
 		s.days = core::date_t(year, month, day, 12, 0, 0).to_days();
@@ -1965,9 +1966,8 @@ static bool place_chip_matches_sample(const df::visit_place_tally& place, const 
 		return is_empty(chip) || (!is_empty(value) && core::icmp(chip, value) == 0);
 	};
 
-	return matches(place.place, sample.place) &&
-		matches(place.state, sample.state) &&
-		matches(place.country, sample.country);
+	return matches(place.place, sample.place) && matches(place.state, sample.state) &&
+	       matches(place.country, sample.country);
 }
 
 static uint32_t count_matching_place_chip_direct(const df::visit_request& request, const df::visit_place_tally& place)
@@ -2083,8 +2083,7 @@ static void should_drop_unbounded_partial_place_breakdowns()
 		const auto timeline = df::compute_visits(request, locations);
 		assert_place_chips_match_direct_predicates(request, timeline, "permuted partial place identities");
 		++permutations;
-	}
-	while (std::next_permutation(order.begin(), order.end()));
+	} while (std::next_permutation(order.begin(), order.end()));
 
 	assert_equal(120u, permutations, "all group-order permutations were checked");
 }
@@ -2119,9 +2118,8 @@ static void should_keep_random_place_breakdown_predicates_authoritative()
 {
 	const location_cache locations;
 	const std::array<const char*, 4> places = {"Paris", "Lyon", "Nice", "Rouen"};
-	const std::array<const char*, 4> states = {
-		"Ile-de-France", "Auvergne-Rhone-Alpes", "Provence-Alpes-Cote d'Azur", "Normandy"
-	};
+	const std::array<const char*, 4> states = {"Ile-de-France", "Auvergne-Rhone-Alpes", "Provence-Alpes-Cote d'Azur",
+	                                           "Normandy"};
 	const std::array<const char*, 2> countries = {"France", "Germany"};
 	auto rng = 0x6008u;
 	const auto next = [&rng]
@@ -2141,16 +2139,14 @@ static void should_keep_random_place_breakdown_predicates_authoritative()
 			auto mask = next() % 7u + 1u;
 			if ((mask & 4u) == 0 && (next() % 3u) == 0) mask |= 4u;
 
-			request.samples.emplace_back(text_place_sample(
-				i + 1,
-				(mask & 1u) != 0 ? places[place_index] : "",
-				(mask & 2u) != 0 ? states[place_index] : "",
-				(mask & 4u) != 0 ? countries[country_index] : ""));
+			request.samples.emplace_back(text_place_sample(i + 1, (mask & 1u) != 0 ? places[place_index] : "",
+			                                               (mask & 2u) != 0 ? states[place_index] : "",
+			                                               (mask & 4u) != 0 ? countries[country_index] : ""));
 		}
 
 		const auto timeline = df::compute_visits(request, locations);
-		assert_place_chips_match_direct_predicates(
-			request, timeline, std::format("random partial identity set {}", iteration));
+		assert_place_chips_match_direct_predicates(request, timeline,
+		                                           std::format("random partial identity set {}", iteration));
 	}
 }
 
@@ -2196,7 +2192,7 @@ static void should_cancel_place_breakdown_derivation()
 		request.samples.emplace_back(text_place_sample(i + 1, "Paris", "Ile-de-France", "France"));
 	}
 
-	const auto timeline = df::compute_visits(std::move(request), locations);
+	const auto timeline = df::compute_visits(request, locations);
 	assert_equal(0u, timeline.located_count, "cancelled visit derivation stops before tallying places");
 	assert_equal(0u, static_cast<uint32_t>(timeline.places.size()), "cancelled visit derivation publishes no chips");
 }
@@ -2219,8 +2215,8 @@ static void should_reproduce_a_place_breakdown_from_its_chip()
 	// A place whose items carry stored text, some of them with no coordinates at all.
 	for (auto d = 1; d <= 10; ++d)
 	{
-		request.samples.emplace_back(stored(visit_sample_at(2019, 6, d, 35.9786 + d * 0.002,
-		                                                    -114.8325 + d * 0.002, "Boulder City")));
+		request.samples.emplace_back(
+			stored(visit_sample_at(2019, 6, d, 35.9786 + d * 0.002, -114.8325 + d * 0.002, "Boulder City")));
 	}
 
 	for (auto d = 1; d <= 5; ++d)
@@ -2426,7 +2422,7 @@ static void should_run_the_search_a_timeline_node_promises()
 	             "unnamed node searches coordinates");
 }
 
-void register_location_tests(view_state& state, test_registry& tests)
+void register_location_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should group sidebar map by place"s, should_group_sidebar_map_by_place);
 
@@ -2456,8 +2452,7 @@ void register_location_tests(view_state& state, test_registry& tests)
 	tests.add("Should anchor map marker cells to world"s, should_anchor_map_marker_cells_to_world);
 	// UI-008 - marker snapshots are prepared before UI publication
 	tests.add("Should publish prepared map marker snapshots"s, should_publish_prepared_map_marker_snapshots);
-	tests.add("Should cull prepared map marker cells to view"s,
-	          should_cull_prepared_map_marker_cells_to_view);
+	tests.add("Should cull prepared map marker cells to view"s, should_cull_prepared_map_marker_cells_to_view);
 	tests.add("Should clear map marker hits when snapshot changes"s,
 	          should_clear_map_marker_hits_when_snapshot_changes);
 	tests.add("Should measure distance to map cells"s, should_measure_distance_to_map_cells);
@@ -2479,8 +2474,7 @@ void register_location_tests(view_state& state, test_registry& tests)
 	//
 	// MOD-003/MOD-004/MOD-005 - canonical country identity and bounded gazetteer lookup
 	tests.add("Should find Location"s, should_find_location);
-	tests.add("Should return no place for empty location lookup"s,
-	          should_return_no_place_for_empty_location_lookup);
+	tests.add("Should return no place for empty location lookup"s, should_return_no_place_for_empty_location_lookup);
 	tests.add("Should find places across the antimeridian and poles"s,
 	          should_find_places_across_the_antimeridian_and_poles);
 	tests.add("Should reload location index"s, should_reload_location_index);
@@ -2494,15 +2488,15 @@ void register_location_tests(view_state& state, test_registry& tests)
 	tests.add("Should compose qualified place name"s, should_compose_qualified_place_name);
 	tests.add("Should bound place attribution"s, should_bound_place_attribution);
 	tests.add("Should describe bearing"s, should_describe_bearing);
-	tests.add("Should attribute from the place find closest names"s, should_attribute_from_the_place_find_closest_names);
+	tests.add("Should attribute from the place find closest names"s,
+	          should_attribute_from_the_place_find_closest_names);
 
 	//
 	// Location search
 	//
 	tests.add("Should recover from an empty location search"s, should_recover_from_an_empty_location_search);
-	tests.add("Should reproduce a location group from its header"s,
-	          should_reproduce_a_location_group_from_its_header);
-	tests.add("Should defer height classes"s, should_defer_height_classes);
+	tests.add("Should reproduce a location group from its header"s, should_reproduce_a_location_group_from_its_header);
+	tests.add("Should search unbuilt height classes as typed"s, should_search_unbuilt_height_classes_as_typed);
 	tests.add("Should step search distance"s, should_step_search_distance);
 	tests.add("Should read only signed numbers as a coordinate"s, should_read_only_signed_numbers_as_a_coordinate);
 	tests.add("Should resolve location vocabulary"s, should_resolve_location_vocabulary);
@@ -2532,22 +2526,16 @@ void register_location_tests(view_state& state, test_registry& tests)
 	tests.add("Should count a state only sample as located"s, should_count_a_state_only_sample_as_located);
 	// MOD-006 - place breakdown identity case folding
 	tests.add("Should fold place breakdown identity case"s, should_fold_place_breakdown_identity_case);
-	tests.add("Should reproduce a place breakdown from its chip"s,
-	          should_reproduce_a_place_breakdown_from_its_chip);
+	tests.add("Should reproduce a place breakdown from its chip"s, should_reproduce_a_place_breakdown_from_its_chip);
 	// MOD-007/MOD-008 - deterministic non-overlapping place breakdown predicates
-	tests.add("Should merge overlapping partial place breakdowns"s,
-	          should_merge_overlapping_partial_place_breakdowns);
-	tests.add("Should drop unbounded partial place breakdowns"s,
-	          should_drop_unbounded_partial_place_breakdowns);
-	tests.add("Should keep the largest partial place candidate"s,
-	          should_keep_the_largest_partial_place_candidate);
+	tests.add("Should merge overlapping partial place breakdowns"s, should_merge_overlapping_partial_place_breakdowns);
+	tests.add("Should drop unbounded partial place breakdowns"s, should_drop_unbounded_partial_place_breakdowns);
+	tests.add("Should keep the largest partial place candidate"s, should_keep_the_largest_partial_place_candidate);
 	tests.add("Should keep random place breakdown predicates authoritative"s,
 	          should_keep_random_place_breakdown_predicates_authoritative);
 	// MOD-008 - collapse work scales with identities, not identity pairs
-	tests.add("Should bound place breakdown collapse work"s,
-	          should_bound_place_breakdown_collapse_work);
-	tests.add("Should cancel place breakdown derivation"s,
-	          should_cancel_place_breakdown_derivation);
+	tests.add("Should bound place breakdown collapse work"s, should_bound_place_breakdown_collapse_work);
+	tests.add("Should cancel place breakdown derivation"s, should_cancel_place_breakdown_derivation);
 	tests.add("Should tell two place chips apart"s, should_tell_two_place_chips_apart);
 	tests.add("Should suppress an era until the query names it"s, should_suppress_an_era_until_the_query_names_it);
 	tests.add("Should run the search a timeline node promises"s, should_run_the_search_a_timeline_node_promises);

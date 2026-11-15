@@ -31,7 +31,11 @@ intermediate/
 /exe/dictionaries/en_GB.dic
 # Licence texts staged into exe/ by `dd.ps1 desktop` so the installer and diffractor.zip carry them.
 /exe/LICENSE.txt
+/exe/COPYING.LGPLv3.txt
 /exe/COPYING.GPLv3.txt
+/exe/COPYING.LGPLv2.1.txt
+/exe/LICENSE.libaom.txt
+/exe/PATENTS.libaom.txt
 /.vs
 # Visual Studio's state from `dd.ps1 vs`, which opens exe/diffractor64-d.exe.
 /exe/.vs
@@ -51,3 +55,5 @@ exe/tiles/*.png
 /search_*.ps1
 *.msixupload
 *.appxsym
+# Store artwork from running tools/generate_store_assets.py by hand; packaging writes its own to dist/.
+/exe/Assets/

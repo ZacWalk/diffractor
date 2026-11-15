@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Background execution behind async_strategy. Starts the worker threads and their queues,
 // routes each queue_* request to its queue, runs the media read/decode and preview workers, and
@@ -41,9 +40,12 @@ core::cancel_token make_index_update_token_for_worker_tests()
 	return core::cancel_token(index_version);
 }
 
-// Declared ahead of the queueing entry points below, which start these workers on first use.
-void start_worker(platform::task_queue& q, std::string_view name);
+// Declared ahead of the queueing entry points below, which start these workers on first use. A worker
+// that is not background work - the emulator's, which runs a machine the user is playing - leaves the
+// count of jobs running, which lights the logo, alone.
+void start_worker(platform::task_queue& q, std::string_view name, bool background_work = true);
 void start_map_worker(platform::task_queue& q);
+static void start_pool_worker(platform::task_queue& q, std::string_view thread_name, std::string_view perf_name);
 static void start_media_preview();
 static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue);
 
@@ -79,23 +81,17 @@ core::index_roots index_folders(const settings_t::index_t& collection)
 	core::index_roots result;
 	const auto local_folders = platform::local_folders();
 
-	if (collection.pictures && !local_folders.pictures.is_empty())
-		result.folders.emplace(
-			local_folders.pictures);
+	if (collection.pictures && !local_folders.pictures.is_empty()) result.folders.emplace(local_folders.pictures);
 	if (collection.video && !local_folders.video.is_empty()) result.folders.emplace(local_folders.video);
 	if (collection.music && !local_folders.music.is_empty()) result.folders.emplace(local_folders.music);
 	if (collection.drop_box && !local_folders.dropbox_photos.is_empty())
-		result.folders.emplace(
-			local_folders.dropbox_photos);
+		result.folders.emplace(local_folders.dropbox_photos);
 	if (collection.onedrive_pictures && !local_folders.onedrive_pictures.is_empty())
-		result.folders.emplace(
-			local_folders.onedrive_pictures);
+		result.folders.emplace(local_folders.onedrive_pictures);
 	if (collection.onedrive_video && !local_folders.onedrive_video.is_empty())
-		result.folders.emplace(
-			local_folders.onedrive_video);
+		result.folders.emplace(local_folders.onedrive_video);
 	if (collection.onedrive_music && !local_folders.onedrive_music.is_empty())
-		result.folders.emplace(
-			local_folders.onedrive_music);
+		result.folders.emplace(local_folders.onedrive_music);
 
 	parse_more_folders(result, collection.more_folders);
 
@@ -141,9 +137,8 @@ void app_frame::queue_media_preview(std::function<void(media_preview_state&)> f,
 // straight through.
 static void wait_for_index_cache(index_state& index)
 {
-	const std::vector<std::reference_wrapper<core::thread_event>> cache_events = {
-		index.cache_loaded_event(), platform::event_exit
-	};
+	const std::vector<std::reference_wrapper<core::thread_event>> cache_events = {index.cache_loaded_event(),
+	                                                                              platform::event_exit};
 
 	platform::wait_for(cache_events, 30000, false);
 }
@@ -168,32 +163,19 @@ void app_frame::start_index_workers()
 			{
 				_state.item_index.scan_uncached(token);
 
-				invalidate_view(view_invalid::sidebar |
-					view_invalid::command_state |
-					view_invalid::item_scan |
-					view_invalid::presence |
-					view_invalid::refresh_items |
-					view_invalid::index_summary);
+				invalidate_view(view_invalid::sidebar | view_invalid::command_state | view_invalid::item_scan |
+				                view_invalid::presence | view_invalid::refresh_items | view_invalid::index_summary);
 			});
 		}
 
 		_threads.start_if_running([&q = crc_task_queue] { start_worker(q, "crc"); });
 		_threads.start_if_running([&q = scan_folder_task_queue] { start_worker(q, "scan_folder"); });
-		_threads.start_if_running([&q = scan_modified_items_task_queue]
-		{
-			start_worker(q, "scan_modified_items");
-		});
-		_threads.start_if_running([&q = scan_displayed_items_task_queue]
-		{
-			start_worker(q, "scan_displayed_items");
-		});
+		_threads.start_if_running([&q = scan_modified_items_task_queue] { start_worker(q, "scan_modified_items"); });
+		_threads.start_if_running([&q = scan_displayed_items_task_queue] { start_worker(q, "scan_displayed_items"); });
 	}
 
-	invalidate_view(view_invalid::sidebar |
-		view_invalid::item_scan |
-		view_invalid::refresh_items |
-		view_invalid::command_state |
-		view_invalid::index_summary);
+	invalidate_view(view_invalid::sidebar | view_invalid::item_scan | view_invalid::refresh_items |
+	                view_invalid::command_state | view_invalid::index_summary);
 }
 
 void app_frame::update_index()
@@ -243,7 +225,7 @@ void app_frame::queue_index_update(const bool forget_cached_metadata)
 
 		_state.item_index.scan_uncached(token);
 		invalidate_view(view_invalid::sidebar | view_invalid::item_scan | view_invalid::presence |
-			view_invalid::refresh_items);
+		                view_invalid::refresh_items);
 
 		// This walk can replace the startup one before that has run, and the startup walk carried the
 		// only request to bring the index workers up. Once they are up this hop does nothing, so a
@@ -282,7 +264,6 @@ static void start_media_reading(const std::shared_ptr<av_player>& player)
 	player->reading();
 }
 
-
 static void start_database(database& db, platform::task_queue& database_task_queue, async_strategy& async,
                            const app_frame_ptr& app, std::function<void()> index_loaded_func)
 {
@@ -293,7 +274,7 @@ static void start_database(database& db, platform::task_queue& database_task_que
 	try
 	{
 		platform::thread_init c;
-		db.open(known_path(platform::known_folder::app_cache_data), "diffractor-cache");
+		db.open(app_cache_folder(), "diffractor-cache");
 		async.queue_ui(std::move(index_loaded_func));
 
 		// The loop runs whether or not the database opened. Its tasks carry the continuations that
@@ -301,9 +282,8 @@ static void start_database(database& db, platform::task_queue& database_task_que
 		// drains the write queue - which holds encoded thumbnails and would otherwise grow for the
 		// whole session against a database that can never accept it.
 		async.invalidate_view(view_invalid::refresh_items);
-		const std::vector<std::reference_wrapper<core::thread_event>> events = {
-			database_task_queue._event, platform::event_exit
-		};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {database_task_queue._event,
+		                                                                        platform::event_exit};
 
 		while (!platform::is_closing)
 		{
@@ -410,12 +390,13 @@ bool app_frame::claim_worker_start(std::atomic_bool& started)
 	return !started.load(std::memory_order_acquire) && !started.exchange(true, std::memory_order_acq_rel);
 }
 
-void app_frame::ensure_worker(std::atomic_bool& started, platform::task_queue& q, const std::string_view name)
+void app_frame::ensure_worker(std::atomic_bool& started, platform::task_queue& q, const std::string_view name,
+                              const bool background_work)
 {
 	if (claim_worker_start(started))
 	{
 		// Every name passed here is a literal, so the view outlives the thread that holds it.
-		_threads.start_if_running([&q, name] { start_worker(q, name); });
+		_threads.start_if_running([&q, name, background_work] { start_worker(q, name, background_work); });
 	}
 }
 
@@ -423,34 +404,30 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 {
 	switch (q)
 	{
-	case async_queue::crc:
-		crc_task_queue.enqueue(std::move(f));
-		break;
-	case async_queue::scan_folder:
-		scan_folder_task_queue.enqueue(std::move(f));
-		break;
-	case async_queue::scan_modified_items:
-		scan_modified_items_task_queue.enqueue(std::move(f));
-		break;
+	case async_queue::crc: crc_task_queue.enqueue(std::move(f)); break;
+	case async_queue::scan_folder: scan_folder_task_queue.enqueue(std::move(f)); break;
+	case async_queue::scan_modified_items: scan_modified_items_task_queue.enqueue(std::move(f)); break;
 	case async_queue::scan_displayed_items:
-		// Not reset_and_enqueue: each batch releases the loading claim its items were marked with on
-		// enqueue, so a dropped batch would leave them claimed forever. The cancel token retires
-		// superseded batches instead, and measurement says that is cheap - a retired batch breaks on
-		// its first token check, so it costs a queue hop rather than a decode. See thumbnail_state.
+		// The thumbnailing thread, which reads every source the visible plan asks for. Its only task is the visible
+		// plan's pump, which the plan marks as queued until it stops - so a pump discarded here, by
+		// reset_and_enqueue, would leave the plan waiting on one that never runs.
 		scan_displayed_items_task_queue.enqueue(std::move(f));
 		break;
-	case async_queue::load:
-		load_task_queue.enqueue(std::move(f));
+	case async_queue::thumbnail_decode:
+		if (claim_worker_start(_thumbnail_decode_workers_started))
+		{
+			for (auto i = 0; i < index_state::thumbnail_decode_threads(); ++i)
+			{
+				_threads.start_if_running([&q = thumbnail_decode_task_queue]
+				{ start_pool_worker(q, "thumbnail decode", "thumbnail_decode"); });
+			}
+		}
+		thumbnail_decode_task_queue.enqueue(std::move(f));
 		break;
-	case async_queue::load_raw:
-		load_raw_task_queue.reset_and_enqueue(std::move(f));
-		break;
-	case async_queue::render:
-		render_task_queue.enqueue(std::move(f));
-		break;
-	case async_queue::render_display:
-		render_display_task_queue.enqueue(std::move(f));
-		break;
+	case async_queue::load: load_task_queue.enqueue(std::move(f)); break;
+	case async_queue::load_raw: load_raw_task_queue.reset_and_enqueue(std::move(f)); break;
+	case async_queue::render: render_task_queue.enqueue(std::move(f)); break;
+	case async_queue::render_display: render_display_task_queue.enqueue(std::move(f)); break;
 	case async_queue::query:
 		// Not reset_and_enqueue: this queue carries two unrelated producers. Dropping a pending task
 		// would either lose a search's only publication hop (view_state::open) or strand a day in
@@ -458,15 +435,9 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 		// instead - a stale search breaks on its cancel token and a stale count on its generation.
 		query_task_queue.enqueue(std::move(f));
 		break;
-	case async_queue::index_predictions_single:
-		predictions_task_queue.reset_and_enqueue(std::move(f));
-		break;
-	case async_queue::index_summary_single:
-		summary_task_queue.reset_and_enqueue(std::move(f));
-		break;
-	case async_queue::index_presence_single:
-		presence_task_queue.reset_and_enqueue(std::move(f));
-		break;
+	case async_queue::index_predictions_single: predictions_task_queue.reset_and_enqueue(std::move(f)); break;
+	case async_queue::index_summary_single: summary_task_queue.reset_and_enqueue(std::move(f)); break;
+	case async_queue::index_presence_single: presence_task_queue.reset_and_enqueue(std::move(f)); break;
 	case async_queue::index_search_single:
 		ensure_worker(_search_index_worker_started, search_index_task_queue, "search_index");
 		search_index_task_queue.reset_and_enqueue(std::move(f));
@@ -479,15 +450,19 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 		ensure_worker(_cloud_worker_started, cloud_task_queue, "cloud");
 		cloud_task_queue.enqueue(std::move(f));
 		break;
-	case async_queue::index:
-		index_task_queue.enqueue(std::move(f));
-		break;
-	case async_queue::sidebar:
-		sidebar_task_queue.enqueue(std::move(f));
-		break;
+	case async_queue::index: index_task_queue.enqueue(std::move(f)); break;
+	case async_queue::sidebar: sidebar_task_queue.enqueue(std::move(f)); break;
 	case async_queue::web:
 		ensure_worker(_web_worker_started, web_task_queue, "web");
 		web_task_queue.enqueue(std::move(f));
+		break;
+	case async_queue::emulator:
+		ensure_worker(_emulator_worker_started, emulator_task_queue, "emulator", false);
+		emulator_task_queue.enqueue(std::move(f));
+		break;
+	case async_queue::agent:
+		ensure_worker(_agent_worker_started, agent_task_queue, "agent", false);
+		agent_task_queue.enqueue(std::move(f));
 		break;
 	case async_queue::map_tile:
 		if (claim_worker_start(_map_tile_workers_started))
@@ -501,9 +476,7 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 		map_tile_task_queue.enqueue(std::move(f));
 		break;
 	case async_queue::work:
-	default:
-		work_task_queue.enqueue(std::move(f));
-		break;
+	default: work_task_queue.enqueue(std::move(f)); break;
 	}
 }
 
@@ -513,12 +486,8 @@ void app_frame::queue_async_after(const async_queue q, const uint32_t delay_ms, 
 {
 	switch (q)
 	{
-	case async_queue::index_predictions_single:
-		predictions_task_queue.enqueue_after(delay_ms, std::move(f));
-		break;
-	case async_queue::index_summary_single:
-		summary_task_queue.enqueue_after(delay_ms, std::move(f));
-		break;
+	case async_queue::index_predictions_single: predictions_task_queue.enqueue_after(delay_ms, std::move(f)); break;
+	case async_queue::index_summary_single: summary_task_queue.enqueue_after(delay_ms, std::move(f)); break;
 	case async_queue::index_search_single:
 		ensure_worker(_search_index_worker_started, search_index_task_queue, "search_index");
 		search_index_task_queue.enqueue_after(delay_ms, std::move(f));
@@ -577,9 +546,8 @@ static void start_media_preview()
 	try
 	{
 		platform::thread_init c;
-		const std::vector<std::reference_wrapper<core::thread_event>> events = {
-			media_preview_event, platform::event_exit
-		};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {media_preview_event,
+		                                                                        platform::event_exit};
 		media_preview_state preview_decoder;
 		preview_decoder.superseded = &media_preview_superseded;
 
@@ -645,11 +613,12 @@ static void start_media_preview()
 
 // Each task is isolated: the batch has already been dequeued, so letting one throw past this would
 // discard every task queued behind it.
-static void drain_queue(platform::task_queue& q, df::queue_counters* perf)
+static void drain_queue(platform::task_queue& q, df::queue_counters* perf, const bool background_work)
 {
 	try
 	{
-		core::scope_locked_inc l(df::jobs_running);
+		std::atomic_int not_counted = 0;
+		core::scope_locked_inc l(background_work ? df::jobs_running : not_counted);
 		const auto tasks = q.dequeue_all();
 
 		if (!tasks.empty())
@@ -679,7 +648,7 @@ static void drain_queue(platform::task_queue& q, df::queue_counters* perf)
 	}
 }
 
-void start_worker(platform::task_queue& q, const std::string_view name)
+void start_worker(platform::task_queue& q, const std::string_view name, const bool background_work)
 {
 	log_func lf(__FUNCTION__, name);
 	core::set_thread_description(name);
@@ -705,7 +674,7 @@ void start_worker(platform::task_queue& q, const std::string_view name)
 
 				if (delay == 0)
 				{
-					drain_queue(q, perf);
+					drain_queue(q, perf, background_work);
 				}
 				else
 				{
@@ -771,7 +740,7 @@ void start_worker_group(std::vector<worker_queue_binding> bindings, const std::s
 
 					if (delay == 0)
 					{
-						drain_queue(*bindings[i].queue, perf[i]);
+						drain_queue(*bindings[i].queue, perf[i], true);
 						drained = true;
 						break;
 					}
@@ -800,11 +769,14 @@ void start_worker_group(std::vector<worker_queue_binding> bindings, const std::s
 	}
 }
 
-void start_map_worker(platform::task_queue& q)
+// Several threads taking one task at a time from a shared queue, so its tasks run side by side. thread_name is what a
+// debugger shows; perf_name is the report row, a literal, so it outlives the thread that registers it.
+static void start_pool_worker(platform::task_queue& q, const std::string_view thread_name,
+                              const std::string_view perf_name)
 {
-	log_func lf(__FUNCTION__, "map");
-	core::set_thread_description("map");
-	auto* const perf = df::register_queue("map_tile");
+	log_func lf(__FUNCTION__, perf_name);
+	core::set_thread_description(thread_name);
+	auto* const perf = df::register_queue(perf_name);
 
 	try
 	{
@@ -821,7 +793,8 @@ void start_map_worker(platform::task_queue& q)
 
 				if (q.dequeue(task))
 				{
-					// Wake another map worker for the next queued tile before this worker blocks on I/O.
+					// Wake a sibling for the next queued task before this one starts, so a long task never
+					// holds the rest of the queue behind it.
 					q._event.set();
 
 					try
@@ -845,6 +818,21 @@ void start_map_worker(platform::task_queue& q)
 	{
 		core::log(__FUNCTION__, e.what());
 	}
+
+	// As start_worker: tasks left at shutdown are destroyed while what they captured is still alive.
+	try
+	{
+		(void)q.dequeue_all();
+	}
+	catch (...)
+	{
+		// Shutdown path: nothing left to report to, and the queue is discarded either way.
+	}
+}
+
+void start_map_worker(platform::task_queue& q)
+{
+	start_pool_worker(q, "map", "map_tile");
 }
 
 // The tile store gets its own thread because the SQLite build serialises nothing for us: one
@@ -865,9 +853,7 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 		// hundred writes have already grown it further.
 		db.prune();
 
-		const std::vector<std::reference_wrapper<core::thread_event>> events = {
-			queue._event, platform::event_exit
-		};
+		const std::vector<std::reference_wrapper<core::thread_event>> events = {queue._event, platform::event_exit};
 
 		while (!platform::is_closing)
 		{
@@ -920,7 +906,6 @@ static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue)
 	}
 }
 
-
 void app_frame::start_workers()
 {
 	// Runs on the work queue, so exit() can latch the thread list underneath it. start_if_running is
@@ -947,9 +932,7 @@ void app_frame::start_workers()
 	_state.item_index.library_kinds(parse_library_types(setting.collection.library_types));
 
 	_threads.start_if_running([&db = _db, &q = database_task_queue, &async, app, index_loaded_func]
-	{
-		start_database(db, q, async, app, index_loaded_func);
-	});
+	{ start_database(db, q, async, app, index_loaded_func); });
 
 	_threads.start_if_running([&q = load_task_queue] { start_worker(q, "load"); });
 	_threads.start_if_running([&q = load_raw_task_queue] { start_worker(q, "load_raw"); });
@@ -965,12 +948,14 @@ void app_frame::start_workers()
 	// directly each feeds something on screen.
 	_threads.start_if_running([this]
 	{
-		start_worker_group({
-			                   {&presence_task_queue, "presence"},
-			                   {&sidebar_task_queue, "sidebar"},
-			                   {&predictions_task_queue, "predictions"},
-			                   {&summary_task_queue, "summary"},
-		                   }, "index_compute");
+		start_worker_group(
+			{
+				{&presence_task_queue, "presence"},
+				{&sidebar_task_queue, "sidebar"},
+				{&predictions_task_queue, "predictions"},
+				{&summary_task_queue, "summary"},
+			},
+			"index_compute");
 	});
 
 	// auto_complete, web, cloud, map_tile, tile_db and media_preview are not started here. Each is
@@ -989,7 +974,7 @@ void app_frame::start_workers()
 		_state.item_index.index_folders(token, scan_collection);
 		queue_ui([this] { start_index_workers(); });
 		invalidate_view(view_invalid::sidebar | view_invalid::command_state | view_invalid::presence |
-			view_invalid::index_summary);
+		                view_invalid::index_summary);
 	});
 
 	// Issue #119: pick the location display language from the UI language before loading.

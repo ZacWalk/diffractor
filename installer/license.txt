@@ -1,25 +1,18 @@
-End User License Agreement
+Diffractor
+Copyright (C) 2026 Zac Walker
 
-The Diffractor SOFTWARE PRODUCT is protected by copyright laws and international copyright treaties, as well as other intellectual property laws and treaties. Diffractor Software is licensed, not sold.
+Diffractor is free software. Its source code is licensed under the Mozilla Public License, version 2.0 (MPL-2.0), as are the libdesktop and libfiles libraries it is built on. The licence is installed beside the program as LICENSE.txt, and is available at https://mozilla.org/MPL/2.0/.
 
-Diffractor is the trading name of Zachariah David Walker (abbreviated Zac Walker) registered in the Czech Republic - number 87852969 sole trader. Zac Walker is the maker of Diffractor and holds the copyright in the Diffractor source code. Third-party components included in this program remain the copyright of their respective authors and are used under their own licenses.
+You may use Diffractor for any purpose, and copy, modify and redistribute it under the terms of the MPL-2.0, including for commercial purposes. Copies must keep their copyright and licence notices. The complete source code is published at https://github.com/ZacWalk/diffractor, from which the program can be rebuilt and relinked.
 
-Use of Diffractor software indicates acceptance of this license agreement and warranty.
+This program also includes libraries licensed under the GNU Lesser General Public License: libheif and libde265 (version 3.0 or later), FFmpeg (version 2.1 or later), and the code libfiles ports from libexif and libiptcdata (version 2.1 or later). Their licence texts are installed beside the program as COPYING.LGPLv3.txt, COPYING.GPLv3.txt and COPYING.LGPLv2.1.txt. You may modify those libraries, rebuild this program with your modified versions, and reverse engineer it to debug those modifications.
 
-Diffractor is free software.
+It also includes libaom, the Alliance for Open Media's AV1 encoder, which writes AVIF files, under the BSD 2-Clause licence and the Alliance for Open Media Patent License 1.0. Their texts are installed beside the program as LICENSE.libaom.txt and PATENTS.libaom.txt.
 
-Diffractor's own source code is licensed under the GNU Lesser General Public License, version 2.1 or later. This installed program is licensed under the GNU Lesser General Public License, version 3.0 or later, because it statically links libheif and libde265, which are LGPL-3.0-or-later.
+Diffractor includes other third-party libraries, each under its own licence and the copyright of its authors. Their terms are recorded with the source code.
 
-License details are available at https://www.gnu.org/licenses/lgpl-3.0.html
+Diffractor is the trading name of Zachariah David Walker (Zac Walker), a sole trader registered in the Czech Republic under number 87852969, who holds the copyright in the Diffractor source code.
 
-You may use, copy, modify and redistribute this program under those terms, including for commercial purposes. The complete source code is published at https://github.com/ZacWalk/diffractor, from which the program can be rebuilt and relinked.
+The Diffractor project does not collect personal information about its users.
 
-Diffractor includes third-party libraries, each under its own license. Their terms are recorded with the source code.
-
-The Diffractor project does not collect personal information about users.
-
-You must not remove or alter any copyright notices on any copy of Diffractor.
-
-Diffractor software and the accompanying files are licensed "as is" and without warranties as to performance of merchantability or any other warranties whether expressed or implied.
-
-In no event shall Zac Walker or any other member of the Diffractor project be liable for any special, incidental, indirect or consequential damages of any kind, or any damages whatsoever resulting from loss of use, data or profits, whether or not advised of the possibility of damage, and on any theory of liability, arising out of or in connection with the use or performance of this software.
+Diffractor is provided "as is", without warranty of any kind, and its authors are not liable for any damages arising from its use, as sections 6 and 7 of the Mozilla Public License set out.

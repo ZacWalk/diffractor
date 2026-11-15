@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: File indexing engine and duplicate detection. Scans folders, maintains item index,
-// calculates summaries, and identifies duplicate files by name, date, and CRC. search_counter counts
-// many searches - sidebar rows, address-box predictions - against one listing of the index.
+// calculates summaries, and identifies duplicate files by name, date, and CRC; plans the thumbnails a
+// view wants made from their files. search_counter counts many searches - sidebar rows, address-box
+// predictions - against one listing of the index.
 
 #pragma once
 
@@ -30,10 +30,7 @@ struct index_file_revision
 	core::date_t modified;
 	uint64_t size = 0;
 
-	bool operator==(const index_file_revision& other) const
-	{
-		return modified == other.modified && size == other.size;
-	}
+	bool operator==(const index_file_revision& other) const { return modified == other.modified && size == other.size; }
 };
 
 inline index_file_revision revision_of(const df::index_file_item& file)
@@ -53,6 +50,9 @@ struct phash_result
 	core::file_path path;
 	index_file_revision revision;
 	crypto::phash_rotations rotations{};
+	// False for a file the crash list skips: its refusal is published but not stored, so the release
+	// line that drops the file from that list decodes it again.
+	bool persist = true;
 };
 
 struct item_db_write
@@ -100,24 +100,13 @@ struct key_val
 
 	key_val() noexcept = default;
 
-	key_val(const core::cached k, const core::cached v) noexcept : key(k), val(v)
-	{
-	}
+	key_val(const core::cached k, const core::cached v) noexcept : key(k), val(v) {}
 
-	bool operator<(const key_val& other) const
-	{
-		return compare(other) < 0;
-	}
+	bool operator<(const key_val& other) const { return compare(other) < 0; }
 
-	bool operator==(const key_val& other) const
-	{
-		return compare(other) == 0;
-	}
+	bool operator==(const key_val& other) const { return compare(other) == 0; }
 
-	bool operator!=(const key_val& other) const
-	{
-		return compare(other) != 0;
-	}
+	bool operator!=(const key_val& other) const { return compare(other) != 0; }
 
 	int compare(const key_val& other) const
 	{
@@ -139,10 +128,7 @@ struct phash
 
 struct peq
 {
-	bool operator()(const key_val& l, const key_val& r) const
-	{
-		return l.compare(r) == 0;
-	}
+	bool operator()(const key_val& l, const key_val& r) const { return l.compare(r) == 0; }
 };
 
 struct index_statistic
@@ -210,10 +196,7 @@ class index_items
 		std::shared_ptr<const df::index_folder_infos> expected;
 		std::shared_ptr<const df::index_folder_infos> replacement;
 
-		explicit operator bool() const
-		{
-			return parent && expected && replacement;
-		}
+		explicit operator bool() const { return parent && expected && replacement; }
 	};
 
 public:
@@ -236,10 +219,7 @@ public:
 		return {current, current ? current->revision_snapshot() : 0};
 	}
 
-	df::index_folder_item_ptr find(const core::folder_path folder) const
-	{
-		return find_snapshot(folder).folder;
-	}
+	df::index_folder_item_ptr find(const core::folder_path folder) const { return find_snapshot(folder).folder; }
 
 	void replace(const folder_path folder_path, const df::index_folder_item_ptr& i)
 	{
@@ -273,10 +253,8 @@ public:
 	// lock, then publishes - and another thread that rebuilt or scanned the same folder inside that
 	// window left newer state in the index. Storing unconditionally puts the pre-enumeration copy
 	// back over it, losing every scan result recorded since.
-	df::index_folder_item_ptr replace_if(const folder_path folder_path,
-	                                     const df::index_folder_item_ptr& expected,
-	                                     const uint64_t expected_content_revision,
-	                                     const df::index_folder_item_ptr& i)
+	df::index_folder_item_ptr replace_if(const folder_path folder_path, const df::index_folder_item_ptr& expected,
+	                                     const uint64_t expected_content_revision, const df::index_folder_item_ptr& i)
 	{
 		for (;;)
 		{
@@ -332,8 +310,7 @@ public:
 		return true;
 	}
 
-	template <typename Func>
-	bool update_folder(const folder_path folder_path, Func func) const
+	template <typename Func> bool update_folder(const folder_path folder_path, Func func) const
 	{
 		core::exclusive_lock lock(_rw);
 		const auto found_folder = _index.find(folder_path);
@@ -355,9 +332,7 @@ public:
 		std::erase_if(_index, [&folders](const auto& entry)
 		{
 			return std::ranges::any_of(folders, [&entry](const core::folder_path removed)
-			{
-				return core::folder_contains(removed.text().sv(), entry.first.text().sv());
-			});
+			{ return core::folder_contains(removed.text().sv(), entry.first.text().sv()); });
 		});
 	}
 
@@ -384,8 +359,8 @@ public:
 		}
 	}
 
-	df::index_folder_item_ptr find_or_create(const folder_path folder_path,
-	                                         df::index_folder_item_ptr candidate)
+	// NOLINTNEXTLINE(performance-unnecessary-value-param): moved into the index when it is inserted
+	df::index_folder_item_ptr find_or_create(const folder_path folder_path, df::index_folder_item_ptr candidate)
 	{
 		{
 			core::shared_lock lock(_rw);
@@ -410,10 +385,8 @@ public:
 	}
 
 private:
-	_Requires_lock_held_(_rw) bool replace_locked(const folder_path folder_path,
-	                                              const df::index_folder_item_ptr& i,
-	                                              child_replacement& child,
-	                                              df::index_folder_item_ptr& old_node)
+	_Requires_lock_held_(_rw) bool replace_locked(const folder_path folder_path, const df::index_folder_item_ptr& i,
+	                                              child_replacement& child, df::index_folder_item_ptr& old_node)
 	{
 		if (child)
 		{
@@ -432,8 +405,7 @@ private:
 		return true;
 	}
 
-	void prepare_child_replacement(const folder_path folder_path,
-	                               const df::index_folder_item_ptr& i,
+	void prepare_child_replacement(const folder_path folder_path, const df::index_folder_item_ptr& i,
 	                               child_replacement& child) const
 	{
 		child = {};
@@ -452,9 +424,7 @@ private:
 		auto updated = std::make_shared<df::index_folder_infos>(*existing);
 		const auto found = std::lower_bound(updated->begin(), updated->end(), i->name,
 		                                    [](const df::index_folder_item_ptr& left, const std::string_view right)
-		                                    {
-			                                    return icmp(left->name, right) < 0;
-		                                    });
+		{ return icmp(left->name, right) < 0; });
 
 		if (found == updated->end() || icmp((*found)->name, i->name) != 0) return;
 		*found = i;
@@ -465,11 +435,9 @@ private:
 	                                                            const child_replacement& child) const
 	{
 		const auto found_parent = _index.find(folder_path.parent());
-		return found_parent != _index.end() &&
-			found_parent->second == child.parent &&
-			child.parent->folders_snapshot() == child.expected;
+		return found_parent != _index.end() && found_parent->second == child.parent &&
+		       child.parent->folders_snapshot() == child.expected;
 	}
-
 };
 
 // Hamming distance across 63 meaningful bits. Every hash sets exactly 31 of them, so a distance is
@@ -498,8 +466,7 @@ __forceinline bool same_picture_shape(const sizei a, const sizei b, const bool a
 	return allow_swap && close(a, {b.cy, b.cx});
 }
 
-__forceinline df::copy_grade dup_match_grade(const df::index_file_item* file,
-                                             const df::index_file_item* other_file)
+__forceinline df::copy_grade dup_match_grade(const df::index_file_item* file, const df::index_file_item* other_file)
 {
 	if (file->crc32c != 0 && file->size == other_file->size && file->crc32c == other_file->crc32c)
 	{
@@ -513,9 +480,7 @@ __forceinline df::copy_grade dup_match_grade(const df::index_file_item* file,
 		return df::copy_grade::same_file;
 	}
 
-	return name_match && file->created() == other_file->created()
-		       ? df::copy_grade::same_file
-		       : df::copy_grade::none;
+	return name_match && file->created() == other_file->created() ? df::copy_grade::same_file : df::copy_grade::none;
 }
 
 __forceinline bool is_dup_match(const df::index_file_item* file, const df::index_file_item* other_file)
@@ -537,9 +502,8 @@ __forceinline df::copy_grade dup_match_grade(const df::index_file_item& file, co
 		return df::copy_grade::same_file;
 	}
 
-	return name_match && file.created() == other_file->media_created()
-		       ? df::copy_grade::same_file
-		       : df::copy_grade::none;
+	return name_match && file.created() == other_file->media_created() ? df::copy_grade::same_file
+	                                                                   : df::copy_grade::none;
 }
 
 __forceinline bool is_dup_match(const df::index_file_item& file, const df::item_element_ptr& other_file)
@@ -555,10 +519,7 @@ struct dup_match_result
 	int rank = -1;
 	df::copy_grade grade = df::copy_grade::none;
 
-	bool matched() const
-	{
-		return grade != df::copy_grade::none;
-	}
+	bool matched() const { return grade != df::copy_grade::none; }
 };
 
 __forceinline dup_match_result dup_match(const df::related_info& file, const df::index_file_item& other_file)
@@ -569,7 +530,9 @@ __forceinline dup_match_result dup_match(const df::related_info& file, const df:
 	// sets are anchored rather than chained and may be mixed with exact subgroups.
 	if (file.exact_group != 0 && file.exact_group == other_file.exact_duplicate_group.load())
 	{
-		return {0, other_dups.grade == df::copy_grade::none ? df::copy_grade::same_file : df::strongest(other_dups.grade, df::copy_grade::same_file)};
+		return {0, other_dups.grade == df::copy_grade::none
+		               ? df::copy_grade::same_file
+		               : df::strongest(other_dups.grade, df::copy_grade::same_file)};
 	}
 
 	if (file.crc32c != 0 && file.size == other_file.size && file.crc32c == other_file.crc32c)
@@ -581,9 +544,8 @@ __forceinline dup_match_result dup_match(const df::related_info& file, const df:
 	{
 		// A related search restored from text may not have resolved a file type, so the
 		// audio/video rule is skipped rather than dereferencing an unknown type.
-		if (file.ft && file.ft->has_trait(file_traits::av) &&
-			file.size.to_int64() != 0 && other_file.size.to_int64() != 0 &&
-			file.size == other_file.size)
+		if (file.ft && file.ft->has_trait(file_traits::av) && file.size.to_int64() != 0 &&
+		    other_file.size.to_int64() != 0 && file.size == other_file.size)
 		{
 			return {1, df::copy_grade::same_file};
 		}
@@ -597,15 +559,11 @@ __forceinline dup_match_result dup_match(const df::related_info& file, const df:
 
 	const auto other_hashes = other_file.phash.load();
 	const auto other_metadata = other_file.metadata.load();
-	if (file.ft && file.ft->has_trait(file_traits::bitmap) &&
-		other_file.ft->has_trait(file_traits::bitmap) &&
-		file.created() == other_file.created() &&
-		crypto::phash_is_usable(file.phash[0]) &&
-		other_hashes && other_hashes->is_usable() &&
-		!file.duplicate_crowded &&
-		!other_dups.same_picture_crowded &&
-		same_picture_shape(file.dimensions, other_metadata ? other_metadata->dimensions() : sizei{}) &&
-		crypto::phash_distance(file.phash[0], other_hashes->rotations) <= max_duplicate_phash_distance)
+	if (file.ft && file.ft->has_trait(file_traits::bitmap) && other_file.ft->has_trait(file_traits::bitmap) &&
+	    file.created() == other_file.created() && crypto::phash_is_usable(file.phash[0]) && other_hashes &&
+	    other_hashes->is_usable() && !file.duplicate_crowded && !other_dups.same_picture_crowded &&
+	    same_picture_shape(file.dimensions, other_metadata ? other_metadata->dimensions() : sizei{}) &&
+	    crypto::phash_distance(file.phash[0], other_hashes->rotations) <= max_duplicate_phash_distance)
 	{
 		return {3, df::copy_grade::same_picture};
 	}
@@ -636,31 +594,21 @@ struct location_group
 
 	gps_coordinate centroid() const
 	{
-		return count == 0
-			       ? gps_coordinate{}
-			       : gps_coordinate(latitude_sum / count, longitude_sum / count);
+		return count == 0 ? gps_coordinate{} : gps_coordinate(latitude_sum / count, longitude_sum / count);
 	}
 
 	bool operator==(const location_group& other) const
 	{
-		return name == other.name &&
-			state == other.state &&
-			country == other.country &&
-			count == other.count &&
-			loc == other.loc &&
-			core::equiv(latitude_sum, other.latitude_sum) &&
-			core::equiv(longitude_sum, other.longitude_sum);
+		return name == other.name && state == other.state && country == other.country && count == other.count &&
+		       loc == other.loc && core::equiv(latitude_sum, other.latitude_sum) &&
+		       core::equiv(longitude_sum, other.longitude_sum);
 	}
 
-	bool operator !=(const location_group& other) const
+	bool operator!=(const location_group& other) const
 	{
-		return name != other.name ||
-			state != other.state ||
-			country != other.country ||
-			count != other.count ||
-			loc != other.loc ||
-			!core::equiv(latitude_sum, other.latitude_sum) ||
-			!core::equiv(longitude_sum, other.longitude_sum);
+		return name != other.name || state != other.state || country != other.country || count != other.count ||
+		       loc != other.loc || !core::equiv(latitude_sum, other.latitude_sum) ||
+		       !core::equiv(longitude_sum, other.longitude_sum);
 	}
 };
 
@@ -676,18 +624,22 @@ struct index_histograms
 	df::file_group_histogram _file_types;
 	df::date_histogram _dates;
 	df::location_heat_map _locations;
-	std::vector<double> _location_latitude_sums = std::vector<double>(
-		df::location_heat_map::map_width * df::location_heat_map::map_height);
-	std::vector<double> _location_longitude_sums = std::vector<double>(
-		df::location_heat_map::map_width * df::location_heat_map::map_height);
-	std::vector<double> _location_min_latitudes = std::vector<double>(
-		df::location_heat_map::map_width * df::location_heat_map::map_height, std::numeric_limits<double>::max());
-	std::vector<double> _location_min_longitudes = std::vector<double>(
-		df::location_heat_map::map_width * df::location_heat_map::map_height, std::numeric_limits<double>::max());
-	std::vector<double> _location_max_latitudes = std::vector<double>(
-		df::location_heat_map::map_width * df::location_heat_map::map_height, std::numeric_limits<double>::lowest());
-	std::vector<double> _location_max_longitudes = std::vector<double>(
-		df::location_heat_map::map_width * df::location_heat_map::map_height, std::numeric_limits<double>::lowest());
+	std::vector<double> _location_latitude_sums = std::vector<double>(df::location_heat_map::map_width *
+	                                                                  df::location_heat_map::map_height);
+	std::vector<double> _location_longitude_sums = std::vector<double>(df::location_heat_map::map_width *
+	                                                                   df::location_heat_map::map_height);
+	std::vector<double> _location_min_latitudes = std::vector<double>(df::location_heat_map::map_width *
+	                                                                      df::location_heat_map::map_height,
+	                                                                  std::numeric_limits<double>::max());
+	std::vector<double> _location_min_longitudes = std::vector<double>(df::location_heat_map::map_width *
+	                                                                       df::location_heat_map::map_height,
+	                                                                   std::numeric_limits<double>::max());
+	std::vector<double> _location_max_latitudes = std::vector<double>(df::location_heat_map::map_width *
+	                                                                      df::location_heat_map::map_height,
+	                                                                  std::numeric_limits<double>::lowest());
+	std::vector<double> _location_max_longitudes = std::vector<double>(df::location_heat_map::map_width *
+	                                                                       df::location_heat_map::map_height,
+	                                                                   std::numeric_limits<double>::lowest());
 	core::hash_map<uint32_t, location_group> _location_groups;
 
 	// Sampled once when the histogram is built. A static would freeze the current year for the
@@ -716,11 +668,8 @@ word_prefix_range(const std::vector<std::string_view>& sorted_terms, const std::
 	// so the binary search below must not be used for an empty query.)
 	if (query.empty()) return {sorted_terms.begin(), sorted_terms.end()};
 
-	const auto lo = std::ranges::lower_bound(sorted_terms, query,
-	                                         [](const std::string_view a, const std::string_view b)
-	                                         {
-		                                         return core::icmp(a, b) < 0;
-	                                         });
+	const auto lo = std::ranges::lower_bound(sorted_terms, query, [](const std::string_view a, const std::string_view b)
+	{ return core::icmp(a, b) < 0; });
 	auto hi = lo;
 	while (hi != sorted_terms.end() && core::starts(*hi, query)) ++hi;
 	return {lo, hi};
@@ -804,9 +753,7 @@ struct location_matrix
 
 	location_matrix() = default;
 
-	explicit location_matrix(const location_matrix_params& value) : params(value)
-	{
-	}
+	explicit location_matrix(const location_matrix_params& value) : params(value) {}
 
 	void add(core::file_path path, gps_coordinate coordinate, bool can_thumbnail, int rating);
 	void finalize();
@@ -817,6 +764,36 @@ private:
 	core::hash_map<uint64_t, uint32_t> _cell_lookup;
 	std::vector<uint8_t> _representative_ranks;
 };
+
+// An item in the collection that says both where and when it was taken.
+struct dated_location
+{
+	core::date_t created;
+	gps_coordinate coordinate;
+	core::file_path path;
+};
+
+// An item that says when it was taken but not where, and how many seconds after it the item it could take its place
+// from was taken: negative where that one was taken before it.
+struct unplaced_item
+{
+	core::file_path path;
+	core::date_t created;
+	int64_t gap_s = 0;
+};
+
+// Items taken without a place, in the order they were taken, that share the item with a place taken nearest each of
+// them in time.
+struct location_suggestion
+{
+	dated_location located;
+	std::vector<unplaced_item> items;
+};
+
+// For each item, the item with a place taken nearest it in time, where one was taken no more than max_gap_s seconds
+// from it: in runs that share one, in the order taken. located is in the order dated_locations answers.
+std::vector<location_suggestion> suggest_locations(std::vector<unplaced_item> items,
+                                                   const std::vector<dated_location>& located, int64_t max_gap_s);
 
 struct folder_scan_item
 {
@@ -901,7 +878,8 @@ struct folder_scan_item
 // queue_scan_folders(paths)         -> async_queue::scan_folder
 // queue_scan_listed_items(items)    -> async_queue::scan_folder (with cancel token)
 // queue_scan_modified_items(items)  -> async_queue::scan_modified_items
-// queue_scan_displayed_items(items) -> async_queue::scan_displayed_items (with cancel token)
+// load_visible_thumbnails(items)    -> the visible plan: read on async_queue::scan_displayed_items,
+//                                      decoded on async_queue::thumbnail_decode
 // queue_update_presence(items)      -> async_queue::index_presence_single
 // queue_update_predictions()        -> async_queue::index_predictions_single
 // queue_update_summary()            -> async_queue::index_summary_single
@@ -972,8 +950,8 @@ class index_state final : public core::no_copy
 	// follow-up must rescan the folder's items and subfolders rather than only revalidate it. Keyed by
 	// folder so a folder that keeps giving up holds one queued follow-up, not one per attempt.
 	core::mutex _deferred_validations_rw;
-	_Guarded_by_(_deferred_validations_rw) core::hash_map<core::folder_path, bool, core::ihash, core::ieq>
-	_deferred_validations;
+	_Guarded_by_(
+		_deferred_validations_rw) core::hash_map<core::folder_path, bool, core::ihash, core::ieq> _deferred_validations;
 
 	void add_distinct_other_folders(core::unique_folders folders);
 	void enqueue_db_write(item_db_write write);
@@ -1038,6 +1016,17 @@ public:
 
 	using query_item_results = std::vector<query_item>;
 
+	// How a scan that makes a thumbnail hands over the surface it decoded on the way: not at all, leaving the
+	// render queue to decode the stored thumbnail again, or as the item's staged surface, in the form staging
+	// would produce - packed, or planar where the renderer samples YUV. Chosen on the UI thread, which owns
+	// what the renderer samples.
+	enum class surface_handoff : uint8_t
+	{
+		none,
+		packed,
+		planar,
+	};
+
 	struct item_scan_request
 	{
 		std::weak_ptr<df::item_element> lifetime;
@@ -1049,16 +1038,10 @@ public:
 		bool thumbnail_needed = false;
 		bool had_thumbnail = false;
 		uint64_t thumbnail_generation = 0;
+		surface_handoff handoff = surface_handoff::none;
 	};
 
 	using item_scan_requests = std::vector<item_scan_request>;
-
-	// Per-batch scan accounting, so counters can be attributed to the caller that asked for the work.
-	struct scan_batch_stats
-	{
-		uint64_t thumbs_requested = 0;
-		uint64_t thumbs_scanned = 0;
-	};
 
 	struct thumbnail_result
 	{
@@ -1100,25 +1083,25 @@ public:
 
 	// Waited on by the index bring-up, which must not validate folders while merge_folder is still
 	// writing the same folder nodes. Also set when no cache can arrive, so the wait is not a timeout.
-	core::thread_event& cache_loaded_event()
-	{
-		return _cache_loaded_event;
-	}
+	core::thread_event& cache_loaded_event() { return _cache_loaded_event; }
 	void merge_folder(folder_path folder_path, const db_items_t& items);
 
 	void save_media_position(core::file_path id, double media_position);
 	// Each carries the revision its hash was read from; a file whose index entry no longer matches
 	// keeps neither the published hash nor the database row, so the next pass hashes it again.
 	void save_crc(core::file_path id, index_file_revision revision, uint32_t crc);
-	void save_phash(core::file_path id, index_file_revision revision, const crypto::phash_rotations& phash);
+	void save_phash(core::file_path id, index_file_revision revision, const crypto::phash_rotations& phash,
+	                bool persist = true);
 	void save_phashes(std::vector<phash_result> hashes, bool continue_predictions = true);
 	void queue_calc_perceptual_hashes(std::vector<phash_request> requests);
 	void save_thumbnail(core::file_path id, const core::const_image_ptr& thumbnail_image,
 	                    const core::const_image_ptr& cover_art, core::date_t scan_timestamp);
-	void publish_thumbnail(std::weak_ptr<df::item_element> item, core::file_path path,
-	                       core::const_image_ptr thumbnail, core::const_image_ptr cover_art,
-	                       core::date_t timestamp, uint64_t generation = 0, bool fade_in = false,
-	                       bool stage_surface = false) const;
+	// surface, when given, is the one the thumbnail was encoded from, adopted as its staged surface - see
+	// df::item_element::adopt_thumbnail_surface.
+	void publish_thumbnail(std::weak_ptr<df::item_element> item, core::file_path path, core::const_image_ptr thumbnail,
+	                       core::const_image_ptr cover_art, core::date_t timestamp, uint64_t generation = 0,
+	                       bool fade_in = false, bool stage_surface = false,
+	                       core::const_surface_ptr surface = {}) const;
 	void publish_thumbnails(thumbnail_results results, bool invalidate_group_layout) const;
 	void publish_item_update(std::weak_ptr<df::item_element> item, core::file_path path) const;
 	void publish_thumbnail_failure(std::weak_ptr<df::item_element> item, core::file_path path,
@@ -1127,6 +1110,9 @@ public:
 	                 core::date_t modified, df::item_online_status online_status, uint32_t existing_crc, uint32_t crc);
 
 	df::index_file_item find_item(core::file_path id) const;
+	// The record of a file only where the index has read it since the file - or its sidecar - last changed: one it has
+	// listed but not yet read holds no metadata. Empty, with no file type, otherwise.
+	df::index_file_item find_scanned_item(core::file_path id) const;
 
 	df::file_group_histogram count_matches(const df::search_t& a, const core::cancel_token& token,
 	                                       search_execution execution = search_execution::automatic);
@@ -1174,10 +1160,8 @@ public:
 		return snapshot ? *snapshot : index_progress_snapshot{};
 	}
 
-	void query_items(const df::search_t& search,
-	                 const std::function<void(query_item_results, bool)>& found_callback,
-	                 const core::cancel_token& token,
-	                 search_execution execution = search_execution::automatic);
+	void query_items(const df::search_t& search, const std::function<void(query_item_results, bool)>& found_callback,
+	                 const core::cancel_token& token, search_execution execution = search_execution::automatic);
 	df::item_set materialize_query_items(query_item_results items, const df::unique_items& existing) const;
 
 	struct validate_folder_result
@@ -1190,8 +1174,8 @@ public:
 		bool deferred = false;
 	};
 
-	validate_folder_result validate_folder(folder_path folder_path,
-	                                       bool refresh_from_file_system, core::date_t timestamp);
+	validate_folder_result validate_folder(folder_path folder_path, bool refresh_from_file_system,
+	                                       core::date_t timestamp);
 
 	// A scan loop collects its rows here so the database thread is woken once per group rather than
 	// once per file. Only the hand-off is deferred; the in-memory index is still updated per file.
@@ -1204,13 +1188,24 @@ public:
 		static constexpr size_t max_pending = 64;
 
 	public:
-		explicit db_write_batch(index_state& index) : _index(index)
-		{
-		}
+		explicit db_write_batch(index_state& index) : _index(index) {}
 
 		~db_write_batch()
 		{
-			flush();
+			// A destructor must not throw, and this one also runs while a scan loop unwinds. The in-memory
+			// index already holds these rows, so a lost hand-off costs only a rescan of the files.
+			try
+			{
+				flush();
+			}
+			catch (const std::exception& e)
+			{
+				core::log(__FUNCTION__, e.what());
+			}
+			catch (...)
+			{
+				core::log(__FUNCTION__, "unknown exception");
+			}
 		}
 
 		void add(item_db_write write)
@@ -1230,18 +1225,16 @@ public:
 	// The apply half of scan_item. Separate from the scan itself so a result produced where the file
 	// is already open (files::update, which owns the only cache-coherent handle) can be applied
 	// without a second open.
-	void apply_scan_result(const df::index_folder_item_ptr& folder, file_path file_path,
-	                       const file_scan_result& sr, core::date_t now, core::date_t thumbnail_version,
-	                       bool load_thumb, bool thumbnail_needed, bool had_thumbnail,
-	                       const std::weak_ptr<df::item_element>& item, bool publish_to_item,
+	void apply_scan_result(const df::index_folder_item_ptr& folder, file_path file_path, const file_scan_result& sr,
+	                       core::date_t now, core::date_t thumbnail_version, bool load_thumb, bool thumbnail_needed,
+	                       bool had_thumbnail, const std::weak_ptr<df::item_element>& item, bool publish_to_item,
 	                       bool publish_item_update_immediately, bool invalidate_summary,
 	                       db_write_batch* writes = nullptr, bool clear_existing_hashes = false,
-	                       uint64_t thumbnail_generation = 0);
+	                       uint64_t thumbnail_generation = 0, surface_handoff handoff = surface_handoff::none);
 	void scan_item(const df::index_folder_item_ptr& folder, file_path file_path, bool load_thumbnails,
 	               bool thumbnail_needed, bool had_thumbnail, bool scan_if_offline,
 	               const std::weak_ptr<df::item_element>& item, bool publish_to_item, file_type_ref ft,
-	               bool force = false,
-	               bool publish_item_update_immediately = true, bool invalidate_summary = true,
+	               bool force = false, bool publish_item_update_immediately = true, bool invalidate_summary = true,
 	               db_write_batch* writes = nullptr, uint64_t thumbnail_generation = 0);
 	void scan_item(const df::item_element_ptr& i, bool load_thumb, bool scan_if_offline);
 	// Immediately (synchronously, on the caller's thread) apply the scan that files::update took
@@ -1280,8 +1273,7 @@ public:
 	bool scan_items(const df::item_set& items, bool load_thumbs, bool refresh_from_file_system, bool only_if_needed,
 	                bool scan_if_offline, const core::cancel_token& token, bool force = false);
 	bool scan_items(const item_scan_requests& requests, bool refresh_from_file_system, bool only_if_needed,
-	                bool scan_if_offline, const core::cancel_token& token, bool force = false,
-	                scan_batch_stats* stats_out = nullptr);
+	                bool scan_if_offline, const core::cancel_token& token, bool force = false);
 	static item_scan_request make_scan_request(const df::item_element_ptr& item, bool load_thumbnail,
 	                                           bool claim_loading = true);
 	static item_scan_requests make_scan_requests(const df::item_set& items, bool load_thumbnails);
@@ -1295,20 +1287,42 @@ public:
 	// refresh when the comparison found something, so a write we made ourselves - whose new modified
 	// time is already published - costs one enumeration and nothing more.
 	void queue_validate_changed_folders(core::unique_folders paths);
+	// Whether a listing or a validation has given the folder a node.
+	bool knows_folder(const core::folder_path folder) const { return _items.find(folder) != nullptr; }
 	void queue_scan_listed_items(const df::item_set& listed_items);
 	void queue_scan_modified_items(df::item_set items_to_scan, bool force = false);
-	void queue_scan_displayed_items(df::item_set visible);
+
+	// The visible plan: the thumbnails a view wants made from their files, in the order it wants them. The
+	// thumbnailing thread - async_queue::scan_displayed_items, which reads every source the plan asks for -
+	// works through it a file at a time, reading each still and handing it to the async_queue::thumbnail_decode
+	// threads to decode while it reads the next. A single item's thumbnail asked for elsewhere
+	// (queue_load_thumbnail) and a rescan of modified files are read on their own queues. All four calls are UI
+	// thread.
+	//
+	// A view's whole request for its visible working set: asks the database about the items it has not been
+	// asked about yet, plans scans of the rest, and asks the cloud provider for offline ones. Each answer
+	// from the database makes the plan again in the order the view last asked for, now with what the
+	// database did not hold.
+	void load_visible_thumbnails(const void* owner, const df::item_elements& ordered);
+	// Replaces the plan with owner's. What the thumbnailing thread has not reached is released at once and,
+	// when still wanted, planned again in the new order - so nothing waits on a plan that scrolling replaced.
+	void plan_visible_thumbnails(const void* owner, const df::item_elements& ordered);
+	// Adds to the end of the plan what of these still needs a scan and is not already planned or held back.
+	void extend_visible_thumbnails(const df::item_elements& ordered);
+	// Releases the plan if it is owner's: a view leaving the screen wants nothing read for it.
+	void clear_visible_thumbnails(const void* owner);
+	// The thumbnail_decode threads. Decoding is CPU work on bytes already read, so several run at once.
+	static int thumbnail_decode_threads();
 
 	// Bracket a write so no read of the same file is queued while it runs. Reads asked for in between
 	// are deferred and re-requested on release.
 	void claim_for_write(const std::vector<core::file_path>& paths);
 	void release_write_claim(const std::vector<core::file_path>& paths);
 	void queue_stage_thumbnails(const df::item_elements& items);
-	void queue_load_visible_thumbnails(const df::item_elements& visible);
-	// Load one tooltip/hover thumbnail without cancelling the visible-items thumbnail batch.
+	// Load one tooltip/hover thumbnail without disturbing the visible plan.
 	// Checks the thumbnail database first, then decodes locally or asks the cloud shell provider.
-	void queue_load_thumbnail(df::item_element_ptr item,
-	                         view_invalid invalid = view_invalid::tooltip | view_invalid::view_redraw);
+	void queue_load_thumbnail(const df::item_element_ptr& item,
+	                          view_invalid invalid = view_invalid::tooltip | view_invalid::view_redraw);
 	// Fetch shell (cloud provider) thumbnails for visible cloud-only placeholders WITHOUT
 	// hydrating. Best-effort; caches the result in the database so it is not re-fetched.
 	void queue_scan_offline_thumbnails(const df::item_set& items, bool visible_only = true,
@@ -1358,10 +1372,7 @@ public:
 		_fully_loaded = false;
 	}
 
-	item_writes_t& db_writes()
-	{
-		return _db_writes;
-	}
+	item_writes_t& db_writes() { return _db_writes; }
 
 	core::unique_folders distinct_folders() const
 	{
@@ -1381,6 +1392,8 @@ public:
 
 	location_matrix build_location_matrix(const location_matrix_params& params,
 	                                      const core::unique_paths& excluded = {}) const;
+	// Every item in the collection that says both where and when it was taken, in the order taken.
+	std::vector<dated_location> dated_locations() const;
 
 	df::file_group_histogram file_types() const
 	{
@@ -1454,10 +1467,7 @@ public:
 
 	std::vector<folder_total> includes_with_totals() const;
 
-	bool is_init_complete() const
-	{
-		return _cache_items_loaded && _folders_indexed;
-	}
+	bool is_init_complete() const { return _cache_items_loaded && _folders_indexed; }
 
 	struct auto_complete_word
 	{
@@ -1474,15 +1484,52 @@ public:
 
 	std::vector<auto_complete_word> auto_complete_words(std::string_view query, size_t max_results);
 	std::vector<auto_complete_word> auto_complete_tag_companions(const std::vector<std::string>& tags,
-	                                                             std::string_view prefix,
-	                                                             size_t max_results) const;
+	                                                             std::string_view prefix, size_t max_results) const;
 	size_t tag_companion_entry_count() const;
 	std::vector<auto_complete_word> auto_complete_locations(std::string_view query, size_t max_results,
-	                                                        df::location_level level =
-		                                                        df::location_level::any) const;
+	                                                        df::location_level level = df::location_level::any) const;
 	std::vector<auto_complete_folder> auto_complete_folders(std::string_view query, size_t max_results) const;
 	bool rebuild_sorted_words(index_metadata_summary& summary, uint64_t generation = 0) const;
 	std::vector<std::string> auto_complete_text(prop::key_ref key);
+
+private:
+	// The visible plan, shared by the UI thread, which replaces and extends it, and the thumbnailing thread,
+	// which takes from its front, under one short lock. Replacing it is what hands back the requests that
+	// thread has not reached: a batch handed over by value cannot be taken back, and the claims it carried
+	// waited until it reached the worker. The same lock counts the reads waiting on the decode threads, which
+	// the thumbnailing thread stops reading for until they catch up, so reading ahead holds bounded memory.
+	struct visible_thumbnail_plan
+	{
+		core::mutex mutex;
+		_Guarded_by_(mutex) std::deque<item_scan_request> pending;
+		// A pump is queued or running. Only the pump clears it, under the lock, as it stops - so a request added
+		// after it last looked is never left without one.
+		_Guarded_by_(mutex) bool pump_queued = false;
+		_Guarded_by_(mutex) uint32_t decodes = 0;
+		_Guarded_by_(mutex) uint64_t decode_bytes = 0;
+		// Requests the thumbnailing thread has taken and not yet completed, and whether one completed since the
+		// plan was last idle refreshed an item's metadata. A regroup lays out every displayed item again, so it
+		// waits for the last of them rather than following each one.
+		_Guarded_by_(mutex) uint32_t taken = 0;
+		_Guarded_by_(mutex) bool regroup = false;
+	};
+
+	visible_thumbnail_plan _visible_plan;
+	// UI thread only: the view whose plan it is, compared and never dereferenced, and the order it last asked
+	// for its working set in - which the database's answers replan in, so an answered item on screen goes
+	// ahead of what the plan already held off screen.
+	const void* _visible_plan_owner = nullptr;
+	df::item_elements _visible_plan_order;
+
+	void replan_visible_thumbnails();
+	std::deque<item_scan_request> release_visible_plan();
+	void pump_visible_thumbnails();
+	void scan_visible_thumbnail(item_scan_request request);
+	void decode_visible_thumbnail(const item_scan_request& request, const df::index_folder_item_ptr& folder,
+	                              core::blob source, core::date_t read_at, core::date_t thumbnail_version,
+	                              bool metadata_scan_wanted, core::date_t scanned_before);
+	void complete_visible_thumbnail(const item_scan_request& request, bool metadata_refreshed, bool republish);
+	void release_visible_decode(size_t bytes);
 };
 
 // Items from a current result set, held the way the search index can intersect them: the documents of
@@ -1504,9 +1551,7 @@ class search_counter final : public core::no_copy
 	index_state::search_context& context();
 
 public:
-	explicit search_counter(index_state& index) : _index(index)
-	{
-	}
+	explicit search_counter(index_state& index) : _index(index) {}
 
 	// Whether selector-free searches are answered by the search index rather than by a scan. Every answer
 	// also asks each item the index has not read since it changed, so a pass counting many searches - a

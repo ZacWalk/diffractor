@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Search query tokenizer. Parses search input text into structured parts
 // with modifiers, scopes, and terms for the search engine.
@@ -22,10 +21,7 @@ struct search_part
 	std::string scope;
 	std::string term;
 
-	bool is_empty() const
-	{
-		return scope.empty() && term.empty();
-	}
+	bool is_empty() const { return scope.empty() && term.empty(); }
 
 	void clear()
 	{
@@ -51,17 +47,11 @@ class search_tokenizer
 	std::string current_text;
 	bool pending_comma = false;
 
-	static bool is_delimiter(const char c)
-	{
-		return is_delimiter_char(c);
-	}
+	static bool is_delimiter(const char c) { return is_delimiter_char(c); }
 
 	// The input is UTF-8 bytes, so the wide-char classifiers would sign-extend any byte >= 0x80
 	// into an unrelated code point. Only the ASCII range can be classified from a single byte.
-	static constexpr bool is_ascii_digit(const char c)
-	{
-		return c >= '0' && c <= '9';
-	}
+	static constexpr bool is_ascii_digit(const char c) { return c >= '0' && c <= '9'; }
 
 	static constexpr bool is_ascii_space(const char c)
 	{
@@ -72,8 +62,7 @@ class search_tokenizer
 	{
 		for (const auto c : s)
 		{
-			if (!is_ascii_digit(c))
-				return false;
+			if (!is_ascii_digit(c)) return false;
 		}
 
 		return !s.empty();
@@ -232,9 +221,9 @@ public:
 				// earns it: after anything else a comma separates terms, and "sunset, -2019" still
 				// excludes 2019.
 				else if (c == '-' && (current_term.scope.empty() || !current_text.empty()) &&
-					!(pending_comma && current_text.empty() && pos + 1 < text.size() &&
-						is_ascii_digit(text[pos + 1]) && !results.empty() &&
-						is_coordinate_component(results.back())))
+				         !(pending_comma && current_text.empty() && pos + 1 < text.size() &&
+				           is_ascii_digit(text[pos + 1]) && !results.empty() &&
+				           is_coordinate_component(results.back())))
 				{
 					append_current_term();
 					current_term.modifier.positive = false;

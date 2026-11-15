@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Subtitles: reading ASS scripts and dialogue as FFmpeg's decoders give them, placing and
 // rasterising events for the picture as it is drawn, one picture at a time from an image stream, the event
@@ -159,7 +158,8 @@ subtitle_script parse_ass_header(const std::string_view header)
 				else if (core::icmp(name, "Fontname") == 0) style.font = field;
 				else if (core::icmp(name, "Fontsize") == 0) style.size = std::max(1.0, subtitle_to_double(field, 16));
 				else if (core::icmp(name, "PrimaryColour") == 0) style.primary = ass_color(field, style.primary);
-				else if (core::icmp(name, "OutlineColour") == 0) style.outline_color = ass_color(field, style.outline_color);
+				else if (core::icmp(name, "OutlineColour") == 0)
+					style.outline_color = ass_color(field, style.outline_color);
 				else if (core::icmp(name, "Bold") == 0) style.bold = ass_bool(field);
 				else if (core::icmp(name, "Italic") == 0) style.italic = ass_bool(field);
 				else if (core::icmp(name, "Outline") == 0) style.outline = std::max(0.0, subtitle_to_double(field, 1));
@@ -230,7 +230,7 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 		if (!current.text.empty())
 		{
 			if (!result.runs.empty() && result.runs.back().bold == current.bold &&
-				result.runs.back().italic == current.italic && result.runs.back().color == current.color)
+			    result.runs.back().italic == current.italic && result.runs.back().color == current.color)
 			{
 				result.runs.back().text += current.text;
 			}
@@ -268,8 +268,10 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 		{
 			// One byte, where ASS's 00 is opaque.
 			auto digits = core::trim(tag);
-			while (!digits.empty() && (digits.back() == '&' || digits.back() == 'H' || digits.back() == 'h')) digits.remove_suffix(1);
-			if (digits.size() >= 2 && digits[0] == '&' && (digits[1] == 'H' || digits[1] == 'h')) digits.remove_prefix(2);
+			while (!digits.empty() && (digits.back() == '&' || digits.back() == 'H' || digits.back() == 'h'))
+				digits.remove_suffix(1);
+			if (digits.size() >= 2 && digits[0] == '&' && (digits[1] == 'H' || digits[1] == 'h'))
+				digits.remove_prefix(2);
 			uint32_t v = 0;
 			if (std::from_chars(digits.data(), digits.data() + digits.size(), v, 16).ec == std::errc())
 				current.color = (current.color & 0x00FFFFFFu) | (255u - (v & 0xFFu)) << 24;
@@ -299,7 +301,8 @@ subtitle_text parse_ass_dialogue(const std::string_view text, const subtitle_sty
 		}
 		else if (starts("p"))
 		{
-			if (!tag.empty() && std::isdigit(static_cast<unsigned char>(tag.front()))) drawing = subtitle_to_int(tag) != 0;
+			if (!tag.empty() && std::isdigit(static_cast<unsigned char>(tag.front())))
+				drawing = subtitle_to_int(tag) != 0;
 		}
 		else if (tag == "r" || starts("r"))
 		{
@@ -424,7 +427,7 @@ rectd place_subtitle(const sizei video, const sizei script_canvas, const sized b
 	const auto sx = script_canvas.cx > 0 ? static_cast<double>(video.cx) / script_canvas.cx : 1.0;
 	const auto sy = script_canvas.cy > 0 ? static_cast<double>(video.cy) / script_canvas.cy : 1.0;
 	const auto column = (std::clamp(alignment, 1, 9) - 1) % 3; // 0 left, 1 centre, 2 right
-	const auto row = (std::clamp(alignment, 1, 9) - 1) / 3; // 0 bottom, 1 middle, 2 top
+	const auto row = (std::clamp(alignment, 1, 9) - 1) / 3;    // 0 bottom, 1 middle, 2 top
 
 	double x;
 	double y;
@@ -443,7 +446,9 @@ rectd place_subtitle(const sizei video, const sizei script_canvas, const sized b
 		const auto left = margin_l * sx;
 		const auto right = video.cx - margin_r * sx;
 		x = column == 0 ? left : column == 1 ? (left + right - block.Width) / 2 : right - block.Width;
-		y = row == 0 ? video.cy - margin_v * sy - block.Height : row == 1 ? (video.cy - block.Height) / 2 : margin_v * sy;
+		y = row == 0   ? video.cy - margin_v * sy - block.Height
+		    : row == 1 ? (video.cy - block.Height) / 2
+		               : margin_v * sy;
 	}
 
 	// Kept on the picture: a block wider than the picture keeps its left edge.
@@ -486,7 +491,8 @@ std::vector<subtitle_placement> place_subtitles_on_picture(const std::vector<sub
 			for (auto attempt = 0; attempt < 8; ++attempt)
 			{
 				const auto earlier = std::span(layout).first(first);
-				const auto hit = std::ranges::find_if(earlier, [&p](const placed& e) { return e.bounds.intersects(p.bounds); });
+				const auto hit = std::ranges::find_if(earlier,
+				                                      [&p](const placed& e) { return e.bounds.intersects(p.bounds); });
 				if (hit == earlier.end()) break;
 				p.bounds.Y = p.lower ? hit->bounds.Y - p.bounds.Height : hit->bounds.bottom();
 			}
@@ -505,7 +511,8 @@ std::vector<subtitle_placement> place_subtitles_on_picture(const std::vector<sub
 	if (clear_above > 0 && raise > 0)
 	{
 		auto lowest = 0.0;
-		for (const auto& p : layout) if (p.lower) lowest = std::max(lowest, to_view(p.bounds).bottom());
+		for (const auto& p : layout)
+			if (p.lower) lowest = std::max(lowest, to_view(p.bounds).bottom());
 		lift = std::max(0.0, lowest + gap - clear_above) * std::min(raise, 1.0);
 	}
 
@@ -586,8 +593,10 @@ void subtitle_events::add(subtitle_event e)
 	// Repeats are common: a packet read again after a seek lands in the generation that replaced it.
 	for (const auto& existing : _events)
 	{
-		if (existing.gen == e.gen && core::equiv(existing.start, e.start) && existing.text.has_value() == e.text.has_value() &&
-			(!e.text || existing.text->plain_text() == e.text->plain_text()) && existing.images.size() == e.images.size())
+		if (existing.gen == e.gen && core::equiv(existing.start, e.start) &&
+		    existing.text.has_value() == e.text.has_value() &&
+		    (!e.text || existing.text->plain_text() == e.text->plain_text()) &&
+		    existing.images.size() == e.images.size())
 		{
 			return;
 		}
@@ -701,7 +710,8 @@ void subtitle_events::prepare(const double pos)
 
 	for (const auto& w : todo)
 	{
-		auto bitmaps = w.text ? render_subtitle_text(*w.text, script, video) : render_subtitle_images(w.images, w.canvas, video);
+		auto bitmaps = w.text ? render_subtitle_text(*w.text, script, video)
+		                      : render_subtitle_images(w.images, w.canvas, video);
 		done.emplace_back(w.id, std::move(bitmaps));
 	}
 
@@ -802,21 +812,21 @@ namespace
 	};
 
 	constexpr language_names languages[] = {
-		{"en", "eng", "eng", "english"}, {"de", "ger", "deu", "german"}, {"fr", "fre", "fra", "french"},
-		{"es", "spa", "spa", "spanish"}, {"it", "ita", "ita", "italian"}, {"pt", "por", "por", "portuguese"},
-		{"nl", "dut", "nld", "dutch"}, {"sv", "swe", "swe", "swedish"}, {"da", "dan", "dan", "danish"},
-		{"no", "nor", "nor", "norwegian"}, {"nb", "nob", "nob", "bokmal"}, {"fi", "fin", "fin", "finnish"},
-		{"pl", "pol", "pol", "polish"}, {"cs", "cze", "ces", "czech"}, {"sk", "slo", "slk", "slovak"},
-		{"ru", "rus", "rus", "russian"}, {"uk", "ukr", "ukr", "ukrainian"}, {"hu", "hun", "hun", "hungarian"},
-		{"tr", "tur", "tur", "turkish"}, {"el", "gre", "ell", "greek"}, {"he", "heb", "heb", "hebrew"},
-		{"ar", "ara", "ara", "arabic"}, {"hi", "hin", "hin", "hindi"}, {"ja", "jpn", "jpn", "japanese"},
-		{"ko", "kor", "kor", "korean"}, {"zh", "chi", "zho", "chinese"}, {"th", "tha", "tha", "thai"},
+		{"en", "eng", "eng", "english"},    {"de", "ger", "deu", "german"},     {"fr", "fre", "fra", "french"},
+		{"es", "spa", "spa", "spanish"},    {"it", "ita", "ita", "italian"},    {"pt", "por", "por", "portuguese"},
+		{"nl", "dut", "nld", "dutch"},      {"sv", "swe", "swe", "swedish"},    {"da", "dan", "dan", "danish"},
+		{"no", "nor", "nor", "norwegian"},  {"nb", "nob", "nob", "bokmal"},     {"fi", "fin", "fin", "finnish"},
+		{"pl", "pol", "pol", "polish"},     {"cs", "cze", "ces", "czech"},      {"sk", "slo", "slk", "slovak"},
+		{"ru", "rus", "rus", "russian"},    {"uk", "ukr", "ukr", "ukrainian"},  {"hu", "hun", "hun", "hungarian"},
+		{"tr", "tur", "tur", "turkish"},    {"el", "gre", "ell", "greek"},      {"he", "heb", "heb", "hebrew"},
+		{"ar", "ara", "ara", "arabic"},     {"hi", "hin", "hin", "hindi"},      {"ja", "jpn", "jpn", "japanese"},
+		{"ko", "kor", "kor", "korean"},     {"zh", "chi", "zho", "chinese"},    {"th", "tha", "tha", "thai"},
 		{"vi", "vie", "vie", "vietnamese"}, {"id", "ind", "ind", "indonesian"}, {"ms", "may", "msa", "malay"},
-		{"ro", "rum", "ron", "romanian"}, {"bg", "bul", "bul", "bulgarian"}, {"hr", "hrv", "hrv", "croatian"},
-		{"sr", "srp", "srp", "serbian"}, {"sl", "slv", "slv", "slovenian"}, {"et", "est", "est", "estonian"},
-		{"lv", "lav", "lav", "latvian"}, {"lt", "lit", "lit", "lithuanian"}, {"is", "ice", "isl", "icelandic"},
-		{"ca", "cat", "cat", "catalan"}, {"eu", "baq", "eus", "basque"}, {"gl", "glg", "glg", "galician"},
-		{"fa", "per", "fas", "persian"}, {"bn", "ben", "ben", "bengali"}, {"ta", "tam", "tam", "tamil"},
+		{"ro", "rum", "ron", "romanian"},   {"bg", "bul", "bul", "bulgarian"},  {"hr", "hrv", "hrv", "croatian"},
+		{"sr", "srp", "srp", "serbian"},    {"sl", "slv", "slv", "slovenian"},  {"et", "est", "est", "estonian"},
+		{"lv", "lav", "lav", "latvian"},    {"lt", "lit", "lit", "lithuanian"}, {"is", "ice", "isl", "icelandic"},
+		{"ca", "cat", "cat", "catalan"},    {"eu", "baq", "eus", "basque"},     {"gl", "glg", "glg", "galician"},
+		{"fa", "per", "fas", "persian"},    {"bn", "ben", "ben", "bengali"},    {"ta", "tam", "tam", "tamil"},
 	};
 
 	// The primary subtag: pt-BR is Portuguese, zh_Hans is Chinese.
@@ -835,7 +845,7 @@ namespace
 		for (const auto& l : languages)
 		{
 			if (core::icmp(code, l.iso1) == 0 || core::icmp(code, l.iso2b) == 0 || core::icmp(code, l.iso2t) == 0 ||
-				core::icmp(code, l.name) == 0)
+			    core::icmp(code, l.name) == 0)
 				return &l;
 		}
 
@@ -864,10 +874,11 @@ sidecar_subtitle_name read_sidecar_subtitle_name(const std::string_view sidecar_
 
 	const auto stem = sidecar_name.substr(0, core::find_ext(sidecar_name));
 	const auto video_stem = video_name.substr(0, core::find_ext(video_name));
-	if (stem.size() < video_stem.size() || core::icmp(stem.substr(0, video_stem.size()), video_stem) != 0) return result;
+	if (stem.size() < video_stem.size() || core::icmp(stem.substr(0, video_stem.size()), video_stem) != 0)
+		return result;
 
 	for (const auto word : core::split(stem.substr(video_stem.size()), false,
-	                                  [](const char c) { return c == '.' || c == ' ' || c == '_'; }))
+	                                   [](const char c) { return c == '.' || c == ' ' || c == '_'; }))
 	{
 		if (core::icmp(word, "forced") == 0) result.forced = true;
 		else if (result.language.empty() && find_language(word)) result.language = word;
@@ -890,14 +901,15 @@ subtitle_choice choose_subtitles(const std::vector<subtitle_offer>& offers, cons
 	};
 
 	const auto speech_is_foreign = !audio_language.empty() && core::icmp(audio_language, "und") != 0 &&
-		!same_language(audio_language, preferred_language);
+	                               !same_language(audio_language, preferred_language);
 	const auto wanted = mode == subtitle_mode::always || (mode == subtitle_mode::foreign && speech_is_foreign);
 
 	if (wanted)
 	{
 		if (const auto full = pick(preferred_language, false)) return *full;
 		// A track that names no language is offered when it is the only one.
-		if (offers.size() == 1 && offers.front().language.empty() && !offers.front().forced) return offers.front().choice;
+		if (offers.size() == 1 && offers.front().language.empty() && !offers.front().forced)
+			return offers.front().choice;
 	}
 
 	if (const auto forced = pick(preferred_language, true)) return *forced;
@@ -920,7 +932,8 @@ std::vector<subtitle_offer> sidecar_subtitle_offers(const core::file_path video,
 		if (core::icmp(ext, ".sub") == 0)
 		{
 			const auto idx = std::string(name.substr(0, ext_pos)) + ".idx";
-			if (std::ranges::any_of(names, [&idx](const std::string_view n) { return core::icmp(n, idx) == 0; })) continue;
+			if (std::ranges::any_of(names, [&idx](const std::string_view n) { return core::icmp(n, idx) == 0; }))
+				continue;
 		}
 
 		const auto read = read_sidecar_subtitle_name(name, video_name);

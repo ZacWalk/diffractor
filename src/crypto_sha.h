@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: SHA-1 and SHA-256 hash algorithm implementations. Computes secure
 // cryptographic digests for data integrity and authentication.
@@ -26,7 +25,6 @@ namespace crypto
 		static constexpr uint32_t DIGEST_INTS = 5; /* number of 32bit integers per SHA1 digest */
 		static constexpr uint32_t BLOCK_INTS = 16; /* number of 32bit integers per SHA1 block */
 		static constexpr uint32_t BLOCK_BYTES = BLOCK_INTS * 4;
-
 
 		std::vector<uint8_t> buffer;
 		uint64_t transforms;

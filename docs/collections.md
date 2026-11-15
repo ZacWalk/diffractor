@@ -4,15 +4,15 @@ This document owns the collection: what it is, how membership is decided and cha
 
 Both [primary design drivers](design.md#primary-design-drivers) apply without exception. The collection is the feature most able to violate them: it is the largest thing the application knows, it is built by walking storage the user controls, and it is the source of nearly every aggregate the user navigates by.
 
-## What A Collection Is
+## 1. What a collection is
 
 **A collection is a declaration, not an accumulation.** It is a short list of included root folders plus a list of exclusions. It is not a record of per-file decisions, and nothing a user does while browsing quietly adds to it.
 
-Three consequences follow, and they are the whole theory:
+## 2. What follows from it
 
 1. **Membership belongs to the folder, not to the file.** A file is in the collection because it sits under an included root that is not excluded. Moving a file into such a folder joins the collection; moving it out leaves. There is no "add to library" step and no per-file membership state that could disagree with where the file actually is. The filesystem remains the user's organizing tool.
 
-   Import is not an exception. Import is a file operation — it copies or moves files into a folder structure built from metadata — and never a membership operation. Its results join the collection when, and only when, the destination folder is already a member, and importing to a folder outside the collection adds nothing to the collection. Membership still follows the folder; Import merely decides which folder a file ends up in.
+   Import is not an exception. Import is a file operation — it copies or moves files into a folder structure built from metadata — and never a membership operation. Its results join the collection when, and only when, the destination folder is already a member; importing to a folder outside the collection adds nothing to it.
 2. **The declaration is small enough to read and reverse.** A user can see the whole collection definition at once, understand why any folder is or is not in it, and change it by editing a line. A definition that could only be inspected by querying it is not a mental model.
 3. **Everything derived is rebuildable.** The index is a cache over files that remain the authority. Deleting it costs time, not information. This is what makes membership changes safe: they change what is *known*, never what *exists*.
 
@@ -51,9 +51,7 @@ The walk is bounded. A collection definition that would enumerate an unreasonabl
 
 ### 3.4 Folders that are known but not members
 
-Browsing an external folder makes Diffractor aware of it, and that awareness is kept so navigation and completion stay useful. **Awareness is not membership.** A folder that has merely been visited contributes nothing to collection aggregates, is never a source of copies for redundancy reporting, and does not make its files report as being in the collection. The only way into the collection is the declaration.
-
-This separation is what keeps the collection meaningful. If browsing joined, the collection would drift into "everywhere I have ever looked", which answers no question at all.
+Browsing an external folder makes Diffractor aware of it, and that awareness is kept so navigation and completion stay useful. **Awareness is not membership.** A folder that has merely been visited contributes nothing to collection aggregates, is never a source of copies for redundancy reporting, and does not make its files report as being in the collection. The only way into the collection is the declaration; if browsing joined, the collection would drift into "everywhere I have ever looked", which answers no question at all.
 
 ### 3.5 What a folder holds
 
@@ -79,7 +77,6 @@ Membership is not a label; it is the precondition for every whole-collection cap
 | [Related items](design.md#related-items) | An item's copies, album, series, capture time, and capture place are answered from members only, so "what else belongs with this?" has a defined population too. |
 | [Presence](design.md#collection-presence) | An outside file can be compared against members to answer "do I already have this?". |
 | Import and Sync | Both name a collection side, so their direction and effect are stated against a defined set rather than against an ad-hoc folder pair. |
-| [Movie](movie.md#6-project-files) import | An old Movie Maker project's moved sources are found again among members, by name and by the length the project recorded, so the search has a defined population instead of the whole disk. |
 | Totals | "The collection contains N items" is meaningful because N has a definition the user can inspect. |
 
 The corollary is that a scope outside the collection cannot honestly offer these. When the current scope is not in the collection, that fact is reported plainly — the items shown are not from the collection. Where the report explains an empty or partial result, it also carries the action that would widen the collection, so the explanation and its remedy are the same surface. Silently returning empty or partial aggregates for a non-member scope would read as a broken product rather than as a scope distinction.
@@ -153,7 +150,7 @@ This is the case redundancy reporting is most likely to get wrong, because the s
 - **It does not choose a keeper.** Which copy survives carries taste — a folder the user trusts, a filename they can read, the version they edited. Redundancy supplies evidence and stops. Its job is to put the candidates in front of the user, next to one another, and let them decide.
 - **It does not enlarge a target.** Being reported as a copy never adds an item to the set a command acts on. Targeting follows [design.md](design.md#user-mental-model) without exception.
 - **It does not publish an absence from an incomplete collection.** "No copy found" derived from a half-built index is the exact input to a wrong deletion, so while the answer is incomplete the answer is that it is incomplete. This is the same rule as [§6](#6-the-collections-edge), applied to all three surfaces.
-- **It does not persist a verdict.** Redundancy is recomputed from current evidence, never stored as a judgement that could outlive the files that justified it. Improving the comparison therefore changes the answers instead of leaving a stale one behind, and a grouping the user disagrees with is corrected by fixing the comparison, not by migrating data.
+- **It does not persist a verdict.** Redundancy is recomputed from current evidence, never stored as a judgement that could outlive the files that justified it. Improving the comparison therefore changes the answers instead of leaving a stale one behind, and a grouping the user disagrees with is corrected by fixing the comparison, not by migrating data. A duplicate search on screen follows the recount too: a file whose last copy was deleted leaves it without a refresh, rather than staying listed as a copy for the user to delete.
 - **It offers no bulk automatic resolution.** There is no "remove all duplicates" command. Such a command would have to choose keepers, would act partly on claims graded *possible*, and could not be previewed item by item at the scale where it would be worth having.
 
 ## 8. Truth, staleness, and honesty
@@ -176,7 +173,6 @@ Presence wording and confidence values belong to [design.md](design.md#collectio
 | Duplicate grouping and the perceptual-hash stage | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::update_predictions`; [app_dup_report.cpp](../src/app_dup_report.cpp) measures it over a real library |
 | The bounded nearest-match sets a related search answers with | [model_related.h](../src/model_related.h) |
 | Presence evaluation for a file outside the collection | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::queue_update_presence`, [model_search.cpp](../src/model_search.cpp) |
-| Finding a Movie Maker project's moved sources among members | [view_movie.cpp](../src/view_movie.cpp) — `import_movie_maker_project`; [model_movie.cpp](../src/model_movie.cpp) — `choose_movie_sources`; [app_movie_batch.cpp](../src/app_movie_batch.cpp) walks the member folders for the command line |
 | Persistence of the cached index | [model_db.cpp](../src/model_db.cpp), [model_db_pack.h](../src/model_db_pack.h) |
 
 The three redundancy surfaces in [§7](#7-redundancy-one-relation-three-questions) read one relation,

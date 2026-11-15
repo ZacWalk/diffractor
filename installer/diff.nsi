@@ -4,7 +4,7 @@
 !define PRODUCT32_EXE "diffractor32.exe"
 !define PRODUCT64_EXE "diffractor64.exe"
 !define PRODUCT_PUBLISHER "Diffractor"
-!define BUILD_NUM "1315"
+!define BUILD_NUM "1316"
 !define PRODUCT_VERSION "127.4"
 !define FILE_VERSION "1.27.4.${BUILD_NUM}"
 !define PRODUCT_WEB_SITE "http://www.Diffractor.com/"
@@ -89,6 +89,46 @@ FunctionEnd
   System::Call "shell32::SHChangeNotify(i,i,i,i) (${SHCNE_ASSOCCHANGED}, $0, 0, 0)"
 !macroend
 
+; Diffractor in Explorer's Open With list for one extension, and out of it again.
+!macro OPEN_WITH EXT
+	WriteRegStr HKCU "Software\Classes\${EXT}\OpenWithProgids" "${PRODUCT_NAME}" ""
+	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\${EXT}\OpenWithProgids" "${PRODUCT_NAME}" ""
+!macroend
+
+!macro UN_OPEN_WITH EXT
+	DeleteRegValue HKCU "Software\Classes\${EXT}\OpenWithProgids" "${PRODUCT_NAME}"
+	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\${EXT}\OpenWithProgids" "${PRODUCT_NAME}"
+!macroend
+
+; The types Diffractor is offered for: the Store package's (exe\AppxManifest.xml), and .jpe, which it never had.
+; Every format Edit and Convert write is among them, so a copy saved as AVIF or JPEG XL opens as its original did.
+!macro OPEN_WITH_TYPES ACTION
+	!insertmacro ${ACTION} ".arw"
+	!insertmacro ${ACTION} ".avi"
+	!insertmacro ${ACTION} ".avif"
+	!insertmacro ${ACTION} ".bmp"
+	!insertmacro ${ACTION} ".cr2"
+	!insertmacro ${ACTION} ".cr3"
+	!insertmacro ${ACTION} ".dng"
+	!insertmacro ${ACTION} ".gif"
+	!insertmacro ${ACTION} ".heic"
+	!insertmacro ${ACTION} ".heif"
+	!insertmacro ${ACTION} ".jpe"
+	!insertmacro ${ACTION} ".jpeg"
+	!insertmacro ${ACTION} ".jpg"
+	!insertmacro ${ACTION} ".jxl"
+	!insertmacro ${ACTION} ".m4a"
+	!insertmacro ${ACTION} ".mkv"
+	!insertmacro ${ACTION} ".mov"
+	!insertmacro ${ACTION} ".mp3"
+	!insertmacro ${ACTION} ".mp4"
+	!insertmacro ${ACTION} ".nef"
+	!insertmacro ${ACTION} ".png"
+	!insertmacro ${ACTION} ".tif"
+	!insertmacro ${ACTION} ".tiff"
+	!insertmacro ${ACTION} ".webp"
+!macroend
+
 ;--------------------------------
 ;General
 
@@ -141,6 +181,12 @@ VIAddVersionKey LegalCopyright "Copyright (C) 2026 Zac Walker"
 ;Pages
 
 !insertmacro MUI_PAGE_WELCOME
+; A notice rather than an agreement: the MPL asks nothing of someone who only runs the program.
+!define MUI_PAGE_HEADER_TEXT "$(LICENCE_HEADER)"
+!define MUI_PAGE_HEADER_SUBTEXT "$(LICENCE_SUBHEADER)"
+!define MUI_LICENSEPAGE_TEXT_TOP "$(LICENCE_TOP)"
+!define MUI_LICENSEPAGE_TEXT_BOTTOM "$(^ClickNext)"
+!define MUI_LICENSEPAGE_BUTTON "$(^NextBtn)"
 !insertmacro MUI_PAGE_LICENSE "License.txt"
 ;!insertmacro MUI_PAGE_COMPONENTS
 ;!insertmacro MUI_PAGE_DIRECTORY
@@ -201,6 +247,51 @@ LangString APP_LANG ${LANG_RUSSIAN} "ru"
 LangString APP_LANG ${LANG_TURKISH} "tr"
 LangString APP_LANG ${LANG_UKRAINIAN} "uk"
 LangString APP_LANG ${LANG_SIMPCHINESE} "zh"
+
+LangString LICENCE_HEADER ${LANG_ENGLISH} "License"
+LangString LICENCE_HEADER ${LANG_CZECH} "Licence"
+LangString LICENCE_HEADER ${LANG_GERMAN} "Lizenz"
+LangString LICENCE_HEADER ${LANG_SPANISH} "Licencia"
+LangString LICENCE_HEADER ${LANG_FRENCH} "Licence"
+LangString LICENCE_HEADER ${LANG_ITALIAN} "Licenza"
+LangString LICENCE_HEADER ${LANG_JAPANESE} "ライセンス"
+LangString LICENCE_HEADER ${LANG_KOREAN} "라이선스"
+LangString LICENCE_HEADER ${LANG_POLISH} "Licencja"
+LangString LICENCE_HEADER ${LANG_PORTUGUESEBR} "Licença"
+LangString LICENCE_HEADER ${LANG_RUSSIAN} "Лицензия"
+LangString LICENCE_HEADER ${LANG_TURKISH} "Lisans"
+LangString LICENCE_HEADER ${LANG_UKRAINIAN} "Ліцензія"
+LangString LICENCE_HEADER ${LANG_SIMPCHINESE} "许可证"
+
+LangString LICENCE_SUBHEADER ${LANG_ENGLISH} "Diffractor is free software under the Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_CZECH} "Diffractor je svobodný software pod licencí Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_GERMAN} "Diffractor ist freie Software unter der Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_SPANISH} "Diffractor es software libre bajo la Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_FRENCH} "Diffractor est un logiciel libre sous Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_ITALIAN} "Diffractor è software libero con licenza Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_JAPANESE} "Diffractor は Mozilla Public License 2.0 に基づくフリー ソフトウェアです。"
+LangString LICENCE_SUBHEADER ${LANG_KOREAN} "Diffractor는 Mozilla Public License 2.0에 따른 자유 소프트웨어입니다."
+LangString LICENCE_SUBHEADER ${LANG_POLISH} "Diffractor jest wolnym oprogramowaniem na licencji Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_PORTUGUESEBR} "O Diffractor é software livre sob a Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_RUSSIAN} "Diffractor — свободное программное обеспечение под лицензией Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_TURKISH} "Diffractor, Mozilla Public License 2.0 kapsamında özgür bir yazılımdır."
+LangString LICENCE_SUBHEADER ${LANG_UKRAINIAN} "Diffractor — вільне програмне забезпечення за ліцензією Mozilla Public License 2.0."
+LangString LICENCE_SUBHEADER ${LANG_SIMPCHINESE} "Diffractor 是基于 Mozilla Public License 2.0 的自由软件。"
+
+LangString LICENCE_TOP ${LANG_ENGLISH} "Press Page Down to read the rest."
+LangString LICENCE_TOP ${LANG_CZECH} "Zbytek si přečtete stisknutím klávesy Page Down."
+LangString LICENCE_TOP ${LANG_GERMAN} "Mit Bild-ab lesen Sie den Rest."
+LangString LICENCE_TOP ${LANG_SPANISH} "Pulse Av Pág para leer el resto."
+LangString LICENCE_TOP ${LANG_FRENCH} "Appuyez sur Page suivante pour lire la suite."
+LangString LICENCE_TOP ${LANG_ITALIAN} "Premere Pag giù per leggere il resto."
+LangString LICENCE_TOP ${LANG_JAPANESE} "続きを読むには Page Down キーを押してください。"
+LangString LICENCE_TOP ${LANG_KOREAN} "나머지를 읽으려면 Page Down 키를 누르세요."
+LangString LICENCE_TOP ${LANG_POLISH} "Naciśnij Page Down, aby przeczytać resztę."
+LangString LICENCE_TOP ${LANG_PORTUGUESEBR} "Pressione Page Down para ler o restante."
+LangString LICENCE_TOP ${LANG_RUSSIAN} "Нажмите Page Down, чтобы прочитать остальное."
+LangString LICENCE_TOP ${LANG_TURKISH} "Devamını okumak için Page Down tuşuna basın."
+LangString LICENCE_TOP ${LANG_UKRAINIAN} "Натисніть Page Down, щоб прочитати решту."
+LangString LICENCE_TOP ${LANG_SIMPCHINESE} "按 Page Down 键阅读其余部分。"
 
 ;--------------------------------
 ;Reserve Files
@@ -332,10 +423,15 @@ Section "Diffractor"
 	File "..\exe\location-states.txt"
 	File "..\exe\diffractor-tools.json"
 
-	; The installed program is LGPL-3.0-or-later, whose text and the GPL-3.0 it incorporates must
-	; accompany every copy. dd.ps1 desktop stages both into exe\ before this script is compiled.
+	; Diffractor is MPL-2.0; the LGPL libraries it links need their texts, and the GPL-3.0 the LGPL-3.0
+	; incorporates, beside every copy, and libaom its BSD licence and the AOM patent licence. dd.ps1 desktop
+	; stages all six into exe\ before this is compiled.
 	File "..\exe\LICENSE.txt"
+	File "..\exe\COPYING.LGPLv3.txt"
 	File "..\exe\COPYING.GPLv3.txt"
+	File "..\exe\COPYING.LGPLv2.1.txt"
+	File "..\exe\LICENSE.libaom.txt"
+	File "..\exe\PATENTS.libaom.txt"
 
 	File "..\exe\${PRODUCT32_EXE}"
 	File "..\exe\${PRODUCT64_EXE}"
@@ -383,24 +479,7 @@ Section "Diffractor"
 
 	WriteUninstaller "$INSTDIR\Uninstall.exe"
 
-	WriteRegStr HKCU "Software\Classes\.jpe\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.jpeg\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.jpg\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.png\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.gif\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.mp4\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.mov\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.avi\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.mp3\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.cr2\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.cr3\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Classes\.webp\OpenWithProgids" "${PRODUCT_NAME}" ""
-
-	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpe\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpeg\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpg\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.png\OpenWithProgids" "${PRODUCT_NAME}" ""
-	WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.gif\OpenWithProgids" "${PRODUCT_NAME}" ""
+	!insertmacro OPEN_WITH_TYPES OPEN_WITH
 
 	;WriteRegDWORD HKCU "Software\Classes\${PRODUCT_NAME}" "EditFlags" 65536
   
@@ -443,26 +522,9 @@ Section "Uninstall"
 	DeleteRegKey SHCTX "Software\Classes\Folder\shell\diffractor"
 	DeleteRegKey SHCTX "Software\Classes\File\shell\diffractor"
 
-	DeleteRegValue HKCU "Software\Classes\.jpe\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.jpeg\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.jpg\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.png\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.gif\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.mp4\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.mov\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.avi\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.mp3\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.cr2\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.cr3\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Classes\.webp\OpenWithProgids" "${PRODUCT_NAME}"
-
 	; The install also advertises Diffractor in Explorer's per-extension Open With list.
 	; Without this it survives uninstall and keeps offering an application that is gone.
-	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpe\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpeg\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.jpg\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.png\OpenWithProgids" "${PRODUCT_NAME}"
-	DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.gif\OpenWithProgids" "${PRODUCT_NAME}"
+	!insertmacro OPEN_WITH_TYPES UN_OPEN_WITH
 
 	DeleteRegKey HKCU "Software\Classes\${PRODUCT_NAME}"
 
@@ -483,7 +545,11 @@ Section "Uninstall"
 	Delete "$INSTDIR\location-states.txt"
 	Delete "$INSTDIR\diffractor-tools.json"
 	Delete "$INSTDIR\LICENSE.txt"
+	Delete "$INSTDIR\COPYING.LGPLv3.txt"
 	Delete "$INSTDIR\COPYING.GPLv3.txt"
+	Delete "$INSTDIR\COPYING.LGPLv2.1.txt"
+	Delete "$INSTDIR\LICENSE.libaom.txt"
+	Delete "$INSTDIR\PATENTS.libaom.txt"
 	Delete "$INSTDIR\diffractor.log"
 	Delete "$INSTDIR\diffractor.previous.log"
 	Delete "$INSTDIR\languages\*.po"

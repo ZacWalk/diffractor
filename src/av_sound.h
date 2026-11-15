@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Audio output interface and buffer management. Defines audio format structures,
 // sample buffering, and abstract audio device interface for playback.
@@ -28,10 +27,7 @@ struct audio_info_t
 
 	friend bool operator==(const audio_info_t& lhs, const audio_info_t& rhs);
 
-	friend bool operator!=(const audio_info_t& lhs, const audio_info_t& rhs)
-	{
-		return !(lhs == rhs);
-	}
+	friend bool operator!=(const audio_info_t& lhs, const audio_info_t& rhs) { return !(lhs == rhs); }
 
 	uint32_t bytes_per_second() const;
 	uint32_t channel_count() const;
@@ -65,8 +61,8 @@ public:
 		// A failed realloc answers null and leaves the old block where it was. Assigning the result
 		// unexamined leaked that block and kept a size describing memory that was not there, which
 		// the next append then wrote into. Refused, the buffer holds nothing and plays silence.
-		auto* const resized = static_cast<uint8_t*>(_aligned_realloc(
-			data, static_cast<size_t>(wanted) + static_cast<size_t>(data_padding), data_alignment));
+		auto* const resized = static_cast<uint8_t*>(
+			_aligned_realloc(data, static_cast<size_t>(wanted) + static_cast<size_t>(data_padding), data_alignment));
 
 		if (resized)
 		{
@@ -82,56 +78,26 @@ public:
 		end_pos = 0;
 	}
 
-	~audio_buffer() override
-	{
-		_aligned_free(data);
-	}
+	~audio_buffer() override { _aligned_free(data); }
 
-	bool is_empty() const
-	{
-		return start_pos == end_pos;
-	}
+	bool is_empty() const { return start_pos == end_pos; }
 
-	bool should_fill() const
-	{
-		return used_bytes() <= format.bytes_per_second();
-	}
+	bool should_fill() const { return used_bytes() <= format.bytes_per_second(); }
 
-	uint32_t used_bytes() const
-	{
-		return end_pos - start_pos;
-	}
+	uint32_t used_bytes() const { return end_pos - start_pos; }
 
-	core::cspan cdata() const
-	{
-		return {data ? data + start_pos : nullptr, used_bytes()};
-	}
+	core::cspan cdata() const { return {data ? data + start_pos : nullptr, used_bytes()}; }
 
 	// Hands the endpoint as many of the samples as it has room for; what it takes leaves the buffer.
-	void write_to(platform::audio_output& device)
-	{
-		remove(static_cast<uint32_t>(device.write(cdata())));
-	}
+	void write_to(platform::audio_output& device) { remove(static_cast<uint32_t>(device.write(cdata()))); }
 
-	uint32_t avail_bytes() const
-	{
-		return size - end_pos;
-	}
+	uint32_t avail_bytes() const { return size - end_pos; }
 
-	uint32_t bytes_per_sample() const
-	{
-		return format.bytes_per_sample();
-	}
+	uint32_t bytes_per_sample() const { return format.bytes_per_sample(); }
 
-	uint32_t bytes_per_second() const
-	{
-		return format.bytes_per_second();
-	}
+	uint32_t bytes_per_second() const { return format.bytes_per_second(); }
 
-	int generation() const
-	{
-		return gen;
-	}
+	int generation() const { return gen; }
 
 	void clear()
 	{
@@ -240,10 +206,7 @@ public:
 		return bps > 0 ? time + used_bytes() / static_cast<double>(bps) : time;
 	}
 
-	double start_time() const
-	{
-		return time;
-	}
+	double start_time() const { return time; }
 
 	double seconds() const
 	{
@@ -252,10 +215,7 @@ public:
 	}
 
 private:
-	uint32_t frame_bytes() const
-	{
-		return format.channel_count() * format.bytes_per_sample();
-	}
+	uint32_t frame_bytes() const { return format.channel_count() * format.bytes_per_sample(); }
 
 	// Whole frames a `seconds` ramp covers, limited to what is buffered.
 	uint32_t ramp_frames(const double seconds) const
@@ -285,17 +245,14 @@ private:
 			{
 				switch (format.sample_fmt)
 				{
-				case prop::audio_sample_t::signed_float:
-					reinterpret_cast<float*>(p)[ch] *= gain;
-					break;
+				case prop::audio_sample_t::signed_float: reinterpret_cast<float*>(p)[ch] *= gain; break;
 				case prop::audio_sample_t::signed_16bit:
 					reinterpret_cast<int16_t*>(p)[ch] = static_cast<int16_t>(reinterpret_cast<int16_t*>(p)[ch] * gain);
 					break;
 				case prop::audio_sample_t::signed_32bit:
 					reinterpret_cast<int32_t*>(p)[ch] = static_cast<int32_t>(reinterpret_cast<int32_t*>(p)[ch] * gain);
 					break;
-				default:
-					break;
+				default: break;
 				}
 			}
 
@@ -307,4 +264,3 @@ private:
 	friend class audio_resampler;
 	friend struct audio_ramp_probe;
 };
-

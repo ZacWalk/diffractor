@@ -1,0 +1,4 @@
+# The configuration FFmpeg, libarchive, liblzma and minizip-ng's own builds generate, kept beside their recipes.
+cmake/vendored/**
+# Written by tools/fluent_icons.py from the font's mapping file.
+src/app_icons.h

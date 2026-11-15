@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Bounded nearest-match collection for related-item searches. Holds only the closest
 // matches on each relation axis so a related search answers with a useful, bounded set.
@@ -45,8 +44,7 @@ namespace df
 
 	// Keeps the lowest-distance payloads offered to it, dropping the worst once full. Ties break on
 	// path so the surviving set never depends on the order the index happened to be walked in.
-	template <typename T>
-	class bounded_best
+	template <typename T> class bounded_best
 	{
 	public:
 		struct entry
@@ -68,20 +66,11 @@ namespace df
 		}
 
 	public:
-		void limit(const size_t v)
-		{
-			_limit = v;
-		}
+		void limit(const size_t v) { _limit = v; }
 
-		size_t size() const
-		{
-			return _heap.size();
-		}
+		size_t size() const { return _heap.size(); }
 
-		bool empty() const
-		{
-			return _heap.empty();
-		}
+		bool empty() const { return _heap.empty(); }
 
 		void offer(const int64_t distance, const core::file_path path, T value)
 		{
@@ -113,8 +102,7 @@ namespace df
 		}
 	};
 
-	template <typename T>
-	class related_collector
+	template <typename T> class related_collector
 	{
 		bounded_best<T> _axes[related_axis_count];
 
@@ -136,14 +124,10 @@ namespace df
 			return result;
 		}
 
-		size_t size(const related_axis axis) const
-		{
-			return _axes[static_cast<size_t>(axis)].size();
-		}
+		size_t size(const related_axis axis) const { return _axes[static_cast<size_t>(axis)].size(); }
 
 		// Axis order, then closest first inside each axis.
-		template <typename F>
-		void drain(F&& fn)
+		template <typename F> void drain(F&& fn)
 		{
 			for (auto& axis : _axes)
 			{

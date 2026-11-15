@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Software rasteriser for a projected equirectangular panorama. Resamples the file's
 // pixels through the viewer's camera for a given view, into a surface the caller uploads as a
@@ -208,8 +207,8 @@ bool panorama_renderer::render(core::surface& destination, const prop::panorama_
 
 			// Longitude swings arbitrarily fast this close to a pole, so a straight line between two
 			// endpoints is simply wrong there.
-			const auto exact = span == 0 ||
-				std::abs(begin_lat) > panorama_pole_guard_rad || std::abs(end_lat) > panorama_pole_guard_rad;
+			const auto exact = span == 0 || std::abs(begin_lat) > panorama_pole_guard_rad ||
+			                   std::abs(end_lat) > panorama_pole_guard_rad;
 
 			auto level_index = 0;
 
@@ -225,7 +224,7 @@ bool panorama_renderer::render(core::surface& destination, const prop::panorama_
 					std::abs(unwrapped_end_u - begin_u) * texel_scale_x / span,
 					std::abs(end_v - begin_v) * texel_scale_y / span,
 					std::abs(unwrap(begin_u, down_u) - begin_u) * texel_scale_x,
-					std::abs(down_v - begin_v) * texel_scale_y
+					std::abs(down_v - begin_v) * texel_scale_y,
 				});
 
 				if (texels_per_pixel > 1.0)
@@ -235,10 +234,8 @@ bool panorama_renderer::render(core::surface& destination, const prop::panorama_
 			}
 
 			const auto& level = *_levels[level_index];
-			const source_level texels{
-				level.pixels(), static_cast<size_t>(level.stride()),
-				level.dimensions().cx, level.dimensions().cy
-			};
+			const source_level texels{level.pixels(), static_cast<size_t>(level.stride()), level.dimensions().cx,
+			                          level.dimensions().cy};
 			const auto level_scale_x = texels.cx * texel_scale_x / source_cx;
 			const auto level_scale_y = texels.cy * texel_scale_y / source_cy;
 
@@ -269,8 +266,8 @@ bool panorama_renderer::render(core::surface& destination, const prop::panorama_
 				// sampler reads them as texel centres. Uncorrected it is a half-texel shift that
 				// changes size with the reduced copy in force, so it shows as a tear wherever two
 				// segments choose different levels.
-				line[px] = sample_bilinear(texels, u * level_scale_x - 0.5, v * level_scale_y - 0.5, wraps)
-					| 0xFF000000u;
+				line[px] = sample_bilinear(texels, u * level_scale_x - 0.5, v * level_scale_y - 0.5, wraps) |
+				           0xFF000000u;
 			}
 
 			x = x_end + 1;

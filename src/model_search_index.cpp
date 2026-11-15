@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Building the search index snapshot and answering searches from it. Every answer either comes
 // from a value table read with the very predicate the matcher applies to that value, or from the matcher
@@ -206,12 +205,9 @@ std::string df::search_index::current_format_signature()
 	const auto* const picture = files::file_type_from_name(std::string_view("a.jpg"));
 	const auto* const video = files::file_type_from_name(std::string_view("a.mp4"));
 
-	return std::format("{}|{}|{}|{}|{}|{}|{}|{}",
-	                   platform::format_size(file_size(uint64_t{1536})),
-	                   prop::format_pixels({}, picture),
-	                   prop::format_pixels({100, 100}, picture),
-	                   prop::format_pixels({500, 500}, picture),
-	                   prop::format_pixels({1920, 1080}, video),
+	return std::format("{}|{}|{}|{}|{}|{}|{}|{}", platform::format_size(file_size(uint64_t{1536})),
+	                   prop::format_pixels({}, picture), prop::format_pixels({100, 100}, picture),
+	                   prop::format_pixels({500, 500}, picture), prop::format_pixels({1920, 1080}, video),
 	                   prop::format_audio_sample_rate(44100u),
 	                   platform::utc_to_local(date_t(2024, 1, 15, 12)).to_int64(),
 	                   platform::utc_to_local(date_t(2024, 7, 15, 12)).to_int64());
@@ -273,7 +269,8 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 
 	const auto date_id = [&index, &date_ids](const date_t date)
 	{
-		const auto [found, inserted] = date_ids.try_emplace(date.to_days(), static_cast<uint32_t>(index._date_values.size()));
+		const auto [found, inserted] = date_ids.try_emplace(date.to_days(),
+		                                                    static_cast<uint32_t>(index._date_values.size()));
 		if (inserted) index._date_values.emplace_back(date);
 		return found->second;
 	};
@@ -328,8 +325,9 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 			index._date_keys.push_back(date_id(dates.modified));
 
 			const auto rounded = round_size(static_cast<uint64_t>(file.size.to_int64()));
-			const auto [size_found, size_inserted] = size_memo.try_emplace(
-				size_key{rounded.unit.data(), rounded.n * 10 + rounded.dec}, no_value);
+			// NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage): the pointer names the unit and is never read
+			const size_key key{rounded.unit.data(), rounded.n * 10 + rounded.dec};
+			const auto [size_found, size_inserted] = size_memo.try_emplace(key, no_value);
 			if (size_inserted) size_found->second = formatted_id(platform::format_size(file.size));
 			if (size_found->second != no_value) formatted_docs.add(size_found->second, doc);
 
@@ -346,7 +344,8 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 				for (size_t i = 0; i < format_fields.size(); ++i)
 				{
 					const auto& field = format_fields[i];
-					const auto [found, inserted] = format_memo[i].try_emplace(field.inputs(metadata, file.ft), no_value);
+					const auto [found, inserted] = format_memo[i].try_emplace(field.inputs(metadata, file.ft),
+					                                                          no_value);
 					if (inserted) found->second = formatted_id(field.format(metadata, file.ft));
 					if (found->second != no_value) formatted_docs.add(found->second, doc);
 				}
@@ -363,9 +362,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 					if (inserted)
 					{
 						split2(value, true, [&index, &parts](const std::string_view part)
-						{
-							parts.emplace_back(intern_key(index._split_ids, search_fold_key(part)));
-						}, field.separator);
+						{ parts.emplace_back(intern_key(index._split_ids, search_fold_key(part))); }, field.separator);
 					}
 
 					for (const auto id : parts) split_docs.add(id, doc);
@@ -379,9 +376,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 					if (inserted)
 					{
 						split2(metadata.tags, true, [&index, &parts](const std::string_view part)
-						{
-							parts.emplace_back(intern_key(index._tag_ids, search_fold_key(core::trim(part))));
-						});
+						{ parts.emplace_back(intern_key(index._tag_ids, search_fold_key(core::trim(part)))); });
 					}
 
 					for (const auto id : parts) tag_docs.add(id, doc);
@@ -395,7 +390,8 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 
 		index._folder_by_node.emplace(node.get(), folder);
 		index._folder_by_path.emplace(path, folder);
-		index._folders.push_back({path, node, revision, first_doc, static_cast<uint32_t>(index._files.size()) - first_doc});
+		index._folders.push_back(
+			{path, node, revision, first_doc, static_cast<uint32_t>(index._files.size()) - first_doc});
 	}
 
 	index._listed_docs = doc_set(index.doc_count(), true);
@@ -424,25 +420,22 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 
 	index._text_trigrams.freeze();
 
-	index._bytes = sizeof(search_index) +
-		index._folders.capacity() * sizeof(folder_entry) +
-		index._folder_by_node.bucket_count() * sizeof(void*) +
-		index._folder_by_node.size() * (sizeof(std::pair<const index_folder_item*, uint32_t>) + 2 * sizeof(void*)) +
-		index._folder_by_path.bucket_count() * sizeof(void*) +
-		index._folder_by_path.size() * (sizeof(std::pair<folder_path, uint32_t>) + 2 * sizeof(void*)) +
-		index._files.capacity() * sizeof(const index_file_item*) +
-		index._doc_folder.capacity() * sizeof(uint32_t) +
-		index._metadata.capacity() * sizeof(prop::item_metadata_ptr) +
-		index._listed_docs.byte_size() +
-		index._text_values.capacity() * sizeof(core::cached) +
-		index._text_docs.byte_size() +
-		index._text_trigrams.byte_size() +
-		key_map_bytes(index._formatted_ids) + index._formatted_docs.byte_size() +
-		key_map_bytes(index._split_ids) + index._split_docs.byte_size() +
-		key_map_bytes(index._tag_ids) + index._tag_docs.byte_size() +
-		index._ratings.docs.byte_size() + index._ratings.representatives.capacity() * sizeof(uint32_t) +
-		index._labels.docs.byte_size() + index._labels.representatives.capacity() * sizeof(uint32_t) +
-		index._date_keys.capacity() * sizeof(uint32_t) + index._date_values.capacity() * sizeof(date_t);
+	index._bytes = sizeof(search_index) + index._folders.capacity() * sizeof(folder_entry) +
+	               index._folder_by_node.bucket_count() * sizeof(void*) +
+	               index._folder_by_node.size() *
+	                   (sizeof(std::pair<const index_folder_item*, uint32_t>) + 2 * sizeof(void*)) +
+	               index._folder_by_path.bucket_count() * sizeof(void*) +
+	               index._folder_by_path.size() * (sizeof(std::pair<folder_path, uint32_t>) + 2 * sizeof(void*)) +
+	               index._files.capacity() * sizeof(const index_file_item*) +
+	               index._doc_folder.capacity() * sizeof(uint32_t) +
+	               index._metadata.capacity() * sizeof(prop::item_metadata_ptr) + index._listed_docs.byte_size() +
+	               index._text_values.capacity() * sizeof(core::cached) + index._text_docs.byte_size() +
+	               index._text_trigrams.byte_size() + key_map_bytes(index._formatted_ids) +
+	               index._formatted_docs.byte_size() + key_map_bytes(index._split_ids) + index._split_docs.byte_size() +
+	               key_map_bytes(index._tag_ids) + index._tag_docs.byte_size() + index._ratings.docs.byte_size() +
+	               index._ratings.representatives.capacity() * sizeof(uint32_t) + index._labels.docs.byte_size() +
+	               index._labels.representatives.capacity() * sizeof(uint32_t) +
+	               index._date_keys.capacity() * sizeof(uint32_t) + index._date_values.capacity() * sizeof(date_t);
 
 	return result;
 }
@@ -466,10 +459,9 @@ std::optional<uint32_t> df::search_index::find_doc(const uint32_t folder, const 
 	const auto& entry = _folders[folder];
 	const auto first = _files.begin() + entry.first_doc;
 	const auto last = first + entry.doc_count;
-	const auto found = std::lower_bound(first, last, name.sv(), [](const index_file_item* file, const std::string_view n)
-	{
-		return icmp(file->name, n) < 0;
-	});
+	const auto found = std::lower_bound(first, last, name.sv(),
+	                                    [](const index_file_item* file, const std::string_view n)
+	{ return icmp(file->name, n) < 0; });
 
 	if (found == last || icmp((*found)->name, name) != 0) return std::nullopt;
 	return static_cast<uint32_t>(found - _files.begin());
@@ -487,8 +479,8 @@ bool df::search_index::is_indexed_term(const search_term& term, const bool forma
 	if (term.type == search_term_type::text) return formats_current;
 
 	// A tag: term compares equality, which no ordering modifier changes the meaning of.
-	return term.type == search_term_type::value && term.key == prop::tag &&
-		!term.modifiers.greater_than && !term.modifiers.less_than;
+	return term.type == search_term_type::value && term.key == prop::tag && !term.modifiers.greater_than &&
+	       !term.modifiers.less_than;
 }
 
 // compare_val reads a rating or label term's own property and nothing else, so every document holding a
@@ -547,11 +539,12 @@ df::doc_set df::search_index::evaluate_dates(const search_matcher& matcher, cons
 }
 
 df::doc_set df::search_index::evaluate_term(const search_matcher& matcher, const search_term& term,
-                                            const doc_set& within, const bool formats_current,
-                                            const bool dates_current, const cancel_token& token) const
+                                            const doc_set& within, const bool formats_current, const bool dates_current,
+                                            const cancel_token& token) const
 {
 	if (const auto* const groups = groups_of(term)) return evaluate_groups(*groups, matcher, term);
-	if (term.is_date()) return dates_current ? evaluate_dates(matcher, term) : evaluate_each(matcher, term, within, token);
+	if (term.is_date())
+		return dates_current ? evaluate_dates(matcher, term) : evaluate_each(matcher, term, within, token);
 
 	if (is_indexed_term(term, formats_current, dates_current))
 	{
@@ -612,7 +605,7 @@ df::doc_set df::search_index::evaluate_text(const search_matcher& matcher, const
 	{
 		const auto folder_name = folder.path.text();
 		const auto decides = matcher.text_term_matches_folder(term, folder_name) ||
-			(!term.modifiers.positive && text_term_contains(term, folder_name));
+		                     (!term.modifiers.positive && text_term_contains(term, folder_name));
 
 		if (decides) result.set_range(folder.first_doc, folder.doc_count);
 	}
@@ -695,11 +688,9 @@ bool df::search_index_view::is_clean(const search_index& index, const index_fold
 
 df::search_index_evaluator::search_index_evaluator(std::shared_ptr<const search_index> index,
                                                    const search_index::folder_list& folders) :
-	_index(std::move(index)),
-	_view(*_index, folders),
+	_index(std::move(index)), _view(*_index, folders),
 	_formats_current(_index->format_signature() == search_index::current_format_signature()),
-	_dates_current(_formats_current && _index->date_day() == core::utc_now().to_days()),
-	_base(_view.clean_docs())
+	_dates_current(_formats_current && _index->date_day() == core::utc_now().to_days()), _base(_view.clean_docs())
 {
 	_base.intersect(_index->listed_docs());
 }
@@ -713,9 +704,7 @@ df::doc_set df::search_index_evaluator::eligible_docs(const search_matcher& matc
 
 	const auto can_match_folder = matcher.can_match_folder;
 	const auto found = std::ranges::find_if(_eligible, [required, can_match_folder](const cached_eligible& eligible)
-	{
-		return eligible.required_presence == required && eligible.can_match_folder == can_match_folder;
-	});
+	{ return eligible.required_presence == required && eligible.can_match_folder == can_match_folder; });
 
 	if (found != _eligible.end()) return found->docs;
 
@@ -753,9 +742,7 @@ df::doc_set df::search_index_evaluator::leaf_docs(const search_matcher& matcher,
 	const auto can_match_folder = matcher.can_match_folder;
 
 	const auto found = std::ranges::find_if(_leaves, [&key, required, can_match_folder](const cached_leaf& leaf)
-	{
-		return leaf.required_presence == required && leaf.can_match_folder == can_match_folder && leaf.term == key;
-	});
+	{ return leaf.required_presence == required && leaf.can_match_folder == can_match_folder && leaf.term == key; });
 
 	if (found != _leaves.end()) return found->docs;
 
@@ -782,9 +769,8 @@ df::doc_set df::search_index_evaluator::evaluate(const search_matcher& matcher, 
 
 	const auto is_conjunction = std::ranges::all_of(terms, [](const search_term& term)
 	{
-		return term.modifiers.begin_group == 0 &&
-			term.modifiers.end_group == 0 &&
-			term.modifiers.logical_op != search_term_modifier_bool::m_or;
+		return term.modifiers.begin_group == 0 && term.modifiers.end_group == 0 &&
+		       term.modifiers.logical_op != search_term_modifier_bool::m_or;
 	});
 
 	if (is_conjunction)
@@ -796,9 +782,7 @@ df::doc_set df::search_index_evaluator::evaluate(const search_matcher& matcher, 
 		for (const auto& term : terms) ordered.emplace_back(&term);
 
 		std::ranges::stable_partition(ordered, [this](const search_term* term)
-		{
-			return _index->is_indexed_term(*term, _formats_current, _dates_current);
-		});
+		{ return _index->is_indexed_term(*term, _formats_current, _dates_current); });
 
 		auto result = eligible;
 		auto narrowed = false;
@@ -813,15 +797,10 @@ df::doc_set df::search_index_evaluator::evaluate(const search_matcher& matcher, 
 		return result;
 	}
 
-	auto result = combine_search_terms<doc_set>(
-		terms,
-		[this, &matcher, &eligible, &token](const search_term& term)
-		{
-			return leaf_docs(matcher, term, eligible, true, token);
-		},
-		[](doc_set& state, const doc_set& value) { state.intersect(value); },
-		[](doc_set& state, const doc_set& value) { state.unite(value); },
-		[size = _index->doc_count()] { return doc_set(size, true); });
+	auto result = combine_search_terms<doc_set>(terms, [this, &matcher, &eligible, &token](const search_term& term)
+	{ return leaf_docs(matcher, term, eligible, true, token); }, [](doc_set& state, const doc_set& value)
+	{ state.intersect(value); }, [](doc_set& state, const doc_set& value) { state.unite(value); },
+	                                            [size = _index->doc_count()] { return doc_set(size, true); });
 
 	result.intersect(eligible);
 	return result;

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Implements the /validate-po command line option. Validates the
 // translation .po files in the languages folder against the strings registered
@@ -23,18 +22,18 @@ namespace
 	struct po_report
 	{
 		std::string file;
-		std::vector<std::string> missing; // registered in app_text.cpp but absent from the .po file
-		std::vector<std::string> not_needed; // present in the .po file but not registered in app_text.cpp
-		std::vector<std::string> untranslated; // present but with an empty translation
+		std::vector<std::string> missing;         // registered in app_text.cpp but absent from the .po file
+		std::vector<std::string> not_needed;      // present in the .po file but not registered in app_text.cpp
+		std::vector<std::string> untranslated;    // present but with an empty translation
 		std::vector<std::string> plural_mismatch; // msgid_plural differs from the registered plural form
-		std::vector<std::string> duplicates; // msgid appears more than once
-		std::vector<std::string> parse_errors; // malformed or unsupported PO syntax
+		std::vector<std::string> duplicates;      // msgid appears more than once
+		std::vector<std::string> parse_errors;    // malformed or unsupported PO syntax
 
 		// Structural problems make the .po file inconsistent with app_text.cpp.
 		bool has_structural_issues() const
 		{
 			return !missing.empty() || !not_needed.empty() || !plural_mismatch.empty() || !duplicates.empty() ||
-				!parse_errors.empty();
+			       !parse_errors.empty();
 		}
 	};
 

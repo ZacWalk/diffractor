@@ -1,35 +1,19 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Implements the Movie document -- timeline edits and undo, transition and duration
-// arithmetic, the derived output geometry, the decision entering Movie makes about the timeline it
-// holds, the OpenTimelineIO project file, the Windows Live Movie Maker reader, and the choice among
-// same-named files for a source that has moved. Pure: no I/O, no decoding, no UI. docs/movie.md
-// owns the behaviour.
+// Purpose: Implements the Movie document -- timeline edits and undo, crossfade and duration arithmetic,
+// when each caption shows, which file each item's sound comes from and how loud it plays, the derived
+// output geometry, the decision entering Movie makes about the timeline it holds, and the .dfv project
+// file. Pure: no I/O, no decoding, no UI. docs/movie.md owns the behaviour.
 
 #include "pch.h"
 #include "model_movie.h"
-#include "util_text.h"
 
 #include "files.h"
-
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
-// OpenTimelineIO stores times as a value over a rate. Values are written exactly, over a rate of 1000
-// so they still read as milliseconds: rounded to whole milliseconds, a clip whose source is not a
-// whole number of them long read back a fraction short of it, and showed as trimmed.
-static constexpr double otio_rate = 1000.0;
-
-// The convention a project's clip ranges follow. From version 2 a range stops at the cut and each
-// transition reaches past it into the media on both sides, as OpenTimelineIO has it; before that,
-// Movie wrote each clip's whole retained range and other tools read every crossfade as extra length.
-static constexpr int otio_project_version = 2;
 
 static bool is_qualified_path(const std::string_view s)
 {
@@ -46,18 +30,60 @@ static bool is_qualified_path(const std::string_view s)
 }
 
 //
+// Text and sound
+//
+
+std::string bound_movie_text(const std::string_view text)
+{
+	if (text.size() <= movie_max_text_bytes) return std::string(text);
+
+	// Backed off to the start of a character, so a cut never leaves half of one.
+	auto end = movie_max_text_bytes;
+	while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0u) == 0x80u) --end;
+	return std::string(text.substr(0, end));
+}
+
+double movie_caption_seconds(const std::string_view text)
+{
+	// Characters, not bytes: a caption in Czech reads no slower for its accents. A line break is read as
+	// the space it stands for.
+	size_t characters = 0;
+
+	for (const auto c : text)
+	{
+		const auto byte = static_cast<unsigned char>(c);
+		if ((byte & 0xC0u) != 0x80u && (byte >= 0x20u || c == '\n')) ++characters;
+	}
+
+	return std::clamp(movie_caption_notice_seconds + characters / movie_caption_characters_per_second,
+	                  movie_caption_min_seconds, movie_caption_max_seconds);
+}
+
+bool movie_sound_is_quiet(const std::span<const int16_t> samples)
+{
+	if (samples.empty()) return true;
+
+	auto sum = 0.0;
+
+	for (const auto sample : samples)
+	{
+		const auto level = sample / 32768.0;
+		sum += level * level;
+	}
+
+	return std::sqrt(sum / static_cast<double>(samples.size())) <= movie_quiet_level;
+}
+
+//
 // Timing
 //
 
-double movie_overlap(const movie_clip& left, const movie_clip& right, const movie_settings& settings)
+double movie_overlap(const movie_clip& left, const movie_clip& right)
 {
-	if (settings.transition != movie_transition::crossfade) return 0;
-	if (settings.transition_seconds <= 0) return 0;
-
-	return std::min({settings.transition_seconds, left.duration() / 2, right.duration() / 2});
+	return std::max(0.0, std::min({movie_crossfade_seconds, left.duration() / 2, right.duration() / 2}));
 }
 
-movie_timing calc_movie_timing(const std::vector<movie_clip>& clips, const movie_settings& settings)
+movie_timing calc_movie_timing(const std::vector<movie_clip>& clips)
 {
 	movie_timing result;
 	result.starts.reserve(clips.size());
@@ -68,24 +94,66 @@ movie_timing calc_movie_timing(const std::vector<movie_clip>& clips, const movie
 	{
 		result.starts.emplace_back(t);
 		t += clips[i].duration();
-		if (i + 1 < clips.size()) t -= movie_overlap(clips[i], clips[i + 1], settings);
+		if (i + 1 < clips.size()) t -= movie_overlap(clips[i], clips[i + 1]);
 	}
 
 	result.duration = std::max(0.0, t);
+
+	// A caption goes no further than the next text screen, which is a page of its own; it may run on
+	// over clips. Walked backwards, so each item knows where the next screen begins.
+	std::vector<double> next_screen(clips.size(), result.duration);
+
+	for (auto i = clips.size(); i-- > 1;)
+	{
+		next_screen[i - 1] = clips[i].is_text ? result.starts[i] : next_screen[i];
+	}
+
+	for (size_t i = 0; i < clips.size(); ++i)
+	{
+		const auto& clip = clips[i];
+		if (clip.is_text || clip.text.empty()) continue;
+
+		// Once the crossfade bringing its clip in has finished, so the words arrive with their picture
+		// rather than over the one before it.
+		const auto in = i > 0 ? movie_overlap(clips[i - 1], clip) : 0.0;
+		const auto start = std::min(result.starts[i] + in, result.duration);
+		const auto end = std::min({start + movie_caption_seconds(clip.text), next_screen[i], result.duration});
+		if (end > start) result.captions.push_back({static_cast<int>(i), start, end});
+	}
+
+	// Later text replaces earlier: a caption still showing when the next one begins ends there, so
+	// two never sit on top of each other.
+	std::ranges::stable_sort(result.captions,
+	                         [](const movie_text_span& l, const movie_text_span& r) { return l.start < r.start; });
+
+	for (size_t k = 0; k + 1 < result.captions.size(); ++k)
+	{
+		result.captions[k].end = std::min(result.captions[k].end, result.captions[k + 1].start);
+	}
+
+	std::erase_if(result.captions, [](const movie_text_span& span) { return !span.is_shown(); });
 	return result;
 }
 
-movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_settings& settings,
-                             const double time)
+movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const double time)
 {
-	return calc_movie_frame(clips, settings, calc_movie_timing(clips, settings), time);
+	return calc_movie_frame(clips, calc_movie_timing(clips), time);
 }
 
-movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_settings& settings,
-	const movie_timing& timing, const double time)
+// How far a caption has faded in at `at`: up over the start of its span and down over its end.
+static double text_opacity(const movie_text_span& span, const double at)
+{
+	if (!span.is_shown() || at < span.start || at >= span.end) return 0;
+
+	const auto fade = std::min(movie_text_fade_seconds, (span.end - span.start) / 3);
+	if (fade <= 0) return 1;
+	return std::clamp(std::min(at - span.start, span.end - at) / fade, 0.0, 1.0);
+}
+
+movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_timing& timing, const double time)
 {
 	movie_frame result;
-	if (clips.empty()) return result;
+	if (clips.empty() || timing.starts.size() != clips.size()) return result;
 
 	const auto at = std::clamp(time, 0.0, timing.duration);
 
@@ -95,11 +163,13 @@ movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_s
 		movie_frame_source source;
 		source.index = static_cast<int>(i);
 		source.weight = weight;
-		// A photo has one frame however long it is held, so asking for a position in it is
-		// meaningless; the compositor decodes it once and reuses it.
-		source.source_time = clip.is_photo
-			                     ? 0.0
-			                     : clip.start + std::clamp(at - timing.starts[i], 0.0, clip.duration());
+		source.sound = weight;
+		// A photo and a text screen have one picture however long they show, so asking for a position in
+		// them is meaningless; the compositor makes it once and reuses it.
+		const auto into = std::clamp(at - timing.starts[i], 0.0, clip.duration());
+		source.source_time = clip.is_photo || clip.is_text ? 0.0 : clip.start + into;
+		// A sound file plays from its own start as the clip begins, whatever the clip's in point.
+		source.sound_time = clip.has_sound_file() ? into : source.source_time;
 
 		(result.a.index < 0 ? result.a : result.b) = source;
 	};
@@ -109,8 +179,9 @@ movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_s
 		const auto start = timing.starts[i];
 		const auto end = start + clips[i].duration();
 
-		// The last clip includes its end, so the final instant of the movie still draws something.
-		const auto inside = at >= start && (at < end || (i + 1 == clips.size() && at <= end));
+		// The last item includes its end, so the final instant of the movie still draws something.
+		const auto ends_movie = i + 1 == clips.size();
+		const auto inside = at >= start && (at < end || (ends_movie && at <= end));
 		if (!inside) continue;
 
 		if (result.a.index < 0)
@@ -119,32 +190,63 @@ movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_s
 			continue;
 		}
 
-		const auto overlap = movie_overlap(clips[i - 1], clips[i], settings);
-
-		if (overlap <= 0)
-		{
-			break;
-		}
+		const auto overlap = movie_overlap(clips[i - 1], clips[i]);
+		if (overlap <= 0) break;
 
 		const auto progress = std::clamp((at - start) / overlap, 0.0, 1.0);
 		result.a.weight = 1.0 - progress;
+		result.a.sound = result.a.weight;
 		contribute(i, progress);
 	}
 
-	// The fade is as long as a transition, because one number the user already set is easier to
-	// predict than a second one that means nearly the same thing.
-	const auto fade = std::clamp(settings.transition_seconds, 0.0, timing.duration / 2);
+	// A clip going out under an item with no sound of its own keeps its sound at full volume, so words
+	// said as the crossfade begins are heard to the end of the clip, which lets go over its last moment
+	// rather than stopping dead.
+	if (result.b.index >= 0 && clips[result.b.index].has_no_sound())
+	{
+		const auto ends = timing.starts[result.a.index] + clips[result.a.index].duration();
+		result.a.sound = std::clamp((ends - at) / movie_sound_release_seconds, 0.0, 1.0);
+	}
+
+	// The movie fades in from black and out to black over the crossfade's length, picture and sound.
+	const auto fade = std::min(movie_crossfade_seconds, timing.duration / 2);
 
 	if (fade > 0)
 	{
-		if (settings.fade_in && at < fade) result.fade_to_black = 1.0 - at / fade;
-		if (settings.fade_out && at > timing.duration - fade)
+		if (at < fade) result.fade_to_black = 1.0 - at / fade;
+		if (at > timing.duration - fade)
 		{
 			result.fade_to_black = std::max(result.fade_to_black, 1.0 - (timing.duration - at) / fade);
 		}
 	}
 
+	// The caption showing now is the last to have begun, while it has not ended.
+	const auto after = std::upper_bound(timing.captions.begin(), timing.captions.end(), at,
+	                                    [](const double t, const movie_text_span& span) { return t < span.start; });
+
+	if (after != timing.captions.begin())
+	{
+		const auto& span = *(after - 1);
+		if (const auto opacity = text_opacity(span, at); opacity > 0) result.caption = {span.index, opacity};
+	}
+
 	return result;
+}
+
+double movie_sound_level(const movie_frame& frame, const int index)
+{
+	if (index < 0) return 0;
+
+	const auto level = frame.a.index == index ? frame.a.sound : frame.b.index == index ? frame.b.sound : 0.0;
+	return level * (1.0 - frame.fade_to_black);
+}
+
+movie_sound movie_clip_sound(const movie_clip& clip)
+{
+	// Heard for as long as the clip shows: a sound file shorter than that falls silent, and a longer one is cut.
+	if (clip.has_sound_file()) return {clip.sound_file, 0, 0.0, clip.duration()};
+	if (clip.is_photo || clip.is_text) return {};
+	return {clip.path, clip.song, clip.start, clip.end};
 }
 
 //
@@ -158,7 +260,7 @@ static sizei fit_within(const sizei extent, const int max_cx, const int max_cy)
 	const auto scale = std::min({
 		1.0,
 		static_cast<double>(max_cx) / extent.cx,
-		static_cast<double>(max_cy) / extent.cy
+		static_cast<double>(max_cy) / extent.cy,
 	});
 
 	const auto cx = std::max(2, static_cast<int>(std::lround(extent.cx * scale)));
@@ -168,69 +270,156 @@ static sizei fit_within(const sizei extent, const int max_cx, const int max_cy)
 	return {cx - (cx & 1), cy - (cy & 1)};
 }
 
+// 1920 x 1080, 1280 x 720 and 3840 x 2160 are one shape; 4:3, 3:2 and a portrait frame are others.
+static bool is_same_shape(const sizei l, const sizei r)
+{
+	const auto l_shape = static_cast<double>(l.cx) / l.cy;
+	const auto r_shape = static_cast<double>(r.cx) / r.cy;
+	return std::abs(l_shape - r_shape) <= 0.03 * std::max(l_shape, r_shape);
+}
+
+static int64_t area_of(const sizei extent)
+{
+	return static_cast<int64_t>(extent.cx) * extent.cy;
+}
+
+// How unevenly footage filmed at `rate` plays in a movie made at `movie_rate`: not at all when one is a
+// whole multiple of the other, as 60 and 15 are of 30, and the more the further it is from that.
+static double movie_rate_mismatch(const double rate, const int movie_rate)
+{
+	const auto dropping = rate / std::max(1.0, std::round(rate / movie_rate));
+	const auto repeating = movie_rate / std::max(1.0, std::round(movie_rate / rate));
+	return std::min(std::abs(dropping - movie_rate) / movie_rate, std::abs(repeating - rate) / rate);
+}
+
+// Where in movie_frame_rates the rate footage at `rate` plays best at is; the first when two do as well.
+static size_t best_movie_rate(const double rate)
+{
+	size_t best = 0;
+
+	for (size_t i = 1; i < movie_frame_rates.size(); ++i)
+	{
+		if (movie_rate_mismatch(rate, movie_frame_rates[i]) < movie_rate_mismatch(rate, movie_frame_rates[best]) - 1e-9)
+		{
+			best = i;
+		}
+	}
+
+	return best;
+}
+
 movie_output derive_movie_output(const std::vector<movie_clip>& clips)
 {
 	movie_output result;
 
 	// Videos decide the frame, and only fall back to photos when there is no video at all. A
-	// 45-megapixel photo beside a 1080p clip must not produce an 8000-pixel movie.
-	const movie_clip* largest = nullptr;
-	auto largest_area = 0LL;
-	auto have_video = false;
-	auto rate = 0.0;
+	// 45-megapixel photo beside a 1080p clip must not produce an 8000-pixel movie. A text screen has no
+	// size of its own: it is drawn on whatever frame the clips make.
+	const auto have_video = std::ranges::any_of(clips, [](const movie_clip& c)
+	{ return !c.is_text && !c.is_photo && c.extent.cx > 0 && c.extent.cy > 0; });
+
+	// The frame takes the shape most of the movie is in, by how long each clip shows, so one 4:3 clip or
+	// one held upright does not put black bars round every other; and the size of the largest clip of that
+	// shape.
+	struct shape_time
+	{
+		const movie_clip* largest = nullptr;
+		double seconds = 0;
+	};
+
+	std::vector<shape_time> shapes;
+	// Seconds of video filmed for each of movie_frame_rates.
+	std::array<double, movie_frame_rates.size()> rate_seconds{};
 
 	for (const auto& c : clips)
 	{
-		if (c.extent.cx <= 0 || c.extent.cy <= 0) continue;
-		if (!c.is_photo) rate = std::max(rate, c.frame_rate);
+		if (c.is_text || c.extent.cx <= 0 || c.extent.cy <= 0) continue;
+		if (!c.is_photo && c.frame_rate > 0) rate_seconds[best_movie_rate(c.frame_rate)] += c.duration();
+		if (have_video && c.is_photo) continue;
 
-		const auto video_here = !c.is_photo;
-		if (have_video && !video_here) continue;
+		auto shape = std::ranges::find_if(shapes, [&c](const shape_time& s)
+		{ return is_same_shape(s.largest->extent, c.extent); });
 
-		const auto area = static_cast<int64_t>(c.extent.cx) * c.extent.cy;
+		if (shape == shapes.end()) shape = shapes.insert(shapes.end(), shape_time{&c, 0.0});
+		if (area_of(c.extent) > area_of(shape->largest->extent)) shape->largest = &c;
+		shape->seconds += c.duration();
+	}
 
-		if (video_here && !have_video)
+	// The first shape shown wins a tie.
+	const movie_clip* largest = nullptr;
+	auto most_seconds = -1.0;
+
+	for (const auto& shape : shapes)
+	{
+		if (shape.seconds > most_seconds)
 		{
-			have_video = true;
-			largest = &c;
-			largest_area = area;
-		}
-		else if (area > largest_area)
-		{
-			largest = &c;
-			largest_area = area;
+			largest = shape.largest;
+			most_seconds = shape.seconds;
 		}
 	}
 
-	result.extent = largest ? fit_within(largest->extent, movie_max_width, movie_max_height) : sizei{1920, 1080};
+	// HD at most, in the frame's own orientation, so a portrait movie is as sharp as a landscape one.
+	if (largest)
+	{
+		const auto portrait = largest->extent.cy > largest->extent.cx;
+		result.extent = portrait ? fit_within(largest->extent, movie_max_short_side, movie_max_long_side)
+		                         : fit_within(largest->extent, movie_max_long_side, movie_max_short_side);
+	}
+
 	if (result.extent.cx <= 0 || result.extent.cy <= 0) result.extent = {1920, 1080};
 
-	result.frame_rate = rate > 0
-		                    ? std::clamp(static_cast<int>(std::lround(rate)), 1, movie_max_frame_rate)
-		                    : movie_default_frame_rate;
+	// The rate most of the video was filmed for; a movie with none is made at the first.
+	const auto most_filmed = std::ranges::max_element(rate_seconds) - rate_seconds.begin();
+	result.frame_rate = movie_frame_rates[static_cast<size_t>(most_filmed)];
 
 	const auto bits = static_cast<int64_t>(result.extent.cx) * result.extent.cy * result.frame_rate *
-		movie_bits_per_pixel;
-	result.video_bitrate = static_cast<int>(std::clamp(bits, static_cast<double>(movie_min_bitrate),
-	                                                   static_cast<double>(movie_max_bitrate)));
+	                  movie_bits_per_pixel;
+	result.video_bitrate = static_cast<int>(
+		std::clamp(bits, static_cast<double>(movie_min_bitrate), static_cast<double>(movie_max_bitrate)));
 
 	return result;
 }
 
-movie_clip make_movie_clip(core::file_path path, const movie_settings& settings)
+bool is_movie_source(const file_type* const type)
+{
+	return type &&
+	       (type->group == file_group::photo || type->group == file_group::video || type->group == file_group::audio);
+}
+
+double movie_source_frame_rate(const double declared, const double average)
+{
+	// A declared rate within half again of the average is the same rate give or take a dropped frame, as
+	// 59.94 declared over 60 averaged is; one twice the average or more is a variable-rate stream's base.
+	if (average > 0 && declared > average * 1.5) return average;
+	return declared > 0 ? declared : std::max(0.0, average);
+}
+
+movie_clip make_movie_clip(core::file_path path)
 {
 	movie_clip result;
 	result.path = path;
 
 	const auto mt = files::file_type_from_name(path);
 	result.is_photo = mt && mt->group == file_group::photo;
+	result.is_audio = mt && mt->group == file_group::audio;
+	if (result.is_photo) result.end = movie_photo_seconds;
 
-	if (result.is_photo)
-	{
-		result.end = settings.photo_seconds;
-		result.photo_duration_is_default = true;
-	}
+	return result;
+}
 
+static double bound_hold(const double seconds, const double fallback)
+{
+	return std::clamp(std::isfinite(seconds) ? seconds : fallback, movie_min_hold_seconds, movie_max_hold_seconds);
+}
+
+movie_clip make_movie_text(const std::string_view text, const double seconds)
+{
+	movie_clip result;
+	result.is_text = true;
+	result.is_missing = false;
+	result.is_probed = true;
+	result.text = bound_movie_text(text);
+	result.end = bound_hold(seconds, movie_screen_seconds);
 	return result;
 }
 
@@ -238,109 +427,256 @@ bool movie_output_names_a_clip(const std::vector<movie_clip>& clips, const core:
 {
 	if (output.is_empty()) return false;
 
-	return std::ranges::any_of(clips, [output](const movie_clip& clip)
+	const auto names = [output](const core::file_path path)
 	{
-		return !clip.path.is_empty() && core::compare_path_key(clip.path.pack(), output.pack()) == 0;
-	});
+		return !path.is_empty() && core::compare_path_key(path.pack(), output.pack()) == 0;
+	};
+
+	return std::ranges::any_of(clips,
+	                           [&names](const movie_clip& clip) { return names(clip.path) || names(clip.sound_file); });
 }
 
 //
 // The project file
 //
+// One item per line, in the order they play, so a person can read it and an agent can write it:
+//
+//   t <seconds> '<text>'                                     a text screen on black
+//   c <from>-<to>[#track] <file> ['<caption>'] [!<sound>]    a clip; s instead of c marks one to stabilize
+//
+// docs/movie.md#6-project-files owns the grammar; this is its one reader and its one writer.
+//
 
-// Always forward-slashed, whether relative or absolute. A native Windows path would be written
-// into the JSON with every separator escaped, which is both unreadable and a needless difference
-// between the file this platform writes and the one the other reads. A '%' is escaped: the reader
-// decodes percent escapes, as a URL wants, so a name holding "%20" came back naming another file
-// and one holding "50%" did not come back at all.
-static std::string to_url(const core::file_path path, const core::folder_path project_folder)
+static bool is_dfv_space(const char c)
 {
-	const auto escape_percent = [](const std::string_view text)
+	return c == ' ' || c == '\t';
+}
+
+namespace
+{
+	struct dfv_field
 	{
-		std::string escaped;
-		escaped.reserve(text.size());
-
-		for (const auto c : text)
-		{
-			if (c == '%') escaped += "%25";
-			else escaped += c;
-		}
-
-		return escaped;
+		std::string text;
+		bool quoted = false;
+		// Written with a leading !: the sound file a clip plays in place of its own sound. The ! is not
+		// part of the text.
+		bool sound = false;
 	};
-
-	if (!project_folder.is_empty())
-	{
-		try
-		{
-			const auto relative = std::filesystem::path(path.pack()).lexically_relative(
-				std::filesystem::path(project_folder.text().sv()));
-			if (!relative.empty()) return escape_percent(relative.generic_string());
-		}
-		catch (const std::exception&)
-		{
-			// A narrow path converts through the process code page, which refuses a byte that is not
-			// UTF-8 -- and a name decoded from another tool's file URI can hold one. Such a path is
-			// written whole, as one on another drive is.
-		}
-	}
-
-	auto result = path.pack();
-	for (auto&& c : result) if (c == '\\') c = '/';
-	return escape_percent(result);
 }
 
-static int hex_digit(const char c)
+// The fields of one line. A "double-quoted" field is taken as it stands, which is how a path with a space
+// in it is written; a 'single-quoted' one reads \n as a new line, and \' and \\ as themselves. A field
+// starting with ! names a sound file, quoted or not after the !. Nothing for a quote left open, or a quote
+// run straight into the next field.
+static std::optional<std::vector<dfv_field>> split_dfv_line(const std::string_view line)
 {
-	if (c >= '0' && c <= '9') return c - '0';
-	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-	return -1;
-}
+	std::vector<dfv_field> result;
+	size_t i = 0;
 
-static std::optional<std::string> decode_url_path(const std::string_view url)
-{
-	std::string result;
-	result.reserve(url.size());
-
-	for (size_t i = 0; i < url.size(); ++i)
+	while (true)
 	{
-		if (url[i] != '%')
+		while (i < line.size() && is_dfv_space(line[i])) ++i;
+		if (i >= line.size()) break;
+
+		dfv_field field;
+
+		// A quote straight after the ! quotes the sound file's path; anything else after it is read below.
+		if (line[i] == '!' && i + 1 < line.size() && (line[i + 1] == '"' || line[i + 1] == '\''))
 		{
-			result += url[i];
-			continue;
+			field.sound = true;
+			++i;
 		}
 
-		// Not an escape, so it is the character itself. A project written before '%' was escaped
-		// holds names such as "50% off.jpg", and refusing the whole path dropped the clip.
-		const auto high = i + 2 < url.size() ? hex_digit(url[i + 1]) : -1;
-		const auto low = i + 2 < url.size() ? hex_digit(url[i + 2]) : -1;
-
-		if (high < 0 || low < 0)
+		if (line[i] == '"')
 		{
-			result += url[i];
-			continue;
+			const auto close = line.find('"', i + 1);
+			if (close == std::string_view::npos) return std::nullopt;
+
+			field.text = line.substr(i + 1, close - i - 1);
+			field.quoted = true;
+			i = close + 1;
+		}
+		else if (line[i] == '\'')
+		{
+			field.quoted = true;
+			auto closed = false;
+			++i;
+
+			while (i < line.size())
+			{
+				const auto c = line[i++];
+
+				if (c == '\'')
+				{
+					closed = true;
+					break;
+				}
+
+				if (c == '\\' && i < line.size())
+				{
+					const auto escaped = line[i];
+
+					if (escaped == 'n')
+					{
+						field.text += '\n';
+						++i;
+						continue;
+					}
+
+					if (escaped == '\'' || escaped == '\\' || escaped == '"')
+					{
+						field.text += escaped;
+						++i;
+						continue;
+					}
+				}
+
+				field.text += c;
+			}
+
+			if (!closed) return std::nullopt;
+		}
+		else
+		{
+			const auto begin = i;
+			while (i < line.size() && !is_dfv_space(line[i])) ++i;
+			field.text = line.substr(begin, i - begin);
+
+			if (field.text.starts_with('!'))
+			{
+				field.sound = true;
+				field.text.erase(0, 1);
+			}
 		}
 
-		const auto decoded = static_cast<char>((high << 4) | low);
-		if (decoded == '\0') return {};
-		result += decoded;
-		i += 2;
+		if (field.quoted && i < line.size() && !is_dfv_space(line[i])) return std::nullopt;
+		result.emplace_back(std::move(field));
 	}
 
 	return result;
 }
 
-// A path relative to the project's folder, which is how a project and the media beside it move
-// together. The caller has already put the separators in the form this platform reads. Empty for a
-// path the process code page cannot convert, a byte that is not UTF-8 among it: that names no file
-// here, and its clip is reported as having none rather than the whole project being refused.
-static core::file_path resolve_in_project_folder(const std::string_view relative, const core::folder_path project_folder)
+// A field as it was written, for a problem that names it.
+static std::string dfv_field_text(const dfv_field& field)
+{
+	return field.sound ? "!" + field.text : field.text;
+}
+
+static std::optional<double> parse_dfv_decimal(const std::string_view text)
+{
+	auto digits = 0;
+	auto dots = 0;
+
+	for (const auto c : text)
+	{
+		if (c == '.') ++dots;
+		else if (c >= '0' && c <= '9') ++digits;
+		else return {};
+	}
+
+	if (digits == 0 || dots > 1) return {};
+
+	auto value = 0.0;
+	const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+	if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value)) return {};
+	return value;
+}
+
+// Seconds, written as seconds (83.5), minutes and seconds (1:23.5) or hours too (1:01:23.5). Only the
+// seconds may have a fraction, and the parts after the first count up to 59.
+static std::optional<double> parse_dfv_time(const std::string_view text)
+{
+	auto total = 0.0;
+	size_t parts = 0;
+	size_t from = 0;
+
+	while (true)
+	{
+		const auto colon = text.find(':', from);
+		const auto part = text.substr(from, colon == std::string_view::npos ? std::string_view::npos : colon - from);
+		const auto last = colon == std::string_view::npos;
+
+		if (++parts > 3) return {};
+
+		const auto value = parse_dfv_decimal(part);
+		if (!value) return {};
+		if (!last && part.find('.') != std::string_view::npos) return {};
+		if (parts > 1 && *value >= 60) return {};
+
+		total = total * 60 + *value;
+		if (last) break;
+		from = colon + 1;
+	}
+
+	return total;
+}
+
+namespace
+{
+	// The part of a source a clip plays: from and to in seconds, either left open, and which of a SID
+	// file's tunes.
+	struct dfv_segment
+	{
+		std::optional<double> from;
+		std::optional<double> to;
+		int track = 0;
+	};
+}
+
+static std::optional<dfv_segment> parse_dfv_segment(const std::string_view text)
+{
+	dfv_segment result;
+	auto range = text;
+
+	if (const auto hash = text.find('#'); hash != std::string_view::npos)
+	{
+		range = text.substr(0, hash);
+		const auto track = text.substr(hash + 1);
+		if (track.empty() || track.size() > 4 ||
+		    !std::ranges::all_of(track, [](const char c) { return c >= '0' && c <= '9'; }))
+		{
+			return {};
+		}
+
+		std::from_chars(track.data(), track.data() + track.size(), result.track);
+
+		// "#4" alone is the whole of tune 4.
+		if (range.empty()) return result;
+	}
+
+	const auto dash = range.find('-');
+	if (dash == std::string_view::npos || range.find('-', dash + 1) != std::string_view::npos) return {};
+
+	const auto from = range.substr(0, dash);
+	const auto to = range.substr(dash + 1);
+
+	if (!from.empty())
+	{
+		result.from = parse_dfv_time(from);
+		if (!result.from) return {};
+	}
+
+	if (!to.empty())
+	{
+		result.to = parse_dfv_time(to);
+		// A part ending at its source's start has nothing in it; an end of zero is not "to the end".
+		if (!result.to || *result.to <= 0) return {};
+	}
+
+	if (result.from && result.to && *result.to <= *result.from) return {};
+	return result;
+}
+
+// A path relative to the project's folder, which is how a project and the media beneath it move
+// together. Empty for a path the process code page cannot convert, a byte that is not UTF-8 among it:
+// that names no file here, and its line is reported rather than the whole project refused.
+static core::file_path resolve_in_project_folder(const std::string_view relative,
+                                                 const core::folder_path project_folder)
 {
 	try
 	{
 		const auto resolved = (std::filesystem::path(project_folder.text().sv()) / std::filesystem::path(relative))
-			.lexically_normal();
+		                          .lexically_normal();
 		return core::file_path(resolved.string());
 	}
 	catch (const std::exception&)
@@ -349,1208 +685,290 @@ static core::file_path resolve_in_project_folder(const std::string_view relative
 	}
 }
 
-static core::file_path from_url(const std::string_view url, const core::folder_path project_folder)
+// Either separator divides a path in a project, whichever platform wrote it.
+static core::file_path read_dfv_path(const std::string_view text, const core::folder_path project_folder)
 {
-	if (url.empty()) return {};
-
-	auto encoded = url;
-	auto file_uri = false;
-
-	if (url.size() >= 5 && core::icmp(url.substr(0, 5), "file:") == 0)
-	{
-		file_uri = true;
-		encoded.remove_prefix(5);
-	}
-	else if (url.find("://") != std::string_view::npos)
-	{
-		return {};
-	}
-
-	auto decoded = decode_url_path(encoded);
-	if (!decoded) return {};
-	auto native = std::move(*decoded);
-
-	if (file_uri && native.starts_with("//"))
-	{
-		native.erase(0, 2);
-		const auto slash = native.find('/');
-		const auto authority = native.substr(0, slash);
-		native = slash == std::string::npos ? std::string{} : native.substr(slash);
-
-		if (!authority.empty() && core::icmp(authority, "localhost") != 0)
-		{
-			native = "//" + authority + native;
-		}
-	}
-
-	if constexpr (core::windows_path_semantics)
-	{
-		if (file_uri && native.size() >= 3 && native[0] == '/' && native[2] == ':') native.erase(0, 1);
-	}
+	auto native = std::string(text);
+	for (auto&& c : native)
+		if (c == '/' || c == '\\') c = core::preferred_path_sep;
 
 	if (is_qualified_path(native)) return core::file_path(native);
-	if (project_folder.is_empty()) return {};
-
-	for (auto&& c : native) if (c == '/') c = core::preferred_path_sep;
+	if (project_folder.is_empty() || native.empty()) return {};
 	return resolve_in_project_folder(native, project_folder);
 }
 
-using json_writer = rapidjson::Writer<rapidjson::StringBuffer>;
-
-// A value JSON cannot express -- an infinity, or not a number -- goes out as a key with no value, and
-// the project no longer parses. A document read from a file is not trusted to the last digit.
-static double finite_or_zero(const double value)
+// A clip read from a file is untrusted: its range is held to what any clip in a document may be, and a
+// photo's length to what one may show for.
+static void bound_clip(movie_clip& clip)
 {
-	return std::isfinite(value) ? value : 0.0;
-}
+	clip.text = bound_movie_text(clip.text);
 
-static void write_rational_time(json_writer& w, const double seconds)
-{
-	w.StartObject();
-	w.Key("OTIO_SCHEMA");
-	w.String("RationalTime.1");
-	w.Key("rate");
-	w.Double(otio_rate);
-	w.Key("value");
-	w.Double(finite_or_zero(seconds * otio_rate));
-	w.EndObject();
-}
-
-std::string write_otio(const std::vector<movie_clip>& clips, const movie_settings& settings,
-                       const core::folder_path project_folder)
-{
-	rapidjson::StringBuffer buffer;
-	json_writer w(buffer);
-
-	w.StartObject();
-	w.Key("OTIO_SCHEMA");
-	w.String("Timeline.1");
-	w.Key("name");
-	w.String("Diffractor movie");
-	w.Key("global_start_time");
-	w.Null();
-
-	w.Key("tracks");
-	w.StartObject();
-	w.Key("OTIO_SCHEMA");
-	w.String("Stack.1");
-	w.Key("name");
-	w.String("tracks");
-	w.Key("children");
-	w.StartArray();
-
-	w.StartObject();
-	w.Key("OTIO_SCHEMA");
-	w.String("Track.1");
-	w.Key("name");
-	w.String("Video");
-	w.Key("kind");
-	w.String("Video");
-	w.Key("children");
-	w.StartArray();
-
-	for (size_t i = 0; i < clips.size(); ++i)
+	if (clip.is_photo || clip.is_text)
 	{
-		const auto& c = clips[i];
-
-		// A transition straddles its cut and reaches half its length into the clip on each side, which
-		// is where OpenTimelineIO puts one: a clip's range stops at the cut and the transition draws on
-		// the media past it. Another tool then lays the clips end to end to the movie's own length.
-		const auto head = i > 0 ? movie_overlap(clips[i - 1], c, settings) / 2 : 0.0;
-		const auto tail = i + 1 < clips.size() ? movie_overlap(c, clips[i + 1], settings) / 2 : 0.0;
-
-		if (head > 0)
-		{
-			w.StartObject();
-			w.Key("OTIO_SCHEMA");
-			w.String("Transition.1");
-			w.Key("name");
-			w.String("Crossfade");
-			w.Key("transition_type");
-			w.String("SMPTE_Dissolve");
-			w.Key("in_offset");
-			write_rational_time(w, head);
-			w.Key("out_offset");
-			write_rational_time(w, head);
-			w.Key("metadata");
-			w.StartObject();
-			w.EndObject();
-			w.EndObject();
-		}
-
-		w.StartObject();
-		w.Key("OTIO_SCHEMA");
-		w.String("Clip.1");
-		w.Key("name");
-		const auto clip_name = c.path.name().sv();
-		w.String(clip_name.data(), static_cast<rapidjson::SizeType>(clip_name.size()));
-
-		w.Key("source_range");
-		w.StartObject();
-		w.Key("OTIO_SCHEMA");
-		w.String("TimeRange.1");
-		w.Key("start_time");
-		write_rational_time(w, c.start + head);
-		w.Key("duration");
-		write_rational_time(w, std::max(0.0, c.duration() - head - tail));
-		w.EndObject();
-
-		w.Key("media_reference");
-		w.StartObject();
-		w.Key("OTIO_SCHEMA");
-		w.String("ExternalReference.1");
-		w.Key("target_url");
-		w.String(to_url(c.path, project_folder));
-		w.Key("available_range");
-		w.Null();
-		w.Key("metadata");
-		w.StartObject();
-		w.EndObject();
-		w.EndObject();
-
-		// OTIO has no photo, and inventing one would make the file unreadable elsewhere. The flag
-		// lives in our own metadata namespace, and a reader without it infers from the extension.
-		w.Key("metadata");
-		w.StartObject();
-		w.Key("diffractor");
-		w.StartObject();
-		w.Key("photo");
-		w.Bool(c.is_photo);
-		w.Key("photo_duration_is_default");
-		w.Bool(c.photo_duration_is_default);
-		w.Key("source_duration");
-		w.Double(finite_or_zero(c.source_duration));
-		w.EndObject();
-		w.EndObject();
-
-		w.EndObject();
+		clip.end = bound_hold(clip.end - clip.start, movie_photo_seconds);
+		clip.start = 0;
+		return;
 	}
 
-	w.EndArray();
-	w.Key("metadata");
-	w.StartObject();
-	w.EndObject();
-	w.EndObject(); // track
-
-	w.EndArray();
-	w.Key("metadata");
-	w.StartObject();
-	w.EndObject();
-	w.EndObject(); // stack
-
-	// The movie settings have no OTIO home. Another tool reads the transitions written above and
-	// ignores this; Diffractor reads this and rebuilds them exactly.
-	w.Key("metadata");
-	w.StartObject();
-	w.Key("diffractor");
-	w.StartObject();
-	w.Key("version");
-	w.Int(otio_project_version);
-	w.Key("transition");
-	w.String(settings.transition == movie_transition::crossfade ? "crossfade" : "cut");
-	w.Key("transition_seconds");
-	w.Double(finite_or_zero(settings.transition_seconds));
-	w.Key("fade_in");
-	w.Bool(settings.fade_in);
-	w.Key("fade_out");
-	w.Bool(settings.fade_out);
-	w.Key("photo_seconds");
-	w.Double(finite_or_zero(settings.photo_seconds));
-	w.EndObject();
-	w.EndObject();
-
-	w.EndObject();
-
-	return {buffer.GetString(), buffer.GetSize()};
-}
-
-using json_value = rapidjson::GenericValue<rapidjson::UTF8<char>>;
-
-static double read_rational_time(const json_value& v)
-{
-	if (!v.IsObject()) return 0;
-
-	const auto rate = v.FindMember("rate");
-	const auto value = v.FindMember("value");
-	if (value == v.MemberEnd() || !value->value.IsNumber()) return 0;
-
-	const auto r = rate != v.MemberEnd() && rate->value.IsNumber() ? rate->value.GetDouble() : 0.0;
-	if (r <= 0) return 0;
-
-	const auto result = value->value.GetDouble() / r;
-	return std::isfinite(result) ? result : 0.0;
-}
-
-static bool read_bool(const json_value& v, const char* name, const bool fallback)
-{
-	if (!v.IsObject()) return fallback;
-	const auto found = v.FindMember(name);
-	return found != v.MemberEnd() && found->value.IsBool() ? found->value.GetBool() : fallback;
-}
-
-static double read_double(const json_value& v, const char* name, const double fallback)
-{
-	if (!v.IsObject()) return fallback;
-	const auto found = v.FindMember(name);
-	if (found == v.MemberEnd() || !found->value.IsNumber()) return fallback;
-	const auto result = found->value.GetDouble();
-	return std::isfinite(result) ? result : fallback;
-}
-
-// A project file is untrusted input. The panel cannot express a duration outside its own range, so
-// neither may a document: a photo hold of 1e308 seconds reaches the frame count as a number no
-// integer can hold, and the conversion that walks it is undefined.
-static double read_bounded_double(const json_value& v, const char* name, const double fallback,
-                                  const double lowest, const double highest)
-{
-	return std::clamp(read_double(v, name, fallback), lowest, highest);
-}
-
-// The same for each clip's own range. A still has no timeline of its own, so only its hold means
-// anything; every clip is held to the longest movie a render will make, and so is its in point, which
-// no source that long can have past.
-static void bound_clip_range(movie_clip& clip)
-{
 	clip.start = std::clamp(clip.start, 0.0, movie_max_clip_seconds);
-	const auto duration = std::min(clip.end - clip.start, movie_max_clip_seconds);
+	// An end of zero is a clip that runs to the end of its source, which the probe measures.
+	clip.end = clip.start + std::min(clip.end - clip.start, movie_max_clip_seconds);
+}
+
+movie_load_result read_dfv(const std::string_view text, const core::folder_path project_folder)
+{
+	movie_load_result result;
+
+	auto body = text;
+	if (body.starts_with("\xEF\xBB\xBF")) body.remove_prefix(3);
+
+	auto line_number = 0;
+	size_t from = 0;
+
+	while (from <= body.size())
+	{
+		const auto newline = body.find('\n', from);
+		auto line = body.substr(from, newline == std::string_view::npos ? std::string_view::npos : newline - from);
+		from = newline == std::string_view::npos ? body.size() + 1 : newline + 1;
+		++line_number;
+
+		if (line.ends_with('\r')) line.remove_suffix(1);
+		line = core::trim(line);
+		if (line.empty() || line.front() == '#') continue;
+
+		const auto problem = [&result, line_number](std::string reason)
+		{
+			result.problems.push_back({line_number, std::move(reason)});
+		};
+
+		const auto fields = split_dfv_line(line);
+
+		if (!fields || fields->empty())
+		{
+			problem("a quote is not closed, or runs straight into the next field");
+			continue;
+		}
+
+		const auto& f = *fields;
+		const auto op = f[0].quoted || f[0].sound ? std::string{} : core::to_lower(f[0].text);
+		const auto names_sound = std::ranges::any_of(f, [](const dfv_field& field) { return field.sound; });
+
+		if (op == "t")
+		{
+			const auto seconds = f.size() >= 2 ? parse_dfv_time(f[1].text) : std::nullopt;
+
+			if (names_sound)
+			{
+				problem("a text screen plays no sound file: put the ! field on a clip");
+				continue;
+			}
+
+			if (f.size() < 2 || f.size() > 3 || !seconds || *seconds <= 0)
+			{
+				problem("write a text screen as: t <seconds> '<text>'");
+				continue;
+			}
+
+			result.clips.emplace_back(make_movie_text(f.size() > 2 ? f[2].text : std::string{}, *seconds));
+		}
+		else if (op == "c" || op == "s")
+		{
+			// After its file, a clip may have a caption and a sound file, in either order: one of each.
+			const auto extras = f.size() > 3 ? std::span(f).subspan(3) : std::span<const dfv_field>{};
+			const auto sounds = std::ranges::count_if(extras, [](const dfv_field& field) { return field.sound; });
+			const auto captions = std::ssize(extras) - sounds;
+
+			if (f.size() < 3 || f[1].sound || f[2].sound || sounds > 1 || captions > 1)
+			{
+				problem("write a clip as: c <from>-<to>[#track] <file> ['<caption>'] [!<sound file>]");
+				continue;
+			}
+
+			const auto segment = f[1].quoted ? std::nullopt : parse_dfv_segment(f[1].text);
+
+			if (!segment)
+			{
+				problem(
+					std::format("{} is not a part of a clip: write it as from-to, -to, from-, - or #track", f[1].text));
+				continue;
+			}
+
+			const auto path = read_dfv_path(f[2].text, project_folder);
+
+			if (path.is_empty())
+			{
+				problem(std::format("{} is not a file this project can name", f[2].text));
+				continue;
+			}
+
+			const auto sound = std::ranges::find_if(extras, [](const dfv_field& field) { return field.sound; });
+			const auto caption = std::ranges::find_if(extras, [](const dfv_field& field) { return !field.sound; });
+			auto sound_path = core::file_path{};
+
+			if (sound != extras.end())
+			{
+				sound_path = read_dfv_path(sound->text, project_folder);
+
+				if (sound_path.is_empty())
+				{
+					problem(sound->text.empty()
+					            ? std::string("a ! names no sound file: write it as !<file>")
+					            : std::format("{} is not a file this project can name", dfv_field_text(*sound)));
+					continue;
+				}
+			}
+
+			auto clip = make_movie_clip(path);
+			clip.stabilize = op == "s";
+			clip.song = segment->track;
+			clip.start = segment->from.value_or(0.0);
+			clip.sound_file = sound_path;
+
+			// A photo shows for as long as its part spans; given no end, for the default.
+			if (clip.is_photo) clip.end = segment->to ? *segment->to : clip.start + movie_photo_seconds;
+			else clip.end = segment->to.value_or(0.0);
+
+			if (caption != extras.end()) clip.text = caption->text;
+			bound_clip(clip);
+			result.clips.emplace_back(std::move(clip));
+		}
+		else
+		{
+			problem(std::format("{} is not an instruction: a line starts with t, c or s", dfv_field_text(f[0])));
+		}
+	}
+
+	// A file every line of which was a problem is something else, not a project.
+	result.status = result.clips.empty() && !result.problems.empty() ? movie_load_status::unreadable
+	                                                                 : movie_load_status::ok;
+	return result;
+}
+
+// Seconds to the millisecond, without a trailing zero or point: 4, 12.5, 18.045.
+static std::string format_dfv_seconds(const double seconds)
+{
+	auto text = std::format("{:.3f}", std::isfinite(seconds) ? std::max(0.0, seconds) : 0.0);
+	while (text.ends_with('0')) text.pop_back();
+	if (text.ends_with('.')) text.pop_back();
+	return text;
+}
+
+static std::string quote_dfv_text(const std::string_view text)
+{
+	std::string result = "'";
+
+	for (const auto c : text)
+	{
+		switch (c)
+		{
+		case '\\': result += "\\\\"; break;
+		case '\'': result += "\\'"; break;
+		case '\n': result += "\\n"; break;
+		case '\r': break;
+		default: result += c; break;
+		}
+	}
+
+	result += '\'';
+	return result;
+}
+
+// A source beneath the project's folder as a path relative to it, with forward slashes, which every
+// platform reads; any other source whole.
+static std::string dfv_path_text(const core::file_path path, const core::folder_path project_folder)
+{
+	auto full = path.pack();
+
+	if (!project_folder.is_empty())
+	{
+		auto base = std::string(project_folder.text().sv());
+		if (!base.empty() && !core::is_path_sep(base.back())) base += core::preferred_path_sep;
+
+		if (full.size() > base.size() &&
+		    core::compare_path_key(std::string_view(full).substr(0, base.size()), base) == 0)
+		{
+			auto relative = full.substr(base.size());
+			for (auto&& c : relative)
+				if (c == '\\') c = '/';
+			return relative;
+		}
+	}
+
+	return full;
+}
+
+// A path as one field: as it stands when it has no space and does not begin with a quote or a !, in double
+// quotes when it has, and in single quotes, escaped, in the one case a double quote is in the name.
+static std::string quote_dfv_path(const std::string_view text)
+{
+	const auto plain = !text.empty() && text.front() != '"' && text.front() != '\'' && text.front() != '!' &&
+	                   std::ranges::none_of(text,
+	                                        [](const char c) { return is_dfv_space(c) || c == '\n' || c == '\r'; });
+	if (plain) return std::string(text);
+	if (text.find('"') == std::string_view::npos && text.find('\n') == std::string_view::npos)
+	{
+		return std::format("\"{}\"", text);
+	}
+	return quote_dfv_text(text);
+}
+
+// The part of its source a clip plays. An in point at the start and an out point at the end are left
+// out, so an untrimmed clip is "-" and follows its source whatever length it turns out to be.
+static std::string dfv_segment_text(const movie_clip& clip)
+{
+	std::string result;
 
 	if (clip.is_photo)
 	{
-		clip.start = 0.0;
-		clip.end = std::max(duration, movie_min_photo_seconds);
+		result = "-" + format_dfv_seconds(clip.duration());
 	}
 	else
 	{
-		clip.end = clip.start + duration;
-	}
-}
-
-static bool is_schema(const json_value& v, const std::string_view prefix)
-{
-	if (!v.IsObject()) return false;
-
-	const auto found = v.FindMember("OTIO_SCHEMA");
-	if (found == v.MemberEnd() || !found->value.IsString()) return false;
-	return core::starts(found->value.GetString(), prefix);
-}
-
-void movie_load_result::omit(const std::string_view name, const int count)
-{
-	if (count <= 0) return;
-
-	ignored_elements += count;
-
-	// The kinds named are bounded. A crafted file naming a million distinct effects made every count a
-	// search of all of them, and a report of a million names says less than a count of the rest.
-	constexpr size_t max_named = 32;
-
-	const auto found = std::ranges::find_if(omitted, [name](const auto& entry) { return entry.first == name; });
-	if (found != omitted.end()) found->second += count;
-	else if (omitted.size() < max_named) omitted.emplace_back(std::string(name), count);
-	else if (omitted.size() == max_named) omitted.emplace_back("other", count);
-	else omitted.back().second += count;
-}
-
-// The media a clip plays. OpenTimelineIO 0.15 and later write Clip.2, which keeps its references in a
-// map with the key of the one in use; earlier versions wrote the one reference alone.
-static const json_value& clip_media_reference(const json_value& clip)
-{
-	const auto& references = core::json::safe_object(clip, "media_references");
-
-	if (references.MemberCount() > 0)
-	{
-		const auto key = core::json::safe_string(clip, "active_media_reference_key");
-		const auto& active = core::json::safe_object(references, key.empty() ? "DEFAULT_MEDIA" : key.c_str());
-		if (active.MemberCount() > 0) return active;
-
-		// A key that names no reference is a broken file, and the media there is beats none.
-		for (const auto& member : references.GetObject())
-		{
-			if (member.value.IsObject()) return member.value;
-		}
+		const auto from = format_dfv_seconds(clip.start);
+		const auto runs_to_end = clip.end <= 0 ||
+		                         (clip.source_duration > 0 && clip.end >= clip.source_duration - 0.0005);
+		result = (from == "0" ? std::string{} : from) + "-" +
+		         (runs_to_end ? std::string{} : format_dfv_seconds(clip.end));
 	}
 
-	return core::json::safe_object(clip, "media_reference");
-}
-
-// Where the media's own time begins. An editor states a range in timecoded media in that time, from
-// its first frame's timecode rather than from zero, and Movie counts from the first frame.
-static double media_start_time(const json_value& reference)
-{
-	const auto& available = core::json::safe_object(reference, "available_range");
-	const auto start = available.FindMember("start_time");
-	return start != available.MemberEnd() ? std::max(0.0, read_rational_time(start->value)) : 0.0;
-}
-
-movie_load_result read_otio(const std::string_view json, const core::folder_path project_folder)
-{
-	movie_load_result result;
-
-	rapidjson::Document doc;
-	// Iterative: a project is untrusted input, and the recursive parser follows nesting on the stack,
-	// so a file of nested brackets well inside the size cap would end the process.
-	doc.Parse<rapidjson::kParseIterativeFlag>(json.data(), json.size());
-
-	if (doc.HasParseError() || !doc.IsObject()) return result;
-
-	const auto& stack = core::json::safe_object(doc, "tracks");
-	const auto children = stack.IsObject() ? stack.FindMember("children") : stack.MemberEnd();
-
-	if (children == stack.MemberEnd() || !children->value.IsArray())
-	{
-		result.status = movie_load_status::empty;
-		return result;
-	}
-
-	// The first video track, and only that one. A file from another tool routinely carries audio
-	// tracks, effects and markers Movie has no answer for; refusing the file over them would make
-	// interchange useless, so they are counted and dropped.
-	const json_value* track = nullptr;
-
-	for (const auto& child : children->value.GetArray())
-	{
-		if (!is_schema(child, "Track")) continue;
-
-		const auto kind = core::json::safe_string(child, "kind");
-
-		if (!track && (kind.empty() || core::icmp(kind, "Video") == 0))
-		{
-			track = &child;
-		}
-		else
-		{
-			result.omit(kind.empty() ? "Track"s : std::format("{} track", kind));
-		}
-	}
-
-	if (!track)
-	{
-		result.status = movie_load_status::empty;
-		return result;
-	}
-
-	const auto& metadata = core::json::safe_object(doc, "metadata");
-	const auto& doc_meta = core::json::safe_object(metadata, "diffractor");
-
-	const auto has_diffractor_settings = metadata.IsObject() && metadata.HasMember("diffractor") &&
-		metadata["diffractor"].IsObject();
-	result.settings.transition = has_diffractor_settings &&
-		core::icmp(core::json::safe_string(doc_meta, "transition"), "crossfade") == 0
-		                             ? movie_transition::crossfade
-		                             : movie_transition::cut;
-	result.settings.transition_seconds = read_bounded_double(doc_meta, "transition_seconds", 1.0, 0.0,
-	                                                        movie_max_transition_seconds);
-	result.settings.fade_in = read_bool(doc_meta, "fade_in", false);
-	result.settings.fade_out = read_bool(doc_meta, "fade_out", false);
-	result.settings.photo_seconds = read_bounded_double(doc_meta, "photo_seconds", 4.0, movie_min_photo_seconds,
-	                                                    movie_max_photo_seconds);
-
-	// Which convention the clip ranges follow. OpenTimelineIO's own -- a range stops at the cut, and a
-	// transition reaches past it into the media on each side -- is what other tools write and what
-	// Movie writes from version 2. Earlier Movie projects hold each clip's whole retained range.
-	const auto ranges_stop_at_cuts = !has_diffractor_settings ||
-		read_double(doc_meta, "version", 1.0) >= otio_project_version;
-
-	const auto track_children = track->FindMember("children");
-
-	if (track_children == track->MemberEnd() || !track_children->value.IsArray())
-	{
-		result.status = movie_load_status::empty;
-		return result;
-	}
-
-	// One transition standing on a cut between two clips the reader kept.
-	struct cut_transition
-	{
-		// How far it reaches into the outgoing clip's media before the cut, and the incoming clip's
-		// after it.
-		double in_offset = 0;
-		double out_offset = 0;
-		bool is_dissolve = false;
-	};
-
-	std::vector<cut_transition> transitions;
-	std::optional<cut_transition> pending_transition;
-	auto foreign_transition_count = 0;
-	auto transitions_stand_on_cuts = true;
-	auto previous_is_kept_clip = false;
-
-	// How far the transitions beside each kept clip reach into its media: the one before it into its
-	// head, the one after into its tail. Each side belongs to the clip it touches, whatever the file
-	// left out on the other side of that transition.
-	struct clip_handles
-	{
-		double head = 0;
-		double tail = 0;
-	};
-
-	std::vector<clip_handles> handles;
-	std::optional<double> pending_head;
-
-	// Whatever is left out breaks the cut a transition waiting for its next clip was standing on, so
-	// that transition is not carried on to join two clips it never stood between.
-	const auto leave_out = [&](const std::string_view name)
-	{
-		if (pending_transition)
-		{
-			transitions_stand_on_cuts = false;
-			pending_transition.reset();
-		}
-
-		pending_head.reset();
-		previous_is_kept_clip = false;
-		result.omit(name);
-	};
-
-	for (const auto& child : track_children->value.GetArray())
-	{
-		if (is_schema(child, "Transition"))
-		{
-			if (!has_diffractor_settings) ++foreign_transition_count;
-
-			const auto in = child.FindMember("in_offset");
-			const auto out = child.FindMember("out_offset");
-
-			cut_transition transition;
-			transition.in_offset = in != child.MemberEnd() ? read_rational_time(in->value) : 0.0;
-			transition.out_offset = out != child.MemberEnd() ? read_rational_time(out->value) : 0.0;
-			transition.is_dissolve = core::icmp(core::json::safe_string(child, "transition_type"),
-			                                   "SMPTE_Dissolve") == 0 && transition.in_offset >= 0 &&
-				transition.out_offset >= 0 && transition.in_offset + transition.out_offset > 0;
-
-			// Only a transition standing directly between two clips the reader keeps has a cut to
-			// stand on.
-			if (!previous_is_kept_clip || pending_transition)
-			{
-				transitions_stand_on_cuts = false;
-			}
-			else
-			{
-				pending_transition = transition;
-			}
-
-			if (previous_is_kept_clip) handles.back().tail = std::max(0.0, transition.out_offset);
-			pending_head = std::max(0.0, transition.in_offset);
-			previous_is_kept_clip = false;
-			continue;
-		}
-
-		if (!is_schema(child, "Clip"))
-		{
-			const auto schema = core::json::safe_string(child, "OTIO_SCHEMA");
-			leave_out(schema.empty() ? "unknown element"sv : std::string_view(schema));
-			continue;
-		}
-
-		// A disabled clip is a gap where it stands, and Movie has no gaps.
-		if (!read_bool(child, "enabled", true))
-		{
-			leave_out("disabled clip");
-			continue;
-		}
-
-		const auto& reference = clip_media_reference(child);
-		const auto path = from_url(core::json::safe_string(reference, "target_url"), project_folder);
-
-		if (path.is_empty())
-		{
-			leave_out("clip with no media file");
-			continue;
-		}
-
-		movie_clip clip;
-		clip.path = path;
-
-		// A clip with no range is OpenTimelineIO's whole media, and one saved before its source was
-		// measured has a range of no length. Either is kept with no length, for the probe to give it
-		// the length of its source, as a clip just added is.
-		const auto& range = core::json::safe_object(child, "source_range");
-		const auto start = range.FindMember("start_time");
-		const auto duration = range.FindMember("duration");
-
-		clip.start = start != range.MemberEnd() ? read_rational_time(start->value) : 0.0;
-		const auto clip_duration = duration != range.MemberEnd() ? read_rational_time(duration->value) : 0.0;
-
-		// A range already counted from zero is left alone: it cannot start before the media does.
-		const auto media_start = media_start_time(reference);
-		if (media_start > 0 && clip.start >= media_start) clip.start -= media_start;
-
-		clip.end = clip.start + clip_duration;
-
-		if (!std::isfinite(clip.start) || !std::isfinite(clip.end) || clip.start < 0 || clip_duration < 0)
-		{
-			leave_out("clip with no usable range");
-			continue;
-		}
-
-		const auto& clip_meta = core::json::safe_object(core::json::safe_object(child, "metadata"),
-		                                                   "diffractor");
-
-		const auto mt = files::file_type_from_name(path);
-		clip.is_photo = read_bool(clip_meta, "photo", mt && mt->group == file_group::photo);
-		clip.photo_duration_is_default = read_bool(clip_meta, "photo_duration_is_default", false);
-		// Negative until the range is final: a file that recorded no source length takes the range's end.
-		clip.source_duration = read_double(clip_meta, "source_duration", -1.0);
-
-		// A speed change, a freeze or any other effect is not something Movie can apply. The clip keeps
-		// its place, and what it carried is reported.
-		if (const auto effects = child.FindMember("effects");
-			effects != child.MemberEnd() && effects->value.IsArray())
-		{
-			for (const auto& effect : effects->value.GetArray())
-			{
-				const auto schema = core::json::safe_string(effect, "OTIO_SCHEMA");
-				result.omit(schema.empty() ? "effect"sv : std::string_view(schema));
-			}
-		}
-
-		if (pending_transition)
-		{
-			transitions.emplace_back(*pending_transition);
-			pending_transition.reset();
-		}
-
-		result.clips.emplace_back(clip);
-		handles.emplace_back(clip_handles{pending_head.value_or(0.0), 0.0});
-		pending_head.reset();
-		previous_is_kept_clip = true;
-	}
-
-	if (pending_transition) transitions_stand_on_cuts = false;
-
-	// Each clip widened by the transitions beside it reaching past its cuts, which is the range Movie
-	// overlaps. A still is the same picture before its range as in it, so it simply holds longer.
-	const auto widened = [&result, &handles]
-	{
-		auto clips = result.clips;
-
-		for (size_t i = 0; i < clips.size(); ++i)
-		{
-			auto& clip = clips[i];
-			clip.end += handles[i].tail;
-			if (clip.is_photo) clip.end += handles[i].head;
-			else clip.start = std::max(0.0, clip.start - handles[i].head);
-		}
-
-		return clips;
-	};
-
-	if (has_diffractor_settings)
-	{
-		// Movie's own transitions are in its settings; the ones in the track only say where its ranges
-		// stop.
-		if (ranges_stop_at_cuts) result.clips = widened();
-	}
-	else
-	{
-		// Movie draws one crossfade, the same at every cut, so another tool's dissolves are adopted only
-		// when one of the same length stands at every cut, and no clip is too short to give it.
-		auto adopt = transitions_stand_on_cuts && result.clips.size() > 1 &&
-			transitions.size() == result.clips.size() - 1;
-		const auto length = adopt ? transitions.front().in_offset + transitions.front().out_offset : 0.0;
-		adopt = adopt && length <= movie_max_transition_seconds &&
-			std::ranges::all_of(transitions, [length](const cut_transition& transition)
-			{
-				return transition.is_dissolve &&
-					std::abs(transition.in_offset + transition.out_offset - length) < 0.0001;
-			});
-
-		if (adopt)
-		{
-			auto clips = widened();
-
-			for (size_t i = 1; i < clips.size() && adopt; ++i)
-			{
-				adopt = length <= std::min(clips[i - 1].duration(), clips[i].duration()) / 2 + 0.0001;
-			}
-
-			if (adopt)
-			{
-				result.clips = std::move(clips);
-				result.settings.transition = movie_transition::crossfade;
-				result.settings.transition_seconds = length;
-			}
-		}
-
-		if (!adopt) result.omit("Transition", foreign_transition_count);
-	}
-
-	for (auto& clip : result.clips)
-	{
-		// A still with no range of its own follows the movie's hold.
-		if (clip.is_photo && clip.duration() <= 0)
-		{
-			clip.end = clip.start + result.settings.photo_seconds;
-			clip.photo_duration_is_default = true;
-		}
-
-		bound_clip_range(clip);
-
-		if (!std::isfinite(clip.source_duration) || clip.source_duration < 0)
-		{
-			clip.source_duration = clip.end;
-		}
-		else if (!clip.is_photo && clip.source_duration > 0 && std::abs(clip.end - clip.source_duration) <= 0.001)
-		{
-			// A clip running to the end of its source, saved by an earlier build with its range rounded to
-			// the millisecond, would otherwise open a fraction short of it and show as trimmed.
-			clip.end = clip.source_duration;
-		}
-	}
-
-	result.status = result.clips.empty() && !has_diffractor_settings ? movie_load_status::empty : movie_load_status::ok;
+	if (clip.song > 0) result += std::format("#{}", clip.song);
 	return result;
 }
 
-//
-// Windows Live Movie Maker
-//
-
-// A tolerant scraper, not a parser. The .wlmp schema is undocumented and has never been stable
-// across the tools that wrote it, so matching on exact element names would break on the next file.
-// It reads attributes off any element that looks like a media item or an extent, and takes only
-// two things from the document's structure: the track bound to the "Main" placeholder, which is
-// the timeline, and which extent the effects and settings it meets belong to. It resolves no
-// entity it was not given inline and follows no reference, so there is no external-entity surface
-// here.
-namespace
+std::string write_dfv(const std::vector<movie_clip>& clips, const core::folder_path project_folder)
 {
-	struct xml_element
-	{
-		std::string_view name;
-		std::vector<std::pair<std::string_view, std::string>> attributes;
+	std::string result =
+		"# Diffractor video: one item per line, played in order.\n"
+		"#   t <seconds> '<text>'                                        text on black\n"
+		"#   c <from>-<to>[#track] <file> ['<caption>'] [!<sound file>]  a clip; s instead of c marks one to stabilize\n"
+		"#   A clip's !<sound file> plays in place of its own sound, from the clip's start.\n";
 
-		const std::string* find(const std::string_view key) const
+	for (const auto& clip : clips)
+	{
+		if (clip.is_text)
 		{
-			for (const auto& [k, v] : attributes)
-			{
-				if (core::icmp(k, key) == 0) return &v;
-			}
-
-			return nullptr;
-		}
-	};
-
-	std::vector<xml_element> scan_xml(const std::string_view text)
-	{
-		std::vector<xml_element> result;
-		size_t i = 0;
-
-		while (i < text.size())
-		{
-			const auto open = text.find('<', i);
-			if (open == std::string_view::npos) break;
-
-			i = open + 1;
-			if (i >= text.size()) break;
-
-			// Declarations, comments, doctypes and closing tags carry nothing this reads.
-			if (text[i] == '?' || text[i] == '!' || text[i] == '/')
-			{
-				const auto close = text.find('>', i);
-				if (close == std::string_view::npos) break;
-				i = close + 1;
-				continue;
-			}
-
-			const auto name_start = i;
-			while (i < text.size() && !core::is_white_space(text[i]) && text[i] != '>' && text[i] != '/') ++i;
-
-			xml_element element;
-			element.name = text.substr(name_start, i - name_start);
-
-			while (i < text.size() && text[i] != '>')
-			{
-				while (i < text.size() && (core::is_white_space(text[i]) || text[i] == '/')) ++i;
-				if (i >= text.size() || text[i] == '>') break;
-
-				const auto key_start = i;
-				while (i < text.size() && text[i] != '=' && text[i] != '>' && !core::is_white_space(text[i])) ++i;
-				const auto key = text.substr(key_start, i - key_start);
-
-				while (i < text.size() && core::is_white_space(text[i])) ++i;
-				if (i >= text.size() || text[i] != '=') continue;
-				++i;
-				while (i < text.size() && core::is_white_space(text[i])) ++i;
-				if (i >= text.size()) break;
-
-				const auto quote = text[i];
-				if (quote != '"' && quote != '\'') continue;
-
-				++i;
-				const auto value_start = i;
-				while (i < text.size() && text[i] != quote) ++i;
-				const auto value = text.substr(value_start, i - value_start);
-				if (i < text.size()) ++i;
-
-				if (!key.empty()) element.attributes.emplace_back(key, str::decode_xml_entities(value));
-			}
-
-			if (i < text.size()) ++i;
-			if (!element.name.empty()) result.emplace_back(std::move(element));
-		}
-
-		return result;
-	}
-
-	// from_chars rather than stod: stod reads the C locale's decimal point, and a project file's
-	// numbers are always '.' whatever the user's regional settings say. A setting that is absent or
-	// malformed reads as `fallback`, the value it would have had.
-	double parse_number(const std::string* text, const double fallback)
-	{
-		if (!text || text->empty()) return fallback;
-
-		double value = 0;
-		const auto* const first = text->data();
-		const auto* const last = first + text->size();
-		const auto [ptr, ec] = std::from_chars(first, last, value);
-
-		return ec != std::errc{} || !std::isfinite(value) ? fallback : value;
-	}
-
-	// A malformed time means "this attribute is absent", so the caller falls back to the clip's
-	// other timings.
-	double parse_seconds(const std::string* text)
-	{
-		return parse_number(text, -1);
-	}
-
-	bool is_named(const xml_element& element, const std::string_view name)
-	{
-		return core::icmp(element.name, name) == 0;
-	}
-
-	// Movie Maker ran on Windows, so a drive letter or a UNC prefix is absolute wherever the file is
-	// read, and either separator divides a relative path. A relative path is how it records media
-	// kept beneath the project's own folder.
-	core::file_path wlmp_media_path(const std::string_view text, const core::folder_path project_folder)
-	{
-		const auto drive = text.size() >= 3 && text[1] == ':' && core::is_path_sep(text[2]);
-		const auto unc = text.size() >= 2 && core::is_path_sep(text[0]) && core::is_path_sep(text[1]);
-		if (drive || unc || is_qualified_path(text)) return core::file_path(text);
-		if (project_folder.is_empty()) return {};
-
-		auto relative = std::string(text);
-		for (auto&& c : relative) if (core::is_path_sep(c)) c = core::preferred_path_sep;
-		return resolve_in_project_folder(relative, project_folder);
-	}
-
-	bool is_ignored_extent(const std::string_view name)
-	{
-		static constexpr std::string_view ignored[] = {
-			"audio", "title", "caption", "credit", "narration", "music", "text", "bounded", "sound",
-			"effect", "animation"
-		};
-
-		for (const auto prefix : ignored)
-		{
-			if (name.size() >= prefix.size() && core::icmp(name.substr(0, prefix.size()), prefix) == 0) return true;
-		}
-
-		return false;
-	}
-}
-
-movie_load_result read_wlmp(const std::string_view xml, const core::folder_path project_folder)
-{
-	movie_load_result result;
-
-	const auto elements = scan_xml(xml);
-	if (elements.empty()) return result;
-
-	struct wlmp_media
-	{
-		core::file_path path;
-		double recorded_seconds = 0;
-	};
-
-	core::hash_map<std::string, wlmp_media, core::ihash, core::ieq> media;
-	const std::string* main_track = nullptr;
-
-	for (const auto& element : elements)
-	{
-		if (const auto placeholder = element.find("placeholderID");
-			placeholder && core::icmp(*placeholder, "Main") == 0)
-		{
-			main_track = element.find("extentID");
-		}
-
-		const auto id = element.find("id");
-		const auto file = element.find("filePath");
-		if (!id || !file || id->empty() || file->empty()) continue;
-
-		const auto path = wlmp_media_path(*file, project_folder);
-		if (path.is_empty()) continue;
-
-		// A recorded length past the longest movie Movie renders is a broken file, not a source.
-		media.insert_or_assign(*id, wlmp_media{
-			                       path, std::clamp(parse_seconds(element.find("duration")), 0.0, movie_max_clip_seconds)
-		                       });
-	}
-
-	if (media.empty()) return result;
-
-	// A clip and what Movie Maker attached to it. Those count as left out only if the clip is placed:
-	// a clip off the timeline is one omission, not one plus everything it carried.
-	struct wlmp_clip
-	{
-		std::string id;
-		movie_clip clip;
-		double recorded_seconds = 0;
-		double position = -1;
-		std::vector<std::string_view> omitted;
-	};
-
-	std::vector<wlmp_clip> clips;
-	std::vector<std::string_view> main_refs;
-	auto has_main_track = false;
-
-	// The scraper sees opening tags only, so an element belongs to the extent opened last. That is
-	// how Movie Maker writes them: an extent, its effects, transitions and settings, then the next.
-	auto owner_is_clip = false;
-	auto owner_is_main_track = false;
-	auto in_transitions = false;
-
-	for (const auto& element : elements)
-	{
-		if (element.find("placeholderID"))
-		{
-			// The placeholders follow the extents, and nothing after them belongs to one.
-			owner_is_clip = false;
-			owner_is_main_track = false;
+			result += std::format("t {} {}\n", format_dfv_seconds(clip.duration()), quote_dfv_text(clip.text));
 			continue;
 		}
 
-		if (const auto extent_id = element.find("extentID"))
+		result += clip.stabilize ? "s " : "c ";
+		result += dfv_segment_text(clip);
+		result += ' ';
+		result += quote_dfv_path(dfv_path_text(clip.path, project_folder));
+
+		if (!clip.text.empty())
 		{
-			owner_is_clip = false;
-			owner_is_main_track = false;
-			in_transitions = false;
-
-			if (is_named(element, "ExtentSelector"))
-			{
-				owner_is_main_track = main_track && core::icmp(*extent_id, *main_track) == 0;
-				has_main_track = has_main_track || owner_is_main_track;
-				continue;
-			}
-
-			const auto reference = element.find("mediaItemID");
-
-			if (!reference || is_ignored_extent(element.name))
-			{
-				result.omit(element.name);
-				continue;
-			}
-
-			const auto found = media.find(*reference);
-
-			if (found == media.end())
-			{
-				result.omit("clip with no media file");
-				continue;
-			}
-
-			const auto mt = files::file_type_from_name(found->second.path);
-			const auto photo_by_name = mt && mt->group == file_group::photo;
-
-			movie_clip clip;
-			clip.path = found->second.path;
-			clip.is_photo = core::contains(element.name, "image") || core::contains(element.name, "photo") ||
-				(!core::contains(element.name, "video") && photo_by_name);
-			clip.photo_duration_is_default = false;
-
-			const auto start = std::max(0.0, parse_seconds(element.find("inTime")));
-			const auto out_time = parse_seconds(element.find("outTime"));
-			const auto duration = parse_seconds(element.find("duration"));
-
-			if (out_time > start)
-			{
-				clip.start = start;
-				clip.end = out_time;
-			}
-			else if (duration > 0)
-			{
-				clip.start = start;
-				clip.end = start + duration;
-			}
-			else if (!clip.is_photo && out_time <= 0)
-			{
-				// No out point, or one of zero, is how Movie Maker writes a clip that runs to the end
-				// of its source. Only the probe can measure where that is, so the end is left at zero
-				// as a newly added video's is, and the probe gives the clip the rest of its source.
-				clip.start = start;
-				clip.end = 0;
-			}
-			else
-			{
-				result.omit("clip with no usable range");
-				continue;
-			}
-
-			bound_clip_range(clip);
-			clip.source_duration = clip.end;
-
-			wlmp_clip entry{
-				*extent_id, std::move(clip), found->second.recorded_seconds, parse_seconds(element.find("position")), {}
-			};
-			if (std::abs(parse_number(element.find("speed"), 1.0) - 1.0) > 0.0001) entry.omitted.emplace_back("speed");
-
-			clips.emplace_back(std::move(entry));
-			owner_is_clip = true;
-			continue;
+			result += ' ';
+			result += quote_dfv_text(clip.text);
 		}
 
-		if (owner_is_main_track && is_named(element, "ExtentRef"))
+		if (clip.has_sound_file())
 		{
-			if (const auto id = element.find("id")) main_refs.emplace_back(*id);
-			continue;
+			result += " !";
+			result += quote_dfv_path(dfv_path_text(clip.sound_file, project_folder));
 		}
 
-		if (!owner_is_clip) continue;
-
-		auto& omitted = clips.back().omitted;
-
-		if (is_named(element, "Effects") || is_named(element, "Transitions"))
-		{
-			in_transitions = is_named(element, "Transitions");
-			continue;
-		}
-
-		if (const auto effect = element.find("effectTemplateID"))
-		{
-			// Movie draws its own crossfade between every pair of clips. That stands in for Movie
-			// Maker's crossfades, but not for its other transitions, and no effect has an equivalent.
-			if (!in_transitions || !core::contains(*effect, "crossfade")) omitted.emplace_back(*effect);
-			continue;
-		}
-
-		const auto setting = element.find("Name");
-		if (!setting) continue;
-
-		const auto value = element.find("Value");
-
-		if (core::icmp(*setting, "rotateStepNinety") == 0 && parse_number(value, 0.0) != 0.0)
-		{
-			omitted.emplace_back("rotateStepNinety");
-		}
-		else if (core::icmp(*setting, "Mute") == 0 && value && core::icmp(*value, "true") == 0)
-		{
-			omitted.emplace_back("Mute");
-		}
-		else if (core::icmp(*setting, "Volume") == 0 && std::abs(parse_number(value, 1.0) - 1.0) > 0.0001)
-		{
-			omitted.emplace_back("Volume");
-		}
-	}
-
-	std::vector<size_t> order;
-
-	if (has_main_track)
-	{
-		// The main track is the timeline. A clip it does not place is one Movie Maker kept but no
-		// longer showed; a title it places was counted where it was read.
-		core::hash_map<std::string, size_t, core::ihash, core::ieq> by_id;
-		for (size_t i = 0; i < clips.size(); ++i) by_id.try_emplace(clips[i].id, i);
-
-		std::vector<bool> placed(clips.size(), false);
-
-		for (const auto ref : main_refs)
-		{
-			const auto found = by_id.find(std::string(ref));
-			if (found == by_id.end()) continue;
-
-			placed[found->second] = true;
-			order.emplace_back(found->second);
-		}
-
-		for (size_t i = 0; i < clips.size(); ++i)
-		{
-			if (!placed[i]) result.omit("clip off the main track");
-		}
-	}
-	else
-	{
-		// Without a main track, a stated timeline position orders the clips, and the file's own order
-		// does where there is none.
-		for (size_t i = 0; i < clips.size(); ++i) order.emplace_back(i);
-
-		if (std::any_of(clips.begin(), clips.end(), [](const wlmp_clip& clip) { return clip.position >= 0; }))
-		{
-			std::stable_sort(order.begin(), order.end(), [&clips](const size_t left, const size_t right)
-			{
-				const auto left_position = clips[left].position;
-				const auto right_position = clips[right].position;
-				if (left_position < 0) return false;
-				if (right_position < 0) return true;
-				return left_position < right_position;
-			});
-		}
-	}
-
-	for (const auto i : order)
-	{
-		for (const auto name : clips[i].omitted) result.omit(name);
-		result.clips.emplace_back(clips[i].clip);
-		result.recorded_seconds.emplace_back(clips[i].recorded_seconds);
-	}
-
-	result.status = result.clips.empty() ? movie_load_status::empty : movie_load_status::ok;
-	return result;
-}
-
-//
-// Finding moved sources
-//
-
-// How many components two paths share, counted back from the name. The candidates were found by
-// name, so the name always matches and 2 means the folder holding it has the same name too.
-static size_t shared_trailing_components(const std::string_view left, const std::string_view right)
-{
-	size_t shared = 0;
-	auto left_end = left.size();
-	auto right_end = right.size();
-
-	while (left_end > 0 && right_end > 0)
-	{
-		const auto left_sep = left.find_last_of("\\/", left_end - 1);
-		const auto right_sep = right.find_last_of("\\/", right_end - 1);
-		const auto left_begin = left_sep == std::string_view::npos ? 0 : left_sep + 1;
-		const auto right_begin = right_sep == std::string_view::npos ? 0 : right_sep + 1;
-
-		if (core::icmp(left.substr(left_begin, left_end - left_begin),
-		              right.substr(right_begin, right_end - right_begin)) != 0) break;
-
-		++shared;
-		if (left_sep == std::string_view::npos || right_sep == std::string_view::npos) break;
-		left_end = left_sep;
-		right_end = right_sep;
-	}
-
-	return shared;
-}
-
-static std::string folder_move_key(const core::folder_path from, const core::folder_path to)
-{
-	auto key = std::string(from.text());
-	key += '\n';
-	key += to.text();
-	return key;
-}
-
-std::vector<movie_source_choice> choose_movie_sources(const std::vector<core::file_path>& stored,
-                                                      const std::vector<std::vector<core::file_path>>& candidates,
-                                                      const std::vector<double>& recorded_seconds,
-                                                      const std::function<double(core::file_path)>& measure_seconds)
-{
-	std::vector<movie_source_choice> result(stored.size());
-	// What is left to choose between once a recorded length has ruled files out.
-	std::vector<std::vector<core::file_path>> remaining(stored.size());
-
-	for (size_t i = 0; i < stored.size() && i < candidates.size(); ++i)
-	{
-		auto found = candidates[i];
-		if (found.empty()) continue;
-
-		// A length is a measurement of the file itself, so it rules out a namesake however well its
-		// folders fit. A camera that numbers its files from zero again names a dozen clips alike,
-		// and the one carrying the name may not be the one the project used. A candidate with no
-		// length to measure is not evidence either way, so it stays.
-		const auto recorded = i < recorded_seconds.size() ? recorded_seconds[i] : 0.0;
-		auto ruled_out = false;
-
-		if (recorded > 0 && measure_seconds)
-		{
-			const auto before = found.size();
-
-			std::erase_if(found, [&measure_seconds, recorded](const core::file_path path)
-			{
-				const auto measured = measure_seconds(path);
-				return measured > 0 && std::abs(measured - recorded) > movie_source_length_tolerance;
-			});
-
-			if (found.empty())
-			{
-				result[i].match = movie_source_match::other_length;
-				continue;
-			}
-
-			ruled_out = found.size() < before;
-		}
-
-		if (found.size() == 1)
-		{
-			result[i] = {ruled_out ? movie_source_match::same_length : movie_source_match::only_name, found.front()};
-			continue;
-		}
-
-		const auto original = stored[i].pack();
-		size_t best = 0;
-		size_t best_count = 0;
-		size_t best_index = 0;
-
-		for (size_t j = 0; j < found.size(); ++j)
-		{
-			const auto shared = shared_trailing_components(original, found[j].pack());
-
-			if (shared > best)
-			{
-				best = shared;
-				best_count = 1;
-				best_index = j;
-			}
-			else if (shared == best)
-			{
-				++best_count;
-			}
-		}
-
-		if (best >= 2 && best_count == 1)
-		{
-			result[i] = {movie_source_match::same_folders, found[best_index]};
-		}
-		else
-		{
-			result[i].match = movie_source_match::ambiguous;
-			remaining[i] = std::move(found);
-		}
-	}
-
-	// Files kept together are usually moved together, so every source settled above is a vote for
-	// where the folder it was stored in went. Only a clear winner settles a tie between same names.
-	core::hash_map<std::string, int, core::ihash, core::ieq> votes;
-
-	for (size_t i = 0; i < result.size(); ++i)
-	{
-		if (!result[i].path.is_empty()) ++votes[folder_move_key(stored[i].folder(), result[i].path.folder())];
-	}
-
-	for (size_t i = 0; i < result.size(); ++i)
-	{
-		if (result[i].match != movie_source_match::ambiguous) continue;
-
-		const auto& found = remaining[i];
-		auto best = 0;
-		size_t best_count = 0;
-		size_t best_index = 0;
-
-		for (size_t j = 0; j < found.size(); ++j)
-		{
-			const auto vote = votes.find(folder_move_key(stored[i].folder(), found[j].folder()));
-			const auto count = vote == votes.end() ? 0 : vote->second;
-
-			if (count > best)
-			{
-				best = count;
-				best_count = 1;
-				best_index = j;
-			}
-			else if (count == best)
-			{
-				++best_count;
-			}
-		}
-
-		if (best > 0 && best_count == 1) result[i] = {movie_source_match::siblings, found[best_index]};
+		result += '\n';
 	}
 
 	return result;
@@ -1568,7 +986,7 @@ void movie_project::push_undo()
 	// An edit made after undoing past the clean state replaces the history that led back to it.
 	if (_clean_depth && _undo.size() < *_clean_depth) _clean_depth.reset();
 
-	_undo.emplace_back(undo_entry{_clips, _settings, _selected, _current, _anchor});
+	_undo.emplace_back(undo_entry{_clips, _selected, _current, _anchor});
 
 	if (_undo.size() > max_undo)
 	{
@@ -1608,9 +1026,7 @@ void movie_project::begin_edit(const movie_edit_group group)
 void movie_project::settle_edit()
 {
 	if (_open_group == movie_edit_group::none || _undo.empty()) return;
-
-	const auto& began = _undo.back();
-	if (began.clips != _clips || !(began.settings == _settings)) return;
+	if (_undo.back().clips != _clips) return;
 
 	_undo.pop_back();
 	_open_group = movie_edit_group::none;
@@ -1659,8 +1075,8 @@ void movie_project::select(const size_t index, const bool extend, const bool tog
 
 		if (found != _selected.end())
 		{
-			// The last selected clip cannot be toggled away: a command that acts on the selection
-			// would then have nothing to act on while the strip still shows a focused clip.
+			// The last selected item cannot be toggled away: a command that acts on the selection
+			// would then have nothing to act on while the strip still shows a focused item.
 			if (_selected.size() > 1) _selected.erase(found);
 		}
 		else
@@ -1710,8 +1126,9 @@ bool movie_project::is_ready_to_render() const
 {
 	return !_clips.empty() && std::all_of(_clips.begin(), _clips.end(), [](const movie_clip& clip)
 	{
-		return clip.is_probed && !clip.is_missing && clip.duration() > 0 &&
-			clip.extent.cx > 0 && clip.extent.cy > 0;
+		if (clip.has_sound_file() && (!clip.sound_file_is_probed || clip.sound_file_is_missing)) return false;
+		if (clip.is_text) return clip.duration() > 0;
+		return clip.is_probed && !clip.is_missing && clip.duration() > 0 && clip.extent.cx > 0 && clip.extent.cy > 0;
 	});
 }
 
@@ -1769,7 +1186,7 @@ void movie_project::move_selection(const size_t to)
 	size_t focus_offset = 0;
 
 	// `to` counts positions in the list as it stands, so the destination has to be re-expressed
-	// against the clips that will still be there once the selection is lifted out.
+	// against the items that will still be there once the selection is lifted out.
 	for (size_t i = 0; i < _clips.size(); ++i)
 	{
 		if (is_selected(i))
@@ -1832,9 +1249,8 @@ void movie_project::replace_many(const std::vector<std::pair<size_t, movie_clip>
 {
 	if (replacements.empty()) return;
 	if (std::none_of(replacements.begin(), replacements.end(), [this](const auto& replacement)
-	{
-		return replacement.first < _clips.size() && _clips[replacement.first] != replacement.second;
-	})) return;
+	{ return replacement.first < _clips.size() && _clips[replacement.first] != replacement.second; }))
+		return;
 
 	push_undo();
 
@@ -1852,26 +1268,20 @@ void movie_project::replace_quietly(const size_t at, const movie_clip& clip)
 	++_revision;
 }
 
-void movie_project::settings(const movie_settings& s, const movie_edit_group group)
+void movie_project::text(const size_t at, const std::string_view words, const movie_edit_group group)
 {
-	// The panel reports every notification its native controls raise, including the echo of a value
-	// the view itself wrote. One that changes nothing is not an edit.
-	if (s == _settings) return;
+	if (at >= _clips.size()) return;
+
+	auto bounded = bound_movie_text(words);
+	if (bounded == _clips[at].text) return;
+
+	// The same box describes whichever item has focus, so typing on after focus moved is a new step.
+	if (group != movie_edit_group::none && group == _open_group && at != _open_index) end_edit_group();
 
 	begin_edit(group);
-	_settings = s;
-	apply_photo_duration();
+	_open_index = at;
+	_clips[at].text = std::move(bounded);
 	settle_edit();
-}
-
-void movie_project::apply_photo_duration()
-{
-	for (auto&& c : _clips)
-	{
-		if (!c.is_photo || !c.photo_duration_is_default) continue;
-		c.start = 0;
-		c.end = _settings.photo_seconds;
-	}
 }
 
 void movie_project::trim(const size_t at, const double start, const double end, const movie_edit_group group)
@@ -1880,11 +1290,10 @@ void movie_project::trim(const size_t at, const double start, const double end, 
 
 	auto c = _clips[at];
 
-	if (c.is_photo)
+	if (c.is_photo || c.is_text)
 	{
 		c.start = 0;
-		c.end = std::max(0.1, end - start);
-		c.photo_duration_is_default = false;
+		c.end = bound_hold(end - start, c.duration());
 	}
 	else
 	{
@@ -1896,7 +1305,10 @@ void movie_project::trim(const size_t at, const double start, const double end, 
 	// A handle pressed and let go where it was is not a trim.
 	if (c == _clips[at]) return;
 
+	if (group != movie_edit_group::none && group == _open_group && at != _open_index) end_edit_group();
+
 	begin_edit(group);
+	_open_index = at;
 	_clips[at] = c;
 	settle_edit();
 }
@@ -1906,10 +1318,9 @@ void movie_project::end_edit_group()
 	_open_group = movie_edit_group::none;
 }
 
-void movie_project::reset(std::vector<movie_clip> clips, const movie_settings& s, const core::file_path path)
+void movie_project::reset(std::vector<movie_clip> clips, const core::file_path path)
 {
 	_clips = std::move(clips);
-	_settings = s;
 	_path = path;
 	_undo.clear();
 	mark_clean();
@@ -1951,7 +1362,6 @@ void movie_project::undo()
 	_undo.pop_back();
 
 	_clips = std::move(entry.clips);
-	_settings = entry.settings;
 	_selected = std::move(entry.selected);
 	_current = entry.current;
 	_anchor = entry.anchor;

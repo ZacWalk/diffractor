@@ -1,0 +1,111 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>HTML5 Drawing Primitive Shapes</title>
+    <style>
+        #title-canvas {
+            background: #888888;
+        }
+
+        #logo-canvas {
+            background: #888888;
+        }
+    </style>
+
+    <script>
+        window.addEventListener("load", draw, true);
+
+        function make_download(button_id, canvas) {
+            var button = document.getElementById(button_id);
+            button.addEventListener('click', function (e) {
+                var dataURL = canvas.toDataURL('image/png');
+                button.href = dataURL;
+            });
+        }
+
+        function darken(color, percent) {
+            var f = parseInt(color.slice(1), 16);
+            var R = f >> 16;
+            var G = f >> 8 & 0x00FF;
+            var B = f & 0x0000FF;
+            var rr = R - Math.round((R * percent) / 100.0);
+            var gg = G - Math.round((G * percent) / 100.0);
+            var bb = B - Math.round((B * percent) / 100.0);
+            return "#" + rr.toString(16) + gg.toString(16) + bb.toString(16)
+        }
+
+        function draw_rect(context, x, y, w, h, clr) {
+
+            var grd = context.createRadialGradient(x + w / 2.5, y + h / 2.5, 10, x + w / 2, y + h / 2, 300);
+            grd.addColorStop(0, clr);
+            grd.addColorStop(1, darken(clr, 33));
+
+            // top - green
+            context.fillStyle = grd;
+            context.fillRect(x, y, w, h);
+            context.strokeStyle = darken(clr, 50);
+            context.lineWidth = 20;
+            context.strokeRect(x, y, w, h);
+        }
+
+        function draw() {
+            // Retrieve the canvas element and set its CSS style
+            var title_canvas = document.getElementById("title-canvas");
+            var logo_canvas = document.getElementById("logo-canvas");
+
+            title_canvas.width = 1100;
+            title_canvas.height = 240;
+
+            logo_canvas.width = 900;
+            logo_canvas.height = 900;
+
+            // Get the 2D drawing context for the canvas element
+            var title_context = title_canvas.getContext("2d");
+            var logo_context = logo_canvas.getContext("2d");
+
+            title_context.shadowColor = 'black';
+            title_context.shadowBlur = 20;
+
+            // top - green
+            draw_rect(logo_context, 250, 10, 400, 400, '#32EE99');
+
+            // right - blue
+            draw_rect(logo_context, 490, 250, 400, 400, '#3299EE');
+
+            // bottom - red
+            draw_rect(logo_context, 250, 490, 400, 400, '#EE3240');
+
+            logo_context.save();
+            logo_context.beginPath();
+            logo_context.rect(0, 0, 240, 900);
+            logo_context.rect(0, 420, 900, 490);
+            logo_context.clip();
+
+            // left - yellow
+            draw_rect(logo_context, 10, 250, 400, 400, '#EEDD22');
+            logo_context.restore();
+
+            title_context.font = "900 155px Arial";
+            title_context.fillStyle = "#ffffff";  //<======= here
+            title_context.fillText("Diffractor", 250, 175);
+            title_context.drawImage(logo_canvas, 20, 20, 200, 200);
+
+
+            make_download('btn-download-logo', logo_canvas);
+            make_download('btn-download-title', title_canvas);
+        }
+
+
+
+    </script>
+</head>
+
+<body>
+    <canvas id="title-canvas">Canvas is not supported</canvas>
+<a href="#" class="button" id="btn-download-title">Download Title</a>
+
+    <canvas id="logo-canvas">Canvas is not supported</canvas>
+<a href="#" class="button" id="btn-download-logo">Download Logo</a>
+</body>
+</html>

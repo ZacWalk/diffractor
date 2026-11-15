@@ -1,25 +1,21 @@
 ---
-description: Add or change a user-visible behavior against the closed design ontology.
+description: Add or change a user-visible behavior without breaking the product's design rules.
 ---
 
 # Change a user-visible behavior
 
 Use this when the change alters what a user can observe: scope, contents, target, effect,
-presentation, or recovery. For work that changes no observable behavior, the `Internal` class in
-[AGENTS.md](../../AGENTS.md) applies instead — and reclassifying to avoid a question is a gate
-violation.
+presentation, timing, or recovery. [AGENTS.md](../../AGENTS.md#behavior-changes) says when a
+rendering or performance change counts.
 
 1. **Route before reading.** Find the row in the routing table in [AGENTS.md](../../AGENTS.md) that
    matches the behavior. Read that document's named section and open the listed source. Do not read
    the rest of the set to build context.
 
-2. **Fill the gate.** Output the `User-visible behavior` schema with all four fields populated from
-   the closed ontology in [design.md](../../docs/design.md#user-mental-model). Every value is drawn
-   from the enums; none is invented, aliased, or inferred. `All scopes` is earned — use it only when
-   the behavior is provably identical in every concrete scope, and say why in `Contents`.
-
-   If the change cannot map unambiguously to the schema, **HALT and ask**. That is the signal that
-   product clarification is needed, not that the schema is inadequate.
+2. **State the behavior** in [design.md](../../docs/design.md#user-mental-model)'s terms: its scope,
+   contents, target and effect, including the affected count, destinations and collisions, retained
+   originals, and recovery. Where design.md does not decide one of them, **HALT and ask** the owner
+   rather than inventing a state, an alias or a target.
 
 3. **Check it against the design invariants** the product promises:
    - Does the user know the target before the command runs? Consequential commands name the action,
@@ -40,10 +36,11 @@ violation.
 6. **Validate narrowest first**, then broaden:
 
    ```powershell
+   python tools\dd.py build
    .\exe\diffractor64-d.exe /test:*subject* | Out-Host
    pwsh -File tools/lint_repo.ps1
    .\dd.ps1 test
    ```
 
-Report: the filled gate schema, the document updated, the checks run with their outcomes, and any
+Report: the behavior as stated, the document updated, the checks run with their outcomes, and any
 check you could not run.

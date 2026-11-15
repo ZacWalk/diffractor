@@ -3,10 +3,11 @@
 #
 # Purpose: libheif's FFmpeg decoder plugin, built against Diffractor's FFmpeg from the libheif libfiles
 # fetches, as diffractor::heif_ffmpeg, beside diffractor::heif, which is libfiles' libheif. libfiles
-# builds libheif with its JPEG, libde265, dav1d and uncompressed decoders and leaves FFmpeg to the
-# application, which has it; files_heif.cpp registers the plugin before libheif decodes anything. Its
-# include directories and definitions are the ones the vendored libheif compiled it with. Both go on
-# the link line as members of the archive group, so neither reaches the codecs from outside it.
+# builds libheif with its JPEG, libde265, dav1d and uncompressed decoders, and its libaom and uncompressed
+# encoders, and leaves FFmpeg to the application, which has it; files_heif.cpp registers the plugin before
+# libheif decodes anything. Its include directories and definitions are the ones the vendored libheif
+# compiled it with. Both go on the link line as members of the archive group, so neither reaches the codecs
+# from outside it.
 
 include_guard(GLOBAL)
 include(FetchContent)

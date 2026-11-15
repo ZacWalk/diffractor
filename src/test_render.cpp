@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for the rendering layer (render*, util_simd) -- software blends, YUV conversion for the software backend, packed-surface area downscaling, surface transforms (resize, rotate) and the drawn logo.
 
@@ -84,38 +83,31 @@ static void should_match_simd_software_blends()
 				dest[3] = 255;
 			};
 
-			check([&](uint8_t* dest, size_t) { blend_solid_pixel(dest, sb / 255.0f, sg / 255.0f, sr / 255.0f, alpha); },
-			      [&](uint8_t* dest)
-			      {
-				      return blend_solid_opaque_sse2(dest, count, sb / 255.0f, sg / 255.0f,
-				                                     sr / 255.0f, alpha);
-			      }, "SIMD solid blend");
+			check([&](uint8_t* dest, size_t)
+			{ blend_solid_pixel(dest, sb / 255.0f, sg / 255.0f, sr / 255.0f, alpha); }, [&](uint8_t* dest) {
+				return blend_solid_opaque_sse2(dest, count, sb / 255.0f, sg / 255.0f, sr / 255.0f, alpha);
+			}, "SIMD solid blend");
 
-			check([&](uint8_t* dest, const size_t i)
-			      {
-				      blend_solid_pixel(dest, sb / 255.0f, sg / 255.0f,
-				                        sr / 255.0f, alpha * coverage[i] / 255.0f);
-			      },
-			      [&](uint8_t* dest)
-			      {
-				      return blend_glyph_opaque_sse2(dest, coverage.data(), count, sb / 255.0f,
-				                                     sg / 255.0f, sr / 255.0f, alpha);
-			      }, "SIMD glyph blend");
+			check([&](uint8_t* dest, const size_t i) {
+				blend_solid_pixel(dest, sb / 255.0f, sg / 255.0f, sr / 255.0f, alpha * coverage[i] / 255.0f);
+			}, [&](uint8_t* dest) {
+				return blend_glyph_opaque_sse2(dest, coverage.data(), count, sb / 255.0f, sg / 255.0f, sr / 255.0f,
+				                               alpha);
+			}, "SIMD glyph blend");
 
 			for (const auto has_alpha : {false, true})
 			{
 				check([&](uint8_t* dest, const size_t i)
-				      {
-					      const auto* src = source.data() + i * 4;
-					      const auto pixel_alpha = (has_alpha ? src[3] / 255.0f : 1.0f) * alpha;
-					      dest[0] = blend_opaque_channel(dest[0], src[0], pixel_alpha);
-					      dest[1] = blend_opaque_channel(dest[1], src[1], pixel_alpha);
-					      dest[2] = blend_opaque_channel(dest[2], src[2], pixel_alpha);
-					      dest[3] = 255;
-				      }, [&](uint8_t* dest)
-				      {
-					      return blend_bgra_opaque_sse2(dest, source.data(), count, has_alpha, alpha);
-				      }, "SIMD BGRA blend");
+				{
+					const auto* src = source.data() + i * 4;
+					const auto pixel_alpha = (has_alpha ? src[3] / 255.0f : 1.0f) * alpha;
+					dest[0] = blend_opaque_channel(dest[0], src[0], pixel_alpha);
+					dest[1] = blend_opaque_channel(dest[1], src[1], pixel_alpha);
+					dest[2] = blend_opaque_channel(dest[2], src[2], pixel_alpha);
+					dest[3] = 255;
+				}, [&](uint8_t* dest) {
+					return blend_bgra_opaque_sse2(dest, source.data(), count, has_alpha, alpha);
+				}, "SIMD BGRA blend");
 			}
 		}
 	}
@@ -150,7 +142,8 @@ static void should_tone_map_through_a_cube_as_a_trilinear_sample()
 			{
 				const auto v = at(r, g, b);
 				auto* const out = lut.rgba.data() + ((static_cast<size_t>(b) * n + g) * n + r) * 4;
-				for (auto c = 0; c < 3; ++c) out[c] = static_cast<uint16_t>(std::lround(std::clamp(v[c], 0.0, 1.0) * 65535.0));
+				for (auto c = 0; c < 3; ++c)
+					out[c] = static_cast<uint16_t>(std::lround(std::clamp(v[c], 0.0, 1.0) * 65535.0));
 				out[3] = 0xffff;
 			}
 		}
@@ -182,14 +175,16 @@ static void should_tone_map_through_a_cube_as_a_trilinear_sample()
 				w *= upper ? weight[axis] : 1.0 - weight[axis];
 			}
 
-			const auto* const s = lut.rgba.data() + ((static_cast<size_t>(sample[2]) * n + sample[1]) * n + sample[0]) * 4;
+			const auto* const s = lut.rgba.data() +
+			                      ((static_cast<size_t>(sample[2]) * n + sample[1]) * n + sample[0]) * 4;
 			for (auto c = 0; c < 3; ++c) result[c] += w * s[c];
 		}
 
 		return result;
 	};
 
-	std::vector<uint16_t> signal = {0, 0, 0, 65535, 65535, 65535, 65535, 0, 0, 0, 65535, 0, 0, 0, 65535, 32768, 16384, 49152};
+	std::vector<uint16_t> signal = {0, 0,     0, 65535, 65535, 65535, 65535, 0,     0,
+	                                0, 65535, 0, 0,     0,     65535, 32768, 16384, 49152};
 	uint32_t seed = 12345;
 	for (auto i = 0; i < 3 * 500; ++i)
 	{
@@ -218,17 +213,22 @@ static void should_tone_map_through_a_cube_as_a_trilinear_sample()
 
 			for (auto c = 0; c < 3; ++c)
 			{
-				worst = std::max(worst, std::abs(channels[c] - static_cast<int>(std::lround(want[c] * 255.0 / 65535.0))));
+				worst = std::max(worst,
+				                 std::abs(channels[c] - static_cast<int>(std::lround(want[c] * 255.0 / 65535.0))));
 			}
 		}
 	}
 
-	assert_equal(true, worst <= 1, std::format("both lookups take the trilinear sample to within one level ({})", worst));
+	assert_equal(true, worst <= 1,
+	             std::format("both lookups take the trilinear sample to within one level ({})", worst));
 
 	const auto sample_pixel = [&lut](const int r, const int g, const int b)
 	{
 		const auto* const s = lut.rgba.data() + ((static_cast<size_t>(b) * n + g) * n + r) * 4;
-		const auto byte = [](const uint16_t v) { return static_cast<uint32_t>(std::lround(v * 255.0 / 65535.0)); };
+		const auto byte = [](const uint16_t v)
+		{
+			return static_cast<uint32_t>(std::lround(v * 255.0 / 65535.0));
+		};
 		return 0xff000000u | byte(s[0]) << 16 | byte(s[1]) << 8 | byte(s[2]);
 	};
 
@@ -275,9 +275,7 @@ static void should_convert_yuv_surfaces_for_software_rendering()
 	assert_equal(true, scaler.convert_yuv_surface(nv12, output), "convert NV12 surface");
 	check_output(output);
 	core::surface_ptr scaled;
-	const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
-	{
-	});
+	const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*) {});
 	assert_equal(true, scaler.scale_surface(nv12_view, scaled, {2, 1}), "scale NV12 surface");
 	assert_equal(true, scaled->dimensions() == sizei{2, 1}, "scaled NV12 dimensions");
 	assert_equal(true, scaled->format() == core::texture_format::RGB, "scaled NV12 format");
@@ -295,9 +293,7 @@ static void should_convert_yuv_surfaces_for_software_rendering()
 	std::fill_n(p010_chroma, p010.stride() / sizeof(uint16_t), uint16_t{512u << 6});
 	assert_equal(true, scaler.convert_yuv_surface(p010, output), "convert P010 surface");
 	check_output(output);
-	const auto p010_view = core::const_surface_ptr(&p010, [](const core::surface*)
-	{
-	});
+	const auto p010_view = core::const_surface_ptr(&p010, [](const core::surface*) {});
 	assert_equal(true, scaler.scale_surface(p010_view, scaled, {2, 1}), "scale P010 surface");
 	assert_equal(true, scaled->dimensions() == sizei{2, 1}, "scaled P010 dimensions");
 	assert_equal(true, scaled->format() == core::texture_format::RGB, "scaled P010 format");
@@ -367,8 +363,8 @@ static void should_bilinear_resize_packed_surfaces()
 
 			for (auto x = 0; x < 31; ++x)
 			{
-				flat = flat && row[x * 4 + 0] == 19 && row[x * 4 + 1] == 140 &&
-					row[x * 4 + 2] == 233 && row[x * 4 + 3] == 77;
+				flat = flat && row[x * 4 + 0] == 19 && row[x * 4 + 1] == 140 && row[x * 4 + 2] == 233 &&
+				       row[x * 4 + 3] == 77;
 			}
 		}
 
@@ -389,9 +385,7 @@ static void should_bilinear_resize_packed_surfaces()
 	{
 		core::surface nv12;
 		nv12.alloc(8, 8, core::texture_format::NV12);
-		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
-		{
-		});
+		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*) {});
 
 		core::surface_ptr dst;
 		assert_equal(false, core::bilinear_resize(nv12_view, dst, {16, 16}), "refuse a planar format");
@@ -511,17 +505,13 @@ static void should_area_downscale_packed_and_planar_surfaces()
 		// P010 samples are 16 bit, which the Q8 accumulators cannot hold.
 		core::surface p010;
 		p010.alloc(8, 8, core::texture_format::P010);
-		const auto p010_view = core::const_surface_ptr(&p010, [](const core::surface*)
-		{
-		});
+		const auto p010_view = core::const_surface_ptr(&p010, [](const core::surface*) {});
 		assert_equal(false, core::area_downscale(p010_view, dst, {4, 4}), "refuse a 16 bit planar format");
 
 		// NV12 chroma is one pair per 2x2 luma block, so an odd extent has no whole answer.
 		core::surface nv12;
 		nv12.alloc(8, 8, core::texture_format::NV12);
-		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
-		{
-		});
+		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*) {});
 		assert_equal(false, core::area_downscale(nv12_view, dst, {5, 4}), "refuse an odd nv12 extent");
 	}
 
@@ -552,9 +542,7 @@ static void should_area_downscale_packed_and_planar_surfaces()
 			}
 		}
 
-		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*)
-		{
-		});
+		const auto nv12_view = core::const_surface_ptr(&nv12, [](const core::surface*) {});
 
 		core::surface_ptr dst;
 		assert_equal(true, core::area_downscale(nv12_view, dst, {32, 16}), "reduce an nv12 surface");
@@ -651,25 +639,20 @@ static void should_estimate_decode_cost()
 	{
 		core::blob bytes;
 		bytes.resize(16);
-		return std::make_shared<core::image>(std::move(bytes), sizei{4000, 3000}, format,
-		                                   core::orientation::top_left);
+		return std::make_shared<core::image>(std::move(bytes), sizei{4000, 3000}, format, core::orientation::top_left);
 	};
 
 	const auto png = make_image(core::image_format::PNG);
-	assert_equal(4000ll * 3000ll * 4, static_cast<uint64_t>(
-		             files::estimate_decode_bytes(png, {400, 300})),
+	assert_equal(4000ll * 3000ll * 4, static_cast<uint64_t>(files::estimate_decode_bytes(png, {400, 300})),
 	             "a PNG builds the whole frame however small a target is asked for");
 
 	const auto jpeg = make_image(core::image_format::JPEG);
-	assert_equal(500ll * 375ll * 4, static_cast<uint64_t>(
-		             files::estimate_decode_bytes(jpeg, {400, 300})),
+	assert_equal(500ll * 375ll * 4, static_cast<uint64_t>(files::estimate_decode_bytes(jpeg, {400, 300})),
 	             "libjpeg reduces by up to 1/8 while decoding");
-	assert_equal(4000ll * 3000ll * 4, static_cast<uint64_t>(
-		             files::estimate_decode_bytes(jpeg, {4000, 3000})),
+	assert_equal(4000ll * 3000ll * 4, static_cast<uint64_t>(files::estimate_decode_bytes(jpeg, {4000, 3000})),
 	             "a full-size request costs a JPEG its whole frame");
 
-	assert_equal(1000ll * 1000ll * 4, static_cast<uint64_t>(
-		             files::estimate_decode_bytes(sizei{1000, 1000})),
+	assert_equal(1000ll * 1000ll * 4, static_cast<uint64_t>(files::estimate_decode_bytes(sizei{1000, 1000})),
 	             "a bare source size costs four bytes a pixel");
 }
 
@@ -719,8 +702,7 @@ static void should_refuse_an_over_budget_raw()
 
 	const auto refused = ff.load(path, false);
 	assert_equal(false, refused.success, "a raw past the budget is refused");
-	assert_equal(true, refused.reason == file_load_result::failure::too_large,
-	             "and says so as a property of the file");
+	assert_equal(true, refused.reason == file_load_result::failure::too_large, "and says so as a property of the file");
 	assert_equal(false, is_valid(refused.s), "no frame was committed");
 	assert_equal(false, is_valid(refused.i), "and no image either");
 }
@@ -816,7 +798,7 @@ static void should_skip_alpha_animation_when_disabled()
 
 static void should_resize()
 {
-	const auto save_path = _temps.next_path();
+	const auto save_path = test_temps.next_path();
 	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	image_edits edits;
@@ -829,8 +811,8 @@ static void should_resize()
 
 	if (!actual)
 	{
-		throw test_assert_exception(std::format("Should resize: could not extract properties from {}",
-		                                        save_path.str()));
+		throw test_assert_exception(
+			std::format("Should resize: could not extract properties from {}", save_path.str()));
 	}
 
 	assert_equal(200, actual->width);
@@ -846,7 +828,7 @@ static void should_rotate()
 	files ff;
 
 	{
-		const auto save_path = _temps.next_path();
+		const auto save_path = test_temps.next_path();
 		const auto load_path = test_files_folder().combine_file("Test.jpg");
 		const auto loaded = ff.load(load_path, false);
 
@@ -865,14 +847,14 @@ static void should_rotate()
 		// Test.jpg is 683 pixels tall, which is not a whole number of MCUs, so the lossless path
 		// declines it. The rotate must still keep every row rather than trimming to the MCU grid,
 		// which the Test90.jpg fixture does not - it was captured from the old trimming path.
-		expected->width = static_cast<int>(loaded.i->height());
-		expected->height = static_cast<int>(loaded.i->width());
+		expected->width = static_cast<uint16_t>(loaded.i->height());
+		expected->height = static_cast<uint16_t>(loaded.i->width());
 
 		assert_metadata(*expected, *actual);
 	}
 
 	{
-		const auto save_path = _temps.next_path();
+		const auto save_path = test_temps.next_path();
 		const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
 		const auto loaded = ff.load(load_path, false);
 
@@ -891,7 +873,7 @@ static void should_rotate()
 
 	{
 		// PNG
-		const auto save_path = _temps.next_path(".png");
+		const auto save_path = test_temps.next_path(".png");
 		const auto load_path = test_files_folder().combine_file("engine.png");
 		const auto loaded = ff.load(load_path, false);
 
@@ -907,7 +889,7 @@ static void should_rotate()
 
 	{
 		// WEBP
-		const auto save_path = _temps.next_path(".webp");
+		const auto save_path = test_temps.next_path(".webp");
 		const auto load_path = test_files_folder().combine_file("lake.webp");
 		const auto loaded = ff.load(load_path, false);
 
@@ -934,7 +916,7 @@ static void should_not_cpu_transform_planar_surfaces()
 
 static void should_rotate133()
 {
-	const auto save_path = _temps.next_path();
+	const auto save_path = test_temps.next_path();
 	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	files ff;
@@ -954,8 +936,8 @@ static void should_rotate133()
 }
 
 // The neutral parameter set is the one a picture with no edits is rendered through, so any drift in
-// the tone curve, the YUV round trip or the rounding shows up here as a picture the app quietly
-// altered. Truncating instead of rounding in adjust_color moves every channel a level and fails this.
+// the tone curve, the luma ratio or the rounding shows up here as a picture the app quietly
+// altered. Truncating instead of rounding moves every channel a level and fails this.
 static void should_leave_colour_unchanged_when_neutral()
 {
 	const auto src = std::make_shared<core::surface>();
@@ -999,7 +981,7 @@ static void should_leave_colour_unchanged_when_neutral()
 		}
 	}
 
-	// One level of slack for the RGB -> YUV -> RGB round trip; two would hide a real curve error.
+	// One level of slack for floating point; two would hide a real curve error.
 	assert_equal(true, worst <= 1, "neutral adjustment leaves the picture alone");
 
 	// The residual must also be unbiased. A worst-case bound alone cannot see truncation, which costs
@@ -1093,11 +1075,9 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		const auto primaries = std::make_shared<core::surface>();
 		assert_equal(true, primaries->alloc(3, 1, core::texture_format::ARGB), "primary source allocated");
 		auto* const primary_row = primaries->pixels_line(0);
-		const std::array<std::array<uint8_t, 4>, 3> bgra_pixels{{
-			{0, 0, 255, 255}, // red in BGRA memory order
-			{0, 255, 0, 255},
-			{255, 0, 0, 255}
-		}};
+		const std::array<std::array<uint8_t, 4>, 3> bgra_pixels{{{0, 0, 255, 255}, // red in BGRA memory order
+		                                                         {0, 255, 0, 255},
+		                                                         {255, 0, 0, 255}}};
 		for (auto x = 0; x < 3; ++x) std::memcpy(primary_row + x * 4, bgra_pixels[x].data(), 4);
 
 		const auto primary_out = std::make_shared<core::surface>();
@@ -1106,7 +1086,8 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		             "primary desaturation applied");
 
 		const auto* const desaturated = primary_out->pixels_line(0);
-		const std::array<int, 3> expected_luma{76, 150, 29};
+		// BT.709 luma, sRGB's own primaries.
+		const std::array<int, 3> expected_luma{54, 182, 18};
 		for (auto x = 0; x < 3; ++x)
 		{
 			const auto b = static_cast<int>(desaturated[x * 4 + 0]);
@@ -1127,10 +1108,7 @@ static void should_match_the_preview_curve_to_the_applied_curve()
 		const auto src_warm = std::make_shared<core::surface>();
 		assert_equal(true, src_warm->alloc(2, 1, core::texture_format::ARGB), "temperature source allocated");
 		auto* const row_warm = src_warm->pixels_line(0);
-		const std::array<std::array<uint8_t, 4>, 2> bgra_pixels{{
-			{10, 20, 160, 255},
-			{160, 20, 10, 255}
-		}};
+		const std::array<std::array<uint8_t, 4>, 2> bgra_pixels{{{10, 20, 160, 255}, {160, 20, 10, 255}}};
 		for (auto x = 0; x < 2; ++x) std::memcpy(row_warm + x * 4, bgra_pixels[x].data(), 4);
 
 		const auto dst_warm = std::make_shared<core::surface>();
@@ -1176,8 +1154,7 @@ static void should_desaturate_to_grey()
 		const auto g = static_cast<int>(out[x * 4 + 1]);
 		const auto r = static_cast<int>(out[x * 4 + 2]);
 
-		assert_equal(true, std::abs(r - g) <= 1 && std::abs(g - b) <= 1,
-		             "saturation of -1 leaves every pixel grey");
+		assert_equal(true, std::abs(r - g) <= 1 && std::abs(g - b) <= 1, "saturation of -1 leaves every pixel grey");
 		assert_equal(255u, static_cast<uint32_t>(out[x * 4 + 3]), "alpha survives desaturation");
 	}
 }
@@ -1203,16 +1180,18 @@ static void should_rasterise_tiles_identically_to_the_whole_surface()
 // whole channels.
 static void should_rasterise_one_scene_to_one_answer_on_every_platform()
 {
-	// Recorded 2026-08-16 from MSVC x64 Debug, and holding unchanged under MSVC x64 Release and
+	// Recorded 2026-11-12 from MSVC x64 Debug, and holding unchanged under MSVC x64 Release and
 	// GCC 13 x86-64 in both configurations. Re-record from a run on both platforms when the scene
 	// or a primitive changes.
 	// The first and last samples are the untouched fill, which is how the scene is pinned to
 	// painting only inside itself.
 	static constexpr std::array<uint32_t, render::rasterizer_sample_count> recorded{
-		0x40404040, 0xff543e8b, 0xff3366e6, 0xff8344a1, 0xff8344a1, 0xffe6d972,
-		0xff4e4b8e, 0xff2d3d7c, 0xff6ba8a5, 0xff719d69, 0xff6c7561, 0xff869a5a,
-		0xff5e954b, 0xff56a764, 0xff406e73, 0xff26377e, 0xff838387, 0xff5b8773,
-		0xff3bbe71, 0xff84a37b, 0xff9b888c, 0xff40703f, 0xff5c7440, 0x40404040,
+		// clang-format off
+		0x40404040, 0xff543e8b, 0xff3366e6, 0xff8344a1, 0xff793f95, 0xffdcd466,
+		0xff4e4b8e, 0xff2d3d7c, 0xff6ba8a5, 0xff6a925b, 0xff6c7561, 0xff869a5a,
+		0xff5e954b, 0xff234328, 0xff406e73, 0xff26377e, 0xff838387, 0xff4a7662,
+		0xff33ad66, 0xff83a27b, 0xff9b888c, 0xff40703f, 0xff5c7440, 0x40404040,
+		// clang-format on
 	};
 
 	constexpr int tolerance = 3;
@@ -1263,11 +1242,7 @@ namespace
 
 			for (auto x = 0; x < 256; ++x)
 			{
-				line[x] = y < 32
-					          ? core::rgba(0, 255, 0)
-					          : x < 128
-					          ? core::rgba(255, 0, 0)
-					          : core::rgba(0, 0, 255);
+				line[x] = y < 32 ? core::rgba(0, 255, 0) : x < 128 ? core::rgba(255, 0, 0) : core::rgba(0, 0, 255);
 			}
 		}
 
@@ -1333,12 +1308,11 @@ static void should_render_the_globe()
 	};
 
 	assert_equal(true, render_view({0.0, -90.0}), "a view renders", "globe render");
-	assert_equal('r', globe_hue(destination.get_pixel(center.x, center.y)),
-	             "the western hemisphere holds the centre", "globe render");
+	assert_equal('r', globe_hue(destination.get_pixel(center.x, center.y)), "the western hemisphere holds the centre",
+	             "globe render");
 
 	assert_equal(true, render_view({0.0, 90.0}), "the opposite view renders", "globe render");
-	assert_equal('b', globe_hue(destination.get_pixel(center.x, center.y)), "and so does the eastern",
-	             "globe render");
+	assert_equal('b', globe_hue(destination.get_pixel(center.x, center.y)), "and so does the eastern", "globe render");
 
 	assert_equal(true, render_view({60.0, 0.0}), "a northern view renders", "globe render");
 	assert_equal('g', globe_hue(destination.get_pixel(center.x, center.y)), "the north faces the viewer",
@@ -1347,8 +1321,7 @@ static void should_render_the_globe()
 	// Off the sphere is nothing at all, and the limb is neither hard nor missing.
 	assert_equal(0u, core::get_a(destination.get_pixel(center.x + radius + 4, center.y)),
 	             "beyond the sphere is transparent", "globe render");
-	assert_equal(255u, core::get_a(destination.get_pixel(center.x, center.y)), "the centre is opaque",
-	             "globe render");
+	assert_equal(255u, core::get_a(destination.get_pixel(center.x, center.y)), "the centre is opaque", "globe render");
 
 	auto feathered = false;
 
@@ -1452,11 +1425,7 @@ namespace
 
 			for (auto x = 0; x < 512; ++x)
 			{
-				line[x] = y < 128
-					          ? core::rgba(0, 255, 0)
-					          : x < 256
-					          ? core::rgba(255, 0, 0)
-					          : core::rgba(0, 0, 255);
+				line[x] = y < 128 ? core::rgba(0, 255, 0) : x < 256 ? core::rgba(255, 0, 0) : core::rgba(0, 0, 255);
 			}
 		}
 
@@ -1501,8 +1470,8 @@ static void should_render_a_projected_panorama()
 	// probe: "both halves appear" would pass for a mirrored projection too.
 	assert_equal('r', panorama_hue(destination.get_pixel(middle_x - 8, middle_y + 40)),
 	             "west of the centre is the western quadrant", "panorama render");
-	assert_equal('b', panorama_hue(destination.get_pixel(middle_x + 8, middle_y + 40)),
-	             "and east of it is the eastern", "panorama render");
+	assert_equal('b', panorama_hue(destination.get_pixel(middle_x + 8, middle_y + 40)), "and east of it is the eastern",
+	             "panorama render");
 	assert_equal('g', panorama_hue(destination.get_pixel(middle_x, middle_y - 40)),
 	             "above the horizon is the northern half", "panorama render");
 
@@ -1512,8 +1481,8 @@ static void should_render_a_projected_panorama()
 	assert_equal(true, renderer.render(destination, sphere, view), "a turned view renders", "panorama render");
 	assert_equal('b', panorama_hue(destination.get_pixel(middle_x - 8, middle_y + 40)),
 	             "a quarter turn east puts the eastern quadrant under the whole centre", "panorama render");
-	assert_equal('b', panorama_hue(destination.get_pixel(middle_x + 8, middle_y + 40)),
-	             "on both sides of it", "panorama render");
+	assert_equal('b', panorama_hue(destination.get_pixel(middle_x + 8, middle_y + 40)), "on both sides of it",
+	             "panorama render");
 
 	// Looking up fills the frame with the northern half, including below the middle, which the
 	// level view never does.
@@ -1539,14 +1508,12 @@ static void should_render_a_projected_panorama()
 
 	panorama_view strip_view;
 	strip_view.reset(strip);
-	assert_equal(true, partial.render(destination, strip, strip_view), "a partial panorama renders",
-	             "panorama render");
+	assert_equal(true, partial.render(destination, strip, strip_view), "a partial panorama renders", "panorama render");
 	assert_equal('r', panorama_hue(destination.get_pixel(middle_x, middle_y)),
 	             "the strip itself is drawn on the horizon", "panorama render");
-	assert_equal('-', panorama_hue(destination.get_pixel(middle_x, 2)),
-	             "and above it is sphere the file does not hold", "panorama render");
-	assert_equal('-', panorama_hue(destination.get_pixel(middle_x, 157)),
-	             "as is below it", "panorama render");
+	assert_equal('-', panorama_hue(destination.get_pixel(middle_x, 2)), "and above it is sphere the file does not hold",
+	             "panorama render");
+	assert_equal('-', panorama_hue(destination.get_pixel(middle_x, 157)), "as is below it", "panorama render");
 
 	// The drawn area must be the covered area, column by column. A screen row is a curve in
 	// latitude, so a renderer that decides coverage once per segment paints across the edge where
@@ -1580,8 +1547,7 @@ static void should_render_a_projected_panorama()
 			}
 		}
 
-		assert_equal(0, over, std::format("{}: nothing is drawn outside the file's own band", what),
-		             "panorama render");
+		assert_equal(0, over, std::format("{}: nothing is drawn outside the file's own band", what), "panorama render");
 		assert_equal(0, under, std::format("{}: nothing inside it is left out", what), "panorama render");
 	};
 
@@ -1589,8 +1555,7 @@ static void should_render_a_projected_panorama()
 
 	// Pitched, where the row curve is at its most bowed and a per-segment decision is most wrong.
 	strip_view.look_at(0.0, 12.0 * M_PI / 180.0);
-	assert_equal(true, partial.render(destination, strip, strip_view), "a pitched partial renders",
-	             "panorama render");
+	assert_equal(true, partial.render(destination, strip, strip_view), "a pitched partial renders", "panorama render");
 	check_edges(strip_view, "pitched");
 
 	// The decode hands out planar YUV unless something says it will read the pixels itself. Walked
@@ -1646,7 +1611,7 @@ static void should_point_at_the_pie_wedge_that_was_drawn()
 			scene.wedges[i] = {
 				back ? core::rgba(255, 0, 0, 255) : core::rgba(0, 0, 255, 255),
 				static_cast<uint16_t>(back ? pie_chart_wedge_id_base : pie_chart_wedge_id_base + 1),
-				back && raise_back
+				back && raise_back,
 			};
 		}
 
@@ -1659,8 +1624,7 @@ static void should_point_at_the_pie_wedge_that_was_drawn()
 
 	const auto extent = chart.extent();
 
-	assert_equal(static_cast<int>(pie_chart_hole_id),
-	             static_cast<int>(chart.id_at({extent.cx / 2, extent.cy / 2})),
+	assert_equal(static_cast<int>(pie_chart_hole_id), static_cast<int>(chart.id_at({extent.cx / 2, extent.cy / 2})),
 	             "the well floor is what the centre of the chart points at", "pie chart");
 
 	auto back_pixels = 0;
@@ -1680,8 +1644,8 @@ static void should_point_at_the_pie_wedge_that_was_drawn()
 
 			// Only pixels the reduction did not mix, so this measures the identity buffer rather
 			// than the antialiasing along the seam between the halves.
-			if (chart.id_at({x - 1, y}) != id || chart.id_at({x + 1, y}) != id ||
-				chart.id_at({x, y - 1}) != id || chart.id_at({x, y + 1}) != id)
+			if (chart.id_at({x - 1, y}) != id || chart.id_at({x + 1, y}) != id || chart.id_at({x, y - 1}) != id ||
+			    chart.id_at({x, y + 1}) != id)
 			{
 				continue;
 			}
@@ -1737,11 +1701,10 @@ static void should_reach_every_month_block_in_the_calendar()
 			// The last month stands for one the collection has not reached: a socket with no
 			// identity, so it is drawn but cannot be aimed at.
 			const auto future = m == 11;
-			cells.emplace_back(recti(core::mul_div(m, extent.cx, 12), 0, core::mul_div(m + 1, extent.cx, 12), extent.cy),
-			                   future ? 0 : m,
-			                   core::rgba(200, 200, 200, 255),
-			                   future ? chart_surface::no_id : static_cast<uint16_t>(m + 1),
-			                   raise && m == 5);
+			cells.emplace_back(recti(core::mul_div(m, extent.cx, 12), 0, core::mul_div(m + 1, extent.cx, 12),
+			                         extent.cy),
+			                   future ? 0 : m, core::rgba(200, 200, 200, 255),
+			                   future ? chart_surface::no_id : static_cast<uint16_t>(m + 1), raise && m == 5);
 		}
 
 		render_calendar_chart(chart, cells, style);
@@ -1863,7 +1826,7 @@ static void should_keep_an_overlapped_month_selectable()
 	assert_equal(0, unclamped_found[1], "an unbounded block would bury the month above", "calendar overlap");
 }
 
-void register_render_tests(view_state& state, test_registry& tests)
+void register_render_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should unpremultiply surface alpha"s, should_unpremultiply_surface_alpha);
 #if defined(COMPILE_SIMD_INTRINSIC)
@@ -1892,8 +1855,7 @@ void register_render_tests(view_state& state, test_registry& tests)
 	//
 	tests.add("Should scale month blocks logarithmically"s, should_scale_month_blocks_logarithmically);
 	tests.add("Should point at the pie chart wedge that was drawn"s, should_point_at_the_pie_wedge_that_was_drawn);
-	tests.add("Should reach every month block in the calendar chart"s,
-	          should_reach_every_month_block_in_the_calendar);
+	tests.add("Should reach every month block in the calendar chart"s, should_reach_every_month_block_in_the_calendar);
 	tests.add("Should keep an overlapped calendar month selectable"s, should_keep_an_overlapped_month_selectable);
 
 	//

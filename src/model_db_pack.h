@@ -1,15 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Database property serialization: public metadata and opaque, database-only cache values.
 
 #pragma once
-
 
 class metadata_property_error final : public std::runtime_error
 {
@@ -32,20 +30,11 @@ public:
 		_data.push_back(version);
 	}
 
-	metadata_packer()
-	{
-		reset_to_header();
-	}
+	metadata_packer() { reset_to_header(); }
 
-	core::cspan cdata() const
-	{
-		return _data;
-	}
+	core::cspan cdata() const { return _data; }
 
-	size_t size() const
-	{
-		return _data.size();
-	}
+	size_t size() const { return _data.size(); }
 
 	void write_prop_id(const uint16_t id)
 	{
@@ -98,8 +87,7 @@ public:
 		if (value.size) _data.insert(_data.end(), value.data, value.data + value.size);
 	}
 
-	template <typename T>
-	void write(const uint16_t id, const T& v)
+	template <typename T> void write(const uint16_t id, const T& v)
 	{
 		constexpr auto val_len = sizeof(v);
 
@@ -143,7 +131,7 @@ public:
 	// each of stride and trailer length is what buys it.
 	static constexpr uint8_t date_pack_version = 2;
 	static constexpr uint8_t date_pack_group_stride = 18; // uint64 sources, int64 value, int16 offset
-	static constexpr uint8_t date_pack_trailer_len = 8; // uint64 overflow
+	static constexpr uint8_t date_pack_trailer_len = 8;   // uint64 overflow
 	static constexpr size_t date_pack_header_len = 4;
 
 	void write_date_pack(const uint16_t id, const prop::date_pack& dates)
@@ -186,7 +174,6 @@ public:
 	void pack(const prop::item_metadata_ptr& md);
 };
 
-
 class metadata_unpacker
 {
 	const core::cspan _data;
@@ -202,18 +189,12 @@ public:
 		}
 	}
 
-	size_t remaining() const
-	{
-		return _pos >= _data.size ? 0 : _data.size - _pos;
-	}
+	size_t remaining() const { return _pos >= _data.size ? 0 : _data.size - _pos; }
 
 	// True once no further (id, length, value) record can be read. Unpacking must terminate on
 	// this rather than on read_type() returning null, so that a property this build does not
 	// recognise is skipped by its length instead of truncating everything that follows it.
-	bool at_end() const
-	{
-		return (_version == 0 || _version > metadata_packer::version) || remaining() < 2;
-	}
+	bool at_end() const { return (_version == 0 || _version > metadata_packer::version) || remaining() < 2; }
 
 	uint16_t read_id()
 	{
@@ -228,10 +209,7 @@ public:
 	}
 
 	// The property for the next record, or prop::null when this build does not know the id.
-	prop::key_ref read_type()
-	{
-		return at_end() ? prop::null : prop::from_id(read_id());
-	}
+	prop::key_ref read_type() { return at_end() ? prop::null : prop::from_id(read_id()); }
 
 	size_t read_len()
 	{
@@ -284,8 +262,7 @@ public:
 		return property_record{id, value, {_data.data + start, _pos - start}};
 	}
 
-	template <typename T>
-	void read_val(T& v)
+	template <typename T> void read_val(T& v)
 	{
 		const auto ser_len = read_len();
 		core::assert_true(sizeof(v) == ser_len);
@@ -298,8 +275,7 @@ public:
 		_pos += ser_len;
 	}
 
-	template <typename T>
-	void read_val_compatible(T& v)
+	template <typename T> void read_val_compatible(T& v)
 	{
 		const auto ser_len = read_len();
 
@@ -322,8 +298,7 @@ public:
 
 	// A value now held in a wider type than some rows stored it in: a season was one byte until seasons went
 	// past 255. Unsigned and little-endian, so the stored bytes are the low ones.
-	template <typename T>
-	void read_val_widening(T& v)
+	template <typename T> void read_val_widening(T& v)
 	{
 		static_assert(std::is_unsigned_v<T>);
 		const auto ser_len = read_len();
@@ -339,10 +314,7 @@ public:
 	}
 
 	// Consume the value of a record this build does not understand.
-	void skip_val()
-	{
-		_pos += read_len();
-	}
+	void skip_val() { _pos += read_len(); }
 
 	// A pack whose body is malformed, or written to a pack version older than this build reads, is
 	// stepped over whole. A half-read pack would claim dates the file does not have, which is worse
@@ -379,8 +351,8 @@ public:
 		const auto known_trailer = static_cast<size_t>(metadata_packer::date_pack_trailer_len);
 		const auto body_len = metadata_packer::date_pack_header_len + count * stride + trailer_len;
 
-		if (version < metadata_packer::date_pack_version || stride < known_group ||
-			trailer_len < known_trailer || ser_len < body_len)
+		if (version < metadata_packer::date_pack_version || stride < known_group || trailer_len < known_trailer ||
+		    ser_len < body_len)
 		{
 			_pos = end;
 			return false;
@@ -454,15 +426,14 @@ inline std::optional<core::cspan> metadata_find_blob_property(const core::cspan 
 }
 
 inline core::blob metadata_replace_blob_property(const core::cspan data, const uint16_t id,
-                                               const std::optional<core::cspan> value)
+                                                 const std::optional<core::cspan> value)
 {
 	metadata_packer result;
 	metadata_unpacker reader(data);
 	while (const auto record = reader.read_record())
 	{
 		if (record->id != id)
-			result._data.insert(result._data.end(), record->encoded.data,
-			                    record->encoded.data + record->encoded.size);
+			result._data.insert(result._data.end(), record->encoded.data, record->encoded.data + record->encoded.size);
 	}
 	if (value) result.write_blob(id, *value);
 	return std::move(result._data);

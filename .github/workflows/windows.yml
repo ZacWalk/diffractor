@@ -1,5 +1,5 @@
 # Purpose: Guard the Windows build, which is CMake. This replaces the MSBuild workflow as part of
-# retiring df.sln; see docs/linux.md#retiring-msbuild. Nothing on any commit built CMake on Windows
+# retiring df.sln; see docs/linux.md#one-build-description. Nothing on any commit built CMake on Windows
 # before this, which was the last hole in the build gate.
 #
 # It drives the dd gateway rather than calling cmake directly, so CI exercises the same path a

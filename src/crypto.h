@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Cryptographic utilities facade. Provides HMAC-SHA1, CRC32C, FNV-1a hashing and a DCT
 // perceptual image hash, used throughout the application.
@@ -70,14 +69,9 @@ namespace crypto
 		uint32_t h = FNV_32_INIT;
 
 	public:
-		hash_gen()
-		{
-		}
+		hash_gen() {}
 
-		hash_gen(const std::string_view sv)
-		{
-			append(sv);
-		}
+		hash_gen(const std::string_view sv) { append(sv); }
 
 		hash_gen& append(const std::string_view sv)
 		{
@@ -115,9 +109,6 @@ namespace crypto
 			return *this;
 		}
 
-		uint32_t result() const
-		{
-			return h;
-		}
+		uint32_t result() const { return h; }
 	};
 }

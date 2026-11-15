@@ -21,13 +21,13 @@ Ask for the dump, report, or log if none was supplied.
      and the file should present as a failed item, not one still loading.
    - A **graphics fault** — check whether the hardware-acceleration fallback fired. If it did not,
      that is a second defect alongside the first.
-   - A **startup fault** before the first window — the degraded-start path owns this, and the user
-     has no mental model for it. Two consecutive unsettled launches must open with the default
-     layout and acceleration off, saying so.
+   - A **startup fault** before the first window — the safe-start path owns this, and the user has
+     no mental model for it. After two unsettled launches the next opens safe - the default layout,
+     with GPU rendering and hardware decode off - and says so.
    - A **lifetime or currency fault** — a worker result applied to an object that moved on. Check
      for a `weak_ptr::lock()` with no accompanying generation, path, or request check; lifetime is
      not currency. Also check for a handle whose lifetime was bound to visibility rather than
-     existence: Diffractor 1.27.0 shipped a startup crash that was exactly that.
+     existence.
 
 4. **State the hypothesis as something falsifiable**, then find the discriminating check. Cap at
    three correction attempts on one hypothesis, then stop and report.

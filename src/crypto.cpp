@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Cryptographic utilities including HMAC-SHA1, CRC32 checksums, and FNV-1a hashing for
 // file integrity and authentication.
@@ -88,8 +87,8 @@ namespace
 			{
 				for (size_t x = 0; x < crypto::phash_extent; ++x)
 				{
-					(*result)[u * crypto::phash_extent + x] =
-						std::cos((2.0 * x + 1.0) * u * M_PI / (2.0 * crypto::phash_extent));
+					(*result)[u * crypto::phash_extent + x] = std::cos((2.0 * x + 1.0) * u * M_PI /
+					                                                   (2.0 * crypto::phash_extent));
 				}
 			}
 
@@ -232,4 +231,3 @@ crypto::phash_rotations crypto::perceptual_hash_rotations(const uint8_t* gray, c
 
 	return result;
 }
-

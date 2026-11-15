@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Session-aggregate performance diagnostics: what thumbnails, the database, queries, files, the
 // index and the worker queues cost this session, summarised once at exit with what painting and
@@ -16,14 +15,26 @@ namespace df
 {
 	struct thumbnail_counters
 	{
-		std::atomic_uint32_t scan_batches = 0;
-		std::atomic_uint32_t scan_batches_cancelled = 0;
-		std::atomic_uint32_t scan_batches_queued = 0;
-		std::atomic_uint32_t scan_batches_pending = 0;
-		std::atomic_uint32_t scan_batches_pending_peak = 0;
-		std::atomic_uint64_t scan_thumbs_requested = 0;
+		// The visible plan: how often it was made, how many file scans it asked for, how many requests a
+		// replacement handed back without asking for them again - what scrolling dropped - and how many it scanned.
+		std::atomic_uint32_t plans = 0;
+		std::atomic_uint64_t plan_requests = 0;
+		std::atomic_uint64_t plan_dropped = 0;
+		std::atomic_uint32_t plan_peak = 0;
 		std::atomic_uint64_t scan_thumbs_scanned = 0;
 		std::atomic_uint64_t scan_completions_stale = 0;
+		// Stills the thumbnailing thread read whole for the decode threads, the time reading and decoding took,
+		// the most reads waiting for a decoder, and how often reading stopped until one was free.
+		std::atomic_uint64_t source_reads = 0;
+		std::atomic_uint64_t source_bytes = 0;
+		std::atomic_uint64_t source_read_us = 0;
+		std::atomic_uint32_t source_read_max_us = 0;
+		std::atomic_uint64_t decode_us = 0;
+		std::atomic_uint32_t decode_max_us = 0;
+		std::atomic_uint32_t decode_backlog_peak = 0;
+		std::atomic_uint64_t reader_waits = 0;
+		// Thumbnails that arrived with the surface they were encoded from, so the render queue never decoded them.
+		std::atomic_uint64_t surfaces_adopted = 0;
 		std::atomic_uint64_t stage_requests = 0;
 		std::atomic_uint64_t stage_skipped = 0;
 		std::atomic_uint64_t stage_coalesced = 0;

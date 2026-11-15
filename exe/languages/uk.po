@@ -100,6 +100,9 @@ msgstr "аудіо"
 msgid "Audio"
 msgstr "Аудіо"
 
+msgid "AVIF - Small files, widely supported"
+msgstr "AVIF - Невеликі файли, широка підтримка"
+
 msgid "Before"
 msgstr "Раніше"
 
@@ -827,8 +830,8 @@ msgstr "Перетворювати всі фотографії на JPEG"
 msgid "Failed to send email using MAPI."
 msgstr "Не вдалося надіслати електронний лист за допомогою MAPI."
 
-msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
-msgstr "Обмежте фотографії максимальним розміром (у пікселях). Підтримується лише для файлів JPEG і PNG."
+msgid "Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG."
+msgstr "Обмежте фотографії максимальним розміром (у пікселях). Фото у форматі, який Diffractor не записує, надсилається як JPEG."
 
 msgid "Processing {}"
 msgstr "Обробка {}"
@@ -1939,6 +1942,7 @@ msgstr "Page Down"
 
 msgid "["
 msgstr "["
+
 msgid "]"
 msgstr "]"
 
@@ -2137,8 +2141,8 @@ msgstr "Елементи лише для читання не підтримую�
 msgid "Cannot update metadata of readonly items."
 msgstr "Неможливо оновити метадані елементів, доступних лише для читання."
 
-msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
-msgstr "Diffractor може лише зберігати або оновлювати файли зображень JPG, WEBP і PNG."
+msgid "Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files."
+msgstr "Diffractor може обертати лише файли зображень JPEG, PNG, WEBP, JPEG XL, HEIC і AVIF."
 
 msgid "Nothing found."
 msgstr "Нічого не знайдено."
@@ -2185,8 +2189,8 @@ msgstr "Додатково"
 msgid "Application options"
 msgstr "Параметри програми"
 
-msgid "When overwriting a photo with irreversible changes make an original backup copy"
-msgstr "У разі перезапису фотографії з незворотними змінами зробіть оригінальну резервну копію"
+msgid "When overwriting a file with irreversible changes make an original backup copy"
+msgstr "У разі перезапису файлу з незворотними змінами зробіть оригінальну резервну копію"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "Перевірте наявність оновлень, підключившись до Інтернету"
@@ -2209,6 +2213,9 @@ msgstr "Якість збереження WEBP"
 msgid "JPEG XL save quality"
 msgstr "Якість збереження JPEG XL"
 
+msgid "AVIF save quality"
+msgstr "Якість збереження AVIF"
+
 msgid "When saving"
 msgstr "При збереженні"
 
@@ -2220,6 +2227,9 @@ msgstr "Показати інформацію про налагодження п
 
 msgid "Show hidden files"
 msgstr "Показати приховані файли"
+
+msgid "Reuse existing window when opening files"
+msgstr "Відкривати файли в наявному вікні"
 
 msgid "Show photos rotated based on recorded camera orientation"
 msgstr "Показувати фотографії, повернуті відповідно до записаної орієнтації камери"
@@ -2274,6 +2284,9 @@ msgstr "інші"
 
 msgid "pasted"
 msgstr "вставлений"
+
+msgid "dropped"
+msgstr "перетягнутий"
 
 msgid "photo"
 msgstr "фото"
@@ -2635,8 +2648,8 @@ msgstr "ретро"
 msgid "Saturation"
 msgstr "Насиченість"
 
-msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
-msgstr "Diffractor не може обрізати, обертати або розфарбовувати файли {}. Ви можете зберегти файл як JPEG?"
+msgid "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?"
+msgstr "Diffractor не може записати ці зміни у файли {}. Зберегти фото як JPEG?"
 
 msgid "Save Changes"
 msgstr "Зберегти зміни"
@@ -2806,6 +2819,9 @@ msgstr "Автоматично вирівняти горизонтальні т�
 msgid "Show the final cropped image"
 msgstr "Показати остаточне обрізане зображення"
 
+msgid "Drag across the photo to compare the edit with the original."
+msgstr "Проведіть по фотографії, щоб порівняти редагування з оригіналом."
+
 msgid "Horizontal perspective"
 msgstr "Горизонтальна перспектива"
 
@@ -2860,8 +2876,8 @@ msgstr "Видалити локальні файли, які не існують
 msgid "Delete remote files that do not exist locally"
 msgstr "Видалити віддалені файли, які не існують локально"
 
-msgid "c:\\photos with \\\\nas\\\\backup"
-msgstr "c:\\photos з \\\\nas\\\\backup"
+msgid "c:\\photos with \\\\nas\\backup"
+msgstr "c:\\photos з \\\\nas\\backup"
 
 msgid "Local folders"
 msgstr "Локальні папки"
@@ -3620,8 +3636,8 @@ msgstr "Diffractor не може записувати оцінки, мітки �
 msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
 msgstr "Щоб указати кілька жанрів, розділяйте їх крапкою з комою. Наприклад: Rock; Blues"
 
-msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
-msgstr "Виберіть одне фото для редагування. Відео, аудіо, папки та формати, які Diffractor не може зберегти, не підтримуються."
+msgid "Select one photo, video or sound file to edit."
+msgstr "Виберіть одне фото, відео або звуковий файл для редагування."
 
 msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
 msgstr "Вимкнено: фото та відео, менші за вікно, показуються в реальному розмірі. Увімкнено: вони збільшуються до розміру вікна. Медіа, більші за вікно, завжди зменшуються, щоб уміститися."
@@ -3731,8 +3747,8 @@ msgstr "Сортувати за датою оригіналу"
 msgid "Movie mixer"
 msgstr "Мікшер фільму"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Зберіть вибрані фотографії та відео в один ролик. Додавайте, вилучайте та змінюйте порядок кліпів на смузі нижче й обрізайте вибраний кліп. Попередній перегляд показує те, що буде відтворено; нічого не записується, доки ви не відтворите або не збережете."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Зберіть вибрані фотографії, відео та аудіофайли в один ролик, з текстовими екранами там, де вони потрібні. Додавайте, вилучайте та змінюйте порядок елементів на смузі нижче, а вибраний елемент редагуйте тут. Попередній перегляд показує те, що буде відтворено; нічого не записується, доки ви не відтворите або не збережете."
 
 msgid "Movie"
 msgstr "Фільм"
@@ -3740,50 +3756,38 @@ msgstr "Фільм"
 msgid "Selected clip"
 msgstr "Вибраний кліп"
 
-msgid "Crossfade between clips"
-msgstr "Перехресне згасання між кліпами"
+msgid "Text screen"
+msgstr "Текстовий екран"
 
-msgid "Cut between clips"
-msgstr "Склейка між кліпами"
+msgid "Text"
+msgstr "Текст"
 
-msgid "Transition (tenths of a second)"
-msgstr "Перехід (десяті частки секунди)"
+msgid "Caption"
+msgstr "Підпис"
 
-msgid "Fade (tenths of a second)"
-msgstr "Поява/згасання (десяті частки секунди)"
+msgid "Shown for (seconds)"
+msgstr "Тривалість показу (у секундах)"
 
-msgid "Fade in from black"
-msgstr "Поява з чорного"
+msgid "Stabilize (not applied yet)"
+msgstr "Стабілізувати (поки не застосовується)"
 
-msgid "Fade out to black"
-msgstr "Згасання в чорне"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Тривалість фотографії (десяті частки секунди)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Ця фотографія (десяті частки секунди)"
-
-msgid "Use the movie default"
-msgstr "Використовувати типове значення фільму"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Додайте фотографії та відео, щоб створити фільм."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Додайте фотографії, відео та аудіофайли, щоб створити фільм."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Результат {} x {}, {} кадр/с, тривалість {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - кліп {} з {}, початок {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - елемент {} з {}, початок {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Елемент {} з {}, початок {}."
 
 msgid "Movie project"
 msgstr "Проєкт фільму"
 
-msgid "Windows Movie Maker project"
-msgstr "Проєкт Windows Movie Maker"
-
-msgid "Photos and videos"
-msgstr "Фотографії та відео"
+msgid "Photos, videos and audio"
+msgstr "Фотографії, відео та аудіо"
 
 msgid "Could not read the project {}."
 msgstr "Не вдалося прочитати проєкт {}."
@@ -3791,11 +3795,17 @@ msgstr "Не вдалося прочитати проєкт {}."
 msgid "Could not save the project {}."
 msgstr "Не вдалося зберегти проєкт {}."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Збирає вибрані фотографії та відео в один ролик."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Збирає вибрані фотографії, відео та аудіофайли в один ролик."
 
 msgid "Add files"
 msgstr "Додати файли"
+
+msgid "Add text screen"
+msgstr "Додати текстовий екран"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Додає після вибраного елемента екран із текстом на чорному тлі."
 
 msgid "Remove from movie"
 msgstr "Вилучити з фільму"
@@ -3808,9 +3818,6 @@ msgstr "Відкрити проєкт"
 
 msgid "Save project"
 msgstr "Зберегти проєкт"
-
-msgid "Import Movie Maker project"
-msgstr "Імпортувати проєкт Movie Maker"
 
 msgid "Video"
 msgstr "Відео"
@@ -3866,11 +3873,11 @@ msgstr "Перепризначити відсутні файли"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Спрямовує кліпи, вихідні файли яких було переміщено, до вибраної вами теки."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "1 елемент імпортованого проєкту пропущено, оскільки Фільм не може його представити."
-msgstr[1] "{count} елементи імпортованого проєкту пропущено, оскільки Фільм не може їх представити."
-msgstr[2] "{count} елементів імпортованого проєкту пропущено, оскільки Фільм не може їх представити."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "1 рядок проєкту не вдалося прочитати, його пропущено."
+msgstr[1] "{count} рядки проєкту не вдалося прочитати, їх пропущено."
+msgstr[2] "{count} рядків проєкту не вдалося прочитати, їх пропущено."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
@@ -3878,15 +3885,42 @@ msgstr[0] "1 кліп не може знайти свій вихідний фа�
 msgstr[1] "{count} кліпи не можуть знайти свої вихідні файли."
 msgstr[2] "{count} кліпів не можуть знайти свої вихідні файли."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 кліп перепризначено."
-msgstr[1] "{count} кліпи перепризначено."
-msgstr[2] "{count} кліпів перепризначено."
 
+msgid "Pattern"
+msgstr "Патерн"
 
-msgid "SID monitor"
-msgstr "Монітор SID"
+msgid "Row"
+msgstr "Рядок"
+
+msgid "Speed"
+msgstr "Швидкість"
+
+msgid "Samples"
+msgstr "Семпли"
+
+msgid "Instruments"
+msgstr "Інструменти"
+
+msgid "Follow playback"
+msgstr "Стежити за відтворенням"
+
+msgid "Notes"
+msgstr "Ноти"
+
+msgid "Range"
+msgstr "Діапазон"
+
+msgid "Compressed"
+msgstr "Стиснуто"
+
+msgid "Codec"
+msgstr "Кодек"
+
+msgid "Format"
+msgstr "Формат"
+
+msgid "Sidecars"
+msgstr "Супровідні"
 
 msgid "Voice {}"
 msgstr "Голос {}"
@@ -3905,6 +3939,21 @@ msgstr "Запис у регістри"
 
 msgid "Solo"
 msgstr "Соло"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Запустити на емульованому Commodore 64"
+
+msgid "Start"
+msgstr "Запустити"
+
+msgid "Joystick port {}"
+msgstr "Порт джойстика {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Стрілки та пробіл: джойстик. Esc: назад."
+
+msgid "This file could not be started."
+msgstr "Не вдалося запустити цей файл."
 
 msgid "Same film"
 msgstr "Той самий фільм"
@@ -4001,3 +4050,135 @@ msgid_plural "{count} of the items shown"
 msgstr[0] "1 з показаних елементів"
 msgstr[1] "{count} з показаних елементів"
 msgstr[2] "{count} з показаних елементів"
+
+msgid "Trim"
+msgstr "Обрізання"
+
+msgid "Keep all"
+msgstr "Залишити все"
+
+msgid "This format plays a copy from the key frame before its start, so it may begin a moment early."
+msgstr "У цьому форматі копія відтворюється з ключового кадру перед її початком, тому може початися трохи раніше."
+
+msgid "Remove the sound"
+msgstr "Видалити звук"
+
+msgid "Rotate"
+msgstr "Поворот"
+
+msgid "Saving leaves out what this format cannot hold: {}."
+msgstr "Під час збереження пропускається те, що цей формат не може містити: {}."
+
+msgid "Saved as MP4, the copy leaves out what MP4 cannot hold: {}."
+msgstr "Під час збереження в MP4 у копії пропускається те, що MP4 не може містити: {}."
+
+msgid "A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4."
+msgstr "Копія відео або аудіофайлу зберігається у форматі вихідного файлу або в MP4."
+
+msgid "This file cannot be copied without re-encoding it."
+msgstr "Цей файл неможливо скопіювати без перекодування."
+
+msgid "Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save."
+msgstr "Редагування без втрат шляхом перемультиплексування: відео та звук копіюються в новий файл того самого формату або в MP4 без перекодування, тож нічого не втрачається. Під час збереження структура файлу перебудовується, тому «Зберегти як» без змін створює перемультиплексовану копію, яка може виправити файл, що його не відтворюють інші програвачі. Нічого не записується на диск, доки ви не збережете."
+
+msgid "Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown."
+msgstr "Перетягніть маркери на кінцях шкали відтворення, щоб вибрати, що залишиться, або натисніть I та O, щоб почати чи закінчити на показаному кадрі."
+
+msgid "Rotate left"
+msgstr "Повернути ліворуч"
+
+msgid "Rotate right"
+msgstr "Повернути праворуч"
+
+msgid "Start {}, end {}, length {}"
+msgstr "Початок {}, кінець {}, тривалість {}"
+
+msgid "Sound removed"
+msgstr "Звук видалено"
+
+msgid "Rotated right"
+msgstr "Повернуто праворуч"
+
+msgid "Upside down"
+msgstr "Догори ногами"
+
+msgid "Rotated left"
+msgstr "Повернуто ліворуч"
+
+msgid "No changes. Save As writes a re-muxed copy."
+msgstr "Змін немає. «Зберегти як» запише перемультиплексовану копію."
+
+msgid "This file could not be read, so it cannot be copied or repaired."
+msgstr "Не вдалося прочитати цей файл, тому його неможливо скопіювати або виправити."
+
+msgid "Write MP4s with their index at the front"
+msgstr "Записувати MP4 з індексом на початку файлу"
+
+msgid "Attempt to fix damaged files (don't fail on file errors)"
+msgstr "Намагатися виправити пошкоджені файли (не зупинятися через помилки у файлах)"
+
+msgid "The file is damaged. The copy keeps what could be read."
+msgstr "Файл пошкоджено. У копії збережено те, що вдалося прочитати."
+
+msgid "Damaged parts left out: {}"
+msgstr "Пропущено пошкоджених частин: {}"
+
+msgid "The copy ends at {}, where the file could be read no further."
+msgstr "Копія закінчується на {}: далі файл не вдалося прочитати."
+
+msgid "The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options."
+msgstr "Файл пошкоджено, і у виправленій копії бракує його частини. Щоб зберегти оригінал, збережіть копію за допомогою «Зберегти як» або увімкніть резервну копію в параметрах збереження."
+
+msgid "Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?"
+msgstr "Diffractor не може записати ці зміни у файли {}. Зберегти фото як AVIF, що зберігає HDR і глибину кольору, які JPEG втратив би?"
+
+msgid "As &AVIF"
+msgstr "Як &AVIF"
+
+msgid "This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?"
+msgstr "Це фото в HDR і завелике для редагування в HDR. Зберегти зміни як копію зі стандартним динамічним діапазоном, а фото залишити як є?"
+
+msgid "&Save a Copy"
+msgstr "&Зберегти копію"
+
+msgid "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?"
+msgstr "Файли {} не можуть містити HDR, тому копія матиме стандартний динамічний діапазон. Однаково зберегти?"
+
+msgid "{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?"
+msgstr "Файли {} не можуть містити карту підсилення цього фото, завдяки якій воно показується в HDR, тому копія матиме стандартний динамічний діапазон. Однаково зберегти?"
+
+msgid "This photo is HDR. It is shown here in standard range, and its edits keep its HDR."
+msgstr "Це фото в HDR. Тут воно показане в стандартному динамічному діапазоні, а редагування зберігає його HDR."
+
+msgid "This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy."
+msgstr "Це фото в HDR, але завелике для редагування в HDR. Воно редагується в стандартному динамічному діапазоні, а зміни його пікселів зберігаються як копія."
+
+msgid "This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel."
+msgstr "Це фото завелике для редагування з повною глибиною кольору, тому воно редагується і зберігається з 8 бітами на канал."
+
+msgid "HDR photos are written in standard range, with a gain map that shows them in HDR where the display can."
+msgstr "Фото в HDR записуються в стандартному динамічному діапазоні, з картою підсилення, яка показує їх у HDR там, де це дозволяє екран."
+
+msgid "HDR photos, and those with a gain map, are written in standard range."
+msgstr "Фото в HDR і фото з картою підсилення записуються в стандартному динамічному діапазоні."
+
+msgid "HDR photos stay HDR, but gain maps are left out."
+msgstr "Фото в HDR залишаються в HDR, але карти підсилення пропускаються."
+
+msgid "HDR photos stay HDR, and gain maps are kept."
+msgstr "Фото в HDR залишаються в HDR, а карти підсилення зберігаються."
+
+msgid "Color profile"
+msgstr "Колірний профіль"
+
+msgid "HDR"
+msgstr "HDR"
+
+msgid "Bit depth"
+msgstr "Глибина кольору"
+
+msgid "Frame rate"
+msgstr "Частота кадрів"
+
+msgid "Contents"
+msgstr "Вміст"

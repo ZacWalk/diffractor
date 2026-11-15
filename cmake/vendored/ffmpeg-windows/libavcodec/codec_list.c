@@ -386,6 +386,7 @@ static const FFCodec * const codec_list[] = {
     &ff_pcm_f64le_decoder,
     &ff_pcm_lxf_decoder,
     &ff_pcm_mulaw_decoder,
+    &ff_pcm_pamf_decoder,
     &ff_pcm_s8_decoder,
     &ff_pcm_s8_planar_decoder,
     &ff_pcm_s16be_decoder,

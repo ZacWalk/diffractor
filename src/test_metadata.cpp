@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Metadata tests (metadata_exif, metadata_iptc, metadata_xmp, metadata_icc) -- scanning
 // properties from JPEG, TIFF, MP3, MP4, MOV, MKV, AVI, RAW, HEIF, AVIF, WebP, JXL and MOD files, tag
@@ -42,8 +41,16 @@ static void should_replace_tokens()
 	assert_equal("2012\\09\\14", replace_tokens("{year}\\{month}\\{day}"s, md1, {}, md1->created()));
 	assert_equal("2012\\september\\14", replace_tokens("{year}\\{month.text}\\{day}"s, md1, {}, md1->created()));
 	assert_equal("2012\\SEP\\14", replace_tokens("{year}\\{month.short}\\{day}"s, md1, {}, md1->created()));
-	assert_equal("Counting Crows\\This Desert Life",
-	             replace_tokens("{artist}\\{album}"s, md2, {}, md2->created()));
+	assert_equal("Counting Crows\\This Desert Life", replace_tokens("{artist}\\{album}"s, md2, {}, md2->created()));
+
+	// #17: the stars and tags given in Diffractor can name a file too.
+	const auto tagged = std::make_shared<prop::item_metadata>();
+	tagged->rating = 4;
+	tagged->title = core::cache("Trip");
+	tagged->tags = core::cache("\"New York\" beach");
+	assert_equal("4 Trip - beach, New York", replace_tokens("{rating} {title} - {tags}"s, tagged, {}, {}));
+	assert_equal("Unknown-Unknown", replace_tokens("{rating}-{tags}"s, std::make_shared<prop::item_metadata>(), {}, {}),
+	             "and say so where there are none");
 }
 
 static void should_scan_jpeg()
@@ -133,15 +140,14 @@ static void should_clear_tags_from_an_empty_xmp_subject()
 {
 	const auto write_sidecar = [](const std::string_view dc_body)
 	{
-		const auto path = _temps.next_path(".xmp");
-		const auto xml = std::format(
-			"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
-			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-			"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-			"<rdf:Description rdf:about=\"\" "
-			"xmlns:dc=\"http://purl.org/dc/elements/1.1/\">{}</rdf:Description>"
-			"</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
-			dc_body);
+		const auto path = test_temps.next_path(".xmp");
+		const auto xml = std::format("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+		                             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+		                             "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+		                             "<rdf:Description rdf:about=\"\" "
+		                             "xmlns:dc=\"http://purl.org/dc/elements/1.1/\">{}</rdf:Description>"
+		                             "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
+		                             dc_body);
 
 		std::ofstream f(platform::to_stream_path(path), std::ios::binary | std::ios::trunc);
 		f.write(xml.data(), static_cast<std::streamsize>(xml.size()));
@@ -168,8 +174,7 @@ static void should_clear_tags_from_an_empty_xmp_subject()
 	{
 		prop::item_metadata md;
 		md.tags = "Holiday Portugal"_c;
-		metadata_xmp::parse(md, write_sidecar(
-			                    "<dc:subject><rdf:Bag><rdf:li>Lisbon</rdf:li></rdf:Bag></dc:subject>"));
+		metadata_xmp::parse(md, write_sidecar("<dc:subject><rdf:Bag><rdf:li>Lisbon</rdf:li></rdf:Bag></dc:subject>"));
 		assert_equal("Lisbon", md.tags, "and a populated one replaces them");
 	}
 }
@@ -182,15 +187,14 @@ static void should_apply_xmp_gps_as_a_pair()
 {
 	const auto write_sidecar = [](const std::string_view exif_body)
 	{
-		const auto path = _temps.next_path(".xmp");
-		const auto xml = std::format(
-			"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
-			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-			"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-			"<rdf:Description rdf:about=\"\" "
-			"xmlns:exif=\"http://ns.adobe.com/exif/1.0/\">{}</rdf:Description>"
-			"</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
-			exif_body);
+		const auto path = test_temps.next_path(".xmp");
+		const auto xml = std::format("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+		                             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+		                             "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+		                             "<rdf:Description rdf:about=\"\" "
+		                             "xmlns:exif=\"http://ns.adobe.com/exif/1.0/\">{}</rdf:Description>"
+		                             "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
+		                             exif_body);
 
 		std::ofstream f(platform::to_stream_path(path), std::ios::binary | std::ios::trunc);
 		f.write(xml.data(), static_cast<std::streamsize>(xml.size()));
@@ -201,7 +205,7 @@ static void should_apply_xmp_gps_as_a_pair()
 	{
 		prop::item_metadata md;
 		metadata_xmp::parse(md, write_sidecar("<exif:GPSLatitude>51,30.852N</exif:GPSLatitude>"
-			"<exif:GPSLongitude>0,5.910W</exif:GPSLongitude>"));
+		                                      "<exif:GPSLongitude>0,5.910W</exif:GPSLongitude>"));
 		assert_equal(true, md.coordinate.is_valid(), "a complete pair is read");
 		assert_equal(true, std::abs(md.coordinate.latitude() - 51.5142) < 0.001, "latitude");
 		assert_equal(true, std::abs(md.coordinate.longitude() + 0.0985) < 0.001, "longitude");
@@ -213,8 +217,7 @@ static void should_apply_xmp_gps_as_a_pair()
 		md.coordinate = gps_coordinate(35.68, 139.69);
 		metadata_xmp::parse(md, write_sidecar("<exif:GPSLatitude>51,30.852N</exif:GPSLatitude>"));
 
-		assert_equal(true, std::abs(md.coordinate.latitude() - 35.68) < 0.001,
-		             "half a pair changes neither component");
+		assert_equal(true, std::abs(md.coordinate.latitude() - 35.68) < 0.001, "half a pair changes neither component");
 		assert_equal(true, std::abs(md.coordinate.longitude() - 139.69) < 0.001,
 		             "so the EXIF coordinate is left whole");
 	}
@@ -226,12 +229,13 @@ static void should_apply_xmp_gps_as_a_pair()
 	}
 
 	const auto assert_rejected = [&write_sidecar](const std::string_view latitude, const std::string_view longitude,
-	                                             const std::string_view message)
+	                                              const std::string_view message)
 	{
 		prop::item_metadata md;
 		md.coordinate = gps_coordinate(35.68, 139.69);
 		metadata_xmp::parse(md, write_sidecar(std::format("<exif:GPSLatitude>{}</exif:GPSLatitude>"
-			"<exif:GPSLongitude>{}</exif:GPSLongitude>", latitude, longitude)));
+		                                                  "<exif:GPSLongitude>{}</exif:GPSLongitude>",
+		                                                  latitude, longitude)));
 		assert_equal(gps_coordinate(35.68, 139.69), md.coordinate, message);
 	};
 
@@ -248,15 +252,14 @@ static void should_read_xmp_disc_number()
 {
 	const auto write_sidecar = [](const std::string_view dm_body)
 	{
-		const auto path = _temps.next_path(".xmp");
-		const auto xml = std::format(
-			"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
-			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-			"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-			"<rdf:Description rdf:about=\"\" "
-			"xmlns:xmpDM=\"http://ns.adobe.com/xmp/1.0/DynamicMedia/\">{}</rdf:Description>"
-			"</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
-			dm_body);
+		const auto path = test_temps.next_path(".xmp");
+		const auto xml = std::format("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+		                             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+		                             "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+		                             "<rdf:Description rdf:about=\"\" "
+		                             "xmlns:xmpDM=\"http://ns.adobe.com/xmp/1.0/DynamicMedia/\">{}</rdf:Description>"
+		                             "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
+		                             dm_body);
 
 		std::ofstream f(platform::to_stream_path(path), std::ios::binary | std::ios::trunc);
 		f.write(xml.data(), static_cast<std::streamsize>(xml.size()));
@@ -296,7 +299,8 @@ static void should_report_empty_xmp_packet_as_parsed()
 		R"(<rdf:Description rdf:about=""/></rdf:RDF></x:xmpmeta>)";
 	bool parsed = false;
 	const auto empty_rows = metadata_xmp::to_info(core::cspan{std::bit_cast<const uint8_t*>(empty_packet.data()),
-	                                                        empty_packet.size()}, parsed);
+	                                                          empty_packet.size()},
+	                                              parsed);
 	assert_equal(true, empty_rows.empty(), "an empty packet has no rows");
 	assert_equal(true, parsed, "an empty packet is understood");
 
@@ -312,15 +316,14 @@ static void should_read_the_declared_panorama_projection()
 {
 	const auto write_sidecar = [](const std::string_view gpano_body)
 	{
-		const auto path = _temps.next_path(".xmp");
-		const auto xml = std::format(
-			"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
-			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-			"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-			"<rdf:Description rdf:about=\"\" "
-			"xmlns:GPano=\"http://ns.google.com/photos/1.0/panorama/\">{}</rdf:Description>"
-			"</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
-			gpano_body);
+		const auto path = test_temps.next_path(".xmp");
+		const auto xml = std::format("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+		                             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+		                             "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+		                             "<rdf:Description rdf:about=\"\" "
+		                             "xmlns:GPano=\"http://ns.google.com/photos/1.0/panorama/\">{}</rdf:Description>"
+		                             "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
+		                             gpano_body);
 
 		std::ofstream f(platform::to_stream_path(path), std::ios::binary | std::ios::trunc);
 		f.write(xml.data(), static_cast<std::streamsize>(xml.size()));
@@ -351,8 +354,7 @@ static void should_read_the_declared_panorama_projection()
 	             static_cast<int>(write_sidecar("<GPano:FullPanoWidthPixels>8192</GPano:FullPanoWidthPixels>")),
 	             "declared by its full extent");
 
-	assert_equal(static_cast<int>(prop::panorama_projection::none),
-	             static_cast<int>(write_sidecar("")),
+	assert_equal(static_cast<int>(prop::panorama_projection::none), static_cast<int>(write_sidecar("")),
 	             "and a file carrying no GPano at all is not a panorama");
 
 	// The presence bit is what lets the index reject candidates before it loads them.
@@ -390,8 +392,8 @@ static void should_scan_tiff_camera_metadata()
 		const auto tag = reader.le16(at);
 		if (tag != 0x011a && tag != 0x011b) continue;
 		// Replace the writer's resolution entries with a TIFF image's dimensions.
-		const uint8_t entry[] = {static_cast<uint8_t>(tag == 0x011a ? 0x00 : 0x01), 0x01,
-			0x03, 0, 1, 0, 0, 0, static_cast<uint8_t>(tag == 0x011a ? 64 : 32), 0, 0, 0};
+		const uint8_t entry[] = {static_cast<uint8_t>(tag == 0x011a ? 0x00 : 0x01), 0x01, 0x03, 0, 1, 0, 0, 0,
+		                         static_cast<uint8_t>(tag == 0x011a ? 64 : 32),     0,    0,    0};
 		std::copy(std::begin(entry), std::end(entry), bytes.begin() + at);
 		++dimensions;
 	}
@@ -422,28 +424,29 @@ static void should_scan_tiff_camera_metadata()
 
 static std::string panorama_packet(const prop::panorama_geometry& geometry)
 {
-	return std::format(
-		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-		"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-		"<rdf:Description rdf:about=\"\" xmlns:GPano=\"http://ns.google.com/photos/1.0/panorama/\" "
-		"GPano:ProjectionType=\"equirectangular\" GPano:FullPanoWidthPixels=\"{}\" "
-		"GPano:FullPanoHeightPixels=\"{}\" GPano:CroppedAreaLeftPixels=\"{}\" "
-		"GPano:CroppedAreaTopPixels=\"{}\" GPano:CroppedAreaImageWidthPixels=\"{}\" "
-		"GPano:CroppedAreaImageHeightPixels=\"{}\"/></rdf:RDF></x:xmpmeta>",
-		geometry.full_width, geometry.full_height, geometry.cropped_left, geometry.cropped_top,
-		geometry.cropped_width, geometry.cropped_height);
+	return std::format("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+	                   "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+	                   "<rdf:Description rdf:about=\"\" xmlns:GPano=\"http://ns.google.com/photos/1.0/panorama/\" "
+	                   "GPano:ProjectionType=\"equirectangular\" GPano:FullPanoWidthPixels=\"{}\" "
+	                   "GPano:FullPanoHeightPixels=\"{}\" GPano:CroppedAreaLeftPixels=\"{}\" "
+	                   "GPano:CroppedAreaTopPixels=\"{}\" GPano:CroppedAreaImageWidthPixels=\"{}\" "
+	                   "GPano:CroppedAreaImageHeightPixels=\"{}\"/></rdf:RDF></x:xmpmeta>",
+	                   geometry.full_width, geometry.full_height, geometry.cropped_left, geometry.cropped_top,
+	                   geometry.cropped_width, geometry.cropped_height);
 }
 
 static core::file_path write_panorama_fixture(const bool heif, const std::string_view packet, const bool compress)
 {
-	const auto path = _temps.next_path(heif ? ".heif" : ".jxl");
+	const auto path = test_temps.next_path(heif ? ".heif" : ".jxl");
 	if (heif)
 	{
-		const std::unique_ptr<heif_context, decltype(&heif_context_free)> context(heif_context_alloc(), heif_context_free);
+		const std::unique_ptr<heif_context, decltype(&heif_context_free)> context(heif_context_alloc(),
+		                                                                          heif_context_free);
 		assert_equal(true, context != nullptr, "HEIF context created");
 		heif_image* raw_image = nullptr;
-		assert_equal(heif_error_Ok, heif_image_create(4, 2, heif_colorspace_RGB, heif_chroma_interleaved_RGB,
-		                                            &raw_image).code, "HEIF image created");
+		assert_equal(heif_error_Ok,
+		             heif_image_create(4, 2, heif_colorspace_RGB, heif_chroma_interleaved_RGB, &raw_image).code,
+		             "HEIF image created");
 		const std::unique_ptr<heif_image, decltype(&heif_image_release)> image(raw_image, heif_image_release);
 		assert_equal(heif_error_Ok, heif_image_add_plane(image.get(), heif_channel_interleaved, 4, 2, 8).code,
 		             "HEIF plane allocated");
@@ -452,22 +455,29 @@ static core::file_path write_panorama_fixture(const bool heif, const std::string
 		assert_equal(true, plane != nullptr && stride >= 12, "HEIF plane is large enough");
 		std::memset(plane, 64, static_cast<size_t>(stride) * 2);
 		heif_encoder* raw_encoder = nullptr;
-		assert_equal(heif_error_Ok, heif_context_get_encoder_for_format(context.get(), heif_compression_uncompressed,
-		                                                               &raw_encoder).code, "HEIF encoder available");
+		assert_equal(heif_error_Ok,
+		             heif_context_get_encoder_for_format(context.get(), heif_compression_uncompressed, &raw_encoder)
+		                 .code,
+		             "HEIF encoder available");
 		const std::unique_ptr<heif_encoder, decltype(&heif_encoder_release)> encoder(raw_encoder, heif_encoder_release);
 		heif_image_handle* raw_handle = nullptr;
-		assert_equal(heif_error_Ok, heif_context_encode_image(context.get(), image.get(), encoder.get(), nullptr,
-		                                                    &raw_handle).code, "HEIF fixture encoded");
-		const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)> handle(
-			raw_handle, heif_image_handle_release);
-		assert_equal(heif_error_Ok, heif_context_add_XMP_metadata(context.get(), handle.get(), packet.data(),
-		                                                        static_cast<int>(packet.size())).code, "GPano embedded in HEIF");
+		assert_equal(heif_error_Ok,
+		             heif_context_encode_image(context.get(), image.get(), encoder.get(), nullptr, &raw_handle).code,
+		             "HEIF fixture encoded");
+		const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)>
+			handle(raw_handle, heif_image_handle_release);
+		assert_equal(heif_error_Ok,
+		             heif_context_add_XMP_metadata(context.get(), handle.get(), packet.data(),
+		                                           static_cast<int>(packet.size()))
+		                 .code,
+		             "GPano embedded in HEIF");
 		assert_equal(heif_error_Ok, heif_context_write_to_file(context.get(), path.str().c_str()).code,
 		             "HEIF fixture written");
 	}
 	else
 	{
-		const std::unique_ptr<JxlEncoder, decltype(&JxlEncoderDestroy)> encoder(JxlEncoderCreate(nullptr), JxlEncoderDestroy);
+		const std::unique_ptr<JxlEncoder, decltype(&JxlEncoderDestroy)> encoder(JxlEncoderCreate(nullptr),
+		                                                                        JxlEncoderDestroy);
 		assert_equal(true, encoder != nullptr, "JPEG XL encoder created");
 		JxlBasicInfo info{};
 		JxlEncoderInitBasicInfo(&info);
@@ -482,9 +492,10 @@ static core::file_path write_panorama_fixture(const bool heif, const std::string
 		assert_equal(JXL_ENC_SUCCESS, JxlEncoderSetColorEncoding(encoder.get(), &color), "JPEG XL colour accepted");
 		assert_equal(JXL_ENC_SUCCESS, JxlEncoderUseContainer(encoder.get(), JXL_TRUE), "JPEG XL container enabled");
 		assert_equal(JXL_ENC_SUCCESS, JxlEncoderUseBoxes(encoder.get()), "JPEG XL metadata enabled");
-		assert_equal(JXL_ENC_SUCCESS, JxlEncoderAddBox(encoder.get(), "xml ",
-			reinterpret_cast<const uint8_t*>(packet.data()), packet.size(), compress ? JXL_TRUE : JXL_FALSE),
-			"GPano embedded in JPEG XL");
+		assert_equal(JXL_ENC_SUCCESS,
+		             JxlEncoderAddBox(encoder.get(), "xml ", reinterpret_cast<const uint8_t*>(packet.data()),
+		                              packet.size(), compress ? JXL_TRUE : JXL_FALSE),
+		             "GPano embedded in JPEG XL");
 		auto* const settings = JxlEncoderFrameSettingsCreate(encoder.get(), nullptr);
 		assert_equal(true, settings != nullptr, "JPEG XL frame settings created");
 		assert_equal(JXL_ENC_SUCCESS, JxlEncoderSetFrameLossless(settings, JXL_TRUE), "lossless JPEG XL fixture");
@@ -498,10 +509,12 @@ static core::file_path write_panorama_fixture(const bool heif, const std::string
 		std::array<uint8_t, 16384> encoded{};
 		auto* next = encoded.data();
 		auto available = encoded.size();
-		assert_equal(JXL_ENC_SUCCESS, JxlEncoderProcessOutput(encoder.get(), &next, &available), "JPEG XL fixture encoded");
+		assert_equal(JXL_ENC_SUCCESS, JxlEncoderProcessOutput(encoder.get(), &next, &available),
+		             "JPEG XL fixture encoded");
 		const auto size = encoded.size() - available;
 		const std::string_view contents(reinterpret_cast<const char*>(encoded.data()), size);
-		assert_equal(compress, contents.find("brob") != std::string_view::npos, "the fixture exercises compressed boxes");
+		assert_equal(compress, contents.find("brob") != std::string_view::npos,
+		             "the fixture exercises compressed boxes");
 		std::ofstream file(platform::to_stream_path(path), std::ios::binary);
 		file.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(size));
 		file.close();
@@ -532,7 +545,8 @@ static void should_read_embedded_panorama_geometry()
 			auto incomplete = embedded;
 			incomplete.full_height = 0;
 			const auto fallback_path = write_panorama_fixture(heif, panorama_packet(incomplete), compress);
-			assert_equal(false, metadata_xmp::panorama(fallback_path).is_valid(), "incomplete geometry is not projected");
+			assert_equal(false, metadata_xmp::panorama(fallback_path).is_valid(),
+			             "incomplete geometry is not projected");
 			const auto fallback_sidecar = fallback_path.extension(".xmp");
 			std::ofstream fallback(platform::to_stream_path(fallback_sidecar), std::ios::binary);
 			fallback.write(packet.data(), static_cast<std::streamsize>(packet.size()));
@@ -713,8 +727,7 @@ static void should_not_resurrect_container_tags()
 	file_scan_result absent_subject;
 	absent_subject.ffmpeg_metadata.emplace_back(core::cache("keywords"), "nativekey");
 	absent_subject.metadata.xmp.assign(unrelated_xmp.begin(), unrelated_xmp.end());
-	assert_equal("nativekey"_c, absent_subject.to_props()->tags,
-	             "unrelated xmp does not suppress native keywords");
+	assert_equal("nativekey"_c, absent_subject.to_props()->tags, "unrelated xmp does not suppress native keywords");
 
 	// Serialise an XMP packet whose dc:subject holds only the kept tag - this
 	// represents the state right after the stuck tag was removed via XMP.
@@ -744,8 +757,7 @@ static void should_not_resurrect_container_tags()
 	file_scan_result empty_subject;
 	empty_subject.ffmpeg_metadata.emplace_back(core::cache("keywords"), "nativekey");
 	empty_subject.metadata.xmp.assign(empty_xmp.begin(), empty_xmp.end());
-	assert_equal(true, empty_subject.to_props()->tags.is_empty(),
-	             "empty xmp subject suppresses native keywords");
+	assert_equal(true, empty_subject.to_props()->tags.is_empty(), "empty xmp subject suppresses native keywords");
 }
 
 static void should_apply_property_level_windows_metadata_precedence()
@@ -1007,8 +1019,8 @@ static void should_not_double_apply_heif_rotation()
 	assert_equal(4000, props->height, "height", file_name);
 
 	// Already upright, so no further rotation may be requested.
-	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(props->orientation),
-	             "orientation", file_name);
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(props->orientation), "orientation",
+	             file_name);
 
 	// The display path decodes the same item, so it must agree with the scan rather than
 	// rotating a second time - a mismatch here shows as a thumbnail facing the wrong way.
@@ -1028,8 +1040,8 @@ static void should_not_double_apply_heif_rotation()
 
 	const auto thumb_extent = with_thumb.thumbnail_surface->dimensions();
 	const auto thumb_upright = core::flips_xy(with_thumb.thumbnail_surface->orientation())
-		                           ? sizei{thumb_extent.cy, thumb_extent.cx}
-		                           : thumb_extent;
+	                               ? sizei{thumb_extent.cy, thumb_extent.cx}
+	                               : thumb_extent;
 	assert_equal(true, thumb_upright.cy > thumb_upright.cx, "thumbnail is upright portrait", file_name);
 }
 
@@ -1109,9 +1121,10 @@ static core::blob make_png_text_chunk_payload(const bool compressed, const std::
 		uLongf compressed_size = compressBound(static_cast<uLong>(xmp.size()));
 		const auto old_size = data.size();
 		data.resize(old_size + compressed_size);
-		assert_equal(Z_OK, compress2(data.data() + old_size, &compressed_size,
-		                             reinterpret_cast<const Bytef*>(xmp.data()), static_cast<uLong>(xmp.size()),
-		                             Z_BEST_SPEED), "compress xmp");
+		assert_equal(Z_OK,
+		             compress2(data.data() + old_size, &compressed_size, reinterpret_cast<const Bytef*>(xmp.data()),
+		                       static_cast<uLong>(xmp.size()), Z_BEST_SPEED),
+		             "compress xmp");
 		data.resize(old_size + compressed_size);
 	}
 	else
@@ -1133,21 +1146,20 @@ static core::file_path write_png_with_trailing_chunk(const std::string_view type
 	const char chunk_type[5] = {type[0], type[1], type[2], type[3], 0};
 	insert_png_chunk_before_iend(png, chunk_type, data);
 
-	const auto path = _temps.next_path(".png");
+	const auto path = test_temps.next_path(".png");
 	platform::blob_save_to_file(png, path);
 	return path;
 }
 
 static std::string png_test_xmp(const int rating)
 {
-	return std::format(
-		"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
-		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-		"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-		"<rdf:Description rdf:about=\"\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" "
-		"xmp:Rating=\"{}\"/>"
-		"</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
-		rating);
+	return std::format("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+	                   "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+	                   "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+	                   "<rdf:Description rdf:about=\"\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" "
+	                   "xmp:Rating=\"{}\"/>"
+	                   "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
+	                   rating);
 }
 
 // SRC-019 - trailing PNG ancillary metadata is valid and must be read without decoding pixels.
@@ -1171,7 +1183,7 @@ static void should_read_png_metadata_after_idat()
 		const auto xmp = png_test_xmp(3);
 		metadata.xmp.assign(xmp.begin(), xmp.end());
 		const auto image = ff.surface_to_image(make_png_metadata_surface(), metadata, {}, core::image_format::PNG);
-		const auto path = _temps.next_path(".png");
+		const auto path = test_temps.next_path(".png");
 		platform::blob_save_to_file(image->data(), path);
 		return path;
 	}();
@@ -1192,7 +1204,8 @@ static void should_read_png_metadata_after_idat()
 	             static_cast<int>(ff_scan_file(ff, prefixed_exif_path).orientation),
 	             "Exif-prefixed trailing eXIf orientation reads");
 
-	const auto compressed_path = write_png_with_trailing_chunk("iTXt", make_png_text_chunk_payload(true, png_test_xmp(4)));
+	const auto compressed_path = write_png_with_trailing_chunk("iTXt",
+	                                                           make_png_text_chunk_payload(true, png_test_xmp(4)));
 	assert_equal(4, ff_scan_file(ff, compressed_path).to_props()->rating, "compressed trailing XMP reads");
 
 	const auto bad_crc_image = ff.surface_to_image(make_png_metadata_surface(), {}, {}, core::image_format::PNG);
@@ -1200,7 +1213,7 @@ static void should_read_png_metadata_after_idat()
 	core::blob bad_crc(bad_crc_encoded.data(), bad_crc_encoded.data() + bad_crc_encoded.size());
 	const auto bad = make_png_text_chunk_payload(false, png_test_xmp(5));
 	insert_png_chunk_before_iend(bad_crc, "iTXt", bad, false);
-	const auto bad_crc_path = _temps.next_path(".png");
+	const auto bad_crc_path = test_temps.next_path(".png");
 	platform::blob_save_to_file(bad_crc, bad_crc_path);
 	assert_equal(0, ff_scan_file(ff, bad_crc_path).to_props()->rating, "bad CRC metadata is ignored");
 
@@ -1212,7 +1225,7 @@ static void should_read_png_metadata_after_idat()
 	constexpr uint8_t itxt_type[] = {'i', 'T', 'X', 't'};
 	truncated.insert(truncated.end(), std::begin(itxt_type), std::end(itxt_type));
 	truncated.insert(truncated.end(), payload.begin(), payload.end());
-	const auto truncated_path = _temps.next_path(".png");
+	const auto truncated_path = test_temps.next_path(".png");
 	platform::blob_save_to_file(truncated, truncated_path);
 	assert_equal(0, ff_scan_file(ff, truncated_path).to_props()->rating, "truncated trailing metadata is ignored");
 }
@@ -1297,7 +1310,10 @@ static void should_write_a_complete_orientation_exif()
 	{
 		return static_cast<size_t>(exif[at]) | static_cast<size_t>(exif[at + 1]) << 8;
 	};
-	const auto u32 = [&u16](const size_t at) { return u16(at) | u16(at + 2) << 16; };
+	const auto u32 = [&u16](const size_t at)
+	{
+		return u16(at) | u16(at + 2) << 16;
+	};
 
 	assert_equal(true, exif.size() >= 8 && exif[0] == 'I' && exif[1] == 'I', "a little-endian TIFF header");
 
@@ -1473,8 +1489,7 @@ static void should_present_derived_exif_section()
 
 	// This body records no 35 mm equivalent, so nothing that needs one is invented.
 	assert_equal(true, find_derived("Crop factor") == nullptr, "no crop factor without focal.35", file_name);
-	assert_equal(true, find_derived("Hyperfocal distance") == nullptr, "no hyperfocal without focal.35",
-	             file_name);
+	assert_equal(true, find_derived("Hyperfocal distance") == nullptr, "no hyperfocal without focal.35", file_name);
 }
 
 // A lossless rotate corrects the EXIF block's orientation and dimensions. When it rewrote the block
@@ -1495,8 +1510,8 @@ static void should_keep_unknown_exif_tags_through_a_rotate()
 		buf.push_back(static_cast<uint8_t>(v >> 16));
 		buf.push_back(static_cast<uint8_t>(v >> 24));
 	};
-	const auto put_entry = [&put16, &put32](const uint16_t tag, const uint16_t fmt, const uint32_t count,
-	                                        const uint32_t value)
+	const auto put_entry =
+		[&put16, &put32](const uint16_t tag, const uint16_t fmt, const uint32_t count, const uint32_t value)
 	{
 		put16(tag);
 		put16(fmt);
@@ -1515,7 +1530,7 @@ static void should_keep_unknown_exif_tags_through_a_rotate()
 	put32(8);
 
 	put16(2);
-	put_entry(0x0112, fmt_short, 1, 6); // Orientation, rotated
+	put_entry(0x0112, fmt_short, 1, 6);           // Orientation, rotated
 	put_entry(private_tag, fmt_short, 1, 0x1234); // a tag the listing has no name for
 	put32(0);
 
@@ -1554,8 +1569,8 @@ static void should_derive_focal_length_facts()
 		buf.push_back(static_cast<uint8_t>(v >> 16));
 		buf.push_back(static_cast<uint8_t>(v >> 24));
 	};
-	const auto put_entry = [&put16, &put32](const uint16_t tag, const uint16_t fmt, const uint32_t count,
-	                                        const uint32_t value)
+	const auto put_entry =
+		[&put16, &put32](const uint16_t tag, const uint16_t fmt, const uint32_t count, const uint32_t value)
 	{
 		put16(tag);
 		put16(fmt);
@@ -1568,7 +1583,7 @@ static void should_derive_focal_length_facts()
 	constexpr uint16_t fmt_rational = 5;
 
 	constexpr uint32_t ifd0_offset = 8;
-	constexpr uint32_t exif_ifd_offset = ifd0_offset + 2 + 12 + 4; // one IFD0 entry: the Exif pointer
+	constexpr uint32_t exif_ifd_offset = ifd0_offset + 2 + 12 + 4;     // one IFD0 entry: the Exif pointer
 	constexpr uint32_t data_offset = exif_ifd_offset + 2 + 3 * 12 + 4; // three Exif entries
 
 	put16(0x4949); // little-endian TIFF header
@@ -1580,8 +1595,8 @@ static void should_derive_focal_length_facts()
 	put32(0);
 
 	put16(3);
-	put_entry(0x920a, fmt_rational, 1, data_offset); // FocalLength, 15 mm
-	put_entry(0xa405, fmt_short, 1, 24); // FocalLengthIn35mmFilm
+	put_entry(0x920a, fmt_rational, 1, data_offset);     // FocalLength, 15 mm
+	put_entry(0xa405, fmt_short, 1, 24);                 // FocalLengthIn35mmFilm
 	put_entry(0x829d, fmt_rational, 1, data_offset + 8); // FNumber, f/6.3
 	put32(0);
 
@@ -1856,8 +1871,7 @@ static void should_present_jpeg_structure_block()
 	assert_equal(true, tables_with_detail > 0, "structure table detail", file_name);
 
 	// This file indexes no further images, so no empty heading is offered for them.
-	assert_equal(true, find_row_prefix(*block, "Embedded images") == nullptr, "no empty embedded section",
-	             file_name);
+	assert_equal(true, find_row_prefix(*block, "Embedded images") == nullptr, "no empty embedded section", file_name);
 }
 
 // A Multi-Picture APP2 segment indexes further whole JPEGs inside the same file. Sony.JPG carries
@@ -1897,8 +1911,7 @@ static void should_present_jpeg_embedded_images()
 	const auto first = find_row(*block, "Image 1");
 
 	assert_equal(true, first != nullptr, "first embedded image", file_name);
-	assert_equal(true, first->value.find("this file") != std::string::npos, "first image is the file",
-	             file_name);
+	assert_equal(true, first->value.find("this file") != std::string::npos, "first image is the file", file_name);
 }
 
 static void should_present_webp_structure_block()
@@ -1928,6 +1941,35 @@ static void should_present_heif_structure_block()
 	assert_equal(true, find_row(*block, "Major brand") != nullptr, "heif brand", file_name);
 	assert_equal(true, find_row(*block, "Primary item id") != nullptr, "heif primary item", file_name);
 	assert_equal(true, find_row(*block, "Stored size") != nullptr, "heif stored size", file_name);
+}
+
+// Shown once libfiles listed JPEG XL: the scan for the pane had asked for indexing alone, and so listed nothing.
+static void should_present_jxl_structure_block()
+{
+	constexpr auto file_name = "zoltan-tasi.jxl";
+
+	files ff;
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
+	const auto info = sr.to_info();
+	const auto block = find_block(info, metadata_standard::structure);
+
+	assert_equal(true, block != nullptr, "structure block", file_name);
+	assert_equal(true, block && find_row(*block, "Bits per sample") != nullptr, "jxl bits per sample", file_name);
+	assert_equal(true, block && find_row(*block, "Colour profile") != nullptr, "jxl colour profile", file_name);
+}
+
+static void should_present_png_structure_block()
+{
+	constexpr auto file_name = "Cube.png";
+
+	files ff;
+	const auto sr = ff_scan_file(ff, test_files_folder().combine_file(file_name));
+	const auto info = sr.to_info();
+	const auto block = find_block(info, metadata_standard::structure);
+
+	assert_equal(true, block != nullptr, "structure block", file_name);
+	assert_equal(true, block && find_row(*block, "Bit depth") != nullptr, "png bit depth", file_name);
+	assert_equal(true, block && find_row(*block, "IHDR") != nullptr, "png chunks", file_name);
 }
 
 static void should_present_icc_block_sections()
@@ -1960,6 +2002,33 @@ static void should_present_icc_block_sections()
 	}
 
 	assert_equal(true, tags > 0, "icc tag rows", file_name);
+}
+
+// The ICC block's summary ends with how the colours its profile describes are shown: mapped to sRGB, as sRGB already,
+// without the profile where libfiles cannot map it - a press's CMYK - or, for an HDR picture, by its own description.
+static void should_say_how_an_icc_profiles_colours_are_shown()
+{
+	const auto p3 = display_p3_profile();
+	const auto srgb = srgb_profile();
+
+	assert_equal("mapped to sRGB"s, row_value_or_empty(metadata_icc::to_info(p3), "Shown"), "Display P3");
+	assert_equal("as sRGB"s, row_value_or_empty(metadata_icc::to_info(srgb), "Shown"), "sRGB");
+	assert_equal("by its HDR description, not the profile"s,
+	             row_value_or_empty(metadata_icc::to_info(p3, true), "Shown"), "an HDR picture's");
+
+	// The summary's last row, before the header.
+	const auto rows = metadata_icc::to_info(p3);
+	const auto shown = std::ranges::find(rows, "Shown"sv, &metadata_kv::key);
+	assert_equal(true,
+	             shown != rows.end() && shown->depth == 1 && std::next(shown) != rows.end() &&
+	                 std::next(shown)->container && std::next(shown)->key == "Header",
+	             "it ends the summary");
+
+	files ff;
+	const auto cmyk = ff_scan_file(ff, test_files_folder().combine_file("cmyk.jpg")).to_info();
+	const auto* const block = find_block(cmyk, metadata_standard::icc);
+	const auto* const row = block ? find_row(*block, "Shown") : nullptr;
+	assert_equal("without the profile"s, row ? row->value : std::string{}, "a press's CMYK profile");
 }
 
 // A tag names a region of the profile, and several tags may name the same one: the sRGB profile most
@@ -2146,7 +2215,7 @@ static std::vector<uint8_t> make_icc_mluc_tag(const std::vector<std::string_view
 	auto offset = static_cast<uint32_t>(4 + 12 + texts.size() * 12);
 	for (size_t i = 0; i < texts.size(); ++i)
 	{
-		append16(0x656eu); // en
+		append16(0x656eu);                            // en
 		append16(static_cast<uint16_t>(0x5553u + i)); // US, then another country code
 		append32(static_cast<uint32_t>(encoded[i].size()));
 		append32(offset);
@@ -2165,10 +2234,8 @@ static void should_decode_icc_text_exactly()
 {
 	const std::string long_profile(512, 'P');
 	const std::string long_copyright(512, 'C');
-	const auto profile = make_icc_profile_with_tags({
-		{0x64657363u, make_icc_desc_tag(long_profile)},
-		{0x63707274u, make_icc_text_tag(long_copyright)}
-	});
+	const auto profile = make_icc_profile_with_tags(
+		{{0x64657363u, make_icc_desc_tag(long_profile)}, {0x63707274u, make_icc_text_tag(long_copyright)}});
 
 	for (auto i = 0; i < 8; ++i)
 	{
@@ -2192,10 +2259,10 @@ static void should_decode_icc_mluc_offsets()
 	}
 
 	{
-		const std::string long_text(300, 'L');
-		const auto profile = make_icc_profile_with_tags({{0x64657363u, make_icc_mluc_tag({long_text})}});
+		const std::string long_mluc(300, 'L');
+		const auto profile = make_icc_profile_with_tags({{0x64657363u, make_icc_mluc_tag({long_mluc})}});
 		const auto rows = metadata_icc::to_info({profile.data(), profile.size()});
-		assert_equal(long_text, row_value_or_empty(rows, "Profile"), "long mluc");
+		assert_equal(long_mluc, row_value_or_empty(rows, "Profile"), "long mluc");
 	}
 
 	{
@@ -2295,16 +2362,19 @@ static void should_scan_info_from_title()
 	assert_name("Family.Holiday.Video", {});
 
 	// Release tags after the episode marker or year end a title; before it they are words.
-	assert_name("Show.S01E01.GERMAN.DL.1080p.WEB.x264-GRP", {.show = "Show", .season = 1, .episode = 1, .has_episode = true});
+	assert_name("Show.S01E01.GERMAN.DL.1080p.WEB.x264-GRP",
+	            {.show = "Show", .season = 1, .episode = 1, .has_episode = true});
 	assert_name("Movie.2023.GERMAN.DL.1080p.WEB.x264-GRP", {.title = "Movie", .year = 2023});
 	assert_name("Movie.1991.DC.1080p.BluRay.x264-GRP", {.title = "Movie", .year = 1991});
 	assert_name("Ex.On.The.Beach.Double.Dutch.S09E10.DUTCH.1080p.WEB.h264-GRP",
 	            {.show = "Ex On The Beach Double Dutch", .season = 9, .episode = 10, .has_episode = true});
 	// A film's title runs to its release year, even past words that are also tags.
 	assert_name("Madame.Web.2024.2160p.WEB-DL.DDP5.1.Atmos.H.265-GRP", {.title = "Madame Web", .year = 2024});
-	assert_name("Theater Camp (2023) (2160p MA WEB-DL H265 SDR DDP 5.1 English - HONE)", {.title = "Theater Camp", .year = 2023});
+	assert_name("Theater Camp (2023) (2160p MA WEB-DL H265 SDR DDP 5.1 English - HONE)",
+	            {.title = "Theater Camp", .year = 2023});
 	// A year before the episode marker is the show's.
-	assert_name("Found.2023.S01E05.1080p.WEB.h264-GRP", {.show = "Found", .season = 1, .episode = 5, .year = 2023, .has_episode = true});
+	assert_name("Found.2023.S01E05.1080p.WEB.h264-GRP",
+	            {.show = "Found", .season = 1, .episode = 5, .year = 2023, .has_episode = true});
 	// The rest of a file's range of episodes belongs to the marker, not the title; a title starting with a number
 	// keeps it.
 	assert_name("Show.S01E01-E02.Title.720p.HDTV.x264-GRP",
@@ -2323,19 +2393,26 @@ static void should_scan_info_from_title()
 	// Specials, double episodes, wide numbers and episodes numbered without a season.
 	assert_name("Show.S03E00.Special.720p.HDTV.x264-GRP",
 	            {.show = "Show", .title = "Special", .season = 3, .episode = 0, .has_episode = true});
-	assert_name("Show.S10E21E22.720p.HDTV.x264-GRP", {.show = "Show", .season = 10, .episode = 21, .has_episode = true});
+	assert_name("Show.S10E21E22.720p.HDTV.x264-GRP",
+	            {.show = "Show", .season = 10, .episode = 21, .has_episode = true});
 	assert_name("Show.S235E09.720p.HDTV.x264-GRP", {.show = "Show", .season = 235, .episode = 9, .has_episode = true});
 	assert_name("One.Piece.E1001.1080p.WEB.x264-GRP", {.show = "One Piece", .episode = 1001, .has_episode = true});
-	assert_name("Naruto.Shippuden.E426.German.Dubbed.WEB.x264-GRP", {.show = "Naruto Shippuden", .episode = 426, .has_episode = true});
+	assert_name("Naruto.Shippuden.E426.German.Dubbed.WEB.x264-GRP",
+	            {.show = "Naruto Shippuden", .episode = 426, .has_episode = true});
 	// The release group after the last hyphen is never an episode.
 	assert_name("Some.Movie.2019.1080p.WEB.x264-E5150", {.title = "Some Movie", .year = 2019});
 	// Dated episodes, as the scene and German broadcasters write them.
-	assert_name("NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP",
-	            {.show = "NFL", .title = "Bears vs Packers", .year = 2024, .has_episode = true, .aired_month = 1, .aired_day = 7});
+	assert_name("NFL.2024.01.07.Bears.vs.Packers.720p.WEB.h264-GRP", {.show = "NFL",
+	                                                                  .title = "Bears vs Packers",
+	                                                                  .year = 2024,
+	                                                                  .has_episode = true,
+	                                                                  .aired_month = 1,
+	                                                                  .aired_day = 7});
 	assert_name("WWE.NXT.2023-11-09.German.720p.WEB.h264-GRP",
 	            {.show = "WWE NXT", .year = 2023, .has_episode = true, .aired_month = 11, .aired_day = 9});
 	// Dotted abbreviations and hyphenated words stay whole.
-	assert_name("Chicago.P.D.S10E01.1080p.WEB.H264-GRP", {.show = "Chicago P.D", .season = 10, .episode = 1, .has_episode = true});
+	assert_name("Chicago.P.D.S10E01.1080p.WEB.H264-GRP",
+	            {.show = "Chicago P.D", .season = 10, .episode = 1, .has_episode = true});
 	assert_name("X-Men.2000.1080p.BluRay.x264-GRP", {.title = "X-Men", .year = 2000});
 	// An episode named only by its marker leaves the show to its folders.
 	assert_name("S01E05.Pilot.720p.HDTV.x264-GRP", {.title = "Pilot", .season = 1, .episode = 5, .has_episode = true});
@@ -2351,14 +2428,15 @@ static void should_scan_info_from_title()
 	assert_name("....", {});
 	assert_name(" - ", {});
 
-	assert_equal(true, scan_info_from_title("Movie.2023.1080p.WEB.x264-GRP").is_release, "a resolution marks a release");
+	assert_equal(true, scan_info_from_title("Movie.2023.1080p.WEB.x264-GRP").is_release,
+	             "a resolution marks a release");
 	assert_equal(false, scan_info_from_title("German holiday 2019").is_release, "a personal name is no release");
 }
 
 static void should_read_show_and_season_from_folders()
 {
-	const auto assert_path = [](const std::string_view name, const std::string_view folder, const std::string_view parent,
-	                            const media_name_props& expected)
+	const auto assert_path = [](const std::string_view name, const std::string_view folder,
+	                            const std::string_view parent, const media_name_props& expected)
 	{
 		const auto actual = scan_info_from_path(name, folder, parent);
 		assert_equal(expected.show, actual.show, "show", name);
@@ -2368,10 +2446,12 @@ static void should_read_show_and_season_from_folders()
 		assert_equal(expected.year, actual.year, "year", name);
 	};
 
-	assert_path("S01E05.Pilot", "Season 1", "Masterclass", {.show = "Masterclass", .title = "Pilot", .season = 1, .episode = 5});
+	assert_path("S01E05.Pilot", "Season 1", "Masterclass",
+	            {.show = "Masterclass", .title = "Pilot", .season = 1, .episode = 5});
 	assert_path("S02E03", "Smiley's People", "TV", {.show = "Smiley's People", .season = 2, .episode = 3});
 	assert_path("E05", "Season 2", "Time Team (1994)", {.show = "Time Team", .season = 2, .episode = 5, .year = 1994});
-	assert_path("E07.Title", "Show.Name.S03.1080p.WEB-DL-GRP", "TV", {.show = "Show Name", .title = "Title", .season = 3, .episode = 7});
+	assert_path("E07.Title", "Show.Name.S03.1080p.WEB-DL-GRP", "TV",
+	            {.show = "Show Name", .title = "Title", .season = 3, .episode = 7});
 	assert_path("S00E01.Christmas.Special", "Specials", "Doctor Who (2005)",
 	            {.show = "Doctor Who", .title = "Christmas Special", .season = 0, .episode = 1, .year = 2005});
 	// A name that gives its show keeps it, and a name that is no episode ignores its folders.
@@ -2419,21 +2499,25 @@ static void should_derive_values_from_names()
 		return std::string(md.title.sv());
 	};
 
-	assert_equal("Dont Look Up"s, title_after("GalaxyRG - Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG",
-	                                          "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG"), "a release name");
-	assert_equal("Captain America Civil War"s, title_after("MkvCage.com", "Captain.America.Civil.War.2016.720p.HDTC.MkvCage"),
-	             "a website");
+	assert_equal("Dont Look Up"s,
+	             title_after("GalaxyRG - Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG",
+	                         "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG"),
+	             "a release name");
+	assert_equal("Captain America Civil War"s,
+	             title_after("MkvCage.com", "Captain.America.Civil.War.2016.720p.HDTC.MkvCage"), "a website");
 	assert_equal("Equilibrium"s, title_after("Equilibrium - YIFY", "Equilibrium.2002.720p.BrRip.x264.YIFY"),
 	             "a title signed by the release group");
-	assert_equal("The Occupation"s, title_after("Star.Wars.Rebels.4x05.The.Occupation", "Star.Wars.Rebels.S04E05.The.Occupation"),
+	assert_equal("The Occupation"s,
+	             title_after("Star.Wars.Rebels.4x05.The.Occupation", "Star.Wars.Rebels.S04E05.The.Occupation"),
 	             "a scene name");
 	assert_equal("The Proper Way"s, title_after("The Proper Way", "The.Proper.Way.2019.1080p.WEB.x264-GRP"),
 	             "a real title that holds a tag word stays");
 	assert_equal("S.W.A.T."s, title_after("S.W.A.T.", "SWAT.S01E01.720p.HDTV.x264-GRP"), "as does an abbreviation");
 	assert_equal("Birthday party"s, title_after("Birthday party", "Birthday party"),
 	             "a title repeating a plain name is the only one there is, and stays");
-	assert_equal("Dont Look Up"s, title_after("Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG",
-	                                          "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG"),
+	assert_equal("Dont Look Up"s,
+	             title_after("Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG",
+	                         "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG"),
 	             "one repeating a release name gives way to what the name says");
 
 	prop::item_metadata comment;
@@ -2505,7 +2589,10 @@ static void should_parse_exif_tags()
 	constexpr uint16_t FMT_URATIONAL = 5;
 	constexpr uint16_t FMT_SRATIONAL = 10;
 
-	const auto ascii = [](const std::string_view s) { return std::vector<uint8_t>(s.begin(), s.end()); };
+	const auto ascii = [](const std::string_view s)
+	{
+		return std::vector<uint8_t>(s.begin(), s.end());
+	};
 	const auto rational_bytes = [](const int32_t n, const int32_t d)
 	{
 		std::vector<uint8_t> v(8);
@@ -2517,14 +2604,14 @@ static void should_parse_exif_tags()
 	// Entries must be in ascending tag order (ARTIST before XPAuthor so the XPAuthor
 	// guard is proven not to overwrite the already-set artist).
 	std::vector<exif_entry> entries = {
-		{0x0131, FMT_STRING, 0, ascii("DiffractorApp")}, // Software      -> encoder
-		{0x013b, FMT_STRING, 0, ascii("Ansel Adams")}, //   Artist        -> artist
+		{0x0131, FMT_STRING, 0, ascii("DiffractorApp")},  // Software      -> encoder
+		{0x013b, FMT_STRING, 0, ascii("Ansel Adams")},    //   Artist        -> artist
 		{0x9201, FMT_SRATIONAL, 1, rational_bytes(6, 1)}, // ShutterSpeed  -> 2^-6 = 1/64s
 		{0x9205, FMT_URATIONAL, 1, rational_bytes(4, 1)}, // MaxAperture   -> 2^(4/2) = f/4
-		{0x9c9b, FMT_STRING, 0, ascii("Winter")}, //         XPTitle       -> title
+		{0x9c9b, FMT_STRING, 0, ascii("Winter")},         //         XPTitle       -> title
 		{0x9c9d, FMT_STRING, 0, ascii("Ignored Author")}, // XPAuthor      -> artist (guarded)
-		{0x9c9e, FMT_STRING, 0, ascii("alpha beta")}, //     XPKeywords    -> tags
-		{0x9c9f, FMT_STRING, 0, ascii("A subject")}, //      XPSubject     -> description
+		{0x9c9e, FMT_STRING, 0, ascii("alpha beta")},     //     XPKeywords    -> tags
+		{0x9c9f, FMT_STRING, 0, ascii("A subject")},      //      XPSubject     -> description
 	};
 
 	for (auto& e : entries)
@@ -2635,8 +2722,8 @@ static void should_read_windows_xp_tags_as_written()
 	};
 
 	const std::vector<std::pair<uint16_t, std::vector<uint8_t>>> entries = {
-		{0x9c9b, utf16(u"Winter")}, // XPTitle
-		{0x9c9e, utf16(u"alpha;beta")}, // XPKeywords
+		{0x9c9b, utf16(u"Winter")},         // XPTitle
+		{0x9c9e, utf16(u"alpha;beta")},     // XPKeywords
 		{0x9c9f, utf16(u"A subj\u00e9ct")}, // XPSubject
 	};
 
@@ -2677,7 +2764,9 @@ static void should_read_windows_xp_tags_as_written()
 
 	assert_equal("Winter", md.title, "XPTitle -> title");
 	assert_equal("alpha beta", md.tags, "XPKeywords -> tags, one for each keyword");
-	assert_equal("A subj\xc3\xa9" "ct", md.description, "XPSubject -> description");
+	assert_equal("A subj\xc3\xa9"
+	             "ct",
+	             md.description, "XPSubject -> description");
 }
 
 // locations.md 2.8: GPS altitude and speed live in a sub-IFD reached through tag 0x8825, and
@@ -2731,7 +2820,7 @@ static std::vector<uint8_t> build_gps_exif(const std::vector<test_gps_entry>& en
 
 	put16(1);
 	put16(0x8825); // GPS IFD pointer
-	put16(4); // FMT_ULONG
+	put16(4);      // FMT_ULONG
 	put32(1);
 	put32(gps_ifd_offset);
 	put32(0);
@@ -2790,8 +2879,8 @@ static void should_parse_exif_gps_height()
 		{0x000c, FMT_STRING, 2, {'K', 0}},
 		{0x000d, FMT_URATIONAL, 1, urational(900, 1)},
 	});
-	apply_properties(cruising,
-		libfiles::properties_from_exif(libfiles::read_exif(core::cspan{cruising_exif.data(), cruising_exif.size()})));
+	apply_properties(cruising, libfiles::properties_from_exif(
+								   libfiles::read_exif(core::cspan{cruising_exif.data(), cruising_exif.size()})));
 	assert_equal(10668.0f, cruising.altitude, "GPSAltitude -> altitude");
 	assert_equal(900.0f, cruising.gps_speed, "GPSSpeed in km/h -> gps_speed");
 
@@ -2801,7 +2890,8 @@ static void should_parse_exif_gps_height()
 		{0x0005, FMT_BYTE, 1, {1}},
 		{0x0006, FMT_URATIONAL, 1, urational(180, 10)},
 	});
-	apply_properties(dive, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{dive_exif.data(), dive_exif.size()})));
+	apply_properties(dive, libfiles::properties_from_exif(
+							   libfiles::read_exif(core::cspan{dive_exif.data(), dive_exif.size()})));
 	assert_equal(-18.0f, dive.altitude, "below-sea-level reference negates the altitude");
 
 	// Knots are the other common speed reference.
@@ -2810,7 +2900,8 @@ static void should_parse_exif_gps_height()
 		{0x000c, FMT_STRING, 2, {'N', 0}},
 		{0x000d, FMT_URATIONAL, 1, urational(100, 1)},
 	});
-	apply_properties(knots, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{knots_exif.data(), knots_exif.size()})));
+	apply_properties(knots, libfiles::properties_from_exif(
+								libfiles::read_exif(core::cspan{knots_exif.data(), knots_exif.size()})));
 	assert_equal(185.2f, knots.gps_speed, "GPSSpeed in knots -> km/h");
 }
 
@@ -2844,7 +2935,8 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(37, 4, 0)},
 	});
-	apply_properties(equator, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{equator_exif.data(), equator_exif.size()})));
+	apply_properties(equator, libfiles::properties_from_exif(
+								  libfiles::read_exif(core::cspan{equator_exif.data(), equator_exif.size()})));
 	assert_equal(true, equator.coordinate.is_valid(), "a latitude of zero is a position, not an absence");
 	assert_equal(true, std::abs(equator.coordinate.longitude() - 37.0667) < 0.001, "and it keeps its longitude");
 
@@ -2856,8 +2948,8 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(0, 0, 0)},
 	});
-	apply_properties(meridian,
-		libfiles::properties_from_exif(libfiles::read_exif(core::cspan{meridian_exif.data(), meridian_exif.size()})));
+	apply_properties(meridian, libfiles::properties_from_exif(
+								   libfiles::read_exif(core::cspan{meridian_exif.data(), meridian_exif.size()})));
 	assert_equal(true, meridian.coordinate.is_valid(), "a longitude of zero is a position too");
 	assert_equal(true, std::abs(meridian.coordinate.latitude() - 51.4778) < 0.001, "and it keeps its latitude");
 
@@ -2869,13 +2961,15 @@ static void should_keep_gps_on_the_equator_and_meridian()
 		{0x0003, FMT_STRING, 2, {'E', 0}},
 		{0x0004, FMT_URATIONAL, 3, dms(0, 0, 0)},
 	});
-	apply_properties(no_fix, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{no_fix_exif.data(), no_fix_exif.size()})));
+	apply_properties(no_fix, libfiles::properties_from_exif(
+								 libfiles::read_exif(core::cspan{no_fix_exif.data(), no_fix_exif.size()})));
 	assert_equal(false, no_fix.coordinate.is_valid(), "but a zero pair is a receiver with no fix");
 
 	// And a file carrying no coordinate at all still has none.
 	prop::item_metadata none;
 	const auto none_exif = build_gps_exif({{0x0005, FMT_BYTE, 1, {0}}});
-	apply_properties(none, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{none_exif.data(), none_exif.size()})));
+	apply_properties(none, libfiles::properties_from_exif(
+							   libfiles::read_exif(core::cspan{none_exif.data(), none_exif.size()})));
 	assert_equal(false, none.coordinate.is_valid(), "and an absent coordinate stays absent");
 }
 
@@ -2887,8 +2981,8 @@ static void should_keep_gps_on_the_equator_and_meridian()
 static void should_parse_an_extended_length_iptc_dataset()
 {
 	// One dataset. `size_octets` of 0 asks for the ordinary two-octet form.
-	const auto dataset = [](const uint8_t record, const uint8_t tag, const std::string_view value,
-	                        const uint32_t size_octets)
+	const auto dataset =
+		[](const uint8_t record, const uint8_t tag, const std::string_view value, const uint32_t size_octets)
 	{
 		std::vector<uint8_t> b{0x1c, record, tag};
 
@@ -2925,7 +3019,8 @@ static void should_parse_an_extended_length_iptc_dataset()
 		block.insert(block.end(), b.begin(), b.end());
 
 		prop::item_metadata md;
-		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(core::cspan{block.data(), block.size()})));
+		apply_properties(md,
+		                 libfiles::properties_from_iptc(libfiles::read_iptc(core::cspan{block.data(), block.size()})));
 		assert_equal("Lisbon", md.title, "a two-octet size still reads");
 		assert_equal("Ada Lovelace", md.copyright_notice, "and the dataset after it is still found");
 	}
@@ -2939,7 +3034,8 @@ static void should_parse_an_extended_length_iptc_dataset()
 		block.insert(block.end(), b.begin(), b.end());
 
 		prop::item_metadata md;
-		apply_properties(md, libfiles::properties_from_iptc(libfiles::read_iptc(core::cspan{block.data(), block.size()})));
+		apply_properties(md,
+		                 libfiles::properties_from_iptc(libfiles::read_iptc(core::cspan{block.data(), block.size()})));
 		assert_equal("Lisbon", md.title, "an extended size reads its own payload");
 		assert_equal("Ada Lovelace", md.copyright_notice, "and the walk stays aligned for what follows");
 	}
@@ -3000,41 +3096,38 @@ static void should_drop_binary_exif_comment()
 	};
 
 	// The Samsung junk blob begins with the fixed marker {0x12, 0xf8, 0x0f, 0x3b}.
-	const std::vector<uint8_t> junk = {
-		0x12, 0xf8, 0x0f, 0x3b, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77
-	};
+	const std::vector<uint8_t> junk = {0x12, 0xf8, 0x0f, 0x3b, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
 	prop::item_metadata md_junk;
 	const auto exif_junk = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, junk);
-	apply_properties(md_junk, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_junk.data(), exif_junk.size()})));
+	apply_properties(md_junk, libfiles::properties_from_exif(
+								  libfiles::read_exif(core::cspan{exif_junk.data(), exif_junk.size()})));
 	assert_equal(true, prop::is_null(md_junk.comment), "binary Samsung comment dropped");
 
 	// SM-G900F hides its blob behind a valid "ASCII\0\0\0" character code, so the marker
 	// test alone never fires; the payload is still binary and must be dropped.
 	std::vector<uint8_t> samsung = {'A', 'S', 'C', 'I', 'I', 0, 0, 0, 0x0a, 0, 0, 0};
 	for (const auto c : {'J', 'K', 'J', 'K'}) samsung.push_back(static_cast<uint8_t>(c));
-	for (const uint8_t c : {0x27, 0x03, 0xab, 0x5c, 0x46, 0x0b, 0x01, 0x00}) samsung.push_back(c);
+	for (const auto c : {0x27, 0x03, 0xab, 0x5c, 0x46, 0x0b, 0x01, 0x00}) samsung.push_back(static_cast<uint8_t>(c));
 	prop::item_metadata md_samsung;
 	const auto exif_samsung = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, samsung);
-	apply_properties(md_samsung,
-		libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_samsung.data(), exif_samsung.size()})));
+	apply_properties(md_samsung, libfiles::properties_from_exif(
+									 libfiles::read_exif(core::cspan{exif_samsung.data(), exif_samsung.size()})));
 	assert_equal(true, prop::is_null(md_samsung.comment), "ASCII-prefixed binary comment dropped");
 
 	// Control: a well-formed ASCII UserComment ("ASCII\0\0\0" prefix) is preserved.
-	const std::vector<uint8_t> good = {
-		'A', 'S', 'C', 'I', 'I', 0, 0, 0, 'H', 'e', 'l', 'l', 'o'
-	};
+	const std::vector<uint8_t> good = {'A', 'S', 'C', 'I', 'I', 0, 0, 0, 'H', 'e', 'l', 'l', 'o'};
 	prop::item_metadata md_good;
 	const auto exif_good = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, good);
-	apply_properties(md_good, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_good.data(), exif_good.size()})));
+	apply_properties(md_good, libfiles::properties_from_exif(
+								  libfiles::read_exif(core::cspan{exif_good.data(), exif_good.size()})));
 	assert_equal("Hello", md_good.comment, "valid ASCII comment preserved");
 
 	// Control: multi-line text with trailing nul padding survives the binary scan.
-	const std::vector<uint8_t> padded = {
-		'A', 'S', 'C', 'I', 'I', 0, 0, 0, 'L', 'i', 'n', 'e', '\n', '2', 0, 0
-	};
+	const std::vector<uint8_t> padded = {'A', 'S', 'C', 'I', 'I', 0, 0, 0, 'L', 'i', 'n', 'e', '\n', '2', 0, 0};
 	prop::item_metadata md_padded;
 	const auto exif_padded = build_exif(TAG_USER_COMMENT, FMT_UNDEFINED, padded);
-	apply_properties(md_padded, libfiles::properties_from_exif(libfiles::read_exif(core::cspan{exif_padded.data(), exif_padded.size()})));
+	apply_properties(md_padded, libfiles::properties_from_exif(
+									libfiles::read_exif(core::cspan{exif_padded.data(), exif_padded.size()})));
 	assert_equal("Line\n2", md_padded.comment, "multi-line padded comment preserved");
 }
 
@@ -3153,7 +3246,7 @@ static void should_parse_korean_tags()
 {
 	constexpr auto family = "\uAC00\uC871"; // 가족
 	constexpr auto travel = "\uC5EC\uD589"; // 여행
-	constexpr auto photo = "\uC0AC\uC9C4"; // 사진
+	constexpr auto photo = "\uC0AC\uC9C4";  // 사진
 
 	// Space-separated Korean tags split into individual tags.
 	tag_set tags(std::format("{} {} {}", family, travel, photo));
@@ -3183,7 +3276,8 @@ static void should_prefer_datetimeoriginal_for_created()
 	// With no capture time, fall back to the container date - converted, because it is an instant.
 	prop::item_metadata md2;
 	md2.dates.add_utc(prop::date_source::container_created, core::date_t(2020, 1, 1, 12, 0, 0));
-	assert_equal(platform::utc_to_local(core::date_t(2020, 1, 1, 12, 0, 0)), md2.created(), "falls back to the container date");
+	assert_equal(platform::utc_to_local(core::date_t(2020, 1, 1, 12, 0, 0)), md2.created(),
+	             "falls back to the container date");
 
 	// With neither set the date is invalid (the item then uses the file date).
 	const prop::item_metadata md3;
@@ -3204,10 +3298,8 @@ static void should_hold_date_sources_in_authority_order()
 	uint64_t seen = 0;
 	auto kind_count = 0;
 
-	for (auto kind : {
-		     prop::date_concept::original, prop::date_concept::created,
-		     prop::date_concept::modified, prop::date_concept::reference
-	     })
+	for (auto kind : {prop::date_concept::original, prop::date_concept::created, prop::date_concept::modified,
+	                  prop::date_concept::reference})
 	{
 		auto previous_authority = 0;
 		auto found = 0;
@@ -3247,7 +3339,7 @@ static void should_collapse_sources_that_agree_to_the_second()
 
 	// The XMP reading of the same second, carrying 368 ms and a +01:00 offset.
 	const auto with_millis = core::date_t(core::date_t(2025, 8, 16, 18, 11, 56).to_int64() +
-		368 * (core::date_t::intervals_per_second / 1000));
+	                                      368 * (core::date_t::intervals_per_second / 1000));
 	pack.add(prop::date_source::xmp_create, with_millis, 60);
 
 	assert_equal(1, pack.group_count(), "one value, not three");
@@ -3358,14 +3450,17 @@ static void should_not_repeat_a_filesystem_stamp_in_the_date_bubble()
 	unstamped.add(prop::date_source::exif_original, core::date_t(2025, 8, 16, 18, 11, 56));
 	unstamped.add(prop::date_source::xmp_modify, core::date_t(2026, 8, 19, 21, 30, 0));
 
-	assert_equal(false, prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_modified,
-	                                                   core::date_t(2026, 8, 19, 21, 30, 0)),
+	assert_equal(false,
+	             prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_modified,
+	                                            core::date_t(2026, 8, 19, 21, 30, 0)),
 	             "the same instant under another tag is the same row");
-	assert_equal(true, prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_modified,
-	                                                  core::date_t(2026, 8, 19, 21, 31, 0)),
+	assert_equal(true,
+	             prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_modified,
+	                                            core::date_t(2026, 8, 19, 21, 31, 0)),
 	             "a minute apart is a different fact and says something");
-	assert_equal(true, prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_created,
-	                                                  core::date_t(2026, 8, 19, 22, 0, 0)),
+	assert_equal(true,
+	             prop::shows_own_file_stamp_row(unstamped, prop::date_source::file_created,
+	                                            core::date_t(2026, 8, 19, 22, 0, 0)),
 	             "and a stamp nothing above matches keeps its row");
 }
 
@@ -3399,7 +3494,8 @@ static void should_carry_the_zone_and_fraction_a_date_was_written_with()
 	// The fraction is what keeps two frames of a burst apart; without it they collapse to one group
 	// and order by name instead of by time.
 	prop::date_pack burst;
-	burst.add(prop::date_source::exif_original, core::date_t(core::date_t(2024, 6, 1, 12, 0, 0).to_int64() + 2'000'000));
+	burst.add(prop::date_source::exif_original,
+	          core::date_t(core::date_t(2024, 6, 1, 12, 0, 0).to_int64() + 2'000'000));
 	burst.add(prop::date_source::xmp_exif_original, core::date_t(2024, 6, 1, 12, 0, 0));
 	assert_equal(1, burst.group_count(), "the same second is one group");
 	assert_equal(2'000'000ll, burst.group_value(0).to_int64() % core::date_t::intervals_per_second,
@@ -3579,7 +3675,7 @@ namespace xmp_corpus
 
 	// A prefix made unique is numbered by how many clashing URIs the process has met, which differs
 	// between a first reading and a reread.
-	std::string without_prefix_numbers(std::string text)
+	std::string without_prefix_numbers(const std::string& text)
 	{
 		static const std::regex numbered(R"(_\d+_([:=]))");
 		return std::regex_replace(text, numbered, "_N_$1");
@@ -3594,7 +3690,7 @@ namespace xmp_corpus
 			out += std::format("{}|{}|{}|{:x}\n", p.schema, p.path, p.value, p.options & reported_options);
 		}
 
-		return without_prefix_numbers(std::move(out));
+		return without_prefix_numbers(out);
 	}
 
 	struct outcome
@@ -3762,13 +3858,14 @@ namespace xmp_corpus
 	{
 		const auto wrap = [](const std::string_view body)
 		{
-			return std::format("<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-			                   "<rdf:Description rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/' "
-			                   "xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmlns:exif='http://ns.adobe.com/exif/1.0/' "
-			                   "xmlns:tiff='http://ns.adobe.com/tiff/1.0/' xmlns:photoshop='http://ns.adobe.com/photoshop/1.0/' "
-			                   "xmlns:xmpDM='http://ns.adobe.com/xmp/1.0/DynamicMedia/' "
-			                   "xmlns:xmpRights='http://ns.adobe.com/xap/1.0/rights/'>{}</rdf:Description></rdf:RDF></x:xmpmeta>",
-			                   body);
+			return std::format(
+				"<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+				"<rdf:Description rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/' "
+				"xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmlns:exif='http://ns.adobe.com/exif/1.0/' "
+				"xmlns:tiff='http://ns.adobe.com/tiff/1.0/' xmlns:photoshop='http://ns.adobe.com/photoshop/1.0/' "
+				"xmlns:xmpDM='http://ns.adobe.com/xmp/1.0/DynamicMedia/' "
+				"xmlns:xmpRights='http://ns.adobe.com/xap/1.0/rights/'>{}</rdf:Description></rdf:RDF></x:xmpmeta>",
+				body);
 		};
 
 		const std::string_view bodies[] = {
@@ -3779,6 +3876,7 @@ namespace xmp_corpus
 			"<photoshop:Keywords><rdf:Bag><rdf:li>a</rdf:li></rdf:Bag></photoshop:Keywords><xmp:Title>T</xmp:Title>",
 			"<dc:title><rdf:Alt><rdf:li xml:lang='de'>Kai</rdf:li><rdf:li xml:lang='x-default'>Quay</rdf:li></rdf:Alt></dc:title>",
 			"<dc:description><rdf:Bag><rdf:li>no lang</rdf:li><rdf:li/><rdf:li xml:lang='EN-us'>yes</rdf:li></rdf:Bag></dc:description>",
+			// NOLINTNEXTLINE(bugprone-suspicious-missing-comma): one body, split across two lines
 			"<exif:UserComment>note</exif:UserComment><exif:GPSTimeStamp>T12:30:00Z</exif:GPSTimeStamp>"
 			"<exif:DateTimeOriginal>2019-03-04T10:00:00.5+02:00</exif:DateTimeOriginal>",
 			"<xmpDM:copyright>(c) Ann</xmpDM:copyright><dc:rights><rdf:Alt><rdf:li xml:lang='fr'>Droits</rdf:li></rdf:Alt></dc:rights>",
@@ -3801,18 +3899,26 @@ namespace xmp_corpus
 			packets.push_back({std::format("synthetic {}", ++index), wrap(body)});
 		}
 
-		packets.push_back({"synthetic uuid about", "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		                   "<rdf:Description rdf:about='uuid:1234' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/>"
-		                   "<rdf:Description rdf:about='other' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Label='L'/></rdf:RDF>"});
-		packets.push_back({"synthetic two roots", "<doc><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		                   "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>"
-		                   "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		                   "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='2'/></rdf:RDF></x:xmpmeta></doc>"});
-		packets.push_back({"synthetic prefix clash", "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		packets.push_back(
+			{"synthetic uuid about",
+		     "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		     "<rdf:Description rdf:about='uuid:1234' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/>"
+		     "<rdf:Description rdf:about='other' xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Label='L'/></rdf:RDF>"});
+		packets.push_back(
+			{"synthetic two roots",
+		     "<doc><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		     "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>"
+		     "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		     "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='2'/></rdf:RDF></x:xmpmeta></doc>"});
+		packets.push_back({"synthetic prefix clash",
+		                   "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
 		                   "<rdf:Description xmlns:dc='http://example.com/parity/' dc:thing='x'/></rdf:RDF>"});
-		packets.push_back({"synthetic default namespace", "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
-		                   "<rdf:Description xmlns='http://example.com/parity-default/'><thing>x</thing></rdf:Description></rdf:RDF>"});
-		packets.push_back({"synthetic doctype", "<?xml version='1.0'?><!DOCTYPE x [<!ELEMENT x ANY>]>"
+		packets.push_back(
+			{"synthetic default namespace",
+		     "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+		     "<rdf:Description xmlns='http://example.com/parity-default/'><thing>x</thing></rdf:Description></rdf:RDF>"});
+		packets.push_back({"synthetic doctype",
+		                   "<?xml version='1.0'?><!DOCTYPE x [<!ELEMENT x ANY>]>"
 		                   "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
 		                   "<rdf:Description xmlns:xmp='http://ns.adobe.com/xap/1.0/' xmp:Rating='1'/></rdf:RDF>"});
 		packets.push_back({"synthetic not xml", "plain text"});
@@ -3858,14 +3964,15 @@ static void should_parse_every_xmp_packet_whole_and_cut_short()
 		}
 	}
 
-	core::log(__FUNCTION__, std::format("{} packets from {} files: {} parsed, {} refused, {} failures",
-	                                  packets.size(), from_files, parsed, refused, failures.size()));
+	core::log(__FUNCTION__, std::format("{} packets from {} files: {} parsed, {} refused, {} failures", packets.size(),
+	                                    from_files, parsed, refused, failures.size()));
 
 	std::string report;
 	for (size_t i = 0; i < std::min<size_t>(failures.size(), 12); ++i) report += "\n  " + failures[i];
 
 	assert_equal(true, from_files > 20, "the fixtures hold packets to parse");
-	assert_equal(0, static_cast<int>(failures.size()), std::format("libfiles parses or refuses every packet{}", report));
+	assert_equal(0, static_cast<int>(failures.size()),
+	             std::format("libfiles parses or refuses every packet{}", report));
 }
 
 // What an item takes from a photo's own blocks - its EXIF, the IPTC over it and the packet over both - as
@@ -3911,6 +4018,7 @@ namespace property_sweep
 		// By source rather than in the pack's order: a UTC instant - a GPS stamp - is placed by the machine's
 		// wall clock, and the record must not depend on the zone it is taken in.
 		std::vector<std::string> dates;
+		dates.reserve(static_cast<size_t>(md.dates.group_count()));
 
 		for (auto i = 0; i < md.dates.group_count(); ++i)
 		{
@@ -3969,7 +4077,7 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 
 		const auto scanned = ff.scan_file(path, false, files::file_type_from_name(path));
 		if (scanned.metadata.exif.empty() && scanned.metadata.iptc.empty() && scanned.metadata.xmp.empty() &&
-			!scanned.tiff_metadata)
+		    !scanned.tiff_metadata)
 			continue;
 
 		fixtures.push_back({std::string(path.name()), scanned.metadata.exif, scanned.metadata.iptc,
@@ -3977,14 +4085,10 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 	}
 
 	std::ranges::sort(fixtures, [](const auto& a, const auto& b)
-	{
-		return a.name != b.name ? a.name < b.name : a.xmp.size() < b.xmp.size();
-	});
+	{ return a.name != b.name ? a.name < b.name : a.xmp.size() < b.xmp.size(); });
 
 	std::ranges::sort(packets, [](const auto& a, const auto& b)
-	{
-		return a.label != b.label ? a.label < b.label : a.packet < b.packet;
-	});
+	{ return a.label != b.label ? a.label < b.label : a.packet < b.packet; });
 
 	for (const auto& f : fixtures)
 	{
@@ -3996,7 +4100,7 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 	std::string record;
 	auto readings = 0;
 
-	const auto note = [&](const std::string& what, std::string outcome)
+	const auto note = [&](const std::string& what, const std::string& outcome)
 	{
 		record += what + ": " + outcome + "\n";
 		++readings;
@@ -4009,7 +4113,8 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 
 		for (size_t i = 1; i < 8 && !f.iptc.empty(); ++i)
 		{
-			note(std::format("{} iptc cut {}", f.name, i), read(f, std::span(f.iptc).first(f.iptc.size() * i / 8), f.xmp));
+			note(std::format("{} iptc cut {}", f.name, i),
+			     read(f, std::span(f.iptc).first(f.iptc.size() * i / 8), f.xmp));
 		}
 
 		auto damaged = f.iptc;
@@ -4037,18 +4142,20 @@ static void should_read_photo_properties_as_diffractors_readers_did()
 		{
 			const auto cut = bytes.first(bytes.size() * i / cuts);
 			note(std::format("{} cut {}", p.label, i), read(none, {}, cut));
-			if (base != fixtures.end()) note(std::format("{} over {} cut {}", p.label, base->name, i), read(*base, base->iptc, cut));
+			if (base != fixtures.end())
+				note(std::format("{} over {} cut {}", p.label, base->name, i), read(*base, base->iptc, cut));
 		}
 	}
 
 	const auto checksum = core::crc32c(record.data(), record.size());
 	core::log(__FUNCTION__, std::format("{} fixtures, {} packets, {} readings; record {:08x}", fixtures.size(),
-	                                  packets.size(), readings, checksum));
+	                                    packets.size(), readings, checksum));
 
 	// A difference is found by diffing the readings this writes against a run of the code the record was taken from.
 	if (const auto dump = xmp_corpus::environment_variable("DIFFRACTOR_PROPERTY_RECORD"); !dump.empty())
 	{
-		platform::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, core::file_path(dump));
+		platform::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()},
+		                            core::file_path(dump));
 	}
 
 	assert_equal(true, fixtures.size() > 20, std::format("the fixtures carry metadata blocks ({})", fixtures.size()));
@@ -4073,12 +4180,13 @@ static void should_read_keywords_and_bylines_whole()
 {
 	const auto dataset = [](std::vector<uint8_t>& block, const uint8_t id, const std::string_view value)
 	{
-		block.insert(block.end(), {0x1C, 2, id, static_cast<uint8_t>(value.size() >> 8), static_cast<uint8_t>(value.size())});
+		block.insert(block.end(),
+		             {0x1C, 2, id, static_cast<uint8_t>(value.size() >> 8), static_cast<uint8_t>(value.size())});
 		block.insert(block.end(), value.begin(), value.end());
 	};
 
 	std::vector<uint8_t> iptc;
-	dataset(iptc, 25, "Holiday"); // Keywords
+	dataset(iptc, 25, "Holiday");    // Keywords
 	dataset(iptc, 80, "John Smith"); // By-line
 	dataset(iptc, 80, "jane doe");
 
@@ -4096,7 +4204,7 @@ static void should_read_keywords_and_bylines_whole()
 
 	std::vector<std::string> names;
 	core::split2(md->artist, true, [&names](const std::string_view part) { names.emplace_back(core::trim(part)); },
-	            core::is_artist_separator);
+	             core::is_artist_separator);
 	assert_equal(2, static_cast<int>(names.size()), "the artist search splits the names apart");
 	assert_equal("John Smith", names[1], "and finds each whole");
 }
@@ -4175,11 +4283,13 @@ static void should_read_back_every_xmp_packet_libfiles_writes()
 			{
 				const auto expected = f.keeps_order ? written : xmp_corpus::by_property(written);
 				const auto actual = f.keeps_order ? reread.dump : xmp_corpus::by_property(reread.dump);
-				differences.push_back(std::format("{} ({}): {}", p.label, f.name, xmp_corpus::first_difference(expected, actual)));
+				differences.push_back(
+					std::format("{} ({}): {}", p.label, f.name, xmp_corpus::first_difference(expected, actual)));
 			}
 			else if (f.options.exact_packet_length && text.size() != exact_length)
 			{
-				differences.push_back(std::format("{} ({}): {} bytes, asked for {}", p.label, f.name, text.size(), exact_length));
+				differences.push_back(
+					std::format("{} ({}): {} bytes, asked for {}", p.label, f.name, text.size(), exact_length));
 			}
 		}
 	}
@@ -4191,7 +4301,7 @@ static void should_read_back_every_xmp_packet_libfiles_writes()
 	assert_equal(0, static_cast<int>(differences.size()), std::format("libfiles reads back what it writes{}", report));
 }
 
-void register_metadata_tests(view_state& state, test_registry& tests)
+void register_metadata_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should parse every xmp packet whole and cut short"s, should_parse_every_xmp_packet_whole_and_cut_short);
 	tests.add("Should read photo properties as Diffractor's readers did"s,
@@ -4240,8 +4350,7 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should rank editor rewritten dates below the shutter"s,
 	          should_rank_editor_rewritten_dates_below_the_shutter);
 	tests.add("Should read exif DateTime as modified date"s, should_read_exif_datetime_as_modified);
-	tests.add("Should take the modified date from the filesystem"s,
-	          should_take_the_modified_date_from_the_filesystem);
+	tests.add("Should take the modified date from the filesystem"s, should_take_the_modified_date_from_the_filesystem);
 	tests.add("Should not repeat a filesystem stamp in the date bubble"s,
 	          should_not_repeat_a_filesystem_stamp_in_the_date_bubble);
 	tests.add("Should carry the zone and fraction a date was written with"s,
@@ -4306,6 +4415,7 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should present embedded thumbnail as an image"s, should_present_embedded_thumbnail_as_an_image);
 	tests.add("Should present raw metadata sections"s, should_present_raw_block_sections);
 	tests.add("Should present icc metadata sections"s, should_present_icc_block_sections);
+	tests.add("Should say how an ICC profile's colours are shown"s, should_say_how_an_icc_profiles_colours_are_shown);
 	tests.add("Should read icc tags that share a region"s, should_read_icc_tags_that_share_a_region);
 	tests.add("Should decode icc text exactly"s, should_decode_icc_text_exactly);
 	tests.add("Should decode icc mluc offsets"s, should_decode_icc_mluc_offsets);
@@ -4313,6 +4423,8 @@ void register_metadata_tests(view_state& state, test_registry& tests)
 	tests.add("Should present jpeg embedded images"s, should_present_jpeg_embedded_images);
 	tests.add("Should present webp structure"s, should_present_webp_structure_block);
 	tests.add("Should present heif structure"s, should_present_heif_structure_block);
+	tests.add("Should present jxl structure"s, should_present_jxl_structure_block);
+	tests.add("Should present png structure"s, should_present_png_structure_block);
 	tests.add("Should merge Xmp sidecar"s, should_merge_xmp_sidecar);
 	tests.add("Should replace tokens"s, should_replace_tokens);
 }

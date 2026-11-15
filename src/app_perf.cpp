@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The session's performance counters and the summary of them written to the log at exit.
 
@@ -53,8 +52,14 @@ namespace
 		return digits;
 	}
 
-	uint64_t load(const std::atomic_uint64_t& v) { return v.load(std::memory_order_relaxed); }
-	uint32_t load(const std::atomic_uint32_t& v) { return v.load(std::memory_order_relaxed); }
+	uint64_t load(const std::atomic_uint64_t& v)
+	{
+		return v.load(std::memory_order_relaxed);
+	}
+	uint32_t load(const std::atomic_uint32_t& v)
+	{
+		return v.load(std::memory_order_relaxed);
+	}
 
 	std::string format_latency(const core::latency_counters& counters)
 	{
@@ -63,12 +68,11 @@ namespace
 	}
 
 	void append_perf_row(std::string& report, const std::string_view area, const std::string_view operation,
-	                     const std::string_view runs, const std::string_view total,
-	                     const std::string_view average, const std::string_view maximum,
-	                     const std::string_view detail = "-"sv)
+	                     const std::string_view runs, const std::string_view total, const std::string_view average,
+	                     const std::string_view maximum, const std::string_view detail = "-"sv)
 	{
-		report += std::format("| {} | {} | {} | {} | {} | {} | {} |\n", area, operation, runs, total,
-		                      average, maximum, detail);
+		report += std::format("| {} | {} | {} | {} | {} | {} | {} |\n", area, operation, runs, total, average, maximum,
+		                      detail);
 	}
 }
 
@@ -112,29 +116,29 @@ void df::log_perf_summary()
 	for (size_t i = 0; i < queue_count; ++i) has_queue_work |= load(perf_queues[i].tasks) != 0;
 
 	if (load(u.idle_drains) == 0 && load(u.paints) == 0 && load(g.frames) == 0 && load(f.scans) == 0 &&
-		load(f.loads) == 0 && load(f.decodes) == 0 && load(d.read_batches) == 0 && load(d.write_batches) == 0 &&
-		load(q.queries) == 0 && load(q.counts) == 0 && load(h.computed) == 0 && load(x.phash_computed) == 0 &&
-		load(t.stage_requests) == 0 && load(t.scan_thumbs_requested) == 0 && !has_queue_work)
+	    load(f.loads) == 0 && load(f.decodes) == 0 && load(d.read_batches) == 0 && load(d.write_batches) == 0 &&
+	    load(q.queries) == 0 && load(q.counts) == 0 && load(h.computed) == 0 && load(x.phash_computed) == 0 &&
+	    load(t.stage_requests) == 0 && load(t.plan_requests) == 0 && !has_queue_work)
 	{
 		return;
 	}
 
-	std::string report = std::format(
-		"\n### {} performance results\n\n"
-		"| Area | Operation | Runs | Total | Average | Maximum | Detail |\n"
-		"|---|---|---:|---:|---:|---:|---|\n", core::app_name());
-	append_perf_row(report, "Session", "Uptime", "1", format_us(static_cast<uint64_t>(now_us() - perf_start_us)),
-	                "-", "-", std::format("version={}", format_version(true)));
+	std::string report = std::format("\n### {} performance results\n\n"
+	                                 "| Area | Operation | Runs | Total | Average | Maximum | Detail |\n"
+	                                 "|---|---|---:|---:|---:|---:|---|\n",
+	                                 core::app_name());
+	append_perf_row(report, "Session", "Uptime", "1", format_us(static_cast<uint64_t>(now_us() - perf_start_us)), "-",
+	                "-", std::format("version={}", format_version(true)));
 
 	platform::memory_usage_t memory;
 	if (platform::memory_usage(memory))
 	{
 		append_perf_row(report, "Memory", "Working set", "-", platform::format_size(file_size(memory.working_set)), "-",
-			platform::format_size(file_size(memory.peak_working_set)),
-			std::format("private={}; shared={}; commit={}",
-				platform::format_size(file_size(memory.private_working_set)),
-				platform::format_size(file_size(memory.shared_working_set)),
-				platform::format_size(file_size(memory.commit))));
+		                platform::format_size(file_size(memory.peak_working_set)),
+		                std::format("private={}; shared={}; commit={}",
+		                            platform::format_size(file_size(memory.private_working_set)),
+		                            platform::format_size(file_size(memory.shared_working_set)),
+		                            platform::format_size(file_size(memory.commit))));
 	}
 
 	append_perf_row(report, "UI", "Idle drain", format_perf_count(load(u.idle_drains)), format_us(load(u.idle_us)),
@@ -151,8 +155,9 @@ void df::log_perf_summary()
 		append_perf_row(report, "Rendering", "Paint", format_perf_count(paints), format_us(load(u.paint_us)),
 		                format_average(load(u.paint_us), paints), format_us(load(u.paint_max_us)),
 		                format_latency(u.paint_latency));
-		append_perf_row(report, "Rendering", "Scene build", format_perf_count(paints), format_us(load(u.scene_build_us)),
-		                format_average(load(u.scene_build_us), paints), format_us(load(u.scene_build_max_us)),
+		append_perf_row(report, "Rendering", "Scene build", format_perf_count(paints),
+		                format_us(load(u.scene_build_us)), format_average(load(u.scene_build_us), paints),
+		                format_us(load(u.scene_build_max_us)),
 		                std::format("{}; {}% of paint", format_latency(u.scene_build_latency),
 		                            load(u.paint_us) ? load(u.scene_build_us) * 100 / load(u.paint_us) : 0));
 		append_perf_row(report, "Rendering", "Backend render", format_perf_count(paints),
@@ -160,18 +165,18 @@ void df::log_perf_summary()
 		                format_us(load(u.backend_render_max_us)), format_latency(u.backend_render_latency));
 	}
 
-	append_perf_row(report, "UI", "Frame requests", format_perf_count(load(u.frame_prepares)), "-", "-", "-",
-	                std::format("invalidates={}; redraws={}; hidden-skips={}; paints/prepare={:.1f}; texture-uploads={}",
-	                            format_perf_count(load(u.invalidates)), format_perf_count(load(u.redraws)),
-	                            format_perf_count(load(u.hidden_skips)),
-	                            load(u.frame_prepares) == 0
-		                            ? 0.0
-		                            : static_cast<double>(load(u.paints)) / load(u.frame_prepares),
-	                            format_perf_count(load(u.texture_uploads))));
+	append_perf_row(
+		report, "UI", "Frame requests", format_perf_count(load(u.frame_prepares)), "-", "-", "-",
+		std::format("invalidates={}; redraws={}; hidden-skips={}; paints/prepare={:.1f}; texture-uploads={}",
+	                format_perf_count(load(u.invalidates)), format_perf_count(load(u.redraws)),
+	                format_perf_count(load(u.hidden_skips)),
+	                load(u.frame_prepares) == 0 ? 0.0 : static_cast<double>(load(u.paints)) / load(u.frame_prepares),
+	                format_perf_count(load(u.texture_uploads))));
 	append_perf_row(report, "UI", "Animation prepares", format_perf_count(load(u.prepares_registered_anim)), "-", "-",
-	                "-", std::format("display={}; display-invalid={}; live peak={}",
-	                                 format_perf_count(load(u.prepares_display_anim)),
-	                                 format_perf_count(load(u.prepares_display_invalid)), load(u.animations_peak)));
+	                "-",
+	                std::format("display={}; display-invalid={}; live peak={}",
+	                            format_perf_count(load(u.prepares_display_anim)),
+	                            format_perf_count(load(u.prepares_display_invalid)), load(u.animations_peak)));
 
 	if (load(g.frames) != 0)
 	{
@@ -190,15 +195,19 @@ void df::log_perf_summary()
 		                std::format("{:.1f}/frame", static_cast<double>(load(g.draws)) / frames),
 		                format_perf_count(load(g.draws_peak)),
 		                std::format("merged={}; geometry={} ({} /frame)", format_perf_count(load(g.merged)),
-		                            format_perf_count(load(g.geometry_bytes)), format_perf_count(load(g.geometry_bytes) / frames)));
+		                            format_perf_count(load(g.geometry_bytes)),
+		                            format_perf_count(load(g.geometry_bytes) / frames)));
 		append_perf_row(report, "GPU", "State changes", format_perf_count(frames), "-", "-", "-",
-		                std::format("shader={}; view={}; sampler={}; cbuffer={}", format_perf_count(load(g.shader_binds)),
-		                            format_perf_count(load(g.view_binds)), format_perf_count(load(g.sampler_binds)),
+		                std::format("shader={}; view={}; sampler={}; cbuffer={}",
+		                            format_perf_count(load(g.shader_binds)), format_perf_count(load(g.view_binds)),
+		                            format_perf_count(load(g.sampler_binds)),
 		                            format_perf_count(load(g.cbuffer_uploads))));
 		append_perf_row(report, "GPU", "Resources created", "-", "-", "-", "-",
 		                std::format("views={}; targets={}; textures={}; reused={}; buffers={}; vram={}MB; peak={}MB",
-		                            format_perf_count(load(g.views_created)), format_perf_count(load(g.targets_created)),
-		                            format_perf_count(load(g.textures_created)), format_perf_count(load(g.textures_reused)),
+		                            format_perf_count(load(g.views_created)),
+		                            format_perf_count(load(g.targets_created)),
+		                            format_perf_count(load(g.textures_created)),
+		                            format_perf_count(load(g.textures_reused)),
 		                            format_perf_count(load(g.buffers_created)), load(g.vram_mb), load(g.vram_peak_mb)));
 	}
 
@@ -309,14 +318,14 @@ void df::log_perf_summary()
 	{
 		// A picture is only supposed to be hashed when another picture shares its capture time, so
 		// unpersisted and uninvited are the two numbers that say whether that rule is actually holding.
-		append_perf_row(report, "Hash", "Perceptual", format_perf_count(load(x.phash_computed)),
-		                format_us(load(x.phash_us)), format_average(load(x.phash_us), load(x.phash_computed)),
-		                format_us(load(x.phash_max_us)),
-		                std::format("bytes={}; usable={}; declined={}; unreadable={}; unpersisted={}; unwritten={}; presence={}",
-		                            platform::format_size(file_size(load(x.phash_bytes))), format_perf_count(load(x.phash_usable)),
-		                            format_perf_count(load(x.phash_declined)), format_perf_count(load(x.phash_unreadable)),
-		                            format_perf_count(load(x.phash_unpersisted)), format_perf_count(load(x.phash_unwritten)),
-		                            format_perf_count(load(x.phash_presence))));
+		append_perf_row(
+			report, "Hash", "Perceptual", format_perf_count(load(x.phash_computed)), format_us(load(x.phash_us)),
+			format_average(load(x.phash_us), load(x.phash_computed)), format_us(load(x.phash_max_us)),
+			std::format("bytes={}; usable={}; declined={}; unreadable={}; unpersisted={}; unwritten={}; presence={}",
+		                platform::format_size(file_size(load(x.phash_bytes))), format_perf_count(load(x.phash_usable)),
+		                format_perf_count(load(x.phash_declined)), format_perf_count(load(x.phash_unreadable)),
+		                format_perf_count(load(x.phash_unpersisted)), format_perf_count(load(x.phash_unwritten)),
+		                format_perf_count(load(x.phash_presence))));
 
 		const auto candidates = static_cast<uint64_t>(load(x.pass_candidates));
 		const auto uninvited = static_cast<uint64_t>(load(x.pass_uninvited));
@@ -329,8 +338,9 @@ void df::log_perf_summary()
 		                            format_perf_count(load(x.pass_buckets)), format_perf_count(candidates),
 		                            format_perf_count(load(x.pass_wanted)), format_perf_count(load(x.pass_crowded)),
 		                            format_perf_count(load(x.pass_matched)), format_perf_count(held),
-		                            format_perf_count(load(x.pass_usable_held)), format_perf_count(load(x.pass_declined_held)),
-		                            format_perf_count(uninvited), excess_pct));
+		                            format_perf_count(load(x.pass_usable_held)),
+		                            format_perf_count(load(x.pass_declined_held)), format_perf_count(uninvited),
+		                            excess_pct));
 
 		// solo-with-swap is what the gate refused; solo is what a gate blind to rotation would have
 		// refused, and the gap between them is what supporting a quarter turn costs.
@@ -342,34 +352,41 @@ void df::log_perf_summary()
 		                            format_perf_count(load(x.pass_dims_unknown))));
 	}
 
-	const auto thumbs_requested = load(t.scan_thumbs_requested);
-	const auto thumbs_scanned = load(t.scan_thumbs_scanned);
+	const auto plan_requests = load(t.plan_requests);
+	const auto plan_dropped = load(t.plan_dropped);
+	const auto source_reads = load(t.source_reads);
 	const auto decodes = load(t.stage_decodes);
 	const auto discarded = load(t.stage_discarded);
 
-	if (load(t.stage_requests) != 0 || thumbs_requested != 0)
+	if (load(t.stage_requests) != 0 || plan_requests != 0)
 	{
-		// The two ratios the pipeline is tuned against: how much thumbnail work a batch abandons to
-		// cancellation, and how many decoded surfaces are thrown away as stale.
-		const auto abandoned_pct = thumbs_requested == 0
-			                           ? 0
-			                           : static_cast<int>(((thumbs_requested - thumbs_scanned) * 100) /
-				                           thumbs_requested);
+		// The two ratios the pipeline is tuned against: how much planned work scrolling drops before it is
+		// reached, and how many decoded surfaces are thrown away as stale.
+		const auto dropped_pct = plan_requests == 0 ? 0 : static_cast<int>((plan_dropped * 100) / plan_requests);
 		const auto discarded_pct = decodes == 0 ? 0 : static_cast<int>((discarded * 100) / decodes);
 
-		append_perf_row(report, "Thumbnails", "Scan", format_perf_count(load(t.scan_batches)), "-", "-", "-",
-		                std::format("queued={}; cancelled={}; peak-pending={}; requested={}; scanned={}; "
-		                            "abandoned={}%; stale={}",
-		                            load(t.scan_batches_queued), load(t.scan_batches_cancelled),
-		                            load(t.scan_batches_pending_peak), format_perf_count(thumbs_requested),
-		                            format_perf_count(thumbs_scanned), abandoned_pct, load(t.scan_completions_stale)));
+		append_perf_row(report, "Thumbnails", "Plan", format_perf_count(load(t.plans)), "-", "-", "-",
+		                std::format("requested={}; dropped={} ({}%); peak={}; scanned={}; stale={}",
+		                            format_perf_count(plan_requests), format_perf_count(plan_dropped), dropped_pct,
+		                            load(t.plan_peak), format_perf_count(load(t.scan_thumbs_scanned)),
+		                            load(t.scan_completions_stale)));
+		append_perf_row(report, "Thumbnails", "Read", format_perf_count(source_reads),
+		                format_us(load(t.source_read_us)), format_average(load(t.source_read_us), source_reads),
+		                format_us(load(t.source_read_max_us)),
+		                std::format("bytes={}; peak-backlog={}; decoders-full={}",
+		                            platform::format_size(file_size(load(t.source_bytes))), load(t.decode_backlog_peak),
+		                            format_perf_count(load(t.reader_waits))));
+		append_perf_row(report, "Thumbnails", "Decode", format_perf_count(source_reads), format_us(load(t.decode_us)),
+		                format_average(load(t.decode_us), source_reads), format_us(load(t.decode_max_us)),
+		                std::format("surfaces-adopted={}", format_perf_count(load(t.surfaces_adopted))));
 		append_perf_row(report, "Thumbnails", "Stage", format_perf_count(load(t.stage_requests)), "-", "-", "-",
 		                std::format("skipped={}; coalesced={}; decodes={}; discarded={} ({}%); published-db={}; "
 		                            "published-shell={}; retries={}; failures={}",
-		                            format_perf_count(load(t.stage_skipped)), format_perf_count(load(t.stage_coalesced)),
-		                            format_perf_count(decodes), format_perf_count(discarded), discarded_pct,
-		                            format_perf_count(load(t.published_db)), load(t.published_shell), load(t.shell_retries),
-		                            load(t.load_failures)));
+		                            format_perf_count(load(t.stage_skipped)),
+		                            format_perf_count(load(t.stage_coalesced)), format_perf_count(decodes),
+		                            format_perf_count(discarded), discarded_pct,
+		                            format_perf_count(load(t.published_db)), load(t.published_shell),
+		                            load(t.shell_retries), load(t.load_failures)));
 	}
 
 	log("perf results", report);

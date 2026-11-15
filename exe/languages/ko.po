@@ -100,6 +100,9 @@ msgstr "오디오"
 msgid "Audio"
 msgstr "오디오"
 
+msgid "AVIF - Small files, widely supported"
+msgstr "AVIF - 작은 파일, 폭넓은 지원"
+
 msgid "Before"
 msgstr "이전"
 
@@ -827,8 +830,8 @@ msgstr "모든 사진을 JPEG로 변환"
 msgid "Failed to send email using MAPI."
 msgstr "MAPI를 사용하여 이메일을 보내지 못했습니다."
 
-msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
-msgstr "사진을 최대 크기(픽셀 단위)로 제한합니다. JPEG 및 PNG 파일에만 지원됩니다."
+msgid "Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG."
+msgstr "사진을 최대 크기(픽셀 단위)로 제한합니다. Diffractor가 쓰지 않는 형식의 사진은 JPEG로 전송됩니다."
 
 msgid "Processing {}"
 msgstr "{} 처리 중"
@@ -1939,6 +1942,7 @@ msgstr "페이지다운"
 
 msgid "["
 msgstr "["
+
 msgid "]"
 msgstr "]"
 
@@ -2137,8 +2141,8 @@ msgstr "읽기 전용 항목은 지원되지 않습니다."
 msgid "Cannot update metadata of readonly items."
 msgstr "읽기 전용 항목의 메타데이터를 업데이트할 수 없습니다."
 
-msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
-msgstr "Diffractor는 JPG, WEBP 및 PNG 이미지 파일만 저장하거나 업데이트할 수 있습니다."
+msgid "Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files."
+msgstr "Diffractor는 JPEG, PNG, WEBP, JPEG XL, HEIC 및 AVIF 이미지 파일만 회전할 수 있습니다."
 
 msgid "Nothing found."
 msgstr "아무것도 발견되지 않았습니다."
@@ -2185,8 +2189,8 @@ msgstr "고급"
 msgid "Application options"
 msgstr "응용 프로그램 옵션"
 
-msgid "When overwriting a photo with irreversible changes make an original backup copy"
-msgstr "되돌릴 수 없는 변경 사항으로 사진을 덮어쓰는 경우 원본 백업 복사본을 만드세요."
+msgid "When overwriting a file with irreversible changes make an original backup copy"
+msgstr "되돌릴 수 없는 변경 사항으로 파일을 덮어쓰는 경우 원본 백업 복사본을 만드세요"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "인터넷에 연결하여 업데이트 확인"
@@ -2207,6 +2211,9 @@ msgstr "WEBP 저장 품질"
 msgid "JPEG XL save quality"
 msgstr "JPEG XL 저장 품질"
 
+msgid "AVIF save quality"
+msgstr "AVIF 저장 품질"
+
 msgid "When saving"
 msgstr "저장할 때"
 
@@ -2218,6 +2225,9 @@ msgstr "애플리케이션 디버깅 정보를 표시합니다(프로그래머�
 
 msgid "Show hidden files"
 msgstr "숨겨진 파일 표시"
+
+msgid "Reuse existing window when opening files"
+msgstr "파일을 열 때 기존 창 다시 사용"
 
 msgid "Show photos rotated based on recorded camera orientation"
 msgstr "기록된 카메라 방향에 따라 회전된 사진 표시"
@@ -2272,6 +2282,9 @@ msgstr "기타"
 
 msgid "pasted"
 msgstr "붙여넣은"
+
+msgid "dropped"
+msgstr "끌어다 놓은"
 
 msgid "photo"
 msgstr "사진"
@@ -2633,8 +2646,8 @@ msgstr "복고풍"
 msgid "Saturation"
 msgstr "채도"
 
-msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
-msgstr "Diffractor는 {} 파일을 자르거나 회전하거나 색상을 지정할 수 없습니다. 파일을 JPEG로 저장할 수 있나요?"
+msgid "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?"
+msgstr "Diffractor는 이러한 변경 내용을 {} 파일에 쓸 수 없습니다. 대신 사진을 JPEG로 저장하시겠습니까?"
 
 msgid "Save Changes"
 msgstr "변경 사항 저장"
@@ -2804,6 +2817,9 @@ msgstr "수평선과 수직선을 자동으로 보정"
 msgid "Show the final cropped image"
 msgstr "최종 자른 이미지 표시"
 
+msgid "Drag across the photo to compare the edit with the original."
+msgstr "사진 위로 끌어서 편집 결과를 원본과 비교합니다."
+
 msgid "Horizontal perspective"
 msgstr "수평 원근"
 
@@ -2858,8 +2874,8 @@ msgstr "원격에 존재하지 않는 로컬 파일 삭제"
 msgid "Delete remote files that do not exist locally"
 msgstr "로컬에 존재하지 않는 원격 파일 삭제"
 
-msgid "c:\\photos with \\\\nas\\\\backup"
-msgstr "c:\\photos 및 \\\\nas\\\\backup"
+msgid "c:\\photos with \\\\nas\\backup"
+msgstr "c:\\photos 및 \\\\nas\\backup"
 
 msgid "Local folders"
 msgstr "로컬 폴더"
@@ -3554,8 +3570,8 @@ msgstr "Diffractor는 {} 파일에 등급, 라벨 등의 메타데이터를 기�
 msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
 msgstr "장르를 두 개 이상 입력하려면 세미콜론으로 구분하세요. 예: Rock; Blues"
 
-msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
-msgstr "편집할 사진을 하나 선택하세요. 비디오, 오디오, 폴더 및 Diffractor가 저장할 수 없는 형식은 지원되지 않습니다."
+msgid "Select one photo, video or sound file to edit."
+msgstr "편집할 사진, 비디오 또는 사운드 파일을 하나 선택하세요."
 
 msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
 msgstr "끄기: 창보다 작은 사진과 비디오는 실제 크기로 표시됩니다. 켜기: 창에 맞게 확대됩니다. 창보다 큰 미디어는 항상 창에 맞게 축소됩니다."
@@ -3665,8 +3681,8 @@ msgstr "원본 날짜를 기준으로 정렬"
 msgid "Movie mixer"
 msgstr "동영상 믹서"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다. 아래 스트립에서 클립을 추가, 제거, 재정렬하고 선택한 클립을 자를 수 있습니다. 미리 보기는 렌더링 결과와 같으며, 렌더링하거나 저장하기 전까지는 아무것도 기록되지 않습니다."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "선택한 사진, 동영상, 오디오 파일을 하나의 동영상으로 구성하고 원하는 곳에 텍스트 화면을 넣습니다. 아래 스트립에서 항목을 추가, 제거, 재정렬하고 선택한 항목을 여기서 편집할 수 있습니다. 미리 보기는 렌더링 결과와 같으며, 렌더링하거나 저장하기 전까지는 아무것도 기록되지 않습니다."
 
 msgid "Movie"
 msgstr "동영상"
@@ -3674,50 +3690,38 @@ msgstr "동영상"
 msgid "Selected clip"
 msgstr "선택한 클립"
 
-msgid "Crossfade between clips"
-msgstr "클립 사이 크로스페이드"
+msgid "Text screen"
+msgstr "텍스트 화면"
 
-msgid "Cut between clips"
-msgstr "클립 사이 컷"
+msgid "Text"
+msgstr "텍스트"
 
-msgid "Transition (tenths of a second)"
-msgstr "전환 (10분의 1초)"
+msgid "Caption"
+msgstr "캡션"
 
-msgid "Fade (tenths of a second)"
-msgstr "페이드 (10분의 1초)"
+msgid "Shown for (seconds)"
+msgstr "표시 시간 (초)"
 
-msgid "Fade in from black"
-msgstr "검은 화면에서 페이드 인"
+msgid "Stabilize (not applied yet)"
+msgstr "흔들림 보정 (아직 적용되지 않음)"
 
-msgid "Fade out to black"
-msgstr "검은 화면으로 페이드 아웃"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "사진 표시 시간 (10분의 1초)"
-
-msgid "This photo (tenths of a second)"
-msgstr "이 사진 (10분의 1초)"
-
-msgid "Use the movie default"
-msgstr "동영상 기본값 사용"
-
-msgid "Add photos and videos to build a movie."
-msgstr "사진과 동영상을 추가하여 동영상을 만드세요."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "사진, 동영상, 오디오 파일을 추가하여 동영상을 만드세요."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "출력 {} x {}, {} fps, 길이 {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - {}/{}번째 클립, 시작 {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - {}/{}번째 항목, 시작 {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "{}/{}번째 항목, 시작 {}."
 
 msgid "Movie project"
 msgstr "동영상 프로젝트"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker 프로젝트"
-
-msgid "Photos and videos"
-msgstr "사진 및 동영상"
+msgid "Photos, videos and audio"
+msgstr "사진, 동영상 및 오디오"
 
 msgid "Could not read the project {}."
 msgstr "프로젝트 {}을(를) 읽을 수 없습니다."
@@ -3725,11 +3729,17 @@ msgstr "프로젝트 {}을(를) 읽을 수 없습니다."
 msgid "Could not save the project {}."
 msgstr "프로젝트 {}을(를) 저장할 수 없습니다."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "선택한 사진, 동영상, 오디오 파일을 하나의 동영상으로 구성합니다."
 
 msgid "Add files"
 msgstr "파일 추가"
+
+msgid "Add text screen"
+msgstr "텍스트 화면 추가"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "선택한 항목 뒤에 검은 배경의 텍스트 화면을 추가합니다."
 
 msgid "Remove from movie"
 msgstr "동영상에서 제거"
@@ -3742,9 +3752,6 @@ msgstr "프로젝트 열기"
 
 msgid "Save project"
 msgstr "프로젝트 저장"
-
-msgid "Import Movie Maker project"
-msgstr "Movie Maker 프로젝트 가져오기"
 
 msgid "Video"
 msgstr "동영상"
@@ -3800,24 +3807,52 @@ msgstr "누락된 파일 다시 연결"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "원본 파일이 이동한 클립을 선택한 폴더로 다시 지정합니다."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "가져온 프로젝트의 요소 1개는 동영상에서 표현할 수 없어 제외했습니다."
-msgstr[1] "가져온 프로젝트의 요소 {count}개는 동영상에서 표현할 수 없어 제외했습니다."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "프로젝트의 1줄을 읽을 수 없어 제외했습니다."
+msgstr[1] "프로젝트의 {count}줄을 읽을 수 없어 제외했습니다."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "클립 1개가 원본 파일을 찾지 못했습니다."
 msgstr[1] "클립 {count}개가 원본 파일을 찾지 못했습니다."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "클립 1개를 다시 연결했습니다."
-msgstr[1] "클립 {count}개를 다시 연결했습니다."
 
+msgid "Pattern"
+msgstr "패턴"
 
-msgid "SID monitor"
-msgstr "SID 모니터"
+msgid "Row"
+msgstr "행"
+
+msgid "Speed"
+msgstr "속도"
+
+msgid "Samples"
+msgstr "샘플"
+
+msgid "Instruments"
+msgstr "악기"
+
+msgid "Follow playback"
+msgstr "재생 위치 따라가기"
+
+msgid "Notes"
+msgstr "음표"
+
+msgid "Range"
+msgstr "음역"
+
+msgid "Compressed"
+msgstr "압축 크기"
+
+msgid "Codec"
+msgstr "코덱"
+
+msgid "Format"
+msgstr "형식"
+
+msgid "Sidecars"
+msgstr "사이드카"
 
 msgid "Voice {}"
 msgstr "보이스 {}"
@@ -3836,6 +3871,21 @@ msgstr "레지스터 쓰기"
 
 msgid "Solo"
 msgstr "솔로"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "에뮬레이션된 Commodore 64에서 실행"
+
+msgid "Start"
+msgstr "시작"
+
+msgid "Joystick port {}"
+msgstr "조이스틱 포트 {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "화살표 키와 스페이스: 조이스틱. Esc: 뒤로."
+
+msgid "This file could not be started."
+msgstr "이 파일을 시작할 수 없습니다."
 
 msgid "Same film"
 msgstr "같은 영화"
@@ -3931,3 +3981,135 @@ msgid "1 of the items shown"
 msgid_plural "{count} of the items shown"
 msgstr[0] "표시된 항목 중 1개"
 msgstr[1] "표시된 항목 중 {count}개"
+
+msgid "Trim"
+msgstr "다듬기"
+
+msgid "Keep all"
+msgstr "모두 유지"
+
+msgid "This format plays a copy from the key frame before its start, so it may begin a moment early."
+msgstr "이 형식은 복사본을 시작 지점 앞의 키 프레임부터 재생하므로 조금 일찍 시작될 수 있습니다."
+
+msgid "Remove the sound"
+msgstr "오디오 제거"
+
+msgid "Rotate"
+msgstr "회전"
+
+msgid "Saving leaves out what this format cannot hold: {}."
+msgstr "저장하면 이 형식에 담을 수 없는 항목이 제외됩니다: {}."
+
+msgid "Saved as MP4, the copy leaves out what MP4 cannot hold: {}."
+msgstr "MP4로 저장하면 복사본에서 MP4에 담을 수 없는 항목이 제외됩니다: {}."
+
+msgid "A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4."
+msgstr "동영상이나 오디오 파일의 복사본은 원본 파일과 같은 형식 또는 MP4로 저장됩니다."
+
+msgid "This file cannot be copied without re-encoding it."
+msgstr "이 파일은 다시 인코딩하지 않고는 복사할 수 없습니다."
+
+msgid "Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save."
+msgstr "리먹싱을 통한 무손실 편집: 동영상과 오디오를 다시 인코딩하지 않고 같은 형식의 새 파일이나 MP4로 복사하므로 손실이 없습니다. 저장하면 파일 구조가 다시 만들어지므로, 변경 없이 다른 이름으로 저장하면 다른 플레이어에서 재생되지 않는 파일을 복구할 수 있는 리먹싱된 복사본이 만들어집니다. 저장하기 전까지는 디스크에 아무것도 기록되지 않습니다."
+
+msgid "Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown."
+msgstr "탐색 막대 양쪽 끝의 핸들을 끌어 유지할 부분을 선택하거나, I와 O를 눌러 표시된 프레임에서 시작하거나 끝나도록 하세요."
+
+msgid "Rotate left"
+msgstr "왼쪽으로 회전"
+
+msgid "Rotate right"
+msgstr "오른쪽으로 회전"
+
+msgid "Start {}, end {}, length {}"
+msgstr "시작 {}, 끝 {}, 길이 {}"
+
+msgid "Sound removed"
+msgstr "오디오 제거됨"
+
+msgid "Rotated right"
+msgstr "오른쪽으로 회전됨"
+
+msgid "Upside down"
+msgstr "위아래 거꾸로"
+
+msgid "Rotated left"
+msgstr "왼쪽으로 회전됨"
+
+msgid "No changes. Save As writes a re-muxed copy."
+msgstr "변경 사항이 없습니다. 다른 이름으로 저장하면 리먹싱된 복사본이 기록됩니다."
+
+msgid "This file could not be read, so it cannot be copied or repaired."
+msgstr "이 파일을 읽을 수 없어 복사하거나 복구할 수 없습니다."
+
+msgid "Write MP4s with their index at the front"
+msgstr "MP4의 인덱스를 파일 앞부분에 기록"
+
+msgid "Attempt to fix damaged files (don't fail on file errors)"
+msgstr "손상된 파일 복구 시도 (파일 오류가 있어도 중단하지 않음)"
+
+msgid "The file is damaged. The copy keeps what could be read."
+msgstr "파일이 손상되었습니다. 복사본에는 읽을 수 있었던 부분이 유지됩니다."
+
+msgid "Damaged parts left out: {}"
+msgstr "제외된 손상 부분: {}"
+
+msgid "The copy ends at {}, where the file could be read no further."
+msgstr "복사본은 {}에서 끝납니다. 그 이후로는 파일을 읽을 수 없었습니다."
+
+msgid "The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options."
+msgstr "파일이 손상되어 복구된 복사본에서 일부가 빠졌습니다. 원본을 유지하려면 복사본을 다른 이름으로 저장하거나 저장 옵션에서 백업 복사본을 켜세요."
+
+msgid "Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?"
+msgstr "Diffractor는 이러한 변경 내용을 {} 파일에 쓸 수 없습니다. 대신 JPEG에서는 잃게 되는 HDR과 색 심도를 유지하는 AVIF로 사진을 저장하시겠습니까?"
+
+msgid "As &AVIF"
+msgstr "AVIF로(&A)"
+
+msgid "This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?"
+msgstr "이 사진은 HDR이며 HDR로 편집하기에는 너무 큽니다. 변경 내용을 표준 다이내믹 레인지(SDR) 사본으로 저장하고 사진은 그대로 두시겠습니까?"
+
+msgid "&Save a Copy"
+msgstr "사본 저장(&S)"
+
+msgid "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} 파일은 HDR을 담을 수 없으므로 사본은 표준 다이내믹 레인지(SDR)가 됩니다. 그래도 저장하시겠습니까?"
+
+msgid "{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} 파일은 이 사진을 HDR로 보여 주는 게인 맵을 담을 수 없으므로 사본은 표준 다이내믹 레인지(SDR)가 됩니다. 그래도 저장하시겠습니까?"
+
+msgid "This photo is HDR. It is shown here in standard range, and its edits keep its HDR."
+msgstr "이 사진은 HDR입니다. 여기서는 표준 다이내믹 레인지로 표시되며, 편집해도 HDR이 유지됩니다."
+
+msgid "This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy."
+msgstr "이 사진은 HDR이지만 HDR로 편집하기에는 너무 큽니다. 표준 다이내믹 레인지로 편집되며, 픽셀 변경 내용은 사본으로 저장됩니다."
+
+msgid "This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel."
+msgstr "이 사진은 원래 색 심도로 편집하기에는 너무 커서 채널당 8비트로 편집하고 저장합니다."
+
+msgid "HDR photos are written in standard range, with a gain map that shows them in HDR where the display can."
+msgstr "HDR 사진은 표준 다이내믹 레인지로 기록되며, 지원하는 디스플레이에서 HDR로 보여 주는 게인 맵이 함께 저장됩니다."
+
+msgid "HDR photos, and those with a gain map, are written in standard range."
+msgstr "HDR 사진과 게인 맵이 있는 사진은 표준 다이내믹 레인지로 기록됩니다."
+
+msgid "HDR photos stay HDR, but gain maps are left out."
+msgstr "HDR 사진은 HDR로 유지되지만 게인 맵은 제외됩니다."
+
+msgid "HDR photos stay HDR, and gain maps are kept."
+msgstr "HDR 사진은 HDR로 유지되며 게인 맵도 보존됩니다."
+
+msgid "Color profile"
+msgstr "색 프로필"
+
+msgid "HDR"
+msgstr "HDR"
+
+msgid "Bit depth"
+msgstr "비트 심도"
+
+msgid "Frame rate"
+msgstr "프레임 속도"
+
+msgid "Contents"
+msgstr "내용"

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: SQLite-backed store for downloaded map tiles. Owns map-tiles-cache.db, its schema,
 // batched writes and the bounded prune that keeps the file from growing without limit.
@@ -42,9 +41,7 @@ namespace
 			}
 		}
 
-		tile_stmt(sqlite3* db, sqlite3_stmt* handle) noexcept : _db(db), _handle(handle)
-		{
-		}
+		tile_stmt(sqlite3* db, sqlite3_stmt* handle) noexcept : _db(db), _handle(handle) {}
 
 		tile_stmt(const tile_stmt&) = delete;
 		tile_stmt& operator=(const tile_stmt&) = delete;
@@ -77,7 +74,7 @@ namespace
 		void bind(const int i, const core::cspan cs) const
 		{
 			if (_handle != nullptr &&
-				sqlite3_bind_blob(_handle, i, cs.data, static_cast<int>(cs.size), SQLITE_STATIC) != SQLITE_OK)
+			    sqlite3_bind_blob(_handle, i, cs.data, static_cast<int>(cs.size), SQLITE_STATIC) != SQLITE_OK)
 			{
 				tile_db_error(_db, "sqlite3_bind_blob");
 			}
@@ -112,19 +109,15 @@ namespace
 			return data == nullptr ? core::blob{} : core::blob(data, data + len);
 		}
 
-		int64_t int64(const int i) const
-		{
-			return _handle == nullptr ? 0 : sqlite3_column_int64(_handle, i);
-		}
+		int64_t int64(const int i) const { return _handle == nullptr ? 0 : sqlite3_column_int64(_handle, i); }
 	};
 
-	constexpr std::string_view tile_schema_sql =
-		"CREATE TABLE IF NOT EXISTS tiles ("
-		"id INTEGER PRIMARY KEY,"
-		"fetched INTEGER NOT NULL,"
-		"accessed INTEGER NOT NULL,"
-		"bytes BLOB NOT NULL);"
-		"CREATE INDEX IF NOT EXISTS idx_tiles_accessed ON tiles (accessed);";
+	constexpr std::string_view tile_schema_sql = "CREATE TABLE IF NOT EXISTS tiles ("
+												 "id INTEGER PRIMARY KEY,"
+												 "fetched INTEGER NOT NULL,"
+												 "accessed INTEGER NOT NULL,"
+												 "bytes BLOB NOT NULL);"
+												 "CREATE INDEX IF NOT EXISTS idx_tiles_accessed ON tiles (accessed);";
 
 	// One pass evicts at most this many rows so a prune cannot hold the tile thread for seconds.
 	constexpr int prune_batch_rows = 512;
@@ -139,10 +132,8 @@ namespace
 		case SQLITE_CORRUPT:
 		case SQLITE_NOTADB:
 		case SQLITE_FORMAT:
-		case SQLITE_ERROR:
-			return true;
-		default:
-			return false;
+		case SQLITE_ERROR: return true;
+		default: return false;
 		}
 	}
 }
@@ -175,7 +166,7 @@ uint32_t tile_cache_test_seams::writes_since_prune(const tile_cache_db& db)
 core::file_path resolve_tile_cache_db_path()
 {
 	// Both caches are rebuildable, so they share the folder the index database uses.
-	const auto base = known_path(platform::known_folder::app_cache_data);
+	const auto base = app_cache_folder();
 
 	if (!platform::exists(base))
 	{
@@ -260,7 +251,7 @@ bool tile_cache_db::connect_and_prepare()
 	{
 		_last_open_result = _db == nullptr ? SQLITE_NOMEM : sqlite3_errcode(_db);
 		core::log(__FUNCTION__, std::format("Failed to open tile cache: {}",
-		                                  _db ? core::utf8_cast(sqlite3_errmsg(_db)) : "out of memory"));
+		                                    _db ? core::utf8_cast(sqlite3_errmsg(_db)) : "out of memory"));
 		return false;
 	}
 
@@ -290,9 +281,9 @@ bool tile_cache_db::connect_and_prepare()
 	};
 
 	return prepare(&_load, "SELECT bytes FROM tiles WHERE id = ?1"sv) &&
-		prepare(&_store, "INSERT INTO tiles (id, fetched, accessed, bytes) VALUES (?1, ?2, ?2, ?3) "
-		        "ON CONFLICT(id) DO UPDATE SET fetched = ?2, accessed = ?2, bytes = ?3"sv) &&
-		prepare(&_touch, "UPDATE tiles SET accessed = ?2 WHERE id = ?1"sv);
+	       prepare(&_store, "INSERT INTO tiles (id, fetched, accessed, bytes) VALUES (?1, ?2, ?2, ?3) "
+	                        "ON CONFLICT(id) DO UPDATE SET fetched = ?2, accessed = ?2, bytes = ?3"sv) &&
+	       prepare(&_touch, "UPDATE tiles SET accessed = ?2 WHERE id = ?1"sv);
 }
 
 void tile_cache_db::delete_database_files() const
@@ -321,7 +312,7 @@ void tile_cache_db::open(core::file_path path)
 	sqlite3_initialize();
 
 	_db_thread_id = core::current_thread_id();
-	_db_path = std::move(path);
+	_db_path = path;
 
 	if (connect_and_prepare()) return;
 
@@ -496,7 +487,8 @@ void tile_cache_db::prune(const uint32_t unused_days, const int64_t max_size_byt
 	{
 		const auto rows = std::min(prune_batch_rows, remaining_rows);
 		const tile_stmt statement(
-			_db, "DELETE FROM tiles WHERE id IN (SELECT id FROM tiles WHERE fetched < ?1 ORDER BY accessed LIMIT ?2)"sv);
+			_db,
+			"DELETE FROM tiles WHERE id IN (SELECT id FROM tiles WHERE fetched < ?1 ORDER BY accessed LIMIT ?2)"sv);
 		statement.bind(1, protected_after);
 		statement.bind(2, rows);
 		statement.exec();

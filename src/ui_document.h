@@ -1,45 +1,39 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Draws the read-only document of model_document.h in the selection panel - text in its
-// syntax colours, or a hex dump - with its selection, and turns presses and drags on it into
-// selections. The display's document keeps its selection while the panel is rebuilt around it; a raw
-// metadata block's dump is drawn the same way and is not selected.
+// Purpose: Presents decoded documents in the common flex panel, using libdesktop's Markdown and CSV
+// views and source-preserving text and dump contents. Selection and column sizes survive panel rebuilds.
 
 #pragma once
 
 #include "model.h"
 #include "model_document.h"
 #include "ui_elements.h"
+#include "libdesktop/ui/views/document_panel.h"
 
-class document_control final : public std::enable_shared_from_this<document_control>, public view_element
+class document_content final : public std::enable_shared_from_this<document_content>, public view_element
 {
 public:
 	// The display's document, decoded when its bytes were read.
-	document_control(display_state_ptr display, const view_element_options& style_in) noexcept;
+	document_content(display_state_ptr display, const view_element_options& style_in) noexcept;
 	// A dump of bytes this control holds itself.
-	document_control(std::vector<uint8_t> bytes, const view_element_options& style_in) noexcept;
+	document_content(std::vector<uint8_t> bytes, const view_element_options& style_in) noexcept;
 
 	sizei measure(render::measure_context& mc, int width_limit) const override;
 	void render(render::draw_context& dc, pointi element_offset) const override;
+	void layout(render::measure_context& mc, recti bounds_in) override;
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override;
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 	                                             hit_test_context& ctx) override;
 
-	document_state& document() const
-	{
-		return *_document;
-	}
+	document_state& document() const { return *_document; }
 
 	// The display whose document this is; none for a dump of bytes the control holds.
-	const display_state_ptr& display() const
-	{
-		return _display;
-	}
+	const display_state_ptr& display() const { return _display; }
 
 	core::cspan bytes() const;
 
@@ -62,6 +56,26 @@ private:
 	mutable double _char_width = 0.0;
 	// A dump is centred on the width of its rows, as the hex view always was.
 	mutable int _dump_width = 0;
+	std::shared_ptr<ui::doc_view> _formatted;
 
 	int text_left(recti logical_bounds) const;
+};
+
+class document_control final : public ui::document_panel
+{
+	std::shared_ptr<document_content> _content;
+	document_control(std::shared_ptr<document_content> content, const view_element_options& options);
+
+public:
+	document_control(display_state_ptr display, const view_element_options& options);
+	document_control(std::vector<uint8_t> bytes, const view_element_options& options);
+
+	document_state& document() const { return _content->document(); }
+	const display_state_ptr& display() const { return _content->display(); }
+	core::cspan bytes() const { return _content->bytes(); }
+	recti content_bounds() const { return _content->bounds; }
+	document_position position_from_point(pointi loc, pointi element_offset, bool character = false) const
+	{
+		return _content->position_from_point(loc, element_offset, character);
+	}
 };

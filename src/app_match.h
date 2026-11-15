@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Auto-complete matching logic for search. Implements folder and text matching
 // with highlight support for the search box dropdown suggestions, and draws the count of
@@ -42,9 +41,8 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 
 				auto text_pos = text.begin() + static_cast<std::ptrdiff_t>(std::min(match_pos, text.size()));
 				auto query_pos = q.begin();
-				if (match_pos < text.size() &&
-					core::normalize_for_compare(core::pop_utf8_char(text_pos, text.end())) ==
-					core::normalize_for_compare(core::pop_utf8_char(query_pos, q.end())))
+				if (match_pos < text.size() && core::normalize_for_compare(core::pop_utf8_char(text_pos, text.end())) ==
+				                                   core::normalize_for_compare(core::pop_utf8_char(query_pos, q.end())))
 				{
 					found_subs.emplace_back(match_pos, core::matched_text_byte_length(text, match_pos, q));
 				}
@@ -68,10 +66,7 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 		// Both text renderers walk the string forwards and consume highlights in order, dropping any
 		// whose offset is already behind them. found_subs is built in query order, which is not text
 		// order the moment the user types the words in a different order from the one they appear in.
-		std::ranges::sort(found_subs, [](const core::part_t& l, const core::part_t& r)
-		{
-			return l.offset < r.offset;
-		});
+		std::ranges::sort(found_subs, [](const core::part_t& l, const core::part_t& r) { return l.offset < r.offset; });
 
 		match = std::move(found_subs);
 	}
@@ -80,7 +75,7 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 }
 
 static std::vector<render::text_highlight_t> make_highlights(const ui::match_highlights& match,
-                                                         const core::color highlight_clr)
+                                                             const core::color highlight_clr)
 {
 	std::vector<render::text_highlight_t> highlights(match.size());
 
@@ -116,7 +111,7 @@ static int draw_match_count(render::draw_context& dc, const std::optional<uint64
 	return extent.cx + dc.padding2;
 }
 
-static icon_index search_icon(const std::string_view text)
+inline icon_index search_icon(const std::string_view text)
 {
 	if (core::is_path(core::trim(text))) return icon_index::folder;
 
@@ -127,14 +122,36 @@ static icon_index search_icon(const std::string_view text)
 	for (const auto& term : search.terms())
 	{
 		if ((term.type == df::search_term_type::value || term.type == df::search_term_type::has_type) &&
-			term.key != prop::null)
+		    term.key != prop::null)
 		{
 			return term.key->icon;
 		}
 		if (term.type == df::search_term_type::date) return icon_index::time;
-		if (term.type == df::search_term_type::location || term.type == df::search_term_type::area)
+		if (term.type == df::search_term_type::location || term.type == df::search_term_type::area ||
+		    term.type == df::search_term_type::remote)
 			return icon_index::location;
 		if (term.type == df::search_term_type::media_type && term.fg_val) return term.fg_val->icon;
+		if (term.type == df::search_term_type::duplicate) return icon_index::compare;
+		if (term.type == df::search_term_type::panorama) return icon_index::world;
+		if (term.type == df::search_term_type::film || term.type == df::search_term_type::episode)
+			return icon_index::movies;
+		if (term.type == df::search_term_type::in_progress) return icon_index::pause;
+
+		if (term.type == df::search_term_type::feature)
+		{
+			switch (term.feature())
+			{
+			case df::item_feature::raw: return icon_index::camera;
+			case df::item_feature::hdr: return icon_index::lightbulb;
+			case df::item_feature::animated: return icon_index::play;
+			case df::item_feature::transparent: return icon_index::image_vector;
+			case df::item_feature::portrait:
+			case df::item_feature::landscape: return icon_index::orientation;
+			case df::item_feature::square: return icon_index::fit;
+			case df::item_feature::wide: return icon_index::world;
+			case df::item_feature::slow_motion: return icon_index::video;
+			}
+		}
 	}
 
 	return icon_index::search;
@@ -158,10 +175,9 @@ public:
 	}
 
 	folder_match(ui::complete_strategy_t& parent, const core::folder_path f, std::string l, ui::match_highlights m = {},
-	             const int w = 1, const bool raw = false) : auto_complete_match(view_element_style::can_invoke),
-	                                                        _parent(parent), folder(f),
-	                                                        match(std::move(m)), lead(std::move(l)),
-	                                                        raw_edit_text(raw)
+	             const int w = 1, const bool raw = false) :
+		auto_complete_match(view_element_style::can_invoke), _parent(parent), folder(f), match(std::move(m)),
+		lead(std::move(l)), raw_edit_text(raw)
 	{
 		weight = w;
 	}
@@ -191,8 +207,8 @@ public:
 		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
-		const auto icon_width = dc.measure_text("X", render::font_face::dialog,
-		                                        render::text_style::single_line, bounds.width()).cy;
+		const auto icon_width =
+			dc.measure_text("X", render::font_face::dialog, render::text_style::single_line, bounds.width()).cy;
 		auto icon_bounds = rr;
 		icon_bounds.right = icon_bounds.left + icon_width;
 		xdraw_icon(dc, icon_index::folder, icon_bounds, clr, {});
@@ -208,10 +224,9 @@ public:
 			rr.left += lead_extent.cx;
 		}
 
-
 		const auto highlights = make_highlights(match, highlight_clr);
-		dc.draw_text(folder.text(), highlights, rr, render::font_face::dialog, render::text_style::single_line,
-		             clr, {});
+		dc.draw_text(folder.text(), highlights, rr, render::font_face::dialog, render::text_style::single_line, clr,
+		             {});
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -227,8 +242,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -245,17 +259,13 @@ public:
 
 	text_match(ui::complete_strategy_t& parent, std::string t, std::string l, ui::match_highlights m = {},
 	           const int w = 1, const icon_index icon_in = icon_index::search) :
-		auto_complete_match(view_element_style::can_invoke), _parent(parent),
-		lead(std::move(l)),
-		text(std::move(t)), match(std::move(m)), icon(icon_in)
+		auto_complete_match(view_element_style::can_invoke), _parent(parent), lead(std::move(l)), text(std::move(t)),
+		match(std::move(m)), icon(icon_in)
 	{
 		weight = w;
 	}
 
-	std::string edit_text() const override
-	{
-		return core::combine2(auto_complete_lead(lead), text);
-	}
+	std::string edit_text() const override { return core::combine2(auto_complete_lead(lead), text); }
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
@@ -272,8 +282,8 @@ public:
 		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
 		auto rr = logical_bounds;
-		const auto icon_width = dc.measure_text("X", render::font_face::dialog,
-		                                        render::text_style::single_line, bounds.width()).cy;
+		const auto icon_width =
+			dc.measure_text("X", render::font_face::dialog, render::text_style::single_line, bounds.width()).cy;
 		auto icon_bounds = rr;
 		icon_bounds.right = icon_bounds.left + icon_width;
 		xdraw_icon(dc, icon, icon_bounds, clr, {});
@@ -306,8 +316,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Location assignment view. Provides a map-based interface for setting
 // GPS coordinates on selected items, with search and reverse geocoding.
@@ -24,9 +23,12 @@ namespace ui
 	class complete_strategy_t;
 }
 
-class locate_view final :
-	public map_view,
-	public std::enable_shared_from_this<locate_view>
+// What Locate places and so what its selector strip offers and Add location and next steps to: an item whose
+// metadata can be written, less those that already carry a location while the strip is set to hide them, so a long
+// list can be walked down to nothing left to place.
+bool locate_offers(const df::item_element_ptr& item);
+
+class locate_view final : public map_view, public std::enable_shared_from_this<locate_view>
 {
 	std::string _title;
 	std::string _status;
@@ -73,14 +75,10 @@ public:
 
 	bool can_run() const
 	{
-		return gps_coordinate(_location->latitude, _location->longitude).is_valid() &&
-			!_state.selected_items().empty();
+		return gps_coordinate(_location->latitude, _location->longitude).is_valid() && !_state.selected_items().empty();
 	}
 
-	std::string_view status() override
-	{
-		return _status;
-	}
+	std::string_view status() override { return _status; }
 
 	void activate(sizei extent) override;
 	void deactivate() override;
@@ -93,10 +91,7 @@ public:
 
 	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
-	void exit() override
-	{
-		_state.view_mode(view_type::items);
-	}
+	void exit() override { _state.view_mode(view_type::items); }
 
 	std::string_view title() override
 	{

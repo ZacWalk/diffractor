@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Command handlers for all user actions. Implements file operations, editing,
 // sharing, metadata updates, and other application commands, and registers what each command does.
@@ -40,9 +39,8 @@
 
 extern bool toggle_details_state;
 
-bool can_process_selection_or_explain(const view_state& s, const view_host_base_ptr& view,
-                                             const ui::frame_ptr& parent, const std::string_view title,
-                                             const df::process_items_type type)
+bool can_process_selection_or_explain(const view_state& s, const view_host_base_ptr& view, const ui::frame_ptr& parent,
+                                      const std::string_view title, const df::process_items_type type)
 {
 	const auto can_process = s.can_process_selection_and_mark_errors(view, type);
 	if (!can_process.fail()) return true;
@@ -51,7 +49,7 @@ bool can_process_selection_or_explain(const view_state& s, const view_host_base_
 	return false;
 }
 
-static void zoom_invoke(const view_state& s, const ui::frame_ptr& parent)
+static void zoom_invoke(const view_state& s, const ui::frame_ptr& /*parent*/)
 {
 	const auto display = s.display_state();
 
@@ -103,7 +101,6 @@ static void pin_invoke(view_state& s)
 	s.invalidate_view(view_invalid::view_layout | view_invalid::view_redraw | view_invalid::command_state);
 }
 
-
 static void edit_invoke(view_state& s)
 {
 	if (s.can_edit_media())
@@ -112,7 +109,7 @@ static void edit_invoke(view_state& s)
 	}
 }
 
-static void containing_folder_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
+static void containing_folder_invoke(view_state& s, const ui::frame_ptr& /*parent*/, const view_host_base_ptr& view)
 {
 	const auto i = s.command_item();
 
@@ -174,8 +171,7 @@ static void new_folder_invoke(view_state& s, const ui::frame_ptr& parent, const 
 	}
 }
 
-static void burn_command_invoke(view_state& s, const ui::frame_ptr& parent,
-                                const view_host_base_ptr& view)
+static void burn_command_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto dlg = make_dlg(parent);
 	const auto title = tt.burn_title;
@@ -185,9 +181,9 @@ static void burn_command_invoke(view_state& s, const ui::frame_ptr& parent,
 	if (can_process_selection_or_explain(s, view, parent, title, df::process_items_type::local_file_or_folder))
 	{
 		const auto items = s.selected_items();
-		auto title_control = std::make_shared<ui::title_control2>(
-			dlg->_frame, icon_index::disk, title, format_plural_text(tt.burn_info_fmt, items),
-			std::vector<core::const_surface_ptr>{}, items.size());
+		auto title_control = std::make_shared<ui::title_control2>(dlg->_frame, icon_index::disk, title,
+		                                                          format_plural_text(tt.burn_info_fmt, items),
+		                                                          std::vector<core::const_surface_ptr>{}, items.size());
 		title_control->selection_async(items.thumbs(), items.size(), s._async);
 		const std::vector<view_element_ptr> controls = {
 			set_margin(title_control),
@@ -213,7 +209,7 @@ static void print_invoke(const view_state& s, const ui::frame_ptr& parent, const
 {
 	if (can_process_selection_or_explain(s, view, parent, tt.print_title, df::process_items_type::local_file))
 	{
-		const auto items = s.selected_items();
+		const auto& items = s.selected_items();
 		record_feature_use(features::print);
 		platform::print(items.file_paths(false), items.folder_paths());
 	}
@@ -247,19 +243,19 @@ static void rename_invoke(view_state& s, const ui::frame_ptr& parent, const view
 			const auto& file_system_items = items.items();
 			const auto i = file_system_items[0];
 			auto name = i->base_name();
-			auto title_control = std::make_shared<ui::title_control2>(
-				dlg->_frame, icon, title, format_plural_text(tt.rename_fmt, items),
-				std::vector<core::const_surface_ptr>{}, items.size());
+			auto title_control = std::make_shared<ui::title_control2>(dlg->_frame, icon, title,
+			                                                          format_plural_text(tt.rename_fmt, items),
+			                                                          std::vector<core::const_surface_ptr>{},
+			                                                          items.size());
 			title_control->selection_async(items.thumbs(), items.size(), s._async);
 
-			const std::vector<view_element_ptr> controls{
-				set_margin(title_control),
-				std::make_shared<divider_element>(),
-				set_margin(std::make_shared<text_element>(tt.rename_label)),
-				set_margin(std::make_shared<ui::edit_control>(dlg->_frame, name)),
-				std::make_shared<divider_element>(),
-				std::make_shared<ui::ok_cancel_control>(dlg->_frame)
-			};
+			const std::vector<view_element_ptr> controls{set_margin(title_control),
+			                                             std::make_shared<divider_element>(),
+			                                             set_margin(std::make_shared<text_element>(tt.rename_label)),
+			                                             set_margin(
+															 std::make_shared<ui::edit_control>(dlg->_frame, name)),
+			                                             std::make_shared<divider_element>(),
+			                                             std::make_shared<ui::ok_cancel_control>(dlg->_frame)};
 
 			if (dlg->show_modal(controls) == ui::close_result::ok)
 			{
@@ -291,25 +287,22 @@ static void rename_invoke(view_state& s, const ui::frame_ptr& parent, const view
 			}
 		}
 
-		s.invalidate_view(
-			view_invalid::view_layout | view_invalid::group_layout | view_invalid::media_elements |
-			view_invalid::app_layout);
+		s.invalidate_view(view_invalid::view_layout | view_invalid::group_layout | view_invalid::media_elements |
+		                  view_invalid::app_layout);
 	}
 }
 
-static void file_properties_invoke(const view_state& s, const ui::frame_ptr& parent,
-                                   const view_host_base_ptr& view)
+static void file_properties_invoke(const view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	if (can_process_selection_or_explain(s, view, parent, tt.open_properties_title,
 	                                     df::process_items_type::local_file_or_folder))
 	{
-		const auto items = s.selected_items();
+		const auto& items = s.selected_items();
 		platform::show_file_properties(items.file_paths(false), items.folder_paths());
 	}
 }
 
-static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent,
-                              const std::shared_ptr<view_frame>& view)
+static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent, const std::shared_ptr<view_frame>& view)
 {
 	const auto dlg = make_dlg(parent);
 	const auto data = platform::clipboard();
@@ -335,11 +328,10 @@ static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent,
 			const auto save_path = s.save_path();
 			const auto file_name = std::string(tt.pasted_file_name);
 			const auto results = std::make_shared<command_status>(s._async, dlg, icon_index::edit_paste,
-			                                                       tt.command_edit_paste, 1);
+			                                                      tt.command_edit_paste, 1);
 
-			s.queue_async(async_queue::work,
-			              [&s, view = ui_owned(s._async, view), results, bitmap = std::move(bitmap), save_path,
-				              file_name]
+			s.queue_async(async_queue::work, [&s, view = ui_owned(s._async, view), results, bitmap = std::move(bitmap),
+			                                  save_path, file_name]
 			{
 				auto save_result = bitmap->save(save_path, file_name, true);
 
@@ -359,8 +351,8 @@ static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent,
 				else
 				{
 					results->abort(core::is_empty(save_result.error_message)
-						               ? std::string(tt.platform_text.error_unknown)
-						               : save_result.error_message);
+					                   ? std::string(tt.platform_text.error_unknown)
+					                   : save_result.error_message);
 				}
 			});
 
@@ -372,7 +364,8 @@ static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent,
 	if (result.failed())
 	{
 		dlg->show_message(icon_index::error, tt.command_edit_paste,
-		                  core::is_empty(result.error_message) ? tt.platform_text.error_unknown.sv() : result.error_message);
+		                  core::is_empty(result.error_message) ? tt.platform_text.error_unknown.sv()
+		                                                       : result.error_message);
 	}
 	else
 	{
@@ -380,7 +373,7 @@ static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent,
 	}
 }
 
-static void show_flatten_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
+static void show_flatten_invoke(view_state& s, const ui::frame_ptr& /*parent*/, const view_host_base_ptr& view)
 {
 	const auto current_search = s.search();
 
@@ -423,8 +416,10 @@ static void rotate_invoke(view_state& s, const ui::frame_ptr& parent, const view
 	// precondition is that the selection can be written back, which can_process checks below
 	// and which is also what enables the command.
 	auto dlg = make_dlg(parent);
-	const auto title = t == core::simple_transform::rot_90 ? tt.command_rotate_clockwise : tt.command_rotate_anticlockwise;
-	const auto icon = t == core::simple_transform::rot_90 ? icon_index::rotate_clockwise : icon_index::rotate_anticlockwise;
+	const auto title = t == core::simple_transform::rot_90 ? tt.command_rotate_clockwise
+	                                                       : tt.command_rotate_anticlockwise;
+	const auto icon = t == core::simple_transform::rot_90 ? icon_index::rotate_clockwise
+	                                                      : icon_index::rotate_anticlockwise;
 
 	pause_media pause(s);
 
@@ -439,9 +434,10 @@ static void rotate_invoke(view_state& s, const ui::frame_ptr& parent, const view
 		{
 			const auto surfaces = items.thumbnail_surfaces(1);
 			bool confirm_single = setting.confirm_rotations;
-			auto title_control = std::make_shared<ui::title_control2>(
-				dlg->_frame, icon, title, format_plural_text(tt.rotate_info_fmt, items),
-				std::vector<core::const_surface_ptr>{}, items.size());
+			auto title_control = std::make_shared<ui::title_control2>(dlg->_frame, icon, title,
+			                                                          format_plural_text(tt.rotate_info_fmt, items),
+			                                                          std::vector<core::const_surface_ptr>{},
+			                                                          items.size());
 			title_control->selection_async(items.thumbs(), items.size(), s._async);
 
 			std::vector<view_element_ptr> controls;
@@ -455,8 +451,8 @@ static void rotate_invoke(view_state& s, const ui::frame_ptr& parent, const view
 
 			if (is_single)
 			{
-				controls.emplace_back(set_margin(std::make_shared<ui::check_control>(
-					dlg->_frame, tt.rotate_confirm_single, confirm_single)));
+				controls.emplace_back(set_margin(
+					std::make_shared<ui::check_control>(dlg->_frame, tt.rotate_confirm_single, confirm_single)));
 			}
 
 			controls.emplace_back(std::make_shared<divider_element>());
@@ -509,9 +505,8 @@ static void rotate_invoke(view_state& s, const ui::frame_ptr& parent, const view
 				}
 
 				item_edits result;
-				const auto current_orientation = setting.show_rotated
-					                                 ? stored_orientation
-					                                 : core::orientation::top_left;
+				const auto current_orientation = setting.show_rotated ? stored_orientation
+				                                                      : core::orientation::top_left;
 				const auto crop = rotate_command_crop_bounds(dimensions, stored_orientation, t, setting.show_rotated);
 
 				if (current_orientation != core::orientation::top_left)
@@ -537,12 +532,12 @@ static void desktop_background_invoke(view_state& s, const ui::frame_ptr& parent
 		pause_media pause(s);
 		const std::vector<view_element_ptr> controls = {
 			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::wallpaper, title,
-			                                                tt.desktop_background_info)),
+		                                                    tt.desktop_background_info)),
 			std::make_shared<divider_element>(),
 			std::make_shared<wallpaper_control>(dlg->_frame, loaded, setting.desktop_background.maximize),
 			set_margin(std::make_shared<ui::check_control>(dlg->_frame, tt.maximize_image,
-			                                               setting.desktop_background.maximize, false, false,
-			                                               [d = dlg->_frame](bool checked) { d->invalidate(); })),
+		                                                   setting.desktop_background.maximize, false, false,
+		                                                   [d = dlg->_frame](bool /*checked*/) { d->invalidate(); })),
 			std::make_shared<divider_element>(),
 			std::make_shared<ui::ok_cancel_control>(dlg->_frame),
 		};
@@ -551,7 +546,7 @@ static void desktop_background_invoke(view_state& s, const ui::frame_ptr& parent
 		{
 			constexpr auto write_extension = ".png";
 			const auto write_path = core::file_path(known_path(platform::known_folder::app_data), "wallpaper",
-			                                      write_extension);
+			                                        write_extension);
 			const auto path_temp = platform::temp_file(write_extension);
 			const auto bounds = platform::desktop_bounds(true);
 			const auto screen_extent = bounds.extent();
@@ -564,47 +559,45 @@ static void desktop_background_invoke(view_state& s, const ui::frame_ptr& parent
 			// Writing a screen-sized PNG twice is far too slow to run on the UI thread. Only the
 			// wallpaper switch comes back, and a failure is now reported instead of being
 			// described as a failed update.
-			s.queue_async(async_queue::work,
-			              [&s, results, loaded, write_path, path_temp, dimensions, encode_params]
-			              {
-				              files ff;
-				              const image_edits edits(dimensions);
-				              std::string error;
+			s.queue_async(async_queue::work, [&s, results, loaded, write_path, path_temp, dimensions, encode_params]
+			{
+				files ff;
+				const image_edits edits(dimensions);
+				std::string error;
 
-				              if (!ff.save(path_temp, loaded))
-				              {
-					              error = str_format(tt.error_create_file_failed_fmt.sv(), path_temp);
-				              }
-				              else
-				              {
-					              const auto update_result = ff.update(path_temp, write_path, {}, edits, encode_params,
-					                                                   false, {});
+				if (!ff.save(path_temp, loaded))
+				{
+					error = str_format(tt.error_create_file_failed_fmt.sv(), path_temp);
+				}
+				else
+				{
+					const auto update_result = ff.update(path_temp, write_path, {}, edits, encode_params, false, {});
 
-					              if (update_result.failed())
-					              {
-						              error = update_result.format_error(
-							              str_format(tt.error_create_file_failed_fmt.sv(), write_path));
-					              }
-				              }
+					if (update_result.failed())
+					{
+						error = update_result.format_error(
+							str_format(tt.error_create_file_failed_fmt.sv(), write_path));
+					}
+				}
 
-				              if (platform::exists(path_temp))
-				              {
-					              platform::delete_file(path_temp);
-				              }
+				if (platform::exists(path_temp))
+				{
+					platform::delete_file(path_temp);
+				}
 
-				              if (error.empty())
-				              {
-					              s.queue_ui([results, write_path]
-					              {
-						              platform::set_desktop_wallpaper(write_path);
-						              results->complete();
-					              });
-				              }
-				              else
-				              {
-					              results->abort(error);
-				              }
-			              });
+				if (error.empty())
+				{
+					s.queue_ui([results, write_path]
+					{
+						platform::set_desktop_wallpaper(write_path);
+						results->complete();
+					});
+				}
+				else
+				{
+					results->abort(error);
+				}
+			});
 
 			results->wait_for_complete();
 		}
@@ -650,7 +643,7 @@ static void capture_invoke(view_state& s, const ui::frame_ptr& parent)
 	});
 }
 
-static void related_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
+static void related_invoke(view_state& s, const ui::frame_ptr& /*parent*/, const view_host_base_ptr& view)
 {
 	const auto i = s.command_item();
 
@@ -683,21 +676,15 @@ static void favorite_tags_invoke(view_state& s, const ui::frame_ptr& parent)
 	{
 		const auto favorites = unique_favorites();
 		return std::ranges::find_if(favorites, [tag](const std::string_view favorite)
-		{
-			return core::icmp(favorite, tag) == 0;
-		}) != favorites.end();
+		{ return core::icmp(favorite, tag) == 0; }) != favorites.end();
 	};
 	const auto toggle_favorite = [&favorite_tags, edit, unique_favorites](const std::string_view tag)
 	{
 		auto favorites = unique_favorites();
 		const auto found = std::ranges::find_if(favorites, [tag](const std::string_view favorite)
-		{
-			return core::icmp(favorite, tag) == 0;
-		});
-		if (found == favorites.end())
-			favorites.emplace_back(tag);
-		else
-			favorites.erase(found);
+		{ return core::icmp(favorite, tag) == 0; });
+		if (found == favorites.end()) favorites.emplace_back(tag);
+		else favorites.erase(found);
 		favorite_tags = core::combine(favorites);
 		edit->text(favorite_tags);
 	};
@@ -720,14 +707,17 @@ static void favorite_tags_invoke(view_state& s, const ui::frame_ptr& parent)
 	if (!common_tags.empty())
 	{
 		content->add(std::make_shared<ui::title_control>(tt.tags_common_label));
-		content->add(set_margin(std::make_shared<ui::recommended_words_control>(
-			dlg->_frame, common_tags, toggle_favorite, contains_favorite, toolbar_refresh)));
+		content->add(
+			set_margin(std::make_shared<ui::recommended_words_control>(dlg->_frame, common_tags, toggle_favorite,
+		                                                               contains_favorite, toolbar_refresh)));
 	}
 
+	// clang-format off
 	static constexpr std::array<std::string_view, 12> workflow_tags = {
 		"Approved", "Archive", "Client", "Draft", "Final", "Progress", "Review", "Published",
 		"Rejected", "Rights", "Select", "Todo"
 	};
+	// clang-format on
 	std::vector<std::string_view> workflow_suggestions;
 	core::hash_set<std::string_view, core::ihash, core::ieq> workflow_seen;
 	const auto append_workflow_tag = [&workflow_suggestions, &workflow_seen](const std::string_view tag)
@@ -737,12 +727,14 @@ static void favorite_tags_invoke(view_state& s, const ui::frame_ptr& parent)
 	for (const auto tag : core::split(tt.default_favorite_tags, true)) append_workflow_tag(tag);
 	for (const auto tag : workflow_tags) append_workflow_tag(tag);
 	content->add(std::make_shared<ui::title_control>(tt.tags_workflow_label));
-	content->add(set_margin(std::make_shared<ui::recommended_words_control>(
-		dlg->_frame, workflow_suggestions, toggle_favorite, contains_favorite, toolbar_refresh)));
+	content->add(
+		set_margin(std::make_shared<ui::recommended_words_control>(dlg->_frame, workflow_suggestions, toggle_favorite,
+	                                                               contains_favorite, toolbar_refresh)));
 
 	std::vector<view_element_ptr> controls;
-	controls.emplace_back(set_margin(std::make_shared<ui::title_control2>(
-		dlg->_frame, icon_index::tag, tt.customise_tags_title, tt.customise_tags_help)));
+	controls.emplace_back(
+		set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::tag, tt.customise_tags_title,
+	                                                    tt.customise_tags_help)));
 	controls.emplace_back(std::make_shared<divider_element>());
 	controls.emplace_back(content);
 	controls.emplace_back(std::make_shared<divider_element>());
@@ -757,7 +749,7 @@ static void favorite_tags_invoke(view_state& s, const ui::frame_ptr& parent)
 	favorite_tags = core::combine(unique_favorites());
 	setting.favorite_tags = favorite_tags;
 	s.invalidate_view(view_invalid::sidebar | view_invalid::options_save | view_invalid::command_state |
-		view_invalid::tooltip);
+	                  view_invalid::tooltip);
 }
 
 static void rate_items_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view, int r)
@@ -782,10 +774,8 @@ static void label_items_invoke(view_state& s, const ui::frame_ptr& parent, const
 	// Applying a label the whole selection already carries removes it, so a key repeats the toggle
 	// the grading control performs with the pointer and clearing never needs a separate command.
 	const auto is_set = !label.empty() && !items.empty() &&
-		std::ranges::all_of(items, [label](const df::item_element_ptr& i)
-		{
-			return core::icmp(i->label(), label) == 0;
-		});
+	                    std::ranges::all_of(items, [label](const df::item_element_ptr& i)
+	{ return core::icmp(i->label(), label) == 0; });
 
 	auto dlg = make_dlg(parent);
 	metadata_edits edits;
@@ -805,14 +795,12 @@ static void cut_copy_invoke(const view_state& s, const ui::frame_ptr& parent, co
 
 	if (can_process_selection_or_explain(s, view, parent, title, df::process_items_type::local_file_or_folder))
 	{
-		const auto items = s.selected_items();
+		const auto& items = s.selected_items();
 		const auto item_paths = items.file_paths(true);
 		const auto folder_paths = items.folder_paths();
 
 		s.capture_display([item_paths, folder_paths, is_move = is_move](const file_load_result& loaded)
-		{
-			platform::set_clipboard(item_paths, folder_paths, clipboard_image_of(loaded), is_move);
-		});
+		{ platform::set_clipboard(item_paths, folder_paths, clipboard_image_of(loaded), is_move); });
 	}
 }
 
@@ -853,8 +841,9 @@ static void copy_item_path_invoke(const view_state& s)
 	if (!paths.empty()) platform::set_clipboard(paths);
 }
 
-class folder_auto_complete final : public std::enable_shared_from_this<folder_auto_complete>,
-                                   public ui::complete_strategy_t
+class folder_auto_complete final :
+	public std::enable_shared_from_this<folder_auto_complete>,
+	public ui::complete_strategy_t
 {
 	view_state& _state;
 	std::shared_ptr<const core::folder_counts> _folders;
@@ -867,23 +856,17 @@ class folder_auto_complete final : public std::enable_shared_from_this<folder_au
 	std::weak_ptr<void> _picker_lifetime;
 
 public:
-	std::string no_results_message() override
-	{
-		return std::string(tt.type_to_search);
-	}
+	std::string no_results_message() override { return std::string(tt.type_to_search); }
 
 	std::weak_ptr<ui::search_control> _search_control;
 
-
-	folder_auto_complete(view_state& s, ui::frame_ptr parent,
-	                     std::shared_ptr<void> picker_lifetime = {},
+	folder_auto_complete(view_state& s, ui::frame_ptr parent, const std::shared_ptr<void>& picker_lifetime = {},
 	                     std::shared_ptr<const core::folder_counts> folders = {},
 	                     destination_folder_enumerator enumerate_child_folders = {}) :
 		_state(s),
 		_folders(folders ? std::move(folders) : std::make_shared<core::folder_counts>(_state.known_folders())),
-		_enumerate_child_folders(std::move(enumerate_child_folders)),
-		_parent(std::move(parent)),
-		_picker_lifetime(std::move(picker_lifetime))
+		_enumerate_child_folders(std::move(enumerate_child_folders)), _parent(std::move(parent)),
+		_picker_lifetime(picker_lifetime)
 	{
 		resize_to_show_results = false;
 		auto_select_first = false;
@@ -944,8 +927,9 @@ public:
 		int weight = 0;
 	};
 
-	static void add_candidate(core::hash_map<core::folder_path, folder_completion_candidate, core::ihash, core::ieq>& results,
-	                          const core::folder_path folder, ui::match_highlights m, const int weight)
+	static void add_candidate(
+		core::hash_map<core::folder_path, folder_completion_candidate, core::ihash, core::ieq>& results,
+		const core::folder_path folder, ui::match_highlights m, const int weight)
 	{
 		const auto found = results.find(folder);
 
@@ -958,11 +942,10 @@ public:
 		results.emplace(folder, folder_completion_candidate{folder, std::move(m), weight});
 	}
 
-	static std::vector<folder_completion_candidate> find_matches(const std::string& query,
-	                                                             const core::folder_counts& folders,
-	                                                             const destination_folder_enumerator& enumerate_child_folders,
-	                                                             const size_t max_results,
-	                                                             const std::function<bool()>& is_stale = {})
+	static std::vector<folder_completion_candidate> find_matches(
+		const std::string& query, const core::folder_counts& folders,
+		const destination_folder_enumerator& enumerate_child_folders, const size_t max_results,
+		const std::function<bool()>& is_stale = {})
 	{
 		core::hash_map<core::folder_path, folder_completion_candidate, core::ihash, core::ieq> candidates;
 		const auto query_parts = core::split(query, true);
@@ -1010,8 +993,7 @@ public:
 		return results;
 	}
 
-	void search(const std::string& query,
-	            const std::function<void(const ui::auto_complete_results&)> complete) override
+	void search(const std::string& query, const std::function<void(const ui::auto_complete_results&)> complete) override
 	{
 		core::assert_true(platform::is_ui_thread());
 		const auto request_id = ++_request_id;
@@ -1035,48 +1017,48 @@ public:
 			auto enumerate_child_folders = _enumerate_child_folders;
 			const auto max_results = max_predictions;
 			auto weak = weak_from_this();
-			auto complete_ui = ui_owned(
-				_state._async, std::make_shared<std::function<void(const ui::auto_complete_results&)>>(complete));
+			auto complete_ui = ui_owned(_state._async,
+			                            std::make_shared<std::function<void(const ui::auto_complete_results&)>>(
+											complete));
 
-			_state.queue_async(async_queue::work,
-			                   [&s = _state, weak, query, folders = std::move(folders),
-				                   enumerate_child_folders = std::move(enumerate_child_folders), latest_request,
-				                   max_results, request_id, complete_ui]
-			                   {
-				                   const auto is_stale = [latest_request, request_id]
-				                   {
-					                   return latest_request->load(std::memory_order_acquire) != request_id;
-				                   };
+			_state.queue_async(async_queue::work, [&s = _state, weak, query, folders = std::move(folders),
+			                                       enumerate_child_folders = std::move(enumerate_child_folders),
+			                                       latest_request, max_results, request_id, complete_ui]
+			{
+				const auto is_stale = [latest_request, request_id]
+				{
+					return latest_request->load(std::memory_order_acquire) != request_id;
+				};
 
-				                   if (is_stale()) return;
+				if (is_stale()) return;
 
-				                   auto found = find_matches(query, *folders, enumerate_child_folders, max_results,
-				                                             is_stale);
+				auto found = find_matches(query, *folders, enumerate_child_folders, max_results, is_stale);
 
-				                   s.queue_ui([weak, found = std::move(found), request_id, complete_ui]() mutable
-				                   {
-					                   const auto self = weak.lock();
-					                   if (!self || self->_request_id != request_id || self->_picker_lifetime.expired())
-					                   {
-						                   return;
-					                   }
+				s.queue_ui([weak, found = std::move(found), request_id, complete_ui]() mutable
+				{
+					const auto self = weak.lock();
+					if (!self || self->_request_id != request_id || self->_picker_lifetime.expired())
+					{
+						return;
+					}
 
-					                   ui::auto_complete_results results;
-					                   results.reserve(found.size());
+					ui::auto_complete_results results;
+					results.reserve(found.size());
 
-					                   for (auto& candidate : found)
-					                   {
-						                   results.emplace_back(std::make_shared<folder_match>(
-							                   *self, candidate.folder, std::move(candidate.match), candidate.weight, true));
-					                   }
+					for (auto& candidate : found)
+					{
+						results.emplace_back(std::make_shared<folder_match>(*self, candidate.folder,
+						                                                    std::move(candidate.match),
+						                                                    candidate.weight, true));
+					}
 
-					                   (*complete_ui)(results);
-				                   });
-			                   });
+					(*complete_ui)(results);
+				});
+			});
 		}
 	}
 
-	void selected(const ui::auto_complete_match_ptr& i, const select_type st) override
+	void selected(const ui::auto_complete_match_ptr& i, const select_type /*st*/) override
 	{
 		_selected = i;
 
@@ -1088,18 +1070,15 @@ public:
 		}
 	}
 
-	ui::auto_complete_match_ptr selected() const override
-	{
-		return _selected;
-	}
+	ui::auto_complete_match_ptr selected() const override { return _selected; }
 };
 
 std::shared_ptr<ui::complete_strategy_t> make_destination_folder_auto_complete_for_test(
-	view_state& state, std::shared_ptr<void> picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
+	view_state& state, const std::shared_ptr<void>& picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
 	destination_folder_enumerator enumerate_child_folders)
 {
-	return std::make_shared<folder_auto_complete>(state, nullptr, std::move(picker_lifetime), std::move(folders),
-	                                             std::move(enumerate_child_folders));
+	return std::make_shared<folder_auto_complete>(state, nullptr, picker_lifetime, std::move(folders),
+	                                              std::move(enumerate_child_folders));
 }
 
 core::file_path selected_external_tool_target(const df::item_set& selected_items)
@@ -1108,8 +1087,7 @@ core::file_path selected_external_tool_target(const df::item_set& selected_items
 	return selected_items.items().front()->path();
 }
 
-static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
-                             const std::shared_ptr<view_frame>& view,
+static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent, const std::shared_ptr<view_frame>& view,
                              const bool is_move)
 {
 	const auto title = is_move ? tt.command_move : tt.command_copy;
@@ -1130,8 +1108,8 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
 
 		const auto& items = s.selected_items();
 		const auto items_message = format_plural_text(is_move ? tt.move_fmt : tt.copy_fmt, items);
-		auto title_control = std::make_shared<ui::title_control2>(
-			dlg->_frame, icon, title, items_message, std::vector<core::const_surface_ptr>{}, items.size());
+		auto title_control = std::make_shared<ui::title_control2>(dlg->_frame, icon, title, items_message,
+		                                                          std::vector<core::const_surface_ptr>{}, items.size());
 		title_control->selection_async(items.thumbs(), items.size(), s._async);
 
 		std::vector<view_element_ptr> controls = {
@@ -1140,7 +1118,7 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
 			search_control,
 			std::make_shared<ui::check_control>(dlg->_frame, tt.open_dest, setting.show_results),
 			std::make_shared<divider_element>(),
-			std::make_shared<ui::ok_cancel_control>(dlg->_frame)
+			std::make_shared<ui::ok_cancel_control>(dlg->_frame),
 		};
 
 		if (ui::close_result::ok == dlg->show_modal(controls, {66}))
@@ -1151,12 +1129,12 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
 			{
 				dlg->show_message(icon_index::error, title, str_format(tt.is_not_valid_folder_fmt.sv(), write_folder));
 			}
-			else if (const auto create_folder_result = platform::create_folder(write_folder); create_folder_result.
-				failed())
+			else if (const auto create_folder_result = platform::create_folder(write_folder);
+			         create_folder_result.failed())
 			{
 				dlg->show_message(icon_index::error, title,
 				                  create_folder_result.format_error(
-					                  str_format(tt.failed_to_create_folder_fmt.sv(), write_folder)));
+									  str_format(tt.failed_to_create_folder_fmt.sv(), write_folder)));
 			}
 			else
 			{
@@ -1172,21 +1150,18 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
 					auto policy = collision_policy::auto_rename;
 
 					std::vector<view_element_ptr> collision_controls;
-					collision_controls.emplace_back(set_margin(std::make_shared<ui::title_control2>(
-						collision_dlg->_frame, icon, title,
-						format_plural_text(tt.would_overwrite_fmt, collisions))));
-					collision_controls.emplace_back(create_collision_policy_control(
-						collision_dlg->_frame, policy, [] {}, true, false));
-					collision_controls.emplace_back(std::make_shared<divider_element>());
+					collision_controls.emplace_back(set_margin(
+						std::make_shared<ui::title_control2>(collision_dlg->_frame, icon, title,
+					                                         format_plural_text(tt.would_overwrite_fmt, collisions))));
 					collision_controls.emplace_back(
-						std::make_shared<ui::ok_cancel_control>(collision_dlg->_frame));
+						create_collision_policy_control(collision_dlg->_frame, policy, [] {}, true, false));
+					collision_controls.emplace_back(std::make_shared<divider_element>());
+					collision_controls.emplace_back(std::make_shared<ui::ok_cancel_control>(collision_dlg->_frame));
 
 					if (collision_dlg->show_modal(collision_controls) != ui::close_result::ok) return;
 					replace_existing = policy == collision_policy::replace;
 				}
 
-				detach_file_handles detach(s);
-				shell_file_operation_ui processing(*view, parent);
 				// A move empties the folders it came from, and only the destination was ever reported.
 				// A search that names no folder is not watched, so it would keep listing what moved.
 				core::unique_folders sources;
@@ -1202,54 +1177,62 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent,
 					next = s.next_unselected_item();
 				}
 
-				const auto result = platform::move_or_copy(
-					items.file_paths(true), items.folder_paths(), write_folder, is_move, replace_existing);
+				auto moved_away = false;
 
-				if (result.success())
 				{
-					s.recent_folders.add(write_folder.text());
-					s.item_index.queue_scan_folder(write_folder);
-					if (!sources.empty()) s.item_index.queue_validate_changed_folders(std::move(sources));
+					detach_file_handles detach(s);
+					shell_file_operation_ui processing(*view, parent);
 
-					if (setting.show_results)
+					const auto result = platform::move_or_copy(items.file_paths(true), items.folder_paths(),
+					                                           write_folder, is_move, replace_existing);
+
+					if (result.success())
 					{
-						detach.keep_display_closed();
-						s.open(view, df::search_t().add_selector(write_folder),
-						       make_unique_paths(result.created_files));
+						s.recent_folders.add(write_folder.text());
+						s.item_index.queue_scan_folder(write_folder);
+						if (!sources.empty()) s.item_index.queue_validate_changed_folders(std::move(sources));
+
+						if (setting.show_results)
+						{
+							detach.keep_display_closed();
+							s.open(view, df::search_t().add_selector(write_folder),
+							       make_unique_paths(result.created_files));
+						}
+						else if (is_move)
+						{
+							moved_away = true;
+							// The display moves on with the cursor below rather than reopening a file that has gone.
+							if (s.displays_one_of(items)) detach.keep_display_closed();
+						}
 					}
-					else if (is_move)
+					else
 					{
-						// #249: the listing used to be updated only when the queued re-enumeration
-						// happened to notice the folder had changed, which is why moved files
-						// sometimes stayed. The move has completed here, so its own completion
-						// re-runs the listing; the validation above still follows and confirms it.
-						// #250: and the cursor lands on what followed the set rather than resetting,
-						// so sorting a folder is not a re-navigation after every action.
-						core::unique_paths selection;
-						if (next) next->add_to(selection);
-						s.open(view, s.search(), selection);
+						// A run that stopped part way has still changed what it reached: the files it put
+						// in the destination and, for a move, the folders it took them from. The index
+						// learns of both either way, or those files stay out of every listing until
+						// something else happens to rescan there.
+						s.item_index.queue_scan_folder(write_folder);
+						if (!sources.empty()) s.item_index.queue_validate_changed_folders(std::move(sources));
+
+						if (result.code != platform::file_op_result_code::CANCELLED)
+						{
+							dlg->show_message(icon_index::error, title, result.format_error());
+						}
 					}
 				}
-				else
-				{
-					// A run that stopped part way has still changed what it reached: the files it put
-					// in the destination and, for a move, the folders it took them from. The index
-					// learns of both either way, or those files stay out of every listing until
-					// something else happens to rescan there.
-					s.item_index.queue_scan_folder(write_folder);
-					if (!sources.empty()) s.item_index.queue_validate_changed_folders(std::move(sources));
 
-					if (result.code != platform::file_op_result_code::CANCELLED)
-					{
-						dlg->show_message(icon_index::error, title, result.format_error());
-					}
-				}
+				// #265: what moved leaves the listing where it stood and the cursor lands on what followed the set
+				// (#250), rather than the search running again: a search the index answers would list the files at
+				// their old paths until the index caught up (#249). The validation above still follows, and the
+				// refresh it asks for lists them again wherever the search still finds them. After the guard has
+				// let go, so the item landed on plays as a selected one does.
+				if (moved_away) s.remove_items(view, items, next);
 			}
 		}
 	}
 }
 
-static void repeat_mode_toggle(const view_state& s, const ui::frame_ptr& parent)
+static void repeat_mode_toggle(const view_state& s, const ui::frame_ptr& /*parent*/)
 {
 	auto m = setting.repeat;
 
@@ -1270,13 +1253,13 @@ static void repeat_mode_toggle(const view_state& s, const ui::frame_ptr& parent)
 	s.invalidate_view(view_invalid::tooltip | view_invalid::view_redraw | view_invalid::command_state);
 }
 
-static void font_invoke(const view_state& s, const ui::frame_ptr& parent)
+static void font_invoke(const view_state& s, const ui::frame_ptr& /*parent*/)
 {
 	setting.large_font = !setting.large_font;
 	s.invalidate_view(view_invalid::visual_options);
 }
 
-static void toggle_layout_scale_invoke(view_state& s, const ui::frame_ptr& parent)
+static void toggle_layout_scale_invoke(view_state& /*s*/, const ui::frame_ptr& /*parent*/)
 {
 	setting.step_item_scale(1, true);
 }
@@ -1295,9 +1278,7 @@ static void toggle_details_invoke(const view_state& s, const bool only_toggle_se
 	else
 	{
 		toggle_details_state = !toggle_details_state;
-		const auto new_display = toggle_details_state
-			                         ? df::item_group_display::detail
-			                         : df::item_group_display::icons;
+		const auto new_display = toggle_details_state ? df::item_group_display::detail : df::item_group_display::icons;
 
 		for (const auto& g : s.groups())
 		{
@@ -1312,14 +1293,15 @@ static void toggle_details_invoke(const view_state& s, const bool only_toggle_se
 	}
 }
 
-class open_with_auto_complete final : public ui::complete_strategy_t,
-                                      public std::enable_shared_from_this<open_with_auto_complete>
+class open_with_auto_complete final :
+	public ui::complete_strategy_t,
+	public std::enable_shared_from_this<open_with_auto_complete>
 {
 	struct entry
 	{
 		std::string name;
 		std::function<void(const std::vector<core::file_path>& files, const std::vector<core::folder_path>& folders)>
-		invoke;
+			invoke;
 		int weight = 0;
 	};
 
@@ -1330,8 +1312,8 @@ class open_with_auto_complete final : public ui::complete_strategy_t,
 		ui::match_highlights _match;
 		open_with_auto_complete& _parent;
 
-		open_with_match(open_with_auto_complete& parent, entry h) : auto_complete_match(view_element_style::can_invoke),
-		                                                            _handler(std::move(h)), _parent(parent)
+		open_with_match(open_with_auto_complete& parent, entry h) :
+			auto_complete_match(view_element_style::can_invoke), _handler(std::move(h)), _parent(parent)
 		{
 		}
 
@@ -1341,10 +1323,7 @@ class open_with_auto_complete final : public ui::complete_strategy_t,
 		{
 		}
 
-		std::string edit_text() const override
-		{
-			return _handler.name;
-		}
+		std::string edit_text() const override { return _handler.name; }
 
 		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
@@ -1389,8 +1368,7 @@ class open_with_auto_complete final : public ui::complete_strategy_t,
 		}
 
 		view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-		                                             const pointi element_offset,
-		                                             hit_test_context& ctx) override
+		                                             const pointi element_offset, hit_test_context& ctx) override
 		{
 			return default_controller_from_location(*this, host, loc, element_offset, ctx);
 		}
@@ -1407,14 +1385,11 @@ class open_with_auto_complete final : public ui::complete_strategy_t,
 	std::shared_ptr<df::item_set> _items;
 
 public:
-	std::string no_results_message() override
-	{
-		return std::string(tt.type_to_search);
-	}
+	std::string no_results_message() override { return std::string(tt.type_to_search); }
 
 	open_with_auto_complete(view_state& s, std::shared_ptr<df::item_set> items, ui::frame_ptr parent,
-	                        std::vector<command_info_ptr> cmds) : _state(s), _cmds(std::move(cmds)),
-	                                                              _parent(std::move(parent)), _items(std::move(items))
+	                        std::vector<command_info_ptr> cmds) :
+		_state(s), _cmds(std::move(cmds)), _parent(std::move(parent)), _items(std::move(items))
 	{
 		resize_to_show_results = false;
 		max_predictions = 20u;
@@ -1431,7 +1406,8 @@ public:
 
 			entry h;
 			h.name = std::format("{} ({})", name, tt.open_with_tool);
-			h.invoke = [c](const std::vector<core::file_path>& files, const std::vector<core::folder_path>& folders)
+			h.invoke =
+				[c](const std::vector<core::file_path>& /*files*/, const std::vector<core::folder_path>& /*folders*/)
 			{
 				c->invoke();
 			};
@@ -1478,8 +1454,7 @@ public:
 		return diff == 0 ? core::icmp(l->_handler.name, r->_handler.name) < 0 : diff < 0;
 	}
 
-	void search(const std::string& query,
-	            const std::function<void(const ui::auto_complete_results&)> complete) override
+	void search(const std::string& query, const std::function<void(const ui::auto_complete_results&)> complete) override
 	{
 		std::vector<open_with_match_ptr> results;
 
@@ -1520,10 +1495,7 @@ public:
 		}
 	}
 
-	ui::auto_complete_match_ptr selected() const override
-	{
-		return _result;
-	}
+	ui::auto_complete_match_ptr selected() const override { return _result; }
 
 	void invoke() const
 	{
@@ -1545,8 +1517,7 @@ static void open_with_invoke(view_state& s, const ui::frame_ptr& parent, const v
 
 	if (can_process_selection_or_explain(s, view, parent, title, df::process_items_type::local_file_or_folder))
 	{
-		std::vector<command_info_ptr> cmds =
-		{
+		std::vector<command_info_ptr> cmds = {
 			commands[commands::tool_locate],
 			commands[commands::tool_adjust_date],
 			commands[commands::tool_burn],
@@ -1567,9 +1538,8 @@ static void open_with_invoke(view_state& s, const ui::frame_ptr& parent, const v
 			set_margin(std::make_shared<ui::title_control>(icon_index::next, title)),
 			std::make_shared<ui::search_control>(dlg->_frame, text, complete),
 			std::make_shared<divider_element>(),
-			std::make_shared<ui::ok_cancel_control>(dlg->_frame)
+			std::make_shared<ui::ok_cancel_control>(dlg->_frame),
 		};
-
 
 		if (ui::close_result::ok == dlg->show_modal(controls))
 		{
@@ -1611,7 +1581,7 @@ static void show_eject_dialog(view_state& s, const ui::frame_ptr& parent, const 
 
 	std::vector<view_element_ptr> controls = {
 		set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon, title, tt.eject_help)),
-		std::make_shared<divider_element>()
+		std::make_shared<divider_element>(),
 	};
 
 	// Recorded by a drive button, reported once the dialog has closed. Showing a message from this
@@ -1629,28 +1599,30 @@ static void show_eject_dialog(view_state& s, const ui::frame_ptr& parent, const 
 
 		found_removable = true;
 
-		controls.emplace_back(std::make_shared<ui::button_control>(
-			dlg->_frame, drive_icon(d.type), str_format(tt.eject_title_fmt.sv(), d.name), format_drive_details(d),
-			[&s, weak_frame = std::weak_ptr(dlg->_frame), path = core::folder_path(d.name), name = d.name, failed_drive,
-				ejecting]
+		controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, drive_icon(d.type),
+		                                                           str_format(tt.eject_title_fmt.sv(), d.name),
+		                                                           format_drive_details(d),
+		                                                           [&s, weak_frame = std::weak_ptr(dlg->_frame),
+		                                                            path = core::folder_path(d.name), name = d.name,
+		                                                            failed_drive, ejecting]
+		{
+			if (*ejecting) return;
+			*ejecting = true;
+
+			s.queue_async(async_queue::work, [&s, weak_frame, path, name, failed_drive]
 			{
-				if (*ejecting) return;
-				*ejecting = true;
+				const auto success = platform::eject(path);
 
-				s.queue_async(async_queue::work, [&s, weak_frame, path, name, failed_drive]
+				s.queue_ui([weak_frame, name, failed_drive, success]
 				{
-					const auto success = platform::eject(path);
+					const auto frame = weak_frame.lock();
+					if (!frame) return;
 
-					s.queue_ui([weak_frame, name, failed_drive, success]
-					{
-						const auto frame = weak_frame.lock();
-						if (!frame) return;
-
-						if (!success) *failed_drive = name;
-						frame->close(!success);
-					});
+					if (!success) *failed_drive = name;
+					frame->close(!success);
 				});
-			}));
+			});
+		}));
 	}
 
 	if (!found_removable)
@@ -1659,10 +1631,8 @@ static void show_eject_dialog(view_state& s, const ui::frame_ptr& parent, const 
 	}
 
 	controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, icon_index::close, tt.close,
-	                                                           tt.eject_close_info, [f = dlg->_frame]
-	                                                           {
-		                                                           f->close(false);
-	                                                           }));
+	                                                           tt.eject_close_info,
+	                                                           [f = dlg->_frame] { f->close(false); }));
 
 	{
 		pause_media pause(s);
@@ -1672,8 +1642,7 @@ static void show_eject_dialog(view_state& s, const ui::frame_ptr& parent, const 
 	if (!failed_drive->empty())
 	{
 		dlg.reset();
-		make_dlg(parent)->show_message(icon_index::error, title,
-		                               str_format(tt.eject_failed_fmt.sv(), *failed_drive));
+		make_dlg(parent)->show_message(icon_index::error, title, str_format(tt.eject_failed_fmt.sv(), *failed_drive));
 	}
 }
 
@@ -1697,7 +1666,6 @@ static void eject_invoke(view_state& s, const ui::frame_ptr& parent, std::functi
 	});
 }
 
-
 static void scan_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	const auto scan_result = platform::scan(s.save_path());
@@ -1717,7 +1685,6 @@ static void scan_invoke(view_state& s, const ui::frame_ptr& parent, const view_h
 		                  std::format("{}\n{}", tt.scan_failed, scan_result.error_message));
 	}
 };
-
 
 static void browse_parent_invoke(view_state& s, const view_host_base_ptr& view)
 {
@@ -1785,7 +1752,7 @@ static void favorite_invoke(view_state& state, const ui::frame_ptr& parent)
 				set_margin(std::make_shared<text_element>(tt.favorite_title)),
 				set_margin(std::make_shared<ui::edit_control>(dlg_parent, title_text)),
 				std::make_shared<divider_element>(),
-				std::make_shared<ui::ok_cancel_control>(dlg->_frame)
+				std::make_shared<ui::ok_cancel_control>(dlg->_frame),
 			};
 
 			pause_media pause(state);
@@ -1816,6 +1783,240 @@ static void favorite_invoke(view_state& state, const ui::frame_ptr& parent)
 	}
 }
 
+namespace
+{
+	struct command_entry
+	{
+		commands id;
+		std::string_view name;
+	};
+
+	// One name a command: its identifier, so the table reads against the enumeration line for line.
+	constexpr command_entry command_names[] = {
+		{commands::advanced_search, "advanced_search"},
+		{commands::browse_back, "browse_back"},
+		{commands::browse_forward, "browse_forward"},
+		{commands::browse_next_folder, "browse_next_folder"},
+		{commands::browse_next_group, "browse_next_group"},
+		{commands::browse_next_item, "browse_next_item"},
+		{commands::browse_next_item_extend, "browse_next_item_extend"},
+		{commands::browse_open_containingfolder, "browse_open_containingfolder"},
+		{commands::browse_open_googlemap, "browse_open_googlemap"},
+		{commands::browse_open_in_file_browser, "browse_open_in_file_browser"},
+		{commands::browse_parent, "browse_parent"},
+		{commands::browse_previous_folder, "browse_previous_folder"},
+		{commands::browse_previous_group, "browse_previous_group"},
+		{commands::browse_previous_item, "browse_previous_item"},
+		{commands::browse_previous_item_extend, "browse_previous_item_extend"},
+		{commands::browse_recursive, "browse_recursive"},
+		{commands::browse_search, "browse_search"},
+		{commands::edit_copy, "edit_copy"},
+		{commands::edit_copy_item_path, "edit_copy_item_path"},
+		{commands::edit_cut, "edit_cut"},
+		{commands::edit_item_auto_color, "edit_item_auto_color"},
+		{commands::edit_item_auto_document, "edit_item_auto_document"},
+		{commands::edit_item_auto_straighten, "edit_item_auto_straighten"},
+		{commands::edit_item_preview, "edit_item_preview"},
+		{commands::edit_item_color_reset, "edit_item_color_reset"},
+		{commands::edit_item_save, "edit_item_save"},
+		{commands::edit_item_save_and_next, "edit_item_save_and_next"},
+		{commands::edit_item_save_and_prev, "edit_item_save_and_prev"},
+		{commands::edit_item_save_as, "edit_item_save_as"},
+		{commands::edit_paste, "edit_paste"},
+		{commands::english, "english"},
+		{commands::exit, "exit"},
+		{commands::favorite, "favorite"},
+		{commands::favorite_tags, "favorite_tags"},
+		{commands::filter_items, "filter_items"},
+		{commands::filter_audio, "filter_audio"},
+		{commands::filter_photos, "filter_photos"},
+		{commands::filter_videos, "filter_videos"},
+		{commands::group_album, "group_album"},
+		{commands::group_aspect_ratio, "group_aspect_ratio"},
+		{commands::group_camera, "group_camera"},
+		{commands::group_created, "group_created"},
+		{commands::group_original, "group_original"},
+		{commands::group_extension, "group_extension"},
+		{commands::group_file_type, "group_file_type"},
+		{commands::group_folder, "group_folder"},
+		{commands::group_location, "group_location"},
+		{commands::group_modified, "group_modified"},
+		{commands::group_pixels, "group_pixels"},
+		{commands::group_presence, "group_presence"},
+		{commands::group_rating, "group_rating"},
+		{commands::group_shuffle, "group_shuffle"},
+		{commands::group_size, "group_size"},
+		{commands::group_toggle, "group_toggle"},
+		{commands::import_analyze, "import_analyze"},
+		{commands::import_run, "import_run"},
+		{commands::locate_run, "locate_run"},
+#ifndef WINSTORE
+		{commands::info_new_version, "info_new_version"},
+		{commands::info_check_for_updates, "info_check_for_updates"},
+#endif
+		{commands::keyboard, "keyboard"},
+		{commands::label_approved, "label_approved"},
+		{commands::label_none, "label_none"},
+		{commands::label_review, "label_review"},
+		{commands::label_second, "label_second"},
+		{commands::label_select, "label_select"},
+		{commands::label_to_do, "label_to_do"},
+		{commands::large_font, "large_font"},
+		{commands::menu_display_options, "menu_display_options"},
+		{commands::menu_zoom, "menu_zoom"},
+		{commands::menu_zoom_navigator, "menu_zoom_navigator"},
+		{commands::menu_group, "menu_group"},
+		{commands::menu_group_toolbar, "menu_group_toolbar"},
+		{commands::menu_language, "menu_language"},
+		{commands::menu_main, "menu_main"},
+		{commands::menu_bar_more, "menu_bar_more"},
+		{commands::menu_navigate, "menu_navigate"},
+		{commands::menu_open, "menu_open"},
+		{commands::menu_open_status, "menu_open_status"},
+		{commands::menu_options, "menu_options"},
+		{commands::menu_playback, "menu_playback"},
+		{commands::menu_rate_or_label, "menu_rate_or_label"},
+		{commands::menu_select, "menu_select"},
+		{commands::menu_tools, "menu_tools"},
+		{commands::menu_tools_toolbar, "menu_tools_toolbar"},
+		{commands::option_highlight_large_items, "option_highlight_large_items"},
+		{commands::option_scale_up, "option_scale_up"},
+		{commands::option_show_rotated, "option_show_rotated"},
+		{commands::option_toggle_details, "option_toggle_details"},
+		{commands::option_toggle_item_size, "option_toggle_item_size"},
+		{commands::options, "options"},
+		{commands::options_cancel, "options_cancel"},
+		{commands::options_help, "options_help"},
+		{commands::options_save, "options_save"},
+		{commands::options_sidebar, "options_sidebar"},
+		{commands::pin_item, "pin_item"},
+		{commands::play, "play"},
+		{commands::playback_auto_play, "playback_auto_play"},
+		{commands::playback_auto_advance, "playback_auto_advance"},
+		{commands::playback_last_played_pos, "playback_last_played_pos"},
+		{commands::playback_menu, "playback_menu"},
+		{commands::playback_repeat_all, "playback_repeat_all"},
+		{commands::playback_repeat_none, "playback_repeat_none"},
+		{commands::playback_repeat_one, "playback_repeat_one"},
+		{commands::playback_volume_toggle, "playback_volume_toggle"},
+		{commands::playback_volume0, "playback_volume0"},
+		{commands::playback_volume100, "playback_volume100"},
+		{commands::playback_volume200, "playback_volume200"},
+		{commands::playback_volume25, "playback_volume25"},
+		{commands::playback_volume50, "playback_volume50"},
+		{commands::playback_volume75, "playback_volume75"},
+		{commands::print, "print"},
+		{commands::rate_1, "rate_1"},
+		{commands::rate_2, "rate_2"},
+		{commands::rate_3, "rate_3"},
+		{commands::rate_4, "rate_4"},
+		{commands::rate_5, "rate_5"},
+		{commands::rate_none, "rate_none"},
+		{commands::rate_rejected, "rate_rejected"},
+		{commands::refresh, "refresh"},
+		{commands::repeat_toggle, "repeat_toggle"},
+		{commands::search_related, "search_related"},
+		{commands::select_all, "select_all"},
+		{commands::select_invert, "select_invert"},
+		{commands::select_nothing, "select_nothing"},
+		{commands::show_raw_preview, "show_raw_preview"},
+		{commands::slideshow, "slideshow"},
+		{commands::sort_date_created, "sort_date_created"},
+		{commands::sort_date_original, "sort_date_original"},
+		{commands::sort_date_modified, "sort_date_modified"},
+		{commands::sort_dates_ascending, "sort_dates_ascending"},
+		{commands::sort_dates_descending, "sort_dates_descending"},
+		{commands::sort_def, "sort_def"},
+		{commands::sort_name, "sort_name"},
+		{commands::sort_size, "sort_size"},
+		{commands::sync_analyze, "sync_analyze"},
+		{commands::sync_run, "sync_run"},
+		{commands::tags_run, "tags_run"},
+		{commands::tool_adjust_date, "tool_adjust_date"},
+		{commands::tool_burn, "tool_burn"},
+		{commands::tool_convert, "tool_convert"},
+		{commands::tool_copy_to_folder, "tool_copy_to_folder"},
+		{commands::tool_delete, "tool_delete"},
+		{commands::tool_desktop_background, "tool_desktop_background"},
+		{commands::tool_edit, "tool_edit"},
+		{commands::tool_edit_description, "tool_edit_description"},
+		{commands::tool_edit_metadata, "tool_edit_metadata"},
+		{commands::tool_eject, "tool_eject"},
+		{commands::tool_file_properties, "tool_file_properties"},
+		{commands::tool_import, "tool_import"},
+		{commands::tool_locate, "tool_locate"},
+		{commands::tool_move_to_folder, "tool_move_to_folder"},
+		{commands::tool_movie, "tool_movie"},
+		{commands::tool_movie_add, "tool_movie_add"},
+		{commands::tool_movie_add_text, "tool_movie_add_text"},
+		{commands::tool_movie_open, "tool_movie_open"},
+		{commands::tool_movie_relink, "tool_movie_relink"},
+		{commands::tool_movie_remove, "tool_movie_remove"},
+		{commands::tool_movie_render, "tool_movie_render"},
+		{commands::tool_movie_save, "tool_movie_save"},
+		{commands::tool_movie_select_all, "tool_movie_select_all"},
+		{commands::tool_movie_send_to_end, "tool_movie_send_to_end"},
+		{commands::tool_new_folder, "tool_new_folder"},
+		{commands::tool_open_with, "tool_open_with"},
+		{commands::tool_refresh, "tool_refresh"},
+		{commands::tool_rename, "tool_rename"},
+		{commands::tool_rotate_anticlockwise, "tool_rotate_anticlockwise"},
+		{commands::tool_rotate_clockwise, "tool_rotate_clockwise"},
+		{commands::tool_rotate_reset, "tool_rotate_reset"},
+		{commands::tool_run, "tool_run"},
+		{commands::tool_save_current_video_frame, "tool_save_current_video_frame"},
+		{commands::tool_scan, "tool_scan"},
+		{commands::tool_share, "tool_share"},
+		{commands::tool_sync, "tool_sync"},
+		{commands::tool_tag, "tool_tag"},
+		{commands::verbose_metadata, "verbose_metadata"},
+		{commands::view_cancel, "view_cancel"},
+		{commands::view_close, "view_close"},
+		{commands::view_favorite_tags, "view_favorite_tags"},
+		{commands::view_fullscreen, "view_fullscreen"},
+		{commands::view_help, "view_help"},
+		{commands::view_items, "view_items"},
+		{commands::view_maximize, "view_maximize"},
+		{commands::view_minimize, "view_minimize"},
+		{commands::view_restore, "view_restore"},
+		{commands::view_show_sidebar, "view_show_sidebar"},
+		{commands::view_zoom, "view_zoom"},
+		{commands::view_zoom_fit, "view_zoom_fit"},
+		{commands::view_zoom_fit_width, "view_zoom_fit_width"},
+		{commands::view_zoom_fill, "view_zoom_fill"},
+		{commands::view_zoom_toggle_fit, "view_zoom_toggle_fit"},
+		{commands::view_zoom_in, "view_zoom_in"},
+		{commands::view_zoom_pane_flip, "view_zoom_pane_flip"},
+		{commands::view_zoom_out, "view_zoom_out"},
+		{commands::view_zoom_100, "view_zoom_100"},
+		{commands::view_zoom_navigator_auto_hide, "view_zoom_navigator_auto_hide"},
+		{commands::view_zoom_navigator_off, "view_zoom_navigator_off"},
+	};
+}
+
+std::string_view command_name(const commands id)
+{
+	const auto found = std::ranges::find(command_names, id, &command_entry::id);
+	return found == std::ranges::end(command_names) ? std::string_view{} : found->name;
+}
+
+std::optional<commands> command_from_name(const std::string_view name)
+{
+	const auto found = std::ranges::find(command_names, name, &command_entry::name);
+	if (found == std::ranges::end(command_names)) return std::nullopt;
+	return found->id;
+}
+
+const std::vector<commands>& all_commands()
+{
+	static const auto all = []
+	{
+		std::vector<commands> result;
+		for (const auto& entry : command_names) result.push_back(entry.id);
+		return result;
+	}();
+	return all;
+}
 
 #ifdef _DEBUG
 void app_frame::run_test_action(const std::string_view action)
@@ -1843,7 +2044,6 @@ void app_frame::run_test_action(const std::string_view action)
 	}
 }
 #endif
-
 
 void app_frame::initialise_commands()
 {
@@ -1917,19 +2117,15 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::browse_forward, [this] { _state.browse_forward(_view_frame); });
 
 	add_command_invoke(commands::browse_next_folder, [this] { _state.open_next_path(_view_frame, true); });
-	add_command_invoke(commands::browse_next_group, [this]
-	{
-		_state.select(_view_frame, _state.next_group_item(true), false, false, false);
-	});
+	add_command_invoke(commands::browse_next_group,
+	                   [this] { _state.select(_view_frame, _state.next_group_item(true), false, false, false); });
 	add_command_invoke(commands::browse_next_item, [this] { _state.select_next(_view_frame, true, false, false); });
 	add_command_invoke(commands::browse_next_item_extend,
 	                   [this] { _state.select_next(_view_frame, true, true, false); });
 	add_command_invoke(commands::browse_parent, [this] { browse_parent_invoke(_state, _view_frame); });
 	add_command_invoke(commands::browse_previous_folder, [this] { _state.open_next_path(_view_frame, false); });
-	add_command_invoke(commands::browse_previous_group, [this]
-	{
-		_state.select(_view_frame, _state.next_group_item(false), false, false, false);
-	});
+	add_command_invoke(commands::browse_previous_group,
+	                   [this] { _state.select(_view_frame, _state.next_group_item(false), false, false, false); });
 	add_command_invoke(commands::browse_previous_item,
 	                   [this] { _state.select_next(_view_frame, false, false, false); });
 	add_command_invoke(commands::browse_previous_item_extend,
@@ -1940,9 +2136,12 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::favorite, [this] { favorite_invoke(_state, _app_frame); });
 	add_command_invoke(commands::advanced_search, [this] { advanced_search_invoke(_state, _app_frame, _view_frame); });
 
-	add_command_invoke(commands::view_minimize, [this] { _app_frame->sys_command(platform::sys_command_type::MINIMIZE); });
-	add_command_invoke(commands::view_maximize, [this] { _app_frame->sys_command(platform::sys_command_type::MAXIMIZE); });
-	add_command_invoke(commands::view_restore, [this] { _app_frame->sys_command(platform::sys_command_type::RESTORE); });
+	add_command_invoke(commands::view_minimize,
+	                   [this] { _app_frame->sys_command(platform::sys_command_type::MINIMIZE); });
+	add_command_invoke(commands::view_maximize,
+	                   [this] { _app_frame->sys_command(platform::sys_command_type::MAXIMIZE); });
+	add_command_invoke(commands::view_restore,
+	                   [this] { _app_frame->sys_command(platform::sys_command_type::RESTORE); });
 	// Either one is, to Windows, the window's maximize button. The platform decides when it offers snap layouts on it.
 	find_or_create_command_info(commands::view_maximize)->caption_maximize = true;
 	find_or_create_command_info(commands::view_restore)->caption_maximize = true;
@@ -1987,7 +2186,7 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::tool_movie_select_all, [this] { _view_movie->select_all(); });
 	add_command_invoke(commands::tool_movie_open, [this] { _view_movie->open_project(); });
 	add_command_invoke(commands::tool_movie_save, [this] { _view_movie->save_project(); });
-	add_command_invoke(commands::tool_movie_import, [this] { _view_movie->import_project(); });
+	add_command_invoke(commands::tool_movie_add_text, [this] { _view_movie->add_text_screen(); });
 	add_command_invoke(commands::tool_movie_relink, [this] { _view_movie->relink_missing(); });
 	add_command_invoke(commands::tool_movie_render, [this] { _view_movie->render_movie(); });
 	add_command_invoke(commands::edit_copy, [this]
@@ -2002,9 +2201,7 @@ void app_frame::initialise_commands()
 	});
 	add_command_invoke(commands::edit_paste, [this] { edit_paste_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::tool_eject, [this]
-	{
-		eject_invoke(_state, _app_frame, [this] { invalidate_view(view_invalid::sidebar_drives); });
-	});
+	{ eject_invoke(_state, _app_frame, [this] { invalidate_view(view_invalid::sidebar_drives); }); });
 	add_command_invoke(commands::tool_file_properties,
 	                   [this] { file_properties_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::browse_search, [this] { _search_edit->focus(); });
@@ -2024,20 +2221,14 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::browse_recursive, [this] { show_flatten_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::view_fullscreen, [this] { toggle_full_screen(); });
 	add_command_invoke(commands::option_highlight_large_items, [this]
-	{
-		setting_invoke(_state, setting.highlight_large_items, !setting.highlight_large_items);
-	});
+	{ setting_invoke(_state, setting.highlight_large_items, !setting.highlight_large_items); });
 	// A toggle, not a set: this is the one the menu shows, so clicking it while it is ticked has to
 	// do something. Ascending stays an explicit set because the empty-results surface offers
 	// whichever direction is not current by name.
 	add_command_invoke(commands::sort_dates_descending, [this]
-	{
-		setting_invoke(_state, setting.sort_dates_descending, !setting.sort_dates_descending);
-	});
-	add_command_invoke(commands::sort_dates_ascending, [this]
-	{
-		setting_invoke(_state, setting.sort_dates_descending, false);
-	});
+	{ setting_invoke(_state, setting.sort_dates_descending, !setting.sort_dates_descending); });
+	add_command_invoke(commands::sort_dates_ascending,
+	                   [this] { setting_invoke(_state, setting.sort_dates_descending, false); });
 	add_command_invoke(commands::options, [this] { _view_options->open(options_section::top); });
 	add_command_invoke(commands::options_save, [this] { _view_options->save(); });
 	add_command_invoke(commands::options_cancel, [this] { _view_options->cancel(); });
@@ -2053,28 +2244,20 @@ void app_frame::initialise_commands()
 	});
 	add_command_invoke(commands::tool_move_to_folder,
 	                   [this] { copy_move_invoke(_state, _app_frame, _view_frame, true); });
-	add_command_invoke(commands::view_show_sidebar, [this]
-	{
-		setting_invoke(_state, setting.show_sidebar, !setting.show_sidebar);
-	});
+	add_command_invoke(commands::view_show_sidebar,
+	                   [this] { setting_invoke(_state, setting.show_sidebar, !setting.show_sidebar); });
 	add_command_invoke(commands::tool_new_folder, [this] { new_folder_invoke(_state, _app_frame, _view_frame); });
 #ifndef WINSTORE
 	add_command_invoke(commands::info_new_version, [this] { show_update_dialog(_state, _app_frame); });
 	add_command_invoke(commands::info_check_for_updates, [this] { show_update_dialog(_state, _app_frame); });
 #endif
-	add_command_invoke(commands::browse_open_containingfolder, [this]
-	{
-		containing_folder_invoke(_state, _app_frame, _view_frame);
-	});
+	add_command_invoke(commands::browse_open_containingfolder,
+	                   [this] { containing_folder_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::browse_open_googlemap, [this] { _state.open_gps_on_google_maps(); });
-	add_command_invoke(commands::browse_open_in_file_browser, [this]
-	{
-		open_in_file_browser_invoke(_state, _app_frame, _view_frame);
-	});
-	add_command_invoke(commands::tool_open_with, [this]
-	{
-		open_with_invoke(_state, _app_frame, _view_frame, _commands);
-	});
+	add_command_invoke(commands::browse_open_in_file_browser,
+	                   [this] { open_in_file_browser_invoke(_state, _app_frame, _view_frame); });
+	add_command_invoke(commands::tool_open_with,
+	                   [this] { open_with_invoke(_state, _app_frame, _view_frame, _commands); });
 	add_command_invoke(commands::pin_item, [this] { pin_invoke(_state); });
 	add_command_invoke(commands::play, [this] { _state.play(_view_frame); });
 	add_command_invoke(commands::slideshow, [this] { _state.toggle_slideshow(_view_frame); });
@@ -2088,48 +2271,32 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::rate_rejected, [this]
 	{
 		const auto& items = _state.selected_items().items();
-		const auto all_rejected = !items.empty() &&
-			std::ranges::all_of(items, [](const df::item_element_ptr& item) { return item->rating() == -1; });
+		const auto all_rejected = !items.empty() && std::ranges::all_of(items, [](const df::item_element_ptr& item)
+		{ return item->rating() == -1; });
 		rate_items_invoke(_state, _app_frame, _view_frame, all_rejected ? 0 : -1);
 	});
-	add_command_invoke(commands::label_select, [this]
-	{
-		label_items_invoke(_state, _app_frame, _view_frame, label_select_text);
-	});
-	add_command_invoke(commands::label_second, [this]
-	{
-		label_items_invoke(_state, _app_frame, _view_frame, label_second_text);
-	});
-	add_command_invoke(commands::label_approved, [this]
-	{
-		label_items_invoke(_state, _app_frame, _view_frame, label_approved_text);
-	});
-	add_command_invoke(commands::label_review, [this]
-	{
-		label_items_invoke(_state, _app_frame, _view_frame, label_review_text);
-	});
-	add_command_invoke(commands::label_to_do, [this]
-	{
-		label_items_invoke(_state, _app_frame, _view_frame, label_to_do_text);
-	});
+	add_command_invoke(commands::label_select,
+	                   [this] { label_items_invoke(_state, _app_frame, _view_frame, label_select_text); });
+	add_command_invoke(commands::label_second,
+	                   [this] { label_items_invoke(_state, _app_frame, _view_frame, label_second_text); });
+	add_command_invoke(commands::label_approved,
+	                   [this] { label_items_invoke(_state, _app_frame, _view_frame, label_approved_text); });
+	add_command_invoke(commands::label_review,
+	                   [this] { label_items_invoke(_state, _app_frame, _view_frame, label_review_text); });
+	add_command_invoke(commands::label_to_do,
+	                   [this] { label_items_invoke(_state, _app_frame, _view_frame, label_to_do_text); });
 	add_command_invoke(commands::label_none, [this] { label_items_invoke(_state, _app_frame, _view_frame, {}); });
 	add_command_invoke(commands::refresh, [this] { reload(); });
 	add_command_invoke(commands::favorite_tags, [this] { favorite_tags_invoke(_state, _app_frame); });
 	add_command_invoke(commands::search_related, [this] { related_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::tool_rename, [this] { rename_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::repeat_toggle, [this] { repeat_mode_toggle(_state, _app_frame); });
-	add_command_invoke(commands::tool_rotate_anticlockwise, [this]
-	{
-		rotate_invoke(_state, _app_frame, _view_frame, core::simple_transform::rot_270);
-	});
-	add_command_invoke(commands::tool_rotate_clockwise, [this]
-	{
-		rotate_invoke(_state, _app_frame, _view_frame, core::simple_transform::rot_90);
-	});
-	add_command_invoke(commands::option_scale_up, [this]
-	{
-		setting_invoke(_state, setting.scale_up, !setting.scale_up);
-	});
+	add_command_invoke(commands::tool_rotate_anticlockwise,
+	                   [this] { rotate_invoke(_state, _app_frame, _view_frame, core::simple_transform::rot_270); });
+	add_command_invoke(commands::tool_rotate_clockwise,
+	                   [this] { rotate_invoke(_state, _app_frame, _view_frame, core::simple_transform::rot_90); });
+	add_command_invoke(commands::option_scale_up,
+	                   [this] { setting_invoke(_state, setting.scale_up, !setting.scale_up); });
 	add_command_invoke(commands::view_favorite_tags, [this]
 	{
 		setting.sidebar.show_favorite_tags_only = !setting.sidebar.show_favorite_tags_only;
@@ -2140,10 +2307,8 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::select_invert, [this] { _state.select_inverse(_view_frame); });
 	add_command_invoke(commands::select_nothing, [this] { _state.select_nothing(_view_frame); });
 	add_command_invoke(commands::tool_share, [this] { share_invoke(_state, _app_frame, _view_frame); });
-	add_command_invoke(commands::option_show_rotated, [this]
-	{
-		setting_invoke(_state, setting.show_rotated, !setting.show_rotated);
-	});
+	add_command_invoke(commands::option_show_rotated,
+	                   [this] { setting_invoke(_state, setting.show_rotated, !setting.show_rotated); });
 	add_command_invoke(commands::verbose_metadata, [this]
 	{
 		setting_invoke(_state, setting.verbose_metadata, !setting.verbose_metadata);
@@ -2155,10 +2320,8 @@ void app_frame::initialise_commands()
 		invalidate_view(view_invalid::media_elements);
 	});
 	add_command_invoke(commands::tool_tag, [this] { _state.view_mode(view_type::tags); });
-	add_command_invoke(commands::option_toggle_details, [this]
-	{
-		toggle_details_invoke(_state, platform::current_key_state().shift);
-	});
+	add_command_invoke(commands::option_toggle_details,
+	                   [this] { toggle_details_invoke(_state, platform::current_key_state().shift); });
 	add_command_invoke(commands::option_toggle_item_size, [this]
 	{
 		toggle_layout_scale_invoke(_state, _app_frame);
@@ -2258,44 +2421,51 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::tags_run, [this] { _view_tags->run(); });
 
 	// Cancel stops the running task and leaves the view open; Close always exits the view.
-	add_command_invoke(commands::view_cancel, [this] { if (_view) _view->cancel_operation(); });
+	add_command_invoke(commands::view_cancel, [this]
+	{
+		if (_view) _view->cancel_operation();
+	});
 
 	add_command_invoke(commands::english, [this] { select_language("en"); });
 
+	// Rebuilt by each layout of the status bar, so it lists exactly what the bar had no room for then.
+	_commands[commands::menu_bar_more]->menu = [this]
+	{
+		return _bar_overflow;
+	};
+
 	_commands[commands::menu_main]->menu = [this]
 	{
-		std::vector<ui::command_ptr> result = {
-			find_command(commands::view_fullscreen),
-			find_command(commands::play),
-			find_command(commands::slideshow),
-			find_command(commands::browse_search),
-			nullptr,
-			find_command(commands::menu_navigate),
-			find_command(commands::menu_open),
-			find_command(commands::menu_tools),
-			find_command(commands::menu_rate_or_label),
-			find_command(commands::menu_select),
-			find_command(commands::menu_group),
-			find_command(commands::menu_options),
-			nullptr,
-			find_command(commands::tool_import),
-			find_command(commands::tool_sync),
-			find_command(commands::tool_scan),
-			find_command(commands::refresh),
-			find_command(commands::tool_new_folder),
-			find_command(commands::favorite),
-			nullptr,
-			find_command(commands::edit_cut),
-			find_command(commands::edit_copy),
-			find_command(commands::edit_paste),
-			nullptr,
-			find_command(commands::keyboard),
-			find_command(commands::view_help),
+		std::vector<ui::command_ptr> result = {find_command(commands::view_fullscreen),
+		                                       find_command(commands::play),
+		                                       find_command(commands::slideshow),
+		                                       find_command(commands::browse_search),
+		                                       nullptr,
+		                                       find_command(commands::menu_navigate),
+		                                       find_command(commands::menu_open),
+		                                       find_command(commands::menu_tools),
+		                                       find_command(commands::menu_rate_or_label),
+		                                       find_command(commands::menu_select),
+		                                       find_command(commands::menu_group),
+		                                       find_command(commands::menu_options),
+		                                       nullptr,
+		                                       find_command(commands::tool_import),
+		                                       find_command(commands::tool_sync),
+		                                       find_command(commands::tool_scan),
+		                                       find_command(commands::refresh),
+		                                       find_command(commands::tool_new_folder),
+		                                       find_command(commands::favorite),
+		                                       nullptr,
+		                                       find_command(commands::edit_cut),
+		                                       find_command(commands::edit_copy),
+		                                       find_command(commands::edit_paste),
+		                                       nullptr,
+		                                       find_command(commands::keyboard),
+		                                       find_command(commands::view_help),
 #ifndef WINSTORE
-			find_command(commands::info_check_for_updates),
+		                                       find_command(commands::info_check_for_updates),
 #endif
-			find_command(commands::exit)
-		};
+		                                       find_command(commands::exit)};
 		return result;
 	};
 	_commands[commands::menu_options]->menu = [this]
@@ -2306,7 +2476,7 @@ void app_frame::initialise_commands()
 			nullptr,
 			find_command(commands::menu_display_options),
 			find_command(commands::playback_menu),
-			find_command(commands::menu_language)
+			find_command(commands::menu_language),
 		};
 		return result;
 	};
@@ -2340,9 +2510,8 @@ void app_frame::initialise_commands()
 			}
 
 			const auto tool_target = selected_external_tool_target(*selected_items);
-			const auto file_tools = tool_target.is_empty()
-				                        ? std::vector<std::shared_ptr<file_tool>>{}
-				                        : first_item->file_type()->all_tools();
+			const auto file_tools = tool_target.is_empty() ? std::vector<std::shared_ptr<file_tool>>{}
+			                                               : first_item->file_type()->all_tools();
 
 			if (!file_tools.empty())
 			{
@@ -2394,7 +2563,10 @@ void app_frame::initialise_commands()
 				auto command = std::make_shared<ui::command>();
 				command->icon = icon_index::location;
 				command->text = str_format(tt.open_with_fmt.sv(), link.text);
-				command->invoke = [link, this] { _state.open_gps_on_map(link.url); };
+				command->invoke = [link, this]
+				{
+					_state.open_gps_on_map(link.url);
+				};
 				result.emplace_back(command);
 			}
 		}
@@ -2430,7 +2602,10 @@ void app_frame::initialise_commands()
 				auto command = std::make_shared<ui::command>();
 				command->text = language_name(lang_code);
 				command->checked = setting.language == lang_code;
-				command->invoke = [this, lang_code = std::string(lang_code)] { select_language(lang_code); };
+				command->invoke = [this, lang_code = std::string(lang_code)]
+				{
+					select_language(lang_code);
+				};
 
 				result.emplace_back(command);
 			}
@@ -2522,7 +2697,7 @@ void app_frame::initialise_commands()
 			find_command(commands::select_invert),
 			find_command(commands::select_nothing),
 			nullptr,
-			find_command(commands::pin_item)
+			find_command(commands::pin_item),
 		};
 		return result;
 	};
@@ -2544,7 +2719,7 @@ void app_frame::initialise_commands()
 			find_command(commands::label_approved),
 			find_command(commands::label_review),
 			find_command(commands::label_to_do),
-			find_command(commands::label_none)
+			find_command(commands::label_none),
 		};
 
 		return result;
@@ -2552,16 +2727,11 @@ void app_frame::initialise_commands()
 	_commands[commands::menu_navigate]->menu = [this]
 	{
 		std::vector<ui::command_ptr> result = {
-			find_command(commands::browse_parent),
-			find_command(commands::browse_back),
-			find_command(commands::browse_forward),
-			find_command(commands::browse_previous_folder),
-			find_command(commands::browse_next_folder),
-			find_command(commands::browse_previous_group),
-			find_command(commands::browse_next_group),
-			nullptr,
-			find_command(commands::browse_recursive),
-			nullptr,
+			find_command(commands::browse_parent),      find_command(commands::browse_back),
+			find_command(commands::browse_forward),     find_command(commands::browse_previous_folder),
+			find_command(commands::browse_next_folder), find_command(commands::browse_previous_group),
+			find_command(commands::browse_next_group),  nullptr,
+			find_command(commands::browse_recursive),   nullptr,
 			find_command(commands::advanced_search),
 		};
 		return result;
@@ -2579,24 +2749,22 @@ void app_frame::initialise_commands()
 			nullptr,
 			find_command(commands::view_show_sidebar),
 			find_command(commands::option_toggle_item_size),
-			find_command(commands::option_toggle_details)
+			find_command(commands::option_toggle_details),
 		};
 
 		return result;
 	};
 	_commands[commands::menu_zoom]->menu = [this]
 	{
-		std::vector<ui::command_ptr> result{
-			find_command(commands::view_zoom),
-			nullptr,
-			find_command(commands::view_zoom_fit),
-			find_command(commands::view_zoom_fit_width),
-			find_command(commands::view_zoom_fill),
-			find_command(commands::view_zoom_100),
-			find_command(commands::view_zoom_in),
-			find_command(commands::view_zoom_out),
-			nullptr
-		};
+		std::vector<ui::command_ptr> result{find_command(commands::view_zoom),
+		                                    nullptr,
+		                                    find_command(commands::view_zoom_fit),
+		                                    find_command(commands::view_zoom_fit_width),
+		                                    find_command(commands::view_zoom_fill),
+		                                    find_command(commands::view_zoom_100),
+		                                    find_command(commands::view_zoom_in),
+		                                    find_command(commands::view_zoom_out),
+		                                    nullptr};
 		const auto display = _state.display_state();
 		const auto current_scale = display ? display->zoom_scale_percent() : 0;
 		for (const auto scale : df::zoom_view_state::ladder())
@@ -2605,10 +2773,13 @@ void app_frame::initialise_commands()
 			command->text = std::format("{}%", core::round(scale * 100.0));
 			command->checked = current_scale == core::round(scale * 100.0);
 			command->enable = display && display->can_zoom();
-			command->invoke = [display, scale] { if (display) display->zoom_scale(scale); };
+			command->invoke = [display, scale]
+			{
+				if (display) display->zoom_scale(scale);
+			};
 			result.emplace_back(std::move(command));
 		}
-		if (display && display->is_two())
+		if (display && display->is_comparison())
 		{
 			result.emplace_back(nullptr);
 			result.emplace_back(find_command(commands::view_zoom_pane_flip));
@@ -2619,10 +2790,8 @@ void app_frame::initialise_commands()
 	};
 	_commands[commands::menu_zoom_navigator]->menu = [this]
 	{
-		std::vector<ui::command_ptr> result{
-			find_command(commands::view_zoom_navigator_auto_hide),
-			find_command(commands::view_zoom_navigator_off)
-		};
+		std::vector<ui::command_ptr> result{find_command(commands::view_zoom_navigator_auto_hide),
+		                                    find_command(commands::view_zoom_navigator_off)};
 		return result;
 	};
 	_commands[commands::menu_playback]->menu = _commands[commands::playback_menu]->menu = [this]
@@ -2702,9 +2871,8 @@ void app_frame::initialise_commands()
 			}
 		}
 
-		const auto subtitles = display && display->is_one() && display->_session
-			                       ? display->_session->subtitle_info()
-			                       : nullptr;
+		const auto subtitles = display && display->is_one() && display->_session ? display->_session->subtitle_info()
+		                                                                         : nullptr;
 
 		if (subtitles && !subtitles->offers.empty())
 		{
@@ -2717,7 +2885,10 @@ void app_frame::initialise_commands()
 			auto off = std::make_shared<ui::command>();
 			off->text = tt.subtitles_off;
 			off->checked = subtitles->choice.is_none();
-			off->invoke = [this] { _state.change_subtitles({}); };
+			off->invoke = [this]
+			{
+				_state.change_subtitles({});
+			};
 			result.emplace_back(std::move(off));
 
 			auto subtitle_number = 0;
@@ -2727,7 +2898,10 @@ void app_frame::initialise_commands()
 				auto command = std::make_shared<ui::command>();
 				command->text = format_subtitle_name(offer, ++subtitle_number);
 				command->checked = offer.choice == subtitles->choice;
-				command->invoke = [this, choice = offer.choice] { _state.change_subtitles(choice); };
+				command->invoke = [this, choice = offer.choice]
+				{
+					_state.change_subtitles(choice);
+				};
 				result.emplace_back(std::move(command));
 			}
 		}

@@ -2,8 +2,8 @@
 
 This document owns the path from media bytes to displayed pixels, media and sidecar writes, coherent
 read-back, and failure outcomes. [Metadata](metadata.md) owns property-to-tag mappings;
-[Rendering](rendering.md) owns texture upload; [Zoom](zoom.md) owns scale and center; and
-[Design](design.md) owns user-facing operation semantics.
+[Rendering](rendering.md) owns image budgets and presentation; [Zoom](zoom.md) owns scale and center;
+and [Design](design.md) owns user-facing operation semantics.
 
 ## Contract
 
@@ -81,21 +81,105 @@ replacements. Temporary paths are cleaned on every bounded failure path.
 
 A JPEG XL's metadata is updated by libfiles like any other format's, its compressed boxes read with
 libfiles' bounded Brotli decoder; one made from a JPEG keeps the boxes it gives that JPEG back from at their size.
-Its picture is never rewritten in place: rotating or editing one is not offered, since a re-encode would
-lose what it was encoded with. A pixel write that produces one - Convert, Save As, a shared copy -
-reads the packet as an update would, applies the edit and, from another format, what the source shows
-that its packet lacks, and encodes it into the file's own boxes beside the source's EXIF; no update
-follows. The codestream holds the orientation the file ends with, which the EXIF is made to agree with.
-A JPEG XL moved unchanged is copied as it is.
+Rotate turns one by the orientation its codestream's header keeps, as a JPEG's EXIF keeps one, without
+encoding its picture again. Any other edit encodes its picture again. A pixel write that produces one - an
+edit, Convert, Save As, a shared copy - reads the packet as an update would, applies the edit and, from another
+format, what the source shows that its packet lacks, and encodes it into the file's own boxes beside the source's
+EXIF; no update follows. The codestream holds the orientation the file ends with, which the EXIF is made to agree
+with. A JPEG XL moved unchanged is copied as it is.
 
-Encoded JPEG, PNG, WebP and JPEG XL buffers transfer ownership from libfiles
+A JPEG written as a lossless JPEG XL, at its own size and turned by quarter turns at most, is repacked rather
+than encoded from its pixels: libjxl compresses its coefficients again, commonly a fifth smaller, and keeps the
+JPEG to give back byte for byte. The packet the JPEG XL is to hold - what the JPEG shows from its IPTC among it -
+is written into the JPEG first, so the JPEG given back holds it too. A JPEG XL repacked from a JPEG gives that
+JPEG back for a write that starts from its picture: written as a JPEG at its own size, it is that JPEG, whatever
+quality a conversion names, with the metadata update that follows any write; and written as a JPEG XL again it
+stays one that gives a JPEG back, unless a conversion asks for its settings or a lossless JPEG XL is asked for.
+Rotate turns it by its codestream's orientation only where the EXIF its JPEG is given back with holds one to turn
+with it; otherwise the JPEG is turned without loss where its blocks allow, or encoded again against its own
+tables, as a JPEG's own is, and repacked. Any other edit encodes the JPEG again against its tables, with its own
+segments, and repacks it. libjxl cannot keep a CMYK, arithmetic-coded or 12-bit JPEG, which is encoded from its
+pixels.
+
+A HEIC's or an AVIF's metadata is updated by libfiles in the file's own items: one without a packet gains
+the packet item libheif would add, and the EXIF item it holds takes the edit's EXIF fields. Rotate turns one
+by its image's own rotation and mirror - and its thumbnail's - which libfiles writes anew, making the EXIF
+orientation agree, without encoding its picture again. Diffractor encodes AVIF, with libfiles' libheif and
+libaom, but not HEIC - the HEVC encoder libheif takes, x265, is GPL: any other edit encodes an AVIF's
+picture again, and saves a HEIC's as a JPEG of its own. A pixel write that produces an AVIF is encoded, as a
+JPEG XL is, with its packet and the source's EXIF in the file's own items, and no update follows; the image's
+rotation and mirror hold the orientation the file ends with, which a HEIF reader turns it by whatever the
+EXIF says, and the EXIF is made to agree. A HEIF is decoded turned by its item's own rotation and mirror,
+which the EXIF orientation a phone writes beside them describes again, so a copy made from one is written
+upright with its EXIF orientation reset.
+
+A pixel write in the file's own format keeps how the file was compressed: a JPEG is encoded against its own
+quantization tables, a WebP stays lossless if it was, or is written at no less than the quality libwebp
+estimates it had, and a JPEG XL stays lossless if it was, as does an AVIF coded as RGB itself, as a lossless
+one is. Convert asks for its settings, so what it writes follows them instead. An animation - a
+WebP, a PNG or a JPEG XL with frames, or a HEIF image sequence - shows one still: its first frame, or the
+image a PNG or a HEIF keeps for a viewer that does not animate. Its picture is never written back over it,
+which would keep that still alone: turning or editing one in place fails and leaves the file as it was,
+while a copy made by Convert or Save As is made of that still.
+
+A pixel edit loads its source as `decode_intent::edit` asks - at sixteen bits a channel where the file
+holds more than eight: a 16-bit PNG, a HEIF or AVIF of ten or twelve bits, a JPEG XL of more than eight, or a
+developed raw file - and is worked at that precision: PNG and JPEG XL are saved at sixteen bits, AVIF at ten, or
+twelve for a twelve-bit source, and JPEG and WebP are rounded to a byte once, as they are encoded. Where the decode
+budget holds only a byte a channel the edit is made at that, and the Edit panel says so. An HDR picture - PQ or
+HLG - is loaded as its signal, with the description libfiles reads of its colour and light, which the AVIF, JPEG XL
+or PNG it is saved as writes back. Its geometry is edited as the signal is, and its colour as the SDR rendition the
+Edit view shows it as: libfiles' `carry_sdr_edit` scales the signal's light by what the adjustment did to the
+rendition. Saved as a JPEG, it is that rendition with a gain map made for it; as a WebP, the rendition alone. One
+too large to edit in HDR is edited as its rendition, which is never written back over it: Edit saves a change to its
+pixels as a copy, and Rotate turning one it would have to re-encode fails and leaves the file as it was - a quarter
+turn of a HEIF or a JPEG XL, written as an orientation, is still saved over it.
+
+A picture in colours its ICC profile describes other than sRGB's - a phone's Display P3, a camera's Adobe RGB
+(1998) - is loaded in those colours for an edit, which knows the profile (`picture_signal::profile`), and its colour
+is edited as the sRGB rendition the Edit view shows: libfiles' `carry_srgb_edit` carries what the adjustment did to
+the rendition back into the profile's colours, a pixel it left coming back exactly as it was, and the profile is
+written with them, so a colour outside sRGB keeps what of its gamut the edit does not take.
+
+A gain map - a JPEG's, Ultra HDR's, Adobe's, Apple's or ISO 21496-1's, or a HEIF's or AVIF's, ISO 21496-1's tone
+map input or Apple's auxiliary image - says how much brighter each part of the photo is shown on an HDR display,
+and goes with the photo: it is turned, straightened, corrected for perspective, cropped and scaled as the photo is,
+at its own resolution and, in a JPEG, losslessly with a lossless turn where its blocks allow, and keeps its own
+values, which scale whatever colour the edit gave the photo. A JPEG's is attached after the new photo, with the
+multi-picture index and XMP signalling its metadata calls for; an AVIF's is written as an ISO 21496-1 tone map, so a
+HEIC copied as an AVIF or a JPEG keeps it. PNG, JPEG XL and WebP hold none, and leave it out. A gain map that cannot
+be edited is left behind, and the photo then says none follows. The metadata update after a re-encode keeps the
+index and the XMP's account of the gain map true to the file. Edit offers a HEIC of more than eight bits, in HDR or
+with a gain map as an AVIF rather than a JPEG, and a copy in a format that cannot hold the photo's HDR or its gain
+map says so before it is written; Convert's formats say what each keeps.
+
+Encoded JPEG, PNG, WebP, JPEG XL and AVIF buffers transfer ownership from libfiles
 into the displayed image's blob without a second encoded-buffer copy.
 
-Pasted clipboard bitmaps follow the same publication rule: the encoder writes an owned temporary
-file off the UI thread, then publishes it to the chosen auto-numbered destination only after the
-stream and encoder commit successfully.
+Pasted and dropped pictures are saved alike, as PNG under an auto-numbered name: a PNG the clipboard or the drop
+offers - as browsers, Office and the Snipping Tool do - is written as it came, its alpha included, and otherwise the
+bitmap is encoded. Each is written to an owned temporary file - a paste's off the UI thread - and published to the
+chosen destination only after the stream and encoder commit successfully.
 The captured clipboard medium remains alive during encoding and is released on the apartment that
-obtained it, including when worker execution fails or is cancelled.
+obtained it, including when worker execution fails or is cancelled. A copied picture is offered as a bitmap, a
+device-independent bitmap and a PNG, each the sRGB rendition Diffractor shows; the PNG keeps its alpha.
+
+Edit's lossless video and sound edits go through `files::update_av`, the same staging as an update:
+`av_remux` copies the source's packets into the stage with FFmpeg's muxer for the format the destination
+names - the file's own, or MP4 - trimmed, without the sound, or turned by the track's matrix, and nothing is
+re-encoded; an MP4 made from another format starts where the source's timeline does. FFmpeg writes
+back only the tags its demuxer read, so the stage is then given the source's XMP packet and the rating
+and tags the item shows, where the copy's format keeps a packet; a format whose metadata is in a sidecar
+keeps that sidecar, and Save As writes one beside a copy that cannot keep a packet. An MP4-family copy asked
+for its index first, or whose source had it there, is rewritten last of all by `av_move_index_first`, its
+movie box moved before its media with every chunk offset moved to match: last, because a metadata update
+writes a movie box that has to grow whole at the end of the file. The stage replaces the destination, behind
+a backup if requested, and is rescanned through its handle; the player reopens from that handle. A source
+that cannot be read to its end fails the copy rather than saving the part before it, unless the copy is
+repairing: then it reads on past what cannot be read, leaves out packets the muxer refuses, and reports
+what it left out, and it replaces its own source only behind a backup. A save is cancelled up to the moment
+the stage would replace the destination, so one cancelled while its tags are written still stops. A
+cancelled or failed copy removes the stage and leaves the destination as it was.
 
 A requested `.original` is created before replacement and never overwrites an existing backup.
 Metadata commands do not imply a backup: callers request one explicitly.
@@ -104,7 +188,7 @@ Metadata commands do not imply a backup: callers request one explicitly.
 
 In-place writing is allowed only when there is no path or pixel change and no backup request, for
 every format libfiles writes, which carries the in-place trait: JPEG, PNG, GIF, WebP, TIFF and DNG -
-one with no sidecar - JPEG XL, PSD, the MP4 and ASF families, WAV, AVI, MP3 and FLV. libfiles plans
+one with no sidecar - JPEG XL, HEIC and AVIF, PSD, the MP4 and ASF families, WAV, AVI, MP3 and FLV. libfiles plans
 the edit against the live file through one handle no one else may open meanwhile. An edit that fits
 the space the file holds - a packet that keeps its length, EXIF values of the same size, ID3 padding,
 the JUNK after a RIFF chunk, or what is new appended at the end, as a TIFF's directories and an MP4's
@@ -168,8 +252,16 @@ surviving paths.
 
 ## Where this lives
 
-- [files.cpp](../src/files.cpp): `files::load`, `files::update`, staging, sidecars, and
-  write result publication, plus archive listing.
+- [files.cpp](../src/files.cpp): `files::load`, `files::update`, `files::update_av`, staging, sidecars,
+  and write result publication, plus archive listing; `files::with_edited_gain_map`, which edits a
+  JPEG's gain map as its photo was and attaches it; and `source_gain_map` and `gain_map_for`, the gain map a
+  re-encoded photo is written with - its own, edited, or one made for an HDR picture a JPEG holds.
+- [media_edit.cpp](../src/media_edit.cpp): `apply_image_edits`, which edits an HDR picture's colour as its SDR
+  rendition is shown edited, and a profile's colours as their sRGB rendition is.
+- [view_edit.cpp](../src/view_edit.cpp): `edit_offers_avif`, `edit_save_loss` and `edit_photo_note`, what Edit
+  offers and says of a photo's depth and range.
+- [av_format.cpp](../src/av_format.cpp): `av_remux`, the lossless copy of a video or a sound file, and
+  `av_plan_edits`, what that copy can do and leaves out.
 - [util_zip.cpp](../src/util_zip.cpp): ZIP creation, entry names, per-entry ZIP64 headers, and entry
   timestamps.
 - [files.cpp](../src/files.cpp)'s `s_still_formats`: the still image formats recognised by signature,
@@ -177,9 +269,9 @@ surviving paths.
 - [model.cpp](../src/model.cpp), [model.h](../src/model.h) and [model_display.h](../src/model_display.h):
   `texture_state` and `display_state_t`.
 - [model_index.cpp](../src/model_index.cpp): change discovery, scanning, and thumbnail scheduling.
-- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp): replacement and coherent file handles.
+- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp):
+  replacement, coherent file handles, and the pasted clipboard bitmap's encoding and staged
+  publication.
 - [view_rename.cpp](../src/view_rename.cpp): displaced rename groups and cancellation recovery.
 - [app_util.cpp](../src/app_util.cpp): Import planning, shared companions, and write rollback.
-- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp): pasted clipboard bitmap encoding and staged
-  publication.
 - [metadata.cpp](../src/metadata.cpp): XMP packet and sidecar updates.

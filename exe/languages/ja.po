@@ -100,6 +100,9 @@ msgstr "オーディオ"
 msgid "Audio"
 msgstr "オーディオ"
 
+msgid "AVIF - Small files, widely supported"
+msgstr "AVIF - 小さなファイル、幅広く対応"
+
 msgid "Before"
 msgstr "適用前"
 
@@ -827,8 +830,8 @@ msgstr "すべての写真をJPEGに変換"
 msgid "Failed to send email using MAPI."
 msgstr "MAPIを使用したメールの送信に失敗しました。"
 
-msgid "Limit photos to a maximum dimension (in pixels). Only supported for JPEG and PNG files."
-msgstr "写真の最大サイズ (ピクセル単位) を制限します。JPEGおよびPNGファイルでのみサポートされています。"
+msgid "Limit photos to a maximum dimension (in pixels). A photo in a format Diffractor does not write is sent as a JPEG."
+msgstr "写真の最大サイズ (ピクセル単位) を制限します。Diffractor が書き込めない形式の写真は JPEG として送信されます。"
 
 msgid "Processing {}"
 msgstr "{} を処理中"
@@ -1939,6 +1942,7 @@ msgstr "Page Down"
 
 msgid "["
 msgstr "["
+
 msgid "]"
 msgstr "]"
 
@@ -2137,8 +2141,8 @@ msgstr "読み取り専用アイテムはサポートされていません。"
 msgid "Cannot update metadata of readonly items."
 msgstr "読み取り専用アイテムのメタデータは更新できません。"
 
-msgid "Diffractor can only save or update JPG, WEBP and PNG image files."
-msgstr "DiffractorはJPG、WEBP、PNG画像ファイルのみ保存または更新できます。"
+msgid "Diffractor can only rotate JPEG, PNG, WEBP, JPEG XL, HEIC and AVIF image files."
+msgstr "Diffractor で回転できるのは JPEG、PNG、WEBP、JPEG XL、HEIC、AVIF 画像ファイルのみです。"
 
 msgid "Nothing found."
 msgstr "何も見つかりませんでした。"
@@ -2185,8 +2189,8 @@ msgstr "詳細設定"
 msgid "Application options"
 msgstr "アプリケーションオプション"
 
-msgid "When overwriting a photo with irreversible changes make an original backup copy"
-msgstr "元に戻せない変更を伴う写真を上書きする際に、元のバックアップコピーを作成する"
+msgid "When overwriting a file with irreversible changes make an original backup copy"
+msgstr "元に戻せない変更を伴うファイルを上書きする際に、元のバックアップコピーを作成する"
 
 msgid "Check for updates by connecting to the internet"
 msgstr "インターネットに接続して更新を確認する"
@@ -2207,6 +2211,9 @@ msgstr "WEBPの保存品質"
 msgid "JPEG XL save quality"
 msgstr "JPEG XLの保存品質"
 
+msgid "AVIF save quality"
+msgstr "AVIFの保存品質"
+
 msgid "When saving"
 msgstr "保存時"
 
@@ -2218,6 +2225,9 @@ msgstr "アプリケーションのデバッグ情報を表示します (開発�
 
 msgid "Show hidden files"
 msgstr "隠しファイルを表示する"
+
+msgid "Reuse existing window when opening files"
+msgstr "ファイルを開くときに既存のウィンドウを再利用する"
 
 msgid "Show photos rotated based on recorded camera orientation"
 msgstr "記録されたカメラの向きに基づいて写真を回転して表示する"
@@ -2272,6 +2282,9 @@ msgstr "その他"
 
 msgid "pasted"
 msgstr "貼り付け済み"
+
+msgid "dropped"
+msgstr "ドロップ済み"
 
 msgid "photo"
 msgstr "写真"
@@ -2635,8 +2648,8 @@ msgstr "レトロ"
 msgid "Saturation"
 msgstr "彩度"
 
-msgid "Diffractor cannot crop, rotate or color {} files. You can save the file as a JPEG?"
-msgstr "Diffractorは {} ファイルのトリミング、回転、色調整ができません。ファイルをJPEGとして保存しますか？"
+msgid "Diffractor cannot write these changes into {} files. Save the photo as a JPEG instead?"
+msgstr "Diffractor はこれらの変更を {} ファイルに書き込めません。代わりに写真を JPEG として保存しますか？"
 
 msgid "Save Changes"
 msgstr "変更を保存"
@@ -2806,6 +2819,9 @@ msgstr "水平線と垂直線を自動的に補正します"
 msgid "Show the final cropped image"
 msgstr "最終的に切り抜かれた画像を表示します"
 
+msgid "Drag across the photo to compare the edit with the original."
+msgstr "写真の上をドラッグして、編集結果を元の画像と比較します。"
+
 msgid "Horizontal perspective"
 msgstr "水平方向の遠近補正"
 
@@ -2860,8 +2876,8 @@ msgstr "リモートに存在しないローカルファイルを削除する"
 msgid "Delete remote files that do not exist locally"
 msgstr "ローカルに存在しないリモートファイルを削除する"
 
-msgid "c:\\photos with \\\\nas\\\\backup"
-msgstr "c:\\photos と \\\\nas\\\\backup"
+msgid "c:\\photos with \\\\nas\\backup"
+msgstr "c:\\photos と \\\\nas\\backup"
 
 msgid "Local folders"
 msgstr "ローカル フォルダー"
@@ -3556,8 +3572,8 @@ msgstr "Diffractor は {} ファイルに評価やラベルなどのメタデー
 msgid "Use a semicolon to list more than one genre. For example: Rock; Blues"
 msgstr "複数のジャンルを指定するにはセミコロンで区切ります。例: Rock; Blues"
 
-msgid "Select one photo to edit. Videos, audio, folders and formats Diffractor cannot save are not supported."
-msgstr "編集する写真を 1 枚選択してください。ビデオ、オーディオ、フォルダー、および Diffractor が保存できない形式には対応していません。"
+msgid "Select one photo, video or sound file to edit."
+msgstr "編集する写真、ビデオ、またはサウンド ファイルを 1 つ選択してください。"
 
 msgid "Off: photos and videos smaller than the window are shown at their real size. On: they are enlarged to fit the window. Media larger than the window is always scaled down to fit."
 msgstr "オフ: ウィンドウより小さい写真やビデオは実際のサイズで表示されます。オン: ウィンドウに合わせて拡大されます。ウィンドウより大きいメディアは常に縮小して表示されます。"
@@ -3667,8 +3683,8 @@ msgstr "元の日時で並べ替え"
 msgid "Movie mixer"
 msgstr "ムービー ミキサー"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "選択した写真と動画を 1 本の動画にまとめます。下のストリップでクリップを追加、削除、並べ替えでき、選択したクリップをトリミングできます。プレビューはレンダリング結果と同じです。レンダリングまたは保存するまで何も書き込まれません。"
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "選択した写真、動画、オーディオ ファイルを 1 本の動画にまとめ、必要な場所にテキスト画面を入れます。下のストリップで項目を追加、削除、並べ替えでき、選択した項目をここで編集できます。プレビューはレンダリング結果と同じです。レンダリングまたは保存するまで何も書き込まれません。"
 
 msgid "Movie"
 msgstr "ムービー"
@@ -3676,50 +3692,38 @@ msgstr "ムービー"
 msgid "Selected clip"
 msgstr "選択したクリップ"
 
-msgid "Crossfade between clips"
-msgstr "クリップ間をクロスフェード"
+msgid "Text screen"
+msgstr "テキスト画面"
 
-msgid "Cut between clips"
-msgstr "クリップ間をカット"
+msgid "Text"
+msgstr "テキスト"
 
-msgid "Transition (tenths of a second)"
-msgstr "トランジション (10 分の 1 秒)"
+msgid "Caption"
+msgstr "キャプション"
 
-msgid "Fade (tenths of a second)"
-msgstr "フェード (10 分の 1 秒)"
+msgid "Shown for (seconds)"
+msgstr "表示時間 (秒)"
 
-msgid "Fade in from black"
-msgstr "黒からフェードイン"
+msgid "Stabilize (not applied yet)"
+msgstr "手ぶれ補正 (まだ適用されません)"
 
-msgid "Fade out to black"
-msgstr "黒へフェードアウト"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "写真の表示時間 (10 分の 1 秒)"
-
-msgid "This photo (tenths of a second)"
-msgstr "この写真 (10 分の 1 秒)"
-
-msgid "Use the movie default"
-msgstr "ムービーの既定値を使う"
-
-msgid "Add photos and videos to build a movie."
-msgstr "写真と動画を追加してムービーを作成します。"
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "写真、動画、オーディオ ファイルを追加してムービーを作成します。"
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "出力は {} x {}、{} fps、長さ {} です。"
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - クリップ {}/{}、開始位置 {}。"
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - 項目 {}/{}、開始位置 {}。"
+
+msgid "Item {} of {}, starting at {}."
+msgstr "項目 {}/{}、開始位置 {}。"
 
 msgid "Movie project"
 msgstr "ムービー プロジェクト"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows ムービー メーカー プロジェクト"
-
-msgid "Photos and videos"
-msgstr "写真と動画"
+msgid "Photos, videos and audio"
+msgstr "写真、動画、オーディオ"
 
 msgid "Could not read the project {}."
 msgstr "プロジェクト {} を読み込めませんでした。"
@@ -3727,11 +3731,17 @@ msgstr "プロジェクト {} を読み込めませんでした。"
 msgid "Could not save the project {}."
 msgstr "プロジェクト {} を保存できませんでした。"
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "選択した写真と動画を 1 本の動画にまとめます。"
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "選択した写真、動画、オーディオ ファイルを 1 本の動画にまとめます。"
 
 msgid "Add files"
 msgstr "ファイルを追加"
+
+msgid "Add text screen"
+msgstr "テキスト画面を追加"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "選択した項目の後に、黒い背景のテキスト画面を追加します。"
 
 msgid "Remove from movie"
 msgstr "ムービーから削除"
@@ -3744,9 +3754,6 @@ msgstr "プロジェクトを開く"
 
 msgid "Save project"
 msgstr "プロジェクトを保存"
-
-msgid "Import Movie Maker project"
-msgstr "ムービー メーカー プロジェクトをインポート"
 
 msgid "Video"
 msgstr "動画"
@@ -3802,24 +3809,52 @@ msgstr "見つからないファイルを再リンク"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "ソース ファイルが移動したクリップを、選んだフォルダーに向け直します。"
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "インポートしたプロジェクトの 1 個の要素は、ムービーで表現できないため除外されました。"
-msgstr[1] "インポートしたプロジェクトの {count} 個の要素は、ムービーで表現できないため除外されました。"
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "プロジェクトの 1 行を読み取れなかったため、除外しました。"
+msgstr[1] "プロジェクトの {count} 行を読み取れなかったため、除外しました。"
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 個のクリップがソース ファイルを見つけられません。"
 msgstr[1] "{count} 個のクリップがソース ファイルを見つけられません。"
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 個のクリップを再リンクしました。"
-msgstr[1] "{count} 個のクリップを再リンクしました。"
 
+msgid "Pattern"
+msgstr "パターン"
 
-msgid "SID monitor"
-msgstr "SID モニター"
+msgid "Row"
+msgstr "行"
+
+msgid "Speed"
+msgstr "速度"
+
+msgid "Samples"
+msgstr "サンプル"
+
+msgid "Instruments"
+msgstr "楽器"
+
+msgid "Follow playback"
+msgstr "再生位置に追従"
+
+msgid "Notes"
+msgstr "音符"
+
+msgid "Range"
+msgstr "音域"
+
+msgid "Compressed"
+msgstr "圧縮後"
+
+msgid "Codec"
+msgstr "コーデック"
+
+msgid "Format"
+msgstr "形式"
+
+msgid "Sidecars"
+msgstr "サイドカー"
 
 msgid "Voice {}"
 msgstr "ボイス {}"
@@ -3838,6 +3873,21 @@ msgstr "レジスター書き込み"
 
 msgid "Solo"
 msgstr "ソロ"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "エミュレートされた Commodore 64 で実行"
+
+msgid "Start"
+msgstr "開始"
+
+msgid "Joystick port {}"
+msgstr "ジョイスティック ポート {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "矢印キーとスペース: ジョイスティック。Esc: 戻る。"
+
+msgid "This file could not be started."
+msgstr "このファイルを開始できませんでした。"
 
 msgid "Same film"
 msgstr "同じ映画"
@@ -3933,3 +3983,135 @@ msgid "1 of the items shown"
 msgid_plural "{count} of the items shown"
 msgstr[0] "表示中の項目のうち 1 件"
 msgstr[1] "表示中の項目のうち {count} 件"
+
+msgid "Trim"
+msgstr "トリム"
+
+msgid "Keep all"
+msgstr "すべて残す"
+
+msgid "This format plays a copy from the key frame before its start, so it may begin a moment early."
+msgstr "この形式では、コピーは開始位置の前のキーフレームから再生されるため、少し早く始まることがあります。"
+
+msgid "Remove the sound"
+msgstr "音声を削除"
+
+msgid "Rotate"
+msgstr "回転"
+
+msgid "Saving leaves out what this format cannot hold: {}."
+msgstr "保存すると、この形式に格納できないものは除外されます: {}。"
+
+msgid "Saved as MP4, the copy leaves out what MP4 cannot hold: {}."
+msgstr "MP4 として保存すると、コピーから MP4 に格納できないものが除外されます: {}。"
+
+msgid "A copy of a video or a sound file is saved in the format of the file it was made from, or as MP4."
+msgstr "動画またはオーディオ ファイルのコピーは、元のファイルと同じ形式か MP4 で保存されます。"
+
+msgid "This file cannot be copied without re-encoding it."
+msgstr "このファイルは再エンコードしないとコピーできません。"
+
+msgid "Lossless editing by re-muxing: the video and sound are copied into a new file of the same format, or into an MP4, without being re-encoded, so nothing is lost. Saving rebuilds the file's structure, so Save As with no changes makes a re-muxed copy that can repair a file other players will not play. Nothing is written to disk until you save."
+msgstr "リマックスによる無劣化編集: 動画と音声は再エンコードされずに、同じ形式の新しいファイルまたは MP4 にコピーされるため、何も失われません。保存するとファイルの構造が再構築されるため、変更せずに「名前を付けて保存」を行うと、他のプレーヤーで再生できないファイルを修復できる、リマックスしたコピーが作成されます。保存するまでディスクには何も書き込まれません。"
+
+msgid "Drag the handles at each end of the scrubber to choose what is kept, or press I and O to start or end at the frame shown."
+msgstr "シークバーの両端にあるハンドルをドラッグして残す範囲を選ぶか、I キーと O キーを押して、表示中のフレームを開始点または終了点にします。"
+
+msgid "Rotate left"
+msgstr "左に回転"
+
+msgid "Rotate right"
+msgstr "右に回転"
+
+msgid "Start {}, end {}, length {}"
+msgstr "開始 {}、終了 {}、長さ {}"
+
+msgid "Sound removed"
+msgstr "音声なし"
+
+msgid "Rotated right"
+msgstr "右に回転"
+
+msgid "Upside down"
+msgstr "上下逆さま"
+
+msgid "Rotated left"
+msgstr "左に回転"
+
+msgid "No changes. Save As writes a re-muxed copy."
+msgstr "変更はありません。「名前を付けて保存」でリマックスしたコピーを書き込みます。"
+
+msgid "This file could not be read, so it cannot be copied or repaired."
+msgstr "このファイルは読み取れなかったため、コピーも修復もできません。"
+
+msgid "Write MP4s with their index at the front"
+msgstr "MP4 のインデックスを先頭に書き込む"
+
+msgid "Attempt to fix damaged files (don't fail on file errors)"
+msgstr "破損したファイルの修復を試みる (ファイルエラーで失敗しない)"
+
+msgid "The file is damaged. The copy keeps what could be read."
+msgstr "ファイルが破損しています。コピーには読み取れた部分が保持されます。"
+
+msgid "Damaged parts left out: {}"
+msgstr "除外された破損部分: {}"
+
+msgid "The copy ends at {}, where the file could be read no further."
+msgstr "コピーは {} で終わります。それ以降はファイルを読み取れませんでした。"
+
+msgid "The file is damaged, and the repaired copy leaves part of it out. To keep the original, save the copy with Save As, or turn on the backup copy in the save options."
+msgstr "ファイルが破損しているため、修復したコピーには一部が含まれません。元のファイルを残すには、「名前を付けて保存」でコピーを保存するか、保存オプションでバックアップコピーをオンにしてください。"
+
+msgid "Diffractor cannot write these changes into {} files. Save the photo as an AVIF instead, which keeps the HDR and color depth a JPEG would lose?"
+msgstr "Diffractor はこれらの変更を {} ファイルに書き込めません。代わりに、JPEG では失われる HDR と色深度を保持できる AVIF として写真を保存しますか？"
+
+msgid "As &AVIF"
+msgstr "AVIFとして保存(&A)"
+
+msgid "This photo is HDR, and too large to edit in HDR. Save the changes as a standard-range copy, and leave the photo as it is?"
+msgstr "この写真は HDR ですが、大きすぎて HDR のまま編集できません。変更を標準ダイナミックレンジ (SDR) のコピーとして保存し、写真はそのまま残しますか？"
+
+msgid "&Save a Copy"
+msgstr "コピーを保存(&S)"
+
+msgid "{} files cannot hold HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} ファイルは HDR を保持できないため、コピーは標準ダイナミックレンジ (SDR) になります。保存しますか？"
+
+msgid "{} files cannot hold this photo's gain map, which shows it in HDR, so the copy will be standard range. Save it anyway?"
+msgstr "{} ファイルは、この写真を HDR で表示するためのゲインマップを保持できないため、コピーは標準ダイナミックレンジ (SDR) になります。保存しますか？"
+
+msgid "This photo is HDR. It is shown here in standard range, and its edits keep its HDR."
+msgstr "この写真は HDR です。ここでは標準ダイナミックレンジで表示されますが、編集しても HDR は保持されます。"
+
+msgid "This photo is HDR, but too large to edit in HDR. It is edited in standard range, and changes to its pixels are saved as a copy."
+msgstr "この写真は HDR ですが、大きすぎて HDR のまま編集できません。標準ダイナミックレンジで編集され、ピクセルへの変更はコピーとして保存されます。"
+
+msgid "This photo is too large to edit at its full color depth, so it is edited and saved at 8 bits per channel."
+msgstr "この写真は大きすぎて本来の色深度では編集できないため、チャンネルあたり 8 ビットで編集・保存されます。"
+
+msgid "HDR photos are written in standard range, with a gain map that shows them in HDR where the display can."
+msgstr "HDR 写真は標準ダイナミックレンジで書き出され、対応するディスプレイでは HDR で表示されるゲインマップが付きます。"
+
+msgid "HDR photos, and those with a gain map, are written in standard range."
+msgstr "HDR 写真やゲインマップ付きの写真は、標準ダイナミックレンジで書き出されます。"
+
+msgid "HDR photos stay HDR, but gain maps are left out."
+msgstr "HDR 写真は HDR のまま書き出されますが、ゲインマップは含まれません。"
+
+msgid "HDR photos stay HDR, and gain maps are kept."
+msgstr "HDR 写真は HDR のまま書き出され、ゲインマップも保持されます。"
+
+msgid "Color profile"
+msgstr "カラープロファイル"
+
+msgid "HDR"
+msgstr "HDR"
+
+msgid "Bit depth"
+msgstr "ビット深度"
+
+msgid "Frame rate"
+msgstr "フレームレート"
+
+msgid "Contents"
+msgstr "内容"

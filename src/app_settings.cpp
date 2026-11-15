@@ -1,17 +1,18 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Application settings persistence. Reads and writes all user preferences
-// to the registry including display options, import/sync settings, and collection configuration.
+// Purpose: Application settings persistence. Reads and writes user preferences in the settings store,
+// including display options, import/sync settings, and collection configuration,
+// and says where settings and the rebuildable caches live: the user's own, or a Debug run's -profile.
 
 #include "pch.h"
 
 #include "model_items.h"
+#include "libdesktop/core/log.h"
 
 static constexpr auto s_dest_path = "dest_path";
 static constexpr auto s_move = "move";
@@ -21,6 +22,7 @@ static constexpr auto s_jpg = "jpg";
 static constexpr auto s_png = "png";
 static constexpr auto s_webp = "webp";
 static constexpr auto s_jxl = "jxl";
+static constexpr auto s_avif = "avif";
 static constexpr auto s_limit_dimension = "limit_dimension";
 static constexpr auto s_max = "max";
 static constexpr auto s_start = "start";
@@ -32,7 +34,10 @@ static constexpr auto s_favorite_tags_initialized = "favorite_tags_initialized";
 static constexpr auto s_out_folder = "out_folder";
 static constexpr auto s_volume = "volume";
 static constexpr auto s_create_originals = "create_originals";
+static constexpr auto s_media_index_first = "media_index_first";
+static constexpr auto s_media_repair = "media_repair";
 static constexpr auto s_confirm_rotate = "confirm_rotate";
+static constexpr auto s_reuse_existing_window = "reuse_existing_window";
 static constexpr auto s_show_rotated = "show_rotated";
 static constexpr auto s_show_results = "show_results";
 static constexpr auto s_check_for_updates = "check_for_updates";
@@ -57,6 +62,8 @@ static constexpr auto s_webp_quality = "webp_quality";
 static constexpr auto s_webp_lossless = "webp_lossless";
 static constexpr auto s_jxl_quality = "jxl_quality";
 static constexpr auto s_jxl_lossless = "jxl_lossless";
+static constexpr auto s_avif_quality = "avif_quality";
+static constexpr auto s_avif_lossless = "avif_lossless";
 static constexpr auto s_slideshow_delay = "slideshow_delay";
 static constexpr auto s_copyright = "copyright";
 static constexpr auto s_creator = "creator";
@@ -212,12 +219,9 @@ constexpr uint32_t operator|(const uint32_t lhs, group_key_type rhs)
 }
 
 // items that are details by default
-constexpr uint32_t default_detail_items = group_key_type::folder |
-	group_key_type::audio |
-	group_key_type::grouped_no_value |
-	group_key_type::archive |
-	group_key_type::other |
-	group_key_type::retro;
+constexpr uint32_t default_detail_items = group_key_type::folder | group_key_type::audio |
+                                          group_key_type::grouped_no_value | group_key_type::archive |
+                                          group_key_type::other | group_key_type::retro;
 
 bool settings_t::is_detail_display(const group_key_type type) const
 {
@@ -255,14 +259,13 @@ static int item_scale_snap_position(const int index)
 	const auto min_dimension = settings_t::item_scale_snaps[0];
 	const auto dimension_range = settings_t::item_scale_snaps[settings_t::item_scale_count - 1] - min_dimension;
 	return core::round(static_cast<double>(settings_t::item_scale_snaps[clamped_index] - min_dimension) *
-		settings_t::item_scale_position_max / std::max(1, dimension_range));
+	                   settings_t::item_scale_position_max / std::max(1, dimension_range));
 }
 
 int settings_t::item_scale_slider_position() const
 {
-	return item_scale_position < 0
-		       ? item_scale_snap_position(item_scale)
-		       : std::clamp(item_scale_position, 0, item_scale_position_max);
+	return item_scale_position < 0 ? item_scale_snap_position(item_scale)
+	                               : std::clamp(item_scale_position, 0, item_scale_position_max);
 }
 
 void settings_t::select_only_description()
@@ -280,8 +283,8 @@ int settings_t::item_scale_dimension() const
 {
 	const auto min_dimension = item_scale_snaps[0];
 	const auto dimension_range = item_scale_snaps[item_scale_count - 1] - min_dimension;
-	return min_dimension + core::round(static_cast<double>(item_scale_slider_position()) *
-		dimension_range / item_scale_position_max);
+	return min_dimension +
+	       core::round(static_cast<double>(item_scale_slider_position()) * dimension_range / item_scale_position_max);
 }
 
 void settings_t::set_item_scale_position(const int position)
@@ -291,7 +294,7 @@ void settings_t::set_item_scale_position(const int position)
 	for (auto index = 1; index < item_scale_count; ++index)
 	{
 		if (std::abs(item_scale_snap_position(index) - item_scale_position) <
-			std::abs(item_scale_snap_position(item_scale) - item_scale_position))
+		    std::abs(item_scale_snap_position(item_scale) - item_scale_position))
 		{
 			item_scale = index;
 		}
@@ -354,9 +357,10 @@ static int view_splitter_index(const view_type view)
 	}
 }
 
-static constexpr std::string_view s_view_splitter_names[settings_t::view_splitter_count] = {
-	"edit", "rename", "batch", "import", "sync", "locate", "tags"
-};
+static constexpr std::string_view s_view_splitter_names[settings_t::view_splitter_count] = {"edit",  "rename",
+                                                                                            "batch", "import",
+                                                                                            "sync",  "locate",
+                                                                                            "tags"};
 
 int settings_t::view_splitter(const view_type view) const
 {
@@ -404,15 +408,13 @@ settings_t::settings_t()
 	sort_dates_descending = true;
 	show_sidebar = true;
 	large_font = false;
-	verbose_metadata = true;
 	raw_preview = true;
 	default_location = gps_coordinate(51.5255317687988, -0.116743430495262); // London
 	detail_items = default_detail_items;
 
 	instantiations = 0;
 
-	copyright_notice = std::format("\xC2\xA9 {} {} - All Rights Reserved",
-	                               core::utc_now().year(),
+	copyright_notice = std::format("\xC2\xA9 {} {} - All Rights Reserved", core::utc_now().year(),
 	                               platform::user_name());
 	copyright_creator = platform::user_name();
 	artist = platform::user_name();
@@ -424,6 +426,8 @@ settings_t::settings_t()
 	webp_lossless = false;
 	jxl_quality = 90;
 	jxl_lossless = false;
+	avif_quality = 75;
+	avif_lossless = false;
 	slideshow_delay = 3;
 	item_splitter_pos = item_splitter_max / 2;
 
@@ -437,13 +441,16 @@ settings_t::settings_t()
 	import.rename_different_attributes = true;
 
 	sync.local_path = known_path(platform::known_folder::pictures).text();
-	sync.remote_path = known_path(platform::known_folder::onedrive_pictures).combine("backup").text();
+	// A backup in OneDrive where the system has one. Without it no folder is worth guessing - combined with nothing,
+	// "backup" is \backup, at the root of whichever drive is current - so Sync waits for one to be chosen.
+	const auto onedrive_pictures = known_path(platform::known_folder::onedrive_pictures);
+	sync.remote_path.clear();
+	if (!onedrive_pictures.is_empty()) sync.remote_path = onedrive_pictures.combine("backup").text();
 	sync.sync_collection = true;
 	sync.sync_local_remote = true;
 	sync.sync_remote_local = false;
 	sync.sync_delete_local = false;
 	sync.sync_delete_remote = false;
-
 
 	desktop_background.maximize = true;
 
@@ -462,6 +469,7 @@ settings_t::settings_t()
 	convert.to_png = false;
 	convert.to_webp = false;
 	convert.to_jxl = false;
+	convert.to_avif = false;
 	convert.limit_dimension = false;
 	convert.max_side = 1024;
 	convert.jpeg_quality = 90;
@@ -469,6 +477,8 @@ settings_t::settings_t()
 	convert.webp_lossless = false;
 	convert.jxl_quality = 90;
 	convert.jxl_lossless = false;
+	convert.avif_quality = 75;
+	convert.avif_lossless = false;
 
 	sidebar.show_total_items = true;
 	sidebar.show_history = true;
@@ -561,9 +571,7 @@ class setting_formatter
 	platform::setting_file_ptr _file;
 
 public:
-	setting_formatter(const platform::setting_file_ptr& f) : _file(f)
-	{
-	}
+	setting_formatter(const platform::setting_file_ptr& f) : _file(f) {}
 
 	bool write(const std::string_view section, const std::string_view name, const uint32_t v) const
 	{
@@ -621,7 +629,7 @@ public:
 
 	bool read(const std::string_view section, const std::string_view name, repeat_mode& v) const
 	{
-		// Reject values outside the closed ontology rather than inventing a state: an enumerator no
+		// Reject values outside the enumeration rather than inventing a state: an enumerator no
 		// switch has an arm for behaves as none while the menu ticks nothing.
 		uint32_t vv{};
 		if (!_file->read(section, name, vv) || !is_valid_repeat_mode(vv)) return false;
@@ -661,7 +669,7 @@ public:
 		uint32_t vv{};
 		if (_file->read(section, name, vv))
 		{
-			// Reject values outside the closed ontology rather than inventing a state.
+			// Reject values outside the enumeration rather than inventing a state.
 			if (vv > static_cast<uint32_t>(collision_policy::auto_rename)) return false;
 			v = static_cast<collision_policy>(vv);
 			return true;
@@ -720,8 +728,7 @@ public:
 	{
 		uint32_t dw = 0;
 
-		if (!_file->read(section, name, dw))
-			return false;
+		if (!_file->read(section, name, dw)) return false;
 
 		v = dw != 0;
 		return true;
@@ -824,11 +831,147 @@ public:
 	}
 };
 
+// -profile: set once, while the command line is read and before anything reads settings or opens the index.
+static core::folder_path s_profile_folder;
+static platform::setting_file_ptr s_profile_settings;
+
+void use_profile_folder(const core::folder_path folder)
+{
+	s_profile_folder = folder;
+	s_profile_settings = folder.is_empty() ? nullptr : platform::create_ini_file_settings(folder);
+}
+
+namespace
+{
+	// An agent session's settings: read from the store beneath, and what the session changes kept for as long as it
+	// runs, so nothing an agent does changes what the user's next start finds.
+	class session_settings final : public platform::setting_file
+	{
+		using stored = std::variant<uint32_t, uint64_t, std::string, std::vector<uint8_t>>;
+
+		platform::setting_file_ptr _beneath;
+		mutable std::mutex _mutex;
+		std::map<std::pair<std::string, std::string>, stored> _changed;
+
+		template <typename T>
+		std::optional<T> changed(const std::string_view section, const std::string_view name) const
+		{
+			std::lock_guard lock(_mutex);
+			const auto found = _changed.find({std::string(section), std::string(name)});
+			if (found == _changed.end() || !std::holds_alternative<T>(found->second)) return std::nullopt;
+			return std::get<T>(found->second);
+		}
+
+		bool change(const std::string_view section, const std::string_view name, stored value)
+		{
+			std::lock_guard lock(_mutex);
+			_changed[{std::string(section), std::string(name)}] = std::move(value);
+			return true;
+		}
+
+	public:
+		explicit session_settings(platform::setting_file_ptr beneath) : _beneath(std::move(beneath)) {}
+
+		bool root_created() const override { return _beneath && _beneath->root_created(); }
+
+		bool write(const std::string_view section, const std::string_view name, const uint32_t v) override
+		{
+			return change(section, name, v);
+		}
+
+		bool write(const std::string_view section, const std::string_view name, const uint64_t v) override
+		{
+			return change(section, name, v);
+		}
+
+		bool write(const std::string_view section, const std::string_view name, const std::string_view v) override
+		{
+			return change(section, name, std::string(v));
+		}
+
+		bool write(const std::string_view section, const std::string_view name, const core::cspan cs) override
+		{
+			return change(section, name, std::vector<uint8_t>(cs.data, cs.data + cs.size));
+		}
+
+		bool read(const std::string_view section, const std::string_view name, uint32_t& v) const override
+		{
+			if (const auto found = changed<uint32_t>(section, name))
+			{
+				v = *found;
+				return true;
+			}
+			return _beneath && _beneath->read(section, name, v);
+		}
+
+		bool read(const std::string_view section, const std::string_view name, uint64_t& v) const override
+		{
+			if (const auto found = changed<uint64_t>(section, name))
+			{
+				v = *found;
+				return true;
+			}
+			return _beneath && _beneath->read(section, name, v);
+		}
+
+		bool read(const std::string_view section, const std::string_view name, std::string& v) const override
+		{
+			if (auto found = changed<std::string>(section, name))
+			{
+				v = std::move(*found);
+				return true;
+			}
+			return _beneath && _beneath->read(section, name, v);
+		}
+
+		bool read(const std::string_view section, const std::string_view name, uint8_t* data,
+		          size_t& len) const override
+		{
+			if (const auto found = changed<std::vector<uint8_t>>(section, name))
+			{
+				if (!data || len < found->size()) return false;
+				std::copy(found->begin(), found->end(), data);
+				len = found->size();
+				return true;
+			}
+			return _beneath && _beneath->read(section, name, data, len);
+		}
+	};
+
+	platform::setting_file_ptr s_session_settings;
+}
+
+platform::setting_file_ptr make_session_settings(platform::setting_file_ptr beneath)
+{
+	return std::make_shared<session_settings>(std::move(beneath));
+}
+
+void keep_settings_to_session()
+{
+	s_session_settings = nullptr;
+	s_session_settings = make_session_settings(app_settings_store());
+}
+
+platform::setting_file_ptr app_settings_store()
+{
+	if (s_session_settings) return s_session_settings;
+	if (s_profile_settings) return s_profile_settings;
+	return platform::settings();
+}
+
+core::folder_path app_cache_folder()
+{
+	if (!s_profile_folder.is_empty()) return s_profile_folder;
+	return known_path(platform::known_folder::app_cache_data);
+}
+
 void settings_t::read()
 {
-	const setting_formatter store(platform::settings());
+	const setting_formatter store(app_settings_store());
 
 	store.read({}, s_hidden, show_hidden);
+	store.read({}, s_reuse_existing_window, reuse_existing_window);
+	_saved_reuse_existing_window = reuse_existing_window;
 	store.read({}, s_show_shadow, show_shadow);
 	store.read({}, s_last_played_pos, last_played_pos);
 	store.read({}, s_show_help_tooltips, show_help_tooltips);
@@ -856,6 +999,8 @@ void settings_t::read()
 	store.read({}, s_webp_lossless, webp_lossless);
 	store.read({}, s_jxl_quality, jxl_quality);
 	store.read({}, s_jxl_lossless, jxl_lossless);
+	store.read({}, s_avif_quality, avif_quality);
+	store.read({}, s_avif_lossless, avif_lossless);
 	store.read({}, s_slideshow_delay, slideshow_delay);
 	slideshow_delay = std::clamp(slideshow_delay, min_slideshow_delay, max_slideshow_delay);
 	store.read({}, s_items_scale, item_scale);
@@ -879,6 +1024,8 @@ void settings_t::read()
 	store.read({}, s_show_rotated, show_rotated);
 	store.read({}, s_show_results, show_results);
 	store.read({}, s_create_originals, create_originals);
+	store.read({}, s_media_index_first, media_index_first);
+	store.read({}, s_media_repair, media_repair);
 #ifndef WINSTORE
 	store.read({}, s_check_for_updates, check_for_updates);
 	store.read({}, s_send_crash_dumps, send_crash_dumps);
@@ -973,6 +1120,7 @@ void settings_t::read()
 	store.read(s_convert, s_png, convert.to_png);
 	store.read(s_convert, s_webp, convert.to_webp);
 	store.read(s_convert, s_jxl, convert.to_jxl);
+	store.read(s_convert, s_avif, convert.to_avif);
 	store.read(s_convert, s_limit_dimension, convert.limit_dimension);
 	store.read(s_convert, s_max, convert.max_side);
 	store.read(s_convert, s_quality, convert.jpeg_quality);
@@ -980,6 +1128,8 @@ void settings_t::read()
 	store.read(s_convert, s_webp_lossless, convert.webp_lossless);
 	store.read(s_convert, s_jxl_quality, convert.jxl_quality);
 	store.read(s_convert, s_jxl_lossless, convert.jxl_lossless);
+	store.read(s_convert, s_avif_quality, convert.avif_quality);
+	store.read(s_convert, s_avif_lossless, convert.avif_lossless);
 	store.read(s_convert, s_collision, convert.collision);
 
 	store.read(s_email, s_to, email.to);
@@ -1004,7 +1154,6 @@ void settings_t::read()
 	store.read(s_index, s_onedrive_music, collection.onedrive_music);
 	store.read(s_index, s_more, collection.more_folders);
 	store.read(s_index, s_library_types, collection.library_types);
-
 
 	store.read(s_favorite_search, s_title, search.title, search.count);
 	store.read(s_favorite_search, s_path, search.path, search.count);
@@ -1031,9 +1180,15 @@ void settings_t::read()
 
 void settings_t::write() const
 {
-	setting_formatter store(platform::settings());
+	setting_formatter store(app_settings_store());
 
 	store.write({}, s_hidden, show_hidden);
+	if (!_saved_reuse_existing_window || *_saved_reuse_existing_window != reuse_existing_window)
+	{
+		if (store.write({}, s_reuse_existing_window, reuse_existing_window))
+			_saved_reuse_existing_window = reuse_existing_window;
+		else core::log(__FUNCTION__, "Could not save the window reuse preference");
+	}
 	store.write({}, s_show_shadow, show_shadow);
 	store.write({}, s_last_played_pos, last_played_pos);
 	store.write({}, s_show_help_tooltips, show_help_tooltips);
@@ -1061,6 +1216,8 @@ void settings_t::write() const
 	store.write({}, s_webp_lossless, webp_lossless);
 	store.write({}, s_jxl_quality, jxl_quality);
 	store.write({}, s_jxl_lossless, jxl_lossless);
+	store.write({}, s_avif_quality, avif_quality);
+	store.write({}, s_avif_lossless, avif_lossless);
 	store.write({}, s_slideshow_delay, slideshow_delay);
 	store.write({}, s_items_scale, item_scale);
 	store.write({}, s_items_scale_position, item_scale_position);
@@ -1081,6 +1238,8 @@ void settings_t::write() const
 	store.write({}, s_show_rotated, show_rotated);
 	store.write({}, s_show_results, show_results);
 	store.write({}, s_create_originals, create_originals);
+	store.write({}, s_media_index_first, media_index_first);
+	store.write({}, s_media_repair, media_repair);
 #ifndef WINSTORE
 	store.write({}, s_check_for_updates, check_for_updates);
 	store.write({}, s_send_crash_dumps, send_crash_dumps);
@@ -1161,6 +1320,7 @@ void settings_t::write() const
 	store.write(s_convert, s_png, convert.to_png);
 	store.write(s_convert, s_webp, convert.to_webp);
 	store.write(s_convert, s_jxl, convert.to_jxl);
+	store.write(s_convert, s_avif, convert.to_avif);
 	store.write(s_convert, s_limit_dimension, convert.limit_dimension);
 	store.write(s_convert, s_max, convert.max_side);
 	store.write(s_convert, s_quality, convert.jpeg_quality);
@@ -1168,6 +1328,8 @@ void settings_t::write() const
 	store.write(s_convert, s_webp_lossless, convert.webp_lossless);
 	store.write(s_convert, s_jxl_quality, convert.jxl_quality);
 	store.write(s_convert, s_jxl_lossless, convert.jxl_lossless);
+	store.write(s_convert, s_avif_quality, convert.avif_quality);
+	store.write(s_convert, s_avif_lossless, convert.avif_lossless);
 	store.write(s_convert, s_collision, convert.collision);
 
 	store.write(s_email, s_to, email.to);
@@ -1192,7 +1354,6 @@ void settings_t::write() const
 	store.write(s_index, s_onedrive_music, collection.onedrive_music);
 	store.write(s_index, s_more, collection.more_folders);
 	store.write(s_index, s_library_types, collection.library_types);
-
 
 	store.write(s_favorite_search, s_title, search.title, search.count);
 	store.write(s_favorite_search, s_path, search.path, search.count);
@@ -1241,9 +1402,8 @@ std::vector<std::pair<core::folder_path, prop::library_kind>> parse_library_type
 		const auto folder = core::trim(line.substr(tab + 1));
 		if (folder.empty()) continue;
 
-		constexpr prop::library_kind kinds[] = {
-			prop::library_kind::personal, prop::library_kind::films_tv, prop::library_kind::music
-		};
+		constexpr prop::library_kind kinds[] = {prop::library_kind::personal, prop::library_kind::films_tv,
+		                                        prop::library_kind::music};
 
 		for (const auto kind : kinds)
 		{

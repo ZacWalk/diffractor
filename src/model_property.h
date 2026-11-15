@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Property definitions and metadata formatting. Defines all item property types
 // (dimensions, dates, camera info, etc.) and provides formatting functions for display.
@@ -115,6 +114,30 @@ namespace prop
 		unspecified = 3,
 	};
 
+	// What makes a picture or a video HDR, as the file itself says. Persisted in the index, so a value's
+	// meaning is fixed once assigned: retire one by leaving its number unused, never by reusing it.
+	enum class hdr_kind : uint8_t
+	{
+		none = 0,
+		// Coded with SMPTE ST 2084's perceptual quantizer: HDR10, and the base Dolby Vision builds on.
+		pq = 1,
+		// Coded with hybrid log-gamma: the HDR video phones record, and broadcast HDR.
+		hlg = 2,
+		// An SDR picture that carries a gain map - Ultra HDR, ISO 21496-1 or Apple's - by which a display that
+		// shows HDR brightens it.
+		gain_map = 3,
+	};
+
+	// What a picture holds beyond its pixels, as its file says. Persisted in the index as bits, so a bit's meaning
+	// is fixed once assigned: retire one by leaving it unused, never by reusing it.
+	namespace picture_flag
+	{
+		// The first of several frames an animation shows: an animated GIF, WebP or PNG, or an image sequence.
+		constexpr uint8_t animated = 1 << 0;
+		// An alpha channel: the picture may be transparent in places.
+		constexpr uint8_t alpha = 1 << 1;
+	}
+
 	// Which patch of the sphere a file's pixels cover, in GPano's terms: a notional full panorama
 	// of full_width x full_height spanning the whole sphere, and the file's own pixels as a crop
 	// out of it. Read from the file at display time rather than indexed, because only the item
@@ -135,10 +158,9 @@ namespace prop
 		// would pass the bound this test exists to enforce.
 		bool is_valid() const noexcept
 		{
-			return full_width > 0 && full_height > 0 && cropped_width > 0 && cropped_height > 0 &&
-				cropped_left >= 0 && cropped_top >= 0 &&
-				static_cast<int64_t>(cropped_left) + cropped_width <= full_width &&
-				static_cast<int64_t>(cropped_top) + cropped_height <= full_height;
+			return full_width > 0 && full_height > 0 && cropped_width > 0 && cropped_height > 0 && cropped_left >= 0 &&
+			       cropped_top >= 0 && static_cast<int64_t>(cropped_left) + cropped_width <= full_width &&
+			       static_cast<int64_t>(cropped_top) + cropped_height <= full_height;
 		}
 
 		// A writer that declared equirectangular and no crop. The pixels are taken to span the full
@@ -151,11 +173,7 @@ namespace prop
 
 			const auto full_height = std::max(source.cy, source.cx / 2);
 
-			return {
-				source.cx, full_height,
-				0, (full_height - source.cy) / 2,
-				source.cx, source.cy
-			};
+			return {source.cx, full_height, 0, (full_height - source.cy) / 2, source.cx, source.cy};
 		}
 
 		// Fills in whatever the file left out, and rejects a declaration that contradicts the
@@ -163,8 +181,7 @@ namespace prop
 		// describes a different file than the one being drawn.
 		static panorama_geometry resolve(const panorama_geometry& declared, const sizei source) noexcept
 		{
-			if (declared.is_valid() &&
-				declared.cropped_width == source.cx && declared.cropped_height == source.cy)
+			if (declared.is_valid() && declared.cropped_width == source.cx && declared.cropped_height == source.cy)
 			{
 				return declared;
 			}
@@ -228,8 +245,8 @@ namespace prop
 		key& operator=(key&& other) = delete;
 
 	public:
-		key(uint16_t id, std::string_view sn, std::string_view n, text_t& tx, icon_index i, data_type t,
-		    uint32_t f, uint32_t bit);
+		key(uint16_t id, std::string_view sn, std::string_view n, text_t& tx, icon_index i, data_type t, uint32_t f,
+		    uint32_t bit);
 
 		uint16_t id = 0;
 		icon_index icon = {};
@@ -240,29 +257,16 @@ namespace prop
 		uint32_t flags = 0;
 		uint32_t search_presence_bit = 0;
 
-		friend bool operator==(const key& lhs, const key& rhs)
-		{
-			return lhs.id == rhs.id;
-		}
+		friend bool operator==(const key& lhs, const key& rhs) { return lhs.id == rhs.id; }
 
-		friend bool operator!=(const key& lhs, const key& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const key& lhs, const key& rhs) { return !(lhs == rhs); }
 
-		constexpr bool operator<(const key& other) const
-		{
-			return id < other.id;
-		}
+		constexpr bool operator<(const key& other) const { return id < other.id; }
 
-		constexpr operator key_ref() const
-		{
-			return this;
-		}
+		constexpr operator key_ref() const { return this; }
 
 		std::string text() const;
 	};
-
 
 	extern key album;
 	extern key artist;
@@ -335,6 +339,12 @@ namespace prop
 	extern key label;
 	extern key doc_id;
 	extern key panorama;
+	extern key color_profile;
+	extern key hdr;
+	extern key bit_depth;
+	extern key frame_rate;
+	extern key contents;
+	extern key picture_flags;
 
 	constexpr bool is_null(const std::string_view s)
 	{
@@ -396,19 +406,12 @@ namespace prop
 		episode,
 	};
 
-	// How far through a recording a saved playback position stands, from 0 to 1; 0 when none is saved.
-	inline double playback_progress(const double position, const int duration)
-	{
-		if (position <= 0.0 || duration <= 0) return 0.0;
-		return std::clamp(position / duration, 0.0, 1.0);
-	}
-
 	// Started and not finished: past its first minute - or its first twentieth, for a short recording - and short
 	// of its last twentieth, where the credits leave a finished film's position.
-	inline bool is_in_progress(const double position, const int duration)
+	inline bool is_in_progress(const double position, const int length_seconds)
 	{
-		if (position <= 0.0 || duration <= 0) return false;
-		const auto length = static_cast<double>(duration);
+		if (position <= 0.0 || length_seconds <= 0) return false;
+		const auto length = static_cast<double>(length_seconds);
 		return position >= std::min(60.0, length * 0.05) && position <= length * 0.95;
 	}
 
@@ -442,12 +445,6 @@ namespace prop
 	struct item_metadata
 	{
 		item_metadata() noexcept = default;
-
-		item_metadata& operator=(const item_metadata& other) noexcept = default;
-		item_metadata& operator=(item_metadata&& other) noexcept = default;
-
-		item_metadata(const item_metadata& other) = default;
-		item_metadata(item_metadata&& other) = default;
 
 		sizei dimensions() const { return {width, height}; }
 
@@ -486,6 +483,11 @@ namespace prop
 		core::cached system;
 		core::cached label;
 		core::cached doc_id;
+		// The colour space the file says its pixels are in: an ICC profile's own name, or the primaries a coded
+		// colour description names - "Display P3", "BT.2020".
+		core::cached color_profile;
+		// What a Commodore disk or tape holds: the names of the files on it, one a line, as it lists them.
+		core::cached contents;
 
 		gps_coordinate coordinate;
 
@@ -494,6 +496,8 @@ namespace prop
 		float exposure_time = 0.0f;
 		float f_number = 0.0f;
 		float focal_length = 0.0f;
+		// A video's frames a second, averaged where the container times each frame.
+		float frame_rate = 0.0f;
 
 		// locations.md 2.8: metres relative to sea level, negative below it, and km/h. Zero means
 		// unknown, which reads the same as sea level or standing still and so claims nothing.
@@ -512,6 +516,11 @@ namespace prop
 		uint16_t year = 0;
 		uint16_t season = 0;
 		panorama_projection panorama = panorama_projection::none;
+		// Bits a sample, as the picture or video is coded: 8, 10, 12, 16. Zero where the file does not say.
+		uint8_t bit_depth = 0;
+		// prop::picture_flag bits.
+		uint8_t picture_flags = 0;
+		hdr_kind hdr = hdr_kind::none;
 		core::orientation orientation = core::orientation::top_left;
 		core::xy8 disk = {0, 0};
 		core::xy8 episode = {0, 0};
@@ -530,19 +539,13 @@ namespace prop
 
 		// The one date shown where there is room for one. docs/metadata.md#dates owns the ladder;
 		// this is the only place it is implemented.
-		core::date_t created() const
-		{
-			return dates.best();
-		}
+		core::date_t created() const { return dates.best(); }
 
 		search_presence_mask calc_search_presence() const;
 
 		// The file's own declaration, not a guess from its shape. An image merely wide enough to
 		// look like a panorama answers false here.
-		bool is_panorama() const
-		{
-			return panorama != panorama_projection::none;
-		}
+		bool is_panorama() const { return panorama != panorama_projection::none; }
 
 		// docs/zoom.md: what the *display* treats as a panorama, which is a wider question than what
 		// the file declares. Failing a declaration, an aspect ratio of at least 2:1 with a long edge
@@ -561,15 +564,20 @@ namespace prop
 			return short_edge > 0 && long_edge >= min_long_edge && long_edge >= short_edge * 2;
 		}
 
-		bool has_gps() const
+		bool has_gps() const { return coordinate.is_valid(); }
+
+		bool is_hdr() const { return hdr != hdr_kind::none; }
+		bool is_animated() const { return (picture_flags & picture_flag::animated) != 0; }
+		bool has_alpha() const { return (picture_flags & picture_flag::alpha) != 0; }
+
+		// The size the picture is shown at: turned a quarter where its orientation turns it, so a photo the camera
+		// held upright is taller than it is wide whatever its sensor recorded.
+		sizei displayed_dimensions() const
 		{
-			return coordinate.is_valid();
+			return core::flips_xy(orientation) ? sizei{height, width} : sizei{width, height};
 		}
 
-		bool is_in_progress() const
-		{
-			return prop::is_in_progress(media_position, duration);
-		}
+		bool is_in_progress() const { return prop::is_in_progress(media_position, duration); }
 
 		std::string format(std::string_view name) const;
 	};
@@ -632,9 +640,15 @@ namespace prop
 	std::string format_dimensions(sizei v);
 	std::string format_pixels(sizei v, file_type_ref ft);
 	std::string format_video_resolution(sizei v);
+	// "PQ", "HLG" or "gain map": what makes the item HDR, as a search for it is typed.
+	std::string_view format_hdr(hdr_kind v);
+	// "10bit", as a sample type and a pixel format say it.
+	std::string format_bit_depth(int v);
+	// "29.97fps", as a frame rate is typed, the way "48kHz" is.
+	std::string format_frame_rate(double v);
 
-	std::string replace_tokens(std::string_view name_template, const item_metadata_const_ptr& md,
-	                           std::string_view name, core::date_t created);
+	std::string replace_tokens(std::string_view name_template, const item_metadata_const_ptr& md, std::string_view name,
+	                           core::date_t created);
 
 	// An episode's place in its show as a library names it - S01E02, S03E00 for a special, E426 numbered without
 	// a season, 2 / 6 for a part, or the day it aired - interned, as it is drawn for every visible item. Empty

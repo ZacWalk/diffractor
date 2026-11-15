@@ -16,24 +16,24 @@ must not introduce avoidable blocking or unbounded work.
 
 ## Product Promise
 
-Diffractor is a private Windows organizer for photos, video, and audio on storage the user controls.
-It finds, views, compares, describes, edits, and manages media without making its rebuildable index
-the authority for user files or metadata.
+Diffractor is a private organizer for photos, video, and audio on storage the user controls. It is
+released for Windows; a [Linux](linux.md) build runs but is not distributed. It finds, views,
+compares, describes, edits, and manages media without making its rebuildable index the authority for
+user files or metadata.
 
 ## User Mental Model
 
 Every user-visible interaction states four facts:
 
-| Field | Closed values or meaning |
+| Field | Meaning |
 | --- | --- |
-| Scope | Indexed collection, Folder, Recursive folder, External folder, Search, or justified All scopes |
+| Scope | Where the items come from: the indexed collection, a folder, a folder with its subfolders, a folder outside the collection, or a search |
 | Contents | Query, filters, grouping, sorting, and visible/hidden counts |
-| Target | Focused item, Singular displayed item, Complete visibly selected set, or Visible items |
+| Target | What a command acts on: the focused item, the one displayed item, the complete visibly selected set, or the visible items; Options, predictions and sidebar rows have none |
 | Effect | Action, affected count, destination/collisions, retained originals, and recovery |
 
-`All scopes` is used only when behavior is provably identical in every concrete scope. Internal work
-has no user scope or target. A behavior that cannot be expressed with this ontology requires product
-clarification rather than a new alias or implicit state.
+A behavior holds for every scope only when it is provably the same in each. A behavior this document
+does not decide needs the owner's decision, not a new alias or implicit state.
 
 The target is always visible. Focus is the keyboard cursor and range anchor; selection is the
 complete batch target; a displayed or pinned item does not silently enlarge it.
@@ -51,9 +51,48 @@ handlers that accept the whole selected set remain available when the selection 
 Commands affecting list contents or presentation belong to Items. Commands affecting rendered media
 belong to Items and Fullscreen. Task commands belong to their task view. Keyboard, toolbar, menu,
 context-menu, and accessibility entry points share the same eligibility, target, confirmation, and
-effect. The Items and media context menus open with the commonest commands on their target - Cut,
-Copy, Rename and Delete, and Paste in Items - as a row of buttons, each named under its icon, which
-are not listed again below.
+effect. A right-click offers a menu about what is under the pointer, which the view names. In Items, an
+item of the listing offers the items' menu, and the listing away from its items - between them, on a
+group's title, on its scroll bar - offers the listing's own: Paste and New folder, then where to go,
+what to select, how it groups and shows, and Refresh, and nothing that acts on a selection the pointer
+is not on. The media pane's picture offers the media menu, and the details beside it a menu about the
+item they describe - its metadata to edit or list in full, its grade, its file - rather than playing or
+zooming. A row of the sidebar offers what can be done with it - open it, as a click does, and for a
+folder or a drive, show it in the file browser, copy its path or show its properties - and then the
+sidebar's own commands, Customise among them, with the window's; anywhere else on the sidebar offers
+those alone. The media view and Movie's timeline have menus of their own, and every other view - Movie
+away from its timeline among them - offers the commands of its status bar, then Close. The frame
+offers its own menu on the title and status bars, on the splitter between Items' panes, and beyond the
+view; the panel beside a view and the strip under it offer none, their controls their own.
+The Items and media context menus open with the commonest commands on their target - Cut,
+Copy, Rename and Delete, and Paste in Items; Paste and New folder on the listing's own - as a row of
+buttons, each named under its icon, which are not listed again below.
+
+### Keyboard
+
+Tab moves the keyboard round the whole window, and Shift+Tab back, in the order the window reads: the
+title bar's controls; Items' sidebar; the view's own content; the links of Items' listing - its headers,
+its groups' titles and its footer; the media pane, or the panels over a picture shown full screen; the
+selector strip; each control and link of a task's panel; then the status bar's controls. A toolbar and a
+radio group are a stop each, and so is a group of drawn parts - the sidebar's rows and calendar months,
+the media pane's links and buttons, the stars of a rating - which the arrows move through: Left and Right
+in order, Up and Down to the nearest row, Home and End to either end. Enter or Space presses what the
+keyboard is on, as a click there does; a ring shows where the keyboard is wherever nothing else does. Tab
+into an edit selects its text, so typing replaces it. A task's review scrolls by the arrows, Page Up, Page
+Down, Home and End.
+
+A focused control keeps its own keys: Enter presses a button or a toolbar's button, Space works any
+control, and the arrows move along a toolbar, slider or radio group. Enter anywhere else in a task view
+runs the task. Escape takes the keyboard back to the view from a bar, a group of parts or the strip; in a
+task's panel it closes the task, as Escape does there. Apps and Shift+F10 open the menu a right-click on
+what has the keyboard opens, beside it.
+
+What is only pointed into - a picture, a seek bar, the sidebar's type pie and globe - is passed over; a
+picture zooms and media plays by keys of their own. A picture zoomed or compared has the keyboard alone,
+and a running Commodore 64 keeps every key, Tab among them, until Escape stops it. A press of the pointer
+takes the keyboard off a drawn part, and a press on the strip leaves the keyboard where it was, as a press
+on a toolbar does. A group rebuilt under the keyboard - the sidebar counting again - keeps it on the part
+nearest where it was; a part its own press removes at once hands the keyboard back to the view.
 
 ## Vocabulary
 
@@ -92,11 +131,19 @@ view. In Items it starts under the sidebar with one toolbar: the Options cog, be
 the collection Options opens on; Tools and Playback options, as icons; then Open, labelled with the
 selection's count and size, which hovering breaks down by type, and with its own name when nothing is
 selected. Open, Tools and Playback drop down the same menus they do elsewhere. A short bar gives up its
-leading entries before the view's commands. A running task shows its progress there, and Cancel
-replaces its other commands until the run ends.
+leading entries before the view's commands, and a run of the view's commands short of room gives way from
+its leading end into a More button listing them, so the command that ends it - a task's Run, Save or
+Render - stays. A running task shows its progress there, and Cancel replaces its other commands until the
+run ends; its panel and strip take no input meanwhile, and Movie's timeline no edits, so what the run works
+on stays what was reviewed.
 
 Task views expose their parameters beside the work surface and return to Items on task Close. Edit,
-Locate, Tags, and Metadata can show a selector strip containing only items the task can act on.
+Locate, Tags, and Metadata can show a selector strip containing only items the task can act on. A
+blue line on the strip's scroll bar marks each selected item, so one scrolled out of sight can still be
+found, and pressing the bar at a mark brings its item into the strip. Edit's Save and open next and
+Locate's Add location and open next step through the strip's items, never to one it leaves out, and the
+strip scrolls to show where they land. When the strip's set shrinks - Locate, set to show only items
+with no location, hides each one it places - the item the strip is on keeps its place on screen.
 Fullscreen is unavailable from a task view because it would hide the task's target and controls.
 
 The item list owns its filters, recursion, grouping, sorting, density, and size controls. The filter
@@ -109,6 +156,8 @@ and position while its result refresh is in flight.
 Thumbnail rows share a height and preserve each image's aspect. A short trailing row remains short;
 the layout does not crop images merely to fill width. Relayout preserves the focused visible item or
 the content nearest the viewport center when possible.
+Saved playback progress does not draw over thumbnails; resume positions remain available to playback,
+whose transport shows progress outside the thumbnail grid.
 
 The selection panel and responsive behavior are owned by [selection-controls.md](selection-controls.md).
 Wheel and pinch routing are owned by [zoom.md](zoom.md#input).
@@ -135,19 +184,32 @@ collection. The one exception is the sidebar's own Customise sidebar link, which
 Sidebar section.
 
 The page edits a copy. Save options and close commits what the page edits and nothing else, and
-returns to Items, as a task's Close does; Cancel discards the copy. Close, Escape, and closing
-Diffractor discard it too when it holds no change, and otherwise ask first: save the changes, close
-without them, or stay on the page. A change put back is no change. Media playing
+returns to Items, as a task's Close does; Cancel discards the copy. Close, Escape, closing Diffractor,
+and anything that opens another folder or search in its place discard it too when it holds no change,
+and otherwise ask first: save the changes, close without them, or stay on the page. A change put back is no change. Media playing
 when the page opened is paused while it shows and resumes after. Saving reads the collection again
 only when its folders or what they hold changed. Index maintenance acts at once, behind its own
 confirmation, because it acts on the index rather than on a setting.
 
-Options has no item target, as the owner decided for it: settings apply everywhere, and no scope or
-selection narrows them.
+Options has no item target: settings apply everywhere, and no scope or selection narrows them.
+
+On Windows, **Reuse existing window when opening files** is on by default and
+takes effect when saved. Opening a file from Explorer or the command line
+normally reuses the first eligible window for that profile: it navigates to the file's
+folder, clears listing filters and the held comparison pin, selects and previews the file in Items,
+and brings the window forward. When the window receiving files closes, another open window
+takes its place within a few seconds. A window that could only take the file by
+interrupting the user refuses it: one showing a dialog or running a command or a
+task, or one in Edit or Options with changes it would have to ask about.
+Requests arriving together use the most recent file,
+not a combined selection. A refused or unresponsive handoff opens a separate
+window rather than dropping the request. A launch without a file, a folder
+launch, an explicit `-new-window`, a headless command, or explicit startup
+overrides remain independent. Debug profiles and Release windows are separate.
 
 | Field | Options |
 | --- | --- |
-| Scope | All scopes: no scope narrows a setting |
+| Scope | Every scope: no scope narrows a setting |
 | Contents | Application settings |
 | Target | None: application settings |
 | Effect | Saved settings; no files change. Recovery is opening Options again |
@@ -164,14 +226,26 @@ dialog; it does not become a collection-wide text search. A server named alone, 
 folder scope too: it opens on the shares the server offers.
 
 Address editing keeps a committed value, a typed draft, and an optional completion preview. Up/Down
-preview completions without replacing the draft. Tab accepts into the draft; Enter commits; Escape
-first restores the draft from a preview, then restores the address captured when editing began.
+preview completions without replacing the draft. Tab accepts a previewed completion into the draft, and
+with none previewed moves on, as from any field; Enter commits; Escape first restores the draft from a
+preview, then restores the address captured when editing began.
 
 Each prediction shows how many items choosing it lists, and of two suggestions of one kind, the one
 that finds more ranks higher. A suggestion drawn from the collection's own words, tags, places, or
 properties is not offered when it would find nothing. What was typed is always offered first, and
 recent searches keep their order. A count of none, or one not ready in time, shows nothing; the list
 never waits for a count.
+
+`@` asks what kind of item to find. `@photo`, `@video`, `@audio`, `@archive` and `@commodore` (or
+`@c64`) name a media type. `@raw`, `@hdr` (PQ, HLG, or a photo carrying a gain map), `@animated`,
+`@transparent`, `@portrait`, `@landscape`, `@square`, `@wide` (shown at least twice as wide as it is
+tall, whether or not the file calls itself a panorama) and `@slowmo` (100 frames a second or more)
+ask how a picture or video was made; `@panorama` asks for the panoramas files declare, and
+`@duplicates` for items the collection holds more than once. A shape is the picture as it is shown,
+turned by its orientation. An `@` word that names none of these is searched for as typed rather than
+dropped, so a mistyped one never widens the search to everything. A single word typed alone is also
+offered as the `@` words it begins that find something. A Commodore disk or tape is found by the name
+it gives itself and by the names of the files it lists.
 
 History entries retain query and selection. Back and Forward restore rather than rewrite them, and
 move the history position only after the target navigation is accepted; a refused or unavailable
@@ -183,17 +257,35 @@ Navigation from a map, chart, breakdown, summary, or group header changes the qu
 sorting, and filters remain user-owned. Filtering removes hidden items from selection; removing the
 filter does not reselect them.
 
+Informational bubbles wait for half a second of near-stillness over the same target. Small pointer
+jitter is tolerated; meaningful movement or changing targets restarts the delay. Refreshing a
+visible bubble's content does not make it disappear and wait again.
+
 A sidebar row's total is the number of items clicking it lists. Hovering a row also says how many of
 the items shown it holds, when the index can say. A tag or label row that would list nothing is not
 shown; rating rows always are, because together they are one scale. Predictions and sidebar rows
-have no item target, as the owner decided: they navigate, and their counts describe what navigating
-lists.
+have no item target: they navigate, and their counts describe what navigating lists.
+
+The compact history calendar has narrow year columns, increasing towards the right, and month rows
+from December at the back to January at the front. It is as wide as the sidebar, where the globe and
+pie keep one size: a wider sidebar shows more years rather than wider ones. Earlier years fill any
+width the offered years leave - ordinary years before a start worked out from the collection, empty
+ones before a start year typed in Options. It has no month labels or per-year label row;
+only five-year landmarks are named when the text fits. Hover bubbles provide the date, counts and
+representative picture for the month under the pointer, updating between cells even when the sidebar
+is scrolled. The bubble's arrow connects to the highlighted month, not the calendar as a whole.
+It opens at the most recent period. Dragging horizontally
+or using the wheel pans through the available years; there is no separate year navigator underneath.
+A drag never selects a month, and Escape restores its starting position. Clicking a month keeps the
+existing capture-date search, or modified-date search with Ctrl. Refreshes and relayout preserve a
+user's pan; navigating to a different offscreen month brings that month into view.
 
 ## Selection And Viewing
 
 Plain click selects one item; Ctrl toggles; Shift extends from the focus anchor; Ctrl+Shift combines
 both. Empty-space clicks and empty selection rectangles leave selection unchanged. Right-clicking an
-unselected item selects it before opening a batch-oriented menu. Select All targets visible items,
+unselected item selects it before opening a batch-oriented menu. The click that closes a menu is the
+menu's: its press only closes it, and its release selects nothing. Select All targets visible items,
 except while the read-only document a non-media file shows in the selection panel has the keyboard:
 from a press on it until a press lands anywhere else, Select All selects its text, Copy copies the
 text selected in it, and Cut does nothing rather than cut the file being read. With no text
@@ -201,26 +293,93 @@ selected, Copy and Cut keep their item targets
 ([selection controls](selection-controls.md#other-singular-files)).
 
 One selected media item previews, two compatible files compare, and other selections summarize.
-Opening media preserves selection. Selection, focus, pin, hover, and errors remain visually distinct.
+Opening media preserves selection. Selection, focus, pin, hover, and errors remain visually distinct;
+the item under the pointer is marked at once rather than faded in, so the mark keeps up with the pointer.
 
-Play controls the displayed audio/video. Slideshow walks visible photo/video/audio items from the
+Play controls the displayed audio/video, and what it does is remembered as Autoplay: pausing turns
+Autoplay off, so the next file selected opens paused, and playing turns it on, so the next one plays.
+Moving between files keeps playing, or keeps waiting, without Play pressed again; the Playback menu's
+Autoplay and the Options show the same choice. Slideshow walks visible photo/video/audio items from the
 focused item, holds photos for the configured delay, plays timed media to completion, and stops when
 no eligible next item exists. Repeat controls sequence ends; normal continuation and Slideshow are
 separate choices. Resume stores playback position in the rebuildable index and never changes media.
 Seeking while paused updates the displayed frame, progress bar, and elapsed time without resuming
 playback or requiring a hover preview.
 
+Playback and a Slideshow go on while a menu is open, but the sequence does not move: a menu or a
+running command acts on the selection, so an item that ends meanwhile waits at its end and the next
+follows once the menu or command has gone. A command that changes or removes the playing file -
+Delete, Rename, Move, or a metadata write - stops it and lets go of the file before touching it.
+
 A Commodore 64 SID tune plays as audio, emulated rather than decoded. The file does not say how long a
-tune lasts, so each plays for three minutes, fading out over the last three seconds, and always from
-its start. In place of the visualizer, the Media view and the selection panel show the SID monitor:
+tune lasts, so the tune is run apart from the one heard, silently and far faster than it plays: one that
+falls silent ends a moment after its last note, and one that starts again from where it first repeated
+plays through once and fades out over three seconds as it starts again. The transport's length follows
+what the run finds; until it has said, and for a tune it cannot tell within ten minutes of the tune's time,
+a tune plays for three minutes, fading out over the last three seconds. A tune always plays from its
+start. In place of the visualizer, the Media view and the selection panel show the SID monitor:
 each voice's waveform, note, envelope and ADSR, the chip's output, filter and volume, and the registers
 the tune writes. Its controls start another of the file's tunes and mute or solo a voice; the tune
-runs on underneath, so a voice comes back mid-note. Where space is short the monitor is drawn smaller,
+runs on underneath, so a voice comes back mid-note. The monitor is panels of the media stack - the
+tunes, the voices, the output, the filter and the register grid - as wide as the stack and parted by
+its gap, and the selection panel under them names the tune; voice panels wrap with the available
+width. Where the stack is wide enough for two parts side by side at full size, as a movie's landscape
+frame is, the output stands over the filter beside the register grid, which takes the height of both; and
+where the grid has given way, the output and the filter share a row. Play and seeking use the ordinary media controls, in the same place as audio and video rather
+than inside the monitor. Narrow transports put their time labels below the track
+instead of hiding seeking. Where space is short the monitor is drawn smaller,
 down to three quarters of its size, before it gives up its register grid, then the filter, then the
-output, and finally its heading and ADSR row; it is centred in whatever space it leaves over.
+output, and finally its ADSR row, and the stack closes up under what is left. Drawn for a movie, the
+monitor has nothing to press: no tune selector, and no mute or solo.
 
-Video thumbnail preview is latest-wins, does not hydrate offline files, and may publish the last
-successful frame as the versioned SQLite thumbnail.
+Tracker modules use the same ordinary media transport and stack. Their monitor is one panel: where the
+module is - its order, pattern, row, tempo and speed, as much of that as fits - over the pattern under
+the playhead, its fields coloured as a tracker colours them, centred in the panel when it needs less than
+the panel's width. Each channel's header - its number over its
+level, then mute and solo - stays in view as the rows scroll, as do the row numbers. Every channel with
+anything in it is shown, and one with nothing in any pattern the module plays is left out: as the panel
+narrows each cell gives up its volume, then its effect, then its instrument, and only channels too many
+for their notes alone are stepped through with arrows. Following playback, the pattern scrolls smoothly
+through a bar across its middle, the playing row more in the bar than any other for as long as it plays,
+with the patterns played before and after it fainter above and below; paused, the playing row rests on
+the bar. Scrolled by hand it stands still until Follow playback resumes it; a short stack shows fewer rows.
+Drawn for a movie, the monitor has no Follow, mute or solo.
+The module's sample and instrument names are a panel below the selection panel, as a file's streams
+are, with how the patterns play the bank they name: how many notes, between which, and on how many
+channels. The description carries the module's song message alone, so a module without one does not
+repeat its names there. Playback uses libopenmpt directly and retains the module's own duration, seeking, pause and
+ordinary sequence-end behaviour.
+
+Other audio shows the visualizer as a panel of the stack, not as a picture: its cover art, if any,
+over the classic bars, which are drawn as rounded blocks of glass where the renderer is Direct3D. The bars
+keep at least half the panel's height, the art giving way first. A file whose only picture is not
+cover art - an icon, or a store's drawing of its waveform ([metadata](metadata.md#audio-and-video-metadata))
+- shows the bars alone, and a cover still on its way leaves its place empty rather than grey.
+
+A Commodore 64 disk (D64, D71, D81), tape (T64) or program (PRG, P00) shows its listing where media
+shows, above the item's panel, in the C64's own blue. Clicking a program's row - any row of a tape -
+runs it on an emulated Commodore 64; a program file, holding just one thing to run, also has Start
+under its listing. A cartridge (CRT) is drawn as Commodore's own cartridge for the C64 and VIC-20 - a
+black shell in the original's proportions, standing as it goes into the machine and given the depth
+the sidebar's calendar gives its blocks, its grip ridges across its top third and down its side, its
+title on a silver label in the recess below them and the board's gold contacts under it - with Start
+under it. The machine starts it as a user would, a disk's program with
+`LOAD"name",8,1` and `RUN`, hurrying the boot and the load, then runs at its own speed with sound through
+the chosen device. Its picture takes the listing's place, as large as fits and at a whole multiple of its
+pixels where that loses little. While the view has the keyboard, the arrow keys and Space are a joystick
+in port 2, or port 1 once its button chooses it - Space is the space bar too, for a game that waits for
+it - and the C64's other keys are where its keyboard has them: Pause or F9 is RUN/STOP and Page Up is
+RESTORE. Back or Escape stops the machine and shows the listing again, as selecting another item does;
+Alt combinations stay the application's, and the screen saver waits while the machine runs. Full screen
+shows the running machine as the items view does, above the item's panel, and a cartridge too; the
+listing stays in the items view, so a machine stopped in full screen leaves just the panel there. A task
+view or the options show neither, so opening one stops the machine rather than leaving it playing unseen.
+In the item list a disk is drawn as a floppy and a cartridge as one.
+
+Video thumbnail preview follows the pointer: a hover waiting behind another is replaced by it, one already
+decoding stops at the frame it has reached once another waits, and every frame decoded is shown, so a moving
+pointer shows key frames and a resting one the frame near its position. The frame the pointer rests on is saved
+as the versioned SQLite thumbnail. Preview does not hydrate offline files.
 
 ## Films, Series, And Music
 
@@ -280,14 +439,63 @@ tag support, and [File I/O](file-io.md) owns write safety and read-back.
 
 Edit holds photo adjustments as a draft. Save updates the file; Save As creates and opens a new file;
 leaving a changed draft offers Save, Don’t Save, and Cancel. Reset changes only the draft.
-A file Diffractor cannot write, such as a RAW, saves as a JPEG beside it under a name of its own
+A file Diffractor cannot write, such as a RAW or a HEIC, saves as a JPEG beside it under a name of its own
 (`<name>-edit.jpg`, numbered past names already taken), never as the same name with `.jpg`, which
-beside a RAW is the camera's own JPEG; any existing file a save with pixel changes replaces gets its
+beside a RAW is the camera's own JPEG; a HEIC's turn alone saves over it, as Rotate turns one. A HEIC that holds
+more than a JPEG keeps - more than eight bits, HDR, or a gain map - saves as an AVIF (`<name>-edit.avif`) instead.
+Diffractor writes JPEG, PNG, WebP, JPEG XL and AVIF, so a photo in one of those saves over itself, keeping its bits
+and its HDR ([File I/O](file-io.md#writing)). An HDR photo too large to edit in HDR is never replaced by the
+standard-range picture its edit was made on: the save is a copy beside it. A copy in a format that cannot hold a
+photo's HDR or its gain map says so before it is written. Any existing file a
+save with pixel changes replaces gets its
 original backup when that option is on.
 If source pixels are still loading, unreadable, or refused as too large, Edit shows that bounded
 state and withholds pixel operations rather than editing a placeholder.
 Adjustment rows move labels above their controls when a narrow pane cannot otherwise retain a
 usable slider and numeric field; resizing never changes an adjustment's value.
+Above the colour sliders a histogram shows the photo's red, green and blue as the edit leaves them, counted
+from a sample of the preview and graded as the preview is drawn. Under it a handle each for the darks, the
+midtones and the lights stands where its slider has moved that point of the tone curve - a fifth, a half and
+four fifths along, a tenth either way at most - and dragging one, or the histogram above it, moves the slider;
+Escape takes a drag back and a double click returns the handle to 0. A round handle on the photo's left edge
+compares the edit with the original: held, its line follows the pointer across the photo, the photo's own
+colour left of it and the edit's right - perspective, crop and turn shown on both, so the sides meet - and let
+go, it slides back to the edge. Preview shows the two side by side instead.
+
+Edit also opens a video or a sound file, and its edits there are lossless: the file is re-muxed, its
+packets copied into a new file with nothing re-encoded, which is the Movie mixer's work. A file in a format
+Edit writes back - MP4, QuickTime, M4V, 3GP and M4A, Matroska and WebM, MPEG-TS, AVI, WMV and WMA, FLV,
+MP3, AAC, FLAC, Ogg and Opus, WAV and AIFF - is copied in its own format; one in any other format FFmpeg
+reads, such as an MPEG program stream, is copied as an MP4. A SID tune or a tracker module is played from
+what is drawn of it and has no packets to copy, so Edit does not open one. The draft is a trim, set by
+dragging the handle at each end of the scrubber, or with I and O at the frame shown; the sound taken out of
+a video; and, in the MP4 and QuickTime family, a quarter turn, which players take from the track. The player
+shows the draft as it will be saved: a handle being dragged shows its frame, and letting go returns the
+picture to the playhead, playing on if it was; the scrubber dims what the trim leaves out, playback pauses
+where it ends, a video without its sound plays silently, and a turned one turned. The status bar lists what
+a save would change: where the trim starts and ends and how long it keeps, the sound removed, the turn. The
+frame shown at each end is kept, and each picture a file holds is copied from a key frame of its own. An
+MP4-family copy starts on the frame chosen, hiding with its edit list what it keeps from the key frame
+before; any other starts at that key frame, which the panel says, and a second picture there at its own
+first key frame from then on. Save copies the file in its own format; one in a format Edit does not write is
+saved as an MP4 beside it under a name of its own (`<name>-edit.mp4`), chosen in the dialog Save As shows.
+Save As offers the file's own format, under each of its extensions, and MP4 wherever an MP4 holds the file;
+the panel names what an MP4 would leave out that the file's own format keeps, and an MP4 made from another
+format starts where the source's timeline does. A save rebuilds the file's structure - its index, sizes and
+timestamps written afresh - so Save As with no changes is how a file other players will not play is
+repaired; a file FFmpeg cannot read at all is said to be so, and is neither edited nor repaired. A stream the
+format cannot hold, such as an Apple metadata track, a GoPro data track or a QuickTime file's cover, is left
+out, and the panel names it before anything is saved. The copy keeps the file's tags, the chapters inside
+the trim, its timecode, its cover art where the format holds one, its XMP packet, rating and tags, and a
+backup of the original when that option is on; a subtitle file beside it is left as it is. Two save options
+shape the copy. An MP4-family file can be written with its index before its media, so it plays while it
+downloads; one that had it there keeps it there either way. And a damaged file can be repaired: the copy
+reads on past what cannot be read, leaves out the packets whose timing cannot be mended, and says once
+saved what it left out and where it ends. A save can be cancelled until the moment its file is replaced, and
+a source that cannot be read to its end fails the save unless it is being repaired; either leaves the file
+as it was. So does a file whose timing starts again part way - a recording, or clips joined end to end -
+which a copy cannot keep: the save says where. A repaired copy that left part of the file out replaces it only when a backup keeps the file;
+otherwise the save says to use Save As or turn the backup on.
 
 Metadata and Tags operate on the complete visibly selected set. Optional metadata fields change only
 when selected for the run. Date adjustment applies one shift while preserving relative offsets;
@@ -297,7 +505,8 @@ reduces what is larger than the limit and never enlarges what is not, as its rev
 the complete visibly selected set to an app chosen in the system share sheet, or to an email draft
 where the system has none. Files its options leave unchanged go as themselves; converted, resized,
 or zipped copies are staged in a temporary folder and kept until the next share, because the
-receiving app may read them later. Sources are never changed.
+receiving app may read them later. A photo resized in a format Diffractor does not write goes as a
+JPEG. Sources are never changed.
 
 Collisions use Replace, Skip, Auto-rename, or Block Run. Two plan rows claiming one destination are
 a collision. Delete distinguishes recoverable Recycle from confirmed Permanent delete. A location
@@ -305,6 +514,12 @@ without a usable recycle facility never presents permanent deletion as Recycle; 
 Recycle would instead destroy an item, Windows owns the mandatory permanent-delete confirmation
 before that item is removed. If the user has enabled Windows' Recycle Bin delete confirmation,
 Windows may also confirm ordinary recycles.
+
+What Delete or Move takes away leaves the listing at once, where it stood: the rest keeps its place,
+and when the selection is what went, the cursor lands on the item that followed it, or on the one
+before it at the listing's end. The search is not run again for it, so a search the index answers
+never lists a deleted file while the index catches up; the index learns of the change, and a moved
+file the search still matches is listed again where it went.
 
 ## Guided Operations
 
@@ -318,8 +533,10 @@ Import, Sync, Convert, Metadata, Date, and batch Rename follow one state grammar
 6. Revalidate and Run the approved snapshot.
 7. Retain per-item Succeeded, Failed, Skipped, and Canceled results.
 
-A finished run's status states what it did, then why any rows did nothing; a run that reports neither
-leaves the review's status.
+A finished run keeps every row and column of its review and adds a Status column saying what it did to
+each - Success, Failed, Skipped or Not run - dimming the rows that did nothing. Its status states what it
+did, then why any rows did nothing; a run that reports neither leaves the review's status. Clicking a
+heading sorts the review by its column, and the first heading puts the review's own order back.
 
 The review list's columns fit their content, shrinking to the view when they cannot all fit. The table
 starts at the view's left edge and its last column takes the rest of the width, so the table always
@@ -328,12 +545,50 @@ be, while the columns before it stay put and the last column takes up or makes t
 abandons the drag, and a double-click fits the column to its content. Sizes last until the task is
 opened again.
 
+Markdown and CSV documents and other display tables use the same divider gestures. A document keeps
+its column sizes while it remains open; a display table keeps them for the lifetime of that table.
+
+A display table's columns are headed where the headings say what a column holds - an archive's listing,
+a file's streams, a module's sample and instrument banks - and not where a row reads by itself, as a
+summary's or a bubble's rows do; an unheaded table draws no dividers on its first row, so the row never
+reads as headings. Clicking a heading sorts the rows by its column: names and sequences from the start,
+sizes, lengths and dates largest or latest first, and a second click the other way; rows with nothing
+in the column follow the rest. The divider after a heading resizes its column. Each table of the
+selection panel keeps its sort and sizes for as long as the selection stays, while the panel is rebuilt
+around it.
+
+A detail group in Items is headed the same way, over the columns its rows show, and the headings stay at
+the top of the view while the group's rows scroll under them. A click sorts that group alone, the
+others keeping the order the toolbar chooses, and the listing stays where it is scrolled to rather than
+following the selection to its new row; choosing a sort from the toolbar sets the groups'
+heading sorts aside. The name takes up the room: the divider before a column after the name, or after a
+column before it, resizes that column, and a double-click fits it again. A group keeps its sort and
+sizes, by what it groups, until Diffractor closes.
+
 Changing scope, target, options, destination, or relevant files invalidates the analysis. Cancellation
 stops future work and reports partial completion without claiming rollback. Import history is not
 duplicate proof; Sync names both endpoints and direction. Convert carries the reviewed collision
 decision through final publication: a destination that appears or changes after review is refused
 rather than overwritten. Sync applies full-path collection exclusions to corresponding relative
 folders on both compared trees.
+
+### Name templates
+
+Rename's template and Import's folder structure name what they make from text, `#` for Rename's
+numbering, and tokens in braces, read from each file; a file without a token's value gets `Unknown`
+in its place. A token is a property's name, in any case:
+
+- The file and when it was taken: `{name}` (also `{file}` and `{filename}`), `{created}` as `yyyy-mm-dd`,
+  `{year}`, `{month}`, `{month.text}`, `{month.short}` and `{day}`.
+- What it is given in Diffractor: `{title}`, `{rating}`, `{tags}`, `{label}`, `{description}` and
+  `{comment}`.
+- Where it was taken: `{place}`, `{state}` and `{country}`.
+- What took it: `{camera}`, `{camera.manufacturer}` and `{lens}`.
+- Music, films and series: `{artist}` (the album's artist where there is one), `{album}`, `{genre}`,
+  `{composer}`, `{performer}`, `{publisher}`, `{show}`, and `{season}` and `{episode}` in two digits.
+- The rest a file can hold: `{album.artist}`, `{synopsis}`, `{encoder}`, `{bitrate}`, `{audio.codec}`,
+  `{video.codec}`, `{pixel.format}`, `{raw.file}` and the `{copyright.creator}`, `.credit`, `.notice`,
+  `.source` and `.url` tokens.
 
 ## System States And Consistency
 
@@ -373,9 +628,19 @@ disable control. Aggregate feature-use diagnostics contain no stable user ID or 
   [view_media.h](../src/view_media.h): Items, selection presentation, and Fullscreen.
 - [app.cpp](../src/app.cpp) and [app_toolbar.cpp](../src/app_toolbar.cpp): the title bar and status
   bar, and the commands each view declares for them in [ui_view.h](../src/ui_view.h).
+- [app.cpp](../src/app.cpp) and [ui_elements.cpp](../src/ui_elements.cpp): the order Tab visits the
+  window in, and the parts the keyboard finds, steps between and presses among drawn elements, which a
+  view names in [ui_view.h](../src/ui_view.h).
 - [view_import.cpp](../src/view_import.cpp), [view_sync.cpp](../src/view_sync.cpp),
   [view_rename.cpp](../src/view_rename.cpp), and [view_batch.cpp](../src/view_batch.cpp): guided
-  operations, and [view_list.h](../src/view_list.h) the review list they share.
+  operations, and [view_list.h](../src/view_list.h) the review list they share. Name templates are
+  `prop::replace_tokens` in [model_property.cpp](../src/model_property.cpp).
+- [view_edit.cpp](../src/view_edit.cpp): Edit's photo draft, and a video's or a sound file's, which
+  [av_format.cpp](../src/av_format.cpp)'s `av_remux` copies.
+- [view_selector.cpp](../src/view_selector.cpp): the selector strip under a task view and the marks on
+  its scroll bar. What a task's strip offers is that task's own test: `can_edit_in_edit_view` and
+  `can_edit_metadata_of` in [model.cpp](../src/model.cpp), and `locate_offers` in
+  [view_locate.cpp](../src/view_locate.cpp).
 - [app_util.cpp](../src/app_util.cpp) and libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): file effects, collisions,
   shared copies, and the recycle and share capabilities.
 - [app_settings.cpp](../src/app_settings.cpp): durable preferences and diagnostics settings, and

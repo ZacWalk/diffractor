@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The sidebar globe's geometry - the orthographic projection the globe is drawn and
 // targeted with, how a drag moves the view, and where a collection deserves to be framed.
@@ -88,16 +87,13 @@ public:
 		if (!coordinate.is_valid()) return {};
 
 		double x, y, z;
-		view_vector(gps_coordinate::deg2rad(coordinate.latitude()), gps_coordinate::deg2rad(coordinate.longitude()),
-		            x, y, z);
+		view_vector(gps_coordinate::deg2rad(coordinate.latitude()), gps_coordinate::deg2rad(coordinate.longitude()), x,
+		            y, z);
 
 		if (z <= globe_min_visible_z) return {};
 		if (depth) *depth = z;
 
-		return pointi{
-			_center.x + core::round(x * _radius),
-			_center.y - core::round(y * _radius)
-		};
+		return pointi{_center.x + core::round(x * _radius), _center.y - core::round(y * _radius)};
 	}
 
 	// The rasteriser's inner call: pixel offset from the centre, in units of the radius, to
@@ -127,8 +123,7 @@ public:
 
 		double latitude_rad, longitude_rad;
 
-		if (!unproject_unit((loc.x - _center.x) / _radius, (_center.y - loc.y) / _radius, latitude_rad,
-		                    longitude_rad))
+		if (!unproject_unit((loc.x - _center.x) / _radius, (_center.y - loc.y) / _radius, latitude_rad, longitude_rad))
 		{
 			return {};
 		}
@@ -197,10 +192,8 @@ public:
 		const auto length = std::sqrt(_x * _x + _y * _y + _z * _z);
 		if (length < 1e-9) return {};
 
-		return {
-			gps_coordinate::rad2deg(std::asin(std::clamp(_y / length, -1.0, 1.0))),
-			globe_safe_longitude(gps_coordinate::rad2deg(std::atan2(_x, _z)))
-		};
+		return {gps_coordinate::rad2deg(std::asin(std::clamp(_y / length, -1.0, 1.0))),
+		        globe_safe_longitude(gps_coordinate::rad2deg(std::atan2(_x, _z)))};
 	}
 };
 
@@ -213,7 +206,7 @@ class globe_renderer
 	std::vector<core::const_surface_ptr> _levels;
 
 public:
-	void set_source(core::const_surface_ptr source);
+	void set_source(const core::const_surface_ptr& source);
 	bool is_ready() const { return !_levels.empty(); }
 	bool render(core::surface& destination, const globe_projection& projection) const;
 };

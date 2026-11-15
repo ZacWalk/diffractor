@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for the file layer (files*) -- format detection, codec decode and encode, container listing, the art and media managers' .nfo files kept beside media, and the write path: staging, replacement, originals, collisions, flush failure and temp cleanup.
 
@@ -12,6 +11,7 @@
 #include "files.h"
 #include "crypto.h"
 #include "libfiles/commodore.h"
+#include "libfiles/encode.h"
 #include "libfiles/exif.h"
 #include "libfiles/exif_listing.h"
 #include "libfiles/media.h"
@@ -40,7 +40,8 @@
 #undef max
 #undef GetObject
 
-extern "C" {
+extern "C"
+{
 #include <jpeglib.h>
 }
 
@@ -68,7 +69,7 @@ static void should_check_overwrite()
 static void should_report_zip_create_failure()
 {
 	df::zip_file zip;
-	const auto missing_folder = _temps.folder().combine("missing");
+	const auto missing_folder = test_temps.folder().combine("missing");
 	const auto path = missing_folder.combine_file("items.zip");
 	assert_equal(false, zip.create(path), "zip create failure reported");
 	assert_equal(false, platform::exists(path), "failed zip was not created");
@@ -86,7 +87,7 @@ public:
 	mutable uint64_t read_calls = 0;
 
 	recording_file(core::file_path path, core::blob prefix, const uint64_t size) :
-		_path(std::move(path)), _prefix(std::move(prefix)), _size(size)
+		_path(path), _prefix(std::move(prefix)), _size(size)
 	{
 	}
 
@@ -116,15 +117,9 @@ public:
 	{
 		switch (w)
 		{
-		case whence::begin:
-			_pos = pos;
-			break;
-		case whence::current:
-			_pos += pos;
-			break;
-		case whence::end:
-			_pos = _size + pos;
-			break;
+		case whence::begin: _pos = pos; break;
+		case whence::current: _pos += pos; break;
+		case whence::end: _pos = _size + pos; break;
 		}
 		return _pos;
 	}
@@ -141,14 +136,14 @@ public:
 // still satisfies the check rather than being refused as short.
 static void should_add_a_multi_chunk_file_to_a_zip()
 {
-	const auto source = _temps.next_path(".bin");
+	const auto source = test_temps.next_path(".bin");
 
 	// Three buffer loads and a remainder, so the loop runs more than once and ends part way.
 	core::blob payload(64u * 1024u * 3u + 517u);
 	for (auto i = 0_z; i < payload.size(); ++i) payload[i] = static_cast<uint8_t>(i * 7 + (i >> 11));
 	platform::blob_save_to_file(payload, source);
 
-	const auto archive = _temps.next_path(".zip");
+	const auto archive = test_temps.next_path(".zip");
 	df::zip_file zip;
 	assert_equal(true, zip.create(archive), "the archive is created");
 	assert_equal(true, zip.add(source, "payload.bin"), "a file spanning several reads is added whole");
@@ -162,13 +157,13 @@ static void should_add_a_multi_chunk_file_to_a_zip()
 
 static void should_round_trip_zip_entry_names()
 {
-	const auto source = _temps.next_path(".bin");
+	const auto source = test_temps.next_path(".bin");
 	const core::blob payload = {1, 2, 3};
 	platform::blob_save_to_file(payload, source);
 
 	const auto check_name = [&](const std::string& name)
 	{
-		const auto archive = _temps.next_path(".zip");
+		const auto archive = test_temps.next_path(".zip");
 		df::zip_file zip;
 		assert_equal(true, zip.create(archive), "the archive is created");
 		assert_equal(true, zip.add(source, name, core::date_t(2024, 1, 2, 3, 4, 6)), "the long-name entry is added");
@@ -186,9 +181,10 @@ static void should_round_trip_zip_entry_names()
 	check_name(std::string(UINT16_MAX, 'd'));
 
 	df::zip_file zip;
-	assert_equal(true, zip.create(_temps.next_path(".zip")), "the archive for an oversized name is created");
-	assert_equal(false, zip.add(source, std::string(static_cast<size_t>(UINT16_MAX) + 1u, 'e'),
-	                            core::date_t(2024, 1, 2, 3, 4, 6)),
+	assert_equal(true, zip.create(test_temps.next_path(".zip")), "the archive for an oversized name is created");
+	assert_equal(false,
+	             zip.add(source, std::string(static_cast<size_t>(UINT16_MAX) + 1u, 'e'),
+	                     core::date_t(2024, 1, 2, 3, 4, 6)),
 	             "an entry name beyond the ZIP 16-bit length is refused");
 }
 
@@ -196,9 +192,9 @@ static void should_round_trip_zip_entry_names()
 // every reader accepts, while an entry past 4 GiB of archive, or holding nearly that much, still fits.
 static void should_write_utf8_zip_entries()
 {
-	const auto source = _temps.next_path(".bin");
+	const auto source = test_temps.next_path(".bin");
 	write_test_file(source, "archive content");
-	const auto path = _temps.next_path(".zip");
+	const auto path = test_temps.next_path(".zip");
 	const std::string name = "\xe6\x9d\xb1\xe4\xba\xac.bin";
 	df::zip_file zip;
 	assert_equal(true, zip.create(path), "ZIP created");
@@ -224,9 +220,9 @@ static void should_write_utf8_zip_entries()
 
 static void should_keep_archive_entries_after_warnings()
 {
-	const auto source = _temps.next_path(".bin");
+	const auto source = test_temps.next_path(".bin");
 	write_test_file(source, "archive content");
-	const auto path = _temps.next_path(".zip");
+	const auto path = test_temps.next_path(".zip");
 	df::zip_file zip;
 	assert_equal(true, zip.create(path), "warning fixture created");
 	assert_equal(true, zip.add(source, "first.bin"), "first entry written");
@@ -241,9 +237,11 @@ static void should_keep_archive_entries_after_warnings()
 	const std::unique_ptr<archive, decltype(&archive_read_free)> reader(archive_read_new(), archive_read_free);
 	assert_equal(true, reader != nullptr, "archive reader allocated");
 	archive_read_support_format_zip(reader.get());
-	assert_equal(ARCHIVE_OK, archive_read_open_memory(reader.get(), bytes.data(), bytes.size()), "warning fixture opened");
+	assert_equal(ARCHIVE_OK, archive_read_open_memory(reader.get(), bytes.data(), bytes.size()),
+	             "warning fixture opened");
 	archive_entry* entry = nullptr;
-	assert_equal(ARCHIVE_WARN, archive_read_next_header(reader.get(), &entry), "fixture produces a recoverable header warning");
+	assert_equal(ARCHIVE_WARN, archive_read_next_header(reader.get(), &entry),
+	             "fixture produces a recoverable header warning");
 
 	const auto listed = files::list_archive(path);
 	assert_equal(2_z, listed.size(), "a usable warned entry and its successor both remain visible");
@@ -253,10 +251,12 @@ static void should_keep_archive_entries_after_warnings()
 static void should_convert_archive_unix_timestamps()
 {
 	std::array<uint8_t, 2560> bytes{};
-	const auto header = [&bytes](const size_t offset, const std::string_view name, const char type, const unsigned long size)
+	const auto header =
+		[&bytes](const size_t offset, const std::string_view name, const char type, const unsigned long size)
 	{
 		auto* data = reinterpret_cast<char*>(bytes.data() + offset);
 		std::copy(name.begin(), name.end(), data);
+		// NOLINTBEGIN(bugprone-not-null-terminated-result): TAR header fields, not strings
 		std::memcpy(data + 100, "0000644", 7);
 		assert_equal(11, std::snprintf(data + 124, 12, "%011lo", size), "TAR size field fits");
 		assert_equal(11, std::snprintf(data + 136, 12, "%011lo", 1704164645ul), "TAR time field fits");
@@ -264,35 +264,33 @@ static void should_convert_archive_unix_timestamps()
 		data[156] = type;
 		std::memcpy(data + 257, "ustar", 5);
 		std::memcpy(data + 263, "00", 2);
+		// NOLINTEND(bugprone-not-null-terminated-result)
 		const auto checksum = std::accumulate(bytes.begin() + offset, bytes.begin() + offset + 512, 0u);
 		assert_equal(6, std::snprintf(data + 148, 7, "%06o", checksum), "TAR checksum field fits");
 		data[155] = ' ';
 	};
-	constexpr std::string_view pax = "28 ctime=1704164645.1234567\n";
+	constexpr std::string_view pax = "28 mtime=1704164645.1234567\n";
 	static_assert(pax.size() == 28);
 	header(0, "PaxHeader", 'x', static_cast<unsigned long>(pax.size()));
 	std::copy(pax.begin(), pax.end(), bytes.begin() + 512);
 	header(1024, "dated.bin", '0', 0);
-	const auto path = _temps.next_path(".tar");
+	const auto path = test_temps.next_path(".tar");
 	assert_equal(true, platform::blob_save_to_file({bytes.data(), bytes.size()}, path), "PAX fixture stored");
 	const auto listed = files::list_archive(path);
 	assert_equal(1_z, listed.size(), "dated archive entry found");
-	assert_equal(core::date_t(2024, 1, 2, 3, 4, 5).to_int64() + 1234567,
-	             listed.front().created.to_int64(), "Unix epoch, seconds and fractional precision are converted");
+	assert_equal(core::date_t(2024, 1, 2, 3, 4, 5).to_int64() + 1234567, listed.front().modified.to_int64(),
+	             "Unix epoch, seconds and fractional precision are converted");
 }
 
 static void should_round_trip_zip_entry_dates()
 {
-	const auto source = _temps.next_path(".bin");
+	const auto source = test_temps.next_path(".bin");
 	const core::blob payload = {1, 2, 3};
 	platform::blob_save_to_file(payload, source);
 
 	const std::array dates = {
-		core::date_t(2024, 1, 31, 23, 58, 56),
-		core::date_t(2024, 12, 31, 1, 2, 4),
-		core::date_t(2024, 2, 29, 6, 8, 10),
-		core::date_t(1975, 6, 15, 12, 0, 0),
-		core::date_t(1601, 1, 1, 0, 0, 0),
+		core::date_t(2024, 1, 31, 23, 58, 56), core::date_t(2024, 12, 31, 1, 2, 4), core::date_t(2024, 2, 29, 6, 8, 10),
+		core::date_t(1975, 6, 15, 12, 0, 0),   core::date_t(1601, 1, 1, 0, 0, 0),
 	};
 
 	const std::array expected = {
@@ -303,7 +301,7 @@ static void should_round_trip_zip_entry_dates()
 		platform::local_to_utc(core::date_t(1980, 1, 1, 0, 0, 0)),
 	};
 
-	const auto archive = _temps.next_path(".zip");
+	const auto archive = test_temps.next_path(".zip");
 	df::zip_file zip;
 	assert_equal(true, zip.create(archive), "the date archive is created");
 
@@ -319,19 +317,19 @@ static void should_round_trip_zip_entry_dates()
 
 	for (auto i = 0_z; i < dates.size(); ++i)
 	{
-		assert_equal(expected[i].date().year, listed[i].created.date().year, "zip date year");
-		assert_equal(expected[i].date().month, listed[i].created.date().month, "zip date month");
-		assert_equal(expected[i].date().day, listed[i].created.date().day, "zip date day");
-		assert_equal(expected[i].date().hour, listed[i].created.date().hour, "zip date hour");
-		assert_equal(expected[i].date().minute, listed[i].created.date().minute, "zip date minute");
-		assert_equal(expected[i].date().second, listed[i].created.date().second, "zip date second");
+		assert_equal(expected[i].date().year, listed[i].modified.date().year, "zip date year");
+		assert_equal(expected[i].date().month, listed[i].modified.date().month, "zip date month");
+		assert_equal(expected[i].date().day, listed[i].modified.date().day, "zip date day");
+		assert_equal(expected[i].date().hour, listed[i].modified.date().hour, "zip date hour");
+		assert_equal(expected[i].date().minute, listed[i].modified.date().minute, "zip date minute");
+		assert_equal(expected[i].date().second, listed[i].modified.date().second, "zip date second");
 	}
 }
 
 static void should_create_original_before_replace()
 {
-	const auto destination = _temps.next_path(".jpg");
-	const auto replacement = _temps.next_path(".jpg");
+	const auto destination = test_temps.next_path(".jpg");
+	const auto replacement = test_temps.next_path(".jpg");
 	const core::blob original = {1, 2, 3};
 	const core::blob updated = {4, 5, 6};
 	platform::blob_save_to_file(original, destination);
@@ -339,8 +337,8 @@ static void should_create_original_before_replace()
 
 	const auto result = platform::replace_file(destination, replacement, true);
 	const auto original_path = core::file_path(destination.folder(),
-	                                         std::string(destination.file_name_without_extension()) + ".original",
-	                                         destination.extension());
+	                                           std::string(destination.file_name_without_extension()) + ".original",
+	                                           destination.extension());
 	assert_equal(true, result.success(), "replacement with backup succeeds");
 	assert_equal(true, platform::exists(original_path), "original backup exists");
 	assert_equal(true, platform::blob_from_file(original_path) == original, "backup contains original bytes");
@@ -354,7 +352,7 @@ static void should_create_original_before_replace()
 
 static void should_report_move_or_copy_collision_paths()
 {
-	const auto root = _temps.folder().combine(std::format("move-copy-{}", core::tick_count()));
+	const auto root = test_temps.folder().combine(std::format("move-copy-{}", core::tick_count()));
 	const auto source = root.combine("source");
 	const auto target = root.combine("target");
 	const auto source_folder = source.combine("album");
@@ -372,7 +370,8 @@ static void should_report_move_or_copy_collision_paths()
 	const auto result = platform::move_or_copy({source_file}, {source_folder}, target, false);
 	assert_equal(true, result.success(), "copy with collisions succeeds");
 	assert_equal(uint64_t{1}, static_cast<uint64_t>(result.created_files.files.size()), "one created file reported");
-	assert_equal(uint64_t{1}, static_cast<uint64_t>(result.created_files.folders.size()), "one created folder reported");
+	assert_equal(uint64_t{1}, static_cast<uint64_t>(result.created_files.folders.size()),
+	             "one created folder reported");
 	assert_equal(true, result.created_files.files.front() != occupied_file, "renamed file path reported");
 	assert_equal(true, result.created_files.folders.front() != occupied_folder, "renamed folder path reported");
 	assert_equal(true, platform::exists(result.created_files.files.front()), "reported file exists");
@@ -392,7 +391,7 @@ static void should_report_linux_file_operation_errors()
 
 static void should_reject_linux_folder_file_collisions()
 {
-	const auto root = _temps.next_folder("linux-folder-collision");
+	const auto root = test_temps.next_folder("linux-folder-collision");
 	const auto file = root.combine_file("occupied");
 	write_test_file(file, "not a directory");
 
@@ -402,15 +401,16 @@ static void should_reject_linux_folder_file_collisions()
 
 	const auto link = root.combine("dangling");
 	std::filesystem::create_directory_symlink(platform::to_stream_path(root.combine("missing")),
-	                                           platform::to_stream_path(link));
+	                                          platform::to_stream_path(link));
 	assert_equal(true, platform::create_folder(link).failed(), "a dangling symlink is not a directory");
 	assert_equal(true, platform::create_folder(root.combine("directory")).success(), "a new directory is created");
-	assert_equal(true, platform::create_folder(root.combine("directory")).success(), "an existing directory is accepted");
+	assert_equal(true, platform::create_folder(root.combine("directory")).success(),
+	             "an existing directory is accepted");
 }
 
 static void should_preserve_linux_directory_move_on_unsupported_no_replace()
 {
-	const auto root = _temps.next_folder("linux-directory-move");
+	const auto root = test_temps.next_folder("linux-directory-move");
 	const auto source = root.combine("source");
 	const auto destination = root.combine("destination");
 	assert_equal(true, platform::create_folder(source).success(), "source directory exists");
@@ -426,7 +426,7 @@ static void should_preserve_linux_directory_move_on_unsupported_no_replace()
 
 static void should_refuse_linux_copy_identity_overwrites()
 {
-	const auto root = _temps.next_folder("linux-copy-identity");
+	const auto root = test_temps.next_folder("linux-copy-identity");
 	const auto source = root.combine_file("source.bin");
 	const auto alias = root.combine_file("alias.bin");
 	const core::blob bytes = {1, 2, 3, 4};
@@ -445,7 +445,7 @@ static void should_refuse_linux_copy_identity_overwrites()
 
 static void should_report_linux_copy_flush_failures()
 {
-	const auto root = _temps.next_folder("linux-copy-flush");
+	const auto root = test_temps.next_folder("linux-copy-flush");
 	const auto source = root.combine_file("source.bin");
 	const auto destination = root.combine_file("destination.bin");
 	const core::blob source_bytes = {9, 8, 7, 6, 5, 4};
@@ -484,7 +484,7 @@ static void should_report_linux_copy_flush_failures()
 
 static void should_claim_linux_auto_rename_destinations_atomically()
 {
-	const auto root = _temps.next_folder("linux-auto-rename");
+	const auto root = test_temps.next_folder("linux-auto-rename");
 	const auto source_folder = root.combine("source");
 	const auto target = root.combine("target");
 	platform::create_folder(source_folder);
@@ -528,7 +528,7 @@ static void should_claim_linux_auto_rename_destinations_atomically()
 
 static void should_reject_linux_recursive_copy_into_descendant()
 {
-	const auto root = _temps.next_folder("linux-descendant-copy");
+	const auto root = test_temps.next_folder("linux-descendant-copy");
 	const auto source = root.combine("source");
 	const auto child = source.combine("child");
 	platform::create_folder(child);
@@ -542,7 +542,7 @@ static void should_reject_linux_recursive_copy_into_descendant()
 
 static void should_delete_linux_directory_symlinks()
 {
-	const auto root = _temps.next_folder("linux-delete-symlink");
+	const auto root = test_temps.next_folder("linux-delete-symlink");
 	const auto source = root.combine("source");
 	const auto target = root.combine("target");
 	const auto link = source.combine("linked");
@@ -560,7 +560,7 @@ static void should_delete_linux_directory_symlinks()
 
 static void should_move_or_copy_linux_directory_symlinks()
 {
-	const auto root = _temps.next_folder("linux-copy-symlink");
+	const auto root = test_temps.next_folder("linux-copy-symlink");
 	const auto source = root.combine("source");
 	const auto target = root.combine("target");
 	const auto link_target = root.combine("linked-target");
@@ -583,7 +583,7 @@ static void should_move_or_copy_linux_directory_symlinks()
 
 static void should_move_or_copy_into_its_own_folder_with_auto_rename()
 {
-	const auto root = _temps.next_folder("linux-copy-self-parent");
+	const auto root = test_temps.next_folder("linux-copy-self-parent");
 	const auto file = root.combine_file("photo.txt");
 	const auto folder = root.combine("album");
 	platform::blob_save_to_file(core::blob{7}, file);
@@ -607,7 +607,7 @@ static void should_move_or_copy_into_its_own_folder_with_auto_rename()
 
 static void should_move_or_copy_stop_on_inner_linux_folder_collision()
 {
-	const auto root = _temps.next_folder("linux-inner-collision");
+	const auto root = test_temps.next_folder("linux-inner-collision");
 	const auto source = root.combine("album");
 	const auto target = root.combine("target");
 	platform::create_folder(source);
@@ -635,7 +635,7 @@ static void should_move_or_copy_stop_on_inner_linux_folder_collision()
 
 static void should_move_linux_no_replace_without_renameat_or_links()
 {
-	const auto root = _temps.next_folder("linux-move-fallback");
+	const auto root = test_temps.next_folder("linux-move-fallback");
 	const auto source = root.combine_file("source.txt");
 	const auto destination = root.combine_file("destination.txt");
 	const core::blob bytes = {4, 3, 2};
@@ -652,7 +652,7 @@ static void should_move_linux_no_replace_without_renameat_or_links()
 
 static void should_refuse_or_preserve_linux_replace_permissions()
 {
-	const auto root = _temps.next_folder("linux-copy-permissions");
+	const auto root = test_temps.next_folder("linux-copy-permissions");
 	const auto source = root.combine_file("source.txt");
 	const auto read_only = root.combine_file("read-only.txt");
 	const auto private_file = root.combine_file("private.txt");
@@ -664,8 +664,7 @@ static void should_refuse_or_preserve_linux_replace_permissions()
 
 	namespace fs = std::filesystem;
 	fs::permissions(platform::to_stream_path(read_only),
-	                fs::perms::owner_read | fs::perms::group_read | fs::perms::others_read,
-	                fs::perm_options::replace);
+	                fs::perms::owner_read | fs::perms::group_read | fs::perms::others_read, fs::perm_options::replace);
 	const auto refused = platform::copy_file(source, read_only, false, false);
 	assert_equal(true, refused.failed(), "read-only destination refuses replace");
 	assert_equal(true, platform::blob_from_file(read_only) == original_bytes, "read-only destination bytes survive");
@@ -681,7 +680,7 @@ static void should_refuse_or_preserve_linux_replace_permissions()
 
 static void should_move_or_copy_reject_linux_destination_alias_inside_source()
 {
-	const auto root = _temps.next_folder("linux-copy-alias-descendant");
+	const auto root = test_temps.next_folder("linux-copy-alias-descendant");
 	const auto source = root.combine("source");
 	const auto nested = source.combine("a").combine("b");
 	const auto target = root.combine("target-link");
@@ -706,8 +705,8 @@ static void should_fail_replace_when_flush_fails()
 #ifdef _WIN32
 	// Holding the replacement open is what makes the flush fail, and that is Windows' mandatory
 	// locking. A POSIX open descriptor denies nothing, so there is no failure here to observe.
-	const auto destination = _temps.next_path(".bin");
-	const auto replacement = _temps.next_path(".bin");
+	const auto destination = test_temps.next_path(".bin");
+	const auto replacement = test_temps.next_path(".bin");
 	const core::blob original = {1, 2, 3};
 	const core::blob updated = {4, 5, 6};
 	platform::blob_save_to_file(original, destination);
@@ -732,8 +731,8 @@ static void should_cleanup_failed_update_temps()
 	const auto src_path = core::file_path(test_files_folder(), "Test.jpg");
 	// A private folder: enumerating the shared suite temp folder would scan every file every other
 	// test has left there.
-	const auto scratch = _temps.next_folder("update-temps");
-	const auto destination = _temps.next_path_in(scratch, ".jpg");
+	const auto scratch = test_temps.next_folder("update-temps");
+	const auto destination = test_temps.next_path_in(scratch, ".jpg");
 	platform::copy_file(src_path, destination, false, false);
 	std::vector<core::cached> files_before;
 	for (const auto& file : platform::iterate_file_items(scratch, false).files)
@@ -752,10 +751,9 @@ static void should_cleanup_failed_update_temps()
 
 	assert_equal(true, result.failed(), "locked update fails");
 	const auto contents = platform::iterate_file_items(scratch, false);
-	const auto leaked = std::ranges::any_of(contents.files, [&files_before](const platform::file_info& file)
-	{
+	const auto leaked = std::ranges::any_of(contents.files, [&files_before](const platform::file_info& file) {
 		return std::ranges::find(files_before, file.name) == files_before.end() &&
-			core::starts(file.name, "diffractor_");
+		       core::starts(file.name, "diffractor_");
 	});
 	assert_equal(false, leaked, "failed update removes temporary files");
 }
@@ -764,13 +762,14 @@ static void should_cleanup_failed_update_temps()
 // refused, and so was the cleanup, which left a full copy behind in the destination folder.
 static void should_write_a_read_only_source_to_another_path()
 {
-	const auto scratch = _temps.next_folder("read-only-source");
+	const auto scratch = test_temps.next_folder("read-only-source");
 	const auto source = core::file_path(scratch, "source.jpg");
 	const auto destination = core::file_path(scratch, "copy.jpg");
 	platform::copy_file(core::file_path(test_files_folder(), "Test.jpg"), source, false, false);
 	std::filesystem::permissions(platform::to_stream_path(source),
 	                             std::filesystem::perms::owner_write | std::filesystem::perms::group_write |
-	                             std::filesystem::perms::others_write, std::filesystem::perm_options::remove);
+	                                 std::filesystem::perms::others_write,
+	                             std::filesystem::perm_options::remove);
 	const core::scope_exit restore([source] { platform::make_file_writable(source); });
 	assert_equal(true, platform::file_attributes(source).is_readonly, "the source is read-only");
 
@@ -782,9 +781,7 @@ static void should_write_a_read_only_source_to_another_path()
 
 	const auto contents = platform::iterate_file_items(scratch, false);
 	const auto stage_left = std::ranges::any_of(contents.files, [](const platform::file_info& file)
-	{
-		return core::starts(file.name, "diffractor_");
-	});
+	{ return core::starts(file.name, "diffractor_"); });
 	assert_equal(false, stage_left, "and no staged copy is left behind");
 	assert_equal(true, platform::exists(destination), "the copy is written");
 }
@@ -835,14 +832,13 @@ static void should_settle_transport_stream_extension_by_header()
 
 static std::vector<uint8_t> make_test_xmp_packet(const std::string_view body)
 {
-	const auto xml = std::format(
-		"<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
-		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
-		"xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
-		"<rdf:Description rdf:about=\"\" "
-		"xmlns:dc=\"http://purl.org/dc/elements/1.1/\">{}</rdf:Description>"
-		"</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
-		body);
+	const auto xml = std::format("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+	                             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+	                             "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+	                             "<rdf:Description rdf:about=\"\" "
+	                             "xmlns:dc=\"http://purl.org/dc/elements/1.1/\">{}</rdf:Description>"
+	                             "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>",
+	                             body);
 	return {std::bit_cast<const uint8_t*>(xml.data()), std::bit_cast<const uint8_t*>(xml.data() + xml.size())};
 }
 
@@ -913,14 +909,21 @@ static void should_detect_tiff_by_version()
 	constexpr uint8_t big_endian_43[] = {'M', 'M', 0, 43, 0, 8, 0, 0};
 	constexpr uint8_t not_tiff[] = {'I', 'I', 'B', 'M', 0, 0, 0, 0};
 
-	assert_equal(true, libfiles::detect_image_format({little_endian_42, std::size(little_endian_42)}) ==
-	             libfiles::image_format::tiff, "little endian tiff");
-	assert_equal(true, libfiles::detect_image_format({big_endian_42, std::size(big_endian_42)}) ==
-	             libfiles::image_format::tiff, "big endian tiff");
-	assert_equal(true, libfiles::detect_image_format({big_endian_43, std::size(big_endian_43)}) ==
-	             libfiles::image_format::tiff, "big endian bigtiff");
-	assert_equal(true, libfiles::detect_image_format({not_tiff, std::size(not_tiff)}) ==
-	             libfiles::image_format::unknown, "not tiff");
+	assert_equal(true,
+	             libfiles::detect_image_format({little_endian_42, std::size(little_endian_42)}) ==
+	                 libfiles::image_format::tiff,
+	             "little endian tiff");
+	assert_equal(true,
+	             libfiles::detect_image_format({big_endian_42, std::size(big_endian_42)}) ==
+	                 libfiles::image_format::tiff,
+	             "big endian tiff");
+	assert_equal(true,
+	             libfiles::detect_image_format({big_endian_43, std::size(big_endian_43)}) ==
+	                 libfiles::image_format::tiff,
+	             "big endian bigtiff");
+	assert_equal(true,
+	             libfiles::detect_image_format({not_tiff, std::size(not_tiff)}) == libfiles::image_format::unknown,
+	             "not tiff");
 }
 
 // Each still format is one entry in files.cpp's s_still_formats. Its file type still has to take its
@@ -946,8 +949,10 @@ static void should_register_every_still_format()
 		const auto name = std::string(core::split(still.extensions, true).front());
 		assert_equal(true, seen.insert(still.format).second, std::format("{} has one entry", name));
 		const auto signature = signatures.find(still.format);
-		assert_equal(true, signature != signatures.end() &&
-		             libfiles::detect_image_format({signature->second.data(), signature->second.size()}) == still.format,
+		assert_equal(true,
+		             signature != signatures.end() &&
+		                 libfiles::detect_image_format({signature->second.data(), signature->second.size()}) ==
+		                     still.format,
 		             std::format("{} is detected", name));
 		assert_equal(true, still.scan != nullptr, std::format("{} is scanned", name));
 		assert_equal(true, still.encoded == core::image_format::Unknown || still.decode != nullptr,
@@ -956,8 +961,10 @@ static void should_register_every_still_format()
 		for (const auto ext : core::split(still.extensions, true))
 		{
 			const auto* const ft = files::file_type_from_name(std::format("x.{}", ext));
-			assert_equal(true, ft->extension == still.extensions && ft->text == still.description &&
-			             ft->traits == still.traits, std::format("{} registers as its still format", ext));
+			assert_equal(true,
+			             ft->extension == still.extensions && ft->text == still.description &&
+			                 ft->traits == still.traits,
+			             std::format("{} registers as its still format", ext));
 		}
 	}
 
@@ -969,19 +976,19 @@ static void should_scan_and_load_bitmap_psd()
 	// A minimal uncompressed 1-bit-per-pixel bitmap-mode psd. Photoshop stores
 	// bitmap mode inverted, so a set bit is black and a clear bit is white.
 	constexpr uint8_t bitmap_psd[] = {
-		'8', 'B', 'P', 'S', 0, 1, // signature and version
-		0, 0, 0, 0, 0, 0, // reserved
-		0, 1, // channels
-		0, 0, 0, 2, // rows
-		0, 0, 0, 16, // columns
-		0, 1, // depth
-		0, 0, // mode - bitmap
-		0, 0, 0, 0, // colour mode data length
-		0, 0, 0, 0, // image resource length
-		0, 0, 0, 0, // layer and mask length
-		0, 0, // compression - none
-		0b1010'1010, 0b0000'1111, // row 0
-		0b0000'0000, 0b1111'1111, // row 1
+		'8',         'B',         'P', 'S', 0, 1, // signature and version
+		0,           0,           0,   0,   0, 0, // reserved
+		0,           1,                           // channels
+		0,           0,           0,   2,         // rows
+		0,           0,           0,   16,        // columns
+		0,           1,                           // depth
+		0,           0,                           // mode - bitmap
+		0,           0,           0,   0,         // colour mode data length
+		0,           0,           0,   0,         // image resource length
+		0,           0,           0,   0,         // layer and mask length
+		0,           0,                           // compression - none
+		0b1010'1010, 0b0000'1111,                 // row 0
+		0b0000'0000, 0b1111'1111,                 // row 1
 	};
 
 	mem_read_stream scan_stream({bitmap_psd, std::size(bitmap_psd)});
@@ -1004,7 +1011,10 @@ static void should_scan_and_load_bitmap_psd()
 
 	constexpr uint32_t black = 0x000000;
 	constexpr uint32_t white = 0xFFFFFF;
-	const auto rgb = [](const uint32_t pixel) { return pixel & 0xFFFFFF; };
+	const auto rgb = [](const uint32_t pixel)
+	{
+		return pixel & 0xFFFFFF;
+	};
 
 	assert_equal(black, rgb(row0[0]), "bitmap psd 0,0 is black");
 	assert_equal(white, rgb(row0[1]), "bitmap psd 1,0 is white");
@@ -1032,7 +1042,7 @@ static void append_photoshop_resource(std::vector<uint8_t>& out, uint16_t id, st
                                       std::span<const uint8_t> payload);
 
 static core::blob make_lab_psd(const std::vector<uint8_t>& l, const std::vector<uint8_t>& a,
-                             const std::vector<uint8_t>& b)
+                               const std::vector<uint8_t>& b)
 {
 	std::vector<uint8_t> psd;
 	psd.insert(psd.end(), {'8', 'B', 'P', 'S'});
@@ -1062,7 +1072,6 @@ static void should_convert_psd_lab_samples_to_lab_coordinates()
 	assert_equal(true, core::is_valid(surface), "Lab PSD loaded");
 
 	const auto black = surface->get_pixel(0, 0);
-	const auto gray = surface->get_pixel(1, 0);
 	const auto mid25 = surface->get_pixel(1, 0);
 	const auto mid50 = surface->get_pixel(2, 0);
 	const auto mid75 = surface->get_pixel(3, 0);
@@ -1070,8 +1079,9 @@ static void should_convert_psd_lab_samples_to_lab_coordinates()
 
 	assert_equal(true, core::get_r(black) < 4 && core::get_g(black) < 4 && core::get_b(black) < 4,
 	             "Lab black is black");
-	assert_equal(true, std::abs(static_cast<int>(core::get_r(mid50)) - static_cast<int>(core::get_g(mid50))) <= 2 &&
-	             std::abs(static_cast<int>(core::get_g(mid50)) - static_cast<int>(core::get_b(mid50))) <= 2,
+	assert_equal(true,
+	             std::abs(static_cast<int>(core::get_r(mid50)) - static_cast<int>(core::get_g(mid50))) <= 2 &&
+	                 std::abs(static_cast<int>(core::get_g(mid50)) - static_cast<int>(core::get_b(mid50))) <= 2,
 	             "Lab neutral gray is neutral");
 	assert_near(59.0, static_cast<double>(core::get_r(mid25)), 1.0, "Lab L25 sRGB");
 	assert_near(119.0, static_cast<double>(core::get_r(mid50)), 1.0, "Lab L50 sRGB");
@@ -1087,13 +1097,9 @@ class counting_read_stream final : public read_stream
 public:
 	size_t max_read = 0;
 
-	counting_read_stream(core::blob prefix, const uint64_t size) : _prefix(std::move(prefix))
-	{
-		_file_size = size;
-	}
+	counting_read_stream(core::blob prefix, const uint64_t size) : _prefix(std::move(prefix)) { _file_size = size; }
 
-	template <typename T>
-	T peek(const uint64_t pos)
+	template <typename T> T peek(const uint64_t pos)
 	{
 		check_range(pos, sizeof(T));
 		T result{};
@@ -1133,8 +1139,8 @@ public:
 };
 
 static core::blob make_psd_prefix(const uint16_t channels, const uint32_t rows, const uint32_t columns,
-                                const uint16_t depth, const uint16_t mode, const uint32_t color_len,
-                                const uint32_t resource_len)
+                                  const uint16_t depth, const uint16_t mode, const uint32_t color_len,
+                                  const uint32_t resource_len)
 {
 	std::vector<uint8_t> psd;
 	psd.insert(psd.end(), {'8', 'B', 'P', 'S'});
@@ -1200,7 +1206,7 @@ static void should_load_valid_psd_indexed_palette()
 	append_be32(psd, 0); // resources length
 	append_be32(psd, 0); // layer and mask length
 	append_be16(psd, 0); // raw compression
-	psd.push_back(7); // palette index
+	psd.push_back(7);    // palette index
 
 	const core::blob bytes{psd.begin(), psd.end()};
 	mem_read_stream stream(bytes);
@@ -1219,11 +1225,13 @@ static void should_keep_dimensions_from_truncated_gif()
 	// dimensions were read from the header before it and must survive it - otherwise the
 	// scan is recorded as a failure and the file is re-scanned on every index pass.
 	constexpr uint8_t truncated_gif[] = {
+		// clang-format off
 		'G', 'I', 'F', '8', '9', 'a',
 		0x40, 0x00, // width 64
 		0x20, 0x00, // height 32
 		0x00, 0x00, 0x00, // packed fields (no global colour table), background, aspect
 		0x21, 0xFF, 0x0B, // application extension promising 11 bytes that are not there
+		// clang-format on
 	};
 
 	mem_read_stream stream({truncated_gif, std::size(truncated_gif)});
@@ -1262,10 +1270,10 @@ static std::vector<uint8_t> make_tiff_with_dimensions(const uint32_t width, cons
 	put16(42);
 	put32(8); // IFD0 offset
 
-	put16(2); // entry count
-	put_entry(0x0100, width); // ImageWidth
+	put16(2);                  // entry count
+	put_entry(0x0100, width);  // ImageWidth
 	put_entry(0x0101, height); // ImageLength
-	put32(0); // no IFD1
+	put32(0);                  // no IFD1
 
 	return buf;
 }
@@ -1308,19 +1316,30 @@ static void should_extract_embedded_thumbnails_only_on_demand()
 		const auto wanted = ff_scan_and_load_thumb(ff, path);
 
 		assert_equal(true, indexed.success, name, "metadata scan succeeded");
-		assert_equal(false, is_valid(indexed.thumbnail_image) || is_valid(indexed.thumbnail_surface),
-		             name, "metadata scan extracted no embedded thumbnail");
+		assert_equal(false, is_valid(indexed.thumbnail_image) || is_valid(indexed.thumbnail_surface), name,
+		             "metadata scan extracted no embedded thumbnail");
 
 		// The metadata a scan reports must not depend on whether a thumbnail was asked for.
 		assert_equal(wanted.width, indexed.width, name, "width");
 		assert_equal(wanted.height, indexed.height, name, "height");
-		assert_equal(static_cast<int>(wanted.orientation), static_cast<int>(indexed.orientation),
-		             name, "orientation");
+		assert_equal(static_cast<int>(wanted.orientation), static_cast<int>(indexed.orientation), name, "orientation");
 		assert_equal(wanted.created_utc, indexed.created_utc, name, "created");
 
-		assert_equal(true, is_valid(wanted.thumbnail_image) || is_valid(wanted.thumbnail_surface),
-		             name, "on-demand scan produced a thumbnail");
+		assert_equal(true, is_valid(wanted.thumbnail_image) || is_valid(wanted.thumbnail_surface), name,
+		             "on-demand scan produced a thumbnail");
 	}
+}
+
+// A HEIF's thumbnail item is the thumbnail apply_scan_result keeps, so the scan stops there. Decoding the
+// whole picture as well - the dearest thing a thumbnail scan can do - only made a second thumbnail that
+// was thrown away.
+static void should_thumbnail_a_heif_from_its_thumbnail_item_alone()
+{
+	files ff;
+	const auto scanned = ff_scan_and_load_thumb(ff, test_files_folder().combine_file("melnik.heic"));
+
+	assert_equal(true, is_valid(scanned.thumbnail_surface), "the thumbnail item is decoded");
+	assert_equal(false, is_valid(scanned.thumbnail_image), "the whole picture is not decoded to make another");
 }
 
 // libheif's plugin priority would decode HEIC's HEVC with libde265. FFmpeg's decoder gives the same
@@ -1332,7 +1351,8 @@ static void should_extract_embedded_thumbnails_only_on_demand()
 static void should_decode_heic_hevc_with_ffmpeg()
 {
 	const auto* const hevc_decoder = heif_hevc_decoder_id();
-	assert_equal("ffmpeg"sv, std::string_view(hevc_decoder ? hevc_decoder : ""), "libheif carries FFmpeg's HEVC decoder");
+	assert_equal("ffmpeg"sv, std::string_view(hevc_decoder ? hevc_decoder : ""),
+	             "libheif carries FFmpeg's HEVC decoder");
 
 	const auto chosen = [](const std::string_view name)
 	{
@@ -1345,7 +1365,8 @@ static void should_decode_heic_hevc_with_ffmpeg()
 	assert_equal("ffmpeg"s, chosen("melnik.heic"), "a grid of HEVC tiles is steered to FFmpeg");
 	assert_equal(""s, chosen("hato.profile0.10bpc.yuv420.avif"), "an AV1 image keeps libheif's choice");
 
-	const auto file = platform::open_file(test_files_folder().combine_file("melnik.heic"), platform::file_open_mode::read);
+	const auto file = platform::open_file(test_files_folder().combine_file("melnik.heic"),
+	                                      platform::file_open_mode::read);
 	assert_equal(true, file != nullptr, "HEIC fixture opened");
 	if (!file) return;
 
@@ -1364,12 +1385,13 @@ static void should_decode_heic_hevc_with_ffmpeg()
 		heif_item_id thumbnail_id = 0;
 		options->decoder_id = decoder_id;
 
-		if (heif_context_read_from_memory_without_copy(ctx, bytes.data(), bytes.size(), nullptr).code == heif_error_Ok &&
-			heif_context_get_primary_image_handle(ctx, &primary).code == heif_error_Ok &&
-			heif_image_handle_get_list_of_thumbnail_IDs(primary, &thumbnail_id, 1) == 1 &&
-			heif_image_handle_get_thumbnail(primary, thumbnail_id, &thumbnail).code == heif_error_Ok &&
-			heif_decode_image(thumbnail, &image, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, options).code ==
-			heif_error_Ok)
+		if (heif_context_read_from_memory_without_copy(ctx, bytes.data(), bytes.size(), nullptr).code ==
+		        heif_error_Ok &&
+		    heif_context_get_primary_image_handle(ctx, &primary).code == heif_error_Ok &&
+		    heif_image_handle_get_list_of_thumbnail_IDs(primary, &thumbnail_id, 1) == 1 &&
+		    heif_image_handle_get_thumbnail(primary, thumbnail_id, &thumbnail).code == heif_error_Ok &&
+		    heif_decode_image(thumbnail, &image, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, options).code ==
+		        heif_error_Ok)
 		{
 			int stride = 0;
 			const auto* const plane = heif_image_get_plane_readonly(image, heif_channel_interleaved, &stride);
@@ -1559,7 +1581,7 @@ static void append_jpeg_marker(std::vector<uint8_t>& out, const uint8_t marker, 
 }
 
 static core::blob jpeg_with_metadata_markers(const core::const_image_ptr& jpeg, const std::vector<core::blob>& payloads,
-                                           const std::vector<uint8_t>& markers)
+                                             const std::vector<uint8_t>& markers)
 {
 	std::vector<uint8_t> out;
 	const auto& source = jpeg->data();
@@ -1670,8 +1692,7 @@ static void should_preserve_non_iptc_jpeg_photoshop_resources()
 	const auto rescanned = scan_photo(out_stream);
 	std::vector<uint8_t> expected;
 	append_photoshop_resource(expected, 0x03ed, "keep", other);
-	assert_equal(true, rescanned.metadata.photoshop == expected,
-	             "non-IPTC Photoshop resource survives re-encode");
+	assert_equal(true, rescanned.metadata.photoshop == expected, "non-IPTC Photoshop resource survives re-encode");
 }
 
 static void should_roundtrip_split_jpeg_photoshop_resources()
@@ -1700,15 +1721,13 @@ static void should_roundtrip_split_jpeg_photoshop_resources()
 	std::vector<uint8_t> expected;
 	append_photoshop_resource(expected, 0x03ed, "first", first_payload);
 	append_photoshop_resource(expected, 0x03ee, "second", second_payload);
-	assert_equal(true, scanned.metadata.photoshop == expected,
-	             "split APP13 resources are joined in order");
+	assert_equal(true, scanned.metadata.photoshop == expected, "split APP13 resources are joined in order");
 
 	const auto encoded = save_jpeg(make_gradient_surface(8, 8), scanned.metadata, {});
 	assert_equal(true, is_valid(encoded), "split APP13 resources re-encode");
 	mem_read_stream out_stream(encoded->data());
 	const auto rescanned = scan_photo(out_stream);
-	assert_equal(true, rescanned.metadata.photoshop == expected,
-	             "split APP13 resources survive re-encode");
+	assert_equal(true, rescanned.metadata.photoshop == expected, "split APP13 resources survive re-encode");
 }
 
 static core::blob split_app13_payload(const std::vector<uint8_t>& joined, const size_t split_at)
@@ -1741,8 +1760,7 @@ static void should_join_straddled_jpeg_photoshop_resources()
 	const auto wrapped = split_app13_payload(joined, 65519);
 	mem_read_stream stream(wrapped);
 	const auto scanned = scan_photo(stream);
-	assert_equal(true, scanned.metadata.photoshop == joined,
-	             "straddled APP13 record survives the byte-level join");
+	assert_equal(true, scanned.metadata.photoshop == joined, "straddled APP13 record survives the byte-level join");
 }
 
 static void should_cap_joined_jpeg_photoshop_resources()
@@ -1761,8 +1779,7 @@ static void should_cap_joined_jpeg_photoshop_resources()
 
 	std::vector<uint8_t> expected;
 	append_photoshop_resource(expected, 0x03ed, "first", payload);
-	assert_equal(true, scanned.metadata.photoshop == expected,
-	             "joined APP13 payload is capped at a complete resource");
+	assert_equal(true, scanned.metadata.photoshop == expected, "joined APP13 payload is capped at a complete resource");
 }
 
 // IFD1 describes the embedded thumbnail, which cameras commonly store already upright while the
@@ -1786,9 +1803,9 @@ static void should_prefer_primary_orientation_over_the_thumbnail_ifd()
 		};
 		const auto orientation_ifd = [&](const uint16_t orientation)
 		{
-			put16(1); // one entry
+			put16(1);      // one entry
 			put16(0x0112); // Orientation
-			put16(3); // FMT_USHORT
+			put16(3);      // FMT_USHORT
 			put32(1);
 			put16(orientation);
 			put16(0); // the value field is four bytes wide
@@ -1828,16 +1845,14 @@ static void should_prefer_primary_orientation_over_the_thumbnail_ifd()
 		out.insert(out.end(), tiff.begin(), tiff.end());
 		out.insert(out.end(), source.data() + 2, source.data() + source.size());
 
-		const auto path = _temps.next_path(".jpg");
+		const auto path = test_temps.next_path(".jpg");
 		platform::blob_save_to_file(core::blob(out.begin(), out.end()), path);
 		return ff_scan_file(ff, path).orientation;
 	};
 
-	assert_equal(static_cast<int>(core::orientation::right_top),
-	             static_cast<int>(scan_with_exif(6, 1)),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(scan_with_exif(6, 1)),
 	             "the primary image's rotation is what the photograph is shown at");
-	assert_equal(static_cast<int>(core::orientation::top_left),
-	             static_cast<int>(scan_with_exif(1, 6)),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(scan_with_exif(1, 6)),
 	             "and an upright primary is not rotated by its thumbnail");
 }
 
@@ -1864,9 +1879,9 @@ static void should_use_thumbnail_orientation_only_when_primary_is_absent()
 		put16(0); // IFD0 has no primary orientation
 		put32(ifd1_offset);
 
-		put16(1); // IFD1 carries the thumbnail-orientation fallback
+		put16(1);      // IFD1 carries the thumbnail-orientation fallback
 		put16(0x0112); // Orientation
-		put16(3); // FMT_USHORT
+		put16(3);      // FMT_USHORT
 		put32(1);
 		put16(6); // right_top
 		put16(0);
@@ -1900,11 +1915,9 @@ static void should_use_thumbnail_orientation_only_when_primary_is_absent()
 	const auto decoded = files_test_hooks::decode_jpeg(ff, {jpeg.data(), jpeg.size()}, {}, false,
 	                                                   decode_intent::display, is_yuv);
 	assert_equal(true, is_valid(decoded), "decoder reads IFD1-only jpeg");
-	assert_equal(static_cast<int>(core::orientation::right_top),
-	             static_cast<int>(scanned.orientation),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(scanned.orientation),
 	             "scan uses IFD1 orientation when IFD0 is absent");
-	assert_equal(static_cast<int>(scanned.orientation),
-	             static_cast<int>(decoded->orientation()),
+	assert_equal(static_cast<int>(scanned.orientation), static_cast<int>(decoded->orientation()),
 	             "decoder and scanner agree on IFD1-only orientation");
 }
 
@@ -1931,7 +1944,7 @@ static std::vector<uint8_t> make_tiff_with_orientations(const uint16_t ifd0_orie
 	const auto put_orientation = [&](const uint16_t orientation)
 	{
 		put16(0x0112); // Orientation
-		put16(3); // FMT_USHORT
+		put16(3);      // FMT_USHORT
 		put32(1);
 		put16(orientation);
 		put16(0);
@@ -1962,11 +1975,9 @@ static void should_prefer_primary_tiff_orientation_over_the_thumbnail_ifd()
 		return scan_photo(stream).orientation;
 	};
 
-	assert_equal(static_cast<int>(core::orientation::right_top),
-	             static_cast<int>(scan_orientation(6, 1)),
+	assert_equal(static_cast<int>(core::orientation::right_top), static_cast<int>(scan_orientation(6, 1)),
 	             "the primary TIFF orientation is kept");
-	assert_equal(static_cast<int>(core::orientation::top_left),
-	             static_cast<int>(scan_orientation(1, 6)),
+	assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(scan_orientation(1, 6)),
 	             "the thumbnail TIFF orientation does not rotate an upright primary");
 }
 
@@ -2042,7 +2053,7 @@ static void should_convert_a_jpeg_at_the_quality_asked()
 	file_encode_params fine;
 	fine.jpeg_save_quality = 95;
 	const auto source_image = ff.surface_to_image(surface, {}, fine, core::image_format::JPEG);
-	const auto scratch = _temps.next_folder("convert-quality");
+	const auto scratch = test_temps.next_folder("convert-quality");
 	const auto source = core::file_path(scratch, "source.jpg");
 	assert_equal(true, platform::blob_save_to_file(source_image->data(), source), "the source is written");
 
@@ -2056,8 +2067,7 @@ static void should_convert_a_jpeg_at_the_quality_asked()
 	assert_equal(true, first_dqt(platform::blob_from_file(unresized)) == expected, "is encoded at the quality asked");
 
 	const auto resized = core::file_path(scratch, "resized.jpg");
-	assert_equal(true, ff.update(source, resized, {}, image_edits(32), convert, false, {}).success(),
-	             "a resized one");
+	assert_equal(true, ff.update(source, resized, {}, image_edits(32), convert, false, {}).success(), "a resized one");
 	assert_equal(true, first_dqt(platform::blob_from_file(resized)) == expected, "too, not with the source's tables");
 
 	const auto before = platform::blob_from_file(source);
@@ -2152,14 +2162,17 @@ static void should_refuse_imperfect_lossless_rotate()
 	libfiles::jpeg_encoder aligned_encoder;
 	const libfiles::jpeg_transformer aligned_transformer;
 	assert_equal(false,
-	             turn_jpeg_losslessly(aligned_transformer, aligned_encoder, aligned->data(), core::simple_transform::rot_90).empty(),
+	             turn_jpeg_losslessly(aligned_transformer, aligned_encoder, aligned->data(),
+	                                  core::simple_transform::rot_90)
+	                 .empty(),
 	             "aligned rotate stays lossless");
 
 	libfiles::jpeg_encoder unaligned_encoder;
 	const libfiles::jpeg_transformer unaligned_transformer;
 	assert_equal(true,
 	             turn_jpeg_losslessly(unaligned_transformer, unaligned_encoder, unaligned->data(),
-	                                  core::simple_transform::rot_90).empty(),
+	                                  core::simple_transform::rot_90)
+	                 .empty(),
 	             "unaligned rotate refuses rather than trimming");
 }
 
@@ -2225,7 +2238,8 @@ static void should_survive_truncated_lossless_rotate()
 
 	assert_equal(true,
 	             turn_jpeg_losslessly(transformer, encoder, {truncated.data(), truncated.size()},
-	                                  core::simple_transform::rot_90).empty(),
+	                                  core::simple_transform::rot_90)
+	                 .empty(),
 	             "truncated rotate refuses");
 
 	assert_equal(false, turn_jpeg_losslessly(transformer, encoder, data, core::simple_transform::rot_90).empty(),
@@ -2260,13 +2274,15 @@ static void should_refuse_an_over_budget_lossless_rotate()
 	render::max_decode_bytes = expected * 2 - 1;
 	auto over_budget = false;
 	assert_equal(true,
-	             turn_jpeg_losslessly(transformer, encoder, image->data(), core::simple_transform::rot_90, &over_budget).empty(),
+	             turn_jpeg_losslessly(transformer, encoder, image->data(), core::simple_transform::rot_90, &over_budget)
+	                 .empty(),
 	             "a rotate one byte over its workspace refuses");
 	assert_equal(true, over_budget, "and says the budget is why, which is not an imperfect rotate");
 
 	render::max_decode_bytes = expected * 2;
 	assert_equal(false,
-	             turn_jpeg_losslessly(transformer, encoder, image->data(), core::simple_transform::rot_90, &over_budget).empty(),
+	             turn_jpeg_losslessly(transformer, encoder, image->data(), core::simple_transform::rot_90, &over_budget)
+	                 .empty(),
 	             "the same rotate is taken when source and workspace both fit");
 	assert_equal(false, over_budget, "and is not reported as over budget");
 }
@@ -2278,7 +2294,7 @@ static void should_refuse_an_over_budget_lossless_rotate()
 static void should_not_re_encode_a_rotate_refused_for_its_budget()
 {
 	const auto load_path = test_files_folder().combine_file("Lossless0.jpg");
-	const auto save_path = _temps.next_path();
+	const auto save_path = test_temps.next_path();
 	const auto source = platform::blob_from_file(load_path);
 
 	libfiles::jpeg_transformer transformer;
@@ -2342,7 +2358,7 @@ static void should_charge_a_progressive_jpeg_for_its_coefficients()
 
 static void should_rotate_lossless()
 {
-	const auto save_path = _temps.next_path();
+	const auto save_path = test_temps.next_path();
 	const auto load_path = test_files_folder().combine_file("Lossless0.jpg");
 
 	image_edits edits;
@@ -2365,24 +2381,27 @@ static void should_rotate_lossless_exif_dimensions()
 	assert_equal(true, surface->alloc(32, 16, core::texture_format::RGB) != nullptr, "rotation fixture allocated");
 	surface->make_blank();
 	libfiles::metadata_blocks metadata;
+	// clang-format off
 	metadata.exif = {
 		'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0,
 		1, 0, 0x69, 0x87, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0,
 		2, 0, 2, 0xa0, 4, 0, 1, 0, 0, 0, 32, 0, 0, 0,
 		3, 0xa0, 4, 0, 1, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0
 	};
+	// clang-format on
 	libfiles::jpeg_encoder encoder;
 	const auto source = encoder.encode(32, 16, surface->pixels(), surface->stride(), 1, metadata, {});
 	libfiles::jpeg_transformer transformer;
 	libfiles::jpeg_encoder rotated_encoder;
 	const auto rotated = turn_jpeg_losslessly(transformer, rotated_encoder, source, core::simple_transform::rot_90);
 	assert_equal(false, rotated.empty(), "aligned JPEG rotated losslessly");
-	const auto path = _temps.next_path(".jpg");
+	const auto path = test_temps.next_path(".jpg");
 	assert_equal(true, platform::blob_save_to_file(rotated, path), "rotated fixture saved");
 	files codecs;
 	const auto scanned = ff_scan_file(codecs, path);
 	const auto listing = libfiles::list_exif({scanned.metadata.exif.data(), scanned.metadata.exif.size()});
-	assert_equal(false, listing.directories.empty(), "rotated EXIF is readable independently of JPEG header dimensions");
+	assert_equal(false, listing.directories.empty(),
+	             "rotated EXIF is readable independently of JPEG header dimensions");
 	const auto dimension = [&listing](const uint16_t tag) -> uint32_t
 	{
 		for (const auto& directory : listing.directories)
@@ -2394,9 +2413,8 @@ static void should_rotate_lossless_exif_dimensions()
 				if (e.tag != tag) continue;
 				assert_equal(true, e.type == 4 && e.bytes.size() >= 4, "dimension tag is a LONG");
 				const auto* const p = e.bytes.data();
-				return listing.little_endian
-					       ? p[0] | p[1] << 8 | p[2] << 16 | static_cast<uint32_t>(p[3]) << 24
-					       : static_cast<uint32_t>(p[0]) << 24 | p[1] << 16 | p[2] << 8 | p[3];
+				return listing.little_endian ? p[0] | p[1] << 8 | p[2] << 16 | static_cast<uint32_t>(p[3]) << 24
+				                             : static_cast<uint32_t>(p[0]) << 24 | p[1] << 16 | p[2] << 8 | p[3];
 			}
 		}
 
@@ -2478,7 +2496,7 @@ static void should_decode_scaled_422_jpeg_as_nv12()
 
 	// Without this the test is vacuous: 4:2:0 returns two luma rows per call, never reaches the
 	// defect, and averages the two bands together as its own correct answer.
-	const auto encoded_path = _temps.next_path(".jpg");
+	const auto encoded_path = test_temps.next_path(".jpg");
 	platform::blob_save_to_file(encoded->data(), encoded_path);
 	assert_equal("yuv422", ff_scan_file(ff, encoded_path).pixel_format.sv(), "re-encoded as 4:2:2");
 
@@ -2524,8 +2542,8 @@ static void should_decode_bands(const char* const name, const std::initializer_l
 	for (const auto want : expected)
 	{
 		const auto* const row = surface->pixels_line(cy * band / 4 + cy / 8);
-		const auto message = std::format("{} band {}: wanted {}, got {},{},{},{}", name, band, want,
-		                                 row[0], row[1], row[2], row[3]);
+		const auto message = std::format("{} band {}: wanted {}, got {},{},{},{}", name, band, want, row[0], row[1],
+		                                 row[2], row[3]);
 
 		for (auto c = 0; c < 3; c++)
 		{
@@ -2597,12 +2615,14 @@ static void should_decode_lossless_grayscale_jpeg(const int precision)
 	constexpr uint8_t expected[] = {0, 85, 255};
 	for (auto x = 0; x < 3; ++x)
 		for (auto channel = 0; channel < 3; ++channel)
-			assert_equal(expected[x], surface->pixels_line(0)[x * 4 + channel], "grayscale expands and scales correctly");
+			assert_equal(expected[x], surface->pixels_line(0)[x * 4 + channel],
+			             "grayscale expands and scales correctly");
 }
 
 static void should_decode_associated_alpha_jxl()
 {
-	const std::unique_ptr<JxlEncoder, decltype(&JxlEncoderDestroy)> encoder(JxlEncoderCreate(nullptr), JxlEncoderDestroy);
+	const std::unique_ptr<JxlEncoder, decltype(&JxlEncoderDestroy)> encoder(JxlEncoderCreate(nullptr),
+	                                                                        JxlEncoderDestroy);
 	assert_equal(true, encoder != nullptr, "JXL encoder created");
 	JxlBasicInfo info{};
 	JxlEncoderInitBasicInfo(&info);
@@ -2623,7 +2643,8 @@ static void should_decode_associated_alpha_jxl()
 	assert_equal(JXL_ENC_SUCCESS, JxlEncoderSetFrameLossless(settings, JXL_TRUE), "lossless JXL fixture");
 	const JxlPixelFormat format{4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
 	constexpr uint8_t pixels[] = {64, 32, 16, 128, 255, 128, 0, 255};
-	assert_equal(JXL_ENC_SUCCESS, JxlEncoderAddImageFrame(settings, &format, pixels, sizeof(pixels)), "JXL pixels accepted");
+	assert_equal(JXL_ENC_SUCCESS, JxlEncoderAddImageFrame(settings, &format, pixels, sizeof(pixels)),
+	             "JXL pixels accepted");
 	JxlEncoderCloseInput(encoder.get());
 	std::array<uint8_t, 4096> encoded{};
 	auto* next = encoded.data();
@@ -2646,7 +2667,8 @@ static void should_decode_associated_alpha_heif()
 	const std::unique_ptr<heif_context, decltype(&heif_context_free)> context(heif_context_alloc(), heif_context_free);
 	assert_equal(true, context != nullptr, "HEIF context created");
 	heif_image* raw_image = nullptr;
-	assert_equal(heif_error_Ok, heif_image_create(2, 1, heif_colorspace_RGB, heif_chroma_interleaved_RGB, &raw_image).code,
+	assert_equal(heif_error_Ok,
+	             heif_image_create(2, 1, heif_colorspace_RGB, heif_chroma_interleaved_RGB, &raw_image).code,
 	             "HEIF image created");
 	const std::unique_ptr<heif_image, decltype(&heif_image_release)> image(raw_image, heif_image_release);
 	assert_equal(heif_error_Ok, heif_image_add_plane(image.get(), heif_channel_interleaved, 2, 1, 8).code,
@@ -2660,51 +2682,67 @@ static void should_decode_associated_alpha_heif()
 	heif_image_set_premultiplied_alpha(image.get(), true);
 
 	heif_encoder* raw_encoder = nullptr;
-	assert_equal(heif_error_Ok, heif_context_get_encoder_for_format(context.get(), heif_compression_uncompressed,
-	                                                               &raw_encoder).code, "uncompressed HEIF encoder available");
+	assert_equal(heif_error_Ok,
+	             heif_context_get_encoder_for_format(context.get(), heif_compression_uncompressed, &raw_encoder).code,
+	             "uncompressed HEIF encoder available");
 	const std::unique_ptr<heif_encoder, decltype(&heif_encoder_release)> encoder(raw_encoder, heif_encoder_release);
 	heif_image_handle* raw_handle = nullptr;
-	assert_equal(heif_error_Ok, heif_context_encode_image(context.get(), image.get(), encoder.get(), nullptr, &raw_handle).code,
+	assert_equal(heif_error_Ok,
+	             heif_context_encode_image(context.get(), image.get(), encoder.get(), nullptr, &raw_handle).code,
 	             "associated-alpha HEIF encoded");
-	const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)> handle(raw_handle, heif_image_handle_release);
+	const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)> handle(raw_handle,
+	                                                                                      heif_image_handle_release);
 	// The uncompressed encoder does not create external-alpha prem/auxl references.
 	heif_image* raw_alpha = nullptr;
-	assert_equal(heif_error_Ok, heif_image_create(2, 1, heif_colorspace_monochrome, heif_chroma_monochrome, &raw_alpha).code,
+	assert_equal(heif_error_Ok,
+	             heif_image_create(2, 1, heif_colorspace_monochrome, heif_chroma_monochrome, &raw_alpha).code,
 	             "HEIF auxiliary alpha image created");
 	const std::unique_ptr<heif_image, decltype(&heif_image_release)> alpha(raw_alpha, heif_image_release);
-	assert_equal(heif_error_Ok, heif_image_add_plane(alpha.get(), heif_channel_Y, 2, 1, 8).code, "HEIF alpha plane allocated");
+	assert_equal(heif_error_Ok, heif_image_add_plane(alpha.get(), heif_channel_Y, 2, 1, 8).code,
+	             "HEIF alpha plane allocated");
 	auto* alpha_plane = heif_image_get_plane(alpha.get(), heif_channel_Y, &stride);
 	assert_equal(true, alpha_plane && stride >= 2, "HEIF alpha plane available");
 	std::memset(alpha_plane, 0, stride);
 	alpha_plane[0] = 128;
 	alpha_plane[1] = 255;
 	heif_image_handle* raw_alpha_handle = nullptr;
-	assert_equal(heif_error_Ok, heif_context_encode_image(context.get(), alpha.get(), encoder.get(), nullptr,
-	                                                    &raw_alpha_handle).code, "HEIF auxiliary alpha encoded");
-	const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)> alpha_handle(
-		raw_alpha_handle, heif_image_handle_release);
+	assert_equal(heif_error_Ok,
+	             heif_context_encode_image(context.get(), alpha.get(), encoder.get(), nullptr, &raw_alpha_handle).code,
+	             "HEIF auxiliary alpha encoded");
+	const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)>
+		alpha_handle(raw_alpha_handle, heif_image_handle_release);
 	const auto image_id = heif_image_handle_get_item_id(handle.get());
 	const auto alpha_id = heif_image_handle_get_item_id(alpha_handle.get());
 	constexpr char alpha_type[] = "\0\0\0\0urn:mpeg:mpegB:cicp:systems:auxiliary:alpha";
-	assert_equal(heif_error_Ok, heif_item_add_raw_property(context.get(), alpha_id, heif_fourcc('a', 'u', 'x', 'C'),
-	                                                     nullptr, reinterpret_cast<const uint8_t*>(alpha_type),
-	                                                     sizeof(alpha_type), true, nullptr).code, "alpha role declared");
-	assert_equal(heif_error_Ok, heif_context_add_item_reference(context.get(), heif_fourcc('a', 'u', 'x', 'l'),
-	                                                          alpha_id, image_id).code, "alpha attached");
-	assert_equal(heif_error_Ok, heif_context_add_item_reference(context.get(), heif_fourcc('p', 'r', 'e', 'm'),
-	                                                          image_id, alpha_id).code, "associated alpha declared");
-	const auto path = _temps.next_path(".heif");
-	assert_equal(heif_error_Ok, heif_context_write_to_file(context.get(), path.str().c_str()).code, "HEIF fixture saved");
-	const std::unique_ptr<heif_context, decltype(&heif_context_free)> check_context(heif_context_alloc(), heif_context_free);
+	assert_equal(heif_error_Ok,
+	             heif_item_add_raw_property(context.get(), alpha_id, heif_fourcc('a', 'u', 'x', 'C'), nullptr,
+	                                        reinterpret_cast<const uint8_t*>(alpha_type), sizeof(alpha_type), true,
+	                                        nullptr)
+	                 .code,
+	             "alpha role declared");
+	assert_equal(heif_error_Ok,
+	             heif_context_add_item_reference(context.get(), heif_fourcc('a', 'u', 'x', 'l'), alpha_id, image_id)
+	                 .code,
+	             "alpha attached");
+	assert_equal(heif_error_Ok,
+	             heif_context_add_item_reference(context.get(), heif_fourcc('p', 'r', 'e', 'm'), image_id, alpha_id)
+	                 .code,
+	             "associated alpha declared");
+	const auto path = test_temps.next_path(".heif");
+	assert_equal(heif_error_Ok, heif_context_write_to_file(context.get(), path.str().c_str()).code,
+	             "HEIF fixture saved");
+	const std::unique_ptr<heif_context, decltype(&heif_context_free)> check_context(heif_context_alloc(),
+	                                                                                heif_context_free);
 	assert_equal(true, check_context != nullptr, "HEIF validation context created");
 	const auto opened = heif_context_read_from_file(check_context.get(), path.str().c_str(), nullptr);
 	assert_equal(heif_error_Ok, opened.code, opened.message);
 	heif_image_handle* raw_check_handle = nullptr;
 	const auto primary = heif_context_get_primary_image_handle(check_context.get(), &raw_check_handle);
-	const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)> check_handle(
-		raw_check_handle, heif_image_handle_release);
+	const std::unique_ptr<heif_image_handle, decltype(&heif_image_handle_release)>
+		check_handle(raw_check_handle, heif_image_handle_release);
 	assert_equal(heif_error_Ok, primary.code, primary.message);
-	assert_equal(true, heif_image_handle_is_premultiplied_alpha(check_handle.get()) != 0, "fixture declares associated alpha");
+	assert_equal(true, heif_image_handle_is_premultiplied_alpha(check_handle.get()) != 0,
+	             "fixture declares associated alpha");
 	heif_image* raw_decoded = nullptr;
 	const auto decoded = heif_decode_image(check_handle.get(), &raw_decoded, heif_colorspace_RGB,
 	                                       heif_chroma_interleaved_RGBA, nullptr);
@@ -2768,7 +2806,7 @@ static void should_read_png_orientation_after_idat()
 	exif.insert(exif.begin(), exif_signature.begin(), exif_signature.end());
 	insert_png_chunk_before_iend(png, "eXIf", {exif.data(), exif.size()});
 
-	const auto path = _temps.next_path(".png");
+	const auto path = test_temps.next_path(".png");
 	platform::blob_save_to_file(png, path);
 
 	const auto loaded = load_png(platform::blob_from_file(path));
@@ -2815,8 +2853,7 @@ static void should_decode_thin_jpeg_when_planar_is_preferred()
 		             std::format("{} falls back to packed RGB", name));
 		assert_equal(true, packed->dimensions() == planar_preferred->dimensions(),
 		             std::format("{} keeps packed dimensions", name));
-		assert_equal(packed->orientation(), planar_preferred->orientation(),
-		             std::format("{} keeps orientation", name));
+		assert_equal(packed->orientation(), planar_preferred->orientation(), std::format("{} keeps orientation", name));
 	};
 
 	decode(1, 8, {}, "one-pixel width");
@@ -2882,7 +2919,7 @@ static void should_preserve_webp_chunks_on_metadata_save()
 {
 	files ff;
 	const auto load_path = test_files_folder().combine_file("lake.webp");
-	const auto save_path = _temps.next_path(".webp");
+	const auto save_path = test_temps.next_path(".webp");
 
 	const auto original = ff.load(load_path, false);
 	assert_equal(false, original.is_empty(), "original webp loaded");
@@ -2936,14 +2973,14 @@ static void should_honor_webp_save_quality()
 	const auto source = ff.load(load_path, false);
 	assert_equal(false, source.is_empty(), "source loaded");
 
-	const auto lossless_path = _temps.next_path(".webp");
+	const auto lossless_path = test_temps.next_path(".webp");
 	{
 		file_encode_params params;
 		params.webp_lossless = true;
 		ff.update(load_path, lossless_path, {}, {}, params, false, {});
 	}
 
-	const auto low_quality_path = _temps.next_path(".webp");
+	const auto low_quality_path = test_temps.next_path(".webp");
 	{
 		file_encode_params params;
 		params.webp_lossless = false;
@@ -2951,7 +2988,7 @@ static void should_honor_webp_save_quality()
 		ff.update(load_path, low_quality_path, {}, {}, params, false, {});
 	}
 
-	const auto high_quality_path = _temps.next_path(".webp");
+	const auto high_quality_path = test_temps.next_path(".webp");
 	{
 		file_encode_params params;
 		params.webp_lossless = false;
@@ -2972,6 +3009,55 @@ static void should_honor_webp_save_quality()
 	// Higher quality retains more detail, so it must be larger than the lowest
 	// quality - this proves webp_quality is applied (and not treated as a bool).
 	assert_equal(true, high_quality_size > low_quality_size, "webp high quality larger than low quality");
+}
+
+// A WebP turned, resized or edited in place is written as a WebP again, and keeps how it was compressed
+// whatever the save settings say - a lossless one stays lossless, a lossy one keeps at least its own
+// quality - as a JPEG keeps its own tables. A conversion is what the settings are for.
+static void should_keep_a_webp_compressed_as_it_was()
+{
+	files ff;
+	const auto load_path = test_files_folder().combine_file("Test.jpg");
+	file_encode_params defaults;
+	assert_equal(true, !defaults.webp_lossless && defaults.webp_quality < 80, "the defaults are lossy");
+
+	const auto made = [&](const bool lossless, const int quality)
+	{
+		const auto path = test_temps.next_path(".webp");
+		file_encode_params params;
+		params.webp_lossless = lossless;
+		params.webp_quality = quality;
+		assert_equal(true, ff.update(load_path, path, {}, {}, params, false, {}).success(), "made");
+		return path;
+	};
+
+	const auto compression = [](const core::file_path path)
+	{
+		const auto bytes = platform::blob_from_file(path);
+		return libfiles::read_webp_compression({bytes.data(), bytes.size()});
+	};
+
+	const auto lossless = made(true, 70);
+	assert_equal(true, ff.update(lossless, lossless, {}, image_edits(320), defaults, false, {}).success(),
+	             "a lossless WebP resized in place");
+	const auto kept_lossless = compression(lossless);
+	assert_equal(true, kept_lossless && kept_lossless->lossless, "stays lossless");
+
+	const auto fine = made(false, 95);
+	const auto before = compression(fine);
+	assert_equal(true, ff.update(fine, fine, {}, image_edits(320), defaults, false, {}).success(),
+	             "a fine lossy WebP resized in place");
+	const auto after = compression(fine);
+	assert_equal(true, before && after && !after->lossless && after->quality >= before->quality - 5,
+	             std::format("keeps its quality ({} then {})", before ? before->quality : -1,
+	                         after ? after->quality : -1));
+
+	file_encode_params convert = defaults;
+	convert.reencode = true;
+	const auto converted = test_temps.next_path(".webp");
+	assert_equal(true, ff.update(lossless, converted, {}, {}, convert, false, {}).success(), "converted");
+	const auto as_asked = compression(converted);
+	assert_equal(true, as_asked && !as_asked->lossless, "a conversion is written as the settings ask");
 }
 
 // The WebP loader used to tag every surface ARGB, which forces the renderer down
@@ -3131,7 +3217,7 @@ static void should_decode_opaque_lossy_webp_as_nv12()
 
 	files ff;
 	const auto image = std::make_shared<core::image>(core::cspan(data), dimensions, core::image_format::WEBP,
-	                                              core::orientation::top_left);
+	                                                 core::orientation::top_left);
 	const auto dispatched = ff.image_to_surface(image, {}, true);
 	assert_equal(true, is_valid(dispatched) && dispatched->format() == core::texture_format::NV12,
 	             "webp image dispatch preserves NV12");
@@ -3179,10 +3265,8 @@ static void should_thumbnail_a_jpeg_without_leaving_yuv()
 
 	// The planar reduction rounds down to an even extent, so the two can differ by a pixel on an
 	// axis. Compare the region they share.
-	const auto common = sizei{
-		std::min(packed->dimensions().cx, decoded->dimensions().cx),
-		std::min(packed->dimensions().cy, decoded->dimensions().cy)
-	};
+	const auto common = sizei{std::min(packed->dimensions().cx, decoded->dimensions().cx),
+	                          std::min(packed->dimensions().cy, decoded->dimensions().cy)};
 
 	assert_equal(true, packed->dimensions().cx - common.cx <= 1 && packed->dimensions().cy - common.cy <= 1,
 	             "the thumbnail is within a pixel of the packed decode on each axis");
@@ -3327,8 +3411,8 @@ static void should_keep_thumbnail_alpha_only_when_needed()
 	             "opaque thumbnail drops its alpha plane and decodes as nv12");
 
 	const auto translucent_surface = ff.image_to_surface(translucent_thumb, {}, true);
-	assert_equal(true, core::is_valid(translucent_surface) &&
-	             translucent_surface->format() == core::texture_format::ARGB,
+	assert_equal(true,
+	             core::is_valid(translucent_surface) && translucent_surface->format() == core::texture_format::ARGB,
 	             "translucent thumbnail keeps its alpha plane");
 	assert_equal(true, core::get_a(translucent_surface->get_pixel(extent.cx / 4, extent.cy / 2)) < 128,
 	             "transparent half survives the thumbnail round trip");
@@ -3366,7 +3450,7 @@ static void should_refuse_truncated_webp_decode()
 // the edit path that frame was re-encoded straight over the user's original.
 static void should_refuse_a_file_too_large_to_hold()
 {
-	const auto path = _temps.next_path(".jpg");
+	const auto path = test_temps.next_path(".jpg");
 
 	// A valid JPEG header followed by enough bytes to pass the ceiling. Nothing decodes it; the
 	// refusal happens on the file's size, before a byte is read.
@@ -3420,7 +3504,7 @@ static void should_refuse_a_file_too_large_to_hold()
 static void should_convert_raw_to_jpeg()
 {
 	const auto load_path = test_files_folder().combine("raw").combine_file("Screws.CR2");
-	const auto save_path = _temps.next_path(".jpg");
+	const auto save_path = test_temps.next_path(".jpg");
 
 	files ff;
 	ff.update(load_path, save_path, {}, {}, {}, false, {});
@@ -3464,7 +3548,7 @@ static void should_decode_a_read_only_format(const std::string_view name)
 	// the other way round, so naming the channels here is what keeps the check legible.
 	const auto* const first = surface->pixels_line(0);
 	const auto* const last = surface->pixels_line(surface->dimensions().cy - 1) +
-		static_cast<size_t>(surface->dimensions().cx - 1) * 4;
+	                         static_cast<size_t>(surface->dimensions().cx - 1) * 4;
 
 	assert_equal(true, first[2] > 200 && first[1] < 60 && first[0] < 60,
 	             std::format("{} top left is the red corner", name));
@@ -3473,7 +3557,7 @@ static void should_decode_a_read_only_format(const std::string_view name)
 
 static void should_save(const std::string_view ext, const bool should_support_metadata)
 {
-	const auto save_path = _temps.next_path(ext);
+	const auto save_path = test_temps.next_path(ext);
 	const auto load_path = test_files_folder().combine_file("Test.jpg");
 
 	files ff;
@@ -3498,7 +3582,7 @@ static void should_save(const std::string_view ext, const bool should_support_me
 static void should_answer_a_psd_cut_short_as_unreadable()
 {
 	const auto whole = platform::blob_from_file(test_files_folder().combine_file("cherrys.psd"));
-	const auto path = _temps.next_path(".psd");
+	const auto path = test_temps.next_path(".psd");
 	assert_equal(true, platform::blob_save_to_file({whole.data(), whole.size() / 2}, path), "cut short");
 
 	files ff;
@@ -3532,7 +3616,7 @@ static void should_save_a_turned_photo_as_a_turned_jxl()
 
 	for (const auto max_side : {0, 160})
 	{
-		const auto save_path = _temps.next_path(".jxl");
+		const auto save_path = test_temps.next_path(".jxl");
 		const auto edits = max_side > 0 ? image_edits(max_side) : image_edits();
 		const auto result = ff.update(load_path, save_path, {}, edits, {}, false, {});
 		const auto what = max_side > 0 ? "resized"s : "converted"s;
@@ -3553,13 +3637,86 @@ static void should_save_a_turned_photo_as_a_turned_jxl()
 	}
 }
 
+// A phone stores a portrait HEIC as it was taken, with the item's own rotation and an EXIF orientation that
+// describes the same turn. The decoder applies the rotation, so every copy made from it is written upright,
+// in every format - the EXIF it carries over says so, and so do a JPEG XL's codestream and an AVIF's rotation -
+// and is not turned again by whatever reads it.
+static void should_convert_a_turned_heif_upright()
+{
+	const auto load_path = test_files_folder().combine("excluded1").combine_file("melnik-rotated.heic");
+
+	files ff;
+	const auto source = ff_scan_file(ff, load_path);
+	assert_equal(true, !source.metadata.exif.empty() && source.height > source.width,
+	             "the fixture is a portrait carrying EXIF");
+
+	for (const auto* const ext : {".jpg", ".webp", ".jxl", ".avif"})
+	{
+		for (const auto max_side : {0, 640})
+		{
+			const auto save_path = test_temps.next_path(ext);
+			const auto edits = max_side > 0 ? image_edits(max_side) : image_edits();
+			const auto result = ff.update(load_path, save_path, {}, edits, {}, false, {});
+			const auto what = std::format("{}{}", ext, max_side > 0 ? " resized" : "");
+			assert_equal(true, result.success(), std::format("{} written ({})", what, result.format_error()));
+
+			const auto saved = ff_scan_file(ff, save_path);
+			assert_equal(static_cast<int>(core::orientation::top_left), static_cast<int>(saved.orientation),
+			             what + " stands upright");
+			assert_equal(true, saved.height > saved.width, what + " stored as the portrait it is");
+
+			const auto loaded = ff.load(save_path, false);
+			assert_equal(true, loaded.success && loaded.dimensions().cy > loaded.dimensions().cx,
+			             what + " decodes as a portrait");
+		}
+	}
+}
+
+// Rotate turns a HEIF by its image's rotation and a JPEG XL by its codestream's orientation, as a JPEG's EXIF keeps
+// one, rather than encoding its picture again: the file grows by a few bytes, or by the packet the orientation is
+// written into where it had none, and shows turned clockwise - a HEIF but for the rounding of chroma libheif takes to
+// RGB after turning it. Turned back, it shows as it did.
+static void should_turn_a_heif_and_a_jxl_where_they_keep_a_turn()
+{
+	for (const auto* const name : {"melnik.heic", "hato.profile0.10bpc.yuv420.avif", "zoltan-tasi.jxl"})
+	{
+		const auto fixture = test_files_folder().combine_file(name);
+		const auto path = test_temps.next_path(fixture.extension());
+		platform::copy_file(fixture, path, false, false);
+
+		files ff;
+		const auto before = ff_shown_picture(ff, path);
+		const auto size_before = platform::file_attributes(path).size;
+
+		const auto clockwise = ff_turn(ff, path, simple_transform::rot_90);
+		assert_equal(true, clockwise.success(), std::format("{} turned ({})", name, clockwise.format_error()));
+		const auto size_after = platform::file_attributes(path).size;
+		assert_equal(true, size_after >= size_before && size_after - size_before < 4096,
+		             std::format("{} not encoded again ({} bytes, was {})", name, size_after, size_before));
+
+		const auto expected = before->transform(simple_transform::rot_270);
+		const auto after = ff_shown_picture(ff, path);
+		assert_equal(true, expected->dimensions() == after->dimensions(), std::format("{} shows turned", name));
+		const auto mean = mean_channel_difference(expected, after);
+		assert_equal(true, mean < 2.0, std::format("{} shows its picture turned clockwise ({})", name, mean));
+
+		const auto back = ff_turn(ff, path, simple_transform::rot_270);
+		assert_equal(true, back.success(), std::format("{} turned back ({})", name, back.format_error()));
+		const auto upright = ff_shown_picture(ff, path);
+		assert_equal(true,
+		             before->dimensions() == upright->dimensions() &&
+		                 before->pixel_difference(upright) == core::pixel_difference_result::equal,
+		             std::format("{} shows as it did, turned back", name));
+	}
+}
+
 // Convert to JPEG XL without a size limit moves a JPEG XL as it is: there is no metadata to write, and
 // writing its packet again would only uncompress its boxes.
 static void should_copy_an_unchanged_jxl_as_it_is()
 {
-	const auto source = _temps.next_path(".jxl");
+	const auto source = test_temps.next_path(".jxl");
 	platform::copy_file(test_files_folder().combine_file("zoltan-tasi.jxl"), source, false, false);
-	const auto destination = _temps.next_path(".jxl");
+	const auto destination = test_temps.next_path(".jxl");
 
 	files ff;
 	const auto result = ff.update(source, destination, {}, {}, {}, false, {});
@@ -3571,17 +3728,20 @@ static void should_copy_an_unchanged_jxl_as_it_is()
 }
 
 // The editor and Convert map the user's JPEG XL settings onto file_encode_params: lossless keeps every
-// pixel, and the quality decides the size.
+// pixel, and the quality decides the size. The source is a PNG of a photo: a JPEG is repacked whole where
+// lossless is asked for.
 static void should_honor_jxl_save_settings()
 {
 	files ff;
-	const auto load_path = test_files_folder().combine_file("Test.jpg");
+	const auto load_path = test_temps.next_path(".png");
+	const auto saved_png = ff.update(test_files_folder().combine_file("Test.jpg"), load_path, {}, {}, {}, false, {});
+	assert_equal(true, saved_png.success(), std::format("source saved ({})", saved_png.format_error()));
 	const auto source = ff.load(load_path, false);
 	assert_equal(false, source.is_empty(), "source loaded");
 
 	const auto save = [&](const bool lossless, const int quality)
 	{
-		const auto path = _temps.next_path(".jxl");
+		const auto path = test_temps.next_path(".jxl");
 		file_encode_params params;
 		params.jxl_lossless = lossless;
 		params.jxl_quality = quality;
@@ -3618,9 +3778,162 @@ static void should_honor_jxl_save_settings()
 	assert_equal(0, differing, "lossless pixels match the source's decode");
 }
 
+// A JPEG XL resized or edited in place is written as a JPEG XL again, and keeps how it was compressed whatever the
+// save settings say, as a WebP does: a lossless one stays lossless. A conversion is what the settings are for.
+static void should_keep_a_jxl_compressed_as_it_was()
+{
+	files ff;
+	const auto source = test_temps.next_path(".png");
+	const auto made_source = ff.update(test_files_folder().combine_file("Test.jpg"), source, {}, image_edits(256), {},
+	                                   false, {});
+	assert_equal(true, made_source.success(), std::format("source made ({})", made_source.format_error()));
+
+	const auto compression = [](const core::file_path path)
+	{
+		const auto bytes = platform::blob_from_file(path);
+		return libfiles::read_jxl_compression({bytes.data(), bytes.size()});
+	};
+
+	file_encode_params defaults;
+	assert_equal(false, defaults.jxl_lossless, "the defaults are lossy");
+	file_encode_params exact;
+	exact.jxl_lossless = true;
+	const auto path = test_temps.next_path(".jxl");
+	assert_equal(true, ff.update(source, path, {}, {}, exact, false, {}).success(), "a lossless JPEG XL made");
+
+	const auto resized = ff.update(path, path, {}, image_edits(128), defaults, false, {});
+	assert_equal(true, resized.success(), std::format("resized in place ({})", resized.format_error()));
+	const auto kept = compression(path);
+	assert_equal(true, kept && kept->lossless, "stays lossless");
+
+	file_encode_params convert = defaults;
+	convert.reencode = true;
+	const auto converted = test_temps.next_path(".jxl");
+	assert_equal(true, ff.update(path, converted, {}, {}, convert, false, {}).success(), "converted");
+	const auto as_asked = compression(converted);
+	assert_equal(true, as_asked && !as_asked->lossless, "a conversion is written as the settings ask");
+}
+
+// A HEIF reader turns an AVIF by its image's rotation and mirror, whatever its EXIF says. A photo stored turned is
+// written as it is stored, with the rotation and mirror its EXIF orientation gives - after a resize too, whose fresh
+// canvas carries no orientation of its own - and an EXIF that agrees, so it shows as the photo does.
+static void should_save_a_turned_photo_as_a_turned_avif()
+{
+	const auto load_path = test_files_folder().combine_file("exif-rotated.jpg");
+
+	files ff;
+	const auto source = ff_scan_file(ff, load_path);
+	assert_equal(true, source.orientation != core::orientation::top_left, "the fixture is stored turned");
+	const auto shown = ff_shown_picture(ff, load_path);
+
+	for (const auto max_side : {0, 160})
+	{
+		const auto save_path = test_temps.next_path(".avif");
+		const auto edits = max_side > 0 ? image_edits(max_side) : image_edits();
+		const auto result = ff.update(load_path, save_path, {}, edits, {}, false, {});
+		const auto what = max_side > 0 ? "resized"s : "converted"s;
+		assert_equal(true, result.success(), std::format("{} ({})", what, result.format_error()));
+
+		const auto saved = ff_scan_file(ff, save_path);
+		assert_equal(true, saved.format == libfiles::image_format::heif, what + " written as AVIF");
+		assert_equal(true, saved.orientation_applied, what + " turned by its image's rotation and mirror");
+
+		// The scan reports a picture its container turns as upright, so the EXIF item is read for its own.
+		std::span<const uint8_t> exif(saved.metadata.exif);
+		if (is_exif_signature(exif)) exif = exif.subspan(exif_signature.size());
+		const auto stored = libfiles::summarize_exif(exif).orientation;
+		assert_equal(static_cast<int>(source.orientation), stored ? static_cast<int>(*stored) : 0,
+		             what + " EXIF agrees");
+
+		const auto picture = ff_shown_picture(ff, save_path);
+		assert_equal(shown->width() > shown->height(), picture->width() > picture->height(),
+		             what + " shows as the photo does");
+
+		if (max_side == 0)
+		{
+			const auto mean = mean_channel_difference(shown, picture);
+			assert_equal(true, mean < 4.0, std::format("{} shows the photo's picture ({})", what, mean));
+		}
+	}
+}
+
+// The editor and Convert map the user's AVIF settings onto file_encode_params: lossless keeps every pixel, and the
+// quality decides the size.
+static void should_honor_avif_save_settings()
+{
+	files ff;
+	const auto load_path = test_temps.next_path(".png");
+	const auto saved_png = ff.update(test_files_folder().combine_file("Test.jpg"), load_path, {}, image_edits(512), {},
+	                                 false, {});
+	assert_equal(true, saved_png.success(), std::format("source saved ({})", saved_png.format_error()));
+	const auto source = ff.load(load_path, false);
+	assert_equal(false, source.is_empty(), "source loaded");
+
+	const auto save = [&](const bool lossless, const int quality)
+	{
+		const auto path = test_temps.next_path(".avif");
+		file_encode_params params;
+		params.avif_lossless = lossless;
+		params.avif_quality = quality;
+		const auto result = ff.update(load_path, path, {}, {}, params, false, {});
+		assert_equal(true, result.success(), std::format("saved ({})", result.format_error()));
+		return path;
+	};
+
+	const auto lossless_path = save(true, 75);
+	const auto low_path = save(false, 10);
+	const auto high_path = save(false, 95);
+
+	const auto low_size = platform::file_attributes(low_path).size;
+	const auto high_size = platform::file_attributes(high_path).size;
+	const auto lossless_size = platform::file_attributes(lossless_path).size;
+	assert_equal(true, low_size > 0 && high_size > low_size, "a higher quality keeps more");
+	assert_equal(true, lossless_size > high_size, "lossless keeps the most");
+
+	const auto expected = source.to_surface();
+	const auto lossless = ff.load(lossless_path, false).to_surface();
+	assert_equal(true, is_valid(expected) && is_valid(lossless), "both decoded");
+	assert_equal(true, expected->dimensions() == lossless->dimensions(), "lossless dimensions");
+	assert_equal(0.0, mean_channel_difference(expected, lossless), "lossless pixels match the source's decode");
+}
+
+// An AVIF resized or edited in place is written as an AVIF again and keeps how it was compressed, as a JPEG XL does: a
+// lossless one, coded as RGB itself, stays lossless whatever the save settings say. A conversion is what they are for.
+static void should_keep_an_avif_compressed_as_it_was()
+{
+	files ff;
+	const auto source = test_temps.next_path(".png");
+	const auto made_source = ff.update(test_files_folder().combine_file("Test.jpg"), source, {}, image_edits(256), {},
+	                                   false, {});
+	assert_equal(true, made_source.success(), std::format("source made ({})", made_source.format_error()));
+
+	const auto coded_as_rgb = [&ff](const core::file_path path)
+	{
+		return ff_scan_file(ff, path).picture.chroma == libfiles::chroma_format::rgb;
+	};
+
+	file_encode_params defaults;
+	assert_equal(false, defaults.avif_lossless, "the defaults are lossy");
+	file_encode_params exact;
+	exact.avif_lossless = true;
+	const auto path = test_temps.next_path(".avif");
+	assert_equal(true, ff.update(source, path, {}, {}, exact, false, {}).success(), "a lossless AVIF made");
+	assert_equal(true, coded_as_rgb(path), "a lossless AVIF is coded as RGB");
+
+	const auto resized = ff.update(path, path, {}, image_edits(128), defaults, false, {});
+	assert_equal(true, resized.success(), std::format("resized in place ({})", resized.format_error()));
+	assert_equal(true, coded_as_rgb(path), "stays lossless");
+
+	file_encode_params convert = defaults;
+	convert.reencode = true;
+	const auto converted = test_temps.next_path(".avif");
+	assert_equal(true, ff.update(path, converted, {}, {}, convert, false, {}).success(), "converted");
+	assert_equal(false, coded_as_rgb(converted), "a conversion is written as the settings ask");
+}
+
 static void should_not_rewrite_unchanged_file()
 {
-	const auto path = _temps.next_path(".jpg");
+	const auto path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, false);
 	const auto modified_before = platform::file_attributes(path).modified;
 
@@ -3636,7 +3949,7 @@ static void should_not_rewrite_unchanged_file()
 // again to draw what was just saved.
 static void should_return_written_image()
 {
-	const auto path = _temps.next_path(".jpg");
+	const auto path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, false);
 
 	files ff;
@@ -3671,8 +3984,7 @@ static void should_return_written_image()
 	more_edits.rating = 4;
 	const auto image_only_result = ff.update(path, more_edits, {}, {}, false, {}, image_only);
 
-	assert_equal(true, image_only_result.success(),
-	             std::format("rating saved ({})", image_only_result.format_error()));
+	assert_equal(true, image_only_result.success(), std::format("rating saved ({})", image_only_result.format_error()));
 	assert_equal(true, image_only_result.loaded.success, "want_image alone returns the written image");
 	assert_equal(before.i->width(), image_only_result.loaded.i->width(), "image-only written width");
 	assert_equal(before.i->height(), image_only_result.loaded.i->height(), "image-only written height");
@@ -3682,7 +3994,7 @@ static void should_return_written_image()
 // bytes; reading it back is what proves the handle refers to the swapped-in file and not the stage.
 static void should_hand_over_written_handle()
 {
-	const auto path = _temps.next_path(".mp3");
+	const auto path = test_temps.next_path(".mp3");
 	platform::copy_file(test_files_folder().combine_file("Colorblind.mp3"), path, false, false);
 
 	files ff;
@@ -3739,6 +4051,7 @@ static void should_keep_file_handles_detached_until_last_operation()
 // Decoder robustness
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+#ifndef _DEBUG
 static bool write_binary_file(const core::file_path path, const uint8_t* const data, const int size)
 {
 	auto f = open_file(path, platform::file_open_mode::create);
@@ -3751,17 +4064,17 @@ static bool write_binary_file(const core::file_path path, const uint8_t* const d
 	const auto written = f->write(data, size);
 	f.reset();
 
-	return written == static_cast<uint64_t>(size) && platform::exists(path) && platform::file_attributes(path).size ==
-		static_cast<uint64_t>(size);
+	return written == static_cast<uint64_t>(size) && platform::exists(path) &&
+	       platform::file_attributes(path).size == static_cast<uint64_t>(size);
 }
+#endif
 
 static file_scan_result scan_recorded_jpeg(files& ff, const core::blob& prefix, const uint64_t reported_size,
                                            const bool load_thumbnail, std::shared_ptr<recording_file>& recorded)
 {
-	const auto path = _temps.next_path(".jpg");
+	const auto path = test_temps.next_path(".jpg");
 	recorded = std::make_shared<recording_file>(path, prefix.clone(), reported_size);
-	return ff.scan_file(recorded, path, load_thumbnail, files::file_type_from_name(path), {},
-	                    {64, 64});
+	return ff.scan_file(recorded, path, load_thumbnail, files::file_type_from_name(path), {}, {64, 64});
 }
 
 static core::blob blob_slice(const core::blob& bytes, const size_t offset, const size_t len)
@@ -3792,7 +4105,8 @@ static void should_apply_encoded_ceiling_to_bitmap_thumbnail_scans()
 	const auto above_scan = scan_recorded_jpeg(ff, source, static_cast<uint64_t>(core::max_blob_size) + 1u, true,
 	                                           above_thumbnail);
 	assert_equal(true, above_scan.success, "above-ceiling thumbnail scan keeps header metadata");
-	assert_equal(false, is_valid(above_scan.thumbnail_image), "above-ceiling scan does not publish a partial thumbnail");
+	assert_equal(false, is_valid(above_scan.thumbnail_image),
+	             "above-ceiling scan does not publish a partial thumbnail");
 	assert_equal(true, above_thumbnail->max_read < static_cast<uint64_t>(core::max_blob_size),
 	             "above-ceiling scan never reads or allocates the whole file");
 
@@ -3807,8 +4121,8 @@ static void should_apply_encoded_ceiling_to_bitmap_thumbnail_scans()
 
 static void should_reset_sliding_reader_when_reopened()
 {
-	const auto a = _temps.next_path(".bin");
-	const auto b = _temps.next_path(".bin");
+	const auto a = test_temps.next_path(".bin");
+	const auto b = test_temps.next_path(".bin");
 	const core::blob bytes_a = {0, 1, 2, 3, 4, 5, 6, 7};
 	const core::blob bytes_b = {20, 21, 22, 23, 24, 25, 26, 27, 28, 29};
 	platform::blob_save_to_file(bytes_a, a);
@@ -3820,7 +4134,8 @@ static void should_reset_sliding_reader_when_reopened()
 
 	assert_equal(true, stream.open(b), "reopen without close");
 	assert_equal(true, blob_slice(bytes_b, 2, 4) == stream.read(2, 4), "reopen discards cached bytes");
-	assert_equal(true, blob_slice(bytes_b, 6, 4) == stream.read(6, 4), "boundary-crossing read comes from reopened file");
+	assert_equal(true, blob_slice(bytes_b, 6, 4) == stream.read(6, 4),
+	             "boundary-crossing read comes from reopened file");
 
 	stream.close();
 	assert_equal(true, stream.open(a), "reopen after close");
@@ -3831,6 +4146,7 @@ static void should_reset_sliding_reader_when_reopened()
 	assert_equal(true, blob_slice(bytes_b, 0, 3) == stream.read(0, 3), "failed open left no stale cached state");
 }
 
+#ifndef _DEBUG
 static void should_not_crash(const std::string_view name)
 {
 	const auto path = test_files_folder().combine_file(name);
@@ -3873,7 +4189,7 @@ static void should_not_crash(const std::string_view name)
 
 	for (auto i = 0u; i < truncation_steps && !platform::is_closing; i++)
 	{
-		const auto save_path = _temps.next_path(ext);
+		const auto save_path = test_temps.next_path(ext);
 		const auto byte_count = core::mul_div(static_cast<int>(size), i, truncation_steps);
 		assert_equal(true, write_binary_file(save_path, data, byte_count),
 		             std::format("{} truncation fixture {} was written", name, i));
@@ -3889,11 +4205,11 @@ static void should_not_crash(const std::string_view name)
 
 	assert_equal(static_cast<int>(size), static_cast<int>(corrupted),
 	             std::format("{} every byte was corrupted and scanned", name));
-	assert_equal(truncation_steps, static_cast<int>(truncated),
-	             std::format("{} every truncation was scanned", name));
+	assert_equal(truncation_steps, static_cast<int>(truncated), std::format("{} every truncation was scanned", name));
 	assert_equal(true, std::equal(original.begin(), original.end(), blob.begin(), blob.end()),
 	             std::format("{} bytes restored after the sweep", name));
 }
+#endif
 
 // Every still libfiles reads, scanned two ways that must agree: from memory, where libfiles borrows the
 // bytes, and through a stream, where it reads by block-aligned window. The fixtures and any folders named
@@ -3907,9 +4223,8 @@ namespace scan_parity
 {
 	std::string describe(const file_scan_result& r)
 	{
-		auto s = std::format("format {} success {} size {}x{} pixels '{}' orientation {}\n",
-		                     static_cast<int>(r.format), r.success, r.width, r.height, r.pixel_format.sv(),
-		                     static_cast<int>(r.orientation));
+		auto s = std::format("format {} success {} size {}x{} pixels '{}' orientation {}\n", static_cast<int>(r.format),
+		                     r.success, r.width, r.height, r.pixel_format.sv(), static_cast<int>(r.orientation));
 
 		const auto block = [&s](const std::string_view name, const std::span<const uint8_t> b)
 		{
@@ -3992,19 +4307,21 @@ namespace scan_parity
 		case libfiles::image_format::bmp:
 		case libfiles::image_format::tiff:
 		case libfiles::image_format::heif:
-		case libfiles::image_format::jxl:
-			return true;
-		default:
-			return false;
+		case libfiles::image_format::jxl: return true;
+		default: return false;
 		}
 	}
 
 	// A folder's files and then its folders', each in the order NTFS lists ASCII names - letters folded to
 	// upper case, then by byte - whatever order the file system returns them in. A record digests outcomes
 	// in this order; the records were taken on Windows, and an ext4 checkout lists a folder in its own.
+	// A file larger than a blob holds is left out: every sweep reads its files whole, and a corpus of camera
+	// raws has some that blob_from_file refuses.
 	void add_folder(const core::folder_path folder, std::vector<core::file_path>& files)
 	{
 		auto contents = platform::iterate_file_items(folder, false);
+		std::erase_if(contents.files,
+		              [](const auto& f) { return f.attributes.size > static_cast<uint64_t>(core::max_blob_size); });
 		const auto ntfs_before = [](const std::string_view a, const std::string_view b)
 		{
 			const auto upper = [](const char c)
@@ -4037,11 +4354,10 @@ namespace scan_parity
 
 	std::vector<size_t> cut_points(const size_t size)
 	{
-		std::vector<size_t> cuts = {
-			16, 20, 24, 32, 48, 64, 100, 128, 200, 256, 300, 512, 700, 1000, 1024, 1500, 2048, 3000, 4096, 6000,
-			8192, 12000, 16384, 32768, 65536, 100000, 131072, 262144, size / 2, size - 13, size - 12, size - 4,
-			size - 1
-		};
+		std::vector<size_t> cuts = {16,     20,       24,        32,        48,       64,      100,   128,    200,
+		                            256,    300,      512,       700,       1000,     1024,    1500,  2048,   3000,
+		                            4096,   6000,     8192,      12000,     16384,    32768,   65536, 100000, 131072,
+		                            262144, size / 2, size - 13, size - 12, size - 4, size - 1};
 
 		std::erase_if(cuts, [size](const size_t cut) { return cut < 16 || cut >= size; });
 		std::ranges::sort(cuts);
@@ -4067,13 +4383,9 @@ class streamed_memory final : public read_stream
 	core::cspan _data;
 
 public:
-	explicit streamed_memory(const core::cspan data) : _data(data)
-	{
-		_file_size = data.size;
-	}
+	explicit streamed_memory(const core::cspan data) : _data(data) { _file_size = data.size; }
 
-	template <typename T>
-	T peek(const uint64_t pos)
+	template <typename T> T peek(const uint64_t pos)
 	{
 		check_range(pos, sizeof(T));
 		T result;
@@ -4099,10 +4411,7 @@ public:
 		return {_data.data + pos, _data.data + pos + len};
 	}
 
-	core::blob read_all() override
-	{
-		return {_data.begin(), _data.end()};
-	}
+	core::blob read_all() override { return {_data.begin(), _data.end()}; }
 };
 
 static void should_scan_stills_alike_from_memory_and_streams()
@@ -4132,16 +4441,16 @@ static void should_scan_stills_alike_from_memory_and_streams()
 
 		if (expected != actual)
 		{
-			differences.push_back(std::format("{} ({}{}): {}", label,
-			                                  intent == libfiles::scan_intent::inspect ? "inspect" : "index",
-			                                  thumbnail ? ", thumbnail" : "",
-			                                  scan_parity::first_difference(expected, actual)));
+			differences.push_back(
+				std::format("{} ({}{}): {}", label, intent == libfiles::scan_intent::inspect ? "inspect" : "index",
+			                thumbnail ? ", thumbnail" : "", scan_parity::first_difference(expected, actual)));
 		}
 	};
 
 	const auto compare_bytes = [&](const std::string& label, const core::cspan data, const bool thumbnails)
 	{
-		if (data.size < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(data))) return;
+		if (data.size < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(data)))
+			return;
 
 		for (const auto intent : {libfiles::scan_intent::index, libfiles::scan_intent::inspect})
 		{
@@ -4158,7 +4467,8 @@ static void should_scan_stills_alike_from_memory_and_streams()
 	for (const auto& path : corpus)
 	{
 		auto bytes = platform::blob_from_file(path);
-		if (bytes.size() < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(bytes))) continue;
+		if (bytes.size() < sizeof(pack128) || !scan_parity::is_libfiles_format(libfiles::detect_image_format(bytes)))
+			continue;
 
 		++files_scanned;
 		const auto name = path.str();
@@ -4196,8 +4506,8 @@ static void should_scan_stills_alike_from_memory_and_streams()
 		}
 	}
 
-	core::log(__FUNCTION__, std::format("{} files, {} comparisons, {} differences", files_scanned, comparisons,
-	                                  differences.size()));
+	core::log(__FUNCTION__,
+	          std::format("{} files, {} comparisons, {} differences", files_scanned, comparisons, differences.size()));
 
 	for (size_t i = 0; i < std::min<size_t>(differences.size(), 2000); ++i) core::log(__FUNCTION__, differences[i]);
 
@@ -4275,16 +4585,18 @@ static void should_use_folder_art_for_media_without_its_own()
 	files ff;
 	const auto scan_art = [&ff](const core::file_path path)
 	{
-		return ff.scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, libfiles::scan_intent::index,
-		                    false).cover_art;
+		return ff
+		    .scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, libfiles::scan_intent::index,
+		               false)
+		    .cover_art;
 	};
 
-	const auto bare = _temps.next_folder("no-folder-art");
+	const auto bare = test_temps.next_folder("no-folder-art");
 	const auto bare_track = bare.combine_file("Track.mp3");
 	platform::copy_file(test_files_folder().combine_file("Games Without Frontiers.mp3"), bare_track, false, false);
 	assert_equal(true, scan_art(bare_track) == nullptr, "the fixture carries no art of its own");
 
-	const auto album = _temps.next_folder("folder-art");
+	const auto album = test_temps.next_folder("folder-art");
 	const auto track = album.combine_file("Track.mp3");
 	platform::copy_file(test_files_folder().combine_file("Games Without Frontiers.mp3"), track, false, false);
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), album.combine_file("Folder.jpg"), false, false);
@@ -4292,7 +4604,7 @@ static void should_use_folder_art_for_media_without_its_own()
 
 	// A folder's own art is a film's only in a folder named for that film. Beside home videos, Explorer's folder.jpg
 	// would make every one of them look the same.
-	const auto home = _temps.next_folder("home-videos");
+	const auto home = test_temps.next_folder("home-videos");
 	const auto clip = home.combine_file("Birthday party.mp4");
 	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), clip, false, false);
 	assert_equal(true, scan_art(clip) == nullptr, "the video fixture carries no art of its own");
@@ -4302,33 +4614,33 @@ static void should_use_folder_art_for_media_without_its_own()
 	                    false, false);
 	assert_equal(true, scan_art(clip) != nullptr, "but does take a poster named for it");
 
-	const auto film_folder = _temps.next_folder("film-art").combine("Dune (2021)");
+	const auto film_folder = test_temps.next_folder("film-art").combine("Dune (2021)");
 	platform::create_folder(film_folder);
 	const auto film = film_folder.combine_file("Dune.2021.mp4");
 	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), film, false, false);
-	platform::copy_file(test_files_folder().combine_file("Test.jpg"), film_folder.combine_file("poster.jpg"), false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), film_folder.combine_file("poster.jpg"), false,
+	                    false);
 	assert_equal(true, scan_art(film) != nullptr, "a film takes the poster of a folder named for it");
 }
 
 static void should_read_media_manager_nfo_files()
 {
-	const auto film = parse_nfo(
-		"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n"
-		"<!-- written by Kodi -->\n"
-		"<movie>\n"
-		"  <title>Fast &amp; Furious</title>\n"
-		"  <originaltitle>Fast &amp; Furious</originaltitle>\n"
-		"  <plot><![CDATA[Brian & Dom <return>.]]></plot>\n"
-		"  <genre>Action</genre>\n"
-		"  <genre>Crime</genre>\n"
-		"  <studio>Universal</studio>\n"
-		"  <year>2009</year>\n"
-		"  <premiered>2009-04-03</premiered>\n"
-		"  <uniqueid type=\"imdb\" default=\"true\">tt1013752</uniqueid>\n"
-		"  <thumb aspect=\"poster\"/>\n"
-		"  <actor><name>Vin Diesel</name><role>Dom</role></actor>\n"
-		"  <ratings><rating name=\"imdb\"><value>6.5</value></rating></ratings>\n"
-		"</movie>\n");
+	const auto film = parse_nfo("\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n"
+	                            "<!-- written by Kodi -->\n"
+	                            "<movie>\n"
+	                            "  <title>Fast &amp; Furious</title>\n"
+	                            "  <originaltitle>Fast &amp; Furious</originaltitle>\n"
+	                            "  <plot><![CDATA[Brian & Dom <return>.]]></plot>\n"
+	                            "  <genre>Action</genre>\n"
+	                            "  <genre>Crime</genre>\n"
+	                            "  <studio>Universal</studio>\n"
+	                            "  <year>2009</year>\n"
+	                            "  <premiered>2009-04-03</premiered>\n"
+	                            "  <uniqueid type=\"imdb\" default=\"true\">tt1013752</uniqueid>\n"
+	                            "  <thumb aspect=\"poster\"/>\n"
+	                            "  <actor><name>Vin Diesel</name><role>Dom</role></actor>\n"
+	                            "  <ratings><rating name=\"imdb\"><value>6.5</value></rating></ratings>\n"
+	                            "</movie>\n");
 
 	assert_equal(true, film.type == nfo_details::kind::film, "a film");
 	assert_equal("Fast & Furious", film.title, "its title, references decoded");
@@ -4356,7 +4668,8 @@ static void should_read_media_manager_nfo_files()
 	const auto show = parse_nfo("<tvshow><title>Severance</title><year>2022</year></tvshow>");
 	assert_equal(true, show.type == nfo_details::kind::show && show.show == "Severance", "a show names itself");
 
-	const auto scene = parse_nfo("   <<< GROUP PRESENTS >>>\r\n\r\n  Movie.2019.1080p.BluRay.x264\r\n  Size....: 8 GB\r\n");
+	const auto scene = parse_nfo(
+		"   <<< GROUP PRESENTS >>>\r\n\r\n  Movie.2019.1080p.BluRay.x264\r\n  Size....: 8 GB\r\n");
 	assert_equal(true, scene.is_empty(), "a release's own .nfo is no media manager's");
 	assert_equal(true, parse_nfo("").is_empty(), "nothing");
 	assert_equal(true, parse_nfo("<movie><title>Unclosed").type == nfo_details::kind::film, "a document cut short");
@@ -4419,7 +4732,7 @@ static void should_set_nfo_details_over_container_tags()
 
 static void should_find_the_nfo_files_about_a_video()
 {
-	const auto root = _temps.next_folder("nfo");
+	const auto root = test_temps.next_folder("nfo");
 	const auto write = [](const core::folder_path folder, const std::string_view name, const std::string_view text)
 	{
 		for (const auto f : {folder.parent().parent(), folder.parent(), folder})
@@ -4451,7 +4764,8 @@ static void should_find_the_nfo_files_about_a_video()
 	write(show, "tvshow.nfo", "<tvshow><title>Severance</title></tvshow>");
 	write(season, "sev.s01e01.mkv", "video");
 	write(season, "sev.s01e02.mkv", "video");
-	write(season, "sev.s01e02.nfo", "<episodedetails><title>Half Loop</title><season>1</season><episode>2</episode></episodedetails>");
+	write(season, "sev.s01e02.nfo",
+	      "<episodedetails><title>Half Loop</title><season>1</season><episode>2</episode></episodedetails>");
 
 	const auto first = read_video_nfo(season.combine_file("sev.s01e01.mkv"));
 	assert_equal(true, first.type == nfo_details::kind::episode, "an episode with no .nfo of its own");
@@ -4470,7 +4784,7 @@ static void should_read_nfo_files_only_when_asked()
 	const auto saved = setting.read_nfo;
 	const core::scope_exit restore([saved] { setting.read_nfo = saved; });
 
-	const auto folder = _temps.next_folder("nfo-scan");
+	const auto folder = test_temps.next_folder("nfo-scan");
 	const auto video = folder.combine_file("clip.mp4");
 	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), video, false, false);
 	write_test_file(folder.combine_file("clip.nfo"),
@@ -4479,7 +4793,9 @@ static void should_read_nfo_files_only_when_asked()
 	files ff;
 	const auto scan = [&ff, video]
 	{
-		return ff.scan_file(video, false, files::file_type_from_name(video), {}, {}, libfiles::scan_intent::index, false).to_props();
+		return ff
+		    .scan_file(video, false, files::file_type_from_name(video), {}, {}, libfiles::scan_intent::index, false)
+		    .to_props();
 	};
 
 	setting.read_nfo = false;
@@ -4508,8 +4824,8 @@ static void should_read_media_with_libfiles()
 	{
 		if (from_libfiles != from_ffmpeg)
 		{
-			differences.push_back(std::format("{}: {} libfiles '{}' FFmpeg '{}'", name, field, from_libfiles,
-			                                  from_ffmpeg));
+			differences.push_back(
+				std::format("{}: {} libfiles '{}' FFmpeg '{}'", name, field, from_libfiles, from_ffmpeg));
 		}
 	};
 
@@ -4553,7 +4869,8 @@ static void should_read_media_with_libfiles()
 		}
 		differ(name, "width", from_libfiles.width, from_ffmpeg.width);
 		differ(name, "height", from_libfiles.height, from_ffmpeg.height);
-		differ(name, "orientation", static_cast<int>(from_libfiles.orientation), static_cast<int>(from_ffmpeg.orientation));
+		differ(name, "orientation", static_cast<int>(from_libfiles.orientation),
+		       static_cast<int>(from_ffmpeg.orientation));
 		differ(name, "audio codec", from_libfiles.audio_codec.sv(), from_ffmpeg.audio_codec.sv());
 		differ(name, "sample rate", from_libfiles.audio_sample_rate, from_ffmpeg.audio_sample_rate);
 		differ(name, "channels", from_libfiles.audio_channels, from_ffmpeg.audio_channels);
@@ -4563,8 +4880,8 @@ static void should_read_media_with_libfiles()
 		// Durations are whole seconds in the index, and the two may round a fraction either way.
 		if (std::abs(from_libfiles.duration - from_ffmpeg.duration) > 1.0)
 		{
-			differences.push_back(std::format("{}: duration libfiles {} FFmpeg {}", name, from_libfiles.duration,
-			                                  from_ffmpeg.duration));
+			differences.push_back(
+				std::format("{}: duration libfiles {} FFmpeg {}", name, from_libfiles.duration, from_ffmpeg.duration));
 		}
 
 		for (const auto cut : scan_parity::cut_points(bytes.size()))
@@ -4612,8 +4929,7 @@ namespace psd_sweep
 		bool operator==(const outcome&) const = default;
 	};
 
-	template <typename Load>
-	outcome run(Load&& load, const core::cspan bytes)
+	template <typename Load> outcome run(Load&& load, const core::cspan bytes)
 	{
 		outcome o;
 		load_diagnostic diagnostic;
@@ -4675,7 +4991,7 @@ namespace psd_sweep
 			while (x + literal < n && literal < 128)
 			{
 				if (x + literal + 2 < n && row[x + literal] == row[x + literal + 1] &&
-					row[x + literal] == row[x + literal + 2])
+				    row[x + literal] == row[x + literal + 2])
 					break;
 				++literal;
 			}
@@ -4687,12 +5003,14 @@ namespace psd_sweep
 	}
 
 	core::blob make_psd(const uint16_t mode, const uint16_t depth, const uint16_t channels, const uint32_t width,
-	                  const uint32_t height, const bool rle, const uint32_t table_length, uint32_t& seed)
+	                    const uint32_t height, const bool rle, const uint32_t table_length, uint32_t& seed)
 	{
 		core::blob b;
+		// clang-format off
 		const auto u16 = [&b](const uint32_t v) { b.push_back(static_cast<uint8_t>(v >> 8)); b.push_back(static_cast<uint8_t>(v)); };
 		const auto u32 = [&u16](const uint32_t v) { u16(v >> 16); u16(v & 0xFFFF); };
 		const auto next = [&seed] { seed = seed * 1664525u + 1013904223u; return static_cast<uint8_t>(seed >> 24); };
+		// clang-format on
 
 		u32(0x38425053);
 		u16(1);
@@ -4778,10 +5096,10 @@ static void should_decode_psds_as_load_psd_did()
 
 	uint32_t seed = 12345;
 
-	for (const auto& s : {synthetic{0, 1, 1, 0}, synthetic{1, 8, 1, 0}, synthetic{2, 8, 1, 768}, synthetic{2, 8, 1, 300},
-	                      synthetic{3, 8, 3, 0}, synthetic{3, 8, 4, 0}, synthetic{3, 8, 5, 0}, synthetic{4, 8, 4, 0},
-	                      synthetic{4, 8, 5, 0}, synthetic{7, 8, 2, 0}, synthetic{8, 8, 1, 40}, synthetic{9, 8, 3, 0},
-	                      synthetic{9, 8, 4, 0}, synthetic{5, 8, 3, 0}})
+	for (const auto& s : {synthetic{0, 1, 1, 0}, synthetic{1, 8, 1, 0}, synthetic{2, 8, 1, 768},
+	                      synthetic{2, 8, 1, 300}, synthetic{3, 8, 3, 0}, synthetic{3, 8, 4, 0}, synthetic{3, 8, 5, 0},
+	                      synthetic{4, 8, 4, 0}, synthetic{4, 8, 5, 0}, synthetic{7, 8, 2, 0}, synthetic{8, 8, 1, 40},
+	                      synthetic{9, 8, 3, 0}, synthetic{9, 8, 4, 0}, synthetic{5, 8, 3, 0}})
 	{
 		for (const auto rle : {false, true})
 		{
@@ -4845,7 +5163,7 @@ static void should_decode_psds_as_load_psd_did()
 
 	const auto checksum = core::crc32c(record.data(), record.size());
 	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
-	                                  corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
+	                                    corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 1, "the fixtures hold a PSD");
 	assert_equal(true, decoded > 500, "most of what is decoded decodes");
@@ -4956,12 +5274,13 @@ static void should_decode_jpegs_as_jpeg_decoder_x_did()
 
 	using jpeg_sweep::request;
 	const std::vector<request> whole_requests = {
-		{{0, 0}, false, decode_intent::display}, {{0, 0}, true, decode_intent::display},
+		{{0, 0}, false, decode_intent::display},       {{0, 0}, true, decode_intent::display},
 		{{256, 256}, false, decode_intent::thumbnail}, {{256, 256}, true, decode_intent::thumbnail},
-		{{700, 500}, false, decode_intent::display}, {{320, 240}, true, decode_intent::display},
+		{{700, 500}, false, decode_intent::display},   {{320, 240}, true, decode_intent::display},
 	};
 	const std::vector<request> part_requests = {
-		{{256, 256}, false, decode_intent::thumbnail}, {{256, 256}, true, decode_intent::thumbnail},
+		{{256, 256}, false, decode_intent::thumbnail},
+		{{256, 256}, true, decode_intent::thumbnail},
 	};
 
 	files ff;
@@ -5009,8 +5328,9 @@ static void should_decode_jpegs_as_jpeg_decoder_x_did()
 	}
 
 	const auto checksum = core::crc32c(record.data(), record.size());
-	core::log(__FUNCTION__, std::format("{} files ({} recorded), {} decodes, {} decoded; record {:08x} over {} outcomes",
-	                                  corpus.size(), recorded_files, decodes, decoded, checksum, recorded_outcomes));
+	core::log(__FUNCTION__,
+	          std::format("{} files ({} recorded), {} decodes, {} decoded; record {:08x} over {} outcomes",
+	                      corpus.size(), recorded_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, recorded_files >= 10, "the fixtures hold JPEGs");
 	constexpr auto expected = sizeof(size_t) == 8 ? 0xc15126d4u : 0x7344b182u;
@@ -5058,10 +5378,10 @@ namespace exif_sweep
 		                     "iso {} rating {} altitude {} speed {} coordinate {} {} {}",
 		                     static_cast<int>(md.orientation), md.camera_manufacturer.sv(), md.camera_model.sv(),
 		                     md.lens.sv(), md.encoder.sv(), md.artist.sv(), md.copyright_notice.sv(),
-		                     md.description.sv(), md.comment.sv(), md.title.sv(), settled_tags(md.tags), bits(md.f_number),
-		                     bits(md.exposure_time), bits(md.focal_length), md.focal_length_35mm_equivalent,
-		                     md.iso_speed, md.rating, bits(md.altitude), bits(md.gps_speed),
-		                     md.coordinate.is_valid(), bits(md.coordinate.latitude()),
+		                     md.description.sv(), md.comment.sv(), md.title.sv(), settled_tags(md.tags),
+		                     bits(md.f_number), bits(md.exposure_time), bits(md.focal_length),
+		                     md.focal_length_35mm_equivalent, md.iso_speed, md.rating, bits(md.altitude),
+		                     bits(md.gps_speed), md.coordinate.is_valid(), bits(md.coordinate.latitude()),
 		                     bits(md.coordinate.longitude()));
 
 		const auto date = [&s](const std::string_view name, const libfiles::exif_date& d)
@@ -5111,8 +5431,8 @@ static void should_read_exif_as_diffractors_parser_did()
 	{
 		auto info = ff_scan_file(ff, found[i]);
 		if (info.metadata.exif.size() > 16)
-			blocks.push_back({std::string(found[i].name()), core::blob(info.metadata.exif.begin(), info.metadata.exif.end()),
-			                  i < fixtures});
+			blocks.push_back({std::string(found[i].name()),
+			                  core::blob(info.metadata.exif.begin(), info.metadata.exif.end()), i < fixtures});
 	}
 
 	auto readings = 0;
@@ -5170,12 +5490,13 @@ static void should_read_exif_as_diffractors_parser_did()
 
 	const auto checksum = core::crc32c(record.data(), record.size());
 	core::log(__FUNCTION__, std::format("{} blocks ({} recorded), {} readings; record {:08x} over {} outcomes",
-	                                  blocks.size(), recorded_blocks, readings, checksum, recorded_outcomes));
+	                                    blocks.size(), recorded_blocks, readings, checksum, recorded_outcomes));
 
 	// A difference is found by diffing the readings this writes against a run of the code the record was taken from.
 	if (const auto dump = scan_parity::environment_variable("DIFFRACTOR_EXIF_RECORD"); !dump.empty())
 	{
-		platform::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()}, core::file_path(dump));
+		platform::blob_save_to_file({std::bit_cast<const uint8_t*>(record.data()), record.size()},
+		                            core::file_path(dump));
 	}
 
 	assert_equal(true, recorded_blocks >= 10, "the fixtures carry EXIF");
@@ -5208,10 +5529,13 @@ static void should_write_exif_as_libexif_did()
 	const float focals[] = {0.0f, 4.25f, 50.0f, 600.0f, 18.5f, 1e-7f};
 	const uint16_t focal35s[] = {0, 26, 105};
 	const std::string texts[] = {"", "A", "LG", "Sony", "Canon", "NIKON CORPORATION",
-	                             "\xC3\x9cn\xC3\xAF" "c\xC3\xB6" "d\xC3\xA9 \xE2\x9C\x93", std::string(301, 'x'), "odd",
-	                             "  padded  ", std::string(4000, 'y')};
+	                             // NOLINTNEXTLINE(bugprone-suspicious-missing-comma): split to end each hex escape
+	                             "\xC3\x9cn\xC3\xAF"
+	                             "c\xC3\xB6"
+	                             "d\xC3\xA9 \xE2\x9C\x93",
+	                             std::string(301, 'x'), "odd", "  padded  ", std::string(4000, 'y')};
 	const core::orientation orientations[] = {core::orientation::none, core::orientation::top_left,
-	                                        core::orientation::right_top, core::orientation::left_bottom};
+	                                          core::orientation::right_top, core::orientation::left_bottom};
 	const std::string_view date_texts[] = {"", "2024:05:06 07:08:09", "1999:12:31 23:59:59", "2038:01:19 03:14:08"};
 
 	uint32_t state = 0x2545F491u;
@@ -5283,14 +5607,14 @@ static void should_turn_exif_without_rewriting_it()
 	scan_parity::add_folder(test_files_folder(), found);
 	scan_parity::add_folder(test_formats_folder(), found);
 
-	const std::set<std::string> set_by_the_turn = {
-		"exif.0.0112", "exif.1.0112", "exif.2.a002", "exif.2.a003", "exif.4.1001", "exif.4.1002"
-	};
+	const std::set<std::string> set_by_the_turn = {"exif.0.0112", "exif.1.0112", "exif.2.a002",
+	                                               "exif.2.a003", "exif.4.1001", "exif.4.1002"};
 
 	const auto rows = [](const core::blob& b)
 	{
 		std::map<std::string, std::string> m;
-		for (const auto& r : metadata_exif::to_info({b.data(), b.size()})) m[r.id] = r.key + "|" + r.value + "|" + r.shape;
+		for (const auto& r : metadata_exif::to_info({b.data(), b.size()}))
+			m[r.id] = r.key + "|" + r.value + "|" + r.shape;
 		return m;
 	};
 
@@ -5337,9 +5661,11 @@ static void should_turn_exif_without_rewriting_it()
 			assert_equal(text, it == is.end() ? std::string("(absent)") : it->second, std::format("{}: {}", name, id));
 		}
 
-		if (const auto it = is.find("exif.2.a002"); it != is.end() &&
-			(it->second.find("|Long x1,") != std::string::npos || it->second.find("|Short x1,") != std::string::npos))
-			assert_equal(true, it->second.find("|640|") != std::string::npos, std::format("{}: the turned width", name));
+		if (const auto it = is.find("exif.2.a002");
+		    it != is.end() &&
+		    (it->second.find("|Long x1,") != std::string::npos || it->second.find("|Short x1,") != std::string::npos))
+			assert_equal(true, it->second.find("|640|") != std::string::npos,
+			             std::format("{}: the turned width", name));
 
 		if (was.contains("exif.2.927c")) ++with_maker_note;
 	}
@@ -5446,7 +5772,8 @@ static void should_list_exif_as_libexif_did()
 		});
 	}
 
-	core::log(__FUNCTION__, std::format("{} blocks, {} listings, {} rows; record {:08x}", blocks, listings, rows, checksum));
+	core::log(__FUNCTION__,
+	          std::format("{} blocks, {} listings, {} rows; record {:08x}", blocks, listings, rows, checksum));
 
 	assert_equal(true, blocks >= 20, "the fixtures carry EXIF");
 	assert_equal(19354, listings, "the sweep is the one the record was taken over");
@@ -5455,7 +5782,7 @@ static void should_list_exif_as_libexif_did()
 }
 
 // Diffractor's Commodore 64 listing moved to libfiles. Before the switch both listed every file in the
-// fixtures and in DIFFRACTOR_SCAN_PARITY_CORPUS - lib8bit's test images among them - and 540 generated
+// fixtures and in DIFFRACTOR_SCAN_PARITY_CORPUS - lib64's test images among them - and 540 generated
 // disks of every size, tapes, cartridges and programs, some with directories long enough for the
 // listing's cap - whole, cut short and with single bytes corrupted - and agreed on every row's text and
 // screen codes and on every pixel drawn: 53,196 comparisons over 631 files, with no difference. That
@@ -5518,8 +5845,8 @@ namespace commodore_sweep
 		}
 
 		return std::format("{} rows {}x{} text {:08x} codes {:08x} pixels {:08x}", o.text.size(), o.dimensions.cx,
-		                   o.dimensions.cy, core::crc32c(text.data(), text.size()), core::crc32c(codes.data(), codes.size()),
-		                   core::crc32c(o.pixels.data(), o.pixels.size()));
+		                   o.dimensions.cy, core::crc32c(text.data(), text.size()),
+		                   core::crc32c(codes.data(), codes.size()), core::crc32c(o.pixels.data(), o.pixels.size()));
 	}
 
 	// Bytes from a seed, the same from every compiler: no expression draws twice, since C++ leaves the
@@ -5627,16 +5954,15 @@ namespace commodore_sweep
 
 	core::blob make_t64(random& rng)
 	{
-		static constexpr std::string_view descriptions[] = {
-			"C64S tape image file", "C64 tape image file", "C64S tape file", "C64 tape", "C64 cassette image"
-		};
+		static constexpr std::string_view descriptions[] = {"C64S tape image file", "C64 tape image file",
+		                                                    "C64S tape file", "C64 tape", "C64 cassette image"};
 		static constexpr uint8_t kinds[] = {0, 1, 1, 1, 1, 3};
 		static constexpr uint8_t types[] = {0, 0x80, 0x81, 0x82, 0x82, 0x82, 0x83, 0x84, 0xC2};
 
 		core::blob b;
 		append(b, descriptions[rng.below(static_cast<uint32_t>(std::size(descriptions)))]);
 		while (b.size() < 32) b.push_back(rng.below(4) == 0 ? rng.byte() : 0);
-		append_random(b, rng, 2); // the version
+		append_random(b, rng, 2);                                             // the version
 		append_le16(b, rng.below(8) == 0 ? rng.below(65536) : rng.below(48)); // room
 		append_le16(b, rng.below(8) == 0 ? rng.below(65536) : rng.below(48)); // used
 		append_random(b, rng, 2);
@@ -5700,15 +6026,15 @@ namespace commodore_sweep
 			uint32_t tracks;
 		};
 
-		static constexpr disk disks[] = {
-			{174848, 35}, {175531, 35}, {196608, 40}, {197376, 40}, {349696, 70}, {351062, 70}, {819200, 80}
-		};
+		static constexpr disk disks[] = {{174848, 35}, {175531, 35}, {196608, 40}, {197376, 40},
+		                                 {349696, 70}, {351062, 70}, {819200, 80}};
 
 		std::vector<std::pair<std::string, core::blob>> result;
 
 		for (const auto& d : disks)
 		{
-			for (auto i = 0; i < each; ++i) result.emplace_back(std::format("disk {} {}", d.size, i), make_disk(d.size, d.tracks, rng));
+			for (auto i = 0; i < each; ++i)
+				result.emplace_back(std::format("disk {} {}", d.size, i), make_disk(d.size, d.tracks, rng));
 		}
 
 		for (auto i = 0; i < each * 8; ++i) result.emplace_back(std::format("t64 {}", i), make_t64(rng));
@@ -5728,20 +6054,16 @@ namespace commodore_sweep
 		case 196608:
 		case 197376:
 		case 349696:
-		case 351062:
-			return 0x16600;
-		case 819200:
-			return 0x61B00;
-		default:
-			return 0;
+		case 351062: return 0x16600;
+		case 819200: return 0x61B00;
+		default: return 0;
 		}
 	}
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them, and for a
 	// disk its first directory sector corrupted too, where those rarely land: its link, and each entry's
 	// type, size and the ends of its name.
-	template <typename Visit>
-	void for_each_variant(core::blob& bytes, Visit&& visit)
+	template <typename Visit> void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
 		visit(core::cspan(bytes));
 		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
@@ -5802,6 +6124,7 @@ namespace commodore_sweep
 		}
 
 		std::vector<entry> result;
+		result.reserve(found.size());
 		for (size_t i = 0; i < found.size(); ++i)
 			result.push_back({std::string(found[i].name()), platform::blob_from_file(found[i]), i < fixtures});
 		return result;
@@ -5811,10 +6134,12 @@ namespace commodore_sweep
 static void should_list_commodore_media_as_list_disk_did()
 {
 	auto corpus = commodore_sweep::corpus();
-	const auto has_disk = std::ranges::any_of(corpus, [](const commodore_sweep::entry& e) { return e.name == "Ace of Aces (Europe).D64"; });
+	const auto has_disk = std::ranges::any_of(corpus, [](const commodore_sweep::entry& e)
+	{ return e.name == "Ace of Aces (Europe).D64"; });
 
 	commodore_sweep::random rng{0x00C64C64};
-	for (auto& [name, bytes] : commodore_sweep::synthetic(2, rng)) corpus.push_back({std::move(name), std::move(bytes), true});
+	for (auto& [name, bytes] : commodore_sweep::synthetic(2, rng))
+		corpus.push_back({std::move(name), std::move(bytes), true});
 
 	auto listings = 0;
 	auto listed = 0;
@@ -5837,8 +6162,8 @@ static void should_list_commodore_media_as_list_disk_did()
 		});
 	}
 
-	core::log(__FUNCTION__, std::format("{} files, {} listings, {} listed; record {:08x} over {} outcomes", corpus.size(),
-	                                  listings, listed, checksum, recorded_outcomes));
+	core::log(__FUNCTION__, std::format("{} files, {} listings, {} listed; record {:08x} over {} outcomes",
+	                                    corpus.size(), listings, listed, checksum, recorded_outcomes));
 
 	assert_equal(true, has_disk, "the fixtures hold a disk");
 	assert_equal(true, listed > 1000, "much of what is listed lists");
@@ -5847,12 +6172,12 @@ static void should_list_commodore_media_as_list_disk_did()
 	             "every listing is the one list_disk made before it moved to libfiles");
 }
 
-// A .sid file is described by its header alone: lib8bit reads it, and the properties land where every
+// A .sid file is described by its header alone: lib64 reads it, and the properties land where every
 // other audio file's do, so a collection can be browsed by composer, year and publisher.
 static void should_scan_a_sid_tune_header()
 {
 	const auto tune = make_test_sid_tune();
-	const auto path = _temps.next_path(".sid");
+	const auto path = test_temps.next_path(".sid");
 	assert_equal(true, platform::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
 
 	const auto* const ft = files::file_type_from_name(path);
@@ -5876,7 +6201,7 @@ static void should_scan_a_sid_tune_header()
 
 	auto broken = tune;
 	broken[0] = 'X';
-	const auto broken_path = _temps.next_path(".sid");
+	const auto broken_path = test_temps.next_path(".sid");
 	platform::blob_save_to_file({broken.data(), broken.size()}, broken_path);
 	assert_equal(false, ff.scan_file(broken_path, false, ft).success, "a damaged header is not read as a tune");
 
@@ -5884,10 +6209,44 @@ static void should_scan_a_sid_tune_header()
 	auto accented = tune;
 	constexpr uint8_t hulsbeck[] = {'C', 'h', 'r', 'i', 's', ' ', 'H', 0xFC, 'l', 's', 'b', 'e', 'c', 'k', 0, 0};
 	std::ranges::copy(hulsbeck, accented.begin() + 0x36);
-	const auto accented_path = _temps.next_path(".sid");
+	const auto accented_path = test_temps.next_path(".sid");
 	platform::blob_save_to_file({accented.data(), accented.size()}, accented_path);
 	assert_equal("Chris H\xC3\xBClsbeck", ff.scan_file(accented_path, false, ft).to_props()->artist.sv(),
 	             "a Latin-1 name reads as UTF-8");
+}
+
+// A Commodore image is indexed by what the C64 lists of it: the name it gives itself, the machine, and each file it
+// holds, so a search finds a game by a file on its disk.
+static void should_index_a_commodore_image_by_its_listing()
+{
+	const auto path = test_files_folder().combine("retro").combine_file("Ace of Aces (Europe).D64");
+	const auto* const ft = files::file_type_from_name(path);
+	assert_equal(true, ft->can_cache(), "a disk's metadata is kept in the index");
+
+	files ff;
+	const auto result = ff.scan_file(path, false, ft);
+	assert_equal(true, result.success, "its listing is read");
+
+	const auto md = result.to_props();
+	assert_equal("ASS PRESENTS:", md->title.sv(), "the name in the disk's header");
+	assert_equal("Commodore 64", md->system.sv(), "the machine, as a SID tune's");
+	assert_equal("ACE OF ACES+\nA1\nA2\nA3", md->contents.sv(), "each file the directory lists, in its order");
+
+	// A cartridge holds the one program its own name already says, so it lists nothing beside it.
+	std::vector<uint8_t> crt(64, 0);
+	std::memcpy(crt.data(), "C64 CARTRIDGE   ", 16);
+	crt[0x13] = 0x40;
+	crt[0x14] = 1;
+	std::memcpy(crt.data() + 0x20, "Test Cartridge", 14);
+	const auto cartridge = files::scan_c64_media({crt.data(), crt.size()});
+	assert_equal(true, cartridge.success, "a cartridge is read");
+	assert_equal("Test Cartridge", cartridge.to_props()->title.sv(), "by the name its header gives it");
+	assert_equal(true, cartridge.to_props()->contents.is_empty(), "and nothing beside it");
+
+	// Too large for a program and no image's size or signature: nothing a C64 lists, so nothing is described.
+	const std::vector<uint8_t> unknown(70000, 0x11);
+	assert_equal(false, files::scan_c64_media({unknown.data(), unknown.size()}).success,
+	             "an unknown file is not described as Commodore software");
 }
 
 // Diffractor's PNG loader moved to libfiles. Before the switch both decoded every PNG in the fixtures
@@ -5912,8 +6271,7 @@ namespace png_sweep
 		bool operator==(const outcome&) const = default;
 	};
 
-	template <typename Load>
-	outcome run(Load&& load, const core::cspan bytes)
+	template <typename Load> outcome run(Load&& load, const core::cspan bytes)
 	{
 		outcome o;
 
@@ -5978,7 +6336,7 @@ namespace png_sweep
 	uint32_t be32(const core::blob& b, const size_t at)
 	{
 		return static_cast<uint32_t>(b[at]) << 24 | static_cast<uint32_t>(b[at + 1]) << 16 |
-			static_cast<uint32_t>(b[at + 2]) << 8 | b[at + 3];
+		       static_cast<uint32_t>(b[at + 2]) << 8 | b[at + 3];
 	}
 
 	void put_be32(core::blob& b, const size_t at, const uint32_t v)
@@ -6025,8 +6383,32 @@ namespace png_sweep
 	// A little-endian TIFF stream with one entry: the orientation.
 	core::blob orientation_exif(const uint16_t value)
 	{
-		return {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0,
-		        static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), 0, 0, 0, 0, 0, 0};
+		return {'I',
+		        'I',
+		        42,
+		        0,
+		        8,
+		        0,
+		        0,
+		        0,
+		        1,
+		        0,
+		        0x12,
+		        0x01,
+		        3,
+		        0,
+		        1,
+		        0,
+		        0,
+		        0,
+		        static_cast<uint8_t>(value),
+		        static_cast<uint8_t>(value >> 8),
+		        0,
+		        0,
+		        0,
+		        0,
+		        0,
+		        0};
 	}
 
 	uint8_t next_byte(uint32_t& seed)
@@ -6053,17 +6435,15 @@ namespace png_sweep
 		constexpr png_uint_32 width = 13;
 		constexpr png_uint_32 height = 7;
 
-		const auto channels = s.color_type == PNG_COLOR_TYPE_GRAY || s.color_type == PNG_COLOR_TYPE_PALETTE
-			                      ? 1u
-			                      : s.color_type == PNG_COLOR_TYPE_GRAY_ALPHA
-			                      ? 2u
-			                      : s.color_type == PNG_COLOR_TYPE_RGB
-			                      ? 3u
-			                      : 4u;
+		const auto channels = s.color_type == PNG_COLOR_TYPE_GRAY || s.color_type == PNG_COLOR_TYPE_PALETTE ? 1u
+		                      : s.color_type == PNG_COLOR_TYPE_GRAY_ALPHA                                   ? 2u
+		                      : s.color_type == PNG_COLOR_TYPE_RGB                                          ? 3u
+		                                                                                                    : 4u;
 		const auto row_bytes = (width * channels * static_cast<uint32_t>(s.bit_depth) + 7u) / 8u;
 
 		std::vector<std::vector<uint8_t>> rows(height, std::vector<uint8_t>(row_bytes));
-		for (auto& row : rows) for (auto& b : row) b = next_byte(seed);
+		for (auto& row : rows)
+			for (auto& b : row) b = next_byte(seed);
 
 		core::blob out;
 		auto* png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, write_failed, write_quietly);
@@ -6104,9 +6484,8 @@ namespace png_sweep
 
 			if (s.color_type == PNG_COLOR_TYPE_GRAY)
 			{
-				colour.gray = s.bit_depth == 16
-					              ? static_cast<png_uint_16>(first[0] << 8 | first[1])
-					              : static_cast<png_uint_16>(first[0] >> (8 - s.bit_depth));
+				colour.gray = s.bit_depth == 16 ? static_cast<png_uint_16>(first[0] << 8 | first[1])
+				                                : static_cast<png_uint_16>(first[0] >> (8 - s.bit_depth));
 			}
 			else if (s.bit_depth == 16)
 			{
@@ -6129,6 +6508,7 @@ namespace png_sweep
 		if (s.gamma == 3) png_set_gAMA_fixed(png, info, 45455);
 
 		std::vector<png_bytep> pointers;
+		pointers.reserve(rows.size());
 		for (auto& row : rows) pointers.push_back(row.data());
 
 		png_write_info(png, info);
@@ -6151,10 +6531,11 @@ namespace png_sweep
 			std::vector<int> depths;
 		};
 
-		const kind kinds[] = {
-			{PNG_COLOR_TYPE_GRAY, {1, 2, 4, 8, 16}}, {PNG_COLOR_TYPE_GRAY_ALPHA, {8, 16}},
-			{PNG_COLOR_TYPE_RGB, {8, 16}}, {PNG_COLOR_TYPE_RGB_ALPHA, {8, 16}}, {PNG_COLOR_TYPE_PALETTE, {1, 2, 4, 8}}
-		};
+		const kind kinds[] = {{PNG_COLOR_TYPE_GRAY, {1, 2, 4, 8, 16}},
+		                      {PNG_COLOR_TYPE_GRAY_ALPHA, {8, 16}},
+		                      {PNG_COLOR_TYPE_RGB, {8, 16}},
+		                      {PNG_COLOR_TYPE_RGB_ALPHA, {8, 16}},
+		                      {PNG_COLOR_TYPE_PALETTE, {1, 2, 4, 8}}};
 
 		std::vector<std::pair<std::string, core::blob>> result;
 		auto n = 0;
@@ -6176,7 +6557,8 @@ namespace png_sweep
 						s.exif_before = n % 3 == 1 ? static_cast<uint16_t>(1 + n % 8) : uint16_t{0};
 						s.exif_after = n % 3 == 2 ? static_cast<uint16_t>(1 + (n + 3) % 8) : uint16_t{0};
 						result.emplace_back(std::format("type {} depth {} interlaced {} gamma {} #{}", k.color_type,
-						                                depth, interlaced, gamma, n), make_png(s, seed));
+						                                depth, interlaced, gamma, n),
+						                    make_png(s, seed));
 						++n;
 					}
 				}
@@ -6189,8 +6571,7 @@ namespace png_sweep
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them; and with
 	// bytes of its first image data chunk corrupted and that chunk's CRC put right, so libpng inflates
 	// and unfilters damaged data rather than stopping at the CRC.
-	template <typename Visit>
-	void for_each_variant(core::blob& bytes, Visit&& visit)
+	template <typename Visit> void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
 		visit(core::cspan(bytes));
 		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
@@ -6290,7 +6671,7 @@ static void should_decode_pngs_as_load_png_did()
 	}
 
 	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
-	                                  corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
+	                                    corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 5, "the fixtures hold PNGs");
 	assert_equal(true, decoded > 1000, "much of what is decoded decodes");
@@ -6308,7 +6689,8 @@ static void should_decode_pngs_as_load_png_did()
 // and on its size, format, orientation, colour space and every byte of every plane: 25,335
 // comparisons over 44 files, with no difference. That comparison left a record of load_webp's outcomes
 // for the fixtures and the generated files, which libwebp's encoder writes alike on Windows x64 and x86
-// and on Linux, where the record is the same. The sweep now holds libfiles to it.
+// and on Linux, where the record is the same. The sweep holds libfiles to it, but for an animation, which
+// load_webp refused and which now shows its first frame: for those the record holds that frame.
 namespace webp_sweep
 {
 	struct outcome
@@ -6331,13 +6713,11 @@ namespace webp_sweep
 	};
 
 	// Packed and planar, unreduced, reduced, enlarged and with a target that has a zero edge.
-	const request requests[] = {
-		{false, {}}, {true, {}}, {false, {320, 240}}, {true, {320, 240}}, {false, {33, 17}}, {false, {1, 1}},
-		{true, {5000, 5000}}, {false, {0, 100}}, {true, {64, 0}}
-	};
+	const request requests[] = {{false, {}},          {true, {}},        {false, {320, 240}},
+	                            {true, {320, 240}},   {false, {33, 17}}, {false, {1, 1}},
+	                            {true, {5000, 5000}}, {false, {0, 100}}, {true, {64, 0}}};
 
-	template <typename Load>
-	outcome run(Load&& load, const core::cspan bytes, const request& r)
+	template <typename Load> outcome run(Load&& load, const core::cspan bytes, const request& r)
 	{
 		outcome o;
 
@@ -6414,9 +6794,8 @@ namespace webp_sweep
 	{
 		const auto bgra = make_bgra(width, height, alpha, seed);
 		uint8_t* out = nullptr;
-		const auto size = lossless
-			                  ? WebPEncodeLosslessBGRA(bgra.data(), width, height, width * 4, &out)
-			                  : WebPEncodeBGRA(bgra.data(), width, height, width * 4, 80.f, &out);
+		const auto size = lossless ? WebPEncodeLosslessBGRA(bgra.data(), width, height, width * 4, &out)
+		                           : WebPEncodeBGRA(bgra.data(), width, height, width * 4, 80.f, &out);
 		core::blob file(out, out + size);
 		WebPFree(out);
 		return file;
@@ -6435,7 +6814,8 @@ namespace webp_sweep
 			WebPMuxSetChunk(mux, "EXIF", &chunk, 1);
 		}
 
-		static constexpr uint8_t profile[] = {0, 0, 0, 24, 'n', 'o', 'n', 'e', 0, 0, 0, 0, 'm', 'n', 't', 'r', 'R', 'G', 'B', ' ', 'X', 'Y', 'Z', ' '};
+		static constexpr uint8_t profile[] = {0,   0,   0,   24,  'n', 'o', 'n', 'e', 0,   0,   0,   0,
+		                                      'm', 'n', 't', 'r', 'R', 'G', 'B', ' ', 'X', 'Y', 'Z', ' '};
 		static constexpr char packet[] = "<x:xmpmeta xmlns:x='adobe:ns:meta/'/>";
 
 		if (icc)
@@ -6463,8 +6843,32 @@ namespace webp_sweep
 	{
 		core::blob b;
 		if (signature) b = {'E', 'x', 'i', 'f', 0, 0};
-		const uint8_t tiff[] = {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0,
-		                        static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), 0, 0, 0, 0, 0, 0};
+		const uint8_t tiff[] = {'I',
+		                        'I',
+		                        42,
+		                        0,
+		                        8,
+		                        0,
+		                        0,
+		                        0,
+		                        1,
+		                        0,
+		                        0x12,
+		                        0x01,
+		                        3,
+		                        0,
+		                        1,
+		                        0,
+		                        0,
+		                        0,
+		                        static_cast<uint8_t>(value),
+		                        static_cast<uint8_t>(value >> 8),
+		                        0,
+		                        0,
+		                        0,
+		                        0,
+		                        0,
+		                        0};
 		b.insert(b.end(), std::begin(tiff), std::end(tiff));
 		return b;
 	}
@@ -6505,10 +6909,12 @@ namespace webp_sweep
 	core::blob header_only(const uint32_t width, const uint32_t height)
 	{
 		const auto bits = (width - 1) | (height - 1) << 14 | 1u << 28;
+		// clang-format off
 		const uint8_t payload[] = {0x2f, static_cast<uint8_t>(bits), static_cast<uint8_t>(bits >> 8),
 		                           static_cast<uint8_t>(bits >> 16), static_cast<uint8_t>(bits >> 24), 0, 0, 0, 0, 0, 0, 0};
 		core::blob b = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'L',
 		              static_cast<uint8_t>(sizeof(payload)), 0, 0, 0};
+		// clang-format on
 		b.insert(b.end(), std::begin(payload), std::end(payload));
 		const auto riff = static_cast<uint32_t>(b.size() - 8);
 		b[4] = static_cast<uint8_t>(riff);
@@ -6534,12 +6940,14 @@ namespace webp_sweep
 					// signature; a profile or a packet besides, now and then.
 					if (n % 3 != 0 || n % 5 == 0)
 					{
-						const auto exif = n % 3 != 0 ? orientation_exif(static_cast<uint16_t>(1 + n % 8), n % 2 == 0) : core::blob{};
+						const auto exif = n % 3 != 0 ? orientation_exif(static_cast<uint16_t>(1 + n % 8), n % 2 == 0)
+						                             : core::blob{};
 						file = with_chunks(file, exif, n % 5 == 0, n % 4 == 1);
 					}
 
 					result.emplace_back(std::format("{}x{} {} {} #{}", s.cx, s.cy, lossless ? "lossless" : "lossy",
-					                                alpha ? "alpha" : "opaque", n), std::move(file));
+					                                alpha ? "alpha" : "opaque", n),
+					                    std::move(file));
 					++n;
 				}
 			}
@@ -6598,8 +7006,7 @@ namespace webp_sweep
 	}
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them.
-	template <typename Visit>
-	void for_each_variant(core::blob& bytes, Visit&& visit)
+	template <typename Visit> void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
 		visit(core::cspan(bytes));
 		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
@@ -6635,8 +7042,8 @@ static void should_decode_webps_as_load_webp_did()
 		{
 			for (const auto& request : webp_sweep::requests)
 			{
-				const auto outcome = webp_sweep::run([](const core::cspan b, const bool yuv, const sizei t) { return load_webp(b, yuv, t); },
-				                                     bytes, request);
+				const auto outcome = webp_sweep::run([](const core::cspan b, const bool yuv, const sizei t)
+				{ return load_webp(b, yuv, t); }, bytes, request);
 				++decodes;
 				if (!outcome.rows.empty()) ++decoded;
 				if (!e.recorded) continue;
@@ -6650,13 +7057,40 @@ static void should_decode_webps_as_load_webp_did()
 	}
 
 	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded; record {:08x} over {} outcomes",
-	                                  corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
+	                                    corpus.size(), real_files, decodes, decoded, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 1, "the fixtures hold a WebP");
 	assert_equal(true, decoded > 1000, "much of what is decoded decodes");
 	assert_equal(20331, recorded_outcomes, "the sweep is the one the record was taken over");
-	assert_equal(std::format("{:08x}", 0xa210cde4u), std::format("{:08x}", checksum),
-	             "every outcome is the one load_webp had before it moved to libfiles");
+	assert_equal(std::format("{:08x}", 0xeab178fbu), std::format("{:08x}", checksum),
+	             "every outcome is the one load_webp had, an animation's first frame aside");
+}
+
+// An animated WebP shows its first frame. Its picture is never written back over it, which would keep that
+// frame alone: a turn or an edit in place is refused and the file left as it was, while a copy - a
+// conversion - is made from the frame shown.
+static void should_show_an_animation_and_never_write_it_back_as_one_frame()
+{
+	uint32_t seed = 7;
+	const auto path = test_temps.next_path(".webp");
+	const auto animated = webp_sweep::animation(false, seed);
+	assert_equal(true, platform::blob_save_to_file({animated.data(), animated.size()}, path), "written");
+
+	files ff;
+	const auto scanned = ff_scan_file(ff, path);
+	assert_equal(true, scanned.animated, "scanned as an animation");
+
+	const auto loaded = ff.load(path, false);
+	assert_equal(true, loaded.success && is_valid(loaded.to_surface()), "its first frame shows");
+
+	const auto turned = ff.update(path, path, {}, image_edits(8), {}, false, {});
+	assert_equal(true, turned.failed() && turned.error_message.find("animation") != std::string::npos,
+	             "a rewrite in place is refused, and says why");
+	const auto after = platform::blob_from_file(path);
+	assert_equal(true, std::ranges::equal(after, animated), "the file is as it was");
+
+	const auto copy = test_temps.next_path(".jpg");
+	assert_equal(true, ff.update(path, copy, {}, {}, {}, false, {}).success(), "a copy is made of the frame shown");
 }
 
 // Diffractor's HEIF loader moved to libfiles. Before the switch both decoded every HEIF and AVIF in the
@@ -6714,8 +7148,7 @@ namespace heif_sweep
 		bool operator==(const outcome&) const = default;
 	};
 
-	template <typename Load, typename Scan>
-	outcome run(Load&& load, Scan&& scan, const core::cspan bytes)
+	template <typename Load, typename Scan> outcome run(Load&& load, Scan&& scan, const core::cspan bytes)
 	{
 		outcome o;
 
@@ -6794,8 +7227,8 @@ namespace heif_sweep
 	heif_image* make_image(const int width, const int height, const bool alpha, uint32_t& seed)
 	{
 		heif_image* image = nullptr;
-		heif_image_create(width, height, heif_colorspace_RGB, alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB,
-		                  &image);
+		heif_image_create(width, height, heif_colorspace_RGB,
+		                  alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB, &image);
 		heif_image_add_plane(image, heif_channel_interleaved, width, height, 8);
 		int stride = 0;
 		auto* const plane = heif_image_get_plane(image, heif_channel_interleaved, &stride);
@@ -6816,8 +7249,32 @@ namespace heif_sweep
 	// A little-endian TIFF stream with one entry, the orientation.
 	core::blob orientation_exif(const uint16_t value)
 	{
-		return {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0,
-		        static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), 0, 0, 0, 0, 0, 0};
+		return {'I',
+		        'I',
+		        42,
+		        0,
+		        8,
+		        0,
+		        0,
+		        0,
+		        1,
+		        0,
+		        0x12,
+		        0x01,
+		        3,
+		        0,
+		        1,
+		        0,
+		        0,
+		        0,
+		        static_cast<uint8_t>(value),
+		        static_cast<uint8_t>(value >> 8),
+		        0,
+		        0,
+		        0,
+		        0,
+		        0,
+		        0};
 	}
 
 	// An image as libheif writes it through its uncompressed codec: its own rotation or mirror, an EXIF
@@ -6844,7 +7301,8 @@ namespace heif_sweep
 		{
 			options->image_orientation = s.thumbnail_orientation;
 			heif_image_handle* thumbnail = nullptr;
-			heif_context_encode_thumbnail(ctx, image, handle, encoder, options, std::max(s.width, s.height) / 2, &thumbnail);
+			heif_context_encode_thumbnail(ctx, image, handle, encoder, options, std::max(s.width, s.height) / 2,
+			                              &thumbnail);
 			heif_image_handle_release(thumbnail);
 		}
 
@@ -6882,7 +7340,9 @@ namespace heif_sweep
 			{
 				seed = seed * 1664525u + 1013904223u;
 				const auto pick = seed >> 24;
-				plane[static_cast<size_t>(y) * stride + x] = static_cast<uint8_t>(pick < 32 ? 0 : pick < 64 ? 255 : pick);
+				plane[static_cast<size_t>(y) * stride + x] = static_cast<uint8_t>(pick < 32   ? 0
+				                                                                  : pick < 64 ? 255
+				                                                                              : pick);
 			}
 		}
 
@@ -6910,10 +7370,9 @@ namespace heif_sweep
 	{
 		std::vector<std::pair<std::string, core::blob>> result;
 		static constexpr sizei sizes[] = {{7, 5}, {16, 8}, {1, 1}, {33, 17}};
-		static constexpr heif_orientation turns[] = {
-			heif_orientation_normal, heif_orientation_rotate_90_cw, heif_orientation_flip_horizontally,
-			heif_orientation_rotate_270_cw
-		};
+		static constexpr heif_orientation turns[] = {heif_orientation_normal, heif_orientation_rotate_90_cw,
+		                                             heif_orientation_flip_horizontally,
+		                                             heif_orientation_rotate_270_cw};
 		auto n = 0;
 
 		for (const auto& size : sizes)
@@ -6931,7 +7390,8 @@ namespace heif_sweep
 					s.thumbnail = size.cx > 1 && n % 2 == 0;
 					s.thumbnail_orientation = n % 4 == 0 ? heif_orientation_rotate_180 : heif_orientation_normal;
 					result.emplace_back(std::format("{}x{} alpha {} turn {} #{}", size.cx, size.cy, alpha,
-					                                static_cast<int>(turn), n), make_heif(s, seed));
+					                                static_cast<int>(turn), n),
+					                    make_heif(s, seed));
 					++n;
 				}
 			}
@@ -6988,8 +7448,7 @@ namespace heif_sweep
 	}
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them.
-	template <typename Visit>
-	void for_each_variant(core::blob& bytes, Visit&& visit)
+	template <typename Visit> void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
 		visit(core::cspan(bytes));
 		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
@@ -7032,7 +7491,9 @@ static void should_decode_heifs_as_load_heif_did()
 {
 	// libheif 1.23.7 keeps all 37 complete-file outcomes and inputs unchanged. Of the 2,347 variants,
 	// 86 damaged ones now recover pixels and 52 report dimensions without pixels; the 1.23.5 control
-	// still matches da7bc3f5. Keep the entire sweep, with its accepted updated recovery record.
+	// still matches da7bc3f5. Keep the entire sweep, with its accepted updated recovery record. The scan's
+	// thumbnail is shown, so its colours are mapped to sRGB by the profile the primary's are, which moved
+	// the record from 252463ef, the record with that mapping off, to 2999784a.
 	[[maybe_unused]] const heif_sweep::sse41_av1_kernels kernels;
 	auto corpus = heif_sweep::corpus();
 	const auto real_files = corpus.size();
@@ -7050,7 +7511,8 @@ static void should_decode_heifs_as_load_heif_did()
 	{
 		heif_sweep::for_each_variant(e.bytes, [&](const core::cspan bytes)
 		{
-			const auto outcome = heif_sweep::run(load_heif, scan_heif_libfiles, bytes);
+			const auto outcome = heif_sweep::run([](read_stream& s, load_diagnostic* d) { return load_heif(s, d); },
+			                                     scan_heif_libfiles, bytes);
 			++decodes;
 			if (!outcome.image.rows.empty()) ++decoded;
 			if (!outcome.thumbnail.rows.empty()) ++thumbnails;
@@ -7063,13 +7525,14 @@ static void should_decode_heifs_as_load_heif_did()
 		});
 	}
 
-	core::log(__FUNCTION__, std::format("{} files ({} real), {} decodes, {} decoded, {} thumbnails; record {:08x} over {} outcomes",
-	                                  corpus.size(), real_files, decodes, decoded, thumbnails, checksum, recorded_outcomes));
+	core::log(__FUNCTION__,
+	          std::format("{} files ({} real), {} decodes, {} decoded, {} thumbnails; record {:08x} over {} outcomes",
+	                      corpus.size(), real_files, decodes, decoded, thumbnails, checksum, recorded_outcomes));
 
 	assert_equal(true, real_files >= 2, "the fixtures hold HEIF and AVIF");
 	assert_equal(true, decoded > 1000, "much of what is decoded decodes");
 	assert_equal(2347, recorded_outcomes, "the sweep is the one the record was taken over");
-	assert_equal(std::format("{:08x}", 0x252463efu), std::format("{:08x}", checksum),
+	assert_equal(std::format("{:08x}", 0x2999784au), std::format("{:08x}", checksum),
 	             "every outcome matches libheif 1.23.7's recovery record");
 }
 
@@ -7137,10 +7600,11 @@ namespace jxl_sweep
 
 	std::string describe(const outcome& o, const bool with_rows)
 	{
-		return std::format("threw {} null {} {}x{} format {} orientation {} {} bytes {:08x} source {}x{} over budget {}",
-		                   o.threw, o.null, o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.rows.size(),
-		                   with_rows ? core::crc32c(o.rows.data(), o.rows.size()) : 0u, o.source_dimensions.cx,
-		                   o.source_dimensions.cy, o.over_budget);
+		return std::format(
+			"threw {} null {} {}x{} format {} orientation {} {} bytes {:08x} source {}x{} over budget {}", o.threw,
+			o.null, o.dimensions.cx, o.dimensions.cy, o.format, o.orientation, o.rows.size(),
+			with_rows ? core::crc32c(o.rows.data(), o.rows.size()) : 0u, o.source_dimensions.cx, o.source_dimensions.cy,
+			o.over_budget);
 	}
 
 	struct entry
@@ -7174,8 +7638,7 @@ namespace jxl_sweep
 	}
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them.
-	template <typename Visit>
-	void for_each_variant(core::blob& bytes, Visit&& visit)
+	template <typename Visit> void for_each_variant(core::blob& bytes, Visit&& visit)
 	{
 		visit(core::cspan(bytes));
 		for (const auto cut : scan_parity::cut_points(bytes.size())) visit(core::cspan{bytes.data(), cut});
@@ -7215,8 +7678,8 @@ static void should_decode_jxls_as_load_jxl_did()
 		});
 	}
 
-	core::log(__FUNCTION__, std::format("{} files, {} decoded; record {:08x} over {} outcomes", files, decoded, checksum,
-	                                  recorded_outcomes));
+	core::log(__FUNCTION__, std::format("{} files, {} decoded; record {:08x} over {} outcomes", files, decoded,
+	                                    checksum, recorded_outcomes));
 
 	assert_equal(23, files, "the fixture and the generated files are all there");
 	assert_equal(true, decoded > 400, "much of what is decoded decodes");
@@ -7232,9 +7695,9 @@ static void should_decode_jxls_as_load_jxl_did()
 // success, whether it is the preview and why it failed, on the size the budget refused, on whether it is
 // a JPEG or empty, on the image kept encoded - its format, size, orientation and bytes - and on the
 // surface - its format, size, orientation and every byte of every row: 3,124 comparisons over 16 files
-// on each of Windows x64 and x86 and Linux, with no difference. That comparison left a record of
-// load_raw's outcomes for the fixtures' two CR2 files, alike on all three, which the sweep now holds
-// libfiles to.
+// on each of Windows x64 and x86 and Linux, with no difference. The sweep holds libfiles to a record of
+// those outcomes for the fixtures' two CR2 files, its developments as libfiles develops them: clipped
+// channels blended towards white and the highlights past white rolled off, where LibRaw clips them.
 namespace raw_sweep
 {
 	struct outcome
@@ -7314,8 +7777,8 @@ namespace raw_sweep
 			"orientation {} {} bytes {:08x} surface {} format {} {}x{} orientation {} rows {:08x}",
 			o.threw, o.success, o.is_preview, o.reason, o.source_dimensions.cx, o.source_dimensions.cy, o.is_jpeg,
 			o.is_empty, o.image, o.image_format, o.image_dimensions.cx, o.image_dimensions.cy, o.image_orientation,
-			o.image_bytes, o.image_crc, o.surface, o.surface_format, o.surface_dimensions.cx,
-			o.surface_dimensions.cy, o.surface_orientation, o.rows_crc);
+			o.image_bytes, o.image_crc, o.surface, o.surface_format, o.surface_dimensions.cx, o.surface_dimensions.cy,
+			o.surface_orientation, o.rows_crc);
 	}
 
 	struct entry
@@ -7348,10 +7811,9 @@ namespace raw_sweep
 	// its last byte, and every eighth corruption. A CR2 cut short by a few bytes more, inside its image
 	// data, develops on Windows from what LibRaw makes of the bytes past the end, and fails to on Linux,
 	// whichever loader opens it.
-	template <typename Visit>
-	void for_each_variant(entry& e, Visit&& visit)
+	template <typename Visit> void for_each_variant(entry& e, Visit&& visit)
 	{
-		const auto path = _temps.next_path(e.path.extension());
+		const auto path = test_temps.next_path(e.path.extension());
 		auto& bytes = e.bytes;
 
 		const auto write = [&](const core::cspan variant, const bool develop)
@@ -7386,8 +7848,7 @@ namespace raw_sweep
 
 	// The preview taken, or the development refused for the budget, for every variant; under the budget
 	// that applies, where asked.
-	template <typename Run>
-	void for_each_mode(const bool develop, Run&& run)
+	template <typename Run> void for_each_mode(const bool develop, Run&& run)
 	{
 		for (const auto m : {mode{true, true}, mode{false, true}, mode{true, false}, mode{false, false}})
 		{
@@ -7429,14 +7890,15 @@ static void should_load_raws_as_load_raw_did()
 		});
 	}
 
-	core::log(__FUNCTION__, std::format("{} files, {} loaded, {} too large; record {:08x} over {} outcomes", files, loaded,
-	                                  too_large, checksum, recorded_outcomes));
+	core::log(__FUNCTION__, std::format("{} files, {} loaded, {} too large; record {:08x} over {} outcomes", files,
+	                                    loaded, too_large, checksum, recorded_outcomes));
 
 	assert_equal(2, files, "the fixtures' raw files are all there");
-	assert_equal(true, loaded > 100 && too_large > 100, "much of what is loaded loads, and much is refused for its size");
+	assert_equal(true, loaded > 100 && too_large > 100,
+	             "much of what is loaded loads, and much is refused for its size");
 	assert_equal(352, recorded_outcomes, "the sweep is the one the record was taken over");
-	assert_equal(std::format("{:08x}", 0x176e6d77u), std::format("{:08x}", checksum),
-	             "every outcome is the one load_raw had before it moved to libfiles");
+	assert_equal(std::format("{:08x}", 0x0e50588fu), std::format("{:08x}", checksum),
+	             "every outcome is the one recorded");
 }
 
 // A raw file turned by its camera keeps its preview unturned, as the sensor saw it, and the preview takes
@@ -7453,7 +7915,7 @@ static void should_turn_a_raw_preview_as_its_raw_data()
 	value[0] = static_cast<uint8_t>(core::orientation::right_top);
 	value[1] = 0;
 
-	const auto path = _temps.next_path(".CR2");
+	const auto path = test_temps.next_path(".CR2");
 	assert_equal(true, platform::blob_save_to_file(bytes, path), "the turned fixture is written");
 
 	const auto preview = load_raw(path, true);
@@ -7498,7 +7960,10 @@ namespace raw_scan_sweep
 	};
 
 	constexpr mode modes[] = {
-		{false, false, {}}, {true, false, {}}, {false, true, {320, 320}}, {true, true, {}},
+		{false, false, {}},
+		{true, false, {}},
+		{false, true, {320, 320}},
+		{true, true, {}},
 	};
 
 	// Everything a raw scan sets, and a few things it must not. LibRaw's timestamp is mktime() of the
@@ -7548,7 +8013,9 @@ namespace raw_scan_sweep
 		{
 			files ff;
 			const auto ft = files::file_type_from_name(path);
-			const auto r = ff.scan_file(path, m.thumbnail, ft, {}, m.max, m.inspect ? libfiles::scan_intent::inspect : libfiles::scan_intent::index, false);
+			const auto r = ff.scan_file(path, m.thumbnail, ft, {}, m.max,
+			                            m.inspect ? libfiles::scan_intent::inspect : libfiles::scan_intent::index,
+			                            false);
 			return describe(r);
 		}
 		catch (const std::exception&)
@@ -7583,10 +8050,9 @@ namespace raw_scan_sweep
 
 	// A file whole, cut short and with single bytes corrupted, as the other sweeps vary them, written to a
 	// file of its own extension for LibRaw to open.
-	template <typename Visit>
-	void for_each_variant(entry& e, Visit&& visit)
+	template <typename Visit> void for_each_variant(entry& e, Visit&& visit)
 	{
-		const auto path = _temps.next_path(e.path.extension());
+		const auto path = test_temps.next_path(e.path.extension());
 		auto& bytes = e.bytes;
 
 		const auto write = [&](const core::cspan variant)
@@ -7634,8 +8100,8 @@ static void should_scan_raws_as_scan_raw_did()
 		});
 	}
 
-	core::log(__FUNCTION__, std::format("{} files, {} scanned; record {:08x} over {} outcomes", files, scanned, checksum,
-	                                  recorded_outcomes));
+	core::log(__FUNCTION__, std::format("{} files, {} scanned; record {:08x} over {} outcomes", files, scanned,
+	                                    checksum, recorded_outcomes));
 
 	assert_equal(2, files, "the fixtures' raw files are all there");
 	assert_equal(true, scanned > 100, "much of what is scanned scans");
@@ -7683,8 +8149,9 @@ namespace encode_sweep
 	// that read what it should ignore would show. Unless opaque, an ARGB picture is clear on its left
 	// third, opaque on its right and graded between.
 	core::surface_ptr make_surface(const int cx, const int cy, const core::texture_format format,
-	                             const core::orientation orientation = core::orientation::top_left,
-	                             const core::color_space cs = core::color_space::rec601_full, const bool opaque = false)
+	                               const core::orientation orientation = core::orientation::top_left,
+	                               const core::color_space cs = core::color_space::rec601_full,
+	                               const bool opaque = false)
 	{
 		auto s = std::make_shared<core::surface>();
 		auto* const pixels = s->alloc(cx, cy, format, orientation);
@@ -7713,8 +8180,9 @@ namespace encode_sweep
 			{
 				for (size_t x = 0; x < width; ++x)
 				{
-					pixels[y * stride + x * 4 + 3] = static_cast<uint8_t>(
-						opaque || x >= third * 2 ? 255u : x < third ? 0u : y * 16 + x);
+					pixels[y * stride + x * 4 + 3] = static_cast<uint8_t>(opaque || x >= third * 2 ? 255u
+					                                                      : x < third              ? 0u
+					                                                                               : y * 16 + x);
 				}
 			}
 		}
@@ -7738,8 +8206,7 @@ namespace encode_sweep
 	}
 
 	// What an encoder made, or why it threw.
-	template <typename F>
-	std::string attempt(F&& encode)
+	template <typename F> std::string attempt(F&& encode)
 	{
 		try
 		{
@@ -7875,11 +8342,13 @@ static void should_encode_as_diffractors_encoders_did()
 	{
 		record += what + ": " + outcome + "\n";
 		++outcomes;
-		if (outcome.find(" bytes ") != std::string::npos && !outcome.starts_with("threw") && !outcome.starts_with("0 bytes"))
+		if (outcome.find(" bytes ") != std::string::npos && !outcome.starts_with("threw") &&
+		    !outcome.starts_with("0 bytes"))
 			++encoded;
 	};
 
-	const auto camera_exif = encode_sweep::exif_segment(platform::blob_from_file(core::file_path(test_files_folder(), "IMG_9340.JPG")));
+	const auto camera_exif = encode_sweep::exif_segment(
+		platform::blob_from_file(core::file_path(test_files_folder(), "IMG_9340.JPG")));
 	assert_equal(true, camera_exif.size() > 1000, "the camera fixture carries EXIF");
 
 	const auto bare_exif = make_orientation_exif(core::orientation::right_top);
@@ -7908,6 +8377,7 @@ static void should_encode_as_diffractors_encoders_did()
 	constexpr size_t icc_segment = 65519;
 
 	const std::vector<metadata_case> metadata = {
+		// clang-format off
 		{"none", [] { return libfiles::metadata_blocks{}; }},
 		{"bare exif", [&] { return exif_only(bare_exif.clone()); }},
 		{"signed exif", [&] { return exif_only(signed_exif.clone()); }},
@@ -7943,6 +8413,7 @@ static void should_encode_as_diffractors_encoders_did()
 		{"photoshop record over the limit", [] { libfiles::metadata_blocks m; m.photoshop = encode_sweep::photoshop_resources({65508, 16}); return m; }},
 		{"icc in 255 segments", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(255 * icc_segment, true); return m; }},
 		{"icc needing 256", [] { libfiles::metadata_blocks m; m.icc = encode_sweep::icc_profile(255 * icc_segment + 1, true); return m; }},
+		// clang-format on
 	};
 
 	const std::vector<encode_sweep::webp_case> webp_cases = {
@@ -7958,11 +8429,11 @@ static void should_encode_as_diffractors_encoders_did()
 
 	// Every encoder with the same picture and metadata: save_surface's three, and files' long-lived JPEG
 	// encoder.
-	const auto encode_all = [&](const std::string& what, const core::const_surface_ptr& surface,
-	                            const metadata_case& m)
+	const auto encode_all = [&](const std::string& what, const core::const_surface_ptr& surface, const metadata_case& m)
 	{
 		note(what + " jpeg", attempt([&] { return save_surface(core::image_format::JPEG, surface, m.make(), {}); }));
-		note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, m.make(), {}, core::image_format::JPEG); }));
+		note(what + " files jpeg",
+		     attempt([&] { return ff.surface_to_image(surface, m.make(), {}, core::image_format::JPEG); }));
 		note(what + " png", attempt([&] { return save_surface(core::image_format::PNG, surface, m.make(), {}); }));
 		note(what + " webp", attempt([&] { return save_surface(core::image_format::WEBP, surface, m.make(), {}); }));
 	};
@@ -7992,6 +8463,7 @@ static void should_encode_as_diffractors_encoders_did()
 	};
 
 	const std::vector<picture> pictures = {
+		// clang-format off
 		{1, 1, texture_format::RGB}, {7, 5, texture_format::RGB}, {16, 16, texture_format::RGB},
 		{33, 17, texture_format::RGB}, {64, 48, texture_format::RGB}, {301, 199, texture_format::RGB},
 		{7, 5, texture_format::ARGB}, {33, 17, texture_format::ARGB}, {64, 48, texture_format::ARGB},
@@ -8002,6 +8474,7 @@ static void should_encode_as_diffractors_encoders_did()
 		{34, 18, texture_format::NV12, core::color_space::rec601_full},
 		{33, 17, texture_format::NV12, core::color_space::rec601_full},
 		{64, 48, texture_format::P010, core::color_space::rec2020_limited},
+		// clang-format on
 	};
 
 	for (const auto& p : pictures)
@@ -8018,27 +8491,30 @@ static void should_encode_as_diffractors_encoders_did()
 			for (const auto quality : {85, 40, 100, 1})
 			{
 				note(std::format("{} jpeg q{}", what, quality), attempt([&]
-				{
-					return save_surface(core::image_format::JPEG, surface, {}, encode_sweep::jpeg_params(quality));
-				}));
+				{ return save_surface(core::image_format::JPEG, surface, {}, encode_sweep::jpeg_params(quality)); }));
 			}
 
 			note(what + " png", attempt([&] { return save_surface(core::image_format::PNG, surface, {}, {}); }));
 		}
 
-		note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::JPEG); }));
-		note(what + " files png", attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::PNG); }));
-		note(what + " files either", attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::Unknown); }));
+		note(what + " files jpeg",
+		     attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::JPEG); }));
+		note(what + " files png",
+		     attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::PNG); }));
+		note(what + " files either",
+		     attempt([&] { return ff.surface_to_image(surface, {}, {}, core::image_format::Unknown); }));
 
 		for (const auto& w : webp_cases)
 		{
-			note(what + " " + w.name, attempt([&] { return save_surface(core::image_format::WEBP, surface, {}, w.params); }));
+			note(what + " " + w.name,
+			     attempt([&] { return save_surface(core::image_format::WEBP, surface, {}, w.params); }));
 		}
 
 		// A plane libwebp will not take is converted for the thumbnail store by FFmpeg's scaler, which
 		// is not what this records.
-		const auto webp_takes = packed || (p.format == texture_format::NV12 && ((p.cx | p.cy) & 1) == 0 &&
-			(p.cs == core::color_space::rec601_full || p.cs == core::color_space::rec601_limited));
+		const auto webp_takes = packed ||
+		                        (p.format == texture_format::NV12 && ((p.cx | p.cy) & 1) == 0 &&
+		                         (p.cs == core::color_space::rec601_full || p.cs == core::color_space::rec601_limited));
 		if (webp_takes) note(what + " thumbnail", attempt([&] { return ff.surface_to_thumbnail(surface); }));
 	}
 
@@ -8074,8 +8550,10 @@ static void should_encode_as_diffractors_encoders_did()
 				{
 					const auto params = encode_sweep::jpeg_params(quality, source);
 					const auto what = std::format("{} {}x{} q{}", name, p.cx, p.cy, quality);
-					note(what + " jpeg", attempt([&] { return save_surface(core::image_format::JPEG, surface, {}, params); }));
-					note(what + " files jpeg", attempt([&] { return ff.surface_to_image(surface, {}, params, core::image_format::JPEG); }));
+					note(what + " jpeg",
+					     attempt([&] { return save_surface(core::image_format::JPEG, surface, {}, params); }));
+					note(what + " files jpeg",
+					     attempt([&] { return ff.surface_to_image(surface, {}, params, core::image_format::JPEG); }));
 				}
 			}
 		}
@@ -8137,9 +8615,8 @@ static void should_encode_as_diffractors_encoders_did()
 		try
 		{
 			const auto ok = transformer.read_header(jpeg);
-			const auto d = ok
-				               ? sizei{static_cast<int>(transformer.width()), static_cast<int>(transformer.height())}
-				               : sizei{};
+			const auto d = ok ? sizei{static_cast<int>(transformer.width()), static_cast<int>(transformer.height())}
+			                  : sizei{};
 			coefficients = ok ? transformer.coefficient_bytes() : 0;
 			note(name + " header", std::format("{} {}x{} coefficients {}", ok, d.cx, d.cy, coefficients));
 		}
@@ -8169,7 +8646,8 @@ static void should_encode_as_diffractors_encoders_did()
 		{
 			for (const auto cut : scan_parity::cut_points(jpeg.size()))
 			{
-				note(std::format("{} cut at {} transposed", name, cut), turned(jpeg.first(cut), core::simple_transform::transpose));
+				note(std::format("{} cut at {} transposed", name, cut),
+				     turned(jpeg.first(cut), core::simple_transform::transpose));
 			}
 
 			core::blob copy(jpeg.begin(), jpeg.end());
@@ -8179,7 +8657,8 @@ static void should_encode_as_diffractors_encoders_did()
 				const auto at = scan_parity::corruption_position(k, copy.size());
 				const auto original = copy[at];
 				copy[at] = static_cast<uint8_t>(original ^ 0xFF);
-				note(std::format("{} corrupt at {} transposed", name, at), turned(copy, core::simple_transform::transpose));
+				note(std::format("{} corrupt at {} transposed", name, at),
+				     turned(copy, core::simple_transform::transpose));
 				copy[at] = original;
 			}
 
@@ -8188,8 +8667,8 @@ static void should_encode_as_diffractors_encoders_did()
 	};
 
 	{
-		const auto made = [&](const int cx, const int cy, const texture_format format, const libfiles::metadata_blocks& m,
-		                      const int quality)
+		const auto made = [&](const int cx, const int cy, const texture_format format,
+		                      const libfiles::metadata_blocks& m, const int quality)
 		{
 			const auto surface = make_surface(cx, cy, format);
 			return encoder.encode(cx, cy, surface->pixels(), surface->stride(),
@@ -8198,7 +8677,8 @@ static void should_encode_as_diffractors_encoders_did()
 
 		turn("made 32x32 camera exif", made(32, 32, texture_format::RGB, exif_only(camera_exif.clone()), 85), true);
 		turn("made 32x20", made(32, 20, texture_format::RGB, {}, 85), true);
-		turn("made 48x48 signed exif q100", made(48, 48, texture_format::RGB, exif_only(signed_exif.clone()), 100), false);
+		turn("made 48x48 signed exif q100", made(48, 48, texture_format::RGB, exif_only(signed_exif.clone()), 100),
+		     false);
 		turn("made 33x17 everything", made(33, 17, texture_format::RGB, everything(), 85), false);
 
 		libfiles::metadata_blocks icc_and_xmp;
@@ -8208,7 +8688,8 @@ static void should_encode_as_diffractors_encoders_did()
 
 		// Sony.JPG is the one fixture whose EXIF gives its thumbnail an orientation, and too large to turn
 		// here, so a picture of the sweep's own carries its EXIF.
-		const auto sony_exif = encode_sweep::exif_segment(platform::blob_from_file(core::file_path(test_files_folder(), "Sony.JPG")));
+		const auto sony_exif = encode_sweep::exif_segment(
+			platform::blob_from_file(core::file_path(test_files_folder(), "Sony.JPG")));
 		assert_equal(true, sony_exif.size() > 1000, "the Sony fixture carries EXIF");
 		turn("made 32x32 sony exif", made(32, 32, texture_format::RGB, exif_only(sony_exif.clone()), 85), false);
 		turn("empty", {}, false);
@@ -8226,20 +8707,19 @@ static void should_encode_as_diffractors_encoders_did()
 	for (const auto& path : found)
 	{
 		auto bytes = platform::blob_from_file(path);
-		if (bytes.size() >= 64 && bytes.size() <= 300 * 1024 && libfiles::detect_image_format(bytes) == libfiles::image_format::jpeg)
+		if (bytes.size() >= 64 && bytes.size() <= 300 * 1024 &&
+		    libfiles::detect_image_format(bytes) == libfiles::image_format::jpeg)
 			fixtures.emplace_back(std::string(path.name()), std::move(bytes));
 	}
 
 	std::ranges::sort(fixtures, [](const auto& a, const auto& b)
-	{
-		return a.first != b.first ? a.first < b.first : a.second.size() < b.second.size();
-	});
+	{ return a.first != b.first ? a.first < b.first : a.second.size() < b.second.size(); });
 
 	for (const auto& [name, bytes] : fixtures) turn(name, bytes, bytes.size() < 100 * 1024);
 
 	const auto checksum = core::crc32c(record.data(), record.size());
 	core::log(__FUNCTION__, std::format("{} fixtures turned, {} outcomes, {} encoded; record {:08x}", fixtures.size(),
-	                                  outcomes, encoded, checksum));
+	                                    outcomes, encoded, checksum));
 
 	assert_equal(true, fixtures.size() >= 15, "the fixtures hold JPEGs to turn");
 	assert_equal(true, encoded > 700, "most of what is encoded encodes");
@@ -8248,7 +8728,7 @@ static void should_encode_as_diffractors_encoders_did()
 	             "every outcome is the one Diffractor's encoders had before they moved to libfiles");
 }
 
-void register_files_tests(view_state& state, test_registry& tests)
+void register_files_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should write UTF8 ZIP entries"s, should_write_utf8_zip_entries);
 	tests.add("Should keep archive entries after warnings"s, should_keep_archive_entries_after_warnings);
@@ -8269,8 +8749,11 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should list EXIF as libexif did"s, should_list_exif_as_libexif_did);
 	tests.add("Should list Commodore media as list_disk did"s, should_list_commodore_media_as_list_disk_did);
 	tests.add("Should scan a SID tune header"s, should_scan_a_sid_tune_header);
+	tests.add("Should index a Commodore image by its listing"s, should_index_a_commodore_image_by_its_listing);
 	tests.add("Should decode PNGs as load_png did"s, should_decode_pngs_as_load_png_did);
 	tests.add("Should decode WebPs as load_webp did"s, should_decode_webps_as_load_webp_did);
+	tests.add("Should show an animation and never write it back as one frame"s,
+	          should_show_an_animation_and_never_write_it_back_as_one_frame);
 	tests.add("Should decode HEIFs as load_heif did"s, should_decode_heifs_as_load_heif_did);
 	tests.add("Should decode JXLs as load_jxl did"s, should_decode_jxls_as_load_jxl_did);
 	tests.add("Should load raws as load_raw did"s, should_load_raws_as_load_raw_did);
@@ -8342,14 +8825,21 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should save .jpg"s, [] { should_save(".jpg", true); });
 	tests.add("Should save .webp"s, [] { should_save(".webp", true); });
 	tests.add("Should save .jxl"s, [] { should_save(".jxl", true); });
+	tests.add("Should save .avif"s, [] { should_save(".avif", true); });
 	tests.add("Should save a turned photo as a turned JPEG XL"s, should_save_a_turned_photo_as_a_turned_jxl);
+	tests.add("Should save a turned photo as a turned AVIF"s, should_save_a_turned_photo_as_a_turned_avif);
+	tests.add("Should convert a turned HEIF upright"s, should_convert_a_turned_heif_upright);
+	tests.add("Should turn a HEIF and a JPEG XL where they keep a turn"s,
+	          should_turn_a_heif_and_a_jxl_where_they_keep_a_turn);
 	tests.add("Should copy an unchanged JPEG XL as it is"s, should_copy_an_unchanged_jxl_as_it_is);
 	tests.add("Should honor JPEG XL save settings"s, should_honor_jxl_save_settings);
+	tests.add("Should keep a JPEG XL compressed as it was"s, should_keep_a_jxl_compressed_as_it_was);
+	tests.add("Should honor AVIF save settings"s, should_honor_avif_save_settings);
+	tests.add("Should keep an AVIF compressed as it was"s, should_keep_an_avif_compressed_as_it_was);
 	tests.add("Should answer a PSD cut short as unreadable"s, should_answer_a_psd_cut_short_as_unreadable);
 
-	constexpr std::string_view read_only_formats[] = {
-		"gradient.bmp", "gradient.tga", "gradient.sgi", "gradient.pcx", "gradient.ppm", "gradient.pgm"
-	};
+	constexpr std::string_view read_only_formats[] = {"gradient.bmp", "gradient.tga", "gradient.sgi",
+	                                                  "gradient.pcx", "gradient.ppm", "gradient.pgm"};
 
 	for (auto name : read_only_formats)
 	{
@@ -8375,8 +8865,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	//
 	tests.add("Should scan and load bitmap psd"s, should_scan_and_load_bitmap_psd);
 	// SRC-026 - PSD stores Lab as byte L plus biased a/b samples
-	tests.add("Should convert psd lab samples to lab coordinates"s,
-	          should_convert_psd_lab_samples_to_lab_coordinates);
+	tests.add("Should convert psd lab samples to lab coordinates"s, should_convert_psd_lab_samples_to_lab_coordinates);
 	// SRC-028 - PSD resource sections are metadata, not unbounded allocation requests
 	tests.add("Should bound psd resource allocations"s, should_bound_psd_resource_allocations);
 	// SRC-028 - large unused resources do not hide bounded metadata resources
@@ -8386,8 +8875,9 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should load valid psd indexed palette"s, should_load_valid_psd_indexed_palette);
 	tests.add("Should keep dimensions from truncated gif"s, should_keep_dimensions_from_truncated_gif);
 	tests.add("Should reject absurd tiff dimensions"s, should_reject_absurd_tiff_dimensions);
-	tests.add("Should extract embedded thumbnails only on demand"s,
-	          should_extract_embedded_thumbnails_only_on_demand);
+	tests.add("Should extract embedded thumbnails only on demand"s, should_extract_embedded_thumbnails_only_on_demand);
+	tests.add("Should thumbnail a heif from its thumbnail item alone"s,
+	          should_thumbnail_a_heif_from_its_thumbnail_item_alone);
 	tests.add("Should decode heic hevc with ffmpeg"s, should_decode_heic_hevc_with_ffmpeg);
 
 	//
@@ -8396,23 +8886,18 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should read jpeg orientation"s, should_read_jpeg_orientation);
 	tests.add("Should read one EXIF orientation everywhere"s, should_read_one_exif_orientation_everywhere);
 	// SRC-034 - APP13 can hold named and reordered Photoshop resources
-	tests.add("Should parse jpeg photoshop iptc resources"s,
-	          should_parse_jpeg_photoshop_iptc_resources);
+	tests.add("Should parse jpeg photoshop iptc resources"s, should_parse_jpeg_photoshop_iptc_resources);
 	// Review G04 - APP13 PSIR must not override APP1/APP2 metadata
 	tests.add("Should keep app13 from overriding jpeg app1 and app2 metadata"s,
 	          should_keep_app13_from_overriding_jpeg_app1_and_app2_metadata);
 	// Review G04 - non-IPTC Photoshop resources survive a JPEG re-encode
-	tests.add("Should preserve non iptc jpeg photoshop resources"s,
-	          should_preserve_non_iptc_jpeg_photoshop_resources);
+	tests.add("Should preserve non iptc jpeg photoshop resources"s, should_preserve_non_iptc_jpeg_photoshop_resources);
 	// Review G04 - Photoshop resources may span consecutive APP13 segments
-	tests.add("Should roundtrip split jpeg photoshop resources"s,
-	          should_roundtrip_split_jpeg_photoshop_resources);
+	tests.add("Should roundtrip split jpeg photoshop resources"s, should_roundtrip_split_jpeg_photoshop_resources);
 	// Review G04 - XMP Toolkit splits Photoshop resources without regard to resource boundaries
-	tests.add("Should join straddled jpeg photoshop resources"s,
-	          should_join_straddled_jpeg_photoshop_resources);
+	tests.add("Should join straddled jpeg photoshop resources"s, should_join_straddled_jpeg_photoshop_resources);
 	// Review G04 - crafted APP13 runs are capped before they grow without bound
-	tests.add("Should cap joined jpeg photoshop resources"s,
-	          should_cap_joined_jpeg_photoshop_resources);
+	tests.add("Should cap joined jpeg photoshop resources"s, should_cap_joined_jpeg_photoshop_resources);
 	tests.add("Should prefer primary orientation over the thumbnail ifd"s,
 	          should_prefer_primary_orientation_over_the_thumbnail_ifd);
 	tests.add("Should use thumbnail orientation only when primary is absent"s,
@@ -8429,8 +8914,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	          should_not_re_encode_a_rotate_refused_for_its_budget);
 	tests.add("Should charge a progressive jpeg for its coefficients"s,
 	          should_charge_a_progressive_jpeg_for_its_coefficients);
-	tests.add("Should reuse jpeg encoder after abandoned encode"s,
-	          should_reuse_jpeg_encoder_after_abandoned_encode);
+	tests.add("Should reuse jpeg encoder after abandoned encode"s, should_reuse_jpeg_encoder_after_abandoned_encode);
 	tests.add("Should rotate lossless"s, should_rotate_lossless);
 	tests.add("Should render ycbcr jpeg as nv12"s, should_render_ycbcr_jpeg_as_nv12);
 	tests.add("Should decode scaled 422 jpeg as nv12"s, should_decode_scaled_422_jpeg_as_nv12);
@@ -8440,8 +8924,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	tests.add("Should decode 16bit gray jpeg"s, should_decode_16bit_gray_jpeg);
 	tests.add("Should decode 16bit colour jpeg"s, should_decode_16bit_colour_jpeg);
 	// SRC-029 - one-pixel axes cannot form NV12
-	tests.add("Should decode thin jpeg when planar is preferred"s,
-	          should_decode_thin_jpeg_when_planar_is_preferred);
+	tests.add("Should decode thin jpeg when planar is preferred"s, should_decode_thin_jpeg_when_planar_is_preferred);
 
 	//
 	// PNG
@@ -8455,6 +8938,7 @@ void register_files_tests(view_state& state, test_registry& tests)
 	// WebP
 	//
 	tests.add("Should honor webp save quality"s, should_honor_webp_save_quality);
+	tests.add("Should keep a WebP compressed as it was"s, should_keep_a_webp_compressed_as_it_was);
 	tests.add("Should tag webp surface alpha"s, should_tag_webp_surface_alpha);
 	tests.add("Should decode opaque lossy webp as nv12"s, should_decode_opaque_lossy_webp_as_nv12);
 	tests.add("Should decode webp at the requested size"s, should_decode_webp_at_the_requested_size);

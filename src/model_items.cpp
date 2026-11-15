@@ -1,13 +1,13 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: File item representation. Defines item_element class for individual files,
-// manages thumbnail caching, metadata display, and selection state.
+// manages thumbnail caching, metadata display, and selection state; and the groups they are listed in,
+// whose detail form is headed by columns that sort the group and size themselves.
 
 #include "pch.h"
 
@@ -54,7 +54,7 @@ static df::group_key media_type_index(const df::item_element_ptr& i)
 	return result;
 }
 
-static df::group_key shuffle_index_key(const df::item_element_ptr& i)
+static df::group_key shuffle_index_key(const df::item_element_ptr& /*i*/)
 {
 	df::group_key result;
 	result.type = group_key_type::grouped_value;
@@ -114,9 +114,8 @@ static df::group_key location_key(const df::item_element_ptr& i, const location_
 			// answer contributes nothing, so a remote item groups by country or not at all.
 			const attribution_cell cell(md->coordinate);
 			const auto found = resolved_places.find(cell);
-			const auto resolved = found != resolved_places.end()
-				                      ? found->second
-				                      : locations.find_attributed(md->coordinate);
+			const auto resolved = found != resolved_places.end() ? found->second
+			                                                     : locations.find_attributed(md->coordinate);
 
 			if (found == resolved_places.end() && locations.is_index_loaded())
 			{
@@ -420,7 +419,7 @@ aspect_ratio_group calc_aspect_ratio_group(const sizei dimensions)
 	if (dimensions.cx <= 0 || dimensions.cy <= 0) return {};
 
 	const auto ratio = std::max(dimensions.cx, dimensions.cy) /
-		static_cast<double>(std::min(dimensions.cx, dimensions.cy));
+	                   static_cast<double>(std::min(dimensions.cx, dimensions.cy));
 	for (const auto& bucket : buckets)
 	{
 		const auto difference = ratio > bucket.ratio ? ratio - bucket.ratio : bucket.ratio - ratio;
@@ -473,24 +472,22 @@ static df::group_key aspect_ratio_key(const df::item_element_ptr& i)
 		}
 	}
 
-	result.text1 = core::cache(aspect_group.is_portrait
-		                          ? tt.aspect_ratio_other_portrait.sv()
-		                          : tt.aspect_ratio_other_landscape.sv());
+	result.text1 = core::cache(aspect_group.is_portrait ? tt.aspect_ratio_other_portrait.sv()
+	                                                    : tt.aspect_ratio_other_landscape.sv());
 	return result;
 }
 
-class toggle_item_display_element final : public std::enable_shared_from_this<toggle_item_display_element>,
-                                          public view_element
+class toggle_item_display_element final :
+	public std::enable_shared_from_this<toggle_item_display_element>,
+	public view_element
 {
 	df::weak_item_group_ptr _parent;
 	const icon_index _icon = icon_index::details;
 
 public:
-	toggle_item_display_element(df::weak_item_group_ptr parent) noexcept : view_element(
-		                                                                       flex_item::right_justified |
-		                                                                       view_element_style::has_tooltip |
-		                                                                       view_element_style::can_invoke),
-	                                                                       _parent(std::move(parent))
+	toggle_item_display_element(df::weak_item_group_ptr parent) noexcept :
+		view_element(flex_item::right_justified | view_element_style::has_tooltip | view_element_style::can_invoke),
+		_parent(std::move(parent))
 	{
 	}
 
@@ -501,14 +498,13 @@ public:
 		xdraw_icon(dc, _icon, bounds.offset(element_offset), clr, {});
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -522,7 +518,7 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(std::make_shared<text_element>(tt.tooltip_toggle_details_selected));
 		hover.window_bounds = hover.active_bounds = bounds.offset(element_offset);
@@ -618,10 +614,11 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 	};
 
 	const auto sorts_by_date = group_mode != group_by::related &&
-		(sort_order == sort_by::date_created || sort_order == sort_by::date_modified ||
-			sort_order == sort_by::date_original ||
-			(sort_order == sort_by::def && (group_mode == group_by::date_created || group_mode ==
-				group_by::date_modified || group_mode == group_by::date_original)));
+	                           (sort_order == sort_by::date_created || sort_order == sort_by::date_modified ||
+	                            sort_order == sort_by::date_original ||
+	                            (sort_order == sort_by::def &&
+	                             (group_mode == group_by::date_created || group_mode == group_by::date_modified ||
+	                              group_mode == group_by::date_original)));
 	const auto reverse_after = !setting.sort_dates_descending && sorts_by_date;
 
 	// Regrouping re-sorts every group even when nothing that affects order moved, and these comparators
@@ -649,10 +646,7 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 
 	if (group_mode == group_by::shuffle)
 	{
-		apply([](const df::item_element_ptr& l, const df::item_element_ptr& r)
-		{
-			return l->random() < r->random();
-		});
+		apply([](const df::item_element_ptr& l, const df::item_element_ptr& r) { return l->random() < r->random(); });
 	}
 	else if (group_mode == group_by::related)
 	{
@@ -720,10 +714,80 @@ static void sort_items(df::item_elements& items, const group_by group_mode, cons
 	}
 }
 
+// The value a detail row shows in a column, as that column sorts it: numbers by value, text as it is read. A row with
+// nothing in the column has no key, and follows those that have one whichever way the column sorts.
+static ui::table_sort_key detail_sort_key(const df::item_display_info& shown, const df::detail_column c,
+                                          const bool created_is_file)
+{
+	using enum df::detail_column;
+	const auto number = [](const auto n)
+	{
+		return n > 0 ? ui::table_sort_key(n) : ui::table_sort_key{};
+	};
+	const auto text = [](const std::string_view s)
+	{
+		return s.empty() ? ui::table_sort_key{} : ui::table_sort_key(s);
+	};
+	const auto date = [](const core::date_t d)
+	{
+		return d.is_valid() ? ui::table_sort_key(d.to_int64()) : ui::table_sort_key{};
+	};
+
+	switch (c)
+	{
+	case disk: return number(shown.disk);
+	case track: return number(shown.track);
+	case episode: return text(shown.episode.sv());
+	case year: return number(shown.year);
+	case title: return text(shown.name.sv());
+	// A reject is marked in the same column, ahead of the labels.
+	case flag: return shown.rating < 0 ? ui::table_sort_key(-1) : text(shown.label.sv());
+	case presence: return df::can_show_duplicates(shown) ? ui::table_sort_key(shown.duplicates) : ui::table_sort_key{};
+	case sidecars: return number(shown.sidecars);
+	case items: return number(shown.items);
+	case duration: return number(shown.duration);
+	case file_size: return shown.size.is_empty() ? ui::table_sort_key{} : ui::table_sort_key(shown.size.to_int64());
+	case bitrate: return text(shown.bitrate.sv());
+	case info: return text(shown.info);
+	case dimensions: return number(static_cast<int64_t>(shown.dimensions.cx) * shown.dimensions.cy);
+	case pixel_format: return text(shown.pixel_format.sv());
+	case audio_sample_rate: return number(shown.audio_sample_rate);
+	case created: return date(created_is_file ? shown.file_created : shown.created);
+	case modified: return date(shown.modified);
+	case icon: break;
+	}
+
+	return {};
+}
 
 void df::item_group::sort(const group_by group_mode, const sort_by sort_order, const bool group_by_dups)
 {
-	sort_items(_items, group_mode, sort_order, group_by_dups);
+	// A group sorted from its headings keeps that order while they show; the rest follow the toolbar's.
+	const auto* const choice = _display == item_group_display::detail ? _state.detail_choice(_key) : nullptr;
+
+	if (choice && choice->sort_column >= 0 && choice->sort_column < detail_column_count)
+	{
+		const auto column = static_cast<detail_column>(choice->sort_column);
+		const auto created_is_file = _state.group_order() == group_by::date_created;
+		std::vector<std::pair<ui::table_sort_key, item_element_ptr>> keyed;
+		keyed.reserve(_items.size());
+
+		for (const auto& i : _items)
+			keyed.emplace_back(detail_sort_key(i->populate_info(), column, created_is_file), i);
+
+		std::ranges::stable_sort(keyed, [ascending = choice->ascending](const auto& l, const auto& r)
+		{
+			if (l.first.empty() != r.first.empty()) return r.first.empty();
+			if (const auto c = l.first.compare(r.first); c != 0) return ascending ? c < 0 : c > 0;
+			return core::icmp_natural(l.second->name(), r.second->name()) < 0;
+		});
+
+		for (auto i = 0_z; i < keyed.size(); ++i) _items[i] = std::move(keyed[i].second);
+	}
+	else
+	{
+		sort_items(_items, group_mode, sort_order, group_by_dups);
+	}
 
 	auto last_dup_group = 0u;
 	auto alt_background = false;
@@ -824,7 +888,6 @@ df::history_range df::history_auto_range(const date_histogram& dates, const int 
 	return {std::min(current_year - oldest, window.first_year), current_year};
 }
 
-
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
@@ -861,7 +924,6 @@ df::item_set_info df::item_set::info() const
 
 	return result;
 }
-
 
 std::string_view item_presence_text(const item_presence v, const bool long_text)
 {
@@ -953,8 +1015,8 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 
 	// The title is cached on the group, and the group outlives the view, so a strong capture here
 	// would pin the view host and everything it owns.
-	const auto add_title_link = [g, &s, weak_view = std::weak_ptr(view), result, font](
-		const std::string_view title, const search_t& search)
+	const auto add_title_link =
+		[g, &s, weak_view = std::weak_ptr(view), result, font](const std::string_view title, const search_t& search)
 	{
 		if (search.is_empty())
 		{
@@ -978,8 +1040,7 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 			};
 
 			const auto link = std::make_shared<link_element>(title, command, tooltip, font,
-			                                                 render::text_style::multiline,
-			                                                 view_element_style::none);
+			                                                 render::text_style::multiline, view_element_style::none);
 			link->margin(4);
 			link->padding(4);
 			result->elements.emplace_back(link);
@@ -1119,12 +1180,14 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 				if (rating != 0)
 				{
 					const auto search = search_t(current_search).with(prop::rating, rating);
-					const auto command = [&s, view, search] { s.open(view, search, {}); };
+					const auto command = [&s, view, search]
+					{
+						s.open(view, search, {});
+					};
 
 					auto tooltip = [rating](const view_hover_element& popup)
 					{
-						popup.elements->add(
-							make_icon_element(icon_index::star_solid, rating, flex_item::line_break));
+						popup.elements->add(make_icon_element(icon_index::star_solid, rating, flex_item::line_break));
 					};
 
 					const auto link = make_icon_link_element(icon_index::star_solid, rating, command, tooltip);
@@ -1143,7 +1206,7 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 			}
 		}
 		else if (order == group_by::date_created || order == group_by::date_modified ||
-			order == group_by::date_original)
+		         order == group_by::date_original)
 		{
 			auto target = date_parts_prop::any;
 			if (order == group_by::date_modified) target = date_parts_prop::modified;
@@ -1276,12 +1339,11 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 
 	if (key.type == group_key_type::folder)
 	{
-		result->elements.emplace_back(make_icon_link_element(icon_index::new_folder, commands::tool_new_folder,
-		                                                     flex_item::right_justified));
-		result->elements.emplace_back(make_icon_link_element(icon_index::recursive, commands::browse_recursive,
-		                                                     flex_item::right_justified));
+		result->elements.emplace_back(
+			make_icon_link_element(icon_index::new_folder, commands::tool_new_folder, flex_item::right_justified));
+		result->elements.emplace_back(
+			make_icon_link_element(icon_index::recursive, commands::browse_recursive, flex_item::right_justified));
 	}
-
 
 	result->elements.emplace_back(std::make_shared<toggle_item_display_element>(g));
 	result->padding(8);
@@ -1344,7 +1406,7 @@ void df::item_group::update_scroll_info(const group_by order)
 			}
 		}
 		else if (order == group_by::date_created || order == group_by::date_modified ||
-			order == group_by::date_original)
+		         order == group_by::date_original)
 		{
 			if (_key.order1 == 0)
 			{
@@ -1446,102 +1508,64 @@ void view_state::update_item_groups()
 			{
 				switch (group_order)
 				{
-				case group_by::size:
-					groups[size_key(i)].emplace_back(i);
-					break;
+				case group_by::size: groups[size_key(i)].emplace_back(i); break;
 
-				case group_by::folder:
-					groups[folder_key(i)].emplace_back(i);
-					break;
+				case group_by::folder: groups[folder_key(i)].emplace_back(i); break;
 
 				case group_by::date_created:
 					groups[date_key(i->file_or_metadata_created(), i, today)].emplace_back(i);
 					break;
 
-				case group_by::date_original:
-					groups[date_key(i->media_created(), i, today)].emplace_back(i);
-					break;
+				case group_by::date_original: groups[date_key(i->media_created(), i, today)].emplace_back(i); break;
 
 				case group_by::date_modified:
 					groups[date_key(platform::utc_to_local(i->file_modified()), i, today)].emplace_back(i);
 					break;
 
-				case group_by::shuffle:
-					groups[shuffle_index_key(i)].emplace_back(i);
-					break;
+				case group_by::shuffle: groups[shuffle_index_key(i)].emplace_back(i); break;
 
-				default:
-					groups[media_type_index(i)].emplace_back(i);
-					break;
+				default: groups[media_type_index(i)].emplace_back(i); break;
 				}
 			}
 			else
 			{
 				switch (group_order)
 				{
-				case group_by::size:
-					groups[size_key(i)].emplace_back(i);
-					break;
+				case group_by::size: groups[size_key(i)].emplace_back(i); break;
 
-				case group_by::extension:
-					groups[extension_key(i)].emplace_back(i);
-					break;
+				case group_by::extension: groups[extension_key(i)].emplace_back(i); break;
 
-				case group_by::folder:
-					groups[folder_key(i)].emplace_back(i);
-					break;
+				case group_by::folder: groups[folder_key(i)].emplace_back(i); break;
 
-				case group_by::location:
-					groups[location_key(i, locations, _resolved_places)].emplace_back(i);
-					break;
+				case group_by::location: groups[location_key(i, locations, _resolved_places)].emplace_back(i); break;
 
-				case group_by::rating_label:
-					groups[rating_key(i)].emplace_back(i);
-					break;
+				case group_by::rating_label: groups[rating_key(i)].emplace_back(i); break;
 
 				case group_by::date_created:
 					groups[date_key(i->file_or_metadata_created(), i, today)].emplace_back(i);
 					break;
 
-				case group_by::date_original:
-					groups[date_key(i->media_created(), i, today)].emplace_back(i);
-					break;
+				case group_by::date_original: groups[date_key(i->media_created(), i, today)].emplace_back(i); break;
 
 				case group_by::date_modified:
 					groups[date_key(platform::utc_to_local(i->file_modified()), i, today)].emplace_back(i);
 					break;
 
-				case group_by::resolution:
-					groups[resolution_key(i)].emplace_back(i);
-					break;
+				case group_by::resolution: groups[resolution_key(i)].emplace_back(i); break;
 
-				case group_by::aspect_ratio:
-					groups[aspect_ratio_key(i)].emplace_back(i);
-					break;
+				case group_by::aspect_ratio: groups[aspect_ratio_key(i)].emplace_back(i); break;
 
-				case group_by::camera:
-					groups[camera_key(i)].emplace_back(i);
-					break;
+				case group_by::camera: groups[camera_key(i)].emplace_back(i); break;
 
-				case group_by::album_show:
-					groups[album_show_key(i)].emplace_back(i);
-					break;
+				case group_by::album_show: groups[album_show_key(i)].emplace_back(i); break;
 
-				case group_by::shuffle:
-					groups[shuffle_index_key(i)].emplace_back(i);
-					break;
+				case group_by::shuffle: groups[shuffle_index_key(i)].emplace_back(i); break;
 
-				case group_by::presence:
-					groups[presence_key(i->presence())].emplace_back(i);
-					break;
+				case group_by::presence: groups[presence_key(i->presence())].emplace_back(i); break;
 
-				case group_by::related:
-					groups[related_key(i)].emplace_back(i);
-					break;
+				case group_by::related: groups[related_key(i)].emplace_back(i); break;
 
-				default:
-					groups[media_type_index(i)].emplace_back(i);
-					break;
+				default: groups[media_type_index(i)].emplace_back(i); break;
 				}
 			}
 		}
@@ -1596,9 +1620,8 @@ void view_state::update_item_groups()
 		else
 		{
 			const auto key = i.first.type;
-			const auto item_group_display = setting.is_detail_display(key)
-				                                ? df::item_group_display::detail
-				                                : df::item_group_display::icons;
+			const auto item_group_display = setting.is_detail_display(key) ? df::item_group_display::detail
+			                                                               : df::item_group_display::icons;
 
 			b = std::make_shared<df::item_group>(*this, std::move(i.second), item_group_display, i.first);
 			b->padding(0);
@@ -1667,7 +1690,7 @@ void view_state::refresh_visits()
 	core::cancel_token token(_visits_generation);
 	const auto generation = _visits_generation.load(std::memory_order_relaxed);
 
-	df::visit_request request(std::move(token));
+	df::visit_request request(token);
 	request.samples.reserve(_display_items.size());
 
 	for (const auto& i : _display_items._items)
@@ -1699,7 +1722,7 @@ void view_state::refresh_visits()
 
 	queue_location([this, generation, request = std::move(request)](const location_cache& locations) mutable
 	{
-		auto timeline = df::compute_visits(std::move(request), locations);
+		auto timeline = df::compute_visits(request, locations);
 
 		queue_ui([this, generation, timeline = std::move(timeline)]() mutable
 		{
@@ -1725,6 +1748,7 @@ sizei df::item_group::measure(render::measure_context& mc, const int width_limit
 	const double cy = base_line_height + mc.padding1;
 	double y = 0;
 	double y_max = 0;
+	_heading_height = 0;
 
 	if (!_items.empty())
 	{
@@ -1733,6 +1757,11 @@ sizei df::item_group::measure(render::measure_context& mc, const int width_limit
 		if (_display == item_group_display::detail)
 		{
 			const auto line_height = mc.text_line_height(render::font_face::dialog);
+
+			// The headings' band, over the first row.
+			_heading_height = line_height + core::round(item_draw_info::_text_padding * 2 * scale_factor);
+			y = _heading_height;
+			y_max = y;
 
 			for (auto i = 0; i < item_count; ++i)
 			{
@@ -1743,7 +1772,8 @@ sizei df::item_group::measure(render::measure_context& mc, const int width_limit
 
 				const auto height = element_padding.cy * 2 + line_height * line_count;
 				_layout_bounds[i] = recti(element_padding.cx, core::round(y + element_padding.cy),
-				                          width_limit - element_padding.cx, core::round(y + height - element_padding.cy));
+				                          width_limit - element_padding.cx,
+				                          core::round(y + height - element_padding.cy));
 				y_max = y + height;
 				y += height;
 			}
@@ -1845,17 +1875,15 @@ sizei df::item_group::measure(render::measure_context& mc, const int width_limit
 					{
 						// The height floor is the only thing that can leave a row over-full, and reaching
 						// it may not cost more than the crop tolerance.
-						cy_line = std::max(20.0 * scale_factor,
-						                   std::min(cy_line, cy_fit / (1.0 - crop_tolerance)));
+						cy_line = std::max(20.0 * scale_factor, std::min(cy_line, cy_fit / (1.0 - crop_tolerance)));
 					}
 
 					double total_width = 0.0;
 
 					for (int nn = 0; nn < col_count; nn++)
 					{
-						const auto cx = aspects[nn] > 0.0
-							                ? std::max(20.0 * scale_factor, aspects[nn] * cy_line)
-							                : nominal_widths[nn];
+						const auto cx = aspects[nn] > 0.0 ? std::max(20.0 * scale_factor, aspects[nn] * cy_line)
+						                                  : nominal_widths[nn];
 						dst_widths[nn] = cx;
 						total_width += cx;
 					}
@@ -1882,8 +1910,8 @@ sizei df::item_group::measure(render::measure_context& mc, const int width_limit
 					for (int nn = 0; nn < col_count; nn++)
 					{
 						const auto cx = dst_widths[nn];
-						_layout_bounds[line_start + nn] =
-							recti(core::round(xx), core::round(y), core::round(xx + cx), core::round(y + cy_line));
+						_layout_bounds[line_start + nn] = recti(core::round(xx), core::round(y), core::round(xx + cx),
+						                                        core::round(y + cy_line));
 						xx += cx + x_gap;
 					}
 
@@ -1984,7 +2012,8 @@ void df::item_group::display(const item_group_display d)
 	if (_display != d)
 	{
 		_display = d;
-		_state.invalidate_view(view_invalid::view_layout);
+		// A heading sort orders a group only while its headings show, so turning to or from details sorts it again.
+		_state.invalidate_view(view_invalid::view_layout | view_invalid::group_layout);
 	}
 }
 
@@ -1995,7 +2024,51 @@ void df::item_group::toggle_display()
 	setting.set_detail_display(_key.type, _display == item_group_display::detail);
 }
 
-void df::item_group::update_row_layout(const render::measure_context& mc) const
+// A detail column's heading: its title, where in its cell it sits - where the row's value does - and which way a
+// first click sorts it: names and sequences from the start, amounts and dates largest and latest first. The icon
+// and the unused info column have none.
+struct detail_heading_def
+{
+	std::string_view title;
+	render::text_style style = render::text_style::single_line;
+	bool first_ascending = true;
+};
+
+static detail_heading_def detail_heading(const df::detail_column c, const group_by group_order)
+{
+	using enum df::detail_column;
+	constexpr auto far = render::text_style::single_line_far;
+	constexpr auto center = render::text_style::single_line_center;
+
+	switch (c)
+	{
+	case disk: return {tt.prop_name_disk.sv(), far};
+	case track: return {tt.prop_name_track.sv(), far};
+	case episode: return {tt.prop_name_episode.sv()};
+	case year: return {tt.prop_name_year.sv(), far};
+	case title: return {tt.sort_by_name.sv()};
+	case flag: return {tt.prop_name_label.sv(), center};
+	case presence: return {tt.duplicates.sv(), center, false};
+	case sidecars: return {tt.table_sidecars.sv(), center, false};
+	case items: return {tt.group_title_items.sv(), far, false};
+	case duration: return {tt.prop_name_duration.sv(), far, false};
+	case file_size: return {tt.prop_name_size.sv(), far, false};
+	case bitrate: return {tt.prop_name_bitrate.sv(), far, false};
+	case dimensions: return {tt.prop_name_dimensions.sv(), far, false};
+	case pixel_format: return {tt.prop_name_pixelformat.sv()};
+	case audio_sample_rate: return {tt.prop_name_samplerate.sv(), far, false};
+	case created:
+		return {group_order == group_by::date_created ? tt.prop_name_created.sv() : tt_prep(tt.prop_name_original.sv()),
+		        far, false};
+	case modified: return {tt.prop_name_modified.sv(), far, false};
+	case icon:
+	case info: break;
+	}
+
+	return {};
+}
+
+void df::item_group::update_row_layout(render::measure_context& mc) const
 {
 	_row_draw_info.icon.width = _row_draw_info.icon.extent;
 	_row_draw_info.disk.width = _row_draw_info.disk.val_max > 1 ? _row_draw_info.disk.extent : 0;
@@ -2017,12 +2090,35 @@ void df::item_group::update_row_layout(const render::measure_context& mc) const
 	_row_draw_info.modified.width = _row_draw_info.modified.extent;
 	_row_draw_info.created.width = _row_draw_info.created.extent;
 
+	// A column some row fills is as wide as its heading, so the heading reads whole; and as wide as the user
+	// dragged it, if they did. The name takes what is left.
+	const auto* const choice = _state.detail_choice(_key);
+	const auto group_order = _state.group_order();
+	const auto max_width = core::round(item_draw_info::_max_width * mc.scale_factor);
+
+	for (auto i = static_cast<int>(detail_column::disk); i < detail_column_count; ++i)
+	{
+		const auto c = static_cast<detail_column>(i);
+		auto& column = _row_draw_info.column(c);
+		if (column.width <= 0 || c == detail_column::title) continue;
+
+		if (const auto heading = detail_heading(c, group_order); !heading.title.empty())
+		{
+			column.width = std::max(column.width, mc.measure_text(heading.title, render::font_face::dialog,
+			                                                      render::text_style::single_line, max_width)
+			                                          .cx);
+		}
+
+		if (choice && choice->widths[i] > 0.0)
+			column.width = std::max(1, core::round(choice->widths[i] * mc.scale_factor));
+	}
+
 	const auto text_padding = core::round(item_draw_info::_text_padding * mc.scale_factor);
 	const auto width_avail = bounds.width() - mc.padding1 * 5;
 	const auto half_width_avail = width_avail / 2;
 	const auto expendable_title_width = _row_draw_info.title.width > half_width_avail
-		                                    ? _row_draw_info.title.width - half_width_avail
-		                                    : 0;
+	                                        ? _row_draw_info.title.width - half_width_avail
+	                                        : 0;
 
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.title.width -= expendable_title_width;
 	if (width_avail < _row_draw_info.total(text_padding)) _row_draw_info.info.width = _row_draw_info.disk.width = 0;
@@ -2148,8 +2244,245 @@ void df::item_group::update_detail_row_layout(render::draw_context& dc, const it
 	i->row_layout_valid = true;
 }
 
-void df::item_group::render(render::draw_context& dc, const pointi element_offset) const
+void df::item_group::render(render::draw_context& /*dc*/, const pointi /*element_offset*/) const
 {
+}
+
+void df::item_group::render_headings(render::draw_context& dc, const pointi element_offset, const recti viewport) const
+{
+	_heading_drawn = {};
+	_heading_cells.clear();
+	_heading_scale = dc.scale_factor;
+	if (!shows_headings() || _heading_height <= 0 || _layout_bounds.empty()) return;
+
+	const auto group = bounds.offset(element_offset);
+	const auto first = _layout_bounds.front().offset(group.left, group.top);
+	// Held at the top of the view while the group's rows scroll under it, and carried off with its last row.
+	const auto top = std::clamp(viewport.top, group.top, std::max(group.top, group.bottom - _heading_height));
+	const recti band(first.left, top, first.right, top + _heading_height);
+
+	// A row this narrow draws nothing in its columns, so nothing heads them.
+	if (!band.intersects(viewport) || band.width() <= 100) return;
+	_heading_drawn = band;
+
+	// Each heading spans its column as the rows place it, so it sits over the values it names.
+	const auto tp = core::round(item_draw_info::_text_padding * dc.scale_factor);
+	const auto& widths = _row_draw_info;
+	auto x = band.left;
+
+	if (widths.icon.extent > 0)
+	{
+		_heading_cells.push_back(
+			{detail_column::icon, recti(x, band.top, x + widths.icon.extent + tp * 2, band.bottom)});
+		x += widths.icon.extent + tp * 2;
+	}
+
+	for (auto i = static_cast<int>(detail_column::disk); i < detail_column_count; ++i)
+	{
+		const auto c = static_cast<detail_column>(i);
+		const auto width = widths.column(c).width;
+		if (width <= 0) continue;
+		_heading_cells.push_back({c, recti(x, band.top, std::min(band.right, x + width + tp), band.bottom)});
+		x += width + tp;
+	}
+
+	// Opaque, for the rows scrolling under it, then shaded as the stack's tables shade theirs.
+	dc.draw_rect(band, core::color(dc.colors.background, dc.colors.alpha));
+	dc.draw_rounded_rect(band, core::color(0x000000, dc.colors.alpha * 0.2f), dc.padding1);
+
+	const auto* const choice = _state.detail_choice(_key);
+	const auto group_order = _state.group_order();
+
+	for (const auto& cell : _heading_cells)
+	{
+		const auto heading = detail_heading(cell.column, group_order);
+		if (heading.title.empty()) continue;
+
+		const auto column = static_cast<int>(cell.column);
+		if (column == _pressed_heading)
+			dc.draw_rect(cell.bounds, core::color(dc.colors.foreground, dc.colors.alpha * 0.12f));
+
+		const auto sorted = choice && choice->sort_column == column;
+		const auto color = core::color(dc.colors.foreground, dc.colors.alpha * (sorted ? 1.0f : 0.7f));
+		auto text_bounds = cell.bounds;
+		text_bounds.left += tp / 2;
+		text_bounds.right = cell.column == detail_column::title
+		                        ? cell.bounds.right - tp / 2
+		                        : std::min(cell.bounds.right, text_bounds.left + widths.column(cell.column).width);
+		dc.draw_text(heading.title, text_bounds, render::font_face::dialog, heading.style, color, {});
+		if (sorted) ui::table_layout::draw_sort_mark(dc, cell.bounds, choice->ascending, color);
+	}
+
+	// Faint, so the columns read as resizable, and plain while one is dragged.
+	const auto line = std::max(1, core::round(dc.scale_factor));
+
+	for (const auto& [c, divider] : heading_dividers())
+	{
+		const auto active = static_cast<int>(c) == _active_divider;
+		const auto width = active ? line * 2 : line;
+		const auto mid = divider.center().x - width / 2;
+		dc.draw_rect(recti(mid, divider.top + 2, mid + width, divider.bottom - 2),
+		             core::color(dc.colors.foreground, dc.colors.alpha * (active ? 0.9f : 0.3f)));
+	}
+}
+
+std::vector<std::pair<df::detail_column, recti>> df::item_group::heading_dividers() const
+{
+	std::vector<std::pair<detail_column, recti>> result;
+	if (_heading_drawn.is_empty() || _heading_cells.size() < 2) return result;
+
+	const auto name = std::ranges::find(_heading_cells, detail_column::title, &heading_cell::column);
+	const auto name_at = std::distance(_heading_cells.begin(), name);
+	const auto grip = std::max(2, core::round(4 * _heading_scale));
+
+	for (auto k = 0_z; k + 1 < _heading_cells.size(); ++k)
+	{
+		// The name takes up the room, so a divider before it sizes the column on its left and one after it the
+		// column on its right; the icon's is not a column to size.
+		const auto resized = static_cast<ptrdiff_t>(k) + 1 <= name_at ? _heading_cells[k].column
+		                                                              : _heading_cells[k + 1].column;
+		if (resized == detail_column::icon || resized == detail_column::title) continue;
+
+		const auto x = _heading_cells[k + 1].bounds.left;
+		result.emplace_back(resized, recti(x - grip, _heading_drawn.top, x + grip, _heading_drawn.bottom));
+	}
+
+	return result;
+}
+
+namespace
+{
+	// A click on a detail heading sorts its group by the column; a press taken back, or let go off it, does not.
+	class detail_heading_controller final : public view_controller
+	{
+		df::item_group_ptr _group;
+		df::detail_column _column;
+		bool _tracking = false;
+
+	public:
+		detail_heading_controller(const view_host_ptr& host, const recti bounds, df::item_group_ptr group,
+		                          const df::detail_column column) :
+			view_controller(host, bounds), _group(std::move(group)), _column(column)
+		{
+		}
+
+		~detail_heading_controller() override { escape(); }
+
+		platform::cursor cursor() const override { return platform::cursor::link; }
+
+		void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
+		{
+			_tracking = true;
+			_group->_pressed_heading = static_cast<int>(_column);
+			_host->invalidate(ui::host_invalid::redraw);
+		}
+
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+		{
+			const auto clicked = _tracking && _bounds.contains(loc);
+			escape();
+
+			if (clicked)
+			{
+				auto& state = _group->_state;
+				state.sort_detail_group(_group->_key, _column,
+				                        detail_heading(_column, state.group_order()).first_ascending);
+			}
+		}
+
+		bool escape() override
+		{
+			if (!_tracking) return false;
+			_tracking = false;
+			_group->_pressed_heading = -1;
+			_host->invalidate(ui::host_invalid::redraw);
+			return true;
+		}
+	};
+
+	// Drags the divider by a detail heading, sizing the column on its far side from the name, which takes up or
+	// gives the room and is never squeezed out by it. Escape takes the drag back; a double-click fits the column
+	// to what it holds again.
+	class detail_divider_controller final : public view_controller
+	{
+		df::item_group_ptr _group;
+		df::detail_column _column;
+		bool _after_name = false;
+		bool _dragging = false;
+		int _start_x = 0;
+		int _start_width = 0;
+		int _most = 0;
+		double _start_choice = 0.0;
+
+		void size(const double logical_width) const
+		{
+			_group->_state.size_detail_column(_group->_key, _column, logical_width);
+		}
+
+	public:
+		detail_divider_controller(const view_host_ptr& host, const recti bounds, df::item_group_ptr group,
+		                          const df::detail_column column) :
+			view_controller(host, bounds), _group(std::move(group)), _column(column)
+		{
+			_after_name = _group->_row_draw_info.title.width > 0 &&
+			              std::ranges::find(_group->_heading_cells, df::detail_column::title,
+			                                &df::item_group::heading_cell::column) <
+			                  std::ranges::find(_group->_heading_cells, column, &df::item_group::heading_cell::column);
+			_group->_active_divider = static_cast<int>(_column);
+			_host->invalidate(ui::host_invalid::redraw);
+		}
+
+		~detail_divider_controller() override
+		{
+			escape();
+			_group->_active_divider = -1;
+			_host->invalidate(ui::host_invalid::redraw);
+		}
+
+		platform::cursor cursor() const override { return platform::cursor::left_right; }
+
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
+		{
+			const auto scale = _group->_heading_scale;
+			const auto* const choice = _group->_state.detail_choice(_group->_key);
+			const auto least_name = core::round(60 * scale);
+			_dragging = true;
+			_start_x = loc.x;
+			_start_width = _group->_row_draw_info.column(_column).width;
+			_start_choice = choice ? choice->widths[static_cast<size_t>(_column)] : 0.0;
+			_most = _start_width + std::max(0, _group->_row_draw_info.title.width - least_name);
+		}
+
+		void on_mouse_move(const pointi loc) override
+		{
+			if (!_dragging) return;
+			const auto scale = _group->_heading_scale;
+			const auto moved = loc.x - _start_x;
+			const auto width = std::clamp(_start_width + (_after_name ? -moved : moved),
+			                              std::min(core::round(24 * scale), _most), _most);
+			size(width / scale);
+		}
+
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+		{
+			on_mouse_move(loc);
+			_dragging = false;
+		}
+
+		void on_mouse_left_button_double_click(const pointi /*loc*/, const platform::key_state /*keys*/) override
+		{
+			_dragging = false;
+			size(0.0);
+		}
+
+		bool escape() override
+		{
+			if (!_dragging) return false;
+			_dragging = false;
+			size(_start_choice);
+			return true;
+		}
+	};
 }
 
 void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements,
@@ -2165,7 +2498,7 @@ void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_ele
 	else if (item && is_valid(item->thumbnail()))
 	{
 		if (!_scroll_tooltip_staging_item || _scroll_tooltip_staging_item == item ||
-			!_scroll_tooltip_staging_item->is_staging_thumbnail_surface())
+		    !_scroll_tooltip_staging_item->is_staging_thumbnail_surface())
 		{
 			_scroll_tooltip_staging_item = item;
 			item->stage_thumbnail_surface(async, false, true);
@@ -2178,14 +2511,14 @@ void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_ele
 			if (is_valid(i->thumbnail_surface()))
 			{
 				_scroll_tooltip_staging_item.reset();
-				elements->add(std::make_shared<surface_element>(i->thumbnail_surface(), max_thumb_dim,
-				                                                flex_item::center));
+				elements->add(
+					std::make_shared<surface_element>(i->thumbnail_surface(), max_thumb_dim, flex_item::center));
 				break;
 			}
 			if (i->has_thumb())
 			{
 				if (!_scroll_tooltip_staging_item || _scroll_tooltip_staging_item == i ||
-					!_scroll_tooltip_staging_item->is_staging_thumbnail_surface())
+				    !_scroll_tooltip_staging_item->is_staging_thumbnail_surface())
 				{
 					_scroll_tooltip_staging_item = i;
 					i->stage_thumbnail_surface(async, false, true);
@@ -2197,8 +2530,7 @@ void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_ele
 
 	if (_scroll_tooltip_rating != 0)
 	{
-		elements->add(make_icon_element(icon_index::star_solid, _scroll_tooltip_rating,
-		                                flex_item::line_break));
+		elements->add(make_icon_element(icon_index::star_solid, _scroll_tooltip_rating, flex_item::line_break));
 	}
 
 	for (const auto& t : _scroll_tooltip_text)
@@ -2212,10 +2544,8 @@ void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_ele
 // Returns the index of the first item that can contain y; callers scan forward while bounds.top <= y.
 static size_t first_item_at_y(const df::item_elements& items, const int y)
 {
-	const auto found = std::ranges::lower_bound(items, y, {}, [](const df::item_element_ptr& i)
-	{
-		return i->bounds.bottom;
-	});
+	const auto found = std::ranges::lower_bound(items, y, {},
+	                                            [](const df::item_element_ptr& i) { return i->bounds.bottom; });
 
 	return std::distance(items.begin(), found);
 }
@@ -2240,10 +2570,29 @@ void df::item_group::tooltip(view_hover_element& hover, const pointi loc, const 
 }
 
 view_controller_ptr df::item_group::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                             const pointi element_offset,
-                                                             hit_test_context& ctx)
+                                                             const pointi element_offset, hit_test_context& ctx)
 {
 	if (!bounds.offset(element_offset).contains(loc)) return nullptr;
+
+	// The headings are drawn over the rows, so they answer before them, and a divider before the headings either
+	// side of it. A press on the band between them selects nothing under it.
+	if (_heading_drawn.contains(loc))
+	{
+		for (const auto& [column, divider] : heading_dividers())
+		{
+			if (ctx.occluded(divider))
+				return std::make_shared<detail_divider_controller>(host, divider, shared_from_this(), column);
+		}
+
+		for (const auto& cell : _heading_cells)
+		{
+			if (!detail_heading(cell.column, _state.group_order()).title.empty() && ctx.occluded(cell.bounds))
+				return std::make_shared<detail_heading_controller>(host, cell.bounds, shared_from_this(), cell.column);
+		}
+
+		ctx.confine(_heading_drawn);
+		return std::make_shared<view_controller>(host, _heading_drawn);
+	}
 
 	const auto y = loc.y - element_offset.y;
 
@@ -2276,7 +2625,6 @@ df::item_element_ptr df::item_group::drawable_from_layout_location(const pointi 
 	return nullptr;
 }
 
-
 // Folds the duplicates bit into the published mask from the count as it stands now, with a
 // compare-exchange so a mask republished concurrently is not overwritten. Both writers finish here:
 // calc_search_presence republishes the whole mask from a count it read earlier, and a count that
@@ -2294,16 +2642,15 @@ static void fold_duplicates_bit(std::atomic<search_presence_mask>& presence,
 
 		if (duplicates.load().count > 1) updated.types |= search_presence_mask::duplicates;
 		else updated.types &= ~search_presence_mask::duplicates;
-	}
-	while (!presence.compare_exchange_weak(existing, updated));
+	} while (!presence.compare_exchange_weak(existing, updated));
 }
 
 void df::index_file_item::update_duplicates(const index_folder_item_ptr& f, const duplicate_info dup_info) const
 {
 	const auto existing = duplicates.load();
 
-	if (existing.count != dup_info.count || existing.group != dup_info.group ||
-		existing.grade != dup_info.grade || existing.same_picture_crowded != dup_info.same_picture_crowded)
+	if (existing.count != dup_info.count || existing.group != dup_info.group || existing.grade != dup_info.grade ||
+	    existing.same_picture_crowded != dup_info.same_picture_crowded)
 	{
 		duplicates = dup_info;
 		fold_duplicates_bit(search_presence, duplicates);
@@ -2382,8 +2729,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 	{
 		const auto alpha = dc.colors.alpha;
 		const auto text_color = core::color(dc.colors.foreground, alpha);
-		const auto group_text_color = core::color(ft->text_color(dc.colors.foreground), alpha).emphasize(
-			background_is_highlighted);
+		const auto group_text_color = core::color(ft->text_color(dc.colors.foreground), alpha)
+		                                  .emphasize(background_is_highlighted);
 		const auto bg_disk = core::color(ui::style::colors.view_selected_background, dc.colors.alpha * 0.77f);
 		const auto bg_dups = core::color(app_colors::duplicate_background, dc.colors.alpha * 0.77f);
 		const auto bg_sidecars = core::color(app_colors::sidecar_background, dc.colors.alpha * 0.77f);
@@ -2514,7 +2861,6 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 				text_x += widths.flag.width + text_padding;
 			}
 
-
 			if (widths.presence.width > 0)
 			{
 				// The column is as wide as the widest row in the group, so a row with no duplicate
@@ -2610,7 +2956,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 				if (!is_empty(info.pixel_format))
 				{
 					const auto bb = widths.pixel_format.calc_bounds(text_rect, text_x, text_y, text_padding);
-					widths.pixel_format.draw(dc, info.pixel_format, core::color{}, bb, text_font, text_style, text_color);
+					widths.pixel_format.draw(dc, info.pixel_format, core::color{}, bb, text_font, text_style,
+					                         text_color);
 				}
 				text_x += widths.pixel_format.width + text_padding;
 			}
@@ -2669,16 +3016,17 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 		const auto expand_text = (is_hover || is_focus) && thumb_is_valid;
 		const auto show_stars = show_text && group_order != group_by::rating_label;
 		const auto show_info = (is_folder || is_hover) && !core::is_empty(info.info);
-		const auto show_size = show_text && !is_folder && (group_order == group_by::size || sort_order ==
-			sort_by::size);
-		const auto show_created = show_text && !is_folder && (group_order == group_by::date_created ||
-			group_order == group_by::date_original || sort_order == sort_by::date_original ||
-			sort_order == sort_by::date_created);
+		const auto show_size = show_text && !is_folder &&
+		                       (group_order == group_by::size || sort_order == sort_by::size);
+		const auto show_created = show_text && !is_folder &&
+		                          (group_order == group_by::date_created || group_order == group_by::date_original ||
+		                           sort_order == sort_by::date_original || sort_order == sort_by::date_created);
 		// The group order names the key when it is a date order; otherwise the sort order does.
 		const auto created_shown_is_file = group_order == group_by::date_created ||
-			(group_order != group_by::date_original && sort_order == sort_by::date_created);
-		const auto show_modified = show_text && !is_folder && (group_order == group_by::date_modified || sort_order ==
-			sort_by::date_modified);
+		                                   (group_order != group_by::date_original &&
+		                                    sort_order == sort_by::date_created);
+		const auto show_modified = show_text && !is_folder &&
+		                           (group_order == group_by::date_modified || sort_order == sort_by::date_modified);
 		const auto show_selected = !(is_focus || is_hover) && (is_selected || is_highlight);
 		constexpr auto text_style = render::text_style::single_line_center;
 		const auto stars_line_height = std::max(text_line_height, dc.icon_cxy) + dc.padding2;
@@ -2688,8 +3036,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 		const auto text_alpha = thumb_is_valid && !show_text ? bg_color.a * dc.colors.alpha : dc.colors.alpha;
 		const auto text_color = core::color(dc.colors.foreground, text_alpha);
 		const auto fallback_text_color = core::color(dc.colors.foreground, dc.colors.alpha);
-		const auto group_text_color = core::color(ft->text_color(dc.colors.foreground), text_alpha).emphasize(
-			background_is_highlighted);
+		const auto group_text_color = core::color(ft->text_color(dc.colors.foreground), text_alpha)
+		                                  .emphasize(background_is_highlighted);
 		const auto bg_disk = core::color(ui::style::colors.view_selected_background, text_alpha * 0.77f);
 		const auto bg_dups = core::color(app_colors::duplicate_background, text_alpha * 0.77f);
 		const auto bg_sidecars = core::color(app_colors::sidecar_background, text_alpha * 0.77f);
@@ -2704,8 +3052,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			title_style = render::text_style::multiline_center;
 			auto avail_width = is_hover ? mul_div(bg_bounds.width(), 7, 4) : bg_bounds.width();
 			const auto title_extent1 = is_empty(info.caption)
-				                           ? sizei{}
-				                           : dc.measure_text(info.caption, info.title_font, title_style, avail_width);
+			                               ? sizei{}
+			                               : dc.measure_text(info.caption, info.title_font, title_style, avail_width);
 			const auto title_extent2 = dc.measure_text(info.name, info.title_font, title_style, avail_width);
 			const auto extra1 = title_extent1.cx > bg_bounds.width() ? title_extent1.cx - device_bounds.width() : 0;
 			const auto extra2 = title_extent2.cx > bg_bounds.width() ? title_extent2.cx - device_bounds.width() : 0;
@@ -2714,8 +3062,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			const auto render_padding = title_text_extra_width / 2 + (is_hover ? text_padding : 0);
 			const auto render_width = device_bounds.width() + render_padding * 2;
 			title_line_height1 = is_empty(info.caption)
-				                     ? 0
-				                     : dc.measure_text(info.caption, info.title_font, title_style, render_width).cy;
+			                         ? 0
+			                         : dc.measure_text(info.caption, info.title_font, title_style, render_width).cy;
 			title_line_height2 = dc.measure_text(info.name, info.title_font, title_style, render_width).cy;
 		}
 
@@ -2850,7 +3198,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 				const auto pad3 = core::round(3 * dc.scale_factor);
 				const auto flip = setting.show_rotated && flips_xy(orientation);
 				const auto rect_draw = rectd(device_bounds.left, device_bounds.top, device_bounds.width(),
-				                             device_bounds.height()).inflate(show_selected ? -pad3 : 0);
+				                             device_bounds.height())
+				                           .inflate(show_selected ? -pad3 : 0);
 
 				const double ww = flip ? rect_draw.Height : rect_draw.Width;
 				const double hh = flip ? rect_draw.Width : rect_draw.Height;
@@ -2870,16 +3219,15 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 				const rectd rect_tex(x_tex, y_tex, cx_tex, cy_tex);
 
 				const auto dst_quad = setting.show_rotated
-					                      ? quadd(rect_draw).transform(to_simple_transform(orientation))
-					                      : quadd(rect_draw);
+				                          ? quadd(rect_draw).transform(to_simple_transform(orientation))
+				                          : quadd(rect_draw);
 
 				const auto sampler = calc_sampler(rect_draw.extent().round(), rect_tex.extent().round(), orientation);
 
 				draw_placeholder(dc.colors.alpha * (1.0f - thumbnail_alpha));
 				dc.draw_texture(tex, dst_quad, rect_tex.round(), dc.colors.alpha * thumbnail_alpha, sampler);
 
-				draw_texture_info(dc, rect_draw.round(), tex, orientation, sampler,
-				                  dc.colors.alpha * thumbnail_alpha);
+				draw_texture_info(dc, rect_draw.round(), tex, orientation, sampler, dc.colors.alpha * thumbnail_alpha);
 			}
 		}
 		if (!thumbnail_drawn)
@@ -2887,17 +3235,6 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			// Encoded bytes suppress the normal title treatment before their staged surface is
 			// ready. Keep a full-alpha type marker visible during that short asynchronous gap.
 			draw_placeholder(dc.colors.alpha);
-		}
-
-		// A recording started and not finished shows how far it got, along the foot of its tile.
-		if (info.progress > 0.0 && !is_folder)
-		{
-			const auto bar_height = std::max(2, core::round(3 * dc.scale_factor));
-			auto bar = icon_rect;
-			bar.top = bar.bottom - bar_height;
-			dc.draw_rect(bar, core::color(ui::style::colors.view_background, dc.colors.alpha * 0.75f));
-			bar.right = bar.left + static_cast<int>(std::lround(bar.width() * info.progress));
-			dc.draw_rect(bar, core::color(ui::style::colors.view_selected_background, dc.colors.alpha));
 		}
 
 		auto y = text_rect.top;
@@ -2915,17 +3252,17 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 
 			if (!is_empty(info.caption))
 			{
-				auto bounds = title_rect;
-				bounds.bottom = title_rect.top + title_line_height1;
-				dc.draw_text(info.caption, bounds, info.title_font, title_style, group_text_color, {});
+				auto caption_bounds = title_rect;
+				caption_bounds.bottom = title_rect.top + title_line_height1;
+				dc.draw_text(info.caption, caption_bounds, info.title_font, title_style, group_text_color, {});
 				y += title_line_height1;
 			}
 
 			if (!is_empty(info.name))
 			{
-				auto bounds = title_rect;
-				bounds.top = title_rect.top + title_line_height1;
-				dc.draw_text(info.name, bounds, info.title_font, title_style, group_text_color, {});
+				auto name_bounds = title_rect;
+				name_bounds.top = title_rect.top + title_line_height1;
+				dc.draw_text(info.name, name_bounds, info.title_font, title_style, group_text_color, {});
 				y += title_line_height2;
 			}
 		}
@@ -2978,8 +3315,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			else if (rating < 0)
 			{
 				recti label_bounds(text_rect.left, y, text_rect.right, y + stars_line_height);
-				dc.draw_text(tt.command_rate_rejected, label_bounds, text_font,
-				             render::text_style::single_line_center, core::color(color_rate_rejected, text_alpha), {});
+				dc.draw_text(tt.command_rate_rejected, label_bounds, text_font, render::text_style::single_line_center,
+				             core::color(color_rate_rejected, text_alpha), {});
 			}
 
 			y += stars_line_height;
@@ -3015,10 +3352,11 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			{
 				const auto text = core::format_count(info.duplicates);
 				const auto cx = std::max(cxy_flag, dc.measure_text(text, render::font_face::dialog,
-				                                                   render::text_style::single_line_center, 100).cx);
+				                                                   render::text_style::single_line_center, 100)
+				                                       .cx);
 				const recti bb(x_flag, y_flag, x_flag + cx, y_flag + cxy_flag);
-				dc.draw_text(text, bb, render::font_face::dialog, render::text_style::single_line_center,
-				             text_color, bg_dups);
+				dc.draw_text(text, bb, render::font_face::dialog, render::text_style::single_line_center, text_color,
+				             bg_dups);
 				x_flag += cx;
 			}
 
@@ -3026,11 +3364,12 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			{
 				const auto text = core::format_count(info.sidecars);
 				const auto cx = std::max(cxy_flag, dc.measure_text(text, render::font_face::dialog,
-				                                                   render::text_style::single_line_center, 100).cx);
+				                                                   render::text_style::single_line_center, 100)
+				                                       .cx);
 				const recti bb(x_flag, y_flag, x_flag + cx, y_flag + cxy_flag);
 
-				dc.draw_text(text, bb, render::font_face::dialog, render::text_style::single_line_center,
-				             text_color, bg_sidecars);
+				dc.draw_text(text, bb, render::font_face::dialog, render::text_style::single_line_center, text_color,
+				             bg_sidecars);
 				x_flag += cx;
 			}
 
@@ -3051,7 +3390,7 @@ void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool
 	bump(thumbnail_perf.stage_requests);
 
 	if ((_thumbnail_state && thumbnail_state::surface_cached) ||
-		(!core::is_valid(_thumbnail) && !core::is_valid(_cover_art)))
+	    (!core::is_valid(_thumbnail) && !core::is_valid(_cover_art)))
 	{
 		bump(thumbnail_perf.stage_skipped);
 
@@ -3062,7 +3401,7 @@ void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool
 			invalid |= view_invalid::view_redraw;
 		}
 		if ((_thumbnail_state && thumbnail_state::surface_cached) &&
-			(_thumbnail_state && thumbnail_state::tooltip_on_stage))
+		    (_thumbnail_state && thumbnail_state::tooltip_on_stage))
 		{
 			set_thumbnail_state(thumbnail_state::tooltip_on_stage, false);
 			invalid |= view_invalid::tooltip | view_invalid::view_redraw;
@@ -3093,74 +3432,67 @@ void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool
 	// Read here rather than on the worker: the backend owns it and only changes it on this thread.
 	const auto can_use_yuv = render::yuv_textures_enabled;
 
-	async.queue_async(async_queue::render,
-	                  [weak, generation, thumbnail, cover_art, can_use_yuv, &async]() mutable
-	                  {
-		                  files ff;
-		                  auto thumbnail_surface = core::is_valid(thumbnail)
-			                                           ? ff.image_to_surface(thumbnail, {}, can_use_yuv)
-			                                           : nullptr;
-		                  auto cover_art_surface = core::is_valid(cover_art)
-			                                           ? ff.image_to_surface(cover_art, {}, can_use_yuv)
-			                                           : nullptr;
+	async.queue_async(async_queue::render, [weak, generation, thumbnail, cover_art, can_use_yuv, &async]() mutable
+	{
+		files ff;
+		auto thumbnail_surface = core::is_valid(thumbnail) ? ff.image_to_surface(thumbnail, {}, can_use_yuv) : nullptr;
+		auto cover_art_surface = core::is_valid(cover_art) ? ff.image_to_surface(cover_art, {}, can_use_yuv) : nullptr;
 
-		                  async.queue_ui(
-			                  [weak, generation, thumbnail_surface = std::move(thumbnail_surface),
-				                  cover_art_surface = std::move(cover_art_surface), &async]() mutable
-			                  {
-				                  const auto item = weak.lock();
-				                  if (!item) return;
+		async.queue_ui([weak, generation, thumbnail_surface = std::move(thumbnail_surface),
+		                cover_art_surface = std::move(cover_art_surface), &async]() mutable
+		{
+			const auto item = weak.lock();
+			if (!item) return;
 
-				                  core::assert_true(platform::is_ui_thread());
-				                  item->set_thumbnail_state(thumbnail_state::staging_surface, false);
-				                  const auto was_current = generation == item->_thumbnail_surface_generation;
-				                  if (was_current)
-				                  {
-					                  item->_texture.reset();
-					                  item->_thumbnail_surface = std::move(thumbnail_surface);
-					                  item->_cover_art_surface = std::move(cover_art_surface);
-					                  item->set_thumbnail_state(thumbnail_state::surface_cached,
-					                                            item->_thumbnail_surface || item->_cover_art_surface);
+			core::assert_true(platform::is_ui_thread());
+			item->set_thumbnail_state(thumbnail_state::staging_surface, false);
+			const auto was_current = generation == item->_thumbnail_surface_generation;
+			if (was_current)
+			{
+				item->_texture.reset();
+				item->_thumbnail_surface = std::move(thumbnail_surface);
+				item->_cover_art_surface = std::move(cover_art_surface);
+				item->set_thumbnail_state(thumbnail_state::surface_cached,
+				                          item->_thumbnail_surface || item->_cover_art_surface);
 
-					                  // The selection panel measures the displayed item's cover art, so a
-					                  // result carrying it changes the panel's layout, not only its pixels.
-					                  if (item->_cover_art_surface && item->is_selected())
-					                  {
-						                  async.invalidate_view(
-							                  view_invalid::view_layout | view_invalid::view_redraw);
-					                  }
-				                  }
-				                  else
-				                  {
-					                  // The item moved on while the surface was decoding, so the decode was wasted work.
-					                  bump(thumbnail_perf.stage_discarded);
-				                  }
+				// The selection panel measures the displayed item's cover art, so a
+				// result carrying it changes the panel's layout, not only its pixels.
+				if (item->_cover_art_surface && item->is_selected())
+				{
+					async.invalidate_view(view_invalid::view_layout | view_invalid::view_redraw);
+				}
+			}
+			else
+			{
+				// The item moved on while the surface was decoding, so the decode was wasted work.
+				bump(thumbnail_perf.stage_discarded);
+			}
 
-				                  if (item->_thumbnail_state && thumbnail_state::staging_requested)
-				                  {
-					                  // invalidate_on_stage stays latched so the follow-up stage settles it.
-					                  item->set_thumbnail_state(thumbnail_state::staging_requested, false);
-					                  item->stage_thumbnail_surface(async, false);
-				                  }
-				                  else if (item->_thumbnail_state &&
-					                  (thumbnail_state::invalidate_on_stage | thumbnail_state::tooltip_on_stage))
-				                  {
-					                  const auto has_surface = was_current && item->has_cached_surface();
-					                  auto invalid = view_invalid::none;
-					                  if (item->_thumbnail_state && thumbnail_state::invalidate_on_stage)
-					                  {
-						                  invalid |= view_invalid::view_redraw;
-					                  }
-					                  if (has_surface && (item->_thumbnail_state && thumbnail_state::tooltip_on_stage))
-					                  {
-						                  invalid |= view_invalid::tooltip | view_invalid::view_redraw;
-					                  }
-					                  item->set_thumbnail_state(thumbnail_state::invalidate_on_stage, false);
-					                  item->set_thumbnail_state(thumbnail_state::tooltip_on_stage, false);
-					                  if (invalid != view_invalid::none) async.invalidate_view(invalid);
-				                  }
-			                  });
-	                  });
+			if (item->_thumbnail_state && thumbnail_state::staging_requested)
+			{
+				// invalidate_on_stage stays latched so the follow-up stage settles it.
+				item->set_thumbnail_state(thumbnail_state::staging_requested, false);
+				item->stage_thumbnail_surface(async, false);
+			}
+			else if (item->_thumbnail_state &&
+			         (thumbnail_state::invalidate_on_stage | thumbnail_state::tooltip_on_stage))
+			{
+				const auto has_surface = was_current && item->has_cached_surface();
+				auto invalid = view_invalid::none;
+				if (item->_thumbnail_state && thumbnail_state::invalidate_on_stage)
+				{
+					invalid |= view_invalid::view_redraw;
+				}
+				if (has_surface && (item->_thumbnail_state && thumbnail_state::tooltip_on_stage))
+				{
+					invalid |= view_invalid::tooltip | view_invalid::view_redraw;
+				}
+				item->set_thumbnail_state(thumbnail_state::invalidate_on_stage, false);
+				item->set_thumbnail_state(thumbnail_state::tooltip_on_stage, false);
+				if (invalid != view_invalid::none) async.invalidate_view(invalid);
+			}
+		});
+	});
 }
 
 void df::item_element::start_thumbnail_animation(view_state& state) const
@@ -3190,21 +3522,21 @@ void df::item_element::start_thumbnail_animation(view_state& state) const
 	state.invalidate_view(view_invalid::animations | view_invalid::view_redraw);
 }
 
-sizei df::item_element::measure(render::measure_context& mc, const int width_limit) const
+sizei df::item_element::measure(render::measure_context& /*mc*/, const int /*width_limit*/) const
 {
 	assert_true(false);
 	return {0, 0};
 }
 
-void df::item_element::layout(render::measure_context& mc, const recti bounds_in)
+void df::item_element::layout(render::measure_context& /*mc*/, const recti bounds_in)
 {
 	bounds = bounds_in;
 	_interactive_bounds = bounds_in;
 }
 
-view_controller_ptr df::item_element::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                               const pointi element_offset,
-                                                               hit_test_context& ctx)
+view_controller_ptr df::item_element::controller_from_location(const view_host_ptr& /*host*/, const pointi /*loc*/,
+                                                               const pointi /*element_offset*/,
+                                                               hit_test_context& /*ctx*/)
 {
 	return nullptr;
 }
@@ -3215,7 +3547,6 @@ view_controller_ptr df::item_element::controller_from_location(const view_host_p
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
-
 
 size_t df::trim_thumbnail_blobs(const item_elements& items, const recti viewport, const size_t budget_bytes)
 {
@@ -3233,8 +3564,8 @@ size_t df::trim_thumbnail_blobs(const item_elements& items, const recti viewport
 	const auto band_of = [screen, viewport](const recti bounds)
 	{
 		const auto distance = bounds.bottom < viewport.top
-			                      ? viewport.top - bounds.bottom
-			                      : (bounds.top > viewport.bottom ? bounds.top - viewport.bottom : 0);
+		                          ? viewport.top - bounds.bottom
+		                          : (bounds.top > viewport.bottom ? bounds.top - viewport.bottom : 0);
 		return std::min(static_cast<size_t>(distance / screen), band_count - 1);
 	};
 
@@ -3272,14 +3603,63 @@ size_t df::trim_thumbnail_blobs(const item_elements& items, const recti viewport
 	return freed;
 }
 
+void df::order_by_thumbnail_priority(item_elements& items, const recti viewport, const int scroll_direction)
+{
+	assert_true(platform::is_ui_thread());
+
+	struct ranked
+	{
+		// 0 on screen, 1 the band ahead of the scroll, 2 the band behind it.
+		int rank = 0;
+		// How far outside the viewport, vertically: a band is read from the viewport's edge outward.
+		int gap = 0;
+		// Within a rank and a row, the middle of the screen first. Wide, because logical coordinates run to
+		// the length of the whole listing.
+		int64_t centre_distance = 0;
+		item_element_ptr item;
+	};
+
+	const auto centre = viewport.center();
+	std::vector<ranked> ranks;
+	ranks.reserve(items.size());
+
+	for (auto& i : items)
+	{
+		const auto bounds = i->bounds;
+		const auto c = bounds.center();
+		const auto dx = static_cast<int64_t>(c.x) - centre.x;
+		const auto dy = static_cast<int64_t>(c.y) - centre.y;
+		ranked r{0, 0, dx * dx + dy * dy, std::move(i)};
+
+		if (!bounds.intersects(viewport))
+		{
+			const auto above = bounds.bottom <= viewport.top;
+			const auto below = bounds.top >= viewport.bottom;
+			r.gap = above ? viewport.top - bounds.bottom : (below ? bounds.top - viewport.bottom : 0);
+			const auto ahead = scroll_direction == 0 || (scroll_direction > 0 ? !above : !below);
+			r.rank = ahead ? 1 : 2;
+		}
+
+		ranks.emplace_back(std::move(r));
+	}
+
+	std::ranges::stable_sort(ranks, [](const ranked& a, const ranked& b)
+	{
+		if (a.rank != b.rank) return a.rank < b.rank;
+		if (a.gap != b.gap) return a.gap < b.gap;
+		return a.centre_distance < b.centre_distance;
+	});
+
+	for (size_t n = 0; n < ranks.size(); ++n) items[n] = std::move(ranks[n].item);
+}
+
 std::vector<core::const_image_ptr> df::item_set::thumbs(const size_t max, const item_element_ptr& skip_this) const
 {
 	std::vector<core::const_image_ptr> results;
 
 	for (const auto& i : _items)
 	{
-		if (results.size() >= max)
-			break;
+		if (results.size() >= max) break;
 
 		if (i->has_thumb() && i != skip_this)
 		{
@@ -3291,7 +3671,7 @@ std::vector<core::const_image_ptr> df::item_set::thumbs(const size_t max, const 
 }
 
 std::vector<core::const_surface_ptr> df::item_set::thumbnail_surfaces(const size_t max,
-                                                                    const item_element_ptr& skip_this) const
+                                                                      const item_element_ptr& skip_this) const
 {
 	std::vector<core::const_surface_ptr> results;
 
@@ -3360,9 +3740,8 @@ df::process_result df::item_set::can_process(const process_items_type file_types
 			{
 				result.record_error(i, process_result_code::read_only, mark_errors, view);
 			}
-			else if (!files::can_save(i->path()) || !ft->can_edit_photo())
+			else if (!files::can_turn(i->path()))
 			{
-				// A JPEG XL's metadata is edited but never its picture, so turning one in place is not offered.
 				result.record_error(i, process_result_code::cannot_save_pixels, mark_errors, view);
 			}
 		}
@@ -3446,8 +3825,6 @@ df::item_display_info df::item_element::populate_info() const
 				result.caption = prop::library_caption(*md);
 				result.episode = prop::episode_label(*md);
 				if (md->kind == prop::media_kind::film) result.year = md->year;
-				if (prop::is_in_progress(_media_position, md->duration))
-					result.progress = prop::playback_progress(_media_position, md->duration);
 				result.track = md->track.x;
 				result.disk = md->disk.x;
 				result.duration = md->duration;
@@ -3483,7 +3860,6 @@ void df::item_element::open(view_state& s, const view_host_base_ptr& view) const
 		platform::open(path());
 	}
 }
-
 
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
@@ -3557,7 +3933,8 @@ bool df::item_element::update(const file_path path, const index_file_item& info)
 		// A cloud-only placeholder was hydrated: allow its thumbnail to load now that the
 		// full file content is available locally.
 		set_thumbnail_state(thumbnail_state::load_failed | thumbnail_state::shell_pending |
-		                    thumbnail_state::shell_retry_pending, false);
+		                        thumbnail_state::shell_retry_pending,
+		                    false);
 		_shell_retry_count = 0;
 	}
 
@@ -3597,20 +3974,12 @@ bool df::item_element::update(const file_path path, const index_file_item& info)
 
 	_is_folder = _ft == file_type::folder;
 
-	const auto changed = previous_name != _name ||
-		previous_path != _path ||
-		previous_ft != _ft ||
-		previous_size != _size ||
-		previous_modified != _modified ||
-		previous_created != _created ||
-		previous_media_created != _media_created ||
-		previous_metadata != _metadata ||
-		previous_duplicates != _duplicates ||
-		previous_crc32c != _crc32c ||
-		previous_online_status != _online_status ||
-		previous_is_read_only != _is_read_only ||
-		previous_layout_dims != _layout_dims ||
-		previous_layout_orientation != _layout_orientation;
+	const auto changed = previous_name != _name || previous_path != _path || previous_ft != _ft ||
+	                     previous_size != _size || previous_modified != _modified || previous_created != _created ||
+	                     previous_media_created != _media_created || previous_metadata != _metadata ||
+	                     previous_duplicates != _duplicates || previous_crc32c != _crc32c ||
+	                     previous_online_status != _online_status || previous_is_read_only != _is_read_only ||
+	                     previous_layout_dims != _layout_dims || previous_layout_orientation != _layout_orientation;
 
 	if (changed)
 	{
@@ -3630,8 +3999,8 @@ static platform::file_op_result rename_recovery_failed(const core::file_path exp
                                                        platform::file_op_result result)
 {
 	result.code = platform::file_op_result_code::FAILED;
-	result.error_message = std::format("Could not restore {}; surviving path is {}. {}",
-	                                   expected_path.str(), surviving_path.str(), result.format_error());
+	result.error_message = std::format("Could not restore {}; surviving path is {}. {}", expected_path.str(),
+	                                   surviving_path.str(), result.format_error());
 	if (df::rename_recovery_report_for_test) df::rename_recovery_report_for_test(result.error_message);
 	core::log(__FUNCTION__, result.error_message);
 	return result;

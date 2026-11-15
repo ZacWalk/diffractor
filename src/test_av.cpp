@@ -1,28 +1,33 @@
-// This file is part of the Diffractor photo and video organizer
+﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for the audio and video layer (av*) -- stream naming, audio buffering, resampling and
-// visualization, container probing, seeking, playback timing, the hover preview decoder, and subtitles:
-// their styling, placement, timing and choice, and decoding them from sidecars and streams.
+// visualization, container probing, seeking, playback timing, the hover preview decoder, subtitles:
+// their styling, placement, timing and choice, and decoding them from sidecars and streams -- and Edit's
+// lossless copies: trims from each picture's key frame, leaving sound out, turning a track and copying into an MP4.
 
 #include "pch.h"
 #include "test.h"
+#include "av_c64.h"
+#include "av_deinterlace.h"
 #include "av_format.h"
 #include "av_player.h"
 #include "av_sid.h"
+#include "av_tracker.h"
 #include "av_sound.h"
 #include "av_visualizer.h"
 #include "files.h"
+#include "machine.h"
 #include "model.h"
 #include "model_display.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "app_text.h"
+#include "app_command_line.h"
 
 #include <condition_variable>
 #include <future>
@@ -31,7 +36,9 @@
 extern "C"
 {
 #include <libavutil/frame.h>
+#include <libavutil/pixdesc.h>
 #include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
 }
 
 extern thread_local std::function<void(AVFrame&)> test_audio_pcm_frame;
@@ -106,10 +113,10 @@ void should_compact_consumed_audio_only_when_needed()
 
 	av_visualizer visualizer;
 	visualizer.update(visualizer_buffer);
-	assert_equal(true, visualizer.step(1.0),
-	             "visualizer consumes the live audio window");
-	assert_equal(true, std::any_of(std::begin(visualizer._frame._data[0]),
-	                               std::end(visualizer._frame._data[0]), [](const int bar) { return bar > 0; }),
+	assert_equal(true, visualizer.step(1.0), "visualizer consumes the live audio window");
+	assert_equal(true,
+	             std::any_of(std::begin(visualizer._frame._data[0]), std::end(visualizer._frame._data[0]),
+	                         [](const int bar) { return bar > 0; }),
 	             "visualizer ignores consumed samples before the cursor");
 }
 
@@ -211,10 +218,14 @@ static void should_hand_an_endpoint_the_samples_it_has_room_for()
 	const auto surround = av_audio_info({48000, platform::audio_sample_format::float32, 6, AV_CH_LAYOUT_5POINT1});
 	assert_equal(true, surround.sample_fmt == prop::audio_sample_t::signed_float, "float samples");
 	assert_equal(6u, surround.channel_count(), "on six channels");
-	assert_equal(true, av_audio_info({48000, platform::audio_sample_format::int32, 2, 0}).sample_fmt ==
-	             prop::audio_sample_t::signed_32bit, "32-bit samples");
-	assert_equal(true, av_audio_info({48000, platform::audio_sample_format::none, 2, 0}).sample_fmt ==
-	             prop::audio_sample_t::none, "and none the mixer does not speak");
+	assert_equal(true,
+	             av_audio_info({48000, platform::audio_sample_format::int32, 2, 0}).sample_fmt ==
+	                 prop::audio_sample_t::signed_32bit,
+	             "32-bit samples");
+	assert_equal(true,
+	             av_audio_info({48000, platform::audio_sample_format::none, 2, 0}).sample_fmt ==
+	                 prop::audio_sample_t::none,
+	             "and none the mixer does not speak");
 }
 
 // audio_buffer keeps its samples private; this declared friend lets the test read them.
@@ -245,7 +256,10 @@ static void should_ramp_audio_at_buffer_edges()
 	buffer.apply_fade_out(0.010);
 
 	// 1000 frames of stereo audio at 1kHz, so a 10ms ramp covers 10 frames = 20 samples.
-	const auto sample = [&buffer](const size_t i) { return audio_ramp_probe::sample(buffer, i); };
+	const auto sample = [&buffer](const size_t i)
+	{
+		return audio_ramp_probe::sample(buffer, i);
+	};
 
 	assert_equal(true, sample(0) < 200, "playback starts near silence");
 	assert_equal(1000, static_cast<int>(sample(19)), "the fade in reaches full level after 10ms");
@@ -351,10 +365,7 @@ void should_keep_visualizer_frequency_bins_stable_across_sessions()
 		{
 			{
 				std::unique_lock lock(update_mutex);
-				update_changed.wait(lock, [&]
-				{
-					return stop.load() || updates_completed < updates_requested;
-				});
+				update_changed.wait(lock, [&] { return stop.load() || updates_completed < updates_requested; });
 
 				if (stop.load()) return;
 			}
@@ -398,10 +409,9 @@ void should_keep_visualizer_frequency_bins_stable_across_sessions()
 
 		{
 			std::unique_lock lock(update_mutex);
-			assert_equal(true, update_changed.wait_for(lock, std::chrono::seconds(5), [&]
-			             {
-				             return updates_completed >= updates_requested;
-			             }),
+			assert_equal(true,
+			             update_changed.wait_for(lock, std::chrono::seconds(5),
+			                                     [&] { return updates_completed >= updates_requested; }),
 			             "old session updated while new visualizers were constructed");
 		}
 	}
@@ -436,15 +446,15 @@ static void should_extract_dv_datetime()
 	std::vector<uint8_t> frame(12000, 0);
 
 	auto* const date_pack = &frame[80 * 3 + 13];
-	date_pack[0] = 0x62; // VAUX recording date pack id
-	date_pack[1] = 0xff; // timezone unknown
+	date_pack[0] = 0x62;                // VAUX recording date pack id
+	date_pack[1] = 0xff;                // timezone unknown
 	date_pack[2] = 0xc0 | (1 << 4) | 5; // day 15 (reserved bits set)
-	date_pack[3] = (0 << 4) | 7; // month 07
-	date_pack[4] = (0 << 4) | 3; // year 03 -> 2003
+	date_pack[3] = (0 << 4) | 7;        // month 07
+	date_pack[4] = (0 << 4) | 3;        // year 03 -> 2003
 
 	auto* const time_pack = &frame[80 * 3 + 18];
-	time_pack[0] = 0x63; // VAUX recording time pack id
-	time_pack[1] = 0xff; // frames unknown
+	time_pack[0] = 0x63;         // VAUX recording time pack id
+	time_pack[1] = 0xff;         // frames unknown
 	time_pack[2] = (4 << 4) | 5; // 45 seconds
 	time_pack[3] = (3 << 4) | 0; // 30 minutes
 	time_pack[4] = (1 << 4) | 4; // 14 hours
@@ -454,8 +464,7 @@ static void should_extract_dv_datetime()
 
 	// A frame without recording packs must yield an invalid (absent) date.
 	const std::vector<uint8_t> empty_frame(12000, 0);
-	assert_equal(false, dv_extract_rec_datetime(empty_frame.data(), empty_frame.size()).is_valid(),
-	             "dv no packs");
+	assert_equal(false, dv_extract_rec_datetime(empty_frame.data(), empty_frame.size()).is_valid(), "dv no packs");
 }
 
 static void should_correct_pts()
@@ -551,10 +560,8 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 {
 	auto fixtures_carrying_xmp = 0;
 
-	for (const auto* const name : {
-		     "gizmo.mp4", "indy.mp4", "anamorphic.mp4", "ipod.mov", "StPauls.MOV", "tagged.mkv",
-		     "Byzantium.avi", "Colorblind.mp3"
-	     })
+	for (const auto* const name : {"gizmo.mp4", "indy.mp4", "anamorphic.mp4", "ipod.mov", "StPauls.MOV", "tagged.mkv",
+	                               "Byzantium.avi", "Colorblind.mp3"})
 	{
 		const auto path = test_files_folder().combine_file(name);
 		const auto* const ft = files::file_type_from_name(path);
@@ -582,8 +589,8 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 		assert_equal(inspected.audio_codec.sv(), indexed.audio_codec.sv(), name, "audio codec");
 		assert_equal(inspected.audio_sample_rate, indexed.audio_sample_rate, name, "audio sample rate");
 		assert_equal(inspected.audio_channels, indexed.audio_channels, name, "audio channels");
-		assert_equal(static_cast<int>(inspected.audio_sample_type), static_cast<int>(indexed.audio_sample_type),
-		             name, "audio sample type");
+		assert_equal(static_cast<int>(inspected.audio_sample_type), static_cast<int>(indexed.audio_sample_type), name,
+		             "audio sample type");
 		assert_equal(inspected.bitrate.sv(), indexed.bitrate.sv(), name, "bit rate");
 		assert_equal(inspected.orientation, indexed.orientation, name, "orientation");
 		assert_equal(inspected.created_utc, indexed.created_utc, name, "created");
@@ -602,7 +609,7 @@ static void should_scan_av_metadata_with_a_bounded_probe()
 }
 
 static core::blob make_tga(const uint16_t width, const uint16_t height, const uint8_t bits_per_pixel,
-                         const std::vector<uint8_t>& pixels, const uint8_t alpha_bits = 8)
+                           const std::vector<uint8_t>& pixels, const uint8_t alpha_bits = 8)
 {
 	core::blob result(18, 0);
 	result[2] = 2; // uncompressed true-colour image
@@ -618,6 +625,7 @@ static core::blob make_tga(const uint16_t width, const uint16_t height, const ui
 
 static core::blob make_gif(const bool transparent)
 {
+	// clang-format off
 	core::blob result{
 		'G', 'I', 'F', '8', '9', 'a',
 		1, 0, 1, 0,
@@ -625,20 +633,21 @@ static core::blob make_gif(const bool transparent)
 		0xff, 0x00, 0x00,
 		0x00, 0x00, 0xff
 	};
+	// clang-format on
 
 	if (transparent)
 	{
-		constexpr std::array<uint8_t, 8> transparency{
-			0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00
-		};
+		constexpr std::array<uint8_t, 8> transparency{0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00};
 		result.insert(result.end(), transparency.begin(), transparency.end());
 	}
 
+	// clang-format off
 	constexpr std::array<uint8_t, 16> image{
 		0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0,
 		0x02, 0x02, 0x44, 0x01, 0x00,
 		0x3b
 	};
+	// clang-format on
 	result.insert(result.end(), image.begin(), image.end());
 	return result;
 }
@@ -680,8 +689,7 @@ static uint8_t composite_over_green(const core::const_surface_ptr& surface, cons
 {
 	const auto* const p = surface->pixels_line(0) + x * 4;
 	const auto alpha = surface->format() == core::texture_format::ARGB ? p[3] / 255.0f : 1.0f;
-	return static_cast<uint8_t>(std::clamp(static_cast<int>(p[1] * alpha + 255.0f * (1.0f - alpha) + 0.5f),
-	                                      0, 255));
+	return static_cast<uint8_t>(std::clamp(static_cast<int>(p[1] * alpha + 255.0f * (1.0f - alpha) + 0.5f), 0, 255));
 }
 
 // MEDIA-008 - still fallback conversion must retain alpha-capable source semantics.
@@ -725,15 +733,16 @@ static void should_preserve_alpha_when_decoding_ffmpeg_stills()
 	palette_frame.data[1] = std::bit_cast<uint8_t*>(palette.data());
 
 	core::surface_ptr opaque_palette;
-	assert_equal(true, scaler.scale_frame(palette_frame, opaque_palette, {}, 0.0, core::orientation::top_left, {}, true),
+	assert_equal(true,
+	             scaler.scale_frame(palette_frame, opaque_palette, {}, 0.0, core::orientation::top_left, {}, true),
 	             "opaque palette frame converted");
 	assert_equal(static_cast<int>(core::texture_format::RGB), static_cast<int>(opaque_palette->format()),
 	             "opaque palette frames keep the opaque fast path");
 
 	palette[1] = 0x000000ffu;
 	core::surface_ptr transparent_palette;
-	assert_equal(true, scaler.scale_frame(palette_frame, transparent_palette, {}, 0.0, core::orientation::top_left, {},
-	                                      true),
+	assert_equal(true,
+	             scaler.scale_frame(palette_frame, transparent_palette, {}, 0.0, core::orientation::top_left, {}, true),
 	             "transparent palette frame converted");
 	assert_equal(static_cast<int>(core::texture_format::ARGB), static_cast<int>(transparent_palette->format()),
 	             "transparent palette frames keep alpha");
@@ -812,8 +821,10 @@ static void should_reject_a_non_media_file()
 	assert_equal(false, decoder.open(path, media_intent::metadata), "decoder rejects the file");
 
 	files ff;
-	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::inspect).success, "inspect scan fails");
-	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::index).success, "index scan fails");
+	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::inspect).success,
+	             "inspect scan fails");
+	assert_equal(false, ff.scan_file(path, false, ft, {}, {}, libfiles::scan_intent::index).success,
+	             "index scan fails");
 }
 
 // Issue #78 - Some videos ignore aspect ratio.
@@ -949,8 +960,9 @@ static void should_report_container_aspect_ratio_to_the_player()
 	const auto scanned = ff_scan_file(ff, load_path).to_props();
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true,
+	             ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 
 	const auto info = ses->info();
 
@@ -976,8 +988,9 @@ static void should_report_container_rotation_to_the_player()
 	assert_equal(core::orientation::right_top, scanned->orientation, "scan reads the display matrix");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true,
+	             ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 
 	assert_equal(core::orientation::right_top, ses->info().display_orientation, "player agrees with the scan");
 
@@ -999,8 +1012,10 @@ static void should_report_a_mirrored_container_to_the_player()
 	constexpr uint32_t minus_one = 0xFFFF0000u;
 	const auto load_be32 = [](const std::string& s, const size_t at)
 	{
-		return static_cast<uint32_t>(static_cast<uint8_t>(s[at])) << 24 | static_cast<uint32_t>(static_cast<uint8_t>(s[at + 1])) << 16 |
-			static_cast<uint32_t>(static_cast<uint8_t>(s[at + 2])) << 8 | static_cast<uint32_t>(static_cast<uint8_t>(s[at + 3]));
+		return static_cast<uint32_t>(static_cast<uint8_t>(s[at])) << 24 |
+		       static_cast<uint32_t>(static_cast<uint8_t>(s[at + 1])) << 16 |
+		       static_cast<uint32_t>(static_cast<uint8_t>(s[at + 2])) << 8 |
+		       static_cast<uint32_t>(static_cast<uint8_t>(s[at + 3]));
 	};
 
 	size_t matrix_at = 0;
@@ -1012,8 +1027,9 @@ static void should_report_a_mirrored_container_to_the_player()
 		const auto version = static_cast<uint8_t>(original[at + 4]);
 		const auto candidate = at + 4 + 4 + (version == 1 ? 32 : 20) + 8 + 8;
 
-		if (candidate + 16 <= original.size() && load_be32(original, candidate) == 0 && load_be32(original, candidate + 4) == one &&
-			load_be32(original, candidate + 8) == 0 && load_be32(original, candidate + 12) == minus_one)
+		if (candidate + 16 <= original.size() && load_be32(original, candidate) == 0 &&
+		    load_be32(original, candidate + 4) == one && load_be32(original, candidate + 8) == 0 &&
+		    load_be32(original, candidate + 12) == minus_one)
 		{
 			matrix_at = candidate;
 		}
@@ -1047,7 +1063,7 @@ static void should_report_a_mirrored_container_to_the_player()
 		store_be32(matrix_at + 12, v.c);
 		store_be32(matrix_at + 16, v.d);
 
-		const auto path = _temps.next_path(".mp4");
+		const auto path = test_temps.next_path(".mp4");
 		write_test_file(path, bytes);
 
 		files ff;
@@ -1057,7 +1073,8 @@ static void should_report_a_mirrored_container_to_the_player()
 		const auto ses = make_test_session();
 		assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
 		             "session opened");
-		assert_equal(v.expected, ses->info().display_orientation, std::format("player agrees with the scan: {}", v.name));
+		assert_equal(v.expected, ses->info().display_orientation,
+		             std::format("player agrees with the scan: {}", v.name));
 		ses->close(false);
 	}
 }
@@ -1150,8 +1167,10 @@ static void should_end_a_silent_clip_at_the_stream_end()
 	assert_equal(false, silent_path.is_empty(), "a video-only test file is available");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(silent_path, files::file_type_from_name(silent_path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true,
+	             ses->open(silent_path, files::file_type_from_name(silent_path), 0.0, true, -1, -1, false, false,
+	                       false),
+	             "session opened");
 	assert_equal(true, ses->is_playing(), "session auto-plays");
 
 	const auto media_end = ses->info().end;
@@ -1178,11 +1197,10 @@ static void should_end_a_silent_clip_at_the_stream_end()
 
 	assert_equal(true, ended_at >= 0.0, "the clip ends");
 	assert_equal(true, ended_at >= media_end - 0.25,
-	             std::format("does not end before the stream end (end {:.2f}, ended at {:.2f})",
-	                         media_end, ended_at));
+	             std::format("does not end before the stream end (end {:.2f}, ended at {:.2f})", media_end, ended_at));
 	assert_equal(true, ended_at < media_end + 1.0,
-	             std::format("ends on the stream end, not the 2s fallback (end {:.2f}, ended at {:.2f})",
-	                         media_end, ended_at));
+	             std::format("ends on the stream end, not the 2s fallback (end {:.2f}, ended at {:.2f})", media_end,
+	                         ended_at));
 
 	ses->close(false);
 }
@@ -1369,9 +1387,10 @@ static void should_open_a_session_without_its_audio()
 	assert_equal(true, ended_at >= ses->info().end - 0.5,
 	             std::format("video-only playback reaches the stream end (end {:.2f}, ended at {:.2f})",
 	                         ses->info().end, ended_at));
-	assert_equal(true, ended_at < ses->info().end + 1.0,
-	             std::format("video-only playback does not finish on the timeout fallback (end {:.2f}, ended at {:.2f})",
-	                         ses->info().end, ended_at));
+	assert_equal(
+		true, ended_at < ses->info().end + 1.0,
+		std::format("video-only playback does not finish on the timeout fallback (end {:.2f}, ended at {:.2f})",
+	                ses->info().end, ended_at));
 
 	ses->close(false);
 }
@@ -1383,8 +1402,8 @@ static void should_keep_video_moving_when_audio_output_is_unavailable()
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 	assert_equal(true, ses->info().has_audio && ses->info().has_video, "fixture has both streams");
 
 	ses->mark_audio_output_unavailable();
@@ -1431,8 +1450,8 @@ static void should_not_reanchor_playback_time_on_repeated_audio_output_failures(
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 
 	const auto start = core::now();
 	ses->mark_audio_output_unavailable(start);
@@ -1452,8 +1471,8 @@ static void should_queue_audio_recovery_seek_for_the_read_thread()
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 
 	const auto now = core::now();
 	assert_equal(0.0, ses->pos(now), "opened session is still at the accepted start");
@@ -1475,8 +1494,8 @@ static void should_drop_stale_audio_recovery_seek()
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 
 	const auto now = core::now();
 	ses->request_audio_recovery_seek(now);
@@ -1594,8 +1613,9 @@ static void should_land_audio_and_video_on_the_sought_position()
 	const auto load_path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true,
+	             ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 
 	const auto media_end = ses->info().end;
 	assert_equal(true, ses->info().has_audio && ses->info().has_video, "gizmo.mp4 has both streams");
@@ -1656,8 +1676,8 @@ public:
 		return render::texture_update_result::failed;
 	}
 
-	render::texture_update_result update(sizei, core::texture_format, core::orientation,
-	                                 const uint8_t*, size_t, size_t) override
+	render::texture_update_result update(sizei, core::texture_format, core::orientation, const uint8_t*, size_t,
+	                                     size_t) override
 	{
 		return render::texture_update_result::failed;
 	}
@@ -1685,8 +1705,8 @@ static void should_refresh_paused_media_time_after_seeking()
 
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto session = make_test_session();
-	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1,
-	                                false, false, false), "paused session opened");
+	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false, false, false),
+	             "paused session opened");
 	const core::scope_exit close([session] { session->close(false); });
 	session->mark_audio_output_unavailable();
 	display->update_av_session(session);
@@ -1718,6 +1738,52 @@ static void should_refresh_paused_media_time_after_seeking()
 	}
 }
 
+// Play and Pause are remembered as Autoplay, so the next file selected plays, or waits, as the user left this one.
+static void should_remember_play_and_pause_as_autoplay()
+{
+	const auto autoplay = setting.auto_play;
+	const core::scope_exit restore([autoplay] { setting.auto_play = autoplay; });
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	const view_host_base_ptr view;
+	state.view_mode(view_type::items);
+	state.open(view, df::search_t().add_selector(test_files_folder()).with("gizmo.mp4"), {});
+	state.update_item_groups();
+	const auto item = state.find_displayed_item_by_name("gizmo.mp4");
+	assert_equal(true, item != nullptr, "the video is visible");
+	state.select(view, item, false, false, false);
+	state.update_selection();
+	const auto display = state.display_state();
+	assert_equal(true, display != nullptr, "selection has a display");
+
+	const auto path = test_files_folder().combine_file("gizmo.mp4");
+	const auto open_session = [&](const bool playing)
+	{
+		const auto session = make_test_session();
+		assert_equal(true,
+		             session->open(path, files::file_type_from_name(path), 0.0, playing, -1, -1, false, false, false),
+		             "the session opens");
+		session->mark_audio_output_unavailable();
+		display->update_av_session(session);
+		return session;
+	};
+
+	setting.auto_play = true;
+	const auto playing = open_session(true);
+	const core::scope_exit close_playing([playing] { playing->close(false); });
+	state.play(view);
+	assert_equal(false, setting.auto_play, "pausing what plays turns Autoplay off");
+
+	const auto paused = open_session(false);
+	const core::scope_exit close_paused([paused] { paused->close(false); });
+	state.play(view);
+	assert_equal(true, setting.auto_play, "and playing turns it on again");
+}
+
 // A playing video hides its controls, which then draw at alpha 0. Repainting the whole view whenever the
 // elapsed time or the bar moved changed no pixels, and cost a scene build and a present each time.
 static void should_repaint_the_scrubber_only_while_the_controls_show()
@@ -1726,10 +1792,7 @@ static void should_repaint_the_scrubber_only_while_the_controls_show()
 	{
 		view_invalid invalids = view_invalid::none;
 
-		void invalidate_view(const view_invalid invalid) override
-		{
-			invalids |= invalid;
-		}
+		void invalidate_view(const view_invalid invalid) override { invalids |= invalid; }
 	};
 
 	recording_async_strategy as;
@@ -1738,8 +1801,8 @@ static void should_repaint_the_scrubber_only_while_the_controls_show()
 
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 	const auto session = make_test_session();
-	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1,
-	                                false, false, false), "paused session opened");
+	assert_equal(true, session->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false, false, false),
+	             "paused session opened");
 	const core::scope_exit close([session] { session->close(false); });
 	session->mark_audio_output_unavailable();
 	display->update_av_session(session);
@@ -1788,8 +1851,9 @@ static void should_seek_to_the_same_position_after_playback_has_advanced()
 	const auto load_path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false,
-	                             false, false), "session opened");
+	assert_equal(true,
+	             ses->open(load_path, files::file_type_from_name(load_path), 0.0, true, -1, -1, false, false, false),
+	             "session opened");
 	assert_equal(true, ses->info().has_video, "fixture has video");
 	ses->mark_audio_output_unavailable();
 
@@ -1887,8 +1951,9 @@ static void should_play_streams_the_hardware_path_cannot_decode()
 		const auto path = test_files_folder().combine("excluded1").combine_file(name);
 
 		const auto ses = make_test_session();
-		assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, true, false,
-		                             true, true), std::format("{} opened with hardware decode allowed", name));
+		assert_equal(true,
+		             ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, true, false, true, true),
+		             std::format("{} opened with hardware decode allowed", name));
 
 		const core::thread_event video_event(false, false);
 		const core::thread_event audio_event(false, false);
@@ -1997,18 +2062,19 @@ static void should_prepare_decoded_pictures_for_upload()
 	{
 		for (auto shift = 0; shift < 24; shift += 8)
 		{
-			if (std::abs(static_cast<int>((a >> shift) & 0xff) - static_cast<int>((b >> shift) & 0xff)) > 12) return false;
+			if (std::abs(static_cast<int>((a >> shift) & 0xff) - static_cast<int>((b >> shift) & 0xff)) > 12)
+				return false;
 		}
 
 		return true;
 	};
 
 	for (const auto& [name, planar] : {std::pair{"anamorphic.mp4", core::texture_format::NV12},
-	                                  std::pair{"excluded1/h264-10bit.mp4", core::texture_format::P010}})
+	                                   std::pair{"excluded1/h264-10bit.mp4", core::texture_format::P010}})
 	{
 		const auto path = std::string_view(name).starts_with("excluded1/")
-			                  ? test_files_folder().combine("excluded1").combine_file(std::string_view(name).substr(10))
-			                  : test_files_folder().combine_file(name);
+		                      ? test_files_folder().combine("excluded1").combine_file(std::string_view(name).substr(10))
+		                      : test_files_folder().combine_file(name);
 
 		render::yuv_textures_enabled = false;
 		render::p010_textures_enabled = false;
@@ -2108,17 +2174,15 @@ static void should_describe_a_video_stream_profile_depth_and_transfer()
 	                      expected_stream{"excluded1/hdr-hlg.mp4", "Main 10", 10, "HLG"}})
 	{
 		const auto path = e.name.starts_with("excluded1/")
-			                  ? test_files_folder().combine("excluded1").combine_file(e.name.substr(10))
-			                  : test_files_folder().combine_file(e.name);
+		                      ? test_files_folder().combine("excluded1").combine_file(e.name.substr(10))
+		                      : test_files_folder().combine_file(e.name);
 
 		av_format_decoder decoder;
 		assert_equal(true, decoder.open(path, media_intent::thumbnail), std::format("{} opened", e.name));
 
 		const auto info = decoder.info();
 		const auto video = std::ranges::find_if(info.streams, [](const av_stream_info& s)
-		{
-			return s.type == av_stream_type::video;
-		});
+		{ return s.type == av_stream_type::video; });
 
 		assert_equal(true, video != info.streams.end(), std::format("{} has a video stream", e.name));
 		if (video == info.streams.end()) continue;
@@ -2126,6 +2190,448 @@ static void should_describe_a_video_stream_profile_depth_and_transfer()
 		assert_equal(e.profile, std::string_view(video->profile), std::format("{} profile", e.name));
 		assert_equal(e.bit_depth, video->bit_depth, std::format("{} bit depth", e.name));
 		assert_equal(e.hdr_transfer, std::string_view(video->hdr_transfer), std::format("{} HDR transfer", e.name));
+	}
+}
+
+// An untagged picture's matrix is guessed as players guess it. Untagged 4K is ordinary SDR video far more
+// often than BT.2020, whose matrix would shift its reds and greens; a picture graded for BT.2020 says so in
+// its transfer or primaries. A 1280 by 544 picture is HD cropped to a wide screen, not SD.
+static void should_guess_the_matrix_of_an_untagged_picture()
+{
+	struct expected_matrix
+	{
+		int width;
+		int height;
+		AVColorTransferCharacteristic transfer;
+		AVColorPrimaries primaries;
+		AVColorSpace signalled;
+		core::color_space expected;
+		std::string_view name;
+	};
+
+	for (const auto& e : {
+			 expected_matrix{3840, 2160, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec709_limited, "untagged 4K"},
+			 expected_matrix{2160, 3840, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec709_limited, "untagged portrait 4K"},
+			 expected_matrix{3840, 2160, AVCOL_TRC_SMPTE2084, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec2020_limited, "PQ"},
+			 expected_matrix{1920, 1080, AVCOL_TRC_ARIB_STD_B67, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec2020_limited, "HLG"},
+			 expected_matrix{1920, 1080, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_BT2020, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec2020_limited, "BT.2020 primaries"},
+			 expected_matrix{1280, 544, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec709_limited, "wide-screen 720p"},
+			 expected_matrix{720, 576, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec601_limited, "PAL SD"},
+			 expected_matrix{720, 480, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_UNSPECIFIED,
+	                         core::color_space::rec601_limited, "NTSC SD"},
+			 expected_matrix{3840, 2160, AVCOL_TRC_UNSPECIFIED, AVCOL_PRI_UNSPECIFIED, AVCOL_SPC_SMPTE170M,
+	                         core::color_space::rec601_limited, "a signalled matrix"},
+		 })
+	{
+		auto* frame = av_frame_alloc();
+		const core::scope_exit release([&frame] { av_frame_free(&frame); });
+
+		frame->width = e.width;
+		frame->height = e.height;
+		frame->color_trc = e.transfer;
+		frame->color_primaries = e.primaries;
+		frame->colorspace = e.signalled;
+
+		assert_equal(static_cast<int>(e.expected), static_cast<int>(av_frame_color_space(*frame)),
+		             std::format("{} decodes with the expected matrix", e.name));
+	}
+}
+
+// The planes the decode thread prepares say where their chroma lies, so the renderer reads it there: with
+// every other luma column for MPEG-2, H.264, HEVC and a stream that does not say, centred for JPEG, and as
+// any other stream states it.
+static void should_carry_chroma_siting_to_the_renderer()
+{
+	const auto yuv_before = render::yuv_textures_enabled;
+	const core::scope_exit restore([yuv_before] { render::yuv_textures_enabled = yuv_before; });
+	render::yuv_textures_enabled = true;
+
+	struct expected_siting
+	{
+		AVChromaLocation location;
+		core::chroma_siting siting;
+		std::string_view name;
+	};
+
+	for (const auto& e : {expected_siting{AVCHROMA_LOC_LEFT, core::chroma_siting::left, "left-sited"},
+	                      expected_siting{AVCHROMA_LOC_UNSPECIFIED, core::chroma_siting::left, "unsaid"},
+	                      expected_siting{AVCHROMA_LOC_CENTER, core::chroma_siting::center, "centred"},
+	                      expected_siting{AVCHROMA_LOC_TOPLEFT, core::chroma_siting::top_left, "top-left"}})
+	{
+		auto* frame = av_frame_alloc();
+		const core::scope_exit release([&frame] { av_frame_free(&frame); });
+
+		frame->format = AV_PIX_FMT_YUV420P;
+		frame->width = 16;
+		frame->height = 16;
+		frame->chroma_location = e.location;
+		assert_equal(0, av_frame_get_buffer(frame, 0), std::format("{} frame allocated", e.name));
+
+		for (auto plane = 0; plane < 3; ++plane)
+		{
+			memset(frame->data[plane], 128, static_cast<size_t>(frame->linesize[plane]) * (plane ? 8 : 16));
+		}
+
+		av_scaler scaler;
+		const auto planes = scaler.presentable_surface(*frame, 0.0, core::orientation::top_left);
+		assert_equal(true, planes && planes->format() == core::texture_format::NV12,
+		             std::format("{} planes prepared", e.name));
+		if (!planes) continue;
+
+		assert_equal(static_cast<int>(e.siting), static_cast<int>(planes->chroma_siting()),
+		             std::format("{} chroma is drawn where the stream sites it", e.name));
+	}
+}
+
+// A planar 4:2:0 frame marked interlaced, top field first: luma(x, y) for each pixel, chroma neutral.
+static AVFrame* make_interlaced_frame(const int width, const int height, const AVPixelFormat format,
+                                      const std::function<int(int, int)>& luma)
+{
+	auto* frame = av_frame_alloc();
+	if (!frame) return nullptr;
+
+	frame->format = format;
+	frame->width = width;
+	frame->height = height;
+	frame->flags |= AV_FRAME_FLAG_INTERLACED | AV_FRAME_FLAG_TOP_FIELD_FIRST;
+
+	if (av_frame_get_buffer(frame, 0) < 0)
+	{
+		av_frame_free(&frame);
+		return nullptr;
+	}
+
+	const auto wide = format == AV_PIX_FMT_YUV420P10LE;
+
+	for (auto y = 0; y < height; ++y)
+	{
+		for (auto x = 0; x < width; ++x)
+		{
+			auto* const row = frame->data[0] + static_cast<ptrdiff_t>(frame->linesize[0]) * y;
+			if (wide) std::bit_cast<uint16_t*>(row)[x] = static_cast<uint16_t>(luma(x, y) * 4);
+			else row[x] = static_cast<uint8_t>(luma(x, y));
+		}
+	}
+
+	for (auto plane = 1; plane < 3; ++plane)
+	{
+		for (auto y = 0; y < height / 2; ++y)
+		{
+			auto* const row = frame->data[plane] + static_cast<ptrdiff_t>(frame->linesize[plane]) * y;
+
+			for (auto x = 0; x < width / 2; ++x)
+			{
+				if (wide) std::bit_cast<uint16_t*>(row)[x] = 512;
+				else row[x] = 128;
+			}
+		}
+	}
+
+	return frame;
+}
+
+static int luma_at(const AVFrame& frame, const int x, const int y)
+{
+	const auto* const row = frame.data[0] + static_cast<ptrdiff_t>(frame.linesize[0]) * y;
+	return frame.format == AV_PIX_FMT_YUV420P10LE ? std::bit_cast<const uint16_t*>(row)[x] / 4 : row[x];
+}
+
+// An interlaced frame holds two pictures, each in alternate lines, taken a field period apart. Each is made
+// whole: where nothing moved, the other field's lines are kept and the picture keeps its full vertical detail,
+// and where something did, the lines between are made from the field's own, so what moved is not combed with
+// where it was a field period before - with the frame before to compare with, or without one.
+static void should_make_each_field_of_an_interlaced_frame_whole()
+{
+	assert_equal(true,
+	             av_can_deinterlace(AV_PIX_FMT_YUV420P) && av_can_deinterlace(AV_PIX_FMT_NV12) &&
+	                 av_can_deinterlace(AV_PIX_FMT_P010LE) && av_can_deinterlace(AV_PIX_FMT_YUV411P) &&
+	                 av_can_deinterlace(AV_PIX_FMT_YUV422P10LE),
+	             "the layouts decoders give interlaced video in are read");
+	assert_equal(false,
+	             av_can_deinterlace(AV_PIX_FMT_YUYV422) || av_can_deinterlace(AV_PIX_FMT_D3D11) ||
+	                 av_can_deinterlace(AV_PIX_FMT_RGB24),
+	             "packed and hardware layouts are not");
+
+	constexpr int width = 32;
+	constexpr int height = 16;
+
+	for (const auto format : {AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV420P10LE})
+	{
+		const auto* const name = av_get_pix_fmt_name(format);
+		auto* picture = av_frame_alloc();
+		const core::scope_exit free_picture([&picture] { av_frame_free(&picture); });
+
+		// Still: lines of 200 and 50 in turn, which only the other field's lines can give back.
+		const auto stripes = [](int, const int y)
+		{
+			return y % 2 ? 50 : 200;
+		};
+		auto* still = make_interlaced_frame(width, height, format, stripes);
+		auto* still_before = make_interlaced_frame(width, height, format, stripes);
+		const core::scope_exit free_still([&still, &still_before]
+		{
+			av_frame_free(&still);
+			av_frame_free(&still_before);
+		});
+
+		for (const auto second_field : {false, true})
+		{
+			assert_equal(true, av_deinterlace_field(*still, still_before, second_field, *picture),
+			             std::format("{}: a still field is made whole", name));
+			assert_equal(false, av_is_interlaced(*picture), std::format("{}: and no longer interlaced", name));
+
+			auto changed = 0;
+			for (auto y = 0; y < height; ++y)
+				for (auto x = 0; x < width; ++x)
+					if (luma_at(*picture, x, y) != stripes(x, y)) ++changed;
+
+			assert_equal(0, changed, std::format("{}: where nothing moved every line is kept", name));
+		}
+
+		// Moving: a bar at columns 8 to 11 in the top field and 16 to 19 in the bottom, where the frame before
+		// had it at 0 to 3.
+		const auto bar = [](const int from)
+		{
+			return [from](const int x, int)
+			{
+				return x >= from && x < from + 4 ? 235 : 16;
+			};
+		};
+		auto* moving = make_interlaced_frame(width, height, format, [](const int x, const int y)
+		{
+			const auto from = y % 2 ? 16 : 8;
+			return x >= from && x < from + 4 ? 235 : 16;
+		});
+		auto* moving_before = make_interlaced_frame(width, height, format, bar(0));
+		const core::scope_exit free_moving([&moving, &moving_before]
+		{
+			av_frame_free(&moving);
+			av_frame_free(&moving_before);
+		});
+
+		for (const auto* const before :
+		     {static_cast<const AVFrame*>(moving_before), static_cast<const AVFrame*>(nullptr)})
+		{
+			for (const auto second_field : {false, true})
+			{
+				assert_equal(true, av_deinterlace_field(*moving, before, second_field, *picture),
+				             std::format("{}: a moving field is made whole", name));
+
+				// The first field shows the bar where the top field had it, the second where the bottom did, on
+				// every line.
+				const auto at = second_field ? 17 : 9;
+				const auto elsewhere = second_field ? 9 : 17;
+				auto combed = 0;
+
+				for (auto y = 0; y < height; ++y)
+				{
+					if (luma_at(*picture, at, y) < 200 || luma_at(*picture, elsewhere, y) > 50) ++combed;
+				}
+
+				assert_equal(0, combed,
+				             std::format("{}: the {} field {} shows the bar on every line and nowhere else", name,
+				                         second_field ? "second" : "first",
+				                         before ? "with the frame before" : "alone"));
+			}
+		}
+	}
+}
+
+// A clip of interlaced raw video, top field first, at 25 frames a second: in each frame the top field has a bar
+// four columns wide at 8n and the bottom field at 8n + 4, as a camera taking fields a fiftieth of a second apart
+// sees a bar crossing the picture. The container may say another field order, and a matrix and range.
+static bool write_interlaced_clip(const core::file_path& path, const int width, const int height, const int frames,
+                                  const AVFieldOrder order = AV_FIELD_TT,
+                                  const AVColorSpace matrix = AVCOL_SPC_UNSPECIFIED,
+                                  const AVColorRange range = AVCOL_RANGE_UNSPECIFIED)
+{
+	AVFormatContext* oc = nullptr;
+	if (avformat_alloc_output_context2(&oc, nullptr, "matroska", path.str().c_str()) < 0 || !oc) return false;
+
+	const core::scope_exit free_context([&oc]
+	{
+		if (oc && oc->pb) avio_closep(&oc->pb);
+		avformat_free_context(oc);
+	});
+
+	auto* const stream = avformat_new_stream(oc, nullptr);
+	if (!stream) return false;
+
+	constexpr AVRational frame_rate{25, 1};
+	stream->time_base = av_inv_q(frame_rate);
+	stream->avg_frame_rate = frame_rate;
+	auto* const par = stream->codecpar;
+	par->codec_type = AVMEDIA_TYPE_VIDEO;
+	par->codec_id = AV_CODEC_ID_RAWVIDEO;
+	par->codec_tag = MKTAG('I', '4', '2', '0');
+	par->format = AV_PIX_FMT_YUV420P;
+	par->width = width;
+	par->height = height;
+	par->field_order = order;
+	par->color_space = matrix;
+	par->color_range = range;
+
+	if (avio_open(&oc->pb, path.str().c_str(), AVIO_FLAG_WRITE) < 0) return false;
+	if (avformat_write_header(oc, nullptr) < 0) return false;
+
+	const auto luma_bytes = width * height;
+	const auto chroma_bytes = (width / 2) * (height / 2);
+
+	for (auto n = 0; n < frames; ++n)
+	{
+		auto* packet = av_packet_alloc();
+		const core::scope_exit free_packet([&packet] { av_packet_free(&packet); });
+		if (!packet || av_new_packet(packet, luma_bytes + chroma_bytes * 2) < 0) return false;
+
+		for (auto y = 0; y < height; ++y)
+		{
+			const auto from = 8 * n + (y % 2 ? 4 : 0);
+			for (auto x = 0; x < width; ++x) packet->data[y * width + x] = x >= from && x < from + 4 ? 235 : 16;
+		}
+
+		memset(packet->data + luma_bytes, 128, static_cast<size_t>(chroma_bytes) * 2);
+		packet->pts = packet->dts = av_rescale_q(n, av_inv_q(frame_rate), stream->time_base);
+		packet->duration = av_rescale_q(1, av_inv_q(frame_rate), stream->time_base);
+		packet->flags |= AV_PKT_FLAG_KEY;
+		packet->stream_index = stream->index;
+		if (av_interleaved_write_frame(oc, packet) < 0) return false;
+	}
+
+	return av_write_trailer(oc) == 0;
+}
+
+// Interlaced video plays each field as a picture of its own, in turn, a field period apart - fifty a second
+// from 25 frames - as the camera took them, and none shows the comb of two instants woven together.
+static void should_play_each_field_of_interlaced_video()
+{
+	const auto yuv_before = render::yuv_textures_enabled;
+	const core::scope_exit restore([yuv_before] { render::yuv_textures_enabled = yuv_before; });
+	render::yuv_textures_enabled = false;
+
+	constexpr int width = 32;
+	constexpr int height = 16;
+	constexpr int frame_count = 4;
+	const auto path = test_temps.next_path(".mkv");
+	assert_equal(true, write_interlaced_clip(path, width, height, frame_count), "an interlaced clip is written");
+
+	av_format_decoder decoder;
+	assert_equal(true, decoder.open(path, media_intent::playback), "the clip opens");
+	decoder.init_streams(-1, -1, false, true, false);
+
+	av_packet_queue packets;
+	av_frame_queue frames;
+	std::vector<av_frame_ptr> pictures;
+
+	for (auto i = 0; i < 100; ++i)
+	{
+		const auto packet = decoder.read_packet();
+		if (!packet) break;
+
+		const auto eof = av_packet_is_eof(packet);
+		if (!eof && av_packet_stream_index(packet) != decoder.video_stream_id()) continue;
+
+		packets.push(packet);
+		decoder.receive_frames(packets, frames);
+
+		av_frame_ptr frame;
+		while (frames.pop(frame))
+			if (!av_frame_is_eof(frame)) pictures.push_back(frame);
+
+		if (eof) break;
+	}
+
+	assert_equal(frame_count * 2, static_cast<int>(pictures.size()), "each frame is two pictures");
+
+	for (auto k = 0; k < static_cast<int>(pictures.size()); ++k)
+	{
+		assert_equal(true, std::abs(av_time_from_frame(pictures[k]) - k * 0.02) < 0.001,
+		             std::format("picture {} is shown a field period after the one before ({})", k,
+		                         av_time_from_frame(pictures[k])));
+
+		const auto surface = av_frame_surface(pictures[k]);
+		assert_equal(true, surface && surface->dimensions() == sizei{width, height},
+		             std::format("picture {} is prepared", k));
+		if (!surface) continue;
+
+		// Picture k shows the bar where field k had it - at 4k - on every line.
+		auto combed = 0;
+
+		for (auto y = 0; y < height; ++y)
+		{
+			const auto on_bar = surface->get_pixel(4 * k + 1, y) & 0xff;
+			const auto off_bar = surface->get_pixel((4 * k + 9) % width, y) & 0xff;
+			if (on_bar < 200 || off_bar > 50) ++combed;
+		}
+
+		assert_equal(0, combed, std::format("picture {} shows its field's bar on every line", k));
+	}
+}
+
+// The stream table says what the renderer does with a video's colour and fields: the matrix it converts by, marked
+// assumed where the stream states none, and whether it is interlaced - as FFmpeg finds it for a video it opens, and as
+// libfiles reads the container where FFmpeg has not opened it, which knows no field order.
+static void should_describe_a_videos_colour_and_fields()
+{
+	av_stream_info stream;
+	stream.type = av_stream_type::video;
+	assert_equal(""sv, av_colour_text(stream), "an untagged stream of no known size");
+	stream.coded_size = {1920, 1080};
+	assert_equal("BT.709 (assumed)"sv, av_colour_text(stream), "untagged HD");
+	stream.coded_size = {720, 576};
+	assert_equal("BT.601 (assumed)"sv, av_colour_text(stream), "untagged SD");
+	stream.color_transfer = AVCOL_TRC_SMPTE2084;
+	assert_equal("BT.2020 (assumed)"sv, av_colour_text(stream), "untagged PQ");
+	stream.color_matrix = AVCOL_SPC_BT709;
+	stream.full_range = true;
+	assert_equal("BT.709 full range"sv, av_colour_text(stream), "tagged");
+	stream.color_matrix = AVCOL_SPC_RGB;
+	assert_equal(""sv, av_colour_text(stream), "RGB, which no matrix converts");
+	assert_equal(""sv, av_scan_text(stream), "a stream that does not say how it is scanned");
+
+	struct clip
+	{
+		AVFieldOrder order;
+		AVColorSpace matrix;
+		AVColorRange range;
+		std::string_view colour;
+		std::string_view opened;
+		std::string_view scanned;
+	};
+
+	for (const auto& c : {clip{AV_FIELD_TT, AVCOL_SPC_UNSPECIFIED, AVCOL_RANGE_UNSPECIFIED, "BT.601 (assumed)",
+	                           "interlaced, top field first", "interlaced"},
+	                      clip{AV_FIELD_BB, AVCOL_SPC_BT709, AVCOL_RANGE_JPEG, "BT.709 full range",
+	                           "interlaced, bottom field first", "interlaced"},
+	                      clip{AV_FIELD_PROGRESSIVE, AVCOL_SPC_BT709, AVCOL_RANGE_MPEG, "BT.709", "", ""}})
+	{
+		const auto message = std::string(c.colour);
+		const auto path = test_temps.next_path(".mkv");
+		assert_equal(true, write_interlaced_clip(path, 32, 16, 2, c.order, c.matrix, c.range), message,
+		             "the clip is written");
+
+		av_format_decoder decoder;
+		assert_equal(true, decoder.open(path, media_intent::playback), message, "the clip opens");
+		const auto opened = decoder.info();
+		const auto video = std::ranges::find(opened.streams, av_stream_type::video, &av_stream_info::type);
+		assert_equal(true, video != opened.streams.end(), message, "FFmpeg finds its picture");
+		if (video == opened.streams.end()) continue;
+		assert_equal(c.colour, av_colour_text(*video), message, "its colour, as FFmpeg finds it");
+		assert_equal(c.opened, av_scan_text(*video), message, "its fields, as FFmpeg finds them");
+
+		files ff;
+		const auto scanned = ff_scan_file(ff, path).to_info();
+		const auto row = std::ranges::find(scanned.streams, av_stream_type::video, &av_stream_info::type);
+		assert_equal(true, row != scanned.streams.end(), message, "libfiles finds its picture");
+		if (row == scanned.streams.end()) continue;
+		assert_equal(c.colour, av_colour_text(*row), message, "its colour, as libfiles reads it");
+		assert_equal(c.scanned, av_scan_text(*row), message, "its fields, as libfiles reads them");
 	}
 }
 
@@ -2153,7 +2659,8 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 	const auto centre = [](const core::const_surface_ptr& s)
 	{
 		const auto px = s->get_pixel(s->dimensions().cx / 2, s->dimensions().cy / 2);
-		return std::array{static_cast<int>(px >> 16 & 0xff), static_cast<int>(px >> 8 & 0xff), static_cast<int>(px & 0xff)};
+		return std::array{static_cast<int>(px >> 16 & 0xff), static_cast<int>(px >> 8 & 0xff),
+		                  static_cast<int>(px & 0xff)};
 	};
 
 	struct expected_white
@@ -2185,9 +2692,9 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 		if (!is_valid(thumbnail)) continue;
 
 		const auto thumbnail_rgb = centre(thumbnail);
-		assert_equal(true, at_level(thumbnail_rgb), std::format("{} thumbnail shows reference white {} ({}, {}, {})",
-		                                                         name, e.shown, thumbnail_rgb[0], thumbnail_rgb[1],
-		                                                         thumbnail_rgb[2]));
+		assert_equal(true, at_level(thumbnail_rgb),
+		             std::format("{} thumbnail shows reference white {} ({}, {}, {})", name, e.shown, thumbnail_rgb[0],
+		                         thumbnail_rgb[1], thumbnail_rgb[2]));
 
 		render::yuv_textures_enabled = false;
 		render::p010_textures_enabled = false;
@@ -2204,8 +2711,9 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 		if (!packed || !planes) continue;
 
 		const auto packed_rgb = centre(packed);
-		assert_equal(true, at_level(packed_rgb), std::format("{} BGRA shows reference white {} ({}, {}, {})",
-		                                                     name, e.shown, packed_rgb[0], packed_rgb[1], packed_rgb[2]));
+		assert_equal(true, at_level(packed_rgb),
+		             std::format("{} BGRA shows reference white {} ({}, {}, {})", name, e.shown, packed_rgb[0],
+		                         packed_rgb[1], packed_rgb[2]));
 
 		av_scaler scaler;
 		const auto mapped = std::make_shared<core::surface>();
@@ -2215,9 +2723,10 @@ static void should_tone_map_hdr_video_for_an_sdr_display()
 		auto spread = 0;
 		for (auto c = 0; c < 3; ++c) spread = std::max(spread, std::abs(mapped_rgb[c] - packed_rgb[c]));
 
-		assert_equal(true, spread <= 4, std::format("{} planes through the cube match the BGRA ({}, {}, {} against {}, {}, {})",
-		                                            name, mapped_rgb[0], mapped_rgb[1], mapped_rgb[2],
-		                                            packed_rgb[0], packed_rgb[1], packed_rgb[2]));
+		assert_equal(true, spread <= 4,
+		             std::format("{} planes through the cube match the BGRA ({}, {}, {} against {}, {}, {})", name,
+		                         mapped_rgb[0], mapped_rgb[1], mapped_rgb[2], packed_rgb[0], packed_rgb[1],
+		                         packed_rgb[2]));
 	}
 }
 
@@ -2248,10 +2757,8 @@ static void should_not_read_streams_nothing_decodes()
 	video_only.init_streams(-1, -1, false, true, false);
 
 	const auto info = video_only.info();
-	const auto audio = std::ranges::find_if(info.streams, [](const av_stream_info& s)
-	{
-		return s.type == av_stream_type::audio;
-	});
+	const auto audio = std::ranges::find_if(info.streams,
+	                                        [](const av_stream_info& s) { return s.type == av_stream_type::audio; });
 	assert_equal(true, audio != info.streams.end(), "fixture carries a soundtrack");
 
 	const auto count_packets = [](const av_format_decoder& decoder, const int stream)
@@ -2335,6 +2842,20 @@ static void should_make_only_the_latest_of_the_waiting_seeks()
 	assert_equal(before + 2, ses->seek_generation(), "is made as before");
 }
 
+// Nothing above the read thread can catch what its commands throw, and an exception leaving a thread
+// terminates the process. A command that throws is dropped, and what was queued after it still runs.
+static void should_run_the_rest_of_the_queue_after_a_command_throws()
+{
+	const auto player = make_test_player();
+	auto ran_after = false;
+
+	player->queue([](const std::shared_ptr<av_player>&) { throw std::runtime_error("command failed"); });
+	player->queue([&ran_after](const std::shared_ptr<av_player>&) { ran_after = true; });
+
+	assert_equal(true, player->run_queued_commands(), "the queue runs past the command that threw");
+	assert_equal(true, ran_after, "and the command after it runs");
+}
+
 // MEDIA-004 - a scrub drag can report the same whole-second target repeatedly after the previous
 // seek has settled, and a trim handle moves its target a frame at a time. Near scrub targets merge
 // into the request already made -- merging retargets the presenter rather than dropping the target --
@@ -2386,8 +2907,8 @@ static void should_land_merged_scrub_seeks_on_their_own_frame()
 	const auto path = test_files_folder().combine_file("gizmo.mp4");
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false,
-	                             false, false, true), "session opened video only, as a Movie preview is");
+	assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, false, -1, -1, false, false, false, true),
+	             "session opened video only, as a Movie preview is");
 
 	const auto rate = ses->info().video_frame_rate;
 	assert_equal(true, rate > 0.0, "fixture declares a frame rate");
@@ -2534,8 +3055,8 @@ static void should_preview_video_frames_at_hover_positions()
 	             "hover thumbnail decoded from the reused decoder");
 	assert_equal(true, is_valid(thumbnail), "hover thumbnail surface");
 	assert_equal(true, thumbnail->time() < previous_time,
-	             std::format("a backward hover rewinds the reused decoder ({:.2f}s, was {:.2f}s)",
-	                         thumbnail->time(), previous_time));
+	             std::format("a backward hover rewinds the reused decoder ({:.2f}s, was {:.2f}s)", thumbnail->time(),
+	                         previous_time));
 
 	preview.close();
 }
@@ -2569,8 +3090,7 @@ static void should_reuse_the_preview_decoder_across_hovers()
 	preview.superseded = &superseded;
 
 	auto abandoned = std::make_shared<core::surface>();
-	assert_equal(true,
-	             preview.decoder1->extract_seek_frame(abandoned, {256, 256}, 60, 100, preview.abandon_token()),
+	assert_equal(true, preview.decoder1->extract_seek_frame(abandoned, {256, 256}, 60, 100, preview.abandon_token()),
 	             "an abandoned walk still answers with the frame it reached");
 	assert_equal(true, is_valid(abandoned), "abandoned preview surface");
 
@@ -2600,8 +3120,7 @@ static void should_allow_tolerance_for_hover_thumbnails()
 	assert_equal(true, dec.extract_thumbnail(exact, {256, 256}, pos, 100, true, 0.0), "exact frame decoded");
 
 	core::surface_ptr toleranced;
-	assert_equal(true, dec.extract_thumbnail(toleranced, {256, 256}, pos, 100, true, 0.02),
-	             "toleranced frame decoded");
+	assert_equal(true, dec.extract_thumbnail(toleranced, {256, 256}, pos, 100, true, 0.02), "toleranced frame decoded");
 
 	// Unless the exact frame is a real walk past the key frame, the tolerance proves nothing.
 	assert_equal(true, exact->time() > key_frame->time(), "the exact frame is a walk past the key frame");
@@ -2739,8 +3258,8 @@ static void should_walk_video_frames_forward()
 		if (step > 0)
 		{
 			assert_equal(true, s->time() > previous + 0.01,
-			             std::format("a forward walk advances timestamps (previous {:.2f}, got {:.2f})",
-			                         previous, s->time()));
+			             std::format("a forward walk advances timestamps (previous {:.2f}, got {:.2f})", previous,
+			                         s->time()));
 		}
 
 		previous = s->time();
@@ -2753,8 +3272,8 @@ static void should_walk_video_frames_forward()
 	core::surface_ptr back;
 	assert_equal(true, dec.extract_frame_at(back, {256, 256}, back_wanted, 0.02), "frame decoded behind the walk");
 	assert_equal(true, std::abs(back->time() - back_wanted) < 0.5,
-	             std::format("a request behind the decoder seeks (wanted {:.2f}s, got {:.2f}s)",
-	                         back_wanted, back->time()));
+	             std::format("a request behind the decoder seeks (wanted {:.2f}s, got {:.2f}s)", back_wanted,
+	                         back->time()));
 	assert_equal(true, back->time() < previous,
 	             std::format("a backward request returns before the last forward frame ({:.2f}s, last {:.2f}s)",
 	                         back->time(), previous));
@@ -2785,17 +3304,16 @@ static void should_reuse_the_nearest_frame_from_the_sequential_bracket()
 	             "exact repeated timestamp decoded");
 	assert_equal(true, is_valid(repeated), "repeated frame surface");
 	assert_equal(true, core::equiv(repeated->time(), first->time()),
-	             std::format("repeating {:.3f}s reuses that frame instead of walking to {:.3f}s",
-	                         first->time(), repeated->time()));
+	             std::format("repeating {:.3f}s reuses that frame instead of walking to {:.3f}s", first->time(),
+	                         repeated->time()));
 
 	core::surface_ptr next;
 	const auto near_next = first->time() + 0.02;
-	assert_equal(true, dec.extract_frame_at(next, {256, 256}, near_next, 0.0),
-	             "nearby forward frame decoded");
+	assert_equal(true, dec.extract_frame_at(next, {256, 256}, near_next, 0.0), "nearby forward frame decoded");
 	assert_equal(true, is_valid(next), "nearby frame surface");
 	assert_equal(true, next->time() >= first->time(),
-	             std::format("nearby request stays on the retained bracket (first {:.3f}s, got {:.3f}s)",
-	                         first->time(), next->time()));
+	             std::format("nearby request stays on the retained bracket (first {:.3f}s, got {:.3f}s)", first->time(),
+	                         next->time()));
 	assert_equal(true, next->time() - first->time() < 0.2,
 	             std::format("nearby request does not skip a retained neighbor (first {:.3f}s, got {:.3f}s)",
 	                         first->time(), next->time()));
@@ -2814,8 +3332,7 @@ static void should_choose_the_retained_frame_when_it_is_nearest_to_a_forward_req
 	             "the just decoded frame is not substituted with itself");
 	assert_equal(false, should_use_kept_sequential_frame(0.04, 0.08, 0.065),
 	             "the newly decoded next frame is nearest to .065");
-	assert_equal(true, should_use_kept_sequential_frame(0.04, 0.08, 0.06),
-	             "ties keep the earlier retained frame");
+	assert_equal(true, should_use_kept_sequential_frame(0.04, 0.08, 0.06), "ties keep the earlier retained frame");
 }
 
 // MEDIA-006 - Movie export keeps one frame-threaded decoder per source and asks it for sequential
@@ -2848,8 +3365,8 @@ static void should_extract_threaded_video_frames_sequentially_to_eof()
 		assert_equal(true, frame->time() + step >= target,
 		             std::format("frame at {:.3f}s reaches target {:.3f}s", frame->time(), target));
 		assert_equal(true, frame->time() + 0.001 >= previous_time,
-		             std::format("threaded extraction remains ordered ({:.3f}s after {:.3f}s)",
-		                         frame->time(), previous_time));
+		             std::format("threaded extraction remains ordered ({:.3f}s after {:.3f}s)", frame->time(),
+		                         previous_time));
 		previous_time = frame->time();
 		++decoded;
 	}
@@ -3001,8 +3518,9 @@ static void should_decode_audio_into_a_buffer()
 	assert_equal(true, range_dec.open(voiced_path, media_intent::playback), "decoder reopened for a retained range");
 	range_dec.init_streams(-1, -1, false, false, false);
 	const auto loudest_at = static_cast<double>(
-		std::distance(samples.begin(), std::ranges::max_element(samples, {},
-			[](const int16_t v) { return std::abs(v); }))) / 2.0 / rate;
+								std::distance(samples.begin(), std::ranges::max_element(samples, {}, [](const int16_t v)
+	{ return std::abs(v); }))) /
+	                        2.0 / rate;
 	const auto range_start = std::max(0.0, loudest_at - 0.25);
 	const auto range = range_dec.extract_audio_pcm_range(rate, range_start, 0.5);
 	assert_equal(static_cast<size_t>(0.5 * rate) * 2, range.size(),
@@ -3064,8 +3582,10 @@ static void should_keep_audio_around_a_damaged_packet()
 	assert_equal(true, clip.open(voiced_path, media_intent::playback), "PCM decoder opened");
 	clip.init_streams(-1, -1, false, false, false);
 	const auto samples = clip.extract_audio_pcm_range(rate, 0, seconds);
-	assert_equal(true, received > 1, std::format("frames after the damaged packet are still decoded for the clip "
-	                                             "({} frames, {} samples)", received, samples.size()));
+	assert_equal(true, received > 1,
+	             std::format("frames after the damaged packet are still decoded for the clip "
+	                         "({} frames, {} samples)",
+	                         received, samples.size()));
 	assert_equal(static_cast<size_t>(seconds * rate) * 2, samples.size(),
 	             "the clip keeps its audio around a damaged packet");
 	assert_equal(true, std::ranges::any_of(samples, [](const int16_t v) { return v != 0; }),
@@ -3145,13 +3665,36 @@ static void should_read_an_audio_range_as_the_stream_holds_it()
 
 	const auto ratio = std::sqrt(window_energy / whole_energy);
 	assert_equal(true, ratio > 0.9 && ratio < 1.1,
-	             std::format("a window opens on the level the stream has there (ratio {:.3f} at {:.3f}s)",
-	                         ratio, boundary));
+	             std::format("a window opens on the level the stream has there (ratio {:.3f} at {:.3f}s)", ratio,
+	                         boundary));
+}
+
+// A range is decoded from the key frame its seek lands on, which can be seconds before it. Each frame decoded on the way
+// keeps its own place before the range, so the range holds the sound from where it starts: a short read, and a longer
+// one a second earlier that lands on the same key frame, hold the same samples where they overlap. indy.mp4's key frames
+// are ten seconds apart, so both land five seconds and more before what they read.
+static void should_read_an_audio_range_from_where_it_starts()
+{
+	const auto read = [](const double at, const double length)
+	{
+		av_format_decoder decoder;
+		assert_equal(true, decoder.open(test_files_folder().combine_file("indy.mp4"), media_intent::playback),
+		             "indy.mp4 opens");
+		decoder.init_streams(-1, -1, false, false, false);
+		return decoder.extract_audio_pcm_range(48000, at, length);
+	};
+
+	const auto later = read(25.0, 0.5);
+	const auto earlier = read(24.0, 2.0);
+	assert_equal(true, later.size() == 48000 && earlier.size() == 192000, "both ranges are read whole");
+	assert_equal(true, std::ranges::any_of(later, [](const int16_t v) { return v != 0; }), "with sound in them");
+	assert_equal(true, std::equal(later.begin(), later.end(), earlier.begin() + 96000),
+	             "and the same sound where they overlap");
 }
 
 static core::file_path write_resampling_wave(const int input_rate, const bool step)
 {
-	const auto path = _temps.next_path(".wav");
+	const auto path = test_temps.next_path(".wav");
 	std::string wave;
 	const auto append = [&wave](const uint32_t value, const int bytes)
 	{
@@ -3216,7 +3759,9 @@ static void should_reset_audio_resampling_after_a_seek()
 	fresh.drain(expected, 1);
 	assert_equal(true, expected.used_bytes() > 0, "fresh resampler produces audio");
 	assert_equal(expected.used_bytes(), after_seek.used_bytes(), "seek reset retains the complete resampled tail");
-	assert_equal(true, std::equal(expected.cdata().data, expected.cdata().data + expected.used_bytes(), after_seek.cdata().data),
+	assert_equal(true,
+	             std::equal(expected.cdata().data, expected.cdata().data + expected.used_bytes(),
+	                        after_seek.cdata().data),
 	             "seek reset discards old filter history");
 }
 
@@ -3274,7 +3819,7 @@ static void should_keep_resampled_audio_continuous()
 		const auto path = write_resampling_wave(input_rate, false);
 
 		// Window starts align to both rates so seek rounding cannot masquerade as resampler delay.
-		for (const auto [start, duration] : {std::pair{0.0, 0.25}, {0.1, 0.25}, {0.0, 0.5}})
+		for (const auto& [start, duration] : {std::pair{0.0, 0.25}, {0.1, 0.25}, {0.0, 0.5}})
 		{
 			av_format_decoder decoder;
 			assert_equal(true, decoder.open(path, media_intent::playback), "the PCM fixture opens");
@@ -3291,8 +3836,8 @@ static void should_keep_resampled_audio_continuous()
 				if (std::abs(static_cast<int>(pcm[i]) - (i % 2 == 0 ? left : right)) > 1) ++incorrect;
 			}
 			assert_equal(size_t{0}, incorrect,
-			             std::format("{} Hz audio has no inserted silence at {:.3f}s or its drained tail",
-			                         input_rate, start));
+			             std::format("{} Hz audio has no inserted silence at {:.3f}s or its drained tail", input_rate,
+			                         start));
 		}
 	}
 }
@@ -3301,9 +3846,292 @@ static void should_keep_resampled_audio_continuous()
 // SID tunes
 //
 
+static std::vector<uint8_t> read_whole_stream(const platform::file_ptr& stream, uint64_t& largest_read);
+static int peak_of(const std::vector<uint8_t>& wav, size_t first, size_t last);
+
+static float wav_float_sample(const std::vector<uint8_t>& wav, const size_t i)
+{
+	const auto at = 44 + i * sizeof(float);
+	const auto bits = static_cast<uint32_t>(wav[at]) | (static_cast<uint32_t>(wav[at + 1]) << 8) |
+	                  (static_cast<uint32_t>(wav[at + 2]) << 16) | (static_cast<uint32_t>(wav[at + 3]) << 24);
+	return std::bit_cast<float>(bits);
+}
+
+static void should_preserve_floating_point_tracker_headroom()
+{
+	class float_fixture final : public pcm_audio_render<float>
+	{
+	public:
+		bool load() override { return true; }
+		rendered_audio_format format() const override { return {48000, 2}; }
+		uint64_t sample_count() const override { return 2; }
+		core::file_path path() const override { return {}; }
+		void describe(av_media_info& info) const override
+		{
+			info.audio_channels = 2;
+			info.audio_sample_rate = 48000;
+		}
+		size_t read(const uint64_t first, float* out, const size_t count) override
+		{
+			constexpr std::array<float, 4> samples{-1.5f, -0.5f, 0.5f, 1.5f};
+			if (first >= 2) return 0;
+			const auto n = static_cast<size_t>(std::min<uint64_t>(count, 2 - first));
+			std::copy_n(samples.data() + first * 2, n * 2, out);
+			return n;
+		}
+	};
+	const auto stream = open_rendered_audio_stream(std::make_shared<float_fixture>());
+	uint64_t largest = 0;
+	const auto wav = read_whole_stream(stream, largest);
+	assert_equal(60_z, wav.size(), "two stereo frames are stored as four full-width floats");
+	assert_equal(3, static_cast<int>(wav[20]), "the stream declares IEEE floating-point PCM");
+	assert_equal(32, static_cast<int>(wav[34]), "no integer quantisation precedes the player's gain");
+	assert_equal(-1.5, static_cast<double>(wav_float_sample(wav, 0)), "negative headroom is not clipped");
+	assert_equal(1.5, static_cast<double>(wav_float_sample(wav, 3)), "positive headroom is not clipped");
+}
+
+static core::file_path write_test_tracker_module(const int speed = 1)
+{
+	const auto bytes = make_test_tracker_module(speed);
+	const auto path = test_temps.next_path(".mod");
+	assert_equal(true, platform::blob_save_to_file({bytes.data(), bytes.size()}, path),
+	             "the generated tracker fixture is written");
+	return path;
+}
+
+static void should_play_tracker_modules_directly()
+{
+	for (const auto ext : {".mod", "XM", ".s3m", "it", "mtm", "med"})
+		assert_equal(true, is_tracker_extension(ext), std::format("{} uses the native tracker renderer", ext));
+	for (const auto ext : {".wav", ".mp3", ".sid", ".txt"})
+		assert_equal(false, is_tracker_extension(ext), std::format("{} keeps its existing renderer", ext));
+
+	const auto path = write_test_tracker_module();
+	const auto render = std::make_shared<tracker_tune_render>(path);
+	const auto stream = open_rendered_audio_stream(render);
+	assert_equal(true, stream->size() > 44, "the native renderer supplies PCM");
+	const auto details = render->details();
+	assert_equal(true, details != nullptr, "module details are published whole");
+	assert_equal("Diffractor tracker", details->title, "the module title is not a WAV title");
+	assert_equal(4_z, details->channels.size(), "four tracker channels");
+	assert_equal(31_z, details->samples.size(), "the module sample bank");
+	assert_equal("Triangle", details->samples[0], "the named sample");
+	assert_equal(1, details->patterns, "one pattern");
+	assert_equal(1_z, details->orders.size(), "one order");
+	assert_equal(31_z, details->sample_use.size(), "the patterns of a module without instruments name its samples");
+	assert_equal(true, details->instrument_use.empty(), "so there is no instrument use to read");
+	const auto& triangle = details->sample_use[0];
+	assert_equal(2, triangle.notes, "the sample is played twice");
+	assert_equal(4, triangle.highest - triangle.lowest, "from C to the E above it");
+	assert_equal(1, triangle.channels, "on one channel");
+	assert_equal(true,
+	             std::all_of(details->sample_use.begin() + 1, details->sample_use.end(),
+	                         [](const tracker_bank_use& u) { return u.notes == 0 && u.channels == 0; }),
+	             "and no other sample is played");
+
+	uint64_t largest = 0;
+	const auto wav = read_whole_stream(stream, largest);
+	assert_equal(true, largest <= 8192, "read-ahead stays short enough for channel controls");
+	assert_equal(2, static_cast<int>(wav[22]), "the renderer supplies stereo PCM");
+	assert_equal(32, static_cast<int>(wav[34]), "tracker mixing retains floating-point headroom");
+	auto peak = 0.0f;
+	for (size_t i = 0; i < (wav.size() - 44) / sizeof(float); ++i)
+		peak = std::max(peak, std::abs(wav_float_sample(wav, i)));
+	assert_equal(true, peak > 0.01f, "the sample sounds");
+	stream->seek(1001, platform::file::whence::begin);
+	std::vector<uint8_t> again(4001);
+	assert_equal(uint64_t{4001}, stream->read(again.data(), again.size()),
+	             "stereo reads can start and end inside a frame");
+	assert_equal(true, std::equal(again.begin(), again.end(), wav.begin() + 1001),
+	             "unaligned cached reads retain both channels");
+
+	tracker_frame_state state;
+	assert_equal(true, render->frame_at(0.3, state), "a rendered position has a monitor snapshot");
+	assert_equal(0, state.order, "the playing order");
+	assert_equal(true, state.row > 0 && state.row < 64, "the playhead advances through pattern rows");
+	assert_equal(4_z, state.levels.size(), "one meter per channel");
+	assert_equal(true, state.pattern != nullptr && state.pattern->rows == 64,
+	             "the pattern is available without calling the decoder on the UI");
+	assert_equal(1, state.pattern->cells[0].instrument, "the first note plays sample one");
+	assert_equal(true, state.pattern->cells[0].text.find("01") != std::string::npos,
+	             "formatted tracker notation includes its instrument");
+
+	av_format_decoder decoder;
+	assert_equal(true, decoder.open(path, media_intent::playback),
+	             "ordinary decoder callers also use the native bridge");
+	const auto info = decoder.info();
+	assert_equal(true, info.audio_codec.sv() == details->type, "media information describes the module, not PCM");
+	assert_equal(true, info.bitrate == 0, "the generated WAV bit rate is not presented as the module's");
+	file_scan_result scanned;
+	decoder.extract_metadata(scanned);
+	const auto properties = scanned.to_props();
+	assert_equal("Diffractor tracker"sv, properties->title.sv(), "indexing sees the native module title");
+	assert_equal(details->tracker, properties->encoder.sv(), "the original tracker encoder tag is preserved");
+	assert_equal(true, core::is_empty(properties->comment),
+	             "a module with no song message has no comment: its sample names are listed under the monitor");
+	assert_equal(48000u, properties->audio_sample_rate,
+	             "native playback preserves the established tracker sample rate");
+}
+
+static void should_bound_tracker_history_and_seek_natively()
+{
+	const auto render = std::make_shared<tracker_tune_render>(write_test_tracker_module(6));
+	const auto before_read = render->revision();
+	std::vector<float> pcm(tracker_sample_rate * 5_z * 2);
+	assert_equal(tracker_sample_rate * 5_z, render->read(0, pcm.data(), pcm.size() / 2), "five seconds render");
+	assert_equal(true, render->revision() > before_read, "a paused monitor can observe newly published audio state");
+	tracker_frame_state state;
+	assert_equal(false, render->frame_at(0, state), "old snapshots leave the four-second playback cache");
+	assert_equal(true, render->frame_at(4, state), "recent pattern state remains available");
+	assert_equal(1000_z, render->read(0, pcm.data(), 1000), "an earlier seek goes to the native renderer");
+	assert_equal(true, render->frame_at(0, state), "the new seek publishes its own pattern state");
+	assert_equal(false, render->frame_at(4, state), "state from before the seek cannot masquerade as current");
+	assert_equal(1000_z, render->read(10000, pcm.data(), 1000), "a forward seek also renders natively");
+	assert_equal(1000_z, render->read(0, pcm.data(), 1000), "a seek never reads uninitialised ring-buffer space");
+}
+
+// The monitor scrolls its pattern smoothly through the bar the playing row passes, so the render says how far
+// through its row a moment is, and which patterns play either side of the one playing.
+static void should_say_where_a_tracker_is_within_its_row()
+{
+	auto bytes = make_test_tracker_module(6);
+	bytes[950] = 2; // its one pattern, played twice over
+	const auto path = test_temps.next_path(".mod");
+	assert_equal(true, platform::blob_save_to_file({bytes.data(), bytes.size()}, path), "the module is written");
+
+	const auto render = std::make_shared<tracker_tune_render>(path);
+	std::vector<float> pcm(tracker_sample_rate * 2_z);
+	for (uint64_t at = 0; at < tracker_sample_rate * 9_z; at += tracker_sample_rate)
+	{
+		assert_equal(static_cast<size_t>(tracker_sample_rate), render->read(at, pcm.data(), tracker_sample_rate),
+		             "a second renders");
+
+		if (at == 0)
+		{
+			// Six ticks of 20 ms a row.
+			auto row = -1;
+			auto progress = 0.0;
+			auto rows = 0;
+
+			for (auto t = 0.0; t < 0.6; t += 0.005)
+			{
+				tracker_frame_state s;
+				assert_equal(true, render->frame_at(t, s), "a rendered moment has a snapshot");
+
+				if (s.row == row)
+				{
+					assert_equal(true, s.row_progress >= progress, "the moment moves on through its row");
+				}
+				else
+				{
+					if (row >= 0)
+						assert_equal(true, progress > 0.8 && s.row_progress < 0.2, "and a row starts as the last ends");
+					++rows;
+				}
+
+				row = s.row;
+				progress = s.row_progress;
+			}
+
+			assert_equal(true, rows >= 4, "one row after another");
+
+			tracker_frame_state first;
+			render->frame_at(0.1, first);
+			assert_equal(true, !first.previous_pattern && first.next_pattern && first.next_pattern->index == 0,
+			             "the first order has nothing before it, and its pattern again after it");
+		}
+	}
+
+	// A pattern of 64 rows lasts 7.68 seconds.
+	tracker_frame_state second;
+	assert_equal(true, render->frame_at(8.5, second) && second.order == 1, "the second order plays");
+	assert_equal(true, second.previous_pattern && second.previous_row == 63 && !second.next_pattern,
+	             "played on from the first, whose last row went before it, and nothing after it");
+
+	// A seek lands on the moment it asks for, not on the start of the row the moment falls in.
+	tracker_frame_state played;
+	assert_equal(true, render->frame_at(8.1, played), "a moment played to");
+	const auto sought = std::make_shared<tracker_tune_render>(path);
+	sought->read(static_cast<uint64_t>(7.98 * tracker_sample_rate), pcm.data(), tracker_sample_rate / 2);
+	tracker_frame_state found;
+	assert_equal(true, sought->frame_at(8.1, found), "is there to seek to");
+	assert_equal(true,
+	             found.order == played.order && found.row == played.row &&
+	                 std::abs(found.row_progress - played.row_progress) < 0.1,
+	             "and shows the row it played, as far through it");
+}
+
+static void should_mute_and_solo_tracker_channels()
+{
+	const auto path = write_test_tracker_module();
+	const auto peak = [&](const tracker_channel_mix& mix)
+	{
+		auto render = std::make_shared<tracker_tune_render>(path);
+		render->mix(mix);
+		std::vector<float> pcm(tracker_sample_rate);
+		const auto got = render->read(0, pcm.data(), pcm.size() / 2);
+		assert_equal(pcm.size() / 2, got, "the native channel mix renders");
+		auto result = 0.0f;
+		for (const auto sample : pcm) result = std::max(result, std::abs(sample));
+		return result;
+	};
+	assert_equal(true, peak({}) > 0.01f, "the first channel is audible");
+	tracker_channel_mix muted{{true, false, false, false}, -1};
+	assert_equal(true, peak(muted) == 0, "muting the sounding channel silences it");
+	muted.solo = 0;
+	assert_equal(true, peak(muted) > 0.01f, "solo takes precedence over mute, as in the SID monitor");
+	muted.solo = 1;
+	assert_equal(true, peak(muted) == 0, "soloing an empty channel silences the other channels");
+
+	// A change of mix applies to what is rendered after it. What was rendered before is still to be heard, and the
+	// monitor still shows where it is.
+	const auto render = std::make_shared<tracker_tune_render>(path);
+	std::vector<float> pcm(tracker_sample_rate);
+	render->read(0, pcm.data(), tracker_sample_rate / 2);
+	render->mix(muted);
+	render->read(tracker_sample_rate / 2, pcm.data(), tracker_sample_rate / 10);
+	tracker_frame_state state;
+	assert_equal(true, render->frame_at(0.25, state), "a mix change keeps what is still to be heard in view");
+}
+
+static void should_play_the_requested_tracker_fixture()
+{
+	const auto path = command_line.selection;
+	const auto render = std::make_shared<tracker_tune_render>(path);
+	assert_equal(true, render->load(), "the requested module loads directly");
+	const auto details = render->details();
+	assert_equal(true, details && details->duration > 0 && !details->channels.empty(),
+	             "the real module has a playable timeline");
+	std::vector<float> pcm(tracker_sample_rate / 2);
+	auto peak = 0.0f;
+	for (const auto fraction : {0.0, 0.5, 0.9})
+	{
+		const auto first = static_cast<uint64_t>(details->duration * fraction * tracker_sample_rate);
+		const auto count = static_cast<size_t>(std::min<uint64_t>(pcm.size() / 2, render->sample_count() - first));
+		const auto got = render->read(first, pcm.data(), count);
+		assert_equal(true, got > 0 && got <= count, "native start, middle and late seeks produce PCM");
+		for (size_t i = 0; i < got * 2; ++i) peak = std::max(peak, std::abs(pcm[i]));
+		tracker_frame_state frame;
+		assert_equal(true, render->frame_at(static_cast<double>(first + got / 2) / tracker_sample_rate, frame),
+		             "the pattern follows the audio after each seek");
+		assert_equal(details->channels.size(), frame.levels.size(), "every real tracker channel has a meter");
+		assert_equal(true, frame.pattern && frame.row >= 0 && frame.row < frame.pattern->rows,
+		             "the native playhead names a real pattern row");
+		assert_equal(static_cast<size_t>(frame.pattern->rows) * frame.pattern->channels, frame.pattern->cells.size(),
+		             "the published pattern contains every channel and row");
+	}
+	av_format_decoder decoder;
+	assert_equal(true, decoder.open(path, media_intent::playback), "the ordinary player path opens the real module");
+	assert_equal(true, decoder.info().audio_codec.sv() == details->type,
+	             "player information identifies the original tracker format");
+	const auto name = std::string(path.name());
+	printf("  Tracker fixture: %s, %zu channels, %zu samples, %.2fs, peak %.3f\n", name.c_str(),
+	       details->channels.size(), details->samples.size(), details->duration, peak);
+}
+
 static core::file_path write_test_sid_tune(const std::vector<uint8_t>& tune)
 {
-	const auto path = _temps.next_path(".sid");
+	const auto path = test_temps.next_path(".sid");
 	assert_equal(true, platform::blob_save_to_file({tune.data(), tune.size()}, path), "the tune is written");
 	return path;
 }
@@ -3341,9 +4169,9 @@ static void should_play_a_sid_tune_through_its_wav_stream()
 {
 	const auto path = write_test_sid_tune(make_test_sid_tune());
 	const auto render = std::make_shared<sid_tune_render>(path, 0, 2.0);
-	const auto stream = open_sid_stream(render);
+	const auto stream = open_rendered_audio_stream(render);
 
-	assert_equal(true, is_sid_stream(stream), "the stream is a SID stream");
+	assert_equal(true, is_rendered_audio_stream(stream), "the stream is natively rendered");
 	constexpr size_t samples = 2 * sid_sample_rate;
 	assert_equal(uint64_t{44 + samples * 2}, stream->size(), "the WAV holds the tune's span as 16-bit mono");
 
@@ -3373,7 +4201,8 @@ static void should_play_a_sid_tune_through_its_wav_stream()
 	assert_equal(true, std::equal(again.begin(), again.end(), wav.begin() + 1001), "reads what was read before");
 
 	uint64_t ignored = 0;
-	const auto second = read_whole_stream(open_sid_stream(std::make_shared<sid_tune_render>(path, 0, 2.0)), ignored);
+	const auto second = read_whole_stream(open_rendered_audio_stream(std::make_shared<sid_tune_render>(path, 0, 2.0)),
+	                                      ignored);
 	assert_equal(true, second == wav, "a tune renders the same every time");
 
 	sid_frame_state frame;
@@ -3403,7 +4232,7 @@ static void should_silence_a_muted_sid_voice()
 		const auto render = std::make_shared<sid_tune_render>(path, 0, 1.0);
 		render->mix(mix);
 		uint64_t ignored = 0;
-		const auto wav = read_whole_stream(open_sid_stream(render), ignored);
+		const auto wav = read_whole_stream(open_rendered_audio_stream(render), ignored);
 		return peak_of(wav, sid_sample_rate / 4, sid_sample_rate / 2);
 	};
 
@@ -3424,11 +4253,171 @@ static void should_silence_a_muted_sid_voice()
 	assert_equal(static_cast<int>(0b110), static_cast<int>(solo_own.silent_mask()), "a solo silences the rest");
 }
 
+// The test tune with another play routine at $1020; its init routine has voice 1 sawing at full volume.
+static std::vector<uint8_t> make_test_sid_tune_playing(const std::initializer_list<uint8_t> play)
+{
+	auto tune = make_test_sid_tune();
+	tune.resize(0x7C + 2 + 0x20);
+	tune.insert(tune.end(), play.begin(), play.end());
+	return tune;
+}
+
+// Neither a .sid file nor its format says how long a tune lasts, so it is found by running the tune: to the moment it
+// falls silent, or to where it starts again - and the render ends there, the stream silent after it.
+static void should_find_where_a_sid_tune_ends()
+{
+	// Four notes of 25 frames each, round and round: the tune starts again every two seconds.
+	const auto repeating = make_test_sid_tune_playing({
+		0xE6, 0xFB, 0xA5, 0xFB, 0xC9, 0x19, 0xD0, 0x06, // INC $FB, LDA $FB, CMP #25, BNE +6
+		0xA9, 0x00, 0x85, 0xFB, 0xE6, 0xFC,             // LDA #0, STA $FB, INC $FC
+		0xA5, 0xFC, 0x29, 0x03, 0xAA,                   // LDA $FC, AND #3, TAX
+		0xBD, 0x3A, 0x10, 0x8D, 0x01, 0xD4, 0x60,       // LDA $103A,X, STA $D401, RTS
+		0x10, 0x14, 0x18, 0x1C,                         // the notes' frequency high bytes
+	});
+	// One note, its gate let go after a hundred frames.
+	const auto ending = make_test_sid_tune_playing({
+		// clang-format off
+		0xE6, 0xFB, 0xA5, 0xFB, 0xC9, 0x64, 0xD0, 0x05, // INC $FB, LDA $FB, CMP #100, BNE +5
+		0xA9, 0x20, 0x8D, 0x04, 0xD4, 0x60, // LDA #$20, STA $D404: sawtooth, gate off; RTS
+		// clang-format on
+	});
+
+	const auto repeats = scan_sid_tune_length({repeating.data(), repeating.size()}, 0);
+	assert_equal(true, repeats.how == sid_tune_length::ending::repeats, "a tune that goes round is found to repeat");
+	assert_equal(true, repeats.seconds > 1.9 && repeats.seconds < 2.2, "from where it first starts again");
+
+	const auto silent = scan_sid_tune_length({ending.data(), ending.size()}, 0);
+	assert_equal(true, silent.how == sid_tune_length::ending::falls_silent,
+	             "a tune that stops is found to fall silent");
+	assert_equal(true, silent.seconds > 2.8 && silent.seconds < 3.2,
+	             "a moment after its last note, for it to ring out");
+
+	const auto unscanned = scan_sid_tune_length({repeating.data(), repeating.size()}, 0, 3.0);
+	assert_equal(true, unscanned.how == sid_tune_length::ending::unknown, "a repeat not yet heard through is not one");
+
+	// The render plays the tune to its end and is silent after it; one that repeats fades out as it starts again.
+	const auto check_render =
+		[](const std::vector<uint8_t>& tune, const double expected_end, const std::string_view what)
+	{
+		const auto path = write_test_sid_tune(tune);
+		const auto render = std::make_shared<sid_tune_render>(path, 0);
+		assert_equal(sid_tune_seconds, render->end_seconds(),
+		             std::format("{}: the span every tune is given first", what));
+		assert_equal(true, find_sid_tune_end(render), std::format("{}: the end is found", what));
+		assert_equal(true, render->end_found() && std::abs(render->end_seconds() - expected_end) < 0.25,
+		             std::format("{}: and kept", what));
+
+		const auto stream = open_rendered_audio_stream(render);
+		const auto samples = static_cast<size_t>((expected_end + 1.0) * sid_sample_rate);
+		std::vector<uint8_t> wav(44 + samples * 2);
+		auto read = 0_z;
+		while (read < wav.size())
+		{
+			const auto n = stream->read(wav.data() + read, wav.size() - read);
+			if (n == 0) break;
+			read += static_cast<size_t>(n);
+		}
+		assert_equal(wav.size(), read, std::format("{}: the stream runs on past the end", what));
+		assert_equal(true, peak_of(wav, sid_sample_rate / 4, sid_sample_rate) > 1000,
+		             std::format("{}: the tune sounds", what));
+		const auto end = static_cast<size_t>(render->end_seconds() * sid_sample_rate);
+		assert_equal(0, peak_of(wav, end, samples), std::format("{}: and is silent after its end", what));
+		sid_frame_state after_end;
+		assert_equal(false, render->frame_at(render->end_seconds() + 0.5, after_end),
+		             std::format("{}: without running the tune on past it", what));
+		return std::pair{render, std::vector<uint8_t>(std::move(wav))};
+	};
+
+	check_render(ending, silent.seconds, "falls silent");
+	const auto [looped, looped_wav] = check_render(repeating, repeats.seconds + sid_fade_seconds, "repeats");
+	const auto looped_end = static_cast<size_t>(looped->end_seconds() * sid_sample_rate);
+	assert_equal(true,
+	             peak_of(looped_wav, looped_end - 100, looped_end) * 20 <
+	                 peak_of(looped_wav, sid_sample_rate / 4, sid_sample_rate),
+	             "a tune that repeats fades out as it starts again");
+}
+
+// A store's drawing of a track's waveform, which ID3 types as a bright coloured fish so that players do not take it
+// for the cover, is never a file's cover art - not for its tile, and not for the panel playing it. A file with
+// only that has none; a front cover beside it is the cover whichever comes first.
+static void should_not_take_a_waveform_for_cover_art()
+{
+	const auto fixture = platform::blob_from_file(test_files_folder().combine_file("Games Without Frontiers.mp3"));
+	assert_equal(true, fixture.size() > 10 && std::memcmp(fixture.data(), "ID3", 3) == 0,
+	             "the fixture's own tag is there to replace");
+	const auto tag_size = (fixture[6] << 21) | (fixture[7] << 14) | (fixture[8] << 7) | fixture[9];
+	const auto audio_start = static_cast<size_t>(tag_size) + 10 + ((fixture[5] & 0x10) != 0 ? 10 : 0);
+	const auto png = platform::blob_from_file(test_files_folder().combine_file("Cube.png"));
+	const auto jpg = platform::blob_from_file(test_files_folder().combine_file("Small.jpg"));
+
+	const auto apic = [](const int type, const std::string_view mime, const core::blob& image)
+	{
+		std::vector<uint8_t> body = {0};
+		body.insert(body.end(), mime.begin(), mime.end());
+		body.insert(body.end(), {0, static_cast<uint8_t>(type), 0});
+		body.insert(body.end(), image.begin(), image.end());
+
+		std::vector<uint8_t> frame = {'A', 'P', 'I', 'C'};
+		const auto size = static_cast<uint32_t>(body.size());
+		for (const auto shift : {24, 16, 8, 0}) frame.push_back(static_cast<uint8_t>(size >> shift));
+		frame.insert(frame.end(), {0, 0});
+		frame.insert(frame.end(), body.begin(), body.end());
+		return frame;
+	};
+
+	const auto write = [&](const std::vector<std::vector<uint8_t>>& frames)
+	{
+		std::vector<uint8_t> tag;
+		for (const auto& f : frames) tag.insert(tag.end(), f.begin(), f.end());
+
+		std::vector<uint8_t> file = {'I', 'D', '3', 3, 0, 0};
+		const auto size = static_cast<uint32_t>(tag.size());
+		for (const auto shift : {21, 14, 7, 0}) file.push_back(static_cast<uint8_t>((size >> shift) & 0x7F));
+		file.insert(file.end(), tag.begin(), tag.end());
+		file.insert(file.end(), fixture.begin() + static_cast<std::ptrdiff_t>(audio_start), fixture.end());
+
+		const auto path = test_temps.next_path(".mp3");
+		assert_equal(true, platform::blob_save_to_file({file.data(), file.size()}, path),
+		             "the tagged fixture is written");
+		return path;
+	};
+
+	files ff;
+	const auto cover = [&ff](const core::file_path path)
+	{
+		return ff
+		    .scan_file(path, true, files::file_type_from_name(path), {}, sizei{256, 256}, libfiles::scan_intent::index,
+		               false)
+		    .cover_art;
+	};
+	const auto picture = [](const core::file_path path)
+	{
+		av_format_decoder decoder;
+		assert_equal(true, decoder.open(path, media_intent::playback), "the tagged fixture opens");
+		decoder.init_streams(-1, -1, false, false, false);
+		return decoder.has_video() ? decoder.info().display_dimensions : sizei{};
+	};
+
+	const auto waveform = write({apic(17, "image/jpeg", jpg)});
+	assert_equal(true, cover(waveform) == nullptr, "a waveform alone is no cover art");
+	assert_equal(true, picture(waveform).is_empty(), "and the player shows no picture for it");
+
+	const auto both = write({apic(17, "image/jpeg", jpg), apic(3, "image/png", png)});
+	const auto art = cover(both);
+	assert_equal(true, art && art->dimensions() == sizei(128, 128),
+	             "the front cover is, though the waveform comes first");
+	assert_equal(true, picture(both) == sizei(128, 128), "and the player shows it");
+
+	const auto other = write({apic(0, "image/png", png)});
+	assert_equal(true, cover(other) != nullptr && picture(other) == sizei(128, 128),
+	             "any other picture of the recording is cover art");
+}
+
 static void should_decode_a_sid_stream_with_ffmpeg()
 {
 	const auto path = write_test_sid_tune(make_test_sid_tune());
 	const auto render = std::make_shared<sid_tune_render>(path, 0, 1.5);
-	const auto stream = open_sid_stream(render);
+	const auto stream = open_rendered_audio_stream(render);
 
 	av_format_decoder decoder;
 	assert_equal(true, decoder.open(stream, path, media_intent::playback), "FFmpeg opens the tune's stream");
@@ -3437,25 +4426,23 @@ static void should_decode_a_sid_stream_with_ffmpeg()
 	assert_equal(false, decoder.has_video(), "with no picture");
 	assert_equal(true, std::abs(decoder.end_time() - 1.5) < 0.05, "lasting the tune's span");
 
-	// The panel describes the tune rather than the WAV it is played as.
+	// Native streams describe the tune at the decoder boundary, not only in the monitor.
 	auto info = decoder.info();
-	assert_equal(true, info.bitrate > 0, "FFmpeg gives the WAV a bit rate");
+	assert_equal(true, info.bitrate == 0, "the native bridge hides the generated WAV bit rate");
 	render->describe(info);
 	assert_equal("MOS 6581"sv, info.audio_codec.sv(), "the codec is the chip");
 	assert_equal(0, static_cast<int>(info.bitrate), "a tune has no bit rate");
-	assert_equal(true, std::ranges::any_of(info.streams, [](const av_stream_info& st)
-	{
-		return st.type == av_stream_type::audio && st.codec == "MOS 6581";
-	}), "nor does its stream play PCM");
+	assert_equal(true,
+	             std::ranges::any_of(info.streams, [](const av_stream_info& st)
+	{ return st.type == av_stream_type::audio && st.codec == "MOS 6581"; }),
+	             "nor does its stream play PCM");
 
 	const auto has_value = [&info](const metadata_standard standard, const std::string_view value)
 	{
 		return std::ranges::any_of(info.metadata, [&](const metadata_block& block)
 		{
-			return block.standard == standard && std::ranges::any_of(block.values, [&](const metadata_kv& kv)
-			{
-				return kv.value == value;
-			});
+			return block.standard == standard &&
+			       std::ranges::any_of(block.values, [&](const metadata_kv& kv) { return kv.value == value; });
 		});
 	};
 
@@ -3473,6 +4460,208 @@ static void should_name_sid_notes_and_waveforms()
 	assert_equal("SAW+PULSE", sid_waveform_name(0x61), "combined waveforms");
 	assert_equal("NOISE", sid_waveform_name(0x80), "noise");
 	assert_equal("OFF", sid_waveform_name(0x08), "test bit alone");
+}
+
+//
+// The Commodore 64 the media pane runs
+//
+
+// Whether the machine's text screen shows the text, which is upper-case ASCII.
+static bool c64_screen_shows(const machine& m, const std::string_view text)
+{
+	const auto* const screen = m._state->RAM + 0x0400;
+	const auto screen_code = [](const char c)
+	{
+		return static_cast<uint8_t>(c >= 'A' && c <= 'Z' ? c - 'A' + 1 : c);
+	};
+
+	for (size_t at = 0; at + text.size() <= 1000; ++at)
+	{
+		if (std::equal(text.begin(), text.end(), screen + at,
+		               [&](const char c, const uint8_t s) { return (s & 0x7F) == screen_code(c); }))
+			return true;
+	}
+
+	return false;
+}
+
+// Runs a session's frames as its worker does while a program loads - unpaced and unheard, publishing every
+// eighth picture - until the screen shows the text or the frames run out.
+static bool run_c64_until(c64_session& session, machine& m, const std::string_view text, const int frames)
+{
+	std::vector<int16_t> pcm(c64_session::max_frame_samples);
+
+	for (auto i = 0; i < frames; ++i)
+	{
+		if (c64_screen_shows(m, text)) return true;
+		session.frame(m, pcm.data(), i % 8 == 0);
+	}
+
+	return c64_screen_shows(m, text);
+}
+
+static core::file_path write_c64_test_file(const std::vector<uint8_t>& bytes, const std::string_view extension)
+{
+	const auto path = test_temps.next_path(extension);
+	assert_equal(true, platform::blob_save_to_file({bytes.data(), bytes.size()}, path), "the fixture is written");
+	return path;
+}
+
+static std::vector<uint8_t> c64_name(const std::string_view name)
+{
+	return {name.begin(), name.end()};
+}
+
+// A disk's row runs the file it names, typed in as a user would: LOAD"name",8,1 and RUN. The machine's
+// pictures are published whole as it goes.
+static void should_run_a_commodore_64_disks_program()
+{
+	const auto path = write_c64_test_file(make_test_d64({
+											  {"NOTES", 0x81, {'N', 'O'}},
+											  {"HELLO", 0x82, make_test_c64_program("HI FROM THE DISK")},
+											  {"OTHER", 0x82, make_test_c64_program("THE WRONG ONE")},
+										  }),
+	                                      ".d64");
+
+	c64_session session(path, c64_name("HELLO"));
+	machine m;
+	assert_equal(true, session.boot(m), "the disk boots");
+	m.set_render_enabled(true);
+	assert_equal(true, run_c64_until(session, m, "HI FROM THE DISK", 1000), "the program the row names runs");
+	assert_equal(false, c64_screen_shows(m, "THE WRONG ONE"), "and not another the disk holds");
+
+	uint64_t number = 0;
+	const auto picture = session.frame(number);
+	assert_equal(true, picture != nullptr && number > 0, "its pictures are published");
+	assert_equal(true,
+	             picture && picture->dimensions() == sizei(c64_session::picture_width, c64_session::picture_height),
+	             "each the whole of the screen and its border");
+
+	machine untouched;
+	assert_equal(false, c64_session(path, c64_name("GONE")).boot(untouched), "a name the disk does not hold");
+	assert_equal(false, c64_session(test_temps.next_path(".d64"), {}).boot(untouched), "an empty file");
+}
+
+// A program file, a P00's program and a tape's file run as a disk's do; a tape's file is found by the name
+// it stores, byte for byte. Each is told apart as the listing tells it, so a P00 whose name says "tape", as
+// a T64's description does, is still a P00.
+static void should_run_a_commodore_64_program_file_and_tape()
+{
+	{
+		const auto path = write_c64_test_file(make_test_c64_program("HI FROM THE FILE"), ".prg");
+		c64_session session(path, {});
+		machine m;
+		assert_equal(true, session.boot(m), "a program file boots");
+		assert_equal(true, run_c64_until(session, m, "HI FROM THE FILE", 1000), "and runs");
+	}
+
+	{
+		std::vector<uint8_t> p00(26, 0);
+		std::memcpy(p00.data(), "C64File", 7);
+		std::memcpy(p00.data() + 8, "my tape game", 12);
+		const auto program = make_test_c64_program("HI FROM THE P00");
+		p00.insert(p00.end(), program.begin(), program.end());
+
+		c64_session session(write_c64_test_file(p00, ".p00"), c64_name("my tape game"));
+		machine m;
+		assert_equal(true, session.boot(m), "a P00 boots");
+		assert_equal(true, run_c64_until(session, m, "HI FROM THE P00", 1000), "and runs the program it wraps");
+	}
+
+	{
+		const std::vector<test_c64_file> files = {
+			{"FIRST", 0x82, make_test_c64_program("THE WRONG ONE")},
+			{"Second", 0x82, make_test_c64_program("HI FROM THE TAPE")},
+		};
+		std::vector<uint8_t> t64(64 + 32 * files.size(), 0);
+		std::memcpy(t64.data(), "C64S tape image file", 20);
+		t64[34] = static_cast<uint8_t>(files.size());
+		t64[36] = static_cast<uint8_t>(files.size());
+		auto offset = t64.size();
+
+		for (size_t i = 0; i < files.size(); ++i)
+		{
+			const auto& file = files[i];
+			const auto start = static_cast<uint16_t>(file.bytes[0] | file.bytes[1] << 8);
+			const auto end = static_cast<uint16_t>(start + file.bytes.size() - 2);
+			auto* const entry = t64.data() + 64 + i * 32;
+			entry[0] = 1;
+			entry[1] = file.type;
+			entry[2] = static_cast<uint8_t>(start);
+			entry[3] = static_cast<uint8_t>(start >> 8);
+			entry[4] = static_cast<uint8_t>(end);
+			entry[5] = static_cast<uint8_t>(end >> 8);
+			entry[8] = static_cast<uint8_t>(offset);
+			entry[9] = static_cast<uint8_t>(offset >> 8);
+			std::fill_n(entry + 16, 16, static_cast<uint8_t>(' '));
+			std::ranges::copy(file.name, entry + 16);
+			offset += file.bytes.size() - 2;
+		}
+
+		for (const auto& file : files) t64.insert(t64.end(), file.bytes.begin() + 2, file.bytes.end());
+		const auto path = write_c64_test_file(t64, ".t64");
+
+		// Lower case in a stored name is PETSCII's graphics, which a typed name would fold away.
+		c64_session session(path, c64_name("Second"));
+		machine m;
+		assert_equal(true, session.boot(m), "a tape boots");
+		assert_equal(true, run_c64_until(session, m, "HI FROM THE TAPE", 1000), "and runs the file the row names");
+		assert_equal(false, c64_session(path, c64_name("SECOND")).boot(m), "matched as stored, nothing folded");
+	}
+}
+
+// The arrows and Space are the joystick, in the port chosen; the other keys the C64 has are pressed where it
+// has them, and the rest are left to the application. Keys are let go once the keyboard reports them up.
+static void should_drive_a_commodore_64_from_the_keyboard()
+{
+	uint8_t rows[2] = {};
+	uint8_t cols[2] = {};
+	assert_equal(1, c64_matrix_keys(U'A', rows, cols), "a letter is one key");
+	assert_equal(true, rows[0] == 1 && cols[0] == 2, "where the C64 has A");
+	assert_equal(2, c64_matrix_keys(platform::keys::F2, rows, cols), "F2 is the C64's F1 with shift");
+	assert_equal(true, rows[0] == 1 && cols[0] == 7 && rows[1] == 0 && cols[1] == 4, "left shift, then F1");
+	assert_equal(0, c64_matrix_keys(platform::keys::F12, rows, cols), "F12 is not the C64's");
+
+	c64_session session(write_c64_test_file(make_test_c64_program("READY"), ".prg"), {});
+	machine m;
+	assert_equal(true, session.boot(m), "the machine boots");
+	std::vector<int16_t> pcm(c64_session::max_frame_samples);
+	const auto step = [&]
+	{
+		session.frame(m, pcm.data(), false);
+	};
+	const auto key_down = [&m](const int row, const int col)
+	{
+		return (m._state->key_matrix[row] & (1 << col)) == 0;
+	};
+
+	c64_keyboard keyboard;
+	assert_equal(true, keyboard.press(session, U'A', false), "the C64's keys are taken");
+	assert_equal(false, keyboard.press(session, platform::keys::F12, false), "others are the application's");
+	assert_equal(true, keyboard.press(session, platform::keys::UP, false), "the arrows are the joystick");
+	assert_equal(true, keyboard.press(session, platform::keys::UP, true), "and their repeats are swallowed");
+	step();
+	assert_equal(true, key_down(1, 2), "A is held on the machine");
+	assert_equal(0, m._state->joystick2 & 0x01, "up is held on the joystick in port 2");
+	assert_equal(0x1F, m._state->joystick1 & 0x1F, "and nothing in port 1");
+
+	// Nothing is held on the test's own keyboard, so every key reads as let go.
+	keyboard.sync(session);
+	step();
+	assert_equal(false, key_down(1, 2), "A is let go");
+	assert_equal(0x1F, m._state->joystick2 & 0x1F, "and so is up");
+
+	session.joystick_port(1);
+	assert_equal(true, keyboard.press(session, platform::keys::SPACE, false), "Space is fire");
+	step();
+	assert_equal(0, m._state->joystick1 & 0x10, "fired in port 1 once it is chosen");
+	assert_equal(0x1F, m._state->joystick2 & 0x1F, "and not in port 2");
+	assert_equal(true, key_down(7, 4), "and the C64's space bar, for a game that waits for SPACE");
+
+	keyboard.release_all(session);
+	step();
+	assert_equal(0x1F, m._state->joystick1 & 0x1F, "leaving lets every key go");
+	assert_equal(false, key_down(7, 4), "the space bar too");
 }
 
 //
@@ -3532,15 +4721,19 @@ static void should_style_ass_dialogue()
 
 	const auto sign = parse_ass_dialogue("{\\an8\\pos(320,40)\\fad(200,200)}Sign{\\alpha&H80&} faded", style);
 	assert_equal(8, sign.alignment, "\\an");
-	assert_equal(true, sign.position.has_value() && core::equiv(sign.position->X, 320.0) &&
-	             core::equiv(sign.position->Y, 40.0), "\\pos");
+	assert_equal(true,
+	             sign.position.has_value() && core::equiv(sign.position->X, 320.0) &&
+	                 core::equiv(sign.position->Y, 40.0),
+	             "\\pos");
 	assert_equal(0x7Fu, sign.runs.back().color >> 24, "\\alpha");
 	assert_equal("Sign faded", sign.plain_text(), "overrides it does not draw are dropped");
 
 	assert_equal("Text", parse_ass_dialogue("{\\p1}m 0 0 l 100 0 100 100{\\p0}Text", style).plain_text(),
 	             "drawing mode draws nothing");
 	assert_equal("Line", parse_ass_dialogue("Line\\N", style).plain_text(), "no empty line under the dialogue");
-	assert_equal("a\xC2\xA0" "b", parse_ass_dialogue("a\\hb", style).plain_text(), "a hard space");
+	assert_equal("a\xC2\xA0"
+	             "b",
+	             parse_ass_dialogue("a\\hb", style).plain_text(), "a hard space");
 	assert_equal(9, parse_ass_dialogue("{\\a7}x", style).alignment, "SSA's \\a7 is the top right");
 
 	const auto fields = split_ass_event("3,0,Sign,,0010,0020,0030,,Hello, world");
@@ -3668,8 +4861,10 @@ static void should_keep_subtitle_events_by_playhead()
 	if (!shown.empty() && !shown.front().bitmaps.empty())
 	{
 		const auto b = shown.front().bitmaps.front().bounds;
-		assert_equal(true, core::equiv(b.X, 20.0) && core::equiv(b.Y, 40.0) && core::equiv(b.Width, 8.0) &&
-		             core::equiv(b.Height, 4.0), "scaled from its canvas to the video");
+		assert_equal(true,
+		             core::equiv(b.X, 20.0) && core::equiv(b.Y, 40.0) && core::equiv(b.Width, 8.0) &&
+		                 core::equiv(b.Height, 4.0),
+		             "scaled from its canvas to the video");
 	}
 
 	assert_equal(0_z, events.at(4.0, 1, false).size(), "nothing between lines");
@@ -3737,15 +4932,15 @@ static void should_show_one_picture_subtitle_at_a_time()
 	subtitle_event clear;
 	clear.start = 3.0;
 	clear.end = 3.0;
-	std::vector file = {
-		test_image_event(2.0, 3602.0, 0), clear, test_image_event(1.0, 3601.0, 0), test_image_event(4.0, 6.0, 0)
-	};
+	std::vector file = {test_image_event(2.0, 3602.0, 0), clear, test_image_event(1.0, 3601.0, 0),
+	                    test_image_event(4.0, 6.0, 0)};
 	end_replaced_pictures(file);
 	assert_equal(3_z, file.size(), "a file's clears are dropped once they have ended a picture");
 
 	if (file.size() == 3)
 	{
-		assert_equal(true, core::equiv(file[0].start, 1.0) && core::equiv(file[0].end, 2.0), "the next picture ends the first");
+		assert_equal(true, core::equiv(file[0].start, 1.0) && core::equiv(file[0].end, 2.0),
+		             "the next picture ends the first");
 		assert_equal(true, core::equiv(file[1].end, 3.0), "the clear ends the second");
 		assert_equal(true, core::equiv(file[2].end, 6.0), "and the last keeps the end it states");
 	}
@@ -3772,8 +4967,10 @@ static void should_lay_subtitles_out_for_the_picture_shape()
 	if (!shown.empty() && !shown.front().bitmaps.empty())
 	{
 		const auto b = shown.front().bitmaps.front().bounds;
-		assert_equal(true, core::equiv(b.X, 10.0) && core::equiv(b.Y, 80.0) && core::equiv(b.Width, 4.0) &&
-		             core::equiv(b.Height, 8.0), "on that shape");
+		assert_equal(true,
+		             core::equiv(b.X, 10.0) && core::equiv(b.Y, 80.0) && core::equiv(b.Width, 4.0) &&
+		                 core::equiv(b.Height, 8.0),
+		             "on that shape");
 	}
 
 	events.layout({100, 200});
@@ -3828,15 +5025,18 @@ static void should_choose_subtitles_by_language_and_mode()
 	             "the video's own title names none");
 	assert_equal("en", read_sidecar_subtitle_name("The.French.Dispatch.en.srt", "The.French.Dispatch.mkv").language,
 	             "only the words after it count");
-	assert_equal("", read_sidecar_subtitle_name("English.srt", "Movie.mkv").language, "nor does a file of another name");
+	assert_equal("", read_sidecar_subtitle_name("English.srt", "Movie.mkv").language,
+	             "nor does a file of another name");
 
 	const auto video = core::file_path(R"(C:\films\Movie.mkv)");
-	const auto sidecars = sidecar_subtitle_offers(video, R"(Movie.en.srt Movie.nfo Movie.idx Movie.sub "Movie.de forced.ass" Other.sub)");
+	const auto sidecars =
+		sidecar_subtitle_offers(video, R"(Movie.en.srt Movie.nfo Movie.idx Movie.sub "Movie.de forced.ass" Other.sub)");
 	assert_equal(4_z, sidecars.size(), "every subtitle but the .sub read through its .idx");
 
 	if (sidecars.size() == 4)
 	{
-		assert_equal(true, sidecars[0].choice.sidecar == core::file_path(R"(C:\films\Movie.en.srt)"), "beside the video");
+		assert_equal(true, sidecars[0].choice.sidecar == core::file_path(R"(C:\films\Movie.en.srt)"),
+		             "beside the video");
 		assert_equal("en", sidecars[0].language, "its language");
 		assert_equal("Movie.idx", sidecars[1].title, "a VobSub by its .idx");
 		assert_equal(true, sidecars[2].forced && sidecars[2].language == "de", "a quoted name");
@@ -3860,11 +5060,11 @@ static void should_read_subtitle_text_in_a_legacy_code_page()
 
 static void should_decode_subtitle_sidecars()
 {
-	const auto folder = _temps.next_folder("subtitles");
+	const auto folder = test_temps.next_folder("subtitles");
 
 	const auto srt = folder.combine_file("Movie.srt");
 	write_test_file(srt, "1\r\n00:00:01,000 --> 00:00:02,500\r\nHello <i>world</i>\r\n\r\n"
-	                "2\r\n00:00:03,000 --> 00:00:04,000\r\nSecond line\r\ncaf\xE9\r\n\r\n");
+	                     "2\r\n00:00:03,000 --> 00:00:04,000\r\nSecond line\r\ncaf\xE9\r\n\r\n");
 
 	const auto from_srt = decode_subtitle_file(srt);
 	assert_equal(2_z, from_srt.events.size(), "two SRT cues");
@@ -3885,19 +5085,21 @@ static void should_decode_subtitle_sidecars()
 	write_test_file(vtt, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello from WebVTT\n\n");
 	const auto from_vtt = decode_subtitle_file(vtt);
 	assert_equal(1_z, from_vtt.events.size(), "a WebVTT cue");
-	assert_equal("Hello from WebVTT", from_vtt.events.empty() || !from_vtt.events[0].text
-		                                  ? ""
-		                                  : from_vtt.events[0].text->plain_text(), "WebVTT text");
+	assert_equal("Hello from WebVTT",
+	             from_vtt.events.empty() || !from_vtt.events[0].text ? "" : from_vtt.events[0].text->plain_text(),
+	             "WebVTT text");
 
 	const auto ass = folder.combine_file("Movie.ass");
-	write_test_file(ass, "[Script Info]\nScriptType: v4.00+\nPlayResX: 640\nPlayResY: 360\n\n[V4+ Styles]\n"
-	                "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
-	                "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
-	                "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-	                "Style: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n"
-	                "Style: Top,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,8,10,10,10,1\n\n"
-	                "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-	                "Dialogue: 0,0:00:01.00,0:00:03.00,Top,,0,0,0,,{\\b1}Sign{\\b0} text\n");
+	write_test_file(
+		ass,
+		"[Script Info]\nScriptType: v4.00+\nPlayResX: 640\nPlayResY: 360\n\n[V4+ Styles]\n"
+		"Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
+		"Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+		"Alignment, MarginL, MarginR, MarginV, Encoding\n"
+		"Style: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n"
+		"Style: Top,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,8,10,10,10,1\n\n"
+		"[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+		"Dialogue: 0,0:00:01.00,0:00:03.00,Top,,0,0,0,,{\\b1}Sign{\\b0} text\n");
 	const auto from_ass = decode_subtitle_file(ass);
 	assert_equal(640, from_ass.script.play_res_x, "the script's canvas");
 	assert_equal(1_z, from_ass.events.size(), "an ASS line");
@@ -3971,10 +5173,12 @@ static std::string pgs_display_set(const double seconds, const int composition, 
 // presentation states - which a decoder knows only once the picture decodes, and which can change.
 static void should_read_picture_subtitles_from_a_sup_file()
 {
-	const auto path = _temps.next_path(".sup");
+	const auto path = test_temps.next_path(".sup");
 	const auto bytes = pgs_display_set(1.0, 0, {720, 480}, pointi(100, 400)) +
-		pgs_display_set(2.0, 1, {1920, 1080}, pointi(900, 1000)) + pgs_display_set(3.0, 2, {1920, 1080}, {});
-	assert_equal(true, platform::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
+	                   pgs_display_set(2.0, 1, {1920, 1080}, pointi(900, 1000)) +
+	                   pgs_display_set(3.0, 2, {1920, 1080}, {});
+	assert_equal(true,
+	             platform::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
 	             "the file is written");
 
 	const auto file = decode_subtitle_file(path);
@@ -3989,9 +5193,11 @@ static void should_read_picture_subtitles_from_a_sup_file()
 	             "and the clear the second");
 	assert_equal(true, first.canvas == sizei(720, 480), "each on the canvas its presentation states");
 	assert_equal(true, second.canvas == sizei(1920, 1080), "which can change");
-	assert_equal(true, first.images.size() == 1 && first.images.front().rect.left == 100 &&
-	             first.images.front().rect.top == 400 && first.images.front().rect.width() == 4 &&
-	             first.images.front().rect.height() == 2, "placed on it");
+	assert_equal(true,
+	             first.images.size() == 1 && first.images.front().rect.left == 100 &&
+	                 first.images.front().rect.top == 400 && first.images.front().rect.width() == 4 &&
+	                 first.images.front().rect.height() == 2,
+	             "placed on it");
 }
 
 static std::string mkv_element(const std::string_view id, const std::string_view body)
@@ -4027,27 +5233,30 @@ static std::string mkv_text_block(const int time_ms, const int duration_ms, cons
 // A Matroska file of one S_TEXT/UTF8 track, as a muxer writes it: the build has no muxer to make one.
 static std::string make_subtitle_mkv()
 {
-	const auto header = mkv_element("\x1A\x45\xDF\xA3",
-	                                mkv_uint("\x42\x86", 1) + mkv_uint("\x42\xF7", 1) + mkv_uint("\x42\xF2", 4) +
-	                                mkv_uint("\x42\xF3", 8) + mkv_element("\x42\x82", "matroska") +
-	                                mkv_uint("\x42\x87", 4) + mkv_uint("\x42\x85", 2));
+	const auto header = mkv_element("\x1A\x45\xDF\xA3", mkv_uint("\x42\x86", 1) + mkv_uint("\x42\xF7", 1) +
+	                                                        mkv_uint("\x42\xF2", 4) + mkv_uint("\x42\xF3", 8) +
+	                                                        mkv_element("\x42\x82", "matroska") +
+	                                                        mkv_uint("\x42\x87", 4) + mkv_uint("\x42\x85", 2));
 	const auto info = mkv_element("\x15\x49\xA9\x66", mkv_uint("\x2A\xD7\xB1", 1000000) +
-	                              mkv_element("\x4D\x80", "test") + mkv_element("\x57\x41", "test"));
+	                                                      mkv_element("\x4D\x80", "test") +
+	                                                      mkv_element("\x57\x41", "test"));
 	const auto track = mkv_uint("\xD7", 1) + mkv_uint("\x73\xC5", 1) + mkv_uint("\x83", 0x11) +
-		mkv_element("\x86", "S_TEXT/UTF8") + mkv_element("\x22\xB5\x9C", "eng") + mkv_uint("\x55\xAA", 1);
+	                   mkv_element("\x86", "S_TEXT/UTF8") + mkv_element("\x22\xB5\x9C", "eng") +
+	                   mkv_uint("\x55\xAA", 1);
 	const auto tracks = mkv_element("\x16\x54\xAE\x6B", mkv_element("\xAE", track));
 	const auto cluster = mkv_element("\x1F\x43\xB6\x75", mkv_uint("\xE7", 0) +
-	                                 mkv_text_block(1000, 1500, "Hello <i>there</i>") +
-	                                 mkv_text_block(3000, 1000, "Second line"));
+	                                                         mkv_text_block(1000, 1500, "Hello <i>there</i>") +
+	                                                         mkv_text_block(3000, 1000, "Second line"));
 
 	return header + mkv_element("\x18\x53\x80\x67", info + tracks + cluster);
 }
 
 static void should_decode_an_embedded_subtitle_track()
 {
-	const auto path = _temps.next_path(".mkv");
+	const auto path = test_temps.next_path(".mkv");
 	const auto bytes = make_subtitle_mkv();
-	assert_equal(true, platform::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
+	assert_equal(true,
+	             platform::blob_save_to_file({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}, path),
 	             "the file is written");
 
 	av_format_decoder dec;
@@ -4085,7 +5294,7 @@ static void should_decode_an_embedded_subtitle_track()
 
 static void should_open_a_video_with_its_sidecar_subtitles()
 {
-	const auto folder = _temps.next_folder("sidecar-subtitles");
+	const auto folder = test_temps.next_folder("sidecar-subtitles");
 	const auto video = folder.combine_file("Clip.mp4");
 	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), video, false, false);
 	write_test_file(folder.combine_file("Clip.en.srt"), "1\n00:00:00,000 --> 00:00:30,000\nA line\n\n");
@@ -4096,8 +5305,10 @@ static void should_open_a_video_with_its_sidecar_subtitles()
 	request.language = "en";
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
-	                             false, {}, request), "the video opens");
+	assert_equal(true,
+	             ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false, false, {},
+	                       request),
+	             "the video opens");
 
 	const auto state = ses->subtitle_info();
 	assert_equal(true, state != nullptr, "the session says what it offers");
@@ -4105,7 +5316,9 @@ static void should_open_a_video_with_its_sidecar_subtitles()
 	if (state)
 	{
 		assert_equal(true, state->choice.sidecar == folder.combine_file("Clip.en.srt"), "the English sidecar is shown");
-		assert_equal(true, std::ranges::any_of(state->offers, [](const subtitle_offer& o) { return !o.choice.sidecar.is_empty(); }),
+		assert_equal(true,
+		             std::ranges::any_of(state->offers,
+		                                 [](const subtitle_offer& o) { return !o.choice.sidecar.is_empty(); }),
 		             "and offered");
 	}
 
@@ -4122,8 +5335,10 @@ static void should_open_a_video_with_its_sidecar_subtitles()
 	subtitle_request none = request;
 	none.chosen = subtitle_choice{};
 	const auto off = make_test_session();
-	assert_equal(true, off->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
-	                             false, {}, none), "the video opens again");
+	assert_equal(true,
+	             off->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false, false, {},
+	                       none),
+	             "the video opens again");
 	assert_equal(true, off->subtitle_info() && off->subtitle_info()->choice.is_none(), "with subtitles turned off");
 	off->close(false);
 }
@@ -4134,7 +5349,7 @@ static void should_open_a_video_with_its_sidecar_subtitles()
 // what was asked for and must not be repainted on every tick for it.
 static void should_rebuild_the_scene_once_for_each_subtitle_change()
 {
-	const auto folder = _temps.next_folder("subtitle-repaint");
+	const auto folder = test_temps.next_folder("subtitle-repaint");
 	const auto video = folder.combine_file("Clip.mp4");
 	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), video, false, false);
 	write_test_file(folder.combine_file("Clip.en.srt"), "1\n00:00:00,000 --> 00:00:30,000\nA line\n\n");
@@ -4145,8 +5360,10 @@ static void should_rebuild_the_scene_once_for_each_subtitle_change()
 	request.language = "en";
 
 	const auto ses = make_test_session();
-	assert_equal(true, ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false,
-	                             false, {}, request), "the video opens");
+	assert_equal(true,
+	             ses->open(video, files::file_type_from_name(video), 0.0, false, -1, -1, false, false, false, false, {},
+	                       request),
+	             "the video opens");
 	const core::scope_exit close([ses] { ses->close(false); });
 
 	null_async_strategy as;
@@ -4168,9 +5385,1109 @@ static void should_rebuild_the_scene_once_for_each_subtitle_change()
 	             "and asks once: a view that does not draw the picture is not repainted on every tick");
 }
 
-void register_av_tests(view_state& state, test_registry& tests)
+//
+// Lossless edits
+//
+
+// Edit's trims copy a video's own packets from the key frame at or before the start. indy.mp4's key frames
+// are ten seconds apart, so a start between two lands within a group of pictures: the copy keeps the frames
+// before it, and its edit list starts playback at the start itself. The first picture the copy shows is the
+// very frame the source shows there - decoded from the same packets, so bit for bit the same.
+static void should_trim_a_video_from_a_key_frame_without_reencoding()
+{
+	const auto source = test_files_folder().combine_file("indy.mp4");
+	const auto path = test_temps.next_path(".mp4");
+
+	av_edits edits;
+	edits.start = 25.0;
+	edits.end = 40.0;
+
+	const core::cancel_token never;
+	const auto result = av_remux(source, path, edits, never);
+	assert_equal(true, result.status == av_remux_status::done, std::format("the trim is written: {}", result.error));
+
+	av_format_decoder copy;
+	assert_equal(true, copy.open(path, media_intent::thumbnail), "the copy opens");
+	copy.init_streams(-1, -1, false, false, false);
+	const auto length = copy.end_time() - copy.start_time();
+	assert_equal(true, std::abs(length - 15.0) < 0.5, std::format("the copy lasts what was kept, not {}", length));
+
+	av_format_decoder original;
+	assert_equal(true, original.open(source, media_intent::thumbnail), "the source opens");
+	original.init_streams(-1, -1, false, false, false);
+
+	constexpr sizei max_dim(320, 320);
+	core::surface_ptr expected;
+	core::surface_ptr actual;
+	assert_equal(true, original.extract_frame_at(expected, max_dim, 25.0), "the source's frame at the start");
+	assert_equal(true, copy.extract_frame_at(actual, max_dim, 0.0), "the copy's first frame");
+	assert_equal(true, actual->pixel_difference(expected) == core::pixel_difference_result::equal,
+	             std::format("the copy starts on the start's own frame (source frame at {}, copy's at {})",
+	                         expected->time(), actual->time()));
+
+	assert_equal(true, platform::file_attributes(path).size < platform::file_attributes(source).size / 2,
+	             "the copy holds only what was kept, and the frames it is decoded from");
+}
+
+// Each packet of a file's picture and of its sound, by its bytes, with the time a player shows it at - as FFmpeg's
+// demuxer gives it, after the file's edit list - where it is between from and to on the file's timeline. Bytes the file
+// repeats in that span say nothing of where they came from, so they are left out.
+struct timed_packets
+{
+	std::unordered_map<uint64_t, double> picture;
+	std::unordered_map<uint64_t, double> sound;
+};
+
+static timed_packets timed_packets_of(const core::file_path path, const double from, const double to)
+{
+	AVFormatContext* fc = nullptr;
+	assert_equal(0, avformat_open_input(&fc, path.str().c_str(), nullptr, nullptr), "the file opens");
+	const core::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+	assert_equal(true, avformat_find_stream_info(fc, nullptr) >= 0, "the file is read");
+	const auto video = av_find_best_stream(fc, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+	const auto audio = av_find_best_stream(fc, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+	assert_equal(true, video >= 0 && audio >= 0, "the file has a picture and sound");
+
+	std::unordered_map<uint64_t, std::pair<double, int>> picture;
+	std::unordered_map<uint64_t, std::pair<double, int>> sound;
+	AVPacket* pkt = av_packet_alloc();
+	const core::scope_exit free_packet([&pkt] { av_packet_free(&pkt); });
+
+	while (av_read_frame(fc, pkt) >= 0)
+	{
+		const auto index = pkt->stream_index;
+
+		if ((index == video || index == audio) && pkt->pts != AV_NOPTS_VALUE)
+		{
+			const auto t = static_cast<double>(pkt->pts) * av_q2d(fc->streams[index]->time_base);
+
+			if (t >= from && t <= to)
+			{
+				const auto bytes = std::string_view(std::bit_cast<const char*>(pkt->data), pkt->size);
+				auto& entry = (index == video ? picture : sound)[std::hash<std::string_view>{}(bytes)];
+				entry.first = t;
+				++entry.second;
+			}
+		}
+
+		av_packet_unref(pkt);
+	}
+
+	timed_packets result;
+	for (const auto& [key, entry] : picture)
+		if (entry.second == 1) result.picture.emplace(key, entry.first);
+	for (const auto& [key, entry] : sound)
+		if (entry.second == 1) result.sound.emplace(key, entry.first);
+	return result;
+}
+
+// A trim cuts the sound where it cuts the picture. Every packet the copy holds is one of the source's, shown that much
+// earlier than the source shows it - for the sound as for the picture - so what the copy plays at any moment is what
+// the source played together. Where an edit list holds the start, the copy is shown from the start itself; elsewhere
+// from the key frame before it.
+static void should_keep_the_sound_with_the_picture_in_a_trim()
+{
+	const auto source = test_files_folder().combine_file("indy.mp4");
+	constexpr auto start = 25.0;
+	const auto original = timed_packets_of(source, start - 15.0, start + 10.0);
+
+	for (const auto& [extension, exact] : {std::pair{".mp4"sv, true}, std::pair{".mkv"sv, false}})
+	{
+		const auto path = test_temps.next_path(extension);
+
+		av_edits edits;
+		edits.start = start;
+		edits.end = start + 6.0;
+
+		const core::cancel_token never;
+		const auto result = av_remux(source, path, edits, never);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", extension, result.error));
+
+		const auto copy = timed_packets_of(path, -1.0e9, 1.0e9);
+
+		// How much earlier the copy shows its packets than the source does: the least and the most.
+		const auto earlier = [](const std::unordered_map<uint64_t, double>& copied,
+		                        const std::unordered_map<uint64_t, double>& originals)
+		{
+			auto least = std::numeric_limits<double>::max();
+			auto most = std::numeric_limits<double>::lowest();
+			size_t found = 0;
+
+			for (const auto& [key, t] : copied)
+			{
+				const auto source_time = originals.find(key);
+				if (source_time == originals.end()) continue;
+
+				least = std::min(least, source_time->second - t);
+				most = std::max(most, source_time->second - t);
+				++found;
+			}
+
+			return std::tuple{least, most, found};
+		};
+
+		const auto [picture_least, picture_most, pictures] = earlier(copy.picture, original.picture);
+		const auto [sound_least, sound_most, sounds] = earlier(copy.sound, original.sound);
+
+		assert_equal(true, pictures > 50 && sounds > 50,
+		             std::format("{}: the copy's frames and sound are the source's ({} and {})", extension, pictures,
+		                         sounds));
+		assert_equal(true, picture_most - picture_least < 0.001 && sound_most - sound_least < 0.001,
+		             std::format("{}: each moved by one amount (picture {:.4f} to {:.4f}, sound {:.4f} to {:.4f})",
+		                         extension, picture_least, picture_most, sound_least, sound_most));
+		assert_equal(true, std::abs(sound_least - picture_least) < 0.001,
+		             std::format("{}: the sound by the picture's (picture {:.4f}, sound {:.4f})", extension,
+		                         picture_least, sound_least));
+		assert_equal(true, exact ? std::abs(picture_least - start) < 0.05 : picture_least < start - 1.0,
+		             std::format("{}: the copy shows the source from {:.3f}s", extension, picture_least));
+	}
+}
+// Two pictures in one file, as a camera with two lenses writes them: indy.mp4's, and the same again shifted by half
+// the distance between its key frames, so the second picture's key frames fall between the first's.
+struct two_picture_video
+{
+	core::file_path path;
+	// On the file's timeline, in seconds: indy.mp4's key frames, the shift of the second picture, and a frame's length.
+	std::vector<double> key_times;
+	double shift = 0.0;
+	double frame = 0.0;
+};
+
+static two_picture_video make_two_picture_video(const char* const muxer, const std::string_view extension)
+{
+	two_picture_video result;
+	result.path = test_temps.next_path(extension);
+	const auto source = test_files_folder().combine_file("indy.mp4");
+
+	AVFormatContext* ic = nullptr;
+	assert_equal(0, avformat_open_input(&ic, source.str().c_str(), nullptr, nullptr), "the video opens");
+	const core::scope_exit close_input([&ic] { avformat_close_input(&ic); });
+	assert_equal(true, avformat_find_stream_info(ic, nullptr) >= 0, "the video is read");
+	const auto video_index = av_find_best_stream(ic, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+	assert_equal(true, video_index >= 0, "the video has a picture");
+	const auto* const in = ic->streams[video_index];
+	const auto seconds = av_q2d(in->time_base);
+
+	std::vector<AVPacket*> packets;
+	const core::scope_exit free_packets([&packets]
+	{
+		for (auto* p : packets) av_packet_free(&p);
+	});
+	std::vector<int64_t> times;
+
+	for (auto* pkt = av_packet_alloc(); pkt && av_read_frame(ic, pkt) >= 0; pkt = av_packet_alloc())
+	{
+		if (pkt->stream_index != video_index || pkt->pts == AV_NOPTS_VALUE)
+		{
+			av_packet_free(&pkt);
+			continue;
+		}
+
+		times.push_back(pkt->pts);
+		packets.push_back(pkt);
+	}
+
+	assert_equal(true, packets.size() > 2, "the picture's frames are timed");
+	std::ranges::sort(times);
+	const auto first = times.front();
+	// The frames' own spacing, which a time base that does not divide it gives as durations a tick apart.
+	const auto frame = static_cast<double>(times.back() - first) / static_cast<double>(times.size() - 1) * seconds;
+
+	for (const auto* const p : packets)
+	{
+		if (p->flags & AV_PKT_FLAG_KEY) result.key_times.push_back(static_cast<double>(p->pts - first) * seconds);
+	}
+
+	std::ranges::sort(result.key_times);
+	assert_equal(true, result.key_times.size() >= 4, "indy.mp4 has key frames to fall between");
+
+	// A whole, even number of frames, taken from the frames' own times, so both pictures show their frames at the same
+	// moments.
+	const auto gap = result.key_times[3] - result.key_times[2];
+	const auto frames = 2 * static_cast<size_t>(std::llround(gap / 4.0 / frame));
+	const auto shift = times[frames] - first;
+	result.shift = static_cast<double>(shift) * seconds;
+	result.frame = frame;
+
+	AVFormatContext* oc = nullptr;
+	assert_equal(true, avformat_alloc_output_context2(&oc, nullptr, muxer, result.path.str().c_str()) >= 0 && oc,
+	             "a writer for the file");
+	const core::scope_exit free_output([&oc]
+	{
+		avio_closep(&oc->pb);
+		avformat_free_context(oc);
+	});
+
+	for (auto i = 0; i < 2; ++i)
+	{
+		auto* const os = avformat_new_stream(oc, nullptr);
+		assert_equal(true, os && avcodec_parameters_copy(os->codecpar, in->codecpar) >= 0, "a picture of the file");
+		os->codecpar->codec_tag = 0;
+		os->time_base = in->time_base;
+	}
+
+	assert_equal(true, avio_open(&oc->pb, result.path.str().c_str(), AVIO_FLAG_WRITE) >= 0, "the file is created");
+	assert_equal(true, avformat_write_header(oc, nullptr) >= 0, std::format("{}: its header is written", muxer));
+
+	for (const auto* const p : packets)
+	{
+		for (auto i = 0; i < 2; ++i)
+		{
+			auto* copy = av_packet_clone(p);
+			assert_equal(true, copy != nullptr, "a frame is copied");
+			if (i == 1 && copy->pts != AV_NOPTS_VALUE) copy->pts += shift;
+			if (i == 1 && copy->dts != AV_NOPTS_VALUE) copy->dts += shift;
+			av_packet_rescale_ts(copy, in->time_base, oc->streams[i]->time_base);
+			copy->stream_index = i;
+			copy->pos = -1;
+			const auto written = av_interleaved_write_frame(oc, copy);
+			av_packet_free(&copy);
+			assert_equal(true, written >= 0, "a frame is written");
+		}
+	}
+
+	assert_equal(true, av_write_trailer(oc) >= 0, "the file is finished");
+	return result;
+}
+
+// Whether the first packet of each of a file's pictures is a key frame, which a player decodes it from.
+static std::vector<bool> pictures_start_on_key_frames(const core::file_path path)
+{
+	std::vector<bool> result;
+	AVFormatContext* fc = nullptr;
+	if (avformat_open_input(&fc, path.str().c_str(), nullptr, nullptr) != 0) return result;
+	const core::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+	if (avformat_find_stream_info(fc, nullptr) < 0) return result;
+
+	std::vector<int> first(fc->nb_streams, -1);
+	AVPacket* pkt = av_packet_alloc();
+	const core::scope_exit free_packet([&pkt] { av_packet_free(&pkt); });
+
+	while (av_read_frame(fc, pkt) >= 0)
+	{
+		if (first[pkt->stream_index] < 0) first[pkt->stream_index] = (pkt->flags & AV_PKT_FLAG_KEY) ? 1 : 0;
+		av_packet_unref(pkt);
+	}
+
+	for (unsigned i = 0; i < fc->nb_streams; ++i)
+	{
+		if (fc->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) result.push_back(first[i] == 1);
+	}
+
+	return result;
+}
+
+// A trim's copy holds every picture from a key frame of its own, as each is decoded from its own. The second picture
+// here has its last key frame before the start earlier than the first's, and its next after the end. With an edit
+// list the copy keeps that key frame and hides it, so the second picture too starts on the frame shown at the start;
+// without one it starts at its first key frame from where the copy does, rather than with frames nothing decodes.
+static void should_trim_every_picture_from_a_key_frame_of_its_own()
+{
+	for (const auto& [muxer, extension, exact] :
+	     {std::tuple{"mp4", ".mp4"sv, true}, std::tuple{"matroska", ".mkv"sv, false}})
+	{
+		const auto video = make_two_picture_video(muxer, extension);
+		const auto& keys = video.key_times;
+		const auto gap = keys[3] - keys[2];
+		// Past the second picture's key frame and before the first's next one; the end before either's next.
+		const auto start = keys[2] + video.frame * std::round((video.shift + gap * 0.3) / video.frame);
+
+		av_edits edits;
+		edits.start = start + video.frame / 4;
+		edits.end = start + gap * 0.15;
+
+		const auto path = test_temps.next_path(extension);
+		const core::cancel_token never;
+		const auto result = av_remux(video.path, path, edits, never);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", muxer, result.error));
+		assert_equal(true, pictures_start_on_key_frames(path) == std::vector{true, true},
+		             std::format("{}: each picture starts on a key frame", muxer));
+
+		if (!exact) continue;
+
+		constexpr sizei max_dim(320, 320);
+		av_format_decoder original;
+		assert_equal(true, original.open(video.path, media_intent::thumbnail), "the two pictures open");
+		original.init_streams(1, -1, false, false, false);
+		core::surface_ptr expected;
+		assert_equal(true, original.extract_frame_at(expected, max_dim, start - video.shift + video.frame / 4),
+		             "the second picture's frame at the start");
+
+		av_format_decoder copy;
+		assert_equal(true, copy.open(path, media_intent::thumbnail), "the copy opens");
+		copy.init_streams(1, -1, false, false, false);
+		core::surface_ptr actual;
+		assert_equal(true, copy.extract_frame_at(actual, max_dim, video.frame / 4),
+		             "the copy's second picture decodes");
+		assert_equal(true, actual->pixel_difference(expected) == core::pixel_difference_result::equal,
+		             std::format("and starts on the frame shown at the start (source frame at {}, copy's at {})",
+		                         expected->time(), actual->time()));
+	}
+}
+
+static void should_copy_a_video_without_its_sound()
+{
+	const auto source = test_files_folder().combine_file("gizmo.mp4");
+	const auto path = test_temps.next_path(".mp4");
+
+	const auto plan = av_plan_edits(source);
+	assert_equal(true, plan.has_video && plan.has_audio, "gizmo.mp4 has a picture and sound");
+
+	av_edits edits;
+	edits.remove_audio = true;
+
+	const core::cancel_token never;
+	const auto result = av_remux(source, path, edits, never);
+	assert_equal(true, result.status == av_remux_status::done, std::format("the copy is written: {}", result.error));
+
+	av_format_decoder copy;
+	assert_equal(true, copy.open(path, media_intent::metadata), "the copy opens");
+	copy.init_streams(-1, -1, false, false, false);
+	assert_equal(true, copy.has_video(), "the copy keeps the picture");
+	assert_equal(false, copy.has_audio(), "the copy has no sound");
+}
+
+// A pasp box's aspect reaches only the demuxed stream, and the MP4 muxer writes the box from the codec parameters, so
+// a copy that carried the aspect on the stream alone lost the box: what reads it - the scan, and players that do -
+// saw the stored shape. anamorphic-pasp.mp4 declares its 16:9 only there.
+static void should_keep_the_pixel_aspect_of_a_copied_video()
+{
+	const auto source = test_files_folder().combine_file("anamorphic-pasp.mp4");
+	const auto path = test_temps.next_path(".mp4");
+
+	const core::cancel_token never;
+	const auto result = av_remux(source, path, {}, never);
+	assert_equal(true, result.status == av_remux_status::done, std::format("the copy is written: {}", result.error));
+
+	files ff;
+	const auto md = ff_scan_file(ff, path).to_props();
+	assert_equal(640, md->width, "the copy is as wide as it is shown");
+	assert_equal(360, md->height, "and as high, not as it is stored");
+}
+
+// A turn is the track's matrix, which the scan and the player both read: every quarter is added to the turn the
+// file already declares, in MP4 and in QuickTime alike.
+static void should_turn_a_copied_video_by_its_track_matrix()
+{
+	struct variant
+	{
+		core::file_path source;
+		int quarter_turns;
+		core::orientation expected;
+	};
+
+	const variant variants[] = {
+		{test_files_folder().combine_file("gizmo.mp4"), 1, core::orientation::right_top},
+		{test_files_folder().combine_file("ipod.mov"), 2, core::orientation::bottom_right},
+		{test_files_folder().combine("excluded1").combine_file("rotated90.mp4"), 3, core::orientation::top_left},
+		{test_files_folder().combine("excluded1").combine_file("rotated90.mp4"), 2, core::orientation::left_bottom},
+	};
+
+	for (const auto& v : variants)
+	{
+		const auto path = test_temps.next_path(v.source.extension());
+
+		av_edits edits;
+		edits.quarter_turns = v.quarter_turns;
+
+		const core::cancel_token never;
+		const auto result = av_remux(v.source, path, edits, never);
+		const auto name = std::format("{} turned {} quarters", v.source.name(), v.quarter_turns);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", name, result.error));
+
+		files ff;
+		assert_equal(v.expected, ff_scan_file(ff, path).to_props()->orientation, std::format("{}: the scan", name));
+
+		const auto ses = make_test_session();
+		assert_equal(true, ses->open(path, files::file_type_from_name(path), 0.0, true, -1, -1, false, false, false),
+		             "session opened");
+		assert_equal(v.expected, ses->info().display_orientation, std::format("{}: the player", name));
+		ses->close(false);
+	}
+}
+
+// Every container Edit rewrites, trimmed to its middle half: the copy is written in the source's format, plays,
+// and is no longer than the source. Where the container has no edit list the copy starts at the key frame
+// before the start, so it may hold a little more than was asked for, but never less.
+static void should_trim_each_container_edit_rewrites()
+{
+	for (const auto* const name : {"gizmo.mp4", "ipod.mov", "StPauls.MOV", "Byzantium.avi", "gen.asf", "gen.wmv",
+	                               "gen.flv", "gen.wav", "Colorblind.mp3", "This Year's Love.m4a"})
+	{
+		const auto source = test_files_folder().combine_file(name);
+		const auto plan = av_plan_edits(source);
+		assert_equal(true, plan.can_edit, std::format("{} can be edited", name));
+		assert_equal(true, plan.duration > 0.5, std::format("{} has a length", name));
+
+		av_edits edits;
+		edits.start = plan.duration * 0.25;
+		edits.end = plan.duration * 0.75;
+
+		const auto path = test_temps.next_path(source.extension());
+		const core::cancel_token never;
+		const auto result = av_remux(source, path, edits, never);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", name, result.error));
+
+		av_format_decoder copy;
+		assert_equal(true, copy.open(path, media_intent::metadata), std::format("{}: the copy opens", name));
+		copy.init_streams(-1, -1, false, false, false);
+		const auto length = copy.end_time() - copy.start_time();
+		const auto kept = edits.end - edits.start;
+		assert_equal(true, length > kept - 0.3 && length < plan.duration + 0.1,
+		             std::format("{}: the copy lasts {} for {} kept of {}", name, length, kept, plan.duration));
+	}
+}
+
+// A trimmed sound file keeps its tags, which FFmpeg's muxer writes back from what its demuxer read.
+static void should_keep_the_tags_of_a_trimmed_sound_file()
+{
+	for (const auto* const name : {"Colorblind.mp3", "This Year's Love.m4a"})
+	{
+		const auto source = test_files_folder().combine_file(name);
+		files ff;
+		const auto before = ff_scan_file(ff, source).to_props();
+		assert_equal(true, !before->title.is_empty(), std::format("{} has a title", name));
+
+		av_edits edits;
+		edits.start = 1.0;
+		edits.end = 3.0;
+
+		const auto path = test_temps.next_path(source.extension());
+		const core::cancel_token never;
+		const auto result = av_remux(source, path, edits, never);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", name, result.error));
+
+		const auto after = ff_scan_file(ff, path).to_props();
+		assert_equal(before->title.sv(), after->title.sv(), std::format("{} keeps its title", name));
+		assert_equal(before->artist.sv(), after->artist.sv(), std::format("{} keeps its artist", name));
+	}
+}
+
+static void should_plan_lossless_edits_by_format()
+{
+	assert_equal("mpegts"sv, av_edit_muxer(".MTS"), "an AVCHD stream is written back as one");
+	assert_equal("ipod"sv, av_edit_muxer(".m4a"), "an MPEG-4 audio file as the iPod muxer makes it");
+	assert_equal("mov"sv, av_edit_muxer("mov"), "with or without its dot");
+	assert_equal(true, av_edit_muxer(".mpg").empty(), "MPEG program streams are not rewritten");
+	assert_equal(true, av_edit_muxer(".jpg").empty(), "nor photos");
+
+	const auto video = av_plan_edits(test_files_folder().combine_file("gizmo.mp4"));
+	assert_equal(true, video.can_edit && video.has_video, "an MP4 video");
+	assert_equal(true, video.can_rotate, "turns in its track matrix");
+	assert_equal(true, video.exact_start, "starts at the start through an edit list");
+
+	const auto avi = av_plan_edits(test_files_folder().combine_file("Byzantium.avi"));
+	assert_equal(true, avi.can_edit && avi.has_video, "an AVI video");
+	assert_equal(false, avi.can_rotate, "has no turn players honour");
+	assert_equal(false, avi.exact_start, "starts at the key frame before the start");
+
+	const auto sound = av_plan_edits(test_files_folder().combine_file("gen.wav"));
+	assert_equal(true, sound.can_edit && sound.has_audio && !sound.has_video, "a sound file");
+	assert_equal(false, sound.can_rotate, "has nothing to turn");
+
+	const auto program = av_plan_edits(test_files_folder().combine_file("gen.mpg"));
+	assert_equal(true, program.can_edit && program.exact_start && program.can_rotate,
+	             "a format with no muxer here is planned as the MP4 it is saved as");
+}
+
+static void should_stop_a_cancelled_copy()
+{
+	std::atomic_bool cancelled = true;
+	const core::cancel_token cancel(cancelled);
+	const auto path = test_temps.next_path(".mp4");
+
+	av_edits edits;
+	edits.remove_audio = true;
+
+	const auto result = av_remux(test_files_folder().combine_file("gizmo.mp4"), path, edits, cancel);
+	assert_equal(true, result.status == av_remux_status::cancelled, "a cancelled copy says so");
+}
+
+// A save is cancelled up to the moment its file is replaced. Cancelled after the copy is made, while its tags are
+// written, the save says so and leaves the file it was to replace as it was.
+static void should_leave_the_file_when_a_save_is_cancelled_after_its_copy()
+{
+	const auto path = test_temps.next_path(".mp3");
+	platform::copy_file(test_files_folder().combine_file("Colorblind.mp3"), path, false, false);
+	const auto bytes = read_test_file(path);
+
+	std::atomic_bool cancelled = false;
+	const core::cancel_token cancel(cancelled);
+	const core::scope_exit clear_seam([] { test_before_file_update_publish = {}; });
+	test_before_file_update_publish = [&cancelled](const core::file_path)
+	{
+		cancelled = true;
+	};
+
+	av_edits edits;
+	edits.start = 1.0;
+
+	files ff;
+	const auto saved = ff.update_av(path, path, edits, {}, false, {}, {}, {}, cancel);
+	assert_equal(true, saved.code == platform::file_op_result_code::CANCELLED, "the save says it was cancelled");
+	assert_equal(true, read_test_file(path) == bytes, "and leaves the file as it was");
+}
+
+// gizmo.mp4's picture and sound in another container, packet for packet, as another program writes them - timed from
+// `offset` seconds on, as a broadcast transport stream is.
+static core::file_path make_gizmo_in(const char* const muxer, const std::string_view extension,
+                                     const double offset = 0.0)
+{
+	const auto source = test_files_folder().combine_file("gizmo.mp4");
+	const auto path = test_temps.next_path(extension);
+
+	AVFormatContext* ic = nullptr;
+	assert_equal(0, avformat_open_input(&ic, source.str().c_str(), nullptr, nullptr), "gizmo.mp4 opens");
+	const core::scope_exit close_input([&ic] { avformat_close_input(&ic); });
+	assert_equal(true, avformat_find_stream_info(ic, nullptr) >= 0, "gizmo.mp4 is read");
+
+	AVFormatContext* oc = nullptr;
+	assert_equal(true, avformat_alloc_output_context2(&oc, nullptr, muxer, path.str().c_str()) >= 0 && oc,
+	             "a writer for the file");
+	const core::scope_exit free_output([&oc]
+	{
+		avio_closep(&oc->pb);
+		avformat_free_context(oc);
+	});
+
+	std::vector<int> mapping(ic->nb_streams, -1);
+
+	for (unsigned i = 0; i < ic->nb_streams; ++i)
+	{
+		const auto* const st = ic->streams[i];
+		const auto type = st->codecpar->codec_type;
+		if ((type != AVMEDIA_TYPE_VIDEO && type != AVMEDIA_TYPE_AUDIO) ||
+		    (st->disposition & AV_DISPOSITION_ATTACHED_PIC))
+			continue;
+
+		auto* const os = avformat_new_stream(oc, nullptr);
+		assert_equal(true, os && avcodec_parameters_copy(os->codecpar, st->codecpar) >= 0, "a stream is copied");
+		os->codecpar->codec_tag = 0;
+		os->time_base = st->time_base;
+		mapping[i] = os->index;
+	}
+
+	assert_equal(true, avio_open(&oc->pb, path.str().c_str(), AVIO_FLAG_WRITE) >= 0, "the file is created");
+	assert_equal(true, avformat_write_header(oc, nullptr) >= 0, std::format("{}: its header is written", muxer));
+
+	AVPacket* pkt = av_packet_alloc();
+	const core::scope_exit free_packet([&pkt] { av_packet_free(&pkt); });
+
+	while (av_read_frame(ic, pkt) >= 0)
+	{
+		const auto index = pkt->stream_index;
+
+		if (mapping[index] >= 0)
+		{
+			const auto later = av_rescale_q(std::llround(offset * AV_TIME_BASE), AV_TIME_BASE_Q,
+			                                ic->streams[index]->time_base);
+			if (pkt->pts != AV_NOPTS_VALUE) pkt->pts += later;
+			if (pkt->dts != AV_NOPTS_VALUE) pkt->dts += later;
+			av_packet_rescale_ts(pkt, ic->streams[index]->time_base, oc->streams[mapping[index]]->time_base);
+			pkt->stream_index = mapping[index];
+			pkt->pos = -1;
+			assert_equal(true, av_interleaved_write_frame(oc, pkt) >= 0, "a packet is written");
+		}
+
+		av_packet_unref(pkt);
+	}
+
+	assert_equal(true, av_write_trailer(oc) >= 0, "the file is finished");
+	return path;
+}
+
+// Where a file's timeline starts, in seconds, as the container says.
+static double container_start(const core::file_path path)
+{
+	AVFormatContext* fc = nullptr;
+	if (avformat_open_input(&fc, path.str().c_str(), nullptr, nullptr) != 0) return -1.0;
+	const core::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+	if (avformat_find_stream_info(fc, nullptr) < 0 || fc->start_time == AV_NOPTS_VALUE) return -1.0;
+	return static_cast<double>(fc->start_time) / AV_TIME_BASE;
+}
+
+// Save As offers MP4 beside a file's own format, and a file in a format Edit does not write - an MPEG program stream -
+// is saved as one. The copy holds the picture and the sound as they were, and starts where the source's timeline does,
+// though a transport stream's starts well after zero and carries its sound framed as a transport stream frames it.
+// Saved, the copy keeps in its own packet the rating the source kept beside it.
+static void should_copy_a_video_into_an_mp4()
+{
+	struct variant
+	{
+		const char* name;
+		core::file_path source;
+	};
+
+	const variant variants[] = {
+		{"Matroska", make_gizmo_in("matroska", ".mkv")},
+		{"MPEG-TS", make_gizmo_in("mpegts", ".ts", 10.0)},
+		{"QuickTime", test_files_folder().combine_file("ipod.mov")},
+		{"MPEG program stream", test_files_folder().combine_file("gen.mpg")},
+	};
+
+	assert_equal(true, container_start(variants[1].source) > 5.0, "the transport stream starts after zero");
+
+	const core::cancel_token never;
+
+	for (const auto& v : variants)
+	{
+		const auto plan = av_plan_edits(v.source, av_mp4_extension);
+		assert_equal(true, plan.can_edit && plan.has_video, std::format("{}: an MP4 holds its picture", v.name));
+
+		const auto path = test_temps.next_path(".mp4");
+		const auto result = av_remux(v.source, path, {}, never);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", v.name, result.error));
+
+		const auto copy = av_plan_edits(path);
+		assert_equal(true, copy.readable && copy.has_video == plan.has_video && copy.has_audio == plan.has_audio,
+		             std::format("{}: the copy is an MP4 holding the same streams", v.name));
+		assert_equal(true, std::abs(copy.duration - plan.duration) < 0.25,
+		             std::format("{}: the copy lasts {} of {}", v.name, copy.duration, plan.duration));
+		assert_equal(true, std::abs(container_start(path)) < 0.1,
+		             std::format("{}: and starts at {}, not where the source's timeline does", v.name,
+		                         container_start(path)));
+	}
+
+	metadata_edits carried;
+	carried.rating = 4;
+
+	files ff;
+	const auto saved = test_temps.next_path(".mp4");
+	assert_equal(true, ff.update_av(variants[0].source, saved, {}, carried, false, {}, {}, {}, never).success(),
+	             "a Matroska file is saved as an MP4");
+	assert_equal(4, ff_scan_file(ff, saved).to_props()->rating, "keeping its rating in the MP4");
+}
+
+// Finding where a trim starts reads on a little past it, to reach every frame shown near the start. A trim
+// shorter than that keeps only what was asked for: what was read past its end is left out like the rest.
+static void should_keep_no_more_than_a_short_trim()
+{
+	struct variant
+	{
+		const char* name;
+		double start;
+		double end;
+	};
+
+	for (const auto& v : {variant{"gizmo.mp4", 1.0, 1.4}, variant{"Colorblind.mp3", 2.0, 2.3}})
+	{
+		const auto source = test_files_folder().combine_file(v.name);
+		assert_equal(true, av_plan_edits(source).duration > v.end + 1.0, std::format("{} runs past the trim", v.name));
+
+		av_edits edits;
+		edits.start = v.start;
+		edits.end = v.end;
+
+		const auto path = test_temps.next_path(source.extension());
+		const core::cancel_token never;
+		const auto result = av_remux(source, path, edits, never);
+		assert_equal(true, result.status == av_remux_status::done, std::format("{}: {}", v.name, result.error));
+
+		av_format_decoder copy;
+		assert_equal(true, copy.open(path, media_intent::metadata), std::format("{}: the copy opens", v.name));
+		copy.init_streams(-1, -1, false, false, false);
+		const auto length = copy.end_time() - copy.start_time();
+		const auto kept = v.end - v.start;
+		assert_equal(true, length > kept - 0.15 && length < kept + 0.25,
+		             std::format("{}: the copy lasts {} for {} kept", v.name, length, kept));
+	}
+}
+
+// The file layer tells a read that failed only by what it read, which the demuxer takes for the end of the file.
+// A copy that cannot read its source to the end fails rather than saving the part before, and the file it was
+// to replace is left as it was.
+static void should_fail_a_copy_whose_source_cannot_be_read_to_its_end()
+{
+	const auto source = test_files_folder().combine_file("ipod.mov");
+	const auto size = platform::file_attributes(source).size;
+	const core::scope_exit clear_seam([] { test_remux_read_fails = {}; });
+	test_remux_read_fails = [size](const uint64_t position)
+	{
+		return position >= size * 2 / 5 && position < size * 3 / 5;
+	};
+
+	av_edits edits;
+	edits.quarter_turns = 1;
+
+	const core::cancel_token never;
+	const auto result = av_remux(source, test_temps.next_path(".mov"), edits, never);
+	assert_equal(true, result.status == av_remux_status::failed, "a copy missing the middle of its source fails");
+
+	const auto path = test_temps.next_path(".mov");
+	platform::copy_file(source, path, false, false);
+	const auto bytes = read_test_file(path);
+
+	files ff;
+	const auto saved = ff.update_av(path, path, edits, {}, false, {}, {}, {}, never);
+	assert_equal(false, saved.success(), "so does its save");
+	assert_equal(true, read_test_file(path) == bytes, "which leaves the file as it was");
+}
+
+// A sound file with a cover, as a tagger leaves one: Colorblind.mp3's sound, with Small.jpg attached in Matroska
+// and as the cover the muxer writes elsewhere.
+static core::file_path make_sound_file_with_cover(const char* const muxer, const std::string_view extension)
+{
+	const auto sound = test_files_folder().combine_file("Colorblind.mp3");
+	const auto cover = platform::blob_from_file(test_files_folder().combine_file("Small.jpg"));
+	const auto path = test_temps.next_path(extension);
+	const auto attachment = std::string_view(muxer) == "matroska";
+
+	AVFormatContext* ic = nullptr;
+	assert_equal(0, avformat_open_input(&ic, sound.str().c_str(), nullptr, nullptr), "the sound opens");
+	const core::scope_exit close_input([&ic] { avformat_close_input(&ic); });
+	assert_equal(true, avformat_find_stream_info(ic, nullptr) >= 0, "the sound is read");
+	const auto audio_index = av_find_best_stream(ic, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+	assert_equal(true, audio_index >= 0, "the sound has a stream");
+	const auto* const in = ic->streams[audio_index];
+
+	AVFormatContext* oc = nullptr;
+	assert_equal(true, avformat_alloc_output_context2(&oc, nullptr, muxer, path.str().c_str()) >= 0 && oc,
+	             "a writer for the file");
+	const core::scope_exit free_output([&oc]
+	{
+		avio_closep(&oc->pb);
+		avformat_free_context(oc);
+	});
+
+	auto* const audio = avformat_new_stream(oc, nullptr);
+	assert_equal(true, audio && avcodec_parameters_copy(audio->codecpar, in->codecpar) >= 0, "its sound");
+	audio->codecpar->codec_tag = 0;
+	audio->time_base = in->time_base;
+
+	auto* const picture = avformat_new_stream(oc, nullptr);
+	assert_equal(true, picture != nullptr, "its cover");
+	picture->codecpar->codec_id = AV_CODEC_ID_MJPEG;
+
+	if (attachment)
+	{
+		auto* const par = picture->codecpar;
+		par->codec_type = AVMEDIA_TYPE_ATTACHMENT;
+		par->extradata = static_cast<uint8_t*>(av_mallocz(cover.size() + AV_INPUT_BUFFER_PADDING_SIZE));
+		assert_equal(true, par->extradata != nullptr, "the attachment's bytes");
+		std::memcpy(par->extradata, cover.data(), cover.size());
+		par->extradata_size = static_cast<int>(cover.size());
+		av_dict_set(&picture->metadata, "filename", "cover.jpg", 0);
+		av_dict_set(&picture->metadata, "mimetype", "image/jpeg", 0);
+	}
+	else
+	{
+		// The muxer asks a picture for its size, which the covr box it is written to does not hold.
+		picture->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+		picture->codecpar->width = 1;
+		picture->codecpar->height = 1;
+		picture->disposition = AV_DISPOSITION_ATTACHED_PIC;
+	}
+
+	assert_equal(true, avio_open(&oc->pb, path.str().c_str(), AVIO_FLAG_WRITE) >= 0, "the file is created");
+	const auto header = avformat_write_header(oc, nullptr);
+	char reason[AV_ERROR_MAX_STRING_SIZE] = {};
+	if (header < 0) av_strerror(header, reason, sizeof(reason));
+	assert_equal(true, header >= 0, std::format("{}: its header is written ({})", muxer, reason));
+
+	AVPacket* pkt = av_packet_alloc();
+	const core::scope_exit free_packet([&pkt] { av_packet_free(&pkt); });
+
+	if (!attachment)
+	{
+		assert_equal(0, av_new_packet(pkt, static_cast<int>(cover.size())), "the cover's packet");
+		std::memcpy(pkt->data, cover.data(), cover.size());
+		pkt->stream_index = picture->index;
+		pkt->flags |= AV_PKT_FLAG_KEY;
+		assert_equal(true, av_interleaved_write_frame(oc, pkt) >= 0, "the cover is written");
+	}
+
+	while (av_read_frame(ic, pkt) >= 0)
+	{
+		if (pkt->stream_index == audio_index)
+		{
+			av_packet_rescale_ts(pkt, in->time_base, audio->time_base);
+			pkt->stream_index = audio->index;
+			pkt->pos = -1;
+			assert_equal(true, av_interleaved_write_frame(oc, pkt) >= 0, "the sound is written");
+		}
+
+		av_packet_unref(pkt);
+	}
+
+	assert_equal(true, av_write_trailer(oc) >= 0, "the file is finished");
+	return path;
+}
+
+struct cover_streams
+{
+	int covers = 0;
+	int pictures = 0;
+	int size = 0;
+	std::string filename;
+};
+
+static cover_streams find_cover_streams(const core::file_path path)
+{
+	cover_streams result;
+	AVFormatContext* fc = nullptr;
+	if (avformat_open_input(&fc, path.str().c_str(), nullptr, nullptr) != 0) return result;
+	const core::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+	avformat_find_stream_info(fc, nullptr);
+
+	for (unsigned i = 0; i < fc->nb_streams; ++i)
+	{
+		const auto* const st = fc->streams[i];
+
+		if (st->disposition & AV_DISPOSITION_ATTACHED_PIC)
+		{
+			++result.covers;
+			result.size = st->attached_pic.size;
+			const auto* const name = av_dict_get(st->metadata, "filename", nullptr, 0);
+			if (name) result.filename = name->value;
+		}
+		else if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+		{
+			++result.pictures;
+		}
+	}
+
+	return result;
+}
+
+// A copy keeps a cover where it can write one back. Matroska's demuxer gives an attached image as a cover, which
+// its muxer would write as a picture track one frame long, so the copy writes it back as the attachment it was.
+// QuickTime's own tags have no place for one, so a .mov names its cover among what its copy leaves out.
+static void should_keep_a_cover_where_the_copy_can_hold_one()
+{
+	const auto cover_path = test_files_folder().combine_file("Small.jpg");
+	const auto cover_size = static_cast<int>(platform::file_attributes(cover_path).size);
+
+	const auto matroska = make_sound_file_with_cover("matroska", ".mka");
+	const auto plan = av_plan_edits(matroska);
+	assert_equal(true, plan.can_edit && plan.has_audio && !plan.has_video, "a Matroska sound file with a cover");
+	assert_equal(true, plan.dropped.empty(), "whose cover its copy keeps");
+
+	av_edits edits;
+	edits.start = 1.0;
+	edits.end = 3.0;
+
+	const auto copy = test_temps.next_path(".mka");
+	const core::cancel_token never;
+	const auto result = av_remux(matroska, copy, edits, never);
+	assert_equal(true, result.status == av_remux_status::done, std::format("the copy is written: {}", result.error));
+
+	const auto kept = find_cover_streams(copy);
+	assert_equal(1, kept.covers, "the copy keeps its cover");
+	assert_equal(0, kept.pictures, "as an attachment, not a picture track");
+	assert_equal(cover_size, kept.size, "every byte of it");
+	assert_equal("cover.jpg"s, kept.filename, "under its own name");
+	assert_equal(false, av_plan_edits(copy).has_video, "so the copy is still a sound file");
+
+	const auto mp4 = make_sound_file_with_cover("mp4", ".mp4");
+	assert_equal(true, av_plan_edits(mp4).dropped.empty(), "an MP4's copy keeps its cover in its tags");
+	const auto mp4_copy = test_temps.next_path(".mp4");
+	assert_equal(true, av_remux(mp4, mp4_copy, edits, never).status == av_remux_status::done, "an MP4 is copied");
+	assert_equal(1, find_cover_streams(mp4_copy).covers, "with its cover");
+
+	const auto quicktime = make_sound_file_with_cover("mp4", ".mov");
+	const auto dropped = av_plan_edits(quicktime).dropped;
+	assert_equal(true, std::ranges::any_of(dropped, [](const std::string& s) { return s.starts_with("cover art"); }),
+	             "a QuickTime copy names the cover it leaves out");
+}
+
+// Every packet a file holds, in the order it is read: its stream, its times and a digest of its bytes. Two files that
+// give the same hold the same media, wherever their boxes lie.
+static std::vector<std::string> read_packet_digests(const core::file_path path)
+{
+	std::vector<std::string> result;
+	AVFormatContext* fc = nullptr;
+	if (avformat_open_input(&fc, path.str().c_str(), nullptr, nullptr) != 0) return result;
+	const core::scope_exit close_input([&fc] { avformat_close_input(&fc); });
+	if (avformat_find_stream_info(fc, nullptr) < 0) return result;
+
+	AVPacket* pkt = av_packet_alloc();
+	const core::scope_exit free_packet([&pkt] { av_packet_free(&pkt); });
+
+	while (av_read_frame(fc, pkt) >= 0)
+	{
+		auto hash = 14695981039346656037ull;
+		for (auto i = 0; i < pkt->size; ++i) hash = (hash ^ pkt->data[i]) * 1099511628211ull;
+		result.emplace_back(std::format("{} {} {} {} {:x}", pkt->stream_index, pkt->pts, pkt->dts, pkt->size, hash));
+		av_packet_unref(pkt);
+	}
+
+	return result;
+}
+
+// Issue #268 - an MP4 can be written with its index - the movie box - before its media, so it plays while it is still
+// downloading. Every offset in the index moves with the media, which is read back packet for packet as it was.
+static void should_move_an_mp4s_index_before_its_media()
+{
+	const core::cancel_token never;
+	const auto copy = test_temps.next_path(".mp4");
+	assert_equal(true,
+	             av_remux(test_files_folder().combine_file("gizmo.mp4"), copy, {}, never).status ==
+	                 av_remux_status::done,
+	             "the video is copied");
+	assert_equal(false, av_index_first(copy), "FFmpeg writes the index after the media");
+
+	const auto moved = test_temps.next_path(".mp4");
+	assert_equal(true, av_move_index_first(copy, moved, never) == av_index_move::moved, "the index is moved");
+	assert_equal(true, av_index_first(moved), "before the media");
+
+	const auto packets = read_packet_digests(copy);
+	assert_equal(false, packets.empty(), "the copy is read");
+	assert_equal(true, read_packet_digests(moved) == packets, "and the media is read back as it was");
+	assert_equal(true, av_move_index_first(moved, test_temps.next_path(".mp4"), never) == av_index_move::unchanged,
+	             "an index already first stays where it is");
+}
+
+// The index goes first last of all: the rating and tags a save writes grow the movie box, which a metadata update
+// writes whole at the end of the file. A copy of a file that had its index first keeps it there unasked.
+static void should_keep_an_mp4s_index_first_through_a_save()
+{
+	const auto source = test_temps.next_path(".mp4");
+	platform::copy_file(test_files_folder().combine_file("gizmo.mp4"), source, false, false);
+
+	metadata_edits carried;
+	carried.rating = 4;
+	carried.add_tags = tag_set("holiday");
+
+	av_edits edits;
+	edits.start = 1.0;
+
+	files ff;
+	const core::cancel_token never;
+	const auto plain = test_temps.next_path(".mp4");
+	assert_equal(true, ff.update_av(source, plain, edits, carried, false, {}, {}, {}, never).success(),
+	             "a trim is saved");
+	assert_equal(false, av_index_first(plain), "with its index after its media, as its source had it");
+
+	edits.index_first = true;
+	const auto asked = test_temps.next_path(".mp4");
+	{
+		const auto r = ff.update_av(source, asked, edits, carried, false, {}, {}, {}, never);
+		assert_equal(true, r.success(), std::format("a trim with its index first is saved: {}", r.error_message));
+	}
+	assert_equal(true, av_index_first(asked), "with its index first, after its tags were written");
+	assert_equal(true, read_packet_digests(asked) == read_packet_digests(plain), "holding the same media");
+
+	edits.index_first = false;
+	const auto kept = test_temps.next_path(".mp4");
+	{
+		const auto r = ff.update_av(asked, kept, edits, carried, false, {}, {}, {}, never);
+		assert_equal(true, r.success(), std::format("a copy of that is saved: {}", r.error_message));
+	}
+	assert_equal(true, av_index_first(kept), "and keeps its index first unasked");
+}
+
+// Issue #268 - Save As repairs a damaged file when asked: the copy reads on past what cannot be read, and says what it
+// left out. It replaces the file it was made from only where a backup keeps that file.
+static void should_repair_a_copy_of_a_damaged_file()
+{
+	const auto source = test_files_folder().combine_file("ipod.mov");
+	const auto size = platform::file_attributes(source).size;
+	const auto damage = [size](const uint64_t position)
+	{
+		return position >= size * 2 / 5 && position < size * 3 / 5;
+	};
+	const core::scope_exit clear_seam([] { test_remux_read_fails = {}; });
+
+	av_edits edits;
+	edits.repair = true;
+
+	const core::cancel_token never;
+	const auto copy = test_temps.next_path(".mov");
+	test_remux_read_fails = damage;
+	const auto result = av_remux(source, copy, edits, never);
+	assert_equal(true, result.status == av_remux_status::done,
+	             std::format("a copy of a damaged file is made: {}", result.error));
+	assert_equal(true, result.repairs.any(), "saying it left something out");
+
+	test_remux_read_fails = {};
+	const auto plan = av_plan_edits(copy);
+	assert_equal(true, plan.readable && plan.has_video, "the copy reads");
+
+	const auto path = test_temps.next_path(".mov");
+	platform::copy_file(source, path, false, false);
+	const auto bytes = read_test_file(path);
+
+	files ff;
+	test_remux_read_fails = damage;
+	const auto in_place = ff.update_av(path, path, edits, {}, false, {}, {}, {}, never);
+	assert_equal(true, !in_place.success() && in_place.repair_needs_backup,
+	             "a repaired copy does not replace its file where no backup keeps it");
+	assert_equal(true, read_test_file(path) == bytes, "which is left as it was");
+
+	const auto saved = ff.update_av(path, test_temps.next_path(".mov"), edits, {}, false, {}, {}, {}, never);
+	assert_equal(true, saved.success(), "saved under another name, it is kept");
+	assert_equal(true, saved.repair_skipped > 0 || saved.repair_ended_at >= 0.0, "and says what it left out");
+}
+
+// A program or transport stream's timing can start again part way - a recording, clips joined end to end. A copy
+// that moved each later packet on by one tick squeezed everything after the restart into a fraction of a second, said
+// it was done, and a save then replaced the file with it. The copy is refused, and a save leaves the file as it was.
+static void should_refuse_a_copy_whose_timing_starts_again()
+{
+	const core::cancel_token never;
+	const auto part = test_temps.next_path(".ts");
+	const auto made = av_remux(test_files_folder().combine_file("gen.mpg"), part, {}, never);
+	assert_equal(true, made.status == av_remux_status::done, std::format("a stream to join is made: {}", made.error));
+
+	const auto half = read_test_file(part);
+	const auto joined = test_temps.next_path(".ts");
+	write_test_file(joined, half + half);
+
+	const auto plan = av_plan_edits(joined);
+	assert_equal(true, plan.can_edit, "the joined stream can be edited");
+
+	av_edits edits;
+	edits.remove_audio = true;
+	const auto result = av_remux(joined, test_temps.next_path(".ts"), edits, never);
+	assert_equal(true, result.status == av_remux_status::failed,
+	             std::format("the copy is refused ({} seconds of {})", plan.duration, result.error));
+	assert_equal(true, result.error.find("starts again") != std::string::npos,
+	             std::format("saying why: {}", result.error));
+
+	// Where it says the timing starts again is where the first clip ends, not where the clock went back to.
+	const auto first = av_plan_edits(part).duration;
+	const auto said_at = result.error.find("starts again at ");
+	const auto said = said_at == std::string::npos ? -1.0 : std::strtod(result.error.c_str() + said_at + 16, nullptr);
+	assert_equal(true, std::abs(said - first) < 0.5,
+	             std::format("and where: {} s, the first clip being {} s", said, first));
+
+	const auto bytes = read_test_file(joined);
+	files ff;
+	const auto saved = ff.update_av(joined, joined, edits, {}, false, {}, {}, {}, never);
+	assert_equal(false, saved.success(), "a save in place fails");
+	assert_equal(true, read_test_file(joined) == bytes, "and leaves the file as it was");
+}
+
+void register_av_tests(view_state& /*state*/, test_registry& tests)
 
 {
+	//
+	// Lossless edits
+	//
+	tests.add("Should trim a video from a key frame without re-encoding"s,
+	          should_trim_a_video_from_a_key_frame_without_reencoding);
+	tests.add("Should keep the sound with the picture in a trim"s, should_keep_the_sound_with_the_picture_in_a_trim);
+	tests.add("Should trim every picture from a key frame of its own"s,
+	          should_trim_every_picture_from_a_key_frame_of_its_own);
+	tests.add("Should copy a video without its sound"s, should_copy_a_video_without_its_sound);
+	tests.add("Should keep the pixel aspect of a copied video"s, should_keep_the_pixel_aspect_of_a_copied_video);
+	tests.add("Should turn a copied video by its track matrix"s, should_turn_a_copied_video_by_its_track_matrix);
+	tests.add("Should trim each container Edit rewrites"s, should_trim_each_container_edit_rewrites);
+	tests.add("Should keep the tags of a trimmed sound file"s, should_keep_the_tags_of_a_trimmed_sound_file);
+	tests.add("Should plan lossless edits by format"s, should_plan_lossless_edits_by_format);
+	tests.add("Should stop a cancelled copy"s, should_stop_a_cancelled_copy);
+	tests.add("Should leave the file when a save is cancelled after its copy"s,
+	          should_leave_the_file_when_a_save_is_cancelled_after_its_copy);
+	tests.add("Should copy a video into an MP4"s, should_copy_a_video_into_an_mp4);
+	tests.add("Should keep no more than a short trim"s, should_keep_no_more_than_a_short_trim);
+	tests.add("Should fail a copy whose source cannot be read to its end"s,
+	          should_fail_a_copy_whose_source_cannot_be_read_to_its_end);
+	tests.add("Should keep a cover where the copy can hold one"s, should_keep_a_cover_where_the_copy_can_hold_one);
+	tests.add("Should move an MP4's index before its media"s, should_move_an_mp4s_index_before_its_media);
+	tests.add("Should keep an MP4's index first through a save"s, should_keep_an_mp4s_index_first_through_a_save);
+	tests.add("Should repair a copy of a damaged file"s, should_repair_a_copy_of_a_damaged_file);
+	tests.add("Should refuse a copy whose timing starts again"s, should_refuse_a_copy_whose_timing_starts_again);
+
 	tests.add("Should reset audio resampling after a seek"s, should_reset_audio_resampling_after_a_seek);
 	tests.add("Should follow midstream PCM sample format and rate"s, should_follow_midstream_pcm_sample_rate);
 	//
@@ -4202,9 +6519,25 @@ void register_av_tests(view_state& state, test_registry& tests)
 	// SID tunes
 	//
 	tests.add("Should play a SID tune through its WAV stream"s, should_play_a_sid_tune_through_its_wav_stream);
+	tests.add("Should play tracker modules directly"s, should_play_tracker_modules_directly);
+	tests.add("Should preserve floating point tracker headroom"s, should_preserve_floating_point_tracker_headroom);
+	tests.add("Should bound tracker history and seek natively"s, should_bound_tracker_history_and_seek_natively);
+	tests.add("Should say where a tracker is within its row"s, should_say_where_a_tracker_is_within_its_row);
+	tests.add("Should mute and solo tracker channels"s, should_mute_and_solo_tracker_channels);
+	if (!command_line.selection.is_empty() && is_tracker_extension(command_line.selection.extension()))
+		tests.add("Should play the requested tracker fixture"s, should_play_the_requested_tracker_fixture);
 	tests.add("Should silence a muted SID voice"s, should_silence_a_muted_sid_voice);
+	tests.add("Should find where a SID tune ends"s, should_find_where_a_sid_tune_ends);
 	tests.add("Should decode a SID stream with FFmpeg"s, should_decode_a_sid_stream_with_ffmpeg);
+	tests.add("Should not take a waveform for cover art"s, should_not_take_a_waveform_for_cover_art);
 	tests.add("Should name SID notes and waveforms"s, should_name_sid_notes_and_waveforms);
+
+	//
+	// The Commodore 64 the media pane runs
+	//
+	tests.add("Should run a Commodore 64 disk's program"s, should_run_a_commodore_64_disks_program);
+	tests.add("Should run a Commodore 64 program file and tape"s, should_run_a_commodore_64_program_file_and_tape);
+	tests.add("Should drive a Commodore 64 from the keyboard"s, should_drive_a_commodore_64_from_the_keyboard);
 
 	//
 	// Subtitles
@@ -4285,8 +6618,7 @@ void register_av_tests(view_state& state, test_registry& tests)
 	tests.add("Should queue audio recovery seek for the read thread"s,
 	          should_queue_audio_recovery_seek_for_the_read_thread);
 	tests.add("Should drop stale audio recovery seek"s, should_drop_stale_audio_recovery_seek);
-	tests.add("Should not save a position for borrowed playback"s,
-	          should_not_save_a_position_for_borrowed_playback);
+	tests.add("Should not save a position for borrowed playback"s, should_not_save_a_position_for_borrowed_playback);
 	tests.add("Should bound video read ahead by bytes"s, should_bound_video_read_ahead_by_bytes);
 	tests.add("Should land audio and video on the sought position"s,
 	          should_land_audio_and_video_on_the_sought_position);
@@ -4295,10 +6627,13 @@ void register_av_tests(view_state& state, test_registry& tests)
 	          should_seek_to_the_same_position_after_playback_has_advanced);
 	// A paused seek moved the frame and bar while the cached elapsed label stayed behind.
 	tests.add("Should refresh paused media time after seeking"s, should_refresh_paused_media_time_after_seeking);
+	tests.add("Should remember Play and Pause as Autoplay"s, should_remember_play_and_pause_as_autoplay);
 	tests.add("Should repaint the scrubber only while the controls show"s,
 	          should_repaint_the_scrubber_only_while_the_controls_show);
 	tests.add("Should coalesce repeated scrub seeks"s, should_coalesce_repeated_scrub_seeks);
 	tests.add("Should make only the latest of the waiting seeks"s, should_make_only_the_latest_of_the_waiting_seeks);
+	tests.add("Should run the rest of the queue after a command throws"s,
+	          should_run_the_rest_of_the_queue_after_a_command_throws);
 	tests.add("Should decide which streams can decode in hardware"s,
 	          should_decide_which_streams_can_decode_in_hardware);
 	tests.add("Should bound video decode threads"s, should_bound_video_decode_threads);
@@ -4306,6 +6641,12 @@ void register_av_tests(view_state& state, test_registry& tests)
 	          should_play_streams_the_hardware_path_cannot_decode);
 	tests.add("Should decode AV1 without hardware"s, should_decode_av1_without_hardware);
 	tests.add("Should tone map HDR video for an SDR display"s, should_tone_map_hdr_video_for_an_sdr_display);
+	tests.add("Should guess the matrix of an untagged picture"s, should_guess_the_matrix_of_an_untagged_picture);
+	tests.add("Should carry chroma siting to the renderer"s, should_carry_chroma_siting_to_the_renderer);
+	tests.add("Should make each field of an interlaced frame whole"s,
+	          should_make_each_field_of_an_interlaced_frame_whole);
+	tests.add("Should play each field of interlaced video"s, should_play_each_field_of_interlaced_video);
+	tests.add("Should describe a video's colour and fields"s, should_describe_a_videos_colour_and_fields);
 	tests.add("Should describe a video stream profile depth and transfer"s,
 	          should_describe_a_video_stream_profile_depth_and_transfer);
 	tests.add("Should prepare decoded pictures for upload"s, should_prepare_decoded_pictures_for_upload);
@@ -4342,6 +6683,7 @@ void register_av_tests(view_state& state, test_registry& tests)
 	tests.add("Should decode audio into a buffer"s, should_decode_audio_into_a_buffer);
 	tests.add("Should keep audio around a damaged packet"s, should_keep_audio_around_a_damaged_packet);
 	tests.add("Should read an audio range as the stream holds it"s, should_read_an_audio_range_as_the_stream_holds_it);
+	tests.add("Should read an audio range from where it starts"s, should_read_an_audio_range_from_where_it_starts);
 	// Release review: input timestamps do not include the resampler's buffered delay.
 	tests.add("Should keep resampled audio continuous"s, should_keep_resampled_audio_continuous);
 

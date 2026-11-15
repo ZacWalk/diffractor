@@ -1,15 +1,15 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The application frame. Startup and shutdown, settings load and save, the frame layout and
-// the status bar it paints, draining view invalidation in dependency order, keyboard routing,
-// switching views, update checks and crash reporting. Command behavior, toolbars, workers and the
-// address box live in app_commands.cpp, app_toolbar.cpp, app_workers.cpp and app_search.cpp.
+// the status bar it paints, draining view invalidation in dependency order, keyboard routing and the
+// order Tab visits the window in, switching views, update checks and crash reporting, and in a Debug build
+// the screenshot scenes and the window's recording. Command behavior, toolbars, workers and the address box
+// live in app_commands.cpp, app_toolbar.cpp, app_workers.cpp and app_search.cpp.
 
 #include "pch.h"
 
@@ -19,6 +19,7 @@
 
 #include "app_text.h"
 #include "util_zip.h"
+#include "crypto_sha.h"
 
 #include "model_location.h"
 #include "model_db.h"
@@ -35,6 +36,8 @@
 #include "view_movie.h"
 #include "view_media.h"
 #include "ui_sid.h"
+#include "ui_tracker.h"
+#include "ui_c64.h"
 #include "view_selector.h"
 #include "view_import.h"
 #include "view_locate.h"
@@ -50,9 +53,11 @@
 #include "app_command_line.h"
 #include "app.h"
 
+#include <cstdio>
 #include <utility>
 
 #include "app_command_status.h"
+#include "app_mcp.h"
 #include "util_spell.h"
 
 std::atomic_int df::file_handles_detached = 0;
@@ -61,20 +66,20 @@ std::atomic_int df::loading_media = 0;
 std::atomic_int df::dragging_items = 0;
 std::atomic_int df::handling_crash = 0;
 std::atomic<core::file_path> df::last_loaded_path;
+std::atomic_bool df::network_allowed = true;
 const std::string_view s_app_version = "127.4";
-const std::string_view g_app_build = "1315";
+const std::string_view g_app_build = "1316";
 
 extern const unsigned char diffractor_resource_icon_font[];
 extern const unsigned long diffractor_resource_icon_font_size;
 
 void register_diffractor_icon_font()
 {
-	render::set_icon_font({diffractor_resource_icon_font,
-	                       static_cast<size_t>(diffractor_resource_icon_font_size)});
+	render::set_icon_font({diffractor_resource_icon_font, static_cast<size_t>(diffractor_resource_icon_font_size)});
 }
 static constexpr auto s_search = "search";
 
-extern void start_worker(platform::task_queue& q, std::string_view name);
+extern void start_worker(platform::task_queue& q, std::string_view name, bool background_work = true);
 
 std::string df::format_version(const bool short_text)
 {
@@ -116,7 +121,6 @@ struct app_updates_and_location_params
 	}
 };
 
-
 static gps_coordinate parse_coordinates(const std::string_view text, const gps_coordinate def_coords)
 {
 	const auto splits = core::split(text, true);
@@ -138,13 +142,14 @@ static gps_coordinate parse_coordinates(const std::string_view text, const gps_c
 // Runs on a shared worker thread (which already owns its own name and COM
 // initialisation) and only queues the actual network request, so it must not
 // rename the thread or re-initialise it.
-static void check_for_updates_and_location(const app_frame_ptr& app, view_state& s)
+static void check_for_updates_and_location([[maybe_unused]] const app_frame_ptr& app, view_state& s)
 {
 	log_func lf(__FUNCTION__);
 
 	spell().configure_async(&s._async);
 
-	if (platform::is_online())
+	// An agent session reaches the network only where it was started with -mcp-allow:network.
+	if (platform::is_online() && df::network_allowed)
 	{
 #ifndef WINSTORE
 		if (setting.first_run_today && setting.check_for_updates)
@@ -187,10 +192,7 @@ static void check_for_updates_and_location(const app_frame_ptr& app, view_state&
 
 					clear_reported_feature_use(reported_features);
 
-					s.queue_ui([params, app, &s]
-					{
-						params.apply(app, s);
-					});
+					s.queue_ui([params, app, &s] { params.apply(app, s); });
 				}
 			});
 		}
@@ -199,8 +201,7 @@ static void check_for_updates_and_location(const app_frame_ptr& app, view_state&
 	}
 }
 
-std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_state& index,
-                                                                    const bool include_state)
+std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_state& index, const bool include_state)
 {
 	std::vector<std::pair<std::string_view, std::string>> result;
 	auto arch = "32-bit";
@@ -234,8 +235,8 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 		result.emplace_back("Peak memory:", platform::format_size(core::file_size(mem.peak_working_set)));
 	}
 
-	result.emplace_back("Static Memory:",
-	                    platform::format_size(core::file_size(core::static_memory_usage.load(std::memory_order_relaxed))));
+	result.emplace_back("Static Memory:", platform::format_size(core::file_size(
+											  core::static_memory_usage.load(std::memory_order_relaxed))));
 
 	result.emplace_back("GPU:", render::gpu_desc);
 	result.emplace_back("GPU Id:", render::gpu_id);
@@ -243,17 +244,15 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 
 	result.emplace_back("Indexed items:", core::to_string(index.stats.index_item_count));
 	result.emplace_back("Indexed folders:", core::to_string(index.stats.index_folder_count));
-	result.emplace_back("Duplicates:",
-	                    std::format("g={} mcomp={}", index.stats.indexed_dup_folder_count,
-	                                index.stats.indexed_max_compare_count));
+	result.emplace_back("Duplicates:", std::format("g={} mcomp={}", index.stats.indexed_dup_folder_count,
+	                                               index.stats.indexed_max_compare_count));
 	result.emplace_back("Hashes:",
 	                    std::format("crc={} phash={} declined={} uninvited={}", index.stats.indexed_crc_count,
 	                                index.stats.indexed_phash_count, index.stats.indexed_phash_declined_count,
 	                                index.stats.indexed_phash_uninvited_count));
 	result.emplace_back("DB size:", platform::format_size(index.stats.database_size));
-	result.emplace_back("Saved:", std::format("{} items | {} thumbs", index.stats.items_saved,
-	                                          index.stats.thumbs_saved));
-
+	result.emplace_back("Saved:",
+	                    std::format("{} items | {} thumbs", index.stats.items_saved, index.stats.thumbs_saved));
 
 	result.emplace_back("Index load:", std::format("{} ms", index.stats.index_load_ms));
 	result.emplace_back("Predictions:", std::format("{} ms", index.stats.predictions_ms));
@@ -266,20 +265,19 @@ std::vector<std::pair<std::string_view, std::string>> calc_app_info(const index_
 		result.emplace_back("Is searching: ", core::to_string(index.searching));
 		result.emplace_back("Is command active: ", core::to_string(ui::command_active));
 		result.emplace_back("Is closing: ", core::to_string(platform::is_closing));
-		result.emplace_back("Rendering function: ", core::utf8_cast(render::rendering_func.load(std::memory_order_relaxed)));
+		result.emplace_back("Rendering function: ",
+		                    core::utf8_cast(render::rendering_func.load(std::memory_order_relaxed)));
 	}
 
 	return result;
 }
 
-void app_logo_element::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
+void app_logo_element::tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const
 {
-	hover.elements->add(std::make_shared<text_element>(_text, render::font_face::title,
-	                                                   render::text_style::single_line,
+	hover.elements->add(std::make_shared<text_element>(_text, render::font_face::title, render::text_style::single_line,
 	                                                   flex_item::line_break));
 	hover.elements->add(std::make_shared<text_element>(df::format_version(false), render::font_face::dialog,
-	                                                   render::text_style::single_line,
-	                                                   flex_item::line_break));
+	                                                   render::text_style::single_line, flex_item::line_break));
 
 	if (setting.show_debug_info)
 	{
@@ -326,7 +324,8 @@ void app_frame::fail(const std::string_view message, const std::string_view more
 		const auto dlg = make_dlg(parent);
 
 		std::vector<view_element_ptr> controls;
-		controls.emplace_back(set_margin(std::make_shared<ui::title_control>(icon_index::error, tt.platform_text.title_error)));
+		controls.emplace_back(
+			set_margin(std::make_shared<ui::title_control>(icon_index::error, tt.platform_text.title_error)));
 		controls.emplace_back(set_margin(std::make_shared<text_element>(tt.platform_text.error_cannot_continue)));
 		if (!message_s.empty()) controls.emplace_back(set_margin(std::make_shared<text_element>(message_s)));
 		if (!more_text_s.empty()) controls.emplace_back(set_margin(std::make_shared<text_element>(more_text_s)));
@@ -346,69 +345,40 @@ void media_view::update_media_elements()
 	core::assert_true(platform::is_ui_thread());
 	const auto display = _state.display_state();
 	_display = display;
-	view_element_ptr media_element;
 
-	if (display)
-	{
-		if (display->is_one())
-		{
-			const auto& item = display->_item1;
-			const auto* const file_type = item->file_type();
-
-			// Arrowing through fullscreen lands on whatever is next, including a file the decoder
-			// could not open. A player over nothing is what makes that look like a broken video
-			// rather than a file that was never media, so it falls through to no media element and
-			// the panel states what the file is.
-			const auto media_unavailable = display->_av_open_failed;
-
-			if (file_type->has_trait(file_traits::bitmap))
-			{
-				media_element = std::make_shared<photo_control>(_state, display, _host);
-			}
-			else if (file_type->has_trait(file_traits::sid_tune) && !media_unavailable)
-			{
-				media_element = std::make_shared<sid_monitor_control>(_state, display, _host);
-			}
-			else if (file_type->has_trait(file_traits::visualize_audio) && !media_unavailable)
-			{
-				media_element = std::make_shared<audio_control>(_state, display, _host, true);
-			}
-			else if (file_type->has_trait(file_traits::av) && !media_unavailable)
-			{
-				media_element = std::make_shared<video_control>(_state, display, _host);
-			}
-			else if (file_type->has_trait(file_traits::archive))
-			{
-				media_element = std::make_shared<file_list_control>(display, flex_item::center);
-			}
-			else
-			{
-			}
-		}
-		else if (display->is_two())
-		{
-			media_element = std::make_shared<side_by_side_control>(_state, display, _host);
-		}
-		else if (display->is_multi())
-		{
-			media_element = std::make_shared<images_control2>(_state, display);
-		}
-	}
-
-	std::swap(_media_element, media_element);
+	// The same presentation the items view shows. A picture has the screen, with the panel floating over
+	// it; anything else is the items view's stack of panels, with the compact panel and its description.
+	auto presentation = make_media_presentation(_state, display, _host, true);
+	_media_element = presentation.media;
+	_is_stack = display && !presentation.picture;
 	_controls_element = _state.create_selection_controls(true);
 	_description_element = _state.create_selection_description();
+	_stack.clear();
 
-	if (_controls_element)
+	if (_is_stack)
 	{
-		_controls_element->set_style_bit(view_element_style::dark_background, true);
+		_stack = std::move(presentation.above);
+		if (_controls_element && !_controls_element->is_empty()) _stack.emplace_back(_controls_element);
+
+		if (_description_element)
+		{
+			// Prose can run on, and the stack does not scroll: the panel clips what does not fit.
+			_description_element->flex.max_size.cy = stack_description_max_height;
+			_stack.emplace_back(_description_element);
+		}
 	}
-	if (_description_element)
+	else
 	{
-		_description_element->set_style_bit(view_element_style::dark_background, true);
+		if (_controls_element)
+		{
+			_controls_element->set_style_bit(view_element_style::dark_background, true);
+		}
+		if (_description_element)
+		{
+			_description_element->set_style_bit(view_element_style::dark_background, true);
+		}
 	}
 }
-
 
 // Case-insensitive exact match for a switch name.
 static bool is_switch(const std::string_view op, const std::string_view name)
@@ -443,6 +413,13 @@ void command_line_t::parse(const std::string_view command_line_text)
 		// else '/home/zac' would be read as a switch and never reach the path branch below.
 		const auto starts_switch = part[0] == '-' || (core::windows_path_semantics && part[0] == '/');
 
+		// After -tool:<name>, what is not a switch is one of its arguments: name=value.
+		if (!tool.empty() && !starts_switch)
+		{
+			tool_arguments.emplace_back(part);
+			continue;
+		}
+
 		if (starts_switch && part.size() > 1)
 		{
 			const auto op = part.substr(part[1] == '-' ? 2 : 1);
@@ -450,60 +427,29 @@ void command_line_t::parse(const std::string_view command_line_text)
 
 			if (is_switch(op, "no-gpu")) no_gpu = true;
 			else if (is_switch(op, "no-indexing")) no_indexing = true;
-			else if (is_switch(op, "run-tests") || is_switch(op, "test")) console_test = true;
+			else if (is_switch(op, "new-window")) new_window = true;
+			else if (is_switch(op, "test")) console_test = true;
 			else if (switch_value(op, "test:", value))
 			{
 				console_test = true;
 				test_filter = value;
 			}
 			else if (switch_value(op, "test-temp:", value)) test_temp_folder = value;
-			else if (is_switch(op, "gen-docs")) gen_docs = true;
-			else if (switch_value(op, "gen-docs:", value))
-			{
-				gen_docs = true;
-				docs_path = value;
-			}
 			else if (is_switch(op, "validate-po")) validate_po = true;
-			else if (switch_value(op, "dup-report:", value))
-			{
-				dup_report = true;
-				dup_report_folder = value;
-			}
-			else if (switch_value(op, "dup-report-out:", value)) dup_report_output = value;
-			else if (switch_value(op, "movie-check:", value))
-			{
-				movie_batch.projects = value;
-				movie_batch.mode = movie_batch_mode::check;
-			}
-			else if (switch_value(op, "movie-import:", value))
-			{
-				movie_batch.projects = value;
-				movie_batch.mode = movie_batch_mode::import;
-			}
-			else if (switch_value(op, "movie-render:", value))
-			{
-				movie_batch.projects = value;
-				movie_batch.mode = movie_batch_mode::render;
-			}
-			else if (switch_value(op, "movie-media:", value)) movie_batch.media = value;
-			else if (switch_value(op, "movie-out:", value)) movie_batch.output = value;
-			else if (is_switch(op, "movie-overwrite")) movie_batch.overwrite = true;
-			else if (is_switch(op, "movie-skip-missing")) movie_batch.skip_missing = true;
-#ifdef _DEBUG
-			else if (is_switch(op, "test-reset-graphics")) test_action = "reset-graphics";
-			else if (is_switch(op, "test-crash")) test_action = "crash";
-			else if (is_switch(op, "test-send-crash-report")) test_action = "send-crash-report";
-			else if (is_switch(op, "test-new-version")) test_action = "new-version";
-			else if (switch_value(op, "screenshot:", value)) screenshot_scene = value;
-			else if (switch_value(op, "screenshot-output:", value)) screenshot_output = value;
-#endif
+			else if (is_switch(op, "mcp")) agent = true;
+			else if (switch_value(op, "mcp-ui:", value)) agent_ui = value;
+			else if (switch_value(op, "mcp-allow:", value)) agent_allow = value;
+			else if (switch_value(op, "tool:", value)) tool = value;
+			else if (switch_value(op, "profile:", value)) profile_folder = value;
+			else if (switch_value(op, "collection:", value)) collection_folder = value;
 		}
 		else if (part.ends_with("**"))
 		{
 			// A trailing "**" asks for the folder with its subfolders, as it does in the address box.
 			// AutoPlay opens an inserted card that way, and may name a drive without its separator.
 			auto text = std::string(part);
-			if (core::windows_path_semantics && text.size() == 4 && text[1] == ':') text.insert(2, 1, core::preferred_path_sep);
+			if (core::windows_path_semantics && text.size() == 4 && text[1] == ':')
+				text.insert(2, 1, core::preferred_path_sep);
 
 			if (core::is_path(text))
 			{
@@ -544,9 +490,15 @@ std::string command_line_t::format_restart_cmd_line() const
 	std::string result;
 	if (no_gpu) result += " -no-gpu";
 	if (no_indexing) result += " -no-indexing";
+	if (new_window) result += " -new-window";
 	return result;
 }
 
+bool command_line_t::can_forward_file() const
+{
+	return !new_window && !selection.is_empty() && !no_gpu && !no_indexing && !console_test && !validate_po && !agent &&
+	       tool.empty() && profile_folder.empty() && collection_folder.empty();
+}
 
 void view_frame::update_status(const std::string_view title, const std::string_view text, const int padding)
 {
@@ -638,10 +590,7 @@ namespace
 			_view->frame()->invalidate(_view->_splitter.bounds);
 		}
 
-		platform::cursor cursor() const override
-		{
-			return platform::cursor::left_right;
-		}
+		platform::cursor cursor() const override { return platform::cursor::left_right; }
 
 		void draw(render::draw_context& dc) override
 		{
@@ -649,7 +598,7 @@ namespace
 			draw_splitter_handle(dc, s.bounds, s.width, true, s.tracking);
 		}
 
-		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 		{
 			_view->_splitter.tracking = true;
 			_view->drag_splitter(loc);
@@ -660,7 +609,7 @@ namespace
 			if (_view->_splitter.tracking) _view->drag_splitter(loc);
 		}
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 		{
 			if (!_view->_splitter.tracking) return;
 
@@ -709,7 +658,7 @@ void view_frame::drag_splitter(const pointi loc)
 
 // The view takes what the panel, the splitter and the strip leave: the panel the share of the width the
 // view keeps for it - all of it when it is the whole frame - and the strip a band along the base.
-void view_frame::on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized)
+void view_frame::on_window_layout(render::measure_context& mc, const sizei extent, const bool /*is_minimized*/)
 {
 	_extent = extent;
 
@@ -720,9 +669,8 @@ void view_frame::on_window_layout(render::measure_context& mc, const sizei exten
 	const auto min_pane = core::round(200 * scale_factor);
 	const auto available = std::max(0, extent.cx - splitter_width);
 	const auto stored = setting.view_splitter(_state.view_mode());
-	const auto preferred = stored > 0
-		                       ? core::mul_div(available, stored, settings_t::view_splitter_max)
-		                       : std::max(extent.cx / 4, core::round(400 * scale_factor));
+	const auto preferred = stored > 0 ? core::mul_div(available, stored, settings_t::view_splitter_max)
+	                                  : std::max(extent.cx / 4, core::round(400 * scale_factor));
 	const auto panel_width = fills ? extent.cx : has_panel ? clamp_pane_width(preferred, available, min_pane) : 0;
 	const auto content_right = std::max(0, extent.cx - panel_width - splitter_width);
 	const auto strip_height = _strip_wanted ? std::min(core::round(150 * scale_factor), extent.cy / 3) : 0;
@@ -730,9 +678,8 @@ void view_frame::on_window_layout(render::measure_context& mc, const sizei exten
 	_view_bounds = recti(0, 0, content_right, extent.cy - strip_height);
 	_strip->bounds = recti(0, extent.cy - strip_height, content_right, extent.cy);
 	_strip->is_visible(strip_height > 0 && content_right > 0);
-	_splitter.bounds = splitter_width > 0
-		                   ? recti(content_right, 0, content_right + splitter_width, extent.cy)
-		                   : recti{};
+	_splitter.bounds = splitter_width > 0 ? recti(content_right, 0, content_right + splitter_width, extent.cy)
+	                                      : recti{};
 	_splitter.width = splitter_width;
 	_splitter.min_pane = min_pane;
 
@@ -765,6 +712,7 @@ void view_frame::on_window_paint(render::draw_context& dc)
 		_active_controller->draw(dc);
 	}
 
+	draw_keyboard_focus(dc);
 	draw_status(dc);
 
 	if (setting.show_debug_info && _active_controller)
@@ -781,17 +729,172 @@ void view_frame::visit_elements(const std::function<void(const view_element_ptr&
 	if (_panel) _panel->visit_elements(visit);
 }
 
+std::vector<keyboard_region> view_frame::keyboard_regions() const
+{
+	auto regions = _view->keyboard_regions();
+
+	if (_panel && !_panel->_bounds.is_empty())
+	{
+		const auto panel = _panel;
+		regions.push_back({keyboard_area::panel, panel->_controls, panel->elements_offset(), panel->_bounds,
+		                   [panel](const recti r) { panel->scroll_into_view(r.offset(-panel->elements_offset())); }});
+	}
+
+	return regions;
+}
+
+std::optional<keyboard_region> view_frame::keyboard_region_of(const keyboard_area area) const
+{
+	for (auto& region : keyboard_regions())
+	{
+		if (region.area == area) return std::move(region);
+	}
+
+	return {};
+}
+
+std::vector<keyboard_part> view_frame::keyboard_parts(const keyboard_area area) const
+{
+	const auto region = keyboard_region_of(area);
+	return region ? find_keyboard_parts(region->roots, region->offset) : std::vector<keyboard_part>{};
+}
+
+std::optional<keyboard_part> view_frame::focused_part()
+{
+	if (_keyboard.area == keyboard_area::view) return {};
+
+	const auto parts = keyboard_parts(_keyboard.area);
+	const auto element = _keyboard.element.lock();
+	const auto found = std::ranges::find_if(parts, [&](const keyboard_part& part)
+	{ return part.element == element && part.index == _keyboard.index; });
+
+	if (found != parts.end())
+	{
+		// It outlived its press, so a later rebuild - counts arriving long after - is followed like any other.
+		_keyboard.pressed = false;
+		_keyboard.bounds = found->bounds;
+		return *found;
+	}
+
+	// Rebuilt - the sidebar counted again, the pane followed the selection - so the part now nearest where it was
+	// takes its place. A part its own press took away at once is not followed: what the press did has moved the
+	// user on.
+	if (_keyboard.pressed || parts.empty()) return {};
+
+	const auto was = _keyboard.bounds.center();
+	const auto nearest = std::ranges::min_element(parts, {}, [was](const keyboard_part& part)
+	{
+		const auto at = part.bounds.center();
+		return std::abs(at.x - was.x) + std::abs(at.y - was.y);
+	});
+
+	_keyboard.element = nearest->element;
+	_keyboard.index = nearest->index;
+	_keyboard.bounds = nearest->bounds;
+	return *nearest;
+}
+
+void view_frame::keyboard_to(const keyboard_area area, const keyboard_part* part)
+{
+	const auto was_on_view = _keyboard.area == keyboard_area::view;
+
+	if (part && area != keyboard_area::view)
+	{
+		_keyboard = {area, part->element, part->index, part->bounds, false};
+		if (const auto region = keyboard_region_of(area); region && region->reveal) region->reveal(part->bounds);
+	}
+	else
+	{
+		_keyboard = {};
+	}
+
+	frame()->invalidate();
+
+	// The view's own content has just taken the keyboard, or let it go to a part.
+	if (was_on_view != (_keyboard.area == keyboard_area::view))
+	{
+		const auto f = frame();
+		focus_changed(f->has_focus(), f->focused_control());
+	}
+}
+
+bool view_frame::keyboard_part_key_down(const char32_t key, const platform::key_state keys)
+{
+	if (_keyboard.area == keyboard_area::view || keys.alt) return false;
+
+	const auto part = focused_part();
+
+	if (!part)
+	{
+		keyboard_to(keyboard_area::view, nullptr);
+		return false;
+	}
+
+	if (key == platform::keys::ESCAPE && _keyboard.area != keyboard_area::panel)
+	{
+		keyboard_to(keyboard_area::view, nullptr);
+		return true;
+	}
+
+	if (key == platform::keys::RETURN || key == platform::keys::SPACE)
+	{
+		_keyboard.pressed = true;
+		press_keyboard_part(shared_from_this(), *part);
+		return true;
+	}
+
+	if (keys.control) return false;
+
+	// Each link of the panel is a stop of its own, as each of its controls is; elsewhere an area's parts are one.
+	auto group = keyboard_parts(_keyboard.area);
+	if (_keyboard.area == keyboard_area::panel)
+		std::erase_if(group, [&part](const keyboard_part& p) { return p.element != part->element; });
+
+	const auto from = static_cast<int>(
+		std::ranges::find_if(group, [&part](const keyboard_part& p) { return p.is(*part); }) - group.begin());
+	const auto to = step_keyboard_part(group, from, key);
+	if (to < 0) return false;
+
+	_keyboard_cues = true;
+	if (to != from) keyboard_to(_keyboard.area, &group[to]);
+	return true;
+}
+
+// Where the keyboard is, where nothing else shows it: around the part it is on, and around the view's own content
+// once the keyboard has moved there.
+void view_frame::draw_keyboard_focus(render::draw_context& dc)
+{
+	const auto f = frame();
+	if (!f->has_focus() || f->focused_control()) return;
+
+	if (const auto part = focused_part())
+	{
+		const auto region = keyboard_region_of(_keyboard.area);
+		const render::scoped_clip clip(dc, region ? region->clip : recti(_extent));
+		draw_keyboard_ring(dc, part->bounds);
+	}
+	else if (_keyboard_cues && _keyboard.area == keyboard_area::view && !_view_bounds.is_empty())
+	{
+		const auto bounds = _view->keyboard_bounds();
+		const render::scoped_clip clip(dc, _view_bounds);
+		draw_keyboard_ring(dc, bounds.is_empty() ? _view_bounds : bounds, bounds.is_empty());
+	}
+}
+
 void view_frame::on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled)
 {
 	if (in_panel(loc)) _panel->on_mouse_wheel(loc, delta, keys, was_handled);
-	else if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, platform::wheel_axis::vertical, _wheel_vertical);
+	else if (in_view(loc))
+		was_handled = dispatch_wheel(loc, delta, keys, platform::wheel_axis::vertical, _wheel_vertical);
 	update_controller(loc);
 }
 
 void view_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
 {
 	core::trace(std::format("render_window::focus {}", has_focus));
-	_view->focus(has_focus && !child);
+	// A control that takes the keyboard takes it off any drawn part, as a press does.
+	if (has_focus && child) _keyboard = {};
+	_view->focus(has_focus && !child && _keyboard.area == keyboard_area::view);
 	if (child && _panel) _panel->focus_changed(has_focus, child);
 	if (focus_listener) focus_listener(has_focus, child);
 	frame()->invalidate();
@@ -818,9 +921,8 @@ view_controller_ptr view_frame::controller_from_location(const pointi loc, hit_t
 void bar_frame::init(const ui::frame_ptr& owner)
 {
 	ui::frame_style fs;
-	fs.colors = {
-		ui::style::colors.toolbar_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
-	};
+	fs.colors = {ui::style::colors.toolbar_background, ui::style::colors.view_text,
+	             ui::style::colors.view_selected_background};
 	_frame = owner->create_frame(weak_from_this(), fs);
 }
 
@@ -859,21 +961,27 @@ bool bar_frame::is_caption_area(const pointi loc) const
 	return _kind == kind::title && !_app._title_bounds.contains(loc);
 }
 
-void bar_frame::on_mouse_move(const pointi loc, const bool is_tracking)
+void bar_frame::on_mouse_move(const pointi loc, const bool /*is_tracking*/)
 {
 	if (_kind == kind::title) _app.title_bar_mouse_move(loc);
 	else _app.update_status_hover(loc);
 }
 
-void bar_frame::on_mouse_leave(const pointi loc)
+void bar_frame::on_mouse_leave(const pointi /*loc*/)
 {
 	if (_kind == kind::title) _app.title_bar_mouse_leave();
 	else _app.update_status_hover({-1, -1});
 }
 
-void bar_frame::on_mouse_left_button_up(const pointi loc, const platform::key_state keys)
+void bar_frame::on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/)
 {
-	if (_kind == kind::title) _app.title_bar_click(loc);
+	_title_pressed = _kind == kind::title;
+}
+
+// The title is clicked only by a press it saw: the release after a press that closed a menu is not a click.
+void bar_frame::on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/)
+{
+	if (std::exchange(_title_pressed, false)) _app.title_bar_click(loc);
 }
 
 void bar_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
@@ -886,20 +994,36 @@ void bar_frame::command_hover(const ui::command_ptr& c, const recti window_bound
 	_app.command_hover(c, window_bounds);
 }
 
+// The frame's own menu: the title and status bars offer it, and so does anywhere the view under the pointer
+// names none of its own.
+static const view_menu s_frame_menu = {
+	.list =
+		{
+			commands::refresh,
+			commands::tool_eject,
+			commands::none,
+			commands::options,
+			commands::favorite_tags,
+			commands::none,
+			commands::view_show_sidebar,
+			commands::view_favorite_tags,
+			commands::none,
+			commands::large_font,
+		},
+};
+
 std::vector<ui::command_ptr> bar_frame::menu(const pointi loc)
 {
-	return _app.context_menu(menu_type::sidebar);
+	// As app_frame::menu: the keyboard's menu has been opened already.
+	if (loc == pointi{-1, -1}) return {};
+	return _app.context_menu(s_frame_menu);
 }
 
 app_frame::app_frame() :
 	_item_index(*this, _locations),
 	_player(std::make_shared<av_player>(*this, [&index = _item_index](const core::file_path path, const double position)
-	{
-		index.save_media_position(path, position);
-	})),
-	_state(*this, *this, _item_index, _player),
-	_edit_view_state(_state),
-	_db(_state.item_index)
+{ index.save_media_position(path, position); })),
+	_state(*this, *this, _item_index, _player), _edit_view_state(_state), _db(_state.item_index)
 {
 	_title_bar = std::make_shared<bar_frame>(*this, bar_frame::kind::title);
 	_view_frame = std::make_shared<view_frame>(_state);
@@ -907,31 +1031,26 @@ app_frame::app_frame() :
 	_title_region = std::make_shared<ui::frame_element>();
 	_body_region = std::make_shared<ui::frame_element>();
 	_status_region = std::make_shared<ui::frame_element>();
-	_regions = std::make_shared<ui::elements>(std::vector<view_element_ptr>{_title_region, _body_region, _status_region});
+	_regions = std::make_shared<ui::elements>(
+		std::vector<view_element_ptr>{_title_region, _body_region, _status_region});
 	_app_logo = std::make_shared<app_logo_element>(_state);
 	_selector_frame = std::make_shared<view_frame>(_state);
 	_view_sync = std::make_shared<sync_view>(_state, _view_frame);
 	_view_tags = std::make_shared<tags_view>(_state, _view_frame);
-	_view_options = std::make_shared<options_view>(_state, _view_frame, options_view_actions{
-		                                               [this](const std::string_view code) { select_language(code); },
-		                                               [this] { index_maintenance_invoke(_state, _app_frame); },
-		                                               [this]
-		                                               {
-			                                               return std::static_pointer_cast<void>(
-				                                               std::make_shared<pause_media>(_state));
-		                                               },
-		                                               [this] { return ask_to_save_options(_app_frame); }
-	                                               });
+	_view_options = std::make_shared<options_view>(_state, _view_frame,
+	                                               options_view_actions{[this](const std::string_view code)
+	{ select_language(code); }, [this] { index_maintenance_invoke(_state, _app_frame); }, [this] {
+		return std::static_pointer_cast<void>(std::make_shared<pause_media>(_state));
+	}, [this] { return ask_to_save_options(_app_frame); }});
 	_view_import = std::make_shared<import_view>(_state, _view_frame);
 	_view_locate = std::make_shared<locate_view>(_state, _view_frame);
 	_view_rename = std::make_shared<rename_view>(_state, _view_frame);
 	_view_batch = std::make_shared<batch_tool_view>(_state, _view_frame);
 	_view_items = std::make_shared<items_view>(_state, _view_frame);
 	_view_selector = std::make_shared<selector_view>(_state, _selector_frame,
-	                                                 [this](const df::item_element_ptr& item, const platform::key_state keys)
-	                                                 {
-		                                                 select_from_selector(item, keys);
-	                                                 });
+	                                                 [this](const df::item_element_ptr& item,
+	                                                        const platform::key_state keys)
+	{ select_from_selector(item, keys); });
 	_view_edit = std::make_shared<edit_view>(_state, _view_frame, _edit_view_state);
 	_view_movie = std::make_shared<movie_view>(_state, _view_frame, _movie_view_state);
 	_selector_frame->view(_view_selector);
@@ -961,6 +1080,10 @@ void app_frame::frame_tick()
 {
 	core::assert_true(platform::is_ui_thread());
 	core::bump(render::ui_perf.frame_prepares);
+
+	// An agent session's calls are answered from here, with a window or without one.
+	if (_mcp) _mcp->tick();
+
 	const auto vf = _view_frame;
 
 	// _view is only assigned by view_changed, which init() reaches after the frame exists.
@@ -974,9 +1097,8 @@ void app_frame::frame_tick()
 		// Clamped so a stall, a breakpoint, or a first frame cannot snap every fade to its target.
 		const auto prepare_us = core::now_us();
 		const auto elapsed_s = _last_prepare_us == 0
-			                       ? 1.0 / display_frequency
-			                       : std::clamp((prepare_us - _last_prepare_us) / 1'000'000.0, 1.0 / 240.0,
-			                                    1.0 / 15.0);
+		                           ? 1.0 / display_frequency
+		                           : std::clamp((prepare_us - _last_prepare_us) / 1'000'000.0, 1.0 / 240.0, 1.0 / 15.0);
 		_last_prepare_us = prepare_us;
 		ui::animation_step_factor = static_cast<float>(1.0 - std::exp(-ui::alpha_fade_rate * elapsed_s));
 
@@ -984,6 +1106,7 @@ void app_frame::frame_tick()
 		auto is_animating = false;
 		auto is_animating2 = false;
 
+		// NOLINTNEXTLINE(bugprone-nondeterministic-pointer-iteration-order): each animation steps on its own
 		for (const auto& i : ui::animations)
 		{
 			if (i.second())
@@ -1026,10 +1149,11 @@ void app_frame::frame_tick()
 			}
 			else if (prepare_result == render_valid::present)
 			{
-				vf->frame()->redraw();
+				// Only what changed in place is shown again: the software renderer replays that region alone.
+				vf->frame()->redraw(display->present_bounds());
 			}
 
-			if (is_animating2 || is_animating || display->is_playing_media())
+			if (is_animating2 || is_animating || display->is_playing_media() || display->is_running_c64())
 			{
 				frame_delay = std::min(frame_delay, animation_delay_ms);
 			}
@@ -1064,6 +1188,14 @@ void app_frame::frame_tick()
 
 		if (command_progress_needs_animation(progress.active, progress.total))
 		{
+			frame_delay = std::min(frame_delay, animation_delay_ms);
+		}
+
+		// A tutorial's steps and its pointer move at the display's rate; once it has finished it goes.
+		if (_tutorial)
+		{
+			_tutorial->tick();
+			if (_tutorial->is_finished()) _tutorial.reset();
 			frame_delay = std::min(frame_delay, animation_delay_ms);
 		}
 
@@ -1132,7 +1264,14 @@ void app_frame::tick()
 
 	if (display && display->_session)
 	{
+		display->_session->mute(display->_mute_preview);
 		display->_session->adjust_volume();
+	}
+
+	// A running Commodore 64 follows the volume as the player does, up to the device's own full scale.
+	if (display && display->_c64)
+	{
+		display->_c64->volume(std::clamp(setting.media_volume, 0, 1000) / 1000.0);
 	}
 
 	// _view is assigned by the first view_changed, which init() reaches after the window - and its
@@ -1167,17 +1306,18 @@ void app_frame::tick()
 		if (_search_edit && _search_color_lerp.step())
 		{
 			_search_edit->set_background(
-				_search_color_lerp.lerp(ui::style::colors.edit_background,
-				                        ui::style::colors.important_background));
+				_search_color_lerp.lerp(ui::style::colors.edit_background, ui::style::colors.important_background));
 		}
 
 		const auto logical_bounds = _view_items->calc_logical_items_bounds();
 		const auto eviction_guard = _last_texture_eviction_bounds
-			                            ? _last_texture_eviction_bounds->inflate(0, logical_bounds.height() / 2)
-			                            : recti{};
+		                                ? _last_texture_eviction_bounds->inflate(0, logical_bounds.height() / 2)
+		                                : recti{};
 		const auto outside_eviction_guard = !_last_texture_eviction_bounds ||
-			logical_bounds.left < eviction_guard.left || logical_bounds.right > eviction_guard.right ||
-			logical_bounds.top < eviction_guard.top || logical_bounds.bottom > eviction_guard.bottom;
+		                                    logical_bounds.left < eviction_guard.left ||
+		                                    logical_bounds.right > eviction_guard.right ||
+		                                    logical_bounds.top < eviction_guard.top ||
+		                                    logical_bounds.bottom > eviction_guard.bottom;
 
 		if (outside_eviction_guard)
 		{
@@ -1211,117 +1351,84 @@ void app_frame::tick()
 		}
 	}
 
+	if (_instance_claim_retry && _instance_ready && !_instance_receiver && setting.reuse_existing_window &&
+	    core::now() >= _next_instance_claim)
+	{
+		constexpr auto instance_claim_seconds = 2.0;
+		_next_instance_claim = core::now() + instance_claim_seconds;
+		reuse_running_instance(false);
+	}
+
 	if (_invalids != view_invalid::none)
 	{
 		idle();
 	}
 
-#ifdef _DEBUG
-	tick_screenshot();
-#endif
+	// A recording that has written its length, or failed, is finished here and said so.
+	if (_recording && _recording->is_finished())
+	{
+		const auto summary = finish_recording();
+		if (_recording_ended) _recording_ended(summary);
+	}
 }
 
-#ifdef _DEBUG
-void app_frame::tick_screenshot()
+// A run with a profile of its own - a tutorial or a test - reports nothing to diffractor.com: a fresh profile would
+// count as a new install, and its crashes are the developer's to see. Nor does an agent session, unless it was
+// started to reach the network, and one whose window is not on the desktop plays nothing aloud. -collection makes
+// that folder the whole collection, and opens the window on it. Applied over the settings each time they are read,
+// so nothing a profile saved on an earlier run outlasts what this one was started with.
+void app_frame::apply_run_settings()
 {
-	if (command_line.screenshot_scene.empty() || !_app_frame) return;
-
-	if (_screenshot_stage == 0)
+#ifndef WINSTORE
+	if (!command_line.profile_folder.empty() || (command_line.agent && !df::network_allowed))
 	{
-		const auto scene = std::string_view(command_line.screenshot_scene);
-		const auto options_command = core::icmp(scene, "options") == 0
-			                             ? commands::options
-			                             : core::icmp(scene, "options-sidebar") == 0
-			                             ? commands::options_sidebar
-			                             : commands::none;
-		const auto is_options = options_command != commands::none;
+		setting.check_for_updates = false;
+		setting.send_crash_dumps = false;
+	}
+#endif
 
-		// The Options view shows no items, so it need not wait for any.
-		if (!is_options && !_state.has_display_items()) return;
-
-		_app_frame->sys_command(platform::sys_command_type::RESTORE);
-		auto window_bounds = _app_frame->window_bounds();
-		window_bounds.right = window_bounds.left + 1600;
-		window_bounds.bottom = window_bounds.top + 1000;
-		_app_frame->window_bounds(window_bounds, true);
-
-		if (is_options)
-		{
-			invoke(options_command);
-		}
-		else if (core::icmp(scene, "items") == 0)
-		{
-			if (!_state.has_selection()) _state.select_next(_view_frame, true, false, false);
-			_state.view_mode(view_type::items);
-		}
-		else if (core::icmp(scene, "fullscreen") == 0 ||
-			core::icmp(scene, "edit") == 0 || core::icmp(scene, "edit-preview") == 0)
-		{
-			if (!_state.has_selection()) _state.select_next(_view_frame, true, false, false);
-			if (core::icmp(scene, "fullscreen") == 0)
-			{
-				invoke(commands::view_fullscreen);
-			}
-			else
-			{
-				invoke(commands::tool_edit);
-				if (core::icmp(scene, "edit-preview") == 0) invoke(commands::edit_item_preview);
-			}
-		}
-		else
-		{
-			_state.select_all(_view_frame);
-			if (core::icmp(scene, "rename") == 0) invoke(commands::tool_rename);
-			else if (core::icmp(scene, "adjust-date") == 0) invoke(commands::tool_adjust_date);
-			else if (core::icmp(scene, "convert") == 0) invoke(commands::tool_convert);
-			else if (core::icmp(scene, "metadata") == 0) invoke(commands::tool_edit_metadata);
-			else if (core::icmp(scene, "import") == 0) invoke(commands::tool_import);
-			else if (core::icmp(scene, "sync") == 0) invoke(commands::tool_sync);
-			else if (core::icmp(scene, "locate") == 0) invoke(commands::tool_locate);
-			else
-			{
-				core::log(__FUNCTION__, std::format("Unknown screenshot scene: {}", scene));
-				_screenshot_stage = 2;
-				queue_ui([frame = _app_frame] { frame->close(); });
-				return;
-			}
-		}
-
-		_screenshot_stage = 1;
-		_screenshot_ready_time = core::now() + 10.0;
-		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw);
-		return;
+	if (_mcp && !_mcp->is_console() && _mcp->options().presence != agent_presence::visible)
+	{
+		setting.media_volume = 0;
 	}
 
-	if (_screenshot_stage == 1 && core::now() >= _screenshot_ready_time)
+	if (!command_line.collection_folder.empty())
 	{
-		const auto output = command_line.screenshot_output.empty()
-			                    ? known_path(platform::known_folder::running_app_folder).parent().combine_file(
-				                    "screenshot.webp")
-			                    : core::file_path(command_line.screenshot_output);
-		files ff;
-		const auto captured = platform::capture_window_surface(_app_frame->handle());
-		const auto surface = captured ? ff.fit_within(captured, {800, 500}) : core::surface_ptr{};
-		const auto format = extension_to_format(output.extension());
-		const auto image = surface
-			                   ? ff.surface_to_image(surface, libfiles::metadata_blocks{}, file_encode_params{}, format)
-			                   : core::const_image_ptr{};
-		const auto file = image ? platform::open_file(output, platform::file_open_mode::create) : platform::file_ptr{};
-		const auto saved = file && file->write(image->data().data(), image->data().size()) == image->data().size();
-		if (!saved)
-		{
-			core::log(__FUNCTION__, std::format("Screenshot failed: {}", output));
-			_screenshot_stage = 2;
-		}
-		else
-		{
-			core::log(__FUNCTION__, std::format("Screenshot saved: {}", output));
-			_screenshot_stage = 2;
-			queue_ui([frame = _app_frame] { frame->close(); });
-		}
+		setting.collection = {};
+		setting.collection.more_folders = command_line.collection_folder;
+		if (command_line.folder_path.is_empty())
+			command_line.folder_path = core::item_selector(command_line.collection_folder);
+
+		// The collection is all such a run has been to: a new profile offers the user's own folders - their name,
+		// and where they keep things - and a film of the run would show them.
+		_state.recent_folders._items = {command_line.collection_folder};
+		_state.recent_searches._items = {command_line.collection_folder};
 	}
 }
-#endif
+
+std::string app_frame::start_recording(const screen_recording_request& request)
+{
+	if (_recording) return "the window is already being recorded";
+	if (!core::is_path(request.path.str()))
+		return std::format("give the full path of the movie to write: {}", request.path);
+
+	_recording = start_screen_recording(request);
+	if (!_recording) return "this platform cannot record its window";
+
+	core::log(__FUNCTION__, std::format("Recording {}", request.path));
+	return {};
+}
+
+std::string app_frame::finish_recording()
+{
+	if (!_recording) return {};
+
+	_recording->stop();
+	auto summary = _recording->summary();
+	_recording.reset();
+	core::log(__FUNCTION__, summary);
+	return summary;
+}
 
 static constexpr auto s_recent_folders = "recent_folders";
 static constexpr auto s_recent_searches = "recent_searches";
@@ -1350,12 +1457,9 @@ void app_frame::load_options(const platform::setting_file_ptr& store)
 {
 	if (store->root_created())
 	{
-		const core::cached default_folders[] =
-		{
-			known_path(platform::known_folder::pictures).text(),
-			known_path(platform::known_folder::video).text(),
-			known_path(platform::known_folder::music).text(),
-			known_path(platform::known_folder::desktop).text(),
+		const core::cached default_folders[] = {
+			known_path(platform::known_folder::pictures).text(),  known_path(platform::known_folder::video).text(),
+			known_path(platform::known_folder::music).text(),     known_path(platform::known_folder::desktop).text(),
 			known_path(platform::known_folder::downloads).text(),
 		};
 
@@ -1415,10 +1519,8 @@ void app_frame::save_options(const bool search_only)
 {
 	auto& store = _settings;
 	store->write({}, s_search, _state.search().text());
-	store->write({}, s_group_order,
-	             static_cast<uint32_t>(group_order_older_builds_understand(_state.group_order())));
-	store->write({}, s_sort_order,
-	             static_cast<uint32_t>(sort_order_older_builds_understand(_state.sort_order())));
+	store->write({}, s_group_order, static_cast<uint32_t>(group_order_older_builds_understand(_state.group_order())));
+	store->write({}, s_sort_order, static_cast<uint32_t>(sort_order_older_builds_understand(_state.sort_order())));
 	store->write({}, s_group_order_ex, static_cast<uint32_t>(_state.group_order()));
 	store->write({}, s_sort_order_ex, static_cast<uint32_t>(_state.sort_order()));
 	store->write({}, s_options_version, options_version);
@@ -1438,6 +1540,13 @@ void app_frame::save_options(const bool search_only)
 		_state.recent_tags.write({}, s_recent_tags, store);
 		_state.recent_locations.write({}, s_recent_locations, store);
 		setting.write();
+		// An agent session takes no file from Explorer: the user's next launch must not land in its window.
+		if (_instance_ready && !_mcp)
+		{
+			if (!setting.reuse_existing_window) _instance_receiver.reset();
+			// Enabling another window must not forward that window's original startup file again.
+			else if (!_instance_receiver) reuse_running_instance(false);
+		}
 	}
 }
 
@@ -1448,13 +1557,15 @@ void app_frame::search_complete(const df::search_t& search, const bool path_chan
 		save_options(true);
 		invalidate_view(view_invalid::address);
 
-		std::vector<core::folder_path> folders;
+		std::vector<platform::watched_folder> folders;
 
 		for (const auto& s : search.selectors())
 		{
 			if (platform::exists(s.folder()))
 			{
-				folders.emplace_back(s.folder());
+				// A folder shown with its subfolders is watched with them, so a file moved out of one
+				// leaves the listing as it does from the folder itself (#266).
+				folders.push_back({s.folder(), s.is_recursive()});
 			}
 		}
 
@@ -1471,12 +1582,8 @@ void app_frame::search_complete(const df::search_t& search, const bool path_chan
 	// No group_layout here. view_state::append_items has just rebuilt the groups, re-selected and
 	// raised group_layout_complete in the same UI task, so asking for group_layout as well made the
 	// next drain regroup, re-sort and relayout the entire listing a second time for every search.
-	invalidate_view(view_invalid::item_scan |
-		view_invalid::media_elements |
-		view_invalid::tooltip |
-		view_invalid::command_state |
-		view_invalid::app_layout |
-		view_invalid::presence);
+	invalidate_view(view_invalid::item_scan | view_invalid::media_elements | view_invalid::tooltip |
+	                view_invalid::command_state | view_invalid::app_layout | view_invalid::presence);
 
 	if (path_changed)
 	{
@@ -1505,10 +1612,11 @@ static int bars_toolbar_height(render::measure_context& mc,
 int app_frame::title_bar_height(render::measure_context& mc)
 {
 	const auto cy_address = mc.text_line_height(render::font_face::dialog) + mc.padding2 * 2;
-	const auto content_height = std::max({
-		_navigate1->measure_toolbar(mc, _extent.cx).cy, _navigate2->measure_toolbar(mc, _extent.cx).cy,
-		_navigate3->measure_toolbar(mc, _extent.cx).cy, cy_address, bars_toolbar_height(mc, _bars, _extent.cx)
-	}) + mc.padding2;
+	const auto content_height = std::max({_navigate1->measure_toolbar(mc, _extent.cx).cy,
+	                                      _navigate2->measure_toolbar(mc, _extent.cx).cy,
+	                                      _navigate3->measure_toolbar(mc, _extent.cx).cy, cy_address,
+	                                      bars_toolbar_height(mc, _bars, _extent.cx)}) +
+	                            mc.padding2;
 	return core::mul_div(content_height, 6, 5);
 }
 
@@ -1524,7 +1632,7 @@ int app_frame::status_bar_height(render::measure_context& mc)
 void app_frame::layout(render::measure_context& mc)
 {
 	if (platform::is_closing || !_app_frame || !_view || !_navigate1 || !_search_edit || !_navigate2 || !_navigate3 ||
-		!_filter_edit || !_item_size || _extent.is_empty())
+	    !_filter_edit || !_item_size || _extent.is_empty())
 	{
 		return;
 	}
@@ -1548,8 +1656,10 @@ void app_frame::layout(render::measure_context& mc)
 	_title_region->is_visible(_show_bars);
 	_status_region->is_visible(_show_bars);
 
-	// A running task's panel takes no input.
-	if (const auto& panel = _view_frame->_panel) panel->enable(!_view->progress().active);
+	// A running task's panel and strip take no input: what the run works on stays what they showed when it began.
+	const auto task_running = _view->progress().active;
+	if (const auto& panel = _view_frame->_panel) panel->enable(!task_running);
+	_view_selector->enable(!task_running);
 	_view_frame->_strip_wanted = selector_strip_for_view(_state.view_mode()) != selector_strip::none;
 
 	// Placing a region lays it out only when its size changes, and what it shows may have changed anyway.
@@ -1593,7 +1703,10 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 	const auto cy_address = mc.text_line_height(render::font_face::dialog) + mc.padding2 * 2;
 	const auto cy_control = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 	const auto top_slots = measure_bar(mc, top_bar, cy_control);
-	const auto center_y = [&area](const int height) { return area.top + (area.height() - height) / 2; };
+	const auto center_y = [&area](const int height)
+	{
+		return area.top + (area.height() - height) / 2;
+	};
 
 	const auto x_nav3 = area.right - mc.padding1 - navigate3_extent.cx;
 	const auto y_nav3 = center_y(navigate3_extent.cy);
@@ -1638,7 +1751,8 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 
 	for (auto i = 0u; i < top_bar.size(); ++i)
 	{
-		if (top_bar[i].toolbar) place(top_bar[i].toolbar, top_arrangement.slots[i], !top_arrangement.slots[i].is_empty());
+		if (top_bar[i].toolbar)
+			place(top_bar[i].toolbar, top_arrangement.slots[i], !top_arrangement.slots[i].is_empty());
 	}
 
 	// A task view's own bar carries its window buttons, beside its Close.
@@ -1655,7 +1769,8 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 // The status bar, in its own coordinates: the view's own controls at the trailing end, kept clear of the
 // corner the window is resized by, then whatever the view starts the bar with at the leading end; the
 // view's status takes the room between them. The trailing controls are placed first, so a short bar gives up
-// the leading ones before them.
+// the leading ones before them, and a run of the view's own commands short of room gives way from its leading
+// end into a More menu, so the command that ends it - a task's Run, Save or Render - stays.
 void app_frame::layout_status_bar(render::measure_context& mc, const sizei extent, std::vector<ui::control_ptr>& shown)
 {
 	if (!_view || !_filter_edit) return;
@@ -1666,8 +1781,15 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 	const auto& bottom_bar = bar(view_processing ? running_task_bar() : declared.bottom);
 	const auto& leading_bar = bar(view_processing ? no_entries : declared.bottom_leading);
 	const auto cy_control = mc.text_line_height(render::font_face::dialog) + mc.padding2;
-	const auto bottom_slots = measure_bar(mc, bottom_bar, cy_control);
+	auto bottom_slots = measure_bar(mc, bottom_bar, cy_control);
 	const auto leading_slots = measure_bar(mc, leading_bar, cy_control);
+
+	for (auto i = 0u; i < bottom_bar.size(); ++i)
+	{
+		const auto& part = bottom_bar[i];
+		if (part.toolbar && part.run.size() > 1)
+			bottom_slots[i].min_width = trimmed_run(part.run, 1)->measure_toolbar(mc, extent.cx).cx;
+	}
 
 	const recti inner(mc.padding2, 0, extent.cx - mc.padding1 - mc.handle_cxy, extent.cy);
 	const auto bottom_arrangement = arrange_bar(inner, bottom_slots, mc.padding1);
@@ -1675,16 +1797,43 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 	                                             bar_alignment::leading);
 	_status_text_bounds = leading_arrangement.remainder;
 	_totals_bounds = {};
+	_bar_overflow.clear();
 
-	const auto place = [this, &mc, &shown](const frame_bar& b, const bar_arrangement& a)
+	// A run given less than its width shows the most of its last commands that fit after the More button, which
+	// lists the rest.
+	const auto fitted_run = [this, &mc, &extent](const frame_bar_part& part, recti& bounds)
+	{
+		if (!part.toolbar || part.run.size() < 2) return part.toolbar;
+		if (bounds.width() >= part.toolbar->measure_toolbar(mc, extent.cx).cx) return part.toolbar;
+
+		for (auto keep = part.run.size() - 1; keep > 0; --keep)
+		{
+			const auto& trimmed = trimmed_run(part.run, keep);
+			const auto width = trimmed->measure_toolbar(mc, extent.cx).cx;
+			if (keep > 1 && width > bounds.width()) continue;
+
+			for (auto i = 0u; i < part.run.size() - keep; ++i)
+			{
+				if (auto command = find_command(part.run[i]); command && command->visible)
+					_bar_overflow.emplace_back(std::move(command));
+			}
+
+			bounds.left = std::max(bounds.left, bounds.right - width);
+			return trimmed;
+		}
+
+		return part.toolbar;
+	};
+
+	const auto place = [this, &mc, &shown, &fitted_run](const frame_bar& b, const bar_arrangement& a, const bool trims)
 	{
 		for (auto i = 0u; i < b.size(); ++i)
 		{
-			const auto bounds = a.slots[i];
+			auto bounds = a.slots[i];
 			if (bounds.is_empty()) continue;
 
 			ui::control_ptr c;
-			if (b[i].toolbar) c = b[i].toolbar;
+			if (b[i].toolbar) c = trims ? fitted_run(b[i], bounds) : b[i].toolbar;
 			else if (b[i].control == bar_control::item_filter) c = _filter_edit;
 			else if (b[i].control == bar_control::item_size) c = _item_size;
 			else _totals_bounds = bounds;
@@ -1698,8 +1847,8 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 		}
 	};
 
-	place(leading_bar, leading_arrangement);
-	place(bottom_bar, bottom_arrangement);
+	place(leading_bar, leading_arrangement, false);
+	place(bottom_bar, bottom_arrangement, true);
 
 	if (_filter_has_focus && std::ranges::find(shown, _filter_edit) == shown.end())
 	{
@@ -1795,7 +1944,6 @@ void parse_more_folders(core::index_roots& result, const std::string_view more_f
 	parse_more_folders(result, more_folders, platform::scan_drives());
 }
 
-
 static bool pop_invalid_flag(std::atomic<view_invalid>& invalids, const view_invalid flag)
 {
 	auto expected = invalids.load();
@@ -1846,7 +1994,7 @@ void app_frame::complete_pending_events()
 					const auto wait_us = t.wait_us();
 					core::bump(render::ui_perf.idle_wait_us, wait_us);
 					core::record_peak(render::ui_perf.idle_wait_max_us,
-					                static_cast<uint32_t>(std::min<uint64_t>(wait_us, UINT32_MAX)));
+					                  static_cast<uint32_t>(std::min<uint64_t>(wait_us, UINT32_MAX)));
 					t();
 				}
 				catch (const std::exception& e)
@@ -1856,6 +2004,10 @@ void app_frame::complete_pending_events()
 					core::log(__FUNCTION__, e.what());
 				}
 			}
+
+			// A task may have closed the window - a Debug build's screenshot scene or recording closes it from
+			// one - and on_window_destroy has then let go of the views the invalidations below reach.
+			if (platform::is_closing) return;
 
 			if (pop_invalid_flag(_invalids, view_invalid::font_size))
 			{
@@ -1925,6 +2077,16 @@ void app_frame::complete_pending_events()
 				}
 			}
 
+			// A collection's listing of copies is the index's answer, so a file that has lost its last copy leaves it
+			// rather than staying listed as a copy someone might delete (#265). Only the collection's: an item from a
+			// folder outside it is listed with no count and handed one by presence, so re-listing it would undo
+			// the count presence gave it and ask again, without end.
+			if (pop_invalid_flag(_invalids, view_invalid::duplicate_counts) && _state.search().is_duplicates() &&
+			    !_state.search().has_selector())
+			{
+				invalidate_view(view_invalid::refresh_items);
+			}
+
 			if (pop_invalid_flag(_invalids, view_invalid::refresh_items))
 			{
 				if (df::file_handles_detached == 0 && ui::command_active == 0)
@@ -1948,13 +2110,18 @@ void app_frame::complete_pending_events()
 			if (pop_invalid_flag(_invalids, view_invalid::selection_list))
 			{
 				const auto selection_changed = _state.update_selection();
+
+				// The strip marks the selection on its scroll bar, an item scrolled out of its sight included, so it
+				// is drawn again whichever view changed the selection.
+				if (selection_changed) _selector_frame->frame()->invalidate();
+
 				if (selection_changed && _state.view_mode() == view_type::tags)
 				{
 					_view_tags->refresh();
 					view_changed(view_type::tags);
 				}
 				else if (selection_changed && _state.view_mode() == view_type::batch &&
-					_view_batch->mode() == batch_tool_mode::metadata)
+				         _view_batch->mode() == batch_tool_mode::metadata)
 				{
 					_view_batch->refresh();
 					view_changed(view_type::batch);
@@ -1969,7 +2136,7 @@ void app_frame::complete_pending_events()
 			if (pop_invalid_flag(_invalids, view_invalid::screen_saver))
 			{
 				const auto display = _state.display_state();
-				const auto is_playing = display && display->is_playing();
+				const auto is_playing = display && (display->is_playing() || display->is_running_c64());
 				platform::enable_screen_saver(!_state.is_full_screen && !is_playing);
 			}
 
@@ -1979,7 +2146,10 @@ void app_frame::complete_pending_events()
 				sidebar->populate();
 				sidebar->layout();
 				auto search = _state.search();
-				if (_state.item_index.thumbnailing_items.load() == 0 && _state.resolve_area_search(search))
+				// Finding an area can take items away from what is listed - one searched without - and so waits for
+				// a view that gives way without asking, rather than asking each time the sidebar is drawn again.
+				if (_state.item_index.thumbnailing_items.load() == 0 && _state.resolve_area_search(search) &&
+				    (view_gives_way() || view_state::finding_areas_only_adds(_state.search())))
 				{
 					_state.history.replace_current_search(_state.search(), search);
 					_state.open(_view_frame, search, {});
@@ -2137,6 +2307,16 @@ void app_frame::idle()
 {
 	update_overlay();
 	complete_pending_events();
+	if (_app_frame && _app_frame->is_visible() && !platform::is_closing)
+	{
+		const auto position = _app_frame->client_to_screen(_app_frame->cursor_location());
+		update_tooltip_visibility(core::tick_count64(), position, _app_frame->scale_factor());
+	}
+	else
+	{
+		_tooltip_dwell.reset();
+		if (_bubble && _bubble->is_visible()) _bubble->hide();
+	}
 	mark_startup_settled();
 }
 
@@ -2166,9 +2346,16 @@ void app_frame::report_safe_start()
 {
 	// On the next turn, so the idle pass that detected it finishes first.
 	queue_ui([this]
-	{
-		make_dlg(_app_frame)->show_message(icon_index::error, tt.safe_start_title, tt.safe_start_message);
-	});
+	{ make_dlg(_app_frame)->show_message(icon_index::error, tt.safe_start_title, tt.safe_start_message); });
+}
+
+bool control_takes_key(const ui::control& c, const char32_t key, const platform::key_state keys)
+{
+	if (c.traits.typing || keys.control || keys.alt) return false;
+	if (key == platform::keys::RETURN) return c.traits.push_button || dynamic_cast<const ui::toolbar*>(&c) != nullptr;
+	return key == platform::keys::SPACE || key == platform::keys::LEFT || key == platform::keys::RIGHT ||
+	       key == platform::keys::UP || key == platform::keys::DOWN || key == platform::keys::HOME ||
+	       key == platform::keys::END || key == platform::keys::PRIOR || key == platform::keys::NEXT;
 }
 
 bool app_frame::key_down(const char32_t key, const platform::key_state keys)
@@ -2209,7 +2396,45 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 			}
 			if (key == platform::keys::UP) return step_predictions(-1);
 			if (key == platform::keys::DOWN) return step_predictions(1);
-			if (key == platform::keys::TAB && !keys.control && !keys.shift && search_accept_selected()) return true;
+			// Tab takes a completion the arrows have previewed into the draft; with none previewed it moves on, as
+			// from any field, rather than putting whichever completion the list starts on into the box.
+			if (key == platform::keys::TAB && !keys.control && !keys.shift && _search_session.is_previewing() &&
+			    search_accept_selected())
+				return true;
+		}
+
+		// Apps and Shift+F10 open the menu a right-click on what has the keyboard opens.
+		if ((key == platform::keys::APPS || (key == platform::keys::F10 && keys.shift)) && !keys.control && !keys.alt)
+		{
+			open_keyboard_menu();
+			return true;
+		}
+
+		if (const auto control = keyboard_control())
+		{
+			if (control_takes_key(*control, key, keys)) return false;
+
+			// Escape takes the keyboard back to the view from the title and status bars. In a task's panel it keeps
+			// its meaning for the task.
+			if (key == platform::keys::ESCAPE && !keys.alt && !_view_controls_have_focus)
+			{
+				focus_view();
+				return true;
+			}
+		}
+
+		// The drawn part the keyboard is on, or the strip, has its keys before the view does.
+		if (_view_frame->frame()->has_focus() && _view_frame->keyboard_part_key_down(key, keys)) return true;
+
+		if (_selector_frame->frame()->has_focus())
+		{
+			if (key == platform::keys::ESCAPE && !keys.alt)
+			{
+				focus_view();
+				return true;
+			}
+
+			if (_view_selector->key_down(key, keys)) return true;
 		}
 
 		// Enter submits the task view the user is in, so a task can be completed without leaving the
@@ -2231,9 +2456,23 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 			}
 		}
 
+		// Text being edited in the view has every key, but for a Tab it does not use, which moves on as it does from
+		// any field.
 		if (_view_has_focus && _view->focus_mode() == ui::focus_mode::text_edit)
 		{
-			return _view->key_down(key, keys);
+			const auto taken = _view->key_down(key, keys);
+			if (taken || key != platform::keys::TAB) return taken;
+		}
+
+		// A running Commodore 64 has the keyboard while the view does: the arrows and Space are its joystick,
+		// and Escape leaves it before Escape's other meanings are reached.
+		if (_view_has_focus && _state.c64_key_down(key, keys)) return true;
+
+		// Tab moves the keyboard on round the window, through every frame of it, and Shift+Tab back.
+		if (key == platform::keys::TAB && !keys.control && !keys.alt)
+		{
+			move_keyboard(!keys.shift);
+			return true;
 		}
 
 		if (key == platform::keys::ESCAPE)
@@ -2278,19 +2517,6 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 			}
 
 		no_zoom_pan_key:
-			if (key == platform::keys::APPS)
-			{
-				const auto command = find_command(commands::menu_main);
-				const auto menu = command && command->menu ? command->menu() : std::vector<ui::command_ptr>{};
-
-				if (!menu.empty())
-				{
-					auto button_bounds = _navigate2->button_bounds(command);
-					if (button_bounds.is_empty()) button_bounds = _navigate2->window_bounds();
-					track_menu(_app_frame, button_bounds, menu);
-				}
-				return true;
-			}
 			if (key == platform::keys::BROWSER_BACK)
 			{
 				_state.browse_back(_view_frame);
@@ -2313,8 +2539,8 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 			}
 			if (key == platform::keys::BROWSER_STOP || key == platform::keys::MEDIA_STOP)
 			{
-				const auto display = _state.display_state();
-				if (display && display->is_playing_media()) _state.stop();
+				const auto current_display = _state.display_state();
+				if (current_display && current_display->is_playing_media()) _state.pause();
 				return true;
 			}
 			if (key == platform::keys::MEDIA_PLAY_PAUSE)
@@ -2409,21 +2635,22 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 
 		for (const auto& c : _commands)
 		{
-			const auto zoom_command = c.second->group == command_group::rate_flag ||
-				c.first == commands::view_zoom || c.first == commands::view_zoom_toggle_fit ||
-				c.first == commands::view_zoom_100 || c.first == commands::view_zoom_in ||
-				c.first == commands::view_zoom_out || c.first == commands::view_zoom_pane_flip ||
-				c.first == commands::view_fullscreen;
+			const auto zoom_command = c.second->group == command_group::rate_flag || c.first == commands::view_zoom ||
+			                          c.first == commands::view_zoom_toggle_fit || c.first == commands::view_zoom_100 ||
+			                          c.first == commands::view_zoom_in || c.first == commands::view_zoom_out ||
+			                          c.first == commands::view_zoom_pane_flip || c.first == commands::view_fullscreen;
 			if (zoom_mode && !zoom_command) continue;
 
 			for (const auto& ac : c.second->kba)
 			{
 				if (ac.key == normalized_key)
 				{
-					const auto key_state_match =
-						((ac.key_state & platform::keyboard_accelerator_t::control) != 0) == keys.control &&
-						((ac.key_state & platform::keyboard_accelerator_t::shift) != 0) == keys.shift &&
-						((ac.key_state & platform::keyboard_accelerator_t::alt) != 0) == keys.alt;
+					const auto key_state_match = ((ac.key_state & platform::keyboard_accelerator_t::control) != 0) ==
+					                                 keys.control &&
+					                             ((ac.key_state & platform::keyboard_accelerator_t::shift) != 0) ==
+					                                 keys.shift &&
+					                             ((ac.key_state & platform::keyboard_accelerator_t::alt) != 0) ==
+					                                 keys.alt;
 
 					if (key_state_match && c.second->enable)
 					{
@@ -2499,17 +2726,28 @@ void app_frame::toggle_full_screen()
 		focus_view();
 	}
 
-	_app_frame->full_screen(_state.is_full_screen);
-	invalidate_view(view_invalid::app_layout | view_invalid::view_layout |
-		view_invalid::screen_saver | view_invalid::command_state);
-}
+	// A tutorial's window stays the size it is recorded at, and looks as full screen does on a screen that size.
+	if (_tutorial)
+	{
+		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::screen_saver |
+		                view_invalid::command_state);
+		return;
+	}
 
+	_app_frame->full_screen(_state.is_full_screen);
+	invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::screen_saver |
+	                view_invalid::command_state);
+}
 
 void app_frame::open_default_folder()
 {
 	bool success = false;
 
-	if (!command_line.folder_path.is_empty())
+	if (!command_line.selection.is_empty())
+	{
+		success = _state.open_external_file(_view_frame, command_line.selection);
+	}
+	else if (!command_line.folder_path.is_empty())
 	{
 		// An empty entry is not "no selection": append_items reads a non-empty set as an explicit
 		// list of paths to select, so a folder-only command line must pass an empty set.
@@ -2585,9 +2823,10 @@ void app_frame::focus_changed(const bool has_focus, const ui::control_ptr& child
 		focus_filter(has_focus);
 	}
 
-	// The view frame holds the keyboard for the view and for its panel's controls alike.
+	// The view frame holds the keyboard for the view, for a drawn part around it and for its panel's controls alike.
 	const auto panel_focus = _view_frame->frame()->focused_control();
-	_view_has_focus = _view_frame->frame()->has_focus() && !panel_focus;
+	_view_has_focus = _view_frame->frame()->has_focus() && !panel_focus &&
+	                  _view_frame->_keyboard.area == keyboard_area::view;
 	_view_controls_have_focus = panel_focus != nullptr;
 
 	invalidate_view(view_invalid::view_redraw | view_invalid::command_state);
@@ -2605,40 +2844,20 @@ void app_frame::item_focus_changed(const df::item_element_ptr& focus, const df::
 	_view_selector->make_visible(focus);
 }
 
-static bool can_select_for_metadata_edit(const df::item_element_ptr& item)
-{
-	if (!item || item->is_folder()) return false;
-
-	const auto* const file_type = item->file_type();
-	if (!file_type->has_trait(file_traits::edit)) return false;
-
-	// Sidecar metadata can always be written; embedded XMP needs a writable file.
-	return !file_type->has_trait(file_traits::embedded_xmp) || !item->is_read_only();
-}
-
-static bool can_select_for_photo_edit(const df::item_element_ptr& item)
-{
-	return item && item->file_type()->can_edit_photo();
-}
-
 app_frame::selector_strip app_frame::selector_strip_for_view(const view_type m) const
 {
 	switch (m)
 	{
-	case view_type::edit:
-		return selector_strip::photo;
+	case view_type::edit: return selector_strip::edit;
 	case view_type::locate:
-	case view_type::tags:
-		return selector_strip::metadata;
+	case view_type::tags: return selector_strip::metadata;
 	case view_type::batch:
 		return _view_batch->mode() == batch_tool_mode::metadata ? selector_strip::metadata : selector_strip::none;
 	// Movie draws its own strip. That strip is the document -- ordered, duplicable, and removing a
 	// tile removes it from the movie -- so sharing the selector would make one click mean "select"
 	// in every other view and "seek" here.
-	case view_type::movie:
-		return selector_strip::none;
-	default:
-		return selector_strip::none;
+	case view_type::movie: return selector_strip::none;
+	default: return selector_strip::none;
 	}
 }
 
@@ -2649,17 +2868,17 @@ void app_frame::reset_selector_selection_anchor()
 
 void app_frame::select_from_selector(const df::item_element_ptr& item, const platform::key_state keys)
 {
-	if (!item) return;
+	if (!item || !_view_selector->is_enabled()) return;
 
 	switch (selector_strip_for_view(_state.view_mode()))
 	{
-	case selector_strip::photo:
-		// Photo edit works on one item, so the strip navigates rather than selects.
-		if (can_select_for_photo_edit(item)) _view_edit->select_item(item);
+	case selector_strip::edit:
+		// Edit works on one item, so the strip navigates rather than selects.
+		if (can_edit_in_edit_view(item)) _view_edit->select_item(item);
 		break;
 
 	case selector_strip::metadata:
-		if (!can_select_for_metadata_edit(item)) break;
+		if (!can_edit_metadata_of(item)) break;
 
 		if (keys.shift)
 		{
@@ -2682,8 +2901,7 @@ void app_frame::select_from_selector(const df::item_element_ptr& item, const pla
 		}
 		break;
 
-	case selector_strip::none:
-		break;
+	case selector_strip::none: break;
 	}
 }
 
@@ -2696,13 +2914,9 @@ void app_frame::display_changed()
 		_view->display_changed();
 		_view_selector->display_changed();
 
-		invalidate_view(view_invalid::app_layout |
-			view_invalid::view_layout |
-			view_invalid::command_state |
-			view_invalid::screen_saver |
-			view_invalid::media_elements |
-			view_invalid::controller |
-			view_invalid::tooltip);
+		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::command_state |
+		                view_invalid::screen_saver | view_invalid::media_elements | view_invalid::controller |
+		                view_invalid::tooltip);
 	}
 };
 
@@ -2714,13 +2928,9 @@ void app_frame::reload()
 	// refreshed by an event: volume free space and labels change without notifying us at all, and
 	// the cached optical-drive answer is refreshed on the same grounds.
 	_has_burner.reset();
-	invalidate_view(view_invalid::view_layout |
-		view_invalid::group_layout |
-		view_invalid::index |
-		view_invalid::refresh_items |
-		view_invalid::item_scan |
-		view_invalid::sidebar_drives |
-		view_invalid::command_state);
+	invalidate_view(view_invalid::view_layout | view_invalid::group_layout | view_invalid::index |
+	                view_invalid::refresh_items | view_invalid::item_scan | view_invalid::sidebar_drives |
+	                view_invalid::command_state);
 }
 
 void app_frame::view_changed(const view_type m)
@@ -2736,7 +2946,7 @@ void app_frame::view_changed(const view_type m)
 		const auto focus = _state.focus_item();
 
 		if ((focus && focus->has_gps()) ||
-			std::any_of(selected.begin(), selected.end(), [](const df::item_element_ptr& i) { return i->has_gps(); }))
+		    std::any_of(selected.begin(), selected.end(), [](const df::item_element_ptr& i) { return i->has_gps(); }))
 		{
 			setting.locate_only_without_location = false;
 			invalidate_view(view_invalid::options_save);
@@ -2745,23 +2955,14 @@ void app_frame::view_changed(const view_type m)
 
 	switch (selector_strip_for_view(m))
 	{
-	case selector_strip::photo:
-		_view_selector->filter([](const df::item_element_ptr& item)
-		{
-			return can_select_for_photo_edit(item);
-		});
+	case selector_strip::edit:
+		_view_selector->filter(can_edit_in_edit_view);
 		_view_selector->activate(_selector_frame->_extent);
 		break;
 
 	case selector_strip::metadata:
-		_view_selector->filter([m](const df::item_element_ptr& item)
-		{
-			if (!can_select_for_metadata_edit(item)) return false;
-			// Locate can hide items that already carry a location, so a long list can be walked
-			// down to nothing left to place.
-			if (m == view_type::locate && setting.locate_only_without_location) return !item->has_gps();
-			return true;
-		});
+		if (m == view_type::locate) _view_selector->filter(locate_offers);
+		else _view_selector->filter(can_edit_metadata_of);
 		_view_selector->activate(_selector_frame->_extent);
 		break;
 
@@ -2778,46 +2979,54 @@ void app_frame::view_changed(const view_type m)
 
 	switch (m)
 	{
-	case view_type::items: v = _view_items;
-		break;
-	case view_type::media: v = _view_media;
-		break;
-	case view_type::edit: v = _view_edit;
+	case view_type::items: v = _view_items; break;
+	case view_type::media: v = _view_media; break;
+	case view_type::edit:
+		v = _view_edit;
 		vc = _view_edit->controls(_view_frame->frame());
 		break;
-	case view_type::movie: v = _view_movie;
+	case view_type::movie:
+		v = _view_movie;
 		vc = _view_movie->controls(_view_frame->frame());
 		break;
-	case view_type::rename: v = _view_rename;
+	case view_type::rename:
+		v = _view_rename;
 		vc = _view_rename->controls(_view_frame->frame());
 		break;
-	case view_type::batch: v = _view_batch;
+	case view_type::batch:
+		v = _view_batch;
 		vc = _view_batch->controls(_view_frame->frame());
 		break;
-	case view_type::import: v = _view_import;
+	case view_type::import:
+		v = _view_import;
 		vc = _view_import->controls(_view_frame->frame());
 		break;
-	case view_type::sync: v = _view_sync;
+	case view_type::sync:
+		v = _view_sync;
 		vc = _view_sync->controls(_view_frame->frame());
 		break;
-	case view_type::locate: v = _view_locate;
+	case view_type::locate:
+		v = _view_locate;
 		vc = _view_locate->controls(_view_frame->frame());
 		break;
-	case view_type::tags: v = _view_tags;
+	case view_type::tags:
+		v = _view_tags;
 		vc = _view_tags->controls(_view_frame->frame());
 		break;
-	case view_type::options: v = _view_options;
+	case view_type::options:
+		v = _view_options;
 		vc = _view_options->controls(_view_frame->frame());
 		break;
-	default:
-		break;
+	default: break;
 	}
 
 	if (vc != _view_frame->_panel)
 	{
 		// The panel is drawn in the view's frame, which the app layout lays out again with it. Asked for
 		// here rather than with the view change below, because a panel is also rebuilt without the view
-		// changing: a new selection in Tags or Batch, or a language change.
+		// changing: a new selection in Tags or Batch, or a language change. A part of the panel it replaces
+		// can have the keyboard no longer.
+		if (_view_frame->_keyboard.area == keyboard_area::panel) _view_frame->keyboard_to(keyboard_area::view, nullptr);
 		_view_frame->panel(vc, m == view_type::options);
 		invalidate_view(view_invalid::app_layout);
 	}
@@ -2837,14 +3046,9 @@ void app_frame::view_changed(const view_type m)
 		free_graphics_resources(true, true);
 		focus_view();
 
-		invalidate_view(view_invalid::app_layout |
-			view_invalid::view_layout |
-			view_invalid::group_layout |
-			view_invalid::command_state |
-			view_invalid::media_elements |
-			view_invalid::tooltip |
-			view_invalid::controller |
-			view_invalid::address);
+		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::group_layout |
+		                view_invalid::command_state | view_invalid::media_elements | view_invalid::tooltip |
+		                view_invalid::controller | view_invalid::address);
 	}
 }
 
@@ -2905,7 +3109,8 @@ void app_frame::track_menu(const ui::frame_ptr& parent, const recti bounds,
 {
 	if (!parent) return;
 
-	pause_media pause(_state);
+	// What is playing goes on under a menu, which only holds the sequence where it is (view_state::tick). A
+	// command chosen from it pauses, or lets go of, the playing file as it needs to.
 	complete_pending_events(); // process any menu updates
 	parent->track_menu(bounds, commands);
 }
@@ -2931,22 +3136,27 @@ void app_frame::report_scope_unavailable(const df::search_t& path)
 		// question is on screen, like every other modal.
 		pause_media pause(_state);
 
-		enum class choice { none, retry, parent };
+		enum class choice
+		{
+			none,
+			retry,
+			parent
+		};
 		auto selected = std::make_shared<choice>(choice::none);
 
 		// The parent of the scope that failed, not of the scope still on screen.
 		const auto parent = find_parent_search(path);
 
 		std::vector<view_element_ptr> controls = {
-			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::error,
-			                                                tt.scope_unavailable_title,
-			                                                str_format(tt.scope_unavailable_fmt.sv(), path.text()))),
+			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::error, tt.scope_unavailable_title,
+		                                                    str_format(tt.scope_unavailable_fmt.sv(), path.text()))),
 			std::make_shared<divider_element>(),
-			set_margin(std::make_shared<link_element>(tt.scope_unavailable_retry, [dlg, selected]
-			{
-				*selected = choice::retry;
-				dlg->close(false);
-			})),
+			set_margin(std::make_shared<link_element>(tt.scope_unavailable_retry,
+		                                              [dlg, selected]
+		{
+			*selected = choice::retry;
+			dlg->close(false);
+		})),
 		};
 
 		if (!parent.parent.is_empty())
@@ -2974,7 +3184,7 @@ void app_frame::report_scope_unavailable(const df::search_t& path)
 	});
 }
 
-bool app_frame::can_open_search(const df::search_t& link)
+bool app_frame::can_open_search(const df::search_t& /*link*/)
 {
 	if (_view->can_exit()) return true;
 
@@ -2983,8 +3193,8 @@ bool app_frame::can_open_search(const df::search_t& link)
 
 	if (!name.empty())
 	{
-		make_dlg(_app_frame)->show_message(icon_index::question, tt.cancel_operation_title,
-		                                   str_format(tt.scope_busy_fmt.sv(), name));
+		make_dlg(_app_frame)
+			->show_message(icon_index::question, tt.cancel_operation_title, str_format(tt.scope_busy_fmt.sv(), name));
 	}
 
 	return false;
@@ -2992,6 +3202,14 @@ bool app_frame::can_open_search(const df::search_t& link)
 
 void app_frame::folder_changed(const core::folder_path folder)
 {
+	// A watched tree also reports folders no listing walked into - hidden ones, a sync tool's working
+	// folders - and validating one would index it and query the listing again for nothing shown. A folder
+	// made since is found by validating its parent, whose change its creation reports.
+	const auto& selectors = _state.search().selectors();
+	const auto is_watched_folder = std::ranges::any_of(selectors,
+	                                                   [folder](const auto& s) { return s.folder() == folder; });
+	if (!is_watched_folder && !_item_index.knows_folder(folder)) return;
+
 	// Sync clients and batch tools report many changes in quick succession, so collect the folders and
 	// let tick compare them once the burst has settled.
 	_folder_change_time = core::now();
@@ -3018,7 +3236,7 @@ void app_frame::on_window_layout(render::measure_context& mc, const sizei extent
 }
 
 // A container: what it shows is its regions'.
-void app_frame::on_window_paint(render::draw_context& dc)
+void app_frame::on_window_paint(render::draw_context& /*dc*/)
 {
 }
 
@@ -3052,12 +3270,10 @@ void app_frame::draw_status_bar(render::draw_context& dc)
 	if (progress.active)
 	{
 		// Measured at the final count, so the pill does not twitch every time a digit is added.
-		const auto widest = counted
-			                    ? std::format("{}{}{} / {}", status, status.empty() ? "" : "  ", progress.total,
-			                                  progress.total)
-			                    : text;
-		const auto extent = dc.measure_text(widest, font, render::text_style::single_line,
-		                                    _status_text_bounds.width());
+		const auto widest = counted ? std::format("{}{}{} / {}", status, status.empty() ? "" : "  ", progress.total,
+		                                          progress.total)
+		                            : text;
+		const auto extent = dc.measure_text(widest, font, render::text_style::single_line, _status_text_bounds.width());
 		const auto height = std::min(_status_text_bounds.height(), extent.cy + dc.padding1 * 2);
 		const auto top = _status_text_bounds.top + (_status_text_bounds.height() - height) / 2;
 		const recti pill(_status_text_bounds.left, top,
@@ -3070,7 +3286,7 @@ void app_frame::draw_status_bar(render::draw_context& dc)
 			                     dc.padding1);
 			auto done = pill;
 			done.right = pill.left + core::mul_div(pill.width(), static_cast<int>(std::min<int64_t>(position, INT_MAX)),
-			                                     static_cast<int>(std::min<int64_t>(progress.total, INT_MAX)));
+			                                       static_cast<int>(std::min<int64_t>(progress.total, INT_MAX)));
 			if (!done.is_empty())
 			{
 				dc.draw_rounded_rect(done, core::color(ui::style::colors.important_background, dc.colors.alpha),
@@ -3175,26 +3391,20 @@ void app_frame::activate(const bool is_active)
 	invalidate_view(view_invalid::view_redraw);
 }
 
-
 void app_frame::web_service_cache(std::string key, std::function<void(const std::string&)> f)
 {
 	queue_database([this, key = std::move(key), f = std::move(f)](const database& db)
 	{
 		auto result = db.web_service_cache(key);
 
-		queue_async(async_queue::cloud, [result, f]
-		{
-			f(result);
-		});
+		queue_async(async_queue::cloud, [result, f] { f(result); });
 	});
 }
 
 void app_frame::web_service_cache(std::string key, std::string value)
 {
 	queue_database([key = std::move(key), value = std::move(value)](const database& db)
-	{
-		db.web_service_cache(key, value);
-	});
+	{ db.web_service_cache(key, value); });
 }
 
 void app_frame::work_progress(const void* source, const int64_t done, const int64_t total)
@@ -3219,7 +3429,6 @@ void app_frame::work_finished(const void* source)
 	}
 }
 
-
 void app_frame::search_text_changed(const std::string_view text)
 {
 	if (_search_predictions_frame && _search_has_focus)
@@ -3236,8 +3445,8 @@ void app_frame::delete_items(const df::item_set& items)
 	auto dlg = make_dlg(_app_frame);
 	// Held to the set it was given. A per-item Delete names one item that need not be selected, and
 	// validating the selection instead answered about files the command was never going to touch.
-	const auto can_process = _state.can_process_items_and_mark_errors(
-		_view_frame, items, df::process_items_type::local_file_or_folder);
+	const auto can_process = _state.can_process_items_and_mark_errors(_view_frame, items,
+	                                                                  df::process_items_type::local_file_or_folder);
 
 	pause_media pause(_state);
 
@@ -3255,16 +3464,15 @@ void app_frame::delete_items(const df::item_set& items)
 		const auto& info_fmt = will_recycle ? tt.delete_info_fmt : tt.delete_info_permanent_fmt;
 
 		std::vector<view_element_ptr> controls;
-		auto title_control = std::make_shared<ui::title_control2>(
-			dlg->_frame, icon_index::cancel, title, format_plural_text(info_fmt, items), std::vector<core::const_surface_ptr>{},
-			items.size());
+		auto title_control = std::make_shared<ui::title_control2>(dlg->_frame, icon_index::cancel, title,
+		                                                          format_plural_text(info_fmt, items),
+		                                                          std::vector<core::const_surface_ptr>{}, items.size());
 		title_control->selection_async(items.thumbs(), items.size(), _state._async);
 		controls.emplace_back(set_margin(title_control));
 
 		const auto add_warning = [&controls](const std::string_view text)
 		{
-			auto warning = std::make_shared<text_element>(
-				text, flex_item::stretch | view_element_style::important);
+			auto warning = std::make_shared<text_element>(text, flex_item::stretch | view_element_style::important);
 			warning->margin = {10, 10};
 			warning->padding = {10, 10};
 			warning->update_background_color();
@@ -3290,7 +3498,6 @@ void app_frame::delete_items(const df::item_set& items)
 
 		if (!needs_confirmation || dlg->show_modal(controls) == ui::close_result::ok)
 		{
-			bool should_select_next = false;
 			// Navigation follows the selection, so it only applies when the selection is what is
 			// leaving. Deleting one item from its own row must not move the cursor off a selection
 			// that is still there.
@@ -3305,6 +3512,8 @@ void app_frame::delete_items(const df::item_set& items)
 			for (const auto& path : items.file_paths()) touched.emplace(path.folder());
 			for (const auto& path : items.folder_paths()) touched.emplace(path.parent());
 
+			auto deleted = false;
+
 			{
 				detach_file_handles detach(_state);
 				shell_file_operation_ui processing(*_view_frame, _app_frame);
@@ -3314,27 +3523,21 @@ void app_frame::delete_items(const df::item_set& items)
 
 				if (res.success())
 				{
-					should_select_next = true;
+					deleted = true;
+					// The display moves on with the cursor below rather than reopening a file that has gone.
+					if (_state.displays_one_of(items)) detach.keep_display_closed();
 				}
 				else if (res.code != platform::file_op_result_code::CANCELLED)
 				{
 					dlg->show_message(icon_index::error, title, res.format_error(tt.delete_error));
 				}
 
-				_state.invalidate_view(view_invalid::view_layout |
-					view_invalid::group_layout |
-					view_invalid::command_state |
-					view_invalid::app_layout);
+				_state.invalidate_view(view_invalid::view_layout | view_invalid::group_layout |
+				                       view_invalid::command_state | view_invalid::app_layout);
 			}
 
+			if (deleted) _state.remove_items(_view_frame, items, next);
 			_state.item_index.queue_validate_changed_folders(std::move(touched));
-
-			if (should_select_next)
-			{
-				core::unique_paths selection;
-				if (next) next->add_to(selection);
-				_state.open(_view_frame, _state.search(), selection);
-			}
 		}
 	}
 }
@@ -3343,8 +3546,184 @@ void app_frame::focus_view()
 {
 	if (_view_frame)
 	{
+		_view_frame->keyboard_to(keyboard_area::view, nullptr);
 		_view_frame->frame()->focus();
 	}
+}
+
+// A radio group is one stop, entered at its checked button, as Tab within one frame treats it.
+static bool is_tab_stop(const ui::control& c, const std::vector<ui::control_ptr>& among)
+{
+	if (!c.is_visible() || !c.can_focus()) return false;
+
+	const auto group = c.traits.radio_group;
+	if (group < 0 || c.is_checked()) return true;
+
+	return std::ranges::none_of(among, [&c, group](const ui::control_ptr& other)
+	{ return other.get() != &c && other->traits.radio_group == group && other->is_checked() && other->can_focus(); });
+}
+
+std::vector<app_frame::keyboard_stop> app_frame::keyboard_stops() const
+{
+	std::vector<keyboard_stop> stops;
+
+	const auto add_controls = [&stops](const std::vector<ui::control_ptr>& controls)
+	{
+		for (const auto& c : controls)
+		{
+			if (is_tab_stop(*c, controls)) stops.push_back({c});
+		}
+	};
+
+	const auto add_parts = [this, &stops](const keyboard_area area)
+	{
+		if (auto parts = _view_frame->keyboard_parts(area); !parts.empty())
+			stops.push_back({nullptr, std::move(parts), area});
+	};
+
+	if (_show_bars) add_controls(_title_bar->_controls);
+
+	add_parts(keyboard_area::sidebar);
+	if (!_view_frame->_view_bounds.is_empty()) stops.emplace_back();
+	add_parts(keyboard_area::listing);
+	add_parts(keyboard_area::media);
+	if (_view_frame->_strip->is_visible() && _view_selector->is_enabled() && _view_selector->has_items())
+		stops.push_back({.strip = true});
+
+	// The panel's controls and links in its order; the parts of one element - the stars of a rating - are one stop.
+	if (const auto panel = _view_frame->keyboard_region_of(keyboard_area::panel))
+	{
+		const auto targets = find_keyboard_targets(panel->roots, panel->offset);
+		std::vector<ui::control_ptr> controls;
+
+		for (const auto& target : targets)
+		{
+			if (const auto* const c = std::get_if<ui::control_ptr>(&target)) controls.push_back(*c);
+		}
+
+		for (const auto& target : targets)
+		{
+			if (const auto* const c = std::get_if<ui::control_ptr>(&target))
+			{
+				if (is_tab_stop(**c, controls)) stops.push_back({*c});
+			}
+			else if (const auto& part = std::get<keyboard_part>(target);
+			         !stops.empty() && !stops.back().parts.empty() &&
+			         stops.back().parts.front().element == part.element)
+			{
+				stops.back().parts.push_back(part);
+			}
+			else
+			{
+				stops.push_back({nullptr, {part}, keyboard_area::panel});
+			}
+		}
+	}
+
+	if (_show_bars) add_controls(_status_bar->_controls);
+	return stops;
+}
+
+int app_frame::current_keyboard_stop(const std::vector<keyboard_stop>& stops)
+{
+	const auto index_of = [&stops](const auto& is_it)
+	{
+		const auto found = std::ranges::find_if(stops, is_it);
+		return found == stops.end() ? -1 : static_cast<int>(found - stops.begin());
+	};
+
+	if (const auto control = keyboard_control())
+	{
+		const auto group = control->traits.radio_group;
+		return index_of([&control, group](const keyboard_stop& stop) {
+			return stop.control == control || (group >= 0 && stop.control && stop.control->traits.radio_group == group);
+		});
+	}
+
+	if (_selector_frame->frame()->has_focus()) return index_of([](const keyboard_stop& stop) { return stop.strip; });
+	if (!_view_frame->frame()->has_focus()) return -1;
+
+	if (const auto part = _view_frame->focused_part())
+	{
+		return index_of([&part](const keyboard_stop& stop)
+		{ return std::ranges::any_of(stop.parts, [&part](const keyboard_part& p) { return p.is(*part); }); });
+	}
+
+	return index_of([](const keyboard_stop& stop) { return !stop.control && stop.parts.empty() && !stop.strip; });
+}
+
+void app_frame::move_keyboard(const bool forward)
+{
+	const auto stops = keyboard_stops();
+	if (stops.empty()) return;
+
+	const auto count = static_cast<int>(stops.size());
+	const auto current = current_keyboard_stop(stops);
+	const auto next = current < 0 ? (forward ? 0 : count - 1) : (current + (forward ? 1 : count - 1)) % count;
+	keyboard_to(stops[next]);
+}
+
+void app_frame::keyboard_to(const keyboard_stop& stop)
+{
+	_view_frame->_keyboard_cues = true;
+
+	if (stop.control)
+	{
+		stop.control->focus();
+		// As Tab within one frame enters it: an edit with its text selected, so typing replaces it.
+		if (const auto edit = std::dynamic_pointer_cast<ui::edit>(stop.control)) edit->select_all();
+	}
+	else if (stop.strip)
+	{
+		_selector_frame->frame()->focus();
+	}
+	else
+	{
+		focus_view();
+
+		if (!stop.parts.empty())
+		{
+			// A group is entered at its checked part - the sidebar's row for what the listing shows - or else its first.
+			const auto checked = std::ranges::find_if(stop.parts, [](const keyboard_part& part)
+			{ return part.element->is_style_bit_set(view_element_style::checked); });
+			_view_frame->keyboard_to(stop.area, &*(checked != stop.parts.end() ? checked : stop.parts.begin()));
+		}
+	}
+}
+
+ui::control_ptr app_frame::keyboard_control() const
+{
+	for (const auto& frame : {_title_bar->frame(), _view_frame->frame(), _status_bar->frame()})
+	{
+		if (auto control = frame->focused_control()) return control;
+	}
+
+	return nullptr;
+}
+
+// What has the keyboard is where the menu is asked for: a control, the part the keyboard is on, or what the view
+// acts on, at its middle where the view names nothing. The strip offers none, as a right-click on it does not.
+void app_frame::open_keyboard_menu()
+{
+	recti bounds;
+
+	if (const auto control = keyboard_control())
+	{
+		bounds = control->window_bounds();
+	}
+	else if (_view_frame->frame()->has_focus())
+	{
+		const auto part = _view_frame->focused_part();
+		auto local = part ? part->bounds : _view->keyboard_bounds();
+		if (local.is_empty()) local = recti(_view_frame->_view_bounds.center(), sizei{});
+		bounds = local.offset(_view_frame->frame()->client_to_screen({}));
+	}
+	else
+	{
+		return;
+	}
+
+	if (const auto commands = menu(bounds.center()); !commands.empty()) track_menu(_app_frame, bounds, commands);
 }
 
 bool app_frame::can_exit()
@@ -3360,7 +3739,6 @@ bool app_frame::edit_has_changes() const
 	return _view_edit && _view_edit->has_changes();
 }
 
-
 bool app_frame::pre_init()
 {
 	register_diffractor_icon_font();
@@ -3368,14 +3746,14 @@ bool app_frame::pre_init()
 
 	// Written before anything can fail, so a truncated or crash-terminated log still says which
 	// machine shape produced it. Perf numbers are only readable against the core count.
-	core::log("main", std::format("windows {} {} {} | {} cores", platform::OS(),
-	                            sizeof(void*) == 8 ? "64-bit" : "32-bit",
+	core::log("main",
+	          std::format("windows {} {} {} | {} cores", platform::OS(), sizeof(void*) == 8 ? "64-bit" : "32-bit",
 #ifdef _DEBUG
-	                            "debug",
+	                      "debug",
 #else
-	                            "release",
+	                      "release",
 #endif
-	                            std::thread::hardware_concurrency()));
+	                      std::thread::hardware_concurrency()));
 
 	std::setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -3383,50 +3761,70 @@ bool app_frame::pre_init()
 	// (and read from disk) inside a faulting process.
 	(void)crash_files();
 
-	// The chrome's embedded PNGs decode with the application's own decoder on every backend.
-	render::decode_embedded_image = [](const core::cspan data)
-	{
-		files ff;
-		return ff.image_to_surface(data);
-	};
-
 	// The renderers scale and convert pictures with FFmpeg's swscale, as the decoder does.
-	render::make_surface_scaler = []() -> std::unique_ptr<render::surface_scaler> { return std::make_unique<av_scaler>(); };
+	render::make_surface_scaler = []() -> std::unique_ptr<render::surface_scaler>
+	{
+		return std::make_unique<av_scaler>();
+	};
 
 	return true;
 }
 
 int run_console_tests(std::string_view test_filter);
-int generate_wiki_docs(std::string_view output_folder);
 int validate_po_files();
 
 bool app_frame::parse_command_line(const std::string_view command_line_text)
 {
 	command_line.parse(command_line_text);
 
-	return command_line.console_test || command_line.gen_docs || command_line.validate_po ||
-		command_line.dup_report || !command_line.movie_batch.projects.empty();
+	// A collection of its own never shares the user's settings: saving them would replace the user's own
+	// collection folders with it. Given no -profile, it keeps them beside itself.
+	if (!command_line.collection_folder.empty() && command_line.profile_folder.empty())
+	{
+		auto folder = command_line.collection_folder;
+		while (!folder.empty() && core::is_path_sep(folder.back())) folder.pop_back();
+		command_line.profile_folder = folder + "-profile";
+	}
+
+	if (!command_line.profile_folder.empty()) use_profile_folder(core::folder_path(command_line.profile_folder));
+
+	// A tool called once, or an agent session: each answers from the same tools (app_mcp.h).
+	if (!command_line.tool.empty() || command_line.agent)
+	{
+		const auto console = !command_line.tool.empty();
+		auto options = parse_agent_options(command_line.agent_ui, command_line.agent_allow);
+
+		// What a single call may do is what it was asked to do: the tool it names.
+		if (console) options.allow = {.write = true, .capture = true, .network = true, .dev = true, .launch = true};
+
+		df::network_allowed = options.allow.network;
+		_mcp = std::make_shared<mcp_host>(*this, std::move(options), console);
+	}
+
+	return command_line.console_test || command_line.validate_po || !command_line.tool.empty();
 }
 
 int app_frame::run_console_mode()
 {
-	// /test runs the suite; /gen-docs regenerates the wiki pages; /validate-po checks the
-	// translations against the strings app_text registers; /dup-report measures duplicate grouping
-	// over a real library, reading only; /movie-check, /movie-import and /movie-render report how
-	// Movie projects' sources resolve, and import or render them when asked.
+	// /test runs the suite; /validate-po checks the translations against the strings app_text registers;
+	// -tool calls one tool and prints what it answers.
 	if (command_line.console_test) return run_console_tests(command_line.test_filter);
-	if (command_line.gen_docs) return generate_wiki_docs(command_line.docs_path);
 	if (command_line.validate_po) return validate_po_files();
-	if (command_line.dup_report)
-		return run_duplicate_report(command_line.dup_report_folder, command_line.dup_report_output);
-	return run_movie_batch(command_line.movie_batch);
+	return run_tool_once(_mcp, command_line.tool, command_line.tool_arguments);
+}
+
+std::shared_ptr<core::mcp::server> app_frame::agent_server()
+{
+	return _mcp && !_mcp->is_console() ? _mcp->server() : nullptr;
 }
 
 bool app_frame::wants_gpu() const
 {
+	// A window nobody sees is drawn by the software renderer: its pictures are the same, it never fades, and it
+	// leaves the graphics crash guards the user's next start reads alone.
+	if (_mcp && _mcp->options().presence != agent_presence::visible) return false;
 	return setting.use_gpu && !command_line.no_gpu;
 }
-
 
 void app_frame::update_font_size() const
 {
@@ -3438,6 +3836,7 @@ void app_frame::update_font_size() const
 
 bool app_frame::init(const std::string_view command_line_text)
 {
+	if (_forwarded_launch) return false;
 	log_func lf(__FUNCTION__);
 	core::log(__FUNCTION__, std::format("is_app_installed {}", is_app_installed()));
 
@@ -3446,12 +3845,47 @@ bool app_frame::init(const std::string_view command_line_text)
 	if (const auto skipped = crash_files().skipped_file_count(); skipped > 0)
 	{
 		core::log(__FUNCTION__, std::format("skipping {} file(s) that crashed a previous run of this release{}",
-		                                  skipped, crash_files().is_full() ? " - the crash list is full" : ""));
+		                                    skipped, crash_files().is_full() ? " - the crash list is full" : ""));
 	}
-
 
 	command_line.parse(command_line_text);
 	load_file_types();
+
+	// An agent session makes its window when a tool first needs one, unless it was started with it.
+	if (_mcp && _mcp->options().presence == agent_presence::none)
+	{
+		_mcp->started();
+		return true;
+	}
+
+	std::string why;
+	const auto started = start_window(why);
+	if (_mcp) _mcp->started();
+	return started;
+}
+
+bool app_frame::start_window(std::string& why)
+{
+	if (_window_started) return true;
+
+	// Two processes writing one index would each undo the other's work, so an agent session refuses a profile another
+	// Diffractor has open. An ordinary run holds its profile so that a session can tell, and runs whatever it finds.
+	{
+		const auto profile = crypto::to_sha256(core::to_lower(app_cache_folder().text().sv()));
+		auto locked = platform::try_lock_instance(std::format("Diffractor.Profile.{}", profile));
+
+		if (_mcp && !locked.lock)
+		{
+			why = locked.already_running
+			          ? "Diffractor is already open with this profile. Close it, or start the session with "
+			            "-profile:<folder> to keep one of its own."s
+			          : std::format("The profile could not be claimed: {}", locked.error);
+			return false;
+		}
+
+		_profile_lock = std::move(locked.lock);
+	}
+
 	_item_index.init_item_index();
 
 	const auto& store = _settings;
@@ -3462,6 +3896,8 @@ bool app_frame::init(const std::string_view command_line_text)
 	// start decided in load_settings has to be re-applied over them. reset_presentation is
 	// idempotent, so this is the same answer, not a second decision.
 	if (_safe_start) setting.reset_presentation();
+	// And so has a run's own -profile and -collection, and an agent session's, over what an earlier run saved.
+	apply_run_settings();
 
 	if (setting.language != "en")
 	{
@@ -3490,21 +3926,24 @@ bool app_frame::init(const std::string_view command_line_text)
 	// its background they leave round the edge is its border.
 	ui::frame_style window_style;
 	window_style.container = true;
-	window_style.colors = {
-		ui::style::colors.view_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
-	};
+	window_style.colors = {ui::style::colors.view_background, ui::style::colors.view_text,
+	                       ui::style::colors.view_selected_background};
+	// An agent session's window paints where nobody sees it, unless the session was started to show it.
+	window_style.offscreen = _mcp && _mcp->options().presence != agent_presence::visible;
 	_app_frame = ui::create_app_frame(shared_from_this(), store, shared_from_this(), window_style);
 
 	if (!_app_frame)
 	{
-		fail(tt.error_create_window_failed, {});
+		why = std::string(tt.error_create_window_failed.sv());
+		if (!_mcp) fail(tt.error_create_window_failed, {});
 		return false;
 	}
 
 	_title_bar->init(_app_frame);
 	_view_frame->init(_app_frame);
 	_status_bar->init(_app_frame);
-	_selector_frame->init(_view_frame->frame());
+	_selector_frame->init(_view_frame->frame(), true);
+	_selector_frame->_press_takes_keyboard = false;
 	_title_region->child = _title_bar->frame();
 	_body_region->child = _view_frame->frame();
 	_status_region->child = _status_bar->frame();
@@ -3519,6 +3958,10 @@ bool app_frame::init(const std::string_view command_line_text)
 
 	_bubble = _app_frame->create_bubble();
 	_state.view_mode(view_type::items);
+	for (const auto* const group : _starting_media_filter)
+	{
+		_state.filter().add_group(group);
+	}
 	_threads.start_if_running([&q = work_task_queue] { start_worker(q, "work"); });
 
 	open_default_folder();
@@ -3544,37 +3987,29 @@ bool app_frame::init(const std::string_view command_line_text)
 		});
 	});
 
-#ifdef _DEBUG
-	if (!command_line.test_action.empty())
-	{
-		queue_ui([this] { run_test_action(command_line.test_action); });
-	}
-#endif
-
 	if (!setting.sound_device.empty())
 	{
 		_state.change_audio_device(setting.sound_device);
 	}
 
-	for (const auto* const group : _starting_media_filter)
-	{
-		_state.filter().add_group(group);
-	}
-
 	_state.group_order(_starting_group_order, _starting_sort_order);
 	focus_view();
 
-#ifdef _DEBUG
-	_screenshot_ready_time = 0;
-#endif
-
+	_window_started = true;
+	_instance_ready = true;
+	if (!_pending_instance_file.is_empty()) open_pending_instance_file();
 	return true;
 }
-
 
 void app_frame::on_window_destroy()
 {
 	log_func lf(__FUNCTION__);
+	_instance_ready = false;
+	_instance_receiver.reset();
+
+	// Before the window goes: the recording reads it until it stops, and its file is finished on the way out.
+	_tutorial.reset();
+	finish_recording();
 
 	if (_app_logo) _app_logo->free_graphics_resources();
 	_bubble.reset();
@@ -3606,124 +4041,28 @@ void app_frame::command_hover(const ui::command_ptr& c, const recti window_bound
 	}
 }
 
-// Context menu layouts. commands::none marks a separator. Anything with a submenu of its own
-// appears once, at the top level, rather than also being spelled out beside it. The commonest commands
-// on what a menu acts on open it as a row of buttons, as cut, copy and paste do in a file browser's, and
-// are not listed again below.
-static constexpr commands s_menu_media_row[] = {
-	commands::edit_cut,
-	commands::edit_copy,
-	commands::tool_rename,
-	commands::tool_delete,
-};
-
-static constexpr commands s_menu_media[] = {
-	commands::play,
-	commands::slideshow,
-	commands::view_fullscreen,
-	commands::none,
-	commands::browse_previous_item,
-	commands::browse_next_item,
-	commands::browse_previous_group,
-	commands::browse_next_group,
-	commands::none,
-	commands::menu_zoom,
-	commands::menu_open,
-	commands::menu_tools,
-	commands::menu_rate_or_label,
-	commands::playback_menu,
-	commands::menu_display_options,
-	commands::none,
-	commands::tool_copy_to_folder,
-	commands::tool_move_to_folder,
-	commands::edit_copy_item_path,
-};
-
-static constexpr commands s_menu_items_row[] = {
-	commands::edit_cut,
-	commands::edit_copy,
-	commands::edit_paste,
-	commands::tool_rename,
-	commands::tool_delete,
-};
-
-static constexpr commands s_menu_items[] = {
-	commands::menu_navigate,
-	commands::menu_open,
-	commands::menu_tools,
-	commands::menu_rate_or_label,
-	commands::menu_select,
-	commands::menu_group,
-	commands::menu_display_options,
-	commands::none,
-	commands::tool_copy_to_folder,
-	commands::tool_move_to_folder,
-	commands::edit_copy_item_path,
-	commands::none,
-	commands::refresh,
-	commands::tool_new_folder,
-};
-
-static constexpr commands s_menu_movie[] = {
-	commands::tool_movie_send_to_end,
-	commands::tool_movie_remove,
-	commands::tool_movie_relink,
-	commands::none,
-	commands::tool_movie_select_all,
-	commands::tool_movie_add,
-};
-
-static constexpr commands s_menu_view[] = {
-	commands::view_close,
-};
-
-static constexpr commands s_menu_frame[] = {
-	commands::refresh,
-	commands::tool_eject,
-	commands::none,
-	commands::options,
-	commands::favorite_tags,
-	commands::none,
-	commands::view_show_sidebar,
-	commands::view_favorite_tags,
-	commands::none,
-	commands::large_font,
-};
-
-std::vector<ui::command_ptr> app_frame::context_menu(const menu_type type) const
+// A view names its menu's commands, as it does its bars', and the frame builds them: the row of buttons
+// first, set apart from the list, in which commands::none is a separator.
+std::vector<ui::command_ptr> app_frame::context_menu(const view_menu& menu) const
 {
-	std::span<const commands> row;
-	std::span<const commands> ids;
-
-	switch (type)
-	{
-	case menu_type::sidebar: ids = s_menu_frame;
-		break;
-	case menu_type::media: row = s_menu_media_row;
-		ids = s_menu_media;
-		break;
-	case menu_type::items: row = s_menu_items_row;
-		ids = s_menu_items;
-		break;
-	case menu_type::movie: ids = s_menu_movie;
-		break;
-	case menu_type::view:
-	default: ids = s_menu_view;
-		break;
-	}
-
 	std::vector<ui::command_ptr> result;
-	result.reserve(ids.size() + 2);
+	result.reserve(menu.list.size() + menu.own.size() + 3);
 
-	if (!row.empty())
+	if (!menu.row.empty())
 	{
 		const auto buttons = std::make_shared<ui::command>();
-		for (const auto id : row) buttons->buttons.emplace_back(find_command(id));
+		for (const auto id : menu.row) buttons->buttons.emplace_back(find_command(id));
 		result.emplace_back(buttons);
 		result.emplace_back(nullptr);
 	}
 
-	for (const auto id : ids)
+	if (!menu.own.empty())
+	{
+		result.insert(result.end(), menu.own.begin(), menu.own.end());
+		if (!menu.list.empty()) result.emplace_back(nullptr);
+	}
+
+	for (const auto id : menu.list)
 	{
 		result.emplace_back(id == commands::none ? nullptr : find_command(id));
 	}
@@ -3731,20 +4070,32 @@ std::vector<ui::command_ptr> app_frame::context_menu(const menu_type type) const
 	return result;
 }
 
+// The menu of the view under a screen point: the frame's own outside the view or where the view names none,
+// and none over the panel beside it or the strip below it, whose controls have their own. The view's surface
+// is a child window on Windows, and a child window's bounds are its parent's coordinates rather than the
+// screen's, so the point reaches the view through the surface's own place on the screen.
+view_menu app_frame::menu_at(const pointi screen)
+{
+	const auto loc = screen - _view_frame->frame()->client_to_screen({});
+	if (!recti(_view_frame->_extent).contains(loc)) return s_frame_menu;
+	if (!_view_frame->in_view(loc)) return {};
+	auto menu = _view->context_menu(loc);
+	return menu.empty() ? s_frame_menu : menu;
+}
+
 std::vector<ui::command_ptr> app_frame::menu(const pointi loc)
 {
+	// The menu the platform asks for after Apps or Shift+F10 is already open beside what has the keyboard
+	// (open_keyboard_menu), so the request it makes at no point is not answered with a second.
+	if (loc == pointi{-1, -1}) return {};
 	update_button_state(false);
-
-	// The panel beside the view has no menu; the bars have the frame's own.
-	const auto view_window_bounds = _view_frame->frame()->window_bounds();
-	if (!view_window_bounds.contains(loc)) return context_menu(menu_type::sidebar);
-	const auto view_loc = loc - view_window_bounds.top_left();
-	if (!_view_frame->in_view(view_loc)) return {};
-	return context_menu(_view->context_menu(view_loc));
+	return context_menu(menu_at(loc));
 }
 void app_frame::exit()
 {
 	log_func lf(__FUNCTION__);
+	_instance_ready = false;
+	_instance_receiver.reset();
 	_threads.clear();
 }
 
@@ -3755,9 +4106,8 @@ void app_frame::system_event(const platform::os_event_type ost)
 	if (ost == platform::os_event_type::system_device_change)
 	{
 		_has_burner.reset();
-		invalidate_view(
-			view_invalid::app_layout | view_invalid::view_layout | view_invalid::sidebar_drives |
-			view_invalid::index);
+		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::sidebar_drives |
+		                view_invalid::index);
 	}
 	else if (ost == platform::os_event_type::options_changed)
 	{
@@ -3780,9 +4130,8 @@ void app_frame::system_event(const platform::os_event_type ost)
 	}
 	else if (ost == platform::os_event_type::system_resumed)
 	{
-		invalidate_view(
-			view_invalid::app_layout | view_invalid::view_layout | view_invalid::sidebar |
-			view_invalid::index | view_invalid::screen_saver);
+		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::sidebar |
+		                view_invalid::index | view_invalid::screen_saver);
 	}
 	else if (ost == platform::os_event_type::session_ending)
 	{
@@ -3813,7 +4162,6 @@ void app_frame::final_exit()
 	core::log("main", "exit");
 	platform::close_log();
 }
-
 
 static void register_diffractor_chrome_icons()
 {
@@ -3870,12 +4218,12 @@ void app_frame::crash(const core::file_path dump_file_path)
 		flush_open_files_to_crash_files_list();
 
 #ifndef WINSTORE
-		if (setting.send_crash_dumps)
+		// Asked here too: an agent session's Options page can tick crash reports back on.
+		if (setting.send_crash_dumps && df::network_allowed)
 		{
 			core::log(__FUNCTION__, "*** CRASH ***");
 
-			if (const auto last_loaded = df::last_loaded_path.load(std::memory_order_relaxed);
-				!last_loaded.is_empty())
+			if (const auto last_loaded = df::last_loaded_path.load(std::memory_order_relaxed); !last_loaded.is_empty())
 			{
 				core::log(__FUNCTION__, std::format("Last file type opened: {}", last_loaded.extension()));
 			}
@@ -3901,9 +4249,9 @@ void app_frame::crash(const core::file_path dump_file_path)
 			const auto now = core::utc_now();
 			const auto date = now.date();
 
-			const auto name = std::format("Diffractor-{}-{}-{:04}{:02}{:02}-{:02}{:02}{:02}.dmp",
-			                              s_app_version, g_app_build, date.year, date.month, date.day,
-			                              date.hour, date.minute, date.second);
+			const auto name = std::format("Diffractor-{}-{}-{:04}{:02}{:02}-{:02}{:02}{:02}.dmp", s_app_version,
+			                              g_app_build, date.year, date.month, date.day, date.hour, date.minute,
+			                              date.second);
 
 			df::zip_file zip;
 			auto has_zip = false;
@@ -3983,8 +4331,9 @@ static void apply_gpu_crash_guard()
 		if (setting.use_d3d11va)
 		{
 			setting.use_d3d11va = false;
-			core::log(__FUNCTION__,
-			        "Previous run crashed during hardware video decode - disabling HW video decode (GPU rendering kept)");
+			core::log(
+				__FUNCTION__,
+				"Previous run crashed during hardware video decode - disabling HW video decode (GPU rendering kept)");
 		}
 	}
 	else if (gpu_crashed)
@@ -3993,7 +4342,7 @@ static void apply_gpu_crash_guard()
 		{
 			platform::suppress_crash_guard(platform::crash_guard::gpu_render, true);
 			core::log(__FUNCTION__,
-			        "Previous run lost the GPU device - using software rendering for this recovery session");
+			          "Previous run lost the GPU device - using software rendering for this recovery session");
 		}
 		return;
 	}
@@ -4010,7 +4359,27 @@ bool app_frame::load_settings(const platform::setting_file_ptr& store)
 	// persisted preferences - notably use_gpu / use_d3d11va - are available in time to
 	// initialise rendering. The store is the single shared instance provided by the platform;
 	// it is retained for later load_options / save_options.
-	_settings = store;
+	(void)store;
+
+	// The store of a -profile keeps a run's settings apart from the user's, and an agent session keeps what it changes
+	// to itself.
+	if (_mcp && !_mcp->is_console()) keep_settings_to_session();
+	_settings = app_settings_store();
+
+	setting.read();
+	apply_run_settings();
+
+	// An agent session is its own: it neither hands a file to a running window nor takes one from Explorer, and is no
+	// start of the user's, so it records no startup history and leaves the graphics crash guards alone.
+	if (_mcp)
+	{
+		connect_yuv_latch();
+		return true;
+	}
+
+	// A forwarding launch never writes startup/crash history or creates the index and window.
+	_forwarded_launch = reuse_running_instance();
+	if (_forwarded_launch) return true;
 
 	// A crash before the first frame repeats on every relaunch, and nothing the user did caused
 	// it, so nothing they can stop doing avoids it. The count of starts that never settled is
@@ -4018,20 +4387,18 @@ bool app_frame::load_settings(const platform::setting_file_ptr& store)
 	_owns_startup_scope = platform::claim_startup_scope();
 
 	uint32_t unsettled_starts = 0;
-	store->read({}, s_unsettled_starts, unsettled_starts);
+	_settings->read({}, s_unsettled_starts, unsettled_starts);
 	const auto history = decide_startup(_owns_startup_scope, unsettled_starts);
 	_safe_start = history.safe_start;
-	if (history.record) store->write({}, s_unsettled_starts, history.next_unsettled);
-
-	setting.read();
+	if (history.record) _settings->write({}, s_unsettled_starts, history.next_unsettled);
 
 	// Must happen here rather than in init(): the caller creates the graphics factories from
 	// setting.use_gpu before init() runs, so a safe start decided later would leave the very
 	// device creation it exists to avoid already done.
 	if (_safe_start)
 	{
-		core::log(__FUNCTION__, std::format("{} starts did not settle - reverting to safe presentation",
-		                                  unsettled_starts));
+		core::log(__FUNCTION__,
+		          std::format("{} starts did not settle - reverting to safe presentation", unsettled_starts));
 		setting.reset_presentation();
 	}
 
@@ -4039,6 +4406,80 @@ bool app_frame::load_settings(const platform::setting_file_ptr& store)
 	connect_yuv_latch();
 
 	return true;
+}
+
+bool app_frame::reuse_running_instance(const bool forward_file)
+{
+	if (!platform::can_receive_instance_requests() || !setting.reuse_existing_window) return false;
+	const auto profile = crypto::to_sha256(core::to_lower(app_cache_folder().text().sv()));
+	const auto name = std::format("Diffractor.{}.{}",
+#ifdef _DEBUG
+	                              "Debug",
+#else
+	                              "Release",
+#endif
+	                              profile);
+	const auto forward = forward_file && command_line.can_forward_file();
+	for (int attempt = 0; attempt < 2; ++attempt)
+	{
+		auto received = platform::receive_instance_requests(name, [this](std::vector<core::file_path> files)
+		{ return accept_instance_files(std::move(files)); });
+		_instance_claim_retry = received.already_running;
+		if (received.receiver)
+		{
+			_instance_receiver = std::move(received.receiver);
+			return false;
+		}
+		if (!received.already_running)
+		{
+			core::log(__FUNCTION__, received.error);
+			return false;
+		}
+		if (!forward) return false;
+		const std::array files{command_line.selection};
+		const auto sent = platform::send_instance_request(name, files);
+		if (sent.status == platform::instance_request_status::accepted)
+		{
+			core::log(__FUNCTION__, "File accepted by the running instance");
+			return true;
+		}
+		core::log(__FUNCTION__, std::format("Opening a separate window: instance request {} {}",
+		                                    static_cast<int>(sent.status), sent.error));
+		if (sent.status != platform::instance_request_status::not_running) break;
+	}
+	return false;
+}
+
+bool app_frame::accept_instance_files(std::vector<core::file_path> files)
+{
+	if (!setting.reuse_existing_window || files.empty() || platform::is_closing ||
+	    (_instance_ready && (!_app_frame->is_enabled() || ui::command_active != 0 || !view_gives_way())))
+		return false;
+	_pending_instance_file = files.back();
+	if (_instance_ready) open_pending_instance_file();
+	return true;
+}
+
+bool app_frame::view_gives_way() const
+{
+	if (_view->progress().active) return false;
+	if (_view == _view_edit) return !_view_edit->has_changes();
+	if (_view == _view_options) return !_view_options->has_changes();
+	return true;
+}
+
+void app_frame::open_pending_instance_file()
+{
+	if (_instance_open_queued) return;
+	_instance_open_queued = true;
+	queue_ui([this]
+	{
+		_instance_open_queued = false;
+		if (!_instance_ready || platform::is_closing || _pending_instance_file.is_empty()) return;
+		const auto file = std::exchange(_pending_instance_file, {});
+		_app_frame->sys_command(platform::sys_command_type::ACTIVATE);
+		if (_state.open_external_file(_view_frame, file)) focus_view();
+	});
 }
 
 std::string app_frame::restart_command_line()
@@ -4064,7 +4505,6 @@ void app_frame::invalidate_view(const view_invalid invalid)
 		updated = expected | invalid;
 	}
 }
-
 
 void app_frame::free_graphics_resources(const bool items_only, const bool offscreen_only)
 {

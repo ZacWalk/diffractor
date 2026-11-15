@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The index summary and the vocabulary built from it: histograms, the location heat map
-// and matrix, distinct words and property values, collection folder totals, and the auto-complete
-// answers the address box asks for.
+// and matrix, the items taken where and when that lend a place to those taken nearby in time,
+// distinct words and property values, collection folder totals, and the auto-complete answers the
+// address box asks for.
 
 #include "pch.h"
 
@@ -19,20 +19,88 @@
 #include "model.h"
 #include "util_text.h"
 
-static void add_words(core::dense_string_counts& distinct_words, strings_by_prop& distinct_text, const core::cached text,
-                      const prop::key_ref key)
+static void add_words(core::dense_string_counts& distinct_words, strings_by_prop& distinct_text,
+                      const core::cached text, const prop::key_ref key)
 {
 	str::count_ranges(distinct_words, text);
 	distinct_text[key].emplace(text);
+}
+
+// A disk's directory is a few dozen names and a 1581's may be hundreds, so the vocabulary takes the names a listing
+// opens with. Search reads every name the record holds whatever this leaves out.
+constexpr int max_vocabulary_names_per_item = 64;
+
+namespace
+{
+	// How many items each `@` word finds, counted on the walk the summary makes anyway, so the vocabulary offers a
+	// word only where it finds something, and a kind most of the collection is ranks above a rare one.
+	struct at_word_counts
+	{
+		std::array<int, file_group::max_count> groups{};
+		std::array<int, df::item_feature_count> features{};
+		int duplicates = 0;
+		int located = 0;
+		int panoramas = 0;
+		int films = 0;
+		int episodes = 0;
+		int in_progress = 0;
+
+		void record(const df::index_file_item& file, const prop::item_metadata* const md)
+		{
+			const auto group = file.ft->group->id;
+			if (group >= 0 && group < file_group::max_count) ++groups[group];
+			if (file.duplicates.load().count > 1) ++duplicates;
+
+			for (auto f = 0; f < df::item_feature_count; ++f)
+			{
+				if (df::has_feature(static_cast<df::item_feature>(f), file.ft, md)) ++features[f];
+			}
+
+			if (!md) return;
+			if (md->has_gps()) ++located;
+			if (md->is_panorama()) ++panoramas;
+			if (md->kind == prop::media_kind::film) ++films;
+			if (md->kind == prop::media_kind::episode) ++episodes;
+			if (md->is_in_progress()) ++in_progress;
+		}
+
+		void add_to(core::dense_string_counts& words) const
+		{
+			const auto add = [&words](const std::string_view word, const int count)
+			{
+				if (count > 0 && !word.empty()) words[core::cache(std::format("@{}", word))] += count;
+			};
+
+			for (const auto g : all_file_groups())
+			{
+				if (g->id < 0 || g->id >= file_group::max_count) continue;
+				add(g->name, groups[g->id]);
+				add(g->plural_name, groups[g->id]);
+			}
+
+			for (auto f = 0; f < df::item_feature_count; ++f)
+			{
+				add(df::feature_name(static_cast<df::item_feature>(f)), features[f]);
+			}
+
+			add(df::word_duplicates, duplicates);
+			// Only a coordinate can be remote, and which are is known once the gazetteer names them, so the word is
+			// offered where anything is located and the prediction counts what it finds.
+			add(df::word_remote, located);
+			add(df::word_panorama, panoramas);
+			add(df::word_movie, films);
+			add(df::word_episode, episodes);
+			add(df::word_in_progress, in_progress);
+		}
+	};
 }
 
 constexpr size_t max_tag_companion_tags_per_item = 128;
 
 bool location_matrix_params::contains(const gps_coordinate coordinate) const
 {
-	return coordinate.is_valid() &&
-		coordinate.latitude() >= min_latitude && coordinate.latitude() <= max_latitude &&
-		coordinate.longitude() >= min_longitude && coordinate.longitude() <= max_longitude;
+	return coordinate.is_valid() && coordinate.latitude() >= min_latitude && coordinate.latitude() <= max_latitude &&
+	       coordinate.longitude() >= min_longitude && coordinate.longitude() <= max_longitude;
 }
 
 pointi location_matrix_params::cell(const gps_coordinate coordinate) const
@@ -48,10 +116,8 @@ pointi location_matrix_params::cell(const gps_coordinate coordinate) const
 	const auto scale = std::pow(2.0, zoom) * 256.0 / std::max(1, cell_size);
 	const auto latitude = std::clamp(coordinate.latitude(), -max_mercator_latitude, max_mercator_latitude);
 	const auto latitude_radians = latitude * M_PI / 180.0;
-	return {
-		static_cast<int>(std::floor((coordinate.longitude() + 180.0) / 360.0 * scale)),
-		static_cast<int>(std::floor((1.0 - std::asinh(std::tan(latitude_radians)) / M_PI) / 2.0 * scale))
-	};
+	return {static_cast<int>(std::floor((coordinate.longitude() + 180.0) / 360.0 * scale)),
+	        static_cast<int>(std::floor((1.0 - std::asinh(std::tan(latitude_radians)) / M_PI) / 2.0 * scale))};
 }
 
 void location_matrix::add(core::file_path path, const gps_coordinate coordinate, const bool can_thumbnail,
@@ -66,11 +132,16 @@ void location_matrix::add(core::file_path path, const gps_coordinate coordinate,
 	{
 		_cell_lookup.emplace(key, static_cast<uint32_t>(cells.size()));
 		_representative_ranks.push_back(representative_rank);
-		cells.push_back({
-			index, std::move(path), {}, 1,
-			coordinate.latitude(), coordinate.longitude(),
-			coordinate.latitude(), coordinate.longitude(), coordinate.latitude(), coordinate.longitude()
-		});
+		cells.push_back({index,
+		                 path,
+		                 {},
+		                 1,
+		                 coordinate.latitude(),
+		                 coordinate.longitude(),
+		                 coordinate.latitude(),
+		                 coordinate.longitude(),
+		                 coordinate.latitude(),
+		                 coordinate.longitude()});
 	}
 	else
 	{
@@ -84,10 +155,10 @@ void location_matrix::add(core::file_path path, const gps_coordinate coordinate,
 		cell.max_latitude = std::max(cell.max_latitude, coordinate.latitude());
 		cell.max_longitude = std::max(cell.max_longitude, coordinate.longitude());
 		if (representative_rank > _representative_ranks[cell_index] ||
-			(representative_rank == _representative_ranks[cell_index] && path.icmp(cell.representative_path) < 0))
+		    (representative_rank == _representative_ranks[cell_index] && path.icmp(cell.representative_path) < 0))
 		{
 			_representative_ranks[cell_index] = representative_rank;
-			cell.representative_path = std::move(path);
+			cell.representative_path = path;
 		}
 	}
 }
@@ -99,9 +170,7 @@ void location_matrix::finalize()
 		cell.centroid = {cell.latitude_sum / cell.count, cell.longitude_sum / cell.count};
 	}
 	std::ranges::sort(cells, [](const cell& left, const cell& right)
-	{
-		return left.index.y == right.index.y ? left.index.x < right.index.x : left.index.y < right.index.y;
-	});
+	{ return left.index.y == right.index.y ? left.index.x < right.index.x : left.index.y < right.index.y; });
 	_cell_lookup.clear();
 	_representative_ranks.clear();
 }
@@ -121,12 +190,12 @@ location_matrix index_state::build_location_matrix(const location_matrix_params&
 			if (!metadata || !metadata->coordinate.is_valid()) continue;
 
 			auto path = core::file_path(folder, file.name);
-			const auto visual_media = file.ft &&
-				(file.ft->has_trait(file_traits::bitmap) || file.ft->has_trait(file_traits::video_metadata));
+			const auto visual_media = file.ft && (file.ft->has_trait(file_traits::bitmap) ||
+			                                      file.ft->has_trait(file_traits::video_metadata));
 			const auto can_thumbnail = visual_media && file.ft->has_trait(file_traits::thumbnail);
 			if (!excluded.contains(path))
 			{
-				result.add(std::move(path), metadata->coordinate, can_thumbnail, metadata->rating);
+				result.add(path, metadata->coordinate, can_thumbnail, metadata->rating);
 			}
 		}
 	}
@@ -135,6 +204,72 @@ location_matrix index_state::build_location_matrix(const location_matrix_params&
 	return result;
 }
 
+std::vector<dated_location> index_state::dated_locations() const
+{
+	std::vector<dated_location> result;
+
+	for (const auto& [folder, folder_item] : _items.all_folders())
+	{
+		if (!folder_item->is_in_collection.load()) continue;
+
+		for (const auto& file : folder_item->files)
+		{
+			const auto metadata = file.metadata.load();
+			if (!metadata || !metadata->coordinate.is_valid()) continue;
+
+			const auto created = metadata->created();
+			if (created.is_valid())
+				result.push_back({created, metadata->coordinate, core::file_path(folder, file.name)});
+		}
+	}
+
+	std::ranges::sort(result, [](const dated_location& l, const dated_location& r)
+	{ return l.created != r.created ? l.created < r.created : l.path < r.path; });
+	return result;
+}
+
+std::vector<location_suggestion> suggest_locations(std::vector<unplaced_item> items,
+                                                   const std::vector<dated_location>& located, const int64_t max_gap_s)
+{
+	std::ranges::sort(items, [](const unplaced_item& l, const unplaced_item& r)
+	{ return l.created != r.created ? l.created < r.created : l.path < r.path; });
+
+	constexpr auto per_second = static_cast<int64_t>(core::date_t::intervals_per_second);
+	const auto max_gap = max_gap_s * per_second;
+	std::vector<location_suggestion> result;
+
+	for (auto& item : items)
+	{
+		const auto after = std::ranges::lower_bound(located, item.created, {}, &dated_location::created);
+		const dated_location* nearest = nullptr;
+		int64_t gap = 0;
+
+		if (after != located.end())
+		{
+			nearest = &*after;
+			gap = after->created - item.created;
+		}
+
+		// Of two as near, the one taken before.
+		if (after != located.begin())
+		{
+			const auto& before = *std::prev(after);
+			if (!nearest || item.created - before.created <= gap)
+			{
+				nearest = &before;
+				gap = before.created - item.created;
+			}
+		}
+
+		if (!nearest || std::abs(gap) > max_gap) continue;
+
+		item.gap_s = gap / per_second;
+		if (result.empty() || !(result.back().located.path == nearest->path)) result.push_back({*nearest, {}});
+		result.back().items.push_back(std::move(item));
+	}
+
+	return result;
+}
 
 void index_state::update_summary(const uint64_t generation)
 {
@@ -156,6 +291,7 @@ void index_state::update_summary(const uint64_t generation)
 	size_t tag_companion_work = 0;
 
 	index_histograms histograms;
+	at_word_counts at_words;
 
 	auto& distinct_tag_texts = distinct_text[prop::tag];
 	const auto folders = _items.all_folders();
@@ -186,27 +322,26 @@ void index_state::update_summary(const uint64_t generation)
 				const auto path = core::file_path(ifn.first, file.name);
 				histograms.record(_locations, file, path);
 				const auto md = file.metadata.load();
+				at_words.record(file, md.get());
 
 				if (md)
 				{
 					std::vector<std::string> companion_tags;
 					split2(md->tags, true,
-					       [&distinct_words, &distinct_tags, &distinct_tag_texts, &companion_tags, &file, &path](
-					       const std::string_view part)
-					       {
-						       const auto cached_tag = core::cache(part);
-						       if (companion_tags.size() < max_tag_companion_tags_per_item &&
-							       std::ranges::none_of(companion_tags, [part](const auto& existing)
-							       {
-								       return core::icmp(existing, part) == 0;
-							       }))
-						       {
-							       companion_tags.emplace_back(part);
-						       }
-						       distinct_tag_texts.emplace(cached_tag);
-						       distinct_words[core::cache(std::format("#{}", part))] += 1;
-						       distinct_tags[cached_tag].record(file, path);
-					       });
+					       [&distinct_words, &distinct_tags, &distinct_tag_texts, &companion_tags, &file,
+					        &path](const std::string_view part)
+					{
+						const auto cached_tag = core::cache(part);
+						if (companion_tags.size() < max_tag_companion_tags_per_item &&
+						    std::ranges::none_of(companion_tags, [part](const auto& existing)
+						{ return core::icmp(existing, part) == 0; }))
+						{
+							companion_tags.emplace_back(part);
+						}
+						distinct_tag_texts.emplace(cached_tag);
+						distinct_words[core::cache(std::format("#{}", part))] += 1;
+						distinct_tags[cached_tag].record(file, path);
+					});
 
 					for (const auto& tag : companion_tags)
 					{
@@ -238,51 +373,36 @@ void index_state::update_summary(const uint64_t generation)
 
 					if (!prop::is_null(md->album)) add_words(distinct_words, distinct_text, md->album, prop::album);
 					if (!prop::is_null(md->album_artist))
-						add_words(distinct_words, distinct_text, md->album_artist,
-						          prop::album_artist);
+						add_words(distinct_words, distinct_text, md->album_artist, prop::album_artist);
 					if (!prop::is_null(md->artist)) add_words(distinct_words, distinct_text, md->artist, prop::artist);
 					if (!prop::is_null(md->audio_codec))
-						add_words(distinct_words, distinct_text, md->audio_codec,
-						          prop::audio_codec);
+						add_words(distinct_words, distinct_text, md->audio_codec, prop::audio_codec);
 					if (!prop::is_null(md->bitrate))
-						add_words(distinct_words, distinct_text, md->bitrate,
-						          prop::bitrate);
+						add_words(distinct_words, distinct_text, md->bitrate, prop::bitrate);
 					if (!prop::is_null(md->camera_manufacturer))
-						add_words(
-							distinct_words, distinct_text, md->camera_manufacturer, prop::camera_manufacturer);
+						add_words(distinct_words, distinct_text, md->camera_manufacturer, prop::camera_manufacturer);
 					if (!prop::is_null(md->camera_model))
-						add_words(distinct_words, distinct_text, md->camera_model,
-						          prop::camera_model);
+						add_words(distinct_words, distinct_text, md->camera_model, prop::camera_model);
 					if (!prop::is_null(md->comment))
-						add_words(distinct_words, distinct_text, md->comment,
-						          prop::comment);
+						add_words(distinct_words, distinct_text, md->comment, prop::comment);
 					if (!prop::is_null(md->composer))
-						add_words(distinct_words, distinct_text, md->composer,
-						          prop::composer);
+						add_words(distinct_words, distinct_text, md->composer, prop::composer);
 					if (!prop::is_null(md->copyright_creator))
-						add_words(
-							distinct_words, distinct_text, md->copyright_creator, prop::copyright_creator);
+						add_words(distinct_words, distinct_text, md->copyright_creator, prop::copyright_creator);
 					if (!prop::is_null(md->copyright_credit))
-						add_words(distinct_words, distinct_text,
-						          md->copyright_credit, prop::copyright_credit);
+						add_words(distinct_words, distinct_text, md->copyright_credit, prop::copyright_credit);
 					if (!prop::is_null(md->copyright_notice))
-						add_words(distinct_words, distinct_text,
-						          md->copyright_notice, prop::copyright_notice);
+						add_words(distinct_words, distinct_text, md->copyright_notice, prop::copyright_notice);
 					if (!prop::is_null(md->copyright_source))
-						add_words(distinct_words, distinct_text,
-						          md->copyright_source, prop::copyright_source);
+						add_words(distinct_words, distinct_text, md->copyright_source, prop::copyright_source);
 					if (!prop::is_null(md->copyright_url))
-						add_words(distinct_words, distinct_text, md->copyright_url,
-						          prop::copyright_url);
+						add_words(distinct_words, distinct_text, md->copyright_url, prop::copyright_url);
 					if (!prop::is_null(md->description))
-						add_words(distinct_words, distinct_text, md->description,
-						          prop::description);
+						add_words(distinct_words, distinct_text, md->description, prop::description);
 					if (!prop::is_null(md->encoder))
-						add_words(distinct_words, distinct_text, md->encoder,
-						          prop::encoder);
+						add_words(distinct_words, distinct_text, md->encoder, prop::encoder);
 					if (!prop::is_null(md->file_name))
-						add_words(distinct_words, distinct_text, md->file_name,
-						          prop::file_name);
+						add_words(distinct_words, distinct_text, md->file_name, prop::file_name);
 					if (!prop::is_null(md->genre))
 					{
 						// Genre is a single ';'-separated field; index each value
@@ -296,34 +416,43 @@ void index_state::update_summary(const uint64_t generation)
 					}
 					if (!prop::is_null(md->lens)) add_words(distinct_words, distinct_text, md->lens, prop::lens);
 					if (!prop::is_null(md->location_place))
-						add_words(distinct_words, distinct_text, md->location_place,
-						          prop::location_place);
+						add_words(distinct_words, distinct_text, md->location_place, prop::location_place);
 					if (!prop::is_null(md->location_country))
-						add_words(distinct_words, distinct_text,
-						          md->location_country, prop::location_country);
+						add_words(distinct_words, distinct_text, md->location_country, prop::location_country);
 					if (!prop::is_null(md->location_state))
-						add_words(distinct_words, distinct_text, md->location_state,
-						          prop::location_state);
+						add_words(distinct_words, distinct_text, md->location_state, prop::location_state);
 					if (!prop::is_null(md->performer))
-						add_words(distinct_words, distinct_text, md->performer,
-						          prop::performer);
+						add_words(distinct_words, distinct_text, md->performer, prop::performer);
 					if (!prop::is_null(md->pixel_format))
-						add_words(distinct_words, distinct_text, md->pixel_format,
-						          prop::pixel_format);
+						add_words(distinct_words, distinct_text, md->pixel_format, prop::pixel_format);
 					if (!prop::is_null(md->publisher))
-						add_words(distinct_words, distinct_text, md->publisher,
-						          prop::publisher);
+						add_words(distinct_words, distinct_text, md->publisher, prop::publisher);
 					if (!prop::is_null(md->show)) add_words(distinct_words, distinct_text, md->show, prop::show);
 					if (!prop::is_null(md->synopsis))
-						add_words(distinct_words, distinct_text, md->synopsis,
-						          prop::synopsis);
+						add_words(distinct_words, distinct_text, md->synopsis, prop::synopsis);
 					if (!prop::is_null(md->title)) add_words(distinct_words, distinct_text, md->title, prop::title);
 					if (!prop::is_null(md->video_codec))
-						add_words(distinct_words, distinct_text, md->video_codec,
-						          prop::video_codec);
+						add_words(distinct_words, distinct_text, md->video_codec, prop::video_codec);
 					if (!prop::is_null(md->raw_file_name))
-						add_words(distinct_words, distinct_text, md->raw_file_name,
-						          prop::raw_file_name);
+						add_words(distinct_words, distinct_text, md->raw_file_name, prop::raw_file_name);
+					if (!prop::is_null(md->system)) add_words(distinct_words, distinct_text, md->system, prop::system);
+					if (!prop::is_null(md->game)) add_words(distinct_words, distinct_text, md->game, prop::game);
+					if (!prop::is_null(md->color_profile))
+						add_words(distinct_words, distinct_text, md->color_profile, prop::color_profile);
+
+					if (!prop::is_null(md->contents))
+					{
+						// Each name a value of its own, as a listing gives them, so `contents:` completes one.
+						auto names = 0;
+						split2(md->contents, true, [&](const std::string_view name)
+						{
+							if (++names > max_vocabulary_names_per_item) return;
+							const auto trimmed = core::trim(name);
+							if (trimmed.empty()) return;
+							str::count_ranges(distinct_words, trimmed);
+							distinct_text[prop::contents].emplace(core::cache(trimmed));
+						}, [](const char c) { return c == '\n'; });
+					}
 
 					if (!prop::is_null(md->label)) distinct_labels[md->label].record(file, path);
 
@@ -345,6 +474,10 @@ void index_state::update_summary(const uint64_t generation)
 	}
 
 	auto summary = std::make_shared<index_metadata_summary>();
+
+	// The `@` words, counted from the collection as it now is: the media types it holds and the kinds its items
+	// are. Seeded once at startup, they were lost from the first rebuild on.
+	at_words.add_to(distinct_words);
 
 	// This walk visits every indexed folder, so it is authoritative. Seeding from the previous
 	// snapshot and only inserting would keep words from items that have since been deleted or
@@ -435,8 +568,8 @@ void index_histograms::record(const location_cache&, const df::index_file_item& 
 			const auto country_name = md->location_country;
 			if (!core::is_empty(place_name) || !core::is_empty(state_name) || !core::is_empty(country_name))
 			{
-				const auto group_id = crypto::hash_gen(country_name.sv()).append(state_name.sv()).append(
-					place_name.sv()).result();
+				const auto group_id =
+					crypto::hash_gen(country_name.sv()).append(state_name.sv()).append(place_name.sv()).result();
 				const auto found = _location_groups.find(group_id);
 
 				if (found != _location_groups.end())
@@ -449,9 +582,8 @@ void index_histograms::record(const location_cache&, const df::index_file_item& 
 				else
 				{
 					const auto name = !core::is_empty(place_name) ? place_name : country_name;
-					_location_groups[group_id] = {
-						name, state_name, country_name, 1, map_loc, coord.latitude(), coord.longitude()
-					};
+					_location_groups[group_id] = {name,    state_name,       country_name,     1,
+					                              map_loc, coord.latitude(), coord.longitude()};
 				}
 			}
 		}
@@ -534,14 +666,12 @@ std::vector<map_location_area> index_histograms::map_locations(const int request
 			.min_latitude = build.min_latitude,
 			.min_longitude = build.min_longitude,
 			.max_latitude = build.max_latitude,
-			.max_longitude = build.max_longitude
+			.max_longitude = build.max_longitude,
 		});
 	}
 
 	std::ranges::sort(result, [](const auto& left, const auto& right)
-	{
-		return left.cell.y == right.cell.y ? left.cell.x < right.cell.x : left.cell.y < right.cell.y;
-	});
+	{ return left.cell.y == right.cell.y ? left.cell.x < right.cell.x : left.cell.y < right.cell.y; });
 
 	return result;
 }
@@ -566,13 +696,11 @@ std::optional<map_location_area> index_histograms::find_map_location(const std::
 		{
 			const auto map_cell = df::location_heat_map::calc_map_loc(named_location.position);
 			const auto found = std::ranges::find_if(areas, [map_cell](const map_location_area& area)
-			{
-				return area.contains(map_cell);
-			});
+			{ return area.contains(map_cell); });
 			if (found == areas.end()) continue;
 
-			auto selected = locations.find_largest(found->min_latitude, found->min_longitude,
-			                                       found->max_latitude, found->max_longitude);
+			auto selected = locations.find_largest(found->min_latitude, found->min_longitude, found->max_latitude,
+			                                       found->max_longitude);
 			if (selected.id == 0)
 			{
 				selected = locations.find_closest(found->position.latitude(), found->position.longitude());
@@ -601,8 +729,8 @@ std::vector<core::cached> index_state::distinct_genres() const
 	}
 	const auto found = summary->_distinct_text.find(prop::genre);
 	return found != summary->_distinct_text.end()
-		       ? std::vector<core::cached>{found->second.begin(), found->second.end()}
-		       : std::vector<core::cached>{};
+	           ? std::vector<core::cached>{found->second.begin(), found->second.end()}
+	           : std::vector<core::cached>{};
 }
 
 std::vector<std::string> index_state::auto_complete_text(const prop::key_ref key)
@@ -613,9 +741,8 @@ std::vector<std::string> index_state::auto_complete_text(const prop::key_ref key
 		summary = _summary._metadata;
 	}
 	const auto found = summary->_distinct_text.find(key);
-	return found != summary->_distinct_text.end()
-		       ? std::vector<std::string>{found->second.begin(), found->second.end()}
-		       : std::vector<std::string>{};
+	return found != summary->_distinct_text.end() ? std::vector<std::string>{found->second.begin(), found->second.end()}
+	                                              : std::vector<std::string>{};
 }
 
 static core::count_and_size sum_items(const df::index_folder_info_const_ptr& folder)
@@ -709,8 +836,8 @@ bool index_state::rebuild_sorted_words(index_metadata_summary& summary, const ui
 	return true;
 }
 
-std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
-	const std::string_view query, const size_t max_results)
+std::vector<index_state::auto_complete_word> index_state::auto_complete_words(const std::string_view query,
+                                                                              const size_t max_results)
 {
 	core::assert_true(!platform::is_ui_thread());
 
@@ -739,16 +866,13 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 	const auto prefix_taken = std::min(prefix_words.size(), max_results);
 	std::ranges::partial_sort(prefix_words, prefix_words.begin() + static_cast<std::ptrdiff_t>(prefix_taken),
 	                          [](const auto& left, const auto& right)
-	                          {
-		                          return left.second != right.second
-			                                 ? left.second > right.second
-			                                 : core::icmp(left.first, right.first) < 0;
-	                          });
+	{ return left.second != right.second ? left.second > right.second : core::icmp(left.first, right.first) < 0; });
 
 	for (size_t i = 0; i < prefix_taken; ++i)
 	{
 		const auto word = prefix_words[i].first;
-		result.emplace_back(std::string(word), std::vector<core::part_t>{{0, core::matched_text_byte_length(word, 0, query)}},
+		result.emplace_back(std::string(word),
+		                    std::vector<core::part_t>{{0, core::matched_text_byte_length(word, 0, query)}},
 		                    prefix_words[i].second);
 	}
 
@@ -763,8 +887,8 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_words(
 		// core::normalize_for_compare folds every whitespace form to a word gap, not just a space,
 		// so any of them means the query has to take the full-scan path.
 		const auto candidates = query.find_first_of(" \t\n\v\f\r") == std::string_view::npos
-			                        ? summary->_word_trigrams.candidates(query)
-			                        : std::nullopt;
+		                            ? summary->_word_trigrams.candidates(query)
+		                            : std::nullopt;
 
 		if (candidates)
 		{
@@ -820,10 +944,8 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_tag_comp
 		for (const auto& [companion, count] : found->second)
 		{
 			if ((prefix.empty() || core::starts(companion, prefix)) &&
-				std::ranges::none_of(tags, [&companion](const auto& existing)
-				{
-					return core::icmp(existing, companion) == 0;
-				}))
+			    std::ranges::none_of(tags, [&companion](const auto& existing)
+			{ return core::icmp(existing, companion) == 0; }))
 			{
 				scores[std::string(companion)] += count.i;
 			}
@@ -832,17 +954,14 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_tag_comp
 
 	std::vector<std::pair<std::string, int>> ranked(scores.begin(), scores.end());
 	std::ranges::sort(ranked, [](const auto& left, const auto& right)
-	{
-		return left.second == right.second
-			       ? core::icmp(left.first, right.first) < 0
-			       : left.second > right.second;
-	});
+	{ return left.second == right.second ? core::icmp(left.first, right.first) < 0 : left.second > right.second; });
 
 	for (const auto& [tag, count] : ranked)
 	{
 		if (result.size() >= max_results) break;
 		result.emplace_back(std::format("#{}", tag),
-		                    prefix.empty() ? std::vector<core::part_t>{} : std::vector<core::part_t>{{1, prefix.size()}},
+		                    prefix.empty() ? std::vector<core::part_t>{}
+		                                   : std::vector<core::part_t>{{1, prefix.size()}},
 		                    count);
 	}
 
@@ -898,8 +1017,9 @@ static uint32_t collection_items_near(const df::location_heat_map& heat_map, con
 // locations.md 3.4 + 3.5: a place completion commits the canonical location term, never the bare
 // name. A bare name would run a text search over stored fields, which is exactly the empty result
 // the one-location-vocabulary rule exists to remove.
-std::vector<index_state::auto_complete_word> index_state::auto_complete_locations(
-	const std::string_view query, const size_t max_results, const df::location_level level) const
+std::vector<index_state::auto_complete_word> index_state::auto_complete_locations(const std::string_view query,
+                                                                                  const size_t max_results,
+                                                                                  const df::location_level level) const
 {
 	std::vector<auto_complete_word> result;
 	if (query.empty()) return result;
@@ -907,19 +1027,16 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_location
 	const auto summary = histograms();
 	core::hash_set<std::string, core::ihash, core::ieq> seen;
 
-	for (const auto& match : _locations.auto_complete(query, static_cast<uint32_t>(max_results * 4),
-	                                                  setting.default_location))
+	for (const auto& match :
+	     _locations.auto_complete(query, static_cast<uint32_t>(max_results * 4), setting.default_location))
 	{
 		std::string name;
 
 		switch (level)
 		{
-		case df::location_level::state: name = std::string(match.location.state.sv());
-			break;
-		case df::location_level::country: name = std::string(match.location.country.sv());
-			break;
-		default: name = qualified_name(match.location);
-			break;
+		case df::location_level::state: name = std::string(match.location.state.sv()); break;
+		case df::location_level::country: name = std::string(match.location.country.sv()); break;
+		default: name = qualified_name(match.location); break;
 		}
 
 		if (name.empty() || !seen.emplace(name).second) continue;
@@ -928,7 +1045,7 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_location
 		// have matched THAT label: "Frankfurt" is a fine hit for `loc:franc` and a wrong one for
 		// `country:franc`, where the answer is France.
 		if ((level == df::location_level::state || level == df::location_level::country) &&
-			core::ifind(name, query) == std::string_view::npos)
+		    core::ifind(name, query) == std::string_view::npos)
 		{
 			continue;
 		}
@@ -947,17 +1064,15 @@ std::vector<index_state::auto_complete_word> index_state::auto_complete_location
 
 	// A place the collection actually holds photos near is the one the user meant; the gazetteer
 	// order (exact spelling, then population) decides the rest.
-	std::ranges::stable_sort(result, [](const auto& left, const auto& right)
-	{
-		return left.occurrences > right.occurrences;
-	});
+	std::ranges::stable_sort(result,
+	                         [](const auto& left, const auto& right) { return left.occurrences > right.occurrences; });
 
 	if (result.size() > max_results) result.resize(max_results);
 	return result;
 }
 
-std::vector<index_state::auto_complete_folder> index_state::auto_complete_folders(
-	const std::string_view query, const size_t max_results) const
+std::vector<index_state::auto_complete_folder> index_state::auto_complete_folders(const std::string_view query,
+                                                                                  const size_t max_results) const
 {
 	core::assert_true(!platform::is_ui_thread());
 
@@ -1003,13 +1118,15 @@ std::vector<index_state::auto_complete_folder> index_state::auto_complete_folder
 
 				if (name_pos != std::string_view::npos && core::starts(folder.text().substr(name_pos), query))
 				{
-					result.emplace_back(
-						folder, std::vector<core::part_t>{{name_pos, core::matched_text_byte_length(folder.text(), name_pos, query)}});
+					result.emplace_back(folder, std::vector<core::part_t>{
+													{name_pos,
+					                                 core::matched_text_byte_length(folder.text(), name_pos, query)}});
 					if (result.size() > max_results) break;
 				}
 				else if (starts(folder.text(), query))
 				{
-					result.emplace_back(folder, std::vector<core::part_t>{{0, core::matched_text_byte_length(folder.text(), 0, query)}});
+					result.emplace_back(folder, std::vector<core::part_t>{
+													{0, core::matched_text_byte_length(folder.text(), 0, query)}});
 					if (result.size() > max_results) break;
 				}
 			}

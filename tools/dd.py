@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -500,11 +501,22 @@ def main() -> None:
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     parser.add_argument("--define", "-D", action="append", help="extra -D passed to CMake")
     parser.add_argument("--check", action="store_true", help="report, do not change anything")
+    parser.add_argument("--label", help="test label regex (available label: headless)")
 
     # Not a REMAINDER positional. REMAINDER takes everything after the command, including this
     # script's own options, so `dd build --config Release` silently built Debug -- which is what
     # the Linux CI matrix was doing on both of its legs.
     args, args.rest = parser.parse_known_args()
+
+    if args.label is not None:
+        if args.command != "test":
+            parser.error("--label is supported only by test")
+        try:
+            selected = re.search(args.label, "headless") is not None
+        except re.error as error:
+            parser.error(f"Invalid test label regex: {error}")
+        if not selected:
+            parser.error(f"No tests selected by label {args.label!r}. Available label: headless.")
 
     # Running the application to look at it wants the optimised build, as dd.ps1 run does.
     args.config = args.config or ("Release" if args.command == "linux" else "Debug")

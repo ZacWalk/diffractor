@@ -5,3 +5,15 @@ exe/test-generated/** binary
 # Shell scripts must keep LF whatever core.autocrlf says, or they do not run on Linux.
 dd text eol=lf
 *.sh text eol=lf
+
+/tools/generate_icon.py text eol=lf
+/tools/generate_store_assets.py text eol=lf
+/tools/test_generate_icon.py text eol=lf
+/tools/iconlib.py -text linguist-vendored
+/installer/Diffractor.ico -text
+/src/Res/app.ico -text
+/src/Res/app-icon.bmp -text
+/src/Res/app.png -text
+/src/Res/logo.png -text
+/src/Res/logo15.png -text
+/src/Res/logo30.png -text

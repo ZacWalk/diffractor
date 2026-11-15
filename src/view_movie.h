@@ -1,15 +1,15 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: The Movie task view. Assembles photos and videos into one video: the timeline strip,
-// the composed preview and its transport, and the settings panel, plus the source probe, the Movie
-// Maker import and the render, which the headless command line shares. docs/movie.md owns the
-// behaviour; model_movie.h owns the document and every rule about it.
+// Purpose: The Movie task view. Assembles photos, videos, audio files and text screens into one video: the
+// timeline strip, the composed preview and its transport, and the panel that edits the selected item, plus
+// the source and sound-file probes, the project file's staged write and the render, which the headless
+// command line shares. docs/movie.md owns the behaviour; model_movie.h owns the document and every rule
+// about it.
 
 #pragma once
 
@@ -23,32 +23,43 @@ class movie_view;
 class movie_view_controls;
 class movie_timeline_element;
 class movie_trim_control;
+class movie_song_control;
 class movie_source_cache;
 
 std::vector<platform::file_dialog_filter> movie_project_filters();
 
 // What probing one source found. A detached value, produced on a worker and applied on the UI
-// thread by matching on path, so nothing the view owns crosses a queue.
+// thread by matching on path, and for a SID file the tune, so nothing the view owns crosses a queue.
 struct movie_probe_result
 {
 	core::file_path path;
+	int song = 0;
 	bool found = false;
 	bool changed_during_probe = false;
 	bool is_photo = false;
+	bool is_audio = false;
 	sizei extent;
 	double duration = 0;
 	double frame_rate = 0;
+	// A SID file's tunes, and the one it starts on.
+	int songs = 1;
+	int first_song = 1;
 };
 
-// Opens one source and measures it. File I/O and decoding, so it runs off the UI thread: on the
-// view's probe worker, or on the command line's own thread before any window exists.
-movie_probe_result probe_movie_source(core::file_path path);
+// Opens one source and measures it - a SID file for one of its tunes. File I/O and decoding, so it runs off the UI
+// thread: on the view's probe worker, or on the command line's own thread before any window exists.
+movie_probe_result probe_movie_source(core::file_path path, int song = 0);
 
 // What a probe makes of the clip it measured. One rule for the view and the command line, so a
 // project renders the same clips from both.
-inline movie_clip apply_movie_probe(movie_clip clip, const movie_probe_result& probe, const double photo_seconds)
+inline movie_clip apply_movie_probe(movie_clip clip, const movie_probe_result& probe)
 {
 	clip.is_probed = true;
+
+	// A source probed afresh may not be the one heard before -- a relinked file, or another of a SID
+	// file's tunes -- so whether it opens quietly is heard again.
+	clip.sound_checked_at = -1;
+	clip.sound_is_quiet = false;
 
 	// A source that was not there is now known to be gone rather than merely unexamined. It keeps
 	// its stored times, so a relink restores the clip and not just the file.
@@ -60,13 +71,17 @@ inline movie_clip apply_movie_probe(movie_clip clip, const movie_probe_result& p
 
 	clip.is_missing = false;
 	clip.is_photo = probe.is_photo;
+	clip.is_audio = probe.is_audio;
 	clip.extent = probe.extent;
 	clip.frame_rate = probe.frame_rate;
+	clip.songs = probe.songs;
+	// The tune a SID file starts on is named once the file is known to hold others, so the panel can say which.
+	if (clip.song == 0 && probe.songs > 1) clip.song = probe.first_song;
 
 	if (probe.is_photo)
 	{
 		clip.start = 0;
-		if (clip.duration() <= 0) clip.end = photo_seconds;
+		if (clip.duration() <= 0) clip.end = movie_photo_seconds;
 	}
 	else
 	{
@@ -81,39 +96,34 @@ inline movie_clip apply_movie_probe(movie_clip clip, const movie_probe_result& p
 	return clip;
 }
 
-// For each path in `missing`, the files elsewhere that carry its name. The app answers from the
-// collection's index; the command line walks the collection's folders. Either way it runs off the
-// UI thread, and it is asked once per import, with every missing source at once.
-using movie_source_finder = std::function<std::vector<std::vector<core::file_path>>(
-	const std::vector<core::file_path>& missing)>;
-
-// What an import did with one source the project names.
-struct movie_import_source
+// What probing a clip's sound file found: whether it is there with sound to play, and for how long it plays.
+struct movie_sound_probe
 {
-	core::file_path stored;
-	movie_source_match match = movie_source_match::stored;
-	// Where the timeline points now: the stored path, or the file chosen for it.
 	core::file_path path;
-	double recorded_seconds = 0;
-	// The files that carry its name, each with the length it measured; zero where it was not measured.
-	std::vector<std::pair<core::file_path, double>> candidates;
-	movie_probe_result probe;
+	bool found = false;
+	double duration = 0;
 };
 
-struct movie_import
+// Opens a sound file - an audio file, or a video for its sound - and measures it. I/O and decoding, so it runs
+// where probe_movie_source does.
+movie_sound_probe probe_movie_sound(core::file_path path);
+
+// What a sound file's probe makes of a clip that names it. One rule for the view and the command line.
+inline movie_clip apply_movie_sound_probe(movie_clip clip, const movie_sound_probe& probe)
 {
-	movie_load_result loaded;
-	// In timeline order, one per source however many clips use it.
-	std::vector<movie_import_source> sources;
-	int relinked_clips = 0;
-};
+	clip.sound_file_is_probed = true;
+	clip.sound_file_is_missing = !probe.found;
+	clip.sound_file_duration = probe.found ? probe.duration : 0.0;
+	// What a crossfade brings in is now this file's opening, which is heard afresh.
+	clip.sound_checked_at = -1;
+	clip.sound_is_quiet = false;
+	return clip;
+}
 
-// Reads a Movie Maker project and settles where each source is: at its stored path, or the
-// collection file `find` offers that the rules in docs/movie.md#6-project-files choose. Every source
-// is measured, so the clips arrive probed; a clip whose source changed while it was measured is left
-// unprobed for the caller to measure again. File I/O and decoding, so it never runs on the UI thread.
-movie_import import_movie_maker_project(std::string_view xml, core::folder_path project_folder,
-                                        const movie_source_finder& find);
+// Whether a clip is nearly silent where a crossfade brings it in, judged from samples already decoded:
+// interleaved stereo at `sample_rate`, beginning at the clip's in point, of which the first crossfade's
+// worth is heard.
+bool movie_opening_is_quiet(const std::vector<int16_t>& pcm, int sample_rate);
 
 // Writes `text` to a staged file beside `path`, and replaces `path` only once all of it is written,
 // so a failed save leaves the project that was there. Answers a failure in words, or nothing.
@@ -169,7 +179,6 @@ struct movie_render_control
 struct movie_render_request
 {
 	std::vector<movie_clip> clips;
-	movie_settings settings;
 	movie_output output;
 	core::file_path path;
 	bool fail_if_exists = false;
@@ -191,10 +200,25 @@ struct movie_render_result
 // Renders a resolved timeline to `request.path`, staged beside it and moved into place only on
 // success. Decodes and encodes on the calling thread with no display device, so it runs on a
 // worker or on the command line's own thread. `report` receives the fraction done.
-movie_render_result render_movie_to_file(const movie_render_request& request,
-                                         const std::function<void(double)>& report,
+movie_render_result render_movie_to_file(const movie_render_request& request, const std::function<void(double)>& report,
                                          const core::cancel_token& token,
                                          const std::shared_ptr<movie_render_control>& control);
+
+// A text screen's words or a caption as the movie shows them on a frame of `frame`: white, edged in
+// black so they read over any picture, centred across the frame, a screen's in its middle and a caption
+// in its lower band. `at` is where its top left goes. The preview and the render both draw text this
+// way, through libdesktop's styled text, which draws on any thread.
+struct movie_text_layer
+{
+	core::surface_ptr surface;
+	pointi at;
+};
+
+movie_text_layer draw_movie_text(std::string_view text, movie_text_kind kind, sizei frame);
+
+// A text screen's whole picture: its words on black, `frame` in size. The preview and the render compose
+// it as they compose a photo.
+core::surface_ptr draw_movie_screen(std::string_view text, sizei frame);
 
 struct movie_frame_cache_completion_decision
 {
@@ -232,8 +256,7 @@ struct movie_peak_completion_decision
 
 inline movie_peak_completion_decision decide_movie_peak_completion(const uint64_t current_generation,
                                                                    const uint64_t result_generation,
-                                                                   const bool is_pending_request,
-                                                                   const bool completed)
+                                                                   const bool is_pending_request, const bool completed)
 {
 	if (current_generation != result_generation) return {};
 	return {true, is_pending_request, completed};
@@ -288,9 +311,8 @@ enum class movie_probe_changed_action
 inline movie_probe_changed_action decide_movie_changed_probe_action(const int retry_count_after_increment,
                                                                     const int max_retries)
 {
-	return retry_count_after_increment <= max_retries
-		       ? movie_probe_changed_action::retry
-		       : movie_probe_changed_action::mark_missing;
+	return retry_count_after_increment <= max_retries ? movie_probe_changed_action::retry
+	                                                  : movie_probe_changed_action::mark_missing;
 }
 
 inline bool movie_path_list_contains(const std::vector<core::file_path>& paths, const core::file_path& path)
@@ -298,17 +320,16 @@ inline bool movie_path_list_contains(const std::vector<core::file_path>& paths, 
 	return std::find(paths.begin(), paths.end(), path) != paths.end();
 }
 
-inline movie_probe_retry_updates decide_movie_changed_probe_retries(const std::vector<movie_probe_result>& results,
-                                                                    core::hash_map<core::file_path, int, core::ihash,
-	                                                                    core::ieq>& retries,
-                                                                    const int max_retries)
+inline movie_probe_retry_updates decide_movie_changed_probe_retries(
+	const std::vector<movie_probe_result>& results,
+	core::hash_map<core::file_path, int, core::ihash, core::ieq>& retries, const int max_retries)
 {
 	movie_probe_retry_updates updates;
 
 	for (const auto& result : results)
 	{
 		if (!result.changed_during_probe || movie_path_list_contains(updates.retry_paths, result.path) ||
-			movie_path_list_contains(updates.missing_paths, result.path))
+		    movie_path_list_contains(updates.missing_paths, result.path))
 		{
 			continue;
 		}
@@ -317,8 +338,7 @@ inline movie_probe_retry_updates decide_movie_changed_probe_retries(const std::v
 
 		if (decide_movie_changed_probe_action(count, max_retries) == movie_probe_changed_action::retry)
 			updates.retry_paths.emplace_back(result.path);
-		else
-			updates.missing_paths.emplace_back(result.path);
+		else updates.missing_paths.emplace_back(result.path);
 	}
 
 	return updates;
@@ -468,7 +488,8 @@ inline core::const_surface_ptr upright_movie_frame(const core::const_surface_ptr
 // upright extent. Session textures carry the source orientation rather than turned pixels.
 inline quadd upright_movie_destination(const recti target, const core::orientation orientation)
 {
-	return orientation == core::orientation::none ? quadd(target) : quadd(target).transform(to_simple_transform(orientation));
+	return orientation == core::orientation::none ? quadd(target)
+	                                              : quadd(target).transform(to_simple_transform(orientation));
 }
 
 class movie_view_controls final : public view_controls_host
@@ -479,20 +500,17 @@ public:
 
 	std::shared_ptr<text_element> _info;
 	std::shared_ptr<ui::title_control> _movie_title;
-	std::shared_ptr<ui::check_control> _crossfade_check;
-	std::shared_ptr<ui::check_control> _cut_check;
-	std::shared_ptr<ui::slider_control> _transition_slider;
-	std::shared_ptr<ui::check_control> _fade_in_check;
-	std::shared_ptr<ui::check_control> _fade_out_check;
-	std::shared_ptr<ui::slider_control> _photo_slider;
 	std::shared_ptr<text_element> _output_text;
 
 	std::shared_ptr<divider_element> _clip_divider;
 	std::shared_ptr<ui::title_control> _clip_title;
 	std::shared_ptr<text_element> _clip_text;
 	std::shared_ptr<movie_trim_control> _trim;
-	std::shared_ptr<ui::slider_control> _clip_hold_slider;
-	std::shared_ptr<ui::check_control> _clip_hold_default_check;
+	std::shared_ptr<movie_song_control> _song;
+	std::shared_ptr<ui::slider_control> _hold_slider;
+	std::shared_ptr<text_element> _text_label;
+	std::shared_ptr<ui::multi_line_edit_control> _text_edit;
+	std::shared_ptr<ui::check_control> _stabilize_check;
 
 	movie_view_controls(view_state& s, movie_view_state& ms) : view_controls_host(s), _movie_state(ms)
 	{
@@ -512,14 +530,16 @@ private:
 	std::string _shown_output_text;
 	std::string _shown_clip_text;
 	std::string _shown_info_text;
+	// The tunes the song control was laid out for, which sets how many rows of them it takes.
+	int _shown_songs = 0;
+	// Whether the panel was last laid out for a text screen rather than a clip.
+	bool _shown_text_item = false;
 
 public:
-
 	// The controls bind to movie_view_state, but a native control shows what it was last given, so
-	// a value the document changed -- an undo, an opened project, another clip in focus -- has to be
-	// shown again. Neither raises a change: an echo of the view's own write is not an edit.
-	void show_document_values() const;
-	void show_clip_values() const;
+	// a value the document changed -- an undo, an opened project, another item in focus -- has to be
+	// shown again. It raises no change: an echo of the view's own write is not an edit.
+	void show_item_values() const;
 };
 
 class movie_view final : public view_base, public std::enable_shared_from_this<movie_view>
@@ -546,6 +566,32 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	mutable render::texture_ptr _texture_b;
 	mutable core::const_surface_ptr _drawn_a;
 	mutable core::const_surface_ptr _drawn_b;
+
+	// The caption the preview last drew, kept until its words or the frame it is drawn for change:
+	// drawing text is far dearer than drawing a texture already made of it.
+	struct preview_text
+	{
+		std::string text;
+		sizei frame;
+		movie_text_layer drawn;
+		render::texture_ptr texture;
+	};
+
+	mutable preview_text _caption_layer;
+
+	// The text screens the preview last drew, as whole pictures: two, because a crossfade between two
+	// screens shows both. The least recently drawn is the one a new screen replaces.
+	struct preview_screen
+	{
+		std::string text;
+		sizei frame;
+		core::surface_ptr surface;
+		render::texture_ptr texture;
+		uint64_t drawn = 0;
+	};
+
+	mutable std::array<preview_screen, 2> _screens;
+	mutable uint64_t _screens_drawn = 0;
 
 	// The preview's picture sources: one per clip a crossfade can mix. Each is a video-only session
 	// the player decodes for, because a preview asked for the next frame every fortieth of a second
@@ -579,6 +625,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	struct preview_audio
 	{
 		core::file_path path;
+		int song = 0;
 		double start = 0;
 		double end = 0;
 		int sample_rate = 0;
@@ -686,6 +733,9 @@ public:
 	bool drop_paths(const std::vector<core::file_path>& paths, pointi loc) override;
 	void drag_paths_over(std::optional<pointi> loc) override;
 	void add_files();
+	// Inserts a text screen after the focused item, or as the first item of an empty timeline, and
+	// focuses it so its words can be typed straight away.
+	void add_text_screen();
 	void remove_current();
 	// One click's worth of strip selection. Focus always lands on `index`.
 	void select_clip(size_t index, bool extend, bool toggle);
@@ -693,26 +743,30 @@ public:
 	// turn out to be the start of a drag.
 	void set_focus(size_t index);
 	void select_all();
-	// Parks the preview on the focused clip's first kept frame and puts the playhead at its start, so
+	// Parks the preview on the focused item's first kept frame and puts the playhead at its start, so
 	// the scrubber and the strip agree with what is on screen.
 	void show_focused_clip();
 	void move_selection(size_t to);
 	void send_selection_to_end();
 	void undo();
-	// A setting or the photo hold changed in the panel. `group` names the slider a value came from, so
-	// the values one drag passes through are one undo step; end_edit_group closes it when the slider
-	// is let go.
-	void settings_changed(movie_edit_group group = movie_edit_group::none);
+	// How long the focused photo or text screen shows changed in the panel. `group` names the slider a
+	// value came from, so the values one drag passes through are one undo step; end_edit_group closes it
+	// when the slider is let go.
 	void hold_changed(movie_edit_group group = movie_edit_group::none);
+	// The focused text screen's words or clip's caption changed in the panel. The preview is parked on
+	// that item, unless the movie is playing, so what is typed is seen.
+	void text_changed();
+	void stabilize_changed();
 	void end_edit_group();
 	void trim_current(double start, double end);
 	// Restores the whole source, which is the only way back from a trim that went wrong.
 	void reset_trim();
-	void apply_probe(const std::vector<movie_probe_result>& results);
+	// Plays another of a SID file's tunes, from 1, for the focused clip: all of it, once it has been measured.
+	void choose_song(int song);
+	void apply_probe(const std::vector<movie_probe_result>& results, const std::vector<movie_sound_probe>& sounds);
 
 	void open_project();
 	void save_project();
-	void import_project();
 	// Re-points clips whose source has moved at a folder the user picks. The trim is the work and
 	// the path is only where the work was aimed, so a relink keeps the first and replaces the second.
 	void relink_missing();
@@ -736,9 +790,8 @@ public:
 	// asks so its frame and its marker follow the player instead of the handles.
 	std::optional<double> clip_position() const
 	{
-		return _movie_state.playing == movie_view_state::playing_t::clip
-			       ? std::optional{_movie_state.clip_playhead}
-			       : std::nullopt;
+		return _movie_state.playing == movie_view_state::playing_t::clip ? std::optional{_movie_state.clip_playhead}
+		                                                                 : std::nullopt;
 	}
 
 	// The clip player's current frame, uploaded on demand. Null unless it is the one running and it
@@ -757,7 +810,9 @@ public:
 	void end_preview_override();
 	void step_clip(bool forward);
 	double duration() const;
-	menu_type context_menu(pointi loc) override;
+	view_menu context_menu(pointi loc) override;
+	// The current clip's tile, which the keyboard edits the timeline at.
+	recti keyboard_bounds() const override;
 
 	const movie_project& project() const { return _movie_state.project; }
 	movie_view_state& movie_state() const { return _movie_state; }
@@ -806,16 +861,20 @@ private:
 	// Asks for the windows the playhead will reach next -- the clip's next stretch and the clips
 	// after it -- while there is still time to read them.
 	void prefetch_preview_audio();
-	// The window of `clip`'s sound holding `source_time`, or null while it is read. Asking is what
-	// reads it, on a queue the preview's pictures do not use, so reading never delays a frame.
-	std::shared_ptr<const std::vector<int16_t>> preview_pcm(const movie_clip& clip, double source_time,
+	// The window of an item's sound holding `sound_time`, or null while it is read. Asking is what reads it,
+	// on a queue the preview's pictures do not use, so reading never delays a frame.
+	std::shared_ptr<const std::vector<int16_t>> preview_pcm(const movie_sound& sound, double sound_time,
 	                                                        double& window_start);
-	void preview_pcm_loaded(core::file_path path, double start, double end, int sample_rate, int source_generation,
-	                        std::vector<int16_t> pcm);
+	void preview_pcm_loaded(core::file_path path, int song, double start, double end, int sample_rate,
+	                        int source_generation, std::vector<int16_t> pcm);
+	// Judges, from a window of sound just read from where an item's sound begins, whether the clips whose
+	// sound begins there are nearly silent where a crossfade brings them in. Measured, not edited, so it costs
+	// no undo step.
+	void judge_opening_sound(core::file_path path, int song, double start, const std::vector<int16_t>& pcm);
 	// Retires the clip player and puts its position back at the focused clip's in point.
 	void rewind_clip_player();
 	// Adopts a session the player opened, if the focus has not moved on since it was asked for.
-	void open_clip_session(core::file_path path, double at);
+	void open_clip_session(const movie_clip& clip, double at);
 	void clip_session_opened(core::file_path path, uint64_t request, std::shared_ptr<av_session> ses);
 	void close_clip_session();
 	void retire_source_state();
@@ -826,13 +885,15 @@ private:
 	// Replaces the timeline with the clips a selection produces. Only ever reached for a timeline
 	// holding no unsaved work; leaving Movie is where unsaved work is settled.
 	void seed_from(const std::vector<core::file_path>& paths);
-	// What Discard on leaving does: the timeline goes, the movie settings stay.
+	// What Discard on leaving does: the timeline goes.
 	void discard_timeline();
 	// Re-reads the bound panel values from the document and shows them, for a change the panel did
-	// not make itself. The narrower form leaves the movie settings alone, so text being typed into
-	// one of them is not rewritten under the user.
+	// not make itself.
 	void read_document();
-	void read_focused_clip();
-	void load_project(core::file_path path, bool is_wlmp);
+	void load_project(core::file_path path);
 	recti calc_preview_target(sizei source) const;
+	// Draws the caption over the preview's picture, as the render draws it over the movie's.
+	void draw_preview_caption(render::draw_context& dc, const movie_frame_text& shown) const;
+	// A text screen's picture at the preview's size, as a texture: one already drawn when it can be.
+	render::texture_ptr preview_screen_texture(render::draw_context& dc, const movie_clip& clip, sizei frame) const;
 };

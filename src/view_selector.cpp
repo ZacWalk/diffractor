@@ -1,12 +1,12 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Compact horizontal item selector used by edit and locate workflows.
+// Purpose: Compact horizontal item selector used by edit and locate workflows, picked from by the pointer or, once
+// Tab has brought the keyboard to it, by the arrows and Enter; its scroll bar marks where the selection is.
 
 #include "pch.h"
 #include "model.h"
@@ -90,12 +90,9 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::left_right;
-	}
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		const auto thumb = _view.scrollbar_thumb_bounds();
@@ -108,7 +105,7 @@ public:
 		if (_tracking) _view.scrollbar_to(loc.x - _grab_offset);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking)
 		{
@@ -229,10 +226,14 @@ void selector_view::deactivate()
 	_active = false;
 	for (const auto& entry : _items) entry.item->is_visible(false);
 	_items.clear();
+	_state.item_index.clear_visible_thumbnails(this);
 	_selection_anchor.reset();
+	_key_item.reset();
+	_key_from.reset();
 	_scroll_x = 0;
 	_content_width = 0;
 	_scroll_to_focus = false;
+	_focus_anchor.reset();
 }
 
 void selector_view::refresh()
@@ -242,13 +243,67 @@ void selector_view::refresh()
 
 void selector_view::items_changed(const bool path_changed)
 {
-	if (path_changed) _scroll_x = 0;
 	rebuild_items();
+
+	if (path_changed)
+	{
+		_scroll_x = 0;
+		_focus_anchor.reset();
+	}
 }
 
 void selector_view::display_changed()
 {
 	_host->frame()->invalidate();
+}
+
+void selector_view::enable(const bool enabled)
+{
+	if (_enabled == enabled) return;
+	_enabled = enabled;
+	_host->frame()->invalidate();
+	_state.invalidate_view(view_invalid::controller);
+}
+
+const selector_view::selector_item* selector_view::key_entry() const
+{
+	const auto& focus = _state.focus_item();
+
+	for (const auto& candidate : {_key_from == focus ? _key_item : nullptr, focus})
+	{
+		const auto found = std::ranges::find(_items, candidate, &selector_item::item);
+		if (candidate && found != _items.end()) return &*found;
+	}
+
+	return _items.empty() ? nullptr : &_items.front();
+}
+
+bool selector_view::key_down(const char32_t key, const platform::key_state keys)
+{
+	const auto* const entry = key_entry();
+	if (!_enabled || !entry || keys.alt) return false;
+
+	if (key == platform::keys::RETURN || key == platform::keys::SPACE)
+	{
+		if (_select_item) _select_item(entry->item, keys);
+		return true;
+	}
+
+	const auto at = static_cast<int>(entry - _items.data());
+	const auto last = static_cast<int>(_items.size()) - 1;
+	int to;
+
+	if (key == platform::keys::LEFT) to = std::max(0, at - 1);
+	else if (key == platform::keys::RIGHT) to = std::min(last, at + 1);
+	else if (key == platform::keys::HOME) to = 0;
+	else if (key == platform::keys::END) to = last;
+	else return false;
+
+	_key_item = _items[to].item;
+	_key_from = _state.focus_item();
+	make_visible(_key_item);
+	_host->frame()->invalidate();
+	return true;
 }
 
 void selector_view::rebuild_items()
@@ -269,10 +324,13 @@ void selector_view::rebuild_items()
 	}
 
 	const auto same_items = _items.size() == ordered.size() &&
-		std::ranges::equal(_items, ordered, {}, &selector_item::item, std::identity{});
+	                        std::ranges::equal(_items, ordered, {}, &selector_item::item, std::identity{});
 
 	if (!same_items)
 	{
+		// One laid out since an earlier change still holds where the focus was on screen then.
+		if (!_focus_anchor) _focus_anchor = focus_screen_left();
+
 		for (const auto& entry : _items) entry.item->is_visible(false);
 
 		std::vector<selector_item> items;
@@ -281,6 +339,17 @@ void selector_view::rebuild_items()
 	}
 
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller);
+}
+
+std::optional<int> selector_view::focus_screen_left() const
+{
+	const auto& focus = _state.focus_item();
+	const auto found = std::ranges::find(_items, focus, &selector_item::item);
+	if (!focus || found == _items.end() || found->bounds.is_empty()) return std::nullopt;
+
+	const auto left = found->bounds.left - _scroll_x;
+	if (left >= _extent.cx || left + found->bounds.width() <= 0) return std::nullopt;
+	return left;
 }
 
 void selector_view::clamp_scroll()
@@ -302,7 +371,12 @@ void selector_view::update_visible_items()
 		if (is_visible) visible.emplace_back(entry.item);
 	}
 
-	if (!visible.empty()) _state.item_index.queue_load_visible_thumbnails(std::move(visible));
+	if (!visible.empty())
+	{
+		_state.item_index.queue_stage_thumbnails(visible);
+		_state.item_index.load_visible_thumbnails(this, visible);
+	}
+
 	retire_off_band_resources();
 }
 
@@ -367,6 +441,22 @@ bool selector_view::publish_decoded_surface(std::vector<selector_item>& items, c
 
 void selector_view::layout(render::measure_context& mc, const sizei extent)
 {
+	// An item can leave the strip's set while the listing stays as it was - Locate's hides one once it has a
+	// place - so the set is checked again whenever the strip is laid out, as every tile is placed anyway.
+	if (_item_filter &&
+	    std::ranges::any_of(_items, [this](const selector_item& entry) { return !_item_filter(entry.item); }))
+	{
+		rebuild_items();
+	}
+
+	// Where the item the strip is on sits on screen: as the last change to the strip's set left it, or as it is now
+	// when the strip changes size. Either way it keeps that place, and whole, rather than the tiles sliding away from
+	// under the scroll. A layout that changes neither leaves the scroll as the user has it.
+	const auto anchor = _focus_anchor ? _focus_anchor : extent != _extent ? focus_screen_left() : std::nullopt;
+	const auto anchored = anchor.has_value();
+	const auto anchor_left = anchor.value_or(0);
+	_focus_anchor.reset();
+
 	_extent = extent;
 	_gap = std::max(mc.padding1, core::round(6 * mc.scale_factor));
 	const auto outer_padding = std::max(mc.padding1, core::round(8 * mc.scale_factor));
@@ -390,32 +480,49 @@ void selector_view::layout(render::measure_context& mc, const sizei extent)
 
 		_content_width = std::max(0, x - _gap + outer_padding);
 		const auto required_height = _content_width > extent.cx
-			                             ? std::max(core::round(10 * mc.scale_factor), mc.padding1)
-			                             : 0;
+		                                 ? std::max(core::round(10 * mc.scale_factor), mc.padding1)
+		                                 : 0;
 		if (required_height == _scrollbar_height) break;
 		_scrollbar_height = required_height;
 	}
 
-	clamp_scroll();
+	// A strip first laid out at a passing size - as a task view opens - has spent its activation's reveal on it, and
+	// the anchor taken then is what shows the item once the strip has its own size. One with no width yet spends
+	// nothing: there is nowhere to show the item.
+	const auto focus = std::ranges::find(_items, _state.focus_item(), &selector_item::item);
 
-	if (_scroll_to_focus)
+	if (focus != _items.end() && extent.cx > 0)
 	{
-		_scroll_to_focus = false;
-		make_visible(_state.focus_item());
+		if (anchored) _scroll_x = focus->bounds.left - anchor_left;
+		if (anchored || _scroll_to_focus) scroll_to_show(*focus);
 	}
 
+	if (extent.cx > 0) _scroll_to_focus = false;
+	clamp_scroll();
 	update_visible_items();
 	_host->frame()->invalidate();
 	_state.invalidate_view(view_invalid::controller);
+}
+
+void selector_view::scroll_to_show(const selector_item& entry)
+{
+	if (entry.bounds.left < _scroll_x)
+	{
+		_scroll_x = entry.bounds.left - _gap;
+	}
+	else if (entry.bounds.right > _scroll_x + _extent.cx)
+	{
+		_scroll_x = entry.bounds.right - _extent.cx + _gap;
+	}
+
+	clamp_scroll();
 }
 
 selector_view::selector_item* selector_view::item_from_location(const pointi loc)
 {
 	const auto logical = loc + pointi(_scroll_x, 0);
 	const auto found = std::ranges::find_if(_items, [logical](const selector_item& entry)
-	{
-		return entry.bounds.contains(logical);
-	});
+	{ return entry.bounds.contains(logical); });
 	return found == _items.end() ? nullptr : &*found;
 }
 
@@ -429,6 +536,10 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 	const auto client = recti(_extent);
 	const auto text_height = dc.text_line_height(render::font_face::dialog);
 	const auto focus = _state.focus_item();
+	const auto* const key = _view_has_focus ? key_entry() : nullptr;
+	const auto colors = dc.colors;
+	const core::scope_exit restore_colors([&dc, colors] { dc.colors = colors; });
+	if (!_enabled) dc.colors.alpha *= 0.5f;
 
 	for (auto& entry : _items)
 	{
@@ -475,25 +586,24 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 			entry.decode_pending = true;
 			const auto request = ++entry.decode_request;
 
-			_state._async.queue_async(async_queue::load,
-			                          [weak = weak_from_this(), &async = _state._async, item = entry.item, image,
-				                          extent = image_bounds.extent(), can_use_yuv = render::yuv_textures_enabled,
-				                          request]
-			                          {
-				                          files ff;
-				                          auto surface = ff.image_to_surface(image, extent, can_use_yuv);
+			_state._async.queue_async(async_queue::load, [weak = weak_from_this(), &async = _state._async,
+			                                              item = entry.item, image, extent = image_bounds.extent(),
+			                                              can_use_yuv = render::yuv_textures_enabled, request]
+			{
+				files ff;
+				auto surface = ff.image_to_surface(image, extent, can_use_yuv);
 
-				                          async.queue_ui([weak, item, image, request, surface = std::move(surface)]() mutable
-				                          {
-					                          const auto view = weak.lock();
-					                          if (!view) return;
+				async.queue_ui([weak, item, image, request, surface = std::move(surface)]() mutable
+				{
+					const auto view = weak.lock();
+					if (!view) return;
 
-					                          if (view->publish_decoded_surface(item, image, request, std::move(surface)))
-					                          {
-						                          view->_host->frame()->invalidate();
-					                          }
-				                          });
-			                          });
+					if (view->publish_decoded_surface(item, image, request, std::move(surface)))
+					{
+						view->_host->frame()->invalidate();
+					}
+				});
+			});
 		}
 
 		if (entry.texture)
@@ -501,15 +611,14 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 			const auto orientation = entry.item->layout_orientation();
 			const auto destination = thumbnail_destination(entry.texture->dimensions(), image_bounds, orientation,
 			                                               setting.show_rotated);
-			const auto sampler = calc_sampler(destination.bounding_rect().extent().round(),
-			                                  entry.texture->dimensions(), orientation);
+			const auto sampler = calc_sampler(destination.bounding_rect().extent().round(), entry.texture->dimensions(),
+			                                  orientation);
 			dc.draw_texture(entry.texture, destination, entry.texture->dimensions(), dc.colors.alpha, sampler);
 		}
 		else
 		{
 			const auto icon = entry.item->is_folder() ? icon_index::folder : entry.item->file_type()->icon;
-			xdraw_icon(dc, icon, image_bounds,
-			           core::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
+			xdraw_icon(dc, icon, image_bounds, core::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
 		}
 
 		auto text_bounds = bounds;
@@ -521,9 +630,10 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 		{
 			const auto border = bounds.inflate(-core::round(2 * dc.scale_factor));
 			const auto border_clr = core::color(ui::style::colors.view_selected_background, dc.colors.alpha);
-			dc.draw_border(border, border.inflate(core::round(2 * dc.scale_factor)),
-			               border_clr, border_clr);
+			dc.draw_border(border, border.inflate(core::round(2 * dc.scale_factor)), border_clr, border_clr);
 		}
+
+		if (&entry == key) draw_keyboard_ring(dc, bounds, true);
 	}
 
 	if (can_scroll())
@@ -532,10 +642,13 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 		const auto thumb = scrollbar_thumb_bounds();
 		dc.draw_rounded_rect(track, core::color(dc.colors.foreground, dc.colors.alpha * 0.15f), track.height() / 2);
 		dc.draw_rounded_rect(thumb, core::color(dc.colors.foreground, dc.colors.alpha * 0.55f), thumb.height() / 2);
+
+		const auto mark_clr = core::color(ui::style::colors.view_selected_background, dc.colors.alpha);
+		for (const auto& mark : scrollbar_marks()) dc.draw_rect(mark, mark_clr);
 	}
 }
 
-bool selector_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch)
+bool selector_view::mouse_wheel(const pointi /*loc*/, const platform::wheel_notch notch)
 {
 	// A strip has one axis, so both wheels drive it.
 	scroll_by(notch.is_vertical() ? -notch.delta : notch.delta);
@@ -543,14 +656,15 @@ bool selector_view::mouse_wheel(const pointi loc, const platform::wheel_notch no
 }
 
 view_controller_ptr selector_view::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                           hit_test_context& ctx)
+                                                            hit_test_context& ctx)
 {
-	if (can_scroll() && ctx.occluded(scrollbar_bounds()))
+	// The whole band under the tiles rather than only the track drawn in it, so a mark is pressed wherever it shows.
+	if (const recti band(0, _extent.cy - _scrollbar_height, _extent.cx, _extent.cy); can_scroll() && ctx.occluded(band))
 	{
-		return std::make_shared<selector_scroll_controller>(host, *this, scrollbar_bounds());
+		return std::make_shared<selector_scroll_controller>(host, *this, band);
 	}
 
-	if (const auto entry = item_from_location(loc))
+	if (const auto entry = item_from_location(loc); entry && _enabled)
 	{
 		return std::make_shared<selector_item_controller>(host, *this, entry->bounds.offset(-_scroll_x, 0),
 		                                                  _select_item, entry->item);
@@ -565,15 +679,7 @@ void selector_view::make_visible(const df::item_element_ptr& item)
 	if (found == _items.end()) return;
 
 	const auto previous_scroll = _scroll_x;
-	if (found->bounds.left < _scroll_x)
-	{
-		_scroll_x = found->bounds.left - _gap;
-	}
-	else if (found->bounds.right > _scroll_x + _extent.cx)
-	{
-		_scroll_x = found->bounds.right - _extent.cx + _gap;
-	}
-	clamp_scroll();
+	scroll_to_show(*found);
 	update_visible_items();
 	if (_scroll_x != previous_scroll) _host->frame()->invalidate();
 }
@@ -586,21 +692,47 @@ bool selector_view::can_scroll() const
 recti selector_view::scrollbar_bounds() const
 {
 	const auto padding = std::max(2, _scrollbar_height / 4);
-	return {
-		padding, _extent.cy - _scrollbar_height + padding,
-		_extent.cx - padding, _extent.cy - padding
-	};
+	return {padding, _extent.cy - _scrollbar_height + padding, _extent.cx - padding, _extent.cy - padding};
 }
 
 recti selector_view::scrollbar_thumb_bounds() const
 {
 	const auto track = scrollbar_bounds();
-	const auto thumb_width = std::max(_scrollbar_height * 3,
-	                                  core::mul_div(track.width(), _extent.cx, _content_width));
+	const auto thumb_width = std::max(_scrollbar_height * 3, core::mul_div(track.width(), _extent.cx, _content_width));
 	const auto travel = std::max(0, track.width() - thumb_width);
 	const auto max_scroll = std::max(1, _content_width - _extent.cx);
 	const auto left = track.left + core::mul_div(_scroll_x, travel, max_scroll);
 	return {left, track.top, left + thumb_width, track.bottom};
+}
+
+std::vector<recti> selector_view::scrollbar_marks() const
+{
+	std::vector<recti> marks;
+	if (!can_scroll()) return marks;
+
+	const auto track = scrollbar_bounds();
+	const auto thumb = scrollbar_thumb_bounds();
+	const auto travel = track.width() - thumb.width();
+	const auto max_scroll = _content_width - _extent.cx;
+	const auto width = std::max(2, _scrollbar_height / 5);
+	const auto focus = _state.focus_item();
+
+	for (const auto& entry : _items)
+	{
+		if (entry.item != focus && !entry.item->is_selected()) continue;
+
+		const auto centred_scroll = entry.bounds.center().x - _extent.cx / 2;
+		const auto x = std::clamp(track.left + thumb.width() / 2 + core::mul_div(centred_scroll, travel, max_scroll),
+		                          track.left + width / 2, track.right - width + width / 2);
+		// Over the track's whole height and past it, so a mark under the thumb still shows.
+		const recti mark(x - width / 2, _extent.cy - _scrollbar_height, x - width / 2 + width, _extent.cy);
+
+		if (!marks.empty() && mark.left <= marks.back().right)
+			marks.back().right = std::max(marks.back().right, mark.right);
+		else marks.push_back(mark);
+	}
+
+	return marks;
 }
 
 void selector_view::scrollbar_to(const int x)
@@ -628,7 +760,7 @@ void selector_view::scroll_by(const int delta_x)
 void selector_view::broadcast_event(const view_element_event& event) const
 {
 	if (event.type == view_element_event_type::free_graphics_resources ||
-		event.type == view_element_event_type::dpi_changed)
+	    event.type == view_element_event_type::dpi_changed)
 	{
 		// The decode latch is dropped with the textures: a decode that failed under memory pressure or
 		// at a previous scale deserves one more attempt once the view is rebuilt.
@@ -654,7 +786,7 @@ void selector_view::test_add_pending_decode_for_resource_event()
 bool selector_view::test_resource_event_cleared_pending_decode() const
 {
 	return !_items.empty() && !_items.front().decode_pending && !_items.front().decode_failed &&
-		_items.front().decode_request == 4;
+	       _items.front().decode_request == 4;
 }
 
 selector_view::rebuild_stats selector_view::test_rebuild_reuse(const size_t count)
@@ -699,7 +831,7 @@ selector_view::resource_stats selector_view::test_resource_retirement(const size
 	items.reserve(count);
 
 	const auto image = std::make_shared<core::image>(core::blob(16), sizei(16, 16), core::image_format::JPEG,
-	                                               core::orientation::top_left);
+	                                                 core::orientation::top_left);
 
 	for (size_t index = 0; index < count; ++index)
 	{
@@ -710,17 +842,20 @@ selector_view::resource_stats selector_view::test_resource_retirement(const size
 		                                               indexed);
 		auto surface = std::make_shared<core::surface>();
 		surface->alloc({8, 8}, core::texture_format::ARGB, core::orientation::top_left);
-		items.push_back({std::move(item), recti(static_cast<int>(index) * item_width, 0,
-		                                        static_cast<int>(index + 1) * item_width, extent.cy), image, {},
-		                 std::move(surface), index == 0, false, static_cast<uint64_t>(index + 1)});
+		items.push_back(
+			{std::move(item),
+		     recti(static_cast<int>(index) * item_width, 0, static_cast<int>(index + 1) * item_width, extent.cy),
+		     image,
+		     {},
+		     std::move(surface),
+		     index == 0,
+		     false,
+		     static_cast<uint64_t>(index + 1)});
 	}
 
 	const auto retained = [&items]
 	{
-		return std::ranges::count_if(items, [](const selector_item& entry)
-		{
-			return entry.has_retained_resource();
-		});
+		return std::ranges::count_if(items, [](const selector_item& entry) { return entry.has_retained_resource(); });
 	};
 
 	resource_stats stats;

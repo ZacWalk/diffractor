@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Custom UI controls and visual elements. Implements command links, rating controls,
 // photo viewers, video controls, scrubbers, and other interactive UI components. The panel's document
@@ -16,7 +15,7 @@
 #include "ui_controllers.h"
 #include "ui_elements.h"
 #include "model_display.h"
-#include "libfiles/commodore.h"
+#include "libdesktop/ui/table_element.h"
 
 class display_state_t;
 
@@ -42,18 +41,14 @@ public:
 	// control that ends it.
 	std::function<int()> progress;
 
-	explicit command_link_element(ui::command_ptr command,
-	                              const view_element_options& style_in = {}) :
+	explicit command_link_element(ui::command_ptr command, const view_element_options& style_in = {}) :
 		view_element(style_in), _command(std::move(command))
 	{
 		padding = {4, 4};
 		sync_command_state();
 	}
 
-	const ui::command_ptr& command() const
-	{
-		return _command;
-	}
+	const ui::command_ptr& command() const { return _command; }
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
@@ -68,8 +63,8 @@ public:
 
 		if (!text.empty())
 		{
-			cx += mc.padding1 + mc.measure_text(text, render::font_face::dialog,
-			                                    render::text_style::single_line, width_limit).cx;
+			cx += mc.padding1 +
+			      mc.measure_text(text, render::font_face::dialog, render::text_style::single_line, width_limit).cx;
 		}
 
 		return {std::min(std::max(cx, 1), width_limit), cy};
@@ -114,13 +109,13 @@ public:
 		if (!text.empty())
 		{
 			dc.draw_text(text, text_bounds, render::font_face::dialog,
-			             _command->icon != icon_index::none
-				             ? render::text_style::single_line
-				             : render::text_style::single_line_center, clr, {});
+			             _command->icon != icon_index::none ? render::text_style::single_line
+			                                                : render::text_style::single_line_center,
+			             clr, {});
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		if (_command->opaque.type() == typeid(commands))
 		{
@@ -150,8 +145,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		_device_bounds = bounds.offset(element_offset);
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
@@ -196,7 +190,7 @@ private:
 
 using command_link_element_ptr = std::shared_ptr<command_link_element>;
 
-static std::string_view orientation_to_string(const core::orientation& o) noexcept
+inline std::string_view orientation_to_string(const core::orientation& o) noexcept
 {
 	switch (o)
 	{
@@ -219,7 +213,10 @@ namespace ui
 	std::vector<recti> layout_collage(recti draw_bounds, const std::vector<sizei>& dimensions);
 }
 
-class rating_control final : public std::enable_shared_from_this<rating_control>, public view_element
+class rating_control final :
+	public std::enable_shared_from_this<rating_control>,
+	public view_element,
+	public keyboard_parts_source
 {
 	view_state& _state;
 
@@ -232,16 +229,12 @@ class rating_control final : public std::enable_shared_from_this<rating_control>
 
 public:
 	rating_control(view_state& s, df::item_element_ptr i, const bool show_accelerator,
-	               const view_element_options& style_in) noexcept : view_element(style_in), _state(s),
-	                                                                show_accelerator(show_accelerator),
-	                                                                _item(std::move(i)),
-	                                                                _can_edit([this]
-	                                                                {
-		                                                                const df::item_set items = {{_item}};
-		                                                                return items.can_process(
-			                                                                df::process_items_type::can_save_metadata,
-			                                                                false, {}).success();
-	                                                                }())
+	               const view_element_options& style_in) noexcept :
+		view_element(style_in), _state(s), show_accelerator(show_accelerator), _item(std::move(i)), _can_edit([this]
+	{
+		const df::item_set items = {{_item}};
+		return items.can_process(df::process_items_type::can_save_metadata, false, {}).success();
+	}())
 	{
 		style |= view_element_style::has_tooltip;
 		if (_can_edit) style |= view_element_style::can_invoke;
@@ -284,15 +277,14 @@ public:
 			text += icon_to_utf8(i < rating ? icon_index::star_solid : icon_index::star);
 		}
 
-		dc.draw_text(text, logical_bounds, render::font_face::icons,
-		             render::text_style::single_line_center, clr, bg);
+		dc.draw_text(text, logical_bounds, render::font_face::icons, render::text_style::single_line_center, clr, bg);
 	}
 
 	// The bubble states both grading values, because Reject and the stars share one metadata field
 	// and a user who cannot see that will not understand why a star cleared their Reject mark.
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		_icon_cxy = mc.icon_cxy;
 		return {mc.icon_cxy * 5, mc.icon_cxy};
@@ -320,9 +312,21 @@ public:
 		return std::clamp((loc.x - rating_bounds.left) / std::max(1, rating_bounds.width() / 5) + 1, 1, 5);
 	}
 
+	// A star each, where to_rating finds it.
+	std::vector<recti> keyboard_parts() const override
+	{
+		if (!can_invoke()) return {};
+
+		std::vector<recti> parts;
+		parts.reserve(5);
+		const auto cell = std::max(1, bounds.width() / 5);
+		for (auto i = 0; i < 5; ++i)
+			parts.emplace_back(bounds.left + i * cell, bounds.top, bounds.left + (i + 1) * cell, bounds.bottom);
+		return parts;
+	}
+
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -333,7 +337,10 @@ public:
 // The grading picker for a pending value rather than an item. The batch metadata surface edits a
 // number that has not been written anywhere yet, so it cannot reuse rating_control, but the user
 // must still see the same vocabulary - Reject plus five stars - that grading shows everywhere else.
-class rating_edit_control final : public std::enable_shared_from_this<rating_edit_control>, public view_element
+class rating_edit_control final :
+	public std::enable_shared_from_this<rating_edit_control>,
+	public view_element,
+	public keyboard_parts_source
 {
 	int& _val;
 	std::function<void(int)> _changed;
@@ -344,19 +351,26 @@ public:
 	// Reject occupies the first cell because it is a rating of -1, not a separate field.
 	static constexpr int cell_count = 6;
 
-	rating_edit_control(int& val, std::function<void(int)> changed) noexcept : view_element(
-		                                                                           view_element_style::can_invoke |
-		                                                                           view_element_style::has_tooltip),
-	                                                                           _val(val), _changed(std::move(changed))
+	rating_edit_control(int& val, std::function<void(int)> changed) noexcept :
+		view_element(view_element_style::can_invoke | view_element_style::has_tooltip), _val(val),
+		_changed(std::move(changed))
 	{
 	}
 
-	static int cell_to_rating(const int cell)
+	static int cell_to_rating(const int cell) { return cell <= 0 ? -1 : cell; }
+
+	// Reject, then a star each, where hover finds them.
+	std::vector<recti> keyboard_parts() const override
 	{
-		return cell <= 0 ? -1 : cell;
+		std::vector<recti> parts;
+		parts.reserve(cell_count);
+		const auto cxy = std::max(1, _icon_cxy);
+		for (auto i = 0; i < cell_count; ++i)
+			parts.emplace_back(bounds.left + i * cxy, bounds.top, bounds.left + (i + 1) * cxy, bounds.bottom);
+		return parts;
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		_icon_cxy = mc.icon_cxy;
 		return {mc.icon_cxy * cell_count, mc.icon_cxy};
@@ -373,12 +387,11 @@ public:
 		reject_bounds.right = reject_bounds.left + cxy;
 
 		const auto reject_text = icon_to_utf8(rate_label_reject.icon);
-		const auto reject_clr = rating < 0
-			                        ? core::color(rate_label_reject.clr, dc.colors.alpha)
-			                        : core::color(dc.colors.foreground, dc.colors.alpha / 3.0f);
+		const auto reject_clr = rating < 0 ? core::color(rate_label_reject.clr, dc.colors.alpha)
+		                                   : core::color(dc.colors.foreground, dc.colors.alpha / 3.0f);
 
-		dc.draw_text(reject_text, reject_bounds, render::font_face::icons,
-		             render::text_style::single_line_center, reject_clr, bg);
+		dc.draw_text(reject_text, reject_bounds, render::font_face::icons, render::text_style::single_line_center,
+		             reject_clr, bg);
 
 		std::string stars;
 
@@ -390,8 +403,7 @@ public:
 		auto star_bounds = logical_bounds;
 		star_bounds.left = logical_bounds.left + cxy;
 
-		dc.draw_text(stars, star_bounds, render::font_face::icons,
-		             render::text_style::single_line_center,
+		dc.draw_text(stars, star_bounds, render::font_face::icons, render::text_style::single_line_center,
 		             core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
@@ -399,9 +411,8 @@ public:
 	{
 		const auto logical_bounds = bounds.offset(ic.element_offset);
 		const auto cell = logical_bounds.contains(ic.loc)
-			                  ? std::clamp((ic.loc.x - logical_bounds.left) / std::max(1, _icon_cxy), 0,
-			                               cell_count - 1)
-			                  : -1;
+		                      ? std::clamp((ic.loc.x - logical_bounds.left) / std::max(1, _icon_cxy), 0, cell_count - 1)
+		                      : -1;
 
 		if (_hover_cell != cell)
 		{
@@ -411,8 +422,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -448,22 +458,17 @@ public:
 	static constexpr int entry_count = 6;
 
 	rate_label_control(view_state& s, df::item_element_ptr i, const bool show_accelerator,
-	                   const view_element_options& style_in) noexcept : view_element(
-		                                                                    style_in | view_element_style::has_tooltip |
-		                                                                    view_element_style::can_invoke), _state(s),
-	                                                                    _item(std::move(i)),
-	                                                                    show_accelerator(show_accelerator),
-	                                                                    _can_edit([this]
-	                                                                    {
-		                                                                    const df::item_set items = {{_item}};
-		                                                                    return items.can_process(
-			                                                                    df::process_items_type::can_save_metadata,
-			                                                                    false, {}).success();
-	                                                                    }())
+	                   const view_element_options& style_in) noexcept :
+		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke), _state(s),
+		_item(std::move(i)), show_accelerator(show_accelerator), _can_edit([this]
+	{
+		const df::item_set items = {{_item}};
+		return items.can_process(df::process_items_type::can_save_metadata, false, {}).success();
+	}())
 	{
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -473,8 +478,7 @@ public:
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -489,14 +493,13 @@ class preview_control final : public std::enable_shared_from_this<preview_contro
 
 public:
 	preview_control(view_state& s, texture_state_ptr ts, const bool show_accelerator,
-	                const view_element_options& style_in) noexcept : view_element(style_in), _state(s),
-	                                                                 _ts(std::move(ts)),
-	                                                                 show_accelerator(show_accelerator)
+	                const view_element_options& style_in) noexcept :
+		view_element(style_in), _state(s), _ts(std::move(ts)), show_accelerator(show_accelerator)
 	{
 		style |= view_element_style::has_tooltip | view_element_style::can_invoke;
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -506,13 +509,11 @@ public:
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
-
 
 class items_dates_control final : public std::enable_shared_from_this<items_dates_control>, public view_element
 {
@@ -526,11 +527,8 @@ class items_dates_control final : public std::enable_shared_from_this<items_date
 	render::text_style _text_style = render::text_style::multiline;
 
 public:
-	items_dates_control(view_state& s, df::item_element_ptr i) noexcept : view_element(
-		                                                                      view_element_style::has_tooltip |
-		                                                                      view_element_style::can_invoke),
-	                                                                      _state(s),
-	                                                                      _item(std::move(i))
+	items_dates_control(view_state& s, df::item_element_ptr i) noexcept :
+		view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(s), _item(std::move(i))
 	{
 		const auto& search = s.search();
 
@@ -611,8 +609,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -627,8 +624,8 @@ class pin_control final : public std::enable_shared_from_this<pin_control>, publ
 public:
 	pin_control(view_state& s, df::item_element_ptr i, const bool show_accelerator,
 	            const view_element_options& style_in) noexcept :
-		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke),
-		_state(s), _item(std::move(i)), show_accelerator(show_accelerator)
+		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke), _state(s),
+		_item(std::move(i)), show_accelerator(show_accelerator)
 	{
 	}
 
@@ -653,7 +650,7 @@ public:
 		}
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -680,25 +677,26 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.id = commands::pin_item;
 		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
 // Surfaces that draw the pin badge but have no room for a pin_control still have to let the user
-// release the item, so the badge itself is the affordance.
+// release the item, so the badge itself is the affordance. Only a whole click on it does: the release
+// after a press that closed a menu does nothing.
 class unpin_badge_controller final : public view_controller
 {
 	view_state& _state;
+	bool _pressed = false;
 
 public:
 	unpin_badge_controller(const view_host_ptr& host, view_state& state, const recti bounds) :
@@ -706,18 +704,19 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
+	platform::cursor cursor() const override { return platform::cursor::link; }
+
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
-		return platform::cursor::link;
+		_pressed = true;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
-		if (_bounds.contains(loc))
+		if (std::exchange(_pressed, false) && _bounds.contains(loc))
 		{
 			_state._pin_item.reset();
-			_state.invalidate_view(view_invalid::view_layout | view_invalid::view_redraw |
-				view_invalid::command_state);
+			_state.invalidate_view(view_invalid::view_layout | view_invalid::view_redraw | view_invalid::command_state);
 		}
 	}
 
@@ -730,8 +729,7 @@ public:
 
 // A one-icon button attached to an item. CRTP so the shared controller_from_location can reach
 // the derived type's shared_from_this(); the tooltip and the invoke action stay per-element.
-template <typename T>
-class item_icon_element : public view_element
+template <typename T> class item_icon_element : public view_element
 {
 protected:
 	view_state& _state;
@@ -740,8 +738,8 @@ protected:
 
 	item_icon_element(view_state& s, df::item_element_ptr i, const icon_index icon,
 	                  const view_element_options& style_in) noexcept :
-		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke),
-		_state(s), _item(std::move(i)), _icon(icon)
+		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke), _state(s),
+		_item(std::move(i)), _icon(icon)
 	{
 	}
 
@@ -752,25 +750,24 @@ public:
 		xdraw_icon(dc, _icon, bounds.offset(element_offset), core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(static_cast<T&>(*this), host, loc, element_offset, ctx);
 	}
 };
 
-class unselect_element final : public std::enable_shared_from_this<unselect_element>,
-                               public item_icon_element<unselect_element>
+class unselect_element final :
+	public std::enable_shared_from_this<unselect_element>,
+	public item_icon_element<unselect_element>
 {
 public:
-	unselect_element(view_state& s, df::item_element_ptr i,
-	                 const view_element_options& style_in) noexcept :
+	unselect_element(view_state& s, df::item_element_ptr i, const view_element_options& style_in) noexcept :
 		item_icon_element(s, std::move(i), icon_index::close, style_in)
 	{
 	}
@@ -783,7 +780,7 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(make_icon_element(_icon, flex_item::no_break));
 		hover.elements->add(std::make_shared<text_element>(str_format(tt.unselect_fmt.sv(), _item->name())));
@@ -791,12 +788,12 @@ public:
 	}
 };
 
-class delete_element final : public std::enable_shared_from_this<delete_element>,
-                             public item_icon_element<delete_element>
+class delete_element final :
+	public std::enable_shared_from_this<delete_element>,
+	public item_icon_element<delete_element>
 {
 public:
-	delete_element(view_state& s, df::item_element_ptr i,
-	               const view_element_options& style_in) noexcept :
+	delete_element(view_state& s, df::item_element_ptr i, const view_element_options& style_in) noexcept :
 		item_icon_element(s, std::move(i), icon_index::del, style_in)
 	{
 	}
@@ -811,7 +808,7 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(make_icon_element(_icon, flex_item::no_break));
 		hover.elements->add(std::make_shared<text_element>(str_format(tt.delete_fmt.sv(), _item->name())));
@@ -831,10 +828,10 @@ class stream_element final : public std::enable_shared_from_this<stream_element>
 
 public:
 	stream_element(view_state& state, df::item_element_ptr i, av_stream_info stream,
-	               const int audio_track_number) noexcept : _state(state),
-	                                                        _item(std::move(i)), _stream(std::move(stream))
+	               const int audio_track_number) noexcept :
+		_state(state), _item(std::move(i)), _stream(std::move(stream))
 	{
-		if (stream.type == av_stream_type::audio)
+		if (_stream.type == av_stream_type::audio)
 		{
 			style |= view_element_style::has_tooltip | view_element_style::can_invoke;
 			_icon = _stream.is_playing ? icon_index::check : icon_index::audio;
@@ -847,6 +844,9 @@ public:
 		}
 		set_style_bit(view_element_style::checked, _stream.is_playing);
 	}
+
+	// What the stream is called in its row, which is also what its row sorts by under the Title heading.
+	const std::string& text() const { return _text; }
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
@@ -864,7 +864,8 @@ public:
 
 		dc.draw_text(_text, text_bounds, _font, _text_style,
 		             core::color(_icon == icon_index::none ? dc.colors.foreground : link_foreground_color(),
-		                       dc.colors.alpha), bg);
+		                         dc.colors.alpha),
+		             bg);
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
@@ -895,7 +896,7 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(make_icon_element(icon_index::audio, flex_item::no_break));
 		hover.elements->add(std::make_shared<text_element>(_text));
@@ -903,44 +904,111 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
-class summary_control final : public std::enable_shared_from_this<summary_control>, public view_element
+inline std::shared_ptr<text_element> listing_text_cell(const std::string_view text, const bool right_align = false,
+                                                       const core::color32 color = 0)
 {
-	const df::file_group_histogram _summary;
+	auto result = std::make_shared<text_element>(text, render::font_face::dialog,
+	                                             right_align ? render::text_style::single_line_far
+	                                                         : render::text_style::single_line,
+	                                             view_element_options{});
+	if (color) result->foreground_color(color);
+	return result;
+}
 
-	mutable int _line_height = 0;
-	mutable int _col_1_width = 0;
-	mutable int _col_2_width = 0;
-	mutable int _col_3_width = 0;
-
-	struct entry
-	{
-		icon_index icon;
-		std::string name;
-		std::string count;
-		std::string size;
-		file_group_ref ft;
-	};
-
-	std::vector<entry> _lines;
-
-	render::font_face _font = render::font_face::dialog;
+class listing_icon_cell_element final : public ui::elements
+{
+	static constexpr int icon_width = 24;
+	view_element_ptr _image;
+	std::shared_ptr<text_element> _label;
 
 public:
-	summary_control(const df::file_group_histogram& summary,
-	                const view_element_options& style_in) noexcept : view_element(style_in), _summary(summary)
+	listing_icon_cell_element(const icon_index icon, const std::string_view text, const bool right_align,
+	                          const core::color32 color) :
+		_image(make_icon_element(icon, view_element_options{})), _label(listing_text_cell(text, right_align, color))
 	{
+		flex_container.wrap = flex_wrap::no_wrap;
+		_image->flex.basis = _image->flex.max_size.cx = icon_width;
+		_image->flex.shrink = 1.0f;
+		_label->flex.grow = 1.0f;
+		_label->flex.shrink = 1.0f;
+		add(_image);
+		add(_label);
+	}
+
+	sizei measure(render::measure_context& mc, const int width_limit) const override
+	{
+		// The label grows when placed, not when the table asks for its natural column width.
+		const auto image_porch = _image->porch() * mc.scale_factor;
+		const auto label_porch = _label->porch() * mc.scale_factor;
+		const auto image_width = core::round(icon_width * mc.scale_factor);
+		const auto fixed_width = image_width + (image_porch.cx + label_porch.cx) * 2;
+		const auto label = _label->measure(mc, std::max(0, width_limit - fixed_width));
+		const auto image = _image->measure(mc, image_width);
+		return {std::min(std::max(0, width_limit), fixed_width + label.cx),
+		        std::max(image.cy + image_porch.cy * 2, label.cy + label_porch.cy * 2)};
+	}
+};
+
+inline view_element_ptr listing_icon_cell(const icon_index icon, const std::string_view text,
+                                          const bool right_align = false, const core::color32 color = 0)
+{
+	return std::make_shared<listing_icon_cell_element>(icon, text, right_align, color);
+}
+
+// A heading over a table of the stack: text names the column; numbers - sizes, dates, counts - sit at its right
+// and sort largest or latest first, as they are usually wanted.
+inline ui::table_heading stack_heading(const std::string_view title, const bool numeric = false)
+{
+	return {std::string(title), numeric, true, !numeric};
+}
+
+// The stack is rebuilt beneath a selection for many reasons - details arriving, a rescan, a session closing - and
+// each rebuild makes its tables again. What the user made of one, its widths and its sort, is kept on the display by
+// the table's name, so the replacement carries on from it. Call once the headings are set.
+inline void keep_table_choices(const std::shared_ptr<ui::table_element>& table, const display_state_ptr& display,
+                               const std::string_view name)
+{
+	if (!table || !display) return;
+
+	if (const auto found = display->_table_choices.find(name); found != display->_table_choices.end())
+	{
+		table->restore_column_sizes(found->second.sizes);
+		table->sort(found->second.sort_column, found->second.ascending);
+	}
+
+	table->on_user_change = [weak = std::weak_ptr(display), key = std::string(name)](const ui::table_element& t)
+	{
+		if (const auto d = weak.lock())
+			d->_table_choices[key] = {t.user_column_sizes(), t.sort_column(), t.sort_ascending()};
+	};
+}
+
+class summary_control final : public ui::elements
+{
+	const df::file_group_histogram _summary;
+	std::shared_ptr<ui::table_element> _table = std::make_shared<ui::table_element>();
+
+public:
+	summary_control(const df::file_group_histogram& summary, const view_element_options& style_in) noexcept :
+		ui::elements(style_in), _summary(summary)
+	{
+		flex_container.direction = flex_direction::column;
+		flex_container.wrap = flex_wrap::no_wrap;
+		flex_container.align_items = flex_align::stretch;
+		flex_container.justify = flex_justify::end;
+		add(_table);
 		populate_lines();
 	}
 
 	void populate_lines()
 	{
+		_table->clear();
 		for (auto i = 0; i < file_group::max_count; ++i)
 		{
 			const auto& c = _summary.counts[i];
@@ -952,7 +1020,9 @@ public:
 				const auto text = ft->display_name(c.count > 1);
 				const auto num = platform::format_number(core::to_string(c.count));
 
-				_lines.emplace_back(ft->icon, text, num, size, ft);
+				_table->add(listing_icon_cell(ft->icon, num, true),
+				            listing_text_cell(text, false, ft->text_color(ui::style::colors.view_text)),
+				            listing_text_cell(size, true));
 			}
 		}
 	}
@@ -961,131 +1031,85 @@ public:
 	{
 		if (event.type == view_element_event_type::populate)
 		{
-			_lines.clear();
 			populate_lines();
 		}
-	}
-
-	const int icon_width = 24;
-	const int col_padding = 4;
-
-	void render(render::draw_context& dc, const pointi element_offset) const override
-	{
-		const auto logical_bounds = bounds.offset(element_offset);
-		const auto cy = logical_bounds.height() - static_cast<int>(_line_height * _lines.size());
-		auto y = logical_bounds.top + cy;
-
-		constexpr auto text_style = render::text_style::single_line;
-		constexpr auto num_style = render::text_style::single_line_far;
-		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
-
-		for (const auto& line : _lines)
-		{
-			const auto clr_text = core::color(line.ft->text_color(dc.colors.foreground), dc.colors.alpha);
-
-			auto x = logical_bounds.left;
-			xdraw_icon(dc, line.icon, recti(x, y, x + icon_width, y + _line_height), clr, {});
-			dc.draw_text(line.count, recti(x + icon_width, y, x + _col_1_width, y + _line_height), _font, num_style,
-			             clr, {});
-			x += _col_1_width + col_padding;
-			dc.draw_text(line.name, recti(x, y, x + _col_2_width - col_padding, y + _line_height), _font, text_style,
-			             clr_text.emphasize(), {});
-			x += _col_2_width + col_padding;
-			dc.draw_text(line.size, recti(x, y, x + _col_3_width - col_padding, y + _line_height), _font, num_style,
-			             clr, {});
-			y += _line_height;
-		}
-	}
-
-	sizei measure(render::measure_context& mc, const int width_limit) const override
-	{
-		_line_height = mc.text_line_height(render::font_face::dialog) + 2;
-
-		_col_1_width = 0;
-		_col_2_width = 0;
-		_col_3_width = 0;
-
-		for (const auto& line : _lines)
-		{
-			auto extent = mc.measure_text(line.count, render::font_face::dialog, render::text_style::single_line,
-			                              100, _line_height);
-			_col_1_width = std::max(extent.cx + icon_width, _col_1_width);
-
-			extent = mc.measure_text(line.name, render::font_face::dialog, render::text_style::single_line, 100,
-			                         _line_height);
-			_col_2_width = std::max(extent.cx + col_padding, _col_2_width);
-
-			extent = mc.measure_text(line.size, render::font_face::dialog, render::text_style::single_line, 100,
-			                         _line_height);
-			_col_3_width = std::max(extent.cx + col_padding, _col_3_width);
-		}
-
-		// Render steps past each column by a further col_padding, so the width has to carry those two
-		// gaps or the right-aligned size column lands outside the element.
-		return {
-			_col_1_width + _col_2_width + _col_3_width + col_padding * 2,
-			static_cast<int>(_line_height * _lines.size())
-		};
+		ui::elements::dispatch_event(event);
 	}
 };
 
-class file_list_control final : public std::enable_shared_from_this<file_list_control>, public view_element
+// An archive's listing, in a panel of the media stack, under headings that sort and size its columns. The packed
+// size is a column only where the archive's reader knew it.
+class file_list_control final : public ui::panel_element
 {
-	static constexpr int icon_width = 24;
-	static constexpr int col_padding = 8;
-	static constexpr int col_count = 4;
-
-	mutable int _line_height = 0;
-	mutable int _col_widths[col_count] = {};
-	render::text_style _text_style[col_count];
-
-	struct entry
-	{
-		icon_index icon;
-		core::color32 color;
-		std::array<std::string, col_count> text;
-		mutable std::array<sizei, col_count> extents;
-	};
-
 	display_state_ptr _display;
-	std::vector<entry> _lines;
+	std::shared_ptr<ui::table_element> _table = std::make_shared<ui::table_element>();
 
-	render::font_face _font = render::font_face::dialog;
+	static std::vector<ui::table_heading> headings(const bool packed)
+	{
+		std::vector result = {stack_heading(tt.sort_by_name.sv()), stack_heading(tt.prop_name_modified.sv(), true),
+		                      stack_heading(tt.prop_name_size.sv(), true)};
+		if (packed) result.emplace_back(stack_heading(tt.table_compressed.sv(), true));
+		return result;
+	}
 
 public:
 	file_list_control(display_state_ptr display, const view_element_options& style_in) noexcept :
-		view_element(style_in),
-		_display(std::move(display))
+		ui::panel_element(style_in), _display(std::move(display))
 	{
+		flex_container.direction = flex_direction::column;
+		flex_container.wrap = flex_wrap::no_wrap;
+		flex_container.align_items = flex_align::stretch;
+		add(_table);
 		populate();
 	}
 
 	void populate()
 	{
-		_lines.clear();
-		_lines.reserve(_display->_archive_items.size());
+		_table->clear();
 
-		for (const auto& i : _display->_archive_items)
+		const auto& items = _display->_archive_items;
+		const auto packed = std::ranges::any_of(items,
+		                                        [](const archive_item& i) { return !i.compressed_size.is_empty(); });
+
+		// The columns first, then what the user made of them: a sort by the packed size can only be kept once there
+		// is a column for it.
+		if (_table->headings().size() != (packed ? 4u : 3u))
+		{
+			_table->headings(headings(packed));
+			keep_table_choices(_table, _display, "archive");
+		}
+
+		const auto size_key = [](const core::file_size size)
+		{
+			return size.is_empty() ? ui::table_sort_key{} : ui::table_sort_key(size.to_int64());
+		};
+
+		for (const auto& i : items)
 		{
 			const auto is_empty = i.uncompressed_size.is_empty();
 			const auto* const ft = is_empty ? file_type::folder : files::file_type_from_name(i.filename);
 			const auto color = ft->text_color(ui::style::colors.view_text);
-			const auto text = i.filename;
-			const auto created = prop::format_date(i.created);
-			const auto compressed_size = is_empty ? std::string{} : platform::format_size(i.compressed_size);
-			const auto uncompressed_size = i.uncompressed_size.is_empty()
-				                               ? std::string{}
-				                               : platform::format_size(i.uncompressed_size);
+			const auto format_size = [is_empty](const core::file_size size)
+			{
+				return is_empty || size.is_empty() ? std::string{} : platform::format_size(size);
+			};
 
-			_lines.emplace_back(ft->icon, color,
-			                    std::array<std::string, col_count>{text, created, uncompressed_size, compressed_size},
-			                    std::array<sizei, col_count>{});
+			std::vector<view_element_ptr> cells = {listing_icon_cell(ft->icon, i.filename, false, color),
+			                                       listing_text_cell(prop::format_date(i.modified)),
+			                                       listing_text_cell(format_size(i.uncompressed_size), true)};
+			std::vector<ui::table_sort_key> keys = {ui::table_sort_key(i.filename),
+			                                        i.modified.is_valid() ? ui::table_sort_key(i.modified.to_int64())
+			                                                              : ui::table_sort_key{},
+			                                        is_empty ? ui::table_sort_key{} : size_key(i.uncompressed_size)};
+
+			if (packed)
+			{
+				cells.emplace_back(listing_text_cell(format_size(i.compressed_size), true));
+				keys.emplace_back(is_empty ? ui::table_sort_key{} : size_key(i.compressed_size));
+			}
+
+			_table->add_row(cells, std::move(keys));
 		}
-
-		_text_style[0] = render::text_style::single_line;
-		_text_style[1] = render::text_style::single_line;
-		_text_style[2] = render::text_style::single_line_far;
-		_text_style[3] = render::text_style::single_line_far;
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -1094,194 +1118,7 @@ public:
 		{
 			populate();
 		}
-	}
-
-	void render(render::draw_context& dc, const pointi element_offset) const override
-	{
-		const auto logical_bounds = bounds.offset(element_offset);
-		const auto min_top = logical_bounds.top - _line_height;
-		const auto cy = logical_bounds.height() - static_cast<int>(_line_height * _lines.size());
-		auto y = logical_bounds.top + cy;
-		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
-
-		for (const auto& line : _lines)
-		{
-			auto x = logical_bounds.left;
-			const auto clr_title = color(line.color, dc.colors.alpha);
-
-			xdraw_icon(dc, line.icon, recti(x, y, x + icon_width, y + _line_height), clr, {});
-			x += icon_width;
-
-			if (y > min_top && y < logical_bounds.bottom)
-			{
-				for (auto i = 0; i < col_count; i++)
-				{
-					const auto cc = i == 0 ? clr_title : clr;
-					const auto width = _col_widths[i];
-					auto text_bounds = recti(x, y, x + width - col_padding, y + _line_height);
-
-					if (text_bounds.left < logical_bounds.right)
-					{
-						if (text_bounds.right > logical_bounds.right) text_bounds.right = logical_bounds.right;
-						dc.draw_text(line.text[i], text_bounds, _font, _text_style[i], cc, {});
-					}
-
-					x += width;
-				}
-			}
-
-			y += _line_height;
-		}
-	}
-
-	sizei measure(render::measure_context& mc, const int width_limit) const override
-	{
-		_line_height = mc.text_line_height(render::font_face::dialog) + 2;
-
-		for (int& _col_width : _col_widths)
-		{
-			_col_width = 0;
-		}
-
-		for (const auto& line : _lines)
-		{
-			for (auto i = 0; i < col_count; i++)
-			{
-				if (line.extents[i].is_empty())
-				{
-					line.extents[i] = mc.measure_text(line.text[i], render::font_face::dialog,
-					                                  render::text_style::single_line, 1000, _line_height);
-				}
-
-				const auto width = line.extents[i].cx + col_padding;
-				if (width > _col_widths[i]) _col_widths[i] = width;
-			}
-		}
-
-		auto total_col_width = icon_width;
-
-		for (const int _col_width : _col_widths)
-		{
-			total_col_width += _col_width;
-		}
-
-		if (total_col_width > width_limit)
-		{
-			const auto diff = total_col_width - width_limit;
-
-			if (_col_widths[0] - diff > width_limit / col_count)
-			{
-				_col_widths[0] -= diff;
-				total_col_width -= diff;
-			}
-		}
-
-		return {std::min(width_limit, total_col_width), static_cast<int>(_line_height * _lines.size())};
-	}
-};
-
-
-class commodore_disk_control final : public std::enable_shared_from_this<commodore_disk_control>, public view_element
-{
-	display_state_ptr _display;
-
-	mutable render::texture_ptr _texture;
-	mutable sizei _tex_extent;
-
-	libfiles::c64_listing _listing;
-	int _cols = 0;
-	int _rows = 0;
-
-	uint32_t c64_blue = core::rgb(33, 27, 174);
-	uint32_t c64_light_blue = core::rgb(95, 83, 254);
-
-	// Scale that fits the cols*8 x rows*8 listing texture into the available
-	// width. Prefer an integer DPI-based scale for crisp pixels, but shrink so
-	// the listing always stays inside the border when the panel is narrow.
-	double fit_scale(const int inner_w, const double scale_factor) const
-	{
-		const int tex_w = _cols * 8;
-		if (tex_w <= 0) return 1.0;
-
-		double scale = std::max(1, core::round(scale_factor * 2.0));
-		if (tex_w * scale > inner_w) scale = static_cast<double>(std::max(8, inner_w)) / tex_w;
-		return scale;
-	}
-
-public:
-	commodore_disk_control(display_state_ptr display, const view_element_options& style_in) noexcept :
-		view_element(style_in),
-		_display(std::move(display))
-	{
-		const auto& data = _display->_selected_item_data;
-		_listing = libfiles::list_c64_media({data.data(), data.size()});
-		_cols = static_cast<int>(_listing.columns);
-		_rows = static_cast<int>(_listing.rows.size());
-	}
-
-	// texture::is_valid() only answers "not null" - it knows nothing about the device that made it -
-	// so an element caching one has to answer this broadcast or it draws a texture the device no
-	// longer owns.
-	void dispatch_event(const view_element_event& event) override
-	{
-		if (event.type == view_element_event_type::free_graphics_resources)
-		{
-			_texture.reset();
-			_tex_extent = {};
-		}
-	}
-
-	void render(render::draw_context& dc, const pointi element_offset) const override
-	{
-		if (_cols <= 0 || _rows <= 0) return;
-
-		if (!_texture || !_texture->is_valid())
-		{
-			const auto surface = files::c64_listing_surface(_listing, c64_light_blue, c64_blue);
-
-			if (surface)
-			{
-				_tex_extent = surface->dimensions();
-				_texture = dc.create_texture();
-				if (_texture) _texture->update(surface);
-			}
-		}
-
-		if (!_texture) return;
-
-		const auto logical_bounds = bounds.offset(element_offset);
-		const auto inner_w = logical_bounds.width() - dc.padding2 * 4;
-		const auto scale = fit_scale(inner_w, dc.scale_factor);
-		const auto w = std::max(1, core::round(_cols * 8 * scale));
-		const auto h = std::max(1, core::round(_rows * 8 * scale));
-		const auto left = logical_bounds.left + (logical_bounds.width() - w) / 2;
-		const auto top = logical_bounds.top + dc.padding2 * 2;
-		const auto dst = recti(left, top, left + w, top + h);
-
-		const auto bg_clr = core::color(c64_blue, dc.colors.alpha);
-		const auto border_clr = core::color(c64_light_blue, dc.colors.alpha);
-		const auto bg_bounds = dst.inflate(dc.padding2);
-
-		// Point sampling keeps crisp retro pixels at exact integer scales; use
-		// bilinear when the listing is shrunk to a fractional scale so it stays
-		// smooth and legible instead of dropping pixel rows.
-		const bool integer_scale = std::abs(scale - std::round(scale)) < 0.01;
-		const auto sampler = integer_scale ? render::texture_sampler::point : render::texture_sampler::bilinear;
-
-		dc.draw_rect(bg_bounds, bg_clr);
-		dc.draw_border(bg_bounds, bg_bounds.inflate(dc.padding2), border_clr, border_clr);
-		dc.draw_texture(_texture, dst, recti(0, 0, _tex_extent.cx, _tex_extent.cy), dc.colors.alpha, sampler);
-	}
-
-	sizei measure(render::measure_context& mc, const int width_limit) const override
-	{
-		if (_cols <= 0 || _rows <= 0) return {width_limit, 0};
-
-		const auto inner_w = width_limit - mc.padding2 * 4;
-		const auto scale = fit_scale(inner_w, mc.scale_factor);
-		const auto h = std::max(1, core::round(_rows * 8 * scale));
-
-		return {width_limit, h + mc.padding2 * 4};
+		ui::elements::dispatch_event(event);
 	}
 };
 
@@ -1292,8 +1129,8 @@ public:
 	display_state_ptr _display;
 
 	play_control(view_state& s, const view_element_options& style_in) noexcept :
-		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke),
-		_state(s), _display(s.display_state())
+		view_element(style_in | view_element_style::has_tooltip | view_element_style::can_invoke), _state(s),
+		_display(s.display_state())
 	{
 	}
 
@@ -1309,7 +1146,7 @@ public:
 		xdraw_icon(dc, icon, logical_bounds, clr, {});
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		// Transport leads the row, so it is drawn larger than the icon controls beside it - but it is
 		// the same glyph font, so an unscaled box would clip it once the display scale passes 175%.
@@ -1327,23 +1164,39 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.id = commands::play;
 		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 	}
 };
 
-class scrubber_element final : public std::enable_shared_from_this<scrubber_element>, public view_element
+// Seeks to where it is clicked, which the keyboard has no centre for. In Edit, a handle at each end of the track
+// sets the trim of the video or sound being edited.
+class scrubber_element final :
+	public std::enable_shared_from_this<scrubber_element>,
+	public view_element,
+	public no_keyboard_parts
 {
 	display_state_ptr _display;
 	std::shared_ptr<av_player> _player;
+	// Edit's: told the range a dragged trim handle leaves kept - seconds on the timeline, an end of 0 keeping the
+	// rest. The handles are offered while the display says the trim can be set.
+	std::function<void(double start, double end)> _trim_changed;
+	// The handle being dragged, drawn as held: 0 the start, 1 the end.
+	int _held_handle = -1;
+	// The handle under the pointer, drawn lit, and the controller that lit it: one torn down after its successor was
+	// built must not put out the successor's light.
+	int _hover_handle = -1;
+	const void* _hover_owner = nullptr;
+	// A handle's width, and how far either side of it a press takes it; from the scale at measure.
+	mutable int _handle_width = 8;
+	mutable int _handle_grab = 8;
 
 	// The transport row is [play button][scrubber]. Without grow/shrink the scrubber's natural
 	// width would push it past the row's right edge and over the media beneath it.
@@ -1358,18 +1211,155 @@ class scrubber_element final : public std::enable_shared_from_this<scrubber_elem
 public:
 	scrubber_element(std::shared_ptr<av_player> player, display_state_ptr display) noexcept :
 		view_element(view_element_style::has_tooltip | view_element_style::can_invoke | flex_layout),
-		_display(std::move(display)),
-		_player(std::move(player))
+		_display(std::move(display)), _player(std::move(player))
 	{
 	}
+
+	void trim_changed(std::function<void(double start, double end)> changed) { _trim_changed = std::move(changed); }
+
+	bool has_trim_handles() const
+	{
+		return _trim_changed && _display->_trim_handles && _display->media_end() > _display->media_start();
+	}
+
+	// The trim as the display holds it: an end of 0 keeps the rest.
+	std::pair<double, double> trim() const { return {_display->_trim_start, _display->_trim_end}; }
+
+	void trim(const double start, const double end) const
+	{
+		if (_trim_changed) _trim_changed(start, end);
+	}
+
+	// The range the trim keeps, start and end, in seconds on the timeline.
+	std::pair<double, double> kept_range() const
+	{
+		const auto media_start = _display->media_start();
+		const auto media_end = _display->media_end();
+		const auto start = std::clamp(_display->_trim_start, media_start, std::max(media_start, media_end));
+		const auto end = _display->_trim_end > 0.0 ? std::clamp(_display->_trim_end, start, std::max(start, media_end))
+		                                           : media_end;
+		return {start, end};
+	}
+
+	double position() const { return _display->media_pos(); }
 
 	// The track excludes the elapsed/duration labels. Derived from layout, not from render, so hit
 	// testing does not depend on a paint having happened or on which view painted last.
 	recti calc_track_bounds(const pointi element_offset) const
 	{
 		const auto logical_bounds = bounds.offset(element_offset);
-		if (logical_bounds.width() <= _display->_time_width * 3) return {};
+		if (logical_bounds.width() <= 0 || logical_bounds.height() <= 0) return {};
+		if (logical_bounds.width() <= _display->_time_width * 3)
+			return {logical_bounds.left, logical_bounds.top, logical_bounds.right,
+			        logical_bounds.top + logical_bounds.height() / 2};
 		return logical_bounds.inflate(-_display->_time_width, 0);
+	}
+
+	int x_of_time(const recti track, const double t) const
+	{
+		const auto length = _display->media_end() - _display->media_start();
+		if (length <= 0.0) return track.left;
+		const auto x = track.left + core::round((t - _display->media_start()) * track.width() / length);
+		return std::clamp(x, track.left, track.right);
+	}
+
+	// A time moved by a pointer's sideways travel, at the track's scale. Relative, as Movie's trim handles are, so
+	// a handle pressed and not moved keeps its exact time rather than taking the time of the pixel it is drawn on.
+	double time_moved(const double t, const int dx) const
+	{
+		const auto width = calc_track_bounds({}).width();
+		const auto media_start = _display->media_start();
+		const auto media_end = _display->media_end();
+		if (width <= 0 || media_end <= media_start) return t;
+		return std::clamp(t + static_cast<double>(dx) * (media_end - media_start) / width, media_start, media_end);
+	}
+
+	// What a handle answers a press in: around the handle, across the scrubber's whole height.
+	recti trim_handle_bounds(const int handle, const pointi element_offset) const
+	{
+		const auto track = calc_track_bounds(element_offset);
+		const auto [start, end] = kept_range();
+		const auto x = handle == 0 ? x_of_time(track, start) + _handle_width / 2
+		                           : x_of_time(track, end) - _handle_width / 2;
+		const auto element = bounds.offset(element_offset);
+		return {x - _handle_grab, element.top, x + _handle_grab, element.bottom};
+	}
+
+	// Which handle a press takes, 0 the start and 1 the end, or -1 for neither: the one drawn nearer the press, and
+	// of two drawn in one place the one with room to move. A box the pointer misses is cut from where the hit test's
+	// answer holds, so moving from the track onto a handle tests again instead of keeping the track's seek.
+	int trim_handle_at(const pointi loc, const pointi element_offset, hit_test_context& ctx) const
+	{
+		if (!has_trim_handles()) return -1;
+
+		const auto start_box = trim_handle_bounds(0, element_offset);
+		const auto end_box = trim_handle_bounds(1, element_offset);
+		const auto on_start = ctx.occluded(start_box);
+		const auto on_end = ctx.occluded(end_box);
+		if (on_start != on_end) return on_start ? 0 : 1;
+		if (!on_start) return -1;
+
+		const auto to_start = std::abs(loc.x - start_box.center().x);
+		const auto to_end = std::abs(loc.x - end_box.center().x);
+		if (to_start != to_end) return to_start < to_end ? 0 : 1;
+
+		const auto [start, end] = kept_range();
+		return start <= _display->media_start() ? 1 : end >= _display->media_end() ? 0 : 1;
+	}
+
+	// Moves a handle by a sideways move from the range kept when it was pressed, no closer to the other than a
+	// tenth of a second, and shows the frame it is on.
+	void drag_trim_handle(const int handle, const std::pair<double, double> pressed, const int dx) const
+	{
+		constexpr auto least_kept = 0.1;
+		const auto media_start = _display->media_start();
+		const auto media_end = _display->media_end();
+		auto [start, end] = pressed;
+
+		if (handle == 0)
+			start = std::clamp(time_moved(start, dx), media_start, std::max(media_start, end - least_kept));
+		else end = std::clamp(time_moved(end, dx), std::min(media_end, start + least_kept), media_end);
+
+		// A handle at its own end of the track trims nothing there.
+		trim(start > media_start ? start : 0.0, end < media_end ? end : 0.0);
+		show_time(handle == 0 ? start : end, true);
+	}
+
+	// Taking hold of a handle stops playback, which would otherwise move the picture off the frame the handle is on.
+	// True when it was playing.
+	bool hold_trim_handle(const int handle)
+	{
+		_held_handle = handle;
+		const auto playing = _display->_session && _display->_session->is_playing();
+		if (playing) _player->pause(_display->_session);
+		return playing;
+	}
+
+	// Letting go of a handle puts the picture back where the playhead was when it was taken, and playback the hold
+	// stopped carries on from there: setting a trim is a look at another frame, not a move of the playhead.
+	void release_trim_handle(const double position, const bool resume)
+	{
+		_held_handle = -1;
+		if (!_display->_session) return;
+
+		_player->seek(_display->_session, position, false);
+		if (resume) _player->play(_display->_session);
+	}
+
+	// Lights the handle a controller stands over, or, given -1, puts out the light that controller lit.
+	void hover_trim_handle(const void* owner, const int handle)
+	{
+		if (handle < 0 && owner != _hover_owner) return;
+
+		_hover_owner = handle < 0 ? nullptr : owner;
+		_hover_handle = handle;
+		// The track keeps its hovered look over a handle, as over the rest of it.
+		set_style_bit(view_element_style::hover, handle >= 0);
+	}
+
+	void show_time(const double t, const bool scrubbing) const
+	{
+		if (_display->_session) _player->seek(_display->_session, t, scrubbing);
 	}
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
@@ -1410,14 +1400,24 @@ public:
 			scrub_bounds.bottom -= scale1;
 
 			dc.draw_rounded_rect(scrub_bounds,
-			                     view_handle_color(false, is_hover, is_tracking, dc.frame_has_focus, true).aa(
-				                     dc.colors.alpha), dc.padding1);
+			                     view_handle_color(false, is_hover, is_tracking, dc.frame_has_focus, true)
+			                         .aa(dc.colors.alpha),
+			                     dc.padding1);
+
+			if (has_trim_handles()) draw_trim(dc, track_bounds);
 
 			auto time_bounds = logical_bounds;
-			time_bounds.right = track_bounds.left;
-
 			auto duration_bounds = logical_bounds;
-			duration_bounds.left = track_bounds.right;
+			if (logical_bounds.width() <= _display->_time_width * 3)
+			{
+				time_bounds.top = duration_bounds.top = track_bounds.bottom;
+				time_bounds.right = duration_bounds.left = logical_bounds.center().x;
+			}
+			else
+			{
+				time_bounds.right = track_bounds.left;
+				duration_bounds.left = track_bounds.right;
+			}
 
 			const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
@@ -1428,14 +1428,46 @@ public:
 		}
 	}
 
+	// What the trim leaves out is dimmed, and a handle stands at each end of what it keeps, there to be dragged.
+	void draw_trim(render::draw_context& dc, const recti track) const
+	{
+		const auto [start, end] = kept_range();
+		const auto left = x_of_time(track, start);
+		const auto right = x_of_time(track, end);
+		const auto left_out = core::color(0, dc.colors.alpha * 0.6f);
+
+		if (left > track.left) dc.draw_rect({track.left, track.top, left, track.bottom}, left_out);
+		if (right < track.right) dc.draw_rect({right, track.top, track.right, track.bottom}, left_out);
+
+		const auto grip = core::color(ui::style::colors.dialog_background, dc.colors.alpha);
+
+		for (const auto handle : {0, 1})
+		{
+			const auto held = _held_handle == handle;
+			const auto lit = held || (_held_handle < 0 && _hover_handle == handle);
+			const auto r = handle == 0 ? recti(left, track.top, left + _handle_width, track.bottom)
+			                           : recti(right - _handle_width, track.top, right, track.bottom);
+			dc.draw_rounded_rect(r, view_handle_color(true, lit, held, dc.frame_has_focus, true).aa(dc.colors.alpha),
+			                     std::max(1, _handle_width / 3));
+
+			// A line down its middle, so it reads as something to take hold of.
+			const auto x = r.center().x;
+			dc.draw_rect({x, r.top + r.height() / 4, x + std::max(1, _handle_width / 4), r.bottom - r.height() / 4},
+			             grip);
+		}
+	}
+
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto extent = mc.measure_text("00:00:00", render::font_face::dialog,
-		                                    render::text_style::single_line, 200);
+		const auto extent = mc.measure_text("00:00:00", render::font_face::dialog, render::text_style::single_line,
+		                                    200);
 		_display->_time_width = extent.cx + mc.padding2;
+		_handle_width = std::max(4, mc.padding1 * 2);
+		_handle_grab = std::max(_handle_width, mc.padding2);
 		// Natural width is the narrowest usable track; flex grow claims the row's spare width.
 		const auto natural_width = std::min(width_limit, _display->_time_width * 4);
-		return {natural_width, std::max(extent.cy, mc.scroll_width)};
+		return {natural_width,
+		        std::max(extent.cy * (width_limit <= _display->_time_width * 3 ? 2 : 1), mc.scroll_width)};
 	}
 
 	void hover(interaction_context& ic) override
@@ -1490,9 +1522,7 @@ public:
 		}
 	}
 
-	void dispatch_event(const view_element_event& event) override
-	{
-	}
+	void dispatch_event(const view_element_event& /*event*/) override {}
 
 	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
 	{
@@ -1507,8 +1537,7 @@ public:
 			hover.elements->add(std::make_shared<text_element>(core::format_seconds(core::round(surface->time())),
 			                                                   render::font_face::dialog,
 			                                                   render::text_style::single_line,
-			                                                   flex_item::center |
-			                                                   flex_item::new_line));
+			                                                   flex_item::center | flex_item::new_line));
 
 			hover.window_bounds = track_bounds;
 			hover.active_bounds = recti(x, track_bounds.top, x + 1, track_bounds.bottom);
@@ -1516,14 +1545,100 @@ public:
 		}
 	}
 
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
-	{
-		if (calc_track_bounds(element_offset).is_empty()) return {};
-		return default_controller_from_location(*this, host, loc, element_offset, ctx);
-	}
+	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
+	                                             hit_test_context& ctx) override;
 };
+
+// Drags one of Edit's trim handles along the scrubber. While it is held the picture shows the frame the handle is on;
+// let go, the picture goes back to where the playhead was, and playback the press stopped carries on. Escape puts the
+// trim back as it was pressed.
+class scrubber_trim_controller final : public view_controller
+{
+public:
+	scrubber_trim_controller(view_host_ptr host, std::shared_ptr<scrubber_element> scrubber,
+	                         const pointi element_offset, const int handle) :
+		view_controller(std::move(host), scrubber->trim_handle_bounds(handle, element_offset)),
+		_scrubber(std::move(scrubber)), _handle(handle)
+	{
+		_scrubber->hover_trim_handle(this, handle);
+	}
+
+	~scrubber_trim_controller() override
+	{
+		// Torn down mid-drag, as when the item changes, the trim stays where it was taken to.
+		if (_held) let_go();
+		_scrubber->hover_trim_handle(this, -1);
+	}
+
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
+
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	{
+		view_controller::on_mouse_left_button_down(loc, keys);
+
+		_held = true;
+		_press_x = loc.x;
+		_pressed_trim = _scrubber->trim();
+		_pressed_kept = _scrubber->kept_range();
+		_pressed_position = _scrubber->position();
+		_was_playing = _scrubber->hold_trim_handle(_handle);
+		_scrubber->drag_trim_handle(_handle, _pressed_kept, 0);
+		_host->frame()->invalidate();
+	}
+
+	void on_mouse_move(const pointi loc) override
+	{
+		if (_held) _scrubber->drag_trim_handle(_handle, _pressed_kept, loc.x - _press_x);
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+	{
+		if (!_held) return;
+
+		_scrubber->drag_trim_handle(_handle, _pressed_kept, loc.x - _press_x);
+		let_go();
+	}
+
+	bool escape() override
+	{
+		if (!_held) return false;
+
+		_scrubber->trim(_pressed_trim.first, _pressed_trim.second);
+		let_go();
+		return true;
+	}
+
+private:
+	void let_go()
+	{
+		_held = false;
+		_scrubber->release_trim_handle(_pressed_position, _was_playing);
+		_host->frame()->invalidate();
+	}
+
+	std::shared_ptr<scrubber_element> _scrubber;
+	int _handle;
+	int _press_x = 0;
+	std::pair<double, double> _pressed_trim;
+	std::pair<double, double> _pressed_kept;
+	double _pressed_position = 0.0;
+	bool _was_playing = false;
+	bool _held = false;
+};
+
+inline view_controller_ptr scrubber_element::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                                      const pointi element_offset,
+                                                                      hit_test_context& ctx)
+{
+	if (calc_track_bounds(element_offset).is_empty()) return {};
+
+	if (const auto handle = trim_handle_at(loc, element_offset, ctx); handle >= 0)
+	{
+		return std::make_shared<scrubber_trim_controller>(host, shared_from_this(), element_offset, handle);
+	}
+
+	return default_controller_from_location(*this, host, loc, element_offset, ctx);
+}
 
 class group_title_control final : public view_element
 {
@@ -1536,21 +1651,17 @@ public:
 
 		title_element() = default;
 
-		title_element(view_element_ptr vv) : v(std::move(vv))
-		{
-		}
+		title_element(view_element_ptr vv) : v(std::move(vv)) {}
 	};
 
 	std::vector<title_element> elements;
 
 	group_title_control() noexcept = default;
 
-	group_title_control(const std::string_view title,
-	                    const std::vector<view_element_ptr>& other_controls = {}) noexcept
+	group_title_control(const std::string_view title, const std::vector<view_element_ptr>& other_controls = {}) noexcept
 	{
 		elements.emplace_back(std::make_shared<text_element>(title, render::font_face::title,
-		                                                     render::text_style::multiline,
-		                                                     flex_item::grow));
+		                                                     render::text_style::multiline, flex_item::grow));
 		for (const auto& e : other_controls) elements.emplace_back(e);
 	}
 
@@ -1616,8 +1727,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		view_controller_ptr result;
 		for (const auto& e : elements)
@@ -1639,11 +1749,24 @@ public:
 		}
 	}
 
+	// What the title holds as it draws them: those its row had room for.
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
+	{
+		for (const auto& e : elements)
+		{
+			if (e.visible) visit(e.v);
+		}
+	}
+
 private:
 	mutable std::vector<view_element_ptr> _children;
 };
 
-class photo_control final : public view_element, public std::enable_shared_from_this<photo_control>
+// The keyboard zooms the picture with keys of its own, so the picture itself is no part of it.
+class photo_control final :
+	public view_element,
+	public std::enable_shared_from_this<photo_control>,
+	public no_keyboard_parts
 {
 public:
 	view_state& _state;
@@ -1678,10 +1801,7 @@ public:
 		return _display->is_one() && _display->_item1 ? _display->_item1->path() : core::file_path{};
 	}
 
-	rectd region() const
-	{
-		return _state.drawn_region(region_item());
-	}
+	rectd region() const { return _state.drawn_region(region_item()); }
 
 	bool has_region() const
 	{
@@ -1741,10 +1861,7 @@ public:
 		_host->invalidate(ui::host_invalid::redraw | ui::host_invalid::controller);
 	}
 
-	void release_region_drag()
-	{
-		_state.end_region_drag();
-	}
+	void release_region_drag() { _state.end_region_drag(); }
 
 	void drag_region(const pointi from, const pointi to, const pointi element_offset)
 	{
@@ -1771,8 +1888,8 @@ public:
 	}
 
 	photo_control(view_state& state, display_state_ptr display, view_host_ptr host) :
-		view_element(view_element_style::can_invoke | flex_item::media), _state(state),
-		_display(std::move(display)), _host(std::move(host))
+		view_element(view_element_style::can_invoke | flex_item::media), _state(state), _display(std::move(display)),
+		_host(std::move(host))
 	{
 		if (_display->is_one())
 		{
@@ -1827,7 +1944,7 @@ public:
 			render_region(dc, element_offset);
 			if (_display->zoom()) render_zoom_thumb(dc, element_offset);
 			if (_display->is_zoom_mode() && !_display->is_temporary_zoom() && _zoom_grading_element &&
-				!_zoom_grading_element->bounds.is_empty())
+			    !_zoom_grading_element->bounds.is_empty())
 			{
 				// dc is shared by the whole frame, so the alpha is put back on every exit rather than
 				// on the normal one: an element that threw would otherwise dim everything painted after it.
@@ -1877,10 +1994,10 @@ public:
 		// pointer can neither act on nor dismiss.
 		const auto inside = region.width() >= strip_width + gap * 2 && region.height() >= cxy + gap * 2;
 		const auto limit = bounds.offset(element_offset);
-		const auto left = std::clamp(inside ? region.right - strip_width - gap : region.left,
-		                             limit.left, std::max(limit.left, limit.right - strip_width));
-		const auto top = std::clamp(inside ? region.top + gap : region.bottom + gap,
-		                            limit.top, std::max(limit.top, limit.bottom - cxy));
+		const auto left = std::clamp(inside ? region.right - strip_width - gap : region.left, limit.left,
+		                             std::max(limit.left, limit.right - strip_width));
+		const auto top = std::clamp(inside ? region.top + gap : region.bottom + gap, limit.top,
+		                            std::max(limit.top, limit.bottom - cxy));
 
 		_region_close_bounds = recti(left, top, left + cxy, top + cxy);
 		_region_zoom_bounds = _region_close_bounds.offset(cxy + gap, 0);
@@ -1915,7 +2032,7 @@ public:
 		return {};
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& /*mc*/, const int width_limit) const override
 	{
 		const auto tex_extent = calc_tex_extent(width_limit, width_limit * 3);
 		return {width_limit, tex_extent.cy};
@@ -1938,24 +2055,22 @@ public:
 			const auto projected = _display->is_panorama_projected();
 			// Loading and failure feedback need a viewport before source dimensions are known.
 			const auto image_bounds = projected || source.Width <= 0.0 || source.Height <= 0.0
-				                          ? bounds
-				                          : geometry.destination.offset(pointd(bounds.top_left())).round();
+			                              ? bounds
+			                              : geometry.destination.offset(pointd(bounds.top_left())).round();
 
 			st->layout(mc, image_bounds, i);
 
 			const auto pan_extent = image_bounds.extent();
 			_can_pan = i && i->file_type()->has_trait(file_traits::zoom) &&
-				(projected || bounds.width() < pan_extent.cx || bounds.height() < pan_extent.cy);
+			           (projected || bounds.width() < pan_extent.cx || bounds.height() < pan_extent.cy);
 
 			if (_display->is_zoom_mode() && _zoom_grading_element)
 			{
 				const auto grading_limit = bounds.inflate(-mc.padding2);
 				const auto grading_extent = _zoom_grading_element->measure(mc, grading_limit.width());
-				const recti grading_bounds{
-					grading_limit.right - grading_extent.cx,
-					grading_limit.bottom - grading_extent.cy,
-					grading_limit.right, grading_limit.bottom
-				};
+				const recti grading_bounds{grading_limit.right - grading_extent.cx,
+				                           grading_limit.bottom - grading_extent.cy, grading_limit.right,
+				                           grading_limit.bottom};
 				_zoom_grading_element->layout(mc, grading_bounds);
 			}
 		}
@@ -1982,7 +2097,11 @@ public:
 	friend class zoom_options_controller;
 };
 
-class video_control final : public view_element, public std::enable_shared_from_this<video_control>
+// Space plays and pauses it, as a click on it does, so the picture itself is no part of the keyboard's.
+class video_control final :
+	public view_element,
+	public std::enable_shared_from_this<video_control>,
+	public no_keyboard_parts
 {
 public:
 	view_state& _state;
@@ -1990,8 +2109,8 @@ public:
 	view_host_ptr _host;
 
 	video_control(view_state& s, display_state_ptr display, view_host_ptr host) noexcept :
-		view_element(view_element_style::can_invoke | flex_item::media), _state(s),
-		_display(std::move(display)), _host(std::move(host))
+		view_element(view_element_style::can_invoke | flex_item::media), _state(s), _display(std::move(display)),
+		_host(std::move(host))
 	{
 	}
 
@@ -2044,7 +2163,7 @@ public:
 		return result;
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& /*mc*/, const int width_limit) const override
 	{
 		const auto tex_extent = calc_tex_extent(width_limit, width_limit * 3);
 		return {width_limit, tex_extent.cy};
@@ -2079,48 +2198,105 @@ public:
 	friend class pan_controller;
 };
 
-
-class audio_control final : public view_element, public std::enable_shared_from_this<audio_control>
+// An audio file's panel in the media stack: its cover art, when it has one, over the visualizer's band of bars,
+// which the display brings up to the playback position for every present. A panel like the others, not a
+// picture: fullscreen stacks it with the selection panel rather than giving it the screen. Until the cover's
+// picture arrives its place is left empty rather than greyed as a photo's is while it loads. Space plays and pauses
+// it, as a click on it does, so the panel itself is no part of the keyboard's.
+class audio_control final :
+	public view_element,
+	public std::enable_shared_from_this<audio_control>,
+	public no_keyboard_parts
 {
 public:
 	view_state& _state;
 	view_host_ptr _host;
 	display_state_ptr _display;
-	// Fullscreen gives the visualizer the whole view; in the items column it is one pane above the
-	// information, and an audio file is the case where the information is what the user came for.
-	const bool _fills_view;
+	// Fullscreen has more height to give the band and the art.
+	const bool _fullscreen;
+	recti _art;
+	recti _band;
 
-	audio_control(view_state& s, display_state_ptr display, view_host_ptr host,
-	              const bool fills_view = false) noexcept :
+	audio_control(view_state& s, display_state_ptr display, view_host_ptr host, const bool fullscreen = false) noexcept
+		:
 		view_element(view_element_style::can_invoke | flex_item::media), _state(s), _host(std::move(host)),
-		_display(std::move(display)), _fills_view(fills_view)
+		_display(std::move(display)), _fullscreen(fullscreen)
 	{
+		// Its panel meets the column's edges, as the selection panel below it does.
+		padding(0);
+		margin(0);
+	}
+
+	// The cover art's shape; empty for a file without any.
+	sizei art_dimensions() const
+	{
+		return _display->_selected_texture1 && _display->player_has_video()
+		           ? _display->_selected_texture1->calc_display_dimensions()
+		           : sizei{};
+	}
+
+	// The band's height in a width: half as tall as it is wide, as the bars are drawn, within limits.
+	int band_height(render::measure_context& mc, const int inner_width) const
+	{
+		const auto most = core::round((_fullscreen ? 420 : 300) * mc.scale_factor);
+		return std::clamp(inner_width / 2, core::round(96 * mc.scale_factor), most);
+	}
+
+	int art_height(render::measure_context& mc, const int inner_width) const
+	{
+		const auto art = art_dimensions();
+		if (art.cx <= 0 || art.cy <= 0) return 0;
+		const auto most = core::round((_fullscreen ? 420 : 320) * mc.scale_factor);
+		return std::min({core::mul_div(art.cy, inner_width, art.cx), core::mul_div(inner_width, 3, 5), most});
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		if (_fills_view) return {width_limit, std::max(width_limit, core::round(500 * mc.scale_factor))};
+		const auto pad = core::round(ui::panel_element::content_padding * mc.scale_factor);
+		const auto inner = std::max(0, width_limit - pad * 2);
+		const auto art = art_height(mc, inner);
+		return {width_limit, pad * 2 + art + (art > 0 ? pad : 0) + band_height(mc, inner)};
+	}
 
-		// Cover art is the only picture an audio file has, and layout gives it the top three fifths of
-		// the pane, so the pane is that art scaled to the width and grown back. Without art there is no
-		// picture to make room for: the visualizer takes a band and the metadata below keeps the rest.
-		const auto art = _display->_selected_texture1
-			                 ? _display->_selected_texture1->calc_display_dimensions()
-			                 : sizei{};
+	void layout(render::measure_context& mc, const recti bounds_in) override
+	{
+		bounds = bounds_in;
 
-		if (art.cx <= 0 || art.cy <= 0)
+		// The band keeps at least half the height, which is the panel's to give; the art gives way first.
+		const auto pad = core::round(ui::panel_element::content_padding * mc.scale_factor);
+		const auto inner = bounds.inflate(-pad);
+		const auto band_wanted = band_height(mc, inner.width());
+		const auto band = std::min(band_wanted,
+		                           std::max(inner.height() / 2, inner.height() - art_height(mc, inner.width()) - pad));
+		const auto art_space = std::max(0, inner.height() - band - pad);
+
+		_art = {};
+		_band = recti(inner.left, inner.bottom - band, inner.right, inner.bottom);
+
+		if (art_space > 0 && art_height(mc, inner.width()) > 0 && _display->_selected_texture1)
 		{
-			return {width_limit, core::round(128 * mc.scale_factor)};
+			const recti limit(inner.left, inner.top, inner.right, inner.top + art_space);
+			_art = center_rect(core::scale_dimensions(art_dimensions(), limit), limit);
+			_display->_selected_texture1->layout(mc, _art, _display->_item1);
 		}
-
-		const auto art_cy = std::min(core::mul_div(art.cy, width_limit, art.cx), width_limit);
-		return {width_limit, std::max(core::round(128 * mc.scale_factor), core::mul_div(art_cy, 5, 3))};
+		else
+		{
+			_band = inner;
+		}
 	}
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
+		const auto panel = bounds.offset(element_offset);
+		draw_stack_panel(dc, panel);
+
+		// The bars' shadows spill past them; the panel holds them.
+		const render::scoped_clip clip(dc, panel);
+
+		_display->_audio_panel_bounds = panel;
 		_display->_audio_element_offset = element_offset;
 		_display->_audio_element_alpha = dc.colors.alpha;
+		_display->_audio_element_bounds = _band.inflate(0, -std::max(4, _band.height() / 10));
 
 		if (_display->_selected_texture1)
 		{
@@ -2134,11 +2310,17 @@ public:
 				st->_vid_tex = dc.create_texture();
 			}
 
-			if (_display->player_has_video() && st->_vid_tex)
+			if (_display->player_has_video() && st->_vid_tex && !_art.is_empty() && st->prepare_picture(dc))
 			{
 				st->draw(dc, element_offset, 0, false);
 			}
 		}
+
+		// The band's resting line, which the bars rise from and fall to, so a paused file's panel is not empty.
+		const auto band = _band.offset(element_offset);
+		const auto middle = (band.top + band.bottom) / 2;
+		dc.draw_rect(recti(band.left, middle, band.right, middle + std::max(1, core::round(dc.scale_factor))),
+		             core::color(ui::style::colors.view_text, dc.colors.alpha * 0.12f));
 
 		if (!_display->_audio_verts)
 		{
@@ -2147,29 +2329,8 @@ public:
 
 		if (_display->_audio_verts)
 		{
-			_display->_audio_element_bounds = bounds;
 			_display->update_for_present(dc.time_now);
 			dc.draw_vertices(_display->_audio_verts);
-		}
-	}
-
-	void layout(render::measure_context& mc, const recti bounds_in) override
-	{
-		bounds = bounds_in;
-
-		if (bounds.width() > 100)
-		{
-			if (_display->_selected_texture1)
-			{
-				const auto st = _display->_selected_texture1;
-				const auto i = _display->_item1;
-
-				auto limit_bounds = bounds;
-				limit_bounds.bottom = bounds.top + core::mul_div(bounds.height(), 3, 5);
-
-				const auto tex_bounds = core::scale_dimensions(st->calc_display_dimensions(), limit_bounds);
-				st->layout(mc, center_rect(tex_bounds, limit_bounds), i);
-			}
 		}
 	}
 
@@ -2242,8 +2403,8 @@ public:
 			if (_display->is_zoom_mode())
 			{
 				const auto texture = _display->active_zoom_pane() == df::zoom_pane::primary
-					                     ? _display->_selected_texture1
-					                     : _display->_selected_texture2;
+				                         ? _display->_selected_texture1
+				                         : _display->_selected_texture2;
 				texture->draw(dc, element_offset, 0, true, interactive);
 			}
 			else
@@ -2254,8 +2415,8 @@ public:
 			// Both alphas are restored on every exit path, not just the normal one: dc is shared by the
 			// whole frame, so an element that threw would leave everything painted afterwards dimmed.
 			const auto original_overlay_alpha = dc.colors.overlay_alpha;
-			const core::scope_exit restore_overlay_alpha(
-				[&dc, original_overlay_alpha] { dc.colors.overlay_alpha = original_overlay_alpha; });
+			const core::scope_exit restore_overlay_alpha([&dc, original_overlay_alpha]
+			{ dc.colors.overlay_alpha = original_overlay_alpha; });
 
 			if (_display->is_zoom_mode())
 			{
@@ -2296,8 +2457,7 @@ public:
 					                   client.top + dc.padding2 + extent.cy);
 					_display->_pane_marker_bounds[0] = letter.inflate(dc.padding1);
 					dc.draw_rect(_display->_pane_marker_bounds[0], core::color(0, alpha * 0.5f));
-					dc.draw_text(text, letter, render::font_face::title,
-					             render::text_style::single_line_center,
+					dc.draw_text(text, letter, render::font_face::title, render::text_style::single_line_center,
 					             core::color(dc.colors.foreground, alpha), {});
 				}
 				else if (_pane_marker_height > 0)
@@ -2312,8 +2472,7 @@ public:
 						const auto is_active = can_zoom && (i == 0) == (active == df::zoom_pane::primary);
 						const recti label(client.left + core::mul_div(i, client.width(), 2), client.top,
 						                  client.left + core::mul_div(i + 1, client.width(), 2), marker_bottom);
-						dc.draw_text(text, label, render::font_face::title,
-						             render::text_style::single_line_center,
+						dc.draw_text(text, label, render::font_face::title, render::text_style::single_line_center,
 						             core::color(dc.colors.foreground, is_active || !can_zoom ? alpha : alpha * 0.5f),
 						             {});
 
@@ -2365,8 +2524,8 @@ public:
 				const auto row_gap = std::max(dc.padding1, 4);
 				const auto row_height = std::max(4, (scrubber.height() - row_gap) / 2);
 				const auto track_color = core::color(0, dc.colors.alpha / 3.33f);
-				const auto handle_color = view_handle_color(false, is_hover, is_tracking, dc.frame_has_focus, true).aa(
-					dc.colors.alpha);
+				const auto handle_color = view_handle_color(false, is_hover, is_tracking, dc.frame_has_focus, true)
+				                              .aa(dc.colors.alpha);
 				const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
 				const auto scale1 = core::round(1 * dc.scale_factor);
 
@@ -2387,9 +2546,9 @@ public:
 					dc.draw_rounded_rect(track_background, track_color, dc.padding1);
 
 					const auto elapsed = core::mul_div(std::clamp(_display->_compare_video_pos, 0, scrubber.width()),
-					                                 max_duration, std::max(1, scrubber.width()));
+					                                   max_duration, std::max(1, scrubber.width()));
 					const auto playhead = track.left +
-						core::mul_div(std::min(elapsed, duration), track.width(), duration);
+					                      core::mul_div(std::min(elapsed, duration), track.width(), duration);
 					auto progress = track;
 					progress.left += scale1;
 					// A much shorter clip scales its track down to a few pixels, so the high bound
@@ -2425,7 +2584,7 @@ public:
 		{
 			const auto ww = _display->_comparing ? width_limit : (width_limit - 10) / 2;
 			const auto reserved_height = (_display->_is_compare_video ? compare_timeline_height : 0) +
-				_pane_marker_height;
+			                             _pane_marker_height;
 			const auto selected_textures = {_display->_selected_texture1, _display->_selected_texture2};
 
 			for (const auto& st : selected_textures)
@@ -2433,8 +2592,8 @@ public:
 				const auto dimensions = sized(st->calc_display_dimensions());
 				if (dimensions.Width <= 0.0 || dimensions.Height <= 0.0)
 				{
-					result.emplace_back(std::max(1, ww), std::min(std::max(1, ww),
-					                    std::max(1, height_limit - reserved_height)));
+					result.emplace_back(std::max(1, ww),
+					                    std::min(std::max(1, ww), std::max(1, height_limit - reserved_height)));
 					continue;
 				}
 				auto image_scale = calc_thumb_scale(dimensions, sized(ww, std::max(1, height_limit - reserved_height)),
@@ -2454,7 +2613,7 @@ public:
 	{
 		if (!_display->is_comparison() || _display->_comparing || _display->is_zoom_mode()) return 0;
 		return mc.measure_text("A", render::font_face::title, render::text_style::single_line_center, 200).cy +
-			mc.padding2;
+		       mc.padding2;
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
@@ -2472,10 +2631,8 @@ public:
 				if (cy < extent.cy) cy = extent.cy;
 			}
 
-			return {
-				width_limit,
-				cy + _pane_marker_height + (_display->_is_compare_video ? compare_timeline_height : 0)
-			};
+			return {width_limit,
+			        cy + _pane_marker_height + (_display->_is_compare_video ? compare_timeline_height : 0)};
 		}
 
 		return {};
@@ -2497,9 +2654,8 @@ public:
 			const auto layout_extent = calc_normal_extents(bounds.width(), bounds.height());
 			core::assert_true(layout_extent.size() == tex_count);
 
-			const std::array<texture_state_ptr, 2> selected_textures{
-				_display->_selected_texture1, _display->_selected_texture2
-			};
+			const std::array<texture_state_ptr, 2> selected_textures{_display->_selected_texture1,
+			                                                         _display->_selected_texture2};
 			const std::array<df::item_element_ptr, 2> selected_items{_display->_item1, _display->_item2};
 
 			for (auto i = 0u; i < tex_count; i++)
@@ -2527,8 +2683,8 @@ public:
 					const auto geometry = _display->zoom_state(pane).geometry(source, viewport,
 					                                                          _display->zoom_fit_scale(pane));
 					const auto image_bounds = source.Width <= 0.0 || source.Height <= 0.0
-						                          ? tex_bounds
-						                          : geometry.destination.offset(pointd(tex_bounds.top_left())).round();
+					                              ? tex_bounds
+					                              : geometry.destination.offset(pointd(tex_bounds.top_left())).round();
 					selected_textures[i]->layout(mc, image_bounds, selected_items[i]);
 					continue;
 				}
@@ -2543,13 +2699,13 @@ public:
 				const auto duration1 = md1 ? static_cast<int>(md1->duration) : 0;
 				const auto duration2 = md2 ? static_cast<int>(md2->duration) : 0;
 				const auto duration_text = core::format_seconds(std::max(duration1, duration2));
-				_display->_time_width = mc.measure_text(duration_text, render::font_face::dialog,
-				                                        render::text_style::single_line, 200).cx;
+				_display->_time_width =
+					mc.measure_text(duration_text, render::font_face::dialog, render::text_style::single_line, 200).cx;
 
 				_display->_compare_video_control_bounds = bounds;
 				_display->_compare_video_control_bounds.top = bounds.bottom - compare_timeline_height;
-				_display->_compare_video_scrubber_bounds = _display->_compare_video_control_bounds.inflate(-mc.padding2,
-					-mc.padding2);
+				_display->_compare_video_scrubber_bounds = _display->_compare_video_control_bounds
+				                                               .inflate(-mc.padding2, -mc.padding2);
 				_display->_compare_video_scrubber_bounds.top += compare_timeline_top_padding;
 				_display->_compare_video_scrubber_bounds.right -= _display->_time_width + mc.padding1;
 			}
@@ -2567,24 +2723,24 @@ public:
 				{
 					const auto grading_limit = bounds.inflate(-mc.padding2);
 					const auto grading_extent = grading->measure(mc, grading_limit.width());
-					const recti grading_bounds{
-						grading_limit.right - grading_extent.cx,
-						grading_limit.bottom - grading_extent.cy,
-						grading_limit.right, grading_limit.bottom
-					};
+					const recti grading_bounds{grading_limit.right - grading_extent.cx,
+					                           grading_limit.bottom - grading_extent.cy, grading_limit.right,
+					                           grading_limit.bottom};
 					grading->layout(mc, grading_bounds);
 				}
 			}
 
-			//if (_is_comparing)
+			// if (_is_comparing)
 			{
 				_display->_compare_limits = bounds;
 
 				for (const auto& tex : selected_textures)
 				{
-					const auto bounds = tex->display_bounds();
-					if (_display->_compare_limits.left < bounds.left) _display->_compare_limits.left = bounds.left;
-					if (_display->_compare_limits.right > bounds.right) _display->_compare_limits.right = bounds.right;
+					const auto tex_bounds = tex->display_bounds();
+					if (_display->_compare_limits.left < tex_bounds.left)
+						_display->_compare_limits.left = tex_bounds.left;
+					if (_display->_compare_limits.right > tex_bounds.right)
+						_display->_compare_limits.right = tex_bounds.right;
 				}
 			}
 		}
@@ -2630,8 +2786,7 @@ public:
 		if (!_display || !_display->_comparing) return 0;
 		// is_empty() only rejects zero width, so widths of 1..7 would invert the clamp bounds.
 		if (_display->_compare_limits.width() < 8)
-			return (_display->_compare_limits.left + _display->_compare_limits.
-			                                                   right) / 2;
+			return (_display->_compare_limits.left + _display->_compare_limits.right) / 2;
 		return std::clamp(_display->_compare_hover_loc, _display->_compare_limits.left + 4,
 		                  _display->_compare_limits.right - 4);
 	}
@@ -2639,26 +2794,29 @@ public:
 	friend class compare_controller;
 };
 
+// The selection's thumbnails as a collage, in a panel of the media stack like the others.
 class images_control2 final : public view_element, public std::enable_shared_from_this<images_control2>
 {
 	view_state& _state;
 	display_state_ptr _display;
-	recti _panel_bounds;
 	recti _pin_badge_bounds;
 
 public:
 	images_control2(view_state& state, display_state_ptr display) noexcept : _state(state), _display(std::move(display))
 	{
+		// Its panel meets the column's edges, as the selection panel below it does.
+		padding(0);
+		margin(0);
 	}
 
 	sizei measure(render::measure_context& mc, const int cx) const override
 	{
 		const auto image_count = _display->_selection_item_count;
-		const auto cx_control = std::min(360, core::mul_div(cx, 5, 11));
+		const auto cx_control = std::min(core::round(360 * mc.scale_factor), core::mul_div(cx, 5, 11));
 
 		if (image_count > 0)
 		{
-			return {cx, std::max(180, cx_control)};
+			return {cx, std::max(core::round(180 * mc.scale_factor), cx_control)};
 		}
 
 		return {cx, 0};
@@ -2690,21 +2848,21 @@ public:
 	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
-		_panel_bounds = bounds_in.inflate(-mc.padding1);
-		const auto collage_bounds = _panel_bounds.inflate(-mc.padding2);
+		const auto collage_bounds = bounds_in.inflate(
+			-core::round(ui::panel_element::content_padding * mc.scale_factor));
 		const auto minimum_cell = std::max(1, core::round(96 * mc.scale_factor));
-		const auto area_capacity = static_cast<size_t>(std::max(
-			1, collage_bounds.area() / (minimum_cell * minimum_cell)));
+		const auto area_capacity = static_cast<size_t>(
+			std::max(1, collage_bounds.area() / (minimum_cell * minimum_cell)));
 		const auto cell_capacity = std::clamp(area_capacity, 6_z, display_state_t::max_surfaces);
 		const auto visible_without_overflow = std::min(_display->_surfaces.size(), cell_capacity);
 		const auto has_overflow = _display->_selection_item_count > visible_without_overflow;
 		_display->_collage_image_count = std::min(_display->_surfaces.size(), cell_capacity - (has_overflow ? 1 : 0));
 		// Unsigned: a selection smaller than the cells built for it would otherwise read as billions.
 		_display->_selection_overflow_count = _display->_selection_item_count > _display->_collage_image_count
-			                                      ? _display->_selection_item_count - _display->_collage_image_count
-			                                      : 0;
-		_display->_surface_bounds = ui::layout_collage(
-			collage_bounds, surface_dims(_display->_collage_image_count, has_overflow));
+		                                          ? _display->_selection_item_count - _display->_collage_image_count
+		                                          : 0;
+		_display->_surface_bounds = ui::layout_collage(collage_bounds,
+		                                               surface_dims(_display->_collage_image_count, has_overflow));
 
 		const auto gutter = std::max(1, core::round(2 * mc.scale_factor));
 		for (auto& surface_bounds : _display->_surface_bounds)
@@ -2720,8 +2878,7 @@ public:
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
-		dc.draw_rounded_rect(_panel_bounds.offset(element_offset),
-		                     core::color(ui::style::colors.group_background, dc.colors.alpha), dc.padding1);
+		draw_stack_panel(dc, bounds.offset(element_offset));
 
 		// Keyed on the surface count rather than on being non-empty, so a set published after the first
 		// paint is uploaded rather than half-drawn against a cache built for a shorter one.
@@ -2758,17 +2915,17 @@ public:
 			const auto source_width = draw_width / texture_scale;
 			const auto source_height = draw_height / texture_scale;
 			const auto source_bounds = rectd((texture_dimensions.cx - source_width) / 2,
-			                                 (texture_dimensions.cy - source_height) / 2,
-			                                 source_width, source_height).round();
+			                                 (texture_dimensions.cy - source_height) / 2, source_width, source_height)
+			                               .round();
 			const auto destination = setting.show_rotated
-				                         ? quadd(draw_bounds).transform(to_simple_transform(orientation))
-				                         : quadd(draw_bounds);
+			                             ? quadd(draw_bounds).transform(to_simple_transform(orientation))
+			                             : quadd(draw_bounds);
 			const auto sampler = calc_sampler(draw_bounds.extent(), source_bounds.extent(), orientation);
 			dc.draw_texture(texture, destination, source_bounds, dc.colors.alpha, sampler);
 		}
 
 		if (_display->_selection_overflow_count > 0 &&
-			_display->_surface_bounds.size() > _display->_collage_image_count)
+		    _display->_surface_bounds.size() > _display->_collage_image_count)
 		{
 			const auto overflow_bounds = _display->_surface_bounds[_display->_collage_image_count].offset(
 				element_offset);
@@ -2777,14 +2934,13 @@ public:
 			// thumbnails are still decoding the cell names the whole selection and becomes a remainder
 			// once they arrive.
 			const auto text = _display->_collage_image_count == 0
-				                  ? format_plural_text(tt.title_item_count_fmt,
-				                                       static_cast<int64_t>(_display->_selection_item_count))
-				                  : std::format("+{}", _display->_selection_overflow_count);
+			                      ? format_plural_text(tt.title_item_count_fmt,
+			                                           static_cast<int64_t>(_display->_selection_item_count))
+			                      : std::format("+{}", _display->_selection_overflow_count);
 
 			dc.draw_rect(overflow_bounds, core::color(ui::style::colors.group_background, dc.colors.alpha));
-			dc.draw_text(text, overflow_bounds, render::font_face::dialog,
-			             render::text_style::single_line_center, core::color(dc.colors.foreground, dc.colors.alpha),
-			             {});
+			dc.draw_text(text, overflow_bounds, render::font_face::dialog, render::text_style::single_line_center,
+			             core::color(dc.colors.foreground, dc.colors.alpha), {});
 		}
 
 		if (!_pin_badge_bounds.is_empty())
@@ -2797,7 +2953,7 @@ public:
 	recti calc_pin_badge_bounds(const int icon_cxy) const
 	{
 		if (!_state._pin_item || _display->_collage_image_count == 0 || _display->_surface_bounds.empty() ||
-			_display->_collage_source_items.empty())
+		    _display->_collage_source_items.empty())
 			return {};
 
 		if (_display->_collage_source_items.front() != _state._pin_item) return {};
@@ -2820,8 +2976,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& /*ctx*/) override
 	{
 		const auto badge = _pin_badge_bounds.offset(element_offset);
 
@@ -2893,10 +3048,7 @@ public:
 		_child->tooltip(hover, loc, element_offset);
 	}
 
-	void hover(interaction_context& ic) override
-	{
-		_child->hover(ic);
-	}
+	void hover(interaction_context& ic) override { _child->hover(ic); }
 
 	void dispatch_event(const view_element_event& event) override
 	{
@@ -2909,11 +3061,12 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return _child->controller_from_location(host, loc, element_offset, ctx);
 	}
+
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override { visit(_child); }
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
@@ -2922,7 +3075,6 @@ public:
 		return {_child_extent.cx + _surface_extent.cx, std::max(_surface_extent.cy, _child_extent.cy)};
 	}
 };
-
 
 class bullet_element final : public view_element, public std::enable_shared_from_this<bullet_element>
 {
@@ -2933,14 +3085,13 @@ class bullet_element final : public view_element, public std::enable_shared_from
 	recti _child_bounds;
 
 public:
-	bullet_element(const icon_index i, view_element_ptr child,
-	               const view_element_options& style_in = {}) noexcept : view_element(style_in),
-	                                                                     _icon(i), _child(std::move(child))
+	bullet_element(const icon_index i, view_element_ptr child, const view_element_options& style_in = {}) noexcept :
+		view_element(style_in), _icon(i), _child(std::move(child))
 	{
 	}
 
-	bullet_element(const icon_index i, const std::string_view text) : _icon(i),
-	                                                                  _child(std::make_shared<text_element>(text))
+	bullet_element(const icon_index i, const std::string_view text) :
+		_icon(i), _child(std::make_shared<text_element>(text))
 	{
 	}
 
@@ -2958,7 +3109,6 @@ public:
 		}
 	}
 
-
 	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
 		bounds = bounds_in;
@@ -2975,21 +3125,19 @@ public:
 		_child->tooltip(hover, loc, element_offset);
 	}
 
-	void hover(interaction_context& ic) override
-	{
-		_child->hover(ic);
-	}
+	void hover(interaction_context& ic) override { _child->hover(ic); }
 
-	void dispatch_event(const view_element_event& event) override
-	{
-		_child->dispatch_event(event);
-	}
+	void dispatch_event(const view_element_event& event) override { _child->dispatch_event(event); }
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return _child->controller_from_location(host, loc, element_offset, ctx);
+	}
+
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
+	{
+		if (_child) visit(_child);
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override

@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Sidebar navigation panel. Contains collection overview charts, folder list,
-// favorite searches, tags, ratings, labels, and drive information displays. Also holds the
-// application logo lockup shared by the top bar and the About box.
+// favorite searches, tags, ratings, labels, and drive information displays, and the commands a
+// right-click on one of its rows offers. Also holds the application logo lockup shared by the top bar
+// and the About box.
 //
 // The sidebar is a projection of the index, so what it costs to refresh depends entirely on which
 // part of it the change actually touched. Everything used to arrive through one flag that meant
@@ -89,10 +89,7 @@ struct text_layout_state
 	void lazy_load(render::measure_context& mc, const std::string& text_in, const render::text_style style_in,
 	               const render::font_face font_in = render::font_face::dialog)
 	{
-		const auto need_create = tf == nullptr ||
-			text != text_in ||
-			font != font_in ||
-			style != style_in;
+		const auto need_create = tf == nullptr || text != text_in || font != font_in || style != style_in;
 
 		if (need_create)
 		{
@@ -105,15 +102,9 @@ struct text_layout_state
 		}
 	}
 
-	bool is_empty() const
-	{
-		return text.empty();
-	}
+	bool is_empty() const { return text.empty(); }
 
-	void dpi_changed()
-	{
-		tf.reset();
-	}
+	void dpi_changed() { tf.reset(); }
 };
 
 struct sidebar_tooltip_thumbnail
@@ -142,8 +133,8 @@ struct sidebar_tooltip_thumbnail
 		const auto surface = item->thumbnail_surface();
 		if (is_valid(surface))
 		{
-			hover.elements->add(std::make_shared<surface_element>(
-				surface, 160, flex_item::center | flex_item::new_line, item->layout_orientation()));
+			hover.elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center | flex_item::new_line,
+			                                                      item->layout_orientation()));
 		}
 		else if (is_valid(item->thumbnail()))
 		{
@@ -184,8 +175,8 @@ public:
 	int icon_repeat = 1;
 	mutable sidebar_tooltip_thumbnail _tooltip_thumbnail;
 
-	explicit sidebar_element(view_state& state) noexcept
-		: view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(state)
+	explicit sidebar_element(view_state& state) noexcept :
+		view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(state)
 	{
 	}
 
@@ -202,9 +193,8 @@ public:
 		const auto logical_bounds = bounds.offset(element_offset);
 		render_background(dc, element_offset);
 
-		const auto draw_clr = clr
-			                      ? core::color(core::average(clr, dc.colors.foreground), dc.colors.alpha)
-			                      : core::color(dc.colors.foreground, dc.colors.alpha);
+		const auto draw_clr = clr ? core::color(core::average(clr, dc.colors.foreground), dc.colors.alpha)
+		                          : core::color(dc.colors.foreground, dc.colors.alpha);
 		const auto has_text = !title_layout.is_empty();
 		const auto has_image = icon != icon_index::none;
 
@@ -273,13 +263,12 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& result, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		if (title_layout.is_empty())
 		{
@@ -289,8 +278,7 @@ public:
 		{
 			result.elements->add(make_icon_element(tooltip_icon, icon_repeat, flex_item::no_break));
 			result.elements->add(std::make_shared<text_element>(title_layout.text, render::font_face::title,
-			                                                    render::text_style::multiline,
-			                                                    flex_item::line_break));
+			                                                    render::text_style::multiline, flex_item::line_break));
 		}
 
 		_tooltip_thumbnail.add(result, _state, summary.representative_path);
@@ -298,24 +286,22 @@ public:
 		if (core::is_empty(tooltip_text))
 		{
 			result.elements->add(std::make_shared<text_element>(search.text(), render::font_face::dialog,
-			                                                    render::text_style::multiline,
-			                                                    flex_item::new_line));
+			                                                    render::text_style::multiline, flex_item::new_line));
 		}
 		else
 		{
 			result.elements->add(std::make_shared<text_element>(tooltip_text, render::font_face::dialog,
-			                                                    render::text_style::multiline,
-			                                                    flex_item::new_line));
+			                                                    render::text_style::multiline, flex_item::new_line));
 		}
 
 		result.elements->add(std::make_shared<summary_control>(summary, flex_item::new_line));
 
 		if (scoped_count)
 		{
-			result.elements->add(std::make_shared<text_element>(format_plural_text(tt.sidebar_kept_fmt, static_cast<int64_t>(*scoped_count)),
+			result.elements->add(std::make_shared<text_element>(format_plural_text(tt.sidebar_kept_fmt,
+			                                                                       static_cast<int64_t>(*scoped_count)),
 			                                                    render::font_face::dialog,
-			                                                    render::text_style::multiline,
-			                                                    flex_item::new_line));
+			                                                    render::text_style::multiline, flex_item::new_line));
 		}
 
 		result.active_bounds = result.window_bounds = bounds.offset(element_offset);
@@ -349,8 +335,8 @@ public:
 	platform::drive_t _drive;
 	const int _graph_height = 8;
 
-	explicit sidebar_drive_element(view_state& state, const platform::drive_t& d) noexcept
-		: view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(state), _drive(d)
+	explicit sidebar_drive_element(view_state& state, const platform::drive_t& d) noexcept :
+		view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(state), _drive(d)
 	{
 		if (!core::is_empty(_drive.vol_name))
 		{
@@ -400,14 +386,14 @@ public:
 		if (!_drive.capacity.is_empty())
 		{
 			auto used_bounds = graph_bounds.inflate(-pad1);
-			used_bounds.right = used_bounds.left + static_cast<int>(core::mul_div(
-				static_cast<int64_t>(used_bounds.width()), static_cast<int64_t>(_drive.used.to_int64()),
-				static_cast<int64_t>(_drive.capacity.to_int64())));
+			used_bounds.right = used_bounds.left +
+			                    static_cast<int>(core::mul_div(static_cast<int64_t>(used_bounds.width()),
+			                                                   static_cast<int64_t>(_drive.used.to_int64()),
+			                                                   static_cast<int64_t>(_drive.capacity.to_int64())));
 
-			dc.draw_rect(used_bounds,
-			             core::color(
-				             core::average(ui::style::colors.sidebar_background, ui::style::colors.important_background),
-				             draw_clr.a));
+			dc.draw_rect(used_bounds, core::color(core::average(ui::style::colors.sidebar_background,
+			                                                    ui::style::colors.important_background),
+			                                      draw_clr.a));
 		}
 
 		const auto total_text = std::format("{}|{}", platform::format_size(_drive.used),
@@ -433,19 +419,16 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& result, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		result.elements->add(make_icon_element(icon, flex_item::no_break));
 		result.elements->add(std::make_shared<text_element>(_drive.name, render::font_face::title,
-		                                                    render::text_style::multiline,
-		                                                    flex_item::line_break));
-
+		                                                    render::text_style::multiline, flex_item::line_break));
 
 		const auto table = std::make_shared<ui::table_element>(flex_item::center);
 
@@ -514,7 +497,7 @@ public:
 	{
 		std::vector<drive_item_ptr> results;
 
-		for (auto d : drives)
+		for (const auto& d : drives)
 		{
 			results.emplace_back(std::make_shared<sidebar_drive_element>(s, d));
 		}
@@ -548,8 +531,8 @@ public:
 			}
 		}
 
-		results.emplace_back(create_item(s, existing, "@duplicates"s, icon_index::compare, tt.duplicates,
-		                                 tt.duplicates_tooltip, 0));
+		results.emplace_back(
+			create_item(s, existing, "@duplicates"s, icon_index::compare, tt.duplicates, tt.duplicates_tooltip, 0));
 
 		return results;
 	}
@@ -602,10 +585,8 @@ public:
 			tags = s.item_index.distinct_tags();
 		}
 
-		core::split2(config.favorite_tags, true, [&tags](std::string_view part)
-		{
-			tags.emplace_back(part, df::file_group_histogram{});
-		});
+		core::split2(config.favorite_tags, true,
+		             [&tags](std::string_view part) { tags.emplace_back(part, df::file_group_histogram{}); });
 
 		compact_summary(tags);
 
@@ -622,7 +603,7 @@ public:
 				i->tooltip_icon = icon_index::tag;
 				i->title_layout.text = tag;
 				i->search = search;
-				i->calc_sum = [tag](const view_state& s, core::cancel_token token)
+				i->calc_sum = [tag](const view_state& s, core::cancel_token /*token*/)
 				{
 					return s.item_index.tag_summary(tag);
 				};
@@ -642,7 +623,7 @@ public:
 		i->tooltip_icon = i->icon = icon_index::star_solid;
 		i->icon_repeat = rating;
 		i->search = df::search_t::parse(key);
-		i->calc_sum = [rating](const view_state& s, core::cancel_token token)
+		i->calc_sum = [rating](const view_state& s, core::cancel_token /*token*/)
 		{
 			return s.item_index.rating_summary(rating);
 		};
@@ -710,7 +691,7 @@ public:
 				i->title_layout.text = prop::format_label(label);
 				i->tooltip_text = {};
 				i->search = search;
-				i->calc_sum = [label](const view_state& s, core::cancel_token token)
+				i->calc_sum = [label](const view_state& s, core::cancel_token /*token*/)
 				{
 					return s.item_index.label_summary(label);
 				};
@@ -722,7 +703,6 @@ public:
 
 		return results;
 	}
-
 
 	static search_item_ptr create_or_find_item(view_state& s, const search_items_by_key_t& existing,
 	                                           const std::string& key)
@@ -771,9 +751,7 @@ public:
 		if (hide_empty)
 		{
 			std::erase_if(rows, [](const search_item_ptr& row)
-			{
-				return row->summary_known && row->summary.total_items().count == 0;
-			});
+			{ return row->summary_known && row->summary.total_items().count == 0; });
 		}
 
 		return rows;
@@ -788,17 +766,18 @@ static int calc_indexing_perc(const index_progress_snapshot& stats)
 	return std::clamp(result, 1, 100);
 }
 
-class sidebar_indexing_element final : public view_element,
-                                       public std::enable_shared_from_this<sidebar_indexing_element>
+class sidebar_indexing_element final :
+	public view_element,
+	public std::enable_shared_from_this<sidebar_indexing_element>
 {
 	render::font_face _font = render::font_face::title;
 	view_state& _s;
 
 public:
 	sidebar_indexing_element(view_state& s, const view_element_options& style_in) noexcept :
-		view_element(
-			style_in | view_element_style::can_invoke | view_element_style::has_tooltip |
-			view_element_style::important), _s(s)
+		view_element(style_in | view_element_style::can_invoke | view_element_style::has_tooltip |
+	                 view_element_style::important),
+		_s(s)
 	{
 		update_background_color();
 	}
@@ -822,11 +801,10 @@ public:
 		return {width_limit, extent.cy};
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(std::make_shared<text_element>(tt.indexing_message, render::font_face::dialog,
-		                                                   render::text_style::multiline,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::multiline, flex_item::line_break));
 		hover.elements->add(std::make_shared<action_element>(tt.options_title));
 
 		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
@@ -842,8 +820,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -855,8 +832,11 @@ constexpr int sidebar_visualization_size = 220;
 // by construction rather than by three separate guesses.
 constexpr int visual_margin = 7;
 
-class sidebar_file_type_element final : public view_element,
-                                        public std::enable_shared_from_this<sidebar_file_type_element>
+// The keyboard passes over the pie: a click finds its media type on the disc as drawn, which no rectangle describes.
+class sidebar_file_type_element final :
+	public view_element,
+	public std::enable_shared_from_this<sidebar_file_type_element>,
+	public no_keyboard_parts
 {
 public:
 	bool _center_hover = false;
@@ -877,10 +857,9 @@ public:
 	std::array<pie_chart_entry, chart_segment_count> _file_type_entries;
 	uint32_t _generation = 0;
 
-	sidebar_file_type_element(view_state& state) noexcept : view_element(
-		                                                        view_element_style::has_tooltip |
-		                                                        view_element_style::can_invoke |
-		                                                        flex_item::center), _state(state)
+	sidebar_file_type_element(view_state& state) noexcept :
+		view_element(view_element_style::has_tooltip | view_element_style::can_invoke | flex_item::center),
+		_state(state)
 	{
 	}
 
@@ -932,8 +911,8 @@ public:
 
 			for (auto i = 0; i < group_count_shown && assigned < chart_segment_count; ++i)
 			{
-				const auto exact = static_cast<double>(chart_segment_count - group_count_shown) *
-					counts[i].weight / total_weight;
+				const auto exact = static_cast<double>(chart_segment_count - group_count_shown) * counts[i].weight /
+				                   total_weight;
 				const auto whole = static_cast<int>(exact);
 				shares[i] += whole;
 				remainders[i] = exact - whole;
@@ -943,7 +922,8 @@ public:
 			while (assigned < chart_segment_count)
 			{
 				auto best = 0;
-				for (auto i = 1; i < group_count_shown; ++i) if (remainders[i] > remainders[best]) best = i;
+				for (auto i = 1; i < group_count_shown; ++i)
+					if (remainders[i] > remainders[best]) best = i;
 				shares[best] += 1;
 				remainders[best] = -1.0;
 				assigned += 1;
@@ -992,9 +972,7 @@ public:
 	// sliver of it named a target the user was not being offered.
 	bool hover_file_type(const int segment)
 	{
-		const auto group = segment >= 0 && segment < chart_segment_count
-			                   ? _file_type_entries[segment].group
-			                   : nullptr;
+		const auto group = segment >= 0 && segment < chart_segment_count ? _file_type_entries[segment].group : nullptr;
 
 		auto changed = false;
 
@@ -1012,7 +990,7 @@ public:
 		return changed;
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		if (_center_hover)
 		{
@@ -1020,23 +998,21 @@ public:
 			const auto index_roots = _state.item_index.includes_with_totals();
 			const auto total = file_types.total_items();
 			const auto num = platform::format_number(core::to_string(total.count));
-			const auto num_folder = platform::format_number(core::to_string(_state.item_index.stats.index_folder_count));
+			const auto num_folder = platform::format_number(
+				core::to_string(_state.item_index.stats.index_folder_count));
 			const auto size = platform::format_size(total.size);
 			const auto text = str_format(tt.total_title.sv(), num, size, num_folder);
 
 			hover.elements->add(std::make_shared<text_element>(tt.collection_title, render::font_face::title,
 			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break |
-			                                                   flex_item::center));
+			                                                   flex_item::line_break | flex_item::center));
 			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
 			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break |
-			                                                   flex_item::center));
+			                                                   flex_item::line_break | flex_item::center));
 
 			hover.elements->add(std::make_shared<divider_element>());
 			hover.elements->add(
-				std::make_shared<summary_control>(
-					file_types, flex_item::line_break | flex_item::center));
+				std::make_shared<summary_control>(file_types, flex_item::line_break | flex_item::center));
 			hover.elements->add(std::make_shared<divider_element>());
 
 			const auto table = std::make_shared<ui::table_element>(flex_item::center);
@@ -1074,10 +1050,9 @@ public:
 					const auto size = platform::format_size(e.size);
 
 					hover.elements->add(make_icon_element(icon, flex_item::no_break));
-					hover.elements->add(std::make_shared<text_element>(ft->display_name(e.count > 1),
-					                                                   render::font_face::title,
-					                                                   render::text_style::multiline,
-					                                                   flex_item::line_break));
+					hover.elements->add(
+						std::make_shared<text_element>(ft->display_name(e.count > 1), render::font_face::title,
+					                                   render::text_style::multiline, flex_item::line_break));
 
 					const auto text = str_format(tt.collection_contains.sv(), num, ft->display_name(e.count > 1), size);
 					hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
@@ -1175,9 +1150,8 @@ public:
 
 		bool operator==(const render_key& other) const
 		{
-			return extent == other.extent && hole_color == other.hole_color &&
-				generation == other.generation && raised == other.raised &&
-				center_hover == other.center_hover;
+			return extent == other.extent && hole_color == other.hole_color && generation == other.generation &&
+			       raised == other.raised && center_hover == other.center_hover;
 		}
 	};
 
@@ -1223,14 +1197,13 @@ public:
 				for (auto i = 0; i < chart_segment_count; ++i)
 				{
 					const auto& e = _file_type_entries[i];
-					const auto color = e.count > 0
-						                   ? e.group->color
-						                   : core::lighten(ui::style::colors.sidebar_background, 0.25f);
+					const auto color = e.count > 0 ? e.group->color
+					                               : core::lighten(ui::style::colors.sidebar_background, 0.25f);
 
 					scene.wedges[i] = {
 						core::abgr(e.focus ? core::lighten(color, 0.14f) : color),
 						static_cast<uint16_t>(pie_chart_wedge_id_base + i),
-						e.focus
+						e.focus,
 					};
 				}
 
@@ -1251,8 +1224,7 @@ public:
 			dc.draw_texture(_tex, recti(logical_bounds.top_left(), _chart.extent()), dc.colors.alpha);
 		}
 
-		dc.draw_text(_text, logical_bounds, render::font_face::dialog, render::text_style::multiline_center, clr,
-		             {});
+		dc.draw_text(_text, logical_bounds, render::font_face::dialog, render::text_style::multiline_center, clr, {});
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
@@ -1264,13 +1236,12 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 
-	void layout(render::measure_context& mc, const recti bounds_in) override
+	void layout(render::measure_context& /*mc*/, const recti bounds_in) override
 	{
 		if (bounds != bounds_in)
 		{
@@ -1280,20 +1251,20 @@ public:
 	}
 };
 
-// The history chart is one control in two bands: eight years of month blocks, and under them a
-// navigator holding the whole plausible span of the collection, one bar per year. Eight years is
-// what the eye can take in at once; the navigator is how the user reaches the rest, and how they
-// see where in time their photographs actually are before they go looking.
-struct sidebar_history_element final : view_element, std::enable_shared_from_this<sidebar_history_element>
+// Year columns pan through the collection; each month's drawn silhouette is its click and hover target.
+struct sidebar_history_element final :
+	view_element,
+	std::enable_shared_from_this<sidebar_history_element>,
+	keyboard_parts_source
 {
 	static constexpr int col_count = 12;
-	static constexpr int row_count = df::history_window_years;
+	static constexpr int row_count = 12;
 	static constexpr int invalid_hover = -1;
-	static constexpr int base_row_height = 14;
+	static constexpr int base_row_height = 8;
 
 	// The block's depth vector and the clear space between months, in unscaled pixels, plus how far a
 	// hovered block floats. Depth is an upper bound: measure() shrinks it to what the cell can spare.
-	static constexpr int base_depth_x = 4;
+	static constexpr int base_depth_x = 2;
 	static constexpr int base_gap = 2;
 	static constexpr int base_lift = 2;
 
@@ -1302,37 +1273,31 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	// under blocks receding the other is not a projection of anything.
 	static constexpr int base_recede_x = 1;
 
-	// Share of the width the rows give up so they can slide across it; they keep the rest, and
-	// base_skew_pad holds both ends off the edge of the panel.
-	static constexpr int skew_percent = 15;
 	static constexpr int base_skew_pad = 2;
 
-	static constexpr int base_navigator_height = 26;
-	static constexpr int base_navigator_gap = 7;
+	static constexpr int base_year_width = 16;
 
-	// Twelve months across a wide sidebar gave cells three times wider than they were tall, which
-	// stops reading as a calendar. Capped to the width the pie and globe already use, so the three
-	// visuals line up as well.
-	static constexpr int max_content_width = sidebar_visualization_size;
-
-	// The two identity spaces in the one buffer this element rasterises into.
 	static constexpr uint16_t month_id_base = 1;
-	static constexpr uint16_t navigator_id_base = month_id_base + row_count * col_count;
 
 	view_state& _state;
 	std::array<df::date_counts, col_count * df::max_history_years> _counts{};
 	std::array<core::file_path, col_count * df::max_history_years> _representative_paths{};
-	std::array<uint64_t, df::max_history_years> _year_totals{};
 	mutable sidebar_tooltip_thumbnail _tooltip_thumbnail;
 
-	// What the navigator offers, and the newest year of the eight the calendar is showing.
+	// The years offered, as populate() worked them out, and whether the user typed where they start.
+	df::history_range _offered;
+	bool _start_is_typed = false;
+
+	// The years drawn: those offered, reaching back as far as the element is wide enough to show, so it
+	// ends at this year however wide the sidebar is. A start worked out from the collection was only a
+	// guess at where its history begins, so the years before it are offered too; a typed one is not.
 	df::history_range _range;
-	int _window_end = 0;
+	double _pan_years = 0;
+	double _pan_origin = 0;
+	bool _pan_origin_user_set = false;
 	bool _window_is_user_set = false;
 
-	uint64_t _year_max = 0;
 	int _hover_month = invalid_hover;
-	int _hover_year = invalid_hover;
 	int _current_year = 0;
 	int _current_month = 0;
 	uint32_t _generation = 0;
@@ -1345,36 +1310,60 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	mutable int row_height = base_row_height;
 	mutable int _top_pad = 0;
 	mutable int _skew_pad = base_skew_pad;
-	mutable int _nav_height = 0;
-	mutable int _nav_gap = 0;
+	mutable int _year_width = base_year_width;
+	mutable int _label_height = 0;
+	mutable int _row_travel = 0;
 	mutable calendar_chart_style _month_style{};
 
-	// The navigator carries one bar per year of the whole range, so its bars are a fraction of a
-	// month block's width and cannot spare the same depth. Taken from the range being drawn rather
-	// than the one measure() last saw, because new index data changes the range without changing the
-	// height that made measure() run.
-	calendar_chart_style nav_style(const int element_width) const
+	double visible_years(const int width) const
 	{
-		const auto cell = std::max(1, (element_width - 2 * _skew_pad) / std::max(1, _range.year_count()));
-		const auto depth = base_recede_x *
-			std::clamp(cell / 4, 1, std::max(1, std::abs(_month_style.depth_x) / 2));
-		return {depth, std::max(1, core::round(std::abs(depth) * 1.3)), 1, 1};
+		const auto viewport = std::max(1, width - 2 * _skew_pad);
+		return static_cast<double>(std::max(1, viewport - _row_travel)) / std::max(1, _year_width);
 	}
 
-	// The row's own box inside the element: what the skew leaves it, and how far it slides across
-	// the width between the back row and the front one. Derived rather than stored, so a layout that
-	// hands the element a different width than measure() was offered still places its cells.
-	struct row_plan
-	{
-		int width = 0;
-		int travel = 0;
-	};
+	double max_pan_years(const int width) const { return std::max(0.0, _range.year_count() - visible_years(width)); }
 
-	row_plan plan_rows(const int element_width) const
+	bool offers(const int year) const
 	{
-		const auto available = std::max(col_count, element_width - 2 * _skew_pad);
-		const auto width = std::max(col_count, core::mul_div(available, 100 - skew_percent, 100));
-		return {width, available - width};
+		return year >= (_start_is_typed ? _offered.first_year : _range.first_year) && year <= _range.last_year;
+	}
+
+	// Pan is counted from the first year drawn, so the year at the left edge is carried across a change
+	// to it. A window the user has not moved stays on the most recent years.
+	void fit_range(const int width)
+	{
+		const auto left_year = _range.first_year + _pan_years;
+		const auto fill = static_cast<int>(std::ceil(visible_years(width)));
+		const auto earliest = _current_year - df::max_history_years + 1;
+
+		_range = {std::min(_offered.first_year, std::max(earliest, _offered.last_year - fill + 1)), _offered.last_year};
+
+		_pan_years = _window_is_user_set ? std::clamp(left_year - _range.first_year, 0.0, max_pan_years(width))
+		                                 : max_pan_years(width);
+	}
+
+	bool pan_to(const double years)
+	{
+		const auto value = std::clamp(years, 0.0, max_pan_years(bounds.width()));
+		_window_is_user_set = true;
+		if (_pan_years == value) return false;
+		_pan_years = value;
+		_hover_month = invalid_hover;
+		_chart_invalid = true;
+		_state.invalidate_view(view_invalid::view_redraw | view_invalid::tooltip);
+		return true;
+	}
+
+	void begin_pan()
+	{
+		_pan_origin = _pan_years;
+		_pan_origin_user_set = _window_is_user_set;
+	}
+
+	void cancel_pan()
+	{
+		pan_to(_pan_origin);
+		_window_is_user_set = _pan_origin_user_set;
 	}
 
 	mutable render::texture_ptr _tex;
@@ -1388,30 +1377,26 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		core::color32 foreground = 0;
 		uint32_t generation = 0;
 		int hover_month = invalid_hover;
-		int hover_year = invalid_hover;
 		int shown_year = 0;
 		int shown_month = 0;
-		int window_end = 0;
+		int pan_pixels = 0;
 		int row_height = 0;
 		int depth = 0;
 
 		bool operator==(const render_key& other) const
 		{
-			return extent == other.extent && background == other.background &&
-				foreground == other.foreground && generation == other.generation &&
-				hover_month == other.hover_month && hover_year == other.hover_year &&
-				shown_year == other.shown_year && shown_month == other.shown_month &&
-				window_end == other.window_end && row_height == other.row_height &&
-				depth == other.depth;
+			return extent == other.extent && background == other.background && foreground == other.foreground &&
+			       generation == other.generation && hover_month == other.hover_month &&
+			       shown_year == other.shown_year && shown_month == other.shown_month &&
+			       pan_pixels == other.pan_pixels && row_height == other.row_height && depth == other.depth;
 		}
 	};
 
 	mutable render_key _rendered;
 
-	sidebar_history_element(view_state& state) noexcept : view_element(
-		                                                      view_element_style::has_tooltip |
-		                                                      view_element_style::can_invoke |
-		                                                      flex_item::center), _state(state)
+	sidebar_history_element(view_state& state) noexcept :
+		view_element(view_element_style::has_tooltip | view_element_style::can_invoke | flex_item::center),
+		_state(state)
 	{
 		populate({}); // Set some defaults
 	}
@@ -1433,29 +1418,28 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			changed = true;
 		}
 
-		const auto outside = year > _window_end || year <= _window_end - row_count;
-
-		if (named && _range.contains(year) && outside)
-		{
-			_window_end = std::clamp(year, _range.first_year + df::history_window_years - 1,
-			                         _range.last_year);
-			_window_is_user_set = true;
-			changed = true;
-		}
+		if (changed && named) changed |= show_year(year);
 
 		if (changed) _chart_invalid = true;
 		return changed;
 	}
 
-	int year_of_row(const int row) const { return _window_end - row; }
+	// Pans the calendar so a year it offers is in its window: a mark nobody can see is not a mark, and a month
+	// nobody can see cannot be clicked. False when it was there already, or is not offered.
+	bool show_year(const int year)
+	{
+		if (!offers(year) || bounds.width() <= 0) return false;
+
+		const auto front = month_bounds(bounds, year, 0);
+		const auto back = month_bounds(bounds, year, 11);
+		const auto left = bounds.left + _skew_pad;
+		if (front.left < left) return pan_to(year - _range.first_year);
+		if (back.right > bounds.right - _skew_pad)
+			return pan_to(_pan_years + static_cast<double>(back.right - bounds.right + _skew_pad) / _year_width);
+		return false;
+	}
 
 	int offset_of_year(const int year) const { return _current_year - year; }
-
-	bool window_fits() const
-	{
-		return _window_end <= _range.last_year &&
-			_window_end - df::history_window_years + 1 >= _range.first_year;
-	}
 
 	void populate(const df::date_histogram& summary)
 	{
@@ -1465,34 +1449,16 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		_counts = summary.dates;
 		_representative_paths = summary.representative_paths;
 
-		for (auto y = 0; y < df::max_history_years; ++y)
-		{
-			uint64_t sum = 0;
-			for (auto m = 0; m < col_count; ++m) sum += summary.dates[y * col_count + m].created;
-			_year_totals[y] = sum;
-		}
-
 		// A start year the user typed is an instruction, not a guess to be second-guessed. Only when
 		// they have not said does the range get worked out from what was indexed.
 		const auto start_year = setting.sidebar.history_start_year;
 
-		_range = start_year > 0
-			         ? df::history_range_from_start_year(start_year, _current_year)
-			         : df::history_auto_range(summary, _current_year);
+		_start_is_typed = start_year > 0;
+		_offered = _start_is_typed ? df::history_range_from_start_year(start_year, _current_year)
+		                           : df::history_auto_range(summary, _current_year);
 
-		// A window the user picked is theirs to keep, for as long as the range still holds it.
-		if (!_window_is_user_set || !window_fits())
-		{
-			_window_end = _range.last_year;
-			_window_is_user_set = false;
-		}
-
-		_year_max = 0;
-
-		for (auto y = 0; y < df::max_history_years; ++y)
-		{
-			if (_range.contains(_current_year - y)) _year_max = std::max(_year_max, _year_totals[y]);
-		}
+		fit_range(bounds.width());
+		_hover_month = invalid_hover;
 
 		_generation += 1;
 		_chart_invalid = true;
@@ -1506,13 +1472,14 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	void build_month_cells(std::vector<calendar_chart_cell>& cells, const recti local, const sizei extent,
 	                       const core::color32 foreground) const
 	{
-		// The window sets its own scale. Absolute comparison across the whole collection is what the
-		// navigator underneath is for; inside eight years, what matters is how the months compare.
 		uint64_t window_max = 0;
 
-		for (auto row = 0; row < row_count; ++row)
+		for (auto year = _range.first_year; year <= _range.last_year; ++year)
 		{
-			const auto offset = offset_of_year(year_of_row(row));
+			if (!offers(year) || month_bounds(local, year, 11).right < local.left ||
+			    month_bounds(local, year, 0).left >= local.right)
+				continue;
+			const auto offset = offset_of_year(year);
 			if (offset < 0 || offset >= df::max_history_years) continue;
 			for (auto m = 0; m < col_count; ++m)
 			{
@@ -1524,41 +1491,39 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 		// month reading like every other busy month. What it may not do is bury the month above:
 		// each column remembers where the previous row's block topped out, and the next one is cut
 		// short of it. Every month keeps a band of its own to be pointed at.
-		std::array<int, col_count> previous_top{};
+		std::array<int, df::max_history_years> previous_top{};
 		std::ranges::fill(previous_top, std::numeric_limits<int>::min());
 
 		const auto ceiling = std::max(1, 2 * row_height - _month_style.depth_y - 2);
 		const auto min_exposed = std::max(3, _month_style.depth_y + 2);
 
-		for (auto row = 0; row < row_count; ++row)
+		// December is at the back; January is drawn last, at the front.
+		for (auto m = col_count - 1; m >= 0; --m)
 		{
-			const auto year = year_of_row(row);
-			const auto offset = offset_of_year(year);
-
-			for (auto i = 0; i < col_count; ++i)
+			for (auto year = _range.first_year; year <= _range.last_year; ++year)
 			{
-				// Nearer months are handed over last, and which side is nearer follows the
-				// direction the scene recedes in.
-				const auto m = _month_style.depth_x >= 0 ? i : col_count - 1 - i;
-				const auto cell = month_bounds(local, row, m);
-				if (cell.bottom > extent.cy || cell.width() < 3) continue;
+				const auto offset = offset_of_year(year);
+				const auto column = year - _range.first_year;
+				const auto cell = month_bounds(local, year, m);
+				if (cell.bottom > extent.cy || cell.right < 0 || cell.left >= extent.cx) continue;
 
 				const auto known = offset >= 0 && offset < df::max_history_years;
 				const auto index = known ? offset * col_count + m : 0;
 
 				// Months the collection has not reached yet are sockets with nothing in them, and
 				// nothing to aim at: the edge of the collection's time is a fact worth showing
-				// rather than a row of blocks that happen to be flat.
-				const auto future = !known || is_future(year, m);
+				// rather than a row of blocks that happen to be flat. So are the years before a start
+				// the user typed, which fill the width without being offered.
+				const auto future = !known || !offers(year) || is_future(year, m);
 				const auto count = future ? 0u : static_cast<uint64_t>(_counts[index].created);
 				const auto share = chart_log_height(count, window_max);
-				const auto hovered = !future && _hover_month == (row << 8) + m;
+				const auto hovered = !future && _hover_month == index;
 				const auto shown = !future && year == _shown_year && m + 1 == _shown_month;
 
 				const auto floor_y = cell.bottom - 1;
 				auto height = share <= 0.0 ? 0 : std::max(1, core::round(share * ceiling));
 
-				if (previous_top[m] == std::numeric_limits<int>::min())
+				if (previous_top[column] == std::numeric_limits<int>::min())
 				{
 					// The first row leans into the pad measure() reserved for it, and no further
 					// than the top of the element.
@@ -1566,11 +1531,11 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 				}
 				else
 				{
-					height = std::min(height, floor_y - _month_style.depth_y - previous_top[m] - min_exposed);
+					height = std::min(height, floor_y - _month_style.depth_y - previous_top[column] - min_exposed);
 				}
 
 				height = std::clamp(height, 0, ceiling);
-				previous_top[m] = floor_y - height - _month_style.depth_y;
+				previous_top[column] = floor_y - height - _month_style.depth_y;
 
 				auto color = ui::style::colors.important_background;
 
@@ -1581,53 +1546,15 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 					// near-white blocks took the panel over. The month being listed is the
 					// exception - it is warm, so the panel and the listing agree at a glance.
 					const auto tint = future ? 16 : count > 0 ? 55 + core::round(share * 90.0) : 32;
-					color = shown
-						        ? core::lerp(ui::style::colors.sidebar_background,
-						                   ui::style::colors.important_background, 200)
-						        : core::lerp(ui::style::colors.sidebar_background, foreground, tint);
+					color = shown ? core::lerp(ui::style::colors.sidebar_background,
+					                           ui::style::colors.important_background, 200)
+					              : core::lerp(ui::style::colors.sidebar_background, foreground, tint);
 				}
 
 				cells.emplace_back(cell, height, core::abgr(color),
-				                   future
-					                   ? chart_surface::no_id
-					                   : static_cast<uint16_t>(month_id_base + row * col_count + m),
+				                   future ? chart_surface::no_id : static_cast<uint16_t>(month_id_base + index),
 				                   hovered || shown);
 			}
-		}
-	}
-
-	void build_navigator_cells(std::vector<calendar_chart_cell>& cells, const recti local,
-	                           const calendar_chart_style& style, const core::color32 foreground) const
-	{
-		const auto years = _range.year_count();
-		const auto ceiling = std::max(1, _nav_height - style.depth_y - 2);
-		const auto oldest_shown = _window_end - df::history_window_years + 1;
-
-		for (auto i = 0; i < years; ++i)
-		{
-			const auto index = _month_style.depth_x >= 0 ? i : years - 1 - i;
-			const auto year = _range.first_year + index;
-			const auto offset = offset_of_year(year);
-			const auto cell = navigator_bounds(local, index);
-			if (cell.width() < 1) continue;
-
-			const auto total = offset >= 0 && offset < df::max_history_years ? _year_totals[offset] : 0;
-			const auto selected = year >= oldest_shown && year <= _window_end;
-			const auto hovered = _hover_year == year;
-			const auto share = chart_log_height(total, _year_max);
-			const auto height = total == 0 ? 0 : std::max(1, core::round(share * ceiling));
-
-			// The selected span is tinted rather than boxed: a bracket drawn round eight bars is
-			// one more line to read, where a run of warm bars simply is the thing shown above.
-			const auto color = hovered
-				                   ? ui::style::colors.important_background
-				                   : selected
-				                   ? core::lerp(ui::style::colors.sidebar_background,
-				                              ui::style::colors.important_background, 165)
-				                   : core::lerp(ui::style::colors.sidebar_background, foreground, 50);
-
-			cells.emplace_back(cell, height, core::abgr(color),
-			                   static_cast<uint16_t>(navigator_id_base + index), hovered);
 		}
 	}
 
@@ -1644,30 +1571,28 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			if (!_tex) return;
 		}
 
-		const render_key key{
-			extent, ui::style::colors.sidebar_background, dc.colors.foreground,
-			_generation, _hover_month, _hover_year, _shown_year, _shown_month, _window_end, row_height,
-			_month_style.depth_x
-		};
+		const render_key key{extent,
+		                     ui::style::colors.sidebar_background,
+		                     dc.colors.foreground,
+		                     _generation,
+		                     _hover_month,
+		                     _shown_year,
+		                     _shown_month,
+		                     core::round(_pan_years * _year_width),
+		                     row_height,
+		                     _month_style.depth_x};
 
 		if (_chart_invalid || !(_rendered == key))
 		{
 			if (_chart.prepare(extent))
 			{
 				const recti local(0, 0, extent.cx, extent.cy);
-				const auto navigator_style = nav_style(extent.cx);
 				std::vector<calendar_chart_cell> months;
-				std::vector<calendar_chart_cell> navigator;
-				months.reserve(row_count * col_count);
-				navigator.reserve(_range.year_count());
+				months.reserve(_range.year_count() * col_count);
 
 				build_month_cells(months, local, extent, dc.colors.foreground);
-				build_navigator_cells(navigator, local, navigator_style, dc.colors.foreground);
 
-				// Two passes because the bands cannot share a depth: a navigator bar is a fraction
-				// of a month block's width, and the block's depth would swallow it whole.
 				render_calendar_chart(_chart, months, _month_style);
-				render_calendar_chart(_chart, navigator, navigator_style, false);
 
 				_tex->update(_chart.pixels());
 				_rendered = key;
@@ -1677,23 +1602,37 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 
 		if (_chart.is_ready())
 		{
+			const render::scoped_clip clip(dc, logical_bounds);
 			dc.draw_texture(_tex, recti(logical_bounds.top_left(), _chart.extent()), dc.colors.alpha);
+		}
+
+		const auto color = core::color(dc.colors.foreground, dc.colors.alpha * 0.65f);
+		if (_label_height == 0) return;
+		const render::scoped_clip header_clip(dc, recti(logical_bounds.left, logical_bounds.top, logical_bounds.right,
+		                                                logical_bounds.top + _label_height));
+		for (auto year = _range.first_year; year <= _range.last_year; ++year)
+		{
+			const auto label = year_label_bounds(logical_bounds, year);
+			if (label.is_empty() || !label.intersects(logical_bounds)) continue;
+			dc.draw_text(core::to_string(year), label, render::font_face::dialog,
+			             render::text_style::single_line_center, color, {});
 		}
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto width = std::min(width_limit, core::round(max_content_width * mc.scale_factor));
+		// Unlike the pie and the globe it is not a picture with a size of its own. It is as wide as the
+		// sidebar, and a wider sidebar shows more years rather than wider ones.
+		const auto width = width_limit;
 
-		row_height = core::round(mc.scale_factor * base_row_height);
+		row_height = std::max(1, core::round(mc.scale_factor * base_row_height));
 		_skew_pad = core::round(mc.scale_factor * base_skew_pad);
-		_nav_gap = core::round(mc.scale_factor * base_navigator_gap);
-
-		// Depth is taken out of the block's own width, so a fixed depth would eat a narrow sidebar
-		// alive. Scale it to the cell instead and keep the face the wider part.
-		const auto plan = plan_rows(width);
-		const auto cell_width = std::max(4, plan.width / col_count);
-		const auto depth = base_recede_x * std::clamp(cell_width / 4, 1, core::round(mc.scale_factor * base_depth_x));
+		_year_width = std::max(1, core::round(mc.scale_factor * base_year_width));
+		const auto label = mc.measure_text(core::to_string(_current_year), render::font_face::dialog,
+		                                   render::text_style::single_line, 10000);
+		_label_height = label.cx <= _year_width * 4 ? label.cy : 0;
+		_row_travel = core::round(mc.scale_factor * 12);
+		const auto depth = base_recede_x * std::clamp(_year_width / 4, 1, core::round(mc.scale_factor * base_depth_x));
 
 		_month_style = {
 			depth,
@@ -1701,110 +1640,82 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			// rectangle with a smear along one edge; it is the visible cap that makes it a solid.
 			std::max(2, core::round(std::abs(depth) * 1.3)),
 			std::max(1, core::round(mc.scale_factor * base_gap)),
-			std::max(1, core::round(mc.scale_factor * base_lift))
+			std::max(1, core::round(mc.scale_factor * base_lift)),
 		};
-
-		_nav_height = core::round(mc.scale_factor * base_navigator_height);
 
 		// The room a first-row block needs to lean into. Without it the newest year - usually the
 		// busiest - would be the one year that could not reach the full height, and the scale it
 		// set for every row below it would be a scale it could not itself be drawn at.
-		_top_pad = std::max(0, row_height - 1);
+		_top_pad = _label_height + std::max(0, row_height - 1);
 
-		return {width, _top_pad + row_count * row_height + _nav_gap + _nav_height + 1};
+		return {width, _top_pad + row_count * row_height + 1};
 	}
 
-	recti month_bounds(const recti logical_bounds, const int row, const int month) const
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
-		const auto plan = plan_rows(logical_bounds.width());
-
-		// Fake isometric: the row itself slides across as the years come forward, so the plan the
-		// blocks stand on recedes the same way they do. One diagonal across the whole window, now
-		// that the window is eight years rather than however many the collection spans.
-		const auto step = core::mul_div(row_count - 1 - row, plan.travel, row_count - 1);
-		const auto offset = _month_style.depth_x >= 0 ? step : plan.travel - step;
-		const auto left = logical_bounds.left + _skew_pad + offset;
-
-		return {
-			left + core::mul_div(month, plan.width, col_count),
-			logical_bounds.top + _top_pad + row * row_height,
-			left + core::mul_div(month + 1, plan.width, col_count),
-			logical_bounds.top + _top_pad + (row + 1) * row_height
-		};
+		view_element::layout(mc, bounds_in);
+		fit_range(bounds.width());
+		_chart_invalid = true;
 	}
 
-	recti navigator_bounds(const recti logical_bounds, const int index) const
+	recti month_bounds(const recti logical_bounds, const int year, const int month) const
 	{
-		const auto years = std::max(1, _range.year_count());
-		const auto width = std::max(years, logical_bounds.width() - 2 * _skew_pad);
-		const auto left = logical_bounds.left + _skew_pad;
-		const auto top = logical_bounds.top + _top_pad + row_count * row_height + _nav_gap;
+		const auto left = logical_bounds.left + _skew_pad + (year - _range.first_year) * _year_width +
+		                  core::mul_div(month, _row_travel, 11) - core::round(_pan_years * _year_width);
+		const auto top = logical_bounds.top + _top_pad + (11 - month) * row_height;
+		return {left, top, left + _year_width, top + row_height};
+	}
 
-		return {
-			left + core::mul_div(index, width, years),
-			top,
-			left + core::mul_div(index + 1, width, years),
-			top + _nav_height
-		};
+	recti year_label_bounds(const recti logical_bounds, const int year) const
+	{
+		if (_label_height == 0 || year % 5 != 0) return {};
+		const auto x = month_bounds(logical_bounds, year, 11).center().x;
+		return {x - _year_width * 2, logical_bounds.top, x + _year_width * 2, logical_bounds.top + _label_height};
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override;
+
+	bool wheel(const pointi loc, const pointi element_offset, const int delta) override
 	{
-		return default_controller_from_location(*this, host, loc, element_offset, ctx);
+		if (!bounds.offset(element_offset).contains(loc)) return false;
+		pan_to(_pan_years - delta / 120.0);
+		return true;
 	}
 
-	bool hover_month_is_valid() const
-	{
-		return _hover_month != invalid_hover;
-	}
+	bool hover_month_is_valid() const { return _hover_month != invalid_hover; }
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
-		if (_hover_year != invalid_hover)
+		if (hover_month_is_valid())
 		{
-			const auto offset = offset_of_year(_hover_year);
-			const auto total = offset >= 0 && offset < df::max_history_years ? _year_totals[offset] : 0;
-
-			hover.elements->add(make_icon_element(icon_index::time, flex_item::no_break));
-			hover.elements->add(std::make_shared<text_element>(core::to_string(_hover_year),
-			                                                   render::font_face::title,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break));
-			hover.elements->add(std::make_shared<text_element>(
-				format_plural_text(tt.title_item_count_fmt, static_cast<uint32_t>(total)),
-				render::font_face::dialog, render::text_style::multiline, flex_item::line_break));
-			hover.elements->add(std::make_shared<action_element>(tt.history_navigator_action));
-		}
-		else if (hover_month_is_valid())
-		{
-			const auto m = _hover_month & 0x0F;
-			const auto row = _hover_month >> 8;
-			const auto date_index = offset_of_year(year_of_row(row)) * col_count + m;
+			const auto m = _hover_month % col_count;
+			const auto date_index = _hover_month;
 			const auto date_count = _counts[date_index];
 			const auto month = core::month(m + 1, true);
-			const auto year = core::to_string(year_of_row(row));
+			const auto year_number = _current_year - _hover_month / col_count;
+			const auto year = core::to_string(year_number);
+			auto anchor = month_bounds(bounds, year_number, m);
+			anchor.left += std::max(0, -_month_style.depth_x);
+			anchor.right -= std::max(1, _month_style.gap) + std::max(0, _month_style.depth_x);
+			hover.window_bounds = anchor.offset(element_offset);
 
 			hover.elements->add(make_icon_element(icon_index::time, flex_item::no_break));
 			hover.elements->add(std::make_shared<text_element>(month, render::font_face::title,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::no_break));
+			                                                   render::text_style::multiline, flex_item::no_break));
 			hover.elements->add(std::make_shared<text_element>(year, render::font_face::title,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break));
+			                                                   render::text_style::multiline, flex_item::line_break));
 			_tooltip_thumbnail.add(hover, _state, _representative_paths[date_index]);
 			hover.elements->add(std::make_shared<text_element>(tt.collection_contains2, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::new_line));
+			                                                   render::text_style::multiline, flex_item::new_line));
 
 			const auto table = std::make_shared<ui::table_element>(flex_item::center);
-			const auto num1 = std::make_shared<text_element>(
-				platform::format_number(core::to_string(date_count.created)),
-				render::text_style::single_line_far);
-			const auto num2 = std::make_shared<text_element>(
-				platform::format_number(core::to_string(date_count.modified)),
-				render::text_style::single_line_far);
+			const auto num1 = std::make_shared<text_element>(platform::format_number(
+																 core::to_string(date_count.created)),
+			                                                 render::text_style::single_line_far);
+			const auto num2 = std::make_shared<text_element>(platform::format_number(
+																 core::to_string(date_count.modified)),
+			                                                 render::text_style::single_line_far);
 			table->add(num1, std::make_shared<text_element>(str_format(tt.items_created_fmt.sv(), month, year)));
 			table->add(num2, std::make_shared<text_element>(str_format(tt.items_modified_fmt.sv(), month, year)));
 			hover.elements->add(table);
@@ -1812,7 +1723,7 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 			hover.elements->add(std::make_shared<action_element>(tt.open_created_modified));
 		}
 
-		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
+		hover.active_bounds = bounds.offset(element_offset);
 		hover.horizontal = true;
 	}
 
@@ -1820,30 +1731,20 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 	{
 		const auto logical_bounds = bounds.offset(ic.element_offset);
 		auto month = invalid_hover;
-		auto year = invalid_hover;
 
 		// A block that has risen no longer fills the cell it was laid out in, so the drawn
 		// silhouette is what decides. Months the collection has not reached record no identity and
 		// so cannot be aimed at.
-		if (logical_bounds.contains(ic.loc) && _chart.extent() == logical_bounds.extent())
+		if (logical_bounds.contains(ic.loc) && !_chart_invalid && _chart.extent() == logical_bounds.extent())
 		{
 			const auto id = _chart.id_at({ic.loc.x - logical_bounds.left, ic.loc.y - logical_bounds.top});
 
-			if (id >= navigator_id_base)
-			{
-				year = _range.first_year + (id - navigator_id_base);
-			}
-			else if (id >= month_id_base)
-			{
-				const auto index = id - month_id_base;
-				month = (index / col_count << 8) + index % col_count;
-			}
+			if (id >= month_id_base && id < month_id_base + _counts.size()) month = id - month_id_base;
 		}
 
-		if (month != _hover_month || year != _hover_year)
+		if (month != _hover_month)
 		{
 			_hover_month = month;
-			_hover_year = year;
 			ic.redraw = true;
 			_state.invalidate_view(view_invalid::tooltip);
 		}
@@ -1862,33 +1763,157 @@ struct sidebar_history_element final : view_element, std::enable_shared_from_thi
 
 		if (event.type != view_element_event_type::invoke) return;
 
-		if (_hover_year != invalid_hover)
+		if (hover_month_is_valid())
 		{
-			// The year clicked becomes the newest of the eight shown, which is the way the calendar
-			// is read. Clamped so the window cannot slide off the end of what the navigator offers.
-			_window_end = std::clamp(_hover_year, _range.first_year + df::history_window_years - 1,
-			                         _range.last_year);
-			_window_is_user_set = true;
-			_chart_invalid = true;
-			_state.invalidate_view(view_invalid::sidebar_file_types_and_dates | view_invalid::tooltip);
+			open_month(event.host, _current_year - _hover_month / col_count, _hover_month % col_count);
 		}
-		else if (hover_month_is_valid())
+	}
+
+	// The months the keyboard reaches - those the collection has reached, in the years the window shows - earliest
+	// first, so Left and Right step through time. month is from 0.
+	std::vector<std::pair<int, int>> keyboard_months() const
+	{
+		std::vector<std::pair<int, int>> months;
+
+		for (auto year = _range.first_year; year <= _range.last_year; ++year)
 		{
-			const auto m = _hover_month & 0x0F;
-			const auto row = _hover_month >> 8;
+			const auto offset = offset_of_year(year);
+			if (!offers(year) || offset < 0 || offset >= df::max_history_years) continue;
 
-			// The calendar buckets on the same capture-first ladder the tile shows, so the click has to
-			// ask for that key rather than the Created concept.
-			const auto ks = platform::current_key_state();
-			const auto type = ks.control ? df::date_parts_prop::modified : df::date_parts_prop::original;
-			const auto search = df::search_t().day(0, m + 1, year_of_row(row), type);
-
-			_state.open(event.host, search, {});
+			for (auto m = 0; m < col_count; ++m)
+			{
+				const auto cell = month_bounds(bounds, year, m);
+				if (!is_future(year, m) && cell.left >= bounds.left && cell.right <= bounds.right)
+					months.emplace_back(year, m);
+			}
 		}
+
+		return months;
+	}
+
+	std::vector<recti> keyboard_parts() const override
+	{
+		std::vector<recti> parts;
+		for (const auto& [year, m] : keyboard_months()) parts.emplace_back(month_bounds(bounds, year, m));
+		return parts;
+	}
+
+	// A click finds its month among the blocks as they are drawn, which no rectangle describes, so a month the
+	// keyboard presses is opened here.
+	bool press_keyboard_part(const int index, const view_host_ptr& host) override
+	{
+		const auto months = keyboard_months();
+		if (index >= 0 && index < static_cast<int>(months.size()))
+			open_month(host, months[index].first, months[index].second);
+		return true;
+	}
+
+	void open_month(const view_host_ptr& host, const int year, const int month) const
+	{
+		// The calendar buckets on the same capture-first ladder the tile shows, so the click has to
+		// ask for that key rather than the Created concept.
+		const auto ks = platform::current_key_state();
+		const auto type = ks.control ? df::date_parts_prop::modified : df::date_parts_prop::original;
+		_state.open(host, df::search_t().day(0, month + 1, year, type), {});
 	}
 };
 
-class sidebar_map_element final : public view_element, public std::enable_shared_from_this<sidebar_map_element>
+class history_pan_controller final : public view_controller
+{
+	std::shared_ptr<sidebar_history_element> _element;
+	pointi _element_offset;
+	bool _tracking = false;
+	bool _dragged = false;
+
+	void invalidate() const { _host->frame()->invalidate(); }
+
+	void update_hover(const pointi loc)
+	{
+		interaction_context ic{loc, _element_offset, false};
+		_element->hover(ic);
+		if (ic.redraw) invalidate();
+	}
+
+public:
+	history_pan_controller(view_host_ptr host, std::shared_ptr<sidebar_history_element> element, const pointi offset,
+	                       const recti bounds) :
+		view_controller(std::move(host), bounds), _element(std::move(element)), _element_offset(offset)
+	{
+	}
+
+	~history_pan_controller() override
+	{
+		if (_tracking) _element->cancel_pan();
+		update_hover({-1, -1});
+	}
+
+	platform::cursor cursor() const override
+	{
+		return _tracking ? platform::cursor::hand_up : platform::cursor::hand_down;
+	}
+
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	{
+		view_controller::on_mouse_left_button_down(loc, keys);
+		_tracking = true;
+		_dragged = false;
+		_element->begin_pan();
+	}
+
+	void on_mouse_move(const pointi loc) override
+	{
+		_last_loc = loc;
+		if (!_tracking)
+		{
+			update_hover(loc);
+			return;
+		}
+		const auto delta = loc.x - _start_loc.x;
+		_dragged |= std::abs(delta) > 3;
+		if (_dragged && _element->pan_to(_element->_pan_origin - static_cast<double>(delta) / _element->_year_width))
+			invalidate();
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+	{
+		if (!_tracking) return;
+		_tracking = false;
+		update_hover(loc);
+		if (!_dragged && _bounds.contains(loc)) _element->dispatch_event({view_element_event_type::invoke, _host});
+	}
+
+	bool escape() override
+	{
+		if (!_tracking) return false;
+		_tracking = false;
+		_dragged = true;
+		_element->cancel_pan();
+		invalidate();
+		return true;
+	}
+
+	void popup_from_location(view_hover_element& hover) override
+	{
+		_element->tooltip(hover, _last_loc, _element_offset);
+	}
+};
+
+inline view_controller_ptr sidebar_history_element::controller_from_location(const view_host_ptr& host,
+                                                                             const pointi loc,
+                                                                             const pointi element_offset,
+                                                                             hit_test_context& /*ctx*/)
+{
+	if (!bounds.offset(element_offset).contains(loc)) return nullptr;
+	return std::make_shared<history_pan_controller>(host, shared_from_this(), element_offset,
+	                                                bounds.offset(element_offset));
+}
+
+// The keyboard passes over the globe: a click finds its place on the turning globe as drawn, which no rectangle
+// describes.
+class sidebar_map_element final :
+	public view_element,
+	public std::enable_shared_from_this<sidebar_map_element>,
+	public no_keyboard_parts
 {
 	view_state& _state;
 
@@ -1952,10 +1977,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 
 	// How close the pointer has to be to claim a marker. design.md targeting: the pointer has to be
 	// ON one, so the globally nearest area is never picked out of empty ocean.
-	int grab_radius() const
-	{
-		return std::max(bounds.height() / 8, 4);
-	}
+	int grab_radius() const { return std::max(bounds.height() / 8, 4); }
 
 	// The hovered area is marked with a translucent disc rather than a filled box: a square drawn
 	// on a sphere reads as a sticker stuck to it, and an opaque one hides the place it names.
@@ -2011,23 +2033,18 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 		_marker_color = clr;
 	}
 
-	static std::string display_name(const map_location_area& location)
-	{
-		return location.name;
-	}
+	static std::string display_name(const map_location_area& location) { return location.name; }
 
 	static uint32_t area_key(const map_location_area& area)
 	{
-		return static_cast<uint32_t>(area.cell.x) |
-			(static_cast<uint32_t>(area.cell.y) << 8) |
-			(static_cast<uint32_t>(std::countr_zero(static_cast<unsigned>(area.cell_span))) << 16);
+		return static_cast<uint32_t>(area.cell.x) | (static_cast<uint32_t>(area.cell.y) << 8) |
+		       (static_cast<uint32_t>(std::countr_zero(static_cast<unsigned>(area.cell_span))) << 16);
 	}
 
 	static uint32_t area_key(const pointi cell, const int cell_span)
 	{
-		return static_cast<uint32_t>(cell.x) |
-			(static_cast<uint32_t>(cell.y) << 8) |
-			(static_cast<uint32_t>(std::countr_zero(static_cast<unsigned>(cell_span))) << 16);
+		return static_cast<uint32_t>(cell.x) | (static_cast<uint32_t>(cell.y) << 8) |
+		       (static_cast<uint32_t>(std::countr_zero(static_cast<unsigned>(cell_span))) << 16);
 	}
 
 	// Issue #119: drop cached place names when the UI display language changes so the map
@@ -2054,7 +2071,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 
 		const auto key = area_key(area);
 		if (const auto found = _resolved_areas.find(key);
-			found != _resolved_areas.end() && found->second.has_same_photo_bounds(area))
+		    found != _resolved_areas.end() && found->second.has_same_photo_bounds(area))
 		{
 			const auto count = area.count;
 			area = found->second;
@@ -2065,60 +2082,57 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 		if (!_resolving_areas.emplace(key).second) return;
 
 		_state.queue_location([weak = std::weak_ptr(shared_from_this()), &state = _state, key,
-				generation = _resolved_generation, request = area](const location_cache& locations)
+		                       generation = _resolved_generation, request = area](const location_cache& locations)
+		{
+			auto selected = locations.find_largest(request.min_latitude, request.min_longitude, request.max_latitude,
+			                                       request.max_longitude);
+			if (selected.id == 0)
 			{
-				auto selected = locations.find_largest(request.min_latitude, request.min_longitude,
-				                                       request.max_latitude, request.max_longitude);
-				if (selected.id == 0)
+				selected = locations.find_closest(request.position.latitude(), request.position.longitude());
+			}
+
+			// locations.md 5.1 + 2.5: a place may only name the area from within its attribution
+			// radius, so a distant city is never borrowed as the answer for an empty region.
+			if (selected.id != 0 && selected.position.is_valid() && request.position.is_valid() &&
+			    selected.position.distance_in_kilometers(request.position) >
+			        location_attribution_radius_km(selected.population) * 3.0)
+			{
+				selected = {};
+			}
+
+			auto resolved = request;
+			resolved.name = selected.id == 0 ? std::string(tt.location_remote.sv()) : qualified_name(selected);
+			resolved.state = selected.state;
+			resolved.country = selected.country;
+			resolved.population = selected.population;
+			resolved.place_position = selected.id == 0 ? gps_coordinate{} : selected.position;
+
+			state.queue_ui([weak, key, generation, resolved = std::move(resolved)]
+			{
+				const auto self = weak.lock();
+				if (!self) return;
+
+				// A language change cleared the memo, which makes anything still in flight an
+				// answer to a question nobody is asking now.
+				if (generation != self->_resolved_generation) return;
+
+				self->_resolving_areas.erase(key);
+				self->_resolved_areas[key] = resolved;
+
+				for (auto& location : self->_locations)
 				{
-					selected = locations.find_closest(request.position.latitude(),
-					                                  request.position.longitude());
-				}
-
-				// locations.md 5.1 + 2.5: a place may only name the area from within its attribution
-				// radius, so a distant city is never borrowed as the answer for an empty region.
-				if (selected.id != 0 && selected.position.is_valid() && request.position.is_valid() &&
-					selected.position.distance_in_kilometers(request.position) >
-					location_attribution_radius_km(selected.population) * 3.0)
-				{
-					selected = {};
-				}
-
-				auto resolved = request;
-				resolved.name = selected.id == 0
-					                ? std::string(tt.location_remote.sv())
-					                : qualified_name(selected);
-				resolved.state = selected.state;
-				resolved.country = selected.country;
-				resolved.population = selected.population;
-				resolved.place_position = selected.id == 0 ? gps_coordinate{} : selected.position;
-
-				state.queue_ui([weak, key, generation, resolved = std::move(resolved)]
-				{
-					const auto self = weak.lock();
-					if (!self) return;
-
-					// A language change cleared the memo, which makes anything still in flight an
-					// answer to a question nobody is asking now.
-					if (generation != self->_resolved_generation) return;
-
-					self->_resolving_areas.erase(key);
-					self->_resolved_areas[key] = resolved;
-
-					for (auto& location : self->_locations)
+					if (area_key(location) == key && location.has_same_photo_bounds(resolved))
 					{
-						if (area_key(location) == key && location.has_same_photo_bounds(resolved))
-						{
-							const auto count = location.count;
-							location = resolved;
-							location.count = count;
-						}
+						const auto count = location.count;
+						location = resolved;
+						location.count = count;
 					}
+				}
 
-					self->_state.map_locations(self->_locations);
-					self->_state.invalidate_view(view_invalid::tooltip);
-				});
+				self->_state.map_locations(self->_locations);
+				self->_state.invalidate_view(view_invalid::tooltip);
 			});
+		});
 	}
 
 	// The map ships as flat-toned land over transparent water, so drawing it as it comes left the
@@ -2166,7 +2180,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 			for (auto x = 0; x < dims.cx; ++x)
 			{
 				destination[x] = (core::lerp(water, land, static_cast<int>(core::get_a(source[x]))) & 0x00FFFFFFu) |
-					0xFF000000u;
+				                 0xFF000000u;
 			}
 		}
 
@@ -2174,7 +2188,7 @@ class sidebar_map_element final : public view_element, public std::enable_shared
 	}
 
 public:
-	sidebar_map_element(view_state& state, core::const_surface_ptr s) :
+	sidebar_map_element(view_state& state, const core::const_surface_ptr& s) :
 		view_element(view_element_style::has_tooltip | view_element_style::can_invoke | flex_item::center),
 		_state(state), _surface_original(composite_water(s))
 	{
@@ -2242,7 +2256,7 @@ public:
 		for (auto& location : locations)
 		{
 			if (const auto found = _resolved_areas.find(area_key(location));
-				found != _resolved_areas.end() && found->second.has_same_photo_bounds(location))
+			    found != _resolved_areas.end() && found->second.has_same_photo_bounds(location))
 			{
 				const auto count = location.count;
 				location = found->second;
@@ -2268,7 +2282,7 @@ public:
 					for (auto& cell : matrix.cells)
 					{
 						_representatives.emplace(area_key(cell.index, params.area_cell_span),
-						                         representative_item{std::move(cell.representative_path), {}});
+						                         representative_item{cell.representative_path, {}});
 					}
 				}
 				_hover_location = -1;
@@ -2280,7 +2294,7 @@ public:
 				_summary = summary;
 				const auto dims = _surface_original->dimensions();
 				core::assert_true(dims.cx * df::location_heat_map::map_height ==
-					dims.cy * df::location_heat_map::map_width);
+				                  dims.cy * df::location_heat_map::map_width);
 
 				const auto max_coord = *std::max_element(summary.coordinates.begin(), summary.coordinates.end());
 
@@ -2292,8 +2306,9 @@ public:
 				{
 					// 32768 floats is 128 KB, which is an eighth of the default stack and this runs inside a
 					// UI-thread populate chain.
-					std::vector<float> heat_strength(
-						df::location_heat_map::map_width * df::location_heat_map::map_height, 0.0f);
+					std::vector<float> heat_strength(df::location_heat_map::map_width *
+					                                     df::location_heat_map::map_height,
+					                                 0.0f);
 					const auto denominator = std::log1p(std::max(max_coord * 16u, 1u));
 
 					for (auto heat_y = 1u; heat_y < df::location_heat_map::map_height - 1; ++heat_y)
@@ -2303,21 +2318,19 @@ public:
 							const auto ym1 = (heat_y - 1) * df::location_heat_map::map_width;
 							const auto y0 = heat_y * df::location_heat_map::map_width;
 							const auto yp1 = (heat_y + 1) * df::location_heat_map::map_width;
-							const auto value =
-								summary.coordinates[ym1 + heat_x - 1] +
-								summary.coordinates[ym1 + heat_x] * 2 +
-								summary.coordinates[ym1 + heat_x + 1] +
-								summary.coordinates[y0 + heat_x - 1] * 2 +
-								summary.coordinates[y0 + heat_x] * 4 +
-								summary.coordinates[y0 + heat_x + 1] * 2 +
-								summary.coordinates[yp1 + heat_x - 1] +
-								summary.coordinates[yp1 + heat_x] * 2 +
-								summary.coordinates[yp1 + heat_x + 1];
-							heat_strength[y0 + heat_x] = value == 0
-								                             ? 0.0f
-								                             : std::clamp(
-									                             static_cast<float>(std::log1p(value) / denominator),
-									                             0.0f, 1.0f);
+							const auto value = summary.coordinates[ym1 + heat_x - 1] +
+							                   summary.coordinates[ym1 + heat_x] * 2 +
+							                   summary.coordinates[ym1 + heat_x + 1] +
+							                   summary.coordinates[y0 + heat_x - 1] * 2 +
+							                   summary.coordinates[y0 + heat_x] * 4 +
+							                   summary.coordinates[y0 + heat_x + 1] * 2 +
+							                   summary.coordinates[yp1 + heat_x - 1] +
+							                   summary.coordinates[yp1 + heat_x] * 2 +
+							                   summary.coordinates[yp1 + heat_x + 1];
+							heat_strength[y0 + heat_x] = value == 0 ? 0.0f
+							                                        : std::clamp(static_cast<float>(std::log1p(value) /
+							                                                                        denominator),
+							                                                     0.0f, 1.0f);
 						}
 					}
 
@@ -2346,9 +2359,8 @@ public:
 						{
 							const auto heat_x = static_cast<size_t>(x) * df::location_heat_map::map_width / dims.cx;
 							const auto strength = heat_strength[heat_y * df::location_heat_map::map_width + heat_x];
-							surf_line[x] = strength == 0.0f
-								               ? map_line[x]
-								               : core::lerp(map_line[x], heat_color, strength);
+							surf_line[x] = strength == 0.0f ? map_line[x]
+							                                : core::lerp(map_line[x], heat_color, strength);
 						}
 					}
 
@@ -2425,8 +2437,7 @@ public:
 
 				if (_marker_tex)
 				{
-					dc.draw_texture(_marker_tex, center_rect(sizei(diameter, diameter), at.value()),
-					                dc.colors.alpha);
+					dc.draw_texture(_marker_tex, center_rect(sizei(diameter, diameter), at.value()), dc.colors.alpha);
 				}
 			}
 		}
@@ -2489,7 +2500,7 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		if (_hover_location != -1)
 		{
@@ -2502,11 +2513,10 @@ public:
 			const auto named = !name.empty();
 
 			hover.elements->add(make_icon_element(icon_index::location, flex_item::no_break));
-			hover.elements->add(std::make_shared<text_element>(
-				named ? name : format_plural_text(tt.map_items_here_fmt, location.count),
-				render::font_face::title,
-				render::text_style::multiline,
-				flex_item::line_break));
+			hover.elements->add(
+				std::make_shared<text_element>(named ? name : format_plural_text(tt.map_items_here_fmt, location.count),
+			                                   render::font_face::title, render::text_style::multiline,
+			                                   flex_item::line_break));
 
 			if (const auto found = _representatives.find(area_key(location)); found != _representatives.end())
 			{
@@ -2525,9 +2535,9 @@ public:
 					const auto surface = representative.item->thumbnail_surface();
 					if (is_valid(surface))
 					{
-						hover.elements->add(std::make_shared<surface_element>(
-							surface, 160, flex_item::center | flex_item::new_line,
-							representative.item->layout_orientation()));
+						hover.elements->add(
+							std::make_shared<surface_element>(surface, 160, flex_item::center | flex_item::new_line,
+						                                      representative.item->layout_orientation()));
 					}
 					else if (is_valid(representative.item->thumbnail()))
 					{
@@ -2542,15 +2552,15 @@ public:
 
 			if (named)
 			{
-				hover.elements->add(std::make_shared<text_element>(
-					str_format(tt.click_items_from_fmt.sv(), location.count, name), render::font_face::dialog,
-					render::text_style::multiline, flex_item::new_line));
+				hover.elements->add(
+					std::make_shared<text_element>(str_format(tt.click_items_from_fmt.sv(), location.count, name),
+				                                   render::font_face::dialog, render::text_style::multiline,
+				                                   flex_item::new_line));
 
 				// locations.md 5.4: the action line states the search it will run, including the
 				// radius, so the count on the map and the count after the click are never a surprise.
 				hover.elements->add(std::make_shared<action_element>(
-					str_format(tt.search_within_fmt.sv(), format_distance_km(location.search_radius_km()),
-					           name)));
+					str_format(tt.search_within_fmt.sv(), format_distance_km(location.search_radius_km()), name)));
 			}
 		}
 
@@ -2601,9 +2611,11 @@ public:
 
 // Drags turn the globe; anything shorter than a few pixels is still a click on whatever marker is
 // under the pointer. The sidebar scrolls by its scrollbar, so no direction has to be handed back.
-inline bool should_invoke_globe_release(const bool was_cancelled, const bool was_turning, const bool release_in_bounds)
+// A release counts only while its own press is held: Escape lets go of it, and the release after a
+// press that closed a menu never had one.
+inline bool should_invoke_globe_release(const bool was_pressed, const bool was_turning, const bool release_in_bounds)
 {
-	return !was_cancelled && !was_turning && release_in_bounds;
+	return was_pressed && !was_turning && release_in_bounds;
 }
 
 class globe_rotate_controller final : public view_controller
@@ -2612,7 +2624,6 @@ class globe_rotate_controller final : public view_controller
 	const pointi _element_offset;
 	bool _tracking = false;
 	bool _turned = false;
-	bool _cancelled = false;
 
 public:
 	globe_rotate_controller(const view_host_ptr& host, std::shared_ptr<sidebar_map_element> e,
@@ -2640,7 +2651,6 @@ public:
 		view_controller::on_mouse_left_button_down(loc, keys);
 		_tracking = true;
 		_turned = false;
-		_cancelled = false;
 		_element->begin_drag();
 		update_hover(loc);
 	}
@@ -2660,17 +2670,15 @@ public:
 		update_hover(loc);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_last_loc = loc;
-		const auto was_cancelled = _cancelled;
+		const auto was_pressed = std::exchange(_tracking, false);
 		const auto was_turning = _turned;
-		_tracking = false;
-		_cancelled = false;
 		update_hover(loc);
 
 		// locations.md 5.5: a drag is never read as a click.
-		if (should_invoke_globe_release(was_cancelled, was_turning, _bounds.contains(loc)))
+		if (should_invoke_globe_release(was_pressed, was_turning, _bounds.contains(loc)))
 		{
 			const view_element_event click{view_element_event_type::click, _host};
 			const view_element_event invoke{view_element_event_type::invoke, _host};
@@ -2687,7 +2695,6 @@ public:
 
 		_tracking = false;
 		_turned = false;
-		_cancelled = true;
 		_element->cancel_drag(_element_offset);
 		invalidate();
 		return true;
@@ -2706,15 +2713,12 @@ private:
 		if (ic.redraw) invalidate();
 	}
 
-	void invalidate() const
-	{
-		_host->frame()->invalidate(_element->invalidate_bounds(_element_offset));
-	}
+	void invalidate() const { _host->frame()->invalidate(_element->invalidate_bounds(_element_offset)); }
 };
 
 inline view_controller_ptr sidebar_map_element::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                                        const pointi element_offset,
-                                                                        hit_test_context& ctx)
+                                                                         const pointi element_offset,
+                                                                         hit_test_context& /*ctx*/)
 {
 	if (!is_visible() || !bounds.contains(loc - element_offset)) return nullptr;
 
@@ -2725,7 +2729,8 @@ inline view_controller_ptr sidebar_map_element::controller_from_location(const v
 class app_logo_element final : public std::enable_shared_from_this<app_logo_element>, public view_element
 {
 	view_state& _state;
-	std::string_view _text = core::app_name();
+	// Its own copy: a view builds its title afresh each time it is asked, freeing the one it gave before.
+	std::string _text{core::app_name()};
 	render::font_face _font = render::font_face::title;
 	render::text_style _text_style = render::text_style::single_line;
 	bool _interactive = true;
@@ -2736,22 +2741,19 @@ class app_logo_element final : public std::enable_shared_from_this<app_logo_elem
 	mutable render::texture_ptr _plasma_tex;
 	mutable render::texture_ptr _logo_tex;
 	mutable int _logo_size = 0;
+	core::color _logo_background_target;
 
 public:
 	app_logo_element(view_state& state, const render::font_face font = render::font_face::title,
 	                 const bool interactive = true, const bool show_plasma = true, const double logo_scale = 1.0,
 	                 const view_element_options& options = {}) noexcept :
-		view_element(options | (interactive
-			                        ? view_element_style::has_tooltip | view_element_style::can_invoke
-			                        : view_element_style::none)),
+		view_element(options | (interactive ? view_element_style::has_tooltip | view_element_style::can_invoke
+	                                        : view_element_style::none)),
 		_state(state), _font(font), _interactive(interactive), _show_plasma(show_plasma), _logo_scale(logo_scale)
 	{
 	}
 
-	void text(const std::string_view t)
-	{
-		_text = t;
-	}
+	void text(const std::string_view t) { _text = t; }
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
@@ -2800,8 +2802,8 @@ public:
 
 		if (_logo_tex)
 		{
-			dc.draw_texture(_logo_tex, center_rect(_logo_tex->dimensions(), logo_bounds),
-			                _logo_tex->dimensions(), dc.colors.alpha);
+			dc.draw_texture(_logo_tex, center_rect(_logo_tex->dimensions(), logo_bounds), _logo_tex->dimensions(),
+			                dc.colors.alpha);
 		}
 
 		if (_show_plasma)
@@ -2842,8 +2844,7 @@ public:
 	void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		if (!_interactive) return {};
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
@@ -2855,50 +2856,43 @@ public:
 		return logo_plasma.step(time_now, df::jobs_running > 0, drift);
 	}
 
-	bool plasma_is_active() const
-	{
-		return logo_plasma.is_active();
-	}
+	bool plasma_is_active() const { return logo_plasma.is_active(); }
 
 	bool hover(const bool value)
 	{
+		const auto changed = logo_plasma._hover != value;
 		logo_plasma._hover = value;
-		if (is_style_bit_set(view_element_style::hover) == value) return false;
 
 		const auto previous = _bg_color;
 		set_style_bit(view_element_style::hover, value);
 		_bg_color = previous;
+		cancel_background_animation();
+		if (!changed) return false;
 
 		if (value)
 		{
-			_bg_target = view_handle_color(false, true, false, true, true,
-			                               core::color(ui::style::colors.toolbar_background));
+			_logo_background_target = view_handle_color(false, true, false, true, true,
+			                                            core::color(ui::style::colors.toolbar_background));
 
 			if (core::is_alpha_zero(_bg_color.a))
 			{
-				_bg_color.r = _bg_target.r;
-				_bg_color.g = _bg_target.g;
-				_bg_color.b = _bg_target.b;
+				_bg_color.r = _logo_background_target.r;
+				_bg_color.g = _logo_background_target.g;
+				_bg_color.b = _logo_background_target.b;
 			}
 		}
 		else
 		{
-			_bg_target = _bg_color;
-			_bg_target.a = 0.0f;
+			_logo_background_target = _bg_color;
+			_logo_background_target.a = 0.0f;
 		}
 
 		return true;
 	}
 
-	bool step_background()
-	{
-		return ui::step_color_alpha(_bg_color, _bg_target);
-	}
+	bool step_background() { return ui::step_color_alpha(_bg_color, _logo_background_target); }
 
-	bool step_background_if_animations_disabled()
-	{
-		return render::animations_enabled ? false : step_background();
-	}
+	bool step_background_if_animations_disabled() { return render::animations_enabled ? false : step_background(); }
 
 	void free_graphics_resources() const
 	{
@@ -2907,7 +2901,6 @@ public:
 		_logo_size = 0;
 	}
 };
-
 
 class sidebar_host final : public std::enable_shared_from_this<sidebar_host>, public view_host
 {
@@ -2921,7 +2914,6 @@ public:
 	bool _show_indexing_control = false;
 	bool _is_detecting = false;
 	int _last_indexing_perc = -1;
-
 
 	std::shared_ptr<sidebar_indexing_element> _indexing_elements;
 	std::shared_ptr<sidebar_file_type_element> _type_chart;
@@ -2942,9 +2934,8 @@ public:
 	{
 		core::assert_true(platform::is_ui_thread());
 
-		_indexing_elements = std::make_shared<sidebar_indexing_element>(
-			s, flex_item::stretch |
-			flex_item::center | view_element_style::important);
+		_indexing_elements = std::make_shared<sidebar_indexing_element>(s, flex_item::stretch | flex_item::center |
+		                                                                       view_element_style::important);
 		_indexing_elements->padding(8);
 
 		_type_chart = std::make_shared<sidebar_file_type_element>(s);
@@ -2956,11 +2947,9 @@ public:
 
 		// The three lit visuals are one group, so they carry one margin between them. Left on the
 		// list's own spacing they sat as tight against each other as two rows of text do.
-		for (const auto& visual : {
-			     std::static_pointer_cast<view_element>(_type_chart),
-			     std::static_pointer_cast<view_element>(_map),
-			     std::static_pointer_cast<view_element>(_history_chart)
-		     })
+		for (const auto& visual :
+		     {std::static_pointer_cast<view_element>(_type_chart), std::static_pointer_cast<view_element>(_map),
+		      std::static_pointer_cast<view_element>(_history_chart)})
 		{
 			visual->margin = {0, visual_margin};
 		}
@@ -2974,10 +2963,8 @@ public:
 	{
 		ui::frame_style fs;
 		fs.can_focus = true;
-		fs.colors = {
-			ui::style::colors.sidebar_background, ui::style::colors.view_text,
-			ui::style::colors.view_selected_background
-		};
+		fs.colors = {ui::style::colors.sidebar_background, ui::style::colors.view_text,
+		             ui::style::colors.view_selected_background};
 		fs.timer_milliseconds = 1000 / 15;
 		_frame = owner->create_frame(weak_from_this(), fs);
 		_owner = owner;
@@ -2992,10 +2979,7 @@ public:
 	// The sidebar borrows the items view's frame, so it is attached whether or not it is on screen:
 	// counting, drive scans and index events run regardless of visibility. This answers the separate
 	// question of whether a repaint or a relayout of that shared frame is worth asking for.
-	static bool is_shown()
-	{
-		return setting.show_sidebar;
-	}
+	static bool is_shown() { return setting.show_sidebar; }
 
 	void layout_embedded(render::measure_context& mc, const recti bounds)
 	{
@@ -3012,10 +2996,7 @@ public:
 		dc.restore_clip();
 	}
 
-	bool can_scroll() const
-	{
-		return _scroller.can_scroll();
-	}
+	bool can_scroll() const { return _scroller.can_scroll(); }
 
 	void populate_file_types_and_dates() const
 	{
@@ -3062,17 +3043,16 @@ public:
 	{
 		core::assert_true(platform::is_ui_thread());
 
-		_state.queue_async(async_queue::sidebar,
-		                   [t = ui_owned(_state._async, shared_from_this()), &s = _state]
-		                   {
-			                   auto drives = platform::scan_drives();
+		_state.queue_async(async_queue::sidebar, [t = ui_owned(_state._async, shared_from_this()), &s = _state]
+		{
+			auto drives = platform::scan_drives();
 
-			                   s.queue_ui([t, drives = std::move(drives)]() mutable
-			                   {
-				                   t->_drive_info = std::move(drives);
-				                   t->populate();
-			                   });
-		                   });
+			s.queue_ui([t, drives = std::move(drives)]() mutable
+			{
+				t->_drive_info = std::move(drives);
+				t->populate();
+			});
+		});
 	}
 
 	// The structural tier: every element is recreated, which discards the text layout each one owns,
@@ -3089,115 +3069,104 @@ public:
 
 		search_items_by_key_t existing;
 		const auto request_id = ++_structural_request_id;
-		const search_item_factory::sidebar_config_snapshot config{
-			setting.search, setting.sidebar, setting.favorite_tags
-		};
+		const search_item_factory::sidebar_config_snapshot config{setting.search, setting.sidebar,
+		                                                          setting.favorite_tags};
 
 		for (const auto& i : _items)
 		{
 			existing[i->key] = {i->summary, i->summary_known};
 		}
 
-		_state.queue_async(async_queue::sidebar,
-		                   [t = ui_owned(_state._async, shared_from_this()), &s = _state, existing,
-			                   drive_info = _drive_info, config, request_id]
-		                   {
-			                   constexpr search_item_factory f;
-			                   // One listing of the index answers every row of this rebuild.
-			                   search_counter counter(s.item_index);
-			                   std::vector<search_item_ptr> items;
-			                   std::vector<drive_item_ptr> drives;
-			                   std::vector<view_element_ptr> item_elements;
-			                   std::unordered_set<search_item_ptr> added_elements;
+		_state.queue_async(async_queue::sidebar, [t = ui_owned(_state._async, shared_from_this()), &s = _state,
+		                                          existing, drive_info = _drive_info, config, request_id]
+		{
+			constexpr search_item_factory f;
+			// One listing of the index answers every row of this rebuild.
+			search_counter counter(s.item_index);
+			std::vector<search_item_ptr> items;
+			std::vector<drive_item_ptr> drives;
+			std::vector<view_element_ptr> item_elements;
+			std::unordered_set<search_item_ptr> added_elements;
 
-			                   auto add_elements = [&items, &item_elements, &added_elements](
-				                   const std::vector<search_item_ptr>& items_to_add)
-			                   {
-				                   if (!items_to_add.empty() && !item_elements.empty())
-					                   item_elements.emplace_back(
-						                   std::make_shared<divider_element>());
+			auto add_elements =
+				[&items, &item_elements, &added_elements](const std::vector<search_item_ptr>& items_to_add)
+			{
+				if (!items_to_add.empty() && !item_elements.empty())
+					item_elements.emplace_back(std::make_shared<divider_element>());
 
-				                   for (const auto& i : items_to_add)
-				                   {
-					                   if (!added_elements.contains(i))
-					                   {
-						                   added_elements.insert(i);
-						                   items.push_back(i);
-						                   item_elements.push_back(i);
-					                   }
-				                   }
-			                   };
+				for (const auto& i : items_to_add)
+				{
+					if (!added_elements.contains(i))
+					{
+						added_elements.insert(i);
+						items.push_back(i);
+						item_elements.push_back(i);
+					}
+				}
+			};
 
-			                   if (config.sidebar.show_favorite_searches)
-			                   {
-				                   add_elements(search_item_factory::count_rows(
-					                   s, counter, f.create_search_items(s, existing, config), false));
-			                   }
+			if (config.sidebar.show_favorite_searches)
+			{
+				add_elements(
+					search_item_factory::count_rows(s, counter, f.create_search_items(s, existing, config), false));
+			}
 
-			                   if (config.sidebar.show_drives)
-			                   {
-				                   drives = f.create_drive_items(s, drive_info);
-				                   if (!drives.empty() && !item_elements.empty())
-					                   item_elements.emplace_back(
-						                   std::make_shared<divider_element>());
-				                   item_elements.insert(item_elements.end(), drives.begin(), drives.end());
-			                   }
+			if (config.sidebar.show_drives)
+			{
+				drives = f.create_drive_items(s, drive_info);
+				if (!drives.empty() && !item_elements.empty())
+					item_elements.emplace_back(std::make_shared<divider_element>());
+				item_elements.insert(item_elements.end(), drives.begin(), drives.end());
+			}
 
-			                   if (config.sidebar.show_ratings)
-			                   {
-				                   add_elements(search_item_factory::count_rows(s, counter, f.create_ratings(s, existing), false));
-			                   }
+			if (config.sidebar.show_ratings)
+			{
+				add_elements(search_item_factory::count_rows(s, counter, f.create_ratings(s, existing), false));
+			}
 
-			                   if (config.sidebar.show_labels)
-			                   {
-				                   add_elements(search_item_factory::count_rows(s, counter, f.create_labels(s, existing), true));
-			                   }
+			if (config.sidebar.show_labels)
+			{
+				add_elements(search_item_factory::count_rows(s, counter, f.create_labels(s, existing), true));
+			}
 
-			                   if (config.sidebar.show_tags)
-			                   {
-				                   add_elements(search_item_factory::count_rows(s, counter, f.create_tags(s, existing, config),
-				                                                                true));
-			                   }
+			if (config.sidebar.show_tags)
+			{
+				add_elements(search_item_factory::count_rows(s, counter, f.create_tags(s, existing, config), true));
+			}
 
+			item_elements.emplace_back(std::make_shared<divider_element>());
 
-			                   item_elements.emplace_back(std::make_shared<divider_element>());
+			const auto tag_show_text = config.sidebar.show_favorite_tags_only ? tt.command_all_tags
+			                                                                  : tt.command_favorite_tags;
 
-			                   const auto tag_show_text = config.sidebar.show_favorite_tags_only
-				                                              ? tt.command_all_tags
-				                                              : tt.command_favorite_tags;
+			auto tags_element = std::make_shared<link_element>(tag_show_text, commands::view_favorite_tags,
+			                                                   render::font_face::dialog,
+			                                                   render::text_style::multiline_center, flex_item::center);
 
-			                   auto tags_element = std::make_shared<link_element>(
-				                   tag_show_text, commands::view_favorite_tags,
-				                   render::font_face::dialog,
-				                   render::text_style::multiline_center,
-				                   flex_item::center);
+			auto customise_element = std::make_shared<link_element>(tt.command_customise, commands::options_sidebar,
+			                                                        render::font_face::dialog,
+			                                                        render::text_style::multiline_center,
+			                                                        flex_item::center);
+			auto favorite_tags_element = std::make_shared<link_element>(tt.customise_tags_title,
+			                                                            commands::favorite_tags,
+			                                                            render::font_face::dialog,
+			                                                            render::text_style::multiline_center,
+			                                                            flex_item::center);
 
-			                   auto customise_element = std::make_shared<link_element>(
-				                   tt.command_customise, commands::options_sidebar,
-				                   render::font_face::dialog,
-				                   render::text_style::multiline_center,
-				                   flex_item::center);
-			                   auto favorite_tags_element = std::make_shared<link_element>(tt.customise_tags_title,
-				                   commands::favorite_tags,
-				                   render::font_face::dialog,
-				                   render::text_style::multiline_center,
-				                   flex_item::center);
+			item_elements.emplace_back(tags_element);
+			item_elements.emplace_back(favorite_tags_element);
+			item_elements.emplace_back(customise_element);
 
-			                   item_elements.emplace_back(tags_element);
-			                   item_elements.emplace_back(favorite_tags_element);
-			                   item_elements.emplace_back(customise_element);
-
-			                   s.queue_ui(
-				                   [t, items = std::move(items), drives = std::move(drives), item_elements = std::move(
-					                   item_elements), request_id]
-				                   {
-					                   if (!should_publish_sidebar_structural_request(t->_structural_request_id, request_id))
-					                   {
-						                   return;
-					                   }
-					                   t->update_content(std::move(items), std::move(drives), std::move(item_elements));
-				                   });
-		                   });
+			s.queue_ui([t, items = std::move(items), drives = std::move(drives),
+			            item_elements = std::move(item_elements), request_id]
+			{
+				if (!should_publish_sidebar_structural_request(t->_structural_request_id, request_id))
+				{
+					return;
+				}
+				t->update_content(items, drives, item_elements);
+			});
+		});
 	}
 
 	void on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized) override
@@ -3298,94 +3267,92 @@ public:
 		}
 
 		_state.queue_async(async_queue::sidebar, [weak = weak_from_this(), &s = _state, elements, token, shown,
-				                   current_search = _state.search()]
-		                   {
-			                   core::scope_locked_inc slc(df::jobs_running);
-			                   search_counter counter(s.item_index);
+		                                          current_search = _state.search()]
+		{
+			core::scope_locked_inc slc(df::jobs_running);
+			search_counter counter(s.item_index);
 
-			                   if (counter.is_indexed())
-			                   {
-				                   // Every row from the search index, so each total is what clicking the row finds,
-				                   // published together because together they take a few milliseconds.
-				                   struct row_count
-				                   {
-					                   search_item_ptr row;
-					                   df::file_group_histogram sum;
-					                   std::optional<uint64_t> kept;
-				                   };
+			if (counter.is_indexed())
+			{
+				// Every row from the search index, so each total is what clicking the row finds,
+				// published together because together they take a few milliseconds.
+				struct row_count
+				{
+					search_item_ptr row;
+					df::file_group_histogram sum;
+					std::optional<uint64_t> kept;
+				};
 
-				                   std::vector<row_count> counts;
-				                   counts.reserve(elements->size());
-				                   const auto kept_items = shown->empty()
-					                                           ? search_kept_items{}
-					                                           : counter.make_kept_items(*shown);
+				std::vector<row_count> counts;
+				counts.reserve(elements->size());
+				const auto kept_items = shown->empty() ? search_kept_items{} : counter.make_kept_items(*shown);
 
-				                   for (const auto& i : *elements)
-				                   {
-					                   if (token.is_cancelled()) return;
+				for (const auto& i : *elements)
+				{
+					if (token.is_cancelled()) return;
 
-					                   auto& c = counts.emplace_back();
-					                   c.row = i;
-					                   c.sum = counter.count(i->search, token);
+					auto& c = counts.emplace_back();
+					c.row = i;
+					c.sum = counter.count(i->search, token);
 
-					                   // The row the view shows keeps everything it shows, which is not worth saying.
-					                   if (!shown->empty() && i->search != current_search)
-					                   {
-						                   c.kept = counter.count_kept(i->search, kept_items, token);
-					                   }
-				                   }
+					// The row the view shows keeps everything it shows, which is not worth saying.
+					if (!shown->empty() && i->search != current_search)
+					{
+						c.kept = counter.count_kept(i->search, kept_items, token);
+					}
+				}
 
-				                   if (token.is_cancelled()) return;
+				if (token.is_cancelled()) return;
 
-				                   const auto prediction_count = counts.size();
-				                   s.queue_ui([weak, counts = std::move(counts), token]
-				                   {
-					                   if (token.is_cancelled()) return;
-					                   const auto t = weak.lock();
-					                   if (!t) return;
+				const auto prediction_count = counts.size();
+				s.queue_ui([weak, counts = std::move(counts), token]
+				{
+					if (token.is_cancelled()) return;
+					const auto t = weak.lock();
+					if (!t) return;
 
-					                   for (const auto& c : counts)
-					                   {
-						                   c.row->summary_known = true;
-						                   c.row->summary = c.sum;
-						                   c.row->scoped_count = c.kept;
-					                   }
+					for (const auto& c : counts)
+					{
+						c.row->summary_known = true;
+						c.row->summary = c.sum;
+						c.row->scoped_count = c.kept;
+					}
 
-					                   t->invalidate();
-				                   });
+					t->invalidate();
+				});
 
-				                   core::trace(std::format("Sidebar update {} predictions from the search index", prediction_count));
-				                   return;
-			                   }
+				core::trace(std::format("Sidebar update {} predictions from the search index", prediction_count));
+				return;
+			}
 
-			                   int update_count = 0;
+			int update_count = 0;
 
-			                   for (const auto& i : *elements)
-			                   {
-				                   if (i->calc_sum)
-				                   {
-					                   const auto sum = i->calc_sum(s, token);
+			for (const auto& i : *elements)
+			{
+				if (i->calc_sum)
+				{
+					const auto sum = i->calc_sum(s, token);
 
-					                   if (!token.is_cancelled())
-					                   {
-						                   update_count += 1;
+					if (!token.is_cancelled())
+					{
+						update_count += 1;
 
-						                   s.queue_ui([weak, i, sum, token]
-						                   {
-							                   if (token.is_cancelled()) return;
-							                   const auto t = weak.lock();
-							                   if (!t) return;
-							                   i->summary_known = true;
-							                   i->summary = sum;
-							                   i->scoped_count.reset();
-							                   t->invalidate();
-						                   });
-					                   }
-				                   }
-			                   }
+						s.queue_ui([weak, i, sum, token]
+						{
+							if (token.is_cancelled()) return;
+							const auto t = weak.lock();
+							if (!t) return;
+							i->summary_known = true;
+							i->summary = sum;
+							i->scoped_count.reset();
+							t->invalidate();
+						});
+					}
+				}
+			}
 
-			                   core::trace(std::format("Sidebar update {} predictions", update_count));
-		                   });
+			core::trace(std::format("Sidebar update {} predictions", update_count));
+		});
 	}
 
 	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
@@ -3408,8 +3375,92 @@ public:
 		return nullptr;
 	}
 
-	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
+	// What can be done with the row under a point, for the menu a right-click there opens: open it, as a click does,
+	// and for a row that is one folder, or a drive, show it in the file browser, copy its path or show its
+	// properties. None for anything but a row.
+	std::vector<ui::command_ptr> row_commands(const pointi loc)
 	{
+		const auto offset = -_scroller.scroll_offset();
+		const view_host_ptr host = shared_from_this();
+
+		for (const auto& e : _elements)
+		{
+			if (!e->is_visible() || !e->bounds.offset(offset).contains(loc)) continue;
+
+			std::function<void()> open;
+			core::folder_path folder;
+
+			if (const auto row = std::dynamic_pointer_cast<sidebar_element>(e))
+			{
+				open = [&s = _state, host, search = row->search]
+				{
+					s.open(host, search, {});
+				};
+				if (row->search.selectors().size() == 1) folder = row->search.selectors().front().folder();
+			}
+			else if (const auto drive = std::dynamic_pointer_cast<sidebar_drive_element>(e))
+			{
+				open = [&s = _state, host, name = drive->_drive.name]
+				{
+					s.open(host, name);
+				};
+				folder = core::folder_path(drive->_drive.name);
+			}
+			else
+			{
+				return {};
+			}
+
+			std::vector<ui::command_ptr> result;
+			const auto add = [&result](const icon_index icon, const std::string_view text, std::function<void()> invoke)
+			{
+				auto c = std::make_shared<ui::command>();
+				c->icon = icon;
+				c->text = text;
+				c->invoke = std::move(invoke);
+				result.emplace_back(std::move(c));
+			};
+
+			add(icon_index::open_one, tt.command_open, std::move(open));
+
+			if (!folder.is_empty())
+			{
+				add(icon_index::none, tt.command_show_in_file_browser,
+				    [folder] { platform::show_in_file_browser(folder); });
+				add(icon_index::edit_copy, tt.command_edit_copy_item_path,
+				    [folder] { platform::set_clipboard(folder.text()); });
+				add(icon_index::document_information, tt.command_file_properties,
+				    [folder] { platform::show_file_properties({}, {folder}); });
+			}
+
+			return result;
+		}
+
+		return {};
+	}
+
+	bool element_wheel(const pointi loc, const int delta)
+	{
+		const auto offset = -_scroller.scroll_offset();
+		for (const auto& element : _elements)
+		{
+			if (element->is_visible() && element->wheel(loc, offset, delta))
+			{
+				update_controller(loc);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state /*keys*/,
+	                    bool& was_handled) override
+	{
+		if (element_wheel(loc, delta))
+		{
+			was_handled = true;
+			return;
+		}
 		_scroller.offset(shared_from_this(), 0, -(delta / 2));
 		was_handled = _scroller.can_scroll();
 		update_controller(loc);
@@ -3435,10 +3486,7 @@ public:
 		}
 	}
 
-	void invalidate_element(const view_element_ptr& e) override
-	{
-		invalidate();
-	}
+	void invalidate_element(const view_element_ptr& /*e*/) override { invalidate(); }
 
 	void layout(render::measure_context& mc)
 	{
@@ -3449,7 +3497,7 @@ public:
 		const auto scroll_padding = embedded || _scroller.can_scroll() ? mc.scroll_width : x_padding;
 		const auto layout_padding = sizei{0, core::round(mc.padding1 / mc.scale_factor)};
 		auto avail_bounds = embedded ? _embedded_bounds : recti(_extent);
-		avail_bounds.left += x_padding; // -(mc.baseline_snap / 2);
+		avail_bounds.left += x_padding;       // -(mc.baseline_snap / 2);
 		avail_bounds.right -= scroll_padding; // -(mc.baseline_snap / 2);
 
 		flex_container_layout column;
@@ -3460,34 +3508,28 @@ public:
 		const auto content_extent = layout_flex_elements(_elements, mc, avail_bounds, column);
 
 		const auto host_bounds = embedded ? _embedded_bounds : recti(_extent);
-		const recti scroll_bounds{
-			host_bounds.right - scroll_padding,
-			embedded ? host_bounds.top + host_bounds.height() / 2 : host_bounds.top,
-			host_bounds.right,
-			host_bounds.bottom
-		};
-		const recti client_bounds{
-			host_bounds.left, host_bounds.top, host_bounds.right - scroll_padding,
-			host_bounds.bottom
-		};
+		const recti scroll_bounds{host_bounds.right - scroll_padding,
+		                          embedded ? host_bounds.top + host_bounds.height() / 2 : host_bounds.top,
+		                          host_bounds.right, host_bounds.bottom};
+		const recti client_bounds{host_bounds.left, host_bounds.top, host_bounds.right - scroll_padding,
+		                          host_bounds.bottom};
 		_scroller.layout({client_bounds.width(), content_extent.cy + mc.padding2}, client_bounds, scroll_bounds);
 	}
 
 	static int preferred_width(render::measure_context& mc)
 	{
-		const auto extent = mc.measure_text("Documents", render::font_face::dialog,
-		                                    render::text_style::single_line, 200);
+		const auto extent = mc.measure_text("Documents", render::font_face::dialog, render::text_style::single_line,
+		                                    200);
 		return core::mul_div(extent.cx, 5, 2);
 	}
 
-	void focus_changed(const bool has_focus, const ui::control_ptr& child) override
+	void focus_changed(const bool has_focus, const ui::control_ptr& /*child*/) override
 	{
 		core::trace(std::format("Sidebar navigation_controls::focus {}", has_focus));
 
 		_has_focus = has_focus;
 		invalidate();
 	}
-
 
 	bool _is_active = true;
 
@@ -3529,49 +3571,28 @@ public:
 		}
 	}
 
-	void activate(bool is_active) override
-	{
-	}
+	void activate(bool /*is_active*/) override {}
 
-	bool key_down(const int c, const platform::key_state keys) override
-	{
-		return false;
-	};
+	bool key_down(const char32_t /*c*/, const platform::key_state /*keys*/) override { return false; };
 
-	const ui::frame_ptr frame() const override
-	{
-		return _frame ? _frame : ui::no_frame();
-	}
+	const ui::frame_ptr frame() const override { return _frame ? _frame : ui::no_frame(); }
 
-	const ui::frame_ptr owner() override
-	{
-		return _owner;
-	}
+	const ui::frame_ptr owner() override { return _owner; }
 
-	void controller_changed() override
-	{
-		_state.invalidate_view(view_invalid::tooltip);
-	}
+	void controller_changed() override { _state.invalidate_view(view_invalid::tooltip); }
 
-	void invoke(const commands cmd) override
-	{
-		_state.invoke(cmd);
-	}
+	void invoke(const commands cmd) override { _state.invoke(cmd); }
 
-	bool is_command_checked(const commands cmd) override
-	{
-		return _state.is_command_checked(cmd);
-	}
+	bool is_command_checked(const commands cmd) override { return _state.is_command_checked(cmd); }
 
+	// bounds are this frame's; the menu opens where they are on the screen, as the view frame's do.
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override
 	{
-		_state.track_menu(frame(), bounds, commands);
+		const auto f = frame();
+		_state.track_menu(f, bounds.offset(f->client_to_screen({})), commands);
 	}
 
-	void invalidate_view(const view_invalid invalid) override
-	{
-		_state.invalidate_view(invalid);
-	}
+	void invalidate_view(const view_invalid invalid) override { _state.invalidate_view(invalid); }
 
 	void dpi_changed() override
 	{

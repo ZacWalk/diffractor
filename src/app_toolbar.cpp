@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Toolbars and how commands present. Builds the title bar and status bar each view declares
 // - toolbars for its commands, the item filter box and size slider - and arranges them, decides each
@@ -60,31 +59,24 @@ static icon_index address_icon(const df::search_t& search)
 
 void app_frame::create_toolbars()
 {
-	const std::vector<ui::command_ptr> tbButtonsNav1 =
-	{
+	const std::vector<ui::command_ptr> tbButtonsNav1 = {
 		find_command(commands::view_show_sidebar),
 #ifndef WINSTORE
 		find_command(commands::info_new_version),
 #endif
-		find_command(commands::browse_back),
-		find_command(commands::browse_forward),
-		find_command(commands::browse_parent),
-		find_command(commands::refresh),
+		find_command(commands::browse_back),       find_command(commands::browse_forward),
+		find_command(commands::browse_parent),     find_command(commands::refresh),
 	};
 
 	// Options is not here: its cog starts the status bar, under the sidebar that shows the collection it sets up
 	// first, and it is in the Options menu.
-	const std::vector<ui::command_ptr> tbButtonsNav2 =
-	{
-		find_command(commands::favorite),
-		find_command(commands::browse_previous_folder),
-		find_command(commands::browse_next_folder),
-		find_command(commands::advanced_search),
+	const std::vector<ui::command_ptr> tbButtonsNav2 = {
+		find_command(commands::favorite),           find_command(commands::browse_previous_folder),
+		find_command(commands::browse_next_folder), find_command(commands::advanced_search),
 		find_command(commands::menu_main),
 	};
 
-	const std::vector<ui::command_ptr> tbButtonsNav3 =
-	{
+	const std::vector<ui::command_ptr> tbButtonsNav3 = {
 		find_command(commands::view_minimize),
 		find_command(commands::view_maximize),
 		find_command(commands::view_restore),
@@ -102,34 +94,29 @@ void app_frame::create_toolbars()
 	ui::edit_styles search_styles;
 	search_styles.rounded_corners = true;
 	search_styles.select_all_on_focus = true;
-	search_styles.capture_key_down = [this](const int key_code, const platform::key_state keys)
+	search_styles.capture_key_down = [this](const char32_t key_code, const platform::key_state keys)
 	{
-		const auto key = static_cast<char32_t>(key_code);
-
-		if (key == platform::keys::RETURN)
+		if (key_code == platform::keys::RETURN)
 		{
 			search_enter();
 			return true;
 		}
-		if (key == platform::keys::ESCAPE)
+		if (key_code == platform::keys::ESCAPE)
 		{
 			cancel_search_edit();
 			return true;
 		}
-		if (key == platform::keys::UP || key == platform::keys::DOWN)
+		if (key_code == platform::keys::UP || key_code == platform::keys::DOWN)
 		{
 			if (_search_predictions_frame)
 			{
-				_search_predictions_frame->step_selection(key == platform::keys::UP ? -1 : 1);
+				_search_predictions_frame->step_selection(key_code == platform::keys::UP ? -1 : 1);
 			}
 			return true;
 		}
-		return key == platform::keys::TAB && !keys.control && !keys.shift && search_accept_selected();
+		return key_code == platform::keys::TAB && !keys.control && !keys.shift && search_accept_selected();
 	};
-	_search_edit = ui::make_edit(search_styles, {}, [this](const std::string_view text)
-	{
-		search_text_changed(text);
-	});
+	_search_edit = ui::make_edit(search_styles, {}, [this](const std::string_view text) { search_text_changed(text); });
 
 	// The filter box is the address box's sibling at the other end of the window: the same edit, so
 	// the two read, select and edit alike.
@@ -137,28 +124,21 @@ void app_frame::create_toolbars()
 	filter_styles.rounded_corners = true;
 	filter_styles.select_all_on_focus = true;
 	filter_styles.cue = tt.filter.sv();
-	filter_styles.capture_key_down = [this](const int key_code, const platform::key_state keys)
+	filter_styles.capture_key_down = [this](const char32_t key_code, const platform::key_state keys)
 	{
-		return filter_key_down(static_cast<char32_t>(key_code), keys);
+		return filter_key_down(key_code, keys);
 	};
-	_filter_edit = ui::make_edit(filter_styles, _state.filter().text(), [this](const std::string_view text)
-	{
-		filter_text_changed(text);
-	});
+	_filter_edit = ui::make_edit(filter_styles, _state.filter().text(),
+	                             [this](const std::string_view text) { filter_text_changed(text); });
 
 	_item_size = ui::make_slider(0, settings_t::item_scale_position_max,
-	                                       [this](const int pos, const bool tracking)
-	                                       {
-		                                       item_size_changed(pos, tracking);
-	                                       });
+	                             [this](const int pos, const bool tracking) { item_size_changed(pos, tracking); });
 	update_item_size_slider();
 
 	// Every bar a view can declare is built now, before the first layout, so switching views only
 	// shows and hides controls that already exist.
-	const std::shared_ptr<view_base> views[] = {
-		_view_items, _view_media, _view_edit, _view_movie, _view_rename, _view_batch, _view_import, _view_sync,
-		_view_locate, _view_tags
-	};
+	const std::shared_ptr<view_base> views[] = {_view_items, _view_media,  _view_edit, _view_movie,  _view_rename,
+	                                            _view_batch, _view_import, _view_sync, _view_locate, _view_tags};
 
 	for (const auto& v : views)
 	{
@@ -188,12 +168,14 @@ const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries
 
 	frame_bar result;
 	std::vector<ui::command_ptr> run;
+	std::vector<commands> run_ids;
 
-	const auto close_run = [this, &result, &run, &styles]
+	const auto close_run = [this, &result, &run, &run_ids, &styles]
 	{
 		if (run.empty()) return;
-		result.push_back({ui::make_toolbar(styles, run)});
+		result.push_back({ui::make_toolbar(styles, run), bar_control::item_filter, std::move(run_ids)});
 		run.clear();
+		run_ids.clear();
 	};
 
 	for (const auto& entry : entries)
@@ -202,7 +184,11 @@ const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries
 		{
 			// A null button is a separator, so an unresolved command is dropped rather than turned
 			// into a divider nobody declared.
-			if (auto command = find_command(*id)) run.emplace_back(std::move(command));
+			if (auto command = find_command(*id))
+			{
+				run.emplace_back(std::move(command));
+				run_ids.emplace_back(*id);
+			}
 		}
 		else
 		{
@@ -213,6 +199,13 @@ const app_frame::frame_bar& app_frame::bar(const std::vector<bar_entry>& entries
 
 	close_run();
 	return _bars.emplace(entries, std::move(result)).first->second;
+}
+
+const ui::toolbar_ptr& app_frame::trimmed_run(const std::vector<commands>& run, const size_t keep)
+{
+	std::vector<bar_entry> entries{commands::menu_bar_more};
+	for (auto i = run.size() - std::min(keep, run.size()); i < run.size(); ++i) entries.emplace_back(run[i]);
+	return bar(entries).front().toolbar;
 }
 
 std::vector<bar_slot> app_frame::measure_bar(render::measure_context& mc, const frame_bar& b,
@@ -233,22 +226,18 @@ std::vector<bar_slot> app_frame::measure_bar(render::measure_context& mc, const 
 		{
 		case bar_control::item_filter:
 			// Narrows before anything is cut, but not past what still shows a typed word.
-			result.push_back({
-				{core::round(150 * mc.scale_factor), control_height}, core::round(80 * mc.scale_factor)
-			});
+			result.push_back({{core::round(150 * mc.scale_factor), control_height}, core::round(80 * mc.scale_factor)});
 			break;
 		case bar_control::item_size:
 			// The wheel and the display menu also size thumbnails, so the slider is the first to go.
 			result.push_back({{core::round(100 * mc.scale_factor), control_height}, 0, true});
 			break;
 		case bar_control::item_totals:
-			result.push_back({
-				{
-					mc.measure_text(_totals_text, render::font_face::dialog, render::text_style::single_line,
-					                _extent.cx).cx + mc.padding2 * 2,
-					mc.text_line_height(render::font_face::dialog)
-				}
-			});
+			result.push_back(
+				{{mc.measure_text(_totals_text, render::font_face::dialog, render::text_style::single_line, _extent.cx)
+			              .cx +
+			          mc.padding2 * 2,
+			      mc.text_line_height(render::font_face::dialog)}});
 			break;
 		}
 	}
@@ -367,9 +356,9 @@ bool app_frame::filter_key_down(const char32_t key, const platform::key_state ke
 		return true;
 	}
 
-	// The filter applies as it is typed, so Enter and Tab have nothing left to commit: both hand the
-	// keyboard back to the list it filtered.
-	if ((key == platform::keys::RETURN || key == platform::keys::TAB) && !keys.control && !keys.alt)
+	// The filter applies as it is typed, so Enter has nothing left to commit: it hands the keyboard back to the
+	// list it filtered. Tab moves on to the next stop, as it does from every control.
+	if (key == platform::keys::RETURN && !keys.control && !keys.alt)
 	{
 		focus_view();
 		return true;
@@ -449,62 +438,40 @@ void app_frame::update_item_size_slider() const
 // locations.md 7.1, baseline defect 5: this button now reads only what the grouping and sorting
 // are, because that is the menu it opens. The totals moved to their own affordance next to it,
 // which has no menu, so a user reaching for the count is no longer offered a grouping menu.
-std::string format_items_summary(const group_by grouping, const sort_by order,
-                                 const df::file_group_histogram& summary, const bool is_init_complete)
+std::string format_items_summary(const group_by grouping, const sort_by order, const df::file_group_histogram& summary,
+                                 const bool is_init_complete)
 {
 	std::string_view group_text;
 	std::string_view sort_text;
 
 	switch (grouping)
 	{
-	case group_by::presence: group_text = tt.sort_by_presence;
-		break;
-	case group_by::file_type: group_text = tt.sort_by_file_type;
-		break;
-	case group_by::shuffle: group_text = tt.sort_by_shuffle;
-		break;
-	case group_by::size: group_text = tt.sort_by_size;
-		break;
-	case group_by::extension: group_text = tt.sort_by_extension;
-		break;
-	case group_by::location: group_text = tt.sort_by_location;
-		break;
-	case group_by::rating_label: group_text = tt.sort_by_rating_label;
-		break;
-	case group_by::date_created: group_text = tt.prop_name_created;
-		break;
-	case group_by::date_original: group_text = tt.prop_name_original;
-		break;
-	case group_by::date_modified: group_text = tt.prop_name_modified;
-		break;
-	case group_by::camera: group_text = tt.prop_name_camera;
-		break;
-	case group_by::album_show: group_text = tt.sort_by_album_show;
-		break;
-	case group_by::resolution: group_text = tt.sort_by_resolution;
-		break;
-	case group_by::aspect_ratio: group_text = tt.sort_by_aspect_ratio;
-		break;
-	case group_by::folder: group_text = tt.sort_by_Folder;
-		break;
-	case group_by::related: group_text = tt.command_related;
-		break;
+	case group_by::presence: group_text = tt.sort_by_presence; break;
+	case group_by::file_type: group_text = tt.sort_by_file_type; break;
+	case group_by::shuffle: group_text = tt.sort_by_shuffle; break;
+	case group_by::size: group_text = tt.sort_by_size; break;
+	case group_by::extension: group_text = tt.sort_by_extension; break;
+	case group_by::location: group_text = tt.sort_by_location; break;
+	case group_by::rating_label: group_text = tt.sort_by_rating_label; break;
+	case group_by::date_created: group_text = tt.prop_name_created; break;
+	case group_by::date_original: group_text = tt.prop_name_original; break;
+	case group_by::date_modified: group_text = tt.prop_name_modified; break;
+	case group_by::camera: group_text = tt.prop_name_camera; break;
+	case group_by::album_show: group_text = tt.sort_by_album_show; break;
+	case group_by::resolution: group_text = tt.sort_by_resolution; break;
+	case group_by::aspect_ratio: group_text = tt.sort_by_aspect_ratio; break;
+	case group_by::folder: group_text = tt.sort_by_Folder; break;
+	case group_by::related: group_text = tt.command_related; break;
 	}
 
 	switch (order)
 	{
-	case sort_by::def: sort_text = tt.sort_by_def;
-		break;
-	case sort_by::name: sort_text = tt.sort_by_name;
-		break;
-	case sort_by::size: sort_text = tt.sort_by_size;
-		break;
-	case sort_by::date_created: sort_text = tt.prop_name_created;
-		break;
-	case sort_by::date_original: sort_text = tt.prop_name_original;
-		break;
-	case sort_by::date_modified: sort_text = tt.prop_name_modified;
-		break;
+	case sort_by::def: sort_text = tt.sort_by_def; break;
+	case sort_by::name: sort_text = tt.sort_by_name; break;
+	case sort_by::size: sort_text = tt.sort_by_size; break;
+	case sort_by::date_created: sort_text = tt.prop_name_created; break;
+	case sort_by::date_original: sort_text = tt.prop_name_original; break;
+	case sort_by::date_modified: sort_text = tt.prop_name_modified; break;
 	}
 
 	const auto total_items = summary.total_items();
@@ -555,9 +522,8 @@ std::string format_selection_summary(const df::item_set& selected)
 	return files.size.is_empty() ? count : std::format("{} \u00B7 {}", count, platform::format_size(files.size));
 }
 
-icon_index volumes_icons[5] = {
-	icon_index::volume3, icon_index::volume2, icon_index::volume1, icon_index::volume0, icon_index::mute
-};
+icon_index volumes_icons[5] = {icon_index::volume3, icon_index::volume2, icon_index::volume1, icon_index::volume0,
+                               icon_index::mute};
 
 void app_frame::toggle_volume()
 {
@@ -599,7 +565,6 @@ icon_index app_frame::sound_icon()
 	return icon_index::mute;
 }
 
-
 icon_index app_frame::repeat_toggle_icon()
 {
 	if (setting.repeat == repeat_mode::repeat_one) return icon_index::repeat_one;
@@ -623,11 +588,18 @@ bool app_frame::update_toolbar_text(const commands cc, const std::string& text)
 	return changed;
 }
 
+// A menu raises command_active while it is open, but it shows the commands rather than running one, so they
+// keep the state they had: only a command that is running makes them unavailable.
+static bool is_command_running()
+{
+	return ui::command_active.load() > ui::menu_active.load();
+}
+
 // One place that names which run command each task view answers to. While a command dialog is up
 // it owns the keyboard, so the task view claims nothing.
 commands app_frame::task_view_run_command() const
 {
-	if (ui::command_active != 0) return commands::none;
+	if (is_command_running()) return commands::none;
 
 	switch (_state.view_mode())
 	{
@@ -643,9 +615,6 @@ commands app_frame::task_view_run_command() const
 
 void app_frame::update_button_state(const bool resize)
 {
-	// Not cached: the update snooze is measured in days, so a session left open overnight has to
-	// see the new day arrive.
-	const auto now_days = core::utc_now().to_days();
 	if (!_has_burner) _has_burner = platform::has_burner();
 	const auto has_burner = *_has_burner;
 
@@ -659,18 +628,16 @@ void app_frame::update_button_state(const bool resize)
 	const auto can_zoom = selection_status.can_zoom;
 	const auto display = _state.display_state();
 	const auto is_maximized = _app_frame->is_maximized();
-	const auto is_edit_view = ui::command_active == 0 && view_mode == view_type::edit;
-	const auto is_items_view = ui::command_active == 0 && view_mode == view_type::items;
-	const auto is_media_view = ui::command_active == 0 && view_mode == view_type::media;
-	const auto is_media_or_items_view = ui::command_active == 0 && (view_mode == view_type::items || view_mode ==
-		view_type::media);
+	const auto is_idle = !is_command_running();
+	const auto is_edit_view = is_idle && view_mode == view_type::edit;
+	const auto is_items_view = is_idle && view_mode == view_type::items;
+	const auto is_media_view = is_idle && view_mode == view_type::media;
+	const auto is_media_or_items_view = is_idle && (view_mode == view_type::items || view_mode == view_type::media);
 	const auto has_selection = is_media_or_items_view && _state.has_selection();
-	const auto has_movie_selection = is_media_or_items_view && std::any_of(
-		_state.selected_items().items().begin(), _state.selected_items().items().end(), [](const auto& item)
-		{
-			const auto* const type = item->file_type();
-			return type && (type->group == file_group::photo || type->group == file_group::video);
-		});
+	const auto has_movie_selection = is_media_or_items_view &&
+	                                 std::any_of(_state.selected_items().items().begin(),
+	                                             _state.selected_items().items().end(),
+	                                             [](const auto& item) { return is_movie_source(item->file_type()); });
 	const auto is_single_media_selection = is_media_or_items_view && selection_status.has_single_media_selection;
 	const auto local_files_result = _state.selection_process_result(df::process_items_type::local_file);
 	const auto local_items_result = _state.selection_process_result(df::process_items_type::local_file_or_folder);
@@ -682,9 +649,12 @@ void app_frame::update_button_state(const bool resize)
 	const auto can_save_metadata = is_media_or_items_view && save_metadata_result.success();
 	const auto can_save_pixels = is_media_or_items_view && save_pixels_result.success();
 #ifndef WINSTORE
+	// Not cached: the update snooze is measured in days, so a session left open overnight has to
+	// see the new day arrive.
+	const auto now_days = core::utc_now().to_days();
 	const auto new_version_avail = is_media_or_items_view &&
-		core::version(s_app_version) < core::version(setting.available_version) && static_cast<int>(now_days) >= setting.
-		min_show_update_day;
+	                               core::version(s_app_version) < core::version(setting.available_version) &&
+	                               static_cast<int>(now_days) >= setting.min_show_update_day;
 	const auto show_new_version = is_media_or_items_view && (setting.force_available_version || new_version_avail);
 #endif
 	const auto command_item = _state.command_item();
@@ -746,14 +716,15 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::edit_item_save_and_prev]->text = previous_text;
 	_commands[commands::edit_item_save_and_next]->text = next_text;
 	_commands[commands::edit_item_save_and_prev]->tooltip_text = locate_view
-		                                                             ? std::string{}
-		                                                             : std::string(
-			                                                             tt.command_save_and_back_tooltip.sv());
+	                                                                 ? std::string{}
+	                                                                 : std::string(
+																		   tt.command_save_and_back_tooltip.sv());
 	_commands[commands::edit_item_save_and_next]->tooltip_text = locate_view
-		                                                             ? std::string{}
-		                                                             : std::string(
-			                                                             tt.command_save_and_next_tooltip.sv());
-	_commands[commands::edit_item_save_as]->enable = can_edit_pixels;
+	                                                                 ? std::string{}
+	                                                                 : std::string(
+																		   tt.command_save_and_next_tooltip.sv());
+	const auto edits_av = is_edit_view && _view_edit && _view_edit->edits_av();
+	_commands[commands::edit_item_save_as]->enable = can_edit_pixels || edits_av;
 	_commands[commands::edit_paste]->enable = is_items_view && has_save_folder;
 	_commands[commands::english]->enable = true;
 	_commands[commands::exit]->enable = true;
@@ -782,9 +753,9 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::group_size]->enable = can_group;
 	_commands[commands::group_toggle]->enable = can_group;
 	_commands[commands::import_analyze]->enable = view_mode == view_type::import && !view_processing && _view_import &&
-		_view_import->can_analyze();
+	                                              _view_import->can_analyze();
 	_commands[commands::import_run]->enable = view_mode == view_type::import && !view_processing && _view_import &&
-		_view_import->can_run();
+	                                          _view_import->can_run();
 #ifndef WINSTORE
 	// Must match the visibility test above: a button that appears only to sit dimmed reads as broken.
 	_commands[commands::info_new_version]->enable = is_media_or_items_view;
@@ -804,6 +775,7 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::menu_group_toolbar]->enable = true;
 	_commands[commands::menu_language]->enable = true;
 	_commands[commands::menu_main]->enable = true;
+	_commands[commands::menu_bar_more]->enable = true;
 	_commands[commands::menu_navigate]->enable = true;
 	_commands[commands::menu_open]->enable = has_selection;
 	_commands[commands::menu_open_status]->enable = has_selection;
@@ -846,8 +818,8 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::options_cancel]->enable = view_mode == view_type::options;
 	_commands[commands::options_help]->enable = view_mode == view_type::options;
 	_commands[commands::favorite_tags]->enable = is_media_or_items_view || view_mode == view_type::tags;
-	_commands[commands::pin_item]->enable = is_media_or_items_view && (_state.has_pin() || _state.focus_item() !=
-		nullptr);
+	_commands[commands::pin_item]->enable = is_media_or_items_view &&
+	                                        (_state.has_pin() || _state.focus_item() != nullptr);
 	_commands[commands::play]->enable = is_media_or_items_view && (can_play_media || is_playing);
 	_commands[commands::slideshow]->enable = is_media_or_items_view && _state.can_slideshow();
 	_commands[commands::playback_auto_play]->enable = is_media_or_items_view;
@@ -879,13 +851,14 @@ void app_frame::update_button_state(const bool resize)
 	const auto is_batch_view = view_mode == view_type::batch && _view_batch;
 	_commands[commands::tool_refresh]->visible = is_batch_view;
 	_commands[commands::tool_refresh]->enable = is_batch_view && _view_batch->can_refresh();
-	_commands[commands::tool_run]->enable = !view_processing && ((view_mode == view_type::rename && _view_rename &&
-		_view_rename->can_run()) || (view_mode == view_type::batch && _view_batch && _view_batch->can_run()));
+	_commands[commands::tool_run]->enable = !view_processing &&
+	                                        ((view_mode == view_type::rename && _view_rename &&
+	                                          _view_rename->can_run()) ||
+	                                         (view_mode == view_type::batch && _view_batch && _view_batch->can_run()));
 	// One toolbar serves the rename view and every batch tool, so the run button must name the
 	// operation the current view will actually perform.
-	const auto run_text = (view_mode == view_type::batch && _view_batch)
-		                      ? _view_batch->run_text().sv()
-		                      : tt.command_rename_files.sv();
+	const auto run_text = (view_mode == view_type::batch && _view_batch) ? _view_batch->run_text().sv()
+	                                                                     : tt.command_rename_files.sv();
 	update_toolbar_text(commands::tool_run, std::string(run_text));
 	_commands[commands::tool_run]->text = run_text;
 	_commands[commands::locate_run]->enable = view_mode == view_type::locate && _view_locate && _view_locate->can_run();
@@ -904,11 +877,11 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::sort_name]->enable = is_media_or_items_view;
 	_commands[commands::sort_size]->enable = is_media_or_items_view;
 	_commands[commands::sync_analyze]->enable = view_mode == view_type::sync && !view_processing && _view_sync &&
-		_view_sync->can_analyze();
+	                                            _view_sync->can_analyze();
 	_commands[commands::sync_run]->enable = view_mode == view_type::sync && !view_processing && _view_sync &&
-		_view_sync->can_run();
+	                                        _view_sync->can_run();
 	_commands[commands::tags_run]->enable = view_mode == view_type::tags && !view_processing && _view_tags &&
-		_view_tags->can_run();
+	                                        _view_tags->can_run();
 	_commands[commands::tool_adjust_date]->enable = can_save_metadata;
 	// A machine with no writer cannot burn at all, and design.md is explicit that a capability the
 	// platform lacks is absent rather than dimmed - dimming would say "not now" forever.
@@ -933,25 +906,29 @@ void app_frame::update_button_state(const bool resize)
 	// A timeline outlives the view, so clearing the selection must not lock the user out of the
 	// movie they are part way through building.
 	_commands[commands::tool_movie]->enable = is_media_or_items_view &&
-		(has_movie_selection || (_view_movie && _view_movie->has_clips()));
+	                                          (has_movie_selection || (_view_movie && _view_movie->has_clips()));
 	const auto movie_project_busy = is_movie_view && _view_movie->project_io_active();
-	_commands[commands::tool_movie_add]->enable = is_movie_view && !movie_project_busy;
-	_commands[commands::tool_movie_open]->enable = is_movie_view && !movie_project_busy;
-	_commands[commands::tool_movie_import]->enable = is_movie_view && !movie_project_busy;
-	_commands[commands::tool_movie_save]->enable = is_movie_view && !movie_project_busy && _view_movie->can_save_project();
-	_commands[commands::tool_movie_remove]->enable = is_movie_view && _view_movie->has_clips();
-	_commands[commands::tool_movie_send_to_end]->enable = is_movie_view && _view_movie->has_clips();
+	// A render works from the timeline as it stood when it started, so nothing may change the timeline under
+	// it: the strip stays to look at and select in, and Cancel is the one command that acts.
+	const auto movie_editable = is_movie_view && !movie_project_busy && !view_processing;
+	_commands[commands::tool_movie_add]->enable = movie_editable;
+	_commands[commands::tool_movie_add_text]->enable = movie_editable;
+	_commands[commands::tool_movie_open]->enable = movie_editable;
+	_commands[commands::tool_movie_save]->enable = is_movie_view && !movie_project_busy &&
+	                                               _view_movie->can_save_project();
+	_commands[commands::tool_movie_remove]->enable = movie_editable && _view_movie->has_clips();
+	_commands[commands::tool_movie_send_to_end]->enable = movie_editable && _view_movie->has_clips();
 	_commands[commands::tool_movie_select_all]->enable = is_movie_view && _view_movie->has_clips();
 	// Nothing to repair is not the same as a repair that is unavailable, so the offer appears only
 	// once the probe has found a clip that is gone.
 	_commands[commands::tool_movie_relink]->visible = is_movie_view && _view_movie->has_missing_clips();
-	_commands[commands::tool_movie_relink]->enable = is_movie_view && !movie_project_busy && _view_movie->has_missing_clips();
+	_commands[commands::tool_movie_relink]->enable = movie_editable && _view_movie->has_missing_clips();
 	// A machine with no encoder cannot render at all, so Render is absent rather than dimmed, as
 	// Burn is on a machine with no writer. The answer comes from the startup worker.
 	const auto can_write_movies = _can_write_movies.value_or(false);
 	_commands[commands::tool_movie_render]->visible = can_write_movies;
 	_commands[commands::tool_movie_render]->enable = is_movie_view && !view_processing && can_write_movies &&
-		_view_movie->can_render();
+	                                                 _view_movie->can_render();
 	_commands[commands::tool_new_folder]->enable = is_media_or_items_view && has_save_folder;
 	_commands[commands::tool_open_with]->enable = has_selection;
 	_commands[commands::tool_rename]->enable = can_process_local_items;
@@ -984,8 +961,8 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::view_zoom_fill]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::view_zoom_toggle_fit]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::view_zoom_in]->enable = is_media_or_items_view && can_zoom;
-	_commands[commands::view_zoom_pane_flip]->enable = is_media_or_items_view && display && display->is_two() &&
-		can_zoom;
+	_commands[commands::view_zoom_pane_flip]->enable = is_media_or_items_view && display && display->is_comparison() &&
+	                                                   can_zoom;
 	_commands[commands::view_zoom_out]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::view_zoom_100]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::menu_zoom]->enable = is_media_or_items_view && can_zoom;
@@ -995,47 +972,42 @@ void app_frame::update_button_state(const bool resize)
 
 	// A dimmed button is only honest if it says what would make it work again, so every command
 	// gated on selection eligibility carries that test's own failure text while it is disabled.
-	const auto set_disabled_reasons = [this, is_media_or_items_view](const df::process_result& result,
-	                                                                 const std::initializer_list<commands> ids)
+	const auto set_disabled_reasons =
+		[this, is_media_or_items_view](const df::process_result& result, const std::initializer_list<commands> ids)
 	{
 		const auto reason = is_media_or_items_view && result.fail() ? result.to_string() : std::string{};
 
 		for (const auto id : ids)
 		{
 			const auto found = _commands.find(id);
-			if (found != _commands.end()) found->second->disabled_reason = found->second->enable
-				                                                               ? std::string{}
-				                                                               : reason;
+			if (found != _commands.end())
+				found->second->disabled_reason = found->second->enable ? std::string{} : reason;
 		}
 	};
 
-	set_disabled_reasons(save_metadata_result, {
-		                     commands::menu_rate_or_label, commands::rate_1, commands::rate_2, commands::rate_3,
-		                     commands::rate_4, commands::rate_5, commands::rate_none, commands::rate_rejected,
-		                     commands::label_approved, commands::label_none, commands::label_review,
-		                     commands::label_second, commands::label_select, commands::label_to_do,
-		                     commands::tool_adjust_date, commands::tool_edit_description, commands::tool_edit_metadata,
-		                     commands::tool_locate, commands::tool_tag
-	                     });
-	set_disabled_reasons(save_pixels_result, {
-		                     commands::tool_rotate_anticlockwise, commands::tool_rotate_clockwise
-	                     });
+	set_disabled_reasons(save_metadata_result,
+	                     {commands::menu_rate_or_label, commands::rate_1, commands::rate_2, commands::rate_3,
+	                      commands::rate_4, commands::rate_5, commands::rate_none, commands::rate_rejected,
+	                      commands::label_approved, commands::label_none, commands::label_review,
+	                      commands::label_second, commands::label_select, commands::label_to_do,
+	                      commands::tool_adjust_date, commands::tool_edit_description, commands::tool_edit_metadata,
+	                      commands::tool_locate, commands::tool_tag});
+	set_disabled_reasons(save_pixels_result, {commands::tool_rotate_anticlockwise, commands::tool_rotate_clockwise});
 	set_disabled_reasons(photos_only_result, {commands::tool_convert});
 	set_disabled_reasons(local_files_result, {commands::print, commands::tool_share});
-	set_disabled_reasons(local_items_result, {
-		                     commands::tool_copy_to_folder, commands::tool_delete, commands::tool_move_to_folder,
-		                     commands::tool_rename, commands::edit_copy, commands::edit_copy_item_path,
-		                     commands::edit_cut
-	                     });
+	set_disabled_reasons(local_items_result, {commands::tool_copy_to_folder, commands::tool_delete,
+	                                          commands::tool_move_to_folder, commands::tool_rename, commands::edit_copy,
+	                                          commands::edit_copy_item_path, commands::edit_cut});
 
 	// Photo editing is singular, so its refusal is about the displayed item, not the whole selection.
 	_commands[commands::tool_edit]->disabled_reason = _commands[commands::tool_edit]->enable
-		                                                  ? std::string{}
-		                                                  : std::string(tt.not_supported_photo_edit.sv());
+	                                                      ? std::string{}
+	                                                      : std::string(tt.not_supported_photo_edit.sv());
 
 	// Analyze refuses only because a path is missing, so it names the same cause the analysis used
 	// to report after the fact. While a task is running the refusal is the task, not the paths.
-	const auto analyze_reason = view_processing ? std::string{} : std::string(tt.platform_text.error_invalid_files.sv());
+	const auto analyze_reason = view_processing ? std::string{}
+	                                            : std::string(tt.platform_text.error_invalid_files.sv());
 
 	for (const auto id : {commands::import_analyze, commands::sync_analyze})
 	{
@@ -1046,18 +1018,17 @@ void app_frame::update_button_state(const bool resize)
 	// A dimmed Run is only honest if it names what would make it work again. The batch and rename
 	// views keep that answer beside the test that produced it.
 	_commands[commands::tool_run]->disabled_reason = view_mode == view_type::batch && _view_batch
-		                                                ? _view_batch->run_blocked_reason()
-		                                                : view_mode == view_type::rename && _view_rename
-		                                                ? _view_rename->run_blocked_reason()
-		                                                : std::string{};
+	                                                     ? _view_batch->run_blocked_reason()
+	                                                 : view_mode == view_type::rename && _view_rename
+	                                                     ? _view_rename->run_blocked_reason()
+	                                                     : std::string{};
 
 	// Tags refuses a run over its own results for the same reason, and has no Refresh button, so the
 	// reason is the only thing pointing at the edit that puts the view back into review.
-	_commands[commands::tags_run]->disabled_reason = view_mode == view_type::tags && _view_tags && !
-	                                                 view_processing && _view_tags->showing_results()
-		                                                 ? std::string(tt.run_needs_refresh.sv())
-		                                                 : std::string{};
-
+	_commands[commands::tags_run]->disabled_reason = view_mode == view_type::tags && _view_tags && !view_processing &&
+	                                                         _view_tags->showing_results()
+	                                                     ? std::string(tt.run_needs_refresh.sv())
+	                                                     : std::string{};
 
 	_commands[commands::playback_auto_play]->checked = setting.auto_play;
 	_commands[commands::playback_auto_advance]->checked = setting.auto_advance;
@@ -1077,14 +1048,13 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::option_show_rotated]->checked = setting.show_rotated;
 	_commands[commands::verbose_metadata]->checked = setting.verbose_metadata;
 	_commands[commands::show_raw_preview]->checked = setting.raw_preview;
-	_commands[commands::view_zoom_navigator_auto_hide]->checked =
-		setting.zoom_navigator == zoom_navigator_mode::auto_hide;
+	_commands[commands::view_zoom_navigator_auto_hide]->checked = setting.zoom_navigator ==
+	                                                              zoom_navigator_mode::auto_hide;
 	_commands[commands::view_zoom_navigator_off]->checked = setting.zoom_navigator == zoom_navigator_mode::off;
 	_commands[commands::view_zoom_fit]->checked = display && display->zoom_state().mode() == df::zoom_scale_mode::fit;
 	_commands[commands::view_zoom_fit_width]->checked = display &&
-		display->zoom_state().mode() == df::zoom_scale_mode::fit_width;
-	_commands[commands::view_zoom_fill]->checked = display &&
-		display->zoom_state().mode() == df::zoom_scale_mode::fill;
+	                                                    display->zoom_state().mode() == df::zoom_scale_mode::fit_width;
+	_commands[commands::view_zoom_fill]->checked = display && display->zoom_state().mode() == df::zoom_scale_mode::fill;
 	_commands[commands::edit_item_preview]->checked = is_edit_view && _edit_view_state._preview_mode;
 	_commands[commands::view_items]->checked = view_mode == view_type::items;
 	_commands[commands::browse_recursive]->checked = _state.search().has_recursive_selector();
@@ -1119,7 +1089,6 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::sort_date_modified]->checked = _state.sort_order() == sort_by::date_modified;
 	_commands[commands::english]->checked = setting.language == "en";
 
-
 	_commands[commands::playback_volume200]->checked = setting.media_volume == media_volume_boost;
 	_commands[commands::playback_volume100]->checked = setting.media_volume == media_volumes[0];
 	_commands[commands::playback_volume75]->checked = setting.media_volume == media_volumes[1];
@@ -1129,17 +1098,14 @@ void app_frame::update_button_state(const bool resize)
 
 	_commands[commands::play]->icon = is_playing_media ? icon_index::pause : icon_index::play;
 	_commands[commands::slideshow]->icon = is_slideshow ? icon_index::pause : icon_index::slideshow;
-	_commands[commands::view_fullscreen]->icon = _state.is_full_screen
-		                                             ? icon_index::fullscreen_exit
-		                                             : icon_index::fullscreen;
+	_commands[commands::view_fullscreen]->icon = _state.is_full_screen ? icon_index::fullscreen_exit
+	                                                                   : icon_index::fullscreen;
 	_commands[commands::playback_volume_toggle]->icon = sound_icon();
 	_commands[commands::repeat_toggle]->icon = repeat_toggle_icon();
 	_commands[commands::favorite]->icon = _state.search_is_favorite() ? icon_index::star_solid : icon_index::star;
 
-
 	const auto summary_text = format_items_summary(_state.effective_group_order(), _state.sort_order(),
-	                                               _state.summary_shown(),
-	                                               _state.item_index.is_init_complete());
+	                                               _state.summary_shown(), _state.item_index.is_init_complete());
 
 	update_toolbar_text(commands::menu_group_toolbar, summary_text);
 	update_toolbar_text(commands::filter_photos, core::format_count(_state.count_total(file_group::photo), true));
@@ -1205,7 +1171,6 @@ recti app_frame::calc_search_popup_bounds() const
 	const auto height = _search_predictions_frame ? _search_predictions_frame->height() : 320;
 	return {edit_bounds.left + 8, edit_bounds.bottom, edit_bounds.right - 8, edit_bounds.bottom + height};
 }
-
 
 // The `keys::` values are runtime globals filled in by the platform layer, so this is a function
 // rather than a constant table.
@@ -1327,8 +1292,7 @@ void app_frame::update_command_text()
 	def_command(commands::browse_next_folder, command_group::navigation, icon_index::right,
 	            tt.command_browse_next_folder);
 	def_command(commands::browse_next_group, command_group::selection, icon_index::none, tt.command_browse_next_group);
-	def_command(commands::browse_next_item, command_group::selection, icon_index::right,
-	            tt.command_browse_next_item);
+	def_command(commands::browse_next_item, command_group::selection, icon_index::right, tt.command_browse_next_item);
 	def_command(commands::browse_next_item_extend, command_group::selection, icon_index::right,
 	            tt.command_browse_next_item_extend);
 	def_command(commands::browse_parent, command_group::navigation, icon_index::parent, tt.command_browse_parent);
@@ -1352,18 +1316,18 @@ void app_frame::update_command_text()
 	def_command(commands::tool_desktop_background, command_group::tools, icon_index::wallpaper,
 	            tt.command_desktop_background);
 	def_command(commands::menu_display_options, command_group::none, icon_index::none, tt.command_display_options);
-	def_command(commands::tool_edit, command_group::tools, icon_index::edit, tt.command_edit,
-	            tt.tooltip_edit1);
+	def_command(commands::tool_edit, command_group::tools, icon_index::edit, tt.command_edit, tt.tooltip_edit1);
 	def_command(commands::tool_movie, command_group::tools, icon_index::video, tt.command_movie, tt.tooltip_movie);
 	def_command(commands::tool_movie_render, command_group::tools, icon_index::movies, tt.command_movie_render,
 	            tt.tooltip_movie_render);
 	def_command(commands::tool_movie_add, command_group::tools, icon_index::add, tt.command_movie_add);
+	def_command(commands::tool_movie_add_text, command_group::tools, icon_index::rename, tt.command_movie_add_text,
+	            tt.tooltip_movie_add_text);
 	def_command(commands::tool_movie_remove, command_group::tools, icon_index::del, tt.command_movie_remove);
 	def_command(commands::tool_movie_relink, command_group::tools, icon_index::link, tt.command_movie_relink,
 	            tt.tooltip_movie_relink);
 	def_command(commands::tool_movie_open, command_group::tools, icon_index::folder, tt.command_movie_open);
 	def_command(commands::tool_movie_save, command_group::tools, icon_index::save, tt.command_movie_save);
-	def_command(commands::tool_movie_import, command_group::tools, icon_index::import, tt.command_movie_import);
 	def_command(commands::tool_movie_send_to_end, command_group::tools, icon_index::right,
 	            tt.command_movie_send_to_end);
 	def_command(commands::tool_movie_select_all, command_group::tools, icon_index::none, tt.command_select_all);
@@ -1457,12 +1421,12 @@ void app_frame::update_command_text()
 	def_command(commands::edit_item_save, command_group::edit_item, icon_index::save, tt.command_save);
 	def_command(commands::edit_item_auto_color, command_group::edit_item, icon_index::lightbulb, tt.command_auto_color,
 	            tt.tooltip_auto_color);
-	def_command(commands::edit_item_auto_document, command_group::edit_item, icon_index::scan_text, tt.command_auto_document,
-	            tt.tooltip_auto_document);
+	def_command(commands::edit_item_auto_document, command_group::edit_item, icon_index::scan_text,
+	            tt.command_auto_document, tt.tooltip_auto_document);
 	def_command(commands::edit_item_auto_straighten, command_group::edit_item, icon_index::lightbulb,
 	            tt.command_auto_straighten, tt.tooltip_auto_straighten);
-	def_command(commands::edit_item_preview, command_group::edit_item, icon_index::preview,
-	            tt.command_edit_preview, tt.tooltip_edit_preview);
+	def_command(commands::edit_item_preview, command_group::edit_item, icon_index::preview, tt.command_edit_preview,
+	            tt.tooltip_edit_preview);
 	def_command(commands::edit_item_save_and_prev, command_group::edit_item, icon_index::back_image,
 	            tt.command_save_and_back, tt.command_save_and_back_tooltip);
 	def_command(commands::edit_item_save_and_next, command_group::edit_item, icon_index::next_image,
@@ -1505,6 +1469,7 @@ void app_frame::update_command_text()
 	def_command(commands::large_font, command_group::options, icon_index::none, tt.command_view_large_font);
 	def_command(commands::view_favorite_tags, command_group::options, icon_index::tag, tt.command_favorite_tags);
 	def_command(commands::menu_main, command_group::none, icon_index::more, tt.command_view_menu, tt.tooltip_view_menu);
+	def_command(commands::menu_bar_more, command_group::none, icon_index::more, tt.tooltip_view_menu);
 	def_command(commands::menu_options, command_group::none, icon_index::settings, tt.options_title);
 	def_command(commands::menu_rate_or_label, command_group::none, icon_index::none, tt.command_view_rate_label);
 	def_command(commands::menu_select, command_group::none, icon_index::none, tt.command_view_select);
@@ -1532,8 +1497,7 @@ void app_frame::update_command_text()
 	def_command(commands::view_zoom_pane_flip, command_group::media_playback, icon_index::swap, tt.command_zoom_flip);
 	def_command(commands::view_zoom_out, command_group::media_playback, icon_index::zoom_out, tt.command_zoom_out);
 	def_command(commands::view_zoom_100, command_group::media_playback, icon_index::one_to_one, tt.command_zoom_100);
-	def_command(commands::menu_zoom, command_group::media_playback, icon_index::overview,
-	            tt.command_zoom_presets);
+	def_command(commands::menu_zoom, command_group::media_playback, icon_index::overview, tt.command_zoom_presets);
 	def_command(commands::menu_zoom_navigator, command_group::media_playback, icon_index::overview,
 	            tt.command_zoom_navigator);
 	def_command(commands::view_zoom_navigator_auto_hide, command_group::media_playback, icon_index::none,
@@ -1593,6 +1557,7 @@ void app_frame::update_command_text()
 	_commands[commands::browse_previous_item]->keyboard_accelerator_text = tt.platform_text.keyboard_left;
 	_commands[commands::browse_next_item]->keyboard_accelerator_text = tt.platform_text.keyboard_right;
 
+	// clang-format off
 	for (const auto id : {
 		     commands::menu_open, commands::menu_open_status, commands::menu_tools_toolbar, commands::menu_playback,
 		     commands::view_close,
@@ -1601,18 +1566,18 @@ void app_frame::update_command_text()
 		     commands::tool_refresh,
 		     commands::edit_item_save, commands::edit_item_save_and_prev, commands::edit_item_save_and_next,
 		     commands::edit_item_save_as, commands::edit_item_preview,
-		     commands::tool_movie_add, commands::tool_movie_remove, commands::tool_movie_open,
-		     commands::tool_movie_save, commands::tool_movie_import,
+		     commands::tool_movie_add, commands::tool_movie_add_text, commands::tool_movie_remove,
+		     commands::tool_movie_open, commands::tool_movie_save,
 		     commands::tool_movie_render, commands::tool_movie_relink,
 		     commands::menu_group_toolbar, commands::filter_photos, commands::filter_videos,
 		     commands::filter_audio, commands::options_save, commands::options_cancel,
 		     commands::options_help
 	     })
+	// clang-format on
 	{
 		_commands[id]->toolbar_text = _commands[id]->text;
 	}
 }
-
 
 command_info_ptr app_frame::find_or_create_command_info(const commands id)
 {
@@ -1664,15 +1629,13 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		if (!command->text.empty())
 		{
 			hover.elements->add(std::make_shared<text_element>(command->text, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break));
+			                                                   render::text_style::multiline, flex_item::line_break));
 		}
 
 		if (!command->tooltip_text.empty())
 		{
 			hover.elements->add(std::make_shared<text_element>(command->tooltip_text, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break));
+			                                                   render::text_style::multiline, flex_item::line_break));
 		}
 
 		if (!command->enable && !command->disabled_reason.empty())
@@ -1717,8 +1680,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		// locations.md 7.1: the breakdown belongs to the totals affordance now; repeating it here
 		// would put it back where a user reaching for grouping does not want it.
 		hover.elements->add(std::make_shared<text_element>(tt.group_sort_tooltip, render::font_face::dialog,
-		                                                   render::text_style::multiline,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::multiline, flex_item::line_break));
 	}
 	else if (id == commands::browse_open_containingfolder)
 	{
@@ -1759,8 +1721,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		if (!parent.is_empty())
 		{
 			hover.elements->add(std::make_shared<text_element>(parent.text(), render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::new_line));
+			                                                   render::text_style::multiline, flex_item::new_line));
 		}
 	}
 	else if (id == commands::favorite)
@@ -1773,12 +1734,10 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 			const auto text = str_format((is_favorite ? tt.favorite_remove_fmt : tt.favorite_add_fmt).sv(),
 			                             search.text());
 			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::new_line));
+			                                                   render::text_style::multiline, flex_item::new_line));
 
 			hover.elements->add(std::make_shared<text_element>(tt.favorite_info, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::new_line));
+			                                                   render::text_style::multiline, flex_item::new_line));
 		}
 	}
 	else if (id == commands::options)
@@ -1790,12 +1749,10 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 			const auto is_collection_root = _state.search_is_in_collection();
 			const auto text = is_collection_root ? tt.collection_in : tt.collection_not_in;
 			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::new_line));
+			                                                   render::text_style::multiline, flex_item::new_line));
 
 			hover.elements->add(std::make_shared<text_element>(tt.collection_info, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::new_line));
+			                                                   render::text_style::multiline, flex_item::new_line));
 		}
 	}
 	else if (id == commands::menu_open_status)
@@ -1805,9 +1762,11 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 
 		if (!selected.empty())
 		{
-			hover.elements->add(std::make_shared<text_element>(
-				str_format(tt.selected_items_fmt.sv(), format_plural_text(tt.title_item_count_fmt, selected)),
-				render::font_face::dialog, render::text_style::single_line, flex_item::line_break));
+			hover.elements->add(
+				std::make_shared<text_element>(str_format(tt.selected_items_fmt.sv(),
+			                                              format_plural_text(tt.title_item_count_fmt, selected)),
+			                                   render::font_face::dialog, render::text_style::single_line,
+			                                   flex_item::line_break));
 			hover.elements->add(std::make_shared<summary_control>(selected.summary(), flex_item::line_break));
 		}
 	}
@@ -1815,8 +1774,7 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 	else if (id == commands::info_new_version)
 	{
 		hover.elements->add(std::make_shared<text_element>(tt.update_available, render::font_face::dialog,
-		                                                   render::text_style::multiline,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::multiline, flex_item::line_break));
 		hover.elements->add(
 			std::make_shared<text_element>(str_format(tt.update_avail_version_fmt.sv(), setting.available_version)));
 		hover.elements->add(
@@ -1861,21 +1819,19 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 // says the rest of itself when the bar had to cut it short.
 void app_frame::status_tooltip(view_hover_element& hover) const
 {
-	const auto origin = _status_bar->frame()->window_bounds().top_left();
+	const auto origin = _status_bar->frame()->client_to_screen({});
 
 	if (_status_hover == status_part::totals)
 	{
 		hover.elements->add(std::make_shared<text_element>(_totals_text, render::font_face::dialog,
-		                                                   render::text_style::single_line,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::single_line, flex_item::line_break));
 		hover.elements->add(std::make_shared<summary_control>(_state.summary_shown(), flex_item::line_break));
 		hover.active_bounds = hover.window_bounds = _totals_bounds.offset(origin);
 	}
 	else if (_status_hover == status_part::status && _view)
 	{
 		hover.elements->add(std::make_shared<text_element>(_view->status(), render::font_face::dialog,
-		                                                   render::text_style::multiline,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::multiline, flex_item::line_break));
 		hover.active_bounds = hover.window_bounds = _status_text_bounds.offset(origin);
 	}
 }
@@ -1902,13 +1858,16 @@ void app_frame::update_status_hover(const pointi loc)
 
 void app_frame::update_tooltip()
 {
+	const auto previous_bounds = _hover.window_bounds;
+	const auto previous_id = _hover.id;
+	const auto was_empty = _hover.is_empty();
 	_hover.clear();
 
 	if (ui::command_active == 0)
 	{
 		if (setting.show_help_tooltips && _app_logo_hover)
 		{
-			_app_logo->tooltip(_hover, {}, _title_bar->frame()->window_bounds().top_left());
+			_app_logo->tooltip(_hover, {}, _title_bar->frame()->client_to_screen({}));
 		}
 		else if (setting.show_help_tooltips && _status_hover != status_part::none)
 		{
@@ -1935,8 +1894,7 @@ void app_frame::update_tooltip()
 					tooltip(_hover, _hover.id);
 				}
 
-				const auto window_bounds = frame->frame()->window_bounds();
-				_hover.window_bounds = _hover.window_bounds.offset(window_bounds.top_left());
+				_hover.window_bounds = _hover.window_bounds.offset(frame->frame()->client_to_screen({}));
 				frame->_tooltip_bounds = _hover.active_bounds;
 			}
 			else if (setting.show_help_tooltips && _hover_command)
@@ -1948,18 +1906,48 @@ void app_frame::update_tooltip()
 		}
 	}
 
-	// The toolbars exist before init() creates the bubble, so a hover can arrive with no bubble yet.
+	_tooltip_content_dirty = true;
+	if (was_empty || _hover.is_empty() || previous_bounds != _hover.window_bounds || previous_id != _hover.id)
+	{
+		_tooltip_dwell.reset();
+		if (_bubble) _bubble->hide();
+	}
+}
+
+void app_frame::update_tooltip_visibility(const uint64_t now_ms, const pointi screen_position,
+                                          const double scale_factor)
+{
 	if (!_bubble)
 	{
+		_tooltip_dwell.reset();
 		return;
 	}
 
-	if (!_hover.is_empty())
+	if (_hover.is_empty() || ui::command_active != 0 || !_state.should_show_overlays())
+	{
+		_tooltip_dwell.reset();
+		if (_bubble->is_visible()) _bubble->hide();
+		return;
+	}
+
+	// A tutorial's pointer rests where the user's never was, so its tooltips show only where the script asks.
+	if (_tutorial && !_tutorial->shows_tooltips())
+	{
+		_tooltip_dwell.reset();
+		if (_bubble->is_visible()) _bubble->hide();
+		return;
+	}
+
+	const auto tolerance = std::max(1, core::round(4 * scale_factor));
+	if (!_tooltip_dwell.ready(now_ms, screen_position, tolerance, _hover.active_delay))
+	{
+		if (_bubble->is_visible()) _bubble->hide();
+		return;
+	}
+
+	if (_tooltip_content_dirty || !_bubble->is_visible())
 	{
 		_bubble->show(_hover.elements, _hover.window_bounds, _hover.x_focus, _hover.preferred_size, _hover.horizontal);
-	}
-	else
-	{
-		_bubble->hide();
+		_tooltip_content_dirty = false;
 	}
 }

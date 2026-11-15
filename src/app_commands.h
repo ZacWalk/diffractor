@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Command identifier enumeration. Defines all available application commands
 // used for menus, toolbars, keyboard shortcuts, and programmatic invocation.
@@ -99,6 +98,8 @@ enum class commands
 	menu_group_toolbar,
 	menu_language,
 	menu_main,
+	// The commands a short status bar had no room for, behind the button that stands in for them.
+	menu_bar_more,
 	menu_navigate,
 	menu_open,
 	// Open as Items' status bar shows it: the same menu, labelled with what is selected.
@@ -151,9 +152,9 @@ enum class commands
 	select_all,
 	select_invert,
 	select_nothing,
-	//show_raw_always,
+	// show_raw_always,
 	show_raw_preview,
-	//show_raw_this_only,
+	// show_raw_this_only,
 	slideshow,
 	sort_date_created,
 	sort_date_original,
@@ -182,7 +183,7 @@ enum class commands
 	tool_move_to_folder,
 	tool_movie,
 	tool_movie_add,
-	tool_movie_import,
+	tool_movie_add_text,
 	tool_movie_open,
 	tool_movie_relink,
 	tool_movie_remove,
@@ -230,6 +231,12 @@ enum class commands
 	view_zoom_navigator_off,
 };
 
+// Every command's name, as an agent or a script calls it: its identifier above. Empty for none.
+std::string_view command_name(commands id);
+std::optional<commands> command_from_name(std::string_view name);
+// Every command but none, in the order the enumeration declares them.
+const std::vector<commands>& all_commands();
+
 using command_info_ptr = std::shared_ptr<ui::command>;
 using commands_map = core::hash_map<commands, command_info_ptr>;
 
@@ -252,5 +259,5 @@ quadd rotate_command_crop_bounds(sizei dimensions, core::orientation stored_orie
 using destination_folder_enumerator = std::function<core::folder_paths(const core::folder_path&)>;
 
 std::shared_ptr<ui::complete_strategy_t> make_destination_folder_auto_complete_for_test(
-	view_state& state, std::shared_ptr<void> picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
+	view_state& state, const std::shared_ptr<void>& picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
 	destination_folder_enumerator enumerate_child_folders = {});

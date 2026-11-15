@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Software rasterisers for the sidebar's file-type pie and history calendar. Both draw an
 // extruded solid lit by the globe's light into a surface the caller uploads as a texture, and both
@@ -166,7 +165,7 @@ void chart_surface::reduce() const
 			// shift, so four samples never carry into the neighbouring channel.
 			const auto rb = (a & 0x00FF00FFu) + (b & 0x00FF00FFu) + (c & 0x00FF00FFu) + (d & 0x00FF00FFu);
 			const auto ga = (a >> 8 & 0x00FF00FFu) + (b >> 8 & 0x00FF00FFu) + (c >> 8 & 0x00FF00FFu) +
-				(d >> 8 & 0x00FF00FFu);
+			                (d >> 8 & 0x00FF00FFu);
 
 			dst[x] = (rb >> 2 & 0x00FF00FFu) | ((ga >> 2 & 0x00FF00FFu) << 8);
 		}
@@ -197,8 +196,7 @@ void render_pie_chart(chart_surface& destination, const pie_chart_scene& scene)
 	// Width usually binds; the height term keeps the rim and the lift inside the element when the
 	// sidebar is wide enough for it not to.
 	const auto radius = std::min((width - 2.0 * margin) / 2.0,
-	                             (height - 2.0 * margin) /
-	                             (2.0 * pie_chart_squash + pie_chart_rim + pie_chart_lift));
+	                             (height - 2.0 * margin) / (2.0 * pie_chart_squash + pie_chart_rim + pie_chart_lift));
 
 	if (radius < 4.0) return;
 
@@ -378,22 +376,21 @@ void render_calendar_chart(chart_surface& destination, const std::vector<calenda
 
 		// The top face alone is the empty socket an unphotographed month leaves. Absence has to be
 		// visible or the grid stops reading as a calendar.
-		fill_convex(surface, ids, extent, {
-			            pointi(left, top_y), pointi(left + depth_x, top_y - depth_y),
-			            pointi(right + depth_x, top_y - depth_y), pointi(right, top_y)
-		            }, shade(top_face, 1.0), cell.id);
+		fill_convex(surface, ids, extent,
+		            {pointi(left, top_y), pointi(left + depth_x, top_y - depth_y),
+		             pointi(right + depth_x, top_y - depth_y), pointi(right, top_y)},
+		            shade(top_face, 1.0), cell.id);
 
 		if (block_height > 0)
 		{
-			fill_convex(surface, ids, extent, {
-				            pointi(side_edge, top_y), pointi(side_edge + depth_x, top_y - depth_y),
-				            pointi(side_edge + depth_x, floor_y - depth_y), pointi(side_edge, floor_y)
-			            }, shade(side_face, 1.0), cell.id);
+			fill_convex(surface, ids, extent,
+			            {pointi(side_edge, top_y), pointi(side_edge + depth_x, top_y - depth_y),
+			             pointi(side_edge + depth_x, floor_y - depth_y), pointi(side_edge, floor_y)},
+			            shade(side_face, 1.0), cell.id);
 
-			fill_convex(surface, ids, extent, {
-				            pointi(left, top_y), pointi(right, top_y),
-				            pointi(right, floor_y), pointi(left, floor_y)
-			            }, shade(front_face, 1.0), cell.id);
+			fill_convex(surface, ids, extent,
+			            {pointi(left, top_y), pointi(right, top_y), pointi(right, floor_y), pointi(left, floor_y)},
+			            shade(front_face, 1.0), cell.id);
 		}
 	}
 

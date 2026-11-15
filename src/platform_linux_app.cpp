@@ -1,17 +1,18 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The application's Linux glue: no hardware video decode for FFmpeg to use - the counterpart
-// of platform_win_av.cpp - no platform tests to register, since the Windows-only subject file is not
-// built here. The entry point and generated icon-font registration are shared in app.cpp, which calls
-// libdesktop's UI runner on both platforms.
+// of platform_win_av.cpp - no screen recorder in a Debug build, which platform_win_record.cpp is on Windows,
+// and no platform tests to register, since the Windows-only subject file is not built here. The entry point
+// and generated icon-font registration are shared in app.cpp, which calls libdesktop's UI runner on both
+// platforms.
 
 #include "pch.h"
+#include "app_record.h"
 #include "av_format.h"
 #include "av_sound.h"
 #include "files.h"
@@ -50,6 +51,15 @@ AVBufferRef* av_platform_create_hw_device(int)
 // No hardware picture is decoded here, so there is no device lock to lend.
 void av_platform_decode_lock(const AVHWFramesContext*, render::video_picture&)
 {
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Recording. Linux has no movie writer, so there is nothing to record with.
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<screen_recording> start_screen_recording(const screen_recording_request&)
+{
+	return nullptr;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
